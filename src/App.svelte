@@ -116,7 +116,16 @@
                           ? settings.missions[0].color
                           : settings.missions[1].color}"
                 >
-                    <strong>{computed.outOfBalanceHours}</strong> hours out of balance
+                    <strong>{computed.outOfBalanceHours}</strong> hours out of
+                    balance: you need to work on
+                    <span
+                        style="color: {pinkHasMore
+                            ? settings.missions[1].color
+                            : settings.missions[0].color}"
+                        >{pinkHasMore
+                            ? settings.missions[1].name
+                            : settings.missions[0].name}</span
+                    >
                 </div>
             </div>
         {/if}
