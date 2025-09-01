@@ -102,7 +102,7 @@ function getOutOfBalanceHoursAbs() {
     const totalMinutes0 = getTotalMinutesForMission(0);
     const totalMinutes1 = getTotalMinutesForMission(1);
     const diffMinutes = Math.abs(totalMinutes0 - totalMinutes1);
-    return Math.floor(diffMinutes / 60);
+    return Math.round(diffMinutes / 60);
 }
 
 function getOutOfBalanceSign() {
@@ -123,7 +123,7 @@ function updateTrayTitleAndIcon() {
     renderTrayImage(balanceNum, minutesLeft, () => { });
     // Only show the minutes as system text; colored balance + pie are in the image
     try { tray.setTitle(`${minutesLeft}`); } catch { }
-    tray.setToolTip(`${settings.missions[0].name}: ${Math.floor(getTotalMinutesForMission(0) / 60)}h | ${settings.missions[1].name}: ${Math.floor(getTotalMinutesForMission(1) / 60)}h`);
+    tray.setToolTip(`${settings.missions[0].name}: ${Math.round(getTotalMinutesForMission(0) / 60)}h | ${settings.missions[1].name}: ${Math.round(getTotalMinutesForMission(1) / 60)}h`);
 }
 
 function timeRemainingSeconds() {
