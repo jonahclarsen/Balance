@@ -11,12 +11,12 @@
         "dev:renderer": "VITE_DEV_PORT=5174 vite --port 5174",
         "dev:electron": "wait-on tcp:5174 && VITE_DEV_PORT=5174 electron .",
         "build": "run-s build:renderer build:electron",
-        "build:renderer": "vite build",
-        "build:electron": "electron-builder",
-        "build:mac": "run-s build:renderer && electron-builder --mac",
-        "build:win": "run-s build:renderer && electron-builder --win",
-        "build:linux": "run-s build:renderer && electron-builder --linux",
-        "build:all": "run-s build:renderer && electron-builder --mac --win --linux",
+        "build:renderer": "NODE_ENV=production vite build",
+        "build:electron": "NODE_ENV=production electron-builder",
+        "build:mac": "run-s build:renderer && NODE_ENV=production electron-builder --mac",
+        "build:win": "run-s build:renderer && NODE_ENV=production electron-builder --win",
+        "build:linux": "run-s build:renderer && NODE_ENV=production electron-builder --linux",
+        "build:all": "run-s build:renderer && NODE_ENV=production electron-builder --mac --win --linux",
         "dist": "run-s build:renderer build:electron"
     },
     "devDependencies": {

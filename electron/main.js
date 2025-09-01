@@ -10,10 +10,29 @@ function getRendererURL() {
     if (isDev) {
         return `http://localhost:${DEV_PORT}`;
     } else {
-        // In production, the dist folder should be at the app root level
-        const distPath = path.join(__dirname, '../dist/index.html');
-        console.log('Production renderer path:', distPath);
-        console.log('File exists:', fs.existsSync(distPath));
+        // In production, try multiple possible locations for the dist folder
+        const possiblePaths = [
+            path.join(__dirname, '../dist/index.html'),
+            path.join(process.resourcesPath, 'app/dist/index.html'),
+            path.join(process.resourcesPath, 'dist/index.html'),
+            path.join(__dirname, '../../dist/index.html')
+        ];
+        
+        let distPath = null;
+        for (const testPath of possiblePaths) {
+            console.log('Testing path:', testPath, 'exists:', fs.existsSync(testPath));
+            if (fs.existsSync(testPath)) {
+                distPath = testPath;
+                break;
+            }
+        }
+        
+        if (!distPath) {
+            console.error('Could not find dist/index.html in any expected location');
+            distPath = possiblePaths[0]; // fallback
+        }
+        
+        console.log('Using production renderer path:', distPath);
         return `file://${distPath}`;
     }
 }
@@ -267,12 +286,31 @@ function createWindow() {
     });
     
     // Handle loading failures
-    mainWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription) => {
-        console.error('Failed to load window content:', errorCode, errorDescription);
+    mainWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+        console.error('Failed to load window content:', errorCode, errorDescription, validatedURL);
+    });
+    
+    // Add more detailed debugging
+    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        console.log(`Renderer console [${level}]:`, message);
+    });
+    
+    mainWindow.webContents.on('dom-ready', () => {
+        console.log('DOM ready');
     });
     
     console.log('Loading URL:', RENDERER_URL);
+    console.log('__dirname:', __dirname);
+    console.log('Process cwd:', process.cwd());
+    
     mainWindow.loadURL(RENDERER_URL);
+    
+    // Optional: Uncomment to open dev tools for debugging in production
+    // if (!isDev) {
+    //     setTimeout(() => {
+    //         mainWindow.webContents.openDevTools({ mode: 'detach' });
+    //     }, 2000);
+    // }
     
     // Add delay before allowing blur to hide window (prevents immediate hiding)
     let canHideOnBlur = false;
