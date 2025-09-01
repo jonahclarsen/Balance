@@ -21,13 +21,15 @@ const DEFAULT_STATE = {
     totalsSeconds: [0, 0],
     currentMissionIndex: 0,
     timer: { running: false, isBreak: false, remainingSeconds: 0, endTs: 0, initialSeconds: 0 },
-    lastEnded: null
+    lastEnded: null,
+    dailyMinutes: {} // Structure: {"mission_0": {"2025-01-01": 4}, "mission_1": {"2025-01-01": 2}}
 };
 
 let mainWindow = null; // popover window
 let tray = null;
 let saveInterval = null;
 let tickInterval = null;
+let minuteTrackingInterval = null;
 let settings = { ...DEFAULT_SETTINGS };
 let state = { ...DEFAULT_STATE };
 let dataFilePath = '';
@@ -60,6 +62,7 @@ function loadData() {
             if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
             state = { ...DEFAULT_STATE, ...json.state };
             if (!state.totalsSeconds || state.totalsSeconds.length !== 2) state.totalsSeconds = [0, 0];
+            if (!state.dailyMinutes) state.dailyMinutes = {};
         } else {
             saveData();
         }
@@ -117,6 +120,63 @@ function timeRemainingSeconds() {
     if (!state.timer.running) return state.timer.remainingSeconds || 0;
     const rem = Math.max(0, Math.floor((state.timer.endTs - Date.now()) / 1000));
     return rem;
+}
+
+function getTodayDateString() {
+    const today = new Date();
+    return today.getFullYear() + '-' + 
+           String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+           String(today.getDate()).padStart(2, '0');
+}
+
+function isInMinuteTrackingWindow() {
+    const now = new Date();
+    const seconds = now.getSeconds();
+    return seconds >= 5 && seconds <= 15;
+}
+
+function incrementDailyMinute() {
+    if (!state.timer.running || state.timer.isBreak) return;
+    
+    const today = getTodayDateString();
+    const missionKey = `mission_${state.currentMissionIndex}`;
+    
+    // Initialize structure if needed
+    if (!state.dailyMinutes) {
+        state.dailyMinutes = {};
+    }
+    if (!state.dailyMinutes[missionKey]) {
+        state.dailyMinutes[missionKey] = {};
+    }
+    if (!state.dailyMinutes[missionKey][today]) {
+        state.dailyMinutes[missionKey][today] = 0;
+    }
+    
+    // Increment today's minute count
+    state.dailyMinutes[missionKey][today]++;
+    
+    // Save the updated data
+    saveData();
+    notifyRenderer('state');
+}
+
+function startMinuteTracking() {
+    if (minuteTrackingInterval) clearTimeout(minuteTrackingInterval);
+    
+    const scheduleNext = () => {
+        if (isInMinuteTrackingWindow()) {
+            // We're in the tracking window (x:05 to x:15)
+            incrementDailyMinute();
+            // Set timer to run again in 30 seconds
+            minuteTrackingInterval = setTimeout(scheduleNext, 30000);
+        } else {
+            // We're outside the tracking window, check again in 5 seconds
+            minuteTrackingInterval = setTimeout(scheduleNext, 5000);
+        }
+    };
+    
+    // Start the tracking cycle
+    scheduleNext();
 }
 
 function startTicking() {
@@ -335,9 +395,16 @@ function getPublicState() {
         computed: {
             outOfBalanceHours: getOutOfBalanceHoursAbs(),
             outOfBalanceSign: getOutOfBalanceSign(),
-            withinRange: isWithinAcceptableRange()
+            withinRange: isWithinAcceptableRange(),
+            todayMinutes: getTodayMinutesForCurrentMission()
         }
     };
+}
+
+function getTodayMinutesForCurrentMission() {
+    const today = getTodayDateString();
+    const missionKey = `mission_${state.currentMissionIndex}`;
+    return state.dailyMinutes?.[missionKey]?.[today] || 0;
 }
 
 function startTimer(isBreak) {
@@ -432,6 +499,7 @@ app.whenReady().then(() => {
     createWindow();
     createTray();
     startTicking();
+    startMinuteTracking();
 });
 
 app.on('window-all-closed', (e) => {
@@ -444,6 +512,7 @@ app.on('window-all-closed', (e) => {
 app.on('before-quit', () => {
     try { if (saveInterval) clearInterval(saveInterval); } catch { }
     try { if (tickInterval) clearInterval(tickInterval); } catch { }
+    try { if (minuteTrackingInterval) clearTimeout(minuteTrackingInterval); } catch { }
     saveData();
 });
 
