@@ -14,6 +14,9 @@
         "build:renderer": "NODE_ENV=production vite build",
         "build:electron": "NODE_ENV=production electron-builder",
         "build:mac": "run-s build:renderer && NODE_ENV=production electron-builder --mac",
+        "build:mac:arm": "run-s build:renderer && NODE_ENV=production electron-builder --mac --arm64",
+        "build:mac:x64": "run-s build:renderer && NODE_ENV=production electron-builder --mac --x64",
+        "build:mac:both": "run-s build:mac",
         "build:win": "run-s build:renderer && NODE_ENV=production electron-builder --win",
         "build:linux": "run-s build:renderer && NODE_ENV=production electron-builder --linux",
         "build:all": "run-s build:renderer && NODE_ENV=production electron-builder --mac --win --linux",
@@ -45,7 +48,10 @@
             "target": [
                 {
                     "target": "zip",
-                    "arch": ["x64", "arm64"]
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
                 }
             ]
         },
@@ -53,7 +59,9 @@
             "target": [
                 {
                     "target": "nsis",
-                    "arch": ["x64"]
+                    "arch": [
+                        "x64"
+                    ]
                 }
             ]
         },
@@ -61,7 +69,9 @@
             "target": [
                 {
                     "target": "AppImage",
-                    "arch": ["x64"]
+                    "arch": [
+                        "x64"
+                    ]
                 }
             ]
         },
