@@ -324,8 +324,8 @@
         width: 360px;
         height: 500px;
         padding: 14px;
-        background: var(--bg);
-        border: 3px solid var(--stroke);
+        background: var(--bg, #fff8e7); /* Fallback background */
+        border: 3px solid var(--stroke, #2e2a24); /* Fallback border */
         border-radius: 18px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
         font-family:
