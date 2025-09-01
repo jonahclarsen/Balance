@@ -4,7 +4,21 @@ const fs = require('fs');
 
 const isDev = process.env.NODE_ENV !== 'production';
 const DEV_PORT = process.env.VITE_DEV_PORT || '5173';
-const RENDERER_URL = isDev ? `http://localhost:${DEV_PORT}` : `file://${path.join(__dirname, '../dist/index.html')}`;
+
+// More robust path resolution for production
+function getRendererURL() {
+    if (isDev) {
+        return `http://localhost:${DEV_PORT}`;
+    } else {
+        // In production, the dist folder should be at the app root level
+        const distPath = path.join(__dirname, '../dist/index.html');
+        console.log('Production renderer path:', distPath);
+        console.log('File exists:', fs.existsSync(distPath));
+        return `file://${distPath}`;
+    }
+}
+
+const RENDERER_URL = getRendererURL();
 
 // Data & settings
 const DEFAULT_SETTINGS = {
@@ -218,29 +232,70 @@ function startTicking() {
 }
 
 function createWindow() {
-    mainWindow = new BrowserWindow({
+    // macOS-specific window options to fix transparency issues
+    const windowOptions = {
         width: 380,
         height: 520,
         show: false,
         frame: false,
         resizable: false,
         movable: false,
-        transparent: true,
         alwaysOnTop: true,
         skipTaskbar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
-            nodeIntegration: false
+            nodeIntegration: false,
+            webSecurity: false // Allow file:// protocol in production
         }
+    };
+    
+    // On macOS, use vibrancy instead of full transparency for better reliability
+    if (process.platform === 'darwin') {
+        windowOptions.transparent = false;
+        windowOptions.vibrancy = 'popover';
+        windowOptions.backgroundColor = '#00000000'; // Transparent background
+    } else {
+        windowOptions.transparent = true;
+    }
+    
+    mainWindow = new BrowserWindow(windowOptions);
+    
+    // Wait for content to load before showing
+    mainWindow.webContents.once('did-finish-load', () => {
+        console.log('Window content loaded successfully');
     });
+    
+    // Handle loading failures
+    mainWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription) => {
+        console.error('Failed to load window content:', errorCode, errorDescription);
+    });
+    
+    console.log('Loading URL:', RENDERER_URL);
     mainWindow.loadURL(RENDERER_URL);
+    
+    // Add delay before allowing blur to hide window (prevents immediate hiding)
+    let canHideOnBlur = false;
+    setTimeout(() => { canHideOnBlur = true; }, 1000);
+    
     mainWindow.on('blur', () => {
-        // Hide when focus lost, like a popover
-        if (!mainWindow.webContents.isDevToolsOpened()) {
-            mainWindow.hide();
+        // Hide when focus lost, like a popover, but with a delay to prevent immediate hiding
+        if (canHideOnBlur && !mainWindow.webContents.isDevToolsOpened()) {
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isFocused()) {
+                    mainWindow.hide();
+                }
+            }, 100);
         }
     });
+    
+    // Debug logging for macOS
+    if (process.platform === 'darwin') {
+        mainWindow.on('show', () => console.log('Window shown'));
+        mainWindow.on('hide', () => console.log('Window hidden'));
+        mainWindow.on('focus', () => console.log('Window focused'));
+        mainWindow.on('blur', () => console.log('Window blurred'));
+    }
 }
 
 function getWindowPosition() {
@@ -249,22 +304,39 @@ function getWindowPosition() {
     const windowBounds = mainWindow.getBounds();
     let x = 0;
     let y = 0;
+    
     if (process.platform === 'darwin') {
+        // macOS: Position below the menu bar
         x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
         y = Math.round(trayBounds.y + trayBounds.height + 4);
+        
+        // Debug logging for macOS
+        console.log('macOS positioning:', {
+            trayBounds,
+            windowBounds,
+            display: display.workArea,
+            calculated: { x, y }
+        });
     } else {
         // Windows/Linux: place above the tray if at bottom, otherwise below
         const taskbarAtBottom = trayBounds.y > (display.workArea.y + display.workArea.height / 2);
         x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
         y = taskbarAtBottom ? Math.round(trayBounds.y - windowBounds.height - 8) : Math.round(trayBounds.y + trayBounds.height + 4);
     }
-    // Keep inside screen
-    x = Math.min(Math.max(display.workArea.x, x), display.workArea.x + display.workArea.width - windowBounds.width);
+    
+    // Keep inside screen bounds with more generous margins
+    const margin = 20;
+    x = Math.min(Math.max(display.workArea.x + margin, x), display.workArea.x + display.workArea.width - windowBounds.width - margin);
+    y = Math.min(Math.max(display.workArea.y + margin, y), display.workArea.y + display.workArea.height - windowBounds.height - margin);
+    
     return { x, y };
 }
 
 function toggleWindow() {
     if (!mainWindow) return;
+    
+    console.log('Toggle window called, currently visible:', mainWindow.isVisible());
+    
     if (mainWindow.isVisible()) {
         mainWindow.hide();
     } else {
@@ -273,10 +345,27 @@ function toggleWindow() {
 }
 
 function showWindowNearTray() {
+    if (!mainWindow) return;
+    
     const position = getWindowPosition();
+    console.log('Showing window at position:', position);
+    
+    // Set position first
     mainWindow.setPosition(position.x, position.y, false);
+    
+    // Show and focus the window
     mainWindow.show();
-    mainWindow.focus();
+    
+    // On macOS, we need to ensure the window actually gets focus
+    if (process.platform === 'darwin') {
+        // Force focus on macOS
+        setTimeout(() => {
+            mainWindow.focus();
+            mainWindow.moveTop();
+        }, 50);
+    } else {
+        mainWindow.focus();
+    }
 }
 
 function createTray() {
