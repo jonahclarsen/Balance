@@ -1,0 +1,450 @@
+const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell } = require('electron');
+const path = require('path');
+const fs = require('fs');
+
+const isDev = process.env.NODE_ENV !== 'production';
+const DEV_PORT = process.env.VITE_DEV_PORT || '5173';
+const RENDERER_URL = isDev ? `http://localhost:${DEV_PORT}` : `file://${path.join(__dirname, '../dist/index.html')}`;
+
+// Data & settings
+const DEFAULT_SETTINGS = {
+    missions: [
+        { name: 'Pink Mission', color: '#e91e63' },
+        { name: 'Green Mission', color: '#2e7d32' }
+    ],
+    acceptableHourRange: 6,
+    durations: { workMinutes: 28, breakMinutes: 3 },
+    dataDir: ''
+};
+
+const DEFAULT_STATE = {
+    totalsSeconds: [0, 0],
+    currentMissionIndex: 0,
+    timer: { running: false, isBreak: false, remainingSeconds: 0, endTs: 0, initialSeconds: 0 },
+    lastEnded: null
+};
+
+let mainWindow = null; // popover window
+let tray = null;
+let saveInterval = null;
+let tickInterval = null;
+let settings = { ...DEFAULT_SETTINGS };
+let state = { ...DEFAULT_STATE };
+let dataFilePath = '';
+
+function getUserDir() {
+    const base = settings.dataDir && settings.dataDir.trim().length > 0 ? settings.dataDir : app.getPath('userData');
+    return base;
+}
+
+function ensureDataDir() {
+    const dir = getUserDir();
+    try { fs.mkdirSync(dir, { recursive: true }); } catch { }
+    return dir;
+}
+
+function getDataFilePath() {
+    const dir = ensureDataDir();
+    return path.join(dir, 'balance.json');
+}
+
+function loadData() {
+    try {
+        const p = getDataFilePath();
+        dataFilePath = p;
+        if (fs.existsSync(p)) {
+            const json = JSON.parse(fs.readFileSync(p, 'utf-8'));
+            settings = { ...DEFAULT_SETTINGS, ...json.settings };
+            // Deep merge missions if missing
+            if (!settings.missions || settings.missions.length !== 2) settings.missions = DEFAULT_SETTINGS.missions;
+            if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
+            state = { ...DEFAULT_STATE, ...json.state };
+            if (!state.totalsSeconds || state.totalsSeconds.length !== 2) state.totalsSeconds = [0, 0];
+        } else {
+            saveData();
+        }
+    } catch (e) {
+        console.error('Failed to load data:', e);
+    }
+}
+
+function saveData() {
+    try {
+        const p = getDataFilePath();
+        dataFilePath = p;
+        const payload = { settings, state };
+        fs.writeFileSync(p, JSON.stringify(payload, null, 2), 'utf-8');
+    } catch (e) {
+        console.error('Failed to save data:', e);
+    }
+}
+
+function setSaveScheduler() {
+    if (saveInterval) clearInterval(saveInterval);
+    // Save every 2 minutes
+    saveInterval = setInterval(saveData, 2 * 60 * 1000);
+}
+
+function secondsToMinutesFloor(seconds) {
+    return Math.max(0, Math.floor(seconds / 60));
+}
+
+function getOutOfBalanceHoursAbs() {
+    const diffSeconds = Math.abs(state.totalsSeconds[0] - state.totalsSeconds[1]);
+    return Math.floor(diffSeconds / 3600);
+}
+
+function getOutOfBalanceSign() {
+    const d = state.totalsSeconds[0] - state.totalsSeconds[1];
+    return d === 0 ? 0 : (d > 0 ? 1 : -1); // 1 => pink has more, -1 => green has more
+}
+
+function isWithinAcceptableRange() {
+    const diffHours = getOutOfBalanceHoursAbs();
+    return diffHours <= (settings.acceptableHourRange || DEFAULT_SETTINGS.acceptableHourRange);
+}
+
+function updateTrayTitleAndIcon() {
+    const balanceNum = getOutOfBalanceHoursAbs();
+    const minutesLeft = secondsToMinutesFloor(timeRemainingSeconds());
+    renderTrayImage(balanceNum, minutesLeft, () => { });
+    // Only show the minutes as system text; colored balance + pie are in the image
+    try { tray.setTitle(`${minutesLeft}`); } catch { }
+    tray.setToolTip(`${settings.missions[0].name}: ${Math.floor(state.totalsSeconds[0] / 3600)}h | ${settings.missions[1].name}: ${Math.floor(state.totalsSeconds[1] / 3600)}h`);
+}
+
+function timeRemainingSeconds() {
+    if (!state.timer.running) return state.timer.remainingSeconds || 0;
+    const rem = Math.max(0, Math.floor((state.timer.endTs - Date.now()) / 1000));
+    return rem;
+}
+
+function startTicking() {
+    if (tickInterval) clearInterval(tickInterval);
+    tickInterval = setInterval(() => {
+        if (state.timer.running) {
+            const rem = timeRemainingSeconds();
+            const lastRem = state.timer.remainingSeconds;
+            // accumulate elapsed delta
+            const elapsed = Math.max(0, lastRem - rem);
+            if (!state.timer.isBreak && elapsed > 0) {
+                state.totalsSeconds[state.currentMissionIndex] += elapsed;
+            }
+            state.timer.remainingSeconds = rem;
+            if (rem <= 0) {
+                state.timer.running = false;
+                state.timer.endTs = 0;
+                state.lastEnded = { isBreak: state.timer.isBreak, missionIndex: state.currentMissionIndex, ts: Date.now() };
+                notifyRenderer('timer-ended');
+                try { app.beep(); } catch { }
+                showWindowNearTray();
+                // Flush to disk soon after end
+                setTimeout(saveData, 250);
+            }
+            if (lastRem !== rem) {
+                updateTrayTitleAndIcon();
+                notifyRenderer('state');
+            }
+        }
+    }, 1000);
+}
+
+function createWindow() {
+    mainWindow = new BrowserWindow({
+        width: 380,
+        height: 520,
+        show: false,
+        frame: false,
+        resizable: false,
+        movable: false,
+        transparent: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false
+        }
+    });
+    mainWindow.loadURL(RENDERER_URL);
+    mainWindow.on('blur', () => {
+        // Hide when focus lost, like a popover
+        if (!mainWindow.webContents.isDevToolsOpened()) {
+            mainWindow.hide();
+        }
+    });
+}
+
+function getWindowPosition() {
+    const trayBounds = tray.getBounds();
+    const display = screen.getDisplayNearestPoint({ x: trayBounds.x, y: trayBounds.y });
+    const windowBounds = mainWindow.getBounds();
+    let x = 0;
+    let y = 0;
+    if (process.platform === 'darwin') {
+        x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
+        y = Math.round(trayBounds.y + trayBounds.height + 4);
+    } else {
+        // Windows/Linux: place above the tray if at bottom, otherwise below
+        const taskbarAtBottom = trayBounds.y > (display.workArea.y + display.workArea.height / 2);
+        x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
+        y = taskbarAtBottom ? Math.round(trayBounds.y - windowBounds.height - 8) : Math.round(trayBounds.y + trayBounds.height + 4);
+    }
+    // Keep inside screen
+    x = Math.min(Math.max(display.workArea.x, x), display.workArea.x + display.workArea.width - windowBounds.width);
+    return { x, y };
+}
+
+function toggleWindow() {
+    if (!mainWindow) return;
+    if (mainWindow.isVisible()) {
+        mainWindow.hide();
+    } else {
+        showWindowNearTray();
+    }
+}
+
+function showWindowNearTray() {
+    const position = getWindowPosition();
+    mainWindow.setPosition(position.x, position.y, false);
+    mainWindow.show();
+    mainWindow.focus();
+}
+
+function createTray() {
+    // Base icon with transparent fallback
+    let image;
+    try {
+        let iconPath = path.join(__dirname, 'trayTemplate.png');
+        if (!fs.existsSync(iconPath)) {
+            iconPath = path.join(__dirname, 'tray.png');
+        }
+        if (fs.existsSync(iconPath)) {
+            image = nativeImage.createFromPath(iconPath);
+        }
+    } catch { }
+    if (!image || image.isEmpty()) {
+        const transparentPixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGMAAQAABQABDQottQAAAABJRU5ErkJggg==';
+        image = nativeImage.createFromDataURL(transparentPixel);
+    }
+    tray = new Tray(image);
+    updateTrayTitleAndIcon();
+    const contextMenu = Menu.buildFromTemplate([
+        { label: 'Open Balance', click: toggleWindow },
+        { type: 'separator' },
+        { label: 'Quit', role: 'quit' }
+    ]);
+    tray.setContextMenu(contextMenu);
+    tray.on('click', toggleWindow);
+}
+
+function renderTrayImage(balanceNum, minutesLeft, cb) {
+    // Create an offscreen BrowserWindow to render a small crisp canvas (HiDPI)
+    const scale = 2; // render at 2x for crisper downscale in tray
+    const pointH = 26; // increased for better visibility
+
+    // Calculate dynamic width based on content
+    const balanceText = String(balanceNum);
+    const fontSize = 15 * scale;
+    const pieSize = 18 * scale; // larger pie chart
+    const spaceBetween = 8; // space between number and pie
+
+    // Estimate text width (approximate: 0.6 * fontSize per character for bold font)
+    const estimatedTextWidth = balanceText.length * fontSize * 0.6;
+    const totalContentWidth = estimatedTextWidth + spaceBetween + pieSize;
+    const minWidth = 32 * scale; // minimum width
+    const w = Math.max(minWidth, Math.ceil(totalContentWidth + 8)); // add some padding
+    const pointW = Math.ceil(w / scale);
+
+    const h = pointH * scale; // target height
+    const padding = 0 * scale; // padding between the pie chart and the countdown, but balance number to countdown aren't affected
+    const off = new BrowserWindow({
+        width: w,
+        height: h,
+        show: false,
+        frame: false,
+        transparent: true,
+        webPreferences: { offscreen: true }
+    });
+    const balanceColor = isWithinAcceptableRange() ? '#9e9e9e' : (getOutOfBalanceSign() >= 0 ? settings.missions[0].color : settings.missions[1].color);
+    const pieColor = settings.missions[state.currentMissionIndex].color;
+    const total = state.timer.initialSeconds || (state.timer.isBreak ? (settings.durations.breakMinutes || 3) * 60 : (settings.durations.workMinutes || 28) * 60);
+    const rem = Math.max(0, timeRemainingSeconds());
+    const frac = total > 0 ? Math.max(0, Math.min(1, 1 - rem / total)) : 0;
+    const html = `<!doctype html><html><body style="margin:0;background:transparent;">
+        <canvas id="c" width="${w}" height="${h}" style="display:block"></canvas>
+        <script>
+        const c = document.getElementById('c');
+        const ctx = c.getContext('2d');
+        ctx.clearRect(0,0,${w},${h});
+        ctx.imageSmoothingEnabled = false;
+        ctx.font = 'bold ${15 * scale}px -apple-system, Segoe UI, Arial, Helvetica';
+        ctx.textBaseline = 'middle';
+        ctx.textAlign = 'left';
+        // balance number
+        ctx.fillStyle = '${balanceColor}';
+        const text = String(${balanceNum});
+        const tx = ${padding};
+        const ty = ${h}/2 + 2;
+        ctx.fillText(text, tx, ty);
+        const tm = Math.ceil(ctx.measureText(text).width);
+        // pie timer
+        const pieSize = ${pieSize};
+        const cx = tx + tm + pieSize/2 + ${spaceBetween};
+        const cy = ${h}/2;
+        ctx.strokeStyle = '${pieColor}';
+        ctx.lineWidth = ${Math.max(1, Math.round(0.9 * scale))};
+        ctx.beginPath(); ctx.arc(cx, cy, pieSize/2, 0, Math.PI*2); ctx.stroke();
+        // filled wedge (clockwise from top)
+        const start = -Math.PI/2;
+        const end = start + Math.PI*2*${frac};
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.fillStyle = '${pieColor}';
+        ctx.arc(cx, cy, pieSize/2 - ${Math.max(1, Math.round(0.8 * scale))}, start, end);
+        ctx.closePath();
+        ctx.globalAlpha = 0.6; ctx.fill(); ctx.globalAlpha = 1;
+        </script></body></html>`;
+    off.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+    const done = async () => {
+        try {
+            let img = await off.webContents.capturePage();
+            try { img.setTemplateImage(false); } catch { }
+            img = img.resize({ width: pointW, height: pointH, quality: 'best' });
+            tray.setImage(img);
+        } catch { }
+        try { off.destroy(); } catch { }
+        cb();
+    };
+    off.webContents.once('did-finish-load', done);
+}
+
+function notifyRenderer(type) {
+    if (mainWindow && mainWindow.webContents) {
+        mainWindow.webContents.send('balance:state', { type, payload: getPublicState() });
+    }
+}
+
+function getPublicState() {
+    return {
+        settings,
+        state: {
+            ...state,
+            timer: { ...state.timer, remainingSeconds: timeRemainingSeconds() }
+        },
+        computed: {
+            outOfBalanceHours: getOutOfBalanceHoursAbs(),
+            outOfBalanceSign: getOutOfBalanceSign(),
+            withinRange: isWithinAcceptableRange()
+        }
+    };
+}
+
+function startTimer(isBreak) {
+    const minutes = isBreak ? (settings.durations.breakMinutes || DEFAULT_SETTINGS.durations.breakMinutes) : (settings.durations.workMinutes || DEFAULT_SETTINGS.durations.workMinutes);
+    state.timer.isBreak = !!isBreak;
+    state.timer.running = true;
+    state.timer.remainingSeconds = Math.max(0, Math.floor(minutes * 60));
+    state.timer.initialSeconds = state.timer.remainingSeconds;
+    state.timer.endTs = Date.now() + state.timer.remainingSeconds * 1000;
+    state.lastEnded = null;
+    notifyRenderer('state');
+    updateTrayTitleAndIcon();
+}
+
+function stopTimer() {
+    state.timer.running = false;
+    state.timer.endTs = 0;
+    notifyRenderer('state');
+    updateTrayTitleAndIcon();
+}
+
+function extendTimer(secondsDelta) {
+    const delta = Math.floor(secondsDelta);
+    const wasRunning = state.timer.running;
+    if (wasRunning) {
+        state.timer.endTs += delta * 1000;
+        state.timer.remainingSeconds = timeRemainingSeconds();
+    } else {
+        const next = Math.max(0, (state.timer.remainingSeconds || 0) + delta);
+        state.timer.remainingSeconds = next;
+        if (next > 0) {
+            state.timer.endTs = Date.now() + next * 1000;
+            // Auto-resume if user extends after an end
+            state.timer.running = true;
+            if (!state.timer.initialSeconds) state.timer.initialSeconds = next;
+            state.lastEnded = null;
+        }
+    }
+    notifyRenderer('state');
+    updateTrayTitleAndIcon();
+}
+
+// IPC
+ipcMain.handle('balance:get-state', () => getPublicState());
+ipcMain.handle('balance:start-work', () => { startTimer(false); return getPublicState(); });
+ipcMain.handle('balance:start-break', () => { startTimer(true); return getPublicState(); });
+ipcMain.handle('balance:stop', () => { stopTimer(); return getPublicState(); });
+ipcMain.handle('balance:extend', (_e, seconds) => { extendTimer(seconds); return getPublicState(); });
+ipcMain.handle('balance:switch-mission', (_e, idx) => { state.currentMissionIndex = Math.max(0, Math.min(1, idx)); notifyRenderer('state'); updateTrayTitleAndIcon(); return getPublicState(); });
+ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
+    const prevDir = getUserDir();
+    settings = { ...settings, ...nextSettings };
+    // Ensure constraints
+    if (!settings.missions || settings.missions.length !== 2) settings.missions = DEFAULT_SETTINGS.missions;
+    if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
+    const newDir = getUserDir();
+    if (newDir !== prevDir) {
+        try { fs.mkdirSync(newDir, { recursive: true }); } catch { }
+        const newPath = path.join(newDir, 'balance.json');
+        fs.writeFileSync(newPath, JSON.stringify({ settings, state }, null, 2), 'utf-8');
+        dataFilePath = newPath;
+    } else {
+        saveData();
+    }
+    notifyRenderer('state');
+    updateTrayTitleAndIcon();
+    return getPublicState();
+});
+
+ipcMain.handle('balance:open', () => { showWindowNearTray(); });
+
+ipcMain.handle('balance:open-data-folder', () => {
+    try {
+        shell.openPath(getUserDir());
+    } catch (e) {
+        console.error('Failed to open data folder:', e);
+    }
+});
+
+app.whenReady().then(() => {
+    // Hide dock icon on macOS
+    if (process.platform === 'darwin') {
+        try {
+            app.dock.hide();
+        } catch (e) {
+            console.error('Failed to hide dock icon:', e);
+        }
+    }
+
+    loadData();
+    setSaveScheduler();
+    createWindow();
+    createTray();
+    startTicking();
+});
+
+app.on('window-all-closed', (e) => {
+    // Prevent full quit on macOS
+    if (process.platform === 'darwin') {
+        e.preventDefault();
+    }
+});
+
+app.on('before-quit', () => {
+    try { if (saveInterval) clearInterval(saveInterval); } catch { }
+    try { if (tickInterval) clearInterval(tickInterval); } catch { }
+    saveData();
+});
+
+
