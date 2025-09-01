@@ -101,7 +101,6 @@
 >
     <div class="row">
         <div class="title">Balance</div>
-        <div class="btn" title="Quit" on:click={quit}>❌</div>
         <div class="btn" title="Options (o)" on:click={openOptions}>⚙️</div>
     </div>
 
@@ -266,6 +265,13 @@
                         style="background:#ffd2d2"
                     >
                         Cancel
+                    </div>
+                    <div
+                        class="btn"
+                        on:click={quit}
+                        style="background:#ffcccb"
+                    >
+                        Quit App
                     </div>
                 </div>
             </div>
