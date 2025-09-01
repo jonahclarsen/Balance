@@ -71,6 +71,9 @@
     function openDataFolder() {
         api.openDataFolder();
     }
+    function quit() {
+        api.quit();
+    }
 
     $: pinkHasMore = computed?.outOfBalanceSign >= 0;
     $: withinRange = computed?.withinRange;
@@ -269,6 +272,13 @@
                         style="background:#ffd2d2"
                     >
                         Cancel
+                    </div>
+                    <div
+                        class="btn"
+                        on:click={quit}
+                        style="background:#ffcccb"
+                    >
+                        Quit App
                     </div>
                 </div>
             </div>

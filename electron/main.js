@@ -297,12 +297,7 @@ function createTray() {
     }
     tray = new Tray(image);
     updateTrayTitleAndIcon();
-    const contextMenu = Menu.buildFromTemplate([
-        { label: 'Open Balance', click: toggleWindow },
-        { type: 'separator' },
-        { label: 'Quit', role: 'quit' }
-    ]);
-    tray.setContextMenu(contextMenu);
+    // Remove context menu to hide system menu - only handle click events
     tray.on('click', toggleWindow);
 }
 
@@ -490,6 +485,10 @@ ipcMain.handle('balance:open-data-folder', () => {
     } catch (e) {
         console.error('Failed to open data folder:', e);
     }
+});
+
+ipcMain.handle('balance:quit', () => {
+    app.quit();
 });
 
 app.whenReady().then(() => {
