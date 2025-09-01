@@ -107,26 +107,31 @@
     {#if settings && state}
         <!-- Only show balance for tracked missions -->
         {#if !settings.missions[state.currentMissionIndex]?.untracked}
-        <div class="balance">
-            <div
-                class="pill"
-                style="color: {withinRange
-                    ? crayon.gray
-                    : pinkHasMore
-                      ? settings.missions[0].color
-                      : settings.missions[1].color}"
-            >
-                <strong>{computed.outOfBalanceHours}</strong> hours out of balance
+            <div class="balance">
+                <div
+                    class="pill"
+                    style="color: {withinRange
+                        ? crayon.gray
+                        : pinkHasMore
+                          ? settings.missions[0].color
+                          : settings.missions[1].color}"
+                >
+                    <strong>{computed.outOfBalanceHours}</strong> hours out of balance
+                </div>
             </div>
-        </div>
         {/if}
 
         <div class="balance">
             <div
                 class="pill"
-                style="color: {settings.missions[state.currentMissionIndex].color}"
+                style="color: {settings.missions[state.currentMissionIndex]
+                    .color}"
             >
-                Lifetime: <strong>{Math.floor((computed.lifetimeMinutes || 0) / 60)}h{(computed.lifetimeMinutes || 0) % 60}m</strong>
+                Lifetime: <strong
+                    >{Math.floor(
+                        (computed.lifetimeMinutes || 0) / 60,
+                    )}h{(computed.lifetimeMinutes || 0) % 60}m</strong
+                >
             </div>
         </div>
 
@@ -161,6 +166,7 @@
 
         <div class="controls">
             {#if !state.timer?.running}
+                <!-- No timer running - show both start options -->
                 <div
                     class="btn"
                     on:click={startWork}
@@ -175,7 +181,25 @@
                 >
                     Break 🌿
                 </div>
+            {:else if state.timer.isBreak}
+                <!-- Break timer running - show work start and stop -->
+                <div
+                    class="btn"
+                    on:click={startWork}
+                    style="background:#ffd2e1"
+                >
+                    Start 🍅
+                </div>
+                <div class="btn" on:click={stop}>Stop ⏹️</div>
             {:else}
+                <!-- Work timer running - show break start and stop -->
+                <div
+                    class="btn"
+                    on:click={startBreak}
+                    style="background:#d9ffd6"
+                >
+                    Break 🌿
+                </div>
                 <div class="btn" on:click={stop}>Stop ⏹️</div>
             {/if}
 
@@ -273,11 +297,7 @@
                     >
                         Cancel
                     </div>
-                    <div
-                        class="btn"
-                        on:click={quit}
-                        style="background:#ffcccb"
-                    >
+                    <div class="btn" on:click={quit} style="background:#ffcccb">
                         Quit App
                     </div>
                 </div>
