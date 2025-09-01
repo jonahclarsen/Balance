@@ -399,7 +399,7 @@ function getPublicState() {
             outOfBalanceHours: getOutOfBalanceHoursAbs(),
             outOfBalanceSign: getOutOfBalanceSign(),
             withinRange: isWithinAcceptableRange(),
-            todayMinutes: getTodayMinutesForCurrentMission()
+            lifetimeMinutes: getTotalMinutesForMission(state.currentMissionIndex)
         }
     };
 }
