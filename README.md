@@ -17,6 +17,7 @@ I created this app because I found myself spending too much time on work while m
 - Visual countdown with progress pie chart in system tray
 - Audio notification when timer ends
 - Quick time extensions with keyboard modifiers
+- (You can also use the Pomodoro for tracking tasks unrelated to your two missions; these minutes will not affect your overall balance)
 
 ### ⚙️ Customization
 - Rename missions to match your workflow
