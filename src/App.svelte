@@ -126,7 +126,7 @@
                 class="pill"
                 style="color: {settings.missions[state.currentMissionIndex].color}"
             >
-                Today: <strong>{computed.todayMinutes || 0}</strong> minutes
+                Lifetime: <strong>{Math.floor((computed.lifetimeMinutes || 0) / 60)}h{(computed.lifetimeMinutes || 0) % 60}m</strong>
             </div>
         </div>
 
