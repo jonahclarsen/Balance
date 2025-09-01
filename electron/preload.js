@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('balance', {
     saveSettings: (settings) => ipcRenderer.invoke('balance:save-settings', settings),
     open: () => ipcRenderer.invoke('balance:open'),
     openDataFolder: () => ipcRenderer.invoke('balance:open-data-folder'),
+    quit: () => ipcRenderer.invoke('balance:quit'),
     onState: (callback) => {
         const handler = (_event, message) => callback(message);
         ipcRenderer.on('balance:state', handler);
