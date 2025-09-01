@@ -115,6 +115,15 @@
             </div>
         </div>
 
+        <div class="balance">
+            <div
+                class="pill"
+                style="color: {settings.missions[state.currentMissionIndex].color}"
+            >
+                Today: <strong>{computed.todayMinutes || 0}</strong> minutes
+            </div>
+        </div>
+
         <div class="tabs">
             {#each settings.missions as m, i}
                 <div

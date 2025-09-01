@@ -18,16 +18,17 @@ const DEFAULT_SETTINGS = {
 };
 
 const DEFAULT_STATE = {
-    totalsSeconds: [0, 0],
     currentMissionIndex: 0,
     timer: { running: false, isBreak: false, remainingSeconds: 0, endTs: 0, initialSeconds: 0 },
-    lastEnded: null
+    lastEnded: null,
+    dailyMinutes: {} // Structure: {"mission_0": {"2025-01-01": 4}, "mission_1": {"2025-01-01": 2}}
 };
 
 let mainWindow = null; // popover window
 let tray = null;
 let saveInterval = null;
 let tickInterval = null;
+let minuteTrackingInterval = null;
 let settings = { ...DEFAULT_SETTINGS };
 let state = { ...DEFAULT_STATE };
 let dataFilePath = '';
@@ -59,7 +60,7 @@ function loadData() {
             if (!settings.missions || settings.missions.length !== 2) settings.missions = DEFAULT_SETTINGS.missions;
             if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
             state = { ...DEFAULT_STATE, ...json.state };
-            if (!state.totalsSeconds || state.totalsSeconds.length !== 2) state.totalsSeconds = [0, 0];
+            if (!state.dailyMinutes) state.dailyMinutes = {};
         } else {
             saveData();
         }
@@ -89,13 +90,25 @@ function secondsToMinutesFloor(seconds) {
     return Math.max(0, Math.floor(seconds / 60));
 }
 
+function getTotalMinutesForMission(missionIndex) {
+    const missionKey = `mission_${missionIndex}`;
+    const missionData = state.dailyMinutes[missionKey];
+    if (!missionData) return 0;
+    
+    return Object.values(missionData).reduce((total, dayMinutes) => total + dayMinutes, 0);
+}
+
 function getOutOfBalanceHoursAbs() {
-    const diffSeconds = Math.abs(state.totalsSeconds[0] - state.totalsSeconds[1]);
-    return Math.floor(diffSeconds / 3600);
+    const totalMinutes0 = getTotalMinutesForMission(0);
+    const totalMinutes1 = getTotalMinutesForMission(1);
+    const diffMinutes = Math.abs(totalMinutes0 - totalMinutes1);
+    return Math.floor(diffMinutes / 60);
 }
 
 function getOutOfBalanceSign() {
-    const d = state.totalsSeconds[0] - state.totalsSeconds[1];
+    const totalMinutes0 = getTotalMinutesForMission(0);
+    const totalMinutes1 = getTotalMinutesForMission(1);
+    const d = totalMinutes0 - totalMinutes1;
     return d === 0 ? 0 : (d > 0 ? 1 : -1); // 1 => pink has more, -1 => green has more
 }
 
@@ -110,7 +123,7 @@ function updateTrayTitleAndIcon() {
     renderTrayImage(balanceNum, minutesLeft, () => { });
     // Only show the minutes as system text; colored balance + pie are in the image
     try { tray.setTitle(`${minutesLeft}`); } catch { }
-    tray.setToolTip(`${settings.missions[0].name}: ${Math.floor(state.totalsSeconds[0] / 3600)}h | ${settings.missions[1].name}: ${Math.floor(state.totalsSeconds[1] / 3600)}h`);
+    tray.setToolTip(`${settings.missions[0].name}: ${Math.floor(getTotalMinutesForMission(0) / 60)}h | ${settings.missions[1].name}: ${Math.floor(getTotalMinutesForMission(1) / 60)}h`);
 }
 
 function timeRemainingSeconds() {
@@ -119,17 +132,69 @@ function timeRemainingSeconds() {
     return rem;
 }
 
+function getTodayDateString() {
+    const today = new Date();
+    return today.getFullYear() + '-' + 
+           String(today.getMonth() + 1).padStart(2, '0') + '-' + 
+           String(today.getDate()).padStart(2, '0');
+}
+
+function isInMinuteTrackingWindow() {
+    const now = new Date();
+    const seconds = now.getSeconds();
+    return seconds >= 5 && seconds <= 15;
+}
+
+function incrementDailyMinute() {
+    if (!state.timer.running || state.timer.isBreak) return;
+    
+    const today = getTodayDateString();
+    const missionKey = `mission_${state.currentMissionIndex}`;
+    
+    // Initialize structure if needed
+    if (!state.dailyMinutes) {
+        state.dailyMinutes = {};
+    }
+    if (!state.dailyMinutes[missionKey]) {
+        state.dailyMinutes[missionKey] = {};
+    }
+    if (!state.dailyMinutes[missionKey][today]) {
+        state.dailyMinutes[missionKey][today] = 0;
+    }
+    
+    // Increment today's minute count
+    state.dailyMinutes[missionKey][today]++;
+    
+    // Save the updated data
+    saveData();
+    notifyRenderer('state');
+}
+
+function startMinuteTracking() {
+    if (minuteTrackingInterval) clearTimeout(minuteTrackingInterval);
+    
+    const scheduleNext = () => {
+        if (isInMinuteTrackingWindow()) {
+            // We're in the tracking window (x:05 to x:15)
+            incrementDailyMinute();
+            // Set timer to run again in 30 seconds
+            minuteTrackingInterval = setTimeout(scheduleNext, 30000);
+        } else {
+            // We're outside the tracking window, check again in 5 seconds
+            minuteTrackingInterval = setTimeout(scheduleNext, 5000);
+        }
+    };
+    
+    // Start the tracking cycle
+    scheduleNext();
+}
+
 function startTicking() {
     if (tickInterval) clearInterval(tickInterval);
     tickInterval = setInterval(() => {
         if (state.timer.running) {
             const rem = timeRemainingSeconds();
             const lastRem = state.timer.remainingSeconds;
-            // accumulate elapsed delta
-            const elapsed = Math.max(0, lastRem - rem);
-            if (!state.timer.isBreak && elapsed > 0) {
-                state.totalsSeconds[state.currentMissionIndex] += elapsed;
-            }
             state.timer.remainingSeconds = rem;
             if (rem <= 0) {
                 state.timer.running = false;
@@ -335,9 +400,16 @@ function getPublicState() {
         computed: {
             outOfBalanceHours: getOutOfBalanceHoursAbs(),
             outOfBalanceSign: getOutOfBalanceSign(),
-            withinRange: isWithinAcceptableRange()
+            withinRange: isWithinAcceptableRange(),
+            todayMinutes: getTodayMinutesForCurrentMission()
         }
     };
+}
+
+function getTodayMinutesForCurrentMission() {
+    const today = getTodayDateString();
+    const missionKey = `mission_${state.currentMissionIndex}`;
+    return state.dailyMinutes?.[missionKey]?.[today] || 0;
 }
 
 function startTimer(isBreak) {
@@ -432,6 +504,7 @@ app.whenReady().then(() => {
     createWindow();
     createTray();
     startTicking();
+    startMinuteTracking();
 });
 
 app.on('window-all-closed', (e) => {
@@ -444,6 +517,7 @@ app.on('window-all-closed', (e) => {
 app.on('before-quit', () => {
     try { if (saveInterval) clearInterval(saveInterval); } catch { }
     try { if (tickInterval) clearInterval(tickInterval); } catch { }
+    try { if (minuteTrackingInterval) clearTimeout(minuteTrackingInterval); } catch { }
     saveData();
 });
 
