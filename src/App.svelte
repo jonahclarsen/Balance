@@ -102,6 +102,8 @@
     </div>
 
     {#if settings && state}
+        <!-- Only show balance for tracked missions -->
+        {#if !settings.missions[state.currentMissionIndex]?.untracked}
         <div class="balance">
             <div
                 class="pill"
@@ -114,6 +116,7 @@
                 <strong>{computed.outOfBalanceHours}</strong> hours out of balance
             </div>
         </div>
+        {/if}
 
         <div class="balance">
             <div
@@ -207,6 +210,10 @@
                 <div class="field">
                     <label>Green Mission Name</label>
                     <input bind:value={editingSettings.missions[1].name} />
+                </div>
+                <div class="field">
+                    <label>Untracked Mission Name</label>
+                    <input bind:value={editingSettings.missions[2].name} />
                 </div>
                 <div class="field">
                     <label>Acceptable balance range (hours)</label>

@@ -10,7 +10,8 @@ const RENDERER_URL = isDev ? `http://localhost:${DEV_PORT}` : `file://${path.joi
 const DEFAULT_SETTINGS = {
     missions: [
         { name: 'Pink Mission', color: '#e91e63' },
-        { name: 'Green Mission', color: '#2e7d32' }
+        { name: 'Green Mission', color: '#2e7d32' },
+        { name: 'Untracked', color: '#9e9e9e', untracked: true }
     ],
     acceptableHourRange: 6,
     durations: { workMinutes: 28, breakMinutes: 3 },
@@ -57,7 +58,7 @@ function loadData() {
             const json = JSON.parse(fs.readFileSync(p, 'utf-8'));
             settings = { ...DEFAULT_SETTINGS, ...json.settings };
             // Deep merge missions if missing
-            if (!settings.missions || settings.missions.length !== 2) settings.missions = DEFAULT_SETTINGS.missions;
+            if (!settings.missions || settings.missions.length !== 3) settings.missions = DEFAULT_SETTINGS.missions;
             if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
             state = { ...DEFAULT_STATE, ...json.state };
             if (!state.dailyMinutes) state.dailyMinutes = {};
@@ -99,6 +100,7 @@ function getTotalMinutesForMission(missionIndex) {
 }
 
 function getOutOfBalanceHoursAbs() {
+    // Only calculate balance for tracked missions (exclude untracked mission)
     const totalMinutes0 = getTotalMinutesForMission(0);
     const totalMinutes1 = getTotalMinutesForMission(1);
     const diffMinutes = Math.abs(totalMinutes0 - totalMinutes1);
@@ -106,6 +108,7 @@ function getOutOfBalanceHoursAbs() {
 }
 
 function getOutOfBalanceSign() {
+    // Only calculate balance for tracked missions (exclude untracked mission)
     const totalMinutes0 = getTotalMinutesForMission(0);
     const totalMinutes1 = getTotalMinutesForMission(1);
     const d = totalMinutes0 - totalMinutes1;
@@ -458,12 +461,12 @@ ipcMain.handle('balance:start-work', () => { startTimer(false); return getPublic
 ipcMain.handle('balance:start-break', () => { startTimer(true); return getPublicState(); });
 ipcMain.handle('balance:stop', () => { stopTimer(); return getPublicState(); });
 ipcMain.handle('balance:extend', (_e, seconds) => { extendTimer(seconds); return getPublicState(); });
-ipcMain.handle('balance:switch-mission', (_e, idx) => { state.currentMissionIndex = Math.max(0, Math.min(1, idx)); notifyRenderer('state'); updateTrayTitleAndIcon(); return getPublicState(); });
+ipcMain.handle('balance:switch-mission', (_e, idx) => { state.currentMissionIndex = Math.max(0, Math.min(2, idx)); notifyRenderer('state'); updateTrayTitleAndIcon(); return getPublicState(); });
 ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
     const prevDir = getUserDir();
     settings = { ...settings, ...nextSettings };
     // Ensure constraints
-    if (!settings.missions || settings.missions.length !== 2) settings.missions = DEFAULT_SETTINGS.missions;
+    if (!settings.missions || settings.missions.length !== 3) settings.missions = DEFAULT_SETTINGS.missions;
     if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
     const newDir = getUserDir();
     if (newDir !== prevDir) {
