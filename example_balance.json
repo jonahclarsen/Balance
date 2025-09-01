@@ -1,0 +1,41 @@
+{
+  "settings": {
+    "missions": [
+      {
+        "name": "Pink Mission",
+        "color": "#e91e63"
+      },
+      {
+        "name": "Green Mission",
+        "color": "#2e7d32"
+      }
+    ],
+    "acceptableHourRange": 6,
+    "durations": {
+      "workMinutes": 28,
+      "breakMinutes": 3
+    },
+    "dataDir": ""
+  },
+  "state": {
+    "currentMissionIndex": 0,
+    "timer": {
+      "running": false,
+      "isBreak": false,
+      "remainingSeconds": 0,
+      "endTs": 0,
+      "initialSeconds": 0
+    },
+    "lastEnded": null,
+    "dailyMinutes": {
+      "mission_0": {
+        "2025-08-31": 45,
+        "2025-09-01": 12
+      },
+      "mission_1": {
+        "2025-08-31": 30,
+        "2025-09-01": 8
+      }
+    }
+  }
+}

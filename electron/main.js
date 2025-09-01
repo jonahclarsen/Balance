@@ -18,7 +18,6 @@ const DEFAULT_SETTINGS = {
 };
 
 const DEFAULT_STATE = {
-    totalsSeconds: [0, 0],
     currentMissionIndex: 0,
     timer: { running: false, isBreak: false, remainingSeconds: 0, endTs: 0, initialSeconds: 0 },
     lastEnded: null,
@@ -61,7 +60,6 @@ function loadData() {
             if (!settings.missions || settings.missions.length !== 2) settings.missions = DEFAULT_SETTINGS.missions;
             if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
             state = { ...DEFAULT_STATE, ...json.state };
-            if (!state.totalsSeconds || state.totalsSeconds.length !== 2) state.totalsSeconds = [0, 0];
             if (!state.dailyMinutes) state.dailyMinutes = {};
         } else {
             saveData();
@@ -92,13 +90,25 @@ function secondsToMinutesFloor(seconds) {
     return Math.max(0, Math.floor(seconds / 60));
 }
 
+function getTotalMinutesForMission(missionIndex) {
+    const missionKey = `mission_${missionIndex}`;
+    const missionData = state.dailyMinutes[missionKey];
+    if (!missionData) return 0;
+    
+    return Object.values(missionData).reduce((total, dayMinutes) => total + dayMinutes, 0);
+}
+
 function getOutOfBalanceHoursAbs() {
-    const diffSeconds = Math.abs(state.totalsSeconds[0] - state.totalsSeconds[1]);
-    return Math.floor(diffSeconds / 3600);
+    const totalMinutes0 = getTotalMinutesForMission(0);
+    const totalMinutes1 = getTotalMinutesForMission(1);
+    const diffMinutes = Math.abs(totalMinutes0 - totalMinutes1);
+    return Math.floor(diffMinutes / 60);
 }
 
 function getOutOfBalanceSign() {
-    const d = state.totalsSeconds[0] - state.totalsSeconds[1];
+    const totalMinutes0 = getTotalMinutesForMission(0);
+    const totalMinutes1 = getTotalMinutesForMission(1);
+    const d = totalMinutes0 - totalMinutes1;
     return d === 0 ? 0 : (d > 0 ? 1 : -1); // 1 => pink has more, -1 => green has more
 }
 
@@ -113,7 +123,7 @@ function updateTrayTitleAndIcon() {
     renderTrayImage(balanceNum, minutesLeft, () => { });
     // Only show the minutes as system text; colored balance + pie are in the image
     try { tray.setTitle(`${minutesLeft}`); } catch { }
-    tray.setToolTip(`${settings.missions[0].name}: ${Math.floor(state.totalsSeconds[0] / 3600)}h | ${settings.missions[1].name}: ${Math.floor(state.totalsSeconds[1] / 3600)}h`);
+    tray.setToolTip(`${settings.missions[0].name}: ${Math.floor(getTotalMinutesForMission(0) / 60)}h | ${settings.missions[1].name}: ${Math.floor(getTotalMinutesForMission(1) / 60)}h`);
 }
 
 function timeRemainingSeconds() {
@@ -185,11 +195,6 @@ function startTicking() {
         if (state.timer.running) {
             const rem = timeRemainingSeconds();
             const lastRem = state.timer.remainingSeconds;
-            // accumulate elapsed delta
-            const elapsed = Math.max(0, lastRem - rem);
-            if (!state.timer.isBreak && elapsed > 0) {
-                state.totalsSeconds[state.currentMissionIndex] += elapsed;
-            }
             state.timer.remainingSeconds = rem;
             if (rem <= 0) {
                 state.timer.running = false;
