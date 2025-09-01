@@ -72,6 +72,29 @@
         api.openDataFolder();
     }
 
+    function getTodayMinutes(missionIndex) {
+        if (!state?.dailyMinutes) return 0;
+        const today = new Date().toISOString().split('T')[0];
+        const missionKey = `mission_${missionIndex}`;
+        return state.dailyMinutes[missionKey]?.[today] || 0;
+    }
+
+    function getRecentDays(missionIndex, days = 7) {
+        if (!state?.dailyMinutes) return [];
+        const missionKey = `mission_${missionIndex}`;
+        const missionData = state.dailyMinutes[missionKey] || {};
+        
+        const result = [];
+        for (let i = days - 1; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            const dateStr = date.toISOString().split('T')[0];
+            const minutes = missionData[dateStr] || 0;
+            result.push({ date: dateStr, minutes, dayName: date.toLocaleDateString('en', { weekday: 'short' }) });
+        }
+        return result;
+    }
+
     $: pinkHasMore = computed?.outOfBalanceSign >= 0;
     $: withinRange = computed?.withinRange;
 
@@ -143,6 +166,31 @@
         {#if hasEnded}
             <div class="balance" style="color:{crayon.accent}">Time's up</div>
         {/if}
+
+        <!-- Daily Minutes History -->
+        <div class="daily-history">
+            <div class="history-title">Today's Minutes</div>
+            <div class="today-minutes">
+                {#each settings.missions as mission, i}
+                    <div class="mission-today" style="color:{mission.color}">
+                        <span class="mission-name">{mission.name}:</span>
+                        <span class="minute-count">{getTodayMinutes(i)}</span>
+                    </div>
+                {/each}
+            </div>
+            
+            <div class="history-title">Recent Days</div>
+            <div class="week-view">
+                {#each getRecentDays(state.currentMissionIndex) as day}
+                    <div class="day-column">
+                        <div class="day-name">{day.dayName}</div>
+                        <div class="day-minutes" style="color:{settings.missions[state.currentMissionIndex].color}">
+                            {day.minutes}
+                        </div>
+                    </div>
+                {/each}
+            </div>
+        </div>
 
         <div class="controls">
             {#if !state.timer?.running}
@@ -267,7 +315,7 @@
     }
     .root {
         width: 360px;
-        height: 500px;
+        height: 630px;
         padding: 14px;
         background: var(--bg);
         border: 3px solid var(--stroke);
@@ -378,5 +426,59 @@
         border: 3px solid var(--stroke);
         border-radius: 10px;
         background: #fff;
+    }
+    .daily-history {
+        margin: 16px 0;
+        padding: 12px;
+        background: var(--card);
+        border: 3px solid var(--stroke);
+        border-radius: 12px;
+    }
+    .history-title {
+        font-weight: 700;
+        font-size: 14px;
+        margin-bottom: 8px;
+        text-align: center;
+        color: var(--stroke);
+    }
+    .today-minutes {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 12px;
+    }
+    .mission-today {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        font-weight: 600;
+    }
+    .mission-name {
+        font-size: 12px;
+    }
+    .minute-count {
+        font-size: 16px;
+        font-weight: 800;
+    }
+    .week-view {
+        display: flex;
+        justify-content: space-between;
+        gap: 4px;
+    }
+    .day-column {
+        flex: 1;
+        text-align: center;
+    }
+    .day-name {
+        font-size: 10px;
+        font-weight: 600;
+        color: var(--stroke);
+        margin-bottom: 2px;
+    }
+    .day-minutes {
+        font-size: 14px;
+        font-weight: 700;
+        padding: 4px 2px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.5);
     }
 </style>

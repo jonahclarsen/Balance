@@ -21,13 +21,15 @@ const DEFAULT_STATE = {
     totalsSeconds: [0, 0],
     currentMissionIndex: 0,
     timer: { running: false, isBreak: false, remainingSeconds: 0, endTs: 0, initialSeconds: 0 },
-    lastEnded: null
+    lastEnded: null,
+    dailyMinutes: {} // Structure: {"mission_0": {"2025-01-01": 5}, "mission_1": {"2025-01-01": 3}}
 };
 
 let mainWindow = null; // popover window
 let tray = null;
 let saveInterval = null;
 let tickInterval = null;
+let minuteTrackingTimeout = null;
 let settings = { ...DEFAULT_SETTINGS };
 let state = { ...DEFAULT_STATE };
 let dataFilePath = '';
@@ -60,6 +62,7 @@ function loadData() {
             if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
             state = { ...DEFAULT_STATE, ...json.state };
             if (!state.totalsSeconds || state.totalsSeconds.length !== 2) state.totalsSeconds = [0, 0];
+            if (!state.dailyMinutes) state.dailyMinutes = {};
         } else {
             saveData();
         }
@@ -83,6 +86,59 @@ function setSaveScheduler() {
     if (saveInterval) clearInterval(saveInterval);
     // Save every 2 minutes
     saveInterval = setInterval(saveData, 2 * 60 * 1000);
+}
+
+function getTodayDateString() {
+    return new Date().toISOString().split('T')[0];
+}
+
+function isInTrackingWindow() {
+    const now = new Date();
+    const seconds = now.getSeconds();
+    return seconds >= 5 && seconds <= 15;
+}
+
+function incrementDailyMinute() {
+    // Only track when timer is running and not on break
+    if (!state.timer.running || state.timer.isBreak) {
+        return;
+    }
+
+    const today = getTodayDateString();
+    const missionKey = `mission_${state.currentMissionIndex}`;
+    
+    // Initialize dailyMinutes structure if needed
+    if (!state.dailyMinutes) {
+        state.dailyMinutes = {};
+    }
+    if (!state.dailyMinutes[missionKey]) {
+        state.dailyMinutes[missionKey] = {};
+    }
+    if (!state.dailyMinutes[missionKey][today]) {
+        state.dailyMinutes[missionKey][today] = 0;
+    }
+    
+    // Increment today's minute count
+    state.dailyMinutes[missionKey][today]++;
+    
+    // Save the updated state
+    saveData();
+    notifyRenderer('state');
+}
+
+function scheduleMinuteTracking() {
+    if (minuteTrackingTimeout) {
+        clearTimeout(minuteTrackingTimeout);
+    }
+    
+    if (isInTrackingWindow()) {
+        // We're in the tracking window (x:05 to x:15), increment and schedule next check in 30s
+        incrementDailyMinute();
+        minuteTrackingTimeout = setTimeout(scheduleMinuteTracking, 30 * 1000);
+    } else {
+        // We're outside the tracking window, check again in 5s
+        minuteTrackingTimeout = setTimeout(scheduleMinuteTracking, 5 * 1000);
+    }
 }
 
 function secondsToMinutesFloor(seconds) {
@@ -152,7 +208,7 @@ function startTicking() {
 function createWindow() {
     mainWindow = new BrowserWindow({
         width: 380,
-        height: 520,
+        height: 650,
         show: false,
         frame: false,
         resizable: false,
@@ -432,6 +488,7 @@ app.whenReady().then(() => {
     createWindow();
     createTray();
     startTicking();
+    scheduleMinuteTracking(); // Start the minute tracking system
 });
 
 app.on('window-all-closed', (e) => {
@@ -444,6 +501,7 @@ app.on('window-all-closed', (e) => {
 app.on('before-quit', () => {
     try { if (saveInterval) clearInterval(saveInterval); } catch { }
     try { if (tickInterval) clearInterval(tickInterval); } catch { }
+    try { if (minuteTrackingTimeout) clearTimeout(minuteTrackingTimeout); } catch { }
     saveData();
 });
 
