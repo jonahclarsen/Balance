@@ -160,7 +160,7 @@
 
         <div
             class="timer"
-            style="color:{settings.missions[state.currentMissionIndex].color}"
+            style="color:{state.timer?.isBreak ? crayon.gray : settings.missions[state.currentMissionIndex].color}"
         >
             {String(
                 Math.floor((state.timer?.remainingSeconds || 0) / 60),
