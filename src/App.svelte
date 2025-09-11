@@ -91,7 +91,15 @@
 
 <svelte:window
     on:keydown={(e) => {
-        if (e.key.toLowerCase() === "o") openOptions();
+        const target = e.target;
+        const tag = (target?.tagName || "").toLowerCase();
+        const isEditable =
+            tag === "input" ||
+            tag === "textarea" ||
+            tag === "select" ||
+            target?.isContentEditable;
+        if (isEditable || showOptions || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (e.key && e.key.toLowerCase() === "o" && !e.repeat) openOptions();
     }}
 />
 
