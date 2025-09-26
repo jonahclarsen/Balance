@@ -194,10 +194,6 @@
             ).padStart(2, "0")}
         </div>
 
-        {#if hasEnded}
-            <div class="balance" style="color:{crayon.accent}">Time's up</div>
-        {/if}
-
         <!-- Top row: Pomodoro | Break | - | + -->
         <div class="controls top-controls">
             <div
