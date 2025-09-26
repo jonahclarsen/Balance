@@ -112,7 +112,8 @@
             tag === "textarea" ||
             tag === "select" ||
             target?.isContentEditable;
-        if (isEditable || showOptions || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (isEditable || showOptions || e.metaKey || e.ctrlKey || e.altKey)
+            return;
         if (e.key && e.key.toLowerCase() === "o" && !e.repeat) openOptions();
     }}
 />
@@ -182,7 +183,9 @@
 
         <div
             class="timer"
-            style="color:{state.timer?.isBreak ? crayon.gray : settings.missions[state.currentMissionIndex].color}"
+            style="color:{state.timer?.isBreak
+                ? crayon.gray
+                : settings.missions[state.currentMissionIndex].color}"
         >
             {String(
                 Math.floor((state.timer?.remainingSeconds || 0) / 60),
@@ -273,21 +276,23 @@
                         bind:value={editingSettings.acceptableHourRange}
                     />
                 </div>
-                <div class="field">
-                    <label>Work length (minutes)</label>
-                    <input
-                        type="number"
-                        min="1"
-                        bind:value={editingSettings.durations.workMinutes}
-                    />
-                </div>
-                <div class="field">
-                    <label>Break length (minutes)</label>
-                    <input
-                        type="number"
-                        min="1"
-                        bind:value={editingSettings.durations.breakMinutes}
-                    />
+                <div class="field-row">
+                    <div class="field half">
+                        <label>Work length (minutes)</label>
+                        <input
+                            type="number"
+                            min="1"
+                            bind:value={editingSettings.durations.workMinutes}
+                        />
+                    </div>
+                    <div class="field half">
+                        <label>Break length (minutes)</label>
+                        <input
+                            type="number"
+                            min="1"
+                            bind:value={editingSettings.durations.breakMinutes}
+                        />
+                    </div>
                 </div>
                 <div class="field">
                     <label>Data directory</label>
@@ -456,6 +461,14 @@
     }
     .field {
         margin: 8px 0;
+    }
+    .field-row {
+        display: flex;
+        gap: 8px;
+        margin: 8px 0;
+    }
+    .field.half {
+        flex: 1;
     }
     input,
     select {
