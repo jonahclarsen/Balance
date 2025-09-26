@@ -5,6 +5,8 @@ contextBridge.exposeInMainWorld('balance', {
     startWork: () => ipcRenderer.invoke('balance:start-work'),
     startBreak: () => ipcRenderer.invoke('balance:start-break'),
     stop: () => ipcRenderer.invoke('balance:stop'),
+    pause: () => ipcRenderer.invoke('balance:pause'),
+    resume: () => ipcRenderer.invoke('balance:resume'),
     extend: (seconds) => ipcRenderer.invoke('balance:extend', seconds),
     switchMission: (index) => ipcRenderer.invoke('balance:switch-mission', index),
     saveSettings: (settings) => ipcRenderer.invoke('balance:save-settings', settings),

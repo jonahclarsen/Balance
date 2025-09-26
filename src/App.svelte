@@ -53,6 +53,20 @@
     function stop() {
         api.stop();
     }
+    function togglePlayPause() {
+        const running = !!state?.timer?.running;
+        const remaining = state?.timer?.remainingSeconds || 0;
+        if (running) {
+            api.pause();
+        } else if (remaining > 0) {
+            api.resume();
+        } else {
+            // No timer yet; start based on current selection (default to work when unknown)
+            if (state?.timer?.isBreak) startBreak();
+            else startWork();
+        }
+        hasEnded = false;
+    }
     function switchMission(i) {
         api.switchMission(i);
     }
@@ -181,54 +195,23 @@
             <div class="balance" style="color:{crayon.accent}">Time's up</div>
         {/if}
 
-        <div class="controls">
-            {#if !state.timer?.running}
-                <!-- No timer running - show both start options -->
-                <div
-                    class="btn"
-                    on:click={startWork}
-                    style="background:#ffd2e1"
-                >
-                    Start 🍅
-                </div>
-                <div
-                    class="btn"
-                    on:click={startBreak}
-                    style="background:#d9ffd6"
-                >
-                    Break 🌿
-                </div>
-            {:else if state.timer.isBreak}
-                <!-- Break timer running - show work start and stop -->
-                <div
-                    class="btn"
-                    on:click={startWork}
-                    style="background:#ffd2e1"
-                >
-                    Start 🍅
-                </div>
-                <div class="btn" on:click={stop}>Stop ⏹️</div>
-            {:else}
-                <!-- Work timer running - show break start and stop -->
-                <div
-                    class="btn"
-                    on:click={startBreak}
-                    style="background:#d9ffd6"
-                >
-                    Break 🌿
-                </div>
-                <div class="btn" on:click={stop}>Stop ⏹️</div>
-            {/if}
-
+        <!-- Top row: Pomodoro | Break | - | + -->
+        <div class="controls top-controls">
             <div
-                class="btn"
-                on:click={(e) => {
-                    if (e.shiftKey) extendBy(20);
-                    else if (e.metaKey || e.ctrlKey) extendBy(5 * 60);
-                    else extendBy(60);
-                }}
+                class="btn seg {state.timer?.isBreak ? '' : 'selected'}"
+                on:click={startWork}
+                style="background:#ffd2e1"
+                title="Start pomodoro"
             >
-                + ⏱️
+                🍅 Pomodoro
+            </div>
+            <div
+                class="btn seg {state.timer?.isBreak ? 'selected' : ''}"
+                on:click={startBreak}
+                style="background:#d9ffd6"
+                title="Start break"
+            >
+                🌿 Break
             </div>
             <div
                 class="btn"
@@ -237,8 +220,31 @@
                     else if (e.metaKey || e.ctrlKey) extendBy(-5 * 60);
                     else extendBy(-60);
                 }}
+                title="-1m (shift: -20s, ctrl/cmd: -5m)"
             >
-                - ⏱️
+                -
+            </div>
+            <div
+                class="btn"
+                on:click={(e) => {
+                    if (e.shiftKey) extendBy(20);
+                    else if (e.metaKey || e.ctrlKey) extendBy(5 * 60);
+                    else extendBy(60);
+                }}
+                title="+1m (shift: +20s, ctrl/cmd: +5m)"
+            >
+                +
+            </div>
+        </div>
+
+        <!-- Bottom row: Play/Pause -->
+        <div class="controls bottom-controls">
+            <div class="btn play" on:click={togglePlayPause} title="Play/Pause">
+                {#if state.timer?.running}
+                    ⏸️
+                {:else}
+                    ▶️
+                {/if}
             </div>
         </div>
     {/if}
@@ -375,6 +381,12 @@
         margin-top: 10px;
         flex-wrap: wrap;
     }
+    .top-controls {
+        margin-top: 12px;
+    }
+    .bottom-controls {
+        margin-top: 6px;
+    }
     .btn {
         padding: 10px 12px;
         border: 3px solid var(--stroke);
@@ -386,6 +398,17 @@
     }
     .btn:active {
         transform: translateY(1px);
+    }
+    .btn.selected {
+        outline: 4px solid var(--accent);
+    }
+    .btn.seg {
+        border-radius: 999px;
+    }
+    .btn.play {
+        min-width: 64px;
+        text-align: center;
+        font-size: 20px;
     }
     .row {
         display: flex;
