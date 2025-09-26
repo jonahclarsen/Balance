@@ -82,9 +82,6 @@
         api.saveSettings(editingSettings);
         showOptions = false;
     }
-    function openDataFolder() {
-        api.openDataFolder();
-    }
     function quit() {
         api.quit();
     }
@@ -294,23 +291,7 @@
                         />
                     </div>
                 </div>
-                <div class="field">
-                    <label>Data directory</label>
-                    <input
-                        bind:value={editingSettings.dataDir}
-                        placeholder="Default app data directory"
-                    />
-                </div>
                 <div class="controls">
-                    <div
-                        class="btn"
-                        role="button"
-                        on:click={openDataFolder}
-                        style="background:#e1f5fe"
-                        title="Open data folder"
-                    >
-                        📁 Open Data Folder
-                    </div>
                     <div
                         class="btn"
                         on:click={saveOptions}

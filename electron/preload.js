@@ -11,7 +11,6 @@ contextBridge.exposeInMainWorld('balance', {
     switchMission: (index) => ipcRenderer.invoke('balance:switch-mission', index),
     saveSettings: (settings) => ipcRenderer.invoke('balance:save-settings', settings),
     open: () => ipcRenderer.invoke('balance:open'),
-    openDataFolder: () => ipcRenderer.invoke('balance:open-data-folder'),
     quit: () => ipcRenderer.invoke('balance:quit'),
     onState: (callback) => {
         const handler = (_event, message) => callback(message);

@@ -48,7 +48,6 @@ const DEFAULT_SETTINGS = {
     ],
     acceptableHourRange: 6,
     durations: { workMinutes: 28, breakMinutes: 3 },
-    dataDir: ''
 };
 
 const DEFAULT_STATE = {
@@ -68,8 +67,7 @@ let state = { ...DEFAULT_STATE };
 let dataFilePath = '';
 
 function getUserDir() {
-    const base = settings.dataDir && settings.dataDir.trim().length > 0 ? settings.dataDir : app.getPath('userData');
-    return base;
+    return app.getPath('userData');
 }
 
 function ensureDataDir() {
@@ -636,13 +634,6 @@ ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
 
 ipcMain.handle('balance:open', () => { showWindowNearTray(); });
 
-ipcMain.handle('balance:open-data-folder', () => {
-    try {
-        shell.openPath(getUserDir());
-    } catch (e) {
-        console.error('Failed to open data folder:', e);
-    }
-});
 
 ipcMain.handle('balance:quit', () => {
     app.quit();
