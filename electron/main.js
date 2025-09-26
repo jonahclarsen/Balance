@@ -634,6 +634,13 @@ ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
 
 ipcMain.handle('balance:open', () => { showWindowNearTray(); });
 
+ipcMain.handle('balance:open-data-folder', () => {
+    try {
+        shell.openPath(getUserDir());
+    } catch (e) {
+        console.error('Failed to open data folder:', e);
+    }
+});
 
 ipcMain.handle('balance:quit', () => {
     app.quit();
