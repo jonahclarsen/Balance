@@ -1,6 +1,8 @@
 {
     "name": "balance",
     "version": "0.1.0",
+    "description": "A productivity timer app for balanced work sessions",
+    "author": "Balance Team",
     "private": true,
     "main": "electron/main.js",
     "type": "commonjs",
@@ -8,23 +10,84 @@
         "dev": "run-p dev:renderer dev:electron",
         "dev:renderer": "VITE_DEV_PORT=5174 vite --port 5174",
         "dev:electron": "wait-on tcp:5174 && VITE_DEV_PORT=5174 electron .",
-        "build": "run-s build:renderer",
-        "build:renderer": "vite build"
-    },
-    "dependencies": {
-        "electron": "^31.3.1"
+        "build": "run-s build:renderer build:electron",
+        "build:renderer": "NODE_ENV=production vite build",
+        "build:electron": "NODE_ENV=production electron-builder",
+        "build:mac": "run-s build:renderer && NODE_ENV=production electron-builder --mac",
+        "build:mac:arm-nosign": "run-s build:renderer && NODE_ENV=production electron-builder --mac --arm64 -c.mac.identity=null",
+        "build:mac:arm": "run-s build:renderer && NODE_ENV=production electron-builder --mac --arm64",
+        "build:mac:x64": "run-s build:renderer && NODE_ENV=production electron-builder --mac --x64",
+        "build:mac:both": "run-s build:mac",
+        "build:win": "run-s build:renderer && NODE_ENV=production electron-builder --win",
+        "build:linux": "run-s build:renderer && NODE_ENV=production electron-builder --linux",
+        "build:all": "run-s build:renderer && NODE_ENV=production electron-builder --mac --win --linux",
+        "dist": "run-s build:renderer build:electron"
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^3.1.1",
+        "electron": "^31.3.1",
+        "electron-builder": "^26.0.12",
         "npm-run-all": "^4.1.5",
         "svelte": "^4.2.18",
         "vite": "^5.3.3",
         "wait-on": "^7.2.0"
+    },
+    "build": {
+        "appId": "com.balance.app",
+        "productName": "Balance",
+        "directories": {
+            "output": "release"
+        },
+        "files": [
+            "dist/**/*",
+            "electron/**/*",
+            "node_modules/**/*",
+            "package.json"
+        ],
+        "mac": {
+            "category": "public.app-category.productivity",
+            "target": [
+                {
+                    "target": "zip",
+                    "arch": [
+                        "x64",
+                        "arm64"
+                    ]
+                }
+            ]
+        },
+        "win": {
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ]
+        },
+        "linux": {
+            "target": [
+                {
+                    "target": "AppImage",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ]
+        },
+        "nsis": {
+            "oneClick": false,
+            "allowToChangeInstallationDirectory": true
+        }
     },
     "pnpm": {
         "ignoredBuiltDependencies": [
             "electron",
             "esbuild"
         ]
+    },
+    "dependencies": {
+        "archiver": "^7.0.1"
     }
 }

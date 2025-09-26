@@ -2,9 +2,42 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, ipcMain, screen, shell } = 
 const path = require('path');
 const fs = require('fs');
 
-const isDev = process.env.NODE_ENV !== 'production';
+const isDev = !app.isPackaged;
 const DEV_PORT = process.env.VITE_DEV_PORT || '5173';
-const RENDERER_URL = isDev ? `http://localhost:${DEV_PORT}` : `file://${path.join(__dirname, '../dist/index.html')}`;
+
+// More robust path resolution for production
+function getRendererURL() {
+    if (isDev) {
+        return `http://localhost:${DEV_PORT}`;
+    } else {
+        // In production, try multiple possible locations for the dist folder
+        const possiblePaths = [
+            path.join(__dirname, '../dist/index.html'),
+            path.join(process.resourcesPath, 'app/dist/index.html'),
+            path.join(process.resourcesPath, 'dist/index.html'),
+            path.join(__dirname, '../../dist/index.html')
+        ];
+
+        let distPath = null;
+        for (const testPath of possiblePaths) {
+            console.log('Testing path:', testPath, 'exists:', fs.existsSync(testPath));
+            if (fs.existsSync(testPath)) {
+                distPath = testPath;
+                break;
+            }
+        }
+
+        if (!distPath) {
+            console.error('Could not find dist/index.html in any expected location');
+            distPath = possiblePaths[0]; // fallback
+        }
+
+        console.log('Using production renderer path:', distPath);
+        return `file://${distPath}`;
+    }
+}
+
+const RENDERER_URL = getRendererURL();
 
 // Data & settings
 const DEFAULT_SETTINGS = {
@@ -95,7 +128,7 @@ function getTotalMinutesForMission(missionIndex) {
     const missionKey = `mission_${missionIndex}`;
     const missionData = state.dailyMinutes[missionKey];
     if (!missionData) return 0;
-    
+
     return Object.values(missionData).reduce((total, dayMinutes) => total + dayMinutes, 0);
 }
 
@@ -137,9 +170,9 @@ function timeRemainingSeconds() {
 
 function getTodayDateString() {
     const today = new Date();
-    return today.getFullYear() + '-' + 
-           String(today.getMonth() + 1).padStart(2, '0') + '-' + 
-           String(today.getDate()).padStart(2, '0');
+    return today.getFullYear() + '-' +
+        String(today.getMonth() + 1).padStart(2, '0') + '-' +
+        String(today.getDate()).padStart(2, '0');
 }
 
 function isInMinuteTrackingWindow() {
@@ -150,10 +183,10 @@ function isInMinuteTrackingWindow() {
 
 function incrementDailyMinute() {
     if (!state.timer.running || state.timer.isBreak) return;
-    
+
     const today = getTodayDateString();
     const missionKey = `mission_${state.currentMissionIndex}`;
-    
+
     // Initialize structure if needed
     if (!state.dailyMinutes) {
         state.dailyMinutes = {};
@@ -164,10 +197,10 @@ function incrementDailyMinute() {
     if (!state.dailyMinutes[missionKey][today]) {
         state.dailyMinutes[missionKey][today] = 0;
     }
-    
+
     // Increment today's minute count
     state.dailyMinutes[missionKey][today]++;
-    
+
     // Save the updated data
     saveData();
     notifyRenderer('state');
@@ -175,7 +208,7 @@ function incrementDailyMinute() {
 
 function startMinuteTracking() {
     if (minuteTrackingInterval) clearTimeout(minuteTrackingInterval);
-    
+
     const scheduleNext = () => {
         if (isInMinuteTrackingWindow()) {
             // We're in the tracking window (x:05 to x:15)
@@ -187,7 +220,7 @@ function startMinuteTracking() {
             minuteTrackingInterval = setTimeout(scheduleNext, 5000);
         }
     };
-    
+
     // Start the tracking cycle
     scheduleNext();
 }
@@ -218,29 +251,89 @@ function startTicking() {
 }
 
 function createWindow() {
-    mainWindow = new BrowserWindow({
+    // macOS-specific window options to fix transparency issues
+    const windowOptions = {
         width: 380,
         height: 520,
         show: false,
         frame: false,
         resizable: false,
         movable: false,
-        transparent: true,
         alwaysOnTop: true,
         skipTaskbar: true,
         webPreferences: {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
-            nodeIntegration: false
+            nodeIntegration: false,
+            webSecurity: false // Allow file:// protocol in production
         }
+    };
+
+    // On macOS, use vibrancy instead of full transparency for better reliability
+    if (process.platform === 'darwin') {
+        windowOptions.transparent = false;
+        windowOptions.vibrancy = 'popover';
+        windowOptions.backgroundColor = '#00000000'; // Transparent background
+    } else {
+        windowOptions.transparent = true;
+    }
+
+    mainWindow = new BrowserWindow(windowOptions);
+
+    // Wait for content to load before showing
+    mainWindow.webContents.once('did-finish-load', () => {
+        console.log('Window content loaded successfully');
     });
+
+    // Handle loading failures
+    mainWindow.webContents.once('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+        console.error('Failed to load window content:', errorCode, errorDescription, validatedURL);
+    });
+
+    // Add more detailed debugging
+    mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+        console.log(`Renderer console [${level}]:`, message);
+    });
+
+    mainWindow.webContents.on('dom-ready', () => {
+        console.log('DOM ready');
+    });
+
+    console.log('Loading URL:', RENDERER_URL);
+    console.log('__dirname:', __dirname);
+    console.log('Process cwd:', process.cwd());
+
     mainWindow.loadURL(RENDERER_URL);
+
+    // Optional: Uncomment to open dev tools for debugging in production
+    // if (!isDev) {
+    //     setTimeout(() => {
+    //         mainWindow.webContents.openDevTools({ mode: 'detach' });
+    //     }, 2000);
+    // }
+
+    // Add delay before allowing blur to hide window (prevents immediate hiding)
+    let canHideOnBlur = false;
+    setTimeout(() => { canHideOnBlur = true; }, 1000);
+
     mainWindow.on('blur', () => {
-        // Hide when focus lost, like a popover
-        if (!mainWindow.webContents.isDevToolsOpened()) {
-            mainWindow.hide();
+        // Hide when focus lost, like a popover, but with a delay to prevent immediate hiding
+        if (canHideOnBlur && !mainWindow.webContents.isDevToolsOpened()) {
+            setTimeout(() => {
+                if (mainWindow && !mainWindow.isFocused()) {
+                    mainWindow.hide();
+                }
+            }, 100);
         }
     });
+
+    // Debug logging for macOS
+    if (process.platform === 'darwin') {
+        mainWindow.on('show', () => console.log('Window shown'));
+        mainWindow.on('hide', () => console.log('Window hidden'));
+        mainWindow.on('focus', () => console.log('Window focused'));
+        mainWindow.on('blur', () => console.log('Window blurred'));
+    }
 }
 
 function getWindowPosition() {
@@ -249,22 +342,39 @@ function getWindowPosition() {
     const windowBounds = mainWindow.getBounds();
     let x = 0;
     let y = 0;
+
     if (process.platform === 'darwin') {
+        // macOS: Position below the menu bar
         x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
         y = Math.round(trayBounds.y + trayBounds.height + 4);
+
+        // Debug logging for macOS
+        console.log('macOS positioning:', {
+            trayBounds,
+            windowBounds,
+            display: display.workArea,
+            calculated: { x, y }
+        });
     } else {
         // Windows/Linux: place above the tray if at bottom, otherwise below
         const taskbarAtBottom = trayBounds.y > (display.workArea.y + display.workArea.height / 2);
         x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
         y = taskbarAtBottom ? Math.round(trayBounds.y - windowBounds.height - 8) : Math.round(trayBounds.y + trayBounds.height + 4);
     }
-    // Keep inside screen
-    x = Math.min(Math.max(display.workArea.x, x), display.workArea.x + display.workArea.width - windowBounds.width);
+
+    // Keep inside screen bounds with more generous margins
+    const margin = 20;
+    x = Math.min(Math.max(display.workArea.x + margin, x), display.workArea.x + display.workArea.width - windowBounds.width - margin);
+    y = Math.min(Math.max(display.workArea.y + margin, y), display.workArea.y + display.workArea.height - windowBounds.height - margin);
+
     return { x, y };
 }
 
 function toggleWindow() {
     if (!mainWindow) return;
+
+    console.log('Toggle window called, currently visible:', mainWindow.isVisible());
+
     if (mainWindow.isVisible()) {
         mainWindow.hide();
     } else {
@@ -273,10 +383,27 @@ function toggleWindow() {
 }
 
 function showWindowNearTray() {
+    if (!mainWindow) return;
+
     const position = getWindowPosition();
+    console.log('Showing window at position:', position);
+
+    // Set position first
     mainWindow.setPosition(position.x, position.y, false);
+
+    // Show and focus the window
     mainWindow.show();
-    mainWindow.focus();
+
+    // On macOS, we need to ensure the window actually gets focus
+    if (process.platform === 'darwin') {
+        // Force focus on macOS
+        setTimeout(() => {
+            mainWindow.focus();
+            mainWindow.moveTop();
+        }, 50);
+    } else {
+        mainWindow.focus();
+    }
 }
 
 function createTray() {
