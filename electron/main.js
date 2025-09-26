@@ -429,6 +429,30 @@ function stopTimer() {
     updateTrayTitleAndIcon();
 }
 
+function pauseTimer() {
+    // Pause only if currently running
+    if (!state.timer.running) return;
+    state.timer.remainingSeconds = timeRemainingSeconds();
+    state.timer.running = false;
+    state.timer.endTs = 0;
+    // Keep initialSeconds as-is so progress visuals remain consistent
+    notifyRenderer('state');
+    updateTrayTitleAndIcon();
+}
+
+function resumeTimer() {
+    // Resume only if currently paused with time remaining
+    if (state.timer.running) return;
+    const next = Math.max(0, state.timer.remainingSeconds || 0);
+    if (next <= 0) return;
+    state.timer.endTs = Date.now() + next * 1000;
+    state.timer.running = true;
+    state.lastEnded = null;
+    if (!state.timer.initialSeconds) state.timer.initialSeconds = next;
+    notifyRenderer('state');
+    updateTrayTitleAndIcon();
+}
+
 function extendTimer(secondsDelta) {
     const delta = Math.floor(secondsDelta);
     const wasRunning = state.timer.running;
@@ -438,12 +462,16 @@ function extendTimer(secondsDelta) {
     } else {
         const next = Math.max(0, (state.timer.remainingSeconds || 0) + delta);
         state.timer.remainingSeconds = next;
-        if (next > 0) {
+        // If timer had ended (lastEnded set) and user extends, auto-resume.
+        // If it's just paused (no lastEnded), stay paused.
+        if (next > 0 && state.lastEnded) {
             state.timer.endTs = Date.now() + next * 1000;
-            // Auto-resume if user extends after an end
             state.timer.running = true;
             if (!state.timer.initialSeconds) state.timer.initialSeconds = next;
             state.lastEnded = null;
+        } else {
+            state.timer.endTs = 0;
+            state.timer.running = false;
         }
     }
     notifyRenderer('state');
@@ -455,6 +483,8 @@ ipcMain.handle('balance:get-state', () => getPublicState());
 ipcMain.handle('balance:start-work', () => { startTimer(false); return getPublicState(); });
 ipcMain.handle('balance:start-break', () => { startTimer(true); return getPublicState(); });
 ipcMain.handle('balance:stop', () => { stopTimer(); return getPublicState(); });
+ipcMain.handle('balance:pause', () => { pauseTimer(); return getPublicState(); });
+ipcMain.handle('balance:resume', () => { resumeTimer(); return getPublicState(); });
 ipcMain.handle('balance:extend', (_e, seconds) => { extendTimer(seconds); return getPublicState(); });
 ipcMain.handle('balance:switch-mission', (_e, idx) => { state.currentMissionIndex = Math.max(0, Math.min(2, idx)); notifyRenderer('state'); updateTrayTitleAndIcon(); return getPublicState(); });
 ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
