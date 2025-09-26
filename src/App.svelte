@@ -304,22 +304,17 @@
                     >
                         📁 Open Data Folder
                     </div>
+                    <div class="btn" on:click={quit} style="background:#ffcccb">
+                        Quit App
+                    </div>
+                </div>
+                <div class="controls">
                     <div
                         class="btn"
                         on:click={saveOptions}
                         style="background:#d6ffd9"
                     >
-                        Save
-                    </div>
-                    <div
-                        class="btn"
-                        on:click={closeOptions}
-                        style="background:#ffd2d2"
-                    >
-                        Cancel
-                    </div>
-                    <div class="btn" on:click={quit} style="background:#ffcccb">
-                        Quit App
+                        Close
                     </div>
                 </div>
             </div>
