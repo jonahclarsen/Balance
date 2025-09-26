@@ -455,12 +455,11 @@
         box-sizing: border-box;
     }
     .field {
-        margin: 8px 0;
+        margin: 4px 0;
     }
     .field-row {
         display: flex;
         gap: 8px;
-        margin: 8px 0;
     }
     .field.half {
         flex: 1;
