@@ -8,13 +8,18 @@
         "dev": "run-p dev:renderer dev:electron",
         "dev:renderer": "VITE_DEV_PORT=5174 vite --port 5174",
         "dev:electron": "wait-on tcp:5174 && VITE_DEV_PORT=5174 electron .",
-        "build": "run-s build:renderer",
-        "build:renderer": "vite build"
+        "build": "run-s build:renderer build:electron",
+        "build:renderer": "vite build",
+        "build:electron": "electron-forge package",
+        "package": "electron-forge package",
+        "make": "electron-forge make"
     },
-    "dependencies": {
-        "electron": "^31.3.1"
-    },
+    "dependencies": {},
     "devDependencies": {
+        "electron": "^31.3.1",
+        "@electron-forge/cli": "^7.9.0",
+        "@electron-forge/maker-dmg": "^7.9.0",
+        "@electron-forge/maker-zip": "^7.9.0",
         "@sveltejs/vite-plugin-svelte": "^3.1.1",
         "npm-run-all": "^4.1.5",
         "svelte": "^4.2.18",
