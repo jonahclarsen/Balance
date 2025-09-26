@@ -453,11 +453,13 @@
         justify-content: center;
     }
     .sheet {
-        width: 320px;
+        width: calc(100% - 24px);
+        max-width: 320px;
         background: var(--card);
         border: 3px solid var(--stroke);
         border-radius: 16px;
         padding: 12px;
+        box-sizing: border-box;
     }
     .field {
         margin: 8px 0;
@@ -477,5 +479,6 @@
         border: 3px solid var(--stroke);
         border-radius: 10px;
         background: #fff;
+        box-sizing: border-box;
     }
 </style>
