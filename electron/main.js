@@ -251,8 +251,8 @@ function startTicking() {
 function createWindow() {
     // macOS-specific window options to fix transparency issues
     const windowOptions = {
-        width: 388, // width + 14px padding
-        height: 508,
+        width: 360 + 14 * 2, // width + 14px*2 padding
+        height: 540 + 14 * 2,
         show: false,
         frame: false,
         resizable: false,

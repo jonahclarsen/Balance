@@ -102,7 +102,10 @@
             tag === "select" ||
             target?.isContentEditable;
         // Block browser zoom shortcuts globally
-        if ((e.metaKey || e.ctrlKey) && ["+", "=", "-", "_", "0"].includes(e.key)) {
+        if (
+            (e.metaKey || e.ctrlKey) &&
+            ["+", "=", "-", "_", "0"].includes(e.key)
+        ) {
             e.preventDefault();
             return;
         }
@@ -207,8 +210,11 @@
             {#if !settings.missions[state.currentMissionIndex]?.untracked}
                 <div class="balance">
                     <div
-                        class="pill balance-pill"
-                        style="color: {withinRange
+                        class="pill"
+                        style="width: {state.currentMissionIndex === 3
+                            ? 60
+                            : 80}%;
+                        color: {withinRange
                             ? crayon.gray
                             : pinkHasMore
                               ? settings.missions[0].color
@@ -275,8 +281,7 @@
 
     .root {
         width: 360px;
-        height: 480px;
-        max-height: 480px;
+        height: 540px;
         /* overflow: hidden; */
         padding: 14px;
         background: var(--bg, #fff8e7);
@@ -314,13 +319,11 @@
         padding: 10px 14px;
         border: 3px dashed var(--stroke);
         border-radius: 999px;
+        font-size: 14px;
         background: var(--card);
     }
-    .balance-pill {
-        width: 60%;
-    }
     .pill strong {
-        font-size: 18px;
+        font-size: 16px;
     }
     .controls {
         display: flex;
@@ -363,7 +366,6 @@
         justify-content: space-between;
     }
     .time-controls {
-        flex: 7; /* 70% of available space */
         display: flex;
         flex-direction: column;
         justify-content: center;
@@ -371,7 +373,6 @@
         padding: 20px 0; /* Reduce the effective content area to half */
     }
     .mission-select {
-        flex: 3; /* 30% of available space */
         background: var(--card);
         padding: 10px;
         border-radius: 50px;
