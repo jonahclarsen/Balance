@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('balance', {
             try { ipcRenderer.removeListener('balance:state', handler); } catch { }
         };
     },
+    openExternal: (url) => ipcRenderer.invoke('balance:open-external', url),
     platform: process.platform
 });
 

@@ -91,6 +91,12 @@
         breakColor: "#DDDDDD",
         gray: "#8C8C8C",
     };
+
+    function joinDiscord() {
+        try {
+            api.openExternal('https://discord.gg/balance');
+        } catch {}
+    }
 </script>
 
 <svelte:window
@@ -226,6 +232,11 @@
                     +-5m
                 </p>
                 <p>Hold shift for +-20s</p>
+            </div>
+            <div class="controls">
+                <button class="btn" on:click={joinDiscord} style="background:#e6f0ff" title="Join our Discord for support">
+                    🗨️ Join Discord
+                </button>
             </div>
         </div>
 

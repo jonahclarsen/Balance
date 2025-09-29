@@ -688,6 +688,19 @@ ipcMain.handle('balance:open-data-folder', () => {
     }
 });
 
+// Secure external URL opener
+ipcMain.handle('balance:open-external', (_e, url) => {
+    try {
+        if (typeof url !== 'string') return;
+        const trimmed = url.trim();
+        // Allow only http/https links
+        if (!/^https?:\/\//i.test(trimmed)) return;
+        shell.openExternal(trimmed);
+    } catch (e) {
+        console.error('Failed to open external URL:', e);
+    }
+});
+
 ipcMain.handle('balance:quit', () => {
     app.quit();
 });
