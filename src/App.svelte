@@ -81,16 +81,44 @@
     $: pinkHasMore = computed?.outOfBalanceSign >= 0;
     $: withinRange = computed?.withinRange;
 
-    const crayon = {
-        bg: "#FFE2F5",
-        card: "#FDB3DB",
-        stroke: "#BF6091",
-        accent: "#E47ED1", // selected
-        mission1: "#e91e63",
-        mission2: "#108AB0",
-        breakColor: "#DDDDDD",
-        gray: "#8C8C8C",
-    };
+    function computeTheme(settings, state) {
+        const mission1Color = settings?.missions?.[0]?.color || "#e91e63";
+        const mission2Color = settings?.missions?.[1]?.color || "#2e7d32";
+        const gray = "#8C8C8C";
+
+        // Predefined palettes per mission for full scheme swap
+        const pinkTheme = {
+            bg: "#FFE2F5",
+            card: "#FDB3DB",
+            stroke: "#BF6091",
+            accent: "#E47ED1",
+        };
+        const greenTheme = {
+            bg: "#E0F2F1",
+            card: "#B2DFDB",
+            stroke: "#00695C",
+            accent: "#4DB6AC",
+        };
+        const neutralTheme = {
+            bg: "#F3F3F3",
+            card: "#E8E8E8",
+            stroke: "#9E9E9E",
+            accent: "#BDBDBD",
+        };
+
+        const idx = state?.currentMissionIndex ?? 0;
+        const base = idx === 0 ? pinkTheme : idx === 1 ? greenTheme : neutralTheme;
+
+        return {
+            ...base,
+            mission1: mission1Color,
+            mission2: mission2Color,
+            breakColor: "#DDDDDD",
+            gray,
+        };
+    }
+
+    $: crayon = computeTheme(settings, state);
 </script>
 
 <svelte:window
@@ -117,7 +145,7 @@
 
 <div
     class="root"
-    style="--bg:{crayon.bg}; --card:{crayon.card}; --stroke:{crayon.stroke}; --accent:{crayon.accent}"
+    style="--bg:{crayon.bg}; --card:{crayon.card}; --stroke:{crayon.stroke}; --accent:{crayon.accent}; --gray:{crayon.gray}"
 >
     <div class="row">
         <div class="title">
@@ -169,7 +197,7 @@
                 <button
                     class="btn seg {state.timer?.isBreak ? '' : 'selected'}"
                     on:click={startWork}
-                    style="background:#ffd2e1"
+                    style="background:var(--card)"
                     title="Start pomodoro"
                 >
                     🍅 Start Pomodoro
@@ -177,7 +205,7 @@
                 <button
                     class="btn seg {state.timer?.isBreak ? 'selected' : ''}"
                     on:click={startBreak}
-                    style="background:{crayon.breakColor}"
+                    style="background:var(--card)"
                     title="Start break"
                 >
                     🌿 Start Break
