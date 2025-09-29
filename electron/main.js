@@ -278,6 +278,18 @@ function createWindow() {
 
     mainWindow = new BrowserWindow(windowOptions);
 
+    // Intercept zoom shortcuts at the app level
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+        const isCmdOrCtrl = input.meta || input.control;
+        if (!isCmdOrCtrl) return;
+        // Block Cmd/Ctrl + + / - / = / 0
+        const key = (input.key || '').toLowerCase();
+        if (key === '+' || key === '=' || key === '-' || key === '_'
+            || key === 'add' || key === 'subtract' || key === '0') {
+            event.preventDefault();
+        }
+    });
+
     // Wait for content to load before showing
     mainWindow.webContents.once('did-finish-load', () => {
         console.log('Window content loaded successfully');

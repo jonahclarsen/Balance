@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webFrame } = require('electron');
 
 contextBridge.exposeInMainWorld('balance', {
     getState: () => ipcRenderer.invoke('balance:get-state'),
@@ -22,5 +22,21 @@ contextBridge.exposeInMainWorld('balance', {
     },
     platform: process.platform
 });
+
+// Disable all zooming in the renderer (pinch, Cmd/Ctrl +/- , programmatic)
+try {
+    // Disallow visual zoom (pinch/gesture)
+    if (typeof webFrame.setVisualZoomLevelLimits === 'function') {
+        webFrame.setVisualZoomLevelLimits(1, 1);
+    }
+    // Disallow zoom level changes
+    if (typeof webFrame.setZoomLevelLimits === 'function') {
+        webFrame.setZoomLevelLimits(1, 1);
+    }
+    // Ensure base zoom factor is 1
+    if (typeof webFrame.setZoomFactor === 'function') {
+        webFrame.setZoomFactor(1);
+    }
+} catch {}
 
 
