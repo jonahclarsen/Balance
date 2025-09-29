@@ -73,6 +73,13 @@
         api.switchMission(i);
     }
 
+    function addTrackedMinute() {
+        api.adjustMinutes(1);
+    }
+    function removeTrackedMinute() {
+        api.adjustMinutes(-1);
+    }
+
     function openOptions() {
         editingSettings = JSON.parse(JSON.stringify(settings));
         showOptions = true;
@@ -218,6 +225,20 @@
                     title="Decrease time by 1 minute"
                 >
                     -
+                </button>
+                <button
+                    class="btn time-control-btn"
+                    on:click={addTrackedMinute}
+                    title="Add tracked minute to today"
+                >
+                    +m
+                </button>
+                <button
+                    class="btn time-control-btn"
+                    on:click={removeTrackedMinute}
+                    title="Remove tracked minute from today"
+                >
+                    -m
                 </button>
             </div>
             <div class="keyboard-instructions">

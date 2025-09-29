@@ -233,6 +233,25 @@ function incrementDailyMinute() {
     notifyRenderer('state');
 }
 
+// Adjust today's tracked minutes for the current mission by a delta (can be negative)
+function adjustTodayMinutesForCurrentMission(deltaMinutes) {
+    const delta = Math.round(deltaMinutes);
+    if (!delta) return;
+
+    const today = getTodayDateString();
+    const missionKey = `mission_${state.currentMissionIndex}`;
+
+    if (!state.dailyMinutes) state.dailyMinutes = {};
+    if (!state.dailyMinutes[missionKey]) state.dailyMinutes[missionKey] = {};
+    const current = state.dailyMinutes[missionKey][today] || 0;
+    const next = Math.max(0, current + delta);
+    state.dailyMinutes[missionKey][today] = next;
+
+    saveData();
+    notifyRenderer('state');
+    updateTrayTitleAndIcon();
+}
+
 function startMinuteTracking() {
     if (minuteTrackingInterval) clearTimeout(minuteTrackingInterval);
 
@@ -657,6 +676,7 @@ ipcMain.handle('balance:stop', () => { stopTimer(); return getPublicState(); });
 ipcMain.handle('balance:pause', () => { pauseTimer(); return getPublicState(); });
 ipcMain.handle('balance:resume', () => { resumeTimer(); return getPublicState(); });
 ipcMain.handle('balance:extend', (_e, seconds) => { extendTimer(seconds); return getPublicState(); });
+ipcMain.handle('balance:adjust-minutes', (_e, minutesDelta) => { adjustTodayMinutesForCurrentMission(minutesDelta); return getPublicState(); });
 ipcMain.handle('balance:switch-mission', (_e, idx) => { state.currentMissionIndex = Math.max(0, Math.min(2, idx)); notifyRenderer('state'); updateTrayTitleAndIcon(); return getPublicState(); });
 ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
     const prevDir = getUserDir();
