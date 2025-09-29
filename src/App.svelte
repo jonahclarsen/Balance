@@ -73,6 +73,10 @@
         api.switchMission(i);
     }
 
+    function addTrackedMinutes(delta) {
+        api.adjustMinutes(delta);
+    }
+
     function openOptions() {
         editingSettings = JSON.parse(JSON.stringify(settings));
         showOptions = true;
@@ -187,6 +191,22 @@
                     title="Decrease time by 1 minute"
                 >
                     -
+                </button>
+                <button
+                    class="btn"
+                    title="Add 1 tracked minute (manual)"
+                    on:click={() => addTrackedMinutes(1)}
+                    style="background:#e1f5fe"
+                >
+                    +1m ✅
+                </button>
+                <button
+                    class="btn"
+                    title="Remove 1 tracked minute (manual)"
+                    on:click={() => addTrackedMinutes(-1)}
+                    style="background:#ffe1e1"
+                >
+                    -1m ✅
                 </button>
             </div>
             <div class="keyboard-instructions">
