@@ -265,33 +265,28 @@
                 </div>
             </div>
 
-            <!-- Only show balance for tracked missions -->
-            {#if !settings.missions[state.currentMissionIndex]?.untracked}
-                <div class="balance">
-                    <div
-                        class="pill"
-                        style="width: {state.currentMissionIndex === 3
-                            ? 60
-                            : 80}%;
+            <div class="balance">
+                <div
+                    class="pill"
+                    style="width: {state.currentMissionIndex === 3 ? 60 : 70}%;
                         color: {withinRange
-                            ? crayon.gray
-                            : pinkHasMore
-                              ? crayon.mission1
-                              : crayon.mission2}"
+                        ? crayon.gray
+                        : pinkHasMore
+                          ? crayon.mission1
+                          : crayon.mission2}"
+                >
+                    <strong>{computed.outOfBalanceHours}</strong> hours out of
+                    balance; recover with
+                    <span
+                        style="color: {pinkHasMore
+                            ? crayon.mission2
+                            : crayon.mission1}"
+                        >{pinkHasMore
+                            ? settings.missions[1].name
+                            : settings.missions[0].name}</span
                     >
-                        <strong>{computed.outOfBalanceHours}</strong> hours out
-                        of balance: you need to work on
-                        <span
-                            style="color: {pinkHasMore
-                                ? crayon.mission2
-                                : crayon.mission1}"
-                            >{pinkHasMore
-                                ? settings.missions[1].name
-                                : settings.missions[0].name}</span
-                        >
-                    </div>
                 </div>
-            {/if}
+            </div>
         </div>
     {/if}
 
@@ -344,7 +339,7 @@
         text-align: center;
         justify-content: center;
         gap: 10px;
-        margin: 8px 0 14px;
+        margin: 8px 0 8px;
     }
     .pill {
         padding: 10px 14px;
