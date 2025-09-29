@@ -196,34 +196,23 @@
 
         <!-- Top row: Pomodoro | Break | - | + -->
         <div class="controls top-controls">
-            <div
+            <button
                 class="btn seg {state.timer?.isBreak ? '' : 'selected'}"
                 on:click={startWork}
                 style="background:#ffd2e1"
                 title="Start pomodoro"
             >
                 🍅 Pomodoro
-            </div>
-            <div
+            </button>
+            <button
                 class="btn seg {state.timer?.isBreak ? 'selected' : ''}"
                 on:click={startBreak}
                 style="background:#d9ffd6"
                 title="Start break"
             >
                 🌿 Break
-            </div>
-            <div
-                class="btn"
-                on:click={(e) => {
-                    if (e.shiftKey) extendBy(-20);
-                    else if (e.metaKey || e.ctrlKey) extendBy(-5 * 60);
-                    else extendBy(-60);
-                }}
-                title="-1m (shift: -20s, ctrl/cmd: -5m)"
-            >
-                -
-            </div>
-            <div
+            </button>
+            <button
                 class="btn"
                 on:click={(e) => {
                     if (e.shiftKey) extendBy(20);
@@ -233,18 +222,33 @@
                 title="+1m (shift: +20s, ctrl/cmd: +5m)"
             >
                 +
-            </div>
+            </button>
+            <button
+                class="btn"
+                on:click={(e) => {
+                    if (e.shiftKey) extendBy(-20);
+                    else if (e.metaKey || e.ctrlKey) extendBy(-5 * 60);
+                    else extendBy(-60);
+                }}
+                title="-1m (shift: -20s, ctrl/cmd: -5m)"
+            >
+                -
+            </button>
         </div>
 
         <!-- Bottom row: Play/Pause -->
         <div class="controls bottom-controls">
-            <div class="btn play" on:click={togglePlayPause} title="Play/Pause">
+            <button
+                class="btn play"
+                on:click={togglePlayPause}
+                title="Play/Pause"
+            >
                 {#if state.timer?.running}
                     ⏸️
                 {:else}
                     ▶️
                 {/if}
-            </div>
+            </button>
         </div>
     {/if}
 
@@ -291,27 +295,30 @@
                     </div>
                 </div>
                 <div class="controls">
-                    <div
+                    <button
                         class="btn"
-                        role="button"
                         on:click={openDataFolder}
                         style="background:#e1f5fe"
                         title="Open data folder"
                     >
                         📁 Open Data Folder
-                    </div>
-                    <div class="btn" on:click={quit} style="background:#ffcccb">
+                    </button>
+                    <button
+                        class="btn"
+                        on:click={quit}
+                        style="background:#ffcccb"
+                    >
                         Quit App
-                    </div>
+                    </button>
                 </div>
                 <div class="controls">
-                    <div
+                    <button
                         class="btn"
                         on:click={saveOptions}
                         style="background:#d6ffd9"
                     >
                         Close
-                    </div>
+                    </button>
                 </div>
             </div>
         </div>
