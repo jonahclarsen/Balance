@@ -124,7 +124,6 @@ function loadData() {
         } else {
             saveData();
         }
-        maybeBackupDaily();
     } catch (e) {
         console.error('Failed to load data:', e);
     }
@@ -671,7 +670,6 @@ ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
         const newPath = path.join(newDir, 'balance.json');
         fs.writeFileSync(newPath, JSON.stringify({ settings, state }, null, 2), 'utf-8');
         dataFilePath = newPath;
-        maybeBackupDaily();
     } else {
         saveData();
     }
