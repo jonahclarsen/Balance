@@ -206,6 +206,34 @@
         </div>
 
         <div class="mission-select">
+            <div class="tabs">
+                {#each settings.missions as m, i}
+                    <button
+                        class="tab {state.currentMissionIndex === i
+                            ? 'active'
+                            : ''}"
+                        style="color:{m.color}"
+                        on:click={() => switchMission(i)}
+                    >
+                        {m.name}
+                    </button>
+                {/each}
+            </div>
+
+            <div class="balance">
+                <div
+                    class="pill"
+                    style="color: {settings.missions[state.currentMissionIndex]
+                        .color}"
+                >
+                    Lifetime: <strong
+                        >{Math.floor(
+                            (computed.lifetimeMinutes || 0) / 60,
+                        )}h{(computed.lifetimeMinutes || 0) % 60}m</strong
+                    >
+                </div>
+            </div>
+
             <!-- Only show balance for tracked missions -->
             {#if !settings.missions[state.currentMissionIndex]?.untracked}
                 <div class="balance">
@@ -233,34 +261,6 @@
                     </div>
                 </div>
             {/if}
-
-            <div class="balance">
-                <div
-                    class="pill"
-                    style="color: {settings.missions[state.currentMissionIndex]
-                        .color}"
-                >
-                    Lifetime: <strong
-                        >{Math.floor(
-                            (computed.lifetimeMinutes || 0) / 60,
-                        )}h{(computed.lifetimeMinutes || 0) % 60}m</strong
-                    >
-                </div>
-            </div>
-
-            <div class="tabs">
-                {#each settings.missions as m, i}
-                    <button
-                        class="tab {state.currentMissionIndex === i
-                            ? 'active'
-                            : ''}"
-                        style="color:{m.color}"
-                        on:click={() => switchMission(i)}
-                    >
-                        {m.name}
-                    </button>
-                {/each}
-            </div>
         </div>
     {/if}
 
@@ -350,7 +350,6 @@
     .btn.selected {
         outline: 4px solid var(--accent);
     }
-
     .btn.seg {
         border-radius: 999px;
     }
@@ -397,6 +396,7 @@
         border: 3px solid var(--stroke);
         border-radius: 999px;
         background: var(--card);
+        font-size: 15px;
         cursor: pointer;
     }
     .tab.active {
