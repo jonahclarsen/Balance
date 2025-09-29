@@ -688,6 +688,16 @@ ipcMain.handle('balance:open-data-folder', () => {
     }
 });
 
+// Open Discord (configurable via env var DISCORD_INVITE_URL)
+ipcMain.handle('balance:open-discord', () => {
+    try {
+        const url = process.env.DISCORD_INVITE_URL || 'https://discord.gg/assist';
+        shell.openExternal(url);
+    } catch (e) {
+        console.error('Failed to open Discord URL:', e);
+    }
+});
+
 ipcMain.handle('balance:quit', () => {
     app.quit();
 });

@@ -140,9 +140,12 @@
                 {:else}[undefined]{/if}
             </span>
         </div>
-        <button class="btn" title="Options (o)" on:click={openOptions}
-            >⚙️</button
-        >
+        <div class="header-actions">
+            <button class="btn discord" title="Join our Discord" on:click={() => api.openDiscord()}>💬 Join Discord</button>
+            <button class="btn" title="Options (o)" on:click={openOptions}
+                >⚙️</button
+            >
+        </div>
     </div>
 
     {#if settings && state}
@@ -389,6 +392,15 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
+    }
+    .header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+    }
+    .btn.discord {
+        background: #5865F2; /* Discord brand color */
+        color: white;
     }
     .time-controls {
         display: flex;
