@@ -692,6 +692,17 @@ ipcMain.handle('balance:quit', () => {
     app.quit();
 });
 
+// Open external URLs safely via main process
+ipcMain.handle('balance:open-external', (_e, url) => {
+    try {
+        if (typeof url === 'string' && /^https?:\/\//i.test(url)) {
+            shell.openExternal(url);
+        }
+    } catch (e) {
+        console.error('Failed to open external URL:', e);
+    }
+});
+
 app.whenReady().then(() => {
     // Hide dock icon on macOS
     if (process.platform === 'darwin') {

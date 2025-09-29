@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld('balance', {
     open: () => ipcRenderer.invoke('balance:open'),
     openDataFolder: () => ipcRenderer.invoke('balance:open-data-folder'),
     quit: () => ipcRenderer.invoke('balance:quit'),
+    openExternal: (url) => ipcRenderer.invoke('balance:open-external', url),
     onState: (callback) => {
         const handler = (_event, message) => callback(message);
         ipcRenderer.on('balance:state', handler);

@@ -140,9 +140,14 @@
                 {:else}[undefined]{/if}
             </span>
         </div>
-        <button class="btn" title="Options (o)" on:click={openOptions}
-            >⚙️</button
-        >
+        <div style="display:flex; gap:6px; align-items:center;">
+            <button class="btn" title="Join our Discord" on:click={() => window.balance.openExternal('https://discord.gg/assist')}
+                >🗨️ Join Discord</button
+            >
+            <button class="btn" title="Options (o)" on:click={openOptions}
+                >⚙️</button
+            >
+        </div>
     </div>
 
     {#if settings && state}
