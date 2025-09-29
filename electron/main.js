@@ -278,6 +278,24 @@ function createWindow() {
 
     mainWindow = new BrowserWindow(windowOptions);
 
+    // Disable all zooming behaviors: keyboard, wheel, and pinch
+    try {
+        const wc = mainWindow.webContents;
+        // Prevent pinch-to-zoom and wheel-based zoom
+        wc.setVisualZoomLevelLimits(1, 1).catch(() => { });
+        wc.setZoomFactor(1);
+
+        // Intercept keyboard shortcuts like Cmd/Ctrl + '+', '-', '0'
+        wc.on('before-input-event', (event, input) => {
+            const isAccel = !!(input.control || input.meta);
+            if (!isAccel) return;
+            const k = (input.key || '').toLowerCase();
+            if (k === '+' || k === '=' || k === '-' || k === '_' || k === '0') {
+                event.preventDefault();
+            }
+        });
+    } catch { }
+
     // Wait for content to load before showing
     mainWindow.webContents.once('did-finish-load', () => {
         console.log('Window content loaded successfully');

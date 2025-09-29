@@ -101,8 +101,12 @@
             tag === "textarea" ||
             tag === "select" ||
             target?.isContentEditable;
-        if (isEditable || showOptions || e.metaKey || e.ctrlKey || e.altKey)
+        // Block browser zoom shortcuts globally
+        if ((e.metaKey || e.ctrlKey) && ["+", "=", "-", "_", "0"].includes(e.key)) {
+            e.preventDefault();
             return;
+        }
+        if (isEditable || showOptions || e.altKey) return;
         if (e.key && e.key.toLowerCase() === "o" && !e.repeat) openOptions();
     }}
 />
