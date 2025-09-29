@@ -65,6 +65,7 @@ let minuteTrackingInterval = null;
 let settings = { ...DEFAULT_SETTINGS };
 let state = { ...DEFAULT_STATE };
 let dataFilePath = '';
+let lastBackupDate = '';
 
 function getUserDir() {
     return app.getPath('userData');
@@ -79,6 +80,33 @@ function ensureDataDir() {
 function getDataFilePath() {
     const dir = ensureDataDir();
     return path.join(dir, 'balance.json');
+}
+
+function getBackupDir() {
+    return path.join(getUserDir(), 'config_backups');
+}
+
+function maybeBackupDaily() {
+    try {
+        const srcPath = dataFilePath || getDataFilePath();
+        const today = getTodayDateString();
+        if (lastBackupDate === today) return;
+
+        const backupDir = getBackupDir();
+        try { fs.mkdirSync(backupDir, { recursive: true }); } catch { }
+        const destPath = path.join(backupDir, `balance-${today}.json`);
+        try {
+            fs.copyFileSync(srcPath, destPath, fs.constants.COPYFILE_EXCL);
+            lastBackupDate = today;
+        } catch (e) {
+            if (e && e.code === 'EEXIST') {
+                // Backup for today already exists; mark as done to avoid checks
+                lastBackupDate = today;
+            }
+        }
+    } catch (e) {
+        // Swallow errors to avoid impacting primary save flow
+    }
 }
 
 function loadData() {
@@ -107,6 +135,7 @@ function saveData() {
         dataFilePath = p;
         const payload = { settings, state };
         fs.writeFileSync(p, JSON.stringify(payload, null, 2), 'utf-8');
+        maybeBackupDaily();
     } catch (e) {
         console.error('Failed to save data:', e);
     }
