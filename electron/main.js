@@ -342,9 +342,8 @@ function getWindowPosition() {
     let y = 0;
 
     if (process.platform === 'darwin') {
-        // macOS: Position below the menu bar
         x = Math.round(trayBounds.x + (trayBounds.width / 2) - (windowBounds.width / 2));
-        y = Math.round(trayBounds.y + trayBounds.height + 4);
+        y = Math.round(trayBounds.y + trayBounds.height);
 
         // Debug logging for macOS
         console.log('macOS positioning:', {
@@ -361,7 +360,7 @@ function getWindowPosition() {
     }
 
     // Keep inside screen bounds with more generous margins
-    const margin = 20;
+    const margin = process.platform === 'darwin' ? 0 : 20; // on macOS, this is the gap between the menu bar and the window
     x = Math.min(Math.max(display.workArea.x + margin, x), display.workArea.x + display.workArea.width - windowBounds.width - margin);
     y = Math.min(Math.max(display.workArea.y + margin, y), display.workArea.y + display.workArea.height - windowBounds.height - margin);
 
