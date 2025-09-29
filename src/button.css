@@ -1,0 +1,13 @@
+.btn {
+    padding: 10px 12px;
+    border: 3px solid var(--stroke);
+    border-radius: 12px;
+    background: var(--card);
+    cursor: pointer;
+    user-select: none;
+    transition: transform 0.03s ease-in-out;
+}
+
+.btn:active {
+    transform: translateY(1px);
+}

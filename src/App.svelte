@@ -1,5 +1,7 @@
 <script>
     import { onMount } from "svelte";
+    import Options from "./Options.svelte";
+    import "./button.css";
 
     const api = window.balance;
 
@@ -75,19 +77,6 @@
         editingSettings = JSON.parse(JSON.stringify(settings));
         showOptions = true;
     }
-    function closeOptions() {
-        showOptions = false;
-    }
-    function saveOptions() {
-        api.saveSettings(editingSettings);
-        showOptions = false;
-    }
-    function openDataFolder() {
-        api.openDataFolder();
-    }
-    function quit() {
-        api.quit();
-    }
 
     $: pinkHasMore = computed?.outOfBalanceSign >= 0;
     $: withinRange = computed?.withinRange;
@@ -124,204 +113,153 @@
 >
     <div class="row">
         <div class="title">Balance</div>
-        <div class="btn" title="Options (o)" on:click={openOptions}>⚙️</div>
+        <button class="btn" title="Options (o)" on:click={openOptions}
+            >⚙️</button
+        >
     </div>
 
     {#if settings && state}
-        <!-- Only show balance for tracked missions -->
-        {#if !settings.missions[state.currentMissionIndex]?.untracked}
+        <div class="time-controls">
+            <div
+                class="timer"
+                style="color:{state.timer?.isBreak
+                    ? crayon.gray
+                    : settings.missions[state.currentMissionIndex].color}"
+            >
+                {String(
+                    Math.floor((state.timer?.remainingSeconds || 0) / 60),
+                ).padStart(2, "0")}:{String(
+                    (state.timer?.remainingSeconds || 0) % 60,
+                ).padStart(2, "0")}
+            </div>
+
+            <!-- Mission-control row: Pomodoro | Break -->
+            <div class="controls mission-control">
+                <button
+                    class="btn seg {state.timer?.isBreak ? '' : 'selected'}"
+                    on:click={startWork}
+                    style="background:#ffd2e1"
+                    title="Start pomodoro"
+                >
+                    🍅 Start Pomodoro
+                </button>
+                <button
+                    class="btn seg {state.timer?.isBreak ? 'selected' : ''}"
+                    on:click={startBreak}
+                    style="background:#d9ffd6"
+                    title="Start break"
+                >
+                    🌿 Start Break
+                </button>
+            </div>
+
+            <!-- Time-control row: +1m, -1m -->
+            <div class="controls time-control">
+                <button
+                    class="btn play"
+                    on:click={togglePlayPause}
+                    title="Play/Pause"
+                >
+                    {#if state.timer?.running}
+                        ⏸️
+                    {:else}
+                        ▶️
+                    {/if}
+                </button>
+                <button
+                    class="btn time-control-btn"
+                    on:click={(e) => {
+                        if (e.shiftKey) extendBy(20);
+                        else if (e.metaKey || e.ctrlKey) extendBy(5 * 60);
+                        else extendBy(60);
+                    }}
+                    title="Increase time by 1 minute"
+                >
+                    +
+                </button>
+                <button
+                    class="btn time-control-btn"
+                    on:click={(e) => {
+                        if (e.shiftKey) extendBy(-20);
+                        else if (e.metaKey || e.ctrlKey) extendBy(-5 * 60);
+                        else extendBy(-60);
+                    }}
+                    title="Decrease time by 1 minute"
+                >
+                    -
+                </button>
+            </div>
+            <div class="keyboard-instructions">
+                <p>
+                    Hold {navigator.platform.includes("Mac") ? "⌘" : "ctrl"} for
+                    +-5m
+                </p>
+                <p>Hold shift for +-20s</p>
+            </div>
+        </div>
+
+        <div class="mission-select">
+            <!-- Only show balance for tracked missions -->
+            {#if !settings.missions[state.currentMissionIndex]?.untracked}
+                <div class="balance">
+                    <div
+                        class="pill balance-pill"
+                        style="color: {withinRange
+                            ? crayon.gray
+                            : pinkHasMore
+                              ? settings.missions[0].color
+                              : settings.missions[1].color}"
+                    >
+                        <strong>{computed.outOfBalanceHours}</strong> hours out
+                        of balance: you need to work on
+                        <span
+                            style="color: {pinkHasMore
+                                ? settings.missions[1].color
+                                : settings.missions[0].color}"
+                            >{pinkHasMore
+                                ? settings.missions[1].name
+                                : settings.missions[0].name}</span
+                        >
+                    </div>
+                </div>
+            {/if}
+
             <div class="balance">
                 <div
                     class="pill"
-                    style="color: {withinRange
-                        ? crayon.gray
-                        : pinkHasMore
-                          ? settings.missions[0].color
-                          : settings.missions[1].color}"
+                    style="color: {settings.missions[state.currentMissionIndex]
+                        .color}"
                 >
-                    <strong>{computed.outOfBalanceHours}</strong> hours out of
-                    balance: you need to work on
-                    <span
-                        style="color: {pinkHasMore
-                            ? settings.missions[1].color
-                            : settings.missions[0].color}"
-                        >{pinkHasMore
-                            ? settings.missions[1].name
-                            : settings.missions[0].name}</span
+                    Lifetime: <strong
+                        >{Math.floor(
+                            (computed.lifetimeMinutes || 0) / 60,
+                        )}h{(computed.lifetimeMinutes || 0) % 60}m</strong
                     >
                 </div>
             </div>
-        {/if}
 
-        <div class="balance">
-            <div
-                class="pill"
-                style="color: {settings.missions[state.currentMissionIndex]
-                    .color}"
-            >
-                Lifetime: <strong
-                    >{Math.floor(
-                        (computed.lifetimeMinutes || 0) / 60,
-                    )}h{(computed.lifetimeMinutes || 0) % 60}m</strong
-                >
+            <div class="tabs">
+                {#each settings.missions as m, i}
+                    <button
+                        class="tab {state.currentMissionIndex === i
+                            ? 'active'
+                            : ''}"
+                        style="color:{m.color}"
+                        on:click={() => switchMission(i)}
+                    >
+                        {m.name}
+                    </button>
+                {/each}
             </div>
-        </div>
-
-        <div class="tabs">
-            {#each settings.missions as m, i}
-                <div
-                    class="tab {state.currentMissionIndex === i
-                        ? 'active'
-                        : ''}"
-                    style="color:{m.color}"
-                    on:click={() => switchMission(i)}
-                >
-                    {m.name}
-                </div>
-            {/each}
-        </div>
-
-        <div
-            class="timer"
-            style="color:{state.timer?.isBreak
-                ? crayon.gray
-                : settings.missions[state.currentMissionIndex].color}"
-        >
-            {String(
-                Math.floor((state.timer?.remainingSeconds || 0) / 60),
-            ).padStart(2, "0")}:{String(
-                (state.timer?.remainingSeconds || 0) % 60,
-            ).padStart(2, "0")}
-        </div>
-
-        <!-- Top row: Pomodoro | Break | - | + -->
-        <div class="controls top-controls">
-            <button
-                class="btn seg {state.timer?.isBreak ? '' : 'selected'}"
-                on:click={startWork}
-                style="background:#ffd2e1"
-                title="Start pomodoro"
-            >
-                🍅 Pomodoro
-            </button>
-            <button
-                class="btn seg {state.timer?.isBreak ? 'selected' : ''}"
-                on:click={startBreak}
-                style="background:#d9ffd6"
-                title="Start break"
-            >
-                🌿 Break
-            </button>
-            <button
-                class="btn"
-                on:click={(e) => {
-                    if (e.shiftKey) extendBy(20);
-                    else if (e.metaKey || e.ctrlKey) extendBy(5 * 60);
-                    else extendBy(60);
-                }}
-                title="+1m (shift: +20s, ctrl/cmd: +5m)"
-            >
-                +
-            </button>
-            <button
-                class="btn"
-                on:click={(e) => {
-                    if (e.shiftKey) extendBy(-20);
-                    else if (e.metaKey || e.ctrlKey) extendBy(-5 * 60);
-                    else extendBy(-60);
-                }}
-                title="-1m (shift: -20s, ctrl/cmd: -5m)"
-            >
-                -
-            </button>
-        </div>
-
-        <!-- Bottom row: Play/Pause -->
-        <div class="controls bottom-controls">
-            <button
-                class="btn play"
-                on:click={togglePlayPause}
-                title="Play/Pause"
-            >
-                {#if state.timer?.running}
-                    ⏸️
-                {:else}
-                    ▶️
-                {/if}
-            </button>
         </div>
     {/if}
 
     {#if showOptions}
-        <div class="options">
-            <div class="sheet">
-                <div class="title">Options</div>
-                <div class="field">
-                    <label>Pink Mission Name</label>
-                    <input bind:value={editingSettings.missions[0].name} />
-                </div>
-                <div class="field">
-                    <label>Green Mission Name</label>
-                    <input bind:value={editingSettings.missions[1].name} />
-                </div>
-                <div class="field">
-                    <label>Untracked Mission Name</label>
-                    <input bind:value={editingSettings.missions[2].name} />
-                </div>
-                <div class="field">
-                    <label>Acceptable balance range (hours)</label>
-                    <input
-                        type="number"
-                        min="0"
-                        bind:value={editingSettings.acceptableHourRange}
-                    />
-                </div>
-                <div class="field-row">
-                    <div class="field half">
-                        <label>Work length (minutes)</label>
-                        <input
-                            type="number"
-                            min="1"
-                            bind:value={editingSettings.durations.workMinutes}
-                        />
-                    </div>
-                    <div class="field half">
-                        <label>Break length (minutes)</label>
-                        <input
-                            type="number"
-                            min="1"
-                            bind:value={editingSettings.durations.breakMinutes}
-                        />
-                    </div>
-                </div>
-                <div class="controls">
-                    <button
-                        class="btn"
-                        on:click={openDataFolder}
-                        style="background:#e1f5fe"
-                        title="Open data folder"
-                    >
-                        📁 Open Data Folder
-                    </button>
-                    <button
-                        class="btn"
-                        on:click={quit}
-                        style="background:#ffcccb"
-                    >
-                        Quit App
-                    </button>
-                </div>
-                <div class="controls">
-                    <button
-                        class="btn"
-                        on:click={saveOptions}
-                        style="background:#d6ffd9"
-                    >
-                        Close
-                    </button>
-                </div>
-            </div>
-        </div>
+        <Options
+            {editingSettings}
+            {api}
+            on:close={() => (showOptions = false)}
+        />
     {/if}
 </div>
 
@@ -330,13 +268,15 @@
         margin: 0;
         background: transparent;
     }
+
     .root {
         width: 360px;
         height: 480px;
         max-height: 480px;
         /* overflow: hidden; */
         padding: 14px;
-        background: var(--bg, #fff8e7); /* Fallback background */
+        background: var(--bg, #fff8e7);
+        /* Fallback background */
         border-radius: 18px;
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
         font-family:
@@ -349,15 +289,20 @@
             Noto Sans,
             sans-serif;
         color: #2e2a24;
+        display: flex;
+        flex-direction: column;
     }
     .title {
-        font-weight: 800;
+        font-weight: 600;
         font-size: 22px;
         margin-bottom: 10px;
+        margin-top: 0px;
+        margin-left: 10px;
     }
     .balance {
         display: flex;
         align-items: center;
+        text-align: center;
         justify-content: center;
         gap: 10px;
         margin: 8px 0 14px;
@@ -368,6 +313,9 @@
         border-radius: 999px;
         background: var(--card);
     }
+    .balance-pill {
+        width: 60%;
+    }
     .pill strong {
         font-size: 18px;
     }
@@ -375,46 +323,60 @@
         display: flex;
         gap: 8px;
         justify-content: center;
+        align-items: center;
+        text-align: center;
         margin-top: 10px;
         flex-wrap: wrap;
     }
-    .top-controls {
+    .mission-control {
         margin-top: 12px;
+        margin-bottom: 15px;
     }
-    .bottom-controls {
+    .time-control {
         margin-top: 6px;
+        margin-bottom: 2px;
     }
-    .btn {
-        padding: 10px 12px;
-        border: 3px solid var(--stroke);
-        border-radius: 12px;
-        background: var(--card);
-        cursor: pointer;
-        user-select: none;
-        transition: transform 0.03s ease-in-out;
-    }
-    .btn:active {
-        transform: translateY(1px);
+    .time-control-btn {
+        width: 50px;
+        height: 50px;
+        font-size: 24px;
     }
     .btn.selected {
         outline: 4px solid var(--accent);
     }
+
     .btn.seg {
         border-radius: 999px;
     }
     .btn.play {
-        min-width: 64px;
+        width: 50px;
+        height: 50px;
         text-align: center;
-        font-size: 20px;
+        font-size: 19px;
     }
     .row {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin: 10px 0;
+    }
+    .time-controls {
+        flex: 7; /* 70% of available space */
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        padding: 20px 0; /* Reduce the effective content area to half */
+    }
+    .mission-select {
+        flex: 3; /* 30% of available space */
+        background: var(--card);
+        padding: 10px;
+        border-radius: 50px;
+        width: 75%;
+        margin: 0 auto;
     }
     .timer {
-        font-size: 48px;
+        font-size: 60px;
         font-weight: 900;
         text-align: center;
         letter-spacing: 2px;
@@ -436,40 +398,11 @@
     .tab.active {
         outline: 4px solid var(--accent);
     }
-    .options {
-        position: absolute;
-        inset: 0;
-        background: rgba(255, 248, 231, 0.9);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .sheet {
-        width: calc(100% - 24px);
-        max-width: 320px;
-        background: var(--card);
-        border: 3px solid var(--stroke);
-        border-radius: 16px;
-        padding: 12px;
-        box-sizing: border-box;
-    }
-    .field {
-        margin: 4px 0;
-    }
-    .field-row {
-        display: flex;
-        gap: 8px;
-    }
-    .field.half {
-        flex: 1;
-    }
-    input,
-    select {
-        width: 100%;
-        padding: 8px 10px;
-        border: 3px solid var(--stroke);
-        border-radius: 10px;
-        background: #fff;
-        box-sizing: border-box;
+    .keyboard-instructions {
+        font-size: 11px;
+        line-height: 1px;
+        padding-bottom: 3px;
+        color: var(--gray);
+        text-align: center;
     }
 </style>
