@@ -20,7 +20,7 @@
 
 <div class="options root">
     <div class="sheet">
-        <div class="title">Options</div>
+        <div class="title" style="text-align: center;"><h2>Options</h2></div>
         <div class="field">
             <label>Pink Mission Name</label>
             <input bind:value={editingSettings.missions[0].name} />
@@ -88,7 +88,7 @@
     .options {
         position: absolute;
         inset: 0;
-        background: rgba(255, 248, 231, 0.9);
+        background: rgba(0, 0, 0, 0.15);
         display: flex;
         align-items: center;
         justify-content: center;

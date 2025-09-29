@@ -82,13 +82,14 @@
     $: withinRange = computed?.withinRange;
 
     const crayon = {
-        bg: "#fff8e7",
-        card: "#fff1cf",
-        stroke: "#2e2a24",
-        pink: "#e91e63",
-        green: "#2e7d32",
-        gray: "#9e9e9e",
-        accent: "#ffb74d",
+        bg: "#FFE2F5",
+        card: "#FDB3DB",
+        stroke: "#BF6091",
+        accent: "#E47ED1", // selected
+        mission1: "#e91e63",
+        mission2: "#108AB0",
+        breakColor: "#DDDDDD",
+        gray: "#8C8C8C",
     };
 </script>
 
@@ -119,7 +120,26 @@
     style="--bg:{crayon.bg}; --card:{crayon.card}; --stroke:{crayon.stroke}; --accent:{crayon.accent}"
 >
     <div class="row">
-        <div class="title">Balance</div>
+        <div class="title">
+            Balance — Time for
+            <span
+                style="color:{state && state.timer?.isBreak
+                    ? crayon.gray
+                    : state && state.currentMissionIndex === 0
+                      ? crayon.mission1
+                      : state && state.currentMissionIndex === 2
+                        ? crayon.gray
+                        : crayon.mission2}"
+            >
+                {#if settings && state}
+                    {#if state.timer?.isBreak}
+                        Break
+                    {:else}
+                        {settings.missions[state.currentMissionIndex].name}
+                    {/if}
+                {:else}[undefined]{/if}
+            </span>
+        </div>
         <button class="btn" title="Options (o)" on:click={openOptions}
             >⚙️</button
         >
@@ -131,7 +151,11 @@
                 class="timer"
                 style="color:{state.timer?.isBreak
                     ? crayon.gray
-                    : settings.missions[state.currentMissionIndex].color}"
+                    : state.currentMissionIndex === 0
+                      ? crayon.mission1
+                      : state.currentMissionIndex === 2
+                        ? crayon.gray
+                        : crayon.mission2}"
             >
                 {String(
                     Math.floor((state.timer?.remainingSeconds || 0) / 60),
@@ -153,7 +177,7 @@
                 <button
                     class="btn seg {state.timer?.isBreak ? 'selected' : ''}"
                     on:click={startBreak}
-                    style="background:#d9ffd6"
+                    style="background:{crayon.breakColor}"
                     title="Start break"
                 >
                     🌿 Start Break
@@ -212,7 +236,11 @@
                         class="tab {state.currentMissionIndex === i
                             ? 'active'
                             : ''}"
-                        style="color:{m.color}"
+                        style="color:{i === 0
+                            ? crayon.mission1
+                            : i === 2
+                              ? crayon.gray
+                              : crayon.mission2}"
                         on:click={() => switchMission(i)}
                     >
                         {m.name}
@@ -223,8 +251,11 @@
             <div class="balance">
                 <div
                     class="pill"
-                    style="color: {settings.missions[state.currentMissionIndex]
-                        .color}"
+                    style="color: {state.currentMissionIndex === 0
+                        ? crayon.mission1
+                        : state.currentMissionIndex === 2
+                          ? crayon.gray
+                          : crayon.mission2}"
                 >
                     Lifetime: <strong
                         >{Math.floor(
@@ -245,15 +276,15 @@
                         color: {withinRange
                             ? crayon.gray
                             : pinkHasMore
-                              ? settings.missions[0].color
-                              : settings.missions[1].color}"
+                              ? crayon.mission1
+                              : crayon.mission2}"
                     >
                         <strong>{computed.outOfBalanceHours}</strong> hours out
                         of balance: you need to work on
                         <span
                             style="color: {pinkHasMore
-                                ? settings.missions[1].color
-                                : settings.missions[0].color}"
+                                ? crayon.mission2
+                                : crayon.mission1}"
                             >{pinkHasMore
                                 ? settings.missions[1].name
                                 : settings.missions[0].name}</span
@@ -284,7 +315,7 @@
         height: 540px;
         /* overflow: hidden; */
         padding: 14px;
-        background: var(--bg, #fff8e7);
+        background: var(--bg);
         /* Fallback background */
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
         font-family:
