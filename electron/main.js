@@ -41,10 +41,12 @@ const RENDERER_URL = getRendererURL();
 
 // Data & settings
 const DEFAULT_SETTINGS = {
+    // Purposes (missions) are flexible in count. Each has:
+    // id (stable), name, color (used for pie/text), scheme (UI palette key), goalPercent (0..100)
     missions: [
-        { name: 'Pink Mission', color: '#e91e63' },
-        { name: 'Green Mission', color: '#2e7d32' },
-        { name: 'Other', color: '#9e9e9e', untracked: true }
+        { id: 'p1', name: 'Purpose A', color: '#e91e63', scheme: 'pink', goalPercent: 50 },
+        { id: 'p2', name: 'Purpose B', color: '#2e7d32', scheme: 'green', goalPercent: 50 },
+        { id: 'other', name: 'Other', color: '#9e9e9e', scheme: 'neutral', goalPercent: 0 }
     ],
     acceptableHourRange: 6,
     durations: { workMinutes: 28, breakMinutes: 3 },
@@ -54,7 +56,8 @@ const DEFAULT_STATE = {
     currentMissionIndex: 0,
     timer: { running: false, isBreak: false, remainingSeconds: 0, endTs: 0, initialSeconds: 0 },
     lastEnded: null,
-    dailyMinutes: {} // Structure: {"mission_0": {"2025-01-01": 4}, "mission_1": {"2025-01-01": 2}}
+    // Structure: {"<missionId>": {"2025-01-01": 4}, ...}
+    dailyMinutes: {}
 };
 
 let mainWindow = null; // popover window
@@ -116,9 +119,10 @@ function loadData() {
         if (fs.existsSync(p)) {
             const json = JSON.parse(fs.readFileSync(p, 'utf-8'));
             settings = { ...DEFAULT_SETTINGS, ...json.settings };
-            // Deep merge missions if missing
-            if (!settings.missions || settings.missions.length !== 3) settings.missions = DEFAULT_SETTINGS.missions;
+            if (!settings.missions || !Array.isArray(settings.missions)) settings.missions = DEFAULT_SETTINGS.missions;
             if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
+            // Ensure each mission has a stable id
+            ensureMissionIds();
             state = { ...DEFAULT_STATE, ...json.state };
             if (!state.dailyMinutes) state.dailyMinutes = {};
         } else {
@@ -127,6 +131,23 @@ function loadData() {
     } catch (e) {
         console.error('Failed to load data:', e);
     }
+}
+
+function ensureMissionIds() {
+    try {
+        const used = new Set();
+        const genId = () => 'p' + Math.random().toString(36).slice(2, 8);
+        for (const m of settings.missions) {
+            if (!m.id || typeof m.id !== 'string') m.id = genId();
+            while (used.has(m.id)) {
+                m.id = genId();
+            }
+            used.add(m.id);
+            if (typeof m.goalPercent !== 'number') m.goalPercent = 0;
+            if (!m.scheme) m.scheme = 'neutral';
+            if (!m.color) m.color = '#9e9e9e';
+        }
+    } catch { }
 }
 
 function saveData() {
@@ -152,27 +173,55 @@ function secondsToMinutesFloor(seconds) {
 }
 
 function getTotalMinutesForMission(missionIndex) {
-    const missionKey = `mission_${missionIndex}`;
-    const missionData = state.dailyMinutes[missionKey];
+    const mission = settings.missions[missionIndex];
+    if (!mission) return 0;
+    const missionData = state.dailyMinutes[mission.id];
     if (!missionData) return 0;
-
     return Object.values(missionData).reduce((total, dayMinutes) => total + dayMinutes, 0);
 }
 
-function getOutOfBalanceHoursAbs() {
-    // Only calculate balance for tracked missions (exclude untracked mission)
-    const totalMinutes0 = getTotalMinutesForMission(0);
-    const totalMinutes1 = getTotalMinutesForMission(1);
-    const diffMinutes = Math.abs(totalMinutes0 - totalMinutes1);
-    return Math.round(diffMinutes / 60);
+function getTrackedMissionIndices() {
+    const tracked = [];
+    for (let i = 0; i < settings.missions.length; i++) {
+        const m = settings.missions[i];
+        const goal = Number(m.goalPercent || 0);
+        if (goal > 0) tracked.push(i);
+    }
+    return tracked;
 }
 
-function getOutOfBalanceSign() {
-    // Only calculate balance for tracked missions (exclude untracked mission)
-    const totalMinutes0 = getTotalMinutesForMission(0);
-    const totalMinutes1 = getTotalMinutesForMission(1);
-    const d = totalMinutes0 - totalMinutes1;
-    return d === 0 ? 0 : (d > 0 ? 1 : -1); // 1 => pink has more, -1 => green has more
+function getRecoverInfo() {
+    const tracked = getTrackedMissionIndices();
+    if (tracked.length === 0) return { index: -1, deficitMinutes: 0 };
+    const actualMinutes = tracked.map(i => getTotalMinutesForMission(i));
+    const totalTrackedMinutes = actualMinutes.reduce((a, b) => a + b, 0);
+    if (totalTrackedMinutes <= 0) return { index: -1, deficitMinutes: 0 };
+
+    const goals = tracked.map(i => Number(settings.missions[i].goalPercent || 0));
+    const goalSum = goals.reduce((a, b) => a + b, 0) || 1;
+
+    let worstIndex = -1;
+    let worstDeficit = 0;
+    for (let k = 0; k < tracked.length; k++) {
+        const goalFraction = goals[k] / goalSum;
+        const targetMinutes = totalTrackedMinutes * goalFraction;
+        const deficit = Math.max(0, targetMinutes - actualMinutes[k]);
+        if (deficit > worstDeficit) {
+            worstDeficit = deficit;
+            worstIndex = tracked[k];
+        }
+    }
+    return { index: worstIndex, deficitMinutes: Math.round(worstDeficit) };
+}
+
+function getOutOfBalanceHoursAbs() {
+    const { deficitMinutes } = getRecoverInfo();
+    return Math.round(deficitMinutes / 60);
+}
+
+function getRecoverWithIndex() {
+    const { index } = getRecoverInfo();
+    return index;
 }
 
 function isWithinAcceptableRange() {
@@ -186,7 +235,10 @@ function updateTrayTitleAndIcon() {
     renderTrayImage(balanceNum, minutesLeft, () => { });
     // Only show the minutes as system text; colored balance + pie are in the image
     try { tray.setTitle(`${minutesLeft}`); } catch { }
-    tray.setToolTip(`${settings.missions[0].name}: ${Math.round(getTotalMinutesForMission(0) / 60)}h | ${settings.missions[1].name}: ${Math.round(getTotalMinutesForMission(1) / 60)}h`);
+    try {
+        const parts = settings.missions.map((m, i) => `${m.name}: ${Math.round(getTotalMinutesForMission(i) / 60)}h`);
+        tray.setToolTip(parts.join(' | '));
+    } catch { }
 }
 
 function timeRemainingSeconds() {
@@ -212,7 +264,9 @@ function incrementDailyMinute() {
     if (!state.timer.running || state.timer.isBreak) return;
 
     const today = getTodayDateString();
-    const missionKey = `mission_${state.currentMissionIndex}`;
+    const mission = settings.missions[state.currentMissionIndex];
+    if (!mission) return;
+    const missionKey = mission.id;
 
     // Initialize structure if needed
     if (!state.dailyMinutes) {
@@ -500,8 +554,9 @@ function renderTrayImage(balanceNum, minutesLeft, cb) {
         transparent: true,
         webPreferences: { offscreen: true }
     });
-    const balanceColor = isWithinAcceptableRange() ? '#9e9e9e' : (getOutOfBalanceSign() >= 0 ? settings.missions[0].color : settings.missions[1].color);
-    const pieColor = settings.missions[state.currentMissionIndex].color;
+    const recoverIdx = getRecoverWithIndex();
+    const balanceColor = (isWithinAcceptableRange() || recoverIdx < 0) ? '#9e9e9e' : (settings.missions[recoverIdx]?.color || '#9e9e9e');
+    const pieColor = settings.missions[state.currentMissionIndex]?.color || '#9e9e9e';
     const total = state.timer.initialSeconds || (state.timer.isBreak ? (settings.durations.breakMinutes || 3) * 60 : (settings.durations.workMinutes || 28) * 60);
     const rem = Math.max(0, timeRemainingSeconds());
     const frac = total > 0 ? Math.max(0, Math.min(1, 1 - rem / total)) : 0;
@@ -568,7 +623,7 @@ function getPublicState() {
         },
         computed: {
             outOfBalanceHours: getOutOfBalanceHoursAbs(),
-            outOfBalanceSign: getOutOfBalanceSign(),
+            recoverWithIndex: getRecoverWithIndex(),
             withinRange: isWithinAcceptableRange(),
             lifetimeMinutes: getTotalMinutesForMission(state.currentMissionIndex)
         }
@@ -657,13 +712,17 @@ ipcMain.handle('balance:stop', () => { stopTimer(); return getPublicState(); });
 ipcMain.handle('balance:pause', () => { pauseTimer(); return getPublicState(); });
 ipcMain.handle('balance:resume', () => { resumeTimer(); return getPublicState(); });
 ipcMain.handle('balance:extend', (_e, seconds) => { extendTimer(seconds); return getPublicState(); });
-ipcMain.handle('balance:switch-mission', (_e, idx) => { state.currentMissionIndex = Math.max(0, Math.min(2, idx)); notifyRenderer('state'); updateTrayTitleAndIcon(); return getPublicState(); });
+ipcMain.handle('balance:switch-mission', (_e, idx) => { const maxIdx = Math.max(0, (settings.missions.length || 1) - 1); state.currentMissionIndex = Math.max(0, Math.min(maxIdx, idx)); notifyRenderer('state'); updateTrayTitleAndIcon(); return getPublicState(); });
 ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
     const prevDir = getUserDir();
     settings = { ...settings, ...nextSettings };
     // Ensure constraints
-    if (!settings.missions || settings.missions.length !== 3) settings.missions = DEFAULT_SETTINGS.missions;
+    if (!settings.missions || !Array.isArray(settings.missions) || settings.missions.length === 0) settings.missions = DEFAULT_SETTINGS.missions;
     if (!settings.durations) settings.durations = DEFAULT_SETTINGS.durations;
+    ensureMissionIds();
+    // Clamp current mission index to range
+    const maxIdx = Math.max(0, settings.missions.length - 1);
+    if (state.currentMissionIndex > maxIdx) state.currentMissionIndex = maxIdx;
     const newDir = getUserDir();
     if (newDir !== prevDir) {
         try { fs.mkdirSync(newDir, { recursive: true }); } catch { }

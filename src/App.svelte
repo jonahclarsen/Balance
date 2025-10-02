@@ -78,41 +78,32 @@
         showOptions = true;
     }
 
-    $: pinkHasMore = computed?.outOfBalanceSign >= 0;
     $: withinRange = computed?.withinRange;
+    $: recoverWithIndex = computed?.recoverWithIndex ?? -1;
 
     function computeTheme(settings, state) {
-        const mission1Color = settings?.missions?.[0]?.color || "#e91e63";
-        const mission2Color = settings?.missions?.[1]?.color || "#2e7d32";
         const gray = "#8C8C8C";
 
-        // Predefined palettes per mission for full scheme swap
-        const pinkTheme = {
-            bg: "#FFE2F5",
-            card: "#FDB3DB",
-            stroke: "#BF6091",
-            accent: "#E47ED1",
-        };
-        const greenTheme = {
-            bg: "#E0F2F1",
-            card: "#B2DFDB",
-            stroke: "#00695C",
-            accent: "#4DB6AC",
-        };
-        const neutralTheme = {
-            bg: "#F3F3F3",
-            card: "#E8E8E8",
-            stroke: "#9E9E9E",
-            accent: "#BDBDBD",
+        // Predefined palettes for full scheme swap
+        const palettes = {
+            pink: { bg: "#FFE2F5", card: "#FDB3DB", stroke: "#BF6091", accent: "#E47ED1" },
+            green: { bg: "#E0F2F1", card: "#B2DFDB", stroke: "#00695C", accent: "#4DB6AC" },
+            blue: { bg: "#E3F2FD", card: "#BBDEFB", stroke: "#1565C0", accent: "#64B5F6" },
+            purple: { bg: "#F3E5F5", card: "#E1BEE7", stroke: "#6A1B9A", accent: "#BA68C8" },
+            amber: { bg: "#FFF8E1", card: "#FFECB3", stroke: "#FF8F00", accent: "#FFD54F" },
+            teal: { bg: "#E0F2F1", card: "#B2DFDB", stroke: "#00695C", accent: "#4DB6AC" },
+            crimson: { bg: "#FFE3E6", card: "#FFCDD2", stroke: "#B71C1C", accent: "#EF5350" },
+            slate: { bg: "#ECEFF1", card: "#CFD8DC", stroke: "#37474F", accent: "#90A4AE" },
+            neutral: { bg: "#F3F3F3", card: "#E8E8E8", stroke: "#9E9E9E", accent: "#BDBDBD" },
         };
 
         const idx = state?.currentMissionIndex ?? 0;
-        const base = idx === 0 ? pinkTheme : idx === 1 ? greenTheme : neutralTheme;
+        const current = settings?.missions?.[idx] || {};
+        const base = palettes[current.scheme] || palettes.neutral;
 
         return {
             ...base,
-            mission1: mission1Color,
-            mission2: mission2Color,
+            activeColor: current.color || "#9e9e9e",
             breakColor: "#DDDDDD",
             gray,
         };
@@ -151,13 +142,7 @@
         <div class="title">
             Balance — Time for
             <span
-                style="color:{state && state.timer?.isBreak
-                    ? crayon.gray
-                    : state && state.currentMissionIndex === 0
-                      ? crayon.mission1
-                      : state && state.currentMissionIndex === 2
-                        ? crayon.gray
-                        : crayon.mission2}"
+                style="color:{state && state.timer?.isBreak ? crayon.gray : crayon.activeColor}"
             >
                 {#if settings && state}
                     {#if state.timer?.isBreak}
@@ -177,13 +162,7 @@
         <div class="time-controls">
             <div
                 class="timer"
-                style="color:{state.timer?.isBreak
-                    ? crayon.gray
-                    : state.currentMissionIndex === 0
-                      ? crayon.mission1
-                      : state.currentMissionIndex === 2
-                        ? crayon.gray
-                        : crayon.mission2}"
+                style="color:{state.timer?.isBreak ? crayon.gray : crayon.activeColor}"
             >
                 {String(
                     Math.floor((state.timer?.remainingSeconds || 0) / 60),
@@ -261,14 +240,8 @@
             <div class="tabs">
                 {#each settings.missions as m, i}
                     <button
-                        class="tab {state.currentMissionIndex === i
-                            ? 'active'
-                            : ''}"
-                        style="color:{i === 0
-                            ? crayon.mission1
-                            : i === 2
-                              ? crayon.gray
-                              : crayon.mission2}"
+                        class="tab {state.currentMissionIndex === i ? 'active' : ''}"
+                        style="color:{m.goalPercent > 0 ? m.color : crayon.gray}"
                         on:click={() => switchMission(i)}
                     >
                         {m.name}
@@ -279,11 +252,7 @@
             <div class="balance">
                 <div
                     class="pill"
-                    style="color: {state.currentMissionIndex === 0
-                        ? crayon.mission1
-                        : state.currentMissionIndex === 2
-                          ? crayon.gray
-                          : crayon.mission2}"
+                    style="color: {settings.missions[state.currentMissionIndex]?.goalPercent > 0 ? (settings.missions[state.currentMissionIndex]?.color || crayon.activeColor) : crayon.gray}"
                 >
                     Lifetime: <strong
                         >{Math.floor(
@@ -294,25 +263,13 @@
             </div>
 
             <div class="balance">
-                <div
-                    class="pill"
-                    style="width: {state.currentMissionIndex === 3 ? 60 : 70}%;
-                        color: {withinRange
-                        ? crayon.gray
-                        : pinkHasMore
-                          ? crayon.mission1
-                          : crayon.mission2}"
-                >
-                    <strong>{computed.outOfBalanceHours}</strong> hours out of
-                    balance; recover with
-                    <span
-                        style="color: {pinkHasMore
-                            ? crayon.mission2
-                            : crayon.mission1}"
-                        >{pinkHasMore
-                            ? settings.missions[1].name
-                            : settings.missions[0].name}</span
-                    >
+                <div class="pill" style="width: 70%; color: {withinRange ? crayon.gray : (settings.missions[recoverWithIndex]?.color || crayon.gray)}">
+                    <strong>{computed.outOfBalanceHours}</strong> hours out of balance; recover with
+                    {#if recoverWithIndex >= 0}
+                        <span style="color: {settings.missions[recoverWithIndex].color}">{settings.missions[recoverWithIndex].name}</span>
+                    {:else}
+                        <span style="color: {crayon.gray}">—</span>
+                    {/if}
                 </div>
             </div>
         </div>
