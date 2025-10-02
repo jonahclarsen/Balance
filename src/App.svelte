@@ -78,42 +78,30 @@
         showOptions = true;
     }
 
-    $: pinkHasMore = computed?.outOfBalanceSign >= 0;
     $: withinRange = computed?.withinRange;
+    $: recoverIndex = computed?.recoverWithIndex;
 
     function computeTheme(settings, state) {
-        const mission1Color = settings?.missions?.[0]?.color || "#e91e63";
-        const mission2Color = settings?.missions?.[1]?.color || "#2e7d32";
         const gray = "#8C8C8C";
-
-        // Predefined palettes per mission for full scheme swap
-        const pinkTheme = {
-            bg: "#FFE2F5",
-            card: "#FDB3DB",
-            stroke: "#BF6091",
-            accent: "#E47ED1",
-        };
-        const greenTheme = {
-            bg: "#E0F2F1",
-            card: "#B2DFDB",
-            stroke: "#00695C",
-            accent: "#4DB6AC",
-        };
-        const neutralTheme = {
-            bg: "#F3F3F3",
-            card: "#E8E8E8",
-            stroke: "#9E9E9E",
-            accent: "#BDBDBD",
+        const schemes = {
+            pink: { bg: "#FFE2F5", card: "#FDB3DB", stroke: "#BF6091", accent: "#E47ED1" },
+            green: { bg: "#E0F2F1", card: "#B2DFDB", stroke: "#00695C", accent: "#4DB6AC" },
+            blue: { bg: "#E3F2FD", card: "#BBDEFB", stroke: "#1565C0", accent: "#64B5F6" },
+            purple: { bg: "#F3E5F5", card: "#E1BEE7", stroke: "#6A1B9A", accent: "#AB47BC" },
+            orange: { bg: "#FFF3E0", card: "#FFE0B2", stroke: "#E65100", accent: "#FFB74D" },
+            teal: { bg: "#E0F7FA", card: "#B2EBF2", stroke: "#006064", accent: "#4DD0E1" },
+            indigo: { bg: "#E8EAF6", card: "#C5CAE9", stroke: "#283593", accent: "#7986CB" },
+            gold: { bg: "#FFF8E1", card: "#FFECB3", stroke: "#996C00", accent: "#FFD54F" },
+            neutral: { bg: "#F3F3F3", card: "#E8E8E8", stroke: "#9E9E9E", accent: "#BDBDBD" },
         };
 
         const idx = state?.currentMissionIndex ?? 0;
-        const base = idx === 0 ? pinkTheme : idx === 1 ? greenTheme : neutralTheme;
+        const current = settings?.missions?.[idx] || {};
+        const schemeKey = current.scheme || 'neutral';
+        const base = schemes[schemeKey] || schemes.neutral;
 
         return {
             ...base,
-            mission1: mission1Color,
-            mission2: mission2Color,
-            breakColor: "#DDDDDD",
             gray,
         };
     }
@@ -153,11 +141,7 @@
             <span
                 style="color:{state && state.timer?.isBreak
                     ? crayon.gray
-                    : state && state.currentMissionIndex === 0
-                      ? crayon.mission1
-                      : state && state.currentMissionIndex === 2
-                        ? crayon.gray
-                        : crayon.mission2}"
+                    : settings?.missions?.[state?.currentMissionIndex || 0]?.color || '#9e9e9e'}"
             >
                 {#if settings && state}
                     {#if state.timer?.isBreak}
@@ -179,11 +163,7 @@
                 class="timer"
                 style="color:{state.timer?.isBreak
                     ? crayon.gray
-                    : state.currentMissionIndex === 0
-                      ? crayon.mission1
-                      : state.currentMissionIndex === 2
-                        ? crayon.gray
-                        : crayon.mission2}"
+                    : settings?.missions?.[state.currentMissionIndex]?.color || '#9e9e9e'}"
             >
                 {String(
                     Math.floor((state.timer?.remainingSeconds || 0) / 60),
@@ -264,11 +244,7 @@
                         class="tab {state.currentMissionIndex === i
                             ? 'active'
                             : ''}"
-                        style="color:{i === 0
-                            ? crayon.mission1
-                            : i === 2
-                              ? crayon.gray
-                              : crayon.mission2}"
+                        style="color:{m.color}"
                         on:click={() => switchMission(i)}
                     >
                         {m.name}
@@ -279,11 +255,7 @@
             <div class="balance">
                 <div
                     class="pill"
-                    style="color: {state.currentMissionIndex === 0
-                        ? crayon.mission1
-                        : state.currentMissionIndex === 2
-                          ? crayon.gray
-                          : crayon.mission2}"
+                    style="color: {settings?.missions?.[state.currentMissionIndex]?.color || '#9e9e9e'}"
                 >
                     Lifetime: <strong
                         >{Math.floor(
@@ -296,23 +268,21 @@
             <div class="balance">
                 <div
                     class="pill"
-                    style="width: {state.currentMissionIndex === 3 ? 60 : 70}%;
+                    style="width: 70%;
                         color: {withinRange
                         ? crayon.gray
-                        : pinkHasMore
-                          ? crayon.mission1
-                          : crayon.mission2}"
+                        : settings?.missions?.[recoverIndex]?.color || crayon.gray}"
                 >
                     <strong>{computed.outOfBalanceHours}</strong> hours out of
                     balance; recover with
-                    <span
-                        style="color: {pinkHasMore
-                            ? crayon.mission2
-                            : crayon.mission1}"
-                        >{pinkHasMore
-                            ? settings.missions[1].name
-                            : settings.missions[0].name}</span
-                    >
+                    {#if typeof recoverIndex === 'number'}
+                        <span
+                            style="color: {settings?.missions?.[recoverIndex]?.color || crayon.gray}"
+                            >{settings.missions[recoverIndex].name}</span
+                        >
+                    {:else}
+                        <span>—</span>
+                    {/if}
                 </div>
             </div>
         </div>
