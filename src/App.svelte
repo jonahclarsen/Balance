@@ -107,7 +107,8 @@
         };
 
         const idx = state?.currentMissionIndex ?? 0;
-        const base = idx === 0 ? pinkTheme : idx === 1 ? greenTheme : neutralTheme;
+        const base =
+            idx === 0 ? pinkTheme : idx === 1 ? greenTheme : neutralTheme;
 
         return {
             ...base,
@@ -215,21 +216,9 @@
             <!-- Time-control row: +1m, -1m -->
             <div class="controls time-control">
                 <button
-                    class="btn play"
-                    on:click={togglePlayPause}
-                    title="Play/Pause"
-                >
-                    {#if state.timer?.running}
-                        ⏸️
-                    {:else}
-                        ▶️
-                    {/if}
-                </button>
-                <button
                     class="btn time-control-btn"
                     on:click={(e) => {
-                        if (e.shiftKey) extendBy(20);
-                        else if (e.metaKey || e.ctrlKey) extendBy(5 * 60);
+                        if (e.metaKey || e.ctrlKey) extendBy(5 * 60);
                         else extendBy(60);
                     }}
                     title="Increase time by 1 minute"
@@ -239,8 +228,7 @@
                 <button
                     class="btn time-control-btn"
                     on:click={(e) => {
-                        if (e.shiftKey) extendBy(-20);
-                        else if (e.metaKey || e.ctrlKey) extendBy(-5 * 60);
+                        if (e.metaKey || e.ctrlKey) extendBy(-5 * 60);
                         else extendBy(-60);
                     }}
                     title="Decrease time by 1 minute"
@@ -250,10 +238,9 @@
             </div>
             <div class="keyboard-instructions">
                 <p>
-                    Hold {navigator.platform.includes("Mac") ? "⌘" : "ctrl"} for
-                    +-5m
+                    Hold {navigator.platform.includes("Mac") ? "⌘" : "ctrl"}
+                    for +-5m
                 </p>
-                <p>Hold shift for +-20s</p>
             </div>
         </div>
 
@@ -316,6 +303,27 @@
                 </div>
             </div>
         </div>
+
+        <div class="bottom-controls">
+            <div
+                class="play-pause-link"
+                on:click={togglePlayPause}
+                on:keydown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        togglePlayPause();
+                    }
+                }}
+                role="button"
+                tabindex="0"
+            >
+                {#if state.timer?.running}
+                    Pause Timer
+                {:else}
+                    Start Timer
+                {/if}
+            </div>
+        </div>
     {/if}
 
     {#if showOptions}
@@ -370,8 +378,8 @@
         margin: 8px 0 8px;
     }
     .pill {
-        padding: 10px 14px;
-        border: 3px dashed var(--stroke);
+        padding: 0px 14px;
+        border: none;
         border-radius: 999px;
         font-size: 14px;
         background: var(--card);
@@ -407,11 +415,19 @@
     .btn.seg {
         border-radius: 999px;
     }
-    .btn.play {
-        width: 50px;
-        height: 50px;
-        text-align: center;
-        font-size: 19px;
+    .play-pause-link {
+        color: var(--accent);
+        text-decoration: underline;
+        cursor: pointer;
+        font-size: 12px;
+        user-select: none;
+    }
+    .play-pause-link:hover {
+        opacity: 0.8;
+    }
+    .play-pause-link:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: 2px;
     }
     .row {
         display: flex;
@@ -433,7 +449,7 @@
         margin: 0 auto;
     }
     .timer {
-        font-size: 60px;
+        font-size: 80px;
         font-weight: 900;
         text-align: center;
         letter-spacing: 2px;
@@ -458,9 +474,15 @@
     }
     .keyboard-instructions {
         font-size: 11px;
-        line-height: 1px;
-        padding-bottom: 3px;
+        line-height: 1.2;
         color: var(--gray);
-        text-align: center;
+        margin-left: 12px;
+        text-align: left;
+    }
+    .bottom-controls {
+        display: flex;
+        justify-content: center;
+        margin-top: auto;
+        padding: 20px 0;
     }
 </style>
