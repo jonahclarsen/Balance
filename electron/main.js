@@ -350,12 +350,10 @@ function createWindow() {
 
     mainWindow.loadURL(RENDERER_URL);
 
-    // Optional: Uncomment to open dev tools for debugging in production
-    // if (!isDev) {
-    //     setTimeout(() => {
-    //         mainWindow.webContents.openDevTools({ mode: 'detach' });
-    //     }, 2000);
-    // }
+    // Uncomment to open dev tools for debugging in production
+    // setTimeout(() => {
+    //     mainWindow.webContents.openDevTools({ mode: 'detach' });
+    // }, 2000);
 
     // Add delay before allowing blur to hide window (prevents immediate hiding)
     let canHideOnBlur = false;
