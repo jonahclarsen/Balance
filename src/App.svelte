@@ -319,8 +319,10 @@
             >
                 {#if state.timer?.running}
                     Pause Timer
-                {:else}
+                {:else if state.timer?.remainingSeconds === 0}
                     Start Timer
+                {:else}
+                    Resume Timer
                 {/if}
             </div>
         </div>
