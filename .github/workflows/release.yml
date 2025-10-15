@@ -1,0 +1,53 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@4
+      
+      - name: Setup pnpm
+        uses: pnpm-action-setup@v3
+        with:
+          version: 10.5.1
+
+      - name: Install deps
+        run: pnpm install
+
+      - name: Prepare Apple signing assets
+        if: matrix.os == 'macos-latest'
+        run: |
+          mkdir -p .certs
+          echo "${{ secrets.MACOS_CERTIFICATE }}" | base64 --decode > .certs/cert.p12
+          echo "${{ secrets.APPLE_API_KEY }}" > .certs/AuthKey.p8
+
+      name: Build macOS (x64) signed and notarized, publish draft release
+        if: matrix.os == 'macos-latest'
+        env:
+          CSC_LINK: ${{ github.workspace }}/.certs/cert.p12
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ github.workspace }}/.certs/AuthKey.p8
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: pnpm run transpile:electron && pnpm run build:mac
+
+      - name: Build and publish (Windows)
+        if: matrix.os == 'windows-latest'
+        run: pnpm run transpile:electron && pnpm run build:win
+
+      - name: Build and publish (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: pnpm run transpile:electron && pnpm run build:linux

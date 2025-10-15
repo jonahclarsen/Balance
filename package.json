@@ -18,7 +18,10 @@
         "build:win": "run-s build:renderer && NODE_ENV=production electron-builder --win",
         "build:linux": "run-s build:renderer && NODE_ENV=production electron-builder --linux",
         "build:all": "run-s build:renderer && NODE_ENV=production electron-builder --mac --win --linux",
-        "dist": "run-s build:renderer build:electron"
+        "transpile:electron": "tsc -p src/electron/tsconfig.json",
+        "release:patch": "pnpm version patch -m \"New release: %s\" && git push origin HEAD && git push origin --tags",
+        "release:minor": "pnpm version minor -m \"New release: %s\" && git push origin HEAD && git push origin --tags",
+        "release:major": "pnpm version major -m \"New release: %s\" && git push origin HEAD && git push origin --tags"
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^3.1.1",
