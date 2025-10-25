@@ -1,4 +1,6 @@
 <script>
+    import { THEME_PALETTES } from "../themes.js";
+
     export let settings;
     export let state;
     export let computed;
@@ -9,7 +11,7 @@
         api.switchMission(i);
     }
 
-    $: pinkHasMore = computed?.outOfBalanceSign >= 0;
+    $: mission0HasMore = computed?.outOfBalanceSign >= 0;
     $: withinRange = computed?.withinRange;
 </script>
 
@@ -18,11 +20,7 @@
         {#each settings.missions as m, i}
             <button
                 class="tab {state.currentMissionIndex === i ? 'active' : ''}"
-                style="color:{i === 0
-                    ? crayon.mission1
-                    : i === 2
-                      ? crayon.gray
-                      : crayon.mission2}"
+                style="color:{THEME_PALETTES[m.theme].primary}"
                 on:click={() => switchMission(i)}
             >
                 {m.name}
@@ -33,11 +31,9 @@
     <div class="balance">
         <div
             class="pill"
-            style="color: {state.currentMissionIndex === 0
-                ? crayon.mission1
-                : state.currentMissionIndex === 2
-                  ? crayon.gray
-                  : crayon.mission2}"
+            style="color: {THEME_PALETTES[
+                settings.missions[state.currentMissionIndex].theme
+            ].primary}"
         >
             Lifetime: <strong
                 >{Math.floor(
@@ -53,15 +49,17 @@
             style="width: {state.currentMissionIndex === 3 ? 60 : 70}%;
                 color: {withinRange
                 ? crayon.gray
-                : pinkHasMore
-                  ? crayon.mission1
-                  : crayon.mission2}"
+                : mission0HasMore
+                  ? THEME_PALETTES[settings.missions[0].theme].primary
+                  : THEME_PALETTES[settings.missions[1].theme].primary}"
         >
             <strong>{computed.outOfBalanceHours}</strong> hours out of balance;
             recover with
             <span
-                style="color: {pinkHasMore ? crayon.mission2 : crayon.mission1}"
-                >{pinkHasMore
+                style="color: {mission0HasMore
+                    ? THEME_PALETTES[settings.missions[1].theme].primary
+                    : THEME_PALETTES[settings.missions[0].theme].primary}"
+                >{mission0HasMore
                     ? settings.missions[1].name
                     : settings.missions[0].name}</span
             >

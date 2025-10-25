@@ -4,6 +4,7 @@
     import TimerDisplay from "./components/TimerDisplay.svelte";
     import TimerControls from "./components/TimerControls.svelte";
     import MissionSelector from "./components/MissionSelector.svelte";
+    import { THEME_PALETTES } from "./themes.js";
     import "./button.css";
 
     const api = window.balance;
@@ -59,40 +60,21 @@
     }
 
     function computeTheme(settings, state) {
-        const mission1Color = settings?.missions?.[0]?.color || "#e91e63";
-        const mission2Color = settings?.missions?.[1]?.color || "#2e7d32";
-        const gray = "#8C8C8C";
+        // If settings are not loaded yet, return neutral theme
+        if (!settings?.missions) {
+            return {
+                ...THEME_PALETTES.neutral,
+                gray: THEME_PALETTES.neutral.primary,
+            };
+        }
 
-        // Predefined palettes per mission for full scheme swap
-        const pinkTheme = {
-            bg: "#FFE2F5",
-            card: "#FDB3DB",
-            stroke: "#BF6091",
-            accent: "#E47ED1",
-        };
-        const greenTheme = {
-            bg: "#E0F2F1",
-            card: "#B2DFDB",
-            stroke: "#00695C",
-            accent: "#4DB6AC",
-        };
-        const neutralTheme = {
-            bg: "#F3F3F3",
-            card: "#E8E8E8",
-            stroke: "#9E9E9E",
-            accent: "#BDBDBD",
-        };
-
-        const idx = state?.currentMissionIndex ?? 0;
-        const base =
-            idx === 0 ? pinkTheme : idx === 1 ? greenTheme : neutralTheme;
+        const idx = state?.currentMissionIndex;
+        const mission = settings.missions[idx];
+        const theme = THEME_PALETTES[mission.theme];
 
         return {
-            ...base,
-            mission1: mission1Color,
-            mission2: mission2Color,
-            breakColor: "#DDDDDD",
-            gray,
+            ...theme,
+            gray: THEME_PALETTES.neutral.primary,
         };
     }
 
@@ -131,11 +113,11 @@
             <span
                 style="color:{state && state.timer?.isBreak
                     ? crayon.gray
-                    : state && state.currentMissionIndex === 0
-                      ? crayon.mission1
-                      : state && state.currentMissionIndex === 2
-                        ? crayon.gray
-                        : crayon.mission2}"
+                    : settings && state
+                      ? THEME_PALETTES[
+                            settings.missions[state.currentMissionIndex].theme
+                        ].primary
+                      : crayon.gray}"
             >
                 {#if settings && state}
                     {#if state.timer?.isBreak}

@@ -8,13 +8,7 @@
         return `${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
     }
 
-    $: timerColor = state.timer?.isBreak
-        ? crayon.gray
-        : state.currentMissionIndex === 0
-          ? crayon.mission1
-          : state.currentMissionIndex === 2
-            ? crayon.gray
-            : crayon.mission2;
+    $: timerColor = state.timer?.isBreak ? crayon.gray : crayon.primary;
 </script>
 
 <div class="timer" style="color:{timerColor}">

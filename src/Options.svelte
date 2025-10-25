@@ -1,5 +1,6 @@
 <script>
     import { createEventDispatcher } from "svelte";
+    import { THEME_PALETTES } from "./themes.js";
     import "./button.css";
     export let editingSettings;
     export let api;
@@ -26,12 +27,42 @@
             <input bind:value={editingSettings.missions[0].name} />
         </div>
         <div class="field">
+            <label>Pink Mission Theme</label>
+            <select bind:value={editingSettings.missions[0].theme}>
+                {#each Object.keys(THEME_PALETTES) as themeKey}
+                    <option value={themeKey}>
+                        {themeKey.charAt(0).toUpperCase() + themeKey.slice(1)}
+                    </option>
+                {/each}
+            </select>
+        </div>
+        <div class="field">
             <label>Green Mission Name</label>
             <input bind:value={editingSettings.missions[1].name} />
         </div>
         <div class="field">
+            <label>Green Mission Theme</label>
+            <select bind:value={editingSettings.missions[1].theme}>
+                {#each Object.keys(THEME_PALETTES) as themeKey}
+                    <option value={themeKey}>
+                        {themeKey.charAt(0).toUpperCase() + themeKey.slice(1)}
+                    </option>
+                {/each}
+            </select>
+        </div>
+        <div class="field">
             <label>Untracked Mission Name</label>
             <input bind:value={editingSettings.missions[2].name} />
+        </div>
+        <div class="field">
+            <label>Untracked Mission Theme</label>
+            <select bind:value={editingSettings.missions[2].theme}>
+                {#each Object.keys(THEME_PALETTES) as themeKey}
+                    <option value={themeKey}>
+                        {themeKey.charAt(0).toUpperCase() + themeKey.slice(1)}
+                    </option>
+                {/each}
+            </select>
         </div>
         <div class="field">
             <label>Acceptable balance range (hours)</label>
@@ -112,7 +143,8 @@
     .field.half {
         flex: 1;
     }
-    input {
+    input,
+    select {
         width: 100%;
         padding: 8px 10px;
         border: 3px solid var(--stroke);

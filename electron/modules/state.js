@@ -4,9 +4,9 @@ const fs = require('fs');
 
 const DEFAULT_SETTINGS = {
     missions: [
-        { name: 'Pink Mission', color: '#e91e63' },
-        { name: 'Green Mission', color: '#2e7d32' },
-        { name: 'Other', color: '#9e9e9e', untracked: true }
+        { name: 'Pink Mission', theme: 'pink' },
+        { name: 'Green Mission', theme: 'green' },
+        { name: 'Other', theme: 'neutral', untracked: true }
     ],
     acceptableHourRange: 6,
     durations: { workMinutes: 28, breakMinutes: 3 },
