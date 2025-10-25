@@ -1,6 +1,9 @@
 <script>
     import { onMount } from "svelte";
     import Options from "./Options.svelte";
+    import TimerDisplay from "./components/TimerDisplay.svelte";
+    import TimerControls from "./components/TimerControls.svelte";
+    import MissionSelector from "./components/MissionSelector.svelte";
     import "./button.css";
 
     const api = window.balance;
@@ -35,26 +38,11 @@
         return () => unsub && unsub();
     });
 
-    function minutesLeft() {
-        if (!state) return 0;
-        return Math.floor((state.timer?.remainingSeconds || 0) / 60);
+    function openOptions() {
+        editingSettings = JSON.parse(JSON.stringify(settings));
+        showOptions = true;
     }
 
-    function extendBy(seconds) {
-        api.extend(seconds);
-    }
-
-    function startWork() {
-        hasEnded = false;
-        api.startWork();
-    }
-    function startBreak() {
-        hasEnded = false;
-        api.startBreak();
-    }
-    function stop() {
-        api.stop();
-    }
     function togglePlayPause() {
         const running = !!state?.timer?.running;
         const remaining = state?.timer?.remainingSeconds || 0;
@@ -64,22 +52,11 @@
             api.resume();
         } else {
             // No timer yet; start based on current selection (default to work when unknown)
-            if (state?.timer?.isBreak) startBreak();
-            else startWork();
+            if (state?.timer?.isBreak) api.startBreak();
+            else api.startWork();
         }
         hasEnded = false;
     }
-    function switchMission(i) {
-        api.switchMission(i);
-    }
-
-    function openOptions() {
-        editingSettings = JSON.parse(JSON.stringify(settings));
-        showOptions = true;
-    }
-
-    $: pinkHasMore = computed?.outOfBalanceSign >= 0;
-    $: withinRange = computed?.withinRange;
 
     function computeTheme(settings, state) {
         const mission1Color = settings?.missions?.[0]?.color || "#e91e63";
@@ -175,155 +152,31 @@
     </div>
 
     {#if settings && state}
-        <div class="time-controls">
-            <div
-                class="timer"
-                style="color:{state.timer?.isBreak
-                    ? crayon.gray
-                    : state.currentMissionIndex === 0
-                      ? crayon.mission1
-                      : state.currentMissionIndex === 2
-                        ? crayon.gray
-                        : crayon.mission2}"
-            >
-                {String(
-                    Math.floor((state.timer?.remainingSeconds || 0) / 60),
-                ).padStart(2, "0")}:{String(
-                    (state.timer?.remainingSeconds || 0) % 60,
-                ).padStart(2, "0")}
-            </div>
-
-            <!-- Mission-control row: Pomodoro | Break -->
-            <div class="controls mission-control">
-                <button
-                    class="btn seg {state.timer?.isBreak ? '' : 'selected'}"
-                    on:click={startWork}
-                    style="background:var(--card)"
-                    title="Start pomodoro"
-                >
-                    🍅 Start Pomodoro
-                </button>
-                <button
-                    class="btn seg {state.timer?.isBreak ? 'selected' : ''}"
-                    on:click={startBreak}
-                    style="background:var(--card)"
-                    title="Start break"
-                >
-                    🌿 Start Break
-                </button>
-            </div>
-
-            <!-- Time-control row: +1m, -1m -->
-            <div class="controls time-control">
-                <button
-                    class="btn time-control-btn"
-                    on:click={(e) => {
-                        if (e.metaKey || e.ctrlKey) extendBy(5 * 60);
-                        else extendBy(60);
-                    }}
-                    title="Increase time by 1 minute"
-                >
-                    +
-                </button>
-                <button
-                    class="btn time-control-btn"
-                    on:click={(e) => {
-                        if (e.metaKey || e.ctrlKey) extendBy(-5 * 60);
-                        else extendBy(-60);
-                    }}
-                    title="Decrease time by 1 minute"
-                >
-                    -
-                </button>
-            </div>
-            <div class="keyboard-instructions">
-                <p>
-                    Hold {navigator.platform.includes("Mac") ? "⌘" : "ctrl"}
-                    for +-5m
-                </p>
-            </div>
-        </div>
-
-        <div class="mission-select">
-            <div class="tabs">
-                {#each settings.missions as m, i}
-                    <button
-                        class="tab {state.currentMissionIndex === i
-                            ? 'active'
-                            : ''}"
-                        style="color:{i === 0
-                            ? crayon.mission1
-                            : i === 2
-                              ? crayon.gray
-                              : crayon.mission2}"
-                        on:click={() => switchMission(i)}
-                    >
-                        {m.name}
-                    </button>
-                {/each}
-            </div>
-
-            <div class="balance">
+        <div class="main-content">
+            <TimerDisplay {state} {crayon} />
+            <TimerControls {state} {api} bind:hasEnded />
+            <MissionSelector {settings} {state} {computed} {crayon} {api} />
+            <div class="bottom-controls">
                 <div
-                    class="pill"
-                    style="color: {state.currentMissionIndex === 0
-                        ? crayon.mission1
-                        : state.currentMissionIndex === 2
-                          ? crayon.gray
-                          : crayon.mission2}"
+                    class="play-pause-link"
+                    on:click={togglePlayPause}
+                    on:keydown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            togglePlayPause();
+                        }
+                    }}
+                    role="button"
+                    tabindex="0"
                 >
-                    Lifetime: <strong
-                        >{Math.floor(
-                            (computed.lifetimeMinutes || 0) / 60,
-                        )}h{(computed.lifetimeMinutes || 0) % 60}m</strong
-                    >
+                    {#if state.timer?.running}
+                        Pause Timer
+                    {:else if state.timer?.remainingSeconds === 0}
+                        Start Timer
+                    {:else}
+                        Resume Timer
+                    {/if}
                 </div>
-            </div>
-
-            <div class="balance">
-                <div
-                    class="pill"
-                    style="width: {state.currentMissionIndex === 3 ? 60 : 70}%;
-                        color: {withinRange
-                        ? crayon.gray
-                        : pinkHasMore
-                          ? crayon.mission1
-                          : crayon.mission2}"
-                >
-                    <strong>{computed.outOfBalanceHours}</strong> hours out of
-                    balance; recover with
-                    <span
-                        style="color: {pinkHasMore
-                            ? crayon.mission2
-                            : crayon.mission1}"
-                        >{pinkHasMore
-                            ? settings.missions[1].name
-                            : settings.missions[0].name}</span
-                    >
-                </div>
-            </div>
-        </div>
-
-        <div class="bottom-controls">
-            <div
-                class="play-pause-link"
-                on:click={togglePlayPause}
-                on:keydown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        togglePlayPause();
-                    }
-                }}
-                role="button"
-                tabindex="0"
-            >
-                {#if state.timer?.running}
-                    Pause Timer
-                {:else if state.timer?.remainingSeconds === 0}
-                    Start Timer
-                {:else}
-                    Resume Timer
-                {/if}
             </div>
         </div>
     {/if}
@@ -346,10 +199,8 @@
     .root {
         width: 360px;
         height: 540px;
-        /* overflow: hidden; */
         padding: 14px;
         background: var(--bg);
-        /* Fallback background */
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
         font-family:
             ui-rounded,
@@ -371,52 +222,24 @@
         margin-top: 0px;
         margin-left: 10px;
     }
-    .balance {
+    .row {
         display: flex;
         align-items: center;
-        text-align: center;
-        justify-content: center;
-        gap: 10px;
-        margin: 8px 0 8px;
+        justify-content: space-between;
     }
-    .pill {
-        padding: 0px 14px;
-        border: none;
-        border-radius: 999px;
-        font-size: 14px;
-        background: var(--card);
-    }
-    .pill strong {
-        font-size: 16px;
-    }
-    .controls {
+    .main-content {
         display: flex;
-        gap: 8px;
+        flex-direction: column;
         justify-content: center;
         align-items: center;
-        text-align: center;
-        margin-top: 10px;
-        flex-wrap: wrap;
     }
-    .mission-control {
-        margin-top: 12px;
-        margin-bottom: 15px;
+
+    .bottom-controls {
+        display: flex;
+        justify-content: center;
+        padding: -20px 0;
     }
-    .time-control {
-        margin-top: 6px;
-        margin-bottom: 2px;
-    }
-    .time-control-btn {
-        width: 50px;
-        height: 50px;
-        font-size: 24px;
-    }
-    .btn.selected {
-        outline: 4px solid var(--accent);
-    }
-    .btn.seg {
-        border-radius: 999px;
-    }
+
     .play-pause-link {
         color: var(--accent);
         text-decoration: underline;
@@ -424,67 +247,13 @@
         font-size: 12px;
         user-select: none;
     }
+
     .play-pause-link:hover {
         opacity: 0.8;
     }
+
     .play-pause-link:focus {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
-    }
-    .row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    .time-controls {
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        padding: 20px 0; /* Reduce the effective content area to half */
-    }
-    .mission-select {
-        background: var(--card);
-        padding: 10px;
-        border-radius: 50px;
-        width: 75%;
-        margin: 0 auto;
-    }
-    .timer {
-        font-size: 80px;
-        font-weight: 900;
-        text-align: center;
-        letter-spacing: 2px;
-        text-shadow: 1px 1px #ffffff;
-    }
-    .tabs {
-        display: flex;
-        gap: 8px;
-        justify-content: center;
-        margin: 8px 0;
-    }
-    .tab {
-        padding: 8px 12px;
-        border: 3px solid var(--stroke);
-        border-radius: 999px;
-        background: var(--card);
-        font-size: 15px;
-        cursor: pointer;
-    }
-    .tab.active {
-        outline: 4px solid var(--accent);
-    }
-    .keyboard-instructions {
-        font-size: 11px;
-        line-height: 1.2;
-        color: var(--gray);
-        margin-left: 12px;
-        text-align: left;
-    }
-    .bottom-controls {
-        display: flex;
-        justify-content: center;
-        margin-top: auto;
-        padding: 20px 0;
     }
 </style>
