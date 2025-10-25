@@ -14,7 +14,7 @@
         "build:renderer": "NODE_ENV=production vite build",
         "build:electron": "NODE_ENV=production electron-builder",
         "build:mac": "run-s build:renderer && NODE_ENV=production electron-builder --mac",
-        "build:mac-nosign": "run-s build:renderer && NODE_ENV=production electron-builder --mac -c.mac.identity=null",
+        "build:mac-local": "run-s build:renderer && NODE_ENV=production electron-builder --mac --dir -c.mac.identity=null",
         "build:win": "run-s build:renderer && NODE_ENV=production electron-builder --win",
         "build:linux": "run-s build:renderer && NODE_ENV=production electron-builder --linux",
         "build:all": "run-s build:renderer && NODE_ENV=production electron-builder --mac --win --linux",
