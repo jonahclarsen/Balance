@@ -8,8 +8,8 @@
     "type": "commonjs",
     "scripts": {
         "dev": "run-p dev:renderer dev:electron",
-        "dev:renderer": "VITE_DEV_PORT=5174 vite --port 5174",
-        "dev:electron": "wait-on tcp:5174 && VITE_DEV_PORT=5174 electron .",
+        "dev:renderer": "VITE_DEV_PORT=5679 vite --port 5679",
+        "dev:electron": "wait-on tcp:5679 && VITE_DEV_PORT=5679 electron .",
         "build": "run-s build:renderer build:electron",
         "build:renderer": "NODE_ENV=production vite build",
         "build:electron": "NODE_ENV=production electron-builder",
