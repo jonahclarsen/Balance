@@ -1,6 +1,7 @@
-const { Tray, nativeImage, BrowserWindow } = require('electron');
+const { Tray, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { createCanvas } = require('@napi-rs/canvas');
 
 class TrayManager {
     constructor(timerManager, windowManager) {
@@ -56,90 +57,94 @@ class TrayManager {
     }
 
     renderTrayImage(balanceNum, minutesLeft, cb) {
-        // Create an offscreen BrowserWindow to render a small crisp canvas (HiDPI)
-        const scale = 2; // render at 2x for crisper downscale in tray
-        const pointH = 26; // increased for better visibility
+        try {
+            // Render at 2x for HiDPI displays
+            const scale = 2;
+            const pointH = 26;
 
-        // Calculate dynamic width based on content
-        const balanceText = String(balanceNum);
-        const fontSize = 15 * scale;
-        const pieSize = 18 * scale; // larger pie chart
-        const spaceBetween = 8; // space between number and pie
+            // Calculate dynamic width based on content
+            const balanceText = String(balanceNum);
+            const fontSize = 15 * scale;
+            const pieSize = 18 * scale;
+            const spaceBetween = 8;
 
-        // Estimate text width (approximate: 0.6 * fontSize per character for bold font)
-        const estimatedTextWidth = balanceText.length * fontSize * 0.6;
-        const totalContentWidth = estimatedTextWidth + spaceBetween + pieSize;
-        const minWidth = 32 * scale; // minimum width
-        const w = Math.max(minWidth, Math.ceil(totalContentWidth + 8)); // add some padding
-        const pointW = Math.ceil(w / scale);
+            // Estimate text width (approximate: 0.6 * fontSize per character for bold font)
+            const estimatedTextWidth = balanceText.length * fontSize * 0.6;
+            const totalContentWidth = estimatedTextWidth + spaceBetween + pieSize;
+            const minWidth = 32 * scale;
+            const w = Math.max(minWidth, Math.ceil(totalContentWidth + 8));
+            const pointW = Math.ceil(w / scale);
+            const h = pointH * scale;
+            const padding = 0 * scale;
 
-        const h = pointH * scale; // target height
-        const padding = 0 * scale; // padding between the pie chart and the countdown, but balance number to countdown aren't affected
-        const off = new BrowserWindow({
-            width: w,
-            height: h,
-            show: false,
-            frame: false,
-            transparent: true,
-            webPreferences: { offscreen: true }
-        });
-        const balanceColor = this.timerManager.isWithinAcceptableRange() ?
-            '#9e9e9e' :
-            (this.timerManager.getOutOfBalanceSign() >= 0 ?
-                this.settings.missions[0].color :
-                this.settings.missions[1].color);
-        const pieColor = this.settings.missions[this.state.currentMissionIndex].color;
-        const total = this.state.timer.initialSeconds || (this.state.timer.isBreak ?
-            (this.settings.durations.breakMinutes || 3) * 60 :
-            (this.settings.durations.workMinutes || 28) * 60);
-        const rem = Math.max(0, this.timerManager.timeRemainingSeconds());
-        const frac = total > 0 ? Math.max(0, Math.min(1, 1 - rem / total)) : 0;
-        const html = `<!doctype html><html><body style="margin:0;background:transparent;">
-            <canvas id="c" width="${w}" height="${h}" style="display:block"></canvas>
-            <script>
-            const c = document.getElementById('c');
-            const ctx = c.getContext('2d');
-            ctx.clearRect(0,0,${w},${h});
+            // Create canvas
+            const canvas = createCanvas(w, h);
+            const ctx = canvas.getContext('2d');
+
+            // Clear and setup
+            ctx.clearRect(0, 0, w, h);
             ctx.imageSmoothingEnabled = false;
-            ctx.font = 'bold ${15 * scale}px -apple-system, Segoe UI, Arial, Helvetica';
+
+            // Determine colors
+            const balanceColor = this.timerManager.isWithinAcceptableRange() ?
+                '#9e9e9e' :
+                (this.timerManager.getOutOfBalanceSign() >= 0 ?
+                    this.settings.missions[0].color :
+                    this.settings.missions[1].color);
+            const pieColor = this.settings.missions[this.state.currentMissionIndex].color;
+
+            // Calculate timer progress
+            const total = this.state.timer.initialSeconds || (this.state.timer.isBreak ?
+                (this.settings.durations.breakMinutes || 3) * 60 :
+                (this.settings.durations.workMinutes || 28) * 60);
+            const rem = Math.max(0, this.timerManager.timeRemainingSeconds());
+            const frac = total > 0 ? Math.max(0, Math.min(1, 1 - rem / total)) : 0;
+
+            // Draw balance number
+            ctx.font = `bold ${fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif`;
             ctx.textBaseline = 'middle';
             ctx.textAlign = 'left';
-            // balance number
-            ctx.fillStyle = '${balanceColor}';
-            const text = String(${balanceNum});
-            const tx = ${padding};
-            const ty = ${h}/2 + 2;
-            ctx.fillText(text, tx, ty);
-            const tm = Math.ceil(ctx.measureText(text).width);
-            // pie timer
-            const pieSize = ${pieSize};
-            const cx = tx + tm + pieSize/2 + ${spaceBetween};
-            const cy = ${h}/2;
-            ctx.strokeStyle = '${pieColor}';
-            ctx.lineWidth = ${Math.max(1, Math.round(0.9 * scale))};
-            ctx.beginPath(); ctx.arc(cx, cy, pieSize/2, 0, Math.PI*2); ctx.stroke();
-            // filled wedge (clockwise from top)
-            const start = -Math.PI/2;
-            const end = start + Math.PI*2*${frac};
+            ctx.fillStyle = balanceColor;
+            const tx = padding;
+            const ty = h / 2 + 2;
+            ctx.fillText(balanceText, tx, ty);
+            const tm = Math.ceil(ctx.measureText(balanceText).width);
+
+            // Draw pie timer
+            const cx = tx + tm + pieSize / 2 + spaceBetween;
+            const cy = h / 2;
+
+            // Outer circle
+            ctx.strokeStyle = pieColor;
+            ctx.lineWidth = Math.max(1, Math.round(0.9 * scale));
+            ctx.beginPath();
+            ctx.arc(cx, cy, pieSize / 2, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Filled wedge (clockwise from top)
+            const start = -Math.PI / 2;
+            const end = start + Math.PI * 2 * frac;
             ctx.beginPath();
             ctx.moveTo(cx, cy);
-            ctx.fillStyle = '${pieColor}';
-            ctx.arc(cx, cy, pieSize/2 - ${Math.max(1, Math.round(0.8 * scale))}, start, end);
+            ctx.fillStyle = pieColor;
+            ctx.arc(cx, cy, pieSize / 2 - Math.max(1, Math.round(0.8 * scale)), start, end);
             ctx.closePath();
-            ctx.globalAlpha = 0.6; ctx.fill(); ctx.globalAlpha = 1;
-            </script></body></html>`;
-        off.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
-        const done = async () => {
-            try {
-                let img = await off.webContents.capturePage();
-                try { img.setTemplateImage(false); } catch { }
-                img = img.resize({ width: pointW, height: pointH, quality: 'best' });
-                this.tray.setImage(img);
-            } catch { }
-            try { off.destroy(); } catch { }
-            cb();
-        };
-        off.webContents.once('did-finish-load', done);
+            ctx.globalAlpha = 0.6;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+
+            // Convert to image buffer and create nativeImage
+            const buffer = canvas.toBuffer('image/png');
+            let img = nativeImage.createFromBuffer(buffer);
+            try { img.setTemplateImage(false); } catch { }
+
+            // Resize for actual display size
+            img = img.resize({ width: pointW, height: pointH, quality: 'best' });
+            this.tray.setImage(img);
+        } catch (e) {
+            console.error('Failed to render tray image:', e);
+        }
+        cb();
     }
 
     getTray() {
