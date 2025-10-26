@@ -3,6 +3,8 @@ const { ipcMain, shell } = require('electron');
 function setupIpcHandlers(stateManager, timerManager, windowManager, trayManager) {
 
     function getPublicState() {
+        const balanceStatus = timerManager.getBalanceStatus();
+
         return {
             settings: stateManager.settings,
             state: {
@@ -10,9 +12,7 @@ function setupIpcHandlers(stateManager, timerManager, windowManager, trayManager
                 timer: { ...stateManager.state.timer, remainingSeconds: timerManager.timeRemainingSeconds() }
             },
             computed: {
-                outOfBalanceHours: timerManager.getOutOfBalanceHoursAbs(),
-                outOfBalanceSign: timerManager.getOutOfBalanceSign(),
-                withinRange: timerManager.isWithinAcceptableRange(),
+                balanceStatus,
                 lifetimeMinutes: timerManager.getTotalMinutesForMission(stateManager.state.currentMissionIndex)
             }
         };

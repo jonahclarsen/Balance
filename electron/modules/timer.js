@@ -35,25 +35,64 @@ class TimerManager {
         return Object.values(missionData).reduce((total, dayMinutes) => total + dayMinutes, 0);
     }
 
-    getOutOfBalanceHoursAbs() {
-        // Only calculate balance for tracked missions (exclude untracked mission)
-        const totalMinutes0 = this.getTotalMinutesForMission(0);
-        const totalMinutes1 = this.getTotalMinutesForMission(1);
-        const diffMinutes = Math.abs(totalMinutes0 - totalMinutes1);
-        return Math.round(diffMinutes / 60);
-    }
+    getBalanceStatus() {
+        // 1. Filter tracked, non-deleted missions
+        const trackedMissions = this.settings.missions
+            .map((m, idx) => ({ mission: m, index: idx }))
+            .filter(({ mission }) => !mission.untracked && !mission.deleted);
 
-    getOutOfBalanceSign() {
-        // Only calculate balance for tracked missions (exclude untracked mission)
-        const totalMinutes0 = this.getTotalMinutesForMission(0);
-        const totalMinutes1 = this.getTotalMinutesForMission(1);
-        const d = totalMinutes0 - totalMinutes1;
-        return d === 0 ? 0 : (d > 0 ? 1 : -1); // 1 => pink has more, -1 => green has more
-    }
+        if (trackedMissions.length === 0) {
+            return {
+                deficitHours: 0,
+                deficitMissionIndex: 0,
+                needsMoreMissionIndex: 0,
+                isBalanced: true
+            };
+        }
 
-    isWithinAcceptableRange() {
-        const diffHours = this.getOutOfBalanceHoursAbs();
-        return diffHours <= (this.settings.acceptableHourRange || 6);
+        // 2. Calculate total minutes across all tracked missions
+        const totalMinutes = trackedMissions.reduce((sum, { index }) => {
+            return sum + this.getTotalMinutesForMission(index);
+        }, 0);
+
+        if (totalMinutes === 0) {
+            return {
+                deficitHours: 0,
+                deficitMissionIndex: trackedMissions[0].index,
+                needsMoreMissionIndex: trackedMissions[0].index,
+                isBalanced: true
+            };
+        }
+
+        // 3. For each mission: calculate actual %, compare to targetPercent, find deficit
+        let maxDeficit = 0;
+        let maxDeficitMission = trackedMissions[0];
+
+        trackedMissions.forEach(({ mission, index }) => {
+            const actualMinutes = this.getTotalMinutesForMission(index);
+            const actualPercent = (actualMinutes / totalMinutes) * 100;
+            const targetPercent = mission.targetPercent || 0;
+            const deficit = targetPercent - actualPercent; // Positive if under target
+
+            if (deficit > maxDeficit) {
+                maxDeficit = deficit;
+                maxDeficitMission = { mission, index };
+            }
+        });
+
+        // 4. Convert deficit to hours
+        const deficitMinutes = (maxDeficit / 100) * totalMinutes;
+        const deficitHours = Math.round(deficitMinutes / 60);
+
+        // 5. Check if within acceptable range
+        const isBalanced = deficitHours <= (this.settings.acceptableHourRange);
+
+        return {
+            deficitHours,
+            deficitMissionIndex: maxDeficitMission.index,
+            needsMoreMissionIndex: maxDeficitMission.index,
+            isBalanced
+        };
     }
 
     getTodayDateString() {
@@ -139,8 +178,8 @@ class TimerManager {
 
     startTimer(isBreak) {
         const minutes = isBreak ?
-            (this.settings.durations.breakMinutes || 3) :
-            (this.settings.durations.workMinutes || 28);
+            (this.settings.durations.breakMinutes) :
+            (this.settings.durations.workMinutes);
         this.state.timer.isBreak = !!isBreak;
         this.state.timer.running = true;
         this.state.timer.remainingSeconds = Math.max(0, Math.floor(minutes * 60));
@@ -203,7 +242,18 @@ class TimerManager {
     }
 
     switchMission(idx) {
-        this.state.currentMissionIndex = Math.max(0, Math.min(2, idx));
+        const maxIdx = this.settings.missions.length - 1;
+        let targetIdx = Math.max(0, Math.min(maxIdx, idx));
+
+        // If target mission is deleted, find first non-deleted mission
+        if (this.settings.missions[targetIdx]?.deleted) {
+            const nonDeleted = this.settings.missions.findIndex(m => !m.deleted);
+            if (nonDeleted !== -1) {
+                targetIdx = nonDeleted;
+            }
+        }
+
+        this.state.currentMissionIndex = targetIdx;
         if (this.onTick) this.onTick();
     }
 

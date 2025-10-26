@@ -11,17 +11,23 @@
         api.switchMission(i);
     }
 
-    $: mission0HasMore = computed?.outOfBalanceSign >= 0;
-    $: withinRange = computed?.withinRange;
+    $: visibleMissions = settings.missions.filter((m) => !m.deleted);
+    $: balanceStatus = computed?.balanceStatus;
+    $: needsMoreMission = balanceStatus
+        ? settings.missions[balanceStatus.needsMoreMissionIndex]
+        : null;
 </script>
 
 <div class="mission-select">
     <div class="tabs">
-        {#each settings.missions as m, i}
+        {#each visibleMissions as m, visIdx}
+            {@const actualIdx = settings.missions.indexOf(m)}
             <button
-                class="tab {state.currentMissionIndex === i ? 'active' : ''}"
+                class="tab {state.currentMissionIndex === actualIdx
+                    ? 'active'
+                    : ''}"
                 style="color:{THEME_PALETTES[m.theme].primary}"
-                on:click={() => switchMission(i)}
+                on:click={() => switchMission(actualIdx)}
             >
                 {m.name}
             </button>
@@ -44,26 +50,30 @@
     </div>
 
     <div class="balance">
-        <div
-            class="pill"
-            style="width: {state.currentMissionIndex === 3 ? 60 : 70}%;
-                color: {withinRange
-                ? crayon.gray
-                : mission0HasMore
-                  ? THEME_PALETTES[settings.missions[0].theme].primary
-                  : THEME_PALETTES[settings.missions[1].theme].primary}"
-        >
-            <strong>{computed.outOfBalanceHours}</strong> hours out of balance;
-            recover with
-            <span
-                style="color: {mission0HasMore
-                    ? THEME_PALETTES[settings.missions[1].theme].primary
-                    : THEME_PALETTES[settings.missions[0].theme].primary}"
-                >{mission0HasMore
-                    ? settings.missions[1].name
-                    : settings.missions[0].name}</span
+        {#if balanceStatus}
+            <div
+                class="pill"
+                style="width: 70%;
+                    color: {balanceStatus.isBalanced
+                    ? crayon.gray
+                    : needsMoreMission
+                      ? THEME_PALETTES[needsMoreMission.theme].primary
+                      : crayon.gray}"
             >
-        </div>
+                {#if balanceStatus.isBalanced}
+                    <strong>✓ In balance.</strong>
+                {:else}
+                    <strong>{balanceStatus.deficitHours}h</strong> out of
+                    balance; recover with
+                    <span
+                        style="color: {needsMoreMission
+                            ? THEME_PALETTES[needsMoreMission.theme].primary
+                            : crayon.gray}"
+                        >{needsMoreMission ? needsMoreMission.name : "?"}</span
+                    >
+                {/if}
+            </div>
+        {/if}
     </div>
 </div>
 

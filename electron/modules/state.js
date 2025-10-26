@@ -4,12 +4,12 @@ const fs = require('fs');
 
 const DEFAULT_SETTINGS = {
     missions: [
-        { name: 'Pink Mission', theme: 'pink' },
-        { name: 'Green Mission', theme: 'green' },
-        { name: 'Other', theme: 'neutral', untracked: true }
+        { name: 'Pink Mission', theme: 'pink', targetPercent: 50, untracked: false, deleted: false },
+        { name: 'Green Mission', theme: 'green', targetPercent: 50, untracked: false, deleted: false },
+        { name: 'Other', theme: 'neutral', targetPercent: 0, untracked: true, deleted: false }
     ],
     acceptableHourRange: 6,
-    durations: { workMinutes: 28, breakMinutes: 3 },
+    durations: { workMinutes: 30, breakMinutes: 3 },
 };
 
 const DEFAULT_STATE = {
@@ -83,18 +83,8 @@ class StateManager {
             this.dataFilePath = p;
             if (fs.existsSync(p)) {
                 const json = JSON.parse(fs.readFileSync(p, 'utf-8'));
-                this.settings = { ...DEFAULT_SETTINGS, ...json.settings };
-                // Deep merge missions if missing
-                if (!this.settings.missions || this.settings.missions.length !== 3) {
-                    this.settings.missions = DEFAULT_SETTINGS.missions;
-                }
-                if (!this.settings.durations) {
-                    this.settings.durations = DEFAULT_SETTINGS.durations;
-                }
-                this.state = { ...DEFAULT_STATE, ...json.state };
-                if (!this.state.dailyMinutes) {
-                    this.state.dailyMinutes = {};
-                }
+                this.settings = json.settings;
+                this.state = json.state;
             } else {
                 this.saveData();
             }
@@ -128,16 +118,31 @@ class StateManager {
         }
     }
 
+    normalizeTargetPercents(missions) {
+        // Normalize target percentages for tracked missions to sum to 100%
+        const trackedMissions = missions.filter(m => !m.untracked && !m.deleted);
+        if (trackedMissions.length === 0) return;
+
+        const total = trackedMissions.reduce((sum, m) => sum + (m.targetPercent), 0);
+        if (total === 0) {
+            // If all zeros, distribute equally
+            const equalPercent = 100 / trackedMissions.length;
+            trackedMissions.forEach(m => m.targetPercent = equalPercent);
+        } else {
+            // Normalize to 100%
+            trackedMissions.forEach(m => {
+                m.targetPercent = (m.targetPercent / total) * 100;
+            });
+        }
+    }
+
     updateSettings(nextSettings) {
         const prevDir = this.getUserDir();
         this.settings = { ...this.settings, ...nextSettings };
-        // Ensure constraints
-        if (!this.settings.missions || this.settings.missions.length !== 3) {
-            this.settings.missions = DEFAULT_SETTINGS.missions;
-        }
-        if (!this.settings.durations) {
-            this.settings.durations = DEFAULT_SETTINGS.durations;
-        }
+
+        // Normalize target percentages
+        this.normalizeTargetPercents(this.settings.missions);
+
         const newDir = this.getUserDir();
         if (newDir !== prevDir) {
             try { fs.mkdirSync(newDir, { recursive: true }); } catch { }

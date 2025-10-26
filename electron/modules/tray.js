@@ -90,15 +90,21 @@ class TrayManager {
     updateTrayTitleAndIcon() {
         if (!this.tray) return;
 
-        const balanceNum = this.timerManager.getOutOfBalanceHoursAbs();
+        const balanceStatus = this.timerManager.getBalanceStatus();
         const minutesLeft = this.timerManager.secondsToMinutesFloor(this.timerManager.timeRemainingSeconds());
-        this.renderTrayImage(balanceNum, minutesLeft, () => { });
+        this.renderTrayImage(balanceStatus.deficitHours, minutesLeft, () => { });
+
         // Only show the minutes as system text; colored balance + pie are in the image
         try { this.tray.setTitle(`${minutesLeft}`); } catch { }
-        this.tray.setToolTip(
-            `${this.settings.missions[0].name}: ${Math.round(this.timerManager.getTotalMinutesForMission(0) / 60)}h | ` +
-            `${this.settings.missions[1].name}: ${Math.round(this.timerManager.getTotalMinutesForMission(1) / 60)}h`
-        );
+
+        // Build tooltip showing all tracked missions
+        const trackedMissions = this.settings.missions.filter(m => !m.untracked && !m.deleted);
+        const tooltipParts = trackedMissions.map((mission, idx) => {
+            const actualIdx = this.settings.missions.indexOf(mission);
+            const hours = Math.round(this.timerManager.getTotalMinutesForMission(actualIdx) / 60);
+            return `${mission.name}: ${hours}h`;
+        });
+        this.tray.setToolTip("Total time spent on each mission: " + tooltipParts.join(', '));
     }
 
     renderTrayImage(balanceNum, minutesLeft, cb) {
@@ -131,17 +137,19 @@ class TrayManager {
             ctx.imageSmoothingEnabled = false;
 
             // Determine colors
-            const balanceColor = this.timerManager.isWithinAcceptableRange() ?
+            const balanceStatus = this.timerManager.getBalanceStatus();
+            const balanceColor = balanceStatus.isBalanced ?
                 THEME_PALETTES.neutral.primary :
-                (this.timerManager.getOutOfBalanceSign() >= 0 ?
-                    THEME_PALETTES[this.settings.missions[0].theme].primary :
-                    THEME_PALETTES[this.settings.missions[1].theme].primary);
-            const pieColor = THEME_PALETTES[this.settings.missions[this.state.currentMissionIndex].theme].primary;
+                (this.settings.missions[balanceStatus.deficitMissionIndex] ?
+                    THEME_PALETTES[this.settings.missions[balanceStatus.deficitMissionIndex].theme].primary :
+                    THEME_PALETTES.neutral.primary);
+            const currentMission = this.settings.missions[this.state.currentMissionIndex];
+            const pieColor = currentMission ? THEME_PALETTES[currentMission.theme].primary : THEME_PALETTES.neutral.primary;
 
             // Calculate timer progress
             const total = this.state.timer.initialSeconds || (this.state.timer.isBreak ?
-                (this.settings.durations.breakMinutes || 3) * 60 :
-                (this.settings.durations.workMinutes || 28) * 60);
+                (this.settings.durations.breakMinutes) * 60 :
+                (this.settings.durations.workMinutes) * 60);
             const rem = Math.max(0, this.timerManager.timeRemainingSeconds());
             const frac = total > 0 ? Math.max(0, Math.min(1, 1 - rem / total)) : 0;
 
@@ -151,7 +159,7 @@ class TrayManager {
             ctx.textAlign = 'left';
             ctx.fillStyle = balanceColor;
             const tx = padding;
-            const ty = h / 2 + 2;
+            const ty = h / 2;
             ctx.fillText(balanceText, tx, ty);
             const tm = Math.ceil(ctx.measureText(balanceText).width);
 
