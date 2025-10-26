@@ -98,7 +98,7 @@
                                     <input
                                         type="number"
                                         min="0"
-                                        step="0.1"
+                                        step="1"
                                         bind:value={mission.targetPercent}
                                         placeholder="%"
                                     />
@@ -122,12 +122,12 @@
 
             {#if percentWarning}
                 <div class="warning">
-                    ⚠️ Total: {totalPercent.toFixed(1)}% (will be normalized to
+                    ⚠️ Total: {Math.round(totalPercent)}% (will be normalized to
                     100%)
                 </div>
             {:else}
                 <div class="success">
-                    ✓ Total: {totalPercent.toFixed(1)}%
+                    ✓ Total: {Math.round(totalPercent)}%
                 </div>
             {/if}
         </div>

@@ -119,19 +119,39 @@ class StateManager {
     }
 
     normalizeTargetPercents(missions) {
-        // Normalize target percentages for tracked missions to sum to 100%
+        // Normalize target percentages for tracked missions to sum to exactly 100%
         const trackedMissions = missions.filter(m => !m.untracked && !m.deleted);
         if (trackedMissions.length === 0) return;
 
-        const total = trackedMissions.reduce((sum, m) => sum + (m.targetPercent), 0);
+        const total = trackedMissions.reduce((sum, m) => sum + m.targetPercent, 0);
         if (total === 0) {
-            // If all zeros, distribute equally
-            const equalPercent = 100 / trackedMissions.length;
-            trackedMissions.forEach(m => m.targetPercent = equalPercent);
+            // If all zeros, distribute equally using largest remainder method
+            const base = Math.floor(100 / trackedMissions.length);
+            const remainder = 100 - (base * trackedMissions.length);
+            trackedMissions.forEach((m, i) => {
+                m.targetPercent = base + (i < remainder ? 1 : 0);
+            });
         } else {
-            // Normalize to 100%
-            trackedMissions.forEach(m => {
-                m.targetPercent = (m.targetPercent / total) * 100;
+            // Normalize to 100% using largest remainder method
+            // 1. Calculate normalized values and floor them
+            const normalized = trackedMissions.map(m => (m.targetPercent / total) * 100);
+            const floored = normalized.map(v => Math.floor(v));
+            const fractionals = normalized.map((v, i) => ({ index: i, frac: v - floored[i] }));
+
+            // 2. Calculate deficit
+            const flooredSum = floored.reduce((sum, v) => sum + v, 0);
+            const deficit = 100 - flooredSum;
+
+            // 3. Sort by fractional part (largest first) and distribute deficit
+            fractionals.sort((a, b) => b.frac - a.frac);
+            const final = [...floored];
+            for (let i = 0; i < deficit; i++) {
+                final[fractionals[i].index]++;
+            }
+
+            // 4. Assign back to missions
+            trackedMissions.forEach((m, i) => {
+                m.targetPercent = final[i];
             });
         }
     }
