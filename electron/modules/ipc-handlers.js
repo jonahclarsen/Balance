@@ -3,18 +3,13 @@ const { ipcMain, shell } = require('electron');
 function setupIpcHandlers(stateManager, timerManager, windowManager, trayManager) {
 
     function getPublicState() {
-        const balanceStatus = timerManager.getBalanceStatus();
-
         return {
             settings: stateManager.settings,
             state: {
                 ...stateManager.state,
                 timer: { ...stateManager.state.timer, remainingSeconds: timerManager.timeRemainingSeconds() }
             },
-            computed: {
-                balanceStatus,
-                lifetimeMinutes: timerManager.getTotalMinutesForMission(stateManager.state.currentMissionIndex)
-            }
+            computed: {}
         };
     }
 
@@ -69,13 +64,6 @@ function setupIpcHandlers(stateManager, timerManager, windowManager, trayManager
         return getPublicState();
     });
 
-    ipcMain.handle('balance:switch-mission', (_e, idx) => {
-        timerManager.switchMission(idx);
-        notifyRenderer('state');
-        trayManager.updateTrayTitleAndIcon();
-        return getPublicState();
-    });
-
     ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
         stateManager.updateSettings(nextSettings);
         notifyRenderer('state');
@@ -92,6 +80,14 @@ function setupIpcHandlers(stateManager, timerManager, windowManager, trayManager
             shell.openPath(stateManager.getUserDir());
         } catch (e) {
             console.error('Failed to open data folder:', e);
+        }
+    });
+
+    ipcMain.handle('balance:open-github', () => {
+        try {
+            shell.openExternal('https://github.com/jonahclarsen/Balance');
+        } catch (e) {
+            console.error('Failed to open GitHub:', e);
         }
     });
 

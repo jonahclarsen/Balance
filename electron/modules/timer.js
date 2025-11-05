@@ -27,73 +27,6 @@ class TimerManager {
         return Math.max(0, Math.floor(seconds / 60));
     }
 
-    getTotalMinutesForMission(missionIndex) {
-        const missionKey = `mission_${missionIndex}`;
-        const missionData = this.state.dailyMinutes[missionKey];
-        if (!missionData) return 0;
-
-        return Object.values(missionData).reduce((total, dayMinutes) => total + dayMinutes, 0);
-    }
-
-    getBalanceStatus() {
-        // 1. Filter tracked, non-deleted missions
-        const trackedMissions = this.settings.missions
-            .map((m, idx) => ({ mission: m, index: idx }))
-            .filter(({ mission }) => !mission.untracked && !mission.deleted);
-
-        if (trackedMissions.length === 0) {
-            return {
-                deficitHours: 0,
-                deficitMissionIndex: 0,
-                needsMoreMissionIndex: 0,
-                isBalanced: true
-            };
-        }
-
-        // 2. Calculate total minutes across all tracked missions
-        const totalMinutes = trackedMissions.reduce((sum, { index }) => {
-            return sum + this.getTotalMinutesForMission(index);
-        }, 0);
-
-        if (totalMinutes === 0) {
-            return {
-                deficitHours: 0,
-                deficitMissionIndex: trackedMissions[0].index,
-                needsMoreMissionIndex: trackedMissions[0].index,
-                isBalanced: true
-            };
-        }
-
-        // 3. For each mission: calculate actual %, compare to targetPercent, find deficit
-        let maxDeficit = 0;
-        let maxDeficitMission = trackedMissions[0];
-
-        trackedMissions.forEach(({ mission, index }) => {
-            const actualMinutes = this.getTotalMinutesForMission(index);
-            const actualPercent = (actualMinutes / totalMinutes) * 100;
-            const targetPercent = mission.targetPercent || 0;
-            const deficit = targetPercent - actualPercent; // Positive if under target
-
-            if (deficit > maxDeficit) {
-                maxDeficit = deficit;
-                maxDeficitMission = { mission, index };
-            }
-        });
-
-        // 4. Convert deficit to hours
-        const deficitMinutes = (maxDeficit / 100) * totalMinutes;
-        const deficitHours = Math.round(deficitMinutes / 60);
-
-        // 5. Check if within acceptable range
-        const isBalanced = deficitHours <= (this.settings.acceptableHourRange);
-
-        return {
-            deficitHours,
-            deficitMissionIndex: maxDeficitMission.index,
-            needsMoreMissionIndex: maxDeficitMission.index,
-            isBalanced
-        };
-    }
 
     getTodayDateString() {
         return this.stateManager.getTodayDateString();
@@ -106,28 +39,7 @@ class TimerManager {
     }
 
     incrementDailyMinute() {
-        if (!this.state.timer.running || this.state.timer.isBreak) return;
-
-        const today = this.getTodayDateString();
-        const missionKey = `mission_${this.state.currentMissionIndex}`;
-
-        // Initialize structure if needed
-        if (!this.state.dailyMinutes) {
-            this.state.dailyMinutes = {};
-        }
-        if (!this.state.dailyMinutes[missionKey]) {
-            this.state.dailyMinutes[missionKey] = {};
-        }
-        if (!this.state.dailyMinutes[missionKey][today]) {
-            this.state.dailyMinutes[missionKey][today] = 0;
-        }
-
-        // Increment today's minute count
-        this.state.dailyMinutes[missionKey][today]++;
-
-        // Save the updated data
-        this.stateManager.saveData();
-        if (this.onTick) this.onTick();
+        // Mission tracking removed - no-op
     }
 
     startMinuteTracking() {
@@ -161,7 +73,6 @@ class TimerManager {
                     this.state.timer.endTs = 0;
                     this.state.lastEnded = {
                         isBreak: this.state.timer.isBreak,
-                        missionIndex: this.state.currentMissionIndex,
                         ts: Date.now()
                     };
                     if (this.onEnd) this.onEnd();
@@ -241,21 +152,6 @@ class TimerManager {
         if (this.onTick) this.onTick();
     }
 
-    switchMission(idx) {
-        const maxIdx = this.settings.missions.length - 1;
-        let targetIdx = Math.max(0, Math.min(maxIdx, idx));
-
-        // If target mission is deleted, find first non-deleted mission
-        if (this.settings.missions[targetIdx]?.deleted) {
-            const nonDeleted = this.settings.missions.findIndex(m => !m.deleted);
-            if (nonDeleted !== -1) {
-                targetIdx = nonDeleted;
-            }
-        }
-
-        this.state.currentMissionIndex = targetIdx;
-        if (this.onTick) this.onTick();
-    }
 
     stop() {
         if (this.tickInterval) {

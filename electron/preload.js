@@ -8,10 +8,10 @@ contextBridge.exposeInMainWorld('balance', {
     pause: () => ipcRenderer.invoke('balance:pause'),
     resume: () => ipcRenderer.invoke('balance:resume'),
     extend: (seconds) => ipcRenderer.invoke('balance:extend', seconds),
-    switchMission: (index) => ipcRenderer.invoke('balance:switch-mission', index),
     saveSettings: (settings) => ipcRenderer.invoke('balance:save-settings', settings),
     open: () => ipcRenderer.invoke('balance:open'),
     openDataFolder: () => ipcRenderer.invoke('balance:open-data-folder'),
+    openGithub: () => ipcRenderer.invoke('balance:open-github'),
     quit: () => ipcRenderer.invoke('balance:quit'),
     onState: (callback) => {
         const handler = (_event, message) => callback(message);

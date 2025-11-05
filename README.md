@@ -1,29 +1,22 @@
 # Balance
 
-A super simple tray application for ensuring your time spent between two missions is equally balanced. Time is tracked using a Pomodoro-style timer.
+A super simple tray application with a Pomodoro-style timer for focused work sessions and breaks.
 
-I created this app because I found myself spending too much time on work while my artistic skills withered, and wanted a way to hold myself accountable to splitting time between work and art 50/50; my two missions in life. I also couldn't find a Pomodoro solution I really liked, so I made Pomodoro timer the mechanism for tracking time.
+I created this app because I couldn't find a Pomodoro solution I really liked - I wanted something minimal, beautiful, and that lives in the system tray.
 
 ## ✨ Features
 
-### 🎯 Dual Mission Tracking
-- Track time between two customizable missions
-- Visual balance indicator showing hours out of balance
-- Lives in the system tray/menu bar
-
 ### ⏱️ Pomodoro Timer
-- Customizable work sessions (default: 28 minutes)
+- Customizable work sessions (default: 30 minutes)
 - Break timer support (default: 3 minutes)  
 - Visual countdown with progress pie chart in system tray
 - Audio notification when timer ends
 - Quick time extensions with keyboard modifiers
-- (You can also use the Pomodoro for tracking tasks unrelated to your two missions; these minutes will not affect your overall balance)
+- Lives in the system tray/menu bar
 
 ### ⚙️ Customization
-- Rename missions to match your workflow
+- Choose from multiple color themes
 - Adjust work and break durations
-- Configure acceptable balance range
-- Custom data directory
 - Keyboard shortcuts (press 'o' for options)
 
 ## 🚀 Installation
@@ -55,25 +48,23 @@ I created this app because I found myself spending too much time on work while m
 
 ### Basic Operations
 
-- **Start Work Timer**: Click "Start 🍅" to begin a work session
-- **Take a Break**: Click "Break 🌿" to start a break timer
-- **Stop Timer**: Click "Stop ⏹️" to halt the current session
-- **Switch Missions**: Click on mission tabs to change active mission
+- **Start Work Timer**: Click "🍅 Start Pomodoro" to begin a work session
+- **Take a Break**: Click "🌿 Start Break" to start a break timer
+- **Pause/Resume**: Click the timer link to pause or resume
+- **Stop Timer**: The timer stops automatically when it reaches zero
 
 ### Time Extensions
 
-Use the `+ ⏱️` and `- ⏱️` buttons with modifiers:
+Use the `+` and `-` buttons with modifiers:
 - **Normal click**: ±1 minute
-- **Shift + click**: ±20 seconds
 - **Cmd/Ctrl + click**: ±5 minutes
 
 ### Configuration
 
-Press `o` or click the ⚙️ button to access settings:
-- Customize mission names
+Press `o` or click "Options" to access settings:
+- Select color theme
 - Set work/break durations
-- Adjust acceptable balance range
-- Change data storage location
+- Open data folder
 
 ### Data Management
 
@@ -97,36 +88,8 @@ Balance stores your data in a JSON file:
 - **Linux**: `~/.config/balance/balance.json`
 
 The data includes:
-- Mission totals and current session
 - Timer state and settings
-- User preferences
-
-## 🔧 Development
-
-### Development Scripts
-```bash
-pnpm run dev          # Start dev server + electron
-pnpm run dev:renderer # Frontend only
-pnpm run dev:electron # Electron only (requires frontend)
-pnpm run build        # Build for production
-```
-
-### Key Development Notes
-- Hot reload enabled in development
-- Vite handles frontend bundling
-- Electron main process manages system integration
-- Cross-platform compatibility built-in
-
-## 🎨 Customization
-
-### Themes
-The app uses CSS custom properties for easy theming:
-```css
---bg: #fff8e7      /* Background */
---card: #fff1cf    /* Card background */
---stroke: #2e2a24  /* Border color */
---accent: #ffb74d  /* Accent color */
-```
+- User preferences (theme, durations)
 
 ## 🤝 Contributing
 

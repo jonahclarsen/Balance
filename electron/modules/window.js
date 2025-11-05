@@ -49,7 +49,7 @@ class WindowManager {
         // macOS-specific window options to fix transparency issues
         const windowOptions = {
             width: 360 + 14 * 2, // width + 14px*2 padding
-            height: 540 + 14 * 2,
+            height: 340 + 14 * 2,
             show: false,
             frame: false,
             resizable: false,

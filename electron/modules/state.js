@@ -3,20 +3,14 @@ const path = require('path');
 const fs = require('fs');
 
 const DEFAULT_SETTINGS = {
-    missions: [
-        { name: 'Pink Mission', theme: 'pink', targetPercent: 50, untracked: false, deleted: false },
-        { name: 'Green Mission', theme: 'green', targetPercent: 50, untracked: false, deleted: false },
-        { name: 'Other', theme: 'neutral', targetPercent: 0, untracked: true, deleted: false }
-    ],
+    theme: 'neutral',
     acceptableHourRange: 6,
     durations: { workMinutes: 30, breakMinutes: 3 },
 };
 
 const DEFAULT_STATE = {
-    currentMissionIndex: 0,
     timer: { running: false, isBreak: false, remainingSeconds: 0, endTs: 0, initialSeconds: 0 },
     lastEnded: null,
-    dailyMinutes: {} // Structure: {"mission_0": {"2025-01-01": 4}, "mission_1": {"2025-01-01": 2}}
 };
 
 class StateManager {
@@ -118,50 +112,9 @@ class StateManager {
         }
     }
 
-    normalizeTargetPercents(missions) {
-        // Normalize target percentages for tracked missions to sum to exactly 100%
-        const trackedMissions = missions.filter(m => !m.untracked && !m.deleted);
-        if (trackedMissions.length === 0) return;
-
-        const total = trackedMissions.reduce((sum, m) => sum + m.targetPercent, 0);
-        if (total === 0) {
-            // If all zeros, distribute equally using largest remainder method
-            const base = Math.floor(100 / trackedMissions.length);
-            const remainder = 100 - (base * trackedMissions.length);
-            trackedMissions.forEach((m, i) => {
-                m.targetPercent = base + (i < remainder ? 1 : 0);
-            });
-        } else {
-            // Normalize to 100% using largest remainder method
-            // 1. Calculate normalized values and floor them
-            const normalized = trackedMissions.map(m => (m.targetPercent / total) * 100);
-            const floored = normalized.map(v => Math.floor(v));
-            const fractionals = normalized.map((v, i) => ({ index: i, frac: v - floored[i] }));
-
-            // 2. Calculate deficit
-            const flooredSum = floored.reduce((sum, v) => sum + v, 0);
-            const deficit = 100 - flooredSum;
-
-            // 3. Sort by fractional part (largest first) and distribute deficit
-            fractionals.sort((a, b) => b.frac - a.frac);
-            const final = [...floored];
-            for (let i = 0; i < deficit; i++) {
-                final[fractionals[i].index]++;
-            }
-
-            // 4. Assign back to missions
-            trackedMissions.forEach((m, i) => {
-                m.targetPercent = final[i];
-            });
-        }
-    }
-
     updateSettings(nextSettings) {
         const prevDir = this.getUserDir();
         this.settings = { ...this.settings, ...nextSettings };
-
-        // Normalize target percentages
-        this.normalizeTargetPercents(this.settings.missions);
 
         const newDir = this.getUserDir();
         if (newDir !== prevDir) {

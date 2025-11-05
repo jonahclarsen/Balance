@@ -90,21 +90,13 @@ class TrayManager {
     updateTrayTitleAndIcon() {
         if (!this.tray) return;
 
-        const balanceStatus = this.timerManager.getBalanceStatus();
         const minutesLeft = this.timerManager.secondsToMinutesFloor(this.timerManager.timeRemainingSeconds());
-        this.renderTrayImage(balanceStatus.deficitHours, minutesLeft, () => { });
+        this.renderTrayImage(0, minutesLeft, () => { });
 
         // Only show the minutes as system text; colored balance + pie are in the image
         try { this.tray.setTitle(`${minutesLeft}`); } catch { }
 
-        // Build tooltip showing all tracked missions
-        const trackedMissions = this.settings.missions.filter(m => !m.untracked && !m.deleted);
-        const tooltipParts = trackedMissions.map((mission, idx) => {
-            const actualIdx = this.settings.missions.indexOf(mission);
-            const hours = Math.round(this.timerManager.getTotalMinutesForMission(actualIdx) / 60);
-            return `${mission.name}: ${hours}h`;
-        });
-        this.tray.setToolTip("Total time spent on each mission: " + tooltipParts.join(', '));
+        this.tray.setToolTip(`Timer: ${minutesLeft} minutes remaining`);
     }
 
     renderTrayImage(balanceNum, minutesLeft, cb) {
@@ -136,15 +128,11 @@ class TrayManager {
             ctx.clearRect(0, 0, w, h);
             ctx.imageSmoothingEnabled = false;
 
-            // Determine colors
-            const balanceStatus = this.timerManager.getBalanceStatus();
-            const balanceColor = balanceStatus.isBalanced ?
-                THEME_PALETTES.neutral.primary :
-                (this.settings.missions[balanceStatus.deficitMissionIndex] ?
-                    THEME_PALETTES[this.settings.missions[balanceStatus.deficitMissionIndex].theme].primary :
-                    THEME_PALETTES.neutral.primary);
-            const currentMission = this.settings.missions[this.state.currentMissionIndex];
-            const pieColor = currentMission ? THEME_PALETTES[currentMission.theme].primary : THEME_PALETTES.neutral.primary;
+            // Determine colors - use theme from settings
+            const themeName = this.settings.theme || 'neutral';
+            const theme = THEME_PALETTES[themeName] || THEME_PALETTES.neutral;
+            const balanceColor = THEME_PALETTES.neutral.primary;
+            const pieColor = theme.primary;
 
             // Calculate timer progress
             const total = this.state.timer.initialSeconds || (this.state.timer.isBreak ?

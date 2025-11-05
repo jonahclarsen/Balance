@@ -3,7 +3,6 @@
     import Options from "./Options.svelte";
     import TimerDisplay from "./components/TimerDisplay.svelte";
     import TimerControls from "./components/TimerControls.svelte";
-    import MissionSelector from "./components/MissionSelector.svelte";
     import { THEME_PALETTES } from "./themes.js";
     import "./button.css";
 
@@ -60,17 +59,9 @@
     }
 
     function computeTheme(settings, state) {
-        // If settings are not loaded yet, return neutral theme
-        if (!settings?.missions) {
-            return {
-                ...THEME_PALETTES.neutral,
-                gray: THEME_PALETTES.neutral.primary,
-            };
-        }
-
-        const idx = state?.currentMissionIndex;
-        const mission = settings.missions[idx];
-        const theme = THEME_PALETTES[mission.theme];
+        // Use theme from settings, default to neutral if not set
+        const themeName = settings?.theme || "neutral";
+        const theme = THEME_PALETTES[themeName] || THEME_PALETTES.neutral;
 
         return {
             ...theme,
@@ -107,40 +98,13 @@
     class="root"
     style="--bg:{crayon.bg}; --card:{crayon.card}; --stroke:{crayon.stroke}; --accent:{crayon.accent}; --gray:{crayon.gray}"
 >
-    <div class="row">
-        <div class="title">
-            Balance — Time for
-            <span
-                style="color:{state && state.timer?.isBreak
-                    ? crayon.gray
-                    : settings && state
-                      ? THEME_PALETTES[
-                            settings.missions[state.currentMissionIndex].theme
-                        ].primary
-                      : crayon.gray}"
-            >
-                {#if settings && state}
-                    {#if state.timer?.isBreak}
-                        Break
-                    {:else}
-                        {settings.missions[state.currentMissionIndex].name}
-                    {/if}
-                {:else}[undefined]{/if}
-            </span>
-        </div>
-        <button class="btn" title="Options (o)" on:click={openOptions}
-            >⚙️</button
-        >
-    </div>
-
     {#if settings && state}
         <div class="main-content">
             <TimerDisplay {state} {crayon} />
             <TimerControls {state} {api} bind:hasEnded />
-            <MissionSelector {settings} {state} {computed} {crayon} {api} />
             <div class="bottom-controls">
                 <div
-                    class="play-pause-link"
+                    class="link"
                     on:click={togglePlayPause}
                     on:keydown={(e) => {
                         if (e.key === "Enter" || e.key === " ") {
@@ -158,6 +122,21 @@
                     {:else}
                         Resume Timer
                     {/if}
+                </div>
+                <div
+                    class="link"
+                    on:click={openOptions}
+                    on:keydown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            openOptions();
+                        }
+                    }}
+                    role="button"
+                    tabindex="0"
+                    title="Options (o)"
+                >
+                    Options
                 </div>
             </div>
         </div>
@@ -180,7 +159,7 @@
 
     .root {
         width: 360px;
-        height: 540px;
+        height: 340px;
         padding: 14px;
         background: var(--bg);
         box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
@@ -197,18 +176,6 @@
         display: flex;
         flex-direction: column;
     }
-    .title {
-        font-weight: 600;
-        font-size: 22px;
-        margin-bottom: 10px;
-        margin-top: 0px;
-        margin-left: 10px;
-    }
-    .row {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
     .main-content {
         display: flex;
         flex-direction: column;
@@ -222,19 +189,21 @@
         padding: -20px 0;
     }
 
-    .play-pause-link {
+    .link {
         color: var(--accent);
         text-decoration: underline;
         cursor: pointer;
-        font-size: 12px;
+        font-size: 13px;
         user-select: none;
+        margin-left: 5px;
+        margin-right: 5px;
     }
 
-    .play-pause-link:hover {
+    .link:hover {
         opacity: 0.8;
     }
 
-    .play-pause-link:focus {
+    .link:focus {
         outline: 2px solid var(--accent);
         outline-offset: 2px;
     }
