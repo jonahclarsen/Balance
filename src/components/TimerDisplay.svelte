@@ -22,6 +22,6 @@
         text-align: center;
         letter-spacing: 2px;
         text-shadow: 1px 1px #ffffff;
-        margin-top: 20px;
+        margin-top: 5px;
     }
 </style>

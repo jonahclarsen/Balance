@@ -48,7 +48,7 @@ class WindowManager {
     createWindow() {
         // macOS-specific window options to fix transparency issues
         const windowOptions = {
-            width: 360 + 14 * 2, // width + 14px*2 padding
+            width: 310 + 14 * 2, // width + 14px*2 padding
             height: 340 + 14 * 2,
             show: false,
             frame: false,

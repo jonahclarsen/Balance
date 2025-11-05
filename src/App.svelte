@@ -158,7 +158,7 @@
     }
 
     .root {
-        width: 360px;
+        width: 310px;
         height: 340px;
         padding: 14px;
         background: var(--bg);

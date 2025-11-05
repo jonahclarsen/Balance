@@ -111,7 +111,7 @@
     }
     .sheet {
         width: calc(100% - 24px);
-        max-width: 340px;
+        max-width: 300px;
         max-height: 90vh;
         overflow-y: auto;
         background: var(--card);
