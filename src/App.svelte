@@ -6,7 +6,7 @@
     import { THEME_PALETTES } from "./themes.js";
     import "./button.css";
 
-    const api = window.balance;
+    const api = window.cactus;
 
     let settings = null;
     let state = null;

@@ -1,8 +1,8 @@
 {
-    "name": "balance",
+    "name": "cactus",
     "version": "0.1.0",
-    "description": "A productivity timer app for balanced work sessions",
-    "author": "Balance Team",
+    "description": "A pomodoro timer that lives in the menu bar.",
+    "author": "Jonah Larsen",
     "private": true,
     "main": "electron/main.js",
     "type": "commonjs",
@@ -33,8 +33,8 @@
         "wait-on": "^7.2.0"
     },
     "build": {
-        "appId": "com.balance.app",
-        "productName": "Balance",
+        "appId": "com.haligonian.cactus",
+        "productName": "Cactus",
         "directories": {
             "output": "release"
         },

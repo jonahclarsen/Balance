@@ -1,4 +1,4 @@
-# Balance
+# Cactus
 
 A super simple tray application with a Pomodoro-style timer for focused work sessions and breaks.
 
@@ -66,12 +66,6 @@ Press `o` or click "Options" to access settings:
 - Set work/break durations
 - Open data folder
 
-### Data Management
-
-- Data automatically saves to your system's app data directory
-- Click "📁 Open Data Folder" to access your balance history
-- Data persists across app restarts
-
 ## 🏗️ Technical Details
 
 ### Built With
@@ -82,10 +76,10 @@ Press `o` or click "Options" to access settings:
 
 ## 📊 Data Storage
 
-Balance stores your data in a JSON file:
-- **macOS**: `~/Library/Application Support/balance/balance.json`
-- **Windows**: `%APPDATA%/balance/balance.json`
-- **Linux**: `~/.config/balance/balance.json`
+Cactus stores your data in a JSON file:
+- **macOS**: `~/Library/Application Support/cactus/cactus.json`
+- **Windows**: `%APPDATA%/cactus/cactus.json`
+- **Linux**: `~/.config/cactus/cactus.json`
 
 The data includes:
 - Timer state and settings

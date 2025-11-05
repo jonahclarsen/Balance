@@ -16,7 +16,7 @@ function setupIpcHandlers(stateManager, timerManager, windowManager, trayManager
     function notifyRenderer(type) {
         const mainWindow = windowManager.getWindow();
         if (mainWindow && mainWindow.webContents) {
-            mainWindow.webContents.send('balance:state', { type, payload: getPublicState() });
+            mainWindow.webContents.send('cactus:state', { type, payload: getPublicState() });
         }
     }
 
@@ -32,50 +32,50 @@ function setupIpcHandlers(stateManager, timerManager, windowManager, trayManager
     };
 
     // Register IPC handlers
-    ipcMain.handle('balance:get-state', () => getPublicState());
+    ipcMain.handle('cactus:get-state', () => getPublicState());
 
-    ipcMain.handle('balance:start-work', () => {
+    ipcMain.handle('cactus:start-work', () => {
         timerManager.startTimer(false);
         return getPublicState();
     });
 
-    ipcMain.handle('balance:start-break', () => {
+    ipcMain.handle('cactus:start-break', () => {
         timerManager.startTimer(true);
         return getPublicState();
     });
 
-    ipcMain.handle('balance:stop', () => {
+    ipcMain.handle('cactus:stop', () => {
         timerManager.stopTimer();
         return getPublicState();
     });
 
-    ipcMain.handle('balance:pause', () => {
+    ipcMain.handle('cactus:pause', () => {
         timerManager.pauseTimer();
         return getPublicState();
     });
 
-    ipcMain.handle('balance:resume', () => {
+    ipcMain.handle('cactus:resume', () => {
         timerManager.resumeTimer();
         return getPublicState();
     });
 
-    ipcMain.handle('balance:extend', (_e, seconds) => {
+    ipcMain.handle('cactus:extend', (_e, seconds) => {
         timerManager.extendTimer(seconds);
         return getPublicState();
     });
 
-    ipcMain.handle('balance:save-settings', (_e, nextSettings) => {
+    ipcMain.handle('cactus:save-settings', (_e, nextSettings) => {
         stateManager.updateSettings(nextSettings);
         notifyRenderer('state');
         trayManager.updateTrayTitleAndIcon();
         return getPublicState();
     });
 
-    ipcMain.handle('balance:open', () => {
+    ipcMain.handle('cactus:open', () => {
         windowManager.showWindowNearTray();
     });
 
-    ipcMain.handle('balance:open-data-folder', () => {
+    ipcMain.handle('cactus:open-data-folder', () => {
         try {
             shell.openPath(stateManager.getUserDir());
         } catch (e) {
@@ -83,15 +83,15 @@ function setupIpcHandlers(stateManager, timerManager, windowManager, trayManager
         }
     });
 
-    ipcMain.handle('balance:open-github', () => {
+    ipcMain.handle('cactus:open-github', () => {
         try {
-            shell.openExternal('https://github.com/jonahclarsen/Balance');
+            shell.openExternal('https://github.com/jonahclarsen/Cactus');
         } catch (e) {
             console.error('Failed to open GitHub:', e);
         }
     });
 
-    ipcMain.handle('balance:quit', () => {
+    ipcMain.handle('cactus:quit', () => {
         const { app } = require('electron');
         app.quit();
     });
