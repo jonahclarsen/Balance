@@ -87,6 +87,7 @@ export function createPlanItem(text = ''): PlanItem {
   return {
     id: createId('plan_item'),
     text,
+    html: escapeHTML(text),
     done: false,
     startMinutes: null,
     endMinutes: null,
@@ -334,4 +335,54 @@ export function escapeHTML(value: string): string {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;')
+}
+
+export function sanitizeInlineHTML(value: string): string {
+  if (!globalThis.document) return escapeHTML(value)
+
+  const template = document.createElement('template')
+  template.innerHTML = value
+  return Array.from(template.content.childNodes).map(sanitizeNode).join('').replace(/(<br>)+$/g, '')
+}
+
+export function htmlToPlainText(value: string): string {
+  if (!globalThis.document) return value.replace(/<[^>]+>/g, '')
+
+  const div = document.createElement('div')
+  div.innerHTML = sanitizeInlineHTML(value)
+  return div.textContent ?? ''
+}
+
+export function isURL(value: string): boolean {
+  const trimmed = value.trim()
+  if (!trimmed) return false
+
+  try {
+    const url = new URL(trimmed)
+    return url.protocol === 'http:' || url.protocol === 'https:'
+  } catch {
+    return false
+  }
+}
+
+function sanitizeNode(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return escapeHTML(node.textContent ?? '')
+  if (node.nodeType !== Node.ELEMENT_NODE) return ''
+
+  const element = node as HTMLElement
+  const children = Array.from(element.childNodes).map(sanitizeNode).join('')
+  const tag = element.tagName.toLowerCase()
+
+  if (tag === 'br') return '<br>'
+  if (tag === 'b' || tag === 'strong') return `<strong>${children}</strong>`
+  if (tag === 'i' || tag === 'em') return `<em>${children}</em>`
+  if (tag === 'p' || tag === 'div') return children ? `${children}<br>` : ''
+
+  if (tag === 'a') {
+    const href = element.getAttribute('href') ?? ''
+    if (!isURL(href)) return children
+    return `<a href="${escapeHTML(href.trim())}" target="_blank" rel="noreferrer">${children}</a>`
+  }
+
+  return children
 }

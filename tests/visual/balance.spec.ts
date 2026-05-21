@@ -10,7 +10,7 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   await expect(generateButton).toBeVisible()
 
   await generateButton.click()
-  await expect(page.getByPlaceholder('Plan item').first()).toBeVisible()
+  await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-today.png`,
     fullPage: true,
@@ -134,10 +134,88 @@ test('plan item text fields support arrow focus and option-arrow sibling moves',
     .toEqual({ workIndex: 1, childCount: 2 })
 })
 
+test('plan item rich text preserves paste formatting and supports shortcuts', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
+
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await page.evaluate(async () => {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob(['<strong>Bold</strong> <em>Italic</em> <a href="https://example.com">Link</a>'], {
+          type: 'text/html',
+        }),
+        'text/plain': new Blob(['Bold Italic Link'], { type: 'text/plain' }),
+      }),
+    ])
+  })
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.press('Meta+V')
+
+  await expect
+    .poll(async () => richHTMLForFocusedItem(page))
+    .toContain('<strong>Bold</strong> <em>Italic</em> <a href="https://example.com/" target="_blank" rel="noreferrer">Link</a>')
+
+  await setFocusedEditorHTML(page, 'Shortcut')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.press('Meta+B')
+  await expect.poll(async () => richHTMLForFocusedItem(page)).toContain('<b>')
+  await expect.poll(async () => storedHTMLForFocusedItem(page)).toContain('<strong>')
+  await expect.poll(async () => selectedText(page)).toBe('Shortcut')
+
+  await setFocusedEditorHTML(page, 'Shortcut')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.press('Meta+I')
+  await expect.poll(async () => richHTMLForFocusedItem(page)).toContain('<i>')
+  await expect.poll(async () => storedHTMLForFocusedItem(page)).toContain('<em>')
+  await expect.poll(async () => selectedText(page)).toBe('Shortcut')
+
+  await page.evaluate(async () => {
+    await navigator.clipboard.writeText('https://balance.local')
+  })
+  await page.evaluate(() => {
+    const editor = document.querySelector<HTMLElement>('[data-plan-text-input]')
+    if (!editor?.firstChild) return
+
+    const range = document.createRange()
+    range.selectNodeContents(editor.firstChild)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  })
+  await page.keyboard.press('Meta+V')
+
+  await expect
+    .poll(async () => richHTMLForFocusedItem(page))
+    .toContain('<a href="https://balance.local">')
+  await expect
+    .poll(async () => storedHTMLForFocusedItem(page))
+    .toContain('<a href="https://balance.local" target="_blank" rel="noreferrer">')
+})
+
+test('typing in rich plan item text keeps the caret at the insertion point', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.type('abc')
+
+  await expect.poll(async () => activeInputValue(page)).toBe('abc')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(3)
+})
+
 async function focusInputByValue(page: import('@playwright/test').Page, value: string) {
   await page.evaluate((expectedValue) => {
-    const input = Array.from(document.querySelectorAll<HTMLInputElement>('[data-plan-text-input]')).find(
-      (candidate) => candidate.value === expectedValue,
+    const input = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-text-input]')).find(
+      (candidate) => candidate.textContent === expectedValue,
     )
     input?.focus()
   }, value)
@@ -146,7 +224,62 @@ async function focusInputByValue(page: import('@playwright/test').Page, value: s
 async function activeInputValue(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const active = document.activeElement
-    return active instanceof HTMLInputElement ? active.value : null
+    return active instanceof HTMLElement && active.matches('[data-plan-text-input]') ? active.textContent : null
+  })
+}
+
+async function setFocusedEditorHTML(page: import('@playwright/test').Page, html: string) {
+  await page.evaluate((nextHTML) => {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-input]')) return
+    active.innerHTML = nextHTML
+    active.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+  }, html)
+}
+
+async function richHTMLForFocusedItem(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    return active instanceof HTMLElement && active.matches('[data-plan-text-input]') ? active.innerHTML : null
+  })
+}
+
+async function storedHTMLForFocusedItem(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-input]')) return null
+
+    const itemId = active.dataset.planTextInputId
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const findItem = (items: Array<{ id: string; html: string; children?: unknown[] }>): string | null => {
+      for (const item of items) {
+        if (item.id === itemId) return item.html
+        const childHTML = findItem((item.children ?? []) as Array<{ id: string; html: string; children?: unknown[] }>)
+        if (childHTML !== null) return childHTML
+      }
+      return null
+    }
+
+    return findItem(state.plans?.[0]?.items ?? [])
+  })
+}
+
+async function selectedText(page: import('@playwright/test').Page) {
+  return page.evaluate(() => document.getSelection()?.toString() ?? '')
+}
+
+async function caretOffsetInFocusedEditor(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    const selection = document.getSelection()
+    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-input]') || !selection || selection.rangeCount === 0) {
+      return null
+    }
+
+    const range = selection.getRangeAt(0).cloneRange()
+    range.selectNodeContents(active)
+    range.setEnd(selection.anchorNode ?? active, selection.anchorOffset)
+    return range.toString().length
   })
 }
 

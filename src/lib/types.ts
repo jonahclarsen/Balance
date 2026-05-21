@@ -15,6 +15,7 @@ export type TemplateItem = {
 export type PlanItem = {
   id: Id
   text: string
+  html: string
   done: boolean
   startMinutes: number | null
   endMinutes: number | null

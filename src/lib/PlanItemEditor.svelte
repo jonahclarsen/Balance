@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import TimeRange from './TimeRange.svelte'
+  import { escapeHTML, htmlToPlainText, isURL, sanitizeInlineHTML } from './planner'
   import type { Id, MoveDirection, MovePlacement, PlanItem } from './types'
 
   export let item: PlanItem
@@ -14,6 +15,16 @@
 
   let dragging = false
   let activeDropRow: HTMLElement | null = null
+  let textEditor: HTMLDivElement
+  let renderedHTML = item.html || escapeHTML(item.text)
+
+  $: {
+    const nextHTML = item.html || escapeHTML(item.text)
+    if (nextHTML !== renderedHTML && textEditor !== document.activeElement) {
+      renderedHTML = nextHTML
+      if (textEditor) textEditor.innerHTML = nextHTML
+    }
+  }
 
   function addTime() {
     patchItem(planId, item.id, {
@@ -80,6 +91,20 @@
   }
 
   async function handleTextKeydown(event: KeyboardEvent) {
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'b') {
+      event.preventDefault()
+      document.execCommand('bold')
+      persistEditor(event.currentTarget as HTMLDivElement, false)
+      return
+    }
+
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'i') {
+      event.preventDefault()
+      document.execCommand('italic')
+      persistEditor(event.currentTarget as HTMLDivElement, false)
+      return
+    }
+
     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
     if (event.metaKey || event.ctrlKey) return
 
@@ -93,11 +118,55 @@
       return
     }
 
-    focusAdjacentTextInput(event.currentTarget as HTMLInputElement, direction)
+    focusAdjacentTextInput(event.currentTarget as HTMLDivElement, direction)
   }
 
-  function focusAdjacentTextInput(current: HTMLInputElement, direction: MoveDirection) {
-    const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-plan-text-input]'))
+  function handleTextInput(event: Event) {
+    persistEditor(event.currentTarget as HTMLDivElement, false)
+  }
+
+  function handlePaste(event: ClipboardEvent) {
+    const editor = event.currentTarget as HTMLDivElement
+    const clipboardText = event.clipboardData?.getData('text/plain') ?? ''
+    const clipboardHTML = event.clipboardData?.getData('text/html') ?? ''
+
+    if (clipboardText && isURL(clipboardText) && hasNonCollapsedSelectionInside(editor)) {
+      event.preventDefault()
+      document.execCommand('createLink', false, clipboardText.trim())
+      persistEditor(editor, false)
+      return
+    }
+
+    if (clipboardHTML || clipboardText) {
+      event.preventDefault()
+      const html = clipboardHTML
+        ? sanitizeInlineHTML(clipboardHTML)
+        : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>')
+      document.execCommand('insertHTML', false, html)
+      persistEditor(editor, false)
+    }
+  }
+
+  function persistEditor(editor: HTMLDivElement, syncRenderedHTML = true) {
+    const html = sanitizeInlineHTML(editor.innerHTML)
+    if (syncRenderedHTML && editor.innerHTML !== html) editor.innerHTML = html
+    if (syncRenderedHTML) renderedHTML = html
+    patchItem(planId, item.id, {
+      html,
+      text: htmlToPlainText(html),
+    })
+  }
+
+  function hasNonCollapsedSelectionInside(editor: HTMLDivElement) {
+    const selection = document.getSelection()
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false
+
+    const range = selection.getRangeAt(0)
+    return editor.contains(range.commonAncestorContainer)
+  }
+
+  function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection) {
+    const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
     const index = inputs.indexOf(current)
     const target = inputs[direction === 'up' ? index - 1 : index + 1]
 
@@ -105,16 +174,22 @@
   }
 
   function focusItemTextInput(itemId: Id) {
-    const input = Array.from(document.querySelectorAll<HTMLInputElement>('[data-plan-text-input]')).find(
+    const input = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]')).find(
       (candidate) => candidate.dataset.planTextInputId === itemId,
     )
 
     if (input) focusTextInput(input)
   }
 
-  function focusTextInput(input: HTMLInputElement) {
+  function focusTextInput(input: HTMLDivElement) {
     input.focus()
-    input.setSelectionRange(input.value.length, input.value.length)
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
   }
 </script>
 
@@ -166,16 +241,24 @@
       <button class="icon-button quiet add-time" type="button" title="Add time range" on:click={addTime}>+</button>
     {/if}
 
-    <input
+    <div
+      bind:this={textEditor}
       class="item-text"
       class:done={item.done}
       data-plan-text-input
       data-plan-text-input-id={item.id}
-      value={item.text}
-      placeholder="Plan item"
+      contenteditable="true"
+      role="textbox"
+      tabindex="0"
+      aria-label="Plan item"
+      data-placeholder="Plan item"
+      on:blur={() => {
+        if (textEditor) persistEditor(textEditor)
+      }}
       on:keydown={handleTextKeydown}
-      on:input={(event) => patchItem(planId, item.id, { text: event.currentTarget.value })}
-    />
+      on:input={handleTextInput}
+      on:paste={handlePaste}
+    >{@html renderedHTML}</div>
 
     <div class="row-actions">
       <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(planId, item.id)}>↳</button>

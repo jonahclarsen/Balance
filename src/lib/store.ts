@@ -11,9 +11,11 @@ import {
   escapeHTML,
   formatMinutes,
   generatePlanFromTemplate,
+  htmlToPlainText,
   movePlanItem,
   movePlanItemWithinLevel,
   nowISO,
+  sanitizeInlineHTML,
   todayISO,
   updatePlanItem,
   updateTemplateItem,
@@ -31,11 +33,11 @@ function readState(): AppState {
   try {
     const parsed = JSON.parse(raw) as AppState
     if (parsed.schemaVersion !== 1) return createInitialState()
-    return {
+    return normalizeState({
       ...parsed,
       activePlanDate: parsed.activePlanDate || todayISO(),
       operations: parsed.operations || [],
-    }
+    })
   } catch {
     return createInitialState()
   }
@@ -311,10 +313,34 @@ function renderItems(items: PlanItem[]): string {
         item.startMinutes !== null && item.endMinutes !== null
           ? `<span class="time">${formatMinutes(item.startMinutes)}-${formatMinutes(item.endMinutes)}</span>`
           : ''
-      const text = `<span class="${item.done ? 'done' : ''}">${item.done ? '[x]' : '[ ]'} ${time}${escapeHTML(item.text)}</span>`
+      const html = item.html ? sanitizeInlineHTML(item.html) : escapeHTML(item.text)
+      const text = `<span class="${item.done ? 'done' : ''}">${item.done ? '[x]' : '[ ]'} ${time}${html}</span>`
       return `<li>${text}${item.children.length > 0 ? renderItems(item.children) : ''}</li>`
     })
     .join('')}</ul>`
 }
 
 export const plannerStore = createPlannerStore()
+
+function normalizeState(state: AppState): AppState {
+  return {
+    ...state,
+    plans: state.plans.map((plan) => ({
+      ...plan,
+      items: normalizePlanItems(plan.items),
+    })),
+  }
+}
+
+function normalizePlanItems(items: PlanItem[]): PlanItem[] {
+  return items.map((item) => {
+    const html = sanitizeInlineHTML(item.html ?? escapeHTML(item.text ?? ''))
+
+    return {
+      ...item,
+      text: item.text ?? htmlToPlainText(html),
+      html,
+      children: normalizePlanItems(item.children ?? []),
+    }
+  })
+}

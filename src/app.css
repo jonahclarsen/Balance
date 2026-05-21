@@ -298,6 +298,29 @@ nav button.active {
   background: transparent;
 }
 
+.item-text {
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  outline: none;
+}
+
+.item-text:focus {
+  border-color: var(--accent);
+  background: var(--paper-strong);
+}
+
+.item-text:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+}
+
+.item-text a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+}
+
 .item-text.done {
   color: var(--muted);
   text-decoration: line-through;
