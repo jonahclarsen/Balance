@@ -103,6 +103,7 @@
               addChild={plannerStore.addPlanChild}
               deleteItem={plannerStore.deletePlanItem}
               moveItem={plannerStore.movePlanItem}
+              moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
             />
           {/each}
 

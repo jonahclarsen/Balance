@@ -87,6 +87,69 @@ test('plan items can be nested and un-nested with the drag handle', async ({ pag
     .toBe(true)
 })
 
+test('plan item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await page.keyboard.press('ArrowDown')
+
+  const focusedAfterDown = await activeInputValue(page)
+  expect(focusedAfterDown).not.toBe('Wake up')
+
+  await page.keyboard.press('ArrowUp')
+  expect(await activeInputValue(page)).toBe('Wake up')
+
+  await page.keyboard.press('Alt+ArrowDown')
+  expect(await activeInputValue(page)).toBe('Wake up')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return state.plans?.[0]?.items?.[1]?.text
+      }),
+    )
+    .toBe('Wake up')
+
+  await focusInputByValue(page, 'Work block')
+  await page.keyboard.press('Alt+ArrowUp')
+  expect(await activeInputValue(page)).toBe('Work block')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const plan = state.plans?.[0]
+        const workIndex = plan?.items?.findIndex((item: { text: string }) => item.text === 'Work block')
+        const work = plan?.items?.[workIndex]
+        return {
+          workIndex,
+          childCount: work?.children?.length,
+        }
+      }),
+    )
+    .toEqual({ workIndex: 1, childCount: 2 })
+})
+
+async function focusInputByValue(page: import('@playwright/test').Page, value: string) {
+  await page.evaluate((expectedValue) => {
+    const input = Array.from(document.querySelectorAll<HTMLInputElement>('[data-plan-text-input]')).find(
+      (candidate) => candidate.value === expectedValue,
+    )
+    input?.focus()
+  }, value)
+}
+
+async function activeInputValue(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    return active instanceof HTMLInputElement ? active.value : null
+  })
+}
+
 async function pointerDrag(
   page: import('@playwright/test').Page,
   source: import('@playwright/test').Locator,

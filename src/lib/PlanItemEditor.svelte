@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import TimeRange from './TimeRange.svelte'
-  import type { Id, MovePlacement, PlanItem } from './types'
+  import type { Id, MoveDirection, MovePlacement, PlanItem } from './types'
 
   export let item: PlanItem
   export let depth = 0
@@ -9,6 +10,7 @@
   export let addChild: (planId: Id, parentId: Id) => void
   export let deleteItem: (planId: Id, itemId: Id) => void
   export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
+  export let moveItemWithinLevel: (planId: Id, itemId: Id, direction: MoveDirection) => void
 
   let dragging = false
   let activeDropRow: HTMLElement | null = null
@@ -76,6 +78,44 @@
       moveItem(planId, item.id, targetId, placement)
     }
   }
+
+  async function handleTextKeydown(event: KeyboardEvent) {
+    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+    if (event.metaKey || event.ctrlKey) return
+
+    event.preventDefault()
+    const direction: MoveDirection = event.key === 'ArrowUp' ? 'up' : 'down'
+
+    if (event.altKey) {
+      moveItemWithinLevel(planId, item.id, direction)
+      await tick()
+      focusItemTextInput(item.id)
+      return
+    }
+
+    focusAdjacentTextInput(event.currentTarget as HTMLInputElement, direction)
+  }
+
+  function focusAdjacentTextInput(current: HTMLInputElement, direction: MoveDirection) {
+    const inputs = Array.from(document.querySelectorAll<HTMLInputElement>('[data-plan-text-input]'))
+    const index = inputs.indexOf(current)
+    const target = inputs[direction === 'up' ? index - 1 : index + 1]
+
+    if (target) focusTextInput(target)
+  }
+
+  function focusItemTextInput(itemId: Id) {
+    const input = Array.from(document.querySelectorAll<HTMLInputElement>('[data-plan-text-input]')).find(
+      (candidate) => candidate.dataset.planTextInputId === itemId,
+    )
+
+    if (input) focusTextInput(input)
+  }
+
+  function focusTextInput(input: HTMLInputElement) {
+    input.focus()
+    input.setSelectionRange(input.value.length, input.value.length)
+  }
 </script>
 
 <div class="item-shell" style={`--depth: ${depth}`}>
@@ -129,8 +169,11 @@
     <input
       class="item-text"
       class:done={item.done}
+      data-plan-text-input
+      data-plan-text-input-id={item.id}
       value={item.text}
       placeholder="Plan item"
+      on:keydown={handleTextKeydown}
       on:input={(event) => patchItem(planId, item.id, { text: event.currentTarget.value })}
     />
 
@@ -151,6 +194,7 @@
           {addChild}
           {deleteItem}
           {moveItem}
+          {moveItemWithinLevel}
         />
       {/each}
     </div>

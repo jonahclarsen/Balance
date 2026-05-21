@@ -23,6 +23,8 @@ export type PlanItem = {
 
 export type MovePlacement = 'before' | 'after' | 'inside'
 
+export type MoveDirection = 'up' | 'down'
+
 export type DailyPlan = {
   id: Id
   date: string

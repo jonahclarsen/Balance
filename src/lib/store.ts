@@ -12,6 +12,7 @@ import {
   formatMinutes,
   generatePlanFromTemplate,
   movePlanItem,
+  movePlanItemWithinLevel,
   nowISO,
   todayISO,
   updatePlanItem,
@@ -131,6 +132,13 @@ function createPlannerStore() {
       commit('move_plan_item', { planId, sourceId, targetId, placement }, (state) => updatePlan(state, planId, (plan) => ({
         ...plan,
         items: movePlanItem(plan.items, sourceId, targetId, placement),
+      })))
+    },
+
+    movePlanItemWithinLevel(planId: Id, itemId: Id, direction: 'up' | 'down') {
+      commit('move_plan_item_within_level', { planId, itemId, direction }, (state) => updatePlan(state, planId, (plan) => ({
+        ...plan,
+        items: movePlanItemWithinLevel(plan.items, itemId, direction),
       })))
     },
 

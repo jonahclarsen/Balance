@@ -1,4 +1,14 @@
-import type { AppState, DailyPlan, DailyTemplate, Id, MovePlacement, PlanItem, TemplateItem, TemplateOption } from './types'
+import type {
+  AppState,
+  DailyPlan,
+  DailyTemplate,
+  Id,
+  MoveDirection,
+  MovePlacement,
+  PlanItem,
+  TemplateItem,
+  TemplateOption,
+} from './types'
 
 export function createId(prefix = 'id'): Id {
   if (globalThis.crypto?.randomUUID) {
@@ -172,6 +182,30 @@ export function movePlanItem(
 
   const inserted = insertPlanItem(extracted.items, extracted.item, targetId, placement)
   return inserted ?? items
+}
+
+export function movePlanItemWithinLevel(items: PlanItem[], itemId: Id, direction: MoveDirection): PlanItem[] {
+  const index = items.findIndex((item) => item.id === itemId)
+
+  if (index !== -1) {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= items.length) return items
+
+    const nextItems = [...items]
+    const [item] = nextItems.splice(index, 1)
+    nextItems.splice(targetIndex, 0, item)
+    return nextItems
+  }
+
+  let changed = false
+  const nextItems = items.map((item) => {
+    const children = movePlanItemWithinLevel(item.children, itemId, direction)
+    if (children === item.children) return item
+    changed = true
+    return { ...item, children }
+  })
+
+  return changed ? nextItems : items
 }
 
 function findPlanItem(items: PlanItem[], itemId: Id): PlanItem | null {
