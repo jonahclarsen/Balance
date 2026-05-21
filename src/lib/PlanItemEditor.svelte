@@ -1,0 +1,158 @@
+<script lang="ts">
+  import TimeRange from './TimeRange.svelte'
+  import type { Id, MovePlacement, PlanItem } from './types'
+
+  export let item: PlanItem
+  export let depth = 0
+  export let planId: Id
+  export let patchItem: (planId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>) => void
+  export let addChild: (planId: Id, parentId: Id) => void
+  export let deleteItem: (planId: Id, itemId: Id) => void
+  export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
+
+  let dragging = false
+  let activeDropRow: HTMLElement | null = null
+
+  function addTime() {
+    patchItem(planId, item.id, {
+      startMinutes: 9 * 60,
+      endMinutes: 10 * 60,
+    })
+  }
+
+  function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
+    const rect = row.getBoundingClientRect()
+    const y = clientY - rect.top
+
+    if (y < rect.height * 0.28) return 'before'
+    if (y > rect.height * 0.72) return 'after'
+    return 'inside'
+  }
+
+  function clearDropMarker() {
+    activeDropRow?.classList.remove('drop-before', 'drop-inside', 'drop-after')
+    activeDropRow = null
+  }
+
+  function markDropTarget(row: HTMLElement, placement: MovePlacement) {
+    if (activeDropRow !== row) clearDropMarker()
+    activeDropRow = row
+    row.classList.remove('drop-before', 'drop-inside', 'drop-after')
+    row.classList.add(`drop-${placement}`)
+  }
+
+  function startPointerDrag(event: PointerEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    dragging = true
+    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+  }
+
+  function continuePointerDrag(event: PointerEvent) {
+    if (!dragging) return
+
+    const hovered = document.elementFromPoint(event.clientX, event.clientY)
+    const row = hovered instanceof Element ? hovered.closest<HTMLElement>('[data-plan-item-id]') : null
+
+    if (!row || row.dataset.planItemId === item.id) {
+      clearDropMarker()
+      return
+    }
+
+    markDropTarget(row, placementForRow(row, event.clientY))
+  }
+
+  function endPointerDrag(event: PointerEvent) {
+    if (!dragging) return
+
+    const row = activeDropRow
+    const targetId = row?.dataset.planItemId
+    const placement = row ? placementForRow(row, event.clientY) : null
+
+    clearDropMarker()
+    dragging = false
+
+    if (targetId && targetId !== item.id && placement) {
+      moveItem(planId, item.id, targetId, placement)
+    }
+  }
+</script>
+
+<div class="item-shell" style={`--depth: ${depth}`}>
+  <div
+    class="plan-row"
+    data-plan-item-id={item.id}
+    role="listitem"
+    aria-label={`Plan item: ${item.text || 'Untitled'}`}
+  >
+    <button
+      class="drag-handle"
+      class:dragging
+      type="button"
+      title="Drag to move item"
+      aria-label="Drag to move item"
+      on:pointerdown={startPointerDrag}
+      on:pointermove={continuePointerDrag}
+      on:pointerup={endPointerDrag}
+      on:pointercancel={() => {
+        dragging = false
+        clearDropMarker()
+      }}
+    >
+      <span class="handle-dots" aria-hidden="true">
+        <span>⋮</span>
+        <span>⋮</span>
+      </span>
+    </button>
+
+    <label class="check-target" title="Complete item">
+      <input
+        class="check"
+        type="checkbox"
+        checked={item.done}
+        on:change={(event) => patchItem(planId, item.id, { done: event.currentTarget.checked })}
+        aria-label="Complete item"
+      />
+    </label>
+
+    {#if item.startMinutes !== null && item.endMinutes !== null}
+      <TimeRange
+        startMinutes={item.startMinutes}
+        endMinutes={item.endMinutes}
+        onChange={(startMinutes, endMinutes) => patchItem(planId, item.id, { startMinutes, endMinutes })}
+        onRemove={() => patchItem(planId, item.id, { startMinutes: null, endMinutes: null })}
+      />
+    {:else}
+      <button class="icon-button quiet add-time" type="button" title="Add time range" on:click={addTime}>+</button>
+    {/if}
+
+    <input
+      class="item-text"
+      class:done={item.done}
+      value={item.text}
+      placeholder="Plan item"
+      on:input={(event) => patchItem(planId, item.id, { text: event.currentTarget.value })}
+    />
+
+    <div class="row-actions">
+      <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(planId, item.id)}>↳</button>
+      <button class="icon-button danger" type="button" title="Delete item" on:click={() => deleteItem(planId, item.id)}>×</button>
+    </div>
+  </div>
+
+  {#if item.children.length > 0}
+    <div class="children">
+      {#each item.children as child (child.id)}
+        <svelte:self
+          item={child}
+          depth={depth + 1}
+          {planId}
+          {patchItem}
+          {addChild}
+          {deleteItem}
+          {moveItem}
+        />
+      {/each}
+    </div>
+  {/if}
+</div>
