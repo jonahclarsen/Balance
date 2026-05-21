@@ -56,6 +56,7 @@ export type AppState = {
   schemaVersion: 1
   deviceId: Id
   localSequence: number
+  historyRevision: number
   activePlanDate: string
   templates: DailyTemplate[]
   plans: DailyPlan[]

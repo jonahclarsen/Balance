@@ -52,7 +52,27 @@
   function downloadHTML() {
     download(`balance-history-${todayISO()}.html`, exportHTML($plannerStore), 'text/html')
   }
+
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    const key = event.key.toLowerCase()
+    const primaryModifier = event.metaKey || event.ctrlKey
+
+    if (!primaryModifier || event.altKey) return
+
+    if (key === 'z' && !event.shiftKey) {
+      event.preventDefault()
+      plannerStore.undo()
+      return
+    }
+
+    if (event.shiftKey && (key === 'z' || key === 'c')) {
+      event.preventDefault()
+      plannerStore.redo()
+    }
+  }
 </script>
+
+<svelte:window on:keydown|capture={handleGlobalKeydown} />
 
 <main class="app-shell">
   <aside class="sidebar">
@@ -104,6 +124,7 @@
               deleteItem={plannerStore.deletePlanItem}
               moveItem={plannerStore.movePlanItem}
               moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
+              historyRevision={$plannerStore.historyRevision}
             />
           {/each}
 

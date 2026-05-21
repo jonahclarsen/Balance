@@ -12,15 +12,26 @@
   export let deleteItem: (planId: Id, itemId: Id) => void
   export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (planId: Id, itemId: Id, direction: MoveDirection) => void
+  export let historyRevision: number
 
   let dragging = false
   let activeDropRow: HTMLElement | null = null
   let textEditor: HTMLDivElement
   let renderedHTML = item.html || escapeHTML(item.text)
+  let lastHistoryRevision = historyRevision
 
   $: {
     const nextHTML = item.html || escapeHTML(item.text)
-    if (nextHTML !== renderedHTML && textEditor !== document.activeElement) {
+    const historyWasApplied = historyRevision !== lastHistoryRevision
+
+    if (historyWasApplied) {
+      lastHistoryRevision = historyRevision
+      renderedHTML = nextHTML
+      if (textEditor) {
+        textEditor.innerHTML = nextHTML
+        if (textEditor === document.activeElement) focusTextInput(textEditor)
+      }
+    } else if (nextHTML !== renderedHTML && textEditor !== document.activeElement) {
       renderedHTML = nextHTML
       if (textEditor) textEditor.innerHTML = nextHTML
     }
@@ -278,6 +289,7 @@
           {deleteItem}
           {moveItem}
           {moveItemWithinLevel}
+          {historyRevision}
         />
       {/each}
     </div>

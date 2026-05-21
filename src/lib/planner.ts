@@ -60,6 +60,7 @@ export function createInitialState(): AppState {
     schemaVersion: 1,
     deviceId: createId('device'),
     localSequence: 0,
+    historyRevision: 0,
     activePlanDate: todayISO(),
     templates: [createDefaultTemplate()],
     plans: [],

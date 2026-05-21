@@ -212,6 +212,55 @@ test('typing in rich plan item text keeps the caret at the insertion point', asy
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(3)
 })
 
+test('global undo and redo batch text edits', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.type('abc')
+  await expect.poll(async () => activeInputValue(page)).toBe('abc')
+
+  await page.keyboard.press('Meta+Z')
+  await expect.poll(async () => activeInputValue(page)).toBe('Wake up')
+
+  await page.keyboard.press('Meta+Shift+Z')
+  await expect.poll(async () => activeInputValue(page)).toBe('abc')
+
+  await page.keyboard.press('Meta+Z')
+  await expect.poll(async () => activeInputValue(page)).toBe('Wake up')
+
+  await page.keyboard.press('Meta+Shift+C')
+  await expect.poll(async () => activeInputValue(page)).toBe('abc')
+})
+
+test('global undo and redo apply to item movement', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const initialOrder = await topLevelTexts(page)
+  const movedOrder = [initialOrder[1], initialOrder[0], ...initialOrder.slice(2)]
+
+  await focusInputByValue(page, 'Wake up')
+  await page.keyboard.press('Alt+ArrowDown')
+  await expect.poll(async () => topLevelTexts(page)).toEqual(movedOrder)
+
+  await page.keyboard.press('Meta+Z')
+  await expect.poll(async () => topLevelTexts(page)).toEqual(initialOrder)
+
+  await page.keyboard.press('Meta+Shift+Z')
+  await expect.poll(async () => topLevelTexts(page)).toEqual(movedOrder)
+
+  await page.keyboard.press('Meta+Z')
+  await expect.poll(async () => topLevelTexts(page)).toEqual(initialOrder)
+
+  await page.keyboard.press('Meta+Shift+C')
+  await expect.poll(async () => topLevelTexts(page)).toEqual(movedOrder)
+})
+
 async function focusInputByValue(page: import('@playwright/test').Page, value: string) {
   await page.evaluate((expectedValue) => {
     const input = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-text-input]')).find(
@@ -280,6 +329,13 @@ async function caretOffsetInFocusedEditor(page: import('@playwright/test').Page)
     range.selectNodeContents(active)
     range.setEnd(selection.anchorNode ?? active, selection.anchorOffset)
     return range.toString().length
+  })
+}
+
+async function topLevelTexts(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.plans?.[0]?.items?.map((item: { text: string }) => item.text) ?? []
   })
 }
 

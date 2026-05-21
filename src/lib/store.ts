@@ -23,8 +23,25 @@ import {
 import type { AppState, DailyPlan, Id, PlanItem, TemplateItem, TemplateOption } from './types'
 
 const STORAGE_KEY = 'balance.appState.v1'
+const TEXT_MERGE_WINDOW_MS = 1200
+const MAX_HISTORY_ENTRIES = 200
 
 type Mutator = (state: AppState) => AppState
+type CommitOptions = {
+  undoable?: boolean
+  mergeKey?: string
+  mergeWindowMs?: number
+}
+
+type HistoryEntry = {
+  before: AppState
+  after: AppState
+  mergeKey: string | null
+  updatedAt: number
+}
+
+let undoStack: HistoryEntry[] = []
+let redoStack: HistoryEntry[] = []
 
 function readState(): AppState {
   const raw = localStorage.getItem(STORAGE_KEY)
@@ -35,6 +52,7 @@ function readState(): AppState {
     if (parsed.schemaVersion !== 1) return createInitialState()
     return normalizeState({
       ...parsed,
+      historyRevision: parsed.historyRevision || 0,
       activePlanDate: parsed.activePlanDate || todayISO(),
       operations: parsed.operations || [],
     })
@@ -51,12 +69,14 @@ function createPlannerStore() {
   const store = writable<AppState>(readState())
   store.subscribe(persistState)
 
-  function commit(type: string, payload: unknown, mutate: Mutator): void {
+  function commit(type: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
     store.update((state) => {
       const next = mutate(state)
+      if (JSON.stringify(next) === JSON.stringify(state)) return state
+
       const sequence = state.localSequence + 1
 
-      return {
+      const committed = {
         ...next,
         localSequence: sequence,
         operations: [
@@ -71,6 +91,12 @@ function createPlannerStore() {
           },
         ],
       }
+
+      if (options.undoable !== false) {
+        recordHistory(state, committed, options)
+      }
+
+      return committed
     })
   }
 
@@ -117,10 +143,11 @@ function createPlannerStore() {
     },
 
     patchPlanItem(planId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>) {
+      const isTextPatch = 'text' in patch || 'html' in patch
       commit('patch_plan_item', { planId, itemId, patch }, (state) => updatePlan(state, planId, (plan) => ({
         ...plan,
         items: updatePlanItem(plan.items, itemId, (item) => ({ ...item, ...patch })),
-      })))
+      })), isTextPatch ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {})
     },
 
     deletePlanItem(planId: Id, itemId: Id) {
@@ -210,6 +237,7 @@ function createPlannerStore() {
     },
 
     patchTemplateOption(templateId: Id, itemId: Id, optionId: Id, patch: Partial<TemplateOption>) {
+      const isTextPatch = 'text' in patch
       commit('patch_template_option', { templateId, itemId, optionId, patch }, (state) =>
         updateTemplate(state, templateId, (template) => ({
           ...template,
@@ -219,6 +247,7 @@ function createPlannerStore() {
             options: item.options.map((option) => (option.id === optionId ? { ...option, ...patch } : option)),
           })),
         })),
+        isTextPatch ? { mergeKey: `template-option-text:${templateId}:${itemId}:${optionId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {},
       )
     },
 
@@ -237,7 +266,68 @@ function createPlannerStore() {
         })),
       )
     },
+
+    undo() {
+      store.update((state) => {
+        const entry = undoStack.pop()
+        if (!entry) return state
+
+        redoStack.push(entry)
+        return applyHistorySnapshot(state, entry.before, 'history_undo', entry)
+      })
+    },
+
+    redo() {
+      store.update((state) => {
+        const entry = redoStack.pop()
+        if (!entry) return state
+
+        undoStack.push(entry)
+        return applyHistorySnapshot(state, entry.after, 'history_redo', entry)
+      })
+    },
   }
+}
+
+function applyHistorySnapshot(current: AppState, snapshot: AppState, type: string, entry: HistoryEntry): AppState {
+  const sequence = current.localSequence + 1
+
+  return {
+    ...snapshot,
+    deviceId: current.deviceId,
+    localSequence: sequence,
+    operations: [
+      ...current.operations,
+      {
+        id: `op_${current.deviceId}_${sequence}`,
+        deviceId: current.deviceId,
+        sequence,
+        type,
+        timestamp: nowISO(),
+        payload: {
+          mergeKey: entry.mergeKey,
+        },
+      },
+    ],
+    historyRevision: current.historyRevision + 1,
+  }
+}
+
+function recordHistory(before: AppState, after: AppState, options: CommitOptions): void {
+  const now = Date.now()
+  const mergeKey = options.mergeKey ?? null
+  const mergeWindowMs = options.mergeWindowMs ?? 0
+  const last = undoStack.at(-1)
+
+  if (last && mergeKey && last.mergeKey === mergeKey && now - last.updatedAt <= mergeWindowMs) {
+    last.after = after
+    last.updatedAt = now
+  } else {
+    undoStack.push({ before, after, mergeKey, updatedAt: now })
+    if (undoStack.length > MAX_HISTORY_ENTRIES) undoStack = undoStack.slice(-MAX_HISTORY_ENTRIES)
+  }
+
+  redoStack = []
 }
 
 function updatePlan(state: AppState, planId: Id, updater: (plan: DailyPlan) => DailyPlan): AppState {
