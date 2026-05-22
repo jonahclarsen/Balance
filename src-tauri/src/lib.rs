@@ -211,6 +211,7 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           id text primary key,
           item_id text not null references template_items(id) on delete cascade,
           text text not null,
+          html text not null,
           probability real not null,
           position integer not null
         );
@@ -263,7 +264,22 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
         create index if not exists idx_history_entries_undo on history_entries(undone, sequence, updated_at_ms);
       ",
         )
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+
+    add_missing_column(
+        connection,
+        "template_options",
+        "html",
+        "text not null default ''",
+    )?;
+    connection
+        .execute(
+            "update template_options set html = text where html = ''",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+
+    Ok(())
 }
 
 fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, String> {
@@ -275,6 +291,34 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
         )
         .optional()
         .map_err(|error| error.to_string())
+}
+
+fn add_missing_column(
+    connection: &Connection,
+    table: &str,
+    column: &str,
+    column_definition: &str,
+) -> Result<(), String> {
+    let mut statement = connection
+        .prepare(&format!("pragma table_info({table})"))
+        .map_err(|error| error.to_string())?;
+    let columns = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+
+    if columns.iter().any(|candidate| candidate == column) {
+        return Ok(());
+    }
+
+    connection
+        .execute(
+            &format!("alter table {table} add column {column} {column_definition}"),
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    Ok(())
 }
 
 fn replace_app_state(connection: &mut Connection, state: &Value) -> Result<(), String> {
@@ -806,13 +850,17 @@ fn build_template_option_patch_undo(
 ) -> Result<Option<Value>, String> {
     let option_id = required_string(payload, "optionId")?;
     let patch = required_value(payload, "patch")?;
-    let Some((text, probability)) = read_template_option_fields(connection, option_id)? else {
+    let Some((text, html, probability)) = read_template_option_fields(connection, option_id)?
+    else {
         return Ok(None);
     };
 
     let mut inverse_patch = Map::new();
     if patch_has_key(patch, "text") {
         inverse_patch.insert("text".into(), json!(text));
+    }
+    if patch_has_key(patch, "html") {
+        inverse_patch.insert("html".into(), json!(html));
     }
     if patch_has_key(patch, "probability") {
         inverse_patch.insert("probability".into(), json!(probability));
@@ -1135,21 +1183,26 @@ fn insert_template_option(
     option: &Value,
     position: i64,
 ) -> Result<(), String> {
+    let text = required_string(option, "text")?;
+    let html = optional_string(option, "html")?.unwrap_or_else(|| text.to_string());
+
     connection
         .execute(
             "
-        insert into template_options (id, item_id, text, probability, position)
-        values (?1, ?2, ?3, ?4, ?5)
+        insert into template_options (id, item_id, text, html, probability, position)
+        values (?1, ?2, ?3, ?4, ?5, ?6)
         on conflict(id) do update set
           item_id = excluded.item_id,
           text = excluded.text,
+          html = excluded.html,
           probability = excluded.probability,
           position = excluded.position
       ",
             params![
                 required_string(option, "id")?,
                 item_id,
-                required_string(option, "text")?,
+                text,
+                html,
                 number_value(option, "probability")?,
                 position
             ],
@@ -1297,6 +1350,14 @@ fn patch_template_option(connection: &Connection, payload: &Value) -> Result<(),
             .execute(
                 "update template_options set text = ?1 where id = ?2",
                 params![text, option_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    if let Some(html) = optional_string(patch, "html")? {
+        connection
+            .execute(
+                "update template_options set html = ?1 where id = ?2",
+                params![html, option_id],
             )
             .map_err(|error| error.to_string())?;
     }
@@ -1721,7 +1782,7 @@ fn read_template_option_snapshot(
     let row = connection
         .query_row(
             "
-          select item_id, text, probability, position
+          select item_id, text, html, probability, position
           from template_options
           where id = ?1
         ",
@@ -1730,15 +1791,16 @@ fn read_template_option_snapshot(
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, f64>(2)?,
-                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, f64>(3)?,
+                    row.get::<_, i64>(4)?,
                 ))
             },
         )
         .optional()
         .map_err(|error| error.to_string())?;
 
-    let Some((item_id, text, probability, position)) = row else {
+    let Some((item_id, text, html, probability, position)) = row else {
         return Ok(None);
     };
 
@@ -1748,6 +1810,7 @@ fn read_template_option_snapshot(
         option: json!({
             "id": option_id,
             "text": text,
+            "html": html,
             "probability": probability,
         }),
     }))
@@ -1756,12 +1819,18 @@ fn read_template_option_snapshot(
 fn read_template_option_fields(
     connection: &Connection,
     option_id: &str,
-) -> Result<Option<(String, f64)>, String> {
+) -> Result<Option<(String, String, f64)>, String> {
     connection
         .query_row(
-            "select text, probability from template_options where id = ?1",
+            "select text, html, probability from template_options where id = ?1",
             params![option_id],
-            |row| Ok((row.get::<_, String>(0)?, row.get::<_, f64>(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, f64>(2)?,
+                ))
+            },
         )
         .optional()
         .map_err(|error| error.to_string())
@@ -1852,7 +1921,7 @@ fn read_template_items(
 fn read_template_options(connection: &Connection, item_id: &str) -> Result<Vec<Value>, String> {
     let mut statement = connection
         .prepare(
-            "select id, text, probability from template_options where item_id = ?1 order by position, id",
+            "select id, text, html, probability from template_options where item_id = ?1 order by position, id",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
@@ -1860,7 +1929,8 @@ fn read_template_options(connection: &Connection, item_id: &str) -> Result<Vec<V
             Ok(json!({
                 "id": row.get::<_, String>(0)?,
                 "text": row.get::<_, String>(1)?,
-                "probability": row.get::<_, f64>(2)?,
+                "html": row.get::<_, String>(2)?,
+                "probability": row.get::<_, f64>(3)?,
             }))
         })
         .map_err(|error| error.to_string())?;
@@ -2394,6 +2464,57 @@ mod tests {
     }
 
     #[test]
+    fn template_option_html_persists_and_undoes() {
+        let database = TestDatabase::new("template-option-html");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Template HTML test")).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "patch_template_option",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemId": "template_item_wake",
+                    "optionId": "template_option_wake",
+                    "patch": {
+                        "text": "Wake up formatted",
+                        "html": "<strong>Wake up formatted</strong>"
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            saved["templates"][0]["items"][0]["options"][0]["html"],
+            "<strong>Wake up formatted</strong>"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            undone["templates"][0]["items"][0]["options"][0]["html"],
+            "Wake up"
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            redone["templates"][0]["items"][0]["options"][0]["html"],
+            "<strong>Wake up formatted</strong>"
+        );
+    }
+
+    #[test]
     fn generated_recovery_key_uses_grouped_base32_format() {
         let recovery_key = generate_recovery_key();
         let groups = recovery_key.split('-').collect::<Vec<_>>();
@@ -2500,6 +2621,7 @@ mod tests {
                                 {
                                     "id": "template_option_wake",
                                     "text": "Wake up",
+                                    "html": "Wake up",
                                     "probability": 100
                                 }
                             ],

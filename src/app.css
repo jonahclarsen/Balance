@@ -238,7 +238,6 @@ nav button.active {
   flex: 0 0 auto;
   border: 1px solid transparent;
   background: transparent;
-  color: var(--muted);
   cursor: grab;
   padding: 0;
   touch-action: none;
@@ -251,21 +250,14 @@ nav button.active {
 }
 
 .handle-dots {
-  display: grid;
-  grid-template-columns: repeat(2, 4px);
-  gap: 3px;
-  place-content: center;
-  width: 14px;
-  height: 18px;
-  pointer-events: none;
-}
-
-.handle-dots span {
   display: block;
-  width: 4px;
-  overflow: hidden;
-  line-height: 14px;
-  text-align: center;
+  width: 16px;
+  height: 20px;
+  background-image: radial-gradient(circle, var(--muted) 1.6px, transparent 1.8px);
+  background-position: 0 0;
+  background-size: 8px 7px;
+  opacity: 0.95;
+  pointer-events: none;
 }
 
 .drag-handle:active {
@@ -298,7 +290,8 @@ nav button.active {
   background: transparent;
 }
 
-.item-text {
+.item-text,
+.template-text {
   min-height: 36px;
   padding: 8px 10px;
   border: 1px solid transparent;
@@ -306,17 +299,20 @@ nav button.active {
   outline: none;
 }
 
-.item-text:focus {
+.item-text:focus,
+.template-text:focus {
   border-color: var(--accent);
   background: var(--paper-strong);
 }
 
-.item-text:empty::before {
+.item-text:empty::before,
+.template-text:empty::before {
   content: attr(data-placeholder);
   color: var(--muted);
 }
 
-.item-text a {
+.item-text a,
+.template-text a {
   color: var(--accent-strong);
   text-decoration: underline;
 }

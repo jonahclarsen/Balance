@@ -1,4 +1,5 @@
 <script lang="ts">
+  import RichTextEditor from './RichTextEditor.svelte'
   import type { Id, TemplateItem, TemplateOption } from './types'
 
   export let item: TemplateItem
@@ -10,6 +11,7 @@
   export let addOption: (templateId: Id, itemId: Id) => void
   export let patchOption: (templateId: Id, itemId: Id, optionId: Id, patch: Partial<TemplateOption>) => void
   export let deleteOption: (templateId: Id, itemId: Id, optionId: Id) => void
+  export let historyRevision: number
 
   $: probabilityTotal = item.options.reduce((sum, option) => sum + (Number(option.probability) || 0), 0)
 </script>
@@ -19,11 +21,16 @@
     <div class="option-stack">
       {#each item.options as option, index (option.id)}
         <div class="option-row">
-          <input
-            class="template-text"
-            value={option.text}
+          <RichTextEditor
+            className="template-text"
+            kind="template-option"
+            inputId={option.id}
+            html={option.html}
+            text={option.text}
             placeholder={index === 0 ? 'Template item' : 'Alternative'}
-            on:input={(event) => patchOption(templateId, item.id, option.id, { text: event.currentTarget.value })}
+            ariaLabel={index === 0 ? 'Template item' : 'Template alternative'}
+            revision={historyRevision}
+            onChange={(html, text) => patchOption(templateId, item.id, option.id, { html, text })}
           />
           <input
             class="probability"
@@ -72,6 +79,7 @@
           {addOption}
           {patchOption}
           {deleteOption}
+          {historyRevision}
         />
       {/each}
     </div>

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
-  import { escapeHTML, htmlToPlainText, isURL, sanitizeInlineHTML } from './planner'
   import type { Id, MoveDirection, MovePlacement, PlanItem } from './types'
 
   export let item: PlanItem
@@ -16,26 +16,6 @@
 
   let dragging = false
   let activeDropRow: HTMLElement | null = null
-  let textEditor: HTMLDivElement
-  let renderedHTML = item.html || escapeHTML(item.text)
-  let lastHistoryRevision = historyRevision
-
-  $: {
-    const nextHTML = item.html || escapeHTML(item.text)
-    const historyWasApplied = historyRevision !== lastHistoryRevision
-
-    if (historyWasApplied) {
-      lastHistoryRevision = historyRevision
-      renderedHTML = nextHTML
-      if (textEditor) {
-        textEditor.innerHTML = nextHTML
-        if (textEditor === document.activeElement) focusTextInput(textEditor)
-      }
-    } else if (nextHTML !== renderedHTML && textEditor !== document.activeElement) {
-      renderedHTML = nextHTML
-      if (textEditor) textEditor.innerHTML = nextHTML
-    }
-  }
 
   function addTime() {
     patchItem(planId, item.id, {
@@ -101,27 +81,7 @@
     }
   }
 
-  async function handleTextKeydown(event: KeyboardEvent) {
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'b') {
-      event.preventDefault()
-      document.execCommand('bold')
-      persistEditor(event.currentTarget as HTMLDivElement, false)
-      return
-    }
-
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'i') {
-      event.preventDefault()
-      document.execCommand('italic')
-      persistEditor(event.currentTarget as HTMLDivElement, false)
-      return
-    }
-
-    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
-    if (event.metaKey || event.ctrlKey) return
-
-    event.preventDefault()
-    const direction: MoveDirection = event.key === 'ArrowUp' ? 'up' : 'down'
-
+  async function handleTextArrowKey(direction: MoveDirection, current: HTMLDivElement, event: KeyboardEvent) {
     if (event.altKey) {
       moveItemWithinLevel(planId, item.id, direction)
       await tick()
@@ -129,51 +89,7 @@
       return
     }
 
-    focusAdjacentTextInput(event.currentTarget as HTMLDivElement, direction)
-  }
-
-  function handleTextInput(event: Event) {
-    persistEditor(event.currentTarget as HTMLDivElement, false)
-  }
-
-  function handlePaste(event: ClipboardEvent) {
-    const editor = event.currentTarget as HTMLDivElement
-    const clipboardText = event.clipboardData?.getData('text/plain') ?? ''
-    const clipboardHTML = event.clipboardData?.getData('text/html') ?? ''
-
-    if (clipboardText && isURL(clipboardText) && hasNonCollapsedSelectionInside(editor)) {
-      event.preventDefault()
-      document.execCommand('createLink', false, clipboardText.trim())
-      persistEditor(editor, false)
-      return
-    }
-
-    if (clipboardHTML || clipboardText) {
-      event.preventDefault()
-      const html = clipboardHTML
-        ? sanitizeInlineHTML(clipboardHTML)
-        : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>')
-      document.execCommand('insertHTML', false, html)
-      persistEditor(editor, false)
-    }
-  }
-
-  function persistEditor(editor: HTMLDivElement, syncRenderedHTML = true) {
-    const html = sanitizeInlineHTML(editor.innerHTML)
-    if (syncRenderedHTML && editor.innerHTML !== html) editor.innerHTML = html
-    if (syncRenderedHTML) renderedHTML = html
-    patchItem(planId, item.id, {
-      html,
-      text: htmlToPlainText(html),
-    })
-  }
-
-  function hasNonCollapsedSelectionInside(editor: HTMLDivElement) {
-    const selection = document.getSelection()
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false
-
-    const range = selection.getRangeAt(0)
-    return editor.contains(range.commonAncestorContainer)
+    focusAdjacentTextInput(current, direction)
   }
 
   function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection) {
@@ -225,10 +141,7 @@
         clearDropMarker()
       }}
     >
-      <span class="handle-dots" aria-hidden="true">
-        <span>⋮</span>
-        <span>⋮</span>
-      </span>
+      <span class="handle-dots" aria-hidden="true"></span>
     </button>
 
     <label class="check-target" title="Complete item">
@@ -252,24 +165,19 @@
       <button class="icon-button quiet add-time" type="button" title="Add time range" on:click={addTime}>+</button>
     {/if}
 
-    <div
-      bind:this={textEditor}
-      class="item-text"
-      class:done={item.done}
-      data-plan-text-input
-      data-plan-text-input-id={item.id}
-      contenteditable="true"
-      role="textbox"
-      tabindex="0"
-      aria-label="Plan item"
-      data-placeholder="Plan item"
-      on:blur={() => {
-        if (textEditor) persistEditor(textEditor)
-      }}
-      on:keydown={handleTextKeydown}
-      on:input={handleTextInput}
-      on:paste={handlePaste}
-    >{@html renderedHTML}</div>
+    <RichTextEditor
+      className="item-text"
+      kind="plan"
+      inputId={item.id}
+      html={item.html}
+      text={item.text}
+      done={item.done}
+      placeholder="Plan item"
+      ariaLabel="Plan item"
+      revision={historyRevision}
+      onChange={(html, text) => patchItem(planId, item.id, { html, text })}
+      onArrowKey={handleTextArrowKey}
+    />
 
     <div class="row-actions">
       <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(planId, item.id)}>↳</button>

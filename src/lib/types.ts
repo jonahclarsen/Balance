@@ -3,6 +3,7 @@ export type Id = string
 export type TemplateOption = {
   id: Id
   text: string
+  html: string
   probability: number
 }
 

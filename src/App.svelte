@@ -199,6 +199,7 @@
                 addOption={plannerStore.addTemplateOption}
                 patchOption={plannerStore.patchTemplateOption}
                 deleteOption={plannerStore.deleteTemplateOption}
+                historyRevision={$plannerStore.historyRevision}
               />
             {/each}
           </div>

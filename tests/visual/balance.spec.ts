@@ -11,6 +11,18 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
 
   await generateButton.click()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Drag to move item' }).first()).toBeVisible()
+  await expect
+    .poll(async () =>
+      page.getByRole('button', { name: 'Drag to move item' }).first().evaluate((handle) => {
+        const dots = handle.querySelector('.handle-dots')
+        if (!(dots instanceof HTMLElement)) return false
+        const style = getComputedStyle(dots)
+        const box = dots.getBoundingClientRect()
+        return box.width >= 12 && box.height >= 16 && style.backgroundImage.includes('radial-gradient')
+      }),
+    )
+    .toBe(true)
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-today.png`,
     fullPage: true,
@@ -198,6 +210,41 @@ test('plan item rich text preserves paste formatting and supports shortcuts', as
     .toContain('<a href="https://balance.local" target="_blank" rel="noreferrer">')
 })
 
+test('template options use rich text formatting and generate formatted plan items', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
+
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Templates' }).click()
+
+  await focusTemplateOptionByValue(page, 'Wake up')
+  await page.evaluate(async () => {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': new Blob(['<strong>Template</strong> <em>Link</em> <a href="https://example.com">Site</a>'], {
+          type: 'text/html',
+        }),
+        'text/plain': new Blob(['Template Link Site'], { type: 'text/plain' }),
+      }),
+    ])
+  })
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.press('Meta+V')
+
+  await expect
+    .poll(async () => richHTMLForFocusedTemplateOption(page))
+    .toContain('<strong>Template</strong> <em>Link</em> <a href="https://example.com/" target="_blank" rel="noreferrer">Site</a>')
+  await expect
+    .poll(async () => storedHTMLForFocusedTemplateOption(page))
+    .toContain('<strong>Template</strong> <em>Link</em>')
+
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
+  await expect.poll(async () => firstPlanItemHTML(page)).toContain('<strong>Template</strong> <em>Link</em>')
+})
+
 test('typing in rich plan item text keeps the caret at the insertion point', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -311,6 +358,49 @@ async function storedHTMLForFocusedItem(page: import('@playwright/test').Page) {
 
     return findItem(state.plans?.[0]?.items ?? [])
   })
+}
+
+async function focusTemplateOptionByValue(page: import('@playwright/test').Page, value: string) {
+  await page.evaluate((expectedValue) => {
+    const input = Array.from(document.querySelectorAll<HTMLElement>('[data-template-option-text-input]')).find(
+      (candidate) => candidate.textContent === expectedValue,
+    )
+    input?.focus()
+  }, value)
+}
+
+async function richHTMLForFocusedTemplateOption(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    return active instanceof HTMLElement && active.matches('[data-template-option-text-input]') ? active.innerHTML : null
+  })
+}
+
+async function storedHTMLForFocusedTemplateOption(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || !active.matches('[data-template-option-text-input]')) return null
+
+    const optionId = active.dataset.templateOptionTextInputId
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const findOption = (
+      items: Array<{ options?: Array<{ id: string; html: string }>; children?: unknown[] }>,
+    ): string | null => {
+      for (const item of items) {
+        const option = item.options?.find((candidate) => candidate.id === optionId)
+        if (option) return option.html
+        const childHTML = findOption((item.children ?? []) as Array<{ options?: Array<{ id: string; html: string }>; children?: unknown[] }>)
+        if (childHTML !== null) return childHTML
+      }
+      return null
+    }
+
+    return findOption(state.templates?.[0]?.items ?? [])
+  })
+}
+
+async function firstPlanItemHTML(page: import('@playwright/test').Page) {
+  return page.evaluate(() => document.querySelector<HTMLElement>('[data-plan-text-input]')?.innerHTML ?? null)
 }
 
 async function selectedText(page: import('@playwright/test').Page) {

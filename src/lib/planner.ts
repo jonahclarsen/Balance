@@ -72,6 +72,7 @@ export function createTemplateOption(text = '', probability = 100): TemplateOpti
   return {
     id: createId('option'),
     text,
+    html: escapeHTML(text),
     probability,
   }
 }
@@ -117,6 +118,7 @@ function generatePlanItems(items: TemplateItem[]): PlanItem[] {
     return [
       {
         ...createPlanItem(option.text),
+        html: option.html || escapeHTML(option.text),
         children: generatePlanItems(item.children),
       },
     ]

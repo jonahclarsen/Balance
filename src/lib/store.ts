@@ -361,7 +361,7 @@ function createPlannerStore() {
     },
 
     patchTemplateOption(templateId: Id, itemId: Id, optionId: Id, patch: Partial<TemplateOption>) {
-      const isTextPatch = 'text' in patch
+      const isTextPatch = 'text' in patch || 'html' in patch
       commit('patch_template_option', { templateId, itemId, optionId, patch }, (state) =>
         updateTemplate(state, templateId, (template) => {
           const items = updateTemplateItem(template.items, itemId, (item) => {
@@ -405,7 +405,7 @@ function createPlannerStore() {
         const parsed = parseStoredState(stateJson)
         if (parsed) {
           lastOperationMergeKey = null
-          store.set(parsed)
+          store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
         }
         return
       }
@@ -432,7 +432,7 @@ function createPlannerStore() {
         const parsed = parseStoredState(stateJson)
         if (parsed) {
           lastOperationMergeKey = null
-          store.set(parsed)
+          store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
         }
         return
       }
@@ -606,6 +606,10 @@ export async function confirmRecoveryKey(): Promise<void> {
 function normalizeState(state: AppState): AppState {
   return {
     ...state,
+    templates: state.templates.map((template) => ({
+      ...template,
+      items: normalizeTemplateItems(template.items),
+    })),
     plans: state.plans.map((plan) => ({
       ...plan,
       items: normalizePlanItems(plan.items),
@@ -624,4 +628,20 @@ function normalizePlanItems(items: PlanItem[]): PlanItem[] {
       children: normalizePlanItems(item.children ?? []),
     }
   })
+}
+
+function normalizeTemplateItems(items: TemplateItem[]): TemplateItem[] {
+  return items.map((item) => ({
+    ...item,
+    options: item.options.map((option) => {
+      const html = sanitizeInlineHTML(option.html ?? escapeHTML(option.text ?? ''))
+
+      return {
+        ...option,
+        text: option.text ?? htmlToPlainText(html),
+        html,
+      }
+    }),
+    children: normalizeTemplateItems(item.children ?? []),
+  }))
 }
