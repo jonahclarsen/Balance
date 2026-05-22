@@ -172,6 +172,30 @@ export function addPlanItem(items: PlanItem[], parentId: Id | null, item = creat
   }))
 }
 
+export function splitPlanItem(
+  items: PlanItem[],
+  itemId: Id,
+  patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
+  newItem: PlanItem,
+): PlanItem[] {
+  let changed = false
+
+  const nextItems = items.flatMap((item) => {
+    if (item.id === itemId) {
+      changed = true
+      return [{ ...item, ...patch }, newItem]
+    }
+
+    const children = splitPlanItem(item.children, itemId, patch, newItem)
+    if (children === item.children) return [item]
+
+    changed = true
+    return [{ ...item, children }]
+  })
+
+  return changed ? nextItems : items
+}
+
 export function deletePlanItem(items: PlanItem[], itemId: Id): PlanItem[] {
   return items
     .filter((item) => item.id !== itemId)

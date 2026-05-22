@@ -512,6 +512,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             )?,
         ),
         "patch_plan_item" => patch_plan_item(tx, payload),
+        "split_plan_item" => split_plan_item_row(tx, payload),
         "delete_plan_item" => {
             tx.execute(
                 "delete from plan_items where id = ?1",
@@ -703,6 +704,7 @@ fn build_undo_operation(
             json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
         ))),
         "patch_plan_item" => build_plan_item_patch_undo(connection, payload),
+        "split_plan_item" => build_split_plan_item_undo(connection, payload),
         "delete_plan_item" => {
             let Some(snapshot) =
                 read_plan_item_snapshot(connection, required_string(payload, "itemId")?)?
@@ -871,6 +873,26 @@ fn build_plan_item_patch_undo(
             "itemId": item_id,
             "patch": Value::Object(inverse_patch),
         }),
+    )))
+}
+
+fn build_split_plan_item_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let new_item_id = required_string(required_value(payload, "newItem")?, "id")?;
+    let mut operations = vec![storage_operation(
+        "delete_plan_item",
+        json!({ "itemId": new_item_id }),
+    )];
+
+    if let Some(patch_undo) = build_plan_item_patch_undo(connection, payload)? {
+        operations.push(patch_undo);
+    }
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
     )))
 }
 
@@ -1369,6 +1391,32 @@ fn patch_plan_item(connection: &Connection, payload: &Value) -> Result<(), Strin
     }
 
     Ok(())
+}
+
+fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), String> {
+    patch_plan_item(connection, payload)?;
+
+    let plan_id = required_string(payload, "planId")?;
+    let source_id = required_string(payload, "itemId")?;
+    let new_item = required_value(payload, "newItem")?;
+    let new_item_id = required_string(new_item, "id")?;
+    let parent_id = plan_item_parent_id(connection, source_id)?;
+    let mut siblings = plan_item_sibling_ids(connection, plan_id, parent_id.as_deref())?;
+    let source_index = siblings
+        .iter()
+        .position(|id| id == source_id)
+        .ok_or_else(|| "Split source is not in its sibling list".to_string())?;
+
+    siblings.retain(|id| id != new_item_id);
+    siblings.insert(source_index + 1, new_item_id.to_string());
+    insert_plan_item(
+        connection,
+        plan_id,
+        parent_id.as_deref(),
+        new_item,
+        (source_index + 1) as i64,
+    )?;
+    rewrite_plan_item_positions(connection, &siblings)
 }
 
 fn patch_template_option(connection: &Connection, payload: &Value) -> Result<(), String> {
@@ -2548,6 +2596,62 @@ mod tests {
         assert_eq!(saved["operations"].as_array().unwrap().len(), 0);
         assert_eq!(read_operations(&connection).unwrap().len(), 2);
         assert_eq!(history_entry_count(&connection), 1);
+    }
+
+    #[test]
+    fn split_plan_item_persists_and_undoes_as_one_operation() {
+        let database = TestDatabase::new("split-plan-item");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Split test")).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "split_plan_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemId": "plan_item_wake",
+                    "patch": {
+                        "text": "Wake",
+                        "html": "Wake"
+                    },
+                    "newItem": {
+                        "id": "plan_item_split",
+                        "text": " up",
+                        "html": " up",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(top_plan_item_ids(&saved), ["plan_item_wake", "plan_item_split"]);
+        assert_eq!(saved["plans"][0]["items"][0]["text"], "Wake");
+        assert_eq!(saved["plans"][0]["items"][1]["text"], " up");
+        assert_eq!(history_entry_count(&connection), 1);
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&undone), ["plan_item_wake"]);
+        assert_eq!(undone["plans"][0]["items"][0]["text"], "Wake up");
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&redone), ["plan_item_wake", "plan_item_split"]);
+        assert_eq!(redone["plans"][0]["items"][0]["text"], "Wake");
+        assert_eq!(redone["plans"][0]["items"][1]["text"], " up");
     }
 
     #[test]

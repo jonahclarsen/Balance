@@ -18,6 +18,7 @@ import {
   moveTemplateItem,
   nowISO,
   sanitizeInlineHTML,
+  splitPlanItem,
   todayISO,
   updatePlanItem,
   updateTemplateItem,
@@ -273,6 +274,25 @@ function createPlannerStore() {
         const items = updatePlanItem(plan.items, itemId, (item) => applyPatch(item, patch))
         return items === plan.items ? plan : { ...plan, items }
       }), isTextPatch ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {})
+    },
+
+    splitPlanItem(
+      planId: Id,
+      itemId: Id,
+      patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
+      after: { html: string; text: string },
+    ) {
+      const newItem = {
+        ...createPlanItem(after.text),
+        html: after.html,
+      }
+
+      commit('split_plan_item', { planId, itemId, patch, newItem }, (state) => updatePlan(state, planId, (plan) => {
+        const items = splitPlanItem(plan.items, itemId, patch, newItem)
+        return items === plan.items ? plan : { ...plan, items }
+      }))
+
+      return newItem.id
     },
 
     deletePlanItem(planId: Id, itemId: Id) {

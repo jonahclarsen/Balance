@@ -8,6 +8,12 @@
   export let depth = 0
   export let planId: Id
   export let patchItem: (planId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>) => void
+  export let splitItem: (
+    planId: Id,
+    itemId: Id,
+    patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
+    after: { html: string; text: string },
+  ) => Id
   export let addChild: (planId: Id, parentId: Id) => void
   export let deleteItem: (planId: Id, itemId: Id) => void
   export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
@@ -92,6 +98,12 @@
     focusAdjacentTextInput(current, direction)
   }
 
+  async function handleTextSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
+    const newItemId = splitItem(planId, item.id, before, after)
+    await tick()
+    focusItemTextInput(newItemId, 'start')
+  }
+
   function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection) {
     const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
     const index = inputs.indexOf(current)
@@ -100,19 +112,19 @@
     if (target) focusTextInput(target)
   }
 
-  function focusItemTextInput(itemId: Id) {
+  function focusItemTextInput(itemId: Id, position: 'start' | 'end' = 'end') {
     const input = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]')).find(
       (candidate) => candidate.dataset.planTextInputId === itemId,
     )
 
-    if (input) focusTextInput(input)
+    if (input) focusTextInput(input, position)
   }
 
-  function focusTextInput(input: HTMLDivElement) {
+  function focusTextInput(input: HTMLDivElement, position: 'start' | 'end' = 'end') {
     input.focus()
     const range = document.createRange()
     range.selectNodeContents(input)
-    range.collapse(false)
+    range.collapse(position === 'start')
 
     const selection = document.getSelection()
     selection?.removeAllRanges()
@@ -177,6 +189,7 @@
       revision={historyRevision}
       onChange={(html, text) => patchItem(planId, item.id, { html, text })}
       onArrowKey={handleTextArrowKey}
+      onSplit={handleTextSplit}
     />
 
     <div class="row-actions">
@@ -193,6 +206,7 @@
           depth={depth + 1}
           {planId}
           {patchItem}
+          {splitItem}
           {addChild}
           {deleteItem}
           {moveItem}

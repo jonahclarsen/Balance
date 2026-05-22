@@ -18,18 +18,19 @@
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
+  $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
 
   onMount(async () => {
     recoveryKeyStatus = await getRecoveryKeyStatus()
   })
 
-  function generateToday() {
+  function generateSelectedDay() {
     if (!selectedTemplate) return
 
-    const date = todayISO()
+    const date = $plannerStore.activePlanDate || todayISO()
     const exists = $plannerStore.plans.some((plan) => plan.date === date)
     const replaceExisting = exists
-      ? window.confirm('Today already has a plan. Replace it with a freshly generated one?')
+      ? window.confirm('This date already has a plan. Replace it with a freshly generated one?')
       : false
 
     if (exists && !replaceExisting) {
@@ -111,7 +112,7 @@
     </nav>
 
     <div class="sidebar-footer">
-      <button class="primary" type="button" on:click={generateToday}>Generate today</button>
+      <button class="primary" type="button" on:click={generateSelectedDay}>{generateButtonLabel}</button>
       <p class="tiny">{templates.length} template · {$plannerStore.plans.length} saved days</p>
     </div>
   </aside>
@@ -142,6 +143,7 @@
               {item}
               planId={activePlan.id}
               patchItem={plannerStore.patchPlanItem}
+              splitItem={plannerStore.splitPlanItem}
               addChild={plannerStore.addPlanChild}
               deleteItem={plannerStore.deletePlanItem}
               moveItem={plannerStore.movePlanItem}
@@ -158,7 +160,7 @@
         <div class="empty-state">
           <h3>No plan for this date</h3>
           <p>Generate one from the template, or switch to a saved day in History.</p>
-          <button class="primary" type="button" on:click={generateToday}>Generate today</button>
+          <button class="primary" type="button" on:click={generateSelectedDay}>{generateButtonLabel}</button>
         </div>
       {/if}
     {/if}

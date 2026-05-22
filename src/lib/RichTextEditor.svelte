@@ -15,6 +15,9 @@
   export let onArrowKey:
     | ((direction: MoveDirection, editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
+  export let onSplit:
+    | ((before: { html: string; text: string }, after: { html: string; text: string }, editor: HTMLDivElement) => void | Promise<void>)
+    | null = null
 
   let editor: HTMLDivElement
   let renderedHTML = html || escapeHTML(text)
@@ -38,6 +41,28 @@
   }
 
   async function handleKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      const activeEditor = event.currentTarget as HTMLDivElement
+
+      if (event.shiftKey) {
+        event.preventDefault()
+        document.execCommand('insertLineBreak')
+        persistEditor(activeEditor, false)
+        return
+      }
+
+      if (onSplit) {
+        const split = splitEditorAtSelection(activeEditor)
+        if (split) {
+          event.preventDefault()
+          activeEditor.innerHTML = split.before.html
+          renderedHTML = split.before.html
+          await onSplit(split.before, split.after, activeEditor)
+        }
+        return
+      }
+    }
+
     if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'b') {
       event.preventDefault()
       document.execCommand('bold')
@@ -98,6 +123,45 @@
 
     const range = selection.getRangeAt(0)
     return activeEditor.contains(range.commonAncestorContainer)
+  }
+
+  function splitEditorAtSelection(activeEditor: HTMLDivElement) {
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return null
+
+    const range = selection.getRangeAt(0)
+    if (!rangeIsInside(activeEditor, range)) return null
+
+    if (!range.collapsed) {
+      range.deleteContents()
+      range.collapse(true)
+    }
+
+    const beforeRange = document.createRange()
+    beforeRange.selectNodeContents(activeEditor)
+    beforeRange.setEnd(range.startContainer, range.startOffset)
+
+    const afterRange = document.createRange()
+    afterRange.selectNodeContents(activeEditor)
+    afterRange.setStart(range.startContainer, range.startOffset)
+
+    const beforeHTML = sanitizeFragment(beforeRange.cloneContents())
+    const afterHTML = sanitizeFragment(afterRange.cloneContents())
+
+    return {
+      before: { html: beforeHTML, text: htmlToPlainText(beforeHTML) },
+      after: { html: afterHTML, text: htmlToPlainText(afterHTML) },
+    }
+  }
+
+  function sanitizeFragment(fragment: DocumentFragment) {
+    const container = document.createElement('div')
+    container.append(fragment)
+    return sanitizeInlineHTML(container.innerHTML)
+  }
+
+  function rangeIsInside(activeEditor: HTMLDivElement, range: Range) {
+    return activeEditor.contains(range.startContainer) && activeEditor.contains(range.endContainer)
   }
 
   function focusTextInput(input: HTMLDivElement) {

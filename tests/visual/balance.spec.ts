@@ -207,6 +207,26 @@ test('plan item text fields support arrow focus and option-arrow sibling moves',
     .toEqual({ workIndex: 1, childCount: 2 })
 })
 
+test('enter splits plan items and shift-enter inserts a line break', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await setFocusedEditorHTML(page, 'AlphaBeta')
+  await setCaretOffsetInFocusedEditor(page, 5)
+  await page.keyboard.press('Enter')
+
+  await expect.poll(async () => topLevelTexts(page).then((texts) => texts.slice(0, 2))).toEqual(['Alpha', 'Beta'])
+  await expect.poll(async () => activeInputValue(page)).toBe('Beta')
+  await expect.poll(async () => topLevelTexts(page).then((texts) => texts.length)).toBe(4)
+
+  await page.keyboard.press('Shift+Enter')
+  await expect.poll(async () => storedHTMLForFocusedItem(page)).toContain('<br>')
+  await expect.poll(async () => topLevelTexts(page).then((texts) => texts.length)).toBe(4)
+})
+
 test('plan item rich text preserves paste formatting and supports shortcuts', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 
@@ -304,6 +324,34 @@ test('template options use rich text formatting and generate formatted plan item
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
   await expect.poll(async () => firstPlanItemHTML(page)).toContain('<strong>Template</strong> <em>Link</em>')
+})
+
+test('generating from a future date uses the selected date and latest template edits', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.locator('input[type="date"]').fill('2030-01-15')
+  await expect(page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Templates' }).click()
+  await focusTemplateOptionByValue(page, 'Wake up')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.type('Future plan item')
+  await expect.poll(async () => storedTextForFocusedTemplateOption(page)).toBe('Future plan item')
+
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' }).click()
+
+  await expect(page.locator('input[type="date"]')).toHaveValue('2030-01-15')
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const plan = state.plans?.find((candidate: { date: string }) => candidate.date === '2030-01-15')
+        return plan?.items?.[0]?.text ?? null
+      }),
+    )
+    .toBe('Future plan item')
 })
 
 test('blank template options show skip placeholder and skip generated plan item', async ({ page }) => {
@@ -431,6 +479,43 @@ async function setFocusedEditorHTML(page: import('@playwright/test').Page, html:
   }, html)
 }
 
+async function setCaretOffsetInFocusedEditor(page: import('@playwright/test').Page, offset: number) {
+  await page.evaluate((targetOffset) => {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-input]')) return
+
+    const walker = document.createTreeWalker(active, NodeFilter.SHOW_TEXT)
+    let remaining = targetOffset
+    let targetNode: Node = active
+    let nodeOffset = 0
+    let node = walker.nextNode()
+
+    while (node) {
+      const length = node.textContent?.length ?? 0
+      if (remaining <= length) {
+        targetNode = node
+        nodeOffset = remaining
+        break
+      }
+      remaining -= length
+      node = walker.nextNode()
+    }
+
+    if (!node) {
+      targetNode = active
+      nodeOffset = active.childNodes.length
+    }
+
+    const range = document.createRange()
+    range.setStart(targetNode, nodeOffset)
+    range.collapse(true)
+
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }, offset)
+}
+
 async function richHTMLForFocusedItem(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const active = document.activeElement
@@ -489,6 +574,29 @@ async function storedHTMLForFocusedTemplateOption(page: import('@playwright/test
         if (option) return option.html
         const childHTML = findOption((item.children ?? []) as Array<{ options?: Array<{ id: string; html: string }>; children?: unknown[] }>)
         if (childHTML !== null) return childHTML
+      }
+      return null
+    }
+
+    return findOption(state.templates?.[0]?.items ?? [])
+  })
+}
+
+async function storedTextForFocusedTemplateOption(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || !active.matches('[data-template-option-text-input]')) return null
+
+    const optionId = active.dataset.templateOptionTextInputId
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const findOption = (
+      items: Array<{ options?: Array<{ id: string; text: string }>; children?: unknown[] }>,
+    ): string | null => {
+      for (const item of items) {
+        const option = item.options?.find((candidate) => candidate.id === optionId)
+        if (option) return option.text
+        const childText = findOption((item.children ?? []) as Array<{ options?: Array<{ id: string; text: string }>; children?: unknown[] }>)
+        if (childText !== null) return childText
       }
       return null
     }
