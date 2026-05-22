@@ -110,7 +110,7 @@
             inputId={option.id}
             html={option.html}
             text={option.text}
-            placeholder={index === 0 ? 'Template item' : 'Alternative'}
+            placeholder={index === 0 ? 'Template item' : '(Skip)'}
             ariaLabel={index === 0 ? 'Template item' : 'Template alternative'}
             revision={historyRevision}
             onChange={(html, text) => patchOption(templateId, item.id, option.id, { html, text })}

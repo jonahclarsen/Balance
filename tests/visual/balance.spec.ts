@@ -306,6 +306,43 @@ test('template options use rich text formatting and generate formatted plan item
   await expect.poll(async () => firstPlanItemHTML(page)).toContain('<strong>Template</strong> <em>Link</em>')
 })
 
+test('blank template options show skip placeholder and skip generated plan item', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Templates' }).click()
+
+  const wakeRow = page.getByRole('listitem', { name: /Template item: Wake up/ })
+  await wakeRow.getByRole('button', { name: '±' }).click()
+  await expect
+    .poll(async () =>
+      wakeRow.locator('[data-template-option-text-input]').nth(1).evaluate((input) => input.getAttribute('data-placeholder')),
+    )
+    .toBe('(Skip)')
+
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const firstItem = state.templates?.[0]?.items?.[0]
+    const firstOption = firstItem?.options?.[0]
+    if (!firstItem || !firstOption) return
+
+    firstItem.options = [
+      {
+        ...firstOption,
+        text: '',
+        html: '',
+        probability: 100,
+      },
+    ]
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await expect.poll(async () => topLevelTexts(page)).not.toContain('Wake up')
+  await expect.poll(async () => topLevelTexts(page)).not.toContain('')
+})
+
 test('typing in rich plan item text keeps the caret at the insertion point', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

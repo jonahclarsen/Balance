@@ -111,7 +111,8 @@ export function generatePlanFromTemplate(template: DailyTemplate, date: string):
 function generatePlanItems(items: TemplateItem[]): PlanItem[] {
   return items.flatMap((item) => {
     const option = pickOption(item.options)
-    if (!option || option.text.trim() === '(skip)') {
+    const text = option?.text.trim() ?? ''
+    if (!option || text === '' || text.toLowerCase() === '(skip)') {
       return []
     }
 
