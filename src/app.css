@@ -217,15 +217,18 @@ nav button.active {
   border-bottom: 1px solid rgba(216, 212, 202, 0.75);
 }
 
-.plan-row.drop-before {
+.plan-row.drop-before,
+.template-main.drop-before {
   box-shadow: inset 0 2px 0 var(--accent);
 }
 
-.plan-row.drop-after {
+.plan-row.drop-after,
+.template-main.drop-after {
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
-.plan-row.drop-inside {
+.plan-row.drop-inside,
+.template-main.drop-inside {
   background: #e8f2ee;
   box-shadow: inset 3px 0 0 var(--accent);
 }

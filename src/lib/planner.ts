@@ -327,6 +327,88 @@ export function deleteTemplateItem(items: TemplateItem[], itemId: Id): TemplateI
     }))
 }
 
+export function moveTemplateItem(
+  items: TemplateItem[],
+  sourceId: Id,
+  targetId: Id,
+  placement: MovePlacement,
+): TemplateItem[] {
+  if (sourceId === targetId || containsTemplateItem(findTemplateItem(items, sourceId)?.children ?? [], targetId)) {
+    return items
+  }
+
+  const extracted = extractTemplateItem(items, sourceId)
+  if (!extracted.item) return items
+
+  const inserted = insertTemplateItem(extracted.items, extracted.item, targetId, placement)
+  return inserted ?? items
+}
+
+function findTemplateItem(items: TemplateItem[], itemId: Id): TemplateItem | null {
+  for (const item of items) {
+    if (item.id === itemId) return item
+    const child = findTemplateItem(item.children, itemId)
+    if (child) return child
+  }
+
+  return null
+}
+
+function containsTemplateItem(items: TemplateItem[], itemId: Id): boolean {
+  return Boolean(findTemplateItem(items, itemId))
+}
+
+function extractTemplateItem(items: TemplateItem[], itemId: Id): { items: TemplateItem[]; item: TemplateItem | null } {
+  let found: TemplateItem | null = null
+
+  const nextItems = items.flatMap((item) => {
+    if (item.id === itemId) {
+      found = item
+      return []
+    }
+
+    const childResult = extractTemplateItem(item.children, itemId)
+    if (childResult.item) {
+      found = childResult.item
+      return [{ ...item, children: childResult.items }]
+    }
+
+    return [item]
+  })
+
+  return { items: nextItems, item: found }
+}
+
+function insertTemplateItem(
+  items: TemplateItem[],
+  itemToInsert: TemplateItem,
+  targetId: Id,
+  placement: MovePlacement,
+): TemplateItem[] | null {
+  let inserted = false
+
+  const nextItems = items.flatMap((item) => {
+    if (item.id === targetId) {
+      inserted = true
+
+      if (placement === 'before') return [itemToInsert, item]
+      if (placement === 'after') return [item, itemToInsert]
+
+      return [{ ...item, children: [...item.children, itemToInsert] }]
+    }
+
+    const childResult = insertTemplateItem(item.children, itemToInsert, targetId, placement)
+    if (childResult) {
+      inserted = true
+      return [{ ...item, children: childResult }]
+    }
+
+    return [item]
+  })
+
+  return inserted ? nextItems : null
+}
+
 export function formatMinutes(minutes: number): string {
   const normalized = ((minutes % 1440) + 1440) % 1440
   const hours = Math.floor(normalized / 60)

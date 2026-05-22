@@ -30,6 +30,18 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
 
   await page.getByRole('button', { name: 'Templates' }).click()
   await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Drag to move template item' }).first()).toBeVisible()
+  await expect
+    .poll(async () =>
+      page.getByRole('button', { name: 'Drag to move template item' }).first().evaluate((handle) => {
+        const dots = handle.querySelector('.handle-dots')
+        if (!(dots instanceof HTMLElement)) return false
+        const style = getComputedStyle(dots)
+        const box = dots.getBoundingClientRect()
+        return box.width >= 12 && box.height >= 16 && style.backgroundImage.includes('radial-gradient')
+      }),
+    )
+    .toBe(true)
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-templates.png`,
     fullPage: true,
@@ -93,6 +105,55 @@ test('plan items can be nested and un-nested with the drag handle', async ({ pag
         const work = plan?.items?.find((item: { text: string }) => item.text === 'Work block')
         const wakeIsTopLevel = plan?.items?.some((item: { text: string }) => item.text === 'Wake up')
         const wakeIsChild = work?.children?.some((item: { text: string }) => item.text === 'Wake up')
+        return Boolean(wakeIsTopLevel && !wakeIsChild)
+      }),
+    )
+    .toBe(true)
+})
+
+test('template items can be nested and un-nested with the drag handle', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Templates' }).click()
+
+  const wakeRow = page.getByRole('listitem', { name: /Template item: Wake up/ })
+  const workRow = page.getByRole('listitem', { name: /Template item: Work block/ })
+
+  await pointerDrag(
+    page,
+    wakeRow.getByRole('button', { name: 'Drag to move template item' }),
+    workRow,
+    'inside',
+  )
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const template = state.templates?.[0]
+        const work = template?.items?.find((item: { options?: Array<{ text: string }> }) => item.options?.[0]?.text === 'Work block')
+        return Boolean(work?.children?.some((item: { options?: Array<{ text: string }> }) => item.options?.[0]?.text === 'Wake up'))
+      }),
+    )
+    .toBe(true)
+
+  const nestedWakeRow = page.getByRole('listitem', { name: /Template item: Wake up/ })
+  await pointerDrag(
+    page,
+    nestedWakeRow.getByRole('button', { name: 'Drag to move template item' }),
+    workRow,
+    'before',
+  )
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const template = state.templates?.[0]
+        const work = template?.items?.find((item: { options?: Array<{ text: string }> }) => item.options?.[0]?.text === 'Work block')
+        const wakeIsTopLevel = template?.items?.some((item: { options?: Array<{ text: string }> }) => item.options?.[0]?.text === 'Wake up')
+        const wakeIsChild = work?.children?.some((item: { options?: Array<{ text: string }> }) => item.options?.[0]?.text === 'Wake up')
         return Boolean(wakeIsTopLevel && !wakeIsChild)
       }),
     )

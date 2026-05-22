@@ -584,6 +584,19 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             required_value(payload, "item")?,
             required_i64(payload, "position")?,
         ),
+        "move_template_item" => move_template_item_row(
+            tx,
+            required_string(payload, "sourceId")?,
+            required_string(payload, "targetId")?,
+            required_string(payload, "placement")?,
+        ),
+        "move_template_item_to_position" => move_template_item_to_position_row(
+            tx,
+            required_string(payload, "itemId")?,
+            required_string(payload, "templateId")?,
+            optional_string(payload, "parentId")?.as_deref(),
+            required_i64(payload, "position")?,
+        ),
         "add_template_option" => insert_template_option(
             tx,
             required_string(payload, "itemId")?,
@@ -773,6 +786,23 @@ fn build_undo_operation(
                     "parentId": snapshot.parent_id,
                     "position": snapshot.position,
                     "item": snapshot.item,
+                }),
+            )))
+        }
+        "move_template_item" => {
+            let Some(snapshot) =
+                read_template_item_snapshot(connection, required_string(payload, "sourceId")?)?
+            else {
+                return Ok(None);
+            };
+
+            Ok(Some(storage_operation(
+                "move_template_item_to_position",
+                json!({
+                    "itemId": required_string(payload, "sourceId")?,
+                    "templateId": snapshot.template_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
                 }),
             )))
         }
@@ -1469,6 +1499,88 @@ fn move_plan_item_to_position_row(
     rewrite_plan_item_positions(connection, &target_siblings)
 }
 
+fn move_template_item_row(
+    connection: &Connection,
+    source_id: &str,
+    target_id: &str,
+    placement: &str,
+) -> Result<(), String> {
+    if source_id == target_id || template_item_contains(connection, source_id, target_id)? {
+        return Ok(());
+    }
+
+    let source_template_id = template_item_template_id(connection, source_id)?;
+
+    if placement == "inside" {
+        let position =
+            next_template_item_position(connection, &source_template_id, Some(target_id))?;
+        connection
+            .execute(
+                "update template_items set parent_id = ?1, position = ?2 where id = ?3",
+                params![target_id, position, source_id],
+            )
+            .map_err(|error| error.to_string())?;
+        return Ok(());
+    }
+
+    let target_parent_id = template_item_parent_id(connection, target_id)?;
+    let mut siblings =
+        template_item_sibling_ids(connection, &source_template_id, target_parent_id.as_deref())?;
+    siblings.retain(|id| id != source_id);
+    let target_index = siblings
+        .iter()
+        .position(|id| id == target_id)
+        .ok_or_else(|| "Template move target is not in its sibling list".to_string())?;
+    let insert_index = if placement == "after" {
+        target_index + 1
+    } else {
+        target_index
+    };
+    siblings.insert(insert_index, source_id.to_string());
+
+    connection
+        .execute(
+            "update template_items set parent_id = ?1 where id = ?2",
+            params![target_parent_id, source_id],
+        )
+        .map_err(|error| error.to_string())?;
+    rewrite_template_item_positions(connection, &siblings)
+}
+
+fn move_template_item_to_position_row(
+    connection: &Connection,
+    item_id: &str,
+    template_id: &str,
+    parent_id: Option<&str>,
+    position: i64,
+) -> Result<(), String> {
+    let current_template_id = template_item_template_id(connection, item_id)?;
+    let current_parent_id = template_item_parent_id(connection, item_id)?;
+    let mut current_siblings = template_item_sibling_ids(
+        connection,
+        &current_template_id,
+        current_parent_id.as_deref(),
+    )?;
+    current_siblings.retain(|id| id != item_id);
+    rewrite_template_item_positions(connection, &current_siblings)?;
+
+    let mut target_siblings = template_item_sibling_ids(connection, template_id, parent_id)?;
+    target_siblings.retain(|id| id != item_id);
+    let insert_index = usize::try_from(position)
+        .unwrap_or(0)
+        .min(target_siblings.len());
+    target_siblings.insert(insert_index, item_id.to_string());
+
+    connection
+        .execute(
+            "update template_items set template_id = ?1, parent_id = ?2 where id = ?3",
+            params![template_id, parent_id, item_id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    rewrite_template_item_positions(connection, &target_siblings)
+}
+
 fn next_plan_item_position(
     connection: &Connection,
     plan_id: &str,
@@ -1582,11 +1694,105 @@ fn plan_item_sibling_ids(
     }
 }
 
+fn template_item_template_id(connection: &Connection, item_id: &str) -> Result<String, String> {
+    connection
+        .query_row(
+            "select template_id from template_items where id = ?1",
+            params![item_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn template_item_parent_id(
+    connection: &Connection,
+    item_id: &str,
+) -> Result<Option<String>, String> {
+    connection
+        .query_row(
+            "select parent_id from template_items where id = ?1",
+            params![item_id],
+            |row| row.get(0),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn template_item_sibling_ids(
+    connection: &Connection,
+    template_id: &str,
+    parent_id: Option<&str>,
+) -> Result<Vec<String>, String> {
+    let mut statement = if parent_id.is_some() {
+        connection.prepare(
+            "select id from template_items where template_id = ?1 and parent_id = ?2 order by position, id",
+        )
+    } else {
+        connection.prepare(
+            "select id from template_items where template_id = ?1 and parent_id is null order by position, id",
+        )
+    }
+    .map_err(|error| error.to_string())?;
+
+    if let Some(parent_id) = parent_id {
+        statement
+            .query_map(params![template_id, parent_id], |row| row.get(0))
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<String>, _>>()
+            .map_err(|error| error.to_string())
+    } else {
+        statement
+            .query_map(params![template_id], |row| row.get(0))
+            .map_err(|error| error.to_string())?
+            .collect::<Result<Vec<String>, _>>()
+            .map_err(|error| error.to_string())
+    }
+}
+
+fn template_item_contains(
+    connection: &Connection,
+    ancestor_id: &str,
+    candidate_id: &str,
+) -> Result<bool, String> {
+    let mut descendants = connection
+        .prepare(
+            "
+          with recursive descendants(id) as (
+            select id from template_items where parent_id = ?1
+            union all
+            select template_items.id
+            from template_items
+            join descendants on template_items.parent_id = descendants.id
+          )
+          select 1 from descendants where id = ?2 limit 1
+        ",
+        )
+        .map_err(|error| error.to_string())?;
+
+    descendants
+        .query_row(params![ancestor_id, candidate_id], |_| Ok(true))
+        .optional()
+        .map(|result| result.unwrap_or(false))
+        .map_err(|error| error.to_string())
+}
+
 fn rewrite_plan_item_positions(connection: &Connection, ids: &[String]) -> Result<(), String> {
     for (position, id) in ids.iter().enumerate() {
         connection
             .execute(
                 "update plan_items set position = ?1 where id = ?2",
+                params![position as i64, id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
+fn rewrite_template_item_positions(connection: &Connection, ids: &[String]) -> Result<(), String> {
+    for (position, id) in ids.iter().enumerate() {
+        connection
+            .execute(
+                "update template_items set position = ?1 where id = ?2",
                 params![position as i64, id],
             )
             .map_err(|error| error.to_string())?;
@@ -2515,6 +2721,71 @@ mod tests {
     }
 
     #[test]
+    fn template_item_movement_persists_and_undoes() {
+        let database = TestDatabase::new("template-movement");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Template movement test");
+        state["templates"][0]["items"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "id": "template_item_second",
+                "options": [
+                    {
+                        "id": "template_option_second",
+                        "text": "Second template item",
+                        "html": "Second template item",
+                        "probability": 100
+                    }
+                ],
+                "children": []
+            }));
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "move_template_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "sourceId": "template_item_wake",
+                    "targetId": "template_item_second",
+                    "placement": "after"
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_template_item_ids(&moved),
+            ["template_item_second", "template_item_wake"]
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&undone),
+            ["template_item_wake", "template_item_second"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&redone),
+            ["template_item_second", "template_item_wake"]
+        );
+    }
+
+    #[test]
     fn generated_recovery_key_uses_grouped_base32_format() {
         let recovery_key = generate_recovery_key();
         let groups = recovery_key.split('-').collect::<Vec<_>>();
@@ -2571,6 +2842,15 @@ mod tests {
 
     fn top_plan_item_ids(state: &Value) -> Vec<String> {
         state["plans"][0]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    fn top_template_item_ids(state: &Value) -> Vec<String> {
+        state["templates"][0]["items"]
             .as_array()
             .unwrap()
             .iter()

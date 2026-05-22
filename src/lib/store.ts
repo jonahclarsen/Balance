@@ -15,6 +15,7 @@ import {
   htmlToPlainText,
   movePlanItem,
   movePlanItemWithinLevel,
+  moveTemplateItem,
   nowISO,
   sanitizeInlineHTML,
   todayISO,
@@ -343,6 +344,15 @@ function createPlannerStore() {
           updatedAt: nowISO(),
           items: deleteTemplateItem(template.items, itemId),
         })),
+      )
+    },
+
+    moveTemplateItem(templateId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
+      commit('move_template_item', { templateId, sourceId, targetId, placement }, (state) =>
+        updateTemplate(state, templateId, (template) => {
+          const items = moveTemplateItem(template.items, sourceId, targetId, placement)
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
       )
     },
 
