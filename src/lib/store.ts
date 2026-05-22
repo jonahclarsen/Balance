@@ -1,4 +1,5 @@
-import { writable } from 'svelte/store'
+import { invoke, isTauri } from '@tauri-apps/api/core'
+import { get, writable, type Writable } from 'svelte/store'
 import {
   addPlanItem,
   addTemplateItem,
@@ -20,11 +21,12 @@ import {
   updatePlanItem,
   updateTemplateItem,
 } from './planner'
-import type { AppState, DailyPlan, Id, PlanItem, TemplateItem, TemplateOption } from './types'
+import type { AppState, DailyPlan, Id, Operation, PlanItem, TemplateItem, TemplateOption } from './types'
 
 const STORAGE_KEY = 'balance.appState.v1'
 const TEXT_MERGE_WINDOW_MS = 1200
 const MAX_HISTORY_ENTRIES = 200
+const PERSIST_DEBOUNCE_MS = 500
 
 type Mutator = (state: AppState) => AppState
 type CommitOptions = {
@@ -40,16 +42,28 @@ type HistoryEntry = {
   updatedAt: number
 }
 
+export type RecoveryKeyStatus = {
+  confirmed: boolean
+  recoveryKey: string | null
+  databasePath: string
+}
+
 let undoStack: HistoryEntry[] = []
 let redoStack: HistoryEntry[] = []
+let persistenceTarget: 'tauri' | 'localStorage' | null = null
+let persistenceReady = false
+let pendingOperations = new Map<string, Operation>()
+let operationFlushActive = false
+let operationFlushPromise: Promise<void> | null = null
+let operationFlushTimer: number | null = null
+let lastOperationMergeKey: string | null = null
+let lastOperationMergeUpdatedAt = 0
 
-function readState(): AppState {
-  const raw = localStorage.getItem(STORAGE_KEY)
-  if (!raw) return createInitialState()
-
+function parseStoredState(raw: string | null): AppState | null {
+  if (!raw) return null
   try {
     const parsed = JSON.parse(raw) as AppState
-    if (parsed.schemaVersion !== 1) return createInitialState()
+    if (parsed.schemaVersion !== 1) return null
     return normalizeState({
       ...parsed,
       historyRevision: parsed.historyRevision || 0,
@@ -57,47 +71,157 @@ function readState(): AppState {
       operations: parsed.operations || [],
     })
   } catch {
-    return createInitialState()
+    return null
   }
 }
 
-function persistState(state: AppState): void {
+function readLocalState(): AppState {
+  return parseStoredState(localStorage.getItem(STORAGE_KEY)) ?? createInitialState()
+}
+
+function readInitialState(): AppState {
+  return isTauri() ? createInitialState() : readLocalState()
+}
+
+async function hydratePersistence(store: Writable<AppState>): Promise<void> {
+  try {
+    const stored = await invoke<string | null>('read_app_state')
+    const parsed = parseStoredState(stored)
+    persistenceTarget = 'tauri'
+
+    if (parsed) {
+      store.set(parsed)
+    } else {
+      await invoke('initialize_app_state', { stateJson: JSON.stringify(get(store)) })
+    }
+  } catch (error) {
+    if (isTauri()) {
+      console.error('Could not load encrypted Balance app state', error)
+    } else {
+      persistenceTarget = 'localStorage'
+    }
+  } finally {
+    if (persistenceTarget) {
+      persistenceReady = true
+      if (persistenceTarget === 'localStorage') {
+        pendingOperations.clear()
+        persistLocalState(get(store))
+      }
+      if (persistenceTarget === 'tauri' && pendingOperations.size > 0) scheduleOperationFlush()
+    }
+  }
+}
+
+function persistLocalState(state: AppState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
 }
 
+function queueOperationPersistence(operation: Operation): void {
+  if (persistenceTarget === 'localStorage') return
+
+  pendingOperations.set(operation.id, operation)
+  if (!persistenceReady || persistenceTarget !== 'tauri') return
+
+  scheduleOperationFlush()
+}
+
+function scheduleOperationFlush(): void {
+  if (operationFlushTimer !== null) window.clearTimeout(operationFlushTimer)
+  operationFlushTimer = window.setTimeout(() => {
+    operationFlushTimer = null
+    if (!operationFlushActive) void flushOperations()
+  }, PERSIST_DEBOUNCE_MS)
+}
+
+async function flushOperations(): Promise<void> {
+  if (operationFlushPromise) return operationFlushPromise
+
+  operationFlushPromise = flushOperationsNow().finally(() => {
+    operationFlushPromise = null
+  })
+  return operationFlushPromise
+}
+
+async function flushOperationsNow(): Promise<void> {
+  operationFlushActive = true
+
+  try {
+    while (pendingOperations.size > 0) {
+      const operations = [...pendingOperations.values()].sort((a, b) => a.sequence - b.sequence)
+      pendingOperations.clear()
+
+      for (let index = 0; index < operations.length; index += 1) {
+        const operation = operations[index]
+        try {
+          await invoke('persist_operation', { operationJson: JSON.stringify(operation) })
+        } catch (error) {
+          for (const operationToRetry of operations.slice(index)) {
+            pendingOperations.set(operationToRetry.id, operationToRetry)
+          }
+          throw error
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Could not persist Balance operation', error)
+    throw error
+  } finally {
+    operationFlushActive = false
+    if (pendingOperations.size > 0 && operationFlushTimer === null) scheduleOperationFlush()
+  }
+}
+
 function createPlannerStore() {
-  const store = writable<AppState>(readState())
-  store.subscribe(persistState)
+  const store = writable<AppState>(readInitialState())
+  store.subscribe((state) => {
+    if (persistenceReady && persistenceTarget === 'localStorage') persistLocalState(state)
+  })
+  void hydratePersistence(store)
 
   function commit(type: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
+    let operationToPersist: Operation | null = null
+
     store.update((state) => {
       const next = mutate(state)
-      if (JSON.stringify(next) === JSON.stringify(state)) return state
+      if (next === state) return state
 
-      const sequence = state.localSequence + 1
-
-      const committed = {
-        ...next,
-        localSequence: sequence,
-        operations: [
-          ...next.operations,
-          {
+      const now = Date.now()
+      const timestamp = nowISO()
+      const lastOperation = state.operations.at(-1)
+      const canMergeOperation =
+        Boolean(options.mergeKey) &&
+        lastOperationMergeKey === options.mergeKey &&
+        lastOperation !== undefined &&
+        now - lastOperationMergeUpdatedAt <= (options.mergeWindowMs ?? 0)
+      const sequence = canMergeOperation ? lastOperation.sequence : state.localSequence + 1
+      const operation: Operation = canMergeOperation
+        ? { ...lastOperation, timestamp, payload }
+        : {
             id: `op_${state.deviceId}_${sequence}`,
             deviceId: state.deviceId,
             sequence,
             type,
-            timestamp: nowISO(),
+            timestamp,
             payload,
-          },
-        ],
-      }
+          }
 
-      if (options.undoable !== false) {
+      const committed = {
+        ...next,
+        localSequence: sequence,
+        operations: canMergeOperation ? [...next.operations.slice(0, -1), operation] : [...next.operations, operation],
+      }
+      operationToPersist = operation
+      lastOperationMergeKey = options.mergeKey ?? null
+      lastOperationMergeUpdatedAt = now
+
+      if (!isTauri() && options.undoable !== false) {
         recordHistory(state, committed, options)
       }
 
       return committed
     })
+
+    if (operationToPersist) queueOperationPersistence(operationToPersist)
   }
 
   return {
@@ -111,11 +235,11 @@ function createPlannerStore() {
     },
 
     generatePlan(templateId: Id, date: string, replaceExisting: boolean) {
-      commit('generate_plan', { templateId, date, replaceExisting }, (state) => {
-        const template = state.templates.find((candidate) => candidate.id === templateId)
-        if (!template) return state
+      const template = get(store).templates.find((candidate) => candidate.id === templateId)
+      if (!template) return
+      const generated = generatePlanFromTemplate(template, date)
 
-        const generated = generatePlanFromTemplate(template, date)
+      commit('generate_plan', { templateId, date, replaceExisting, generatedPlan: generated }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans
 
         return {
@@ -144,10 +268,10 @@ function createPlannerStore() {
 
     patchPlanItem(planId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>) {
       const isTextPatch = 'text' in patch || 'html' in patch
-      commit('patch_plan_item', { planId, itemId, patch }, (state) => updatePlan(state, planId, (plan) => ({
-        ...plan,
-        items: updatePlanItem(plan.items, itemId, (item) => ({ ...item, ...patch })),
-      })), isTextPatch ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {})
+      commit('patch_plan_item', { planId, itemId, patch }, (state) => updatePlan(state, planId, (plan) => {
+        const items = updatePlanItem(plan.items, itemId, (item) => applyPatch(item, patch))
+        return items === plan.items ? plan : { ...plan, items }
+      }), isTextPatch ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {})
     },
 
     deletePlanItem(planId: Id, itemId: Id) {
@@ -239,14 +363,21 @@ function createPlannerStore() {
     patchTemplateOption(templateId: Id, itemId: Id, optionId: Id, patch: Partial<TemplateOption>) {
       const isTextPatch = 'text' in patch
       commit('patch_template_option', { templateId, itemId, optionId, patch }, (state) =>
-        updateTemplate(state, templateId, (template) => ({
-          ...template,
-          updatedAt: nowISO(),
-          items: updateTemplateItem(template.items, itemId, (item) => ({
-            ...item,
-            options: item.options.map((option) => (option.id === optionId ? { ...option, ...patch } : option)),
-          })),
-        })),
+        updateTemplate(state, templateId, (template) => {
+          const items = updateTemplateItem(template.items, itemId, (item) => {
+            let changed = false
+            const options = item.options.map((option) => {
+              if (option.id !== optionId) return option
+              const nextOption = applyPatch(option, patch)
+              if (nextOption !== option) changed = true
+              return nextOption
+            })
+
+            return changed ? { ...item, options } : item
+          })
+
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
         isTextPatch ? { mergeKey: `template-option-text:${templateId}:${itemId}:${optionId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {},
       )
     },
@@ -267,26 +398,65 @@ function createPlannerStore() {
       )
     },
 
-    undo() {
+    async undo() {
+      if (isTauri()) {
+        await flushOperations()
+        const stateJson = await invoke<string | null>('undo_last_operation')
+        const parsed = parseStoredState(stateJson)
+        if (parsed) {
+          lastOperationMergeKey = null
+          store.set(parsed)
+        }
+        return
+      }
+
+      let operationToPersist: Operation | null = null
+
       store.update((state) => {
         const entry = undoStack.pop()
         if (!entry) return state
 
         redoStack.push(entry)
-        return applyHistorySnapshot(state, entry.before, 'history_undo', entry)
+        const next = applyHistorySnapshot(state, entry.before, 'history_undo', entry)
+        operationToPersist = next.operations.at(-1) ?? null
+        return next
       })
+
+      if (operationToPersist) queueOperationPersistence(operationToPersist)
     },
 
-    redo() {
+    async redo() {
+      if (isTauri()) {
+        await flushOperations()
+        const stateJson = await invoke<string | null>('redo_last_operation')
+        const parsed = parseStoredState(stateJson)
+        if (parsed) {
+          lastOperationMergeKey = null
+          store.set(parsed)
+        }
+        return
+      }
+
+      let operationToPersist: Operation | null = null
+
       store.update((state) => {
         const entry = redoStack.pop()
         if (!entry) return state
 
         undoStack.push(entry)
-        return applyHistorySnapshot(state, entry.after, 'history_redo', entry)
+        const next = applyHistorySnapshot(state, entry.after, 'history_redo', entry)
+        operationToPersist = next.operations.at(-1) ?? null
+        return next
       })
+
+      if (operationToPersist) queueOperationPersistence(operationToPersist)
     },
   }
+}
+
+function applyPatch<T extends object>(target: T, patch: Partial<Record<keyof T, unknown>>): T {
+  const changed = (Object.entries(patch) as Array<[keyof T, unknown]>).some(([key, value]) => target[key] !== value)
+  return changed ? ({ ...target, ...patch } as T) : target
 }
 
 function applyHistorySnapshot(current: AppState, snapshot: AppState, type: string, entry: HistoryEntry): AppState {
@@ -306,6 +476,7 @@ function applyHistorySnapshot(current: AppState, snapshot: AppState, type: strin
         timestamp: nowISO(),
         payload: {
           mergeKey: entry.mergeKey,
+          state: snapshot,
         },
       },
     ],
@@ -331,17 +502,27 @@ function recordHistory(before: AppState, after: AppState, options: CommitOptions
 }
 
 function updatePlan(state: AppState, planId: Id, updater: (plan: DailyPlan) => DailyPlan): AppState {
-  return {
-    ...state,
-    plans: state.plans.map((plan) => (plan.id === planId ? updater(plan) : plan)),
-  }
+  let changed = false
+  const plans = state.plans.map((plan) => {
+    if (plan.id !== planId) return plan
+    const nextPlan = updater(plan)
+    if (nextPlan !== plan) changed = true
+    return nextPlan
+  })
+
+  return changed ? { ...state, plans } : state
 }
 
 function updateTemplate(state: AppState, templateId: Id, updater: (template: AppState['templates'][number]) => AppState['templates'][number]): AppState {
-  return {
-    ...state,
-    templates: state.templates.map((template) => (template.id === templateId ? updater(template) : template)),
-  }
+  let changed = false
+  const templates = state.templates.map((template) => {
+    if (template.id !== templateId) return template
+    const nextTemplate = updater(template)
+    if (nextTemplate !== template) changed = true
+    return nextTemplate
+  })
+
+  return changed ? { ...state, templates } : state
 }
 
 export function exportJSON(state: AppState): string {
@@ -411,6 +592,16 @@ function renderItems(items: PlanItem[]): string {
 }
 
 export const plannerStore = createPlannerStore()
+
+export async function getRecoveryKeyStatus(): Promise<RecoveryKeyStatus | null> {
+  if (!isTauri()) return null
+  return invoke<RecoveryKeyStatus>('get_recovery_key_status')
+}
+
+export async function confirmRecoveryKey(): Promise<void> {
+  if (!isTauri()) return
+  await invoke('confirm_recovery_key')
+}
 
 function normalizeState(state: AppState): AppState {
   return {

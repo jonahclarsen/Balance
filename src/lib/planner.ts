@@ -142,13 +142,22 @@ function pickOption(options: TemplateOption[]): TemplateOption | null {
 }
 
 export function updatePlanItem(items: PlanItem[], itemId: Id, updater: (item: PlanItem) => PlanItem): PlanItem[] {
-  return items.map((item) => {
-    if (item.id === itemId) return updater(item)
-    return {
-      ...item,
-      children: updatePlanItem(item.children, itemId, updater),
+  let changed = false
+  const nextItems = items.map((item) => {
+    if (item.id === itemId) {
+      const nextItem = updater(item)
+      if (nextItem !== item) changed = true
+      return nextItem
     }
+
+    const children = updatePlanItem(item.children, itemId, updater)
+    if (children === item.children) return item
+
+    changed = true
+    return { ...item, children }
   })
+
+  return changed ? nextItems : items
 }
 
 export function addPlanItem(items: PlanItem[], parentId: Id | null, item = createPlanItem()): PlanItem[] {
@@ -280,13 +289,22 @@ export function updateTemplateItem(
   itemId: Id,
   updater: (item: TemplateItem) => TemplateItem,
 ): TemplateItem[] {
-  return items.map((item) => {
-    if (item.id === itemId) return updater(item)
-    return {
-      ...item,
-      children: updateTemplateItem(item.children, itemId, updater),
+  let changed = false
+  const nextItems = items.map((item) => {
+    if (item.id === itemId) {
+      const nextItem = updater(item)
+      if (nextItem !== item) changed = true
+      return nextItem
     }
+
+    const children = updateTemplateItem(item.children, itemId, updater)
+    if (children === item.children) return item
+
+    changed = true
+    return { ...item, children }
   })
+
+  return changed ? nextItems : items
 }
 
 export function addTemplateItem(items: TemplateItem[], parentId: Id | null, item = createTemplateItem()): TemplateItem[] {

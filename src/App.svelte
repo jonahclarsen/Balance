@@ -1,18 +1,27 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
-  import { exportHTML, exportJSON, plannerStore } from './lib/store'
+  import { confirmRecoveryKey, exportHTML, exportJSON, getRecoveryKeyStatus, plannerStore } from './lib/store'
+  import type { RecoveryKeyStatus } from './lib/store'
   import { formatPlanTitle, todayISO } from './lib/planner'
 
   type View = 'today' | 'templates' | 'history' | 'export'
 
   let view: View = 'today'
   let selectedTemplateId = ''
+  let recoveryKeyStatus: RecoveryKeyStatus | null = null
+  let recoveryKeySaved = false
+  let recoveryKeyCopied = false
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
+
+  onMount(async () => {
+    recoveryKeyStatus = await getRecoveryKeyStatus()
+  })
 
   function generateToday() {
     if (!selectedTemplate) return
@@ -61,14 +70,27 @@
 
     if (key === 'z' && !event.shiftKey) {
       event.preventDefault()
-      plannerStore.undo()
+      void plannerStore.undo()
       return
     }
 
     if (event.shiftKey && (key === 'z' || key === 'c')) {
       event.preventDefault()
-      plannerStore.redo()
+      void plannerStore.redo()
     }
+  }
+
+  async function copyRecoveryKey() {
+    if (!recoveryKeyStatus?.recoveryKey) return
+
+    await navigator.clipboard.writeText(recoveryKeyStatus.recoveryKey)
+    recoveryKeyCopied = true
+  }
+
+  async function finishRecoveryKeySetup() {
+    await confirmRecoveryKey()
+    recoveryKeyStatus = await getRecoveryKeyStatus()
+    recoveryKeySaved = false
   }
 </script>
 
@@ -240,3 +262,31 @@
     {/if}
   </section>
 </main>
+
+{#if recoveryKeyStatus?.recoveryKey}
+  <div class="modal-backdrop">
+    <div class="recovery-dialog" role="dialog" aria-modal="true" aria-labelledby="recovery-title">
+      <p class="eyebrow">Encryption</p>
+      <h2 id="recovery-title">Save your recovery key</h2>
+      <p class="recovery-copy">
+        This key unlocks your encrypted Balance database from a backup or another device. Keep it somewhere private;
+        Balance cannot recover it for you.
+      </p>
+
+      <div class="recovery-key" aria-label="Recovery key">{recoveryKeyStatus.recoveryKey}</div>
+
+      <div class="recovery-actions">
+        <button type="button" on:click={copyRecoveryKey}>{recoveryKeyCopied ? 'Copied' : 'Copy key'}</button>
+        <label class="confirm-line">
+          <input type="checkbox" bind:checked={recoveryKeySaved} />
+          <span>I saved this recovery key somewhere safe.</span>
+        </label>
+        <button class="primary" type="button" disabled={!recoveryKeySaved} on:click={finishRecoveryKeySetup}>
+          Continue
+        </button>
+      </div>
+
+      <p class="database-path">Database: {recoveryKeyStatus.databasePath}</p>
+    </div>
+  </div>
+{/if}
