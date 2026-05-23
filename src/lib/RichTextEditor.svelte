@@ -40,7 +40,7 @@
       }
     } else if (nextHTML !== renderedHTML && editor !== document.activeElement) {
       renderedHTML = nextHTML
-      if (editor) editor.innerHTML = nextHTML
+      if (editor && sanitizeInlineHTML(editor.innerHTML) !== nextHTML) editor.innerHTML = nextHTML
     }
   }
 
