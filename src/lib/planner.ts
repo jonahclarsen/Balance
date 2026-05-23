@@ -80,6 +80,8 @@ export function createTemplateOption(text = '', probability = 100): TemplateOpti
 export function createTemplateItem(text = ''): TemplateItem {
   return {
     id: createId('template_item'),
+    startMinutes: null,
+    endMinutes: null,
     options: [createTemplateOption(text, 100)],
     children: [],
   }
@@ -120,6 +122,8 @@ function generatePlanItems(items: TemplateItem[]): PlanItem[] {
       {
         ...createPlanItem(option.text),
         html: option.html || escapeHTML(option.text),
+        startMinutes: item.startMinutes,
+        endMinutes: item.endMinutes,
         children: generatePlanItems(item.children),
       },
     ]

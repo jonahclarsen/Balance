@@ -204,6 +204,8 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           id text primary key,
           template_id text not null references templates(id) on delete cascade,
           parent_id text references template_items(id) on delete cascade,
+          start_minutes integer,
+          end_minutes integer,
           position integer not null
         );
 
@@ -272,6 +274,8 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
         "html",
         "text not null default ''",
     )?;
+    add_missing_column(connection, "template_items", "start_minutes", "integer")?;
+    add_missing_column(connection, "template_items", "end_minutes", "integer")?;
     connection
         .execute(
             "update template_options set html = text where html = ''",
@@ -569,7 +573,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
                 optional_string(payload, "parentId")?.as_deref(),
             )?,
         ),
-        "patch_template_item" => Ok(()),
+        "patch_template_item" => patch_template_item(tx, payload),
         "delete_template_item" => {
             tx.execute(
                 "delete from template_items where id = ?1",
@@ -773,7 +777,7 @@ fn build_undo_operation(
             "delete_template_item",
             json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
         ))),
-        "patch_template_item" => Ok(None),
+        "patch_template_item" => build_template_item_patch_undo(connection, payload),
         "delete_template_item" => {
             let Some(snapshot) =
                 read_template_item_snapshot(connection, required_string(payload, "itemId")?)?
@@ -893,6 +897,38 @@ fn build_split_plan_item_undo(
     Ok(Some(storage_operation(
         "batch",
         json!({ "operations": operations }),
+    )))
+}
+
+fn build_template_item_patch_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let item_id = required_string(payload, "itemId")?;
+    let patch = required_value(payload, "patch")?;
+    let Some((start_minutes, end_minutes)) = read_template_item_fields(connection, item_id)? else {
+        return Ok(None);
+    };
+
+    let mut inverse_patch = Map::new();
+    if patch_has_key(patch, "startMinutes") {
+        inverse_patch.insert("startMinutes".into(), json!(start_minutes));
+    }
+    if patch_has_key(patch, "endMinutes") {
+        inverse_patch.insert("endMinutes".into(), json!(end_minutes));
+    }
+
+    if inverse_patch.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(storage_operation(
+        "patch_template_item",
+        json!({
+            "templateId": required_string(payload, "templateId")?,
+            "itemId": item_id,
+            "patch": Value::Object(inverse_patch),
+        }),
     )))
 }
 
@@ -1201,14 +1237,23 @@ fn insert_template_item(
     connection
         .execute(
             "
-        insert into template_items (id, template_id, parent_id, position)
-        values (?1, ?2, ?3, ?4)
+        insert into template_items (id, template_id, parent_id, start_minutes, end_minutes, position)
+        values (?1, ?2, ?3, ?4, ?5, ?6)
         on conflict(id) do update set
           template_id = excluded.template_id,
           parent_id = excluded.parent_id,
+          start_minutes = excluded.start_minutes,
+          end_minutes = excluded.end_minutes,
           position = excluded.position
       ",
-            params![item_id, template_id, parent_id, position],
+            params![
+                item_id,
+                template_id,
+                parent_id,
+                optional_i64(item, "startMinutes")?,
+                optional_i64(item, "endMinutes")?,
+                position
+            ],
         )
         .map_err(|error| error.to_string())?;
 
@@ -1417,6 +1462,30 @@ fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), S
         (source_index + 1) as i64,
     )?;
     rewrite_plan_item_positions(connection, &siblings)
+}
+
+fn patch_template_item(connection: &Connection, payload: &Value) -> Result<(), String> {
+    let item_id = required_string(payload, "itemId")?;
+    let patch = required_value(payload, "patch")?;
+
+    if patch_has_key(patch, "startMinutes") {
+        connection
+            .execute(
+                "update template_items set start_minutes = ?1 where id = ?2",
+                params![optional_i64(patch, "startMinutes")?, item_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    if patch_has_key(patch, "endMinutes") {
+        connection
+            .execute(
+                "update template_items set end_minutes = ?1 where id = ?2",
+                params![optional_i64(patch, "endMinutes")?, item_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
 }
 
 fn patch_template_option(connection: &Connection, payload: &Value) -> Result<(), String> {
@@ -1997,7 +2066,7 @@ fn read_template_item_snapshot(
     let row = connection
         .query_row(
             "
-          select template_id, parent_id, position
+          select template_id, parent_id, position, start_minutes, end_minutes
           from template_items
           where id = ?1
         ",
@@ -2007,13 +2076,15 @@ fn read_template_item_snapshot(
                     row.get::<_, String>(0)?,
                     row.get::<_, Option<String>>(1)?,
                     row.get::<_, i64>(2)?,
+                    row.get::<_, Option<i64>>(3)?,
+                    row.get::<_, Option<i64>>(4)?,
                 ))
             },
         )
         .optional()
         .map_err(|error| error.to_string())?;
 
-    let Some((template_id, parent_id, position)) = row else {
+    let Some((template_id, parent_id, position, start_minutes, end_minutes)) = row else {
         return Ok(None);
     };
 
@@ -2023,10 +2094,26 @@ fn read_template_item_snapshot(
         position,
         item: json!({
             "id": item_id,
+            "startMinutes": start_minutes,
+            "endMinutes": end_minutes,
             "options": read_template_options(connection, item_id)?,
             "children": read_template_items(connection, &template_id, Some(item_id))?,
         }),
     }))
+}
+
+fn read_template_item_fields(
+    connection: &Connection,
+    item_id: &str,
+) -> Result<Option<(Option<i64>, Option<i64>)>, String> {
+    connection
+        .query_row(
+            "select start_minutes, end_minutes from template_items where id = ?1",
+            params![item_id],
+            |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())
 }
 
 fn read_template_option_snapshot(
@@ -2136,11 +2223,21 @@ fn read_template_items(
 ) -> Result<Vec<Value>, String> {
     let mut statement = if parent_id.is_some() {
         connection.prepare(
-            "select id from template_items where template_id = ?1 and parent_id = ?2 order by position, id",
+            "
+          select id, start_minutes, end_minutes
+          from template_items
+          where template_id = ?1 and parent_id = ?2
+          order by position, id
+        ",
         )
     } else {
         connection.prepare(
-            "select id from template_items where template_id = ?1 and parent_id is null order by position, id",
+            "
+          select id, start_minutes, end_minutes
+          from template_items
+          where template_id = ?1 and parent_id is null
+          order by position, id
+        ",
         )
     }
     .map_err(|error| error.to_string())?;
@@ -2148,23 +2245,35 @@ fn read_template_items(
     let ids = if let Some(parent_id) = parent_id {
         statement
             .query_map(params![template_id, parent_id], |row| {
-                row.get::<_, String>(0)
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<i64>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
             })
             .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<String>, _>>()
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|error| error.to_string())?
     } else {
         statement
-            .query_map(params![template_id], |row| row.get::<_, String>(0))
+            .query_map(params![template_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<i64>>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            })
             .map_err(|error| error.to_string())?
-            .collect::<Result<Vec<String>, _>>()
+            .collect::<Result<Vec<_>, _>>()
             .map_err(|error| error.to_string())?
     };
 
     ids.into_iter()
-        .map(|id| {
+        .map(|(id, start_minutes, end_minutes)| {
             Ok(json!({
                 "id": id,
+                "startMinutes": start_minutes,
+                "endMinutes": end_minutes,
                 "options": read_template_options(connection, &id)?,
                 "children": read_template_items(connection, template_id, Some(&id))?,
             }))
@@ -2635,7 +2744,10 @@ mod tests {
         .unwrap();
 
         let saved = read_app_state_from_database(&connection).unwrap().unwrap();
-        assert_eq!(top_plan_item_ids(&saved), ["plan_item_wake", "plan_item_split"]);
+        assert_eq!(
+            top_plan_item_ids(&saved),
+            ["plan_item_wake", "plan_item_split"]
+        );
         assert_eq!(saved["plans"][0]["items"][0]["text"], "Wake");
         assert_eq!(saved["plans"][0]["items"][1]["text"], " up");
         assert_eq!(history_entry_count(&connection), 1);
@@ -2649,7 +2761,10 @@ mod tests {
         let redone = redo_last_operation_in_database(&mut connection)
             .unwrap()
             .unwrap();
-        assert_eq!(top_plan_item_ids(&redone), ["plan_item_wake", "plan_item_split"]);
+        assert_eq!(
+            top_plan_item_ids(&redone),
+            ["plan_item_wake", "plan_item_split"]
+        );
         assert_eq!(redone["plans"][0]["items"][0]["text"], "Wake");
         assert_eq!(redone["plans"][0]["items"][1]["text"], " up");
     }
@@ -2822,6 +2937,56 @@ mod tests {
             redone["templates"][0]["items"][0]["options"][0]["html"],
             "<strong>Wake up formatted</strong>"
         );
+    }
+
+    #[test]
+    fn template_item_time_persists_and_undoes() {
+        let database = TestDatabase::new("template-item-time");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Template time test")).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "patch_template_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemId": "template_item_wake",
+                    "patch": {
+                        "startMinutes": 540,
+                        "endMinutes": 600
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(saved["templates"][0]["items"][0]["startMinutes"], 540);
+        assert_eq!(saved["templates"][0]["items"][0]["endMinutes"], 600);
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            undone["templates"][0]["items"][0]["startMinutes"],
+            Value::Null
+        );
+        assert_eq!(
+            undone["templates"][0]["items"][0]["endMinutes"],
+            Value::Null
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(redone["templates"][0]["items"][0]["startMinutes"], 540);
+        assert_eq!(redone["templates"][0]["items"][0]["endMinutes"], 600);
     }
 
     #[test]

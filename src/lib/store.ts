@@ -655,6 +655,8 @@ function normalizePlanItems(items: PlanItem[]): PlanItem[] {
       ...item,
       text: item.text ?? htmlToPlainText(html),
       html,
+      startMinutes: item.startMinutes ?? null,
+      endMinutes: item.endMinutes ?? null,
       children: normalizePlanItems(item.children ?? []),
     }
   })
@@ -663,6 +665,8 @@ function normalizePlanItems(items: PlanItem[]): PlanItem[] {
 function normalizeTemplateItems(items: TemplateItem[]): TemplateItem[] {
   return items.map((item) => ({
     ...item,
+    startMinutes: item.startMinutes ?? null,
+    endMinutes: item.endMinutes ?? null,
     options: item.options.map((option) => {
       const html = sanitizeInlineHTML(option.html ?? escapeHTML(option.text ?? ''))
 

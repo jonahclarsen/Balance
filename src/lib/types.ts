@@ -9,6 +9,8 @@ export type TemplateOption = {
 
 export type TemplateItem = {
   id: Id
+  startMinutes: number | null
+  endMinutes: number | null
   options: TemplateOption[]
   children: TemplateItem[]
 }

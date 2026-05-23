@@ -1,5 +1,6 @@
 <script lang="ts">
   import RichTextEditor from './RichTextEditor.svelte'
+  import TimeRange from './TimeRange.svelte'
   import type { Id, MovePlacement, TemplateItem, TemplateOption } from './types'
 
   export let item: TemplateItem
@@ -18,6 +19,13 @@
   let activeDropRow: HTMLElement | null = null
 
   $: probabilityTotal = item.options.reduce((sum, option) => sum + (Number(option.probability) || 0), 0)
+
+  function addTime() {
+    patchItem(templateId, item.id, {
+      startMinutes: 9 * 60,
+      endMinutes: 10 * 60,
+    })
+  }
 
   function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
     const rect = row.getBoundingClientRect()
@@ -100,6 +108,17 @@
     >
       <span class="handle-dots" aria-hidden="true"></span>
     </button>
+
+    {#if item.startMinutes !== null && item.endMinutes !== null}
+      <TimeRange
+        startMinutes={item.startMinutes}
+        endMinutes={item.endMinutes}
+        onChange={(startMinutes, endMinutes) => patchItem(templateId, item.id, { startMinutes, endMinutes })}
+        onRemove={() => patchItem(templateId, item.id, { startMinutes: null, endMinutes: null })}
+      />
+    {:else}
+      <button class="icon-button quiet add-time" type="button" title="Add time range" on:click={addTime}>+</button>
+    {/if}
 
     <div class="option-stack">
       {#each item.options as option, index (option.id)}
