@@ -104,6 +104,18 @@
     focusItemTextInput(newItemId, 'start')
   }
 
+  async function handleBackspaceEmpty(current: HTMLDivElement) {
+    const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
+    const index = inputs.indexOf(current)
+
+    deleteItem(planId, item.id)
+    await tick()
+
+    const nextInputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
+    const target = nextInputs[Math.max(0, index - 1)] ?? nextInputs[0]
+    if (target) focusTextInput(target)
+  }
+
   function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection) {
     const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
     const index = inputs.indexOf(current)
@@ -190,6 +202,7 @@
       onChange={(html, text) => patchItem(planId, item.id, { html, text })}
       onArrowKey={handleTextArrowKey}
       onSplit={handleTextSplit}
+      onBackspaceEmpty={handleBackspaceEmpty}
     />
 
     <div class="row-actions">

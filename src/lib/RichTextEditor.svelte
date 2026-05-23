@@ -18,6 +18,7 @@
   export let onSplit:
     | ((before: { html: string; text: string }, after: { html: string; text: string }, editor: HTMLDivElement) => void | Promise<void>)
     | null = null
+  export let onBackspaceEmpty: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
 
   let editor: HTMLDivElement
   let renderedHTML = html || escapeHTML(text)
@@ -41,9 +42,23 @@
   }
 
   async function handleKeydown(event: KeyboardEvent) {
-    if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      const activeEditor = event.currentTarget as HTMLDivElement
+    const activeEditor = event.currentTarget as HTMLDivElement
 
+    if (
+      event.key === 'Backspace' &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      onBackspaceEmpty &&
+      isEditorEmpty(activeEditor)
+    ) {
+      event.preventDefault()
+      await onBackspaceEmpty(activeEditor, event)
+      return
+    }
+
+    if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey) {
       if (event.shiftKey) {
         event.preventDefault()
         document.execCommand('insertLineBreak')
@@ -82,6 +97,10 @@
 
     event.preventDefault()
     await onArrowKey(event.key === 'ArrowUp' ? 'up' : 'down', event.currentTarget as HTMLDivElement, event)
+  }
+
+  function isEditorEmpty(activeEditor: HTMLDivElement) {
+    return htmlToPlainText(sanitizeInlineHTML(activeEditor.innerHTML)).trim() === ''
   }
 
   function handleInput(event: Event) {
