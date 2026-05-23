@@ -19,6 +19,9 @@
     | ((before: { html: string; text: string }, after: { html: string; text: string }, editor: HTMLDivElement) => void | Promise<void>)
     | null = null
   export let onBackspaceEmpty: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
+  export let onTabKey:
+    | ((direction: 'in' | 'out', editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
+    | null = null
 
   let editor: HTMLDivElement
   let renderedHTML = html || escapeHTML(text)
@@ -55,6 +58,12 @@
     ) {
       event.preventDefault()
       await onBackspaceEmpty(activeEditor, event)
+      return
+    }
+
+    if (event.key === 'Tab' && !event.metaKey && !event.ctrlKey && !event.altKey && onTabKey) {
+      event.preventDefault()
+      await onTabKey(event.shiftKey ? 'out' : 'in', activeEditor, event)
       return
     }
 

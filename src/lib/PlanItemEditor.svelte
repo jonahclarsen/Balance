@@ -7,6 +7,7 @@
   export let item: PlanItem
   export let depth = 0
   export let planId: Id
+  export let parentId: Id | null = null
   export let patchItem: (planId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>) => void
   export let splitItem: (
     planId: Id,
@@ -116,6 +117,28 @@
     if (target) focusTextInput(target)
   }
 
+  async function handleTextTab(direction: 'in' | 'out', current: HTMLDivElement) {
+    if (direction === 'in') {
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
+      const currentRow = current.closest<HTMLElement>('[data-plan-item-id]')
+      const index = currentRow ? rows.indexOf(currentRow) : -1
+      const targetId = index > 0 ? rows[index - 1].dataset.planItemId : null
+
+      if (targetId) {
+        moveItem(planId, item.id, targetId, 'inside')
+        await tick()
+        focusItemTextInput(item.id)
+      }
+      return
+    }
+
+    if (parentId) {
+      moveItem(planId, item.id, parentId, 'after')
+      await tick()
+      focusItemTextInput(item.id)
+    }
+  }
+
   function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection) {
     const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
     const index = inputs.indexOf(current)
@@ -203,6 +226,7 @@
       onArrowKey={handleTextArrowKey}
       onSplit={handleTextSplit}
       onBackspaceEmpty={handleBackspaceEmpty}
+      onTabKey={handleTextTab}
     />
 
     <div class="row-actions">
@@ -218,6 +242,7 @@
           item={child}
           depth={depth + 1}
           {planId}
+          parentId={item.id}
           {patchItem}
           {splitItem}
           {addChild}
