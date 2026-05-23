@@ -199,6 +199,7 @@
                 {item}
                 templateId={selectedTemplate.id}
                 patchItem={plannerStore.patchTemplateItem}
+                splitItem={plannerStore.splitTemplateItem}
                 deleteItem={plannerStore.deleteTemplateItem}
                 moveItem={plannerStore.moveTemplateItem}
                 addChild={plannerStore.addTemplateChild}

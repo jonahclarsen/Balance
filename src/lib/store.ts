@@ -19,6 +19,7 @@ import {
   nowISO,
   sanitizeInlineHTML,
   splitPlanItem,
+  splitTemplateItem,
   todayISO,
   updatePlanItem,
   updateTemplateItem,
@@ -355,6 +356,33 @@ function createPlannerStore() {
           items: updateTemplateItem(template.items, itemId, (item) => ({ ...item, ...patch })),
         })),
       )
+    },
+
+    splitTemplateItem(
+      templateId: Id,
+      itemId: Id,
+      optionId: Id,
+      patch: Partial<TemplateOption>,
+      after: { html: string; text: string },
+    ) {
+      const newItem = {
+        ...createTemplateItem(after.text),
+        options: [
+          {
+            ...createTemplateOption(after.text, 100),
+            html: after.html,
+          },
+        ],
+      }
+
+      commit('split_template_item', { templateId, itemId, optionId, patch, newItem }, (state) =>
+        updateTemplate(state, templateId, (template) => {
+          const items = splitTemplateItem(template.items, itemId, optionId, patch, newItem)
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+
+      return newItem.options[0].id
     },
 
     deleteTemplateItem(templateId: Id, itemId: Id) {

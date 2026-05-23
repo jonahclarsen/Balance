@@ -347,6 +347,40 @@ export function addTemplateItem(items: TemplateItem[], parentId: Id | null, item
   }))
 }
 
+export function splitTemplateItem(
+  items: TemplateItem[],
+  itemId: Id,
+  optionId: Id,
+  patch: Partial<TemplateOption>,
+  newItem: TemplateItem,
+): TemplateItem[] {
+  let changed = false
+
+  const nextItems = items.flatMap((item) => {
+    if (item.id === itemId) {
+      let optionChanged = false
+      const options = item.options.map((option) => {
+        if (option.id !== optionId) return option
+        optionChanged = true
+        return { ...option, ...patch }
+      })
+
+      if (!optionChanged) return [item]
+
+      changed = true
+      return [{ ...item, options }, newItem]
+    }
+
+    const children = splitTemplateItem(item.children, itemId, optionId, patch, newItem)
+    if (children === item.children) return [item]
+
+    changed = true
+    return [{ ...item, children }]
+  })
+
+  return changed ? nextItems : items
+}
+
 export function deleteTemplateItem(items: TemplateItem[], itemId: Id): TemplateItem[] {
   return items
     .filter((item) => item.id !== itemId)

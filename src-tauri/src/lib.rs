@@ -609,6 +609,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             next_template_option_position(tx, required_string(payload, "itemId")?)?,
         ),
         "patch_template_option" => patch_template_option(tx, payload),
+        "split_template_item" => split_template_item_row(tx, payload),
         "delete_template_option" => {
             tx.execute(
                 "delete from template_options where id = ?1",
@@ -817,6 +818,7 @@ fn build_undo_operation(
             json!({ "optionId": required_string(required_value(payload, "option")?, "id")? }),
         ))),
         "patch_template_option" => build_template_option_patch_undo(connection, payload),
+        "split_template_item" => build_split_template_item_undo(connection, payload),
         "delete_template_option" => {
             let Some(snapshot) =
                 read_template_option_snapshot(connection, required_string(payload, "optionId")?)?
@@ -966,6 +968,26 @@ fn build_template_option_patch_undo(
             "optionId": option_id,
             "patch": Value::Object(inverse_patch),
         }),
+    )))
+}
+
+fn build_split_template_item_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let new_item_id = required_string(required_value(payload, "newItem")?, "id")?;
+    let mut operations = vec![storage_operation(
+        "delete_template_item",
+        json!({ "itemId": new_item_id }),
+    )];
+
+    if let Some(patch_undo) = build_template_option_patch_undo(connection, payload)? {
+        operations.push(patch_undo);
+    }
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
     )))
 }
 
@@ -1518,6 +1540,32 @@ fn patch_template_option(connection: &Connection, payload: &Value) -> Result<(),
     }
 
     Ok(())
+}
+
+fn split_template_item_row(connection: &Connection, payload: &Value) -> Result<(), String> {
+    patch_template_option(connection, payload)?;
+
+    let template_id = required_string(payload, "templateId")?;
+    let source_id = required_string(payload, "itemId")?;
+    let new_item = required_value(payload, "newItem")?;
+    let new_item_id = required_string(new_item, "id")?;
+    let parent_id = template_item_parent_id(connection, source_id)?;
+    let mut siblings = template_item_sibling_ids(connection, template_id, parent_id.as_deref())?;
+    let source_index = siblings
+        .iter()
+        .position(|id| id == source_id)
+        .ok_or_else(|| "Split source is not in its sibling list".to_string())?;
+
+    siblings.retain(|id| id != new_item_id);
+    siblings.insert(source_index + 1, new_item_id.to_string());
+    insert_template_item(
+        connection,
+        template_id,
+        parent_id.as_deref(),
+        new_item,
+        (source_index + 1) as i64,
+    )?;
+    rewrite_template_item_positions(connection, &siblings)
 }
 
 fn move_plan_item_row(
@@ -2987,6 +3035,84 @@ mod tests {
             .unwrap();
         assert_eq!(redone["templates"][0]["items"][0]["startMinutes"], 540);
         assert_eq!(redone["templates"][0]["items"][0]["endMinutes"], 600);
+    }
+
+    #[test]
+    fn split_template_item_persists_and_undoes_as_one_operation() {
+        let database = TestDatabase::new("split-template-item");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Template split test")).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "split_template_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemId": "template_item_wake",
+                    "optionId": "template_option_wake",
+                    "patch": {
+                        "text": "Wake",
+                        "html": "Wake"
+                    },
+                    "newItem": {
+                        "id": "template_item_split",
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "options": [
+                            {
+                                "id": "template_option_split",
+                                "text": " up",
+                                "html": " up",
+                                "probability": 100
+                            }
+                        ],
+                        "children": []
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_template_item_ids(&saved),
+            ["template_item_wake", "template_item_split"]
+        );
+        assert_eq!(
+            saved["templates"][0]["items"][0]["options"][0]["text"],
+            "Wake"
+        );
+        assert_eq!(
+            saved["templates"][0]["items"][1]["options"][0]["text"],
+            " up"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_template_item_ids(&undone), ["template_item_wake"]);
+        assert_eq!(
+            undone["templates"][0]["items"][0]["options"][0]["text"],
+            "Wake up"
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&redone),
+            ["template_item_wake", "template_item_split"]
+        );
+        assert_eq!(
+            redone["templates"][0]["items"][0]["options"][0]["text"],
+            "Wake"
+        );
     }
 
     #[test]

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick } from 'svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import type { Id, MovePlacement, TemplateItem, TemplateOption } from './types'
@@ -6,7 +7,15 @@
   export let item: TemplateItem
   export let depth = 0
   export let templateId: Id
+  export let parentId: Id | null = null
   export let patchItem: (templateId: Id, itemId: Id, patch: Partial<TemplateItem>) => void
+  export let splitItem: (
+    templateId: Id,
+    itemId: Id,
+    optionId: Id,
+    patch: Partial<TemplateOption>,
+    after: { html: string; text: string },
+  ) => Id
   export let deleteItem: (templateId: Id, itemId: Id) => void
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let addChild: (templateId: Id, parentId: Id) => void
@@ -83,6 +92,76 @@
       moveItem(templateId, item.id, targetId, placement)
     }
   }
+
+  async function handleTextSplit(
+    optionId: Id,
+    before: { html: string; text: string },
+    after: { html: string; text: string },
+  ) {
+    const newOptionId = splitItem(templateId, item.id, optionId, before, after)
+    await tick()
+    focusTemplateOptionTextInput(newOptionId, 'start')
+  }
+
+  async function handleTextTab(direction: 'in' | 'out', current: HTMLDivElement) {
+    if (direction === 'in') {
+      const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-template-item-id]'))
+      const currentRow = current.closest<HTMLElement>('[data-template-item-id]')
+      const index = currentRow ? rows.indexOf(currentRow) : -1
+      const targetId = index > 0 ? rows[index - 1].dataset.templateItemId : null
+
+      if (targetId) {
+        moveItem(templateId, item.id, targetId, 'inside')
+        await tick()
+        focusTemplateOptionTextInput(item.options[0]?.id)
+      }
+      return
+    }
+
+    if (parentId) {
+      moveItem(templateId, item.id, parentId, 'after')
+      await tick()
+      focusTemplateOptionTextInput(item.options[0]?.id)
+    }
+  }
+
+  async function handleBackspaceEmpty(option: TemplateOption, index: number, current: HTMLDivElement) {
+    const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-template-option-text-input]'))
+    const inputIndex = inputs.indexOf(current)
+
+    if (index === 0) {
+      deleteItem(templateId, item.id)
+    } else {
+      deleteOption(templateId, item.id, option.id)
+    }
+
+    await tick()
+
+    const nextInputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-template-option-text-input]'))
+    const target = nextInputs[Math.max(0, inputIndex - 1)] ?? nextInputs[0]
+    if (target) focusTextInput(target)
+  }
+
+  function focusTemplateOptionTextInput(optionId: Id | undefined, position: 'start' | 'end' = 'end') {
+    if (!optionId) return
+
+    const input = Array.from(document.querySelectorAll<HTMLDivElement>('[data-template-option-text-input]')).find(
+      (candidate) => candidate.dataset.templateOptionTextInputId === optionId,
+    )
+
+    if (input) focusTextInput(input, position)
+  }
+
+  function focusTextInput(input: HTMLDivElement, position: 'start' | 'end' = 'end') {
+    input.focus()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(position === 'start')
+
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
 </script>
 
 <div class="template-item" style={`--depth: ${depth}`}>
@@ -133,6 +212,9 @@
             ariaLabel={index === 0 ? 'Template item' : 'Template alternative'}
             revision={historyRevision}
             onChange={(html, text) => patchOption(templateId, item.id, option.id, { html, text })}
+            onSplit={(before, after) => handleTextSplit(option.id, before, after)}
+            onTabKey={handleTextTab}
+            onBackspaceEmpty={(editor) => handleBackspaceEmpty(option, index, editor)}
           />
           <input
             class="probability"
@@ -175,7 +257,9 @@
           item={child}
           depth={depth + 1}
           {templateId}
+          parentId={item.id}
           {patchItem}
+          {splitItem}
           {deleteItem}
           {moveItem}
           {addChild}
