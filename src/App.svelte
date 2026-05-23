@@ -122,7 +122,10 @@
       <header class="page-header">
         <div>
           <p class="eyebrow">Daily plan</p>
-          <h2>{activePlan?.title ?? formatPlanTitle($plannerStore.activePlanDate)}</h2>
+          <h2>
+            {activePlan?.title ?? formatPlanTitle($plannerStore.activePlanDate)}
+            <span class="daily-reminder">— This shouldn't be aspirational</span>
+          </h2>
         </div>
         <input
           class="date-input"
