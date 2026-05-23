@@ -17,6 +17,7 @@ import {
   movePlanItem,
   movePlanItemWithinLevel,
   moveTemplateItem,
+  moveTemplateItemWithinLevel,
   nowISO,
   sanitizeInlineHTML,
   splitPlanItem,
@@ -410,6 +411,15 @@ function createPlannerStore() {
       commit('move_template_item', { templateId, sourceId, targetId, placement }, (state) =>
         updateTemplate(state, templateId, (template) => {
           const items = moveTemplateItem(template.items, sourceId, targetId, placement)
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+    },
+
+    moveTemplateItemWithinLevel(templateId: Id, itemId: Id, direction: 'up' | 'down') {
+      commit('move_template_item_within_level', { templateId, itemId, direction }, (state) =>
+        updateTemplate(state, templateId, (template) => {
+          const items = moveTemplateItemWithinLevel(template.items, itemId, direction)
           return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
         }),
       )

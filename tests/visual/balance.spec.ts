@@ -256,6 +256,33 @@ test('plan item text fields support arrow focus and option-arrow sibling moves',
     .toEqual({ workIndex: 1, childCount: 2 })
 })
 
+test('template item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Templates' }).click()
+
+  await focusTemplateOptionByValue(page, 'Wake up')
+  await page.keyboard.press('ArrowDown')
+
+  const focusedAfterDown = await activeTemplateOptionValue(page)
+  expect(focusedAfterDown).not.toBe('Wake up')
+
+  await page.keyboard.press('ArrowUp')
+  expect(await activeTemplateOptionValue(page)).toBe('Wake up')
+
+  const initialOrder = await topLevelTemplateOptionTexts(page)
+  const movedOrder = [initialOrder[1], initialOrder[0], ...initialOrder.slice(2)]
+
+  await page.keyboard.press('Alt+ArrowDown')
+  expect(await activeTemplateOptionValue(page)).toBe('Wake up')
+  await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual(movedOrder)
+
+  await page.keyboard.press('Alt+ArrowUp')
+  expect(await activeTemplateOptionValue(page)).toBe('Wake up')
+  await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual(initialOrder)
+})
+
 test('cmd d toggles the focused plan item completion state', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -635,6 +662,13 @@ async function focusTemplateOptionByValue(page: import('@playwright/test').Page,
   }, value)
 }
 
+async function activeTemplateOptionValue(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    return active instanceof HTMLElement && active.matches('[data-template-option-text-input]') ? active.textContent : null
+  })
+}
+
 async function richHTMLForFocusedTemplateOption(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const active = document.activeElement
@@ -715,6 +749,13 @@ async function topLevelTexts(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return state.plans?.[0]?.items?.map((item: { text: string }) => item.text) ?? []
+  })
+}
+
+async function topLevelTemplateOptionTexts(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.templates?.[0]?.items?.map((item: { options?: Array<{ text: string }> }) => item.options?.[0]?.text ?? '') ?? []
   })
 }
 

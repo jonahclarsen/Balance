@@ -790,6 +790,11 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             required_string(payload, "targetId")?,
             required_string(payload, "placement")?,
         ),
+        "move_template_item_within_level" => move_template_item_within_level_row(
+            tx,
+            required_string(payload, "itemId")?,
+            required_string(payload, "direction")?,
+        ),
         "move_template_item_to_position" => move_template_item_to_position_row(
             tx,
             required_string(payload, "itemId")?,
@@ -1013,6 +1018,23 @@ fn build_undo_operation(
                 "move_template_item_to_position",
                 json!({
                     "itemId": required_string(payload, "sourceId")?,
+                    "templateId": snapshot.template_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
+                }),
+            )))
+        }
+        "move_template_item_within_level" => {
+            let Some(snapshot) =
+                read_template_item_snapshot(connection, required_string(payload, "itemId")?)?
+            else {
+                return Ok(None);
+            };
+
+            Ok(Some(storage_operation(
+                "move_template_item_to_position",
+                json!({
+                    "itemId": required_string(payload, "itemId")?,
                     "templateId": snapshot.template_id,
                     "parentId": snapshot.parent_id,
                     "position": snapshot.position,
@@ -1926,6 +1948,28 @@ fn move_template_item_row(
             params![target_parent_id, source_id],
         )
         .map_err(|error| error.to_string())?;
+    rewrite_template_item_positions(connection, &siblings)
+}
+
+fn move_template_item_within_level_row(
+    connection: &Connection,
+    item_id: &str,
+    direction: &str,
+) -> Result<(), String> {
+    let template_id = template_item_template_id(connection, item_id)?;
+    let parent_id = template_item_parent_id(connection, item_id)?;
+    let mut siblings = template_item_sibling_ids(connection, &template_id, parent_id.as_deref())?;
+    let index = siblings
+        .iter()
+        .position(|id| id == item_id)
+        .ok_or_else(|| "Template move source is not in its sibling list".to_string())?;
+    let target_index = match direction {
+        "up" if index > 0 => index - 1,
+        "down" if index + 1 < siblings.len() => index + 1,
+        _ => return Ok(()),
+    };
+
+    siblings.swap(index, target_index);
     rewrite_template_item_positions(connection, &siblings)
 }
 
@@ -3438,6 +3482,70 @@ mod tests {
                     "sourceId": "template_item_wake",
                     "targetId": "template_item_second",
                     "placement": "after"
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_template_item_ids(&moved),
+            ["template_item_second", "template_item_wake"]
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&undone),
+            ["template_item_wake", "template_item_second"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&redone),
+            ["template_item_second", "template_item_wake"]
+        );
+    }
+
+    #[test]
+    fn template_item_within_level_movement_persists_and_undoes() {
+        let database = TestDatabase::new("template-within-level-movement");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Template within level movement test");
+        state["templates"][0]["items"]
+            .as_array_mut()
+            .unwrap()
+            .push(json!({
+                "id": "template_item_second",
+                "options": [
+                    {
+                        "id": "template_option_second",
+                        "text": "Second template item",
+                        "html": "Second template item",
+                        "probability": 100
+                    }
+                ],
+                "children": []
+            }));
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "move_template_item_within_level",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemId": "template_item_wake",
+                    "direction": "down"
                 }
             }),
         )

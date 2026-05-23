@@ -414,6 +414,30 @@ export function moveTemplateItem(
   return inserted ?? items
 }
 
+export function moveTemplateItemWithinLevel(items: TemplateItem[], itemId: Id, direction: MoveDirection): TemplateItem[] {
+  const index = items.findIndex((item) => item.id === itemId)
+
+  if (index !== -1) {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= items.length) return items
+
+    const nextItems = [...items]
+    const [item] = nextItems.splice(index, 1)
+    nextItems.splice(targetIndex, 0, item)
+    return nextItems
+  }
+
+  let changed = false
+  const nextItems = items.map((item) => {
+    const children = moveTemplateItemWithinLevel(item.children, itemId, direction)
+    if (children === item.children) return item
+    changed = true
+    return { ...item, children }
+  })
+
+  return changed ? nextItems : items
+}
+
 function findTemplateItem(items: TemplateItem[], itemId: Id): TemplateItem | null {
   for (const item of items) {
     if (item.id === itemId) return item

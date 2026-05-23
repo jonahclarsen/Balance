@@ -380,6 +380,7 @@
                 splitItem={plannerStore.splitTemplateItem}
                 deleteItem={plannerStore.deleteTemplateItem}
                 moveItem={plannerStore.moveTemplateItem}
+                moveItemWithinLevel={plannerStore.moveTemplateItemWithinLevel}
                 addChild={plannerStore.addTemplateChild}
                 addOption={plannerStore.addTemplateOption}
                 patchOption={plannerStore.patchTemplateOption}

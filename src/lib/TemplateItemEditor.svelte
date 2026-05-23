@@ -3,7 +3,7 @@
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
-  import type { Id, MovePlacement, TemplateItem, TemplateOption } from './types'
+  import type { Id, MoveDirection, MovePlacement, TemplateItem, TemplateOption } from './types'
 
   export let item: TemplateItem
   export let depth = 0
@@ -19,6 +19,7 @@
   ) => Id
   export let deleteItem: (templateId: Id, itemId: Id) => void
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
+  export let moveItemWithinLevel: (templateId: Id, itemId: Id, direction: MoveDirection) => void
   export let addChild: (templateId: Id, parentId: Id) => void
   export let addOption: (templateId: Id, itemId: Id) => void
   export let patchOption: (templateId: Id, itemId: Id, optionId: Id, patch: Partial<TemplateOption>) => void
@@ -104,6 +105,17 @@
     focusTemplateOptionTextInput(newOptionId, 'start')
   }
 
+  async function handleTextArrowKey(optionId: Id, direction: MoveDirection, current: HTMLDivElement, event: KeyboardEvent) {
+    if (event.altKey) {
+      moveItemWithinLevel(templateId, item.id, direction)
+      await tick()
+      focusTemplateOptionTextInput(optionId)
+      return
+    }
+
+    focusAdjacentTemplateOptionTextInput(current, direction)
+  }
+
   async function handleTextTab(direction: 'in' | 'out', current: HTMLDivElement) {
     if (direction === 'in') {
       const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-template-item-id]'))
@@ -151,6 +163,14 @@
     )
 
     if (input) focusTextInput(input, position)
+  }
+
+  function focusAdjacentTemplateOptionTextInput(current: HTMLDivElement, direction: MoveDirection) {
+    const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-template-option-text-input]'))
+    const index = inputs.indexOf(current)
+    const target = inputs[direction === 'up' ? index - 1 : index + 1]
+
+    if (target) focusTextInput(target)
   }
 
   function focusTextInput(input: HTMLDivElement, position: 'start' | 'end' = 'end') {
@@ -221,6 +241,7 @@
             ariaLabel={index === 0 ? 'Template item' : 'Template alternative'}
             revision={historyRevision}
             onChange={(html, text) => patchOption(templateId, item.id, option.id, { html, text })}
+            onArrowKey={(direction, editor, event) => handleTextArrowKey(option.id, direction, editor, event)}
             onSplit={(before, after) => handleTextSplit(option.id, before, after)}
             onTabKey={handleTextTab}
             onBackspaceEmpty={(editor) => handleBackspaceEmpty(option, index, editor)}
@@ -271,6 +292,7 @@
           {splitItem}
           {deleteItem}
           {moveItem}
+          {moveItemWithinLevel}
           {addChild}
           {addOption}
           {patchOption}
