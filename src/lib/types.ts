@@ -33,6 +33,7 @@ export type DailyPlan = {
   id: Id
   date: string
   title: string
+  dailyReminder: string
   generatedFromTemplateId: Id | null
   createdAt: string
   items: PlanItem[]

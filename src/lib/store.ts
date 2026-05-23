@@ -7,6 +7,7 @@ import {
   createPlanItem,
   createTemplateItem,
   createTemplateOption,
+  DEFAULT_DAILY_REMINDER,
   deletePlanItem,
   deleteTemplateItem,
   escapeHTML,
@@ -238,9 +239,10 @@ function createPlannerStore() {
     },
 
     generatePlan(templateId: Id, date: string, replaceExisting: boolean) {
-      const template = get(store).templates.find((candidate) => candidate.id === templateId)
+      const current = get(store)
+      const template = current.templates.find((candidate) => candidate.id === templateId)
       if (!template) return
-      const generated = generatePlanFromTemplate(template, date)
+      const generated = generatePlanFromTemplate(template, date, dailyReminderForGeneratedPlan(current.plans, date))
 
       commit('generate_plan', { templateId, date, replaceExisting, generatedPlan: generated }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans
@@ -251,6 +253,15 @@ function createPlannerStore() {
           plans: [...plans, generated].sort((a, b) => b.date.localeCompare(a.date)),
         }
       })
+    },
+
+    patchPlanDailyReminder(planId: Id, dailyReminder: string) {
+      commit(
+        'patch_plan_daily_reminder',
+        { planId, dailyReminder },
+        (state) => updatePlan(state, planId, (plan) => applyPatch(plan, { dailyReminder })),
+        { mergeKey: `plan-daily-reminder:${planId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
+      )
     },
 
     addRootPlanItem(planId: Id) {
@@ -583,6 +594,17 @@ function updateTemplate(state: AppState, templateId: Id, updater: (template: App
   return changed ? { ...state, templates } : state
 }
 
+function dailyReminderForGeneratedPlan(plans: DailyPlan[], date: string): string {
+  const existingPlan = plans.find((plan) => plan.date === date)
+  if (existingPlan) return existingPlan.dailyReminder
+
+  const priorPlan = plans
+    .filter((plan) => plan.date < date)
+    .sort((a, b) => b.date.localeCompare(a.date))[0]
+
+  return priorPlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER
+}
+
 export function exportJSON(state: AppState): string {
   return JSON.stringify(
     {
@@ -670,6 +692,7 @@ function normalizeState(state: AppState): AppState {
     })),
     plans: state.plans.map((plan) => ({
       ...plan,
+      dailyReminder: plan.dailyReminder ?? DEFAULT_DAILY_REMINDER,
       items: normalizePlanItems(plan.items),
     })),
   }

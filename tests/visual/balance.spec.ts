@@ -62,6 +62,47 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   })
 })
 
+test('daily reminder edits the selected day and future days inherit it', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const currentDate = await page.locator('.date-input').inputValue()
+  const nextDate = addDays(currentDate, 1)
+
+  await page.getByRole('button', { name: /This shouldn't be aspirational/ }).click()
+  await page.getByLabel('Edit daily reminder').fill('Keep it concrete')
+
+  await expect
+    .poll(async () =>
+      page.evaluate((date) => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return state.plans?.find((plan: { date: string }) => plan.date === date)?.dailyReminder
+      }, currentDate),
+    )
+    .toBe('Keep it concrete')
+
+  await page.locator('.date-input').fill(nextDate)
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' }).click()
+
+  await expect(page.getByRole('button', { name: /Keep it concrete/ })).toBeVisible()
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        ({ currentDate, nextDate }) => {
+          const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+          return {
+            current: state.plans?.find((plan: { date: string }) => plan.date === currentDate)?.dailyReminder,
+            next: state.plans?.find((plan: { date: string }) => plan.date === nextDate)?.dailyReminder,
+          }
+        },
+        { currentDate, nextDate },
+      ),
+    )
+    .toEqual({ current: 'Keep it concrete', next: 'Keep it concrete' })
+})
+
 test('plan items can be nested and un-nested with the drag handle', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -633,6 +674,15 @@ async function topLevelTexts(page: import('@playwright/test').Page) {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return state.plans?.[0]?.items?.map((item: { text: string }) => item.text) ?? []
   })
+}
+
+function addDays(date: string, days: number) {
+  const parsed = new Date(`${date}T12:00:00`)
+  parsed.setDate(parsed.getDate() + days)
+  const year = parsed.getFullYear()
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const day = String(parsed.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 async function pointerDrag(

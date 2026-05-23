@@ -15,6 +15,7 @@ const APP_DATA_DIR: &str = "Balance";
 const KEYCHAIN_SERVICE: &str = "app.balance.local";
 const KEYCHAIN_ACCOUNT: &str = "database-recovery-key";
 const RECOVERY_KEY_CONFIRMED: &str = "recovery_key_confirmed";
+const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -246,6 +247,7 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           id text primary key,
           date text not null unique,
           title text not null,
+          daily_reminder text not null default 'This shouldn''t be aspirational',
           generated_from_template_id text,
           created_at text not null
         );
@@ -300,6 +302,12 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
     )?;
     add_missing_column(connection, "template_items", "start_minutes", "integer")?;
     add_missing_column(connection, "template_items", "end_minutes", "integer")?;
+    add_missing_column(
+        connection,
+        "plans",
+        "daily_reminder",
+        "text not null default 'This shouldn''t be aspirational'",
+    )?;
     connection
         .execute(
             "update template_options set html = text where html = ''",
@@ -540,6 +548,17 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             )?,
         ),
         "patch_plan_item" => patch_plan_item(tx, payload),
+        "patch_plan_daily_reminder" => {
+            tx.execute(
+                "update plans set daily_reminder = ?1 where id = ?2",
+                params![
+                    required_string(payload, "dailyReminder")?,
+                    required_string(payload, "planId")?,
+                ],
+            )
+            .map_err(|error| error.to_string())?;
+            Ok(())
+        }
         "split_plan_item" => split_plan_item_row(tx, payload),
         "delete_plan_item" => {
             tx.execute(
@@ -733,6 +752,17 @@ fn build_undo_operation(
             json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
         ))),
         "patch_plan_item" => build_plan_item_patch_undo(connection, payload),
+        "patch_plan_daily_reminder" => {
+            let plan_id = required_string(payload, "planId")?;
+            let Some(daily_reminder) = read_plan_daily_reminder(connection, plan_id)? else {
+                return Ok(None);
+            };
+
+            Ok(Some(storage_operation(
+                "patch_plan_daily_reminder",
+                json!({ "planId": plan_id, "dailyReminder": daily_reminder }),
+            )))
+        }
         "split_plan_item" => build_split_plan_item_undo(connection, payload),
         "delete_plan_item" => {
             let Some(snapshot) =
@@ -1356,14 +1386,17 @@ fn insert_template_option(
 
 fn insert_plan(connection: &Connection, plan: &Value) -> Result<(), String> {
     let plan_id = required_string(plan, "id")?;
+    let daily_reminder = optional_string(plan, "dailyReminder")?
+        .unwrap_or_else(|| DEFAULT_DAILY_REMINDER.to_string());
     connection
         .execute(
             "
-        insert into plans (id, date, title, generated_from_template_id, created_at)
-        values (?1, ?2, ?3, ?4, ?5)
+        insert into plans (id, date, title, daily_reminder, generated_from_template_id, created_at)
+        values (?1, ?2, ?3, ?4, ?5, ?6)
         on conflict(id) do update set
           date = excluded.date,
           title = excluded.title,
+          daily_reminder = excluded.daily_reminder,
           generated_from_template_id = excluded.generated_from_template_id,
           created_at = excluded.created_at
       ",
@@ -1371,6 +1404,7 @@ fn insert_plan(connection: &Connection, plan: &Value) -> Result<(), String> {
                 plan_id,
                 required_string(plan, "date")?,
                 required_string(plan, "title")?,
+                daily_reminder,
                 optional_string(plan, "generatedFromTemplateId")?,
                 required_string(plan, "createdAt")?,
             ],
@@ -2010,7 +2044,7 @@ fn read_plan_by_id(connection: &Connection, plan_id: &str) -> Result<Option<Valu
     let row = connection
         .query_row(
             "
-          select id, date, title, generated_from_template_id, created_at
+          select id, date, title, daily_reminder, generated_from_template_id, created_at
           from plans
           where id = ?1
         ",
@@ -2020,15 +2054,16 @@ fn read_plan_by_id(connection: &Connection, plan_id: &str) -> Result<Option<Valu
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
                     row.get::<_, String>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, Option<String>>(4)?,
+                    row.get::<_, String>(5)?,
                 ))
             },
         )
         .optional()
         .map_err(|error| error.to_string())?;
 
-    let Some((id, date, title, generated_from_template_id, created_at)) = row else {
+    let Some((id, date, title, daily_reminder, generated_from_template_id, created_at)) = row else {
         return Ok(None);
     };
 
@@ -2036,10 +2071,25 @@ fn read_plan_by_id(connection: &Connection, plan_id: &str) -> Result<Option<Valu
         "id": id,
         "date": date,
         "title": title,
+        "dailyReminder": daily_reminder,
         "generatedFromTemplateId": generated_from_template_id,
         "createdAt": created_at,
         "items": read_plan_items(connection, plan_id, None)?,
     })))
+}
+
+fn read_plan_daily_reminder(
+    connection: &Connection,
+    plan_id: &str,
+) -> Result<Option<String>, String> {
+    connection
+        .query_row(
+            "select daily_reminder from plans where id = ?1",
+            params![plan_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())
 }
 
 fn read_plan_item_snapshot(
@@ -2377,7 +2427,7 @@ fn read_template_options(connection: &Connection, item_id: &str) -> Result<Vec<V
 fn read_plans(connection: &Connection) -> Result<Vec<Value>, String> {
     let mut statement = connection
         .prepare(
-            "select id, date, title, generated_from_template_id, created_at from plans order by date desc, id",
+            "select id, date, title, daily_reminder, generated_from_template_id, created_at from plans order by date desc, id",
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
@@ -2386,19 +2436,21 @@ fn read_plans(connection: &Connection) -> Result<Vec<Value>, String> {
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
-                row.get::<_, Option<String>>(3)?,
-                row.get::<_, String>(4)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, String>(5)?,
             ))
         })
         .map_err(|error| error.to_string())?;
 
     rows.map(|row| {
-        let (id, date, title, generated_from_template_id, created_at) =
+        let (id, date, title, daily_reminder, generated_from_template_id, created_at) =
             row.map_err(|error| error.to_string())?;
         Ok(json!({
             "id": id,
             "date": date,
             "title": title,
+            "dailyReminder": daily_reminder,
             "generatedFromTemplateId": generated_from_template_id,
             "createdAt": created_at,
             "items": read_plan_items(connection, &id, None)?,
@@ -2664,6 +2716,10 @@ mod tests {
         let saved = read_app_state_from_database(&connection).unwrap().unwrap();
         assert_eq!(saved["plans"][0]["title"], "Private day");
         assert_eq!(
+            saved["plans"][0]["dailyReminder"],
+            "This shouldn't be aspirational"
+        );
+        assert_eq!(
             saved["templates"][0]["items"][0]["options"][0]["text"],
             "Wake up"
         );
@@ -2742,6 +2798,46 @@ mod tests {
         assert_eq!(read_operations(&connection).unwrap().len(), 2);
         assert_eq!(history_entry_count(&connection), 1);
         assert_eq!(saved["localSequence"], 2);
+    }
+
+    #[test]
+    fn plan_daily_reminder_persists_and_undoes() {
+        let database = TestDatabase::new("plan-daily-reminder");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Reminder test")).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "patch_plan_daily_reminder",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "dailyReminder": "Keep this concrete"
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(saved["plans"][0]["dailyReminder"], "Keep this concrete");
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            undone["plans"][0]["dailyReminder"],
+            "This shouldn't be aspirational"
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(redone["plans"][0]["dailyReminder"], "Keep this concrete");
     }
 
     #[test]
@@ -3335,6 +3431,7 @@ mod tests {
                     "id": "plan_today",
                     "date": "2026-05-21",
                     "title": plan_title,
+                    "dailyReminder": "This shouldn't be aspirational",
                     "generatedFromTemplateId": "template_default",
                     "createdAt": "2026-05-21T00:00:00Z",
                     "items": [

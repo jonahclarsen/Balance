@@ -10,6 +10,8 @@ import type {
   TemplateOption,
 } from './types'
 
+export const DEFAULT_DAILY_REMINDER = "This shouldn't be aspirational"
+
 export function createId(prefix = 'id'): Id {
   if (globalThis.crypto?.randomUUID) {
     return `${prefix}_${globalThis.crypto.randomUUID()}`
@@ -99,11 +101,16 @@ export function createPlanItem(text = ''): PlanItem {
   }
 }
 
-export function generatePlanFromTemplate(template: DailyTemplate, date: string): DailyPlan {
+export function generatePlanFromTemplate(
+  template: DailyTemplate,
+  date: string,
+  dailyReminder = DEFAULT_DAILY_REMINDER,
+): DailyPlan {
   return {
     id: createId('plan'),
     date,
     title: formatPlanTitle(date),
+    dailyReminder,
     generatedFromTemplateId: template.id,
     createdAt: nowISO(),
     items: generatePlanItems(template.items),

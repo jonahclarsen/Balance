@@ -1,11 +1,11 @@
 <script lang="ts">
   import { invoke, isTauri } from '@tauri-apps/api/core'
-  import { onMount } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
   import { confirmRecoveryKey, exportHTML, exportJSON, getRecoveryKeyStatus, plannerStore } from './lib/store'
   import type { RecoveryKeyStatus } from './lib/store'
-  import { formatPlanTitle, todayISO } from './lib/planner'
+  import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
 
   type View = 'today' | 'templates' | 'history' | 'export'
 
@@ -16,9 +16,14 @@
   let recoveryKeyCopied = false
   let exportStatus = ''
   let exportStatusIsError = false
+  let editingDailyReminder = false
+  let dailyReminderDraft = ''
+  let dailyReminderInput: HTMLInputElement | null = null
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
+  $: activeDailyReminder = activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER
+  $: if (!editingDailyReminder) dailyReminderDraft = activeDailyReminder
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
   $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
@@ -111,6 +116,28 @@
     recoveryKeyStatus = await getRecoveryKeyStatus()
     recoveryKeySaved = false
   }
+
+  async function startDailyReminderEdit() {
+    if (!activePlan) return
+
+    dailyReminderDraft = activePlan.dailyReminder
+    editingDailyReminder = true
+    await tick()
+    dailyReminderInput?.focus()
+    dailyReminderInput?.select()
+  }
+
+  function updateDailyReminder(value: string) {
+    dailyReminderDraft = value
+    if (activePlan) plannerStore.patchPlanDailyReminder(activePlan.id, value)
+  }
+
+  function handleDailyReminderKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      dailyReminderInput?.blur()
+    }
+  }
 </script>
 
 <svelte:window on:keydown|capture={handleGlobalKeydown} />
@@ -142,7 +169,27 @@
           <p class="eyebrow">Daily plan</p>
           <h2>
             {activePlan?.title ?? formatPlanTitle($plannerStore.activePlanDate)}
-            <span class="daily-reminder">— This shouldn't be aspirational</span>
+            {#if editingDailyReminder && activePlan}
+              <span class="daily-reminder-prefix">—</span>
+              <input
+                bind:this={dailyReminderInput}
+                class="daily-reminder-input"
+                aria-label="Edit daily reminder"
+                value={dailyReminderDraft}
+                on:input={(event) => updateDailyReminder(event.currentTarget.value)}
+                on:blur={() => (editingDailyReminder = false)}
+                on:keydown={handleDailyReminderKeydown}
+              />
+            {:else}
+              <button
+                class="daily-reminder-button"
+                type="button"
+                title={activePlan ? 'Edit daily reminder' : 'Generate a day before editing the reminder'}
+                on:click={startDailyReminderEdit}
+              >
+                — {activeDailyReminder}
+              </button>
+            {/if}
           </h2>
         </div>
         <input

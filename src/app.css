@@ -118,9 +118,32 @@ h2 {
   line-height: 1.15;
 }
 
-h2 .daily-reminder {
+h2 .daily-reminder-button,
+h2 .daily-reminder-input,
+h2 .daily-reminder-prefix {
   color: var(--muted);
   font-weight: 500;
+}
+
+h2 .daily-reminder-button {
+  display: inline;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+}
+
+h2 .daily-reminder-button:hover {
+  color: var(--accent-strong);
+}
+
+h2 .daily-reminder-input {
+  width: min(520px, 100%);
+  border-color: var(--accent);
+  background: var(--paper-strong);
+  font-size: inherit;
+  line-height: 1;
+  padding: 3px 6px;
 }
 
 h3 {
