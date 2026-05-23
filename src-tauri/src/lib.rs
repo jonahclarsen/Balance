@@ -171,6 +171,13 @@ async fn reveal_path_in_file_manager(path: String) -> Result<(), String> {
     run_database_task(move || reveal_path(PathBuf::from(path))).await
 }
 
+#[tauri::command]
+async fn open_external_url(url: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || open_url(&url))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 async fn run_database_task<T, F>(task: F) -> Result<T, String>
 where
     T: Send + 'static,
@@ -479,6 +486,46 @@ fn reveal_path(path: PathBuf) -> Result<(), String> {
     } else {
         Err("Could not open the saved export location".to_string())
     }
+}
+
+fn open_url(url: &str) -> Result<(), String> {
+    let url = validate_external_url(url)?;
+
+    #[cfg(target_os = "macos")]
+    let status = Command::new("open")
+        .arg(url)
+        .status()
+        .map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    let status = Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", url])
+        .status()
+        .map_err(|error| error.to_string())?;
+
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let status = Command::new("xdg-open")
+        .arg(url)
+        .status()
+        .map_err(|error| error.to_string())?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Could not open the link".to_string())
+    }
+}
+
+fn validate_external_url(url: &str) -> Result<&str, String> {
+    let url = url.trim();
+    let lower = url.to_ascii_lowercase();
+    if (lower.starts_with("http://") || lower.starts_with("https://"))
+        && !url.chars().any(char::is_control)
+    {
+        return Ok(url);
+    }
+
+    Err("Only http and https links can be opened".to_string())
 }
 
 fn add_missing_column(
@@ -2900,7 +2947,8 @@ pub fn run() {
             get_export_settings,
             set_export_directory,
             reset_export_directory,
-            reveal_path_in_file_manager
+            reveal_path_in_file_manager,
+            open_external_url
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
@@ -3584,6 +3632,21 @@ mod tests {
         assert!(recovery_key
             .chars()
             .all(|character| character == '-' || matches!(character, 'A'..='Z' | '2'..='7')));
+    }
+
+    #[test]
+    fn external_url_validation_allows_only_http_and_https() {
+        assert_eq!(
+            validate_external_url(" https://example.com/path ").unwrap(),
+            "https://example.com/path"
+        );
+        assert_eq!(
+            validate_external_url("http://example.com").unwrap(),
+            "http://example.com"
+        );
+        assert!(validate_external_url("ftp://example.com").is_err());
+        assert!(validate_external_url("javascript:alert(1)").is_err());
+        assert!(validate_external_url("https://example.com\nopen").is_err());
     }
 
     #[test]

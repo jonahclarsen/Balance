@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { invoke, isTauri } from '@tauri-apps/api/core'
   import { escapeHTML, htmlToPlainText, isURL, sanitizeInlineHTML } from './planner'
   import type { Id, MoveDirection } from './types'
 
@@ -138,6 +139,28 @@
     }
   }
 
+  async function handleClick(event: MouseEvent) {
+    const target = event.target instanceof Node ? event.target : null
+    const anchor =
+      target instanceof Element
+        ? target.closest<HTMLAnchorElement>('a[href]')
+        : target?.parentElement?.closest<HTMLAnchorElement>('a[href]') ?? null
+    if (!anchor || !editor?.contains(anchor)) return
+
+    const href = anchor.href
+    if (!isURL(href)) return
+
+    event.preventDefault()
+    event.stopPropagation()
+
+    if (isTauri()) {
+      await invoke('open_external_url', { url: href })
+      return
+    }
+
+    window.open(href, '_blank', 'noopener,noreferrer')
+  }
+
   function persistEditor(activeEditor: HTMLDivElement, syncRenderedHTML = true) {
     const nextHTML = sanitizeInlineHTML(activeEditor.innerHTML)
     if (syncRenderedHTML && activeEditor.innerHTML !== nextHTML) activeEditor.innerHTML = nextHTML
@@ -224,6 +247,7 @@
     if (editor) persistEditor(editor)
   }}
   on:keydown={handleKeydown}
+  on:click={handleClick}
   on:input={handleInput}
   on:paste={handlePaste}
 >{@html renderedHTML}</div>

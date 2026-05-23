@@ -399,6 +399,27 @@ test('plan item rich text preserves paste formatting and supports shortcuts', as
   await expect
     .poll(async () => storedHTMLForFocusedItem(page))
     .toContain('<a href="https://balance.local" target="_blank" rel="noreferrer">')
+
+  await page.evaluate(() => {
+    window.open = (url, target, features) => {
+      ;(window as unknown as { openedLink: { url: string; target?: string; features?: string } }).openedLink = {
+        url: String(url),
+        target: target ?? undefined,
+        features: features ?? undefined,
+      }
+      return null
+    }
+  })
+  await page.locator('[data-plan-text-input] a[href="https://balance.local"]').click()
+  await expect
+    .poll(async () =>
+      page.evaluate(() => (window as unknown as { openedLink?: { url: string; target?: string; features?: string } }).openedLink),
+    )
+    .toEqual({
+      url: 'https://balance.local/',
+      target: '_blank',
+      features: 'noopener,noreferrer',
+    })
 })
 
 test('template options use rich text formatting and generate formatted plan items', async ({ page, browserName }) => {
