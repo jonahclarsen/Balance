@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import AlarmClockIcon from './AlarmClockIcon.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import type { Id, MoveDirection, MovePlacement, PlanItem } from './types'
@@ -209,7 +210,15 @@
         onRemove={() => patchItem(planId, item.id, { startMinutes: null, endMinutes: null })}
       />
     {:else}
-      <button class="icon-button quiet add-time" type="button" title="Add time range" on:click={addTime}>+</button>
+      <button
+        class="icon-button quiet add-time"
+        type="button"
+        title="Add time range"
+        aria-label="Add time range"
+        on:click={addTime}
+      >
+        <AlarmClockIcon />
+      </button>
     {/if}
 
     <RichTextEditor
