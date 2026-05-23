@@ -447,8 +447,10 @@ export function formatMinutes(minutes: number): string {
   return mins === 0 ? `${hour12}${suffix}` : `${hour12}:${String(mins).padStart(2, '0')}${suffix}`
 }
 
+export const MAX_TIMELINE_MINUTES = 36 * 60 - 1
+
 export function clampMinutes(minutes: number): number {
-  return Math.max(0, Math.min(1439, minutes))
+  return Math.max(0, Math.min(MAX_TIMELINE_MINUTES, minutes))
 }
 
 export function formatPlanTitle(date: string): string {

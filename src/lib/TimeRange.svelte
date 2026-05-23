@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { clampMinutes, formatMinutes } from './planner'
+  import { clampMinutes, formatMinutes, MAX_TIMELINE_MINUTES } from './planner'
 
   export let startMinutes: number
   export let endMinutes: number
@@ -34,9 +34,9 @@
 
     if (dragState.mode === 'start') {
       const duration = dragState.originEnd - dragState.originStart
-      const nextStart = clampMinutes(dragState.originStart + delta)
-      const nextEnd = clampMinutes(nextStart + duration)
-      onChange(nextStart, Math.max(nextStart + 15, nextEnd))
+      const latestStart = Math.max(0, MAX_TIMELINE_MINUTES - duration)
+      const nextStart = clampMinutes(Math.min(dragState.originStart + delta, latestStart))
+      onChange(nextStart, nextStart + duration)
       return
     }
 
