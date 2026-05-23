@@ -27,3 +27,4 @@ rand = "0.8.5"
 rusqlite = { version = "0.32.1", features = ["bundled-sqlcipher-vendored-openssl"] }
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"

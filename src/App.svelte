@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke, isTauri } from '@tauri-apps/api/core'
+  import { open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
@@ -8,7 +9,12 @@
   import type { PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
 
-  type View = 'today' | 'templates' | 'history' | 'export'
+  type View = 'today' | 'templates' | 'history' | 'export' | 'settings'
+  type ExportSettings = {
+    exportDirectory: string
+    defaultExportDirectory: string
+    usesDefaultExportDirectory: boolean
+  }
 
   let view: View = 'today'
   let selectedTemplateId = ''
@@ -17,6 +23,11 @@
   let recoveryKeyCopied = false
   let exportStatus = ''
   let exportStatusIsError = false
+  let exportSavedPath = ''
+  let exportSettings: ExportSettings | null = null
+  let exportSettingsStatus = ''
+  let exportSettingsStatusIsError = false
+  let exportSettingsBusy = false
   let editingDailyReminder = false
   let dailyReminderDraft = ''
   let dailyReminderInput: HTMLInputElement | null = null
@@ -31,6 +42,7 @@
 
   onMount(async () => {
     recoveryKeyStatus = await getRecoveryKeyStatus()
+    await loadExportSettings()
   })
 
   function generateSelectedDay() {
@@ -55,11 +67,12 @@
   async function download(filename: string, content: string, type: string) {
     exportStatus = ''
     exportStatusIsError = false
+    exportSavedPath = ''
 
     if (isTauri()) {
       try {
         const savedPath = await invoke<string>('save_export_file', { filename, content })
-        exportStatus = `Saved to ${savedPath}`
+        exportSavedPath = savedPath
       } catch (error) {
         exportStatusIsError = true
         exportStatus = error instanceof Error ? error.message : String(error)
@@ -79,12 +92,82 @@
     exportStatus = `Download started for ${filename}`
   }
 
+  async function revealSavedExport() {
+    if (!exportSavedPath) return
+
+    exportStatus = ''
+    exportStatusIsError = false
+
+    try {
+      await invoke('reveal_path_in_file_manager', { path: exportSavedPath })
+    } catch (error) {
+      exportStatusIsError = true
+      exportStatus = error instanceof Error ? error.message : String(error)
+    }
+  }
+
   function downloadJSON() {
     void download(`balance-export-${todayISO()}.json`, exportJSON($plannerStore), 'application/json')
   }
 
   function downloadHTML() {
     void download(`balance-history-${todayISO()}.html`, exportHTML($plannerStore), 'text/html')
+  }
+
+  async function loadExportSettings() {
+    if (!isTauri()) return
+
+    try {
+      exportSettings = await invoke<ExportSettings>('get_export_settings')
+    } catch (error) {
+      exportSettingsStatusIsError = true
+      exportSettingsStatus = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  async function chooseExportDirectory() {
+    if (!isTauri()) return
+
+    exportSettingsStatus = ''
+    exportSettingsStatusIsError = false
+    exportSettingsBusy = true
+
+    try {
+      const selected = await openDialog({
+        directory: true,
+        multiple: false,
+        title: 'Choose export folder',
+        defaultPath: exportSettings?.exportDirectory,
+      })
+
+      if (typeof selected === 'string') {
+        exportSettings = await invoke<ExportSettings>('set_export_directory', { directory: selected })
+        exportSettingsStatus = `Exports save to ${exportSettings.exportDirectory}`
+      }
+    } catch (error) {
+      exportSettingsStatusIsError = true
+      exportSettingsStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      exportSettingsBusy = false
+    }
+  }
+
+  async function resetExportDirectory() {
+    if (!isTauri()) return
+
+    exportSettingsStatus = ''
+    exportSettingsStatusIsError = false
+    exportSettingsBusy = true
+
+    try {
+      exportSettings = await invoke<ExportSettings>('reset_export_directory')
+      exportSettingsStatus = `Exports save to ${exportSettings.exportDirectory}`
+    } catch (error) {
+      exportSettingsStatusIsError = true
+      exportSettingsStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      exportSettingsBusy = false
+    }
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
@@ -183,6 +266,7 @@
       <button class:active={view === 'templates'} type="button" on:click={() => (view = 'templates')}>Templates</button>
       <button class:active={view === 'history'} type="button" on:click={() => (view = 'history')}>History</button>
       <button class:active={view === 'export'} type="button" on:click={() => (view = 'export')}>Export</button>
+      <button class:active={view === 'settings'} type="button" on:click={() => (view = 'settings')}>Settings</button>
     </nav>
 
     <div class="sidebar-footer">
@@ -362,8 +446,64 @@
         </div>
       </div>
 
-      {#if exportStatus}
+      {#if exportStatusIsError && exportStatus}
         <p class:error={exportStatusIsError} class="export-status">{exportStatus}</p>
+      {:else if exportSavedPath}
+        <p class="export-status">
+          Saved to
+          <button class="path-link" type="button" on:click={revealSavedExport}>{exportSavedPath}</button>
+        </p>
+      {:else if exportStatus}
+        <p class:error={exportStatusIsError} class="export-status">{exportStatus}</p>
+      {/if}
+    {/if}
+
+    {#if view === 'settings'}
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Preferences</p>
+          <h2>Settings</h2>
+        </div>
+      </header>
+
+      <div class="settings-panel">
+        <section class="settings-section">
+          <div>
+            <h3>Export folder</h3>
+            {#if isTauri()}
+              <p>
+                {exportSettings?.usesDefaultExportDirectory
+                  ? 'Using the default downloads folder.'
+                  : 'Using a custom folder.'}
+              </p>
+            {:else}
+              <p>Browser preview exports use the browser download location.</p>
+            {/if}
+          </div>
+
+          <div class="path-row">
+            <span>{exportSettings?.exportDirectory ?? 'Browser downloads'}</span>
+          </div>
+
+          {#if isTauri()}
+            <div class="settings-actions">
+              <button class="primary" type="button" disabled={exportSettingsBusy} on:click={chooseExportDirectory}>
+                Choose folder
+              </button>
+              <button
+                type="button"
+                disabled={exportSettingsBusy || Boolean(exportSettings?.usesDefaultExportDirectory)}
+                on:click={resetExportDirectory}
+              >
+                Reset to downloads
+              </button>
+            </div>
+          {/if}
+        </section>
+      </div>
+
+      {#if exportSettingsStatus}
+        <p class:error={exportSettingsStatusIsError} class="export-status">{exportSettingsStatus}</p>
       {/if}
     {/if}
   </section>

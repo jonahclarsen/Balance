@@ -171,7 +171,8 @@ h3 {
 .muted,
 .empty,
 .empty-state p,
-.export-panel p {
+.export-panel p,
+.settings-section p {
   color: var(--muted);
 }
 
@@ -241,7 +242,8 @@ nav button.active {
 .list-panel,
 .template-panel,
 .empty-state,
-.export-panel {
+.export-panel,
+.settings-panel {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--paper);
@@ -254,7 +256,8 @@ nav button.active {
 }
 
 .empty-state,
-.export-panel {
+.export-panel,
+.settings-panel {
   padding: 22px;
 }
 
@@ -549,6 +552,34 @@ nav button.active {
   background: var(--paper-strong);
 }
 
+.settings-panel {
+  max-width: 760px;
+}
+
+.settings-section {
+  display: grid;
+  gap: 14px;
+}
+
+.path-row {
+  display: block;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper-strong);
+  padding: 12px 14px;
+  color: var(--ink);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .export-status {
   max-width: 100%;
   margin-top: 12px;
@@ -558,6 +589,21 @@ nav button.active {
 
 .export-status.error {
   color: var(--danger);
+}
+
+.path-link {
+  display: inline;
+  border: 0;
+  background: transparent;
+  color: var(--accent-strong);
+  padding: 0;
+  text-align: left;
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
+
+.path-link:hover {
+  color: var(--accent);
 }
 
 .modal-backdrop {
@@ -636,7 +682,7 @@ nav button.active {
   }
 
   nav {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
   }
 
   nav button {

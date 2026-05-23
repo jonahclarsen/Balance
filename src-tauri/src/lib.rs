@@ -1,5 +1,6 @@
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use data_encoding::BASE32_NOPAD;
@@ -15,6 +16,7 @@ const APP_DATA_DIR: &str = "Balance";
 const KEYCHAIN_SERVICE: &str = "app.balance.local";
 const KEYCHAIN_ACCOUNT: &str = "database-recovery-key";
 const RECOVERY_KEY_CONFIRMED: &str = "recovery_key_confirmed";
+const EXPORT_DIRECTORY: &str = "export_directory";
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 
 #[derive(Serialize)]
@@ -23,6 +25,14 @@ struct RecoveryKeyStatus {
     confirmed: bool,
     recovery_key: Option<String>,
     database_path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportSettings {
+    export_directory: String,
+    default_export_directory: String,
+    uses_default_export_directory: bool,
 }
 
 #[tauri::command]
@@ -107,16 +117,58 @@ async fn save_export_file(
             .and_then(|name| name.to_str())
             .filter(|name| !name.is_empty())
             .ok_or_else(|| "Invalid export filename".to_string())?;
-        let export_path = app
-            .path()
-            .download_dir()
-            .map_err(|error| error.to_string())?
-            .join(filename);
+        let connection = open_database(&app)?;
+        let export_directory = configured_export_directory(&app, &connection)?;
+        fs::create_dir_all(&export_directory).map_err(|error| error.to_string())?;
+
+        let export_path = export_directory.join(filename);
 
         fs::write(&export_path, content).map_err(|error| error.to_string())?;
         Ok(export_path.display().to_string())
     })
     .await
+}
+
+#[tauri::command]
+async fn get_export_settings(app: tauri::AppHandle) -> Result<ExportSettings, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        export_settings(&app, &connection)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn set_export_directory(
+    app: tauri::AppHandle,
+    directory: String,
+) -> Result<ExportSettings, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        let directory = validate_export_directory(&directory)?;
+        set_metadata(
+            &connection,
+            EXPORT_DIRECTORY,
+            directory.to_string_lossy().as_ref(),
+        )?;
+        export_settings(&app, &connection)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn reset_export_directory(app: tauri::AppHandle) -> Result<ExportSettings, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        delete_metadata(&connection, EXPORT_DIRECTORY)?;
+        export_settings(&app, &connection)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn reveal_path_in_file_manager(path: String) -> Result<(), String> {
+    run_database_task(move || reveal_path(PathBuf::from(path))).await
 }
 
 async fn run_database_task<T, F>(task: F) -> Result<T, String>
@@ -327,6 +379,106 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
         )
         .optional()
         .map_err(|error| error.to_string())
+}
+
+fn export_settings(
+    app: &tauri::AppHandle,
+    connection: &Connection,
+) -> Result<ExportSettings, String> {
+    let default_export_directory = default_export_directory(app)?;
+    let configured_export_directory =
+        metadata_value(connection, EXPORT_DIRECTORY)?.filter(|directory| !directory.is_empty());
+    let export_directory = configured_export_directory
+        .as_deref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| default_export_directory.clone());
+
+    Ok(ExportSettings {
+        export_directory: export_directory.display().to_string(),
+        default_export_directory: default_export_directory.display().to_string(),
+        uses_default_export_directory: configured_export_directory.is_none(),
+    })
+}
+
+fn configured_export_directory(
+    app: &tauri::AppHandle,
+    connection: &Connection,
+) -> Result<PathBuf, String> {
+    let default_export_directory = default_export_directory(app)?;
+    let directory = metadata_value(connection, EXPORT_DIRECTORY)?
+        .filter(|directory| !directory.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or(default_export_directory);
+
+    if directory.exists() && !directory.is_dir() {
+        return Err(format!(
+            "Export destination is not a folder: {}",
+            directory.display()
+        ));
+    }
+
+    Ok(directory)
+}
+
+fn default_export_directory(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    app.path().download_dir().map_err(|error| error.to_string())
+}
+
+fn validate_export_directory(directory: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(directory);
+
+    if !path.is_absolute() {
+        return Err("Choose an absolute folder path for exports".to_string());
+    }
+
+    let metadata =
+        fs::metadata(&path).map_err(|error| format!("Could not read export folder: {error}"))?;
+    if !metadata.is_dir() {
+        return Err("Export destination must be a folder".to_string());
+    }
+
+    Ok(path)
+}
+
+fn reveal_path(path: PathBuf) -> Result<(), String> {
+    if !path.exists() {
+        return Err(format!("Could not find saved export: {}", path.display()));
+    }
+
+    #[cfg(target_os = "macos")]
+    let status = Command::new("open")
+        .arg("-R")
+        .arg(&path)
+        .status()
+        .map_err(|error| error.to_string())?;
+
+    #[cfg(target_os = "windows")]
+    let status = Command::new("explorer")
+        .arg(format!("/select,{}", path.display()))
+        .status()
+        .map_err(|error| error.to_string())?;
+
+    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
+    let status = {
+        let target = if path.is_dir() {
+            path
+        } else {
+            path.parent()
+                .map(Path::to_path_buf)
+                .ok_or_else(|| "Could not resolve export folder".to_string())?
+        };
+
+        Command::new("xdg-open")
+            .arg(target)
+            .status()
+            .map_err(|error| error.to_string())?
+    };
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err("Could not open the saved export location".to_string())
+    }
 }
 
 fn add_missing_column(
@@ -1246,6 +1398,13 @@ fn set_metadata(connection: &Connection, key: &str, value: &str) -> Result<(), S
     Ok(())
 }
 
+fn delete_metadata(connection: &Connection, key: &str) -> Result<(), String> {
+    connection
+        .execute("delete from metadata where key = ?1", params![key])
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
 fn upsert_operation(connection: &Connection, operation: &Value) -> Result<(), String> {
     connection
         .execute(
@@ -2063,7 +2222,8 @@ fn read_plan_by_id(connection: &Connection, plan_id: &str) -> Result<Option<Valu
         .optional()
         .map_err(|error| error.to_string())?;
 
-    let Some((id, date, title, daily_reminder, generated_from_template_id, created_at)) = row else {
+    let Some((id, date, title, daily_reminder, generated_from_template_id, created_at)) = row
+    else {
         return Ok(None);
     };
 
@@ -2681,6 +2841,7 @@ pub fn run() {
                         .build(),
                 )?;
             }
+            app.handle().plugin(tauri_plugin_dialog::init())?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -2691,7 +2852,11 @@ pub fn run() {
             redo_last_operation,
             get_recovery_key_status,
             confirm_recovery_key,
-            save_export_file
+            save_export_file,
+            get_export_settings,
+            set_export_directory,
+            reset_export_directory,
+            reveal_path_in_file_manager
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

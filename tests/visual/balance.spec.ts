@@ -60,6 +60,14 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
     path: `artifacts/visual-smoke/${testInfo.project.name}-export.png`,
     fullPage: true,
   })
+
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByText('Browser downloads')).toBeVisible()
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-settings.png`,
+    fullPage: true,
+  })
 })
 
 test('daily reminder edits the selected day and future days inherit it', async ({ page }) => {
