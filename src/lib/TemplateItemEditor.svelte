@@ -121,7 +121,7 @@
       const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-template-item-id]'))
       const currentRow = current.closest<HTMLElement>('[data-template-item-id]')
       const index = currentRow ? rows.indexOf(currentRow) : -1
-      const targetId = index > 0 ? rows[index - 1].dataset.templateItemId : null
+      const targetId = findPreviousSameDepthTemplateItemId(rows, index)
 
       if (targetId) {
         moveItem(templateId, item.id, targetId, 'inside')
@@ -136,6 +136,17 @@
       await tick()
       focusTemplateOptionTextInput(item.options[0]?.id)
     }
+  }
+
+  function findPreviousSameDepthTemplateItemId(rows: HTMLElement[], currentIndex: number): Id | null {
+    for (let index = currentIndex - 1; index >= 0; index -= 1) {
+      const rowDepth = Number(rows[index].dataset.templateItemDepth ?? 0)
+
+      if (rowDepth === depth) return rows[index].dataset.templateItemId ?? null
+      if (rowDepth < depth) return null
+    }
+
+    return null
   }
 
   async function handleBackspaceEmpty(option: TemplateOption, index: number, current: HTMLDivElement) {
@@ -189,6 +200,7 @@
   <div
     class="template-main"
     data-template-item-id={item.id}
+    data-template-item-depth={depth}
     role="listitem"
     aria-label={`Template item: ${item.options[0]?.text || 'Untitled'}`}
   >

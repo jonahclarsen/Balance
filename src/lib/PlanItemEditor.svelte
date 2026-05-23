@@ -123,7 +123,7 @@
       const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
       const currentRow = current.closest<HTMLElement>('[data-plan-item-id]')
       const index = currentRow ? rows.indexOf(currentRow) : -1
-      const targetId = index > 0 ? rows[index - 1].dataset.planItemId : null
+      const targetId = findPreviousSameDepthPlanItemId(rows, index)
 
       if (targetId) {
         moveItem(planId, item.id, targetId, 'inside')
@@ -138,6 +138,17 @@
       await tick()
       focusItemTextInput(item.id)
     }
+  }
+
+  function findPreviousSameDepthPlanItemId(rows: HTMLElement[], currentIndex: number): Id | null {
+    for (let index = currentIndex - 1; index >= 0; index -= 1) {
+      const rowDepth = Number(rows[index].dataset.planItemDepth ?? 0)
+
+      if (rowDepth === depth) return rows[index].dataset.planItemId ?? null
+      if (rowDepth < depth) return null
+    }
+
+    return null
   }
 
   function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection) {
@@ -172,6 +183,7 @@
   <div
     class="plan-row"
     data-plan-item-id={item.id}
+    data-plan-item-depth={depth}
     role="listitem"
     aria-label={`Plan item: ${item.text || 'Untitled'}`}
   >

@@ -209,6 +209,117 @@ test('template items can be nested and un-nested with the drag handle', async ({
     .toBe(true)
 })
 
+test('tab indents a plan item only one level after a nested sibling', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const plan = state.plans?.[0]
+    if (!plan) return
+
+    plan.items.push({
+      id: 'plan_item_later',
+      text: 'Later',
+      html: 'Later',
+      done: false,
+      startMinutes: null,
+      endMinutes: null,
+      children: [],
+    })
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+  const topLevelBeforeIndent = await topLevelTexts(page)
+  expect(topLevelBeforeIndent).toContain('Later')
+
+  await focusInputByValue(page, 'Later')
+  await page.keyboard.press('Tab')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const plan = state.plans?.[0]
+        const work = plan?.items?.find((item: { text: string }) => item.text === 'Work block')
+        const nestedWrite = work?.children?.find((item: { text: string }) => item.text === 'Write down next action')
+
+        return {
+          topLevel: plan?.items?.map((item: { text: string }) => item.text) ?? [],
+          workChildren: work?.children?.map((item: { text: string }) => item.text) ?? [],
+          writeChildren: nestedWrite?.children?.map((item: { text: string }) => item.text) ?? [],
+        }
+      }),
+    )
+    .toEqual({
+      topLevel: topLevelBeforeIndent.filter((text) => text !== 'Later'),
+      workChildren: ['Pick the first useful task', 'Write down next action', 'Later'],
+      writeChildren: [],
+    })
+})
+
+test('tab indents a template item only one level after a nested sibling', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Templates' }).click()
+
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const template = state.templates?.[0]
+    if (!template) return
+
+    template.items.push({
+      id: 'template_item_later',
+      startMinutes: null,
+      endMinutes: null,
+      options: [
+        {
+          id: 'option_later',
+          text: 'Later',
+          html: 'Later',
+          probability: 100,
+        },
+      ],
+      children: [],
+    })
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Templates' }).click()
+  const topLevelBeforeIndent = await topLevelTemplateOptionTexts(page)
+  expect(topLevelBeforeIndent).toContain('Later')
+
+  await focusTemplateOptionByValue(page, 'Later')
+  await page.keyboard.press('Tab')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const template = state.templates?.[0]
+        const itemText = (item: { options?: Array<{ text: string }> }) => item.options?.[0]?.text ?? ''
+        const work = template?.items?.find((item: { options?: Array<{ text: string }> }) => itemText(item) === 'Work block')
+        const nestedWrite = work?.children?.find(
+          (item: { options?: Array<{ text: string }> }) => itemText(item) === 'Write down next action',
+        )
+
+        return {
+          topLevel: template?.items?.map(itemText) ?? [],
+          workChildren: work?.children?.map(itemText) ?? [],
+          writeChildren: nestedWrite?.children?.map(itemText) ?? [],
+        }
+      }),
+    )
+    .toEqual({
+      topLevel: topLevelBeforeIndent.filter((text) => text !== 'Later'),
+      workChildren: ['Pick the first useful task', 'Write down next action', 'Later'],
+      writeChildren: [],
+    })
+})
+
 test('plan item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
