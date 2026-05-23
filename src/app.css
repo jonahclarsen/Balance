@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   color: #1d2428;
   background: #f6f4ef;
   font-family:
@@ -16,6 +17,38 @@
   --accent-strong: #245a54;
   --danger: #b4453d;
   --shadow: 0 14px 34px rgba(38, 35, 27, 0.09);
+  --sidebar: #ebe7dc;
+  --active-nav: #dfece7;
+  --row-border: rgba(216, 212, 202, 0.75);
+  --drop-inside: #e8f2ee;
+  --time-border: #c6d6d1;
+  --time-bg: #eef7f3;
+  --focus-ring: rgba(47, 111, 104, 0.25);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    color: #e7ece8;
+    background: #141817;
+    --paper: #1b201f;
+    --paper-strong: #232a28;
+    --ink: #e7ece8;
+    --muted: #9ba8a3;
+    --line: #34403c;
+    --line-strong: #4a5a55;
+    --accent: #79b9ae;
+    --accent-strong: #a5d8cf;
+    --danger: #f08a80;
+    --shadow: 0 14px 34px rgba(0, 0, 0, 0.28);
+    --sidebar: #181d1b;
+    --active-nav: #243732;
+    --row-border: rgba(52, 64, 60, 0.75);
+    --drop-inside: #21312d;
+    --time-border: #40665e;
+    --time-bg: #20362f;
+    --focus-ring: rgba(121, 185, 174, 0.28);
+  }
 }
 
 * {
@@ -64,7 +97,7 @@ select {
 input:focus,
 select:focus,
 button:focus-visible {
-  outline: 2px solid rgba(47, 111, 104, 0.25);
+  outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }
 
@@ -104,7 +137,7 @@ h3 {
   height: 100vh;
   padding: 24px 18px;
   border-right: 1px solid var(--line);
-  background: #ebe7dc;
+  background: var(--sidebar);
 }
 
 .muted,
@@ -131,7 +164,7 @@ nav button {
 
 nav button.active {
   border-color: var(--accent);
-  background: #dfece7;
+  background: var(--active-nav);
   color: var(--accent-strong);
 }
 
@@ -214,7 +247,7 @@ nav button.active {
   align-items: center;
   gap: 8px;
   min-height: 42px;
-  border-bottom: 1px solid rgba(216, 212, 202, 0.75);
+  border-bottom: 1px solid var(--row-border);
 }
 
 .plan-row.drop-before,
@@ -229,7 +262,7 @@ nav button.active {
 
 .plan-row.drop-inside,
 .template-main.drop-inside {
-  background: #e8f2ee;
+  background: var(--drop-inside);
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
@@ -360,9 +393,9 @@ nav button.active {
   align-items: center;
   flex: 0 0 auto;
   gap: 1px;
-  border: 1px solid #c6d6d1;
+  border: 1px solid var(--time-border);
   border-radius: 6px;
-  background: #eef7f3;
+  background: var(--time-bg);
   padding-left: 5px;
   color: var(--accent-strong);
   font-variant-numeric: tabular-nums;
