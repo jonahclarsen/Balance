@@ -248,6 +248,40 @@ test('plan item text fields support arrow focus and option-arrow sibling moves',
     .toEqual({ workIndex: 1, childCount: 2 })
 })
 
+test('cmd d toggles the focused plan item completion state', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  const wakeCheckbox = page.getByRole('listitem', { name: /Plan item: Wake up/ }).getByRole('checkbox')
+
+  await page.keyboard.press('Meta+D')
+
+  await expect(wakeCheckbox).toBeChecked()
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return state.plans?.[0]?.items?.find((item: { text: string }) => item.text === 'Wake up')?.done
+      }),
+    )
+    .toBe(true)
+
+  await page.keyboard.press('Meta+D')
+
+  await expect(wakeCheckbox).not.toBeChecked()
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return state.plans?.[0]?.items?.find((item: { text: string }) => item.text === 'Wake up')?.done
+      }),
+    )
+    .toBe(false)
+})
+
 test('enter splits plan items and shift-enter inserts a line break', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

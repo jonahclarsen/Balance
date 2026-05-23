@@ -5,6 +5,7 @@
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
   import { confirmRecoveryKey, exportHTML, exportJSON, getRecoveryKeyStatus, plannerStore } from './lib/store'
   import type { RecoveryKeyStatus } from './lib/store'
+  import type { PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
 
   type View = 'today' | 'templates' | 'history' | 'export'
@@ -92,6 +93,16 @@
 
     if (!primaryModifier || event.altKey) return
 
+    if (key === 'd' && !event.shiftKey) {
+      const itemId = activeFocusedPlanItemId()
+      const item = itemId && activePlan ? findPlanItem(activePlan.items, itemId) : null
+      if (!activePlan || !item) return
+
+      event.preventDefault()
+      plannerStore.patchPlanItem(activePlan.id, item.id, { done: !item.done })
+      return
+    }
+
     if (key === 'z' && !event.shiftKey) {
       event.preventDefault()
       void plannerStore.undo()
@@ -102,6 +113,24 @@
       event.preventDefault()
       void plannerStore.redo()
     }
+  }
+
+  function activeFocusedPlanItemId(): string | null {
+    if (view !== 'today') return null
+
+    const active = document.activeElement
+    const row = active instanceof Element ? active.closest<HTMLElement>('[data-plan-item-id]') : null
+    return row?.dataset.planItemId ?? null
+  }
+
+  function findPlanItem(items: PlanItem[], itemId: string): PlanItem | null {
+    for (const item of items) {
+      if (item.id === itemId) return item
+      const child = findPlanItem(item.children, itemId)
+      if (child) return child
+    }
+
+    return null
   }
 
   async function copyRecoveryKey() {
