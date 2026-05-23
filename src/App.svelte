@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { invoke, isTauri } from '@tauri-apps/api/core'
   import { onMount } from 'svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
@@ -13,6 +14,8 @@
   let recoveryKeyStatus: RecoveryKeyStatus | null = null
   let recoveryKeySaved = false
   let recoveryKeyCopied = false
+  let exportStatus = ''
+  let exportStatusIsError = false
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
@@ -43,7 +46,21 @@
     view = 'today'
   }
 
-  function download(filename: string, content: string, type: string) {
+  async function download(filename: string, content: string, type: string) {
+    exportStatus = ''
+    exportStatusIsError = false
+
+    if (isTauri()) {
+      try {
+        const savedPath = await invoke<string>('save_export_file', { filename, content })
+        exportStatus = `Saved to ${savedPath}`
+      } catch (error) {
+        exportStatusIsError = true
+        exportStatus = error instanceof Error ? error.message : String(error)
+      }
+      return
+    }
+
     const blob = new Blob([content], { type })
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
@@ -52,15 +69,16 @@
     document.body.append(link)
     link.click()
     link.remove()
-    URL.revokeObjectURL(url)
+    window.setTimeout(() => URL.revokeObjectURL(url), 0)
+    exportStatus = `Download started for ${filename}`
   }
 
   function downloadJSON() {
-    download(`balance-export-${todayISO()}.json`, exportJSON($plannerStore), 'application/json')
+    void download(`balance-export-${todayISO()}.json`, exportJSON($plannerStore), 'application/json')
   }
 
   function downloadHTML() {
-    download(`balance-history-${todayISO()}.html`, exportHTML($plannerStore), 'text/html')
+    void download(`balance-history-${todayISO()}.html`, exportHTML($plannerStore), 'text/html')
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
@@ -267,6 +285,10 @@
           <button type="button" on:click={downloadHTML}>Export HTML</button>
         </div>
       </div>
+
+      {#if exportStatus}
+        <p class:error={exportStatusIsError} class="export-status">{exportStatus}</p>
+      {/if}
     {/if}
   </section>
 </main>

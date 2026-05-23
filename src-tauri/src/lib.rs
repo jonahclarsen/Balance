@@ -94,6 +94,30 @@ async fn confirm_recovery_key(app: tauri::AppHandle) -> Result<(), String> {
     .await
 }
 
+#[tauri::command]
+async fn save_export_file(
+    app: tauri::AppHandle,
+    filename: String,
+    content: String,
+) -> Result<String, String> {
+    run_database_task(move || {
+        let filename = Path::new(&filename)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| "Invalid export filename".to_string())?;
+        let export_path = app
+            .path()
+            .download_dir()
+            .map_err(|error| error.to_string())?
+            .join(filename);
+
+        fs::write(&export_path, content).map_err(|error| error.to_string())?;
+        Ok(export_path.display().to_string())
+    })
+    .await
+}
+
 async fn run_database_task<T, F>(task: F) -> Result<T, String>
 where
     T: Send + 'static,
@@ -2614,7 +2638,8 @@ pub fn run() {
             undo_last_operation,
             redo_last_operation,
             get_recovery_key_status,
-            confirm_recovery_key
+            confirm_recovery_key,
+            save_export_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
