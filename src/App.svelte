@@ -1,6 +1,6 @@
 <script lang="ts">
   import { invoke, isTauri } from '@tauri-apps/api/core'
-  import { open as openDialog } from '@tauri-apps/plugin-dialog'
+  import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
@@ -60,14 +60,22 @@
     return `${year}-${month}-${day}`
   }
 
-  function generateSelectedDay() {
+  async function confirmReplaceExistingPlan(): Promise<boolean> {
+    const message = 'This date already has a plan. Replace it with a freshly generated one?'
+
+    if (isTauri()) {
+      return confirmDialog(message, { title: 'Replace existing plan?', kind: 'warning' })
+    }
+
+    return window.confirm(message)
+  }
+
+  async function generateSelectedDay() {
     if (!selectedTemplate) return
 
     const date = $plannerStore.activePlanDate || todayISO()
     const exists = $plannerStore.plans.some((plan) => plan.date === date)
-    const replaceExisting = exists
-      ? window.confirm('This date already has a plan. Replace it with a freshly generated one?')
-      : false
+    const replaceExisting = exists ? await confirmReplaceExistingPlan() : false
 
     if (exists && !replaceExisting) {
       plannerStore.setActivePlanDate(date)
