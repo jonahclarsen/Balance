@@ -45,6 +45,21 @@
     await loadExportSettings()
   })
 
+  function shiftActivePlanDate(days: number) {
+    plannerStore.setActivePlanDate(shiftISODate($plannerStore.activePlanDate || todayISO(), days))
+  }
+
+  function shiftISODate(date: string, days: number): string {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+    if (!match) return todayISO()
+
+    const shifted = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]) + days)
+    const year = shifted.getFullYear()
+    const month = String(shifted.getMonth() + 1).padStart(2, '0')
+    const day = String(shifted.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
   function generateSelectedDay() {
     if (!selectedTemplate) return
 
@@ -305,12 +320,32 @@
             {/if}
           </h2>
         </div>
-        <input
-          class="date-input"
-          type="date"
-          value={$plannerStore.activePlanDate}
-          on:input={(event) => plannerStore.setActivePlanDate(event.currentTarget.value)}
-        />
+        <div class="date-controls" aria-label="Day navigation">
+          <button
+            class="date-nav-button"
+            type="button"
+            aria-label="Previous day"
+            title="Previous day"
+            on:click={() => shiftActivePlanDate(-1)}
+          >
+            &lt;
+          </button>
+          <button
+            class="date-nav-button"
+            type="button"
+            aria-label="Next day"
+            title="Next day"
+            on:click={() => shiftActivePlanDate(1)}
+          >
+            &gt;
+          </button>
+          <input
+            class="date-input"
+            type="date"
+            value={$plannerStore.activePlanDate}
+            on:input={(event) => plannerStore.setActivePlanDate(event.currentTarget.value)}
+          />
+        </div>
       </header>
 
       {#if activePlan}
