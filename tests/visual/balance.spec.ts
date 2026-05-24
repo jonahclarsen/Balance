@@ -16,6 +16,10 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   await expect(page.locator('.date-input')).toHaveValue(addDays(renderedDate, 1))
   await page.getByRole('button', { name: 'Previous day' }).click()
   await expect(page.locator('.date-input')).toHaveValue(renderedDate)
+  await page.keyboard.press('Alt+W')
+  await expect(page.locator('.date-input')).toHaveValue(addDays(renderedDate, 1))
+  await page.keyboard.press('Alt+Q')
+  await expect(page.locator('.date-input')).toHaveValue(renderedDate)
   await expect(page.getByRole('button', { name: 'Drag to move item' }).first()).toBeVisible()
   await expect
     .poll(async () =>

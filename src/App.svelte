@@ -189,6 +189,20 @@
     const key = event.key.toLowerCase()
     const primaryModifier = event.metaKey || event.ctrlKey
 
+    if (view === 'today' && event.altKey && !primaryModifier && !event.shiftKey) {
+      if (event.code === 'KeyQ') {
+        event.preventDefault()
+        shiftActivePlanDate(-1)
+        return
+      }
+
+      if (event.code === 'KeyW') {
+        event.preventDefault()
+        shiftActivePlanDate(1)
+        return
+      }
+    }
+
     if (!primaryModifier || event.altKey) return
 
     if (key === 'd' && !event.shiftKey) {
@@ -325,7 +339,7 @@
             class="date-nav-button"
             type="button"
             aria-label="Previous day"
-            title="Previous day"
+            title="Previous day (Option+Q)"
             on:click={() => shiftActivePlanDate(-1)}
           >
             &lt;
@@ -334,7 +348,7 @@
             class="date-nav-button"
             type="button"
             aria-label="Next day"
-            title="Next day"
+            title="Next day (Option+W)"
             on:click={() => shiftActivePlanDate(1)}
           >
             &gt;
