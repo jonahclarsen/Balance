@@ -257,6 +257,10 @@ export function movePlanItemWithinLevel(items: PlanItem[], itemId: Id, direction
   return changed ? nextItems : items
 }
 
+export function defaultPlanItemTimeRange(items: PlanItem[], itemId: Id): { startMinutes: number; endMinutes: number } {
+  return defaultTimeRangeAfterPreviousTimedItem(items, itemId)
+}
+
 function findPlanItem(items: PlanItem[], itemId: Id): PlanItem | null {
   for (const item of items) {
     if (item.id === itemId) return item
@@ -438,6 +442,10 @@ export function moveTemplateItemWithinLevel(items: TemplateItem[], itemId: Id, d
   return changed ? nextItems : items
 }
 
+export function defaultTemplateItemTimeRange(items: TemplateItem[], itemId: Id): { startMinutes: number; endMinutes: number } {
+  return defaultTimeRangeAfterPreviousTimedItem(items, itemId)
+}
+
 function findTemplateItem(items: TemplateItem[], itemId: Id): TemplateItem | null {
   for (const item of items) {
     if (item.id === itemId) return item
@@ -501,6 +509,72 @@ function insertTemplateItem(
   })
 
   return inserted ? nextItems : null
+}
+
+const DEFAULT_TIME_START_MINUTES = 9 * 60
+const DEFAULT_TIME_DURATION_MINUTES = 60
+
+function defaultTimeRangeAfterPreviousTimedItem<T extends {
+  id: Id
+  startMinutes: number | null
+  endMinutes: number | null
+  children: T[]
+}>(items: T[], itemId: Id): { startMinutes: number; endMinutes: number } {
+  const previousEndMinutes = previousTimedItemEndMinutes(items, itemId).endMinutes
+  const startMinutes = previousEndMinutes ?? DEFAULT_TIME_START_MINUTES
+  const endMinutes = Math.min(startMinutes + DEFAULT_TIME_DURATION_MINUTES, MAX_TIMELINE_MINUTES)
+
+  if (endMinutes > startMinutes) return { startMinutes, endMinutes }
+
+  return {
+    startMinutes: Math.max(0, MAX_TIMELINE_MINUTES - DEFAULT_TIME_DURATION_MINUTES),
+    endMinutes: MAX_TIMELINE_MINUTES,
+  }
+}
+
+function previousTimedItemEndMinutes<T extends {
+  id: Id
+  startMinutes: number | null
+  endMinutes: number | null
+  children: T[]
+}>(
+  items: T[],
+  itemId: Id,
+  previousEndMinutes: number | null = null,
+): { found: boolean; endMinutes: number | null } {
+  let lastEndMinutes = previousEndMinutes
+
+  for (const item of items) {
+    if (item.id === itemId) return { found: true, endMinutes: lastEndMinutes }
+
+    if (item.startMinutes !== null && item.endMinutes !== null) {
+      lastEndMinutes = item.endMinutes
+    }
+
+    const childResult = previousTimedItemEndMinutes(item.children, itemId, lastEndMinutes)
+    if (childResult.found) return childResult
+
+    lastEndMinutes = latestTimedItemEndMinutes(item.children, lastEndMinutes)
+  }
+
+  return { found: false, endMinutes: previousEndMinutes }
+}
+
+function latestTimedItemEndMinutes<T extends {
+  startMinutes: number | null
+  endMinutes: number | null
+  children: T[]
+}>(items: T[], previousEndMinutes: number | null): number | null {
+  let lastEndMinutes = previousEndMinutes
+
+  for (const item of items) {
+    if (item.startMinutes !== null && item.endMinutes !== null) {
+      lastEndMinutes = item.endMinutes
+    }
+    lastEndMinutes = latestTimedItemEndMinutes(item.children, lastEndMinutes)
+  }
+
+  return lastEndMinutes
 }
 
 export function formatMinutes(minutes: number): string {

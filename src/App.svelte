@@ -379,6 +379,7 @@
           {#each activePlan.items as item (item.id)}
             <PlanItemEditor
               {item}
+              allItems={activePlan.items}
               planId={activePlan.id}
               patchItem={plannerStore.patchPlanItem}
               splitItem={plannerStore.splitPlanItem}
@@ -432,6 +433,7 @@
             {#each selectedTemplate.items as item (item.id)}
               <TemplateItemEditor
                 {item}
+                allItems={selectedTemplate.items}
                 templateId={selectedTemplate.id}
                 patchItem={plannerStore.patchTemplateItem}
                 splitItem={plannerStore.splitTemplateItem}

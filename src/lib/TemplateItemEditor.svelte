@@ -1,11 +1,13 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
+  import { defaultTemplateItemTimeRange } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import type { Id, MoveDirection, MovePlacement, TemplateItem, TemplateOption } from './types'
 
   export let item: TemplateItem
+  export let allItems: TemplateItem[]
   export let depth = 0
   export let templateId: Id
   export let parentId: Id | null = null
@@ -32,10 +34,7 @@
   $: probabilityTotal = item.options.reduce((sum, option) => sum + (Number(option.probability) || 0), 0)
 
   function addTime() {
-    patchItem(templateId, item.id, {
-      startMinutes: 9 * 60,
-      endMinutes: 10 * 60,
-    })
+    patchItem(templateId, item.id, defaultTemplateItemTimeRange(allItems, item.id))
   }
 
   function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
@@ -297,6 +296,7 @@
       {#each item.children as child (child.id)}
         <svelte:self
           item={child}
+          {allItems}
           depth={depth + 1}
           {templateId}
           parentId={item.id}

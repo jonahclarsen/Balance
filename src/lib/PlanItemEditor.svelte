@@ -1,11 +1,13 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
+  import { defaultPlanItemTimeRange } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import type { Id, MoveDirection, MovePlacement, PlanItem } from './types'
 
   export let item: PlanItem
+  export let allItems: PlanItem[]
   export let depth = 0
   export let planId: Id
   export let parentId: Id | null = null
@@ -26,10 +28,7 @@
   let activeDropRow: HTMLElement | null = null
 
   function addTime() {
-    patchItem(planId, item.id, {
-      startMinutes: 9 * 60,
-      endMinutes: 10 * 60,
-    })
+    patchItem(planId, item.id, defaultPlanItemTimeRange(allItems, item.id))
   }
 
   function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
@@ -261,6 +260,7 @@
       {#each item.children as child (child.id)}
         <svelte:self
           item={child}
+          {allItems}
           depth={depth + 1}
           {planId}
           parentId={item.id}

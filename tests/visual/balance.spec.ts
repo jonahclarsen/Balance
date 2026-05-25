@@ -329,6 +329,74 @@ test('tab indents a template item only one level after a nested sibling', async 
     })
 })
 
+test('adding plan time starts after the nearest timed item above', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await page.getByRole('listitem', { name: /Plan item: Wake up/ }).getByRole('button', { name: 'Add time range' }).click()
+  await page
+    .getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
+    .getByRole('button', { name: 'Add time range' })
+    .click()
+  await page
+    .getByRole('listitem', { name: /Plan item: Write down next action/ })
+    .getByRole('button', { name: 'Add time range' })
+    .click()
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const plan = state.plans?.[0]
+        const work = plan?.items?.find((item: { text: string }) => item.text === 'Work block')
+        const pick = work?.children?.find((item: { text: string }) => item.text === 'Pick the first useful task')
+        const write = work?.children?.find((item: { text: string }) => item.text === 'Write down next action')
+
+        return {
+          pick: [pick?.startMinutes, pick?.endMinutes],
+          write: [write?.startMinutes, write?.endMinutes],
+        }
+      }),
+    )
+    .toEqual({
+      pick: [600, 660],
+      write: [660, 720],
+    })
+})
+
+test('adding template time starts after the nearest timed item above', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Templates' }).click()
+
+  await page.getByRole('listitem', { name: /Template item: Wake up/ }).getByRole('button', { name: 'Add time range' }).click()
+  await page
+    .getByRole('listitem', { name: /Template item: Pick the first useful task/ })
+    .getByRole('button', { name: 'Add time range' })
+    .click()
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const template = state.templates?.[0]
+        const itemText = (item: { options?: Array<{ text: string }> }) => item.options?.[0]?.text ?? ''
+        const work = template?.items?.find((item: { options?: Array<{ text: string }> }) => itemText(item) === 'Work block')
+        const pick = work?.children?.find((item: { options?: Array<{ text: string }> }) => itemText(item) === 'Pick the first useful task')
+
+        return {
+          pick: [pick?.startMinutes, pick?.endMinutes],
+        }
+      }),
+    )
+    .toEqual({
+      pick: [600, 660],
+    })
+})
+
 test('plan item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
