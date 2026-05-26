@@ -387,6 +387,7 @@
               deleteItem={plannerStore.deletePlanItem}
               moveItem={plannerStore.movePlanItem}
               moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
+              outdentItem={plannerStore.outdentPlanItem}
               historyRevision={$plannerStore.historyRevision}
             />
           {/each}
@@ -440,6 +441,7 @@
                 deleteItem={plannerStore.deleteTemplateItem}
                 moveItem={plannerStore.moveTemplateItem}
                 moveItemWithinLevel={plannerStore.moveTemplateItemWithinLevel}
+                outdentItem={plannerStore.outdentTemplateItem}
                 addChild={plannerStore.addTemplateChild}
                 addOption={plannerStore.addTemplateOption}
                 patchOption={plannerStore.patchTemplateOption}

@@ -257,6 +257,10 @@ export function movePlanItemWithinLevel(items: PlanItem[], itemId: Id, direction
   return changed ? nextItems : items
 }
 
+export function outdentPlanItem(items: PlanItem[], itemId: Id): PlanItem[] {
+  return outdentItem(items, itemId)
+}
+
 export function defaultPlanItemTimeRange(items: PlanItem[], itemId: Id): { startMinutes: number; endMinutes: number } {
   return defaultTimeRangeAfterPreviousTimedItem(items, itemId)
 }
@@ -442,6 +446,10 @@ export function moveTemplateItemWithinLevel(items: TemplateItem[], itemId: Id, d
   return changed ? nextItems : items
 }
 
+export function outdentTemplateItem(items: TemplateItem[], itemId: Id): TemplateItem[] {
+  return outdentItem(items, itemId)
+}
+
 export function defaultTemplateItemTimeRange(items: TemplateItem[], itemId: Id): { startMinutes: number; endMinutes: number } {
   return defaultTimeRangeAfterPreviousTimedItem(items, itemId)
 }
@@ -509,6 +517,41 @@ function insertTemplateItem(
   })
 
   return inserted ? nextItems : null
+}
+
+function outdentItem<T extends { id: Id; children: T[] }>(items: T[], itemId: Id): T[] {
+  for (let parentIndex = 0; parentIndex < items.length; parentIndex += 1) {
+    const parent = items[parentIndex]
+    const childIndex = parent.children.findIndex((child) => child.id === itemId)
+
+    if (childIndex !== -1) {
+      const beforeChildren = parent.children.slice(0, childIndex)
+      const itemToPromote = parent.children[childIndex]
+      const followingSiblings = parent.children.slice(childIndex + 1)
+      const promoted =
+        followingSiblings.length > 0
+          ? { ...itemToPromote, children: [...itemToPromote.children, ...followingSiblings] }
+          : itemToPromote
+
+      return [
+        ...items.slice(0, parentIndex),
+        { ...parent, children: beforeChildren },
+        promoted,
+        ...items.slice(parentIndex + 1),
+      ]
+    }
+
+    const children = outdentItem(parent.children, itemId)
+    if (children !== parent.children) {
+      return [
+        ...items.slice(0, parentIndex),
+        { ...parent, children },
+        ...items.slice(parentIndex + 1),
+      ]
+    }
+  }
+
+  return items
 }
 
 const DEFAULT_TIME_START_MINUTES = 9 * 60

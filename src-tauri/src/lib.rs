@@ -785,6 +785,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             required_string(payload, "itemId")?,
             required_string(payload, "direction")?,
         ),
+        "outdent_plan_item" => outdent_plan_item_row(tx, required_string(payload, "itemId")?),
         "move_plan_item_to_position" => move_plan_item_to_position_row(
             tx,
             required_string(payload, "itemId")?,
@@ -842,6 +843,9 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             required_string(payload, "itemId")?,
             required_string(payload, "direction")?,
         ),
+        "outdent_template_item" => {
+            outdent_template_item_row(tx, required_string(payload, "itemId")?)
+        }
         "move_template_item_to_position" => move_template_item_to_position_row(
             tx,
             required_string(payload, "itemId")?,
@@ -1019,6 +1023,7 @@ fn build_undo_operation(
                 }),
             )))
         }
+        "outdent_plan_item" => build_outdent_plan_item_undo(connection, payload),
         "rename_template" => {
             let template_id = required_string(payload, "templateId")?;
             let previous = read_template_name_and_updated_at(connection, template_id)?;
@@ -1088,6 +1093,7 @@ fn build_undo_operation(
                 }),
             )))
         }
+        "outdent_template_item" => build_outdent_template_item_undo(connection, payload),
         "add_template_option" => Ok(Some(storage_operation(
             "delete_template_option",
             json!({ "optionId": required_string(required_value(payload, "option")?, "id")? }),
@@ -1177,6 +1183,51 @@ fn build_split_plan_item_undo(
     )))
 }
 
+fn build_outdent_plan_item_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let item_id = required_string(payload, "itemId")?;
+    let Some(snapshot) = read_plan_item_snapshot(connection, item_id)? else {
+        return Ok(None);
+    };
+    let Some(parent_id) = snapshot.parent_id.clone() else {
+        return Ok(None);
+    };
+
+    let siblings = plan_item_sibling_ids(connection, &snapshot.plan_id, Some(&parent_id))?;
+    let Some(source_index) = siblings.iter().position(|id| id == item_id) else {
+        return Ok(None);
+    };
+
+    let mut operations = vec![storage_operation(
+        "move_plan_item_to_position",
+        json!({
+            "itemId": item_id,
+            "planId": snapshot.plan_id,
+            "parentId": snapshot.parent_id,
+            "position": snapshot.position,
+        }),
+    )];
+
+    for (offset, sibling_id) in siblings[source_index + 1..].iter().enumerate() {
+        operations.push(storage_operation(
+            "move_plan_item_to_position",
+            json!({
+                "itemId": sibling_id,
+                "planId": required_string(payload, "planId")?,
+                "parentId": parent_id,
+                "position": snapshot.position + 1 + offset as i64,
+            }),
+        ));
+    }
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
+    )))
+}
+
 fn build_template_item_patch_undo(
     connection: &Connection,
     payload: &Value,
@@ -1258,6 +1309,51 @@ fn build_split_template_item_undo(
 
     if let Some(patch_undo) = build_template_option_patch_undo(connection, payload)? {
         operations.push(patch_undo);
+    }
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
+    )))
+}
+
+fn build_outdent_template_item_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let item_id = required_string(payload, "itemId")?;
+    let Some(snapshot) = read_template_item_snapshot(connection, item_id)? else {
+        return Ok(None);
+    };
+    let Some(parent_id) = snapshot.parent_id.clone() else {
+        return Ok(None);
+    };
+
+    let siblings = template_item_sibling_ids(connection, &snapshot.template_id, Some(&parent_id))?;
+    let Some(source_index) = siblings.iter().position(|id| id == item_id) else {
+        return Ok(None);
+    };
+
+    let mut operations = vec![storage_operation(
+        "move_template_item_to_position",
+        json!({
+            "itemId": item_id,
+            "templateId": snapshot.template_id,
+            "parentId": snapshot.parent_id,
+            "position": snapshot.position,
+        }),
+    )];
+
+    for (offset, sibling_id) in siblings[source_index + 1..].iter().enumerate() {
+        operations.push(storage_operation(
+            "move_template_item_to_position",
+            json!({
+                "itemId": sibling_id,
+                "templateId": required_string(payload, "templateId")?,
+                "parentId": parent_id,
+                "position": snapshot.position + 1 + offset as i64,
+            }),
+        ));
     }
 
     Ok(Some(storage_operation(
@@ -1919,6 +2015,54 @@ fn move_plan_item_within_level_row(
     rewrite_plan_item_positions(connection, &siblings)
 }
 
+fn outdent_plan_item_row(connection: &Connection, item_id: &str) -> Result<(), String> {
+    let plan_id = plan_item_plan_id(connection, item_id)?;
+    let Some(parent_id) = plan_item_parent_id(connection, item_id)? else {
+        return Ok(());
+    };
+    let grandparent_id = plan_item_parent_id(connection, &parent_id)?;
+
+    let child_siblings = plan_item_sibling_ids(connection, &plan_id, Some(&parent_id))?;
+    let source_index = child_siblings
+        .iter()
+        .position(|id| id == item_id)
+        .ok_or_else(|| "Outdent source is not in its sibling list".to_string())?;
+    let remaining_child_siblings = child_siblings[..source_index].to_vec();
+    let following_siblings = child_siblings[source_index + 1..].to_vec();
+
+    let mut promoted_child_siblings = plan_item_sibling_ids(connection, &plan_id, Some(item_id))?;
+    promoted_child_siblings.extend(following_siblings.iter().cloned());
+
+    let mut grandparent_siblings =
+        plan_item_sibling_ids(connection, &plan_id, grandparent_id.as_deref())?;
+    grandparent_siblings.retain(|id| id != item_id);
+    let parent_index = grandparent_siblings
+        .iter()
+        .position(|id| id == &parent_id)
+        .ok_or_else(|| "Outdent parent is not in its sibling list".to_string())?;
+    grandparent_siblings.insert(parent_index + 1, item_id.to_string());
+
+    connection
+        .execute(
+            "update plan_items set parent_id = ?1 where id = ?2",
+            params![grandparent_id, item_id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    for following_id in following_siblings {
+        connection
+            .execute(
+                "update plan_items set parent_id = ?1 where id = ?2",
+                params![item_id, following_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    rewrite_plan_item_positions(connection, &remaining_child_siblings)?;
+    rewrite_plan_item_positions(connection, &promoted_child_siblings)?;
+    rewrite_plan_item_positions(connection, &grandparent_siblings)
+}
+
 fn move_plan_item_to_position_row(
     connection: &Connection,
     item_id: &str,
@@ -2018,6 +2162,55 @@ fn move_template_item_within_level_row(
 
     siblings.swap(index, target_index);
     rewrite_template_item_positions(connection, &siblings)
+}
+
+fn outdent_template_item_row(connection: &Connection, item_id: &str) -> Result<(), String> {
+    let template_id = template_item_template_id(connection, item_id)?;
+    let Some(parent_id) = template_item_parent_id(connection, item_id)? else {
+        return Ok(());
+    };
+    let grandparent_id = template_item_parent_id(connection, &parent_id)?;
+
+    let child_siblings = template_item_sibling_ids(connection, &template_id, Some(&parent_id))?;
+    let source_index = child_siblings
+        .iter()
+        .position(|id| id == item_id)
+        .ok_or_else(|| "Template outdent source is not in its sibling list".to_string())?;
+    let remaining_child_siblings = child_siblings[..source_index].to_vec();
+    let following_siblings = child_siblings[source_index + 1..].to_vec();
+
+    let mut promoted_child_siblings =
+        template_item_sibling_ids(connection, &template_id, Some(item_id))?;
+    promoted_child_siblings.extend(following_siblings.iter().cloned());
+
+    let mut grandparent_siblings =
+        template_item_sibling_ids(connection, &template_id, grandparent_id.as_deref())?;
+    grandparent_siblings.retain(|id| id != item_id);
+    let parent_index = grandparent_siblings
+        .iter()
+        .position(|id| id == &parent_id)
+        .ok_or_else(|| "Template outdent parent is not in its sibling list".to_string())?;
+    grandparent_siblings.insert(parent_index + 1, item_id.to_string());
+
+    connection
+        .execute(
+            "update template_items set parent_id = ?1 where id = ?2",
+            params![grandparent_id, item_id],
+        )
+        .map_err(|error| error.to_string())?;
+
+    for following_id in following_siblings {
+        connection
+            .execute(
+                "update template_items set parent_id = ?1 where id = ?2",
+                params![item_id, following_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    rewrite_template_item_positions(connection, &remaining_child_siblings)?;
+    rewrite_template_item_positions(connection, &promoted_child_siblings)?;
+    rewrite_template_item_positions(connection, &grandparent_siblings)
 }
 
 fn move_template_item_to_position_row(
@@ -3315,6 +3508,88 @@ mod tests {
     }
 
     #[test]
+    fn outdent_plan_item_promotes_following_siblings_under_it() {
+        let database = TestDatabase::new("plan-outdent");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Plan outdent test");
+        state["plans"][0]["items"][0]["children"] = json!([
+            {
+                "id": "plan_item_first",
+                "text": "First child",
+                "html": "First child",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            },
+            {
+                "id": "plan_item_second",
+                "text": "Second child",
+                "html": "Second child",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }
+        ]);
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "outdent_plan_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemId": "plan_item_first"
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(top_plan_item_ids(&moved), ["plan_item_wake", "plan_item_first"]);
+        assert_eq!(
+            moved["plans"][0]["items"][0]["children"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            moved["plans"][0]["items"][1]["children"][0]["id"],
+            "plan_item_second"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&undone), ["plan_item_wake"]);
+        assert_eq!(
+            undone["plans"][0]["items"][0]["children"][0]["id"],
+            "plan_item_first"
+        );
+        assert_eq!(
+            undone["plans"][0]["items"][0]["children"][1]["id"],
+            "plan_item_second"
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&redone), ["plan_item_wake", "plan_item_first"]);
+        assert_eq!(
+            redone["plans"][0]["items"][1]["children"][0]["id"],
+            "plan_item_second"
+        );
+    }
+
+    #[test]
     fn template_option_html_persists_and_undoes() {
         let database = TestDatabase::new("template-option-html");
         let recovery_key = generate_recovery_key();
@@ -3555,6 +3830,104 @@ mod tests {
         assert_eq!(
             top_template_item_ids(&redone),
             ["template_item_second", "template_item_wake"]
+        );
+    }
+
+    #[test]
+    fn outdent_template_item_promotes_following_siblings_under_it() {
+        let database = TestDatabase::new("template-outdent");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Template outdent test");
+        state["templates"][0]["items"][0]["children"] = json!([
+            {
+                "id": "template_item_first",
+                "startMinutes": null,
+                "endMinutes": null,
+                "options": [
+                    {
+                        "id": "template_option_first",
+                        "text": "First child",
+                        "html": "First child",
+                        "probability": 100
+                    }
+                ],
+                "children": []
+            },
+            {
+                "id": "template_item_second",
+                "startMinutes": null,
+                "endMinutes": null,
+                "options": [
+                    {
+                        "id": "template_option_second",
+                        "text": "Second child",
+                        "html": "Second child",
+                        "probability": 100
+                    }
+                ],
+                "children": []
+            }
+        ]);
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "outdent_template_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemId": "template_item_first"
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_template_item_ids(&moved),
+            ["template_item_wake", "template_item_first"]
+        );
+        assert_eq!(
+            moved["templates"][0]["items"][0]["children"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            moved["templates"][0]["items"][1]["children"][0]["id"],
+            "template_item_second"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_template_item_ids(&undone), ["template_item_wake"]);
+        assert_eq!(
+            undone["templates"][0]["items"][0]["children"][0]["id"],
+            "template_item_first"
+        );
+        assert_eq!(
+            undone["templates"][0]["items"][0]["children"][1]["id"],
+            "template_item_second"
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&redone),
+            ["template_item_wake", "template_item_first"]
+        );
+        assert_eq!(
+            redone["templates"][0]["items"][1]["children"][0]["id"],
+            "template_item_second"
         );
     }
 

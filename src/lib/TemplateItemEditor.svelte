@@ -22,6 +22,7 @@
   export let deleteItem: (templateId: Id, itemId: Id) => void
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (templateId: Id, itemId: Id, direction: MoveDirection) => void
+  export let outdentItem: (templateId: Id, itemId: Id) => void
   export let addChild: (templateId: Id, parentId: Id) => void
   export let addOption: (templateId: Id, itemId: Id) => void
   export let patchOption: (templateId: Id, itemId: Id, optionId: Id, patch: Partial<TemplateOption>) => void
@@ -131,7 +132,7 @@
     }
 
     if (parentId) {
-      moveItem(templateId, item.id, parentId, 'after')
+      outdentItem(templateId, item.id)
       await tick()
       focusTemplateOptionTextInput(item.options[0]?.id)
     }
@@ -305,6 +306,7 @@
           {deleteItem}
           {moveItem}
           {moveItemWithinLevel}
+          {outdentItem}
           {addChild}
           {addOption}
           {patchOption}

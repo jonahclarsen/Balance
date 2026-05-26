@@ -22,6 +22,7 @@
   export let deleteItem: (planId: Id, itemId: Id) => void
   export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (planId: Id, itemId: Id, direction: MoveDirection) => void
+  export let outdentItem: (planId: Id, itemId: Id) => void
   export let historyRevision: number
 
   let dragging = false
@@ -133,7 +134,7 @@
     }
 
     if (parentId) {
-      moveItem(planId, item.id, parentId, 'after')
+      outdentItem(planId, item.id)
       await tick()
       focusItemTextInput(item.id)
     }
@@ -270,6 +271,7 @@
           {deleteItem}
           {moveItem}
           {moveItemWithinLevel}
+          {outdentItem}
           {historyRevision}
         />
       {/each}

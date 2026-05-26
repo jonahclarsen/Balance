@@ -19,6 +19,8 @@ import {
   moveTemplateItem,
   moveTemplateItemWithinLevel,
   nowISO,
+  outdentPlanItem as outdentPlanItemInTree,
+  outdentTemplateItem as outdentTemplateItemInTree,
   sanitizeInlineHTML,
   splitPlanItem,
   splitTemplateItem,
@@ -329,6 +331,13 @@ function createPlannerStore() {
       })))
     },
 
+    outdentPlanItem(planId: Id, itemId: Id) {
+      commit('outdent_plan_item', { planId, itemId }, (state) => updatePlan(state, planId, (plan) => {
+        const items = outdentPlanItemInTree(plan.items, itemId)
+        return items === plan.items ? plan : { ...plan, items }
+      }))
+    },
+
     renameTemplate(templateId: Id, name: string) {
       commit('rename_template', { templateId, name }, (state) => ({
         ...state,
@@ -420,6 +429,15 @@ function createPlannerStore() {
       commit('move_template_item_within_level', { templateId, itemId, direction }, (state) =>
         updateTemplate(state, templateId, (template) => {
           const items = moveTemplateItemWithinLevel(template.items, itemId, direction)
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+    },
+
+    outdentTemplateItem(templateId: Id, itemId: Id) {
+      commit('outdent_template_item', { templateId, itemId }, (state) =>
+        updateTemplate(state, templateId, (template) => {
+          const items = outdentTemplateItemInTree(template.items, itemId)
           return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
         }),
       )

@@ -329,6 +329,87 @@ test('tab indents a template item only one level after a nested sibling', async 
     })
 })
 
+test('shift-tab outdents a plan item without jumping below following siblings', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const topLevelBeforeOutdent = await topLevelTexts(page)
+  const workIndex = topLevelBeforeOutdent.indexOf('Work block')
+  expect(workIndex).toBeGreaterThanOrEqual(0)
+
+  await focusInputByValue(page, 'Pick the first useful task')
+  await page.keyboard.press('Shift+Tab')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const plan = state.plans?.[0]
+        const work = plan?.items?.find((item: { text: string }) => item.text === 'Work block')
+        const promoted = plan?.items?.find((item: { text: string }) => item.text === 'Pick the first useful task')
+
+        return {
+          topLevel: plan?.items?.map((item: { text: string }) => item.text) ?? [],
+          workChildren: work?.children?.map((item: { text: string }) => item.text) ?? [],
+          promotedChildren: promoted?.children?.map((item: { text: string }) => item.text) ?? [],
+        }
+      }),
+    )
+    .toEqual({
+      topLevel: [
+        ...topLevelBeforeOutdent.slice(0, workIndex + 1),
+        'Pick the first useful task',
+        ...topLevelBeforeOutdent.slice(workIndex + 1),
+      ],
+      workChildren: [],
+      promotedChildren: ['Write down next action'],
+    })
+})
+
+test('shift-tab outdents a template item without jumping below following siblings', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Templates' }).click()
+
+  const topLevelBeforeOutdent = await topLevelTemplateOptionTexts(page)
+  const workIndex = topLevelBeforeOutdent.indexOf('Work block')
+  expect(workIndex).toBeGreaterThanOrEqual(0)
+
+  await focusTemplateOptionByValue(page, 'Pick the first useful task')
+  await page.keyboard.press('Shift+Tab')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const template = state.templates?.[0]
+        const itemText = (item: { options?: Array<{ text: string }> }) => item.options?.[0]?.text ?? ''
+        const work = template?.items?.find((item: { options?: Array<{ text: string }> }) => itemText(item) === 'Work block')
+        const promoted = template?.items?.find(
+          (item: { options?: Array<{ text: string }> }) => itemText(item) === 'Pick the first useful task',
+        )
+
+        return {
+          topLevel: template?.items?.map(itemText) ?? [],
+          workChildren: work?.children?.map(itemText) ?? [],
+          promotedChildren: promoted?.children?.map(itemText) ?? [],
+        }
+      }),
+    )
+    .toEqual({
+      topLevel: [
+        ...topLevelBeforeOutdent.slice(0, workIndex + 1),
+        'Pick the first useful task',
+        ...topLevelBeforeOutdent.slice(workIndex + 1),
+      ],
+      workChildren: [],
+      promotedChildren: ['Write down next action'],
+    })
+})
+
 test('adding plan time starts after the nearest timed item above', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
