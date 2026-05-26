@@ -131,9 +131,14 @@
 
     if (clipboardHTML || clipboardText) {
       event.preventDefault()
-      const pastedHTML = clipboardHTML
+      const trimmedText = clipboardText.trim()
+      let pastedHTML = clipboardHTML
         ? sanitizeInlineHTML(clipboardHTML)
         : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>')
+      if (!clipboardHTML && isURL(trimmedText)) {
+        const url = escapeHTML(trimmedText)
+        pastedHTML = `<a href="${url}" target="_blank" rel="noreferrer">${url}</a>`
+      }
       document.execCommand('insertHTML', false, pastedHTML)
       persistEditor(activeEditor, false)
     }

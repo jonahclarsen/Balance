@@ -588,6 +588,20 @@ test('plan item rich text preserves paste formatting and supports shortcuts', as
     .poll(async () => storedHTMLForFocusedItem(page))
     .toContain('<a href="https://balance.local" target="_blank" rel="noreferrer">')
 
+  await setFocusedEditorHTML(page, '')
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.evaluate(async () => {
+    await navigator.clipboard.writeText('https://pasted.local/docs')
+  })
+  await page.keyboard.press('Meta+V')
+
+  await expect
+    .poll(async () => richHTMLForFocusedItem(page))
+    .toContain('<a href="https://pasted.local/docs" target="_blank" rel="noreferrer">https://pasted.local/docs</a>')
+  await expect
+    .poll(async () => storedHTMLForFocusedItem(page))
+    .toContain('<a href="https://pasted.local/docs" target="_blank" rel="noreferrer">https://pasted.local/docs</a>')
+
   await page.evaluate(() => {
     window.open = (url, target, features) => {
       ;(window as unknown as { openedLink: { url: string; target?: string; features?: string } }).openedLink = {
@@ -598,13 +612,13 @@ test('plan item rich text preserves paste formatting and supports shortcuts', as
       return null
     }
   })
-  await page.locator('[data-plan-text-input] a[href="https://balance.local"]').click()
+  await page.locator('[data-plan-text-input] a[href="https://pasted.local/docs"]').click()
   await expect
     .poll(async () =>
       page.evaluate(() => (window as unknown as { openedLink?: { url: string; target?: string; features?: string } }).openedLink),
     )
     .toEqual({
-      url: 'https://balance.local/',
+      url: 'https://pasted.local/docs',
       target: '_blank',
       features: 'noopener,noreferrer',
     })
