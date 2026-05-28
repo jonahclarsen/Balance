@@ -9,6 +9,7 @@ import {
   createTemplateOption,
   DEFAULT_DAILY_REMINDER,
   deletePlanItem,
+  deletePlanItems,
   deleteTemplateItem,
   escapeHTML,
   formatMinutes,
@@ -16,11 +17,15 @@ import {
   htmlToPlainText,
   movePlanItem,
   movePlanItemWithinLevel,
+  movePlanItemsWithinLevel,
   moveTemplateItem,
   moveTemplateItemWithinLevel,
   nowISO,
   outdentPlanItem as outdentPlanItemInTree,
   outdentTemplateItem as outdentTemplateItemInTree,
+  clonePlanItemsForPaste,
+  copyPlanItems as copyPlanItemsFromTree,
+  pastePlanItems as pastePlanItemsIntoTree,
   sanitizeInlineHTML,
   splitPlanItem,
   splitTemplateItem,
@@ -291,6 +296,20 @@ function createPlannerStore() {
       }), isTextPatch ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {})
     },
 
+    patchPlanItemsDone(planId: Id, itemIds: Id[], done: boolean) {
+      if (itemIds.length === 0) return
+
+      commit('patch_plan_items_done', { planId, itemIds, done }, (state) => updatePlan(state, planId, (plan) => {
+        let items = plan.items
+
+        for (const itemId of itemIds) {
+          items = updatePlanItem(items, itemId, (item) => applyPatch(item, { done }))
+        }
+
+        return items === plan.items ? plan : { ...plan, items }
+      }))
+    },
+
     splitPlanItem(
       planId: Id,
       itemId: Id,
@@ -317,6 +336,52 @@ function createPlannerStore() {
       })))
     },
 
+    copyPlanItems(planId: Id, itemIds: Id[]) {
+      const plan = get(store).plans.find((candidate) => candidate.id === planId)
+      return plan ? copyPlanItemsFromTree(plan.items, itemIds) : []
+    },
+
+    cutPlanItems(planId: Id, itemIds: Id[]) {
+      const plan = get(store).plans.find((candidate) => candidate.id === planId)
+      const copiedItems = plan ? copyPlanItemsFromTree(plan.items, itemIds) : []
+      if (copiedItems.length === 0) return []
+
+      const selectedRootIds = copiedItems.map((item) => item.id)
+      commit('delete_plan_items', { planId, itemIds: selectedRootIds }, (state) => updatePlan(state, planId, (plan) => ({
+        ...plan,
+        items: deletePlanItems(plan.items, selectedRootIds),
+      })))
+
+      return copiedItems
+    },
+
+    deletePlanItems(planId: Id, itemIds: Id[]) {
+      const plan = get(store).plans.find((candidate) => candidate.id === planId)
+      const selectedRootIds = plan ? copyPlanItemsFromTree(plan.items, itemIds).map((item) => item.id) : []
+      if (selectedRootIds.length === 0) return []
+
+      commit('delete_plan_items', { planId, itemIds: selectedRootIds }, (state) => updatePlan(state, planId, (plan) => ({
+        ...plan,
+        items: deletePlanItems(plan.items, selectedRootIds),
+      })))
+
+      return selectedRootIds
+    },
+
+    pastePlanItems(planId: Id, itemsToPaste: PlanItem[], targetId: Id | null, placement: 'before' | 'after' | 'inside') {
+      if (itemsToPaste.length === 0) return []
+
+      const pastedItems = clonePlanItemsForPaste(itemsToPaste)
+      commit('paste_plan_items', { planId, targetId, placement, items: pastedItems }, (state) =>
+        updatePlan(state, planId, (plan) => {
+          const items = pastePlanItemsIntoTree(plan.items, pastedItems, targetId, placement)
+          return items === plan.items ? plan : { ...plan, items }
+        }),
+      )
+
+      return pastedItems.map((item) => item.id)
+    },
+
     movePlanItem(planId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
       commit('move_plan_item', { planId, sourceId, targetId, placement }, (state) => updatePlan(state, planId, (plan) => ({
         ...plan,
@@ -329,6 +394,17 @@ function createPlannerStore() {
         ...plan,
         items: movePlanItemWithinLevel(plan.items, itemId, direction),
       })))
+    },
+
+    movePlanItemsWithinLevel(planId: Id, itemIds: Id[], direction: 'up' | 'down') {
+      if (itemIds.length === 0) return
+
+      commit('move_plan_items_within_level', { planId, itemIds, direction }, (state) =>
+        updatePlan(state, planId, (plan) => {
+          const items = movePlanItemsWithinLevel(plan.items, itemIds, direction)
+          return items === plan.items ? plan : { ...plan, items }
+        }),
+      )
     },
 
     outdentPlanItem(planId: Id, itemId: Id) {

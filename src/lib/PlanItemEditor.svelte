@@ -24,9 +24,15 @@
   export let moveItemWithinLevel: (planId: Id, itemId: Id, direction: MoveDirection) => void
   export let outdentItem: (planId: Id, itemId: Id) => void
   export let historyRevision: number
+  export let selectedItemIds: Set<Id> = new Set()
+  export let selectionDragging = false
+  export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
+  export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
+  export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
 
   let dragging = false
   let activeDropRow: HTMLElement | null = null
+  $: selected = selectedItemIds.has(item.id)
 
   function addTime() {
     patchItem(planId, item.id, defaultPlanItemTimeRange(allItems, item.id))
@@ -186,7 +192,22 @@
     data-plan-item-depth={depth}
     role="listitem"
     aria-label={`Plan item: ${item.text || 'Untitled'}`}
+    class:selected
+    on:pointerenter={() => {
+      if (selectionDragging) onSelectionPointerEnter(item.id)
+    }}
   >
+    <button
+      class="select-handle"
+      class:selected
+      type="button"
+      title={selected ? 'Selected' : 'Select item'}
+      aria-label={selected ? 'Selected item' : 'Select item'}
+      aria-pressed={selected}
+      on:pointerdown={(event) => onSelectionPointerDown(item.id, event)}
+      on:pointermove={onSelectionPointerMove}
+    ></button>
+
     <button
       class="drag-handle"
       class:dragging
@@ -273,6 +294,11 @@
           {moveItemWithinLevel}
           {outdentItem}
           {historyRevision}
+          {selectedItemIds}
+          {selectionDragging}
+          {onSelectionPointerDown}
+          {onSelectionPointerMove}
+          {onSelectionPointerEnter}
         />
       {/each}
     </div>

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -747,6 +748,21 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             )?,
         ),
         "patch_plan_item" => patch_plan_item(tx, payload),
+        "patch_plan_items_done" => {
+            for item_id in required_array(payload, "itemIds")? {
+                tx.execute(
+                    "update plan_items set done = ?1 where id = ?2",
+                    params![
+                        if bool_value(payload, "done")? { 1 } else { 0 },
+                        item_id
+                            .as_str()
+                            .ok_or_else(|| "Expected string item id".to_string())?
+                    ],
+                )
+                .map_err(|error| error.to_string())?;
+            }
+            Ok(())
+        }
         "patch_plan_daily_reminder" => {
             tx.execute(
                 "update plans set daily_reminder = ?1 where id = ?2",
@@ -767,6 +783,25 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             .map_err(|error| error.to_string())?;
             Ok(())
         }
+        "delete_plan_items" => {
+            for item_id in required_array(payload, "itemIds")? {
+                tx.execute(
+                    "delete from plan_items where id = ?1",
+                    params![item_id
+                        .as_str()
+                        .ok_or_else(|| "Expected string item id".to_string())?],
+                )
+                .map_err(|error| error.to_string())?;
+            }
+            Ok(())
+        }
+        "paste_plan_items" => paste_plan_items_row(
+            tx,
+            required_string(payload, "planId")?,
+            optional_string(payload, "targetId")?.as_deref(),
+            required_string(payload, "placement")?,
+            required_array(payload, "items")?,
+        ),
         "insert_plan_item_at" => insert_plan_item(
             tx,
             required_string(payload, "planId")?,
@@ -783,6 +818,12 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         "move_plan_item_within_level" => move_plan_item_within_level_row(
             tx,
             required_string(payload, "itemId")?,
+            required_string(payload, "direction")?,
+        ),
+        "move_plan_items_within_level" => move_plan_items_within_level_row(
+            tx,
+            required_string(payload, "planId")?,
+            required_array(payload, "itemIds")?,
             required_string(payload, "direction")?,
         ),
         "outdent_plan_item" => outdent_plan_item_row(tx, required_string(payload, "itemId")?),
@@ -960,6 +1001,7 @@ fn build_undo_operation(
             json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
         ))),
         "patch_plan_item" => build_plan_item_patch_undo(connection, payload),
+        "patch_plan_items_done" => build_patch_plan_items_done_undo(connection, payload),
         "patch_plan_daily_reminder" => {
             let plan_id = required_string(payload, "planId")?;
             let Some(daily_reminder) = read_plan_daily_reminder(connection, plan_id)? else {
@@ -987,6 +1029,23 @@ fn build_undo_operation(
                     "position": snapshot.position,
                     "item": snapshot.item,
                 }),
+            )))
+        }
+        "delete_plan_items" => build_delete_plan_items_undo(connection, payload),
+        "paste_plan_items" => {
+            let operations = required_array(payload, "items")?
+                .iter()
+                .map(|item| {
+                    Ok(storage_operation(
+                        "delete_plan_item",
+                        json!({ "itemId": required_string(item, "id")? }),
+                    ))
+                })
+                .collect::<Result<Vec<Value>, String>>()?;
+
+            Ok(Some(storage_operation(
+                "batch",
+                json!({ "operations": operations }),
             )))
         }
         "move_plan_item" => {
@@ -1022,6 +1081,9 @@ fn build_undo_operation(
                     "position": snapshot.position,
                 }),
             )))
+        }
+        "move_plan_items_within_level" => {
+            build_move_plan_items_within_level_undo(connection, payload)
         }
         "outdent_plan_item" => build_outdent_plan_item_undo(connection, payload),
         "rename_template" => {
@@ -1163,6 +1225,42 @@ fn build_plan_item_patch_undo(
     )))
 }
 
+fn build_patch_plan_items_done_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let operations = required_array(payload, "itemIds")?
+        .iter()
+        .filter_map(|item_id| item_id.as_str())
+        .map(|item_id| {
+            let Some((_, _, done, _, _)) = read_plan_item_fields(connection, item_id)? else {
+                return Ok(None);
+            };
+
+            Ok(Some(storage_operation(
+                "patch_plan_item",
+                json!({
+                    "planId": required_string(payload, "planId")?,
+                    "itemId": item_id,
+                    "patch": { "done": done },
+                }),
+            )))
+        })
+        .collect::<Result<Vec<Option<Value>>, String>>()?
+        .into_iter()
+        .flatten()
+        .collect::<Vec<Value>>();
+
+    if operations.is_empty() {
+        return Ok(None);
+    }
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
+    )))
+}
+
 fn build_split_plan_item_undo(
     connection: &Connection,
     payload: &Value,
@@ -1175,6 +1273,41 @@ fn build_split_plan_item_undo(
 
     if let Some(patch_undo) = build_plan_item_patch_undo(connection, payload)? {
         operations.push(patch_undo);
+    }
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
+    )))
+}
+
+fn build_delete_plan_items_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let mut operations = Vec::new();
+
+    for item_id in required_array(payload, "itemIds")? {
+        let Some(item_id) = item_id.as_str() else {
+            return Err("Expected string item id".to_string());
+        };
+        let Some(snapshot) = read_plan_item_snapshot(connection, item_id)? else {
+            continue;
+        };
+
+        operations.push(storage_operation(
+            "insert_plan_item_at",
+            json!({
+                "planId": snapshot.plan_id,
+                "parentId": snapshot.parent_id,
+                "position": snapshot.position,
+                "item": snapshot.item,
+            }),
+        ));
+    }
+
+    if operations.is_empty() {
+        return Ok(None);
     }
 
     Ok(Some(storage_operation(
@@ -1221,6 +1354,55 @@ fn build_outdent_plan_item_undo(
             }),
         ));
     }
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
+    )))
+}
+
+fn build_move_plan_items_within_level_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let mut snapshots = Vec::new();
+
+    for item_id in required_array(payload, "itemIds")? {
+        let Some(item_id) = item_id.as_str() else {
+            return Err("Expected string item id".to_string());
+        };
+        let Some(snapshot) = read_plan_item_snapshot(connection, item_id)? else {
+            continue;
+        };
+
+        snapshots.push(snapshot);
+    }
+
+    snapshots.sort_by(|a, b| {
+        a.plan_id
+            .cmp(&b.plan_id)
+            .then(a.parent_id.cmp(&b.parent_id))
+            .then(a.position.cmp(&b.position))
+    });
+
+    if snapshots.is_empty() {
+        return Ok(None);
+    }
+
+    let operations = snapshots
+        .into_iter()
+        .map(|snapshot| {
+            Ok(storage_operation(
+                "move_plan_item_to_position",
+                json!({
+                    "itemId": required_string(&snapshot.item, "id")?,
+                    "planId": snapshot.plan_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
+                }),
+            ))
+        })
+        .collect::<Result<Vec<Value>, String>>()?;
 
     Ok(Some(storage_operation(
         "batch",
@@ -1868,6 +2050,66 @@ fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), S
     rewrite_plan_item_positions(connection, &siblings)
 }
 
+fn paste_plan_items_row(
+    connection: &Connection,
+    plan_id: &str,
+    target_id: Option<&str>,
+    placement: &str,
+    items: &[Value],
+) -> Result<(), String> {
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let parent_id = if placement == "inside" {
+        target_id.map(|id| id.to_string())
+    } else if let Some(target_id) = target_id {
+        plan_item_parent_id(connection, target_id)?
+    } else {
+        None
+    };
+    let mut siblings = plan_item_sibling_ids(connection, plan_id, parent_id.as_deref())?;
+    let insert_index = if placement == "inside" || target_id.is_none() {
+        siblings.len()
+    } else {
+        let target_id = target_id.unwrap_or_default();
+        let target_index = siblings
+            .iter()
+            .position(|id| id == target_id)
+            .ok_or_else(|| "Paste target is not in its sibling list".to_string())?;
+
+        if placement == "before" {
+            target_index
+        } else {
+            target_index + 1
+        }
+    };
+    let item_ids = items
+        .iter()
+        .map(|item| required_string(item, "id").map(|id| id.to_string()))
+        .collect::<Result<Vec<String>, String>>()?;
+
+    for item_id in &item_ids {
+        siblings.retain(|id| id != item_id);
+    }
+
+    for (offset, item_id) in item_ids.iter().enumerate() {
+        siblings.insert(insert_index + offset, item_id.clone());
+    }
+
+    for (offset, item) in items.iter().enumerate() {
+        insert_plan_item(
+            connection,
+            plan_id,
+            parent_id.as_deref(),
+            item,
+            (insert_index + offset) as i64,
+        )?;
+    }
+
+    rewrite_plan_item_positions(connection, &siblings)
+}
+
 fn patch_template_item(connection: &Connection, payload: &Value) -> Result<(), String> {
     let item_id = required_string(payload, "itemId")?;
     let patch = required_value(payload, "patch")?;
@@ -2013,6 +2255,62 @@ fn move_plan_item_within_level_row(
 
     siblings.swap(index, target_index);
     rewrite_plan_item_positions(connection, &siblings)
+}
+
+fn move_plan_items_within_level_row(
+    connection: &Connection,
+    plan_id: &str,
+    item_ids: &[Value],
+    direction: &str,
+) -> Result<(), String> {
+    let mut selected_by_parent: HashMap<Option<String>, Vec<String>> = HashMap::new();
+
+    for item_id in item_ids {
+        let item_id = item_id
+            .as_str()
+            .ok_or_else(|| "Expected string item id".to_string())?;
+        let item_plan_id = plan_item_plan_id(connection, item_id)?;
+        if item_plan_id != plan_id {
+            continue;
+        }
+
+        let parent_id = plan_item_parent_id(connection, item_id)?;
+        selected_by_parent
+            .entry(parent_id)
+            .or_default()
+            .push(item_id.to_string());
+    }
+
+    for (parent_id, selected_ids) in selected_by_parent {
+        let mut siblings = plan_item_sibling_ids(connection, plan_id, parent_id.as_deref())?;
+        let mut changed = false;
+
+        if direction == "up" {
+            for index in 1..siblings.len() {
+                if selected_ids.contains(&siblings[index])
+                    && !selected_ids.contains(&siblings[index - 1])
+                {
+                    siblings.swap(index - 1, index);
+                    changed = true;
+                }
+            }
+        } else {
+            for index in (0..siblings.len().saturating_sub(1)).rev() {
+                if selected_ids.contains(&siblings[index])
+                    && !selected_ids.contains(&siblings[index + 1])
+                {
+                    siblings.swap(index, index + 1);
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            rewrite_plan_item_positions(connection, &siblings)?;
+        }
+    }
+
+    Ok(())
 }
 
 fn outdent_plan_item_row(connection: &Connection, item_id: &str) -> Result<(), String> {
@@ -3553,7 +3851,10 @@ mod tests {
         .unwrap();
 
         let moved = read_app_state_from_database(&connection).unwrap().unwrap();
-        assert_eq!(top_plan_item_ids(&moved), ["plan_item_wake", "plan_item_first"]);
+        assert_eq!(
+            top_plan_item_ids(&moved),
+            ["plan_item_wake", "plan_item_first"]
+        );
         assert_eq!(
             moved["plans"][0]["items"][0]["children"]
                 .as_array()
@@ -3582,7 +3883,10 @@ mod tests {
         let redone = redo_last_operation_in_database(&mut connection)
             .unwrap()
             .unwrap();
-        assert_eq!(top_plan_item_ids(&redone), ["plan_item_wake", "plan_item_first"]);
+        assert_eq!(
+            top_plan_item_ids(&redone),
+            ["plan_item_wake", "plan_item_first"]
+        );
         assert_eq!(
             redone["plans"][0]["items"][1]["children"][0]["id"],
             "plan_item_second"

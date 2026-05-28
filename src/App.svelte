@@ -6,7 +6,7 @@
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
   import { confirmRecoveryKey, exportHTML, exportJSON, getRecoveryKeyStatus, plannerStore } from './lib/store'
   import type { RecoveryKeyStatus } from './lib/store'
-  import type { PlanItem } from './lib/types'
+  import type { Id, PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
 
   type View = 'today' | 'templates' | 'history' | 'export' | 'settings'
@@ -31,6 +31,13 @@
   let editingDailyReminder = false
   let dailyReminderDraft = ''
   let dailyReminderInput: HTMLInputElement | null = null
+  let selectedPlanItemIds: Id[] = []
+  let planSelectionAnchorId: Id | null = null
+  let selectedPlanPlanId: Id | null = null
+  let selectingPlanItems = false
+  let planItemClipboard: { items: PlanItem[]; cut: boolean } | null = null
+  let planTextDragOrigin: { itemId: Id; input: HTMLElement } | null = null
+  let preservePlanSelectionFocusUntil = 0
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
@@ -39,6 +46,10 @@
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
   $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
+  $: selectedPlanItemIdSet = new Set(selectedPlanItemIds)
+  $: if ((view !== 'today' || activePlan?.id !== selectedPlanPlanId) && selectedPlanItemIds.length > 0) {
+    clearPlanSelection()
+  }
 
   onMount(async () => {
     recoveryKeyStatus = await getRecoveryKeyStatus()
@@ -197,7 +208,33 @@
     const key = event.key.toLowerCase()
     const primaryModifier = event.metaKey || event.ctrlKey
 
+    if (event.key === 'Escape' && selectedPlanItemIds.length > 0) {
+      event.preventDefault()
+      clearPlanSelection()
+      return
+    }
+
+    if (
+      view === 'today' &&
+      activePlan &&
+      selectedPlanItemIds.length > 0 &&
+      (event.key === 'Backspace' || event.key === 'Delete')
+    ) {
+      event.preventDefault()
+      deleteSelectedPlanItems()
+      return
+    }
+
     if (view === 'today' && event.altKey && !primaryModifier && !event.shiftKey) {
+      if (activePlan && selectedPlanItemIds.length > 0 && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+        const rootIds = selectedPlanRootIds()
+        if (rootIds.length === 0) return
+
+        event.preventDefault()
+        plannerStore.movePlanItemsWithinLevel(activePlan.id, rootIds, event.key === 'ArrowUp' ? 'up' : 'down')
+        return
+      }
+
       if (event.code === 'KeyQ') {
         event.preventDefault()
         shiftActivePlanDate(-1)
@@ -212,6 +249,43 @@
     }
 
     if (!primaryModifier || event.altKey) return
+
+    if (view === 'today' && activePlan && key === 'd' && !event.shiftKey && selectedPlanItemIds.length > 0) {
+      const selectedItems = selectedPlanItems()
+      if (selectedItems.length === 0) return
+
+      event.preventDefault()
+      plannerStore.patchPlanItemsDone(
+        activePlan.id,
+        selectedItems.map((item) => item.id),
+        !selectedItems.every((item) => item.done),
+      )
+      return
+    }
+
+    if (view === 'today' && activePlan && !hasActiveRichTextSelection()) {
+      if ((key === 'c' || key === 'x') && !event.shiftKey && selectedPlanItemIds.length > 0) {
+        event.preventDefault()
+        if (key === 'x') {
+          cutSelectedPlanItems()
+        } else {
+          copySelectedPlanItems()
+        }
+        return
+      }
+
+      if (key === 'v' && !event.shiftKey && planItemClipboard) {
+        event.preventDefault()
+        pastePlanItemClipboard()
+        return
+      }
+
+      if (key === 'a' && !event.shiftKey && !isRichTextActive()) {
+        event.preventDefault()
+        selectAllPlanItems()
+        return
+      }
+    }
 
     if (key === 'd' && !event.shiftKey) {
       const itemId = activeFocusedPlanItemId()
@@ -253,6 +327,254 @@
     return null
   }
 
+  function beginPlanItemSelection(itemId: Id, event: PointerEvent) {
+    if (event.button !== 0 || !activePlan) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    selectingPlanItems = true
+    selectedPlanPlanId = activePlan.id
+    releaseTextEditingFocus()
+
+    if (event.shiftKey && planSelectionAnchorId) {
+      selectPlanItemRange(planSelectionAnchorId, itemId, event.metaKey || event.ctrlKey)
+      return
+    }
+
+    planSelectionAnchorId = itemId
+
+    if (event.metaKey || event.ctrlKey) {
+      selectedPlanItemIds = selectedPlanItemIds.includes(itemId)
+        ? selectedPlanItemIds.filter((selectedId) => selectedId !== itemId)
+        : [...selectedPlanItemIds, itemId]
+      return
+    }
+
+    selectedPlanItemIds = [itemId]
+  }
+
+  function extendPlanItemSelection(itemId: Id) {
+    if (!selectingPlanItems || !planSelectionAnchorId) return
+    selectPlanItemRange(planSelectionAnchorId, itemId, false)
+  }
+
+  function handlePlanSelectionPointerMove(event: PointerEvent) {
+    if (!selectingPlanItems && planTextDragOrigin && (event.buttons & 1) === 1 && pointerLeftElement(event, planTextDragOrigin.input)) {
+      event.preventDefault()
+      selectingPlanItems = true
+      selectedPlanPlanId = activePlan?.id ?? null
+      planSelectionAnchorId = planTextDragOrigin.itemId
+      selectedPlanItemIds = [planTextDragOrigin.itemId]
+      releaseTextEditingFocus()
+    }
+
+    if (!selectingPlanItems) return
+
+    const itemId = planItemIdAtPoint(event.clientX, event.clientY)
+    if (itemId) extendPlanItemSelection(itemId)
+  }
+
+  function endPlanItemSelection() {
+    if (selectingPlanItems && selectedPlanItemIds.length > 0) {
+      preservePlanSelectionFocusUntil = Date.now() + 250
+    }
+
+    selectingPlanItems = false
+    planTextDragOrigin = null
+  }
+
+  function handleGlobalPointerDown(event: PointerEvent) {
+    if (event.button !== 0 || view !== 'today' || !activePlan) {
+      planTextDragOrigin = null
+      return
+    }
+
+    const target = event.target instanceof Element ? event.target : null
+    const input = target?.closest<HTMLElement>('[data-plan-text-input]')
+    const row = input?.closest<HTMLElement>('[data-plan-item-id]')
+    const itemId = row?.dataset.planItemId
+
+    planTextDragOrigin = input && itemId ? { itemId, input } : null
+  }
+
+  function handleGlobalFocusIn(event: FocusEvent) {
+    const target = event.target instanceof Element ? event.target : null
+    if (!target?.closest('input, textarea, [contenteditable="true"]')) return
+
+    if (selectedPlanItemIds.length > 0 && (selectingPlanItems || Date.now() < preservePlanSelectionFocusUntil)) {
+      releaseTextEditingFocus()
+      return
+    }
+
+    clearPlanSelection()
+  }
+
+  function selectPlanItemRange(fromId: Id, toId: Id, additive: boolean) {
+    if (!activePlan) return
+
+    const itemIds = flattenPlanItemIds(activePlan.items)
+    const fromIndex = itemIds.indexOf(fromId)
+    const toIndex = itemIds.indexOf(toId)
+    if (fromIndex === -1 || toIndex === -1) return
+
+    const [start, end] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex]
+    const rangeIds = itemIds.slice(start, end + 1)
+    selectedPlanItemIds = additive ? [...new Set([...selectedPlanItemIds, ...rangeIds])] : rangeIds
+    selectedPlanPlanId = activePlan.id
+    releaseTextEditingFocus()
+  }
+
+  function selectAllPlanItems() {
+    if (!activePlan) return
+
+    selectedPlanItemIds = flattenPlanItemIds(activePlan.items)
+    selectedPlanPlanId = activePlan.id
+    planSelectionAnchorId = selectedPlanItemIds[0] ?? null
+    releaseTextEditingFocus()
+  }
+
+  function clearPlanSelection() {
+    selectedPlanItemIds = []
+    selectedPlanPlanId = null
+    planSelectionAnchorId = null
+    selectingPlanItems = false
+  }
+
+  function flattenPlanItemIds(items: PlanItem[]): Id[] {
+    return items.flatMap((item) => [item.id, ...flattenPlanItemIds(item.children)])
+  }
+
+  function planItemIdAtPoint(clientX: number, clientY: number): Id | null {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
+
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect()
+      const isInsideRow = clientY >= rect.top && clientY <= rect.bottom && clientX >= rect.left && clientX <= rect.right
+      if (isInsideRow) return row.dataset.planItemId ?? null
+    }
+
+    return null
+  }
+
+  function pointerLeftElement(event: PointerEvent, element: HTMLElement) {
+    const rect = element.getBoundingClientRect()
+    const threshold = 3
+
+    return (
+      event.clientX < rect.left - threshold ||
+      event.clientX > rect.right + threshold ||
+      event.clientY < rect.top - threshold ||
+      event.clientY > rect.bottom + threshold
+    )
+  }
+
+  function selectedPlanRootIds() {
+    if (!activePlan) return []
+
+    return plannerStore.copyPlanItems(activePlan.id, selectedPlanItemIds).map((item) => item.id)
+  }
+
+  function selectedPlanItems() {
+    if (!activePlan) return []
+
+    return selectedPlanItemIds
+      .map((itemId) => findPlanItem(activePlan.items, itemId))
+      .filter((item): item is PlanItem => item !== null)
+  }
+
+  function copySelectedPlanItems() {
+    if (!activePlan || selectedPlanItemIds.length === 0) return
+
+    const items = plannerStore.copyPlanItems(activePlan.id, selectedPlanItemIds)
+    if (items.length === 0) return
+
+    planItemClipboard = { items, cut: false }
+    writePlanItemsToSystemClipboard(items)
+  }
+
+  function cutSelectedPlanItems() {
+    if (!activePlan || selectedPlanItemIds.length === 0) return
+
+    const items = plannerStore.cutPlanItems(activePlan.id, selectedPlanItemIds)
+    if (items.length === 0) return
+
+    planItemClipboard = { items, cut: true }
+    writePlanItemsToSystemClipboard(items)
+    clearPlanSelection()
+  }
+
+  function deleteSelectedPlanItems() {
+    if (!activePlan || selectedPlanItemIds.length === 0) return
+
+    const deletedIds = plannerStore.deletePlanItems(activePlan.id, selectedPlanItemIds)
+    if (deletedIds.length > 0) clearPlanSelection()
+  }
+
+  function pastePlanItemClipboard() {
+    if (!activePlan || !planItemClipboard) return
+
+    const targetId = pasteTargetPlanItemId()
+    const pastedRootIds = plannerStore.pastePlanItems(activePlan.id, planItemClipboard.items, targetId, 'after')
+    if (pastedRootIds.length === 0) return
+
+    selectedPlanItemIds = pastedRootIds
+    selectedPlanPlanId = activePlan.id
+    planSelectionAnchorId = pastedRootIds.at(-1) ?? null
+    releaseTextEditingFocus()
+    if (planItemClipboard.cut) planItemClipboard = null
+  }
+
+  function pasteTargetPlanItemId() {
+    const focusedItemId = activeFocusedPlanItemId()
+    if (focusedItemId) return focusedItemId
+
+    const rootIds = selectedPlanRootIds()
+    return rootIds.at(-1) ?? null
+  }
+
+  function writePlanItemsToSystemClipboard(items: PlanItem[]) {
+    const text = planItemsToPlainText(items)
+    if (!text || !navigator.clipboard?.writeText) return
+
+    void navigator.clipboard.writeText(text).catch(() => {
+      // The internal clipboard still works when system clipboard access is blocked.
+    })
+  }
+
+  function planItemsToPlainText(items: PlanItem[], depth = 0): string {
+    return items
+      .map((item) => {
+        const line = `${'  '.repeat(depth)}${item.text}`
+        const children = planItemsToPlainText(item.children, depth + 1)
+        return children ? `${line}\n${children}` : line
+      })
+      .join('\n')
+  }
+
+  function isRichTextActive() {
+    return document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-rich-text-input]')
+  }
+
+  function hasActiveRichTextSelection() {
+    const selection = document.getSelection()
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false
+
+    const active = document.activeElement
+    const input = active instanceof HTMLElement ? active.closest('[data-rich-text-input]') : null
+    if (!input) return false
+
+    const range = selection.getRangeAt(0)
+    return input.contains(range.commonAncestorContainer)
+  }
+
+  function releaseTextEditingFocus() {
+    document.getSelection()?.removeAllRanges()
+
+    if (document.activeElement instanceof HTMLElement && document.activeElement.closest('input, textarea, [contenteditable="true"]')) {
+      document.activeElement.blur()
+    }
+  }
+
   async function copyRecoveryKey() {
     if (!recoveryKeyStatus?.recoveryKey) return
 
@@ -289,7 +611,13 @@
   }
 </script>
 
-<svelte:window on:keydown|capture={handleGlobalKeydown} />
+<svelte:window
+  on:keydown|capture={handleGlobalKeydown}
+  on:focusin={handleGlobalFocusIn}
+  on:pointerdown|capture={handleGlobalPointerDown}
+  on:pointermove={handlePlanSelectionPointerMove}
+  on:pointerup={endPlanItemSelection}
+/>
 
 <main class="app-shell">
   <aside class="sidebar">
@@ -389,6 +717,11 @@
               moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
               outdentItem={plannerStore.outdentPlanItem}
               historyRevision={$plannerStore.historyRevision}
+              selectedItemIds={selectedPlanItemIdSet}
+              selectionDragging={selectingPlanItems}
+              onSelectionPointerDown={beginPlanItemSelection}
+              onSelectionPointerMove={handlePlanSelectionPointerMove}
+              onSelectionPointerEnter={extendPlanItemSelection}
             />
           {/each}
 

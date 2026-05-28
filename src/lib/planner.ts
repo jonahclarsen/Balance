@@ -216,6 +216,68 @@ export function deletePlanItem(items: PlanItem[], itemId: Id): PlanItem[] {
     }))
 }
 
+export function copyPlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
+  const selectedIds = new Set(itemIds)
+  if (selectedIds.size === 0) return []
+
+  return copySelectedPlanItems(items, selectedIds)
+}
+
+export function deletePlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
+  const selectedIds = new Set(itemIds)
+  if (selectedIds.size === 0) return items
+
+  let changed = false
+  const nextItems = items.flatMap((item) => {
+    if (selectedIds.has(item.id)) {
+      changed = true
+      return []
+    }
+
+    const children = deletePlanItems(item.children, itemIds)
+    if (children === item.children) return [item]
+
+    changed = true
+    return [{ ...item, children }]
+  })
+
+  return changed ? nextItems : items
+}
+
+export function clonePlanItemsForPaste(items: PlanItem[]): PlanItem[] {
+  return items.map(clonePlanItemForPaste)
+}
+
+export function pastePlanItems(
+  items: PlanItem[],
+  itemsToPaste: PlanItem[],
+  targetId: Id | null,
+  placement: MovePlacement,
+): PlanItem[] {
+  if (itemsToPaste.length === 0) return items
+  if (!targetId) return [...items, ...itemsToPaste]
+
+  let inserted = false
+  const nextItems = items.flatMap((item) => {
+    if (item.id === targetId) {
+      inserted = true
+
+      if (placement === 'before') return [...itemsToPaste, item]
+      if (placement === 'after') return [item, ...itemsToPaste]
+
+      return [{ ...item, children: [...item.children, ...itemsToPaste] }]
+    }
+
+    const children = pastePlanItems(item.children, itemsToPaste, targetId, placement)
+    if (children === item.children) return [item]
+
+    inserted = true
+    return [{ ...item, children }]
+  })
+
+  return inserted ? nextItems : items
+}
+
 export function movePlanItem(
   items: PlanItem[],
   sourceId: Id,
@@ -257,6 +319,26 @@ export function movePlanItemWithinLevel(items: PlanItem[], itemId: Id, direction
   return changed ? nextItems : items
 }
 
+export function movePlanItemsWithinLevel(items: PlanItem[], itemIds: Id[], direction: MoveDirection): PlanItem[] {
+  const selectedIds = new Set(itemIds)
+  if (selectedIds.size === 0) return items
+
+  const movedItems = moveSelectedItemsAtLevel(items, selectedIds, direction)
+  let changed = movedItems !== items
+
+  const nextItems = movedItems.map((item) => {
+    if (selectedIds.has(item.id)) return item
+
+    const children = movePlanItemsWithinLevel(item.children, itemIds, direction)
+    if (children === item.children) return item
+
+    changed = true
+    return { ...item, children }
+  })
+
+  return changed ? nextItems : items
+}
+
 export function outdentPlanItem(items: PlanItem[], itemId: Id): PlanItem[] {
   return outdentItem(items, itemId)
 }
@@ -277,6 +359,54 @@ function findPlanItem(items: PlanItem[], itemId: Id): PlanItem | null {
 
 function containsPlanItem(items: PlanItem[], itemId: Id): boolean {
   return Boolean(findPlanItem(items, itemId))
+}
+
+function copySelectedPlanItems(items: PlanItem[], selectedIds: Set<Id>): PlanItem[] {
+  const copied: PlanItem[] = []
+
+  for (const item of items) {
+    if (selectedIds.has(item.id)) {
+      copied.push(item)
+      continue
+    }
+
+    copied.push(...copySelectedPlanItems(item.children, selectedIds))
+  }
+
+  return copied
+}
+
+function clonePlanItemForPaste(item: PlanItem): PlanItem {
+  return {
+    ...item,
+    id: createId('plan_item'),
+    children: item.children.map(clonePlanItemForPaste),
+  }
+}
+
+function moveSelectedItemsAtLevel<T extends { id: Id }>(items: T[], selectedIds: Set<Id>, direction: MoveDirection): T[] {
+  if (!items.some((item) => selectedIds.has(item.id))) return items
+
+  const nextItems = [...items]
+  let changed = false
+
+  if (direction === 'up') {
+    for (let index = 1; index < nextItems.length; index += 1) {
+      if (selectedIds.has(nextItems[index].id) && !selectedIds.has(nextItems[index - 1].id)) {
+        ;[nextItems[index - 1], nextItems[index]] = [nextItems[index], nextItems[index - 1]]
+        changed = true
+      }
+    }
+  } else {
+    for (let index = nextItems.length - 2; index >= 0; index -= 1) {
+      if (selectedIds.has(nextItems[index].id) && !selectedIds.has(nextItems[index + 1].id)) {
+        ;[nextItems[index], nextItems[index + 1]] = [nextItems[index + 1], nextItems[index]]
+        changed = true
+      }
+    }
+  }
+
+  return changed ? nextItems : items
 }
 
 function extractPlanItem(items: PlanItem[], itemId: Id): { items: PlanItem[]; item: PlanItem | null } {
