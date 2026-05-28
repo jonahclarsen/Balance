@@ -6,7 +6,7 @@
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
   import { confirmRecoveryKey, exportHTML, exportJSON, getRecoveryKeyStatus, plannerStore } from './lib/store'
   import type { RecoveryKeyStatus } from './lib/store'
-  import type { Id, PlanItem } from './lib/types'
+  import type { Id, MoveDirection, PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
 
   type View = 'today' | 'templates' | 'history' | 'export' | 'settings'
@@ -33,6 +33,7 @@
   let dailyReminderInput: HTMLInputElement | null = null
   let selectedPlanItemIds: Id[] = []
   let planSelectionAnchorId: Id | null = null
+  let planSelectionFocusId: Id | null = null
   let selectedPlanPlanId: Id | null = null
   let selectingPlanItems = false
   let planItemClipboard: { items: PlanItem[]; cut: boolean } | null = null
@@ -218,6 +219,21 @@
       view === 'today' &&
       activePlan &&
       selectedPlanItemIds.length > 0 &&
+      event.shiftKey &&
+      !event.altKey &&
+      !primaryModifier &&
+      (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      extendPlanSelectionByKeyboard(event.key === 'ArrowUp' ? 'up' : 'down')
+      return
+    }
+
+    if (
+      view === 'today' &&
+      activePlan &&
+      selectedPlanItemIds.length > 0 &&
       (event.key === 'Backspace' || event.key === 'Delete')
     ) {
       event.preventDefault()
@@ -347,10 +363,12 @@
       selectedPlanItemIds = selectedPlanItemIds.includes(itemId)
         ? selectedPlanItemIds.filter((selectedId) => selectedId !== itemId)
         : [...selectedPlanItemIds, itemId]
+      planSelectionFocusId = itemId
       return
     }
 
     selectedPlanItemIds = [itemId]
+    planSelectionFocusId = itemId
   }
 
   function extendPlanItemSelection(itemId: Id) {
@@ -364,6 +382,7 @@
       selectingPlanItems = true
       selectedPlanPlanId = activePlan?.id ?? null
       planSelectionAnchorId = planTextDragOrigin.itemId
+      planSelectionFocusId = planTextDragOrigin.itemId
       selectedPlanItemIds = [planTextDragOrigin.itemId]
       releaseTextEditingFocus()
     }
@@ -421,7 +440,42 @@
     const rangeIds = itemIds.slice(start, end + 1)
     selectedPlanItemIds = additive ? [...new Set([...selectedPlanItemIds, ...rangeIds])] : rangeIds
     selectedPlanPlanId = activePlan.id
+    planSelectionFocusId = toId
     releaseTextEditingFocus()
+  }
+
+  function selectPlanItemWithAdjacent(itemId: Id, direction: MoveDirection) {
+    if (!activePlan) return
+
+    const itemIds = flattenPlanItemIds(activePlan.items)
+    const index = itemIds.indexOf(itemId)
+    if (index === -1) return
+
+    const targetIndex = direction === 'up' ? Math.max(0, index - 1) : Math.min(itemIds.length - 1, index + 1)
+    if (targetIndex === index) return
+
+    planSelectionAnchorId = itemId
+    selectPlanItemRange(itemId, itemIds[targetIndex], false)
+  }
+
+  function extendPlanSelectionByKeyboard(direction: MoveDirection) {
+    if (!activePlan) return
+
+    const itemIds = flattenPlanItemIds(activePlan.items)
+    const anchorId = planSelectionAnchorId ?? selectedPlanItemIds[0]
+    const focusId = planSelectionFocusId ?? selectedPlanItemIds.at(-1)
+    const focusIndex = focusId ? itemIds.indexOf(focusId) : -1
+    if (!anchorId || focusIndex === -1) return
+
+    const targetIndex = direction === 'up' ? Math.max(0, focusIndex - 1) : Math.min(itemIds.length - 1, focusIndex + 1)
+    const targetId = itemIds[targetIndex]
+    if (targetId === anchorId) {
+      clearPlanSelection()
+      focusPlanItemTextInput(anchorId)
+      return
+    }
+
+    selectPlanItemRange(anchorId, targetId, false)
   }
 
   function selectAllPlanItems() {
@@ -430,6 +484,7 @@
     selectedPlanItemIds = flattenPlanItemIds(activePlan.items)
     selectedPlanPlanId = activePlan.id
     planSelectionAnchorId = selectedPlanItemIds[0] ?? null
+    planSelectionFocusId = selectedPlanItemIds.at(-1) ?? null
     releaseTextEditingFocus()
   }
 
@@ -437,6 +492,7 @@
     selectedPlanItemIds = []
     selectedPlanPlanId = null
     planSelectionAnchorId = null
+    planSelectionFocusId = null
     selectingPlanItems = false
   }
 
@@ -520,6 +576,7 @@
     selectedPlanItemIds = pastedRootIds
     selectedPlanPlanId = activePlan.id
     planSelectionAnchorId = pastedRootIds.at(-1) ?? null
+    planSelectionFocusId = pastedRootIds.at(-1) ?? null
     releaseTextEditingFocus()
     if (planItemClipboard.cut) planItemClipboard = null
   }
@@ -573,6 +630,20 @@
     if (document.activeElement instanceof HTMLElement && document.activeElement.closest('input, textarea, [contenteditable="true"]')) {
       document.activeElement.blur()
     }
+  }
+
+  function focusPlanItemTextInput(itemId: Id) {
+    const input = document.querySelector<HTMLDivElement>(`[data-plan-text-input-id="${CSS.escape(itemId)}"]`)
+    if (!input) return
+
+    input.focus()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
   }
 
   async function copyRecoveryKey() {
@@ -722,6 +793,7 @@
               onSelectionPointerDown={beginPlanItemSelection}
               onSelectionPointerMove={handlePlanSelectionPointerMove}
               onSelectionPointerEnter={extendPlanItemSelection}
+              onTextShiftArrow={selectPlanItemWithAdjacent}
             />
           {/each}
 

@@ -29,6 +29,7 @@
   export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
   export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
   export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
+  export let onTextShiftArrow: (itemId: Id, direction: MoveDirection) => void = () => {}
 
   let dragging = false
   let activeDropRow: HTMLElement | null = null
@@ -100,6 +101,11 @@
       moveItemWithinLevel(planId, item.id, direction)
       await tick()
       focusItemTextInput(item.id)
+      return
+    }
+
+    if (event.shiftKey) {
+      onTextShiftArrow(item.id, direction)
       return
     }
 
@@ -299,6 +305,7 @@
           {onSelectionPointerDown}
           {onSelectionPointerMove}
           {onSelectionPointerEnter}
+          {onTextShiftArrow}
         />
       {/each}
     </div>
