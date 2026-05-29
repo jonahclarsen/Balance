@@ -219,6 +219,21 @@
       view === 'today' &&
       activePlan &&
       selectedPlanItemIds.length > 0 &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !primaryModifier &&
+      (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      focusSelectedPlanBoundary(event.key === 'ArrowUp' ? 'up' : 'down')
+      return
+    }
+
+    if (
+      view === 'today' &&
+      activePlan &&
+      selectedPlanItemIds.length > 0 &&
       event.shiftKey &&
       !event.altKey &&
       !primaryModifier &&
@@ -549,6 +564,18 @@
     return selectedPlanItemIds
       .map((itemId) => findPlanItem(activePlan.items, itemId))
       .filter((item): item is PlanItem => item !== null)
+  }
+
+  function focusSelectedPlanBoundary(direction: MoveDirection) {
+    if (!activePlan) return
+
+    const selectedIds = new Set(selectedPlanItemIds)
+    const orderedSelectedIds = flattenPlanItemIds(activePlan.items).filter((itemId) => selectedIds.has(itemId))
+    const targetId = direction === 'up' ? orderedSelectedIds[0] : orderedSelectedIds.at(-1)
+    if (!targetId) return
+
+    clearPlanSelection()
+    focusPlanItemTextInput(targetId)
   }
 
   function copySelectedPlanItems() {
