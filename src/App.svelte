@@ -413,6 +413,19 @@
     const row = input?.closest<HTMLElement>('[data-plan-item-id]')
     const itemId = row?.dataset.planItemId
 
+    if (event.shiftKey && input && itemId) {
+      const focusedItemId = activeFocusedPlanItemId()
+
+      if (focusedItemId && focusedItemId !== itemId) {
+        event.preventDefault()
+        event.stopPropagation()
+        planSelectionAnchorId = focusedItemId
+        selectPlanItemRange(focusedItemId, itemId, false)
+        planTextDragOrigin = null
+        return
+      }
+    }
+
     planTextDragOrigin = input && itemId ? { itemId, input } : null
   }
 
