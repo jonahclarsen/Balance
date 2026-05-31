@@ -310,7 +310,7 @@ export function pastePlanItems(
   items: PlanItem[],
   itemsToPaste: PlanItem[],
   targetId: Id | null,
-  placement: MovePlacement,
+  placement: MovePlacement | 'replace',
 ): PlanItem[] {
   if (itemsToPaste.length === 0) return items
   if (!targetId) return [...items, ...itemsToPaste]
@@ -322,6 +322,7 @@ export function pastePlanItems(
 
       if (placement === 'before') return [...itemsToPaste, item]
       if (placement === 'after') return [item, ...itemsToPaste]
+      if (placement === 'replace') return itemsToPaste
 
       return [{ ...item, children: [...item.children, ...itemsToPaste] }]
     }

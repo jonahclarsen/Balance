@@ -775,7 +775,8 @@
     if (!activePlan || !planItemClipboard) return
 
     const targetId = pasteTargetPlanItemId()
-    const pastedRootIds = plannerStore.pastePlanItems(activePlan.id, planItemClipboard.items, targetId, 'after')
+    const placement = shouldReplaceFocusedPlanItemOnPaste(targetId) ? 'replace' : 'after'
+    const pastedRootIds = plannerStore.pastePlanItems(activePlan.id, planItemClipboard.items, targetId, placement)
     if (pastedRootIds.length === 0) return
 
     selectedPlanItemIds = pastedRootIds
@@ -784,6 +785,14 @@
     planSelectionFocusId = pastedRootIds.at(-1) ?? null
     releaseTextEditingFocus()
     if (planItemClipboard.cut) planItemClipboard = null
+  }
+
+  function shouldReplaceFocusedPlanItemOnPaste(targetId: Id | null) {
+    if (!activePlan || !targetId) return false
+    if (!(document.activeElement instanceof HTMLElement) || !document.activeElement.matches('[data-plan-text-input]')) return false
+
+    const item = findPlanItem(activePlan.items, targetId)
+    return Boolean(item && item.text.trim() === '' && item.html.trim() === '')
   }
 
   function pasteTargetPlanItemId() {

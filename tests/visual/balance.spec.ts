@@ -831,6 +831,27 @@ test('backspace at the start of a plan item merges it into the item above', asyn
     })
 })
 
+test('pasting plan items into an empty focused item replaces it', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  await focusInputByValue(page, before[0])
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Meta+C')
+
+  await focusInputByValue(page, 'Work block')
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Enter')
+  await expect.poll(async () => topLevelTexts(page)).toEqual([...before.slice(0, 2), '', ...before.slice(2)])
+
+  await page.keyboard.press('Meta+V')
+
+  await expect.poll(async () => topLevelTexts(page)).toEqual([...before.slice(0, 2), ...before.slice(0, 2), ...before.slice(2)])
+})
+
 test('plan item rich text preserves paste formatting and supports shortcuts', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 

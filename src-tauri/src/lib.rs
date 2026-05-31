@@ -1152,7 +1152,7 @@ fn build_undo_operation(
         }
         "delete_plan_items" => build_delete_plan_items_undo(connection, payload),
         "paste_plan_items" => {
-            let operations = required_array(payload, "items")?
+            let mut operations = required_array(payload, "items")?
                 .iter()
                 .map(|item| {
                     Ok(storage_operation(
@@ -1161,6 +1161,22 @@ fn build_undo_operation(
                     ))
                 })
                 .collect::<Result<Vec<Value>, String>>()?;
+
+            if required_string(payload, "placement")? == "replace" {
+                if let Some(target_id) = optional_string(payload, "targetId")? {
+                    if let Some(snapshot) = read_plan_item_snapshot(connection, &target_id)? {
+                        operations.push(storage_operation(
+                            "insert_plan_item_at",
+                            json!({
+                                "planId": snapshot.plan_id,
+                                "parentId": snapshot.parent_id,
+                                "position": snapshot.position,
+                                "item": snapshot.item,
+                            }),
+                        ));
+                    }
+                }
+            }
 
             Ok(Some(storage_operation(
                 "batch",
@@ -2358,7 +2374,7 @@ fn paste_plan_items_row(
             .position(|id| id == target_id)
             .ok_or_else(|| "Paste target is not in its sibling list".to_string())?;
 
-        if placement == "before" {
+        if placement == "before" || placement == "replace" {
             target_index
         } else {
             target_index + 1
@@ -2372,9 +2388,22 @@ fn paste_plan_items_row(
     for item_id in &item_ids {
         siblings.retain(|id| id != item_id);
     }
+    if placement == "replace" {
+        if let Some(target_id) = target_id {
+            siblings.retain(|id| id != target_id);
+        }
+    }
 
     for (offset, item_id) in item_ids.iter().enumerate() {
         siblings.insert(insert_index + offset, item_id.clone());
+    }
+
+    if placement == "replace" {
+        if let Some(target_id) = target_id {
+            connection
+                .execute("delete from plan_items where id = ?1", params![target_id])
+                .map_err(|error| error.to_string())?;
+        }
     }
 
     for (offset, item) in items.iter().enumerate() {
@@ -4271,6 +4300,102 @@ mod tests {
         assert_eq!(
             redone["plans"][0]["items"][0]["children"][0]["id"],
             "plan_item_child"
+        );
+    }
+
+    #[test]
+    fn paste_plan_items_can_replace_target_item() {
+        let database = TestDatabase::new("paste-replace-target");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Paste replace test");
+        state["plans"][0]["items"] = json!([
+            {
+                "id": "plan_item_blank",
+                "text": "",
+                "html": "",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            },
+            {
+                "id": "plan_item_wake",
+                "text": "Wake up",
+                "html": "Wake up",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }
+        ]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "paste_plan_items",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "targetId": "plan_item_blank",
+                    "placement": "replace",
+                    "items": [
+                        {
+                            "id": "plan_item_pasted_one",
+                            "text": "Pasted one",
+                            "html": "Pasted one",
+                            "done": false,
+                            "startMinutes": null,
+                            "endMinutes": null,
+                            "children": []
+                        },
+                        {
+                            "id": "plan_item_pasted_two",
+                            "text": "Pasted two",
+                            "html": "Pasted two",
+                            "done": false,
+                            "startMinutes": null,
+                            "endMinutes": null,
+                            "children": []
+                        }
+                    ]
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&saved),
+            [
+                "plan_item_pasted_one",
+                "plan_item_pasted_two",
+                "plan_item_wake"
+            ]
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_plan_item_ids(&undone),
+            ["plan_item_blank", "plan_item_wake"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_plan_item_ids(&redone),
+            [
+                "plan_item_pasted_one",
+                "plan_item_pasted_two",
+                "plan_item_wake"
+            ]
         );
     }
 

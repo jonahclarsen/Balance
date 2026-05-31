@@ -405,7 +405,7 @@ function createPlannerStore() {
       return selectedRootIds
     },
 
-    pastePlanItems(planId: Id, itemsToPaste: PlanItem[], targetId: Id | null, placement: 'before' | 'after' | 'inside') {
+    pastePlanItems(planId: Id, itemsToPaste: PlanItem[], targetId: Id | null, placement: 'before' | 'after' | 'inside' | 'replace') {
       if (itemsToPaste.length === 0) return []
 
       const pastedItems = clonePlanItemsForPaste(itemsToPaste)
