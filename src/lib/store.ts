@@ -135,7 +135,7 @@ function splitPlacementForBeforeText(before: { html?: string; text?: string }): 
 }
 
 function shouldMoveChildrenToSplitItem(before: { text?: string }, after: { text?: string }): boolean {
-  return (before.text ?? '') !== '' && (after.text ?? '') !== ''
+  return (before.text ?? '') !== ''
 }
 
 function queueOperationPersistence(operation: Operation): void {
