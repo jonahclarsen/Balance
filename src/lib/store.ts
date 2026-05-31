@@ -23,6 +23,8 @@ import {
   moveTemplateItemWithinLevel,
   nowISO,
   outdentPlanItem as outdentPlanItemInTree,
+  indentPlanItems as indentPlanItemsInTree,
+  outdentPlanItems as outdentPlanItemsInTree,
   outdentTemplateItem as outdentTemplateItemInTree,
   clonePlanItemsForPaste,
   copyPlanItems as copyPlanItemsFromTree,
@@ -449,6 +451,28 @@ function createPlannerStore() {
         const items = outdentPlanItemInTree(plan.items, itemId)
         return items === plan.items ? plan : { ...plan, items }
       }))
+    },
+
+    indentPlanItems(planId: Id, itemIds: Id[]) {
+      if (itemIds.length === 0) return
+
+      commit('indent_plan_items', { planId, itemIds }, (state) =>
+        updatePlan(state, planId, (plan) => {
+          const items = indentPlanItemsInTree(plan.items, itemIds)
+          return items === plan.items ? plan : { ...plan, items }
+        }),
+      )
+    },
+
+    outdentPlanItems(planId: Id, itemIds: Id[]) {
+      if (itemIds.length === 0) return
+
+      commit('outdent_plan_items', { planId, itemIds }, (state) =>
+        updatePlan(state, planId, (plan) => {
+          const items = outdentPlanItemsInTree(plan.items, itemIds)
+          return items === plan.items ? plan : { ...plan, items }
+        }),
+      )
     },
 
     renameTemplate(templateId: Id, name: string) {

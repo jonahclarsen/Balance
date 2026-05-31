@@ -421,6 +421,27 @@
       return
     }
 
+    if (
+      view === 'today' &&
+      activePlan &&
+      selectedPlanItemIds.length > 0 &&
+      event.key === 'Tab' &&
+      !event.altKey &&
+      !primaryModifier &&
+      !isRichTextActive()
+    ) {
+      const rootIds = selectedPlanRootIds()
+      if (rootIds.length === 0) return
+
+      event.preventDefault()
+      if (event.shiftKey) {
+        plannerStore.outdentPlanItems(activePlan.id, rootIds)
+      } else {
+        plannerStore.indentPlanItems(activePlan.id, rootIds)
+      }
+      return
+    }
+
     if (view === 'today' && event.altKey && !primaryModifier && !event.shiftKey) {
       if (activePlan && selectedPlanItemIds.length > 0 && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         const rootIds = selectedPlanRootIds()

@@ -402,6 +402,25 @@ export function outdentPlanItem(items: PlanItem[], itemId: Id): PlanItem[] {
   return outdentItem(items, itemId)
 }
 
+export function indentPlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
+  const selectedIds = new Set(itemIds)
+  if (selectedIds.size === 0) return items
+
+  return indentSelectedItems(items, selectedIds)
+}
+
+export function outdentPlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
+  const selectedRootIds = copyPlanItems(items, itemIds).map((item) => item.id)
+  if (selectedRootIds.length === 0) return items
+
+  let nextItems = items
+  for (let index = selectedRootIds.length - 1; index >= 0; index -= 1) {
+    nextItems = outdentItem(nextItems, selectedRootIds[index])
+  }
+
+  return nextItems
+}
+
 export function defaultPlanItemTimeRange(items: PlanItem[], itemId: Id): { startMinutes: number; endMinutes: number } {
   return defaultTimeRangeAfterPreviousTimedItem(items, itemId)
 }
@@ -716,6 +735,32 @@ function insertTemplateItem(
   })
 
   return inserted ? nextItems : null
+}
+
+function indentSelectedItems<T extends { id: Id; children: T[] }>(items: T[], selectedIds: Set<Id>): T[] {
+  let changed = false
+
+  const recursed = items.map((item) => {
+    const children = indentSelectedItems(item.children, selectedIds)
+    if (children === item.children) return item
+
+    changed = true
+    return { ...item, children }
+  })
+
+  const result: T[] = []
+  for (const item of recursed) {
+    const previous = result[result.length - 1]
+
+    if (selectedIds.has(item.id) && previous && !selectedIds.has(previous.id)) {
+      result[result.length - 1] = { ...previous, children: [...previous.children, item] }
+      changed = true
+    } else {
+      result.push(item)
+    }
+  }
+
+  return changed ? result : items
 }
 
 function outdentItem<T extends { id: Id; children: T[] }>(items: T[], itemId: Id): T[] {
