@@ -188,16 +188,18 @@ export function splitPlanItem(
   itemId: Id,
   patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
   newItem: PlanItem,
+  placement: 'before' | 'after' = 'after',
 ): PlanItem[] {
   let changed = false
 
   const nextItems = items.flatMap((item) => {
     if (item.id === itemId) {
       changed = true
-      return [{ ...item, ...patch }, newItem]
+      const patchedItem = { ...item, ...patch }
+      return placement === 'before' ? [newItem, patchedItem] : [patchedItem, newItem]
     }
 
-    const children = splitPlanItem(item.children, itemId, patch, newItem)
+    const children = splitPlanItem(item.children, itemId, patch, newItem, placement)
     if (children === item.children) return [item]
 
     changed = true
@@ -498,6 +500,7 @@ export function splitTemplateItem(
   optionId: Id,
   patch: Partial<TemplateOption>,
   newItem: TemplateItem,
+  placement: 'before' | 'after' = 'after',
 ): TemplateItem[] {
   let changed = false
 
@@ -513,10 +516,11 @@ export function splitTemplateItem(
       if (!optionChanged) return [item]
 
       changed = true
-      return [{ ...item, options }, newItem]
+      const patchedItem = { ...item, options }
+      return placement === 'before' ? [newItem, patchedItem] : [patchedItem, newItem]
     }
 
-    const children = splitTemplateItem(item.children, itemId, optionId, patch, newItem)
+    const children = splitTemplateItem(item.children, itemId, optionId, patch, newItem, placement)
     if (children === item.children) return [item]
 
     changed = true

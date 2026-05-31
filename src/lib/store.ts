@@ -39,6 +39,7 @@ const STORAGE_KEY = 'balance.appState.v1'
 const TEXT_MERGE_WINDOW_MS = 1200
 const MAX_HISTORY_ENTRIES = 200
 const PERSIST_DEBOUNCE_MS = 500
+type SplitPlacement = 'before' | 'after'
 
 type Mutator = (state: AppState) => AppState
 type CommitOptions = {
@@ -126,6 +127,10 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
 
 function persistLocalState(state: AppState): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+}
+
+function splitPlacementForBeforeText(before: { html?: string; text?: string }): SplitPlacement {
+  return (before.html ?? '') === '' && (before.text ?? '') === '' ? 'before' : 'after'
 }
 
 function queueOperationPersistence(operation: Operation): void {
@@ -313,16 +318,19 @@ function createPlannerStore() {
     splitPlanItem(
       planId: Id,
       itemId: Id,
-      patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
+      before: Partial<Omit<PlanItem, 'id' | 'children'>>,
       after: { html: string; text: string },
     ) {
+      const placement = splitPlacementForBeforeText(before)
+      const patch = placement === 'before' ? after : before
+      const inserted = placement === 'before' ? before : after
       const newItem = {
-        ...createPlanItem(after.text),
-        html: after.html,
+        ...createPlanItem(inserted.text ?? ''),
+        html: inserted.html ?? '',
       }
 
-      commit('split_plan_item', { planId, itemId, patch, newItem }, (state) => updatePlan(state, planId, (plan) => {
-        const items = splitPlanItem(plan.items, itemId, patch, newItem)
+      commit('split_plan_item', { planId, itemId, patch, newItem, placement }, (state) => updatePlan(state, planId, (plan) => {
+        const items = splitPlanItem(plan.items, itemId, patch, newItem, placement)
         return items === plan.items ? plan : { ...plan, items }
       }))
 
@@ -459,22 +467,25 @@ function createPlannerStore() {
       templateId: Id,
       itemId: Id,
       optionId: Id,
-      patch: Partial<TemplateOption>,
+      before: Partial<TemplateOption>,
       after: { html: string; text: string },
     ) {
+      const placement = splitPlacementForBeforeText(before)
+      const patch = placement === 'before' ? after : before
+      const inserted = placement === 'before' ? before : after
       const newItem = {
-        ...createTemplateItem(after.text),
+        ...createTemplateItem(inserted.text ?? ''),
         options: [
           {
-            ...createTemplateOption(after.text, 100),
-            html: after.html,
+            ...createTemplateOption(inserted.text ?? '', 100),
+            html: inserted.html ?? '',
           },
         ],
       }
 
-      commit('split_template_item', { templateId, itemId, optionId, patch, newItem }, (state) =>
+      commit('split_template_item', { templateId, itemId, optionId, patch, newItem, placement }, (state) =>
         updateTemplate(state, templateId, (template) => {
-          const items = splitTemplateItem(template.items, itemId, optionId, patch, newItem)
+          const items = splitTemplateItem(template.items, itemId, optionId, patch, newItem, placement)
           return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
         }),
       )

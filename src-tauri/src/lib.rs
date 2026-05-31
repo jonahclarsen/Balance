@@ -2031,21 +2031,28 @@ fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), S
     let source_id = required_string(payload, "itemId")?;
     let new_item = required_value(payload, "newItem")?;
     let new_item_id = required_string(new_item, "id")?;
+    let placement = optional_string(payload, "placement")?.unwrap_or_else(|| "after".to_string());
+    let insert_offset = match placement.as_str() {
+        "before" => 0,
+        "after" => 1,
+        other => return Err(format!("Unsupported split placement: {other}")),
+    };
     let parent_id = plan_item_parent_id(connection, source_id)?;
     let mut siblings = plan_item_sibling_ids(connection, plan_id, parent_id.as_deref())?;
     let source_index = siblings
         .iter()
         .position(|id| id == source_id)
         .ok_or_else(|| "Split source is not in its sibling list".to_string())?;
+    let insert_index = source_index + insert_offset;
 
     siblings.retain(|id| id != new_item_id);
-    siblings.insert(source_index + 1, new_item_id.to_string());
+    siblings.insert(insert_index, new_item_id.to_string());
     insert_plan_item(
         connection,
         plan_id,
         parent_id.as_deref(),
         new_item,
-        (source_index + 1) as i64,
+        insert_index as i64,
     )?;
     rewrite_plan_item_positions(connection, &siblings)
 }
@@ -2173,21 +2180,28 @@ fn split_template_item_row(connection: &Connection, payload: &Value) -> Result<(
     let source_id = required_string(payload, "itemId")?;
     let new_item = required_value(payload, "newItem")?;
     let new_item_id = required_string(new_item, "id")?;
+    let placement = optional_string(payload, "placement")?.unwrap_or_else(|| "after".to_string());
+    let insert_offset = match placement.as_str() {
+        "before" => 0,
+        "after" => 1,
+        other => return Err(format!("Unsupported split placement: {other}")),
+    };
     let parent_id = template_item_parent_id(connection, source_id)?;
     let mut siblings = template_item_sibling_ids(connection, template_id, parent_id.as_deref())?;
     let source_index = siblings
         .iter()
         .position(|id| id == source_id)
         .ok_or_else(|| "Split source is not in its sibling list".to_string())?;
+    let insert_index = source_index + insert_offset;
 
     siblings.retain(|id| id != new_item_id);
-    siblings.insert(source_index + 1, new_item_id.to_string());
+    siblings.insert(insert_index, new_item_id.to_string());
     insert_template_item(
         connection,
         template_id,
         parent_id.as_deref(),
         new_item,
-        (source_index + 1) as i64,
+        insert_index as i64,
     )?;
     rewrite_template_item_positions(connection, &siblings)
 }
@@ -3687,6 +3701,66 @@ mod tests {
     }
 
     #[test]
+    fn split_plan_item_can_insert_blank_item_before_source() {
+        let database = TestDatabase::new("split-plan-item-before");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Split before test")).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "split_plan_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemId": "plan_item_wake",
+                    "patch": {
+                        "text": "Wake up",
+                        "html": "Wake up"
+                    },
+                    "newItem": {
+                        "id": "plan_item_blank",
+                        "text": "",
+                        "html": "",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    },
+                    "placement": "before"
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&saved),
+            ["plan_item_blank", "plan_item_wake"]
+        );
+        assert_eq!(saved["plans"][0]["items"][0]["text"], "");
+        assert_eq!(saved["plans"][0]["items"][1]["text"], "Wake up");
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&undone), ["plan_item_wake"]);
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_plan_item_ids(&redone),
+            ["plan_item_blank", "plan_item_wake"]
+        );
+        assert_eq!(redone["plans"][0]["items"][1]["text"], "Wake up");
+    }
+
+    #[test]
     fn undo_and_redo_use_inverse_operations_not_full_state_snapshots() {
         let database = TestDatabase::new("operation-history");
         let recovery_key = generate_recovery_key();
@@ -4069,6 +4143,78 @@ mod tests {
         assert_eq!(
             redone["templates"][0]["items"][0]["options"][0]["text"],
             "Wake"
+        );
+    }
+
+    #[test]
+    fn split_template_item_can_insert_blank_item_before_source() {
+        let database = TestDatabase::new("split-template-item-before");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Template split before test")).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "split_template_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemId": "template_item_wake",
+                    "optionId": "template_option_wake",
+                    "patch": {
+                        "text": "Wake up",
+                        "html": "Wake up"
+                    },
+                    "newItem": {
+                        "id": "template_item_blank",
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "options": [
+                            {
+                                "id": "template_option_blank",
+                                "text": "",
+                                "html": "",
+                                "probability": 100
+                            }
+                        ],
+                        "children": []
+                    },
+                    "placement": "before"
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_template_item_ids(&saved),
+            ["template_item_blank", "template_item_wake"]
+        );
+        assert_eq!(saved["templates"][0]["items"][0]["options"][0]["text"], "");
+        assert_eq!(
+            saved["templates"][0]["items"][1]["options"][0]["text"],
+            "Wake up"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_template_item_ids(&undone), ["template_item_wake"]);
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&redone),
+            ["template_item_blank", "template_item_wake"]
+        );
+        assert_eq!(
+            redone["templates"][0]["items"][1]["options"][0]["text"],
+            "Wake up"
         );
     }
 

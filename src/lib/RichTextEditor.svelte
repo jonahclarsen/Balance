@@ -80,8 +80,9 @@
         const split = splitEditorAtSelection(activeEditor)
         if (split) {
           event.preventDefault()
-          activeEditor.innerHTML = split.before.html
-          renderedHTML = split.before.html
+          const source = split.before.html === '' && split.before.text === '' ? split.after : split.before
+          activeEditor.innerHTML = source.html
+          renderedHTML = source.html
           await onSplit(split.before, split.after, activeEditor)
         }
         return
