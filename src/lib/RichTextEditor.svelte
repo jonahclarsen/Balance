@@ -3,6 +3,8 @@
   import { escapeHTML, htmlToPlainText, isURL, sanitizeInlineHTML } from './planner'
   import type { Id, MoveDirection } from './types'
 
+  type HorizontalBoundaryDirection = 'left' | 'right'
+
   export let html = ''
   export let text = ''
   export let inputId: Id
@@ -21,6 +23,9 @@
     | null = null
   export let onBackspaceEmpty: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
   export let onBackspaceStart: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
+  export let onHorizontalBoundaryKey:
+    | ((direction: HorizontalBoundaryDirection, editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
+    | null = null
   export let onTabKey:
     | ((direction: 'in' | 'out', editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
@@ -118,6 +123,20 @@
       return
     }
 
+    if (
+      onHorizontalBoundaryKey &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      ((event.key === 'ArrowLeft' && isCaretAtStart(activeEditor)) ||
+        (event.key === 'ArrowRight' && isCaretAtEnd(activeEditor)))
+    ) {
+      event.preventDefault()
+      await onHorizontalBoundaryKey(event.key === 'ArrowLeft' ? 'left' : 'right', activeEditor, event)
+      return
+    }
+
     if (!onArrowKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
     if (event.metaKey || event.ctrlKey) return
 
@@ -140,6 +159,19 @@
     beforeRange.selectNodeContents(activeEditor)
     beforeRange.setEnd(range.startContainer, range.startOffset)
     return htmlToPlainText(sanitizeFragment(beforeRange.cloneContents())) === ''
+  }
+
+  function isCaretAtEnd(activeEditor: HTMLDivElement) {
+    const selection = document.getSelection()
+    if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return false
+
+    const range = selection.getRangeAt(0)
+    if (!rangeIsInside(activeEditor, range)) return false
+
+    const afterRange = document.createRange()
+    afterRange.selectNodeContents(activeEditor)
+    afterRange.setStart(range.startContainer, range.startOffset)
+    return htmlToPlainText(sanitizeFragment(afterRange.cloneContents())) === ''
   }
 
   function handleInput(event: Event) {

@@ -146,6 +146,10 @@
     focusItemTextInputAtOffset(result.focusItemId, result.focusOffset)
   }
 
+  function handleHorizontalBoundaryKey(direction: 'left' | 'right', current: HTMLDivElement) {
+    focusAdjacentTextInput(current, direction === 'left' ? 'up' : 'down', direction === 'left' ? 'end' : 'start')
+  }
+
   async function handleTextTab(direction: 'in' | 'out', current: HTMLDivElement) {
     if (direction === 'in') {
       const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
@@ -179,12 +183,12 @@
     return null
   }
 
-  function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection) {
+  function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection, position: 'start' | 'end' = 'end') {
     const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
     const index = inputs.indexOf(current)
     const target = inputs[direction === 'up' ? index - 1 : index + 1]
 
-    if (target) focusTextInput(target)
+    if (target) focusTextInput(target, position)
   }
 
   function focusItemTextInput(itemId: Id, position: 'start' | 'end' = 'end') {
@@ -334,6 +338,7 @@
       onSplit={handleTextSplit}
       onBackspaceEmpty={handleBackspaceEmpty}
       onBackspaceStart={handleBackspaceStart}
+      onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
       onTabKey={handleTextTab}
     />
 

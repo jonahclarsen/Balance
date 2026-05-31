@@ -525,6 +525,52 @@ test('plan item text fields support arrow focus and option-arrow sibling moves',
     .toEqual({ workIndex: 1, childCount: 2 })
 })
 
+test('plan item text fields support left and right boundary focus', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const topLevel = await topLevelTexts(page)
+  await focusInputByValue(page, topLevel[0])
+  await setCaretOffsetInFocusedEditor(page, topLevel[0].length)
+  await page.keyboard.press('ArrowRight')
+
+  await expect
+    .poll(async () => ({
+      activeText: await activeInputValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: topLevel[1], caretOffset: 0 })
+
+  await page.keyboard.press('ArrowLeft')
+  await expect
+    .poll(async () => ({
+      activeText: await activeInputValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: topLevel[0], caretOffset: topLevel[0].length })
+
+  await focusInputByValue(page, 'Work block')
+  await setCaretOffsetInFocusedEditor(page, 'Work block'.length)
+  await page.keyboard.press('ArrowRight')
+
+  await expect
+    .poll(async () => ({
+      activeText: await activeInputValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: 'Pick the first useful task', caretOffset: 0 })
+
+  await page.keyboard.press('ArrowLeft')
+  await expect
+    .poll(async () => ({
+      activeText: await activeInputValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: 'Work block', caretOffset: 'Work block'.length })
+})
+
 test('template item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
