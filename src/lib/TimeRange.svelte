@@ -9,6 +9,7 @@
   let dragState:
     | {
         mode: 'start' | 'end'
+        adjustStartOnly: boolean
         originY: number
         originStart: number
         originEnd: number
@@ -20,6 +21,7 @@
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
     dragState = {
       mode,
+      adjustStartOnly: mode === 'start' && event.altKey,
       originY: event.clientY,
       originStart: startMinutes,
       originEnd: endMinutes,
@@ -33,6 +35,13 @@
     const delta = steps * 15
 
     if (dragState.mode === 'start') {
+      if (dragState.adjustStartOnly) {
+        const latestStart = dragState.originEnd - 15
+        const nextStart = clampMinutes(Math.min(dragState.originStart + delta, latestStart))
+        onChange(nextStart, dragState.originEnd)
+        return
+      }
+
       const duration = dragState.originEnd - dragState.originStart
       const latestStart = Math.max(0, MAX_TIMELINE_MINUTES - duration)
       const nextStart = clampMinutes(Math.min(dragState.originStart + delta, latestStart))
@@ -61,7 +70,7 @@
   <button
     class="time-part"
     type="button"
-    title="Drag up or down to move the whole time range"
+    title="Drag up or down to move the whole time range. Hold Alt to change only the start time."
     on:pointerdown={(event) => beginDrag('start', event)}
     on:pointermove={continueDrag}
     on:pointerup={endDrag}

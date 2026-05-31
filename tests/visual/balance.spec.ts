@@ -447,6 +447,31 @@ test('adding plan time starts after the nearest timed item above', async ({ page
     })
 })
 
+test('alt-dragging a plan start time changes only the start time', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const pickRow = page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
+  await pickRow.getByRole('button', { name: 'Add time range' }).click()
+
+  await altVerticalDrag(page, pickRow.getByRole('button', { name: '9am' }), -20)
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const plan = state.plans?.[0]
+        const work = plan?.items?.find((item: { text: string }) => item.text === 'Work block')
+        const pick = work?.children?.find((item: { text: string }) => item.text === 'Pick the first useful task')
+
+        return [pick?.startMinutes, pick?.endMinutes]
+      }),
+    )
+    .toEqual([570, 600])
+})
+
 test('adding template time starts after the nearest timed item above', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1339,4 +1364,22 @@ async function pointerDrag(
   await page.mouse.down()
   await page.mouse.move(targetBox.x + Math.min(160, targetBox.width / 2), targetY, { steps: 8 })
   await page.mouse.up()
+}
+
+async function altVerticalDrag(page: import('@playwright/test').Page, source: import('@playwright/test').Locator, yDelta: number) {
+  const sourceBox = await source.boundingBox()
+  if (!sourceBox) throw new Error('Missing drag geometry')
+
+  const x = sourceBox.x + sourceBox.width / 2
+  const y = sourceBox.y + sourceBox.height / 2
+
+  await page.keyboard.down('Alt')
+  try {
+    await page.mouse.move(x, y)
+    await page.mouse.down()
+    await page.mouse.move(x, y + yDelta, { steps: 4 })
+    await page.mouse.up()
+  } finally {
+    await page.keyboard.up('Alt')
+  }
 }
