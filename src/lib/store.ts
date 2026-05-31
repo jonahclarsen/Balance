@@ -198,7 +198,7 @@ function createPlannerStore() {
   store.subscribe((state) => {
     if (persistenceReady && persistenceTarget === 'localStorage') persistLocalState(state)
   })
-  void hydratePersistence(store)
+  const ready = hydratePersistence(store)
 
   function commit(type: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
     let operationToPersist: Operation | null = null
@@ -248,6 +248,7 @@ function createPlannerStore() {
 
   return {
     subscribe: store.subscribe,
+    ready,
 
     setActivePlanDate(date: string) {
       commit('set_active_plan_date', { date }, (state) => ({

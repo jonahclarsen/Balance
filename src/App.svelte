@@ -14,7 +14,14 @@
     exportDirectory: string
     defaultExportDirectory: string
     usesDefaultExportDirectory: boolean
+    autoJsonExportEnabled: boolean
+    autoJsonExportTime: string
+    lastAutoJsonExportDate: string | null
+    lastAutoJsonExportPath: string | null
+    lastAutoJsonExportError: string | null
   }
+
+  const AUTO_JSON_EXPORT_CHECK_INTERVAL_MS = 15 * 60 * 1000
 
   let view: View = 'today'
   let selectedTemplateId = ''
@@ -28,6 +35,9 @@
   let exportSettingsStatus = ''
   let exportSettingsStatusIsError = false
   let exportSettingsBusy = false
+  let autoJsonExportBusy = false
+  let autoJsonExportTimer: number | null = null
+  let autoJsonExportCheckTimer: number | null = null
   let editingDailyReminder = false
   let dailyReminderDraft = ''
   let dailyReminderInput: HTMLInputElement | null = null
@@ -52,9 +62,37 @@
     clearPlanSelection()
   }
 
-  onMount(async () => {
-    recoveryKeyStatus = await getRecoveryKeyStatus()
-    await loadExportSettings()
+  onMount(() => {
+    let mounted = true
+
+    const checkAutoJsonExport = () => {
+      if (!mounted) return
+      void runAutoJsonExportCatchup()
+    }
+    const checkVisibleAutoJsonExport = () => {
+      if (document.visibilityState === 'visible') checkAutoJsonExport()
+    }
+
+    async function initialize() {
+      recoveryKeyStatus = await getRecoveryKeyStatus()
+      await plannerStore.ready
+      await loadExportSettings()
+
+      if (!mounted || !isTauri()) return
+
+      window.addEventListener('focus', checkAutoJsonExport)
+      document.addEventListener('visibilitychange', checkVisibleAutoJsonExport)
+      restartAutoJsonExportScheduler()
+    }
+
+    void initialize()
+
+    return () => {
+      mounted = false
+      clearAutoJsonExportTimers()
+      window.removeEventListener('focus', checkAutoJsonExport)
+      document.removeEventListener('visibilitychange', checkVisibleAutoJsonExport)
+    }
   })
 
   function shiftActivePlanDate(days: number) {
@@ -99,6 +137,10 @@
     view = 'today'
   }
 
+  async function saveTauriExportFile(filename: string, content: string): Promise<string> {
+    return invoke<string>('save_export_file', { filename, content })
+  }
+
   async function download(filename: string, content: string, type: string) {
     exportStatus = ''
     exportStatusIsError = false
@@ -106,7 +148,7 @@
 
     if (isTauri()) {
       try {
-        const savedPath = await invoke<string>('save_export_file', { filename, content })
+        const savedPath = await saveTauriExportFile(filename, content)
         exportSavedPath = savedPath
       } catch (error) {
         exportStatusIsError = true
@@ -149,14 +191,16 @@
     void download(`balance-history-${todayISO()}.html`, exportHTML($plannerStore), 'text/html')
   }
 
-  async function loadExportSettings() {
-    if (!isTauri()) return
+  async function loadExportSettings(): Promise<ExportSettings | null> {
+    if (!isTauri()) return null
 
     try {
       exportSettings = await invoke<ExportSettings>('get_export_settings')
+      return exportSettings
     } catch (error) {
       exportSettingsStatusIsError = true
       exportSettingsStatus = error instanceof Error ? error.message : String(error)
+      return null
     }
   }
 
@@ -178,6 +222,7 @@
       if (typeof selected === 'string') {
         exportSettings = await invoke<ExportSettings>('set_export_directory', { directory: selected })
         exportSettingsStatus = `Exports save to ${exportSettings.exportDirectory}`
+        restartAutoJsonExportScheduler()
       }
     } catch (error) {
       exportSettingsStatusIsError = true
@@ -197,12 +242,132 @@
     try {
       exportSettings = await invoke<ExportSettings>('reset_export_directory')
       exportSettingsStatus = `Exports save to ${exportSettings.exportDirectory}`
+      restartAutoJsonExportScheduler()
     } catch (error) {
       exportSettingsStatusIsError = true
       exportSettingsStatus = error instanceof Error ? error.message : String(error)
     } finally {
       exportSettingsBusy = false
     }
+  }
+
+  async function updateAutoJsonExportSettings(enabled: boolean, time: string) {
+    if (!isTauri()) return
+
+    exportSettingsStatus = ''
+    exportSettingsStatusIsError = false
+    autoJsonExportBusy = true
+
+    try {
+      exportSettings = await invoke<ExportSettings>('set_auto_json_export_settings', { enabled, time })
+      exportSettingsStatus = exportSettings.autoJsonExportEnabled
+        ? `Automatic JSON export runs at ${exportSettings.autoJsonExportTime}.`
+        : 'Automatic JSON export is disabled.'
+      restartAutoJsonExportScheduler()
+    } catch (error) {
+      exportSettingsStatusIsError = true
+      exportSettingsStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      autoJsonExportBusy = false
+    }
+  }
+
+  function clearAutoJsonExportTimers() {
+    if (autoJsonExportTimer !== null) {
+      window.clearTimeout(autoJsonExportTimer)
+      autoJsonExportTimer = null
+    }
+
+    if (autoJsonExportCheckTimer !== null) {
+      window.clearInterval(autoJsonExportCheckTimer)
+      autoJsonExportCheckTimer = null
+    }
+  }
+
+  function restartAutoJsonExportScheduler() {
+    clearAutoJsonExportTimers()
+
+    if (!isTauri() || !exportSettings?.autoJsonExportEnabled) return
+
+    void runAutoJsonExportCatchup()
+    scheduleNextAutoJsonExport()
+    autoJsonExportCheckTimer = window.setInterval(() => {
+      void runAutoJsonExportCatchup()
+    }, AUTO_JSON_EXPORT_CHECK_INTERVAL_MS)
+  }
+
+  function scheduleNextAutoJsonExport() {
+    if (!exportSettings?.autoJsonExportEnabled) return
+
+    if (autoJsonExportTimer !== null) window.clearTimeout(autoJsonExportTimer)
+
+    autoJsonExportTimer = window.setTimeout(() => {
+      void (async () => {
+        await runAutoJsonExportCatchup()
+        scheduleNextAutoJsonExport()
+      })()
+    }, millisecondsUntilNextAutoJsonExport(exportSettings))
+  }
+
+  async function runAutoJsonExportCatchup() {
+    if (!isTauri() || autoJsonExportBusy || !exportSettings || !shouldRunAutoJsonExport(exportSettings)) return
+
+    autoJsonExportBusy = true
+
+    try {
+      const date = todayISO()
+      const savedPath = await saveTauriExportFile(`balance-auto-export-${date}.json`, exportJSON($plannerStore))
+      exportSettings = await invoke<ExportSettings>('record_auto_json_export_success', { date, path: savedPath })
+      scheduleNextAutoJsonExport()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+
+      try {
+        exportSettings = await invoke<ExportSettings>('record_auto_json_export_error', { error: message })
+      } catch {
+        exportSettings = {
+          ...exportSettings,
+          lastAutoJsonExportError: message,
+        }
+      }
+    } finally {
+      autoJsonExportBusy = false
+    }
+  }
+
+  function shouldRunAutoJsonExport(settings: ExportSettings): boolean {
+    if (!settings.autoJsonExportEnabled || settings.lastAutoJsonExportDate === todayISO()) return false
+
+    const scheduledMinutes = parseTimeMinutes(settings.autoJsonExportTime)
+    if (scheduledMinutes === null) return false
+
+    const now = new Date()
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    return currentMinutes >= scheduledMinutes
+  }
+
+  function millisecondsUntilNextAutoJsonExport(settings: ExportSettings): number {
+    const scheduledMinutes = parseTimeMinutes(settings.autoJsonExportTime) ?? 23 * 60 + 55
+    const now = new Date()
+    const target = new Date(now)
+    target.setHours(Math.floor(scheduledMinutes / 60), scheduledMinutes % 60, 0, 0)
+
+    if (target.getTime() <= now.getTime() || settings.lastAutoJsonExportDate === todayISO()) {
+      target.setDate(target.getDate() + 1)
+    }
+
+    return Math.max(1_000, target.getTime() - now.getTime())
+  }
+
+  function parseTimeMinutes(time: string): number | null {
+    const match = /^(\d{2}):(\d{2})$/.exec(time)
+    if (!match) return null
+
+    const hour = Number(match[1])
+    const minute = Number(match[2])
+    if (hour > 23 || minute > 59) return null
+
+    return hour * 60 + minute
   }
 
   function handleGlobalKeydown(event: KeyboardEvent) {
@@ -1008,6 +1173,54 @@
             </div>
           {/if}
         </section>
+
+        {#if isTauri()}
+          <section class="settings-section">
+            <div>
+              <h3>Automatic JSON export</h3>
+              <p>
+                {exportSettings?.autoJsonExportEnabled
+                  ? `Runs once per day at ${exportSettings.autoJsonExportTime}.`
+                  : 'Automatic daily JSON export is off.'}
+              </p>
+            </div>
+
+            <label class="setting-toggle">
+              <input
+                type="checkbox"
+                checked={Boolean(exportSettings?.autoJsonExportEnabled)}
+                disabled={autoJsonExportBusy || !exportSettings}
+                on:change={(event) =>
+                  updateAutoJsonExportSettings(
+                    event.currentTarget.checked,
+                    exportSettings?.autoJsonExportTime ?? '23:55',
+                  )}
+              />
+              <span>Export JSON automatically every day</span>
+            </label>
+
+            <label class="time-setting">
+              <span>Daily export time</span>
+              <input
+                type="time"
+                value={exportSettings?.autoJsonExportTime ?? '23:55'}
+                disabled={autoJsonExportBusy || !exportSettings?.autoJsonExportEnabled}
+                on:change={(event) =>
+                  updateAutoJsonExportSettings(Boolean(exportSettings?.autoJsonExportEnabled), event.currentTarget.value)}
+              />
+            </label>
+
+            {#if exportSettings?.lastAutoJsonExportPath}
+              <p class="export-status">Last auto-export: {exportSettings.lastAutoJsonExportPath}</p>
+            {:else if exportSettings?.lastAutoJsonExportDate}
+              <p class="export-status">Last auto-export: {exportSettings.lastAutoJsonExportDate}</p>
+            {/if}
+
+            {#if exportSettings?.lastAutoJsonExportError}
+              <p class="export-status error">Last auto-export failed: {exportSettings.lastAutoJsonExportError}</p>
+            {/if}
+          </section>
+        {/if}
       </div>
 
       {#if exportSettingsStatus}

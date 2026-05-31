@@ -596,12 +596,40 @@ nav button.active {
 }
 
 .settings-panel {
+  display: grid;
+  gap: 24px;
   max-width: 760px;
 }
 
 .settings-section {
   display: grid;
   gap: 14px;
+}
+
+.settings-section + .settings-section {
+  border-top: 1px solid var(--line);
+  padding-top: 22px;
+}
+
+.setting-toggle,
+.time-setting {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+}
+
+.setting-toggle input {
+  width: 18px;
+  height: 18px;
+}
+
+.time-setting {
+  flex-wrap: wrap;
+}
+
+.time-setting span {
+  color: var(--muted);
 }
 
 .path-row {
