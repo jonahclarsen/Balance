@@ -1,3 +1,11 @@
+<script lang="ts" module>
+  export type TimeShiftTarget = {
+    itemId: string
+    startMinutes: number
+    endMinutes: number
+  }
+</script>
+
 <script lang="ts">
   import { clampMinutes, formatMinutes, MAX_TIMELINE_MINUTES } from './planner'
 
@@ -5,6 +13,8 @@
   export let endMinutes: number
   export let onChange: (startMinutes: number, endMinutes: number) => void
   export let onRemove: () => void
+  export let getShiftTargets: (() => TimeShiftTarget[] | null) | null = null
+  export let onShift: ((targets: TimeShiftTarget[], delta: number) => void) | null = null
 
   let dragState:
     | {
@@ -13,18 +23,21 @@
         originY: number
         originStart: number
         originEnd: number
+        shiftTargets: TimeShiftTarget[] | null
       }
     | null = null
 
   function beginDrag(mode: 'start' | 'end', event: PointerEvent) {
     event.preventDefault()
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+    const adjustStartOnly = mode === 'start' && event.altKey
     dragState = {
       mode,
-      adjustStartOnly: mode === 'start' && event.altKey,
+      adjustStartOnly,
       originY: event.clientY,
       originStart: startMinutes,
       originEnd: endMinutes,
+      shiftTargets: adjustStartOnly ? null : getShiftTargets?.() ?? null,
     }
   }
 
@@ -33,6 +46,11 @@
 
     const steps = Math.round((dragState.originY - event.clientY) / 10)
     const delta = steps * 15
+
+    if (dragState.shiftTargets) {
+      onShift?.(dragState.shiftTargets, delta)
+      return
+    }
 
     if (dragState.mode === 'start') {
       if (dragState.adjustStartOnly) {

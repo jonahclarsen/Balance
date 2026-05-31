@@ -472,6 +472,49 @@ test('alt-dragging a plan start time changes only the start time', async ({ page
     .toEqual([570, 600])
 })
 
+test('dragging a selected plan end time shifts selected timed tasks together', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const pickRow = page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
+  const writeRow = page.getByRole('listitem', { name: /Plan item: Write down next action/ })
+
+  await pickRow.getByRole('button', { name: 'Add time range' }).click()
+  await writeRow.getByRole('button', { name: 'Add time range' }).click()
+
+  await pickRow.getByRole('button', { name: 'Select item' }).click()
+  await page.keyboard.down('Shift')
+  try {
+    await writeRow.getByRole('button', { name: 'Select item' }).click()
+  } finally {
+    await page.keyboard.up('Shift')
+  }
+
+  await verticalDrag(page, pickRow.getByRole('button', { name: '10am' }), -20)
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const plan = state.plans?.[0]
+        const work = plan?.items?.find((item: { text: string }) => item.text === 'Work block')
+        const pick = work?.children?.find((item: { text: string }) => item.text === 'Pick the first useful task')
+        const write = work?.children?.find((item: { text: string }) => item.text === 'Write down next action')
+
+        return {
+          pick: [pick?.startMinutes, pick?.endMinutes],
+          write: [write?.startMinutes, write?.endMinutes],
+        }
+      }),
+    )
+    .toEqual({
+      pick: [570, 630],
+      write: [630, 690],
+    })
+})
+
 test('adding template time starts after the nearest timed item above', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1363,6 +1406,19 @@ async function pointerDrag(
   await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
   await page.mouse.down()
   await page.mouse.move(targetBox.x + Math.min(160, targetBox.width / 2), targetY, { steps: 8 })
+  await page.mouse.up()
+}
+
+async function verticalDrag(page: import('@playwright/test').Page, source: import('@playwright/test').Locator, yDelta: number) {
+  const sourceBox = await source.boundingBox()
+  if (!sourceBox) throw new Error('Missing drag geometry')
+
+  const x = sourceBox.x + sourceBox.width / 2
+  const y = sourceBox.y + sourceBox.height / 2
+
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x, y + yDelta, { steps: 4 })
   await page.mouse.up()
 }
 

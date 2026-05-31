@@ -1,9 +1,9 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { defaultPlanItemTimeRange } from './planner'
+  import { defaultPlanItemTimeRange, MAX_TIMELINE_MINUTES } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
-  import TimeRange from './TimeRange.svelte'
+  import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import type { Id, MoveDirection, MovePlacement, PlanItem } from './types'
 
   export let item: PlanItem
@@ -41,6 +41,49 @@
 
   function addTime() {
     patchItem(planId, item.id, defaultPlanItemTimeRange(allItems, item.id))
+  }
+
+  function selectedTimeShiftTargets(): TimeShiftTarget[] | null {
+    if (!selected || selectedItemIds.size < 2) return null
+
+    const targets = collectSelectedTimedItems(allItems, selectedItemIds)
+    return targets.some((target) => target.itemId === item.id) ? targets : null
+  }
+
+  function collectSelectedTimedItems(items: PlanItem[], selectedIds: Set<Id>): TimeShiftTarget[] {
+    const targets: TimeShiftTarget[] = []
+
+    for (const planItem of items) {
+      if (selectedIds.has(planItem.id) && planItem.startMinutes !== null && planItem.endMinutes !== null) {
+        targets.push({
+          itemId: planItem.id,
+          startMinutes: planItem.startMinutes,
+          endMinutes: planItem.endMinutes,
+        })
+      }
+
+      targets.push(...collectSelectedTimedItems(planItem.children, selectedIds))
+    }
+
+    return targets
+  }
+
+  function shiftSelectedTimeRanges(targets: TimeShiftTarget[], delta: number) {
+    const clampedDelta = clampTimeShiftDelta(targets, delta)
+
+    for (const target of targets) {
+      patchItem(planId, target.itemId, {
+        startMinutes: target.startMinutes + clampedDelta,
+        endMinutes: target.endMinutes + clampedDelta,
+      })
+    }
+  }
+
+  function clampTimeShiftDelta(targets: TimeShiftTarget[], delta: number) {
+    const earliestStart = Math.min(...targets.map((target) => target.startMinutes))
+    const latestEnd = Math.max(...targets.map((target) => target.endMinutes))
+
+    return Math.max(-earliestStart, Math.min(delta, MAX_TIMELINE_MINUTES - latestEnd))
   }
 
   function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
@@ -309,6 +352,8 @@
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
         onChange={(startMinutes, endMinutes) => patchItem(planId, item.id, { startMinutes, endMinutes })}
+        getShiftTargets={selectedTimeShiftTargets}
+        onShift={shiftSelectedTimeRanges}
         onRemove={() => patchItem(planId, item.id, { startMinutes: null, endMinutes: null })}
       />
     {:else}
