@@ -12,6 +12,19 @@ import type {
 
 export const DEFAULT_DAILY_REMINDER = "This shouldn't be aspirational"
 
+export type BackspacePlanItemAtStartResult = {
+  items: PlanItem[]
+  operation:
+    | { action: 'delete_previous'; previousId: Id }
+    | {
+        action: 'merge'
+        previousId: Id
+        patch: Partial<Omit<PlanItem, 'id' | 'children'>>
+      }
+  focusItemId: Id
+  focusOffset: number
+}
+
 export function createId(prefix = 'id'): Id {
   if (globalThis.crypto?.randomUUID) {
     return `${prefix}_${globalThis.crypto.randomUUID()}`
@@ -218,6 +231,47 @@ export function deletePlanItem(items: PlanItem[], itemId: Id): PlanItem[] {
     }))
 }
 
+export function backspacePlanItemAtStart(items: PlanItem[], itemId: Id): BackspacePlanItemAtStartResult | null {
+  const flattened = flattenPlanItems(items)
+  const currentIndex = flattened.findIndex((item) => item.id === itemId)
+  if (currentIndex <= 0) return null
+
+  const current = flattened[currentIndex]
+  const previous = flattened[currentIndex - 1]
+
+  if (isPlanItemTextEmpty(previous) && previous.children.length === 0) {
+    return {
+      items: deletePlanItem(items, previous.id),
+      operation: { action: 'delete_previous', previousId: previous.id },
+      focusItemId: current.id,
+      focusOffset: 0,
+    }
+  }
+
+  const previousHTML = previous.html || escapeHTML(previous.text)
+  const currentHTML = current.html || escapeHTML(current.text)
+  const patch = {
+    text: `${previous.text}${current.text}`,
+    html: sanitizeInlineHTML(`${previousHTML}${currentHTML}`),
+  }
+  const withMergedPrevious = updatePlanItem(items, previous.id, (item) => ({
+    ...item,
+    ...patch,
+    children: [...item.children, ...current.children],
+  }))
+
+  return {
+    items: deletePlanItem(withMergedPrevious, current.id),
+    operation: {
+      action: 'merge',
+      previousId: previous.id,
+      patch,
+    },
+    focusItemId: previous.id,
+    focusOffset: previous.text.length,
+  }
+}
+
 export function copyPlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
   const selectedIds = new Set(itemIds)
   if (selectedIds.size === 0) return []
@@ -361,6 +415,14 @@ function findPlanItem(items: PlanItem[], itemId: Id): PlanItem | null {
 
 function containsPlanItem(items: PlanItem[], itemId: Id): boolean {
   return Boolean(findPlanItem(items, itemId))
+}
+
+function flattenPlanItems(items: PlanItem[]): PlanItem[] {
+  return items.flatMap((item) => [item, ...flattenPlanItems(item.children)])
+}
+
+function isPlanItemTextEmpty(item: PlanItem): boolean {
+  return item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
 }
 
 function copySelectedPlanItems(items: PlanItem[], selectedIds: Set<Id>): PlanItem[] {

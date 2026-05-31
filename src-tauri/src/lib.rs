@@ -775,6 +775,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             Ok(())
         }
         "split_plan_item" => split_plan_item_row(tx, payload),
+        "backspace_plan_item_at_start" => backspace_plan_item_at_start_row(tx, payload),
         "delete_plan_item" => {
             tx.execute(
                 "delete from plan_items where id = ?1",
@@ -1014,6 +1015,9 @@ fn build_undo_operation(
             )))
         }
         "split_plan_item" => build_split_plan_item_undo(connection, payload),
+        "backspace_plan_item_at_start" => {
+            build_backspace_plan_item_at_start_undo(connection, payload)
+        }
         "delete_plan_item" => {
             let Some(snapshot) =
                 read_plan_item_snapshot(connection, required_string(payload, "itemId")?)?
@@ -1279,6 +1283,62 @@ fn build_split_plan_item_undo(
         "batch",
         json!({ "operations": operations }),
     )))
+}
+
+fn build_backspace_plan_item_at_start_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    match required_string(payload, "action")? {
+        "delete_previous" => {
+            let Some(snapshot) =
+                read_plan_item_snapshot(connection, required_string(payload, "previousId")?)?
+            else {
+                return Ok(None);
+            };
+
+            Ok(Some(storage_operation(
+                "insert_plan_item_at",
+                json!({
+                    "planId": snapshot.plan_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
+                    "item": snapshot.item,
+                }),
+            )))
+        }
+        "merge" => {
+            let Some(current_snapshot) =
+                read_plan_item_snapshot(connection, required_string(payload, "itemId")?)?
+            else {
+                return Ok(None);
+            };
+            let patch_payload = json!({
+                "planId": required_string(payload, "planId")?,
+                "itemId": required_string(payload, "previousId")?,
+                "patch": required_value(payload, "patch")?,
+            });
+            let mut operations = vec![storage_operation(
+                "insert_plan_item_at",
+                json!({
+                    "planId": current_snapshot.plan_id,
+                    "parentId": current_snapshot.parent_id,
+                    "position": current_snapshot.position,
+                    "item": current_snapshot.item,
+                }),
+            )];
+
+            if let Some(patch_undo) = build_plan_item_patch_undo(connection, &patch_payload)? {
+                operations.push(patch_undo);
+            }
+
+            Ok(Some(storage_operation(
+                "batch",
+                json!({ "operations": operations }),
+            )))
+        }
+        other => Err(format!("Unsupported backspace action: {other}")),
+    }
 }
 
 fn build_delete_plan_items_undo(
@@ -2055,6 +2115,58 @@ fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), S
         insert_index as i64,
     )?;
     rewrite_plan_item_positions(connection, &siblings)
+}
+
+fn backspace_plan_item_at_start_row(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<(), String> {
+    match required_string(payload, "action")? {
+        "delete_previous" => {
+            connection
+                .execute(
+                    "delete from plan_items where id = ?1",
+                    params![required_string(payload, "previousId")?],
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        "merge" => {
+            let plan_id = required_string(payload, "planId")?;
+            let item_id = required_string(payload, "itemId")?;
+            let previous_id = required_string(payload, "previousId")?;
+            patch_plan_item(
+                connection,
+                &json!({
+                    "planId": plan_id,
+                    "itemId": previous_id,
+                    "patch": required_value(payload, "patch")?,
+                }),
+            )?;
+
+            let child_ids = plan_item_sibling_ids(connection, plan_id, Some(item_id))?;
+            let next_position = next_plan_item_position(connection, plan_id, Some(previous_id))?;
+
+            for (index, child_id) in child_ids.iter().enumerate() {
+                connection
+                    .execute(
+                        "
+                        update plan_items
+                        set parent_id = ?1, position = ?2
+                        where id = ?3
+                        ",
+                        params![previous_id, next_position + index as i64, child_id],
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+
+            connection
+                .execute("delete from plan_items where id = ?1", params![item_id])
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        other => Err(format!("Unsupported backspace action: {other}")),
+    }
 }
 
 fn paste_plan_items_row(
@@ -3758,6 +3870,161 @@ mod tests {
             ["plan_item_blank", "plan_item_wake"]
         );
         assert_eq!(redone["plans"][0]["items"][1]["text"], "Wake up");
+    }
+
+    #[test]
+    fn backspace_plan_item_at_start_deletes_empty_previous_item() {
+        let database = TestDatabase::new("backspace-delete-previous");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Backspace delete test");
+        state["plans"][0]["items"] = json!([
+            {
+                "id": "plan_item_blank",
+                "text": "",
+                "html": "",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            },
+            {
+                "id": "plan_item_wake",
+                "text": "Wake up",
+                "html": "Wake up",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }
+        ]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "backspace_plan_item_at_start",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemId": "plan_item_wake",
+                    "previousId": "plan_item_blank",
+                    "action": "delete_previous"
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(top_plan_item_ids(&saved), ["plan_item_wake"]);
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_plan_item_ids(&undone),
+            ["plan_item_blank", "plan_item_wake"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&redone), ["plan_item_wake"]);
+    }
+
+    #[test]
+    fn backspace_plan_item_at_start_merges_current_item_into_previous_item() {
+        let database = TestDatabase::new("backspace-merge-current");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Backspace merge test");
+        state["plans"][0]["items"] = json!([
+            {
+                "id": "plan_item_wake",
+                "text": "Wake up",
+                "html": "Wake up",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            },
+            {
+                "id": "plan_item_move",
+                "text": "Move",
+                "html": "Move",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": [
+                    {
+                        "id": "plan_item_child",
+                        "text": "Stretch",
+                        "html": "Stretch",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }
+                ]
+            }
+        ]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "backspace_plan_item_at_start",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemId": "plan_item_move",
+                    "previousId": "plan_item_wake",
+                    "action": "merge",
+                    "patch": {
+                        "text": "Wake upMove",
+                        "html": "Wake upMove"
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(top_plan_item_ids(&saved), ["plan_item_wake"]);
+        assert_eq!(saved["plans"][0]["items"][0]["text"], "Wake upMove");
+        assert_eq!(
+            saved["plans"][0]["items"][0]["children"][0]["id"],
+            "plan_item_child"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_plan_item_ids(&undone),
+            ["plan_item_wake", "plan_item_move"]
+        );
+        assert_eq!(undone["plans"][0]["items"][0]["text"], "Wake up");
+        assert_eq!(
+            undone["plans"][0]["items"][1]["children"][0]["id"],
+            "plan_item_child"
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&redone), ["plan_item_wake"]);
+        assert_eq!(redone["plans"][0]["items"][0]["text"], "Wake upMove");
+        assert_eq!(
+            redone["plans"][0]["items"][0]["children"][0]["id"],
+            "plan_item_child"
+        );
     }
 
     #[test]

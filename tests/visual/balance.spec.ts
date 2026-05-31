@@ -641,6 +641,80 @@ test('enter at the start of a parent plan item inserts a blank sibling above it'
     })
 })
 
+test('backspace at the start of a plan item removes an empty item above it', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Work block')
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Enter')
+  await focusInputByValue(page, 'Work block')
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Backspace')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const items =
+          state.plans?.[0]?.items?.map((item: { text: string; children?: Array<{ text: string }> }) => ({
+            text: item.text,
+            children: item.children?.map((child) => child.text) ?? [],
+          })) ?? []
+        const workIndex = items.findIndex((item: { text: string }) => item.text === 'Work block')
+
+        return {
+          activeText: document.activeElement instanceof HTMLElement ? document.activeElement.textContent : null,
+          caretOffset: caretOffsetFromDOM(),
+          blankBefore: workIndex > 0 ? items[workIndex - 1] : null,
+          workChildren: workIndex >= 0 ? items[workIndex].children : null,
+        }
+
+        function caretOffsetFromDOM() {
+          const active = document.activeElement
+          const selection = document.getSelection()
+          if (!(active instanceof HTMLElement) || !selection || selection.rangeCount === 0) return null
+          const range = selection.getRangeAt(0).cloneRange()
+          range.selectNodeContents(active)
+          range.setEnd(selection.anchorNode ?? active, selection.anchorOffset)
+          return range.toString().length
+        }
+      }),
+    )
+    .toEqual({
+      activeText: 'Work block',
+      caretOffset: 0,
+      blankBefore: expect.not.objectContaining({ text: '' }),
+      workChildren: ['Pick the first useful task', 'Write down next action'],
+    })
+})
+
+test('backspace at the start of a plan item merges it into the item above', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  await focusInputByValue(page, before[1])
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Backspace')
+
+  await expect
+    .poll(async () => ({
+      activeText: await activeInputValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+      texts: await topLevelTexts(page),
+    }))
+    .toEqual({
+      activeText: `${before[0]}${before[1]}`,
+      caretOffset: before[0].length,
+      texts: [`${before[0]}${before[1]}`, ...before.slice(2)],
+    })
+})
+
 test('plan item rich text preserves paste formatting and supports shortcuts', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 

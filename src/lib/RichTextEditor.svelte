@@ -20,6 +20,7 @@
     | ((before: { html: string; text: string }, after: { html: string; text: string }, editor: HTMLDivElement) => void | Promise<void>)
     | null = null
   export let onBackspaceEmpty: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
+  export let onBackspaceStart: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
   export let onTabKey:
     | ((direction: 'in' | 'out', editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
@@ -47,6 +48,20 @@
 
   async function handleKeydown(event: KeyboardEvent) {
     const activeEditor = event.currentTarget as HTMLDivElement
+
+    if (
+      event.key === 'Backspace' &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      onBackspaceStart &&
+      isCaretAtStart(activeEditor)
+    ) {
+      event.preventDefault()
+      await onBackspaceStart(activeEditor, event)
+      return
+    }
 
     if (
       event.key === 'Backspace' &&
@@ -112,6 +127,19 @@
 
   function isEditorEmpty(activeEditor: HTMLDivElement) {
     return htmlToPlainText(sanitizeInlineHTML(activeEditor.innerHTML)).trim() === ''
+  }
+
+  function isCaretAtStart(activeEditor: HTMLDivElement) {
+    const selection = document.getSelection()
+    if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return false
+
+    const range = selection.getRangeAt(0)
+    if (!rangeIsInside(activeEditor, range)) return false
+
+    const beforeRange = document.createRange()
+    beforeRange.selectNodeContents(activeEditor)
+    beforeRange.setEnd(range.startContainer, range.startOffset)
+    return htmlToPlainText(sanitizeFragment(beforeRange.cloneContents())) === ''
   }
 
   function handleInput(event: Event) {

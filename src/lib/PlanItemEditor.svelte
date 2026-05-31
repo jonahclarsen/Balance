@@ -18,6 +18,10 @@
     patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
     after: { html: string; text: string },
   ) => Id
+  export let backspaceItemAtStart: (
+    planId: Id,
+    itemId: Id,
+  ) => { focusItemId: Id; focusOffset: number } | null = () => null
   export let addChild: (planId: Id, parentId: Id) => void
   export let deleteItem: (planId: Id, itemId: Id) => void
   export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
@@ -130,6 +134,18 @@
     if (target) focusTextInput(target)
   }
 
+  async function handleBackspaceStart(current: HTMLDivElement) {
+    const result = backspaceItemAtStart(planId, item.id)
+
+    if (!result) {
+      if (item.text.trim() === '') await handleBackspaceEmpty(current)
+      return
+    }
+
+    await tick()
+    focusItemTextInputAtOffset(result.focusItemId, result.focusOffset)
+  }
+
   async function handleTextTab(direction: 'in' | 'out', current: HTMLDivElement) {
     if (direction === 'in') {
       const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
@@ -179,11 +195,54 @@
     if (input) focusTextInput(input, position)
   }
 
+  function focusItemTextInputAtOffset(itemId: Id, offset: number) {
+    const input = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]')).find(
+      (candidate) => candidate.dataset.planTextInputId === itemId,
+    )
+
+    if (input) focusTextInputAtOffset(input, offset)
+  }
+
   function focusTextInput(input: HTMLDivElement, position: 'start' | 'end' = 'end') {
     input.focus()
     const range = document.createRange()
     range.selectNodeContents(input)
     range.collapse(position === 'start')
+
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
+
+  function focusTextInputAtOffset(input: HTMLDivElement, offset: number) {
+    input.focus()
+
+    const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT)
+    let remaining = offset
+    let targetNode: Node = input
+    let nodeOffset = 0
+    let node = walker.nextNode()
+
+    while (node) {
+      const length = node.textContent?.length ?? 0
+      if (remaining <= length) {
+        targetNode = node
+        nodeOffset = remaining
+        break
+      }
+
+      remaining -= length
+      node = walker.nextNode()
+    }
+
+    if (!node) {
+      targetNode = input
+      nodeOffset = input.childNodes.length
+    }
+
+    const range = document.createRange()
+    range.setStart(targetNode, nodeOffset)
+    range.collapse(true)
 
     const selection = document.getSelection()
     selection?.removeAllRanges()
@@ -274,6 +333,7 @@
       onArrowKey={handleTextArrowKey}
       onSplit={handleTextSplit}
       onBackspaceEmpty={handleBackspaceEmpty}
+      onBackspaceStart={handleBackspaceStart}
       onTabKey={handleTextTab}
     />
 
@@ -294,6 +354,7 @@
           parentId={item.id}
           {patchItem}
           {splitItem}
+          {backspaceItemAtStart}
           {addChild}
           {deleteItem}
           {moveItem}

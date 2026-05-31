@@ -8,6 +8,7 @@ import {
   createTemplateItem,
   createTemplateOption,
   DEFAULT_DAILY_REMINDER,
+  backspacePlanItemAtStart as backspacePlanItemAtStartInTree,
   deletePlanItem,
   deletePlanItems,
   deleteTemplateItem,
@@ -342,6 +343,28 @@ function createPlannerStore() {
         ...plan,
         items: deletePlanItem(plan.items, itemId),
       })))
+    },
+
+    backspacePlanItemAtStart(planId: Id, itemId: Id) {
+      const plan = get(store).plans.find((candidate) => candidate.id === planId)
+      if (!plan) return null
+
+      const result = backspacePlanItemAtStartInTree(plan.items, itemId)
+      if (!result) return null
+
+      commit(
+        'backspace_plan_item_at_start',
+        { planId, itemId, ...result.operation },
+        (state) =>
+          updatePlan(state, planId, (candidate) =>
+            candidate.id === plan.id ? { ...candidate, items: result.items } : candidate,
+          ),
+      )
+
+      return {
+        focusItemId: result.focusItemId,
+        focusOffset: result.focusOffset,
+      }
     },
 
     copyPlanItems(planId: Id, itemIds: Id[]) {
