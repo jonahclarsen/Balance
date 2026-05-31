@@ -641,6 +641,41 @@ test('enter at the start of a parent plan item inserts a blank sibling above it'
     })
 })
 
+test('enter in the middle of a parent plan item moves children to the second split item', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Work block')
+  await setCaretOffsetInFocusedEditor(page, 4)
+  await page.keyboard.press('Enter')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const items =
+          state.plans?.[0]?.items?.map((item: { text: string; children?: Array<{ text: string }> }) => ({
+            text: item.text,
+            children: item.children?.map((child) => child.text) ?? [],
+          })) ?? []
+        const firstIndex = items.findIndex((item: { text: string }) => item.text === 'Work')
+
+        return {
+          activeText: document.activeElement instanceof HTMLElement ? document.activeElement.textContent : null,
+          first: firstIndex >= 0 ? items[firstIndex] : null,
+          second: firstIndex >= 0 ? items[firstIndex + 1] : null,
+        }
+      }),
+    )
+    .toEqual({
+      activeText: ' block',
+      first: { text: 'Work', children: [] },
+      second: { text: ' block', children: ['Pick the first useful task', 'Write down next action'] },
+    })
+})
+
 test('backspace at the start of a plan item removes an empty item above it', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

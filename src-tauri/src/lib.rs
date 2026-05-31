@@ -1269,6 +1269,12 @@ fn build_split_plan_item_undo(
     connection: &Connection,
     payload: &Value,
 ) -> Result<Option<Value>, String> {
+    let source_id = required_string(payload, "itemId")?;
+    let source_snapshot = if optional_bool(payload, "moveChildrenToNewItem")?.unwrap_or(false) {
+        read_plan_item_snapshot(connection, source_id)?
+    } else {
+        None
+    };
     let new_item_id = required_string(required_value(payload, "newItem")?, "id")?;
     let mut operations = vec![storage_operation(
         "delete_plan_item",
@@ -1277,6 +1283,22 @@ fn build_split_plan_item_undo(
 
     if let Some(patch_undo) = build_plan_item_patch_undo(connection, payload)? {
         operations.push(patch_undo);
+    }
+
+    if let Some(snapshot) = source_snapshot {
+        if let Some(children) = snapshot.item["children"].as_array() {
+            for (position, child) in children.iter().enumerate() {
+                operations.push(storage_operation(
+                    "insert_plan_item_at",
+                    json!({
+                        "planId": snapshot.plan_id,
+                        "parentId": source_id,
+                        "position": position,
+                        "item": child,
+                    }),
+                ));
+            }
+        }
     }
 
     Ok(Some(storage_operation(
@@ -2085,10 +2107,18 @@ fn patch_plan_item(connection: &Connection, payload: &Value) -> Result<(), Strin
 }
 
 fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), String> {
-    patch_plan_item(connection, payload)?;
-
     let plan_id = required_string(payload, "planId")?;
     let source_id = required_string(payload, "itemId")?;
+    let move_children_to_new_item =
+        optional_bool(payload, "moveChildrenToNewItem")?.unwrap_or(false);
+    let child_ids = if move_children_to_new_item {
+        plan_item_sibling_ids(connection, plan_id, Some(source_id))?
+    } else {
+        Vec::new()
+    };
+
+    patch_plan_item(connection, payload)?;
+
     let new_item = required_value(payload, "newItem")?;
     let new_item_id = required_string(new_item, "id")?;
     let placement = optional_string(payload, "placement")?.unwrap_or_else(|| "after".to_string());
@@ -2114,6 +2144,22 @@ fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), S
         new_item,
         insert_index as i64,
     )?;
+
+    if move_children_to_new_item {
+        for (position, child_id) in child_ids.iter().enumerate() {
+            connection
+                .execute(
+                    "
+                    update plan_items
+                    set parent_id = ?1, position = ?2
+                    where id = ?3
+                    ",
+                    params![new_item_id, position as i64, child_id],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+    }
+
     rewrite_plan_item_positions(connection, &siblings)
 }
 
@@ -3870,6 +3916,89 @@ mod tests {
             ["plan_item_blank", "plan_item_wake"]
         );
         assert_eq!(redone["plans"][0]["items"][1]["text"], "Wake up");
+    }
+
+    #[test]
+    fn split_plan_item_can_move_children_to_new_item() {
+        let database = TestDatabase::new("split-plan-item-move-children");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Split children test");
+        state["plans"][0]["items"][0]["children"] = json!([
+            {
+                "id": "plan_item_child",
+                "text": "Stretch",
+                "html": "Stretch",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }
+        ]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "split_plan_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemId": "plan_item_wake",
+                    "patch": {
+                        "text": "Wake",
+                        "html": "Wake"
+                    },
+                    "newItem": {
+                        "id": "plan_item_split",
+                        "text": " up",
+                        "html": " up",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    },
+                    "moveChildrenToNewItem": true
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&saved),
+            ["plan_item_wake", "plan_item_split"]
+        );
+        assert_eq!(saved["plans"][0]["items"][0]["children"], json!([]));
+        assert_eq!(
+            saved["plans"][0]["items"][1]["children"][0]["id"],
+            "plan_item_child"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&undone), ["plan_item_wake"]);
+        assert_eq!(undone["plans"][0]["items"][0]["text"], "Wake up");
+        assert_eq!(
+            undone["plans"][0]["items"][0]["children"][0]["id"],
+            "plan_item_child"
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_plan_item_ids(&redone),
+            ["plan_item_wake", "plan_item_split"]
+        );
+        assert_eq!(
+            redone["plans"][0]["items"][1]["children"][0]["id"],
+            "plan_item_child"
+        );
     }
 
     #[test]

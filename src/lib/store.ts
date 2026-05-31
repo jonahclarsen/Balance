@@ -134,6 +134,10 @@ function splitPlacementForBeforeText(before: { html?: string; text?: string }): 
   return (before.html ?? '') === '' && (before.text ?? '') === '' ? 'before' : 'after'
 }
 
+function shouldMoveChildrenToSplitItem(before: { text?: string }, after: { text?: string }): boolean {
+  return (before.text ?? '') !== '' && (after.text ?? '') !== ''
+}
+
 function queueOperationPersistence(operation: Operation): void {
   if (persistenceTarget === 'localStorage') return
 
@@ -325,13 +329,14 @@ function createPlannerStore() {
       const placement = splitPlacementForBeforeText(before)
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
+      const moveChildrenToNewItem = shouldMoveChildrenToSplitItem(before, after)
       const newItem = {
         ...createPlanItem(inserted.text ?? ''),
         html: inserted.html ?? '',
       }
 
-      commit('split_plan_item', { planId, itemId, patch, newItem, placement }, (state) => updatePlan(state, planId, (plan) => {
-        const items = splitPlanItem(plan.items, itemId, patch, newItem, placement)
+      commit('split_plan_item', { planId, itemId, patch, newItem, placement, moveChildrenToNewItem }, (state) => updatePlan(state, planId, (plan) => {
+        const items = splitPlanItem(plan.items, itemId, patch, newItem, placement, moveChildrenToNewItem)
         return items === plan.items ? plan : { ...plan, items }
       }))
 

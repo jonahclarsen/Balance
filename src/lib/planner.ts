@@ -202,17 +202,19 @@ export function splitPlanItem(
   patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
   newItem: PlanItem,
   placement: 'before' | 'after' = 'after',
+  moveChildrenToNewItem = false,
 ): PlanItem[] {
   let changed = false
 
   const nextItems = items.flatMap((item) => {
     if (item.id === itemId) {
       changed = true
-      const patchedItem = { ...item, ...patch }
-      return placement === 'before' ? [newItem, patchedItem] : [patchedItem, newItem]
+      const patchedItem = { ...item, ...patch, children: moveChildrenToNewItem ? [] : item.children }
+      const insertedItem = moveChildrenToNewItem ? { ...newItem, children: item.children } : newItem
+      return placement === 'before' ? [insertedItem, patchedItem] : [patchedItem, insertedItem]
     }
 
-    const children = splitPlanItem(item.children, itemId, patch, newItem, placement)
+    const children = splitPlanItem(item.children, itemId, patch, newItem, placement, moveChildrenToNewItem)
     if (children === item.children) return [item]
 
     changed = true
