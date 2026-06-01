@@ -1186,6 +1186,39 @@ test('rich plan item text restores the caret after focus returns', async ({ page
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
 })
 
+test('rich plan item text restores the caret after visibility returns', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await setCaretOffsetInFocusedEditor(page, 4)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+
+  await page.evaluate(() => {
+    const input = document.activeElement
+    if (!(input instanceof HTMLElement) || !input.matches('[data-plan-text-input]')) return
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(true)
+
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
+
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+})
+
 test('global undo and redo batch text edits', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

@@ -40,6 +40,7 @@
   let lastRevision = revision
   let savedSelection: SavedSelection | null = null
   let restoreSelectionOnNextFocus = false
+  let restoreRequest = 0
 
   $: {
     const nextHTML = html || escapeHTML(text)
@@ -204,10 +205,7 @@
   function handleFocus() {
     if (!restoreSelectionOnNextFocus) return
 
-    requestAnimationFrame(() => {
-      restoreSelectionOnNextFocus = false
-      if (editor === document.activeElement) restoreSelection(editor)
-    })
+    scheduleSelectionRestore()
   }
 
   function handleBlur() {
@@ -218,12 +216,7 @@
   }
 
   function handleWindowFocus() {
-    requestAnimationFrame(() => {
-      if (editor !== document.activeElement) return
-
-      restoreSelectionOnNextFocus = false
-      restoreSelection(editor)
-    })
+    if (restoreSelectionOnNextFocus) scheduleSelectionRestore()
   }
 
   function handleWindowBlur() {
@@ -231,6 +224,23 @@
 
     saveSelection(editor)
     restoreSelectionOnNextFocus = true
+  }
+
+  function handleDocumentSelectionChange() {
+    if (restoreSelectionOnNextFocus) return
+    if (editor) saveSelection(editor)
+  }
+
+  function handleDocumentVisibilityChange() {
+    if (document.visibilityState === 'hidden') {
+      if (editor === document.activeElement) {
+        saveSelection(editor)
+        restoreSelectionOnNextFocus = true
+      }
+      return
+    }
+
+    if (restoreSelectionOnNextFocus) scheduleSelectionRestore()
   }
 
   function handlePaste(event: ClipboardEvent) {
@@ -363,6 +373,24 @@
     selection?.addRange(range)
   }
 
+  function scheduleSelectionRestore() {
+    const request = ++restoreRequest
+    restoreSelectionOnNextFocus = true
+
+    requestAnimationFrame(() => restoreSelectionForRequest(request, false))
+    window.setTimeout(() => restoreSelectionForRequest(request, false), 0)
+    window.setTimeout(() => restoreSelectionForRequest(request, true), 75)
+  }
+
+  function restoreSelectionForRequest(request: number, finalAttempt: boolean) {
+    if (request !== restoreRequest) return
+
+    if (editor !== document.activeElement) return
+
+    restoreSelection(editor)
+    if (finalAttempt) restoreSelectionOnNextFocus = false
+  }
+
   function textOffsetForRangeBoundary(activeEditor: HTMLDivElement, boundaryNode: Node, boundaryOffset: number) {
     const range = document.createRange()
     range.selectNodeContents(activeEditor)
@@ -399,6 +427,7 @@
 </script>
 
 <svelte:window on:blur={handleWindowBlur} on:focus={handleWindowFocus} />
+<svelte:document on:selectionchange={handleDocumentSelectionChange} on:visibilitychange={handleDocumentVisibilityChange} />
 
 <div
   bind:this={editor}
