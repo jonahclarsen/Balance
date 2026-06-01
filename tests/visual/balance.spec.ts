@@ -1133,6 +1133,37 @@ test('typing in rich plan item text keeps the caret at the insertion point', asy
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(3)
 })
 
+test('rich plan item text restores the caret after focus returns', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await setCaretOffsetInFocusedEditor(page, 4)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+
+  await page.evaluate(() => {
+    const input = document.activeElement
+    if (!(input instanceof HTMLElement) || !input.matches('[data-plan-text-input]')) return
+
+    window.dispatchEvent(new FocusEvent('blur'))
+    input.blur()
+    input.focus()
+
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(true)
+
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    window.dispatchEvent(new FocusEvent('focus'))
+  })
+
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+})
+
 test('global undo and redo batch text edits', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

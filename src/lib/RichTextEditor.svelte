@@ -4,6 +4,10 @@
   import type { Id, MoveDirection } from './types'
 
   type HorizontalBoundaryDirection = 'left' | 'right'
+  type SavedSelection = {
+    start: number
+    end: number
+  }
 
   export let html = ''
   export let text = ''
@@ -33,6 +37,8 @@
   let editor: HTMLDivElement
   let renderedHTML = html || escapeHTML(text)
   let lastRevision = revision
+  let savedSelection: SavedSelection | null = null
+  let restoreSelectionOnNextFocus = false
 
   $: {
     const nextHTML = html || escapeHTML(text)
@@ -175,7 +181,41 @@
   }
 
   function handleInput(event: Event) {
-    persistEditor(event.currentTarget as HTMLDivElement, false)
+    const activeEditor = event.currentTarget as HTMLDivElement
+    persistEditor(activeEditor, false)
+    saveSelection(activeEditor)
+  }
+
+  function handleFocus() {
+    if (!restoreSelectionOnNextFocus) return
+
+    requestAnimationFrame(() => {
+      restoreSelectionOnNextFocus = false
+      if (editor === document.activeElement) restoreSelection(editor)
+    })
+  }
+
+  function handleBlur() {
+    if (!editor) return
+
+    saveSelection(editor)
+    persistEditor(editor)
+  }
+
+  function handleWindowFocus() {
+    requestAnimationFrame(() => {
+      if (editor !== document.activeElement) return
+
+      restoreSelectionOnNextFocus = false
+      restoreSelection(editor)
+    })
+  }
+
+  function handleWindowBlur() {
+    if (editor !== document.activeElement) return
+
+    saveSelection(editor)
+    restoreSelectionOnNextFocus = true
   }
 
   function handlePaste(event: ClipboardEvent) {
@@ -281,6 +321,56 @@
     return activeEditor.contains(range.startContainer) && activeEditor.contains(range.endContainer)
   }
 
+  function saveSelection(activeEditor: HTMLDivElement) {
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    if (!rangeIsInside(activeEditor, range)) return
+
+    savedSelection = {
+      start: textOffsetForRangeBoundary(activeEditor, range.startContainer, range.startOffset),
+      end: textOffsetForRangeBoundary(activeEditor, range.endContainer, range.endOffset),
+    }
+  }
+
+  function restoreSelection(activeEditor: HTMLDivElement) {
+    if (!savedSelection) return
+
+    const range = document.createRange()
+    const start = domPositionForTextOffset(activeEditor, savedSelection.start)
+    const end = domPositionForTextOffset(activeEditor, savedSelection.end)
+    range.setStart(start.node, start.offset)
+    range.setEnd(end.node, end.offset)
+
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
+
+  function textOffsetForRangeBoundary(activeEditor: HTMLDivElement, boundaryNode: Node, boundaryOffset: number) {
+    const range = document.createRange()
+    range.selectNodeContents(activeEditor)
+    range.setEnd(boundaryNode, boundaryOffset)
+    return range.toString().length
+  }
+
+  function domPositionForTextOffset(activeEditor: HTMLDivElement, offset: number) {
+    const walker = document.createTreeWalker(activeEditor, NodeFilter.SHOW_TEXT)
+    let remaining = offset
+    let node = walker.nextNode()
+
+    while (node) {
+      const length = node.textContent?.length ?? 0
+      if (remaining <= length) return { node, offset: remaining }
+
+      remaining -= length
+      node = walker.nextNode()
+    }
+
+    return { node: activeEditor, offset: activeEditor.childNodes.length }
+  }
+
   function focusTextInput(input: HTMLDivElement) {
     input.focus()
     const range = document.createRange()
@@ -292,6 +382,8 @@
     selection?.addRange(range)
   }
 </script>
+
+<svelte:window on:blur={handleWindowBlur} on:focus={handleWindowFocus} />
 
 <div
   bind:this={editor}
@@ -309,9 +401,8 @@
   tabindex="0"
   aria-label={ariaLabel}
   data-placeholder={placeholder}
-  on:blur={() => {
-    if (editor) persistEditor(editor)
-  }}
+  on:blur={handleBlur}
+  on:focus={handleFocus}
   on:keydown={handleKeydown}
   on:click={handleClick}
   on:input={handleInput}
