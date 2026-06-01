@@ -899,6 +899,28 @@ test('backspace at the start of a plan item merges it into the item above', asyn
     })
 })
 
+test('cmd backspace at the end of a plan item deletes the whole task', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  await focusInputByValue(page, before[1])
+  await setCaretOffsetInFocusedEditor(page, before[1].length)
+  await page.keyboard.press('Meta+Backspace')
+
+  await expect
+    .poll(async () => ({
+      activeText: await activeInputValue(page),
+      texts: await topLevelTexts(page),
+    }))
+    .toEqual({
+      activeText: before[0],
+      texts: [before[0], ...before.slice(2)],
+    })
+})
+
 test('pasting plan items into an empty focused item replaces it', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

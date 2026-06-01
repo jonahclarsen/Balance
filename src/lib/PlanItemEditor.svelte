@@ -189,6 +189,10 @@
     focusItemTextInputAtOffset(result.focusItemId, result.focusOffset)
   }
 
+  async function handleMetaBackspaceEnd(current: HTMLDivElement) {
+    await handleBackspaceEmpty(current)
+  }
+
   function handleHorizontalBoundaryKey(direction: 'left' | 'right', current: HTMLDivElement) {
     focusAdjacentTextInput(current, direction === 'left' ? 'up' : 'down', direction === 'left' ? 'end' : 'start')
   }
@@ -383,6 +387,7 @@
       onSplit={handleTextSplit}
       onBackspaceEmpty={handleBackspaceEmpty}
       onBackspaceStart={handleBackspaceStart}
+      onMetaBackspaceEnd={handleMetaBackspaceEnd}
       onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
       onTabKey={handleTextTab}
     />

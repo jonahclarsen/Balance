@@ -27,6 +27,7 @@
     | null = null
   export let onBackspaceEmpty: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
   export let onBackspaceStart: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
+  export let onMetaBackspaceEnd: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
   export let onHorizontalBoundaryKey:
     | ((direction: HorizontalBoundaryDirection, editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
@@ -71,6 +72,20 @@
     ) {
       event.preventDefault()
       await onBackspaceStart(activeEditor, event)
+      return
+    }
+
+    if (
+      event.key === 'Backspace' &&
+      event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      onMetaBackspaceEnd &&
+      isCaretAtEnd(activeEditor)
+    ) {
+      event.preventDefault()
+      await onMetaBackspaceEnd(activeEditor, event)
       return
     }
 
