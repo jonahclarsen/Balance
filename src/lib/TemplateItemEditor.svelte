@@ -6,6 +6,10 @@
   import TimeRange from './TimeRange.svelte'
   import type { Id, MoveDirection, MovePlacement, TemplateItem, TemplateOption } from './types'
 
+  type TextChangeOptions = {
+    mergeHistory?: boolean
+  }
+
   export let item: TemplateItem
   export let allItems: TemplateItem[]
   export let depth = 0
@@ -25,7 +29,13 @@
   export let outdentItem: (templateId: Id, itemId: Id) => void
   export let addChild: (templateId: Id, parentId: Id) => void
   export let addOption: (templateId: Id, itemId: Id) => void
-  export let patchOption: (templateId: Id, itemId: Id, optionId: Id, patch: Partial<TemplateOption>) => void
+  export let patchOption: (
+    templateId: Id,
+    itemId: Id,
+    optionId: Id,
+    patch: Partial<TemplateOption>,
+    options?: TextChangeOptions,
+  ) => void
   export let deleteOption: (templateId: Id, itemId: Id, optionId: Id) => void
   export let historyRevision: number
 
@@ -252,7 +262,7 @@
             placeholder={index === 0 ? 'Template item' : '(Skip)'}
             ariaLabel={index === 0 ? 'Template item' : 'Template alternative'}
             revision={historyRevision}
-            onChange={(html, text) => patchOption(templateId, item.id, option.id, { html, text })}
+            onChange={(html, text, options) => patchOption(templateId, item.id, option.id, { html, text }, options)}
             onArrowKey={(direction, editor, event) => handleTextArrowKey(option.id, direction, editor, event)}
             onSplit={(before, after) => handleTextSplit(option.id, before, after)}
             onTabKey={handleTextTab}

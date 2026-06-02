@@ -122,6 +122,15 @@ async fn list_metadata(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
+async fn inspect_database(app: tauri::AppHandle) -> Result<String, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        inspect_database_from_database(&connection).map(|value| value.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 async fn restore_recovery_entry(
     app: tauri::AppHandle,
     history_id: String,
@@ -939,6 +948,90 @@ fn list_metadata_from_database(connection: &Connection) -> Result<Value, String>
     }
 
     Ok(json!({ "entries": entries }))
+}
+
+fn inspect_database_from_database(connection: &Connection) -> Result<Value, String> {
+    Ok(json!({
+        "operations": inspect_operations_from_database(connection, 500)?,
+        "historyEntries": inspect_history_entries_from_database(connection, 500)?,
+        "plans": read_plans(connection)?,
+    }))
+}
+
+fn inspect_operations_from_database(connection: &Connection, limit: i64) -> Result<Value, String> {
+    let mut statement = connection
+        .prepare(
+            "
+          select id, device_id, sequence, type, timestamp, payload_json
+          from operations
+          order by sequence desc, id desc
+          limit ?1
+        ",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let rows = statement
+        .query_map(params![limit.clamp(1, 1_000)], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "deviceId": row.get::<_, String>(1)?,
+                "sequence": row.get::<_, i64>(2)?,
+                "type": row.get::<_, String>(3)?,
+                "timestamp": row.get::<_, String>(4)?,
+                "payloadJson": row.get::<_, String>(5)?,
+            }))
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut entries = Vec::new();
+    for row in rows {
+        entries.push(row.map_err(|error| error.to_string())?);
+    }
+
+    Ok(json!(entries))
+}
+
+fn inspect_history_entries_from_database(
+    connection: &Connection,
+    limit: i64,
+) -> Result<Value, String> {
+    let mut statement = connection
+        .prepare(
+            "
+          select h.id, h.operation_id, h.sequence, h.undone, h.created_at_ms,
+                 h.updated_at_ms, h.undo_operation_json, h.redo_operation_json,
+                 o.type, o.timestamp
+          from history_entries h
+          left join operations o on o.id = h.operation_id
+          order by h.sequence desc, h.updated_at_ms desc, h.id desc
+          limit ?1
+        ",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let rows = statement
+        .query_map(params![limit.clamp(1, 1_000)], |row| {
+            Ok(json!({
+                "id": row.get::<_, String>(0)?,
+                "operationId": row.get::<_, String>(1)?,
+                "sequence": row.get::<_, i64>(2)?,
+                "undone": row.get::<_, i64>(3)? != 0,
+                "createdAtMs": row.get::<_, i64>(4)?,
+                "updatedAtMs": row.get::<_, i64>(5)?,
+                "undoJson": row.get::<_, String>(6)?,
+                "redoJson": row.get::<_, String>(7)?,
+                "operationType": row.get::<_, Option<String>>(8)?,
+                "timestamp": row.get::<_, Option<String>>(9)?,
+            }))
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut entries = Vec::new();
+    for row in rows {
+        entries.push(row.map_err(|error| error.to_string())?);
+    }
+
+    Ok(json!(entries))
 }
 
 /// Lists every saved undo record with a human summary, newest first, so a deleted
@@ -3985,6 +4078,7 @@ pub fn run() {
             redo_last_operation,
             list_recovery_entries,
             list_metadata,
+            inspect_database,
             restore_recovery_entry,
             get_recovery_key_status,
             confirm_recovery_key,

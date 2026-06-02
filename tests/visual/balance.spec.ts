@@ -1219,6 +1219,48 @@ test('rich plan item text restores the caret after visibility returns', async ({
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
 })
 
+test('rich plan item text restores the caret after tabbing away mid-edit', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await setCaretOffsetInFocusedEditor(page, 4)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+
+  // Reproduce the app-switch-after-typing case: the editor holds un-normalized markup (as it
+  // does right after typing), the app loses focus, and the element blurs. handleBlur's
+  // persistEditor rewrites innerHTML, collapsing the live caret to 0 and firing a
+  // selectionchange. The saved caret must survive so it restores on refocus.
+  await page.evaluate(() => {
+    const input = document.activeElement
+    if (!(input instanceof HTMLElement) || !input.matches('[data-plan-text-input]')) return
+
+    const originalHasFocus = document.hasFocus.bind(document)
+    ;(document as unknown as { hasFocus: () => boolean }).hasFocus = () => false
+
+    // Un-normalized DOM so persistEditor actually rewrites innerHTML (and collapses selection).
+    input.innerHTML = 'Wake up<span></span>'
+    const range = document.createRange()
+    range.setStart(input.firstChild as Node, 4)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    // Real blur so the element stops being document.activeElement, as it does on an app switch.
+    input.blur()
+    window.dispatchEvent(new FocusEvent('blur'))
+
+    ;(document as unknown as { hasFocus: () => boolean }).hasFocus = originalHasFocus
+    input.focus()
+    window.dispatchEvent(new FocusEvent('focus'))
+  })
+
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+})
+
 test('global undo and redo batch text edits', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1241,6 +1283,33 @@ test('global undo and redo batch text edits', async ({ page }) => {
 
   await page.keyboard.press('Meta+Shift+C')
   await expect.poll(async () => activeInputValue(page)).toBe('abc')
+})
+
+test('global undo reverts pasted rich text edits', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
+
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.type('Typed')
+  await expect.poll(async () => activeInputValue(page)).toBe('Typed')
+
+  await page.evaluate(async () => {
+    await navigator.clipboard.writeText('Pasted item')
+  })
+  await page.keyboard.press('Meta+V')
+  await expect.poll(async () => activeInputValue(page)).toBe('TypedPasted item')
+
+  await page.keyboard.press('Meta+Z')
+  await expect.poll(async () => activeInputValue(page)).toBe('Typed')
+
+  await page.keyboard.press('Meta+Shift+Z')
+  await expect.poll(async () => activeInputValue(page)).toBe('TypedPasted item')
 })
 
 test('global undo and redo apply to item movement', async ({ page }) => {

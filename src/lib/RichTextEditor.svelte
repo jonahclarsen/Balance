@@ -8,6 +8,9 @@
     start: number
     end: number
   }
+  type TextChangeOptions = {
+    mergeHistory?: boolean
+  }
 
   export let html = ''
   export let text = ''
@@ -18,7 +21,7 @@
   export let placeholder = ''
   export let ariaLabel = 'Text'
   export let revision = 0
-  export let onChange: (html: string, text: string) => void
+  export let onChange: (html: string, text: string, options?: TextChangeOptions) => void
   export let onArrowKey:
     | ((direction: MoveDirection, editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
@@ -41,6 +44,7 @@
   let savedSelection: SavedSelection | null = null
   let restoreSelectionOnNextFocus = false
   let restoreRequest = 0
+  let pendingPasteInput = false
 
   $: {
     const nextHTML = html || escapeHTML(text)
@@ -198,7 +202,9 @@
 
   function handleInput(event: Event) {
     const activeEditor = event.currentTarget as HTMLDivElement
-    persistEditor(activeEditor, false)
+    const mergeHistory = !pendingPasteInput
+    pendingPasteInput = false
+    persistEditor(activeEditor, false, { mergeHistory })
     saveSelection(activeEditor)
   }
 
@@ -212,7 +218,16 @@
     if (!editor) return
 
     saveSelection(editor)
+    // persistEditor below may rewrite innerHTML to its normalized form (when the user just
+    // typed un-normalized content). That rewrite collapses the live selection to offset 0 and
+    // fires a selectionchange. Arm the restore guard first so handleDocumentSelectionChange
+    // can't overwrite the caret we just saved. If this blur is only an in-document focus move
+    // (the app still has focus), back the guard out once we can observe the real focus state.
+    restoreSelectionOnNextFocus = true
     persistEditor(editor)
+    queueMicrotask(() => {
+      if (document.hasFocus() && editor !== document.activeElement) restoreSelectionOnNextFocus = false
+    })
   }
 
   function handleWindowFocus() {
@@ -222,7 +237,9 @@
   function handleWindowBlur() {
     if (editor !== document.activeElement) return
 
-    saveSelection(editor)
+    // If handleBlur already armed the restore, it captured the caret before persistEditor could
+    // collapse it — don't re-read a possibly-collapsed selection here.
+    if (!restoreSelectionOnNextFocus) saveSelection(editor)
     restoreSelectionOnNextFocus = true
   }
 
@@ -250,8 +267,9 @@
 
     if (clipboardText && isURL(clipboardText) && hasNonCollapsedSelectionInside(activeEditor)) {
       event.preventDefault()
+      pendingPasteInput = true
       document.execCommand('createLink', false, clipboardText.trim())
-      persistEditor(activeEditor, false)
+      persistPasteIfInputDidNotFire(activeEditor)
       return
     }
 
@@ -265,8 +283,9 @@
         const url = escapeHTML(trimmedText)
         pastedHTML = `<a href="${url}" target="_blank" rel="noreferrer">${url}</a>`
       }
+      pendingPasteInput = true
       document.execCommand('insertHTML', false, pastedHTML)
-      persistEditor(activeEditor, false)
+      persistPasteIfInputDidNotFire(activeEditor)
     }
   }
 
@@ -292,11 +311,19 @@
     window.open(href, '_blank', 'noopener,noreferrer')
   }
 
-  function persistEditor(activeEditor: HTMLDivElement, syncRenderedHTML = true) {
+  function persistPasteIfInputDidNotFire(activeEditor: HTMLDivElement) {
+    if (!pendingPasteInput) return
+
+    pendingPasteInput = false
+    persistEditor(activeEditor, false, { mergeHistory: false })
+    saveSelection(activeEditor)
+  }
+
+  function persistEditor(activeEditor: HTMLDivElement, syncRenderedHTML = true, options: TextChangeOptions = {}) {
     const nextHTML = sanitizeInlineHTML(activeEditor.innerHTML)
     if (syncRenderedHTML && activeEditor.innerHTML !== nextHTML) activeEditor.innerHTML = nextHTML
     if (syncRenderedHTML) renderedHTML = nextHTML
-    onChange(nextHTML, htmlToPlainText(nextHTML))
+    onChange(nextHTML, htmlToPlainText(nextHTML), options)
   }
 
   function hasNonCollapsedSelectionInside(activeEditor: HTMLDivElement) {

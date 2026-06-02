@@ -6,12 +6,21 @@
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import type { Id, MoveDirection, MovePlacement, PlanItem } from './types'
 
+  type TextChangeOptions = {
+    mergeHistory?: boolean
+  }
+
   export let item: PlanItem
   export let allItems: PlanItem[]
   export let depth = 0
   export let planId: Id
   export let parentId: Id | null = null
-  export let patchItem: (planId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>) => void
+  export let patchItem: (
+    planId: Id,
+    itemId: Id,
+    patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
+    options?: TextChangeOptions,
+  ) => void
   export let splitItem: (
     planId: Id,
     itemId: Id,
@@ -382,7 +391,7 @@
       placeholder="Plan item"
       ariaLabel="Plan item"
       revision={historyRevision}
-      onChange={(html, text) => patchItem(planId, item.id, { html, text })}
+      onChange={(html, text, options) => patchItem(planId, item.id, { html, text }, options)}
       onArrowKey={handleTextArrowKey}
       onSplit={handleTextSplit}
       onBackspaceEmpty={handleBackspaceEmpty}

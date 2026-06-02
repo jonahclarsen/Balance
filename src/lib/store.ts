@@ -50,6 +50,9 @@ type CommitOptions = {
   mergeKey?: string
   mergeWindowMs?: number
 }
+type TextChangeOptions = {
+  mergeHistory?: boolean
+}
 
 type HistoryEntry = {
   before: AppState
@@ -77,6 +80,34 @@ export type RecoveryEntry = {
   undoJson: string
 }
 
+export type DatabaseOperationEntry = {
+  id: string
+  deviceId: string
+  sequence: number
+  type: string
+  timestamp: string
+  payloadJson: string
+}
+
+export type DatabaseHistoryEntry = {
+  id: string
+  operationId: string
+  sequence: number
+  undone: boolean
+  createdAtMs: number
+  updatedAtMs: number
+  undoJson: string
+  redoJson: string
+  operationType: string | null
+  timestamp: string | null
+}
+
+export type DatabaseInspection = {
+  operations: DatabaseOperationEntry[]
+  historyEntries: DatabaseHistoryEntry[]
+  plans: DailyPlan[]
+}
+
 let undoStack: HistoryEntry[] = []
 let redoStack: HistoryEntry[] = []
 let persistenceTarget: 'tauri' | 'localStorage' | null = null
@@ -87,6 +118,8 @@ let operationFlushPromise: Promise<void> | null = null
 let operationFlushTimer: number | null = null
 let lastOperationMergeKey: string | null = null
 let lastOperationMergeUpdatedAt = 0
+
+export const persistenceError = writable('')
 
 function parseStoredState(raw: string | null): AppState | null {
   if (!raw) return null
@@ -191,6 +224,7 @@ async function flushOperationsNow(): Promise<void> {
         const operation = operations[index]
         try {
           await invoke('persist_operation', { operationJson: JSON.stringify(operation) })
+          persistenceError.set('')
         } catch (error) {
           for (const operationToRetry of operations.slice(index)) {
             pendingOperations.set(operationToRetry.id, operationToRetry)
@@ -200,6 +234,8 @@ async function flushOperationsNow(): Promise<void> {
       }
     }
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    persistenceError.set(`Could not persist Balance operation: ${message}`)
     console.error('Could not persist Balance operation', error)
     throw error
   } finally {
@@ -314,12 +350,17 @@ function createPlannerStore() {
       })))
     },
 
-    patchPlanItem(planId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>) {
+    patchPlanItem(
+      planId: Id,
+      itemId: Id,
+      patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
+      options: TextChangeOptions = {},
+    ) {
       const isTextPatch = 'text' in patch || 'html' in patch
       commit('patch_plan_item', { planId, itemId, patch }, (state) => updatePlan(state, planId, (plan) => {
         const items = updatePlanItem(plan.items, itemId, (item) => applyPatch(item, patch))
         return items === plan.items ? plan : { ...plan, items }
-      }), isTextPatch ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {})
+      }), isTextPatch && options.mergeHistory !== false ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {})
     },
 
     patchPlanItemsDone(planId: Id, itemIds: Id[], done: boolean) {
@@ -610,7 +651,13 @@ function createPlannerStore() {
       )
     },
 
-    patchTemplateOption(templateId: Id, itemId: Id, optionId: Id, patch: Partial<TemplateOption>) {
+    patchTemplateOption(
+      templateId: Id,
+      itemId: Id,
+      optionId: Id,
+      patch: Partial<TemplateOption>,
+      options: TextChangeOptions = {},
+    ) {
       const isTextPatch = 'text' in patch || 'html' in patch
       commit('patch_template_option', { templateId, itemId, optionId, patch }, (state) =>
         updateTemplate(state, templateId, (template) => {
@@ -628,7 +675,9 @@ function createPlannerStore() {
 
           return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
         }),
-        isTextPatch ? { mergeKey: `template-option-text:${templateId}:${itemId}:${optionId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {},
+        isTextPatch && options.mergeHistory !== false
+          ? { mergeKey: `template-option-text:${templateId}:${itemId}:${optionId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
+          : {},
       )
     },
 
@@ -906,6 +955,26 @@ export async function listMetadata(): Promise<MetadataEntry[]> {
   const raw = await invoke<string>('list_metadata')
   const parsed = JSON.parse(raw) as { entries: MetadataEntry[] }
   return parsed.entries ?? []
+}
+
+export async function inspectDatabase(): Promise<DatabaseInspection | null> {
+  if (!isTauri()) return null
+  const raw = await invoke<string>('inspect_database')
+  const parsed = JSON.parse(raw) as DatabaseInspection
+  return {
+    operations: parsed.operations ?? [],
+    historyEntries: parsed.historyEntries ?? [],
+    plans: normalizeState({
+      schemaVersion: 1,
+      deviceId: '',
+      localSequence: 0,
+      historyRevision: 0,
+      activePlanDate: '',
+      templates: [],
+      plans: parsed.plans ?? [],
+      operations: [],
+    }).plans,
+  }
 }
 
 function normalizeState(state: AppState): AppState {

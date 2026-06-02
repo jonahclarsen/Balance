@@ -9,11 +9,13 @@
     exportHTML,
     exportJSON,
     getRecoveryKeyStatus,
+    inspectDatabase,
     listMetadata,
     listRecoveryEntries,
+    persistenceError,
     plannerStore,
   } from './lib/store'
-  import type { MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
+  import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { Id, MoveDirection, PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
 
@@ -55,6 +57,12 @@
   let recoveryStatusIsError = false
   let recoveryExpandedId: string | null = null
   let metadataEntries: MetadataEntry[] = []
+  let databaseInspection: DatabaseInspection | null = null
+  let databaseInspectionBusy = false
+  let databaseInspectionError = ''
+  let databaseSearch = ''
+  let databaseExpandedId: string | null = null
+  let databaseCopyStatus = ''
   let editingDailyReminder = false
   let dailyReminderDraft = ''
   let dailyReminderInput: HTMLInputElement | null = null
@@ -83,6 +91,9 @@
   $: if ((view !== 'today' || activePlan?.id !== selectedPlanPlanId) && selectedPlanItemIds.length > 0) {
     clearPlanSelection()
   }
+  $: filteredDatabaseOperations = filterDatabaseRows(databaseInspection?.operations ?? [], databaseSearch)
+  $: filteredDatabaseHistoryEntries = filterDatabaseRows(databaseInspection?.historyEntries ?? [], databaseSearch)
+  $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
 
   onMount(() => {
     let mounted = true
@@ -855,7 +866,7 @@
   async function openRecoveryPanel() {
     recoveryPanelOpen = true
     recoveryExpandedId = null
-    await Promise.all([refreshRecoveryEntries(), refreshMetadata()])
+    await Promise.all([refreshRecoveryEntries(), refreshMetadata(), refreshDatabaseInspection()])
   }
 
   async function refreshMetadata() {
@@ -865,6 +876,21 @@
       metadataEntries = []
       recoveryStatusIsError = true
       recoveryStatus = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  async function refreshDatabaseInspection() {
+    databaseInspectionBusy = true
+    databaseInspectionError = ''
+    databaseCopyStatus = ''
+
+    try {
+      databaseInspection = await inspectDatabase()
+    } catch (error) {
+      databaseInspection = null
+      databaseInspectionError = error instanceof Error ? error.message : String(error)
+    } finally {
+      databaseInspectionBusy = false
     }
   }
 
@@ -926,6 +952,67 @@
     const source = entry.timestamp ? Date.parse(entry.timestamp) : entry.createdAtMs
     if (Number.isNaN(source)) return ''
     return new Date(source).toLocaleString()
+  }
+
+  function filterDatabaseRows<T>(rows: T[], search: string): T[] {
+    const needle = search.trim().toLowerCase()
+    if (!needle) return rows
+
+    return rows.filter((row) => JSON.stringify(row).toLowerCase().includes(needle))
+  }
+
+  function databaseRowId(prefix: string, id: string | number) {
+    return `${prefix}:${id}`
+  }
+
+  function prettyJson(value: unknown): string {
+    if (typeof value === 'string') {
+      try {
+        return JSON.stringify(JSON.parse(value), null, 2)
+      } catch {
+        return value
+      }
+    }
+
+    return JSON.stringify(value, null, 2)
+  }
+
+  function planPreview(plan: { items: PlanItem[] }) {
+    const texts = flattenPlanItemTexts(plan.items).filter((value) => value.trim() !== '')
+    return texts.slice(0, 5).join(' · ')
+  }
+
+  function flattenPlanItemTexts(items: PlanItem[]): string[] {
+    return items.flatMap((item) => [item.text, ...flattenPlanItemTexts(item.children)])
+  }
+
+  async function copyDatabaseJson(value: unknown) {
+    if (!navigator.clipboard?.writeText) return
+
+    await navigator.clipboard.writeText(prettyJson(value))
+    databaseCopyStatus = 'Copied JSON'
+    window.setTimeout(() => {
+      databaseCopyStatus = ''
+    }, 1500)
+  }
+
+  function operationPayload(entry: DatabaseOperationEntry) {
+    return prettyJson(entry.payloadJson)
+  }
+
+  function historyJson(entry: DatabaseHistoryEntry) {
+    return prettyJson({
+      undo: parseJsonString(entry.undoJson),
+      redo: parseJsonString(entry.redoJson),
+    })
+  }
+
+  function parseJsonString(value: string): unknown {
+    try {
+      return JSON.parse(value)
+    } catch {
+      return value
+    }
   }
 
   function shouldReplaceFocusedPlanItemOnPaste(targetId: Id | null) {
@@ -1059,6 +1146,19 @@
     <div class="auto-export-banner-actions">
       <button type="button" class="ghost" on:click={() => { void openRecoveryPanel() }}>Details</button>
       <button type="button" class="ghost" on:click={() => { void dismissAutoExportError() }}>Dismiss</button>
+    </div>
+  </div>
+{/if}
+
+{#if $persistenceError}
+  <div class="auto-export-banner persistence-error-banner" role="alert">
+    <span class="auto-export-banner-icon" aria-hidden="true">!</span>
+    <div class="auto-export-banner-text">
+      <strong>Database save failed</strong>
+      <span>{$persistenceError}</span>
+    </div>
+    <div class="auto-export-banner-actions">
+      <button type="button" class="ghost" on:click={() => { void openRecoveryPanel() }}>Inspect DB</button>
     </div>
   </div>
 {/if}
@@ -1446,47 +1546,173 @@
       {/if}
 
       <div class="recovery-actions-row">
-        <button type="button" on:click={() => { void refreshRecoveryEntries(); void refreshMetadata() }} disabled={recoveryBusy}>
+        <button
+          type="button"
+          on:click={() => { void refreshRecoveryEntries(); void refreshMetadata(); void refreshDatabaseInspection() }}
+          disabled={recoveryBusy || databaseInspectionBusy}
+        >
           Refresh
         </button>
       </div>
 
       <div class="recovery-scroll">
-      <ul class="recovery-list">
-        {#each recoveryEntries as entry (entry.historyId)}
-          <li class="recovery-row" class:undone={entry.undone}>
-            <div class="recovery-row-main">
-              <div class="recovery-row-info">
-                <span class="recovery-row-title">
-                  {entry.restoredItemCount > 0
-                    ? `Restores ${entry.restoredItemCount} item${entry.restoredItemCount === 1 ? '' : 's'}`
-                    : entry.operationType ?? 'Operation'}
-                </span>
-                {#if entry.preview}<span class="recovery-row-preview">“{entry.preview}”</span>{/if}
-                <span class="recovery-row-meta">
-                  {entry.operationType ?? 'unknown'} · seq {entry.sequence} · {formatRecoveryTimestamp(entry)}
-                  {#if entry.undone} · already undone{/if}
-                </span>
+      <details class="metadata-section">
+        <summary>Restore removed items ({recoveryEntries.length})</summary>
+        <ul class="recovery-list">
+          {#each recoveryEntries as entry (entry.historyId)}
+            <li class="recovery-row" class:undone={entry.undone}>
+              <div class="recovery-row-main">
+                <div class="recovery-row-info">
+                  <span class="recovery-row-title">
+                    {entry.restoredItemCount > 0
+                      ? `Restores ${entry.restoredItemCount} item${entry.restoredItemCount === 1 ? '' : 's'}`
+                      : entry.operationType ?? 'Operation'}
+                  </span>
+                  {#if entry.preview}<span class="recovery-row-preview">“{entry.preview}”</span>{/if}
+                  <span class="recovery-row-meta">
+                    {entry.operationType ?? 'unknown'} · seq {entry.sequence} · {formatRecoveryTimestamp(entry)}
+                    {#if entry.undone} · already undone{/if}
+                  </span>
+                </div>
+                <div class="recovery-row-buttons">
+                  <button
+                    type="button"
+                    class="ghost"
+                    on:click={() => (recoveryExpandedId = recoveryExpandedId === entry.historyId ? null : entry.historyId)}
+                  >
+                    {recoveryExpandedId === entry.historyId ? 'Hide' : 'Inspect'}
+                  </button>
+                  <button type="button" class="primary" disabled={recoveryBusy} on:click={() => restoreRecoveryEntry(entry)}>
+                    Restore
+                  </button>
+                </div>
               </div>
-              <div class="recovery-row-buttons">
-                <button
-                  type="button"
-                  class="ghost"
-                  on:click={() => (recoveryExpandedId = recoveryExpandedId === entry.historyId ? null : entry.historyId)}
-                >
-                  {recoveryExpandedId === entry.historyId ? 'Hide' : 'Inspect'}
-                </button>
-                <button type="button" class="primary" disabled={recoveryBusy} on:click={() => restoreRecoveryEntry(entry)}>
-                  Restore
-                </button>
-              </div>
-            </div>
-            {#if recoveryExpandedId === entry.historyId}
-              <pre class="recovery-json">{entry.undoJson}</pre>
-            {/if}
-          </li>
-        {/each}
-      </ul>
+              {#if recoveryExpandedId === entry.historyId}
+                <pre class="recovery-json">{entry.undoJson}</pre>
+              {/if}
+            </li>
+          {/each}
+        </ul>
+      </details>
+
+      <details class="metadata-section" open>
+        <summary>
+          Database inspector
+          {#if databaseInspectionBusy} loading{/if}
+          {#if databaseInspection}
+            ({databaseInspection.operations.length} operations · {databaseInspection.historyEntries.length} history · {databaseInspection.plans.length} plans)
+          {/if}
+        </summary>
+        <p class="recovery-copy metadata-hint">
+          Read-only view of recent SQLite rows. Search for text, dates, operation types, ids, or URLs from the missing plan.
+        </p>
+        <div class="database-search-row">
+          <input
+            type="search"
+            placeholder="Search DB rows"
+            aria-label="Search database rows"
+            bind:value={databaseSearch}
+          />
+          {#if databaseCopyStatus}<span>{databaseCopyStatus}</span>{/if}
+        </div>
+
+        {#if databaseInspectionError}
+          <p class="recovery-panel-status error">{databaseInspectionError}</p>
+        {/if}
+
+        {#if databaseInspection}
+          <details class="database-subsection" open>
+            <summary>Current plans ({filteredDatabasePlans.length})</summary>
+            <ul class="recovery-list">
+              {#each filteredDatabasePlans as plan (plan.id)}
+                <li class="recovery-row">
+                  <div class="recovery-row-main">
+                    <div class="recovery-row-info">
+                      <span class="recovery-row-title">{plan.date} · {plan.title}</span>
+                      <span class="recovery-row-preview">{planPreview(plan) || 'No visible item text'}</span>
+                      <span class="recovery-row-meta">{plan.items.length} top-level items · created {plan.createdAt}</span>
+                    </div>
+                    <div class="recovery-row-buttons">
+                      <button
+                        type="button"
+                        class="ghost"
+                        on:click={() => (databaseExpandedId = databaseExpandedId === databaseRowId('plan', plan.id) ? null : databaseRowId('plan', plan.id))}
+                      >
+                        {databaseExpandedId === databaseRowId('plan', plan.id) ? 'Hide' : 'Inspect'}
+                      </button>
+                      <button type="button" class="ghost" on:click={() => { void copyDatabaseJson(plan) }}>Copy</button>
+                    </div>
+                  </div>
+                  {#if databaseExpandedId === databaseRowId('plan', plan.id)}
+                    <pre class="recovery-json">{prettyJson(plan)}</pre>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          </details>
+
+          <details class="database-subsection" open>
+            <summary>Recent operations ({filteredDatabaseOperations.length})</summary>
+            <ul class="recovery-list">
+              {#each filteredDatabaseOperations as entry (entry.id)}
+                <li class="recovery-row">
+                  <div class="recovery-row-main">
+                    <div class="recovery-row-info">
+                      <span class="recovery-row-title">{entry.type}</span>
+                      <span class="recovery-row-meta">seq {entry.sequence} · {entry.timestamp} · {entry.id}</span>
+                    </div>
+                    <div class="recovery-row-buttons">
+                      <button
+                        type="button"
+                        class="ghost"
+                        on:click={() => (databaseExpandedId = databaseExpandedId === databaseRowId('operation', entry.id) ? null : databaseRowId('operation', entry.id))}
+                      >
+                        {databaseExpandedId === databaseRowId('operation', entry.id) ? 'Hide' : 'Inspect'}
+                      </button>
+                      <button type="button" class="ghost" on:click={() => { void copyDatabaseJson(entry) }}>Copy</button>
+                    </div>
+                  </div>
+                  {#if databaseExpandedId === databaseRowId('operation', entry.id)}
+                    <pre class="recovery-json">{operationPayload(entry)}</pre>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          </details>
+
+          <details class="database-subsection">
+            <summary>Raw history ({filteredDatabaseHistoryEntries.length})</summary>
+            <ul class="recovery-list">
+              {#each filteredDatabaseHistoryEntries as entry (entry.id)}
+                <li class="recovery-row" class:undone={entry.undone}>
+                  <div class="recovery-row-main">
+                    <div class="recovery-row-info">
+                      <span class="recovery-row-title">{entry.operationType ?? 'unknown history operation'}</span>
+                      <span class="recovery-row-meta">
+                        seq {entry.sequence} · {entry.timestamp ?? 'no timestamp'} · {entry.id}
+                        {#if entry.undone} · undone{/if}
+                      </span>
+                    </div>
+                    <div class="recovery-row-buttons">
+                      <button
+                        type="button"
+                        class="ghost"
+                        on:click={() => (databaseExpandedId = databaseExpandedId === databaseRowId('history', entry.id) ? null : databaseRowId('history', entry.id))}
+                      >
+                        {databaseExpandedId === databaseRowId('history', entry.id) ? 'Hide' : 'Inspect'}
+                      </button>
+                      <button type="button" class="ghost" on:click={() => { void copyDatabaseJson(entry) }}>Copy</button>
+                    </div>
+                  </div>
+                  {#if databaseExpandedId === databaseRowId('history', entry.id)}
+                    <pre class="recovery-json">{historyJson(entry)}</pre>
+                  {/if}
+                </li>
+              {/each}
+            </ul>
+          </details>
+        {/if}
+      </details>
 
       <details class="metadata-section">
         <summary>Database metadata ({metadataEntries.length})</summary>
