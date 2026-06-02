@@ -8,7 +8,11 @@
 
   type TextChangeOptions = {
     mergeHistory?: boolean
+    mergeKey?: string
+    mergeWindowMs?: number
   }
+
+  const TIME_DRAG_MERGE_WINDOW_MS = 1500
 
   export let item: PlanItem
   export let allItems: PlanItem[]
@@ -50,6 +54,15 @@
 
   function addTime() {
     patchItem(planId, item.id, defaultPlanItemTimeRange(allItems, item.id))
+  }
+
+  function patchTimeRange(startMinutes: number, endMinutes: number) {
+    patchItem(
+      planId,
+      item.id,
+      { startMinutes, endMinutes },
+      { mergeKey: `plan-item-time:${planId}:${item.id}`, mergeWindowMs: TIME_DRAG_MERGE_WINDOW_MS },
+    )
   }
 
   function selectedTimeShiftTargets(): TimeShiftTarget[] | null {
@@ -364,7 +377,7 @@
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
-        onChange={(startMinutes, endMinutes) => patchItem(planId, item.id, { startMinutes, endMinutes })}
+        onChange={patchTimeRange}
         getShiftTargets={selectedTimeShiftTargets}
         onShift={shiftSelectedTimeRanges}
         onRemove={() => patchItem(planId, item.id, { startMinutes: null, endMinutes: null })}

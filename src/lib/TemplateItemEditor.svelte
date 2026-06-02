@@ -8,14 +8,23 @@
 
   type TextChangeOptions = {
     mergeHistory?: boolean
+    mergeKey?: string
+    mergeWindowMs?: number
   }
+
+  const TIME_DRAG_MERGE_WINDOW_MS = 1500
 
   export let item: TemplateItem
   export let allItems: TemplateItem[]
   export let depth = 0
   export let templateId: Id
   export let parentId: Id | null = null
-  export let patchItem: (templateId: Id, itemId: Id, patch: Partial<TemplateItem>) => void
+  export let patchItem: (
+    templateId: Id,
+    itemId: Id,
+    patch: Partial<TemplateItem>,
+    options?: TextChangeOptions,
+  ) => void
   export let splitItem: (
     templateId: Id,
     itemId: Id,
@@ -46,6 +55,15 @@
 
   function addTime() {
     patchItem(templateId, item.id, defaultTemplateItemTimeRange(allItems, item.id))
+  }
+
+  function patchTimeRange(startMinutes: number, endMinutes: number) {
+    patchItem(
+      templateId,
+      item.id,
+      { startMinutes, endMinutes },
+      { mergeKey: `template-item-time:${templateId}:${item.id}`, mergeWindowMs: TIME_DRAG_MERGE_WINDOW_MS },
+    )
   }
 
   function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
@@ -235,7 +253,7 @@
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
-        onChange={(startMinutes, endMinutes) => patchItem(templateId, item.id, { startMinutes, endMinutes })}
+        onChange={patchTimeRange}
         onRemove={() => patchItem(templateId, item.id, { startMinutes: null, endMinutes: null })}
       />
     {:else}

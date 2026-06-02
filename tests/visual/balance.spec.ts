@@ -472,6 +472,27 @@ test('alt-dragging a plan start time changes only the start time', async ({ page
     .toEqual([570, 600])
 })
 
+test('quick repeated plan time drags undo as one entry', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const pickRow = page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
+  await pickRow.getByRole('button', { name: 'Add time range' }).click()
+
+  await verticalDrag(page, pickRow.getByRole('button', { name: '9am' }), -10)
+  await verticalDrag(page, pickRow.getByRole('button', { name: '9:15am' }), -10)
+
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([570, 630])
+
+  await page.keyboard.press('Meta+Z')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+
+  await page.keyboard.press('Meta+Shift+Z')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([570, 630])
+})
+
 test('dragging a selected plan end time shifts selected timed tasks together', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1351,6 +1372,23 @@ async function activeInputValue(page: import('@playwright/test').Page) {
     const active = document.activeElement
     return active instanceof HTMLElement && active.matches('[data-plan-text-input]') ? active.textContent : null
   })
+}
+
+async function planItemTimeRange(page: import('@playwright/test').Page, text: string) {
+  return page.evaluate((expectedText) => {
+    const visit = (items: Array<{ text: string; startMinutes: number | null; endMinutes: number | null; children: unknown[] }>): [number | null, number | null] | null => {
+      for (const item of items) {
+        if (item.text === expectedText) return [item.startMinutes, item.endMinutes]
+        const match = visit(item.children as Array<{ text: string; startMinutes: number | null; endMinutes: number | null; children: unknown[] }>)
+        if (match) return match
+      }
+
+      return null
+    }
+
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return visit(state.plans?.[0]?.items ?? [])
+  }, text)
 }
 
 async function setFocusedEditorHTML(page: import('@playwright/test').Page, html: string) {

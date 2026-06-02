@@ -52,6 +52,8 @@ type CommitOptions = {
 }
 type TextChangeOptions = {
   mergeHistory?: boolean
+  mergeKey?: string
+  mergeWindowMs?: number
 }
 
 type HistoryEntry = {
@@ -357,10 +359,16 @@ function createPlannerStore() {
       options: TextChangeOptions = {},
     ) {
       const isTextPatch = 'text' in patch || 'html' in patch
+      const mergeOptions =
+        options.mergeKey && options.mergeHistory !== false
+          ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
+          : isTextPatch && options.mergeHistory !== false
+            ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
+            : {}
       commit('patch_plan_item', { planId, itemId, patch }, (state) => updatePlan(state, planId, (plan) => {
         const items = updatePlanItem(plan.items, itemId, (item) => applyPatch(item, patch))
         return items === plan.items ? plan : { ...plan, items }
-      }), isTextPatch && options.mergeHistory !== false ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {})
+      }), mergeOptions)
     },
 
     patchPlanItemsDone(planId: Id, itemIds: Id[], done: boolean) {
@@ -560,13 +568,18 @@ function createPlannerStore() {
       )
     },
 
-    patchTemplateItem(templateId: Id, itemId: Id, patch: Partial<TemplateItem>) {
+    patchTemplateItem(templateId: Id, itemId: Id, patch: Partial<TemplateItem>, options: TextChangeOptions = {}) {
+      const mergeOptions =
+        options.mergeKey && options.mergeHistory !== false
+          ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
+          : {}
       commit('patch_template_item', { templateId, itemId, patch }, (state) =>
         updateTemplate(state, templateId, (template) => ({
           ...template,
           updatedAt: nowISO(),
           items: updateTemplateItem(template.items, itemId, (item) => ({ ...item, ...patch })),
         })),
+        mergeOptions,
       )
     },
 
@@ -716,6 +729,7 @@ function createPlannerStore() {
         if (!entry) return state
 
         redoStack.push(entry)
+        lastOperationMergeKey = null
         const next = applyHistorySnapshot(state, entry.before, 'history_undo', entry)
         operationToPersist = next.operations.at(-1) ?? null
         return next
@@ -743,6 +757,7 @@ function createPlannerStore() {
         if (!entry) return state
 
         undoStack.push(entry)
+        lastOperationMergeKey = null
         const next = applyHistorySnapshot(state, entry.after, 'history_redo', entry)
         operationToPersist = next.operations.at(-1) ?? null
         return next
