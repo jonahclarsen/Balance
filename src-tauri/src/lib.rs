@@ -97,6 +97,37 @@ async fn redo_last_operation(app: tauri::AppHandle) -> Result<Option<String>, St
 }
 
 #[tauri::command]
+async fn list_recovery_entries(app: tauri::AppHandle) -> Result<String, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        list_recovery_entries_from_database(&connection).map(|value| value.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn list_metadata(app: tauri::AppHandle) -> Result<String, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        list_metadata_from_database(&connection).map(|value| value.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn restore_recovery_entry(
+    app: tauri::AppHandle,
+    history_id: String,
+) -> Result<Option<String>, String> {
+    run_database_task(move || {
+        let mut connection = open_database(&app)?;
+        restore_recovery_entry_in_database(&mut connection, &history_id)
+            .map(|state| state.map(|value| value.to_string()))
+    })
+    .await
+}
+
+#[tauri::command]
 async fn get_recovery_key_status(app: tauri::AppHandle) -> Result<RecoveryKeyStatus, String> {
     run_database_task(move || {
         let database_path = app_database_path(&app)?;
@@ -813,6 +844,178 @@ fn redo_last_operation_in_database(connection: &mut Connection) -> Result<Option
         read_app_state_from_database(connection)
     } else {
         Ok(None)
+    }
+}
+
+/// Reverses a specific history entry by id (not just the most recent one), so the
+/// Recovery panel can resurrect data from an undo record that was never successfully
+/// undone in the UI. Mirrors `undo_last_operation_in_database`.
+fn restore_recovery_entry_in_database(
+    connection: &mut Connection,
+    history_id: &str,
+) -> Result<Option<Value>, String> {
+    let changed = {
+        let tx = connection
+            .transaction()
+            .map_err(|error| error.to_string())?;
+        let Some(history) = read_history_entry(
+            &tx,
+            "
+              select id, undo_operation_json, redo_operation_json
+              from history_entries
+              where id = ?1
+            ",
+            params![history_id],
+        )?
+        else {
+            return Ok(None);
+        };
+
+        append_history_action_operation(&tx, "history_undo", &history.id, &history.undo_operation)?;
+        apply_operation(&tx, &history.undo_operation)?;
+        set_history_undone(&tx, &history.id, true)?;
+        tx.commit().map_err(|error| error.to_string())?;
+        true
+    };
+
+    if changed {
+        read_app_state_from_database(connection)
+    } else {
+        Ok(None)
+    }
+}
+
+/// Returns every metadata key/value, sorted, so the diagnostics view can surface
+/// device/session state and auto-export status (including any recorded export error).
+fn list_metadata_from_database(connection: &Connection) -> Result<Value, String> {
+    let mut statement = connection
+        .prepare("select key, value from metadata order by key")
+        .map_err(|error| error.to_string())?;
+
+    let rows = statement
+        .query_map([], |row| {
+            Ok(json!({
+                "key": row.get::<_, String>(0)?,
+                "value": row.get::<_, String>(1)?,
+            }))
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut entries = Vec::new();
+    for row in rows {
+        entries.push(row.map_err(|error| error.to_string())?);
+    }
+
+    Ok(json!({ "entries": entries }))
+}
+
+/// Lists every saved undo record with a human summary, newest first, so a deleted
+/// task (and its children, captured in the undo snapshot) can be found and restored.
+fn list_recovery_entries_from_database(connection: &Connection) -> Result<Value, String> {
+    let mut statement = connection
+        .prepare(
+            "
+          select h.id, h.operation_id, h.sequence, h.undone, h.created_at_ms,
+                 h.undo_operation_json, o.type, o.timestamp
+          from history_entries h
+          left join operations o on o.id = h.operation_id
+          order by h.created_at_ms desc, h.sequence desc
+        ",
+        )
+        .map_err(|error| error.to_string())?;
+
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, i64>(4)?,
+                row.get::<_, String>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut entries = Vec::new();
+    for row in rows {
+        let (id, operation_id, sequence, undone, created_at_ms, undo_json, op_type, timestamp) =
+            row.map_err(|error| error.to_string())?;
+        let undo_operation = serde_json::from_str::<Value>(&undo_json).unwrap_or(Value::Null);
+        let (restored_item_count, preview) = summarize_undo_operation(&undo_operation);
+
+        entries.push(json!({
+            "historyId": id,
+            "operationId": operation_id,
+            "operationType": op_type,
+            "sequence": sequence,
+            "undone": undone != 0,
+            "createdAtMs": created_at_ms,
+            "timestamp": timestamp,
+            "restoredItemCount": restored_item_count,
+            "preview": preview,
+            "undoJson": undo_json,
+        }));
+    }
+
+    Ok(json!({ "entries": entries }))
+}
+
+/// Walks an undo operation to estimate how many plan items it would re-insert and to
+/// grab a short preview of their text, so the Recovery list is identifiable at a glance.
+fn summarize_undo_operation(operation: &Value) -> (i64, String) {
+    let mut count = 0;
+    let mut preview = String::new();
+    collect_undo_summary(operation, &mut count, &mut preview);
+    (count, preview)
+}
+
+fn collect_undo_summary(operation: &Value, count: &mut i64, preview: &mut String) {
+    let operation_type = operation.get("type").and_then(Value::as_str).unwrap_or("");
+    let payload = operation.get("payload").unwrap_or(&Value::Null);
+
+    match operation_type {
+        "batch" => {
+            if let Some(operations) = payload.get("operations").and_then(Value::as_array) {
+                for nested in operations {
+                    collect_undo_summary(nested, count, preview);
+                }
+            }
+        }
+        "insert_plan_item_at" => {
+            if let Some(item) = payload.get("item") {
+                count_plan_item_subtree(item, count, preview);
+            }
+        }
+        "insert_plan" => {
+            if let Some(items) = payload.get("plan").and_then(|plan| plan.get("items")) {
+                if let Some(items) = items.as_array() {
+                    for item in items {
+                        count_plan_item_subtree(item, count, preview);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn count_plan_item_subtree(item: &Value, count: &mut i64, preview: &mut String) {
+    *count += 1;
+    if preview.is_empty() {
+        if let Some(text) = item.get("text").and_then(Value::as_str) {
+            let trimmed = text.trim();
+            if !trimmed.is_empty() {
+                *preview = trimmed.chars().take(80).collect();
+            }
+        }
+    }
+    if let Some(children) = item.get("children").and_then(Value::as_array) {
+        for child in children {
+            count_plan_item_subtree(child, count, preview);
+        }
     }
 }
 
@@ -3748,6 +3951,9 @@ pub fn run() {
             persist_operation,
             undo_last_operation,
             redo_last_operation,
+            list_recovery_entries,
+            list_metadata,
+            restore_recovery_entry,
             get_recovery_key_status,
             confirm_recovery_key,
             save_export_file,
@@ -5215,6 +5421,106 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_file(&self.path);
         }
+    }
+
+    /// Reproduces the reported data loss: pasting onto an empty-titled parent that still
+    /// has children sends `placement: "replace"`, which deletes the parent and cascade-deletes
+    /// its children. Verifies the recovery panel can find and fully restore the subtree.
+    #[test]
+    fn recovery_entry_restores_paste_replaced_parent_with_children() {
+        let database = TestDatabase::new("recovery-paste-replace");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+
+        let mut state = test_state("Recovery test");
+        // An empty-titled parent carrying important children.
+        state["plans"][0]["items"] = json!([
+            {
+                "id": "plan_item_parent",
+                "text": "",
+                "html": "",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": [
+                    {
+                        "id": "plan_item_child_a",
+                        "text": "Important child A",
+                        "html": "Important child A",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    },
+                    {
+                        "id": "plan_item_child_b",
+                        "text": "Important child B",
+                        "html": "Important child B",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }
+                ]
+            }
+        ]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        // The buggy paste: replace the empty-titled parent with a pasted item.
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "paste_plan_items",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "targetId": "plan_item_parent",
+                    "placement": "replace",
+                    "items": [
+                        {
+                            "id": "plan_item_pasted",
+                            "text": "Pasted task",
+                            "html": "Pasted task",
+                            "done": false,
+                            "startMinutes": null,
+                            "endMinutes": null,
+                            "children": []
+                        }
+                    ]
+                }
+            }),
+        )
+        .unwrap();
+
+        // The parent and both children are gone; only the pasted item remains.
+        let after_paste = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(top_plan_item_ids(&after_paste), ["plan_item_pasted"]);
+
+        // The recovery list surfaces the undo snapshot with the full subtree (3 items).
+        let listed = list_recovery_entries_from_database(&connection).unwrap();
+        let entries = listed["entries"].as_array().unwrap();
+        let entry = entries
+            .iter()
+            .find(|entry| entry["operationType"] == "paste_plan_items")
+            .expect("paste entry should be recoverable");
+        assert_eq!(entry["restoredItemCount"], 3);
+        assert_eq!(entry["preview"], "Important child A");
+        let history_id = entry["historyId"].as_str().unwrap().to_string();
+
+        // Restoring reverses the paste: parent and children come back, pasted item removed.
+        let restored = restore_recovery_entry_in_database(&mut connection, &history_id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&restored), ["plan_item_parent"]);
+        let children = restored["plans"][0]["items"][0]["children"]
+            .as_array()
+            .unwrap();
+        assert_eq!(children.len(), 2);
+        assert_eq!(children[0]["text"], "Important child A");
+        assert_eq!(children[1]["text"], "Important child B");
     }
 
     fn test_state(plan_title: &str) -> Value {

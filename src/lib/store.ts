@@ -64,6 +64,19 @@ export type RecoveryKeyStatus = {
   databasePath: string
 }
 
+export type RecoveryEntry = {
+  historyId: string
+  operationId: string
+  operationType: string | null
+  sequence: number
+  undone: boolean
+  createdAtMs: number
+  timestamp: string | null
+  restoredItemCount: number
+  preview: string
+  undoJson: string
+}
+
 let undoStack: HistoryEntry[] = []
 let redoStack: HistoryEntry[] = []
 let persistenceTarget: 'tauri' | 'localStorage' | null = null
@@ -688,6 +701,31 @@ function createPlannerStore() {
 
       if (operationToPersist) queueOperationPersistence(operationToPersist)
     },
+
+    async restoreRecoveryEntry(historyId: string): Promise<boolean> {
+      if (!isTauri()) return false
+
+      await flushOperations()
+      const stateJson = await invoke<string | null>('restore_recovery_entry', { historyId })
+      const parsed = parseStoredState(stateJson)
+      if (!parsed) return false
+
+      lastOperationMergeKey = null
+      store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+      return true
+    },
+
+    async reloadFromBackend(): Promise<void> {
+      if (!isTauri()) return
+
+      await flushOperations()
+      const stored = await invoke<string | null>('read_app_state')
+      const parsed = parseStoredState(stored)
+      if (!parsed) return
+
+      lastOperationMergeKey = null
+      store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+    },
   }
 }
 
@@ -849,6 +887,25 @@ export async function getRecoveryKeyStatus(): Promise<RecoveryKeyStatus | null> 
 export async function confirmRecoveryKey(): Promise<void> {
   if (!isTauri()) return
   await invoke('confirm_recovery_key')
+}
+
+export async function listRecoveryEntries(): Promise<RecoveryEntry[]> {
+  if (!isTauri()) return []
+  const raw = await invoke<string>('list_recovery_entries')
+  const parsed = JSON.parse(raw) as { entries: RecoveryEntry[] }
+  return parsed.entries ?? []
+}
+
+export type MetadataEntry = {
+  key: string
+  value: string
+}
+
+export async function listMetadata(): Promise<MetadataEntry[]> {
+  if (!isTauri()) return []
+  const raw = await invoke<string>('list_metadata')
+  const parsed = JSON.parse(raw) as { entries: MetadataEntry[] }
+  return parsed.entries ?? []
 }
 
 function normalizeState(state: AppState): AppState {

@@ -4,8 +4,16 @@
   import { onMount, tick } from 'svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
-  import { confirmRecoveryKey, exportHTML, exportJSON, getRecoveryKeyStatus, plannerStore } from './lib/store'
-  import type { RecoveryKeyStatus } from './lib/store'
+  import {
+    confirmRecoveryKey,
+    exportHTML,
+    exportJSON,
+    getRecoveryKeyStatus,
+    listMetadata,
+    listRecoveryEntries,
+    plannerStore,
+  } from './lib/store'
+  import type { MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { Id, MoveDirection, PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
 
@@ -38,6 +46,13 @@
   let autoJsonExportBusy = false
   let autoJsonExportTimer: number | null = null
   let autoJsonExportCheckTimer: number | null = null
+  let recoveryPanelOpen = false
+  let recoveryEntries: RecoveryEntry[] = []
+  let recoveryBusy = false
+  let recoveryStatus = ''
+  let recoveryStatusIsError = false
+  let recoveryExpandedId: string | null = null
+  let metadataEntries: MetadataEntry[] = []
   let editingDailyReminder = false
   let dailyReminderDraft = ''
   let dailyReminderInput: HTMLInputElement | null = null
@@ -373,6 +388,18 @@
   function handleGlobalKeydown(event: KeyboardEvent) {
     const key = event.key.toLowerCase()
     const primaryModifier = event.metaKey || event.ctrlKey
+
+    if (primaryModifier && event.shiftKey && key === 'p') {
+      event.preventDefault()
+      void openRecoveryPanel()
+      return
+    }
+
+    if (event.key === 'Escape' && recoveryPanelOpen) {
+      event.preventDefault()
+      closeRecoveryPanel()
+      return
+    }
 
     if (event.key === 'Escape' && selectedPlanItemIds.length > 0) {
       event.preventDefault()
@@ -808,12 +835,92 @@
     if (planItemClipboard.cut) planItemClipboard = null
   }
 
+  async function openRecoveryPanel() {
+    recoveryPanelOpen = true
+    recoveryExpandedId = null
+    await Promise.all([refreshRecoveryEntries(), refreshMetadata()])
+  }
+
+  async function refreshMetadata() {
+    try {
+      metadataEntries = await listMetadata()
+    } catch (error) {
+      metadataEntries = []
+      recoveryStatusIsError = true
+      recoveryStatus = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  function closeRecoveryPanel() {
+    recoveryPanelOpen = false
+  }
+
+  async function refreshRecoveryEntries() {
+    recoveryBusy = true
+    recoveryStatus = ''
+    recoveryStatusIsError = false
+
+    try {
+      recoveryEntries = await listRecoveryEntries()
+      if (recoveryEntries.length === 0) {
+        recoveryStatus = 'No recoverable history was found.'
+      }
+    } catch (error) {
+      recoveryStatusIsError = true
+      recoveryStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      recoveryBusy = false
+    }
+  }
+
+  async function restoreRecoveryEntry(entry: RecoveryEntry) {
+    if (recoveryBusy) return
+
+    const confirmed = await confirmDialog(
+      `Restore ${entry.restoredItemCount} item${entry.restoredItemCount === 1 ? '' : 's'}${
+        entry.preview ? ` (“${entry.preview}”)` : ''
+      }? This reverses the action that removed them.`,
+      { title: 'Restore items', kind: 'warning' },
+    )
+    if (!confirmed) return
+
+    recoveryBusy = true
+    recoveryStatus = ''
+    recoveryStatusIsError = false
+
+    try {
+      const restored = await plannerStore.restoreRecoveryEntry(entry.historyId)
+      if (restored) {
+        recoveryStatus = 'Restored. Check your plan — the items should be back.'
+        await refreshRecoveryEntries()
+      } else {
+        recoveryStatusIsError = true
+        recoveryStatus = 'Nothing was restored for that entry.'
+      }
+    } catch (error) {
+      recoveryStatusIsError = true
+      recoveryStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      recoveryBusy = false
+    }
+  }
+
+  function formatRecoveryTimestamp(entry: RecoveryEntry): string {
+    const source = entry.timestamp ? Date.parse(entry.timestamp) : entry.createdAtMs
+    if (Number.isNaN(source)) return ''
+    return new Date(source).toLocaleString()
+  }
+
   function shouldReplaceFocusedPlanItemOnPaste(targetId: Id | null) {
     if (!activePlan || !targetId) return false
     if (!(document.activeElement instanceof HTMLElement) || !document.activeElement.matches('[data-plan-text-input]')) return false
 
     const item = findPlanItem(activePlan.items, targetId)
-    return Boolean(item && item.text.trim() === '' && item.html.trim() === '')
+    // Only replace a genuinely empty leaf. Replacing an empty-titled item that still has
+    // children would cascade-delete the whole subtree (data loss on paste).
+    return Boolean(
+      item && item.text.trim() === '' && item.html.trim() === '' && item.children.length === 0,
+    )
   }
 
   function pasteTargetPlanItemId() {
@@ -1284,6 +1391,90 @@
       </div>
 
       <p class="database-path">Database: {recoveryKeyStatus.databasePath}</p>
+    </div>
+  </div>
+{/if}
+
+{#if recoveryPanelOpen}
+  <div class="modal-backdrop">
+    <div class="recovery-panel" role="dialog" aria-modal="true" aria-labelledby="recovery-panel-title">
+      <div class="recovery-panel-head">
+        <div>
+          <p class="eyebrow">Recovery &amp; diagnostics</p>
+          <h2 id="recovery-panel-title">Restore removed items</h2>
+        </div>
+        <button type="button" class="ghost" on:click={closeRecoveryPanel}>Close</button>
+      </div>
+      <p class="recovery-copy">
+        Each entry is a saved undo snapshot. Restoring reverses the action that removed those items — useful when an
+        edit deleted something it shouldn't have.
+      </p>
+
+      {#if recoveryStatus}
+        <p class="recovery-panel-status" class:error={recoveryStatusIsError}>{recoveryStatus}</p>
+      {/if}
+
+      <div class="recovery-actions-row">
+        <button type="button" on:click={() => { void refreshRecoveryEntries(); void refreshMetadata() }} disabled={recoveryBusy}>
+          Refresh
+        </button>
+      </div>
+
+      <div class="recovery-scroll">
+      <ul class="recovery-list">
+        {#each recoveryEntries as entry (entry.historyId)}
+          <li class="recovery-row" class:undone={entry.undone}>
+            <div class="recovery-row-main">
+              <div class="recovery-row-info">
+                <span class="recovery-row-title">
+                  {entry.restoredItemCount > 0
+                    ? `Restores ${entry.restoredItemCount} item${entry.restoredItemCount === 1 ? '' : 's'}`
+                    : entry.operationType ?? 'Operation'}
+                </span>
+                {#if entry.preview}<span class="recovery-row-preview">“{entry.preview}”</span>{/if}
+                <span class="recovery-row-meta">
+                  {entry.operationType ?? 'unknown'} · seq {entry.sequence} · {formatRecoveryTimestamp(entry)}
+                  {#if entry.undone} · already undone{/if}
+                </span>
+              </div>
+              <div class="recovery-row-buttons">
+                <button
+                  type="button"
+                  class="ghost"
+                  on:click={() => (recoveryExpandedId = recoveryExpandedId === entry.historyId ? null : entry.historyId)}
+                >
+                  {recoveryExpandedId === entry.historyId ? 'Hide' : 'Inspect'}
+                </button>
+                <button type="button" class="primary" disabled={recoveryBusy} on:click={() => restoreRecoveryEntry(entry)}>
+                  Restore
+                </button>
+              </div>
+            </div>
+            {#if recoveryExpandedId === entry.historyId}
+              <pre class="recovery-json">{entry.undoJson}</pre>
+            {/if}
+          </li>
+        {/each}
+      </ul>
+
+      <details class="metadata-section">
+        <summary>Database metadata ({metadataEntries.length})</summary>
+        <p class="recovery-copy metadata-hint">
+          Session and export diagnostics. Watch <code>last_auto_json_export_error</code> and
+          <code>last_auto_json_export_date</code> to see whether auto-export is running.
+        </p>
+        <table class="metadata-table">
+          <tbody>
+            {#each metadataEntries as entry (entry.key)}
+              <tr>
+                <th scope="row">{entry.key}</th>
+                <td>{entry.value}</td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </details>
+      </div>
     </div>
   </div>
 {/if}
