@@ -27,6 +27,8 @@
     lastAutoJsonExportDate: string | null
     lastAutoJsonExportPath: string | null
     lastAutoJsonExportError: string | null
+    lastAutoJsonExportErrorAt: string | null
+    autoJsonExportErrorAckAt: string | null
   }
 
   const AUTO_JSON_EXPORT_CHECK_INTERVAL_MS = 15 * 60 * 1000
@@ -73,6 +75,11 @@
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
   $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
   $: selectedPlanItemIdSet = new Set(selectedPlanItemIds)
+  $: showAutoExportError = Boolean(
+    exportSettings?.lastAutoJsonExportError &&
+      exportSettings.lastAutoJsonExportErrorAt &&
+      exportSettings.lastAutoJsonExportErrorAt !== exportSettings.autoJsonExportErrorAckAt,
+  )
   $: if ((view !== 'today' || activePlan?.id !== selectedPlanPlanId) && selectedPlanItemIds.length > 0) {
     clearPlanSelection()
   }
@@ -351,14 +358,24 @@
   }
 
   function shouldRunAutoJsonExport(settings: ExportSettings): boolean {
-    if (!settings.autoJsonExportEnabled || settings.lastAutoJsonExportDate === todayISO()) return false
+    // Export once per day. Previously this also required the current time to be past the
+    // configured time, so a day where the app wasn't open at that moment was skipped entirely
+    // (and never backfilled). Now any launch or periodic check on a not-yet-exported day runs
+    // the export, guaranteeing one daily backup whenever the app is opened. The configured time
+    // still drives scheduleNextAutoJsonExport for sessions that stay open across the boundary.
+    return settings.autoJsonExportEnabled && settings.lastAutoJsonExportDate !== todayISO()
+  }
 
-    const scheduledMinutes = parseTimeMinutes(settings.autoJsonExportTime)
-    if (scheduledMinutes === null) return false
-
-    const now = new Date()
-    const currentMinutes = now.getHours() * 60 + now.getMinutes()
-    return currentMinutes >= scheduledMinutes
+  async function dismissAutoExportError() {
+    try {
+      exportSettings = await invoke<ExportSettings>('acknowledge_auto_json_export_error')
+    } catch {
+      // If the ack write fails, hide it locally so we don't nag; a genuinely new failure
+      // (new error timestamp) will still resurface because it won't match this ack.
+      if (exportSettings) {
+        exportSettings = { ...exportSettings, autoJsonExportErrorAckAt: exportSettings.lastAutoJsonExportErrorAt }
+      }
+    }
   }
 
   function millisecondsUntilNextAutoJsonExport(settings: ExportSettings): number {
@@ -1031,6 +1048,20 @@
   on:pointermove={handlePlanSelectionPointerMove}
   on:pointerup={endPlanItemSelection}
 />
+
+{#if showAutoExportError}
+  <div class="auto-export-banner" role="alert">
+    <span class="auto-export-banner-icon" aria-hidden="true">⚠</span>
+    <div class="auto-export-banner-text">
+      <strong>Auto-export failed</strong>
+      <span>{exportSettings?.lastAutoJsonExportError}</span>
+    </div>
+    <div class="auto-export-banner-actions">
+      <button type="button" class="ghost" on:click={() => { void openRecoveryPanel() }}>Details</button>
+      <button type="button" class="ghost" on:click={() => { void dismissAutoExportError() }}>Dismiss</button>
+    </div>
+  </div>
+{/if}
 
 <main class="app-shell">
   <aside class="sidebar">

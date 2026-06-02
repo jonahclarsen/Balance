@@ -23,6 +23,8 @@ const AUTO_JSON_EXPORT_TIME: &str = "auto_json_export_time";
 const AUTO_JSON_EXPORT_LAST_DATE: &str = "auto_json_export_last_date";
 const AUTO_JSON_EXPORT_LAST_PATH: &str = "auto_json_export_last_path";
 const AUTO_JSON_EXPORT_LAST_ERROR: &str = "auto_json_export_last_error";
+const AUTO_JSON_EXPORT_LAST_ERROR_AT: &str = "auto_json_export_last_error_at";
+const AUTO_JSON_EXPORT_ERROR_ACK_AT: &str = "auto_json_export_error_ack_at";
 const DEFAULT_AUTO_JSON_EXPORT_TIME: &str = "23:55";
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 
@@ -45,6 +47,11 @@ struct ExportSettings {
     last_auto_json_export_date: Option<String>,
     last_auto_json_export_path: Option<String>,
     last_auto_json_export_error: Option<String>,
+    // Timestamp the current error was recorded, and the timestamp the user last acknowledged.
+    // The UI surfaces the error only while these differ, so a dismissed error stays quiet until
+    // a genuinely new failure (new timestamp) occurs.
+    last_auto_json_export_error_at: Option<String>,
+    auto_json_export_error_ack_at: Option<String>,
 }
 
 #[tauri::command]
@@ -242,6 +249,7 @@ async fn record_auto_json_export_success(
         set_metadata(&connection, AUTO_JSON_EXPORT_LAST_DATE, &date)?;
         set_metadata(&connection, AUTO_JSON_EXPORT_LAST_PATH, &path)?;
         delete_metadata(&connection, AUTO_JSON_EXPORT_LAST_ERROR)?;
+        delete_metadata(&connection, AUTO_JSON_EXPORT_LAST_ERROR_AT)?;
         export_settings(&app, &connection)
     })
     .await
@@ -255,6 +263,28 @@ async fn record_auto_json_export_error(
     run_database_task(move || {
         let connection = open_database(&app)?;
         set_metadata(&connection, AUTO_JSON_EXPORT_LAST_ERROR, error.trim())?;
+        set_metadata(
+            &connection,
+            AUTO_JSON_EXPORT_LAST_ERROR_AT,
+            &current_timestamp(),
+        )?;
+        export_settings(&app, &connection)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn acknowledge_auto_json_export_error(
+    app: tauri::AppHandle,
+) -> Result<ExportSettings, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        // Mark the current error event as seen so the UI stops surfacing it. A later failure
+        // records a new timestamp, which won't match this ack, so it surfaces again.
+        match metadata_value(&connection, AUTO_JSON_EXPORT_LAST_ERROR_AT)? {
+            Some(error_at) => set_metadata(&connection, AUTO_JSON_EXPORT_ERROR_ACK_AT, &error_at)?,
+            None => delete_metadata(&connection, AUTO_JSON_EXPORT_ERROR_ACK_AT)?,
+        }
         export_settings(&app, &connection)
     })
     .await
@@ -508,6 +538,8 @@ fn export_settings(
         last_auto_json_export_date: metadata_value(connection, AUTO_JSON_EXPORT_LAST_DATE)?,
         last_auto_json_export_path: metadata_value(connection, AUTO_JSON_EXPORT_LAST_PATH)?,
         last_auto_json_export_error: metadata_value(connection, AUTO_JSON_EXPORT_LAST_ERROR)?,
+        last_auto_json_export_error_at: metadata_value(connection, AUTO_JSON_EXPORT_LAST_ERROR_AT)?,
+        auto_json_export_error_ack_at: metadata_value(connection, AUTO_JSON_EXPORT_ERROR_ACK_AT)?,
     })
 }
 
@@ -3963,6 +3995,7 @@ pub fn run() {
             set_auto_json_export_settings,
             record_auto_json_export_success,
             record_auto_json_export_error,
+            acknowledge_auto_json_export_error,
             reveal_path_in_file_manager,
             open_external_url
         ])
