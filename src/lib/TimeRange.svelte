@@ -13,6 +13,7 @@
   export let endMinutes: number
   export let onChange: (startMinutes: number, endMinutes: number) => void
   export let onRemove: () => void
+  export let overlapsPrevious = false
   export let getShiftTargets: (() => TimeShiftTarget[] | null) | null = null
   export let onShift: ((targets: TimeShiftTarget[], delta: number) => void) | null = null
 
@@ -84,7 +85,12 @@
   }
 </script>
 
-<span class="time-range" aria-label="Time range">
+<span
+  class="time-range"
+  class:overlaps={overlapsPrevious}
+  aria-label="Time range"
+  title={overlapsPrevious ? 'This time starts before the previous timed item ends' : null}
+>
   <button
     class="time-part"
     type="button"

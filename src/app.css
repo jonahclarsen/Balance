@@ -23,6 +23,9 @@
   --drop-inside: #e8f2ee;
   --time-border: #c6d6d1;
   --time-bg: #eef7f3;
+  --time-warn-border: #e0c39a;
+  --time-warn-bg: #fbf0e1;
+  --time-warn-ink: #9a5e22;
   --focus-ring: rgba(47, 111, 104, 0.25);
 }
 
@@ -47,6 +50,9 @@
     --drop-inside: #21312d;
     --time-border: #40665e;
     --time-bg: #20362f;
+    --time-warn-border: #6d5638;
+    --time-warn-bg: #352a1c;
+    --time-warn-ink: #dab98e;
     --focus-ring: rgba(121, 185, 174, 0.28);
   }
 }
@@ -473,6 +479,12 @@ nav button.active {
   padding-left: 5px;
   color: var(--accent-strong);
   font-variant-numeric: tabular-nums;
+}
+
+.time-range.overlaps {
+  border-color: var(--time-warn-border);
+  background: var(--time-warn-bg);
+  color: var(--time-warn-ink);
 }
 
 .time-part {

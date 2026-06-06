@@ -864,6 +864,16 @@ function latestTimedItemEndMinutes<T extends {
   return lastEndMinutes
 }
 
+export function planItemTimeOverlapsPrevious<T extends {
+  id: Id
+  startMinutes: number | null
+  endMinutes: number | null
+  children: T[]
+}>(items: T[], itemId: Id, startMinutes: number): boolean {
+  const previousEndMinutes = previousTimedItemEndMinutes(items, itemId).endMinutes
+  return previousEndMinutes !== null && startMinutes < previousEndMinutes
+}
+
 export function formatMinutes(minutes: number): string {
   const normalized = ((minutes % 1440) + 1440) % 1440
   const hours = Math.floor(normalized / 60)

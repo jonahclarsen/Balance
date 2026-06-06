@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { defaultPlanItemTimeRange, MAX_TIMELINE_MINUTES } from './planner'
+  import { defaultPlanItemTimeRange, MAX_TIMELINE_MINUTES, planItemTimeOverlapsPrevious } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import type { Id, MoveDirection, MovePlacement, PlanItem } from './types'
@@ -51,6 +51,10 @@
   let dragging = false
   let activeDropRow: HTMLElement | null = null
   $: selected = selectedItemIds.has(item.id)
+  $: timeOverlapsPrevious =
+    item.startMinutes !== null &&
+    item.endMinutes !== null &&
+    planItemTimeOverlapsPrevious(allItems, item.id, item.startMinutes)
 
   function addTime() {
     patchItem(planId, item.id, defaultPlanItemTimeRange(allItems, item.id))
@@ -377,6 +381,7 @@
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
+        overlapsPrevious={timeOverlapsPrevious}
         onChange={patchTimeRange}
         getShiftTargets={selectedTimeShiftTargets}
         onShift={shiftSelectedTimeRanges}
