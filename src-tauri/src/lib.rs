@@ -1270,6 +1270,11 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             required_array(payload, "itemIds")?,
             required_string(payload, "direction")?,
         ),
+        "indent_plan_items" => indent_plan_items_row(
+            tx,
+            required_string(payload, "planId")?,
+            required_array(payload, "itemIds")?,
+        ),
         "outdent_plan_item" => outdent_plan_item_row(tx, required_string(payload, "itemId")?),
         "move_plan_item_to_position" => move_plan_item_to_position_row(
             tx,
@@ -1548,6 +1553,7 @@ fn build_undo_operation(
         "move_plan_items_within_level" => {
             build_move_plan_items_within_level_undo(connection, payload)
         }
+        "indent_plan_items" => build_move_plan_items_within_level_undo(connection, payload),
         "outdent_plan_item" => build_outdent_plan_item_undo(connection, payload),
         "rename_template" => {
             let template_id = required_string(payload, "templateId")?;
@@ -2952,6 +2958,75 @@ fn move_plan_items_within_level_row(
         if changed {
             rewrite_plan_item_positions(connection, &siblings)?;
         }
+    }
+
+    Ok(())
+}
+
+fn indent_plan_items_row(
+    connection: &Connection,
+    plan_id: &str,
+    item_ids: &[Value],
+) -> Result<(), String> {
+    let selected_ids = item_ids
+        .iter()
+        .map(|item_id| {
+            item_id
+                .as_str()
+                .map(str::to_string)
+                .ok_or_else(|| "Expected string item id".to_string())
+        })
+        .collect::<Result<Vec<String>, String>>()?;
+    let mut selected_by_parent: HashMap<Option<String>, Vec<String>> = HashMap::new();
+
+    for item_id in &selected_ids {
+        if plan_item_plan_id(connection, item_id)? != plan_id {
+            continue;
+        }
+
+        selected_by_parent
+            .entry(plan_item_parent_id(connection, item_id)?)
+            .or_default()
+            .push(item_id.clone());
+    }
+
+    for (parent_id, selected_at_level) in selected_by_parent {
+        let siblings = plan_item_sibling_ids(connection, plan_id, parent_id.as_deref())?;
+        let mut remaining_siblings = Vec::new();
+        let mut target_id: Option<String> = None;
+        let mut selected_by_target: HashMap<String, Vec<String>> = HashMap::new();
+
+        for sibling_id in siblings {
+            if selected_at_level.contains(&sibling_id) {
+                if let Some(target_id) = target_id.as_ref() {
+                    selected_by_target
+                        .entry(target_id.clone())
+                        .or_default()
+                        .push(sibling_id);
+                } else {
+                    remaining_siblings.push(sibling_id);
+                }
+            } else {
+                target_id = Some(sibling_id.clone());
+                remaining_siblings.push(sibling_id);
+            }
+        }
+
+        for (target_id, selected) in selected_by_target {
+            let mut children = plan_item_sibling_ids(connection, plan_id, Some(&target_id))?;
+            for item_id in selected {
+                connection
+                    .execute(
+                        "update plan_items set parent_id = ?1 where id = ?2",
+                        params![target_id, item_id],
+                    )
+                    .map_err(|error| error.to_string())?;
+                children.push(item_id);
+            }
+            rewrite_plan_item_positions(connection, &children)?;
+        }
+
+        rewrite_plan_item_positions(connection, &remaining_siblings)?;
     }
 
     Ok(())
@@ -4848,6 +4923,84 @@ mod tests {
         assert_eq!(
             top_plan_item_ids(&redone),
             ["plan_item_second", "plan_item_wake"]
+        );
+    }
+
+    #[test]
+    fn indent_plan_items_persists_and_undoes() {
+        let database = TestDatabase::new("plan-indent");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Plan indent test");
+        state["plans"][0]["items"].as_array_mut().unwrap().extend([
+            json!({
+                "id": "plan_item_second",
+                "text": "Second item",
+                "html": "Second item",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }),
+            json!({
+                "id": "plan_item_third",
+                "text": "Third item",
+                "html": "Third item",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }),
+        ]);
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "indent_plan_items",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemIds": ["plan_item_second", "plan_item_third"]
+                }
+            }),
+        )
+        .unwrap();
+
+        let indented = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(top_plan_item_ids(&indented), ["plan_item_wake"]);
+        assert_eq!(
+            indented["plans"][0]["items"][0]["children"][0]["id"],
+            "plan_item_second"
+        );
+        assert_eq!(
+            indented["plans"][0]["items"][0]["children"][1]["id"],
+            "plan_item_third"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_plan_item_ids(&undone),
+            ["plan_item_wake", "plan_item_second", "plan_item_third"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&redone), ["plan_item_wake"]);
+        assert_eq!(
+            redone["plans"][0]["items"][0]["children"][0]["id"],
+            "plan_item_second"
+        );
+        assert_eq!(
+            redone["plans"][0]["items"][0]["children"][1]["id"],
+            "plan_item_third"
         );
     }
 
