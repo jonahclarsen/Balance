@@ -3,6 +3,7 @@ import { get, writable, type Writable } from 'svelte/store'
 import {
   addPlanItem,
   addTemplateItem,
+  createId,
   createInitialState,
   createPlanItem,
   createTemplateItem,
@@ -36,7 +37,16 @@ import {
   updatePlanItem,
   updateTemplateItem,
 } from './planner'
-import type { AppState, DailyPlan, Id, Operation, PlanItem, TemplateItem, TemplateOption } from './types'
+import {
+  createGoal,
+  goalCompletionsEqual,
+  normalizeGoal,
+  normalizeGoalCompletion,
+  normalizeMatchTerms,
+  reconcileRecentGoalCompletions,
+  setGoalActiveOnDate,
+} from './goals'
+import type { AppState, DailyPlan, Goal, Id, Operation, PlanItem, TemplateItem, TemplateOption } from './types'
 
 const STORAGE_KEY = 'balance.appState.v1'
 const TEXT_MERGE_WINDOW_MS = 1200
@@ -257,8 +267,13 @@ function createPlannerStore() {
     let operationToPersist: Operation | null = null
 
     store.update((state) => {
-      const next = mutate(state)
+      let next = mutate(state)
       if (next === state) return state
+
+      const reconciledGoalCompletions = reconcileRecentGoalCompletions(next)
+      if (!goalCompletionsEqual(reconciledGoalCompletions, next.goalCompletions)) {
+        next = { ...next, goalCompletions: reconciledGoalCompletions }
+      }
 
       const now = Date.now()
       const timestamp = nowISO()
@@ -269,15 +284,32 @@ function createPlannerStore() {
         lastOperation !== undefined &&
         now - lastOperationMergeUpdatedAt <= (options.mergeWindowMs ?? 0)
       const sequence = canMergeOperation ? lastOperation.sequence : state.localSequence + 1
+      const goalDataChanged = next.goals !== state.goals || next.goalCompletions !== state.goalCompletions
+      const previousGoalData =
+        canMergeOperation && lastOperation?.payload !== null && typeof lastOperation?.payload === 'object'
+          ? (lastOperation.payload as Record<string, unknown>).goalData
+          : undefined
+      const goalData = goalDataChanged
+        ? {
+            goals: next.goals,
+            goalCompletions: next.goalCompletions,
+          }
+        : previousGoalData
+      const operationPayload = goalData !== undefined
+        ? {
+            ...(payload && typeof payload === 'object' ? payload : { value: payload }),
+            goalData,
+          }
+        : payload
       const operation: Operation = canMergeOperation
-        ? { ...lastOperation, timestamp, payload }
+        ? { ...lastOperation, timestamp, payload: operationPayload }
         : {
             id: `op_${state.deviceId}_${sequence}`,
             deviceId: state.deviceId,
             sequence,
             type,
             timestamp,
-            payload,
+            payload: operationPayload,
           }
 
       const committed = {
@@ -535,6 +567,61 @@ function createPlannerStore() {
           return items === plan.items ? plan : { ...plan, items }
         }),
       )
+    },
+
+    addGoal(name: string, cadenceDays: number, matchTerms: string[], hue: number) {
+      const goal = createGoal(name, cadenceDays, matchTerms, hue, todayISO(), createId('goal'))
+      commit('replace_goal_data', { action: 'add_goal', goalId: goal.id }, (state) => ({
+        ...state,
+        goals: [...state.goals, goal],
+      }))
+      return goal.id
+    },
+
+    patchGoal(goalId: Id, patch: Partial<Pick<Goal, 'name' | 'cadenceDays' | 'matchTerms' | 'hue'>>) {
+      commit(
+        'replace_goal_data',
+        { action: 'patch_goal', goalId, patch },
+        (state) => {
+          let changed = false
+          const goals = state.goals.map((goal) => {
+            if (goal.id !== goalId) return goal
+
+            const next = normalizeGoal({
+              ...goal,
+              ...patch,
+              matchTerms: patch.matchTerms ? normalizeMatchTerms(patch.matchTerms) : goal.matchTerms,
+              updatedAt: nowISO(),
+            })
+            if (JSON.stringify(next) !== JSON.stringify(goal)) changed = true
+            return next
+          })
+
+          return changed ? { ...state, goals } : state
+        },
+        { mergeKey: `goal:${goalId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
+      )
+    },
+
+    setGoalActive(goalId: Id, active: boolean, date = todayISO()) {
+      commit('replace_goal_data', { action: 'set_goal_active', goalId, active, date }, (state) => {
+        let changed = false
+        const goals = state.goals.map((goal) => {
+          if (goal.id !== goalId) return goal
+          const next = setGoalActiveOnDate(goal, active, date)
+          if (next !== goal) changed = true
+          return next
+        })
+        return changed ? { ...state, goals } : state
+      })
+    },
+
+    deleteGoal(goalId: Id) {
+      commit('replace_goal_data', { action: 'delete_goal', goalId }, (state) => ({
+        ...state,
+        goals: state.goals.filter((goal) => goal.id !== goalId),
+        goalCompletions: state.goalCompletions.filter((completion) => completion.goalId !== goalId),
+      }))
     },
 
     renameTemplate(templateId: Id, name: string) {
@@ -987,6 +1074,8 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       activePlanDate: '',
       templates: [],
       plans: parsed.plans ?? [],
+      goals: [],
+      goalCompletions: [],
       operations: [],
     }).plans,
   }
@@ -995,6 +1084,8 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
 function normalizeState(state: AppState): AppState {
   return {
     ...state,
+    goals: (state.goals ?? []).map(normalizeGoal),
+    goalCompletions: (state.goalCompletions ?? []).map(normalizeGoalCompletion),
     templates: state.templates.map((template) => ({
       ...template,
       items: normalizeTemplateItems(template.items),

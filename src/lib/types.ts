@@ -47,6 +47,30 @@ export type DailyTemplate = {
   updatedAt: string
 }
 
+export type GoalActivityPeriod = {
+  startDate: string
+  endDate: string | null
+}
+
+export type Goal = {
+  id: Id
+  name: string
+  cadenceDays: number
+  matchTerms: string[]
+  hue: number
+  activityPeriods: GoalActivityPeriod[]
+  createdAt: string
+  updatedAt: string
+}
+
+export type GoalCompletion = {
+  goalId: Id
+  date: string
+  itemIds: Id[]
+  matchedTerms: string[]
+  computedAt: string
+}
+
 export type Operation = {
   id: Id
   deviceId: Id
@@ -64,5 +88,7 @@ export type AppState = {
   activePlanDate: string
   templates: DailyTemplate[]
   plans: DailyPlan[]
+  goals: Goal[]
+  goalCompletions: GoalCompletion[]
   operations: Operation[]
 }

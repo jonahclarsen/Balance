@@ -9,6 +9,8 @@ Current slice:
 - Edit nested checklist items.
 - Drag checklist items before, after, or inside other items.
 - Add inline time ranges and drag the start/end times in 15-minute increments.
+- Define recurring goals that complete automatically from checked plan-item text.
+- Review goal completions in an always-available, scrollable cadence history panel.
 - Export the app state as JSON or readable plan history as HTML.
 - Record local mutations in an operation log for future sync work.
 

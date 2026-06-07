@@ -2,8 +2,10 @@
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
+  import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
+  import { hexToHue, hueToHex, isGoalActiveOnDate, parseMatchTerms } from './lib/goals'
   import {
     confirmRecoveryKey,
     exportHTML,
@@ -19,7 +21,7 @@
   import type { Id, MoveDirection, PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
 
-  type View = 'today' | 'templates' | 'history' | 'export' | 'settings'
+  type View = 'today' | 'templates' | 'goals' | 'history' | 'export' | 'settings'
   type ExportSettings = {
     exportDirectory: string
     defaultExportDirectory: string
@@ -74,6 +76,11 @@
   let planItemClipboard: { items: PlanItem[]; cut: boolean } | null = null
   let planTextDragOrigin: { itemId: Id; input: HTMLElement } | null = null
   let preservePlanSelectionFocusUntil = 0
+  let newGoalName = ''
+  let newGoalCadenceDays = 1
+  let newGoalTerms = ''
+  let newGoalHue = 165
+  let goalFormStatus = ''
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
@@ -83,6 +90,7 @@
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
   $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
   $: selectedPlanItemIdSet = new Set(selectedPlanItemIds)
+  $: activeGoalCount = $plannerStore.goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
   $: showAutoExportError = Boolean(
     exportSettings?.lastAutoJsonExportError &&
       exportSettings.lastAutoJsonExportErrorAt &&
@@ -141,6 +149,49 @@
     const month = String(shifted.getMonth() + 1).padStart(2, '0')
     const day = String(shifted.getDate()).padStart(2, '0')
     return `${year}-${month}-${day}`
+  }
+
+  function addGoal() {
+    const name = newGoalName.trim()
+    const matchTerms = parseMatchTerms(newGoalTerms)
+    if (!name || matchTerms.length === 0) {
+      goalFormStatus = 'Add a name and at least one matching word or phrase.'
+      return
+    }
+
+    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue)
+    newGoalName = ''
+    newGoalCadenceDays = 1
+    newGoalTerms = ''
+    newGoalHue = (newGoalHue + 47) % 360
+    goalFormStatus = ''
+  }
+
+  function openPlanDateFromGoalHistory(date: string) {
+    plannerStore.setActivePlanDate(date)
+    view = 'today'
+  }
+
+  async function confirmDeleteGoal(goalId: Id, goalName: string) {
+    const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goalId).length
+    const firstMessage =
+      completionCount > 0
+        ? `“${goalName}” has ${completionCount} saved completion${completionCount === 1 ? '' : 's'}. Archiving it keeps that history visible when you scroll back. Delete it and all of its history anyway?`
+        : `Delete “${goalName}”?`
+    const confirmed = isTauri()
+      ? await confirmDialog(firstMessage, { title: completionCount > 0 ? 'Archive instead?' : 'Delete goal?', kind: 'warning' })
+      : window.confirm(firstMessage)
+    if (!confirmed) return
+
+    if (completionCount > 0) {
+      const finalMessage = `Permanently delete “${goalName}” and its ${completionCount} saved completion${completionCount === 1 ? '' : 's'}?`
+      const finalConfirmed = isTauri()
+        ? await confirmDialog(finalMessage, { title: 'Permanently delete goal?', kind: 'warning' })
+        : window.confirm(finalMessage)
+      if (!finalConfirmed) return
+    }
+
+    plannerStore.deleteGoal(goalId)
   }
 
   async function confirmReplaceExistingPlan(): Promise<boolean> {
@@ -1173,6 +1224,7 @@
     <nav aria-label="Primary">
       <button class:active={view === 'today'} type="button" on:click={() => (view = 'today')}>Today</button>
       <button class:active={view === 'templates'} type="button" on:click={() => (view = 'templates')}>Templates</button>
+      <button class:active={view === 'goals'} type="button" on:click={() => (view = 'goals')}>Goals</button>
       <button class:active={view === 'history'} type="button" on:click={() => (view = 'history')}>History</button>
       <button class:active={view === 'export'} type="button" on:click={() => (view = 'export')}>Export</button>
       <button class:active={view === 'settings'} type="button" on:click={() => (view = 'settings')}>Settings</button>
@@ -1180,11 +1232,12 @@
 
     <div class="sidebar-footer">
       <button class="primary" type="button" on:click={generateSelectedDay}>{generateButtonLabel}</button>
-      <p class="tiny">{templates.length} template · {$plannerStore.plans.length} saved days</p>
+      <p class="tiny">{templates.length} template · {$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
     </div>
   </aside>
 
-  <section class="workspace">
+  <div class="content-shell">
+    <section class="workspace">
     {#if view === 'today'}
       <header class="page-header">
         <div>
@@ -1268,6 +1321,9 @@
               onSelectionPointerMove={handlePlanSelectionPointerMove}
               onSelectionPointerEnter={extendPlanItemSelection}
               onTextShiftArrow={selectPlanItemWithAdjacent}
+              goals={$plannerStore.goals}
+              goalCompletions={$plannerStore.goalCompletions}
+              planDate={activePlan.date}
             />
           {/each}
 
@@ -1335,6 +1391,135 @@
           </button>
         </div>
       {/if}
+    {/if}
+
+    {#if view === 'goals'}
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Automatic habits</p>
+          <h2>Goals</h2>
+        </div>
+      </header>
+
+      <div class="goal-create-panel">
+        <div class="goal-create-intro">
+          <h3>Add a goal</h3>
+          <p>It completes automatically when a checked daily-plan item contains any matching word or phrase.</p>
+        </div>
+        <label>
+          <span>Name</span>
+          <input
+            aria-label="New goal name"
+            placeholder="Strenuous exercise"
+            bind:value={newGoalName}
+            on:keydown={(event) => {
+              if (event.key === 'Enter') addGoal()
+            }}
+          />
+        </label>
+        <label class="goal-cadence-field">
+          <span>Every</span>
+          <div>
+            <input aria-label="New goal cadence days" type="number" min="1" max="3650" bind:value={newGoalCadenceDays} />
+            <span>days</span>
+          </div>
+        </label>
+        <label>
+          <span>Matches any</span>
+          <input
+            aria-label="New goal matching terms"
+            placeholder="lift, swim, bike"
+            bind:value={newGoalTerms}
+            on:keydown={(event) => {
+              if (event.key === 'Enter') addGoal()
+            }}
+          />
+        </label>
+        <label class="goal-color-field">
+          <span>Color</span>
+          <input
+            aria-label="New goal color"
+            type="color"
+            value={hueToHex(newGoalHue)}
+            on:input={(event) => (newGoalHue = hexToHue(event.currentTarget.value))}
+          />
+        </label>
+        <button class="primary goal-add-button" type="button" on:click={addGoal}>Add goal</button>
+        {#if goalFormStatus}
+          <p class="goal-form-status">{goalFormStatus}</p>
+        {/if}
+      </div>
+
+      <div class="goal-list">
+        {#each $plannerStore.goals as goal (goal.id)}
+          {@const active = isGoalActiveOnDate(goal, todayISO())}
+          {@const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goal.id).length}
+          <article class="goal-card" class:archived={!active} style={`--goal-hue: ${goal.hue}`}>
+            <div class="goal-card-accent"></div>
+            <div class="goal-card-main">
+              <div class="goal-card-title-row">
+                <input
+                  class="goal-name-input"
+                  aria-label={`Goal name: ${goal.name}`}
+                  value={goal.name}
+                  on:input={(event) => plannerStore.patchGoal(goal.id, { name: event.currentTarget.value })}
+                />
+                <span class:active class="goal-state">{active ? 'Active' : 'Archived'}</span>
+              </div>
+              <div class="goal-card-fields">
+                <label class="goal-cadence-field">
+                  <span>Complete every</span>
+                  <div>
+                    <input
+                      aria-label={`Cadence days for ${goal.name}`}
+                      type="number"
+                      min="1"
+                      max="3650"
+                      value={goal.cadenceDays}
+                      on:change={(event) => plannerStore.patchGoal(goal.id, { cadenceDays: Number(event.currentTarget.value) })}
+                    />
+                    <span>days</span>
+                  </div>
+                </label>
+                <label class="goal-rules-field">
+                  <span>A checked item matches any of</span>
+                  <input
+                    aria-label={`Matching terms for ${goal.name}`}
+                    value={goal.matchTerms.join(', ')}
+                    on:change={(event) => plannerStore.patchGoal(goal.id, { matchTerms: parseMatchTerms(event.currentTarget.value) })}
+                  />
+                </label>
+                <label class="goal-color-field">
+                  <span>Color</span>
+                  <input
+                    aria-label={`Color for ${goal.name}`}
+                    type="color"
+                    value={hueToHex(goal.hue)}
+                    on:input={(event) => plannerStore.patchGoal(goal.id, { hue: hexToHue(event.currentTarget.value) })}
+                  />
+                </label>
+              </div>
+              <p class="goal-card-meta">
+                {completionCount} saved completion{completionCount === 1 ? '' : 's'} · history before {shiftISODate(todayISO(), -2)} is frozen
+              </p>
+            </div>
+            <div class="goal-card-actions">
+              <button
+                type="button"
+                on:click={() => plannerStore.setGoalActive(goal.id, !active)}
+              >
+                {active ? 'Archive' : 'Reactivate'}
+              </button>
+              <button class="danger-text" type="button" on:click={() => { void confirmDeleteGoal(goal.id, goal.name) }}>Delete</button>
+            </div>
+          </article>
+        {:else}
+          <div class="empty-state">
+            <h3>No goals yet</h3>
+            <p>Add one above. Matching starts immediately for completed items on recent plans.</p>
+          </div>
+        {/each}
+      </div>
     {/if}
 
     {#if view === 'history'}
@@ -1495,7 +1680,15 @@
         <p class:error={exportSettingsStatusIsError} class="export-status">{exportSettingsStatus}</p>
       {/if}
     {/if}
-  </section>
+    </section>
+
+    <GoalHistoryPanel
+      goals={$plannerStore.goals}
+      completions={$plannerStore.goalCompletions}
+      onOpenGoals={() => (view = 'goals')}
+      onSelectDate={openPlanDateFromGoalHistory}
+    />
+  </div>
 </main>
 
 {#if recoveryKeyStatus?.recoveryKey}

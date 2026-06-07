@@ -25,6 +25,7 @@ const AUTO_JSON_EXPORT_LAST_PATH: &str = "auto_json_export_last_path";
 const AUTO_JSON_EXPORT_LAST_ERROR: &str = "auto_json_export_last_error";
 const AUTO_JSON_EXPORT_LAST_ERROR_AT: &str = "auto_json_export_last_error_at";
 const AUTO_JSON_EXPORT_ERROR_ACK_AT: &str = "auto_json_export_error_ack_at";
+const GOAL_DATA: &str = "goal_data";
 const DEFAULT_AUTO_JSON_EXPORT_TIME: &str = "23:55";
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 
@@ -330,6 +331,7 @@ fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0);
     let active_plan_date = metadata_value(connection, "active_plan_date")?.unwrap_or_default();
+    let goal_data = read_goal_data(connection)?;
 
     Ok(Some(json!({
         "schemaVersion": 1,
@@ -339,6 +341,8 @@ fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>
         "activePlanDate": active_plan_date,
         "templates": read_templates(connection)?,
         "plans": read_plans(connection)?,
+        "goals": goal_data["goals"].clone(),
+        "goalCompletions": goal_data["goalCompletions"].clone(),
         "operations": [],
     })))
 }
@@ -519,6 +523,33 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
         )
         .optional()
         .map_err(|error| error.to_string())
+}
+
+fn read_goal_data(connection: &Connection) -> Result<Value, String> {
+    let Some(raw) = metadata_value(connection, GOAL_DATA)? else {
+        return Ok(json!({ "goals": [], "goalCompletions": [] }));
+    };
+
+    let parsed = serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| json!({}));
+    Ok(json!({
+        "goals": parsed.get("goals").and_then(Value::as_array).cloned().unwrap_or_default(),
+        "goalCompletions": parsed
+            .get("goalCompletions")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
+    }))
+}
+
+fn goal_data_from_state(state: &Value) -> Value {
+    json!({
+        "goals": state.get("goals").and_then(Value::as_array).cloned().unwrap_or_default(),
+        "goalCompletions": state
+            .get("goalCompletions")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
+    })
 }
 
 fn export_settings(
@@ -794,6 +825,12 @@ fn replace_domain_state(connection: &Connection, state: &Value) -> Result<(), St
     for plan in required_array(state, "plans")? {
         insert_plan(connection, plan)?;
     }
+
+    set_metadata(
+        connection,
+        GOAL_DATA,
+        &goal_data_from_state(state).to_string(),
+    )?;
 
     if let Some(active_plan_date) = optional_string(state, "activePlanDate")? {
         set_metadata(connection, "active_plan_date", &active_plan_date)?;
@@ -1148,7 +1185,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
     let operation_type = required_string(operation, "type")?;
     let payload = required_value(operation, "payload")?;
 
-    match operation_type {
+    let result = match operation_type {
         "batch" => {
             for nested_operation in required_array(payload, "operations")? {
                 apply_operation(tx, nested_operation)?;
@@ -1359,6 +1396,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             .map_err(|error| error.to_string())?;
             Ok(())
         }
+        "replace_goal_data" => Ok(()),
         "insert_template_option_at" => insert_template_option(
             tx,
             required_string(payload, "itemId")?,
@@ -1369,7 +1407,13 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             apply_operation(tx, required_value(payload, "operation")?)
         }
         other => Err(format!("Unsupported operation type: {other}")),
+    };
+
+    result?;
+    if let Some(goal_data) = payload.get("goalData") {
+        set_metadata(tx, GOAL_DATA, &goal_data.to_string())?;
     }
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -1404,6 +1448,29 @@ fn is_history_operation(operation_type: &str) -> bool {
 }
 
 fn build_undo_operation(
+    connection: &Connection,
+    operation: &Value,
+) -> Result<Option<Value>, String> {
+    let domain_undo = build_domain_undo_operation(connection, operation)?;
+    let payload = required_value(operation, "payload")?;
+    if payload.get("goalData").is_none() {
+        return Ok(domain_undo);
+    }
+
+    let goal_undo = storage_operation(
+        "replace_goal_data",
+        json!({ "goalData": read_goal_data(connection)? }),
+    );
+
+    Ok(Some(match domain_undo {
+        Some(operation) => {
+            storage_operation("batch", json!({ "operations": [operation, goal_undo] }))
+        }
+        None => goal_undo,
+    }))
+}
+
+fn build_domain_undo_operation(
     connection: &Connection,
     operation: &Value,
 ) -> Result<Option<Value>, String> {
@@ -4198,6 +4265,61 @@ mod tests {
             saved["templates"][0]["items"][0]["options"][0]["text"],
             "Wake up"
         );
+    }
+
+    #[test]
+    fn goal_data_persists_and_undoes_with_operations() {
+        let database = TestDatabase::new("goal-data");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Goal test");
+        state["goals"] = json!([{
+            "id": "goal_exercise",
+            "name": "Exercise",
+            "cadenceDays": 1,
+            "matchTerms": ["lift"],
+            "hue": 165,
+            "activityPeriods": [{ "startDate": "2026-05-21", "endDate": null }],
+            "createdAt": "2026-05-21T00:00:00Z",
+            "updatedAt": "2026-05-21T00:00:00Z"
+        }]);
+        state["goalCompletions"] = json!([]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "replace_goal_data",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "action": "complete_goal",
+                    "goalData": {
+                        "goals": state["goals"].clone(),
+                        "goalCompletions": [{
+                            "goalId": "goal_exercise",
+                            "date": "2026-05-21",
+                            "itemIds": ["plan_item_wake"],
+                            "matchedTerms": ["lift"],
+                            "computedAt": "2026-05-21T00:01:00Z"
+                        }]
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let completed = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(completed["goals"][0]["name"], "Exercise");
+        assert_eq!(completed["goalCompletions"][0]["goalId"], "goal_exercise");
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(undone["goals"][0]["name"], "Exercise");
+        assert_eq!(undone["goalCompletions"], json!([]));
     }
 
     #[test]

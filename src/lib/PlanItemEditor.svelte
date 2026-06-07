@@ -1,10 +1,11 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
+  import { goalMatchesForItem } from './goals'
   import { defaultPlanItemTimeRange, MAX_TIMELINE_MINUTES, planItemTimeOverlapsPrevious } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
-  import type { Id, MoveDirection, MovePlacement, PlanItem } from './types'
+  import type { Goal, GoalCompletion, Id, MoveDirection, MovePlacement, PlanItem } from './types'
 
   type TextChangeOptions = {
     mergeHistory?: boolean
@@ -41,6 +42,9 @@
   export let moveItemWithinLevel: (planId: Id, itemId: Id, direction: MoveDirection) => void
   export let outdentItem: (planId: Id, itemId: Id) => void
   export let historyRevision: number
+  export let goals: Goal[] = []
+  export let goalCompletions: GoalCompletion[] = []
+  export let planDate = ''
   export let selectedItemIds: Set<Id> = new Set()
   export let selectionDragging = false
   export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
@@ -51,6 +55,7 @@
   let dragging = false
   let activeDropRow: HTMLElement | null = null
   $: selected = selectedItemIds.has(item.id)
+  $: matchedGoals = goalMatchesForItem(goals, goalCompletions, planDate, item.id)
   $: timeOverlapsPrevious =
     item.startMinutes !== null &&
     item.endMinutes !== null &&
@@ -419,6 +424,16 @@
       onTabKey={handleTextTab}
     />
 
+    {#if matchedGoals.length > 0}
+      <div class="plan-goal-badges" aria-label="Goals completed by this item">
+        {#each matchedGoals as goal (goal.id)}
+          <span class="plan-goal-badge" style={`--goal-hue: ${goal.hue}`} title={`Completes goal: ${goal.name}`}>
+            <span aria-hidden="true">✓</span>{goal.name}
+          </span>
+        {/each}
+      </div>
+    {/if}
+
     <div class="row-actions">
       <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(planId, item.id)}>↳</button>
       <button class="icon-button danger" type="button" title="Delete item" on:click={() => deleteItem(planId, item.id)}>×</button>
@@ -443,6 +458,9 @@
           {moveItemWithinLevel}
           {outdentItem}
           {historyRevision}
+          {goals}
+          {goalCompletions}
+          {planDate}
           {selectedItemIds}
           {selectionDragging}
           {onSelectionPointerDown}

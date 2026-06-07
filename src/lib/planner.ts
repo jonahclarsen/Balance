@@ -79,6 +79,8 @@ export function createInitialState(): AppState {
     activePlanDate: todayISO(),
     templates: [createDefaultTemplate()],
     plans: [],
+    goals: [],
+    goalCompletions: [],
     operations: [],
   }
 }
