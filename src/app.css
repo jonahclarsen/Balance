@@ -1246,7 +1246,7 @@ nav button.active {
 
 .goal-history-grid {
   display: grid;
-  grid-template-columns: 282px repeat(var(--goal-day-count), 34px);
+  grid-template-columns: 450px repeat(var(--goal-day-count), 34px);
   grid-auto-rows: 34px;
   width: max-content;
   min-width: 100%;
