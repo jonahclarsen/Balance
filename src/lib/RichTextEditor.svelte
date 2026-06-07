@@ -114,7 +114,7 @@
       return
     }
 
-    if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+    if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.isComposing) {
       if (event.shiftKey) {
         event.preventDefault()
         document.execCommand('insertLineBreak')
@@ -123,14 +123,12 @@
       }
 
       if (onSplit) {
+        event.preventDefault()
         const split = splitEditorAtSelection(activeEditor)
-        if (split) {
-          event.preventDefault()
-          const source = split.before.html === '' && split.before.text === '' ? split.after : split.before
-          activeEditor.innerHTML = source.html
-          renderedHTML = source.html
-          await onSplit(split.before, split.after, activeEditor)
-        }
+        const source = split.before.html === '' && split.before.text === '' ? split.after : split.before
+        activeEditor.innerHTML = source.html
+        renderedHTML = source.html
+        await onSplit(split.before, split.after, activeEditor)
         return
       }
     }
@@ -335,11 +333,12 @@
   }
 
   function splitEditorAtSelection(activeEditor: HTMLDivElement) {
+    // When there is no usable selection inside the editor (which can happen on a freshly created
+    // item whose caret was momentarily dropped), fall back to splitting at the end of the content
+    // so Enter still creates a new sibling instead of inserting a newline.
     const selection = document.getSelection()
-    if (!selection || selection.rangeCount === 0) return null
-
-    const range = selection.getRangeAt(0)
-    if (!rangeIsInside(activeEditor, range)) return null
+    const liveRange = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+    const range = liveRange && rangeIsInside(activeEditor, liveRange) ? liveRange : selectionRangeAtEnd(activeEditor)
 
     if (!range.collapsed) {
       range.deleteContents()
@@ -361,6 +360,13 @@
       before: { html: beforeHTML, text: htmlToPlainText(beforeHTML) },
       after: { html: afterHTML, text: htmlToPlainText(afterHTML) },
     }
+  }
+
+  function selectionRangeAtEnd(activeEditor: HTMLDivElement) {
+    const range = document.createRange()
+    range.selectNodeContents(activeEditor)
+    range.collapse(false)
+    return range
   }
 
   function sanitizeFragment(fragment: DocumentFragment) {
