@@ -43,6 +43,8 @@ import {
   normalizeGoal,
   normalizeGoalCompletion,
   normalizeMatchTerms,
+  planItemGoalMatchesChanged,
+  reconcileGoalCompletionsForDate,
   reconcileRecentGoalCompletions,
   setGoalActiveOnDate,
 } from './goals'
@@ -59,6 +61,7 @@ type CommitOptions = {
   undoable?: boolean
   mergeKey?: string
   mergeWindowMs?: number
+  reconcileGoals?: boolean | ((before: AppState, after: AppState) => boolean)
 }
 type TextChangeOptions = {
   mergeHistory?: boolean
@@ -270,8 +273,17 @@ function createPlannerStore() {
       let next = mutate(state)
       if (next === state) return state
 
-      const reconciledGoalCompletions = reconcileRecentGoalCompletions(next)
-      if (!goalCompletionsEqual(reconciledGoalCompletions, next.goalCompletions)) {
+      const shouldReconcileGoals =
+        typeof options.reconcileGoals === 'function'
+          ? options.reconcileGoals(state, next)
+          : options.reconcileGoals !== false
+      const reconciledGoalCompletions = shouldReconcileGoals
+        ? reconcileChangedGoalCompletions(state, next)
+        : next.goalCompletions
+      if (
+        reconciledGoalCompletions !== next.goalCompletions &&
+        !goalCompletionsEqual(reconciledGoalCompletions, next.goalCompletions)
+      ) {
         next = { ...next, goalCompletions: reconciledGoalCompletions }
       }
 
@@ -391,6 +403,7 @@ function createPlannerStore() {
       options: TextChangeOptions = {},
     ) {
       const isTextPatch = 'text' in patch || 'html' in patch
+      let goalMatchesChanged = false
       const mergeOptions =
         options.mergeKey && options.mergeHistory !== false
           ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
@@ -398,9 +411,13 @@ function createPlannerStore() {
             ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
             : {}
       commit('patch_plan_item', { planId, itemId, patch }, (state) => updatePlan(state, planId, (plan) => {
-        const items = updatePlanItem(plan.items, itemId, (item) => applyPatch(item, patch))
+        const items = updatePlanItem(plan.items, itemId, (item) => {
+          const nextItem = applyPatch(item, patch)
+          goalMatchesChanged = planItemGoalMatchesChanged(state.goals, plan.date, item, nextItem)
+          return nextItem
+        })
         return items === plan.items ? plan : { ...plan, items }
-      }), mergeOptions)
+      }), { ...mergeOptions, reconcileGoals: () => goalMatchesChanged })
     },
 
     patchPlanItemsDone(planId: Id, itemIds: Id[], done: boolean) {
@@ -937,6 +954,23 @@ function updatePlan(state: AppState, planId: Id, updater: (plan: DailyPlan) => D
   })
 
   return changed ? { ...state, plans } : state
+}
+
+function reconcileChangedGoalCompletions(previous: AppState, next: AppState) {
+  if (next.goals !== previous.goals) return reconcileRecentGoalCompletions(next)
+  if (next.plans === previous.plans) return next.goalCompletions
+
+  const previousPlansByDate = new Map(previous.plans.map((plan) => [plan.date, plan]))
+  const nextPlansByDate = new Map(next.plans.map((plan) => [plan.date, plan]))
+  const changedDates = new Set([...previousPlansByDate.keys(), ...nextPlansByDate.keys()])
+  let goalCompletions = next.goalCompletions
+
+  for (const date of changedDates) {
+    if (previousPlansByDate.get(date) === nextPlansByDate.get(date)) continue
+    goalCompletions = reconcileGoalCompletionsForDate({ ...next, goalCompletions }, date)
+  }
+
+  return goalCompletions
 }
 
 function updateTemplate(state: AppState, templateId: Id, updater: (template: AppState['templates'][number]) => AppState['templates'][number]): AppState {

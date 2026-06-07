@@ -90,6 +90,48 @@ test('a completed matching plan item automatically completes a goal and shows it
     .toBe(0)
 })
 
+test('task typing only rescans goals when its match result changes', async ({ page }) => {
+  const matchTerm = 'needle-goal-token'
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await createGoal(page, 'Needle', 1, matchTerm)
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  const wakeRow = page.getByRole('listitem', { name: 'Plan item: Wake up' })
+  const targetRow = page.getByRole('listitem', { name: 'Plan item: Work block' })
+  const targetId = await targetRow.getAttribute('data-plan-item-id')
+  expect(targetId).not.toBeNull()
+  const stableTargetRow = page.locator(`[data-plan-item-id="${targetId}"]`)
+  const targetEditor = stableTargetRow.locator('[contenteditable="true"]')
+  await wakeRow.getByRole('checkbox', { name: 'Complete item' }).check()
+
+  await page.evaluate((term) => {
+    const originalIncludes = String.prototype.includes
+    ;(window as Window & { unrelatedGoalIncludes?: number }).unrelatedGoalIncludes = 0
+    String.prototype.includes = function (searchString: string, position?: number) {
+      if (String(this).toLocaleLowerCase() === 'wake up' && searchString === term) {
+        ;(window as Window & { unrelatedGoalIncludes?: number }).unrelatedGoalIncludes! += 1
+      }
+      return originalIncludes.call(this, searchString, position)
+    }
+  }, matchTerm)
+
+  await targetEditor.fill('prefix ')
+  await targetEditor.pressSequentially('ordinary typing')
+  await expect.poll(() => unrelatedGoalIncludes(page)).toBe(0)
+
+  await stableTargetRow.getByRole('checkbox', { name: 'Complete item' }).check()
+  await page.evaluate(() => {
+    ;(window as Window & { unrelatedGoalIncludes?: number }).unrelatedGoalIncludes = 0
+  })
+
+  await targetEditor.pressSequentially(matchTerm)
+  await expect(stableTargetRow.locator('.plan-goal-badge', { hasText: 'Needle' })).toBeVisible()
+  await expect.poll(() => unrelatedGoalIncludes(page)).toBe(1)
+
+  await targetEditor.pressSequentially(' suffix')
+  await expect.poll(() => unrelatedGoalIncludes(page)).toBe(1)
+})
+
 test('old goal snapshots survive rule edits and archiving, and deletion advises archiving', async ({ page }, testInfo) => {
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await createGoal(page, 'Exercise', 3, 'lift, swim')
@@ -232,4 +274,8 @@ function addDays(date: string, days: number) {
   const month = String(parsed.getMonth() + 1).padStart(2, '0')
   const day = String(parsed.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+async function unrelatedGoalIncludes(page: import('@playwright/test').Page) {
+  return page.evaluate(() => (window as Window & { unrelatedGoalIncludes?: number }).unrelatedGoalIncludes ?? -1)
 }

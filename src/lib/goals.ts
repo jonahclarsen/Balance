@@ -211,6 +211,17 @@ export function goalMatchesForItem(
   return goals.filter((goal) => goalIds.has(goal.id))
 }
 
+export function planItemGoalMatchesChanged(goals: Goal[], date: string, before: PlanItem, after: PlanItem): boolean {
+  if (!isGoalDateRecalculable(date)) return false
+  if (!before.done && !after.done) return false
+  if (before.done === after.done && before.text === after.text) return false
+
+  return goals.some((goal) => {
+    if (!isGoalActiveOnDate(goal, date) || goal.matchTerms.length === 0) return false
+    return !sameStrings(matchingTermsForItem(before, goal), matchingTermsForItem(after, goal))
+  })
+}
+
 export function buildGoalDayCells(
   goal: Goal,
   completions: GoalCompletion[],
@@ -333,6 +344,13 @@ function matchingPlanItems(plan: DailyPlan, goal: Goal): { itemIds: Id[]; matche
 
   visit(plan.items)
   return { itemIds: uniqueStrings(itemIds), matchedTerms: [...matchedTerms].sort() }
+}
+
+function matchingTermsForItem(item: PlanItem, goal: Goal): string[] {
+  if (!item.done) return []
+
+  const normalizedText = item.text.toLocaleLowerCase()
+  return goal.matchTerms.filter((term) => normalizedText.includes(term))
 }
 
 function markSegment(
