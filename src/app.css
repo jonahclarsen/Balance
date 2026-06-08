@@ -305,7 +305,10 @@ nav button.active {
   max-width: 460px;
 }
 
-.item-shell,
+.item-shell {
+  margin-left: calc(var(--depth, 0) * 12px);
+}
+
 .template-item {
   margin-left: calc(var(--depth, 0) * 24px);
 }
