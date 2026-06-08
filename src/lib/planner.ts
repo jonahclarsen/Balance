@@ -2,6 +2,8 @@ import type {
   AppState,
   DailyPlan,
   DailyTemplate,
+  Goal,
+  GoalCompletion,
   Id,
   MoveDirection,
   MovePlacement,
@@ -9,6 +11,7 @@ import type {
   TemplateItem,
   TemplateOption,
 } from './types'
+import { goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
 
 export const DEFAULT_DAILY_REMINDER = "This shouldn't be aspirational"
 
@@ -120,6 +123,8 @@ export function generatePlanFromTemplate(
   template: DailyTemplate,
   date: string,
   dailyReminder = DEFAULT_DAILY_REMINDER,
+  goals: Goal[] = [],
+  goalCompletions: GoalCompletion[] = [],
 ): DailyPlan {
   return {
     id: createId('plan'),
@@ -128,16 +133,32 @@ export function generatePlanFromTemplate(
     dailyReminder,
     generatedFromTemplateId: template.id,
     createdAt: nowISO(),
-    items: generatePlanItems(template.items),
+    items: generatePlanItems(template.items, date, goals, goalCompletions),
   }
 }
 
-function generatePlanItems(items: TemplateItem[]): PlanItem[] {
+const N_GOALS_PATTERN = /^(\d+)\s+goals$/i
+
+function generatePlanItems(
+  items: TemplateItem[],
+  date: string,
+  goals: Goal[],
+  goalCompletions: GoalCompletion[],
+): PlanItem[] {
   return items.flatMap((item) => {
     const option = pickOption(item.options)
     const text = option?.text.trim() ?? ''
     if (!option || text === '' || text.toLowerCase() === '(skip)') {
       return []
+    }
+
+    const nGoalsMatch = N_GOALS_PATTERN.exec(text)
+    if (nGoalsMatch) {
+      return selectGoalsForExpansion(goals, goalCompletions, date, Number(nGoalsMatch[1])).map((goal) => ({
+        ...createPlanItem(goal.matchTerms[0]),
+        startMinutes: item.startMinutes,
+        endMinutes: item.endMinutes,
+      }))
     }
 
     return [
@@ -146,10 +167,72 @@ function generatePlanItems(items: TemplateItem[]): PlanItem[] {
         html: option.html || escapeHTML(option.text),
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
-        children: generatePlanItems(item.children),
+        children: generatePlanItems(item.children, date, goals, goalCompletions),
       },
     ]
   })
+}
+
+/**
+ * Selects up to `n` goals to expand an "n goals" template item into, ordered by
+ * urgency (fewest days until lapse first). Whole urgency tiers are added greedily;
+ * the tier that would overflow `n` is sampled at random to reach exactly `n`.
+ */
+function selectGoalsForExpansion(
+  goals: Goal[],
+  goalCompletions: GoalCompletion[],
+  date: string,
+  n: number,
+): Goal[] {
+  if (n <= 0) return []
+
+  const eligible = goals.flatMap((goal) => {
+    if (goal.cadenceDays === 1) return []
+    if (!isGoalActiveOnDate(goal, date)) return []
+    if (goal.matchTerms.length === 0) return []
+
+    const daysUntilLapse = goalDaysUntilLapse(goal, goalCompletions, date)
+    if (daysUntilLapse === null) return []
+
+    return [{ goal, daysUntilLapse }]
+  })
+
+  const tiers = new Map<number, Goal[]>()
+  for (const entry of eligible) {
+    const tier = tiers.get(entry.daysUntilLapse) ?? []
+    tier.push(entry.goal)
+    tiers.set(entry.daysUntilLapse, tier)
+  }
+
+  const sortedTiers = [...tiers.entries()].sort(([left], [right]) => left - right)
+  const selected: Goal[] = []
+
+  for (const [, tierGoals] of sortedTiers) {
+    if (selected.length >= n) break
+
+    if (selected.length + tierGoals.length <= n) {
+      selected.push(...tierGoals)
+      continue
+    }
+
+    const needed = n - selected.length
+    selected.push(...sampleRandom(tierGoals, needed))
+    break
+  }
+
+  return selected
+}
+
+function sampleRandom<T>(values: T[], count: number): T[] {
+  const pool = [...values]
+  const picked: T[] = []
+
+  for (let index = 0; index < count && pool.length > 0; index += 1) {
+    const choice = Math.floor(Math.random() * pool.length)
+    picked.push(pool.splice(choice, 1)[0])
+  }
+
+  return picked
 }
 
 function pickOption(options: TemplateOption[]): TemplateOption | null {

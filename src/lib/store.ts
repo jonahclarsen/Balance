@@ -358,7 +358,13 @@ function createPlannerStore() {
       const current = get(store)
       const template = current.templates.find((candidate) => candidate.id === templateId)
       if (!template) return
-      const generated = generatePlanFromTemplate(template, date, dailyReminderForGeneratedPlan(current.plans, date))
+      const generated = generatePlanFromTemplate(
+        template,
+        date,
+        dailyReminderForGeneratedPlan(current.plans, date),
+        current.goals,
+        current.goalCompletions,
+      )
 
       commit('generate_plan', { templateId, date, replaceExisting, generatedPlan: generated }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans

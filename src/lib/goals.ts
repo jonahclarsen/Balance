@@ -266,6 +266,51 @@ export function buildGoalDayCells(
   return cells
 }
 
+/**
+ * Days from `currentDate` until the goal's current open segment lapses (its
+ * naturalEnd). Uses the same segment logic as `buildGoalDayCells`: a segment
+ * starts at the activity-period start or the day after the previous completion,
+ * and its naturalEnd is `min(segmentStart + cadenceDays - 1, periodEnd)`.
+ *
+ * Returns the signed day delta (0 = lapses today, negative = already overdue).
+ * Returns `null` when the goal is not active on `currentDate` or has no current
+ * segment, so callers can sort such goals last.
+ */
+export function goalDaysUntilLapse(
+  goal: Goal,
+  completions: GoalCompletion[],
+  currentDate = todayISO(),
+): number | null {
+  if (!isGoalActiveOnDate(goal, currentDate)) return null
+
+  const period = goal.activityPeriods.find(
+    (candidate) => candidate.startDate <= currentDate && (candidate.endDate === null || candidate.endDate >= currentDate),
+  )
+  if (!period) return null
+
+  const periodEnd = period.endDate ?? currentDate
+  const completionDates = new Set(
+    completions.filter((completion) => completion.goalId === goal.id).map((completion) => completion.date),
+  )
+
+  let segmentStart = period.startDate
+  while (segmentStart <= currentDate) {
+    const naturalEnd = minISODate(shiftISODate(segmentStart, goal.cadenceDays - 1), periodEnd)
+    const nextCompletion = [...completionDates]
+      .filter((date) => date > segmentStart && date <= naturalEnd)
+      .sort()[0]
+    const segmentEnd = nextCompletion ? shiftISODate(nextCompletion, -1) : naturalEnd
+
+    if (currentDate <= segmentEnd) {
+      return isoDateDiffDays(currentDate, naturalEnd)
+    }
+
+    segmentStart = nextCompletion ?? shiftISODate(segmentEnd, 1)
+  }
+
+  return null
+}
+
 export function shiftISODate(date: string, days: number): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
   if (!match) return todayISO()
@@ -400,6 +445,15 @@ function uniqueStrings(values: string[]): string[] {
 
 function minISODate(left: string, right: string): string {
   return left < right ? left : right
+}
+
+function isoDateDiffDays(from: string, to: string): number {
+  const parse = (date: string) => {
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+    if (!match) return Date.now()
+    return Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  }
+  return Math.round((parse(to) - parse(from)) / 86_400_000)
 }
 
 function maxISODate(left: string, right: string): string {
