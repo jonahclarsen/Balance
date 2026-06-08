@@ -5,7 +5,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
-  import { hexToHue, hueToHex, isGoalActiveOnDate, parseMatchTerms } from './lib/goals'
+  import { hexToHue, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
     exportHTML,
@@ -91,6 +91,7 @@
   $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
   $: selectedPlanItemIdSet = new Set(selectedPlanItemIds)
   $: activeGoalCount = $plannerStore.goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
+  $: sortedGoals = sortGoalsByUrgency($plannerStore.goals, $plannerStore.goalCompletions, todayISO())
   $: showAutoExportError = Boolean(
     exportSettings?.lastAutoJsonExportError &&
       exportSettings.lastAutoJsonExportErrorAt &&
@@ -1451,7 +1452,7 @@
       </div>
 
       <div class="goal-list">
-        {#each $plannerStore.goals as goal (goal.id)}
+        {#each sortedGoals as goal (goal.id)}
           {@const active = isGoalActiveOnDate(goal, todayISO())}
           {@const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goal.id).length}
           <article class="goal-card" class:archived={!active} style={`--goal-hue: ${goal.hue}`}>

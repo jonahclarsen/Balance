@@ -311,6 +311,26 @@ export function goalDaysUntilLapse(
   return null
 }
 
+/**
+ * Sorts a copy of `goals` by urgency: the goal closest to lapsing (lowest
+ * `goalDaysUntilLapse`, including overdue/negative values) comes first. Goals
+ * with no current segment (`goalDaysUntilLapse` returns `null`) sort last.
+ * Ties fall back to the original order to keep the sort stable/deterministic.
+ */
+export function sortGoalsByUrgency(goals: Goal[], completions: GoalCompletion[], currentDate = todayISO()): Goal[] {
+  const urgency = new Map(goals.map((goal) => [goal.id, goalDaysUntilLapse(goal, completions, currentDate)]))
+  const order = new Map(goals.map((goal, index) => [goal.id, index]))
+
+  return [...goals].sort((left, right) => {
+    const leftDays = urgency.get(left.id) ?? null
+    const rightDays = urgency.get(right.id) ?? null
+    if (leftDays === null && rightDays === null) return (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0)
+    if (leftDays === null) return 1
+    if (rightDays === null) return -1
+    return leftDays - rightDays || (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0)
+  })
+}
+
 export function shiftISODate(date: string, days: number): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
   if (!match) return todayISO()

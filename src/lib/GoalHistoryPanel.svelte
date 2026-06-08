@@ -6,6 +6,7 @@
     GOAL_HISTORY_MAX_DAYS,
     goalWasActiveInRange,
     shiftISODate,
+    sortGoalsByUrgency,
     visibleGoalDates,
   } from './goals'
   import { todayISO } from './planner'
@@ -24,7 +25,10 @@
   $: futureDayCount = Math.max(0, ...goals.map((goal) => goal.cadenceDays - 1))
   $: futureDates = Array.from({ length: futureDayCount }, (_, index) => shiftISODate(todayISO(), index + 1))
   $: dates = [...pastDates, ...futureDates]
-  $: visibleGoals = goals.filter((goal) => goalWasActiveInRange(goal, dates))
+  $: visibleGoals = sortGoalsByUrgency(
+    goals.filter((goal) => goalWasActiveInRange(goal, dates)),
+    completions,
+  )
 
   onMount(() => {
     const stored = Number(localStorage.getItem(HISTORY_DAYS_KEY))
