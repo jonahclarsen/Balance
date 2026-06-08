@@ -156,20 +156,34 @@
 
     const handle = event.currentTarget as HTMLElement | null
     const panel = handle?.closest('.goal-history-panel') as HTMLElement | null
+    const shell = handle?.closest('.content-shell') as HTMLElement | null
     const startY = event.clientY
     const startHeight = goalHistoryHeight ?? panel?.getBoundingClientRect().height ?? 230
+    let nextHeight = startHeight
+    let frame = 0
 
     handle?.setPointerCapture?.(event.pointerId)
     document.body.style.userSelect = 'none'
 
+    // While dragging, write the CSS variable straight to the DOM (rAF-coalesced) instead of
+    // mutating the reactive `goalHistoryHeight`, which would re-render the whole App component on
+    // every pointermove. We commit to reactive state + persist only once on pointerup.
     const onMove = (move: PointerEvent) => {
-      goalHistoryHeight = clampGoalHistoryHeight(startHeight + (startY - move.clientY))
+      nextHeight = clampGoalHistoryHeight(startHeight + (startY - move.clientY))
+      if (frame === 0) {
+        frame = requestAnimationFrame(() => {
+          frame = 0
+          shell?.style.setProperty('--goal-history-height', `${nextHeight}px`)
+        })
+      }
     }
     const onUp = () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      if (frame !== 0) cancelAnimationFrame(frame)
       document.body.style.userSelect = ''
-      if (goalHistoryHeight != null) localStorage.setItem(GOAL_HISTORY_HEIGHT_KEY, String(goalHistoryHeight))
+      goalHistoryHeight = nextHeight
+      localStorage.setItem(GOAL_HISTORY_HEIGHT_KEY, String(nextHeight))
     }
 
     window.addEventListener('pointermove', onMove)
