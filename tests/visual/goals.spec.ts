@@ -250,6 +250,56 @@ test('a new completion starts a new cadence segment and shortens the prior one',
   })
 })
 
+test('goals are ordered by days until their current segment lapses', async ({ page }) => {
+  const today = todayISO()
+  const yesterday = addDays(today, -1)
+
+  await page.evaluate(
+    ({ today, yesterday }) => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      const timestamp = new Date().toISOString()
+      state.goals = [
+        {
+          id: 'goal_later',
+          name: 'Later',
+          cadenceDays: 7,
+          matchTerms: ['later'],
+          hue: 120,
+          activityPeriods: [{ startDate: today, endDate: null }],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        {
+          id: 'goal_urgent',
+          name: 'Urgent',
+          cadenceDays: 2,
+          matchTerms: ['urgent'],
+          hue: 0,
+          activityPeriods: [{ startDate: yesterday, endDate: null }],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ]
+      state.goalCompletions = []
+      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    },
+    { today, yesterday },
+  )
+  await page.reload()
+
+  await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual([
+    'Urgent',
+    'Later',
+  ])
+
+  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  await expect(
+    page.locator('.goal-card .goal-name-input').evaluateAll((inputs) =>
+      inputs.map((input) => (input as HTMLInputElement).value),
+    ),
+  ).resolves.toEqual(['Urgent', 'Later'])
+})
+
 async function createGoal(page: import('@playwright/test').Page, name: string, cadenceDays: number, terms: string) {
   await page.getByRole('button', { name: 'Goals', exact: true }).click()
   await page.getByLabel('New goal name').fill(name)

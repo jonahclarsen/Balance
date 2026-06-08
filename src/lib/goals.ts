@@ -293,14 +293,14 @@ export function goalDaysUntilLapse(
   )
   if (!period) return null
 
-  const periodEnd = period.endDate ?? currentDate
   const completionDates = new Set(
     completions.filter((completion) => completion.goalId === goal.id).map((completion) => completion.date),
   )
 
   let segmentStart = period.startDate
   while (segmentStart <= currentDate) {
-    const naturalEnd = minISODate(shiftISODate(segmentStart, goal.cadenceDays - 1), periodEnd)
+    const cadenceEnd = shiftISODate(segmentStart, goal.cadenceDays - 1)
+    const naturalEnd = period.endDate ? minISODate(cadenceEnd, period.endDate) : cadenceEnd
     const nextCompletion = [...completionDates]
       .filter((date) => date > segmentStart && date <= naturalEnd)
       .sort()[0]
