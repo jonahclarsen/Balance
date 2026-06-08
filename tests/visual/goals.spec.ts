@@ -300,6 +300,16 @@ test('goals are ordered by days until their current segment lapses', async ({ pa
   ).resolves.toEqual(['Urgent', 'Later'])
 })
 
+test('goal rhythm hover text includes match keywords', async ({ page }) => {
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  await expect(page.locator('.goal-history-name', { hasText: 'Exercise' })).toHaveAttribute(
+    'title',
+    'Exercise: every 3 days\nMatch keywords: lift, swim',
+  )
+})
+
 async function createGoal(page: import('@playwright/test').Page, name: string, cadenceDays: number, terms: string) {
   await page.getByRole('button', { name: 'Goals', exact: true }).click()
   await page.getByLabel('New goal name').fill(name)

@@ -103,7 +103,7 @@
           class="goal-history-name"
           type="button"
           style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
-          title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}`}
+          title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}\nMatch keywords: ${goal.matchTerms.join(', ')}`}
           on:click={onOpenGoals}
         >
           <span class="goal-color-dot"></span>
