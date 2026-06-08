@@ -286,7 +286,7 @@ export function splitPlanItem(
   itemId: Id,
   patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
   newItem: PlanItem,
-  placement: 'before' | 'after' = 'after',
+  placement: 'before' | 'after' | 'firstChild' = 'after',
   moveChildrenToNewItem = false,
 ): PlanItem[] {
   let changed = false
@@ -294,6 +294,10 @@ export function splitPlanItem(
   const nextItems = items.flatMap((item) => {
     if (item.id === itemId) {
       changed = true
+      if (placement === 'firstChild') {
+        return [{ ...item, ...patch, children: [newItem, ...item.children] }]
+      }
+
       const patchedItem = { ...item, ...patch, children: moveChildrenToNewItem ? [] : item.children }
       const insertedItem = moveChildrenToNewItem ? { ...newItem, children: item.children } : newItem
       return placement === 'before' ? [insertedItem, patchedItem] : [patchedItem, insertedItem]
@@ -510,7 +514,7 @@ export function defaultPlanItemTimeRange(items: PlanItem[], itemId: Id): { start
   return defaultTimeRangeAfterPreviousTimedItem(items, itemId)
 }
 
-function findPlanItem(items: PlanItem[], itemId: Id): PlanItem | null {
+export function findPlanItem(items: PlanItem[], itemId: Id): PlanItem | null {
   for (const item of items) {
     if (item.id === itemId) return item
     const child = findPlanItem(item.children, itemId)
@@ -669,7 +673,7 @@ export function splitTemplateItem(
   optionId: Id,
   patch: Partial<TemplateOption>,
   newItem: TemplateItem,
-  placement: 'before' | 'after' = 'after',
+  placement: 'before' | 'after' | 'firstChild' = 'after',
 ): TemplateItem[] {
   let changed = false
 

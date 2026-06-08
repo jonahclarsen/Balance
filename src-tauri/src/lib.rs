@@ -2654,6 +2654,15 @@ fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), S
     let new_item = required_value(payload, "newItem")?;
     let new_item_id = required_string(new_item, "id")?;
     let placement = optional_string(payload, "placement")?.unwrap_or_else(|| "after".to_string());
+
+    if placement == "firstChild" {
+        let mut children = plan_item_sibling_ids(connection, plan_id, Some(source_id))?;
+        children.retain(|id| id != new_item_id);
+        children.insert(0, new_item_id.to_string());
+        insert_plan_item(connection, plan_id, Some(source_id), new_item, 0)?;
+        return rewrite_plan_item_positions(connection, &children);
+    }
+
     let insert_offset = match placement.as_str() {
         "before" => 0,
         "after" => 1,

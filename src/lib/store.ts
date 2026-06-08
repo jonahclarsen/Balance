@@ -29,6 +29,7 @@ import {
   outdentTemplateItem as outdentTemplateItemInTree,
   clonePlanItemsForPaste,
   copyPlanItems as copyPlanItemsFromTree,
+  findPlanItem,
   pastePlanItems as pastePlanItemsIntoTree,
   sanitizeInlineHTML,
   splitPlanItem,
@@ -54,7 +55,7 @@ const STORAGE_KEY = 'balance.appState.v1'
 const TEXT_MERGE_WINDOW_MS = 1200
 const MAX_HISTORY_ENTRIES = 200
 const PERSIST_DEBOUNCE_MS = 500
-type SplitPlacement = 'before' | 'after'
+type SplitPlacement = 'before' | 'after' | 'firstChild'
 
 type Mutator = (state: AppState) => AppState
 type CommitOptions = {
@@ -446,10 +447,20 @@ function createPlannerStore() {
       before: Partial<Omit<PlanItem, 'id' | 'children'>>,
       after: { html: string; text: string },
     ) {
-      const placement = splitPlacementForBeforeText(before)
+      let placement = splitPlacementForBeforeText(before)
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
-      const moveChildrenToNewItem = shouldMoveChildrenToSplitItem(before, after)
+      let moveChildrenToNewItem = shouldMoveChildrenToSplitItem(before, after)
+
+      const plan = get(store).plans.find((candidate) => candidate.id === planId)
+      const target = plan ? findPlanItem(plan.items, itemId) : null
+      const afterIsEmpty = (after.html ?? '') === '' && (after.text ?? '') === ''
+      const hasChildren = (target?.children.length ?? 0) > 0
+      if (placement === 'after' && afterIsEmpty && hasChildren) {
+        placement = 'firstChild'
+        moveChildrenToNewItem = false
+      }
+
       const newItem = {
         ...createPlanItem(inserted.text ?? ''),
         html: inserted.html ?? '',
