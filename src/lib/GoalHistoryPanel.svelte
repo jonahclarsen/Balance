@@ -18,6 +18,7 @@
   export let completions: GoalCompletion[]
   export let onOpenGoals: () => void
   export let onSelectDate: (date: string) => void
+  export let onResizeStart: ((event: PointerEvent) => void) | undefined = undefined
 
   let historyDays = GOAL_HISTORY_DEFAULT_DAYS
 
@@ -50,6 +51,15 @@
 </script>
 
 <section class="goal-history-panel" aria-label="Goal history">
+  {#if onResizeStart}
+    <div
+      class="goal-history-resize-handle"
+      role="separator"
+      aria-label="Resize goal rhythm panel"
+      aria-orientation="horizontal"
+      on:pointerdown={onResizeStart}
+    ></div>
+  {/if}
   <header class="goal-history-toolbar">
     <div>
       <strong>Goal rhythm</strong>
@@ -106,6 +116,7 @@
             class:active={cell.active}
             class:segment-start={cell.segmentStart}
             class:segment-end={cell.segmentEnd}
+            class:current-period={cell.current}
             class:completed={cell.completed}
             class:relieved={cell.relieved}
             class:missed={cell.missed}

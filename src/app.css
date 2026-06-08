@@ -230,7 +230,7 @@ nav button.active {
 
 .content-shell {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) clamp(190px, 22vh, 270px);
+  grid-template-rows: minmax(0, 1fr) var(--goal-history-height, clamp(190px, 22vh, 270px));
   min-width: 0;
   min-height: 0;
 }
@@ -1308,6 +1308,21 @@ nav button.active {
   box-shadow: 0 -8px 24px rgba(38, 35, 27, 0.06);
 }
 
+.goal-history-resize-handle {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  z-index: 9;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.goal-history-resize-handle:hover {
+  background: var(--accent-soft, hsl(40 30% 80% / 0.5));
+}
+
 .goal-history-toolbar {
   display: flex;
   align-items: center;
@@ -1476,6 +1491,23 @@ nav button.active {
 
 .goal-day-cell.segment-start.segment-end {
   border-radius: 999px;
+}
+
+.goal-day-cell.active.current-period {
+  border-top-width: 1.5px;
+  border-bottom-width: 1.5px;
+  border-top-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 50% / 0.7);
+  border-bottom-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 50% / 0.7);
+}
+
+.goal-day-cell.segment-start.current-period {
+  border-left-width: 1.5px;
+  border-left-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 50% / 0.7);
+}
+
+.goal-day-cell.segment-end.current-period {
+  border-right-width: 1.5px;
+  border-right-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 50% / 0.7);
 }
 
 .goal-day-cell.completed,

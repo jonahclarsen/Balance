@@ -36,8 +36,10 @@
   }
 
   const AUTO_JSON_EXPORT_CHECK_INTERVAL_MS = 15 * 60 * 1000
+  const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
 
   let view: View = 'today'
+  let goalHistoryHeight: number | null = null
   let selectedTemplateId = ''
   let recoveryKeyStatus: RecoveryKeyStatus | null = null
   let recoveryKeySaved = false
@@ -110,6 +112,11 @@
   onMount(() => {
     let mounted = true
 
+    const storedGoalHistoryHeight = Number(localStorage.getItem(GOAL_HISTORY_HEIGHT_KEY))
+    if (Number.isFinite(storedGoalHistoryHeight) && storedGoalHistoryHeight > 0) {
+      goalHistoryHeight = clampGoalHistoryHeight(storedGoalHistoryHeight)
+    }
+
     const checkAutoJsonExport = () => {
       if (!mounted) return
       void runAutoJsonExportCatchup()
@@ -139,6 +146,35 @@
       document.removeEventListener('visibilitychange', checkVisibleAutoJsonExport)
     }
   })
+
+  function clampGoalHistoryHeight(value: number): number {
+    return Math.max(140, Math.min(window.innerHeight * 0.7, value))
+  }
+
+  function startGoalHistoryResize(event: PointerEvent) {
+    event.preventDefault()
+
+    const handle = event.currentTarget as HTMLElement | null
+    const panel = handle?.closest('.goal-history-panel') as HTMLElement | null
+    const startY = event.clientY
+    const startHeight = goalHistoryHeight ?? panel?.getBoundingClientRect().height ?? 230
+
+    handle?.setPointerCapture?.(event.pointerId)
+    document.body.style.userSelect = 'none'
+
+    const onMove = (move: PointerEvent) => {
+      goalHistoryHeight = clampGoalHistoryHeight(startHeight + (startY - move.clientY))
+    }
+    const onUp = () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      document.body.style.userSelect = ''
+      if (goalHistoryHeight != null) localStorage.setItem(GOAL_HISTORY_HEIGHT_KEY, String(goalHistoryHeight))
+    }
+
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+  }
 
   function shiftActivePlanDate(days: number) {
     plannerStore.setActivePlanDate(shiftISODate($plannerStore.activePlanDate || todayISO(), days))
@@ -1241,7 +1277,7 @@
     </div>
   </aside>
 
-  <div class="content-shell">
+  <div class="content-shell" style={goalHistoryHeight != null ? `--goal-history-height: ${goalHistoryHeight}px` : ''}>
     <section class="workspace">
     {#if view === 'today'}
       <header class="page-header">
@@ -1734,6 +1770,7 @@
       completions={$plannerStore.goalCompletions}
       onOpenGoals={() => (view = 'goals')}
       onSelectDate={openPlanDateFromGoalHistory}
+      onResizeStart={startGoalHistoryResize}
     />
   </div>
 </main>

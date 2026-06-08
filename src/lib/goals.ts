@@ -13,6 +13,7 @@ export type GoalDayCell = {
   completed: boolean
   relieved: boolean
   missed: boolean
+  current: boolean
 }
 
 export function createGoal(
@@ -242,6 +243,7 @@ export function buildGoalDayCells(
     completed: completionDates.has(date),
     relieved: false,
     missed: false,
+    current: false,
   }))
   const indexesByDate = new Map(dates.map((date, index) => [date, index]))
 
@@ -434,6 +436,7 @@ function markSegment(
   if (startIndex === undefined || endIndex === undefined || startIndex > endIndex) return
 
   const segmentHasCompletionAtStart = completionDates.has(startDate)
+  const isCurrentSegment = startDate <= currentDate && currentDate <= endDate
 
   for (let index = startIndex; index <= endIndex; index += 1) {
     const cell = cells[index]
@@ -441,6 +444,7 @@ function markSegment(
     cell.segmentEnd = index === endIndex
     cell.relieved = segmentHasCompletionAtStart && !cell.completed
     cell.missed = !segmentHasCompletionAtStart && !cell.completed && cell.date < currentDate
+    cell.current = isCurrentSegment
   }
 }
 
