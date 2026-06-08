@@ -1038,12 +1038,36 @@ nav button.active {
 }
 
 .goal-create-panel {
-  display: grid;
-  grid-template-columns: minmax(180px, 1.2fr) minmax(130px, 1fr) 130px minmax(200px, 1.6fr) 76px auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: end;
-  gap: 12px;
+  gap: 10px 12px;
   margin-bottom: 18px;
-  padding: 16px;
+  padding: 12px 16px;
+}
+
+.goal-create-intro {
+  flex: 1 0 100%;
+}
+
+.goal-create-panel > label {
+  flex: 1 1 130px;
+}
+
+.goal-create-panel > label.goal-name-field {
+  flex: 2 1 180px;
+}
+
+.goal-create-panel > label.goal-terms-field {
+  flex: 2 1 200px;
+}
+
+.goal-create-panel > label.goal-cadence-field {
+  flex: 0 1 130px;
+}
+
+.goal-create-panel > label.goal-color-field {
+  flex: 0 0 auto;
 }
 
 .goal-create-panel label,
@@ -1066,7 +1090,7 @@ nav button.active {
 .goal-create-intro,
 .goal-card-main {
   display: grid;
-  gap: 5px;
+  gap: 3px;
 }
 
 .goal-create-intro p,
@@ -1102,7 +1126,8 @@ nav button.active {
 }
 
 .goal-form-status {
-  grid-column: 2 / -1;
+  flex: 1 0 100%;
+  margin: 0;
   color: var(--danger);
 }
 
@@ -1520,10 +1545,16 @@ nav button.active {
     flex-direction: column;
   }
 
-  .goal-create-panel,
   .goal-card-fields,
   .goal-card {
     grid-template-columns: 1fr;
+  }
+
+  .goal-create-panel > label,
+  .goal-create-panel > label.goal-name-field,
+  .goal-create-panel > label.goal-terms-field,
+  .goal-create-panel > label.goal-cadence-field {
+    flex: 1 1 100%;
   }
 
   .goal-card {

@@ -1407,7 +1407,7 @@
           <h3>Add a goal</h3>
           <p>It completes automatically when a checked daily-plan item contains any matching word or phrase.</p>
         </div>
-        <label>
+        <label class="goal-name-field">
           <span>Name</span>
           <input
             aria-label="New goal name"
@@ -1425,7 +1425,7 @@
             <span>days</span>
           </div>
         </label>
-        <label>
+        <label class="goal-terms-field">
           <span>Matches any</span>
           <input
             aria-label="New goal matching terms"
