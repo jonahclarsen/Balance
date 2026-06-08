@@ -92,7 +92,7 @@
         <button
           class="goal-history-name"
           type="button"
-          style={`--goal-hue: ${goal.hue}`}
+          style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
           title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}`}
           on:click={onOpenGoals}
         >
@@ -111,7 +111,7 @@
             class:missed={cell.missed}
             class:today={cell.date === todayISO()}
             class:future={cell.date > todayISO()}
-            style={`--goal-hue: ${goal.hue}`}
+            style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
             type="button"
             title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.active ? ' · active' : ' · inactive'}`}
             aria-label={`${goal.name} on ${cell.date}${cell.completed ? ', completed' : ''}`}

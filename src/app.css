@@ -463,11 +463,11 @@ nav button.active {
   align-items: center;
   gap: 4px;
   max-width: 180px;
-  border: 1px solid hsl(var(--goal-hue) 48% 48% / 0.4);
+  border: 1px solid hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 48% / 0.4);
   border-radius: 999px;
-  background: hsl(var(--goal-hue) 58% 92%);
+  background: hsl(var(--goal-hue) calc(58% * var(--goal-sat-factor, 1)) 92%);
   padding: 3px 7px;
-  color: hsl(var(--goal-hue) 65% 27%);
+  color: hsl(var(--goal-hue) calc(65% * var(--goal-sat-factor, 1)) 27%);
   font-size: 11px;
   font-weight: 700;
   overflow: hidden;
@@ -1066,12 +1066,14 @@ nav button.active {
   flex: 0 1 130px;
 }
 
-.goal-create-panel > label.goal-color-field {
-  flex: 0 0 auto;
+.goal-create-panel > .goal-color-field {
+  flex: 1 1 220px;
 }
 
 .goal-create-panel label,
-.goal-card-fields label {
+.goal-create-panel > .goal-color-field,
+.goal-card-fields label,
+.goal-card-fields .goal-color-field {
   display: grid;
   align-content: end;
   gap: 6px;
@@ -1079,7 +1081,9 @@ nav button.active {
 }
 
 .goal-create-panel label > span,
-.goal-card-fields label > span {
+.goal-create-panel > .goal-color-field > span,
+.goal-card-fields label > span,
+.goal-card-fields .goal-color-field > span {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -1115,10 +1119,88 @@ nav button.active {
   font-size: 12px;
 }
 
-.goal-color-field input[type="color"] {
-  width: 48px;
-  height: 38px;
-  padding: 3px;
+.goal-color-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.goal-color-swatch {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.goal-hue-slider {
+  flex: 1 1 auto;
+  min-width: 80px;
+  height: 14px;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  background: linear-gradient(
+    to right,
+    hsl(0 70% 50%),
+    hsl(60 70% 50%),
+    hsl(120 70% 50%),
+    hsl(180 70% 50%),
+    hsl(240 70% 50%),
+    hsl(300 70% 50%),
+    hsl(360 70% 50%)
+  );
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+}
+
+.goal-hue-slider.dimmed {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.goal-hue-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.goal-hue-slider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.goal-neutral-toggle {
+  flex: 0 0 auto;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.goal-neutral-toggle.active {
+  border-color: #9aa0a6;
+  background: #9aa0a6;
+  color: #fff;
 }
 
 .goal-add-button {
@@ -1151,7 +1233,7 @@ nav button.active {
 
 .goal-card-accent {
   margin: -16px 0;
-  background: hsl(var(--goal-hue) 58% 48%);
+  background: hsl(var(--goal-hue) calc(58% * var(--goal-sat-factor, 1)) 48%);
 }
 
 .goal-card-main {
@@ -1176,7 +1258,7 @@ nav button.active {
 }
 
 .goal-name-input:focus {
-  border-color: hsl(var(--goal-hue) 48% 48%);
+  border-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 48%);
   background: var(--paper-strong);
 }
 
@@ -1190,8 +1272,8 @@ nav button.active {
 }
 
 .goal-state.active {
-  background: hsl(var(--goal-hue) 55% 92%);
-  color: hsl(var(--goal-hue) 65% 28%);
+  background: hsl(var(--goal-hue) calc(55% * var(--goal-sat-factor, 1)) 92%);
+  color: hsl(var(--goal-hue) calc(65% * var(--goal-sat-factor, 1)) 28%);
 }
 
 .goal-card-fields {
@@ -1360,7 +1442,7 @@ nav button.active {
   height: 8px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: hsl(var(--goal-hue) 58% 48%);
+  background: hsl(var(--goal-hue) calc(58% * var(--goal-sat-factor, 1)) 48%);
 }
 
 .goal-day-cell {
@@ -1377,18 +1459,18 @@ nav button.active {
 }
 
 .goal-day-cell.active {
-  border-top: 1px solid hsl(var(--goal-hue) 45% 58% / 0.45);
-  border-bottom-color: hsl(var(--goal-hue) 45% 58% / 0.45);
-  background: hsl(var(--goal-hue) 55% 96%);
+  border-top: 1px solid hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) 58% / 0.45);
+  border-bottom-color: hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) 58% / 0.45);
+  background: hsl(var(--goal-hue) calc(55% * var(--goal-sat-factor, 1)) 96%);
 }
 
 .goal-day-cell.segment-start {
-  border-left: 1px solid hsl(var(--goal-hue) 45% 58% / 0.45);
+  border-left: 1px solid hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) 58% / 0.45);
   border-radius: 999px 0 0 999px;
 }
 
 .goal-day-cell.segment-end {
-  border-right: 1px solid hsl(var(--goal-hue) 45% 58% / 0.45);
+  border-right: 1px solid hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) 58% / 0.45);
   border-radius: 0 999px 999px 0;
 }
 
@@ -1398,20 +1480,20 @@ nav button.active {
 
 .goal-day-cell.completed,
 .goal-day-cell.relieved {
-  background: hsl(var(--goal-hue) 58% 89%);
+  background: hsl(var(--goal-hue) calc(58% * var(--goal-sat-factor, 1)) 89%);
 }
 
 .goal-day-cell.today::after {
   position: absolute;
   inset: 2px;
-  border: 1px dashed hsl(var(--goal-hue) 42% 45% / 0.45);
+  border: 1px dashed hsl(var(--goal-hue) calc(42% * var(--goal-sat-factor, 1)) 45% / 0.45);
   border-radius: 999px;
   content: "";
   pointer-events: none;
 }
 
 .goal-day-cell.future {
-  background-image: linear-gradient(135deg, transparent 45%, hsl(var(--goal-hue) 30% 70% / 0.08) 45% 55%, transparent 55%);
+  background-image: linear-gradient(135deg, transparent 45%, hsl(var(--goal-hue) calc(30% * var(--goal-sat-factor, 1)) 70% / 0.08) 45% 55%, transparent 55%);
 }
 
 .goal-cell-mark {
@@ -1422,24 +1504,24 @@ nav button.active {
   width: 15px;
   height: 15px;
   border-radius: 4px;
-  color: hsl(var(--goal-hue) 65% 28%);
+  color: hsl(var(--goal-hue) calc(65% * var(--goal-sat-factor, 1)) 28%);
   font-size: 11px;
   font-weight: 800;
 }
 
 .goal-cell-mark.open {
-  border: 1.5px solid hsl(var(--goal-hue) 40% 50% / 0.7);
+  border: 1.5px solid hsl(var(--goal-hue) calc(40% * var(--goal-sat-factor, 1)) 50% / 0.7);
   border-radius: 999px;
 }
 
 .goal-cell-mark.checked {
-  border: 1px solid hsl(var(--goal-hue) 55% 42%);
-  background: hsl(var(--goal-hue) 55% 42%);
+  border: 1px solid hsl(var(--goal-hue) calc(55% * var(--goal-sat-factor, 1)) 42%);
+  background: hsl(var(--goal-hue) calc(55% * var(--goal-sat-factor, 1)) 42%);
   color: white;
 }
 
 .goal-cell-mark.relieved-mark {
-  color: hsl(var(--goal-hue) 35% 48% / 0.42);
+  color: hsl(var(--goal-hue) calc(35% * var(--goal-sat-factor, 1)) 48% / 0.42);
   font-size: 14px;
   font-weight: 500;
 }
@@ -1553,7 +1635,8 @@ nav button.active {
   .goal-create-panel > label,
   .goal-create-panel > label.goal-name-field,
   .goal-create-panel > label.goal-terms-field,
-  .goal-create-panel > label.goal-cadence-field {
+  .goal-create-panel > label.goal-cadence-field,
+  .goal-create-panel > .goal-color-field {
     flex: 1 1 100%;
   }
 

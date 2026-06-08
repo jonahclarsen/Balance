@@ -5,7 +5,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
-  import { hexToHue, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
+  import { hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
     exportHTML,
@@ -80,7 +80,10 @@
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
   let newGoalHue = 165
+  let newGoalNeutral = false
   let goalFormStatus = ''
+
+  const NEUTRAL_SWATCH = '#9aa0a6'
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
@@ -160,11 +163,12 @@
       return
     }
 
-    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue)
+    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue, newGoalNeutral)
     newGoalName = ''
     newGoalCadenceDays = 1
     newGoalTerms = ''
     newGoalHue = (newGoalHue + 47) % 360
+    newGoalNeutral = false
     goalFormStatus = ''
   }
 
@@ -1436,15 +1440,36 @@
             }}
           />
         </label>
-        <label class="goal-color-field">
+        <div class="goal-color-field">
           <span>Color</span>
-          <input
-            aria-label="New goal color"
-            type="color"
-            value={hueToHex(newGoalHue)}
-            on:input={(event) => (newGoalHue = hexToHue(event.currentTarget.value))}
-          />
-        </label>
+          <div class="goal-color-controls">
+            <span
+              class="goal-color-swatch"
+              style={`background: ${newGoalNeutral ? NEUTRAL_SWATCH : hueToHex(newGoalHue)}`}
+            ></span>
+            <input
+              class="goal-hue-slider"
+              aria-label="New goal hue"
+              type="range"
+              min="0"
+              max="359"
+              disabled={newGoalNeutral}
+              class:dimmed={newGoalNeutral}
+              value={newGoalHue}
+              on:input={(event) => (newGoalHue = Number(event.currentTarget.value))}
+            />
+            <button
+              class="goal-neutral-toggle"
+              class:active={newGoalNeutral}
+              type="button"
+              aria-pressed={newGoalNeutral}
+              aria-label="Make this goal gray"
+              on:click={() => (newGoalNeutral = !newGoalNeutral)}
+            >
+              Gray
+            </button>
+          </div>
+        </div>
         <button class="primary goal-add-button" type="button" on:click={addGoal}>Add goal</button>
         {#if goalFormStatus}
           <p class="goal-form-status">{goalFormStatus}</p>
@@ -1455,7 +1480,7 @@
         {#each sortedGoals as goal (goal.id)}
           {@const active = isGoalActiveOnDate(goal, todayISO())}
           {@const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goal.id).length}
-          <article class="goal-card" class:archived={!active} style={`--goal-hue: ${goal.hue}`}>
+          <article class="goal-card" class:archived={!active} style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}>
             <div class="goal-card-accent"></div>
             <div class="goal-card-main">
               <div class="goal-card-title-row">
@@ -1490,15 +1515,36 @@
                     on:change={(event) => plannerStore.patchGoal(goal.id, { matchTerms: parseMatchTerms(event.currentTarget.value) })}
                   />
                 </label>
-                <label class="goal-color-field">
+                <div class="goal-color-field">
                   <span>Color</span>
-                  <input
-                    aria-label={`Color for ${goal.name}`}
-                    type="color"
-                    value={hueToHex(goal.hue)}
-                    on:input={(event) => plannerStore.patchGoal(goal.id, { hue: hexToHue(event.currentTarget.value) })}
-                  />
-                </label>
+                  <div class="goal-color-controls">
+                    <span
+                      class="goal-color-swatch"
+                      style={`background: ${goal.neutral ? NEUTRAL_SWATCH : hueToHex(goal.hue)}`}
+                    ></span>
+                    <input
+                      class="goal-hue-slider"
+                      aria-label={`Hue for ${goal.name}`}
+                      type="range"
+                      min="0"
+                      max="359"
+                      disabled={goal.neutral}
+                      class:dimmed={goal.neutral}
+                      value={goal.hue}
+                      on:input={(event) => plannerStore.patchGoal(goal.id, { hue: Number(event.currentTarget.value) })}
+                    />
+                    <button
+                      class="goal-neutral-toggle"
+                      class:active={goal.neutral}
+                      type="button"
+                      aria-pressed={goal.neutral}
+                      aria-label={`Make ${goal.name} gray`}
+                      on:click={() => plannerStore.patchGoal(goal.id, { neutral: !goal.neutral })}
+                    >
+                      Gray
+                    </button>
+                  </div>
+                </div>
               </div>
               <p class="goal-card-meta">
                 {completionCount} saved completion{completionCount === 1 ? '' : 's'} · history before {shiftISODate(todayISO(), -2)} is frozen

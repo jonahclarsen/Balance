@@ -58,6 +58,7 @@ export type Goal = {
   cadenceDays: number
   matchTerms: string[]
   hue: number
+  neutral?: boolean
   activityPeriods: GoalActivityPeriod[]
   createdAt: string
   updatedAt: string

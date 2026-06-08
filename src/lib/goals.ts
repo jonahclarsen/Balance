@@ -22,6 +22,7 @@ export function createGoal(
   hue: number,
   startDate = todayISO(),
   id: Id,
+  neutral = false,
 ): Goal {
   const timestamp = nowISO()
 
@@ -31,6 +32,7 @@ export function createGoal(
     cadenceDays: normalizeCadenceDays(cadenceDays),
     matchTerms: normalizeMatchTerms(matchTerms),
     hue: normalizeHue(hue),
+    neutral: Boolean(neutral),
     activityPeriods: [{ startDate, endDate: null }],
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -44,6 +46,7 @@ export function normalizeGoal(goal: Goal): Goal {
     cadenceDays: normalizeCadenceDays(goal.cadenceDays),
     matchTerms: normalizeMatchTerms(goal.matchTerms ?? []),
     hue: normalizeHue(goal.hue ?? 165),
+    neutral: Boolean(goal.neutral),
     activityPeriods: normalizeActivityPeriods(goal.activityPeriods ?? []),
     createdAt: goal.createdAt ?? nowISO(),
     updatedAt: goal.updatedAt ?? goal.createdAt ?? nowISO(),
