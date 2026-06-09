@@ -300,6 +300,43 @@ test('goals are ordered by days until their current segment lapses', async ({ pa
   ).resolves.toEqual(['Urgent', 'Later'])
 })
 
+test('n goals template items use goal names instead of matching terms', async ({ page }) => {
+  const today = todayISO()
+
+  await page.evaluate((today) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const timestamp = new Date().toISOString()
+    state.templates[0].items = [
+      {
+        id: 'template_item_goals',
+        startMinutes: null,
+        endMinutes: null,
+        options: [{ id: 'option_goals', text: '1 goals', html: '1 goals', probability: 100 }],
+        children: [],
+      },
+    ]
+    state.goals = [
+      {
+        id: 'goal_music',
+        name: 'Write music',
+        cadenceDays: 3,
+        matchTerms: ['beat'],
+        hue: 278,
+        activityPeriods: [{ startDate: today, endDate: null }],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ]
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, today)
+  await page.reload()
+
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await expect(page.getByRole('listitem', { name: 'Plan item: Write music' })).toBeVisible()
+  await expect(page.getByRole('listitem', { name: 'Plan item: beat' })).toHaveCount(0)
+})
+
 test('goal rhythm hover text includes match keywords', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()

@@ -155,7 +155,7 @@ function generatePlanItems(
     const nGoalsMatch = N_GOALS_PATTERN.exec(text)
     if (nGoalsMatch) {
       return selectGoalsForExpansion(goals, goalCompletions, date, Number(nGoalsMatch[1])).map(({ goal, isLastDay }) => ({
-        ...createPlanItem(isLastDay ? `${goal.matchTerms[0]} (last day)` : goal.matchTerms[0]),
+        ...createPlanItem(isLastDay ? `${goal.name} (last day)` : goal.name),
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
       }))
