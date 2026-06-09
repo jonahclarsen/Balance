@@ -310,6 +310,36 @@ test('goal rhythm hover text includes match keywords', async ({ page }) => {
   )
 })
 
+test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  const activeCell = page.locator('.goal-day-cell.active').first()
+  await expect(activeCell).toBeVisible()
+  await expect(activeCell).toHaveCSS('background-color', 'rgb(23, 79, 65)')
+  await expect(activeCell.locator('.goal-cell-mark.open')).toHaveCSS('border-color', 'rgba(58, 136, 116, 0.7)')
+})
+
+test('gray controls toggle without being obscured and goal cards omit frozen-history text', async ({ page }) => {
+  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+
+  const newGoalGray = page.getByRole('button', { name: 'Make this goal gray' })
+  await newGoalGray.click()
+  await expect(newGoalGray).toHaveAttribute('aria-pressed', 'true')
+  await newGoalGray.click()
+  await expect(newGoalGray).toHaveAttribute('aria-pressed', 'false')
+
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  const goalGray = page.getByRole('button', { name: 'Make Exercise gray' })
+  await goalGray.click()
+  await expect(goalGray).toHaveAttribute('aria-pressed', 'true')
+  await goalGray.click()
+  await expect(goalGray).toHaveAttribute('aria-pressed', 'false')
+  await expect(page.locator('.goal-card-meta')).toHaveText('0 saved completions')
+  await expect(page.getByText(/history before .* is frozen/i)).toHaveCount(0)
+})
+
 async function createGoal(page: import('@playwright/test').Page, name: string, cadenceDays: number, terms: string) {
   await page.getByRole('button', { name: 'Goals', exact: true }).click()
   await page.getByLabel('New goal name').fill(name)

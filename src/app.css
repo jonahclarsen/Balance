@@ -27,6 +27,11 @@
   --time-warn-bg: #fbf0e1;
   --time-warn-ink: #9a5e22;
   --focus-ring: rgba(47, 111, 104, 0.25);
+  --goal-segment-border-lightness: 58%;
+  --goal-segment-current-border-lightness: 50%;
+  --goal-segment-bg-lightness: 96%;
+  --goal-segment-completed-bg-lightness: 89%;
+  --goal-open-mark-lightness: 50%;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -54,6 +59,11 @@
     --time-warn-bg: #352a1c;
     --time-warn-ink: #dab98e;
     --focus-ring: rgba(121, 185, 174, 0.28);
+    --goal-segment-border-lightness: 38%;
+    --goal-segment-current-border-lightness: 44%;
+    --goal-segment-bg-lightness: 20%;
+    --goal-segment-completed-bg-lightness: 27%;
+    --goal-open-mark-lightness: 38%;
   }
 }
 
@@ -1281,7 +1291,7 @@ nav button.active {
 
 .goal-card-fields {
   display: grid;
-  grid-template-columns: 160px minmax(220px, 1fr) 70px;
+  grid-template-columns: 160px minmax(220px, 1fr) minmax(180px, 0.7fr);
   gap: 12px;
 }
 
@@ -1477,18 +1487,18 @@ nav button.active {
 }
 
 .goal-day-cell.active {
-  border-top: 1px solid hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) 58% / 0.45);
-  border-bottom-color: hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) 58% / 0.45);
-  background: hsl(var(--goal-hue) calc(55% * var(--goal-sat-factor, 1)) 96%);
+  border-top: 1px solid hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) var(--goal-segment-border-lightness) / 0.45);
+  border-bottom-color: hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) var(--goal-segment-border-lightness) / 0.45);
+  background: hsl(var(--goal-hue) calc(55% * var(--goal-sat-factor, 1)) var(--goal-segment-bg-lightness));
 }
 
 .goal-day-cell.segment-start {
-  border-left: 1px solid hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) 58% / 0.45);
+  border-left: 1px solid hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) var(--goal-segment-border-lightness) / 0.45);
   border-radius: 999px 0 0 999px;
 }
 
 .goal-day-cell.segment-end {
-  border-right: 1px solid hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) 58% / 0.45);
+  border-right: 1px solid hsl(var(--goal-hue) calc(45% * var(--goal-sat-factor, 1)) var(--goal-segment-border-lightness) / 0.45);
   border-radius: 0 999px 999px 0;
 }
 
@@ -1499,23 +1509,23 @@ nav button.active {
 .goal-day-cell.active.current-period {
   border-top-width: 1.5px;
   border-bottom-width: 1.5px;
-  border-top-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 50% / 0.7);
-  border-bottom-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 50% / 0.7);
+  border-top-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) var(--goal-segment-current-border-lightness) / 0.7);
+  border-bottom-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) var(--goal-segment-current-border-lightness) / 0.7);
 }
 
 .goal-day-cell.segment-start.current-period {
   border-left-width: 1.5px;
-  border-left-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 50% / 0.7);
+  border-left-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) var(--goal-segment-current-border-lightness) / 0.7);
 }
 
 .goal-day-cell.segment-end.current-period {
   border-right-width: 1.5px;
-  border-right-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) 50% / 0.7);
+  border-right-color: hsl(var(--goal-hue) calc(48% * var(--goal-sat-factor, 1)) var(--goal-segment-current-border-lightness) / 0.7);
 }
 
 .goal-day-cell.completed,
 .goal-day-cell.relieved {
-  background: hsl(var(--goal-hue) calc(58% * var(--goal-sat-factor, 1)) 89%);
+  background: hsl(var(--goal-hue) calc(58% * var(--goal-sat-factor, 1)) var(--goal-segment-completed-bg-lightness));
 }
 
 .goal-day-cell.today::after {
@@ -1545,7 +1555,7 @@ nav button.active {
 }
 
 .goal-cell-mark.open {
-  border: 1.5px solid hsl(var(--goal-hue) calc(40% * var(--goal-sat-factor, 1)) 50% / 0.7);
+  border: 1.5px solid hsl(var(--goal-hue) calc(40% * var(--goal-sat-factor, 1)) var(--goal-open-mark-lightness) / 0.7);
   border-radius: 999px;
 }
 

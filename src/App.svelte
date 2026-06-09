@@ -1597,7 +1597,7 @@
                 </div>
               </div>
               <p class="goal-card-meta">
-                {completionCount} saved completion{completionCount === 1 ? '' : 's'} · history before {shiftISODate(todayISO(), -2)} is frozen
+                {completionCount} saved completion{completionCount === 1 ? '' : 's'}
               </p>
             </div>
             <div class="goal-card-actions">
