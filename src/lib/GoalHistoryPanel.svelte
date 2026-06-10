@@ -2,6 +2,7 @@
   import { onMount } from 'svelte'
   import {
     buildGoalDayCells,
+    goalDaysUntilLapse,
     GOAL_HISTORY_DEFAULT_DAYS,
     GOAL_HISTORY_MAX_DAYS,
     goalWasActiveInRange,
@@ -16,6 +17,7 @@
 
   export let goals: Goal[]
   export let completions: GoalCompletion[]
+  export let viewedDate: string = todayISO()
   export let onOpenGoals: () => void
   export let onSelectDate: (date: string) => void
   export let onResizeStart: ((event: PointerEvent) => void) | undefined = undefined
@@ -29,6 +31,7 @@
   $: visibleGoals = sortGoalsByUrgency(
     goals.filter((goal) => goalWasActiveInRange(goal, dates)),
     completions,
+    viewedDate,
   )
 
   onMount(() => {
@@ -47,6 +50,20 @@
 
   function dateLabel(date: string) {
     return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(new Date(`${date}T12:00:00`))
+  }
+
+  function lapseLabel(days: number | null): string {
+    if (days === null) return ''
+    if (days < 0) return `${Math.abs(days)}d over`
+    if (days === 0) return 'due today'
+    return `${days}d left`
+  }
+
+  function lapseTooltip(days: number | null): string {
+    if (days === null) return ''
+    if (days < 0) return `\nDefaulted ${Math.abs(days)} day${days === -1 ? '' : 's'} ago`
+    if (days === 0) return '\nDue today to stay on track'
+    return `\n${days} day${days === 1 ? '' : 's'} left before default`
   }
 </script>
 
@@ -99,16 +116,20 @@
 
       {#each visibleGoals as goal (goal.id)}
         {@const cells = buildGoalDayCells(goal, completions, dates)}
+        {@const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)}
         <button
           class="goal-history-name"
           type="button"
           style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
-          title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}\nMatch keywords: ${goal.matchTerms.join(', ')}`}
+          title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}${lapseTooltip(daysUntilLapse)}\nMatch keywords: ${goal.matchTerms.join(', ')}`}
           on:click={onOpenGoals}
         >
           <span class="goal-color-dot"></span>
           <span>{goal.name}</span>
           <small>{goal.cadenceDays}d</small>
+          {#if daysUntilLapse !== null}
+            <small class="goal-lapse" class:overdue={daysUntilLapse <= 0}>{lapseLabel(daysUntilLapse)}</small>
+          {/if}
         </button>
         {#each cells as cell (cell.date)}
           <button

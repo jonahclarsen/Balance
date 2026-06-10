@@ -1465,6 +1465,20 @@ nav button.active {
   font-size: 9px;
 }
 
+.goal-history-name small.goal-lapse {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--sidebar) 60%, var(--paper));
+  padding: 1px 5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.goal-history-name small.goal-lapse.overdue {
+  background: color-mix(in srgb, var(--danger) 18%, var(--paper));
+  color: var(--danger);
+}
+
 .goal-color-dot {
   width: 8px;
   height: 8px;

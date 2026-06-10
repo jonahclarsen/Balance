@@ -272,14 +272,23 @@ export function buildGoalDayCells(
 }
 
 /**
- * Days from `currentDate` until the goal's current open segment lapses (its
- * naturalEnd). Uses the same segment logic as `buildGoalDayCells`: a segment
- * starts at the activity-period start or the day after the previous completion,
- * and its naturalEnd is `min(segmentStart + cadenceDays - 1, periodEnd)`.
+ * Days from `currentDate` until the goal is defaulted on: the natural end of
+ * the period you currently have to act within. Uses the same segment logic as
+ * `buildGoalDayCells`: a segment starts at the activity-period start or on a
+ * completion date, and its naturalEnd is `min(segmentStart + cadenceDays - 1,
+ * periodEnd)`. A segment that starts on a completion is "satisfied" (the
+ * relieved rectangle); otherwise it is the open period you owe.
  *
- * Returns the signed day delta (0 = lapses today, negative = already overdue).
- * Returns `null` when the goal is not active on `currentDate` or has no current
- * segment, so callers can sort such goals last.
+ * - Open current period (including a goal not yet done for the first time): you
+ *   have until its natural end, so a freshly started goal gets the whole first
+ *   period of leeway before it can lapse.
+ * - Satisfied current period: you are covered through its end, so the deadline
+ *   is the natural end of the *next* period.
+ *
+ * Returns the signed day delta (0 = due today, negative = already overdue).
+ * Returns `null` when the goal is not active on `currentDate`, has no current
+ * segment, or its activity period ends before the next obligation, so callers
+ * can sort/treat such goals as non-urgent.
  */
 export function goalDaysUntilLapse(
   goal: Goal,
@@ -307,7 +316,16 @@ export function goalDaysUntilLapse(
     const segmentEnd = nextCompletion ? shiftISODate(nextCompletion, -1) : naturalEnd
 
     if (currentDate <= segmentEnd) {
-      return isoDateDiffDays(currentDate, naturalEnd)
+      if (!completionDates.has(segmentStart)) {
+        // Open period you still owe: leeway runs to its natural end.
+        return isoDateDiffDays(currentDate, naturalEnd)
+      }
+      // Satisfied period: covered through its end, so the deadline is the
+      // natural end of the next period, unless the activity period stops first.
+      if (period.endDate && naturalEnd >= period.endDate) return null
+      const nextCadenceEnd = shiftISODate(naturalEnd, goal.cadenceDays)
+      const nextNaturalEnd = period.endDate ? minISODate(nextCadenceEnd, period.endDate) : nextCadenceEnd
+      return isoDateDiffDays(currentDate, nextNaturalEnd)
     }
 
     segmentStart = nextCompletion ?? shiftISODate(segmentEnd, 1)

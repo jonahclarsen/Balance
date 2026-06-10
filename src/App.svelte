@@ -1782,6 +1782,7 @@
     <GoalHistoryPanel
       goals={$plannerStore.goals}
       completions={$plannerStore.goalCompletions}
+      viewedDate={$plannerStore.activePlanDate || todayISO()}
       onOpenGoals={() => (view = 'goals')}
       onSelectDate={openPlanDateFromGoalHistory}
       onResizeStart={startGoalHistoryResize}
