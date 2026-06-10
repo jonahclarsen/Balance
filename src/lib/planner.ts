@@ -154,8 +154,8 @@ function generatePlanItems(
 
     const nGoalsMatch = N_GOALS_PATTERN.exec(text)
     if (nGoalsMatch) {
-      return selectGoalsForExpansion(goals, goalCompletions, date, Number(nGoalsMatch[1])).map(({ goal, isLastDay }) => ({
-        ...createPlanItem(isLastDay ? `${goal.name} (last day)` : goal.name),
+      return selectGoalsForExpansion(goals, goalCompletions, date, Number(nGoalsMatch[1])).map((goal) => ({
+        ...createPlanItem(goal.name),
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
       }))
@@ -183,7 +183,7 @@ function selectGoalsForExpansion(
   goalCompletions: GoalCompletion[],
   date: string,
   n: number,
-): { goal: Goal; isLastDay: boolean }[] {
+): Goal[] {
   if (n <= 0) return []
 
   const eligible = goals.flatMap((goal) => {
@@ -194,10 +194,10 @@ function selectGoalsForExpansion(
     const daysUntilLapse = goalDaysUntilLapse(goal, goalCompletions, date)
     if (daysUntilLapse === null) return []
 
-    return [{ goal: { goal, isLastDay: daysUntilLapse === 0 }, daysUntilLapse }]
+    return [{ goal, daysUntilLapse }]
   })
 
-  const tiers = new Map<number, { goal: Goal; isLastDay: boolean }[]>()
+  const tiers = new Map<number, Goal[]>()
   for (const entry of eligible) {
     const tier = tiers.get(entry.daysUntilLapse) ?? []
     tier.push(entry.goal)
@@ -205,7 +205,7 @@ function selectGoalsForExpansion(
   }
 
   const sortedTiers = [...tiers.entries()].sort(([left], [right]) => left - right)
-  const selected: { goal: Goal; isLastDay: boolean }[] = []
+  const selected: Goal[] = []
 
   for (const [, tierGoals] of sortedTiers) {
     if (selected.length >= n) break

@@ -488,6 +488,19 @@ nav button.active {
   white-space: nowrap;
 }
 
+.plan-due-today {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--danger) 18%, var(--paper));
+  padding: 3px 7px;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 .row-actions,
 .template-actions {
   display: flex;

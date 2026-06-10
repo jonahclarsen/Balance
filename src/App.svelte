@@ -5,7 +5,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
-  import { hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
+  import { goalDaysUntilLapse, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
     exportHTML,
@@ -89,6 +89,11 @@
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
+  $: dueTodayGoals = activePlan
+    ? $plannerStore.goals.filter(
+        (goal) => goalDaysUntilLapse(goal, $plannerStore.goalCompletions, activePlan.date) === 0,
+      )
+    : []
   $: activeDailyReminder = activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER
   $: if (!editingDailyReminder) dailyReminderDraft = activeDailyReminder
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
@@ -1373,6 +1378,7 @@
               onTextShiftArrow={selectPlanItemWithAdjacent}
               goals={$plannerStore.goals}
               goalCompletions={$plannerStore.goalCompletions}
+              {dueTodayGoals}
               planDate={activePlan.date}
             />
           {/each}

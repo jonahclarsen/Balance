@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { goalMatchesForItem } from './goals'
+  import { dueTodayGoalsForItem, goalMatchesForItem } from './goals'
   import { defaultPlanItemTimeRange, MAX_TIMELINE_MINUTES, planItemTimeOverlapsPrevious } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
@@ -44,6 +44,7 @@
   export let historyRevision: number
   export let goals: Goal[] = []
   export let goalCompletions: GoalCompletion[] = []
+  export let dueTodayGoals: Goal[] = []
   export let planDate = ''
   export let selectedItemIds: Set<Id> = new Set()
   export let selectionDragging = false
@@ -56,6 +57,7 @@
   let activeDropRow: HTMLElement | null = null
   $: selected = selectedItemIds.has(item.id)
   $: matchedGoals = goalMatchesForItem(goals, goalCompletions, planDate, item.id)
+  $: dueTodayMatches = dueTodayGoalsForItem(item, dueTodayGoals)
   $: timeOverlapsPrevious =
     item.startMinutes !== null &&
     item.endMinutes !== null &&
@@ -424,8 +426,11 @@
       onTabKey={handleTextTab}
     />
 
-    {#if matchedGoals.length > 0}
+    {#if matchedGoals.length > 0 || dueTodayMatches.length > 0}
       <div class="plan-goal-badges" aria-label="Goals completed by this item">
+        {#each dueTodayMatches as goal (goal.id)}
+          <span class="plan-due-today" title={`${goal.name} is due today to stay on track`}>due today</span>
+        {/each}
         {#each matchedGoals as goal (goal.id)}
           <span class="plan-goal-badge" style={`--goal-hue: ${goal.hue}`} title={`Completes goal: ${goal.name}`}>
             <span aria-hidden="true">✓</span>{goal.name}
@@ -460,6 +465,7 @@
           {historyRevision}
           {goals}
           {goalCompletions}
+          {dueTodayGoals}
           {planDate}
           {selectedItemIds}
           {selectionDragging}
