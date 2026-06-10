@@ -1555,7 +1555,7 @@ nav button.active {
   background: hsl(var(--goal-hue) calc(58% * var(--goal-sat-factor, 1)) var(--goal-segment-completed-bg-lightness));
 }
 
-.goal-day-cell.today::after {
+.goal-day-cell.viewed::after {
   position: absolute;
   inset: 2px;
   border: 1px dashed hsl(var(--goal-hue) calc(42% * var(--goal-sat-factor, 1)) 45% / 0.45);

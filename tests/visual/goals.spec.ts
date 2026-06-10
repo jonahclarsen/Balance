@@ -416,11 +416,14 @@ test('goal rhythm highlights the viewed day instead of the current calendar day'
   const today = todayISO()
   const tomorrow = addDays(today, 1)
   await expect(page.locator(`.goal-date-head[title="${today}"]`)).toHaveClass(/viewed/)
+  await expect(page.locator(`.goal-day-cell[title*="${today}"]`)).toHaveClass(/viewed/)
 
   await page.getByRole('button', { name: 'Next day' }).click()
 
   await expect(page.locator(`.goal-date-head[title="${tomorrow}"]`)).toHaveClass(/viewed/)
   await expect(page.locator(`.goal-date-head[title="${today}"]`)).not.toHaveClass(/viewed/)
+  await expect(page.locator(`.goal-day-cell[title*="${tomorrow}"]`)).toHaveClass(/viewed/)
+  await expect(page.locator(`.goal-day-cell[title*="${today}"]`)).not.toHaveClass(/viewed/)
 })
 
 test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {

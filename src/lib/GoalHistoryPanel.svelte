@@ -141,7 +141,7 @@
             class:completed={cell.completed}
             class:relieved={cell.relieved}
             class:missed={cell.missed}
-            class:today={cell.date === todayISO()}
+            class:viewed={cell.date === viewedDate}
             class:future={cell.date > todayISO()}
             style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
             title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.active ? ' · active' : ' · inactive'}`}
