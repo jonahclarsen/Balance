@@ -19,7 +19,6 @@
   export let completions: GoalCompletion[]
   export let viewedDate: string = todayISO()
   export let onOpenGoals: () => void
-  export let onSelectDate: (date: string) => void
   export let onResizeStart: ((event: PointerEvent) => void) | undefined = undefined
 
   let historyDays = GOAL_HISTORY_DEFAULT_DAYS
@@ -100,18 +99,15 @@
     <div class="goal-history-grid" style={`--goal-day-count: ${dates.length}`}>
       <div class="goal-history-corner">Goal</div>
       {#each dates as date (date)}
-        <button
+        <div
           class:today={date === todayISO()}
           class:future={date > todayISO()}
           class="goal-date-head"
-          type="button"
           title={date}
-          aria-label={`Open ${date}`}
-          on:click={() => onSelectDate(date)}
         >
           <span>{dayLabel(date)}</span>
           <strong>{dateLabel(date)}</strong>
-        </button>
+        </div>
       {/each}
 
       {#each visibleGoals as goal (goal.id)}
@@ -132,7 +128,7 @@
           {/if}
         </button>
         {#each cells as cell (cell.date)}
-          <button
+          <div
             class="goal-day-cell"
             class:active={cell.active}
             class:segment-start={cell.segmentStart}
@@ -144,10 +140,7 @@
             class:today={cell.date === todayISO()}
             class:future={cell.date > todayISO()}
             style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
-            type="button"
             title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.active ? ' · active' : ' · inactive'}`}
-            aria-label={`${goal.name} on ${cell.date}${cell.completed ? ', completed' : ''}`}
-            on:click={() => onSelectDate(cell.date)}
           >
             {#if cell.completed}
               <span class="goal-cell-mark checked">✓</span>
@@ -156,7 +149,7 @@
             {:else if cell.active}
               <span class="goal-cell-mark open"></span>
             {/if}
-          </button>
+          </div>
         {/each}
       {:else}
         <div class="goal-history-empty">

@@ -222,11 +222,6 @@
     goalFormStatus = ''
   }
 
-  function openPlanDateFromGoalHistory(date: string) {
-    plannerStore.setActivePlanDate(date)
-    view = 'today'
-  }
-
   async function confirmDeleteGoal(goalId: Id, goalName: string) {
     const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goalId).length
     const firstMessage =
@@ -1784,7 +1779,6 @@
       completions={$plannerStore.goalCompletions}
       viewedDate={$plannerStore.activePlanDate || todayISO()}
       onOpenGoals={() => (view = 'goals')}
-      onSelectDate={openPlanDateFromGoalHistory}
       onResizeStart={startGoalHistoryResize}
     />
   </div>
