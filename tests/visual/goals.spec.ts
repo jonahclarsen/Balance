@@ -347,6 +347,20 @@ test('goal rhythm hover text includes match keywords', async ({ page }) => {
   )
 })
 
+test('goal rhythm highlights the viewed day instead of the current calendar day', async ({ page }) => {
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  const today = todayISO()
+  const tomorrow = addDays(today, 1)
+  await expect(page.locator(`.goal-date-head[title="${today}"]`)).toHaveClass(/viewed/)
+
+  await page.getByRole('button', { name: 'Next day' }).click()
+
+  await expect(page.locator(`.goal-date-head[title="${tomorrow}"]`)).toHaveClass(/viewed/)
+  await expect(page.locator(`.goal-date-head[title="${today}"]`)).not.toHaveClass(/viewed/)
+})
+
 test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' })
   await createGoal(page, 'Exercise', 3, 'lift, swim')

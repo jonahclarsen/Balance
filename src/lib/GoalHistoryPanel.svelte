@@ -100,7 +100,7 @@
       <div class="goal-history-corner">Goal</div>
       {#each dates as date (date)}
         <div
-          class:today={date === todayISO()}
+          class:viewed={date === viewedDate}
           class:future={date > todayISO()}
           class="goal-date-head"
           title={date}

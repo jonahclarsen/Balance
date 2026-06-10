@@ -1444,13 +1444,13 @@ nav button.active {
   white-space: nowrap;
 }
 
-.goal-date-head.today {
-  background: var(--active-nav);
-  color: var(--accent-strong);
-}
-
 .goal-date-head.future {
   background: color-mix(in srgb, var(--sidebar) 45%, var(--paper));
+}
+
+.goal-date-head.viewed {
+  background: var(--active-nav);
+  color: var(--accent-strong);
 }
 
 .goal-history-name {
