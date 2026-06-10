@@ -27,6 +27,10 @@
   $: futureDayCount = Math.max(0, ...goals.map((goal) => goal.cadenceDays - 1))
   $: futureDates = Array.from({ length: futureDayCount }, (_, index) => shiftISODate(todayISO(), index + 1))
   $: dates = [...pastDates, ...futureDates]
+  $: upcomingGoalCount = goals.filter((goal) => {
+    const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)
+    return daysUntilLapse !== null && daysUntilLapse >= 0 && daysUntilLapse <= 3
+  }).length
   $: visibleGoals = sortGoalsByUrgency(
     goals.filter((goal) => goalWasActiveInRange(goal, dates)),
     completions,
@@ -79,7 +83,7 @@
   <header class="goal-history-toolbar">
     <div>
       <strong>Goal rhythm</strong>
-      <span>{historyDays} past days{futureDayCount > 0 ? ` + ${futureDayCount} future` : ''}</span>
+      <span>{upcomingGoalCount} upcoming in the next 3 days</span>
     </div>
     <label class="goal-days-control">
       <span>Days</span>

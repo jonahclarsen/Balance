@@ -300,6 +300,68 @@ test('goals are ordered by days until their current segment lapses', async ({ pa
   ).resolves.toEqual(['Urgent', 'Later'])
 })
 
+test('goal rhythm counts goals becoming overdue from the viewed day through the next three days', async ({ page }) => {
+  const today = todayISO()
+  const yesterday = addDays(today, -1)
+
+  await page.evaluate(({ today, yesterday }) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const timestamp = new Date().toISOString()
+    state.goals = [
+      {
+        id: 'goal_daily',
+        name: 'Daily goal',
+        cadenceDays: 1,
+        matchTerms: ['daily'],
+        hue: 0,
+        activityPeriods: [{ startDate: yesterday, endDate: null }],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: 'goal_today',
+        name: 'Due today',
+        cadenceDays: 1,
+        matchTerms: ['today'],
+        hue: 40,
+        activityPeriods: [{ startDate: today, endDate: null }],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: 'goal_three_days',
+        name: 'Due in three days',
+        cadenceDays: 4,
+        matchTerms: ['soon'],
+        hue: 80,
+        activityPeriods: [{ startDate: today, endDate: null }],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+      {
+        id: 'goal_four_days',
+        name: 'Due in four days',
+        cadenceDays: 5,
+        matchTerms: ['later'],
+        hue: 120,
+        activityPeriods: [{ startDate: today, endDate: null }],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ]
+    state.goalCompletions = []
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, { today, yesterday })
+  await page.reload()
+
+  const upcomingSummary = page.locator('.goal-history-toolbar > div > span')
+  await expect(upcomingSummary).toHaveText('3 upcoming in the next 3 days')
+
+  await page.getByRole('button', { name: 'Previous day' }).click()
+
+  await expect(upcomingSummary).toHaveText('1 upcoming in the next 3 days')
+})
+
 test('n goals template items use goal names instead of matching terms', async ({ page }) => {
   const today = todayISO()
 
