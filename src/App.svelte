@@ -39,6 +39,9 @@
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
 
   let view: View = 'today'
+  let workspaceEl: HTMLElement
+  let scrollPositionsByDate: Record<string, number> = {}
+  let lastScrolledDate = ''
   let goalHistoryHeight: number | null = null
   let selectedTemplateId = ''
   let recoveryKeyStatus: RecoveryKeyStatus | null = null
@@ -89,6 +92,7 @@
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
+  $: restoreScrollForDate($plannerStore.activePlanDate)
   $: dueTodayGoals = activePlan
     ? $plannerStore.goals.filter(
         (goal) => goalDaysUntilLapse(goal, $plannerStore.goalCompletions, activePlan.date) === 0,
@@ -197,6 +201,21 @@
 
   function shiftActivePlanDate(days: number) {
     plannerStore.setActivePlanDate(shiftISODate($plannerStore.activePlanDate || todayISO(), days))
+  }
+
+  function handleWorkspaceScroll() {
+    if (workspaceEl && lastScrolledDate) {
+      scrollPositionsByDate[lastScrolledDate] = workspaceEl.scrollTop
+    }
+  }
+
+  async function restoreScrollForDate(date: string) {
+    if (!date || date === lastScrolledDate) return
+    lastScrolledDate = date
+    await tick()
+    if (workspaceEl) {
+      workspaceEl.scrollTop = scrollPositionsByDate[date] ?? 0
+    }
   }
 
   function shiftISODate(date: string, days: number): string {
@@ -1319,7 +1338,7 @@
   </aside>
 
   <div class="content-shell" style={goalHistoryHeight != null ? `--goal-history-height: ${goalHistoryHeight}px` : ''}>
-    <section class="workspace">
+    <section class="workspace" bind:this={workspaceEl} on:scroll={handleWorkspaceScroll}>
     {#if view === 'today'}
       <header class="page-header">
         <div>
