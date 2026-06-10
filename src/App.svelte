@@ -529,6 +529,24 @@
       return
     }
 
+    if (
+      view === 'today' &&
+      activePlan &&
+      event.metaKey &&
+      event.shiftKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      key === 'a'
+    ) {
+      const itemId = activeFocusedPlanItemId()
+      if (!itemId) return
+
+      event.preventDefault()
+      event.stopPropagation()
+      selectSinglePlanItem(itemId)
+      return
+    }
+
     if (event.key === 'Escape' && recoveryPanelOpen) {
       event.preventDefault()
       closeRecoveryPanel()
@@ -729,8 +747,17 @@
       return
     }
 
+    selectSinglePlanItem(itemId)
+  }
+
+  function selectSinglePlanItem(itemId: Id) {
+    if (!activePlan) return
+
+    selectedPlanPlanId = activePlan.id
+    planSelectionAnchorId = itemId
     selectedPlanItemIds = [itemId]
     planSelectionFocusId = itemId
+    releaseTextEditingFocus()
   }
 
   function extendPlanItemSelection(itemId: Id) {

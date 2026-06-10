@@ -942,6 +942,21 @@ test('cmd backspace at the end of a plan item deletes the whole task', async ({ 
     })
 })
 
+test('cmd shift a selects the focused plan item instead of its text', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Wake up')
+  await page.keyboard.press('Meta+Shift+A')
+
+  const row = page.getByRole('listitem', { name: /Plan item: Wake up/ })
+  await expect(row.getByRole('button', { name: 'Selected item' })).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(async () => selectedText(page)).toBe('')
+  await expect.poll(async () => page.evaluate(() => document.activeElement?.matches('[data-plan-text-input]'))).toBe(false)
+})
+
 test('pasting plan items into an empty focused item replaces it', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
