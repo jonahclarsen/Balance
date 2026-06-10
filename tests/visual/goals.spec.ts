@@ -250,32 +250,53 @@ test('a new completion starts a new cadence segment and shortens the prior one',
   })
 })
 
-test('goals are ordered by days until their current segment lapses', async ({ page }) => {
+test('goals put daily intervals first, then order by days until lapse and shortest interval', async ({ page }) => {
   const today = todayISO()
+  const threeDaysAgo = addDays(today, -3)
   const yesterday = addDays(today, -1)
 
   await page.evaluate(
-    ({ today, yesterday }) => {
+    ({ today, threeDaysAgo, yesterday }) => {
       const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
       const timestamp = new Date().toISOString()
       state.goals = [
         {
-          id: 'goal_later',
-          name: 'Later',
+          id: 'goal_long_tie',
+          name: 'Long tie',
           cadenceDays: 7,
-          matchTerms: ['later'],
+          matchTerms: ['long'],
           hue: 120,
+          activityPeriods: [{ startDate: threeDaysAgo, endDate: null }],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        {
+          id: 'goal_short_tie',
+          name: 'Short tie',
+          cadenceDays: 4,
+          matchTerms: ['short'],
+          hue: 80,
           activityPeriods: [{ startDate: today, endDate: null }],
           createdAt: timestamp,
           updatedAt: timestamp,
         },
         {
-          id: 'goal_urgent',
-          name: 'Urgent',
+          id: 'goal_sooner',
+          name: 'Sooner',
           cadenceDays: 2,
-          matchTerms: ['urgent'],
+          matchTerms: ['soon'],
           hue: 0,
           activityPeriods: [{ startDate: yesterday, endDate: null }],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        {
+          id: 'goal_archived_daily',
+          name: 'Archived daily',
+          cadenceDays: 1,
+          matchTerms: ['daily'],
+          hue: 40,
+          activityPeriods: [{ startDate: yesterday, endDate: yesterday }],
           createdAt: timestamp,
           updatedAt: timestamp,
         },
@@ -283,13 +304,15 @@ test('goals are ordered by days until their current segment lapses', async ({ pa
       state.goalCompletions = []
       localStorage.setItem('balance.appState.v1', JSON.stringify(state))
     },
-    { today, yesterday },
+    { today, threeDaysAgo, yesterday },
   )
   await page.reload()
 
   await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual([
-    'Urgent',
-    'Later',
+    'Archived daily',
+    'Sooner',
+    'Short tie',
+    'Long tie',
   ])
 
   await page.getByRole('button', { name: 'Goals', exact: true }).click()
@@ -297,7 +320,7 @@ test('goals are ordered by days until their current segment lapses', async ({ pa
     page.locator('.goal-card .goal-name-input').evaluateAll((inputs) =>
       inputs.map((input) => (input as HTMLInputElement).value),
     ),
-  ).resolves.toEqual(['Urgent', 'Later'])
+  ).resolves.toEqual(['Archived daily', 'Sooner', 'Short tie', 'Long tie'])
 })
 
 test('goal rhythm counts goals becoming overdue from the viewed day through the next three days', async ({ page }) => {

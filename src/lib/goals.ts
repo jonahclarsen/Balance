@@ -348,22 +348,32 @@ export function goalDaysUntilLapse(
 }
 
 /**
- * Sorts a copy of `goals` by urgency: the goal closest to lapsing (lowest
- * `goalDaysUntilLapse`, including overdue/negative values) comes first. Goals
- * with no current segment (`goalDaysUntilLapse` returns `null`) sort last.
- * Ties fall back to the original order to keep the sort stable/deterministic.
+ * Sorts a copy of `goals` by urgency. Daily goals always come first. Other
+ * goals sort by the closest lapse date (including overdue/negative values),
+ * then by shortest cadence. Goals with no current segment
+ * (`goalDaysUntilLapse` returns `null`) sort last, except for the daily-goal
+ * override. Remaining ties fall back to the original order for stability.
  */
 export function sortGoalsByUrgency(goals: Goal[], completions: GoalCompletion[], currentDate = todayISO()): Goal[] {
   const urgency = new Map(goals.map((goal) => [goal.id, goalDaysUntilLapse(goal, completions, currentDate)]))
   const order = new Map(goals.map((goal, index) => [goal.id, index]))
 
   return [...goals].sort((left, right) => {
+    const dailyDifference = Number(right.cadenceDays === 1) - Number(left.cadenceDays === 1)
+    if (dailyDifference !== 0) return dailyDifference
+
     const leftDays = urgency.get(left.id) ?? null
     const rightDays = urgency.get(right.id) ?? null
-    if (leftDays === null && rightDays === null) return (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0)
+    if (leftDays === null && rightDays === null) {
+      return left.cadenceDays - right.cadenceDays || (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0)
+    }
     if (leftDays === null) return 1
     if (rightDays === null) return -1
-    return leftDays - rightDays || (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0)
+    return (
+      leftDays - rightDays ||
+      left.cadenceDays - right.cadenceDays ||
+      (order.get(left.id) ?? 0) - (order.get(right.id) ?? 0)
+    )
   })
 }
 
