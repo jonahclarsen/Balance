@@ -959,8 +959,41 @@ export function planItemTimeOverlapsPrevious<T extends {
   endMinutes: number | null
   children: T[]
 }>(items: T[], itemId: Id, startMinutes: number): boolean {
-  const previousEndMinutes = previousTimedItemEndMinutes(items, itemId).endMinutes
+  const previousEndMinutes = previousTimedSiblingEndMinutes(items, itemId)
   return previousEndMinutes !== null && startMinutes < previousEndMinutes
+}
+
+// Overlap highlighting only considers items at the same indentation level, so an
+// item that nests a shorter child (e.g. "3-5pm library" containing "3-4pm study")
+// doesn't make a following sibling like "4:30-6pm hang" look like a conflict.
+function previousTimedSiblingEndMinutes<T extends {
+  id: Id
+  startMinutes: number | null
+  endMinutes: number | null
+  children: T[]
+}>(items: T[], itemId: Id): number | null {
+  const siblings = findSiblings(items, itemId)
+  if (!siblings) return null
+
+  let lastEndMinutes: number | null = null
+  for (const sibling of siblings) {
+    if (sibling.id === itemId) return lastEndMinutes
+    if (sibling.startMinutes !== null && sibling.endMinutes !== null) {
+      lastEndMinutes = sibling.endMinutes
+    }
+  }
+
+  return lastEndMinutes
+}
+
+function findSiblings<T extends { id: Id; children: T[] }>(items: T[], itemId: Id): T[] | null {
+  for (const item of items) {
+    if (item.id === itemId) return items
+    const found = findSiblings(item.children, itemId)
+    if (found) return found
+  }
+
+  return null
 }
 
 export function formatMinutes(minutes: number): string {
