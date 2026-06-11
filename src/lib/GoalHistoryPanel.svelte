@@ -2,10 +2,12 @@
   import { onMount } from 'svelte'
   import {
     buildGoalDayCells,
+    GOAL_FUTURE_DAYS,
     goalDaysUntilLapse,
     GOAL_HISTORY_DEFAULT_DAYS,
     GOAL_HISTORY_MAX_DAYS,
     goalWasActiveInRange,
+    isoDateDiffDays,
     shiftISODate,
     sortGoalsByUrgency,
     visibleGoalDates,
@@ -24,7 +26,9 @@
   let historyDays = GOAL_HISTORY_DEFAULT_DAYS
 
   $: pastDates = visibleGoalDates(historyDays)
-  $: futureDayCount = Math.max(0, ...goals.map((goal) => goal.cadenceDays - 1))
+  // The grid always reaches GOAL_FUTURE_DAYS past the viewed day; when
+  // viewing the past that range is already covered by the history dates.
+  $: futureDayCount = Math.max(0, isoDateDiffDays(todayISO(), viewedDate) + GOAL_FUTURE_DAYS)
   $: futureDates = Array.from({ length: futureDayCount }, (_, index) => shiftISODate(todayISO(), index + 1))
   $: dates = [...pastDates, ...futureDates]
   $: upcomingGoalCount = goals.filter((goal) => {

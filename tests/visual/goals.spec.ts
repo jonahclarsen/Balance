@@ -283,10 +283,16 @@ test('an unmet cycle stays overdue until a late completion starts the next cycle
   await expect(page.locator(`.goal-day-cell[title="Read · ${start} · missed"]`)).toHaveClass(/segment-start/)
   await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · missed"]`)).toBeVisible()
   await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(deadline, 1)} · overdue"]`)).toBeVisible()
-  await expect(page.locator(`.goal-day-cell[title="Read · ${todayISO()} · overdue"]`)).toBeVisible()
+  await expect(page.locator(`.goal-day-cell[title="Read · ${todayISO()} · overdue"]`)).toHaveClass(/segment-end/)
+
+  // The overdue stretch ends at the viewed day; the future shows projected
+  // cadence-length cycles across a fixed six-day window.
+  await expect(page.locator('.goal-date-head.future')).toHaveCount(6)
   const tomorrowCell = page.locator(`.goal-day-cell[title="Read · ${addDays(todayISO(), 1)} · active"]`)
-  await expect(tomorrowCell).toHaveClass(/future/)
+  await expect(tomorrowCell).toHaveClass(/segment-start/)
   await expect(tomorrowCell).not.toHaveClass(/overdue/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(todayISO(), 3)} · active"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(todayISO(), 4)} · active"]`)).toHaveClass(/segment-start/)
 
   await page.evaluate((lateCompletion) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')

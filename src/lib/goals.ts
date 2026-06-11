@@ -3,6 +3,7 @@ import type { AppState, DailyPlan, Goal, GoalActivityPeriod, GoalCompletion, Id,
 
 export const GOAL_HISTORY_DEFAULT_DAYS = 30
 export const GOAL_HISTORY_MAX_DAYS = 3660
+export const GOAL_FUTURE_DAYS = 6
 export const GOAL_RECALCULATION_AGE_DAYS = 2
 
 export type GoalDayCell = {
@@ -278,10 +279,16 @@ export function buildGoalDayCells(
       const satisfied = completionDates.has(segmentStart)
       // A satisfied segment only re-anchors on a completion inside its
       // coverage; an owed segment stays open past its deadline (overdue)
-      // until the next completion finally starts the following cycle.
+      // until the next completion finally starts the following cycle. With
+      // no completion yet, it is clipped at the current day so the days
+      // beyond it render as projected cadence-length cycles, not one bar.
       const completionCutoff = satisfied ? deadline : periodEnd
       const nextCompletion = sortedCompletions.find((date) => date > segmentStart && date <= completionCutoff)
-      const segmentEnd = nextCompletion ? shiftISODate(nextCompletion, -1) : satisfied ? deadline : periodEnd
+      const segmentEnd = nextCompletion
+        ? shiftISODate(nextCompletion, -1)
+        : satisfied
+          ? deadline
+          : minISODate(maxISODate(deadline, currentDate), periodEnd)
       markSegment(cells, indexesByDate, segmentStart, segmentEnd, deadline, completionDates, currentDate)
       segmentStart = nextCompletion ?? shiftISODate(segmentEnd, 1)
     }
@@ -536,7 +543,7 @@ function minISODate(left: string, right: string): string {
   return left < right ? left : right
 }
 
-function isoDateDiffDays(from: string, to: string): number {
+export function isoDateDiffDays(from: string, to: string): number {
   const parse = (date: string) => {
     const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
     if (!match) return Date.now()
