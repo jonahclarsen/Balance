@@ -1,0 +1,61 @@
+name: Build macOS arm64 app
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build unsigned .app
+    runs-on: macos-15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build macOS arm64 app
+        run: pnpm tauri build --target aarch64-apple-darwin --bundles app
+
+      - name: Verify and package app
+        run: |
+          APP_PATH="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Balance.app"
+          APP_EXECUTABLE="$APP_PATH/Contents/MacOS/Balance"
+
+          test -d "$APP_PATH"
+          file "$APP_EXECUTABLE" | tee executable-architecture.txt
+          file "$APP_EXECUTABLE" | grep -q "arm64"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Balance-macos-arm64.app.zip
+
+      - name: Upload app artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Balance-macos-arm64
+          path: |
+            Balance-macos-arm64.app.zip
+            executable-architecture.txt
+          if-no-files-found: error
