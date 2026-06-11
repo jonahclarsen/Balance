@@ -29,7 +29,7 @@
   $: dates = [...pastDates, ...futureDates]
   $: upcomingGoalCount = goals.filter((goal) => {
     const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)
-    return daysUntilLapse !== null && daysUntilLapse >= 0 && daysUntilLapse <= 3
+    return daysUntilLapse !== null && daysUntilLapse <= 3
   }).length
   $: visibleGoals = sortGoalsByUrgency(
     goals.filter((goal) => goalWasActiveInRange(goal, dates)),
@@ -141,10 +141,11 @@
             class:completed={cell.completed}
             class:relieved={cell.relieved}
             class:missed={cell.missed}
+            class:overdue={cell.overdue}
             class:viewed={cell.date === viewedDate}
             class:future={cell.date > todayISO()}
             style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
-            title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.active ? ' · active' : ' · inactive'}`}
+            title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.overdue ? ' · overdue' : cell.missed ? ' · missed' : cell.active ? ' · active' : ' · inactive'}`}
           >
             {#if cell.completed}
               <span class="goal-cell-mark checked">✓</span>

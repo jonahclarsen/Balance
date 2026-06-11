@@ -1564,10 +1564,6 @@ nav button.active {
   pointer-events: none;
 }
 
-.goal-day-cell.future {
-  background-image: linear-gradient(135deg, transparent 45%, hsl(var(--goal-hue) calc(30% * var(--goal-sat-factor, 1)) 70% / 0.08) 45% 55%, transparent 55%);
-}
-
 .goal-cell-mark {
   position: relative;
   z-index: 1;

@@ -94,9 +94,10 @@
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
   $: restoreScrollForDate($plannerStore.activePlanDate)
   $: dueTodayGoals = activePlan
-    ? $plannerStore.goals.filter(
-        (goal) => goalDaysUntilLapse(goal, $plannerStore.goalCompletions, activePlan.date) === 0,
-      )
+    ? $plannerStore.goals.filter((goal) => {
+        const daysUntilLapse = goalDaysUntilLapse(goal, $plannerStore.goalCompletions, activePlan.date)
+        return daysUntilLapse !== null && daysUntilLapse <= 0
+      })
     : []
   $: activeDailyReminder = activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER
   $: if (!editingDailyReminder) dailyReminderDraft = activeDailyReminder

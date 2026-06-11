@@ -170,7 +170,7 @@ test('old goal snapshots survive rule edits and archiving, and deletion advises 
 
   await page.getByRole('button', { name: 'Archive', exact: true }).click()
   await expect(page.getByText('Archived', { exact: true })).toBeVisible()
-  await expect(page.getByLabel(`Exercise on ${oldDate}, completed`)).toBeVisible()
+  await expect(page.locator(`.goal-day-cell[title="Exercise · ${oldDate} · completed"]`)).toBeVisible()
 
   const dialogMessages: string[] = []
   page.on('dialog', async (dialog) => {
@@ -238,16 +238,75 @@ test('a new completion starts a new cadence segment and shortens the prior one',
     .poll(async () => page.evaluate(() => localStorage.getItem('balance.goalHistoryDays')))
     .toBe('120')
 
-  await expect(page.getByLabel(`Make a beat on ${firstCompletion}, completed`)).toHaveClass(/segment-start/)
-  await expect(page.getByLabel(`Make a beat on ${dayAfterFirst}`)).toHaveClass(/segment-end/)
-  await expect(page.getByLabel(`Make a beat on ${dayAfterFirst}`)).toHaveClass(/relieved/)
-  await expect(page.getByLabel(`Make a beat on ${secondCompletion}, completed`)).toHaveClass(/segment-start/)
-  await expect(page.getByLabel(`Make a beat on ${dayAfterSecond}`)).toHaveClass(/relieved/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${firstCompletion} · completed"]`)).toHaveClass(/segment-start/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${dayAfterFirst} · active"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${dayAfterFirst} · active"]`)).toHaveClass(/relieved/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${secondCompletion} · completed"]`)).toHaveClass(/segment-start/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${dayAfterSecond} · active"]`)).toHaveClass(/relieved/)
 
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-goal-cadence-segments.png`,
     fullPage: true,
   })
+})
+
+test('an unmet cycle stays overdue until a late completion starts the next cycle', async ({ page }) => {
+  const start = addDays(todayISO(), -7)
+  const deadline = addDays(start, 2)
+  const lateCompletion = addDays(todayISO(), -2)
+
+  await page.evaluate((start) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const timestamp = new Date().toISOString()
+    state.goals = [
+      {
+        id: 'goal_read',
+        name: 'Read',
+        cadenceDays: 3,
+        matchTerms: ['read'],
+        hue: 200,
+        activityPeriods: [{ startDate: start, endDate: null }],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      },
+    ]
+    state.goalCompletions = []
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, start)
+  await page.reload()
+
+  const lapsePill = page.locator('.goal-history-name', { hasText: 'Read' }).locator('.goal-lapse')
+  await expect(lapsePill).toHaveText('5d over')
+  await expect(lapsePill).toHaveClass(/overdue/)
+  await expect(page.locator('.goal-history-toolbar > div > span')).toHaveText('1 upcoming in the next 3 days')
+
+  await expect(page.locator(`.goal-day-cell[title="Read · ${start} · missed"]`)).toHaveClass(/segment-start/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · missed"]`)).toBeVisible()
+  await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(deadline, 1)} · overdue"]`)).toBeVisible()
+  await expect(page.locator(`.goal-day-cell[title="Read · ${todayISO()} · overdue"]`)).toBeVisible()
+  const tomorrowCell = page.locator(`.goal-day-cell[title="Read · ${addDays(todayISO(), 1)} · active"]`)
+  await expect(tomorrowCell).toHaveClass(/future/)
+  await expect(tomorrowCell).not.toHaveClass(/overdue/)
+
+  await page.evaluate((lateCompletion) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    state.goalCompletions = [
+      {
+        goalId: 'goal_read',
+        date: lateCompletion,
+        itemIds: ['item_read'],
+        matchedTerms: ['read'],
+        computedAt: new Date().toISOString(),
+      },
+    ]
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, lateCompletion)
+  await page.reload()
+
+  await expect(lapsePill).toHaveText('3d left')
+  await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · missed"]`)).toBeVisible()
+  await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(lateCompletion, -1)} · overdue"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${lateCompletion} · completed"]`)).toHaveClass(/segment-start/)
 })
 
 test('goals put daily intervals first, then order by days until lapse and shortest interval', async ({ page }) => {
@@ -428,7 +487,7 @@ test('goal rhythm hover text includes match keywords', async ({ page }) => {
 
   await expect(page.locator('.goal-history-name', { hasText: 'Exercise' })).toHaveAttribute(
     'title',
-    'Exercise: every 3 days\nMatch keywords: lift, swim',
+    'Exercise: every 3 days\n2 days left before default\nMatch keywords: lift, swim',
   )
 })
 
