@@ -518,13 +518,33 @@ function markSegment(
 }
 
 function normalizeActivityPeriods(periods: GoalActivityPeriod[]): GoalActivityPeriod[] {
-  return periods
+  const normalized = periods
     .filter((period) => Boolean(period.startDate))
     .map((period) => ({
       startDate: period.startDate,
       endDate: period.endDate && period.endDate >= period.startDate ? period.endDate : null,
     }))
     .sort((left, right) => left.startDate.localeCompare(right.startDate))
+
+  return normalized.reduce<GoalActivityPeriod[]>((merged, period) => {
+    const previous = merged.at(-1)
+    if (!previous) {
+      merged.push(period)
+      return merged
+    }
+
+    const touchesPrevious = previous.endDate === null || period.startDate <= shiftISODate(previous.endDate, 1)
+    if (!touchesPrevious) {
+      merged.push(period)
+      return merged
+    }
+
+    previous.endDate =
+      previous.endDate === null || period.endDate === null
+        ? null
+        : maxISODate(previous.endDate, period.endDate)
+    return merged
+  }, [])
 }
 
 function compareGoalCompletions(left: GoalCompletion, right: GoalCompletion): number {

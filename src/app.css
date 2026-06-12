@@ -1453,6 +1453,11 @@ nav button.active {
   color: var(--accent-strong);
 }
 
+.goal-date-head.viewed span,
+.goal-date-head.viewed strong {
+  font-weight: 700;
+}
+
 .goal-history-name {
   left: 0;
   display: flex;

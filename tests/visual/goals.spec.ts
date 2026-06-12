@@ -315,6 +315,45 @@ test('an unmet cycle stays overdue until a late completion starts the next cycle
   await expect(page.locator(`.goal-day-cell[title="Read · ${lateCompletion} · completed"]`)).toHaveClass(/segment-start/)
 })
 
+test('goal rhythm keeps rounded segment ends when saved activity periods overlap', async ({ page }) => {
+  const firstStart = addDays(todayISO(), -8)
+  const overlapStart = addDays(todayISO(), -5)
+  const firstEnd = addDays(todayISO(), -2)
+
+  await page.evaluate(
+    ({ firstStart, overlapStart, firstEnd }) => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      const timestamp = new Date().toISOString()
+      state.goals = [
+        {
+          id: 'goal_overlap',
+          name: 'Overlapping history',
+          cadenceDays: 3,
+          matchTerms: ['overlap'],
+          hue: 160,
+          activityPeriods: [
+            { startDate: firstStart, endDate: firstEnd },
+            { startDate: overlapStart, endDate: null },
+          ],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ]
+      state.goalCompletions = []
+      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    },
+    { firstStart, overlapStart, firstEnd },
+  )
+  await page.reload()
+
+  const overlapBoundary = page.locator(`.goal-day-cell[title="Overlapping history · ${overlapStart} · overdue"]`)
+  await expect(overlapBoundary).not.toHaveClass(/segment-start/)
+
+  const currentEnd = page.locator(`.goal-day-cell[title="Overlapping history · ${todayISO()} · overdue"]`)
+  await expect(currentEnd).toHaveClass(/segment-end/)
+  await expect(currentEnd).toHaveCSS('border-bottom-right-radius', '999px')
+})
+
 test('goals put daily intervals first, then order by days until lapse and shortest interval', async ({ page }) => {
   const today = todayISO()
   const threeDaysAgo = addDays(today, -3)
@@ -503,13 +542,19 @@ test('goal rhythm highlights the viewed day instead of the current calendar day'
 
   const today = todayISO()
   const tomorrow = addDays(today, 1)
-  await expect(page.locator(`.goal-date-head[title="${today}"]`)).toHaveClass(/viewed/)
+  const todayHead = page.locator(`.goal-date-head[title="${today}"]`)
+  await expect(todayHead).toHaveClass(/viewed/)
+  await expect(todayHead.locator('span')).toHaveCSS('font-weight', '700')
+  await expect(todayHead.locator('strong')).toHaveCSS('font-weight', '700')
   await expect(page.locator(`.goal-day-cell[title*="${today}"]`)).toHaveClass(/viewed/)
 
   await page.getByRole('button', { name: 'Next day' }).click()
 
-  await expect(page.locator(`.goal-date-head[title="${tomorrow}"]`)).toHaveClass(/viewed/)
-  await expect(page.locator(`.goal-date-head[title="${today}"]`)).not.toHaveClass(/viewed/)
+  const tomorrowHead = page.locator(`.goal-date-head[title="${tomorrow}"]`)
+  await expect(tomorrowHead).toHaveClass(/viewed/)
+  await expect(tomorrowHead.locator('span')).toHaveCSS('font-weight', '700')
+  await expect(tomorrowHead.locator('strong')).toHaveCSS('font-weight', '700')
+  await expect(todayHead).not.toHaveClass(/viewed/)
   await expect(page.locator(`.goal-day-cell[title*="${tomorrow}"]`)).toHaveClass(/viewed/)
   await expect(page.locator(`.goal-day-cell[title*="${today}"]`)).not.toHaveClass(/viewed/)
 })
