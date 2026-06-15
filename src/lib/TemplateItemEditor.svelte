@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { defaultTemplateItemTimeRange } from './planner'
+  import { defaultTemplateItemTimeRange, planItemTimeOverlapsPrevious } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import type { Id, MoveDirection, MovePlacement, TemplateItem, TemplateOption } from './types'
@@ -52,6 +52,10 @@
   let activeDropRow: HTMLElement | null = null
 
   $: probabilityTotal = item.options.reduce((sum, option) => sum + (Number(option.probability) || 0), 0)
+  $: timeOverlapsPrevious =
+    item.startMinutes !== null &&
+    item.endMinutes !== null &&
+    planItemTimeOverlapsPrevious(allItems, item.id, item.startMinutes)
 
   function addTime() {
     patchItem(templateId, item.id, defaultTemplateItemTimeRange(allItems, item.id))
@@ -253,6 +257,7 @@
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
+        overlapsPrevious={timeOverlapsPrevious}
         onChange={patchTimeRange}
         onRemove={() => patchItem(templateId, item.id, { startMinutes: null, endMinutes: null })}
       />

@@ -567,6 +567,66 @@ test('adding template time starts after the nearest timed item above', async ({ 
     })
 })
 
+test('template time overlap highlighting follows the same-level sibling rules', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    localStorage.clear()
+    const now = new Date().toISOString()
+    const option = (id: string, text: string) => ({ id, text, html: text, probability: 100 })
+    const item = (
+      id: string,
+      text: string,
+      startMinutes: number,
+      endMinutes: number,
+      children: unknown[] = [],
+    ) => ({
+      id,
+      startMinutes,
+      endMinutes,
+      options: [option(`option_${id}`, text)],
+      children,
+    })
+
+    const state = {
+      schemaVersion: 1,
+      deviceId: 'test-device',
+      localSequence: 0,
+      historyRevision: 0,
+      activePlanDate: new Date().toISOString().slice(0, 10),
+      templates: [
+        {
+          id: 'template_overlap',
+          name: 'Overlap rules',
+          createdAt: now,
+          updatedAt: now,
+          items: [
+            item('parent', 'Parent', 540, 720, [item('child', 'Child', 600, 660)]),
+            item('overlap', 'Overlapping sibling', 690, 750),
+            item('later', 'Later sibling', 780, 840),
+          ],
+        },
+      ],
+      plans: [],
+      goals: [],
+      goalCompletions: [],
+      operations: [],
+    }
+
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Templates' }).click()
+
+  const childTime = page.getByRole('listitem', { name: 'Template item: Child' }).getByLabel('Time range')
+  const overlapTime = page.getByRole('listitem', { name: 'Template item: Overlapping sibling' }).getByLabel('Time range')
+  const laterTime = page.getByRole('listitem', { name: 'Template item: Later sibling' }).getByLabel('Time range')
+
+  await expect(childTime).not.toHaveClass(/overlaps/)
+  await expect(overlapTime).toHaveClass(/overlaps/)
+  await expect(overlapTime).toHaveAttribute('title', 'This time starts before the previous timed item ends')
+  await expect(laterTime).not.toHaveClass(/overlaps/)
+})
+
 test('plan item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
