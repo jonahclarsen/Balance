@@ -536,27 +536,79 @@ test('goal rhythm hover text includes match keywords', async ({ page }) => {
   )
 })
 
-test('goal rhythm highlights the viewed day instead of the current calendar day', async ({ page }) => {
+test('goal rhythm bolds the current day and keeps it bold when another day is selected', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
 
-  const today = todayISO()
-  const tomorrow = addDays(today, 1)
-  const todayHead = page.locator(`.goal-date-head[title="${today}"]`)
+  // The current day owns the `today` class and bold text, regardless of which
+  // day is selected.
+  const todayHead = page.locator('.goal-date-head.today')
+  await expect(todayHead).toHaveCount(1)
   await expect(todayHead).toHaveClass(/viewed/)
-  await expect(todayHead.locator('span')).toHaveCSS('font-weight', '700')
   await expect(todayHead.locator('strong')).toHaveCSS('font-weight', '700')
-  await expect(page.locator(`.goal-day-cell[title*="${today}"]`)).toHaveClass(/viewed/)
+
+  const todayTitle = (await todayHead.getAttribute('title')) ?? todayISO()
+  const tomorrow = addDays(todayTitle, 1)
 
   await page.getByRole('button', { name: 'Next day' }).click()
 
   const tomorrowHead = page.locator(`.goal-date-head[title="${tomorrow}"]`)
   await expect(tomorrowHead).toHaveClass(/viewed/)
-  await expect(tomorrowHead.locator('span')).toHaveCSS('font-weight', '700')
-  await expect(tomorrowHead.locator('strong')).toHaveCSS('font-weight', '700')
-  await expect(todayHead).not.toHaveClass(/viewed/)
+  await expect(tomorrowHead).not.toHaveClass(/today/)
+  await expect(tomorrowHead.locator('strong')).toHaveCSS('font-weight', '600')
   await expect(page.locator(`.goal-day-cell[title*="${tomorrow}"]`)).toHaveClass(/viewed/)
-  await expect(page.locator(`.goal-day-cell[title*="${today}"]`)).not.toHaveClass(/viewed/)
+
+  // Selecting another day moves the highlight but not the bold current-day mark.
+  await expect(todayHead).not.toHaveClass(/viewed/)
+  await expect(todayHead).toHaveClass(/today/)
+  await expect(todayHead.locator('strong')).toHaveCSS('font-weight', '700')
+})
+
+test('goal rhythm grows a column for the new day after the clock rolls over', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-06-16T12:00:00') })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await createGoal(page, 'Exercise', 1, 'lift, swim')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  await expect(page.locator('.goal-date-head[title="2026-06-16"]')).toHaveCount(1)
+  await expect(page.locator('.goal-date-head[title="2026-06-17"]').first()).toHaveClass(/future/)
+
+  // The day rolls over while the app stays open. Without a reactive clock the
+  // date list would stay anchored to the previous day until an input like the
+  // Days slider forces a recompute.
+  await page.clock.setFixedTime(new Date('2026-06-17T12:00:00'))
+  await page.clock.runFor(61_000)
+
+  await expect(page.locator('.goal-date-head[title="2026-06-17"]').first()).not.toHaveClass(/future/)
+  await expect(page.locator('.goal-date-head[title="2026-06-17"].today')).toHaveCount(1)
+})
+
+test('clicking a plan item goal badge reveals that goal in the rhythm panel', async ({ page }) => {
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await createGoal(page, 'Exercise', 1, 'lift, swim')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  const matchingText = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.plans?.[0]?.items?.find((item: { text: string }) => /lift|swim/i.test(item.text))?.text ?? ''
+  })
+  expect(matchingText).not.toBe('')
+
+  const row = page.getByRole('listitem', { name: `Plan item: ${matchingText}` })
+  await row.getByRole('checkbox', { name: 'Complete item' }).check()
+
+  const badge = row.locator('.plan-goal-badge', { hasText: 'Exercise' })
+  await expect(badge).toBeVisible()
+
+  const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
+  await expect(goalRow).toHaveCount(1)
+  await expect(goalRow).not.toHaveClass(/goal-row-focus/)
+
+  await badge.click()
+  await expect(goalRow).toHaveClass(/goal-row-focus/)
 })
 
 test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {

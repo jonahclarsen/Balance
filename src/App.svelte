@@ -43,6 +43,7 @@
   let scrollPositionsByDate: Record<string, number> = {}
   let lastScrolledDate = ''
   let goalHistoryHeight: number | null = null
+  let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
   let selectedTemplateId = ''
   let recoveryKeyStatus: RecoveryKeyStatus | null = null
   let recoveryKeySaved = false
@@ -159,6 +160,12 @@
 
   function clampGoalHistoryHeight(value: number): number {
     return Math.max(140, Math.min(window.innerHeight * 0.7, value))
+  }
+
+  function focusGoalInRhythm(goalId: string) {
+    // Bump a nonce so repeated clicks on the same goal badge re-trigger the
+    // scroll/highlight in the rhythm panel even when the id is unchanged.
+    goalRhythmScrollRequest = { goalId, nonce: (goalRhythmScrollRequest?.nonce ?? 0) + 1 }
   }
 
   function startGoalHistoryResize(event: PointerEvent) {
@@ -1427,6 +1434,7 @@
               goalCompletions={$plannerStore.goalCompletions}
               {dueTodayGoals}
               planDate={activePlan.date}
+              onGoalBadgeClick={focusGoalInRhythm}
             />
           {/each}
 
@@ -1833,6 +1841,7 @@
       viewedDate={$plannerStore.activePlanDate || todayISO()}
       onOpenGoals={() => (view = 'goals')}
       onResizeStart={startGoalHistoryResize}
+      scrollRequest={goalRhythmScrollRequest}
     />
   </div>
 </main>
