@@ -5,7 +5,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
-  import { goalDaysUntilLapse, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
+  import { filterGoalsByPhrase, goalDaysUntilLapse, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
     exportHTML,
@@ -88,6 +88,7 @@
   let newGoalHue = 165
   let newGoalNeutral = false
   let goalFormStatus = ''
+  let goalSearch = ''
   let highlightedGoalCardId: Id | null = null
 
   const NEUTRAL_SWATCH = '#9aa0a6'
@@ -109,6 +110,7 @@
   $: selectedPlanItemIdSet = new Set(selectedPlanItemIds)
   $: activeGoalCount = $plannerStore.goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
   $: sortedGoals = sortGoalsByUrgency($plannerStore.goals, $plannerStore.goalCompletions, todayISO())
+  $: filteredGoals = filterGoalsByPhrase(sortedGoals, goalSearch)
   $: showAutoExportError = Boolean(
     exportSettings?.lastAutoJsonExportError &&
       exportSettings.lastAutoJsonExportErrorAt &&
@@ -603,7 +605,8 @@
       event.shiftKey &&
       !event.ctrlKey &&
       !event.altKey &&
-      key === 'a'
+      key === 'a' &&
+      !isFormFieldActive()
     ) {
       const itemId = activeFocusedPlanItemId()
       if (!itemId) return
@@ -726,7 +729,7 @@
       return
     }
 
-    if (view === 'today' && activePlan && !hasActiveRichTextSelection()) {
+    if (view === 'today' && activePlan && !hasActiveRichTextSelection() && !isFormFieldActive()) {
       if ((key === 'c' || key === 'x') && !event.shiftKey && selectedPlanItemIds.length > 0) {
         event.preventDefault()
         if (key === 'x') {
@@ -1258,6 +1261,12 @@
     return document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-rich-text-input]')
   }
 
+  // A plain form field (e.g. the goal search box) has focus, so editing
+  // shortcuts like Cmd+A should act on its text, not the daily plan.
+  function isFormFieldActive() {
+    return document.activeElement instanceof HTMLElement && document.activeElement.matches('input, textarea, select')
+  }
+
   function hasActiveRichTextSelection() {
     const selection = document.getSelection()
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return false
@@ -1548,6 +1557,13 @@
           <p class="eyebrow">Automatic habits</p>
           <h2>Goals</h2>
         </div>
+        <input
+          class="goal-search-input"
+          type="search"
+          aria-label="Search goals"
+          placeholder="Search goals…"
+          bind:value={goalSearch}
+        />
       </header>
 
       <div class="goal-create-panel">
@@ -1621,7 +1637,7 @@
       </div>
 
       <div class="goal-list">
-        {#each sortedGoals as goal (goal.id)}
+        {#each filteredGoals as goal (goal.id)}
           {@const active = isGoalActiveOnDate(goal, todayISO())}
           {@const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goal.id).length}
           <article
@@ -1712,8 +1728,13 @@
           </article>
         {:else}
           <div class="empty-state">
-            <h3>No goals yet</h3>
-            <p>Add one above. Matching starts immediately for completed items on recent plans.</p>
+            {#if goalSearch.trim()}
+              <h3>No goals match “{goalSearch.trim()}”</h3>
+              <p>Try a different word, or clear the search to see every goal.</p>
+            {:else}
+              <h3>No goals yet</h3>
+              <p>Add one above. Matching starts immediately for completed items on recent plans.</p>
+            {/if}
           </div>
         {/each}
       </div>

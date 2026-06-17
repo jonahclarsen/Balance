@@ -253,6 +253,12 @@ nav button.active {
   margin-bottom: 20px;
 }
 
+.goal-search-input {
+  flex: 0 1 260px;
+  min-width: 0;
+  min-height: 38px;
+}
+
 .eyebrow {
   margin-bottom: 5px;
   color: var(--accent-strong);
@@ -1354,12 +1360,23 @@ nav button.active {
   min-width: 0;
   align-items: baseline;
   gap: 8px;
-  margin-right: auto;
+}
+
+/* Keep the day-count control and Manage button pinned to the right while the
+   search box stays beside the "Goal rhythm" heading. */
+.goal-history-toolbar .goal-days-control {
+  margin-left: auto;
 }
 
 .goal-history-toolbar span {
   color: var(--muted);
   font-size: 11px;
+}
+
+.goal-history-search {
+  flex: 0 1 200px;
+  min-width: 0;
+  padding-block: 5px;
 }
 
 .goal-days-control {
@@ -1778,8 +1795,8 @@ nav button.active {
     display: none;
   }
 
-  .goal-history-toolbar > div {
-    margin-right: auto;
+  .goal-history-search {
+    flex-basis: 120px;
   }
 
   .goal-days-control input {

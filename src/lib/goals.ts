@@ -81,6 +81,18 @@ export function parseMatchTerms(value: string): string[] {
   return normalizeMatchTerms(value.split(/[\n,]+/))
 }
 
+// Live filter for the goal search boxes: matches the typed phrase against a
+// goal's name or any of its match keywords. Empty/blank query returns all.
+export function filterGoalsByPhrase<T extends Pick<Goal, 'name' | 'matchTerms'>>(goals: T[], query: string): T[] {
+  const phrase = query.trim().toLocaleLowerCase()
+  if (!phrase) return goals
+  return goals.filter(
+    (goal) =>
+      goal.name.toLocaleLowerCase().includes(phrase) ||
+      goal.matchTerms.some((term) => term.toLocaleLowerCase().includes(phrase)),
+  )
+}
+
 export function isGoalActiveOnDate(goal: Goal, date: string): boolean {
   return goal.activityPeriods.some(
     (period) => period.startDate <= date && (period.endDate === null || period.endDate >= date),

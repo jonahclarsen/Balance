@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte'
   import {
     buildGoalDayCells,
+    filterGoalsByPhrase,
     GOAL_FUTURE_DAYS,
     goalDaysUntilLapse,
     GOAL_HISTORY_DEFAULT_DAYS,
@@ -26,6 +27,7 @@
   export let scrollRequest: { goalId: string; nonce: number } | null = null
 
   let historyDays = GOAL_HISTORY_DEFAULT_DAYS
+  let search = ''
   let scrollEl: HTMLDivElement | undefined
   let highlightedGoalId: string | null = null
   let lastHandledScrollNonce = -1
@@ -64,10 +66,13 @@
     const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)
     return daysUntilLapse !== null && daysUntilLapse <= 3
   }).length
-  $: visibleGoals = sortGoalsByUrgency(
-    goals.filter((goal) => goalWasActiveInRange(goal, dates)),
-    completions,
-    viewedDate,
+  $: visibleGoals = filterGoalsByPhrase(
+    sortGoalsByUrgency(
+      goals.filter((goal) => goalWasActiveInRange(goal, dates)),
+      completions,
+      viewedDate,
+    ),
+    search,
   )
 
   function refreshDay() {
@@ -134,6 +139,13 @@
       <strong>Goal rhythm</strong>
       <span>{upcomingGoalCount} upcoming in the next 3 days</span>
     </div>
+    <input
+      class="goal-history-search"
+      type="search"
+      aria-label="Search goals"
+      placeholder="Search goals…"
+      bind:value={search}
+    />
     <label class="goal-days-control">
       <span>Days</span>
       <input
@@ -210,8 +222,13 @@
         {/each}
       {:else}
         <div class="goal-history-empty">
-          <span>No goals active in this range.</span>
-          <button type="button" on:click={() => onOpenGoals()}>Add your first goal</button>
+          {#if search.trim()}
+            <span>No goals match “{search.trim()}”.</span>
+            <button type="button" on:click={() => (search = '')}>Clear search</button>
+          {:else}
+            <span>No goals active in this range.</span>
+            <button type="button" on:click={() => onOpenGoals()}>Add your first goal</button>
+          {/if}
         </div>
       {/each}
     </div>
