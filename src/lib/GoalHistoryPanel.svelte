@@ -66,14 +66,15 @@
     const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)
     return daysUntilLapse !== null && daysUntilLapse <= 3
   }).length
-  $: visibleGoals = filterGoalsByPhrase(
-    sortGoalsByUrgency(
-      goals.filter((goal) => goalWasActiveInRange(goal, dates)),
-      completions,
-      viewedDate,
-    ),
-    search,
+  // Sorting (which runs goalDaysUntilLapse per goal) only depends on the goal
+  // data and date range — keep it out of the search-reactive path so typing in
+  // the search box re-runs nothing heavier than the cheap phrase filter.
+  $: activeSortedGoals = sortGoalsByUrgency(
+    goals.filter((goal) => goalWasActiveInRange(goal, dates)),
+    completions,
+    viewedDate,
   )
+  $: visibleGoals = filterGoalsByPhrase(activeSortedGoals, search)
 
   function refreshDay() {
     const calendarDay = todayISO()
