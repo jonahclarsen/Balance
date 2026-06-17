@@ -19,7 +19,12 @@
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { Id, MoveDirection, PlanItem } from './lib/types'
-  import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
+  import { DEFAULT_DAILY_REMINDER, escapeHTML, formatPlanTitle, todayISO } from './lib/planner'
+
+  // Pasting three or more copied items routes through a one-at-a-time review queue
+  // so each pasted "thing" can be approved, skipped, or edited before it lands.
+  const PASTE_REVIEW_THRESHOLD = 3
+  const PASTE_REVIEW_COOLDOWN_MS = 2000
 
   type View = 'today' | 'templates' | 'goals' | 'settings'
   type ExportSettings = {
@@ -86,6 +91,23 @@
   let selectedPlanPlanId: Id | null = null
   let selectingPlanItems = false
   let planItemClipboard: { items: PlanItem[]; cut: boolean } | null = null
+  let pasteReview: {
+    items: PlanItem[]
+    index: number
+    approved: PlanItem[]
+    targetId: Id | null
+    placement: 'after' | 'replace'
+    planId: Id
+    cut: boolean
+  } | null = null
+  let pasteReviewEditing = false
+  let pasteReviewEditDraft = ''
+  let pasteReviewInput: HTMLInputElement | null = null
+  // Each card enforces a read-cooldown before "Keep"/Enter is armed, so items
+  // can't be blown through without being read. pasteReviewProgress drives the bar.
+  let pasteReviewReady = false
+  let pasteReviewProgress = 0
+  let pasteReviewCooldownFrame: number | null = null
   let planTextDragOrigin: { itemId: Id; input: HTMLElement } | null = null
   let preservePlanSelectionFocusUntil = 0
   let newGoalName = ''
@@ -623,6 +645,34 @@
     const key = event.key.toLowerCase()
     const primaryModifier = event.metaKey || event.ctrlKey
 
+    if (pasteReview) {
+      if (pasteReviewEditing) {
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          savePasteReviewEdit()
+        } else if (event.key === 'Escape') {
+          event.preventDefault()
+          pasteReviewEditing = false
+        }
+        return
+      }
+
+      if (event.key === 'Enter' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        pasteReviewDecide(true)
+      } else if (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        pasteReviewDecide(false)
+      } else if (key === 'e' && !primaryModifier) {
+        event.preventDefault()
+        startPasteReviewEdit()
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        cancelPasteReview()
+      }
+      return
+    }
+
     if (primaryModifier && event.shiftKey && key === 'p') {
       event.preventDefault()
       void openRecoveryPanel()
@@ -1086,7 +1136,62 @@
 
     const targetId = pasteTargetPlanItemId()
     const placement = shouldReplaceFocusedPlanItemOnPaste(targetId) ? 'replace' : 'after'
-    const pastedRootIds = plannerStore.pastePlanItems(activePlan.id, planItemClipboard.items, targetId, placement)
+
+    if (planItemClipboard.items.length >= PASTE_REVIEW_THRESHOLD) {
+      pasteReview = {
+        items: planItemClipboard.items.map((item) => ({ ...item })),
+        index: 0,
+        approved: [],
+        targetId,
+        placement,
+        planId: activePlan.id,
+        cut: planItemClipboard.cut,
+      }
+      pasteReviewEditing = false
+      releaseTextEditingFocus()
+      startPasteReviewCooldown()
+      return
+    }
+
+    insertPastedPlanItems(planItemClipboard.items, targetId, placement, planItemClipboard.cut)
+  }
+
+  function startPasteReviewCooldown() {
+    cancelPasteReviewCooldown()
+    pasteReviewReady = false
+    pasteReviewProgress = 0
+
+    const start = performance.now()
+    const step = (now: number) => {
+      const elapsed = now - start
+      pasteReviewProgress = Math.min(1, elapsed / PASTE_REVIEW_COOLDOWN_MS)
+      if (elapsed >= PASTE_REVIEW_COOLDOWN_MS) {
+        pasteReviewProgress = 1
+        pasteReviewReady = true
+        pasteReviewCooldownFrame = null
+        return
+      }
+      pasteReviewCooldownFrame = requestAnimationFrame(step)
+    }
+    pasteReviewCooldownFrame = requestAnimationFrame(step)
+  }
+
+  function cancelPasteReviewCooldown() {
+    if (pasteReviewCooldownFrame != null) {
+      cancelAnimationFrame(pasteReviewCooldownFrame)
+      pasteReviewCooldownFrame = null
+    }
+  }
+
+  function insertPastedPlanItems(
+    items: PlanItem[],
+    targetId: Id | null,
+    placement: 'after' | 'replace',
+    cut: boolean,
+  ) {
+    if (!activePlan) return
+
+    const pastedRootIds = plannerStore.pastePlanItems(activePlan.id, items, targetId, placement)
     if (pastedRootIds.length === 0) return
 
     selectedPlanItemIds = pastedRootIds
@@ -1094,7 +1199,57 @@
     planSelectionAnchorId = pastedRootIds.at(-1) ?? null
     planSelectionFocusId = pastedRootIds.at(-1) ?? null
     releaseTextEditingFocus()
-    if (planItemClipboard.cut) planItemClipboard = null
+    if (cut) planItemClipboard = null
+  }
+
+  // keep === true approves the current card, keep === false skips it; either way we
+  // advance to the next card and commit the approved items once the queue is empty.
+  // Keeping is gated on the read-cooldown; skipping is always allowed.
+  function pasteReviewDecide(keep: boolean) {
+    if (!pasteReview) return
+    if (keep && !pasteReviewReady) return
+
+    const current = pasteReview.items[pasteReview.index]
+    const approved = keep && current ? [...pasteReview.approved, current] : pasteReview.approved
+    const next = pasteReview.index + 1
+    pasteReviewEditing = false
+
+    if (next >= pasteReview.items.length) {
+      const { targetId, placement, cut } = pasteReview
+      cancelPasteReviewCooldown()
+      pasteReview = null
+      if (approved.length > 0) insertPastedPlanItems(approved, targetId, placement, cut)
+      return
+    }
+
+    pasteReview = { ...pasteReview, approved, index: next }
+    startPasteReviewCooldown()
+  }
+
+  function cancelPasteReview() {
+    cancelPasteReviewCooldown()
+    pasteReview = null
+    pasteReviewEditing = false
+  }
+
+  function startPasteReviewEdit() {
+    if (!pasteReview) return
+
+    pasteReviewEditDraft = pasteReview.items[pasteReview.index]?.text ?? ''
+    pasteReviewEditing = true
+    void tick().then(() => pasteReviewInput?.focus())
+  }
+
+  function savePasteReviewEdit() {
+    if (!pasteReview) return
+
+    const text = pasteReviewEditDraft.trim()
+    const index = pasteReview.index
+    const items = pasteReview.items.map((item, i) =>
+      i === index ? { ...item, text, html: escapeHTML(text) } : item,
+    )
+    pasteReview = { ...pasteReview, items }
+    pasteReviewEditing = false
   }
 
   async function openRecoveryPanel() {
@@ -1671,6 +1826,7 @@
         {#each filteredGoals as goal (goal.id)}
           {@const active = isGoalActiveOnDate(goal, todayISO())}
           {@const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goal.id).length}
+          {@const firstPeriod = goal.activityPeriods[0]}
           <article
             class="goal-card"
             class:archived={!active}
@@ -1704,6 +1860,22 @@
                     <span>days</span>
                   </div>
                 </label>
+                {#if firstPeriod}
+                  <label class="goal-start-field">
+                    <span>Started on</span>
+                    <input
+                      aria-label={`Start date for ${goal.name}`}
+                      type="date"
+                      value={firstPeriod.startDate}
+                      max={firstPeriod.endDate ?? undefined}
+                      on:change={(event) => {
+                        const value = event.currentTarget.value
+                        if (value) plannerStore.setGoalStartDate(goal.id, value)
+                        else event.currentTarget.value = firstPeriod.startDate
+                      }}
+                    />
+                  </label>
+                {/if}
                 <label class="goal-rules-field">
                   <span>A checked item matches any of</span>
                   <input
@@ -1944,6 +2116,76 @@
     />
   </div>
 </main>
+
+{#if pasteReview}
+  {@const current = pasteReview.items[pasteReview.index]}
+  <div class="paste-review-backdrop">
+    <div class="paste-review" role="dialog" aria-modal="true" aria-labelledby="paste-review-title">
+      <div class="paste-review-head">
+        <div>
+          <p class="eyebrow">Review pasted items</p>
+          <h2 id="paste-review-title">Item {pasteReview.index + 1} of {pasteReview.items.length}</h2>
+        </div>
+        <button class="ghost" type="button" title="Cancel (Esc)" on:click={cancelPasteReview}>✕</button>
+      </div>
+
+      <div class="paste-review-card">
+        {#if pasteReviewEditing}
+          <input
+            class="paste-review-edit"
+            type="text"
+            bind:value={pasteReviewEditDraft}
+            bind:this={pasteReviewInput}
+            placeholder="Item text"
+          />
+        {:else}
+          <p class="paste-review-text" class:empty={!current?.text?.trim()}>
+            {current?.text?.trim() || '(empty item)'}
+          </p>
+        {/if}
+        {#if current?.children?.length}
+          <p class="paste-review-meta">
+            + {current.children.length} child item{current.children.length === 1 ? '' : 's'}
+          </p>
+        {/if}
+      </div>
+
+      {#if !pasteReviewEditing}
+        <div
+          class="paste-review-cooldown"
+          class:ready={pasteReviewReady}
+          role="progressbar"
+          aria-label="Read the item before keeping it"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow={Math.round(pasteReviewProgress * 100)}
+        >
+          <div class="paste-review-cooldown-fill" style="width: {pasteReviewProgress * 100}%"></div>
+        </div>
+      {/if}
+
+      <div class="paste-review-actions">
+        {#if pasteReviewEditing}
+          <button class="primary" type="button" on:click={savePasteReviewEdit}>Save (Enter)</button>
+          <button type="button" on:click={() => (pasteReviewEditing = false)}>Cancel (Esc)</button>
+        {:else}
+          <button type="button" on:click={() => pasteReviewDecide(false)}>Skip (←)</button>
+          <button type="button" on:click={startPasteReviewEdit}>Edit (E)</button>
+          <button
+            class="primary"
+            type="button"
+            disabled={!pasteReviewReady}
+            on:click={() => pasteReviewDecide(true)}
+          >
+            {pasteReviewReady ? 'Keep (→ / Enter)' : 'Read it…'}
+          </button>
+        {/if}
+      </div>
+
+      <p class="paste-review-hint">{pasteReview.approved.length} kept so far</p>
+    </div>
+  </div>
+{/if}
 
 {#if recoveryKeyStatus?.recoveryKey}
   <div class="modal-backdrop">

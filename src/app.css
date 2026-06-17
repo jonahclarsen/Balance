@@ -857,6 +857,109 @@ nav button.active {
   color: var(--muted);
 }
 
+/* Full-viewport dim that sits above everything (including a tall goal rhythm
+   panel, which carries its own z-index) so the review dialog is never obscured. */
+.paste-review-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(29, 36, 40, 0.42);
+  z-index: 100;
+}
+
+.paste-review {
+  display: grid;
+  width: min(460px, 100%);
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 24px 80px rgba(20, 24, 26, 0.22);
+  padding: 24px;
+}
+
+.paste-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paste-review-head h2 {
+  margin: 0;
+}
+
+.paste-review-card {
+  display: grid;
+  gap: 8px;
+  min-height: 84px;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  padding: 18px;
+}
+
+.paste-review-text {
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.paste-review-text.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.paste-review-meta {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.paste-review-edit {
+  width: 100%;
+  font-size: 17px;
+}
+
+.paste-review-cooldown {
+  overflow: hidden;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.paste-review-cooldown-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* Once the read-cooldown elapses the bar turns green to signal Enter is armed. */
+.paste-review-cooldown.ready .paste-review-cooldown-fill {
+  background: var(--done-tint, #3f9d54);
+}
+
+.paste-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.paste-review-actions .primary {
+  margin-left: auto;
+}
+
+.paste-review-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
 .recovery-key {
   overflow-wrap: anywhere;
   border: 1px solid var(--line);
@@ -1350,11 +1453,12 @@ nav button.active {
 
 .goal-card-fields {
   display: grid;
-  grid-template-columns: 160px minmax(220px, 1fr) minmax(180px, 0.7fr);
+  grid-template-columns: 160px 150px minmax(220px, 1fr) minmax(180px, 0.7fr);
   gap: 12px;
 }
 
-.goal-rules-field input {
+.goal-rules-field input,
+.goal-start-field input {
   width: 100%;
 }
 

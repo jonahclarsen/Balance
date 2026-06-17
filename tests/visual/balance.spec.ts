@@ -1027,6 +1027,56 @@ test('pasting plan items into an empty focused item replaces it', async ({ page 
   await expect.poll(async () => topLevelTexts(page)).toEqual([...before.slice(0, 2), ...before.slice(0, 2), ...before.slice(2)])
 })
 
+test('pasting three or more items opens a review queue to keep, skip, or edit each', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+
+  // Select and copy the first three top-level items.
+  await focusInputByValue(page, before[0])
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Meta+C')
+
+  // Pasting 3+ items opens the review modal instead of inserting directly.
+  await focusInputByValue(page, before.at(-1) as string)
+  await page.keyboard.press('Meta+V')
+
+  await expect(page.getByRole('dialog', { name: /Item 1 of 3/ })).toBeVisible()
+  await expect(topLevelTexts(page)).resolves.toEqual(before)
+
+  // The "Keep" button only appears (and Enter only fires) once the read-cooldown elapses.
+  const armed = () => page.getByRole('button', { name: 'Keep (→ / Enter)' })
+
+  // Enter is inert during the cooldown: the queue stays on item 1.
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('dialog', { name: /Item 1 of 3/ })).toBeVisible()
+
+  // Keep item 1 once the cooldown arms Enter.
+  await armed().waitFor()
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('dialog', { name: /Item 2 of 3/ })).toBeVisible()
+
+  // Edit item 2's text, then keep it (still gated on the cooldown).
+  await page.keyboard.press('e')
+  const editField = page.getByPlaceholder('Item text')
+  await editField.fill('Edited paste')
+  await page.keyboard.press('Enter')
+  await armed().waitFor()
+  await page.keyboard.press('Enter')
+
+  // Skip is allowed during the cooldown.
+  await expect(page.getByRole('dialog', { name: /Item 3 of 3/ })).toBeVisible()
+  await page.keyboard.press('ArrowLeft')
+
+  // Modal closes and only the kept items (item 1 + edited item 2) are appended.
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect.poll(async () => topLevelTexts(page)).toEqual([...before, before[0], 'Edited paste'])
+})
+
 test('plan item rich text preserves paste formatting and supports shortcuts', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 
