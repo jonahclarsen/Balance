@@ -633,27 +633,6 @@ nav button.active {
   color: var(--danger);
 }
 
-.history-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.history-card {
-  display: grid;
-  gap: 6px;
-  min-height: 112px;
-  padding: 14px;
-  text-align: left;
-  background: var(--paper);
-  box-shadow: var(--shadow);
-}
-
-.history-card span,
-.history-card small {
-  color: var(--muted);
-}
-
 .export-panel {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

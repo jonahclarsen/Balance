@@ -56,22 +56,11 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
     fullPage: true,
   })
 
-  await page.getByRole('button', { name: 'History' }).click()
-  await expect(page.getByRole('heading', { name: 'Saved days' })).toBeVisible()
-  await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-history.png`,
-    fullPage: true,
-  })
-
-  await page.getByRole('button', { name: 'Export' }).click()
-  await expect(page.getByRole('heading', { name: 'Export everything' })).toBeVisible()
-  await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-export.png`,
-    fullPage: true,
-  })
-
   await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Manual export' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Export JSON' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Export HTML' })).toBeVisible()
   await expect(page.getByText('Browser downloads')).toBeVisible()
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-settings.png`,

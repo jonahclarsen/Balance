@@ -21,7 +21,7 @@
   import type { Id, MoveDirection, PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, formatPlanTitle, todayISO } from './lib/planner'
 
-  type View = 'today' | 'templates' | 'goals' | 'history' | 'export' | 'settings'
+  type View = 'today' | 'templates' | 'goals' | 'settings'
   type ExportSettings = {
     exportDirectory: string
     defaultExportDirectory: string
@@ -1374,8 +1374,6 @@
       <button class:active={view === 'today'} type="button" on:click={() => (view = 'today')}>Today</button>
       <button class:active={view === 'templates'} type="button" on:click={() => (view = 'templates')}>Templates</button>
       <button class:active={view === 'goals'} type="button" on:click={() => { void openGoals() }}>Goals</button>
-      <button class:active={view === 'history'} type="button" on:click={() => (view = 'history')}>History</button>
-      <button class:active={view === 'export'} type="button" on:click={() => (view = 'export')}>Export</button>
       <button class:active={view === 'settings'} type="button" on:click={() => (view = 'settings')}>Settings</button>
     </nav>
 
@@ -1485,7 +1483,7 @@
       {:else}
         <div class="empty-state">
           <h3>No plan for this date</h3>
-          <p>Generate one from the template, or switch to a saved day in History.</p>
+          <p>Generate one from the template, or pick another date.</p>
           <button class="primary" type="button" on:click={generateSelectedDay}>{generateButtonLabel}</button>
         </div>
       {/if}
@@ -1721,68 +1719,6 @@
       </div>
     {/if}
 
-    {#if view === 'history'}
-      <header class="page-header">
-        <div>
-          <p class="eyebrow">Archive</p>
-          <h2>Saved days</h2>
-        </div>
-      </header>
-
-      <div class="history-grid">
-        {#each $plannerStore.plans as plan (plan.id)}
-          <button
-            class="history-card"
-            type="button"
-            on:click={() => {
-              plannerStore.setActivePlanDate(plan.date)
-              view = 'today'
-            }}
-          >
-            <strong>{plan.title}</strong>
-            <span>{plan.date}</span>
-            <small>{plan.items.length} top-level items</small>
-          </button>
-        {:else}
-          <p class="empty">Generated plans will show up here.</p>
-        {/each}
-      </div>
-    {/if}
-
-    {#if view === 'export'}
-      <header class="page-header">
-        <div>
-          <p class="eyebrow">Portability</p>
-          <h2>Export everything</h2>
-        </div>
-      </header>
-
-      <div class="export-panel">
-        <div>
-          <h3>Canonical JSON</h3>
-          <p>Full app state, including templates, generated plans, and the operation log.</p>
-          <button class="primary" type="button" on:click={downloadJSON}>Export JSON</button>
-        </div>
-
-        <div>
-          <h3>Readable HTML</h3>
-          <p>A simple history document with every saved daily plan.</p>
-          <button type="button" on:click={downloadHTML}>Export HTML</button>
-        </div>
-      </div>
-
-      {#if exportStatusIsError && exportStatus}
-        <p class:error={exportStatusIsError} class="export-status">{exportStatus}</p>
-      {:else if exportSavedPath}
-        <p class="export-status">
-          Saved to
-          <button class="path-link" type="button" on:click={revealSavedExport}>{exportSavedPath}</button>
-        </p>
-      {:else if exportStatus}
-        <p class:error={exportStatusIsError} class="export-status">{exportStatus}</p>
-      {/if}
-    {/if}
-
     {#if view === 'settings'}
       <header class="page-header">
         <div>
@@ -1792,6 +1728,38 @@
       </header>
 
       <div class="settings-panel">
+        <section class="settings-section">
+          <div>
+            <h3>Manual export</h3>
+            <p>Save a portable copy of your plans, templates, goals, and operation log.</p>
+          </div>
+
+          <div class="export-panel">
+            <div>
+              <h4>Canonical JSON</h4>
+              <p>Full app state for restore or migration.</p>
+              <button class="primary" type="button" on:click={downloadJSON}>Export JSON</button>
+            </div>
+
+            <div>
+              <h4>Readable HTML</h4>
+              <p>A simple document with every saved daily plan.</p>
+              <button type="button" on:click={downloadHTML}>Export HTML</button>
+            </div>
+          </div>
+
+          {#if exportStatusIsError && exportStatus}
+            <p class:error={exportStatusIsError} class="export-status">{exportStatus}</p>
+          {:else if exportSavedPath}
+            <p class="export-status">
+              Saved to
+              <button class="path-link" type="button" on:click={revealSavedExport}>{exportSavedPath}</button>
+            </p>
+          {:else if exportStatus}
+            <p class:error={exportStatusIsError} class="export-status">{exportStatus}</p>
+          {/if}
+        </section>
+
         <section class="settings-section">
           <div>
             <h3>Export folder</h3>
