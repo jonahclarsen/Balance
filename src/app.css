@@ -21,6 +21,7 @@
   --active-nav: #dfece7;
   --row-border: rgba(216, 212, 202, 0.75);
   --drop-inside: #e8f2ee;
+  --done-tint: color-mix(in srgb, #3f9d54 11%, transparent);
   --time-border: #c6d6d1;
   --time-bg: #eef7f3;
   --time-warn-border: #e0c39a;
@@ -53,6 +54,7 @@
     --active-nav: #243732;
     --row-border: rgba(52, 64, 60, 0.75);
     --drop-inside: #21312d;
+    --done-tint: color-mix(in srgb, #4fae6a 16%, transparent);
     --time-border: #40665e;
     --time-bg: #20362f;
     --time-warn-border: #6d5638;
@@ -336,6 +338,10 @@ nav button.active {
   gap: 8px;
   min-height: 42px;
   border-bottom: 1px solid var(--row-border);
+}
+
+.plan-row.done {
+  background: var(--done-tint);
 }
 
 .plan-row.selected {
