@@ -196,11 +196,6 @@
     localStorage.setItem(DONE_TINT_KEY, normalized)
   }
 
-  function resetDoneTint() {
-    doneTintColor = ''
-    localStorage.removeItem(DONE_TINT_KEY)
-  }
-
   function focusGoalInRhythm(goalId: string) {
     // Bump a nonce so repeated clicks on the same goal badge re-trigger the
     // scroll/highlight in the rhythm panel even when the id is unchanged.
@@ -1815,9 +1810,6 @@
               <span class="item-text done">Finish the report</span>
             </div>
 
-            {#if doneTintColor}
-              <button type="button" on:click={resetDoneTint}>Reset to green</button>
-            {/if}
           </div>
         </section>
 
