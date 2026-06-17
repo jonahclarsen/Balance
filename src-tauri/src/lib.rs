@@ -1313,6 +1313,11 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             required_array(payload, "itemIds")?,
         ),
         "outdent_plan_item" => outdent_plan_item_row(tx, required_string(payload, "itemId")?),
+        "outdent_plan_items" => outdent_plan_items_row(
+            tx,
+            required_string(payload, "planId")?,
+            required_array(payload, "itemIds")?,
+        ),
         "move_plan_item_to_position" => move_plan_item_to_position_row(
             tx,
             required_string(payload, "itemId")?,
@@ -1622,6 +1627,7 @@ fn build_domain_undo_operation(
         }
         "indent_plan_items" => build_move_plan_items_within_level_undo(connection, payload),
         "outdent_plan_item" => build_outdent_plan_item_undo(connection, payload),
+        "outdent_plan_items" => build_outdent_plan_items_undo(connection, payload),
         "rename_template" => {
             let template_id = required_string(payload, "templateId")?;
             let previous = read_template_name_and_updated_at(connection, template_id)?;
@@ -1968,6 +1974,82 @@ fn build_outdent_plan_item_undo(
             }),
         ));
     }
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
+    )))
+}
+
+fn build_outdent_plan_items_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let plan_id = required_string(payload, "planId")?;
+    let mut seen: Vec<String> = Vec::new();
+    let mut snapshots: Vec<PlanItemSnapshot> = Vec::new();
+
+    // Each outdent promotes a selected root and absorbs the siblings that follow
+    // it, so restoring every selected root together with its following siblings
+    // back to their original parent and position rebuilds the pre-outdent tree.
+    for item_id in required_array(payload, "itemIds")? {
+        let Some(item_id) = item_id.as_str() else {
+            return Err("Expected string item id".to_string());
+        };
+        let Some(snapshot) = read_plan_item_snapshot(connection, item_id)? else {
+            continue;
+        };
+        if snapshot.plan_id != plan_id {
+            continue;
+        }
+        let Some(parent_id) = snapshot.parent_id.clone() else {
+            continue;
+        };
+
+        let siblings = plan_item_sibling_ids(connection, &snapshot.plan_id, Some(&parent_id))?;
+        let Some(source_index) = siblings.iter().position(|id| id == item_id) else {
+            continue;
+        };
+
+        for sibling_id in &siblings[source_index..] {
+            if seen.iter().any(|id| id == sibling_id) {
+                continue;
+            }
+            seen.push(sibling_id.clone());
+
+            if let Some(sibling_snapshot) = read_plan_item_snapshot(connection, sibling_id)? {
+                snapshots.push(sibling_snapshot);
+            }
+        }
+    }
+
+    if snapshots.is_empty() {
+        return Ok(None);
+    }
+
+    // Restore parent by parent in ascending position so each sibling lands at its
+    // original index as the list is rebuilt.
+    snapshots.sort_by(|a, b| {
+        a.plan_id
+            .cmp(&b.plan_id)
+            .then(a.parent_id.cmp(&b.parent_id))
+            .then(a.position.cmp(&b.position))
+    });
+
+    let operations = snapshots
+        .into_iter()
+        .map(|snapshot| {
+            Ok(storage_operation(
+                "move_plan_item_to_position",
+                json!({
+                    "itemId": required_string(&snapshot.item, "id")?,
+                    "planId": snapshot.plan_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
+                }),
+            ))
+        })
+        .collect::<Result<Vec<Value>, String>>()?;
 
     Ok(Some(storage_operation(
         "batch",
@@ -3154,6 +3236,29 @@ fn outdent_plan_item_row(connection: &Connection, item_id: &str) -> Result<(), S
     rewrite_plan_item_positions(connection, &remaining_child_siblings)?;
     rewrite_plan_item_positions(connection, &promoted_child_siblings)?;
     rewrite_plan_item_positions(connection, &grandparent_siblings)
+}
+
+fn outdent_plan_items_row(
+    connection: &Connection,
+    plan_id: &str,
+    item_ids: &[Value],
+) -> Result<(), String> {
+    // Mirror the front-end `outdentPlanItems`: the ids arrive in document order,
+    // so outdenting each selected root individually from last to first keeps
+    // sibling ordering and reuses the same following-sibling absorption that a
+    // single outdent applies.
+    for item_id in item_ids.iter().rev() {
+        let item_id = item_id
+            .as_str()
+            .ok_or_else(|| "Expected string item id".to_string())?;
+        if plan_item_plan_id(connection, item_id)? != plan_id {
+            continue;
+        }
+
+        outdent_plan_item_row(connection, item_id)?;
+    }
+
+    Ok(())
 }
 
 fn move_plan_item_to_position_row(
@@ -5220,6 +5325,143 @@ mod tests {
         assert_eq!(
             redone["plans"][0]["items"][1]["children"][0]["id"],
             "plan_item_second"
+        );
+    }
+
+    #[test]
+    fn outdent_plan_items_persists_and_undoes() {
+        let database = TestDatabase::new("plan-outdent-multi");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Plan multi outdent test");
+        // Wake has two selected children (each with their own child) plus an
+        // unselected trailing sibling.
+        state["plans"][0]["items"][0]["children"] = json!([
+            {
+                "id": "plan_item_alpha",
+                "text": "Alpha",
+                "html": "Alpha",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": [
+                    {
+                        "id": "plan_item_a1",
+                        "text": "A1",
+                        "html": "A1",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "id": "plan_item_beta",
+                "text": "Beta",
+                "html": "Beta",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": [
+                    {
+                        "id": "plan_item_b1",
+                        "text": "B1",
+                        "html": "B1",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "id": "plan_item_gamma",
+                "text": "Gamma",
+                "html": "Gamma",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }
+        ]);
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        // This previously failed with "Unsupported operation type: outdent_plan_items".
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "outdent_plan_items",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemIds": ["plan_item_alpha", "plan_item_beta"]
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&moved),
+            ["plan_item_wake", "plan_item_alpha", "plan_item_beta"]
+        );
+        // Both selected items are promoted; like a single outdent, Gamma is
+        // absorbed under the trailing promoted sibling (Beta) rather than dropped
+        // or duplicated, matching the front-end tree.
+        assert_eq!(
+            moved["plans"][0]["items"][0]["children"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            moved["plans"][0]["items"][1]["children"][0]["id"],
+            "plan_item_a1"
+        );
+        let beta_children = moved["plans"][0]["items"][2]["children"]
+            .as_array()
+            .unwrap();
+        assert_eq!(beta_children.len(), 2);
+        assert_eq!(beta_children[0]["id"], "plan_item_b1");
+        assert_eq!(beta_children[1]["id"], "plan_item_gamma");
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_plan_item_ids(&undone), ["plan_item_wake"]);
+        let restored_children = undone["plans"][0]["items"][0]["children"]
+            .as_array()
+            .unwrap();
+        assert_eq!(restored_children.len(), 3);
+        assert_eq!(restored_children[0]["id"], "plan_item_alpha");
+        assert_eq!(restored_children[1]["id"], "plan_item_beta");
+        assert_eq!(restored_children[2]["id"], "plan_item_gamma");
+        assert_eq!(restored_children[0]["children"][0]["id"], "plan_item_a1");
+        assert_eq!(restored_children[1]["children"][0]["id"], "plan_item_b1");
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_plan_item_ids(&redone),
+            ["plan_item_wake", "plan_item_alpha", "plan_item_beta"]
+        );
+        assert_eq!(
+            redone["plans"][0]["items"][0]["children"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            redone["plans"][0]["items"][2]["children"][1]["id"],
+            "plan_item_gamma"
         );
     }
 
