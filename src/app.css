@@ -717,6 +717,49 @@ nav button.active {
   gap: 10px;
 }
 
+.done-tint-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+}
+
+.done-tint-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.done-tint-control input[type='color'] {
+  width: 40px;
+  height: 34px;
+  padding: 2px;
+  cursor: pointer;
+}
+
+.done-tint-hex {
+  width: 92px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  text-transform: lowercase;
+}
+
+/* A self-contained sample of a checked plan row, tinted by --done-tint. */
+.done-tint-preview {
+  flex: 1 1 200px;
+  min-width: 180px;
+  max-width: 320px;
+  min-height: 0;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+.done-tint-check {
+  color: var(--accent-strong);
+  font-size: 14px;
+}
+
 .export-status {
   max-width: 100%;
   margin-top: 12px;

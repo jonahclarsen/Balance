@@ -37,12 +37,18 @@
 
   const AUTO_JSON_EXPORT_CHECK_INTERVAL_MS = 15 * 60 * 1000
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
+  const DONE_TINT_KEY = 'balance:doneTintColor'
+  // Matches the light-theme --done-tint base in app.css; shown as the picker
+  // value when the user hasn't chosen a custom color yet.
+  const DEFAULT_DONE_TINT = '#3f9d54'
 
   let view: View = 'today'
   let workspaceEl: HTMLElement
   let scrollPositionsByDate: Record<string, number> = {}
   let lastScrolledDate = ''
   let goalHistoryHeight: number | null = null
+  // Empty means "use the built-in green default"; a hex value overrides it.
+  let doneTintColor = ''
   let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
   let selectedTemplateId = ''
   let recoveryKeyStatus: RecoveryKeyStatus | null = null
@@ -111,6 +117,15 @@
   $: activeGoalCount = $plannerStore.goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
   $: sortedGoals = sortGoalsByUrgency($plannerStore.goals, $plannerStore.goalCompletions, todayISO())
   $: filteredGoals = filterGoalsByPhrase(sortedGoals, goalSearch)
+  $: doneTintHex = doneTintColor || DEFAULT_DONE_TINT
+  // Blend the chosen color in lightly so the row reads as a tint, not a fill.
+  $: doneTintValue = `color-mix(in srgb, ${doneTintHex} 14%, transparent)`
+  $: contentShellStyle = [
+    goalHistoryHeight != null ? `--goal-history-height: ${goalHistoryHeight}px` : '',
+    doneTintColor ? `--done-tint: ${doneTintValue}` : '',
+  ]
+    .filter(Boolean)
+    .join('; ')
   $: showAutoExportError = Boolean(
     exportSettings?.lastAutoJsonExportError &&
       exportSettings.lastAutoJsonExportErrorAt &&
@@ -130,6 +145,9 @@
     if (Number.isFinite(storedGoalHistoryHeight) && storedGoalHistoryHeight > 0) {
       goalHistoryHeight = clampGoalHistoryHeight(storedGoalHistoryHeight)
     }
+
+    const storedDoneTint = normalizeHexColor(localStorage.getItem(DONE_TINT_KEY) ?? '')
+    if (storedDoneTint) doneTintColor = storedDoneTint
 
     const checkAutoJsonExport = () => {
       if (!mounted) return
@@ -163,6 +181,24 @@
 
   function clampGoalHistoryHeight(value: number): number {
     return Math.max(140, Math.min(window.innerHeight * 0.7, value))
+  }
+
+  function normalizeHexColor(value: string): string | null {
+    const hex = value.trim().replace(/^#/, '')
+    if (!/^[0-9a-fA-F]{6}$/.test(hex)) return null
+    return `#${hex.toLowerCase()}`
+  }
+
+  function updateDoneTint(value: string) {
+    const normalized = normalizeHexColor(value)
+    if (!normalized) return
+    doneTintColor = normalized
+    localStorage.setItem(DONE_TINT_KEY, normalized)
+  }
+
+  function resetDoneTint() {
+    doneTintColor = ''
+    localStorage.removeItem(DONE_TINT_KEY)
   }
 
   function focusGoalInRhythm(goalId: string) {
@@ -1392,7 +1428,7 @@
     </div>
   </aside>
 
-  <div class="content-shell" style={goalHistoryHeight != null ? `--goal-history-height: ${goalHistoryHeight}px` : ''}>
+  <div class="content-shell" style={contentShellStyle}>
     <section class="workspace" bind:this={workspaceEl} on:scroll={handleWorkspaceScroll}>
     {#if view === 'today'}
       <header class="page-header">
@@ -1749,6 +1785,42 @@
       </header>
 
       <div class="settings-panel">
+        <section class="settings-section">
+          <div>
+            <h3>Completed item color</h3>
+            <p>The tint applied to checked plan items. Pick any color — it's blended in lightly.</p>
+          </div>
+
+          <div class="done-tint-row">
+            <label class="done-tint-control">
+              <input
+                type="color"
+                aria-label="Completed item tint color"
+                value={doneTintHex}
+                on:input={(event) => updateDoneTint(event.currentTarget.value)}
+              />
+              <input
+                class="done-tint-hex"
+                type="text"
+                aria-label="Completed item tint hex code"
+                spellcheck="false"
+                maxlength="7"
+                value={doneTintHex}
+                on:change={(event) => updateDoneTint(event.currentTarget.value)}
+              />
+            </label>
+
+            <div class="done-tint-preview plan-row done" aria-label="Example completed item">
+              <span class="done-tint-check" aria-hidden="true">✓</span>
+              <span class="item-text done">Finish the report</span>
+            </div>
+
+            {#if doneTintColor}
+              <button type="button" on:click={resetDoneTint}>Reset to green</button>
+            {/if}
+          </div>
+        </section>
+
         <section class="settings-section">
           <div>
             <h3>Manual export</h3>
