@@ -1595,21 +1595,12 @@ nav button.active {
   pointer-events: none;
 }
 
-/* Soften the seams where the overdue run meets the plain cells beside it, so the
-   red fades over ~7px instead of butting hard against the neighbouring day. */
+/* Soften only the left seam where the overdue run begins, so the red fades in
+   over ~7px instead of butting hard against the day before it. The right end
+   keeps a crisp edge so the hatch fills cleanly to the rounded segment cap. */
 .goal-day-cell:not(.overdue) + .goal-day-cell.overdue::before {
   -webkit-mask-image: linear-gradient(to right, transparent, #000 7px);
   mask-image: linear-gradient(to right, transparent, #000 7px);
-}
-
-.goal-day-cell.overdue:not(:has(+ .goal-day-cell.overdue))::before {
-  -webkit-mask-image: linear-gradient(to left, transparent, #000 7px);
-  mask-image: linear-gradient(to left, transparent, #000 7px);
-}
-
-.goal-day-cell:not(.overdue) + .goal-day-cell.overdue:not(:has(+ .goal-day-cell.overdue))::before {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 7px, #000 calc(100% - 7px), transparent);
-  mask-image: linear-gradient(to right, transparent, #000 7px, #000 calc(100% - 7px), transparent);
 }
 
 .goal-day-cell.viewed::after {
