@@ -1807,7 +1807,7 @@
 
             <div class="done-tint-preview plan-row done" aria-label="Example completed item">
               <span class="done-tint-check" aria-hidden="true">✓</span>
-              <span class="item-text done">Finish the report</span>
+              <span class="item-text done">Dress up in a porcupine suit</span>
             </div>
 
           </div>
