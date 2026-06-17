@@ -611,6 +611,28 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   await expect(goalRow).toHaveClass(/goal-row-focus/)
 })
 
+test('clicking a goal rhythm row scrolls to that goal on the goals page', async ({ page }) => {
+  const targetGoal = 'Goal 18'
+
+  for (let index = 1; index <= 28; index += 1) {
+    await createGoal(page, `Goal ${index}`, 1, `goal-${index}`)
+  }
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  const targetRow = page.locator('.goal-history-name[data-goal-id]', { hasText: targetGoal })
+  const targetCard = page.locator('.goal-card', { has: page.getByLabel(`Goal name: ${targetGoal}`) })
+
+  await targetRow.click()
+  await expect(page.getByRole('button', { name: 'Goals', exact: true })).toHaveClass(/active/)
+  await expect(targetCard).toHaveClass(/goal-card-focus/)
+  await expect.poll(() => goalCardCenterOffset(page, targetGoal)).toBeLessThanOrEqual(1)
+
+  await resetActiveScrollTop(page)
+  await targetRow.click()
+  await expect(targetCard).toHaveClass(/goal-card-focus/)
+  await expect.poll(() => goalCardCenterOffset(page, targetGoal)).toBeLessThanOrEqual(1)
+})
+
 test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' })
   await createGoal(page, 'Exercise', 3, 'lift, swim')
@@ -669,4 +691,31 @@ function addDays(date: string, days: number) {
 
 async function unrelatedGoalIncludes(page: import('@playwright/test').Page) {
   return page.evaluate(() => (window as Window & { unrelatedGoalIncludes?: number }).unrelatedGoalIncludes ?? -1)
+}
+
+async function resetActiveScrollTop(page: import('@playwright/test').Page) {
+  await page.evaluate(() => {
+    const workspace = document.querySelector<HTMLElement>('.workspace')
+    if (workspace && workspace.scrollHeight > workspace.clientHeight) {
+      workspace.scrollTop = 0
+      return
+    }
+    window.scrollTo({ top: 0 })
+  })
+}
+
+async function goalCardCenterOffset(page: import('@playwright/test').Page, goalName: string) {
+  return page.evaluate((name) => {
+    const workspace = document.querySelector<HTMLElement>('.workspace')
+    const card = [...document.querySelectorAll<HTMLElement>('.goal-card')].find((candidate) =>
+      candidate.querySelector<HTMLInputElement>('.goal-name-input')?.value === name,
+    )
+    if (!workspace || !card) return null
+    const workspaceScrolls = workspace.scrollHeight > workspace.clientHeight
+    const containerTop = workspaceScrolls ? workspace.getBoundingClientRect().top : 0
+    const containerHeight = workspaceScrolls ? workspace.clientHeight : window.innerHeight
+    const cardRect = card.getBoundingClientRect()
+    const cardCenter = cardRect.top + cardRect.height / 2
+    return Math.abs(Math.round(cardCenter - (containerTop + containerHeight / 2)))
+  }, goalName)
 }

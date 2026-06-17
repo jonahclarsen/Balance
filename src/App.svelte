@@ -88,6 +88,7 @@
   let newGoalHue = 165
   let newGoalNeutral = false
   let goalFormStatus = ''
+  let highlightedGoalCardId: Id | null = null
 
   const NEUTRAL_SWATCH = '#9aa0a6'
 
@@ -166,6 +167,45 @@
     // Bump a nonce so repeated clicks on the same goal badge re-trigger the
     // scroll/highlight in the rhythm panel even when the id is unchanged.
     goalRhythmScrollRequest = { goalId, nonce: (goalRhythmScrollRequest?.nonce ?? 0) + 1 }
+  }
+
+  async function openGoals(goalId?: Id) {
+    view = 'goals'
+    if (!goalId) return
+
+    await tick()
+    const goalCard = workspaceEl?.querySelector<HTMLElement>(`[data-goal-id="${goalId}"]`)
+    if (!goalCard) return
+
+    scrollElementToCenter(goalCard)
+    highlightedGoalCardId = goalId
+    setTimeout(() => {
+      if (highlightedGoalCardId === goalId) highlightedGoalCardId = null
+    }, 1600)
+  }
+
+  function scrollElementToCenter(element: HTMLElement) {
+    const scrollContainer = findScrollContainer(element)
+    const elementRect = element.getBoundingClientRect()
+    if (scrollContainer) {
+      const containerRect = scrollContainer.getBoundingClientRect()
+      scrollContainer.scrollTop += elementRect.top - containerRect.top - (scrollContainer.clientHeight - elementRect.height) / 2
+      return
+    }
+
+    window.scrollBy({ top: elementRect.top - (window.innerHeight - elementRect.height) / 2 })
+  }
+
+  function findScrollContainer(element: HTMLElement): HTMLElement | null {
+    let current = element.parentElement
+    while (current) {
+      const overflowY = window.getComputedStyle(current).overflowY
+      if (/(auto|scroll|overlay)/.test(overflowY) && current.scrollHeight > current.clientHeight) {
+        return current
+      }
+      current = current.parentElement
+    }
+    return null
   }
 
   function startGoalHistoryResize(event: PointerEvent) {
@@ -1333,7 +1373,7 @@
     <nav aria-label="Primary">
       <button class:active={view === 'today'} type="button" on:click={() => (view = 'today')}>Today</button>
       <button class:active={view === 'templates'} type="button" on:click={() => (view = 'templates')}>Templates</button>
-      <button class:active={view === 'goals'} type="button" on:click={() => (view = 'goals')}>Goals</button>
+      <button class:active={view === 'goals'} type="button" on:click={() => { void openGoals() }}>Goals</button>
       <button class:active={view === 'history'} type="button" on:click={() => (view = 'history')}>History</button>
       <button class:active={view === 'export'} type="button" on:click={() => (view = 'export')}>Export</button>
       <button class:active={view === 'settings'} type="button" on:click={() => (view = 'settings')}>Settings</button>
@@ -1586,7 +1626,13 @@
         {#each sortedGoals as goal (goal.id)}
           {@const active = isGoalActiveOnDate(goal, todayISO())}
           {@const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goal.id).length}
-          <article class="goal-card" class:archived={!active} style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}>
+          <article
+            class="goal-card"
+            class:archived={!active}
+            class:goal-card-focus={highlightedGoalCardId === goal.id}
+            data-goal-id={goal.id}
+            style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
+          >
             <div class="goal-card-accent"></div>
             <div class="goal-card-main">
               <div class="goal-card-title-row">
@@ -1839,7 +1885,7 @@
       goals={$plannerStore.goals}
       completions={$plannerStore.goalCompletions}
       viewedDate={$plannerStore.activePlanDate || todayISO()}
-      onOpenGoals={() => (view = 'goals')}
+      onOpenGoals={openGoals}
       onResizeStart={startGoalHistoryResize}
       scrollRequest={goalRhythmScrollRequest}
     />

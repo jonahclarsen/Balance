@@ -1257,6 +1257,18 @@ nav button.active {
   opacity: 0.72;
 }
 
+.goal-card.goal-card-focus {
+  animation: goal-card-focus-pulse 1.6s ease-out;
+}
+
+@keyframes goal-card-focus-pulse {
+  0%,
+  45% {
+    background: var(--active-nav);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+}
+
 .goal-card-accent {
   margin: -16px 0;
   background: hsl(var(--goal-hue) calc(58% * var(--goal-sat-factor, 1)) 48%);

@@ -20,7 +20,7 @@
   export let goals: Goal[]
   export let completions: GoalCompletion[]
   export let viewedDate: string = todayISO()
-  export let onOpenGoals: () => void
+  export let onOpenGoals: (goalId?: string) => void
   export let onResizeStart: ((event: PointerEvent) => void) | undefined = undefined
   // A click on a plan item's goal badge sets this to scroll the goal into view.
   export let scrollRequest: { goalId: string; nonce: number } | null = null
@@ -145,7 +145,7 @@
         on:change={(event) => updateHistoryDays(Number(event.currentTarget.value))}
       />
     </label>
-    <button type="button" on:click={onOpenGoals}>Manage goals</button>
+    <button type="button" on:click={() => onOpenGoals()}>Manage goals</button>
   </header>
 
   <div class="goal-history-scroll" bind:this={scrollEl}>
@@ -174,7 +174,7 @@
           type="button"
           style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
           title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}${lapseTooltip(daysUntilLapse)}\nMatch keywords: ${goal.matchTerms.join(', ')}`}
-          on:click={onOpenGoals}
+          on:click={() => onOpenGoals(goal.id)}
         >
           <span class="goal-color-dot"></span>
           <span>{goal.name}</span>
@@ -211,7 +211,7 @@
       {:else}
         <div class="goal-history-empty">
           <span>No goals active in this range.</span>
-          <button type="button" on:click={onOpenGoals}>Add your first goal</button>
+          <button type="button" on:click={() => onOpenGoals()}>Add your first goal</button>
         </div>
       {/each}
     </div>
