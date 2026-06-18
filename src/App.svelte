@@ -91,10 +91,14 @@
   let selectedPlanPlanId: Id | null = null
   let selectingPlanItems = false
   let planItemClipboard: { items: PlanItem[]; cut: boolean } | null = null
+  // Each pasted node — parent or child — is reviewed on its own, so the queue is a
+  // flat list annotated with the node's original depth. Kept nodes are re-nested from
+  // those depths once the queue empties.
+  type PasteReviewNode = { item: PlanItem; depth: number }
   let pasteReview: {
-    items: PlanItem[]
+    nodes: PasteReviewNode[]
     index: number
-    approved: PlanItem[]
+    approved: PasteReviewNode[]
     targetId: Id | null
     placement: 'after' | 'replace'
     planId: Id
@@ -1137,9 +1141,10 @@
     const targetId = pasteTargetPlanItemId()
     const placement = shouldReplaceFocusedPlanItemOnPaste(targetId) ? 'replace' : 'after'
 
-    if (planItemClipboard.items.length >= PASTE_REVIEW_THRESHOLD) {
+    const nodes = flattenPlanItemsForReview(planItemClipboard.items)
+    if (nodes.length >= PASTE_REVIEW_THRESHOLD) {
       pasteReview = {
-        items: planItemClipboard.items.map((item) => ({ ...item })),
+        nodes,
         index: 0,
         approved: [],
         targetId,
@@ -1154,6 +1159,38 @@
     }
 
     insertPastedPlanItems(planItemClipboard.items, targetId, placement, planItemClipboard.cut)
+  }
+
+  // Walk the pasted forest depth-first into a flat queue, stripping children off each
+  // node and recording how deep it was. Reviewing the flattened list means every child
+  // gets its own keep/skip decision rather than riding along with its parent.
+  function flattenPlanItemsForReview(items: PlanItem[], depth = 0): PasteReviewNode[] {
+    return items.flatMap((item) => [
+      { item: { ...item, children: [] }, depth },
+      ...flattenPlanItemsForReview(item.children, depth + 1),
+    ])
+  }
+
+  // Rebuild a forest from the kept nodes, honoring each node's original depth. A kept
+  // child whose parent was skipped re-attaches to the nearest surviving ancestor (its
+  // new parent), so it stays as deeply indented as the remaining tree allows instead of
+  // being promoted all the way to the top.
+  function buildReviewedForest(nodes: PasteReviewNode[]): PlanItem[] {
+    const roots: PlanItem[] = []
+    const ancestors: { item: PlanItem; depth: number }[] = []
+
+    for (const { item, depth } of nodes) {
+      const node: PlanItem = { ...item, children: [] }
+      while (ancestors.length && ancestors[ancestors.length - 1].depth >= depth) ancestors.pop()
+
+      const parent = ancestors[ancestors.length - 1]
+      if (parent) parent.item.children.push(node)
+      else roots.push(node)
+
+      ancestors.push({ item: node, depth })
+    }
+
+    return roots
   }
 
   function startPasteReviewCooldown() {
@@ -1209,16 +1246,16 @@
     if (!pasteReview) return
     if (keep && !pasteReviewReady) return
 
-    const current = pasteReview.items[pasteReview.index]
+    const current = pasteReview.nodes[pasteReview.index]
     const approved = keep && current ? [...pasteReview.approved, current] : pasteReview.approved
     const next = pasteReview.index + 1
     pasteReviewEditing = false
 
-    if (next >= pasteReview.items.length) {
+    if (next >= pasteReview.nodes.length) {
       const { targetId, placement, cut } = pasteReview
       cancelPasteReviewCooldown()
       pasteReview = null
-      if (approved.length > 0) insertPastedPlanItems(approved, targetId, placement, cut)
+      if (approved.length > 0) insertPastedPlanItems(buildReviewedForest(approved), targetId, placement, cut)
       return
     }
 
@@ -1235,7 +1272,7 @@
   function startPasteReviewEdit() {
     if (!pasteReview) return
 
-    pasteReviewEditDraft = pasteReview.items[pasteReview.index]?.text ?? ''
+    pasteReviewEditDraft = pasteReview.nodes[pasteReview.index]?.item.text ?? ''
     pasteReviewEditing = true
     void tick().then(() => pasteReviewInput?.focus())
   }
@@ -1245,10 +1282,10 @@
 
     const text = pasteReviewEditDraft.trim()
     const index = pasteReview.index
-    const items = pasteReview.items.map((item, i) =>
-      i === index ? { ...item, text, html: escapeHTML(text) } : item,
+    const nodes = pasteReview.nodes.map((node, i) =>
+      i === index ? { ...node, item: { ...node.item, text, html: escapeHTML(text) } } : node,
     )
-    pasteReview = { ...pasteReview, items }
+    pasteReview = { ...pasteReview, nodes }
     pasteReviewEditing = false
   }
 
@@ -2118,13 +2155,14 @@
 </main>
 
 {#if pasteReview}
-  {@const current = pasteReview.items[pasteReview.index]}
+  {@const currentNode = pasteReview.nodes[pasteReview.index]}
+  {@const current = currentNode?.item}
   <div class="paste-review-backdrop">
     <div class="paste-review" role="dialog" aria-modal="true" aria-labelledby="paste-review-title">
       <div class="paste-review-head">
         <div>
           <p class="eyebrow">Review pasted items</p>
-          <h2 id="paste-review-title">Item {pasteReview.index + 1} of {pasteReview.items.length}</h2>
+          <h2 id="paste-review-title">Item {pasteReview.index + 1} of {pasteReview.nodes.length}</h2>
         </div>
         <button class="ghost" type="button" title="Cancel (Esc)" on:click={cancelPasteReview}>✕</button>
       </div>
@@ -2143,9 +2181,9 @@
             {current?.text?.trim() || '(empty item)'}
           </p>
         {/if}
-        {#if current?.children?.length}
+        {#if currentNode?.depth}
           <p class="paste-review-meta">
-            + {current.children.length} child item{current.children.length === 1 ? '' : 's'}
+            Nested {currentNode.depth} level{currentNode.depth === 1 ? '' : 's'} deep
           </p>
         {/if}
       </div>
