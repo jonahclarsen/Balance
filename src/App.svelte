@@ -1289,6 +1289,16 @@
     pasteReviewEditing = false
   }
 
+  function togglePasteReviewDone(done: boolean) {
+    if (!pasteReview) return
+
+    const index = pasteReview.index
+    const nodes = pasteReview.nodes.map((node, i) =>
+      i === index ? { ...node, item: { ...node.item, done } } : node,
+    )
+    pasteReview = { ...pasteReview, nodes }
+  }
+
   async function openRecoveryPanel() {
     recoveryPanelOpen = true
     recoveryExpandedId = null
@@ -2167,7 +2177,7 @@
         <button class="ghost" type="button" title="Cancel (Esc)" on:click={cancelPasteReview}>✕</button>
       </div>
 
-      <div class="paste-review-card">
+      <div class="paste-review-card" class:done={current?.done}>
         {#if pasteReviewEditing}
           <input
             class="paste-review-edit"
@@ -2177,9 +2187,20 @@
             placeholder="Item text"
           />
         {:else}
-          <p class="paste-review-text" class:empty={!current?.text?.trim()}>
-            {current?.text?.trim() || '(empty item)'}
-          </p>
+          <div class="paste-review-line">
+            <label class="check-target" title="Complete item">
+              <input
+                class="check"
+                type="checkbox"
+                checked={current?.done}
+                on:change={(event) => togglePasteReviewDone(event.currentTarget.checked)}
+                aria-label="Complete item"
+              />
+            </label>
+            <p class="paste-review-text item-text" class:done={current?.done} class:empty={!current?.text?.trim()}>
+              {current?.text?.trim() || '(empty item)'}
+            </p>
+          </div>
         {/if}
         {#if currentNode?.depth}
           <p class="paste-review-meta">

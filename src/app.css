@@ -902,6 +902,16 @@ nav button.active {
   padding: 18px;
 }
 
+.paste-review-card.done {
+  background: var(--done-tint);
+}
+
+.paste-review-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .paste-review-text {
   margin: 0;
   font-size: 17px;
