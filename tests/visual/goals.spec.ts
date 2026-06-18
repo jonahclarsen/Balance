@@ -90,6 +90,83 @@ test('a completed matching plan item automatically completes a goal and shows it
     .toBe(0)
 })
 
+test('direct edits to an older plan item can complete an overdue goal', async ({ page }) => {
+  const oldDate = addDays(todayISO(), -3)
+  const timestamp = new Date().toISOString()
+
+  await page.evaluate(
+    ({ oldDate, timestamp }) => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      state.activePlanDate = oldDate
+      state.plans = [
+        {
+          id: 'plan_old',
+          date: oldDate,
+          title: 'Old saved day',
+          dailyReminder: '',
+          generatedFromTemplateId: null,
+          createdAt: timestamp,
+          items: [
+            {
+              id: 'item_old',
+              text: 'ordinary task',
+              html: 'ordinary task',
+              done: false,
+              startMinutes: null,
+              endMinutes: null,
+              children: [],
+            },
+          ],
+        },
+      ]
+      state.goals = [
+        {
+          id: 'goal_read',
+          name: 'Read',
+          cadenceDays: 4,
+          matchTerms: ['read'],
+          hue: 200,
+          activityPeriods: [{ startDate: addDaysInBrowser(oldDate, -4), endDate: null }],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ]
+      state.goalCompletions = []
+      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+
+      function addDaysInBrowser(date: string, days: number) {
+        const parsed = new Date(`${date}T12:00:00`)
+        parsed.setDate(parsed.getDate() + days)
+        const year = parsed.getFullYear()
+        const month = String(parsed.getMonth() + 1).padStart(2, '0')
+        const day = String(parsed.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+      }
+    },
+    { oldDate, timestamp },
+  )
+  await page.reload()
+
+  const row = page.locator('[data-plan-item-id="item_old"]')
+  await row.locator('[contenteditable="true"]').fill('read a chapter')
+  await row.getByRole('checkbox', { name: 'Complete item' }).check()
+
+  await expect(row.locator('.plan-goal-badge', { hasText: 'Read' })).toBeVisible()
+  await expect(row.locator('.plan-due-today')).toHaveCount(0)
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return state.goalCompletions?.map((completion: { goalId: string; date: string; itemIds: string[] }) => ({
+          goalId: completion.goalId,
+          date: completion.date,
+          itemIds: completion.itemIds,
+        }))
+      }),
+    )
+    .toEqual([{ goalId: 'goal_read', date: oldDate, itemIds: ['item_old'] }])
+})
+
 test('task typing only rescans goals when its match result changes', async ({ page }) => {
   const matchTerm = 'needle-goal-token'
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()

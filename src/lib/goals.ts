@@ -6,6 +6,10 @@ export const GOAL_HISTORY_MAX_DAYS = 3660
 export const GOAL_FUTURE_DAYS = 6
 export const GOAL_RECALCULATION_AGE_DAYS = 2
 
+type GoalRecalculationOptions = {
+  force?: boolean
+}
+
 export type GoalDayCell = {
   date: string
   active: boolean
@@ -129,6 +133,29 @@ export function setGoalActiveOnDate(goal: Goal, active: boolean, date = todayISO
   }
 }
 
+// Edits the start of the earliest activity stint. Backdating earlier is always
+// allowed; moving later is clamped to that stint's archive date (endDate) so the
+// period can never end before it starts (which normalizeActivityPeriods would
+// otherwise resolve by silently reactivating the goal). Clamping to the stint's
+// own endDate also keeps it from colliding with a later, non-overlapping stint.
+export function setGoalStartDate(goal: Goal, date: string): Goal {
+  if (!date) return goal
+  const period = goal.activityPeriods[0]
+  if (!period) return goal
+
+  const clamped = period.endDate ? minISODate(date, period.endDate) : date
+  if (clamped === period.startDate) return goal
+
+  const activityPeriods = [...goal.activityPeriods]
+  activityPeriods[0] = { ...period, startDate: clamped }
+
+  return {
+    ...goal,
+    activityPeriods: normalizeActivityPeriods(activityPeriods),
+    updatedAt: nowISO(),
+  }
+}
+
 export function visibleGoalDates(days: number, endDate = todayISO()): string[] {
   const count = Math.max(1, Math.min(GOAL_HISTORY_MAX_DAYS, Math.round(days) || GOAL_HISTORY_DEFAULT_DAYS))
   return Array.from({ length: count }, (_, index) => shiftISODate(endDate, index - count + 1))
@@ -148,8 +175,12 @@ export function isGoalDateRecalculable(date: string, currentDate = todayISO()): 
   return date <= currentDate && date >= shiftISODate(currentDate, -GOAL_RECALCULATION_AGE_DAYS)
 }
 
-export function reconcileGoalCompletionsForDate(state: AppState, date: string): GoalCompletion[] {
-  if (!isGoalDateRecalculable(date)) return state.goalCompletions
+export function reconcileGoalCompletionsForDate(
+  state: AppState,
+  date: string,
+  options: GoalRecalculationOptions = {},
+): GoalCompletion[] {
+  if (!options.force && !isGoalDateRecalculable(date)) return state.goalCompletions
 
   const plan = state.plans.find((candidate) => candidate.date === date)
   const otherDates = state.goalCompletions.filter((completion) => completion.date !== date)
@@ -242,8 +273,14 @@ export function dueTodayGoalsForItem(item: PlanItem, dueTodayGoals: Goal[]): Goa
   return dueTodayGoals.filter((goal) => goal.matchTerms.some((term) => normalizedText.includes(term)))
 }
 
-export function planItemGoalMatchesChanged(goals: Goal[], date: string, before: PlanItem, after: PlanItem): boolean {
-  if (!isGoalDateRecalculable(date)) return false
+export function planItemGoalMatchesChanged(
+  goals: Goal[],
+  date: string,
+  before: PlanItem,
+  after: PlanItem,
+  options: GoalRecalculationOptions = {},
+): boolean {
+  if (!options.force && !isGoalDateRecalculable(date)) return false
   if (!before.done && !after.done) return false
   if (before.done === after.done && before.text === after.text) return false
 

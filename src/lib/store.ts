@@ -48,6 +48,7 @@ import {
   reconcileGoalCompletionsForDate,
   reconcileRecentGoalCompletions,
   setGoalActiveOnDate,
+  setGoalStartDate,
 } from './goals'
 import type { AppState, DailyPlan, Goal, Id, Operation, PlanItem, TemplateItem, TemplateOption } from './types'
 
@@ -63,6 +64,7 @@ type CommitOptions = {
   mergeKey?: string
   mergeWindowMs?: number
   reconcileGoals?: boolean | ((before: AppState, after: AppState) => boolean)
+  forcedGoalRecalculationDates?: string[] | ((before: AppState, after: AppState) => string[])
 }
 type TextChangeOptions = {
   mergeHistory?: boolean
@@ -278,8 +280,12 @@ function createPlannerStore() {
         typeof options.reconcileGoals === 'function'
           ? options.reconcileGoals(state, next)
           : options.reconcileGoals !== false
+      const forcedGoalRecalculationDates =
+        typeof options.forcedGoalRecalculationDates === 'function'
+          ? options.forcedGoalRecalculationDates(state, next)
+          : (options.forcedGoalRecalculationDates ?? [])
       const reconciledGoalCompletions = shouldReconcileGoals
-        ? reconcileChangedGoalCompletions(state, next)
+        ? reconcileChangedGoalCompletions(state, next, forcedGoalRecalculationDates)
         : next.goalCompletions
       if (
         reconciledGoalCompletions !== next.goalCompletions &&
@@ -420,25 +426,46 @@ function createPlannerStore() {
       commit('patch_plan_item', { planId, itemId, patch }, (state) => updatePlan(state, planId, (plan) => {
         const items = updatePlanItem(plan.items, itemId, (item) => {
           const nextItem = applyPatch(item, patch)
-          goalMatchesChanged = planItemGoalMatchesChanged(state.goals, plan.date, item, nextItem)
+          goalMatchesChanged = planItemGoalMatchesChanged(state.goals, plan.date, item, nextItem, { force: true })
           return nextItem
         })
         return items === plan.items ? plan : { ...plan, items }
-      }), { ...mergeOptions, reconcileGoals: () => goalMatchesChanged })
+      }), {
+        ...mergeOptions,
+        reconcileGoals: () => goalMatchesChanged,
+        forcedGoalRecalculationDates: (_before, after) => {
+          const plan = after.plans.find((candidate) => candidate.id === planId)
+          return plan && goalMatchesChanged ? [plan.date] : []
+        },
+      })
     },
 
     patchPlanItemsDone(planId: Id, itemIds: Id[], done: boolean) {
       if (itemIds.length === 0) return
 
+      let goalMatchesChanged = false
+
       commit('patch_plan_items_done', { planId, itemIds, done }, (state) => updatePlan(state, planId, (plan) => {
         let items = plan.items
 
         for (const itemId of itemIds) {
-          items = updatePlanItem(items, itemId, (item) => applyPatch(item, { done }))
+          items = updatePlanItem(items, itemId, (item) => {
+            const nextItem = applyPatch(item, { done })
+            if (planItemGoalMatchesChanged(state.goals, plan.date, item, nextItem, { force: true })) {
+              goalMatchesChanged = true
+            }
+            return nextItem
+          })
         }
 
         return items === plan.items ? plan : { ...plan, items }
-      }))
+      }), {
+        reconcileGoals: () => goalMatchesChanged,
+        forcedGoalRecalculationDates: (_before, after) => {
+          const plan = after.plans.find((candidate) => candidate.id === planId)
+          return plan && goalMatchesChanged ? [plan.date] : []
+        },
+      })
     },
 
     splitPlanItem(
@@ -635,6 +662,19 @@ function createPlannerStore() {
         },
         { mergeKey: `goal:${goalId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
       )
+    },
+
+    setGoalStartDate(goalId: Id, date: string) {
+      commit('replace_goal_data', { action: 'set_goal_start_date', goalId, date }, (state) => {
+        let changed = false
+        const goals = state.goals.map((goal) => {
+          if (goal.id !== goalId) return goal
+          const next = setGoalStartDate(goal, date)
+          if (next !== goal) changed = true
+          return next
+        })
+        return changed ? { ...state, goals } : state
+      })
     },
 
     setGoalActive(goalId: Id, active: boolean, date = todayISO()) {
@@ -973,10 +1013,11 @@ function updatePlan(state: AppState, planId: Id, updater: (plan: DailyPlan) => D
   return changed ? { ...state, plans } : state
 }
 
-function reconcileChangedGoalCompletions(previous: AppState, next: AppState) {
+function reconcileChangedGoalCompletions(previous: AppState, next: AppState, forcedDates: string[] = []) {
   if (next.goals !== previous.goals) return reconcileRecentGoalCompletions(next)
   if (next.plans === previous.plans) return next.goalCompletions
 
+  const forcedDateSet = new Set(forcedDates)
   const previousPlansByDate = new Map(previous.plans.map((plan) => [plan.date, plan]))
   const nextPlansByDate = new Map(next.plans.map((plan) => [plan.date, plan]))
   const changedDates = new Set([...previousPlansByDate.keys(), ...nextPlansByDate.keys()])
@@ -984,7 +1025,11 @@ function reconcileChangedGoalCompletions(previous: AppState, next: AppState) {
 
   for (const date of changedDates) {
     if (previousPlansByDate.get(date) === nextPlansByDate.get(date)) continue
-    goalCompletions = reconcileGoalCompletionsForDate({ ...next, goalCompletions }, date)
+    goalCompletions = reconcileGoalCompletionsForDate(
+      { ...next, goalCompletions },
+      date,
+      { force: forcedDateSet.has(date) },
+    )
   }
 
   return goalCompletions
