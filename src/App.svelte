@@ -2050,17 +2050,24 @@ return rows`
           <p class="eyebrow">Generator</p>
           <h2>List template</h2>
         </div>
-        <div class="template-header-controls">
-          {#if selectedListTemplate}
-            <select bind:value={selectedListTemplateId} aria-label="Select list template">
-              {#each listTemplates as template (template.id)}
-                <option value={template.id}>{template.name}</option>
-              {/each}
-            </select>
-          {/if}
-          <button type="button" on:click={createListTemplateAndSelect}>+ New list</button>
-        </div>
+        <button type="button" on:click={createListTemplateAndSelect}>+ New list</button>
       </header>
+
+      {#if listTemplates.length > 0}
+        <nav class="template-rail" aria-label="Select list template">
+          {#each listTemplates as template (template.id)}
+            <button
+              type="button"
+              class="rail-chip"
+              class:active={selectedListTemplate?.id === template.id}
+              aria-current={selectedListTemplate?.id === template.id}
+              on:click={() => (selectedListTemplateId = template.id)}
+            >
+              {template.name || 'Untitled list'}
+            </button>
+          {/each}
+        </nav>
+      {/if}
 
       {#if selectedListTemplate}
         <div class="template-panel">
@@ -2148,26 +2155,33 @@ return rows`
           <p class="eyebrow">Checklists</p>
           <h2>{formatPlanTitle($plannerStore.activePlanDate)}</h2>
         </div>
-        <div class="template-header-controls">
-          {#if listTemplates.length > 0}
-            <select bind:value={listViewTemplateId} aria-label="Select list">
-              {#each listTemplates as template (template.id)}
-                <option value={template.id}>{template.name}</option>
-              {/each}
-            </select>
-          {/if}
-          <div class="date-controls" aria-label="Day navigation">
-            <button class="date-nav-button" type="button" aria-label="Previous day" on:click={() => shiftActivePlanDate(-1)}>&lt;</button>
-            <button class="date-nav-button" type="button" aria-label="Next day" on:click={() => shiftActivePlanDate(1)}>&gt;</button>
-            <input
-              class="date-input"
-              type="date"
-              value={$plannerStore.activePlanDate}
-              on:input={(event) => plannerStore.setActivePlanDate(event.currentTarget.value)}
-            />
-          </div>
+        <div class="date-controls" aria-label="Day navigation">
+          <button class="date-nav-button" type="button" aria-label="Previous day" on:click={() => shiftActivePlanDate(-1)}>&lt;</button>
+          <button class="date-nav-button" type="button" aria-label="Next day" on:click={() => shiftActivePlanDate(1)}>&gt;</button>
+          <input
+            class="date-input"
+            type="date"
+            value={$plannerStore.activePlanDate}
+            on:input={(event) => plannerStore.setActivePlanDate(event.currentTarget.value)}
+          />
         </div>
       </header>
+
+      {#if listTemplates.length > 0}
+        <nav class="template-rail" aria-label="Select list">
+          {#each listTemplates as template (template.id)}
+            <button
+              type="button"
+              class="rail-chip"
+              class:active={listViewTemplateId === template.id}
+              aria-current={listViewTemplateId === template.id}
+              on:click={() => (listViewTemplateId = template.id)}
+            >
+              {template.name || 'Untitled list'}
+            </button>
+          {/each}
+        </nav>
+      {/if}
 
       {#if listTemplates.length === 0}
         <div class="empty-state">
@@ -2194,11 +2208,9 @@ return rows`
               {listTemplates}
               {metrics}
               onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: listViewInstance.id, itemId })}
+              locked
             />
           {/each}
-          <button class="add-row" type="button" on:click={() => plannerStore.addRootListItem(listViewInstance.id)}>
-            + Add item
-          </button>
         </div>
       {:else}
         <div class="empty-state">
@@ -2716,11 +2728,9 @@ return rows`
               {listTemplates}
               {metrics}
               onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
+              locked
             />
           {/each}
-          <button class="add-row" type="button" on:click={() => plannerStore.addRootListItem(instance.id)}>
-            + Add item
-          </button>
         </div>
       </OverlayModal>
     {/if}
