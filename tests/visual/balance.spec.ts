@@ -1027,6 +1027,50 @@ test('pasting plan items into an empty focused item replaces it', async ({ page 
   await expect.poll(async () => topLevelTexts(page)).toEqual([...before.slice(0, 2), ...before.slice(0, 2), ...before.slice(2)])
 })
 
+test('pasting a moved group again keeps it as structured task items', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  // Make the default plan three adjacent leaf tasks so the scenario stays below
+  // the cross-day review threshold and exercises the cut clipboard directly.
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const plan = state.plans?.find((candidate: { date: string }) => candidate.date === state.activePlanDate)
+    if (plan) plan.items = plan.items.map((item: object) => ({ ...item, children: [] }))
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+
+  const movedItems = await activePlanTopLevelTexts(page)
+  await focusInputByValue(page, movedItems[0])
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Meta+X')
+  await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([])
+
+  await page.getByRole('button', { name: 'Previous day' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' }).click()
+  const priorDayItems = await activePlanTopLevelTexts(page)
+  await focusInputByValue(page, priorDayItems.at(-1) as string)
+  await page.keyboard.press('Meta+V')
+  await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([...priorDayItems, ...movedItems])
+
+  // Move the same three tasks back to today.
+  await page.keyboard.press('Meta+X')
+  await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual(priorDayItems)
+  await page.getByRole('button', { name: 'Next day' }).click()
+  await page.keyboard.press('Meta+V')
+  await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual(movedItems)
+
+  // A second paste must still use the internal structured clipboard. Previously it
+  // fell through to native rich-text paste and merged the three lines into one task.
+  await focusInputByValue(page, movedItems.at(-1) as string)
+  await page.keyboard.press('Meta+V')
+  await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([...movedItems, ...movedItems])
+})
+
 test('pasting four items on the day they were copied bypasses review', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1724,6 +1768,14 @@ async function topLevelTexts(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return state.plans?.[0]?.items?.map((item: { text: string }) => item.text) ?? []
+  })
+}
+
+async function activePlanTopLevelTexts(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const plan = state.plans?.find((candidate: { date: string }) => candidate.date === state.activePlanDate)
+    return plan?.items?.map((item: { text: string }) => item.text) ?? []
   })
 }
 

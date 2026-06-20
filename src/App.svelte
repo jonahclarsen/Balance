@@ -1239,7 +1239,13 @@
     planSelectionAnchorId = pastedRootIds.at(-1) ?? null
     planSelectionFocusId = pastedRootIds.at(-1) ?? null
     releaseTextEditingFocus()
-    if (cut) planItemClipboard = null
+    // A cut becomes a copy after its first successful paste. Keeping the structured
+    // clipboard alive makes subsequent pastes create more task rows instead of falling
+    // through to the browser's plain-text clipboard handling.
+    if (cut) {
+      planItemClipboard = { items, cut: false, sourceDate: activePlan.date }
+      writePlanItemsToSystemClipboard(items)
+    }
   }
 
   // keep === true approves the current card, keep === false skips it; either way we
