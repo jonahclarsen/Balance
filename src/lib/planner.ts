@@ -5,6 +5,13 @@ import type {
   Goal,
   GoalCompletion,
   Id,
+  ListInstance,
+  ListTemplate,
+  ListTemplateItem,
+  Metric,
+  MetricEntry,
+  MetricQuestion,
+  MetricQuestionType,
   MoveDirection,
   MovePlacement,
   PlanItem,
@@ -96,6 +103,10 @@ export function createInitialState(): AppState {
     activePlanDate: todayISO(),
     templates: [createDefaultTemplate()],
     plans: [],
+    listTemplates: [],
+    lists: [],
+    metrics: [],
+    metricEntries: [],
     goals: [],
     goalCompletions: [],
     operations: [],
@@ -1091,4 +1102,381 @@ function sanitizeNode(node: Node): string {
   }
 
   return children
+}
+
+// ---------------------------------------------------------------------------
+// Generic tree helpers — shared structural operations over any node with an
+// `id` and a `children` array. Used by the list-template editor so it doesn't
+// re-implement the tree plumbing the plan/template editors already rely on.
+// ---------------------------------------------------------------------------
+
+type TreeNode<T> = { id: Id; children: T[] }
+
+function findTreeNode<T extends TreeNode<T>>(items: T[], itemId: Id): T | null {
+  for (const item of items) {
+    if (item.id === itemId) return item
+    const child = findTreeNode(item.children, itemId)
+    if (child) return child
+  }
+  return null
+}
+
+function updateTreeNode<T extends TreeNode<T>>(items: T[], itemId: Id, updater: (item: T) => T): T[] {
+  let changed = false
+  const nextItems = items.map((item) => {
+    if (item.id === itemId) {
+      const nextItem = updater(item)
+      if (nextItem !== item) changed = true
+      return nextItem
+    }
+    const children = updateTreeNode(item.children, itemId, updater)
+    if (children === item.children) return item
+    changed = true
+    return { ...item, children }
+  })
+  return changed ? nextItems : items
+}
+
+function addTreeNode<T extends TreeNode<T>>(items: T[], parentId: Id | null, item: T): T[] {
+  if (!parentId) return [...items, item]
+  return updateTreeNode(items, parentId, (parent) => ({ ...parent, children: [...parent.children, item] }))
+}
+
+function deleteTreeNode<T extends TreeNode<T>>(items: T[], itemId: Id): T[] {
+  return items
+    .filter((item) => item.id !== itemId)
+    .map((item) => ({ ...item, children: deleteTreeNode(item.children, itemId) }))
+}
+
+function extractTreeNode<T extends TreeNode<T>>(items: T[], itemId: Id): { items: T[]; item: T | null } {
+  let found: T | null = null
+  const nextItems = items.flatMap((item) => {
+    if (item.id === itemId) {
+      found = item
+      return []
+    }
+    const childResult = extractTreeNode(item.children, itemId)
+    if (childResult.item) {
+      found = childResult.item
+      return [{ ...item, children: childResult.items }]
+    }
+    return [item]
+  })
+  return { items: nextItems, item: found }
+}
+
+function insertTreeNode<T extends TreeNode<T>>(
+  items: T[],
+  itemToInsert: T,
+  targetId: Id,
+  placement: MovePlacement,
+): T[] | null {
+  let inserted = false
+  const nextItems = items.flatMap((item) => {
+    if (item.id === targetId) {
+      inserted = true
+      if (placement === 'before') return [itemToInsert, item]
+      if (placement === 'after') return [item, itemToInsert]
+      return [{ ...item, children: [...item.children, itemToInsert] }]
+    }
+    const childResult = insertTreeNode(item.children, itemToInsert, targetId, placement)
+    if (childResult) {
+      inserted = true
+      return [{ ...item, children: childResult }]
+    }
+    return [item]
+  })
+  return inserted ? nextItems : null
+}
+
+function moveTreeNode<T extends TreeNode<T>>(items: T[], sourceId: Id, targetId: Id, placement: MovePlacement): T[] {
+  if (sourceId === targetId || findTreeNode(findTreeNode(items, sourceId)?.children ?? [], targetId)) {
+    return items
+  }
+  const extracted = extractTreeNode(items, sourceId)
+  if (!extracted.item) return items
+  return insertTreeNode(extracted.items, extracted.item, targetId, placement) ?? items
+}
+
+function moveTreeNodeWithinLevel<T extends TreeNode<T>>(items: T[], itemId: Id, direction: MoveDirection): T[] {
+  const index = items.findIndex((item) => item.id === itemId)
+  if (index !== -1) {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= items.length) return items
+    const nextItems = [...items]
+    const [item] = nextItems.splice(index, 1)
+    nextItems.splice(targetIndex, 0, item)
+    return nextItems
+  }
+  let changed = false
+  const nextItems = items.map((item) => {
+    const children = moveTreeNodeWithinLevel(item.children, itemId, direction)
+    if (children === item.children) return item
+    changed = true
+    return { ...item, children }
+  })
+  return changed ? nextItems : items
+}
+
+// ---------------------------------------------------------------------------
+// List templates
+// ---------------------------------------------------------------------------
+
+export const MIN_LIST_ITEM_PROBABILITY = 50
+
+export function clampListItemProbability(probability: number): number {
+  if (!Number.isFinite(probability)) return MIN_LIST_ITEM_PROBABILITY
+  return Math.max(MIN_LIST_ITEM_PROBABILITY, Math.min(100, Math.round(probability)))
+}
+
+export function createListTemplateItem(text = ''): ListTemplateItem {
+  return {
+    id: createId('list_item'),
+    text,
+    html: escapeHTML(text),
+    probability: 100,
+    children: [],
+  }
+}
+
+export function createListTemplate(name = 'New list'): ListTemplate {
+  const createdAt = nowISO()
+  return {
+    id: createId('list_template'),
+    name,
+    maxExpectedWords: 0,
+    items: [createListTemplateItem('First item')],
+    createdAt,
+    updatedAt: createdAt,
+  }
+}
+
+export function findListTemplateItem(items: ListTemplateItem[], itemId: Id): ListTemplateItem | null {
+  return findTreeNode(items, itemId)
+}
+
+export function updateListTemplateItem(
+  items: ListTemplateItem[],
+  itemId: Id,
+  updater: (item: ListTemplateItem) => ListTemplateItem,
+): ListTemplateItem[] {
+  return updateTreeNode(items, itemId, updater)
+}
+
+export function addListTemplateItem(
+  items: ListTemplateItem[],
+  parentId: Id | null,
+  item = createListTemplateItem(),
+): ListTemplateItem[] {
+  return addTreeNode(items, parentId, item)
+}
+
+export function deleteListTemplateItem(items: ListTemplateItem[], itemId: Id): ListTemplateItem[] {
+  return deleteTreeNode(items, itemId)
+}
+
+export function moveListTemplateItem(
+  items: ListTemplateItem[],
+  sourceId: Id,
+  targetId: Id,
+  placement: MovePlacement,
+): ListTemplateItem[] {
+  return moveTreeNode(items, sourceId, targetId, placement)
+}
+
+export function moveListTemplateItemWithinLevel(
+  items: ListTemplateItem[],
+  itemId: Id,
+  direction: MoveDirection,
+): ListTemplateItem[] {
+  return moveTreeNodeWithinLevel(items, itemId, direction)
+}
+
+export function outdentListTemplateItem(items: ListTemplateItem[], itemId: Id): ListTemplateItem[] {
+  return outdentItem(items, itemId)
+}
+
+// Splits a list-template item's text into two siblings (Enter behaviour),
+// mirroring splitPlanItem but for the option-less list item shape.
+export function splitListTemplateItem(
+  items: ListTemplateItem[],
+  itemId: Id,
+  patch: Partial<Pick<ListTemplateItem, 'text' | 'html'>>,
+  newItem: ListTemplateItem,
+  placement: 'before' | 'after' = 'after',
+): ListTemplateItem[] {
+  let changed = false
+  const nextItems = items.flatMap((item) => {
+    if (item.id === itemId) {
+      changed = true
+      const patchedItem = { ...item, ...patch }
+      return placement === 'before' ? [newItem, patchedItem] : [patchedItem, newItem]
+    }
+    const children = splitListTemplateItem(item.children, itemId, patch, newItem, placement)
+    if (children === item.children) return [item]
+    changed = true
+    return [{ ...item, children }]
+  })
+  return changed ? nextItems : items
+}
+
+// ---------------------------------------------------------------------------
+// List instances (generated checklists; reuse PlanItem)
+// ---------------------------------------------------------------------------
+
+export function generateListFromTemplate(template: ListTemplate, date: string): ListInstance {
+  return {
+    id: createId('list'),
+    date,
+    listTemplateId: template.id,
+    createdAt: nowISO(),
+    items: generateListItems(template.items),
+  }
+}
+
+function generateListItems(items: ListTemplateItem[]): PlanItem[] {
+  return items.flatMap((item) => {
+    const appears = Math.random() * 100 < clampListItemProbability(item.probability)
+    if (!appears) return []
+    return [
+      {
+        ...createPlanItem(item.text),
+        html: item.html || escapeHTML(item.text),
+        children: generateListItems(item.children),
+      },
+    ]
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Word counting (list-template "expected word count" cap)
+// ---------------------------------------------------------------------------
+
+export function wordCount(text: string): number {
+  const trimmed = text.trim()
+  if (!trimmed) return 0
+  return trimmed.split(/\s+/).length
+}
+
+// Probability-weighted expected word count of a whole list template:
+// sum over every item of wordCount(text) * probability / 100.
+export function expectedWordCount(items: ListTemplateItem[]): number {
+  return items.reduce((sum, item) => {
+    const itemWords = (wordCount(htmlToPlainText(item.html)) || wordCount(item.text)) *
+      (clampListItemProbability(item.probability) / 100)
+    return sum + itemWords + expectedWordCount(item.children)
+  }, 0)
+}
+
+// ---------------------------------------------------------------------------
+// Metrics
+// ---------------------------------------------------------------------------
+
+export function createMetricQuestion(prompt = '', type: MetricQuestionType = 'text'): MetricQuestion {
+  return { id: createId('metric_question'), prompt, type }
+}
+
+export function createMetric(name = 'New metric'): Metric {
+  const createdAt = nowISO()
+  return {
+    id: createId('metric'),
+    name,
+    questions: [createMetricQuestion('')],
+    createdAt,
+    updatedAt: createdAt,
+  }
+}
+
+export function createMetricEntry(metricId: Id, date: string): MetricEntry {
+  const createdAt = nowISO()
+  return {
+    id: createId('metric_entry'),
+    metricId,
+    date,
+    answers: [],
+    createdAt,
+    updatedAt: createdAt,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Internal links — a plan/list item whose text matches a list template name
+// (exact, case-insensitive) or contains a metric name (substring) becomes a
+// clickable opener.
+// ---------------------------------------------------------------------------
+
+export type ItemLink =
+  | { kind: 'list'; listTemplateId: Id; label: string }
+  | { kind: 'metric'; metricId: Id; label: string }
+
+export function resolveItemLinks(text: string, listTemplates: ListTemplate[], metrics: Metric[]): ItemLink[] {
+  const trimmed = text.trim()
+  if (!trimmed) return []
+
+  const lower = trimmed.toLowerCase()
+  const links: ItemLink[] = []
+
+  for (const template of listTemplates) {
+    const name = template.name.trim()
+    if (name && name.toLowerCase() === lower) {
+      links.push({ kind: 'list', listTemplateId: template.id, label: name })
+    }
+  }
+
+  for (const metric of metrics) {
+    const name = metric.name.trim()
+    if (name && lower.includes(name.toLowerCase())) {
+      links.push({ kind: 'metric', metricId: metric.id, label: name })
+    }
+  }
+
+  return links
+}
+
+export type ItemTextSegment = { text: string; link: ItemLink | null }
+
+// Splits an item's text into segments, marking only the matching substrings as
+// links: the whole text for a list-name match (exact), or each metric-name
+// occurrence (substring) for metrics. Everything else stays plain text.
+export function linkifyItemText(text: string, listTemplates: ListTemplate[], metrics: Metric[]): ItemTextSegment[] {
+  if (text === '') return [{ text, link: null }]
+
+  const trimmed = text.trim()
+  if (trimmed) {
+    const lower = trimmed.toLowerCase()
+    for (const template of listTemplates) {
+      const name = template.name.trim()
+      if (name && name.toLowerCase() === lower) {
+        return [{ text, link: { kind: 'list', listTemplateId: template.id, label: name } }]
+      }
+    }
+  }
+
+  const haystack = text.toLowerCase()
+  const matches: { start: number; end: number; link: ItemLink }[] = []
+  for (const metric of metrics) {
+    const name = metric.name.trim()
+    if (!name) continue
+    const needle = name.toLowerCase()
+    let index = haystack.indexOf(needle)
+    while (index !== -1) {
+      matches.push({ start: index, end: index + name.length, link: { kind: 'metric', metricId: metric.id, label: name } })
+      index = haystack.indexOf(needle, index + name.length)
+    }
+  }
+
+  if (matches.length === 0) return [{ text, link: null }]
+
+  // Earliest start first, longest match wins on ties; skip overlaps.
+  matches.sort((a, b) => a.start - b.start || b.end - a.end)
+  const segments: ItemTextSegment[] = []
+  let cursor = 0
+  for (const match of matches) {
+    if (match.start < cursor) continue
+    if (match.start > cursor) segments.push({ text: text.slice(cursor, match.start), link: null })
+    segments.push({ text: text.slice(match.start, match.end), link: match.link })
+    cursor = match.end
+  }
+  if (cursor < text.length) segments.push({ text: text.slice(cursor), link: null })
+  return segments
 }

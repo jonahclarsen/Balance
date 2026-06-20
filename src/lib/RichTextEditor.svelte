@@ -15,7 +15,7 @@
   export let html = ''
   export let text = ''
   export let inputId: Id
-  export let kind: 'plan' | 'template-option'
+  export let kind: 'plan' | 'template-option' | 'list-template-item'
   export let className = ''
   export let done = false
   export let placeholder = ''
@@ -37,6 +37,7 @@
   export let onTabKey:
     | ((direction: 'in' | 'out', editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
+  export let onFocusChange: ((focused: boolean) => void) | null = null
 
   let editor: HTMLDivElement
   let renderedHTML = html || escapeHTML(text)
@@ -207,6 +208,7 @@
   }
 
   function handleFocus() {
+    onFocusChange?.(true)
     if (!restoreSelectionOnNextFocus) return
 
     scheduleSelectionRestore()
@@ -215,6 +217,7 @@
   function handleBlur() {
     if (!editor) return
 
+    onFocusChange?.(false)
     saveSelection(editor)
     // persistEditor below may rewrite innerHTML to its normalized form (when the user just
     // typed un-normalized content). That rewrite collapses the live selection to offset 0 and
@@ -473,6 +476,8 @@
   data-plan-text-input-id={kind === 'plan' ? inputId : undefined}
   data-template-option-text-input={kind === 'template-option' ? '' : undefined}
   data-template-option-text-input-id={kind === 'template-option' ? inputId : undefined}
+  data-list-template-text-input={kind === 'list-template-item' ? '' : undefined}
+  data-list-template-text-input-id={kind === 'list-template-item' ? inputId : undefined}
   contenteditable="true"
   role="textbox"
   tabindex="0"

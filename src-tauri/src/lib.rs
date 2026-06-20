@@ -26,8 +26,27 @@ const AUTO_JSON_EXPORT_LAST_ERROR: &str = "auto_json_export_last_error";
 const AUTO_JSON_EXPORT_LAST_ERROR_AT: &str = "auto_json_export_last_error_at";
 const AUTO_JSON_EXPORT_ERROR_ACK_AT: &str = "auto_json_export_error_ack_at";
 const GOAL_DATA: &str = "goal_data";
+// Lists + Metrics state is stored as a single JSON metadata blob (like GOAL_DATA)
+// rather than materialized into per-row tables.
+const LISTS_METRICS_DATA: &str = "lists_metrics_data";
 const DEFAULT_AUTO_JSON_EXPORT_TIME: &str = "23:55";
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
+
+#[cfg(target_os = "macos")]
+fn disable_automatic_text_replacement() {
+    use objc2_foundation::{NSString, NSUserDefaults};
+
+    // WebKit gives this app-specific preference precedence over the system-wide
+    // NSSpellChecker setting. Set it before the webview is created so text
+    // replacements such as "omw" never become enabled in editable elements.
+    NSUserDefaults::standardUserDefaults().setBool_forKey(
+        false,
+        &NSString::from_str("WebAutomaticTextReplacementEnabled"),
+    );
+}
+
+#[cfg(not(target_os = "macos"))]
+fn disable_automatic_text_replacement() {}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -332,6 +351,7 @@ fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>
         .unwrap_or(0);
     let active_plan_date = metadata_value(connection, "active_plan_date")?.unwrap_or_default();
     let goal_data = read_goal_data(connection)?;
+    let lists_metrics_data = read_lists_metrics_data(connection)?;
 
     Ok(Some(json!({
         "schemaVersion": 1,
@@ -341,6 +361,10 @@ fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>
         "activePlanDate": active_plan_date,
         "templates": read_templates(connection)?,
         "plans": read_plans(connection)?,
+        "listTemplates": lists_metrics_data["listTemplates"].clone(),
+        "lists": lists_metrics_data["lists"].clone(),
+        "metrics": lists_metrics_data["metrics"].clone(),
+        "metricEntries": lists_metrics_data["metricEntries"].clone(),
         "goals": goal_data["goals"].clone(),
         "goalCompletions": goal_data["goalCompletions"].clone(),
         "operations": [],
@@ -550,6 +574,45 @@ fn goal_data_from_state(state: &Value) -> Value {
             .cloned()
             .unwrap_or_default(),
     })
+}
+
+const LISTS_METRICS_KEYS: [&str; 4] = ["listTemplates", "lists", "metrics", "metricEntries"];
+
+fn read_lists_metrics_data(connection: &Connection) -> Result<Value, String> {
+    let parsed = match metadata_value(connection, LISTS_METRICS_DATA)? {
+        Some(raw) => serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| json!({})),
+        None => json!({}),
+    };
+
+    let mut result = serde_json::Map::new();
+    for key in LISTS_METRICS_KEYS {
+        let value = parsed
+            .get(key)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        result.insert(key.to_string(), Value::Array(value));
+    }
+    Ok(Value::Object(result))
+}
+
+fn lists_metrics_data_from_state(state: &Value) -> Value {
+    let mut result = serde_json::Map::new();
+    for key in LISTS_METRICS_KEYS {
+        let value = state
+            .get(key)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        result.insert(key.to_string(), Value::Array(value));
+    }
+    Value::Object(result)
+}
+
+fn is_lists_metrics_operation(operation_type: &str) -> bool {
+    // All Lists/Metrics operation types contain "list" or "metric"; no existing
+    // plan/template/goal operation type does.
+    operation_type.contains("list") || operation_type.contains("metric")
 }
 
 fn export_settings(
@@ -830,6 +893,12 @@ fn replace_domain_state(connection: &Connection, state: &Value) -> Result<(), St
         connection,
         GOAL_DATA,
         &goal_data_from_state(state).to_string(),
+    )?;
+
+    set_metadata(
+        connection,
+        LISTS_METRICS_DATA,
+        &lists_metrics_data_from_state(state).to_string(),
     )?;
 
     if let Some(active_plan_date) = optional_string(state, "activePlanDate")? {
@@ -1411,12 +1480,19 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         "history_undo" | "history_redo" => {
             apply_operation(tx, required_value(payload, "operation")?)
         }
+        // Lists/Metrics state lives in the LISTS_METRICS_DATA blob below, so these
+        // operations need no per-row table mutation.
+        "replace_lists_metrics_data" => Ok(()),
+        other if is_lists_metrics_operation(other) => Ok(()),
         other => Err(format!("Unsupported operation type: {other}")),
     };
 
     result?;
     if let Some(goal_data) = payload.get("goalData") {
         set_metadata(tx, GOAL_DATA, &goal_data.to_string())?;
+    }
+    if let Some(lists_metrics_data) = payload.get("listsMetricsData") {
+        set_metadata(tx, LISTS_METRICS_DATA, &lists_metrics_data.to_string())?;
     }
     Ok(())
 }
@@ -1458,20 +1534,36 @@ fn build_undo_operation(
 ) -> Result<Option<Value>, String> {
     let domain_undo = build_domain_undo_operation(connection, operation)?;
     let payload = required_value(operation, "payload")?;
-    if payload.get("goalData").is_none() {
+
+    // Capture pre-apply snapshots of any embedded blob so undo restores them.
+    let mut snapshot_undos: Vec<Value> = Vec::new();
+    if payload.get("goalData").is_some() {
+        snapshot_undos.push(storage_operation(
+            "replace_goal_data",
+            json!({ "goalData": read_goal_data(connection)? }),
+        ));
+    }
+    if payload.get("listsMetricsData").is_some() {
+        snapshot_undos.push(storage_operation(
+            "replace_lists_metrics_data",
+            json!({ "listsMetricsData": read_lists_metrics_data(connection)? }),
+        ));
+    }
+
+    if snapshot_undos.is_empty() {
         return Ok(domain_undo);
     }
 
-    let goal_undo = storage_operation(
-        "replace_goal_data",
-        json!({ "goalData": read_goal_data(connection)? }),
-    );
+    let mut operations: Vec<Value> = Vec::new();
+    if let Some(operation) = domain_undo {
+        operations.push(operation);
+    }
+    operations.extend(snapshot_undos);
 
-    Ok(Some(match domain_undo {
-        Some(operation) => {
-            storage_operation("batch", json!({ "operations": [operation, goal_undo] }))
-        }
-        None => goal_undo,
+    Ok(Some(if operations.len() == 1 {
+        operations.into_iter().next().expect("one operation")
+    } else {
+        storage_operation("batch", json!({ "operations": operations }))
     }))
 }
 
@@ -4314,6 +4406,8 @@ fn app_database_path_from_data_dir(data_dir: &Path) -> PathBuf {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    disable_automatic_text_replacement();
+
     tauri::Builder::default()
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -4434,6 +4528,56 @@ mod tests {
             .unwrap();
         assert_eq!(undone["goals"][0]["name"], "Exercise");
         assert_eq!(undone["goalCompletions"], json!([]));
+    }
+
+    #[test]
+    fn lists_metrics_data_persists_and_undoes_with_operations() {
+        let database = TestDatabase::new("lists-metrics-data");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let state = test_state("Lists test");
+        replace_app_state(&mut connection, &state).unwrap();
+
+        let initial = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(initial["listTemplates"], json!([]));
+        assert_eq!(initial["metrics"], json!([]));
+
+        // A previously unsupported operation type must now persist via the blob.
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "add_list_template",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "list_template_1",
+                    "listsMetricsData": {
+                        "listTemplates": [{
+                            "id": "list_template_1",
+                            "name": "Groceries",
+                            "maxExpectedWords": 0,
+                            "items": [],
+                            "createdAt": "2026-05-21T00:01:00Z",
+                            "updatedAt": "2026-05-21T00:01:00Z"
+                        }],
+                        "lists": [],
+                        "metrics": [],
+                        "metricEntries": []
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let after = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(after["listTemplates"][0]["name"], "Groceries");
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(undone["listTemplates"], json!([]));
     }
 
     #[test]

@@ -2,6 +2,7 @@
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { defaultTemplateItemTimeRange, planItemTimeOverlapsPrevious } from './planner'
+  import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import type { Id, MoveDirection, MovePlacement, TemplateItem, TemplateOption } from './types'
@@ -291,19 +292,11 @@
             onTabKey={handleTextTab}
             onBackspaceEmpty={(editor) => handleBackspaceEmpty(option, index, editor)}
           />
-          <input
-            class="probability"
-            type="number"
-            min="0"
-            max="100"
+          <ProbabilitySlider
             value={option.probability}
-            aria-label="Probability"
-            on:input={(event) =>
-              patchOption(templateId, item.id, option.id, {
-                probability: Number(event.currentTarget.value) || 0,
-              })}
+            min={0}
+            onChange={(probability) => patchOption(templateId, item.id, option.id, { probability })}
           />
-          <span class="percent">%</span>
           <button
             class="icon-button danger"
             type="button"

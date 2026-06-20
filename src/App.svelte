@@ -5,6 +5,10 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
+  import ListTemplateItemEditor from './lib/ListTemplateItemEditor.svelte'
+  import OverlayModal from './lib/OverlayModal.svelte'
+  import MetricQuiz from './lib/MetricQuiz.svelte'
+  import MetricGraph from './lib/MetricGraph.svelte'
   import { filterGoalsByPhrase, goalDaysUntilLapse, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
@@ -18,15 +22,16 @@
     plannerStore,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { Id, MoveDirection, PlanItem } from './lib/types'
-  import { DEFAULT_DAILY_REMINDER, escapeHTML, formatPlanTitle, todayISO } from './lib/planner'
+  import type { Id, Metric, MetricQuestion, MoveDirection, PlanItem } from './lib/types'
+  import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, type ItemLink } from './lib/planner'
 
   // Pasting four or more items onto a different day routes through a review queue
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
   const PASTE_REVIEW_THRESHOLD = 4
   const PASTE_REVIEW_COOLDOWN_MS = 2000
 
-  type View = 'today' | 'templates' | 'goals' | 'settings'
+  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'metrics' | 'goals' | 'settings'
+  type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
     defaultExportDirectory: string
@@ -59,6 +64,29 @@
   let doneTintColor = ''
   let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
   let selectedTemplateId = ''
+  // Lists + Metrics feature state
+  let selectedListTemplateId = ''
+  let listViewTemplateId = ''
+  let wordCapUnlocked = false
+  let selectedMetricId = ''
+  let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
+  let listOverlayArmed = false
+  let metricOverlay: { metricId: Id; date: string } | null = null
+  let importMetricId = ''
+  let importRaw = ''
+  let importParser = `// Return an array of rows: { date: 'YYYY-MM-DD', answers: { questionKey: value } }
+// questionKey matches a question's prompt (case-insensitive) or its 0-based index.
+// Booleans: true/'y'/'yes' -> yes, anything else -> no.
+const rows = []
+for (const block of raw.trim().split(/\\n(?=\\w+ \\d+:)/)) {
+  const header = block.match(/^(\\w+ \\d+):/)
+  if (!header) continue
+  // map your header to an ISO date here
+  rows.push({ date: header[1], answers: {} })
+}
+return rows`
+  let importError = ''
+  let importPreview: { date: string; answers: { questionId: Id; value: string }[] }[] | null = null
   let recoveryKeyStatus: RecoveryKeyStatus | null = null
   let recoveryKeySaved = false
   let recoveryKeyCopied = false
@@ -112,6 +140,7 @@
   let pasteReviewRejecting = false
   let pasteReviewEditDraft = ''
   let pasteReviewInput: HTMLInputElement | null = null
+  let pasteReviewList: HTMLDivElement | null = null
   // Each card enforces a read-cooldown before "Keep"/Enter is armed, so items
   // can't be blown through without being read. pasteReviewProgress drives the bar.
   let pasteReviewReady = false
@@ -143,6 +172,34 @@
   $: if (!editingDailyReminder) dailyReminderDraft = activeDailyReminder
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
+
+  // ---- Lists ----
+  $: listTemplates = $plannerStore.listTemplates
+  $: selectedListTemplate = listTemplates.find((template) => template.id === selectedListTemplateId) ?? listTemplates[0]
+  $: if (!selectedListTemplateId && listTemplates[0]) selectedListTemplateId = listTemplates[0].id
+  $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = listTemplates[0].id
+  $: selectedListWordCount = selectedListTemplate ? Math.round(expectedWordCount(selectedListTemplate.items) * 10) / 10 : 0
+  $: listViewInstance = $plannerStore.lists.find(
+    (list) => list.listTemplateId === listViewTemplateId && list.date === $plannerStore.activePlanDate,
+  )
+  // ---- Metrics ----
+  $: metrics = $plannerStore.metrics
+  $: if (!importMetricId && metrics[0]) importMetricId = metrics[0].id
+
+  // ---- Overlays: auto-close a list toast once every box is checked ----
+  // Only auto-close when the list *transitions* to complete while open, so
+  // reopening an already-finished list lets you review it instead of slamming shut.
+  $: listOverlayInstance = listOverlay ? $plannerStore.lists.find((list) => list.id === listOverlay?.listId) : null
+  $: if (listOverlay && listOverlayInstance) {
+    if (!allPlanItemsDone(listOverlayInstance.items)) {
+      listOverlayArmed = true
+    } else if (listOverlayArmed) {
+      completeListOverlay()
+    }
+  }
+  $: metricOverlayMetric = metricOverlay ? metrics.find((metric) => metric.id === metricOverlay?.metricId) : null
+  $: metricOverlayAnswers =
+    metricOverlay && metricOverlayMetric ? answersForEntry(metricOverlay.metricId, metricOverlay.date) : {}
   $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
   $: selectedPlanItemIdSet = new Set(selectedPlanItemIds)
   $: activeGoalCount = $plannerStore.goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
@@ -172,6 +229,140 @@
   $: filteredDatabaseOperations = filterDatabaseRows(databaseInspection?.operations ?? [], databaseSearch)
   $: filteredDatabaseHistoryEntries = filterDatabaseRows(databaseInspection?.historyEntries ?? [], databaseSearch)
   $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
+
+  function allPlanItemsDone(items: PlanItem[]): boolean {
+    if (items.length === 0) return false
+    return items.every((item) => item.done && (item.children.length === 0 || allPlanItemsDone(item.children)))
+  }
+
+  function openLink(link: ItemLink, opener: Opener) {
+    const date = $plannerStore.activePlanDate
+    if (link.kind === 'list') {
+      const listId = plannerStore.ensureListForDate(link.listTemplateId, date)
+      if (listId) {
+        listOverlayArmed = false
+        listOverlay = { listId, date, opener }
+      }
+    } else {
+      metricOverlay = { metricId: link.metricId, date }
+    }
+  }
+
+  function completeListOverlay() {
+    const overlay = listOverlay
+    if (!overlay) return
+    listOverlay = null
+    const opener = overlay.opener
+    if (!opener) return
+    // This runs from a reactive triggered by a store change; defer the opener
+    // patch out of the current flush so the nested store update isn't dropped.
+    queueMicrotask(() => {
+      if (opener.container === 'plan') {
+        plannerStore.patchPlanItem(opener.containerId, opener.itemId, { done: true })
+      } else {
+        plannerStore.patchListItem(opener.containerId, opener.itemId, { done: true })
+      }
+    })
+  }
+
+  function answersForEntry(metricId: Id, date: string): Record<Id, string> {
+    const entry = $plannerStore.metricEntries.find((candidate) => candidate.metricId === metricId && candidate.date === date)
+    const map: Record<Id, string> = {}
+    for (const answer of entry?.answers ?? []) map[answer.questionId] = answer.value
+    return map
+  }
+
+  type MetricGraphData = { type: 'number' | 'boolean'; points: { date: string; value: number }[] } | null
+
+  function buildGraph(metric: Metric, question: MetricQuestion): MetricGraphData {
+    const rows = $plannerStore.metricEntries
+      .filter((entry) => entry.metricId === metric.id)
+      .map((entry) => ({ date: entry.date, value: entry.answers.find((answer) => answer.questionId === question.id)?.value ?? '' }))
+
+    if (question.type === 'boolean') {
+      return { type: 'boolean', points: rows.map((row) => ({ date: row.date, value: row.value === 'y' ? 1 : 0 })) }
+    }
+
+    const nonEmpty = rows.filter((row) => row.value.trim() !== '')
+    const numeric = nonEmpty.map((row) => ({ date: row.date, value: Number(row.value) }))
+    if (nonEmpty.length > 0 && numeric.every((point) => Number.isFinite(point.value))) {
+      return { type: 'number', points: numeric }
+    }
+    return null
+  }
+
+  function findImportQuestion(metric: Metric, key: string): MetricQuestion | null {
+    const lower = key.trim().toLowerCase()
+    const byId = metric.questions.find((question) => question.id === key)
+    if (byId) return byId
+    const byPrompt = metric.questions.find((question) => question.prompt.trim().toLowerCase() === lower)
+    if (byPrompt) return byPrompt
+    const index = Number(key)
+    if (Number.isInteger(index) && metric.questions[index]) return metric.questions[index]
+    return null
+  }
+
+  function normalizeImportValue(raw: unknown, question: MetricQuestion): string {
+    if (question.type === 'boolean') {
+      const truthy = raw === true || raw === 1 || ['y', 'yes', 'true', '1'].includes(String(raw).trim().toLowerCase())
+      return truthy ? 'y' : 'n'
+    }
+    return String(raw)
+  }
+
+  function runImportPreview() {
+    importError = ''
+    importPreview = null
+    const metric = metrics.find((candidate) => candidate.id === importMetricId)
+    if (!metric) {
+      importError = 'Select a metric first.'
+      return
+    }
+    try {
+      // eslint-disable-next-line no-new-func
+      const parser = new Function('raw', importParser) as (raw: string) => unknown
+      const result = parser(importRaw)
+      if (!Array.isArray(result)) throw new Error('Parser must return an array of rows.')
+
+      importPreview = result.map((row) => {
+        const record = row as { date?: unknown; answers?: Record<string, unknown> }
+        const date = String(record.date ?? '').trim()
+        const answers: { questionId: Id; value: string }[] = []
+        for (const [key, value] of Object.entries(record.answers ?? {})) {
+          const question = findImportQuestion(metric, key)
+          if (question) answers.push({ questionId: question.id, value: normalizeImportValue(value, question) })
+        }
+        return { date, answers }
+      })
+    } catch (error) {
+      importError = error instanceof Error ? `${error.name}: ${error.message}` : String(error)
+    }
+  }
+
+  function runImport() {
+    if (!importPreview) runImportPreview()
+    if (!importPreview || importError) return
+    const valid = importPreview.filter((row) => /^\d{4}-\d{2}-\d{2}$/.test(row.date) && row.answers.length > 0)
+    if (valid.length === 0) {
+      importError = 'No rows with a valid YYYY-MM-DD date and at least one mapped answer.'
+      return
+    }
+    plannerStore.bulkImportMetricEntries(importMetricId, valid)
+    importPreview = null
+    importRaw = ''
+  }
+
+  function createListTemplateAndSelect() {
+    const id = plannerStore.addListTemplate()
+    selectedListTemplateId = id
+    view = 'listTemplates'
+  }
+
+  function createMetricAndSelect() {
+    const id = plannerStore.addMetric()
+    selectedMetricId = id
+    if (!importMetricId) importMetricId = id
+  }
 
   onMount(() => {
     let mounted = true
@@ -1321,6 +1512,8 @@
 
     pasteReview = { ...pasteReview, approved, rejected, index: next }
     startPasteReviewCooldown()
+    await tick()
+    pasteReviewList?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }
 
   function cancelPasteReview() {
@@ -1675,7 +1868,10 @@
 
     <nav aria-label="Primary">
       <button class:active={view === 'today'} type="button" on:click={() => (view = 'today')}>Today</button>
-      <button class:active={view === 'templates'} type="button" on:click={() => (view = 'templates')}>Templates</button>
+      <button class:active={view === 'lists'} type="button" on:click={() => (view = 'lists')}>Lists</button>
+      <button class:active={view === 'templates'} type="button" on:click={() => (view = 'templates')}>Day Templates</button>
+      <button class:active={view === 'listTemplates'} type="button" on:click={() => (view = 'listTemplates')}>List Templates</button>
+      <button class:active={view === 'metrics'} type="button" on:click={() => (view = 'metrics')}>Metrics</button>
       <button class:active={view === 'goals'} type="button" on:click={() => { void openGoals() }}>Goals</button>
       <button class:active={view === 'settings'} type="button" on:click={() => (view = 'settings')}>Settings</button>
     </nav>
@@ -1776,6 +1972,9 @@
               {dueTodayGoals}
               planDate={activePlan.date}
               onGoalBadgeClick={focusGoalInRhythm}
+              {listTemplates}
+              {metrics}
+              onOpenLink={(link, itemId) => openLink(link, { container: 'plan', containerId: activePlan.id, itemId })}
             />
           {/each}
 
@@ -1841,6 +2040,273 @@
           <button class="add-row" type="button" on:click={() => plannerStore.addRootTemplateItem(selectedTemplate.id)}>
             + Add template item
           </button>
+        </div>
+      {/if}
+    {/if}
+
+    {#if view === 'listTemplates'}
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Generator</p>
+          <h2>List template</h2>
+        </div>
+        <div class="template-header-controls">
+          {#if selectedListTemplate}
+            <select bind:value={selectedListTemplateId} aria-label="Select list template">
+              {#each listTemplates as template (template.id)}
+                <option value={template.id}>{template.name}</option>
+              {/each}
+            </select>
+          {/if}
+          <button type="button" on:click={createListTemplateAndSelect}>+ New list</button>
+        </div>
+      </header>
+
+      {#if selectedListTemplate}
+        <div class="template-panel">
+          <div class="word-cap-bar">
+            <span
+              class="word-cap-count"
+              class:over={selectedListTemplate.maxExpectedWords > 0 &&
+                selectedListWordCount > selectedListTemplate.maxExpectedWords}
+            >
+              {selectedListWordCount} / {selectedListTemplate.maxExpectedWords || '∞'} expected words
+            </span>
+            <div class="word-cap-edit">
+              <button
+                class="icon-button"
+                type="button"
+                title={wordCapUnlocked ? 'Lock max word count' : 'Unlock to edit max word count'}
+                aria-label={wordCapUnlocked ? 'Lock max word count' : 'Unlock to edit max word count'}
+                aria-pressed={wordCapUnlocked}
+                on:click={() => (wordCapUnlocked = !wordCapUnlocked)}
+              >
+                {wordCapUnlocked ? '🔓' : '🔒'}
+              </button>
+              <label>
+                max
+                <input
+                  type="number"
+                  min="0"
+                  disabled={!wordCapUnlocked}
+                  value={selectedListTemplate.maxExpectedWords}
+                  on:input={(event) =>
+                    plannerStore.setListTemplateMaxWords(selectedListTemplate.id, Number(event.currentTarget.value) || 0)}
+                />
+              </label>
+            </div>
+          </div>
+
+          <label class="field-label" for="list-template-name">List name</label>
+          <input
+            id="list-template-name"
+            class="title-input"
+            value={selectedListTemplate.name}
+            on:input={(event) => plannerStore.renameListTemplate(selectedListTemplate.id, event.currentTarget.value)}
+          />
+
+          <div class="template-list">
+            {#each selectedListTemplate.items as item (item.id)}
+              <ListTemplateItemEditor
+                {item}
+                allItems={selectedListTemplate.items}
+                templateId={selectedListTemplate.id}
+                maxExpectedWords={selectedListTemplate.maxExpectedWords}
+                patchItem={plannerStore.patchListTemplateItem}
+                splitItem={plannerStore.splitListTemplateItem}
+                deleteItem={plannerStore.deleteListTemplateItem}
+                moveItem={plannerStore.moveListTemplateItem}
+                moveItemWithinLevel={plannerStore.moveListTemplateItemWithinLevel}
+                outdentItem={plannerStore.outdentListTemplateItem}
+                addChild={plannerStore.addListTemplateChild}
+                historyRevision={$plannerStore.historyRevision}
+              />
+            {/each}
+          </div>
+
+          <div class="template-panel-actions">
+            <button class="add-row" type="button" on:click={() => plannerStore.addRootListTemplateItem(selectedListTemplate.id)}>
+              + Add list item
+            </button>
+            <button class="ghost danger" type="button" on:click={() => plannerStore.deleteListTemplate(selectedListTemplate.id)}>
+              Delete list template
+            </button>
+          </div>
+        </div>
+      {:else}
+        <div class="empty-state">
+          <h3>No list templates yet</h3>
+          <p>Create one to start building checklists.</p>
+          <button class="primary" type="button" on:click={createListTemplateAndSelect}>+ New list template</button>
+        </div>
+      {/if}
+    {/if}
+
+    {#if view === 'lists'}
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Checklists</p>
+          <h2>{formatPlanTitle($plannerStore.activePlanDate)}</h2>
+        </div>
+        <div class="template-header-controls">
+          {#if listTemplates.length > 0}
+            <select bind:value={listViewTemplateId} aria-label="Select list">
+              {#each listTemplates as template (template.id)}
+                <option value={template.id}>{template.name}</option>
+              {/each}
+            </select>
+          {/if}
+          <div class="date-controls" aria-label="Day navigation">
+            <button class="date-nav-button" type="button" aria-label="Previous day" on:click={() => shiftActivePlanDate(-1)}>&lt;</button>
+            <button class="date-nav-button" type="button" aria-label="Next day" on:click={() => shiftActivePlanDate(1)}>&gt;</button>
+            <input
+              class="date-input"
+              type="date"
+              value={$plannerStore.activePlanDate}
+              on:input={(event) => plannerStore.setActivePlanDate(event.currentTarget.value)}
+            />
+          </div>
+        </div>
+      </header>
+
+      {#if listTemplates.length === 0}
+        <div class="empty-state">
+          <h3>No lists yet</h3>
+          <p>Create a list template first (List Templates).</p>
+          <button class="primary" type="button" on:click={createListTemplateAndSelect}>+ New list template</button>
+        </div>
+      {:else if listViewInstance}
+        <div class="list-panel">
+          {#each listViewInstance.items as item (item.id)}
+            <PlanItemEditor
+              {item}
+              allItems={listViewInstance.items}
+              planId={listViewInstance.id}
+              patchItem={plannerStore.patchListItem}
+              splitItem={plannerStore.splitListItem}
+              backspaceItemAtStart={plannerStore.backspaceListItemAtStart}
+              addChild={plannerStore.addListChild}
+              deleteItem={plannerStore.deleteListItem}
+              moveItem={plannerStore.moveListItem}
+              moveItemWithinLevel={plannerStore.moveListItemWithinLevel}
+              outdentItem={plannerStore.outdentListItem}
+              historyRevision={$plannerStore.historyRevision}
+              {listTemplates}
+              {metrics}
+              onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: listViewInstance.id, itemId })}
+            />
+          {/each}
+          <button class="add-row" type="button" on:click={() => plannerStore.addRootListItem(listViewInstance.id)}>
+            + Add item
+          </button>
+        </div>
+      {:else}
+        <div class="empty-state">
+          <h3>No list generated for this day</h3>
+          <p>Generate this list for {$plannerStore.activePlanDate}.</p>
+          <button
+            class="primary"
+            type="button"
+            on:click={() => plannerStore.ensureListForDate(listViewTemplateId, $plannerStore.activePlanDate)}
+          >
+            Generate list
+          </button>
+        </div>
+      {/if}
+    {/if}
+
+    {#if view === 'metrics'}
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Tracking</p>
+          <h2>Metrics</h2>
+        </div>
+        <button type="button" on:click={createMetricAndSelect}>+ New metric</button>
+      </header>
+
+      {#if metrics.length === 0}
+        <div class="empty-state">
+          <h3>No metrics yet</h3>
+          <p>Create a metric to start gathering data, one question at a time.</p>
+          <button class="primary" type="button" on:click={createMetricAndSelect}>+ New metric</button>
+        </div>
+      {:else}
+        <div class="metric-list">
+          {#each metrics as metric (metric.id)}
+            <div class="metric-card">
+              <div class="metric-card-header">
+                <input
+                  class="title-input"
+                  value={metric.name}
+                  aria-label="Metric name"
+                  on:input={(event) => plannerStore.renameMetric(metric.id, event.currentTarget.value)}
+                />
+                <button class="icon-button danger" type="button" title="Delete metric" on:click={() => plannerStore.deleteMetric(metric.id)}>×</button>
+              </div>
+
+              {#each metric.questions as question, index (question.id)}
+                <div class="metric-question-row">
+                  <input
+                    type="text"
+                    placeholder="Question prompt"
+                    value={question.prompt}
+                    on:input={(event) => plannerStore.patchMetricQuestion(metric.id, question.id, { prompt: event.currentTarget.value })}
+                  />
+                  <select
+                    aria-label="Question type"
+                    value={question.type}
+                    on:change={(event) =>
+                      plannerStore.patchMetricQuestion(metric.id, question.id, {
+                        type: event.currentTarget.value === 'boolean' ? 'boolean' : 'text',
+                      })}
+                  >
+                    <option value="text">Text / number</option>
+                    <option value="boolean">Yes / no</option>
+                  </select>
+                  <button class="icon-button" type="button" title="Move up" disabled={index === 0} on:click={() => plannerStore.moveMetricQuestion(metric.id, question.id, 'up')}>↑</button>
+                  <button class="icon-button" type="button" title="Move down" disabled={index === metric.questions.length - 1} on:click={() => plannerStore.moveMetricQuestion(metric.id, question.id, 'down')}>↓</button>
+                  <button class="icon-button danger" type="button" title="Delete question" on:click={() => plannerStore.deleteMetricQuestion(metric.id, question.id)}>×</button>
+                </div>
+              {/each}
+              <button class="add-row" type="button" on:click={() => plannerStore.addMetricQuestion(metric.id)}>+ Add question</button>
+
+              {#each metric.questions as question (question.id)}
+                {@const graph = buildGraph(metric, question)}
+                {#if graph}
+                  <div class="metric-graph-block">
+                    <h4>{question.prompt || 'Untitled question'}</h4>
+                    <MetricGraph type={graph.type} points={graph.points} />
+                  </div>
+                {/if}
+              {/each}
+            </div>
+          {/each}
+        </div>
+
+        <div class="metric-import">
+          <h3>Import past data</h3>
+          <label class="field-label" for="import-metric">Target metric</label>
+          <select id="import-metric" bind:value={importMetricId}>
+            {#each metrics as metric (metric.id)}
+              <option value={metric.id}>{metric.name}</option>
+            {/each}
+          </select>
+          <label class="field-label" for="import-raw">Raw data</label>
+          <textarea id="import-raw" bind:value={importRaw} placeholder="Paste your raw data here"></textarea>
+          <label class="field-label" for="import-parser">Parser (JS function body, receives `raw`, returns rows)</label>
+          <textarea id="import-parser" bind:value={importParser}></textarea>
+          <div class="template-panel-actions">
+            <button type="button" on:click={runImportPreview}>Preview</button>
+            <button class="primary" type="button" on:click={runImport} disabled={!importPreview || Boolean(importError)}>Import</button>
+          </div>
+          {#if importError}
+            <p class="metric-import-error">{importError}</p>
+          {/if}
+          {#if importPreview}
+            <p class="metric-import-preview">
+              Parsed {importPreview.length} row(s); {importPreview.filter((row) => row.answers.length > 0).length} with mapped answers.
+            </p>
+          {/if}
         </div>
       {/if}
     {/if}
@@ -2224,6 +2690,52 @@
         scrollRequest={goalRhythmScrollRequest}
       />
     {/if}
+
+    {#if listOverlay && listOverlayInstance}
+      {@const instance = listOverlayInstance}
+      {@const template = listTemplates.find((candidate) => candidate.id === instance.listTemplateId)}
+      <OverlayModal title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
+        <div class="list-panel">
+          {#if instance.items.length === 0}
+            <p class="empty">This list generated no items.</p>
+          {/if}
+          {#each instance.items as item (item.id)}
+            <PlanItemEditor
+              {item}
+              allItems={instance.items}
+              planId={instance.id}
+              patchItem={plannerStore.patchListItem}
+              splitItem={plannerStore.splitListItem}
+              backspaceItemAtStart={plannerStore.backspaceListItemAtStart}
+              addChild={plannerStore.addListChild}
+              deleteItem={plannerStore.deleteListItem}
+              moveItem={plannerStore.moveListItem}
+              moveItemWithinLevel={plannerStore.moveListItemWithinLevel}
+              outdentItem={plannerStore.outdentListItem}
+              historyRevision={$plannerStore.historyRevision}
+              {listTemplates}
+              {metrics}
+              onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
+            />
+          {/each}
+          <button class="add-row" type="button" on:click={() => plannerStore.addRootListItem(instance.id)}>
+            + Add item
+          </button>
+        </div>
+      </OverlayModal>
+    {/if}
+
+    {#if metricOverlay && metricOverlayMetric}
+      {@const overlay = metricOverlay}
+      <OverlayModal title={metricOverlayMetric.name} z={70} onClose={() => (metricOverlay = null)}>
+        <MetricQuiz
+          metric={metricOverlayMetric}
+          answers={metricOverlayAnswers}
+          onAnswer={(questionId, value) => plannerStore.upsertMetricAnswer(overlay.metricId, overlay.date, questionId, value)}
+          onClose={() => (metricOverlay = null)}
+        />
+      </OverlayModal>
+    {/if}
   </div>
 </main>
 
@@ -2238,7 +2750,7 @@
         <button class="ghost" type="button" title="Cancel (Esc)" on:click={cancelPasteReview}>✕</button>
       </div>
 
-      <div class="paste-review-list" aria-label="Items being pasted">
+      <div class="paste-review-list" aria-label="Items being pasted" bind:this={pasteReviewList}>
         {#each pasteReview.nodes as node, nodeIndex (node.item.id)}
           {@const isCurrent = nodeIndex === pasteReview.index}
           {@const wasKept = pasteReview.approved.includes(node)}

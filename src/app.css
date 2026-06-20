@@ -241,6 +241,7 @@ nav button.active {
 }
 
 .content-shell {
+  position: relative;
   display: grid;
   grid-template-rows: minmax(0, 1fr) var(--goal-history-height, clamp(190px, 22vh, 270px));
   min-width: 0;
@@ -871,8 +872,10 @@ nav button.active {
 
 .paste-review {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
   width: min(620px, 100%);
-  max-height: min(760px, calc(100vh - 40px));
+  max-height: min(760px, calc(100dvh - 40px));
+  overflow: hidden;
   gap: 16px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -905,8 +908,10 @@ nav button.active {
 
 .paste-review-list {
   display: grid;
+  min-height: 0;
   gap: 8px;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 4px 10px 4px 4px;
 }
 
@@ -1931,14 +1936,24 @@ nav button.active {
     margin-top: 0;
   }
 
+  /* Compact wrapping tab bar: every button stays fully visible and clickable,
+     but tight padding/sizing keeps the nav short so it doesn't push the
+     workspace down. */
   nav {
-    grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    grid-template-columns: none;
+    gap: 4px;
   }
 
   nav button {
+    flex: 1 1 auto;
+    min-width: 0;
     justify-content: center;
-    padding: 6px;
+    padding: 4px 8px;
     text-align: center;
+    white-space: nowrap;
+    font-size: 12px;
   }
 
   .workspace {
@@ -2032,4 +2047,178 @@ nav button.active {
     font-size: 12px;
     white-space: nowrap;
   }
+}
+
+/* ---- Lists + Metrics features ---- */
+
+.template-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.template-panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* A linked plan/list item: read-only text where only the matching substrings
+   render as inline hyperlinks. Shares .item-text sizing with the editor. */
+.item-text-display {
+  cursor: text;
+  outline: none;
+  white-space: pre-wrap;
+}
+
+.item-text-display .inline-link {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.item-text-display .inline-link:hover {
+  color: var(--accent);
+}
+
+.link-edit {
+  flex: 0 0 auto;
+  opacity: 0;
+}
+
+.plan-row:hover .link-edit,
+.link-edit:focus-visible {
+  opacity: 1;
+}
+
+/* Segmented [Day | List] / view toggles */
+.segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+}
+
+.segmented button {
+  border: none;
+  background: transparent;
+  padding: 5px 12px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.segmented button.active {
+  background: var(--active-nav);
+  color: var(--accent-strong);
+}
+
+/* Word-cap bar in the list-template editor — kept visible while editing. */
+.word-cap-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+}
+
+.word-cap-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.word-cap-count.over {
+  color: var(--danger);
+}
+
+.word-cap-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.word-cap-edit input {
+  width: 72px;
+}
+
+/* Metrics view */
+.metric-list {
+  display: grid;
+  gap: 16px;
+}
+
+.metric-card {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-strong);
+}
+
+.metric-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.metric-question-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.metric-question-row input[type='text'] {
+  flex: 1;
+}
+
+.metric-graph-block {
+  display: grid;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.metric-graph-block h4 {
+  margin: 0;
+  font-size: 14px;
+}
+
+.metric-import {
+  display: grid;
+  gap: 10px;
+  max-width: 760px;
+}
+
+.metric-import textarea {
+  width: 100%;
+  min-height: 120px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  padding: 10px;
+}
+
+.metric-import-error {
+  color: var(--danger);
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.metric-import-preview {
+  font-size: 13px;
+  color: var(--muted);
 }

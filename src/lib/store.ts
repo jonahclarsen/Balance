@@ -37,6 +37,20 @@ import {
   todayISO,
   updatePlanItem,
   updateTemplateItem,
+  addListTemplateItem,
+  updateListTemplateItem,
+  deleteListTemplateItem,
+  moveListTemplateItem,
+  moveListTemplateItemWithinLevel,
+  outdentListTemplateItem as outdentListTemplateItemInTree,
+  splitListTemplateItem,
+  createListTemplate,
+  createListTemplateItem,
+  clampListItemProbability,
+  generateListFromTemplate,
+  createMetric,
+  createMetricQuestion,
+  createMetricEntry,
 } from './planner'
 import {
   createGoal,
@@ -50,7 +64,23 @@ import {
   setGoalActiveOnDate,
   setGoalStartDate,
 } from './goals'
-import type { AppState, DailyPlan, Goal, Id, Operation, PlanItem, TemplateItem, TemplateOption } from './types'
+import type {
+  AppState,
+  DailyPlan,
+  Goal,
+  Id,
+  ListInstance,
+  ListTemplate,
+  ListTemplateItem,
+  Metric,
+  MetricEntry,
+  MetricQuestion,
+  MetricQuestionType,
+  Operation,
+  PlanItem,
+  TemplateItem,
+  TemplateOption,
+} from './types'
 
 const STORAGE_KEY = 'balance.appState.v1'
 const TEXT_MERGE_WINDOW_MS = 1200
@@ -314,12 +344,31 @@ function createPlannerStore() {
             goalCompletions: next.goalCompletions,
           }
         : previousGoalData
-      const operationPayload = goalData !== undefined
+      const listsMetricsChanged =
+        next.listTemplates !== state.listTemplates ||
+        next.lists !== state.lists ||
+        next.metrics !== state.metrics ||
+        next.metricEntries !== state.metricEntries
+      const previousListsMetricsData =
+        canMergeOperation && lastOperation?.payload !== null && typeof lastOperation?.payload === 'object'
+          ? (lastOperation.payload as Record<string, unknown>).listsMetricsData
+          : undefined
+      const listsMetricsData = listsMetricsChanged
         ? {
-            ...(payload && typeof payload === 'object' ? payload : { value: payload }),
-            goalData,
+            listTemplates: next.listTemplates,
+            lists: next.lists,
+            metrics: next.metrics,
+            metricEntries: next.metricEntries,
           }
-        : payload
+        : previousListsMetricsData
+      const operationPayload =
+        goalData !== undefined || listsMetricsData !== undefined
+          ? {
+              ...(payload && typeof payload === 'object' ? payload : { value: payload }),
+              ...(goalData !== undefined ? { goalData } : {}),
+              ...(listsMetricsData !== undefined ? { listsMetricsData } : {}),
+            }
+          : payload
       const operation: Operation = canMergeOperation
         ? { ...lastOperation, timestamp, payload: operationPayload }
         : {
@@ -871,6 +920,396 @@ function createPlannerStore() {
       )
     },
 
+    // ---- List templates ----
+
+    addListTemplate() {
+      const template = createListTemplate()
+      commit('add_list_template', { templateId: template.id }, (state) => ({
+        ...state,
+        listTemplates: [...state.listTemplates, template],
+      }))
+      return template.id
+    },
+
+    deleteListTemplate(templateId: Id) {
+      commit('delete_list_template', { templateId }, (state) => ({
+        ...state,
+        listTemplates: state.listTemplates.filter((template) => template.id !== templateId),
+        lists: state.lists.filter((list) => list.listTemplateId !== templateId),
+      }))
+    },
+
+    renameListTemplate(templateId: Id, name: string) {
+      commit(
+        'rename_list_template',
+        { templateId, name },
+        (state) => updateListTemplate(state, templateId, (template) => ({ ...template, name, updatedAt: nowISO() })),
+        { mergeKey: `list-template-name:${templateId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
+      )
+    },
+
+    setListTemplateMaxWords(templateId: Id, maxExpectedWords: number) {
+      const normalized = Math.max(0, Math.round(maxExpectedWords) || 0)
+      commit('set_list_template_max_words', { templateId, maxExpectedWords: normalized }, (state) =>
+        updateListTemplate(state, templateId, (template) =>
+          template.maxExpectedWords === normalized
+            ? template
+            : { ...template, maxExpectedWords: normalized, updatedAt: nowISO() },
+        ),
+      )
+    },
+
+    addRootListTemplateItem(templateId: Id) {
+      const item = createListTemplateItem()
+      commit('add_list_template_item', { templateId, parentId: null, item }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: addListTemplateItem(template.items, null, item),
+        })),
+      )
+    },
+
+    addListTemplateChild(templateId: Id, parentId: Id) {
+      const item = createListTemplateItem()
+      commit('add_list_template_item', { templateId, parentId, item }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: addListTemplateItem(template.items, parentId, item),
+        })),
+      )
+    },
+
+    patchListTemplateItem(templateId: Id, itemId: Id, patch: Partial<ListTemplateItem>, options: TextChangeOptions = {}) {
+      const normalizedPatch =
+        patch.probability !== undefined
+          ? { ...patch, probability: clampListItemProbability(patch.probability) }
+          : patch
+      const isTextPatch = 'text' in patch || 'html' in patch
+      const mergeOptions =
+        options.mergeKey && options.mergeHistory !== false
+          ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
+          : isTextPatch && options.mergeHistory !== false
+            ? { mergeKey: `list-template-item-text:${templateId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
+            : {}
+      commit('patch_list_template_item', { templateId, itemId, patch: normalizedPatch }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const items = updateListTemplateItem(template.items, itemId, (item) => applyPatch(item, normalizedPatch))
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+        mergeOptions,
+      )
+    },
+
+    splitListTemplateItem(
+      templateId: Id,
+      itemId: Id,
+      before: Partial<Pick<ListTemplateItem, 'text' | 'html'>>,
+      after: { html: string; text: string },
+    ) {
+      const placement: 'before' | 'after' = splitPlacementForBeforeText(before) === 'before' ? 'before' : 'after'
+      const patch = placement === 'before' ? after : before
+      const inserted = placement === 'before' ? before : after
+      const newItem = { ...createListTemplateItem(inserted.text ?? ''), html: inserted.html ?? '' }
+
+      commit('split_list_template_item', { templateId, itemId, patch, newItem, placement }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const items = splitListTemplateItem(template.items, itemId, patch, newItem, placement)
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+
+      return newItem.id
+    },
+
+    deleteListTemplateItem(templateId: Id, itemId: Id) {
+      commit('delete_list_template_item', { templateId, itemId }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: deleteListTemplateItem(template.items, itemId),
+        })),
+      )
+    },
+
+    moveListTemplateItem(templateId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
+      commit('move_list_template_item', { templateId, sourceId, targetId, placement }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const items = moveListTemplateItem(template.items, sourceId, targetId, placement)
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+    },
+
+    moveListTemplateItemWithinLevel(templateId: Id, itemId: Id, direction: 'up' | 'down') {
+      commit('move_list_template_item_within_level', { templateId, itemId, direction }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const items = moveListTemplateItemWithinLevel(template.items, itemId, direction)
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+    },
+
+    outdentListTemplateItem(templateId: Id, itemId: Id) {
+      commit('outdent_list_template_item', { templateId, itemId }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const items = outdentListTemplateItemInTree(template.items, itemId)
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+    },
+
+    // ---- List instances (reuse PlanItem tree functions) ----
+
+    ensureListForDate(listTemplateId: Id, date: string): Id | null {
+      const current = get(store)
+      const existing = current.lists.find((list) => list.listTemplateId === listTemplateId && list.date === date)
+      if (existing) return existing.id
+
+      const template = current.listTemplates.find((candidate) => candidate.id === listTemplateId)
+      if (!template) return null
+
+      const generated = generateListFromTemplate(template, date)
+      commit('generate_list', { listTemplateId, date, generated }, (state) => {
+        if (state.lists.some((list) => list.listTemplateId === listTemplateId && list.date === date)) return state
+        return { ...state, lists: [...state.lists, generated] }
+      })
+
+      return generated.id
+    },
+
+    addRootListItem(listId: Id) {
+      const item = createPlanItem()
+      commit('add_list_item', { listId, parentId: null, item }, (state) =>
+        updateList(state, listId, (list) => ({ ...list, items: addPlanItem(list.items, null, item) })),
+      )
+    },
+
+    addListChild(listId: Id, parentId: Id) {
+      const item = createPlanItem()
+      commit('add_list_item', { listId, parentId, item }, (state) =>
+        updateList(state, listId, (list) => ({ ...list, items: addPlanItem(list.items, parentId, item) })),
+      )
+    },
+
+    patchListItem(listId: Id, itemId: Id, patch: Partial<Omit<PlanItem, 'id' | 'children'>>, options: TextChangeOptions = {}) {
+      const isTextPatch = 'text' in patch || 'html' in patch
+      const mergeOptions =
+        options.mergeKey && options.mergeHistory !== false
+          ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
+          : isTextPatch && options.mergeHistory !== false
+            ? { mergeKey: `list-item-text:${listId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
+            : {}
+      commit('patch_list_item', { listId, itemId, patch }, (state) =>
+        updateList(state, listId, (list) => {
+          const items = updatePlanItem(list.items, itemId, (item) => applyPatch(item, patch))
+          return items === list.items ? list : { ...list, items }
+        }),
+        mergeOptions,
+      )
+    },
+
+    splitListItem(
+      listId: Id,
+      itemId: Id,
+      before: Partial<Omit<PlanItem, 'id' | 'children'>>,
+      after: { html: string; text: string },
+    ) {
+      let placement = splitPlacementForBeforeText(before)
+      const patch = placement === 'before' ? after : before
+      const inserted = placement === 'before' ? before : after
+      let moveChildrenToNewItem = shouldMoveChildrenToSplitItem(before, after)
+
+      const list = get(store).lists.find((candidate) => candidate.id === listId)
+      const target = list ? findPlanItem(list.items, itemId) : null
+      const afterIsEmpty = (after.html ?? '') === '' && (after.text ?? '') === ''
+      const hasChildren = (target?.children.length ?? 0) > 0
+      if (placement === 'after' && afterIsEmpty && hasChildren) {
+        placement = 'firstChild'
+        moveChildrenToNewItem = false
+      }
+
+      const newItem = { ...createPlanItem(inserted.text ?? ''), html: inserted.html ?? '' }
+
+      commit('split_list_item', { listId, itemId, patch, newItem, placement, moveChildrenToNewItem }, (state) =>
+        updateList(state, listId, (list) => {
+          const items = splitPlanItem(list.items, itemId, patch, newItem, placement, moveChildrenToNewItem)
+          return items === list.items ? list : { ...list, items }
+        }),
+      )
+
+      return newItem.id
+    },
+
+    deleteListItem(listId: Id, itemId: Id) {
+      commit('delete_list_item', { listId, itemId }, (state) =>
+        updateList(state, listId, (list) => ({ ...list, items: deletePlanItem(list.items, itemId) })),
+      )
+    },
+
+    backspaceListItemAtStart(listId: Id, itemId: Id) {
+      const list = get(store).lists.find((candidate) => candidate.id === listId)
+      if (!list) return null
+
+      const result = backspacePlanItemAtStartInTree(list.items, itemId)
+      if (!result) return null
+
+      commit('backspace_list_item_at_start', { listId, itemId, ...result.operation }, (state) =>
+        updateList(state, listId, (candidate) =>
+          candidate.id === list.id ? { ...candidate, items: result.items } : candidate,
+        ),
+      )
+
+      return { focusItemId: result.focusItemId, focusOffset: result.focusOffset }
+    },
+
+    moveListItem(listId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
+      commit('move_list_item', { listId, sourceId, targetId, placement }, (state) =>
+        updateList(state, listId, (list) => ({ ...list, items: movePlanItem(list.items, sourceId, targetId, placement) })),
+      )
+    },
+
+    moveListItemWithinLevel(listId: Id, itemId: Id, direction: 'up' | 'down') {
+      commit('move_list_item_within_level', { listId, itemId, direction }, (state) =>
+        updateList(state, listId, (list) => ({ ...list, items: movePlanItemWithinLevel(list.items, itemId, direction) })),
+      )
+    },
+
+    outdentListItem(listId: Id, itemId: Id) {
+      commit('outdent_list_item', { listId, itemId }, (state) =>
+        updateList(state, listId, (list) => {
+          const items = outdentPlanItemInTree(list.items, itemId)
+          return items === list.items ? list : { ...list, items }
+        }),
+      )
+    },
+
+    // ---- Metrics ----
+
+    addMetric() {
+      const metric = createMetric()
+      commit('add_metric', { metricId: metric.id }, (state) => ({ ...state, metrics: [...state.metrics, metric] }))
+      return metric.id
+    },
+
+    deleteMetric(metricId: Id) {
+      commit('delete_metric', { metricId }, (state) => ({
+        ...state,
+        metrics: state.metrics.filter((metric) => metric.id !== metricId),
+        metricEntries: state.metricEntries.filter((entry) => entry.metricId !== metricId),
+      }))
+    },
+
+    renameMetric(metricId: Id, name: string) {
+      commit(
+        'rename_metric',
+        { metricId, name },
+        (state) => updateMetric(state, metricId, (metric) => ({ ...metric, name, updatedAt: nowISO() })),
+        { mergeKey: `metric-name:${metricId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
+      )
+    },
+
+    addMetricQuestion(metricId: Id) {
+      const question = createMetricQuestion('')
+      commit('add_metric_question', { metricId, question }, (state) =>
+        updateMetric(state, metricId, (metric) => ({
+          ...metric,
+          updatedAt: nowISO(),
+          questions: [...metric.questions, question],
+        })),
+      )
+      return question.id
+    },
+
+    patchMetricQuestion(metricId: Id, questionId: Id, patch: Partial<Pick<MetricQuestion, 'prompt' | 'type'>>) {
+      const isTextPatch = 'prompt' in patch
+      commit(
+        'patch_metric_question',
+        { metricId, questionId, patch },
+        (state) =>
+          updateMetric(state, metricId, (metric) => {
+            let changed = false
+            const questions = metric.questions.map((question) => {
+              if (question.id !== questionId) return question
+              const next = applyPatch(question, patch)
+              if (next !== question) changed = true
+              return next
+            })
+            return changed ? { ...metric, updatedAt: nowISO(), questions } : metric
+          }),
+        isTextPatch ? { mergeKey: `metric-question-text:${metricId}:${questionId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS } : {},
+      )
+    },
+
+    deleteMetricQuestion(metricId: Id, questionId: Id) {
+      commit('delete_metric_question', { metricId, questionId }, (state) =>
+        updateMetric(state, metricId, (metric) => ({
+          ...metric,
+          updatedAt: nowISO(),
+          questions: metric.questions.filter((question) => question.id !== questionId),
+        })),
+      )
+    },
+
+    moveMetricQuestion(metricId: Id, questionId: Id, direction: 'up' | 'down') {
+      commit('move_metric_question', { metricId, questionId, direction }, (state) =>
+        updateMetric(state, metricId, (metric) => {
+          const index = metric.questions.findIndex((question) => question.id === questionId)
+          if (index === -1) return metric
+          const targetIndex = direction === 'up' ? index - 1 : index + 1
+          if (targetIndex < 0 || targetIndex >= metric.questions.length) return metric
+          const questions = [...metric.questions]
+          ;[questions[index], questions[targetIndex]] = [questions[targetIndex], questions[index]]
+          return { ...metric, updatedAt: nowISO(), questions }
+        }),
+      )
+    },
+
+    upsertMetricAnswer(metricId: Id, date: string, questionId: Id, value: string) {
+      commit(
+        'upsert_metric_answer',
+        { metricId, date, questionId, value },
+        (state) => {
+          const existing = state.metricEntries.find((entry) => entry.metricId === metricId && entry.date === date)
+          if (!existing) {
+            const entry = { ...createMetricEntry(metricId, date), answers: [{ questionId, value }] }
+            return { ...state, metricEntries: [...state.metricEntries, entry] }
+          }
+          const answers = existing.answers.some((answer) => answer.questionId === questionId)
+            ? existing.answers.map((answer) => (answer.questionId === questionId ? { questionId, value } : answer))
+            : [...existing.answers, { questionId, value }]
+          const nextEntry = { ...existing, answers, updatedAt: nowISO() }
+          return { ...state, metricEntries: state.metricEntries.map((entry) => (entry === existing ? nextEntry : entry)) }
+        },
+        { mergeKey: `metric-answer:${metricId}:${date}:${questionId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
+      )
+    },
+
+    bulkImportMetricEntries(metricId: Id, rows: { date: string; answers: { questionId: Id; value: string }[] }[]) {
+      if (rows.length === 0) return
+      commit('bulk_import_metric_entries', { metricId, count: rows.length }, (state) => {
+        let metricEntries = state.metricEntries
+        for (const row of rows) {
+          const existing = metricEntries.find((entry) => entry.metricId === metricId && entry.date === row.date)
+          if (existing) {
+            const merged = new Map(existing.answers.map((answer) => [answer.questionId, answer.value]))
+            for (const answer of row.answers) merged.set(answer.questionId, answer.value)
+            const nextEntry = {
+              ...existing,
+              answers: [...merged].map(([questionId, value]) => ({ questionId, value })),
+              updatedAt: nowISO(),
+            }
+            metricEntries = metricEntries.map((entry) => (entry === existing ? nextEntry : entry))
+          } else {
+            const entry = { ...createMetricEntry(metricId, row.date), answers: row.answers.map((answer) => ({ ...answer })) }
+            metricEntries = [...metricEntries, entry]
+          }
+        }
+        return metricEntries === state.metricEntries ? state : { ...state, metricEntries }
+      })
+    },
+
     async undo() {
       if (isTauri()) {
         await flushOperations()
@@ -1047,6 +1486,42 @@ function updateTemplate(state: AppState, templateId: Id, updater: (template: App
   return changed ? { ...state, templates } : state
 }
 
+function updateListTemplate(state: AppState, templateId: Id, updater: (template: ListTemplate) => ListTemplate): AppState {
+  let changed = false
+  const listTemplates = state.listTemplates.map((template) => {
+    if (template.id !== templateId) return template
+    const nextTemplate = updater(template)
+    if (nextTemplate !== template) changed = true
+    return nextTemplate
+  })
+
+  return changed ? { ...state, listTemplates } : state
+}
+
+function updateList(state: AppState, listId: Id, updater: (list: ListInstance) => ListInstance): AppState {
+  let changed = false
+  const lists = state.lists.map((list) => {
+    if (list.id !== listId) return list
+    const nextList = updater(list)
+    if (nextList !== list) changed = true
+    return nextList
+  })
+
+  return changed ? { ...state, lists } : state
+}
+
+function updateMetric(state: AppState, metricId: Id, updater: (metric: Metric) => Metric): AppState {
+  let changed = false
+  const metrics = state.metrics.map((metric) => {
+    if (metric.id !== metricId) return metric
+    const nextMetric = updater(metric)
+    if (nextMetric !== metric) changed = true
+    return nextMetric
+  })
+
+  return changed ? { ...state, metrics } : state
+}
+
 function dailyReminderForGeneratedPlan(plans: DailyPlan[], date: string): string {
   const existingPlan = plans.find((plan) => plan.date === date)
   if (existingPlan) return existingPlan.dailyReminder
@@ -1170,6 +1645,10 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       activePlanDate: '',
       templates: [],
       plans: parsed.plans ?? [],
+      listTemplates: [],
+      lists: [],
+      metrics: [],
+      metricEntries: [],
       goals: [],
       goalCompletions: [],
       operations: [],
@@ -1191,7 +1670,40 @@ function normalizeState(state: AppState): AppState {
       dailyReminder: plan.dailyReminder ?? DEFAULT_DAILY_REMINDER,
       items: normalizePlanItems(plan.items),
     })),
+    listTemplates: (state.listTemplates ?? []).map((template) => ({
+      ...template,
+      maxExpectedWords: template.maxExpectedWords ?? 0,
+      items: normalizeListTemplateItems(template.items ?? []),
+    })),
+    lists: (state.lists ?? []).map((list) => ({
+      ...list,
+      items: normalizePlanItems(list.items ?? []),
+    })),
+    metrics: (state.metrics ?? []).map((metric) => ({
+      ...metric,
+      questions: (metric.questions ?? []).map((question) => ({
+        ...question,
+        type: question.type === 'boolean' ? 'boolean' : 'text',
+      })),
+    })),
+    metricEntries: (state.metricEntries ?? []).map((entry) => ({
+      ...entry,
+      answers: (entry.answers ?? []).map((answer) => ({ ...answer })),
+    })),
   }
+}
+
+function normalizeListTemplateItems(items: ListTemplateItem[]): ListTemplateItem[] {
+  return items.map((item) => {
+    const html = sanitizeInlineHTML(item.html ?? escapeHTML(item.text ?? ''))
+    return {
+      ...item,
+      text: item.text ?? htmlToPlainText(html),
+      html,
+      probability: clampListItemProbability(item.probability ?? 100),
+      children: normalizeListTemplateItems(item.children ?? []),
+    }
+  })
 }
 
 function normalizePlanItems(items: PlanItem[]): PlanItem[] {

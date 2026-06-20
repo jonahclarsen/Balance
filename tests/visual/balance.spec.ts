@@ -37,7 +37,7 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
     fullPage: true,
   })
 
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
   await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Drag to move template item' }).first()).toBeVisible()
   await expect
@@ -162,7 +162,7 @@ test('template items can be nested and un-nested with the drag handle', async ({
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
 
   const wakeRow = page.getByRole('listitem', { name: /Template item: Wake up/ })
   const workRow = page.getByRole('listitem', { name: /Template item: Work block/ })
@@ -262,7 +262,7 @@ test('tab indents a template item only one level after a nested sibling', async 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
 
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -286,7 +286,7 @@ test('tab indents a template item only one level after a nested sibling', async 
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   })
   await page.reload()
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
   const topLevelBeforeIndent = await topLevelTemplateOptionTexts(page)
   expect(topLevelBeforeIndent).toContain('Later')
 
@@ -361,7 +361,7 @@ test('shift-tab outdents a template item without jumping below following sibling
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
 
   const topLevelBeforeOutdent = await topLevelTemplateOptionTexts(page)
   const workIndex = topLevelBeforeOutdent.indexOf('Work block')
@@ -529,7 +529,7 @@ test('adding template time starts after the nearest timed item above', async ({ 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
 
   await page.getByRole('listitem', { name: /Template item: Wake up/ }).getByRole('button', { name: 'Add time range' }).click()
   await page
@@ -604,7 +604,7 @@ test('template time overlap highlighting follows the same-level sibling rules', 
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   })
   await page.reload()
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
 
   const childTime = page.getByRole('listitem', { name: 'Template item: Child' }).getByLabel('Time range')
   const overlapTime = page.getByRole('listitem', { name: 'Template item: Overlapping sibling' }).getByLabel('Time range')
@@ -713,7 +713,7 @@ test('template item text fields support arrow focus and option-arrow sibling mov
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
 
   await focusTemplateOptionByValue(page, 'Wake up')
   await page.keyboard.press('ArrowDown')
@@ -1138,6 +1138,22 @@ test('pasting four or more items onto a different day opens a review queue', asy
   await expect(page.locator('.paste-review-item')).toHaveCount(4)
   await expect(page.locator('.paste-review-item.current')).toContainText(before[1])
 
+  // A short window caps the dialog and scrolls the queue instead of pushing the
+  // review controls off-screen.
+  await page.setViewportSize({ width: 640, height: 420 })
+  const reviewLayout = await page.getByRole('dialog').evaluate((dialog) => {
+    const list = dialog.querySelector('.paste-review-list') as HTMLElement
+    const actions = dialog.querySelector('.paste-review-actions') as HTMLElement
+    return {
+      dialogBottom: dialog.getBoundingClientRect().bottom,
+      listScrolls: list.scrollHeight > list.clientHeight,
+      actionsBottom: actions.getBoundingClientRect().bottom,
+    }
+  })
+  expect(reviewLayout.dialogBottom).toBeLessThanOrEqual(420)
+  expect(reviewLayout.actionsBottom).toBeLessThanOrEqual(420)
+  expect(reviewLayout.listScrolls).toBe(true)
+
   // The "Keep" button only appears (and Enter only fires) once the read-cooldown elapses.
   const armed = () => page.getByRole('button', { name: 'Keep (→ / Enter)' })
 
@@ -1149,6 +1165,16 @@ test('pasting four or more items onto a different day opens a review queue', asy
   await armed().waitFor()
   await page.keyboard.press('Enter')
   await expect(page.getByRole('dialog', { name: /Item 2 of 4/ })).toBeVisible()
+  await expect
+    .poll(async () =>
+      page.locator('.paste-review-list').evaluate((list) => {
+        const current = list.querySelector('.paste-review-item.current') as HTMLElement
+        const listBounds = list.getBoundingClientRect()
+        const currentBounds = current.getBoundingClientRect()
+        return currentBounds.top >= listBounds.top && currentBounds.bottom <= listBounds.bottom
+      }),
+    )
+    .toBe(true)
 
   // Edit item 2's text, then keep it (still gated on the cooldown).
   await page.keyboard.press('e')
@@ -1277,7 +1303,7 @@ test('template options use rich text formatting and generate formatted plan item
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
 
   await focusTemplateOptionByValue(page, 'Wake up')
   await page.evaluate(async () => {
@@ -1313,7 +1339,7 @@ test('generating from a future date uses the selected date and latest template e
   await page.locator('input[type="date"]').fill('2030-01-15')
   await expect(page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
   await focusTemplateOptionByValue(page, 'Wake up')
   await page.keyboard.press('Meta+A')
   await page.keyboard.type('Future plan item')
@@ -1337,7 +1363,7 @@ test('blank template options show skip placeholder and skip generated plan item'
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
 
   const wakeRow = page.getByRole('listitem', { name: /Template item: Wake up/ })
   await wakeRow.getByRole('button', { name: '±' }).click()
