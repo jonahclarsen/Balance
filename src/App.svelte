@@ -99,12 +99,14 @@
     nodes: PasteReviewNode[]
     index: number
     approved: PasteReviewNode[]
+    rejected: number[]
     targetId: Id | null
     placement: 'after' | 'replace'
     planId: Id
     cut: boolean
   } | null = null
   let pasteReviewEditing = false
+  let pasteReviewRejecting = false
   let pasteReviewEditDraft = ''
   let pasteReviewInput: HTMLInputElement | null = null
   // Each card enforces a read-cooldown before "Keep"/Enter is armed, so items
@@ -1147,6 +1149,7 @@
         nodes,
         index: 0,
         approved: [],
+        rejected: [],
         targetId,
         placement,
         planId: activePlan.id,
@@ -1242,12 +1245,20 @@
   // keep === true approves the current card, keep === false skips it; either way we
   // advance to the next card and commit the approved items once the queue is empty.
   // Keeping is gated on the read-cooldown; skipping is always allowed.
-  function pasteReviewDecide(keep: boolean) {
-    if (!pasteReview) return
+  async function pasteReviewDecide(keep: boolean) {
+    if (!pasteReview || pasteReviewRejecting) return
     if (keep && !pasteReviewReady) return
 
+    const review = pasteReview
     const current = pasteReview.nodes[pasteReview.index]
     const approved = keep && current ? [...pasteReview.approved, current] : pasteReview.approved
+    if (!keep) {
+      pasteReviewRejecting = true
+      await new Promise((resolve) => window.setTimeout(resolve, 420))
+      pasteReviewRejecting = false
+      if (pasteReview !== review) return
+    }
+    const rejected = keep ? pasteReview.rejected : [...pasteReview.rejected, pasteReview.index]
     const next = pasteReview.index + 1
     pasteReviewEditing = false
 
@@ -1259,7 +1270,7 @@
       return
     }
 
-    pasteReview = { ...pasteReview, approved, index: next }
+    pasteReview = { ...pasteReview, approved, rejected, index: next }
     startPasteReviewCooldown()
   }
 
@@ -1267,6 +1278,7 @@
     cancelPasteReviewCooldown()
     pasteReview = null
     pasteReviewEditing = false
+    pasteReviewRejecting = false
   }
 
   function startPasteReviewEdit() {
@@ -2165,8 +2177,6 @@
 </main>
 
 {#if pasteReview}
-  {@const currentNode = pasteReview.nodes[pasteReview.index]}
-  {@const current = currentNode?.item}
   <div class="paste-review-backdrop">
     <div class="paste-review" role="dialog" aria-modal="true" aria-labelledby="paste-review-title">
       <div class="paste-review-head">
@@ -2177,36 +2187,53 @@
         <button class="ghost" type="button" title="Cancel (Esc)" on:click={cancelPasteReview}>✕</button>
       </div>
 
-      <div class="paste-review-card" class:done={current?.done}>
-        {#if pasteReviewEditing}
-          <input
-            class="paste-review-edit"
-            type="text"
-            bind:value={pasteReviewEditDraft}
-            bind:this={pasteReviewInput}
-            placeholder="Item text"
-          />
-        {:else}
-          <div class="paste-review-line">
-            <label class="check-target" title="Complete item">
+      <div class="paste-review-list" aria-label="Items being pasted">
+        {#each pasteReview.nodes as node, nodeIndex (node.item.id)}
+          {@const isCurrent = nodeIndex === pasteReview.index}
+          {@const wasKept = pasteReview.approved.includes(node)}
+          <div
+            class="paste-review-card paste-review-item"
+            class:current={isCurrent}
+            class:kept={wasKept}
+            class:removed={pasteReview.rejected.includes(nodeIndex)}
+            class:rejecting={isCurrent && pasteReviewRejecting}
+            class:done={node.item.done}
+            style:--paste-depth={node.depth}
+            aria-current={isCurrent ? 'true' : undefined}
+          >
+            {#if isCurrent && pasteReviewEditing}
               <input
-                class="check"
-                type="checkbox"
-                checked={current?.done}
-                on:change={(event) => togglePasteReviewDone(event.currentTarget.checked)}
-                aria-label="Complete item"
+                class="paste-review-edit"
+                type="text"
+                bind:value={pasteReviewEditDraft}
+                bind:this={pasteReviewInput}
+                placeholder="Item text"
               />
-            </label>
-            <p class="paste-review-text item-text" class:done={current?.done} class:empty={!current?.text?.trim()}>
-              {current?.text?.trim() || '(empty item)'}
-            </p>
+            {:else}
+              <div class="paste-review-line">
+                {#if isCurrent}
+                  <label class="check-target" title="Complete item">
+                    <input
+                      class="check"
+                      type="checkbox"
+                      checked={node.item.done}
+                      on:change={(event) => togglePasteReviewDone(event.currentTarget.checked)}
+                      aria-label="Complete item"
+                    />
+                  </label>
+                {:else}
+                  <span class="paste-review-status" aria-hidden="true">{wasKept ? '✓' : nodeIndex + 1}</span>
+                {/if}
+                <p class="paste-review-text item-text" class:done={node.item.done} class:empty={!node.item.text?.trim()}>
+                  {node.item.text?.trim() || '(empty item)'}
+                </p>
+              </div>
+            {/if}
+            {#if node.depth}
+              <p class="paste-review-meta">Nested {node.depth} level{node.depth === 1 ? '' : 's'} deep</p>
+            {/if}
           </div>
-        {/if}
-        {#if currentNode?.depth}
-          <p class="paste-review-meta">
-            Nested {currentNode.depth} level{currentNode.depth === 1 ? '' : 's'} deep
-          </p>
-        {/if}
+        {/each}
       </div>
 
       {#if !pasteReviewEditing}
@@ -2228,12 +2255,12 @@
           <button class="primary" type="button" on:click={savePasteReviewEdit}>Save (Enter)</button>
           <button type="button" on:click={() => (pasteReviewEditing = false)}>Cancel (Esc)</button>
         {:else}
-          <button type="button" on:click={() => pasteReviewDecide(false)}>Skip (←)</button>
+          <button type="button" disabled={pasteReviewRejecting} on:click={() => pasteReviewDecide(false)}>Skip (←)</button>
           <button type="button" on:click={startPasteReviewEdit}>Edit (E)</button>
           <button
             class="primary"
             type="button"
-            disabled={!pasteReviewReady}
+            disabled={!pasteReviewReady || pasteReviewRejecting}
             on:click={() => pasteReviewDecide(true)}
           >
             {pasteReviewReady ? 'Keep (→ / Enter)' : 'Read it…'}

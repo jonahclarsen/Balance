@@ -1091,6 +1091,8 @@ test('pasting four or more items onto a different day opens a review queue', asy
 
   await expect(page.getByRole('dialog', { name: /Item 1 of 4/ })).toBeVisible()
   await expect(topLevelTexts(page)).resolves.toEqual(targetItems)
+  await expect(page.locator('.paste-review-item')).toHaveCount(4)
+  await expect(page.locator('.paste-review-item.current')).toContainText(before[1])
 
   // The "Keep" button only appears (and Enter only fires) once the read-cooldown elapses.
   const armed = () => page.getByRole('button', { name: 'Keep (→ / Enter)' })
@@ -1115,6 +1117,7 @@ test('pasting four or more items onto a different day opens a review queue', asy
   // Skip is allowed during the cooldown.
   await expect(page.getByRole('dialog', { name: /Item 3 of 4/ })).toBeVisible()
   await page.keyboard.press('ArrowLeft')
+  await expect(page.locator('.paste-review-item.rejecting')).toBeVisible()
 
   await expect(page.getByRole('dialog', { name: /Item 4 of 4/ })).toBeVisible()
   await page.keyboard.press('ArrowLeft')
