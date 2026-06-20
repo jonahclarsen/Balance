@@ -1027,7 +1027,48 @@ test('pasting plan items into an empty focused item replaces it', async ({ page 
   await expect.poll(async () => topLevelTexts(page)).toEqual([...before.slice(0, 2), ...before.slice(0, 2), ...before.slice(2)])
 })
 
-test('pasting three or more items opens a review queue to keep, skip, or edit each', async ({ page }) => {
+test('pasting four items on the day they were copied bypasses review', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  // Move + Work block (including Work block's two children) is four reviewable items.
+  await focusInputByValue(page, before[1])
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Meta+C')
+
+  await focusInputByValue(page, before.at(-1) as string)
+  await page.keyboard.press('Meta+V')
+
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect.poll(async () => topLevelTexts(page)).toEqual([...before, ...before.slice(1)])
+})
+
+test('pasting three items onto a different day bypasses review', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const sourceItems = await topLevelTexts(page)
+  // Work block and its two children is exactly three reviewable items.
+  await focusInputByValue(page, sourceItems[2])
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Meta+C')
+
+  await page.getByRole('button', { name: 'Next day' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' }).click()
+  const targetItems = await topLevelTexts(page)
+  await focusInputByValue(page, targetItems.at(-1) as string)
+  await page.keyboard.press('Meta+V')
+
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  await expect.poll(async () => topLevelTexts(page)).toEqual([...targetItems, sourceItems[2]])
+})
+
+test('pasting four or more items onto a different day opens a review queue', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -1035,30 +1076,33 @@ test('pasting three or more items opens a review queue to keep, skip, or edit ea
 
   const before = await topLevelTexts(page)
 
-  // Select and copy the first three top-level items.
-  await focusInputByValue(page, before[0])
-  await page.keyboard.press('Shift+ArrowDown')
+  // Move + Work block (including Work block's two children) is four reviewable items.
+  await focusInputByValue(page, before[1])
   await page.keyboard.press('Shift+ArrowDown')
   await page.keyboard.press('Meta+C')
 
-  // Pasting 3+ items opens the review modal instead of inserting directly.
-  await focusInputByValue(page, before.at(-1) as string)
+  await page.getByRole('button', { name: 'Next day' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' }).click()
+  const targetItems = await topLevelTexts(page)
+
+  // Pasting 4+ items on another day opens the review modal instead of inserting directly.
+  await focusInputByValue(page, targetItems.at(-1) as string)
   await page.keyboard.press('Meta+V')
 
-  await expect(page.getByRole('dialog', { name: /Item 1 of 3/ })).toBeVisible()
-  await expect(topLevelTexts(page)).resolves.toEqual(before)
+  await expect(page.getByRole('dialog', { name: /Item 1 of 4/ })).toBeVisible()
+  await expect(topLevelTexts(page)).resolves.toEqual(targetItems)
 
   // The "Keep" button only appears (and Enter only fires) once the read-cooldown elapses.
   const armed = () => page.getByRole('button', { name: 'Keep (→ / Enter)' })
 
   // Enter is inert during the cooldown: the queue stays on item 1.
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('dialog', { name: /Item 1 of 3/ })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: /Item 1 of 4/ })).toBeVisible()
 
   // Keep item 1 once the cooldown arms Enter.
   await armed().waitFor()
   await page.keyboard.press('Enter')
-  await expect(page.getByRole('dialog', { name: /Item 2 of 3/ })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: /Item 2 of 4/ })).toBeVisible()
 
   // Edit item 2's text, then keep it (still gated on the cooldown).
   await page.keyboard.press('e')
@@ -1069,12 +1113,15 @@ test('pasting three or more items opens a review queue to keep, skip, or edit ea
   await page.keyboard.press('Enter')
 
   // Skip is allowed during the cooldown.
-  await expect(page.getByRole('dialog', { name: /Item 3 of 3/ })).toBeVisible()
+  await expect(page.getByRole('dialog', { name: /Item 3 of 4/ })).toBeVisible()
+  await page.keyboard.press('ArrowLeft')
+
+  await expect(page.getByRole('dialog', { name: /Item 4 of 4/ })).toBeVisible()
   await page.keyboard.press('ArrowLeft')
 
   // Modal closes and only the kept items (item 1 + edited item 2) are appended.
   await expect(page.getByRole('dialog')).toHaveCount(0)
-  await expect.poll(async () => topLevelTexts(page)).toEqual([...before, before[0], 'Edited paste'])
+  await expect.poll(async () => topLevelTexts(page)).toEqual([...targetItems, before[1], 'Edited paste'])
 })
 
 test('plan item rich text preserves paste formatting and supports shortcuts', async ({ page, browserName }) => {

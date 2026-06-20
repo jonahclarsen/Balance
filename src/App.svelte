@@ -21,9 +21,9 @@
   import type { Id, MoveDirection, PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, escapeHTML, formatPlanTitle, todayISO } from './lib/planner'
 
-  // Pasting three or more copied items routes through a one-at-a-time review queue
+  // Pasting four or more items onto a different day routes through a review queue
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
-  const PASTE_REVIEW_THRESHOLD = 3
+  const PASTE_REVIEW_THRESHOLD = 4
   const PASTE_REVIEW_COOLDOWN_MS = 2000
 
   type View = 'today' | 'templates' | 'goals' | 'settings'
@@ -90,7 +90,7 @@
   let planSelectionFocusId: Id | null = null
   let selectedPlanPlanId: Id | null = null
   let selectingPlanItems = false
-  let planItemClipboard: { items: PlanItem[]; cut: boolean } | null = null
+  let planItemClipboard: { items: PlanItem[]; cut: boolean; sourceDate: string } | null = null
   // Each pasted node — parent or child — is reviewed on its own, so the queue is a
   // flat list annotated with the node's original depth. Kept nodes are re-nested from
   // those depths once the queue empties.
@@ -1113,7 +1113,7 @@
     const items = plannerStore.copyPlanItems(activePlan.id, selectedPlanItemIds)
     if (items.length === 0) return
 
-    planItemClipboard = { items, cut: false }
+    planItemClipboard = { items, cut: false, sourceDate: activePlan.date }
     writePlanItemsToSystemClipboard(items)
   }
 
@@ -1123,7 +1123,7 @@
     const items = plannerStore.cutPlanItems(activePlan.id, selectedPlanItemIds)
     if (items.length === 0) return
 
-    planItemClipboard = { items, cut: true }
+    planItemClipboard = { items, cut: true, sourceDate: activePlan.date }
     writePlanItemsToSystemClipboard(items)
     clearPlanSelection()
   }
@@ -1142,7 +1142,7 @@
     const placement = shouldReplaceFocusedPlanItemOnPaste(targetId) ? 'replace' : 'after'
 
     const nodes = flattenPlanItemsForReview(planItemClipboard.items)
-    if (nodes.length >= PASTE_REVIEW_THRESHOLD) {
+    if (nodes.length >= PASTE_REVIEW_THRESHOLD && planItemClipboard.sourceDate !== activePlan.date) {
       pasteReview = {
         nodes,
         index: 0,
