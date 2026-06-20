@@ -1998,7 +1998,13 @@ return rows`
           <h2>Daily template</h2>
         </div>
         {#if selectedTemplate}
-          <select bind:value={selectedTemplateId} aria-label="Select template">
+          <!-- Bind to the resolved template's id (not the raw selectedTemplateId, which
+               starts empty) so the select never renders blank while content is showing. -->
+          <select
+            value={selectedTemplate.id}
+            on:change={(event) => (selectedTemplateId = event.currentTarget.value)}
+            aria-label="Select template"
+          >
             {#each templates as template (template.id)}
               <option value={template.id}>{template.name}</option>
             {/each}
