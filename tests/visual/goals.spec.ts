@@ -6,6 +6,51 @@ test.beforeEach(async ({ page }) => {
   await page.reload()
 })
 
+test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 60 seconds', async ({ page }) => {
+  await page.clock.install()
+  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
+  const goalSearch = page.getByRole('searchbox', { name: 'Search goals' })
+
+  await expect(goalRhythm).toBeVisible()
+  await goalSearch.evaluate((element) => {
+    ;(window as typeof window & { goalSearchInputEvents?: number }).goalSearchInputEvents = 0
+    element.addEventListener('input', () => {
+      const testWindow = window as typeof window & { goalSearchInputEvents?: number }
+      testWindow.goalSearchInputEvents = (testWindow.goalSearchInputEvents ?? 0) + 1
+    })
+  })
+  await goalSearch.press('Alt+a')
+  expect(
+    await page.evaluate(
+      () => (window as typeof window & { goalSearchInputEvents?: number }).goalSearchInputEvents,
+    ),
+  ).toBe(0)
+  await expect(goalRhythm).toHaveCount(0)
+
+  await page.clock.fastForward(59_000)
+  expect(await goalRhythm.count()).toBe(0)
+  await page.clock.fastForward(1_000)
+  await expect(goalRhythm).toBeVisible()
+
+  const altLeftAllowed = await goalSearch.evaluate((element) =>
+    element.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowLeft', code: 'ArrowLeft', altKey: true, bubbles: true, cancelable: true }),
+    ),
+  )
+  const altRightAllowed = await goalSearch.evaluate((element) =>
+    element.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'ArrowRight', code: 'ArrowRight', altKey: true, bubbles: true, cancelable: true }),
+    ),
+  )
+  expect(altLeftAllowed).toBe(true)
+  expect(altRightAllowed).toBe(true)
+
+  await page.keyboard.press('Alt+a')
+  await expect(goalRhythm).toHaveCount(0)
+  await page.keyboard.press('Alt+a')
+  await expect(goalRhythm).toBeVisible()
+})
+
 test('a completed matching plan item automatically completes a goal and shows its color badge', async ({ page }, testInfo) => {
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await createGoal(page, 'Exercise', 1, 'lift, swim')

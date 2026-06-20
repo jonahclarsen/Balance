@@ -41,6 +41,7 @@
   }
 
   const AUTO_JSON_EXPORT_CHECK_INTERVAL_MS = 15 * 60 * 1000
+  const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DONE_TINT_KEY = 'balance:doneTintColor'
   // Matches the light-theme --done-tint base in app.css; shown as the picker
@@ -52,6 +53,8 @@
   let scrollPositionsByDate: Record<string, number> = {}
   let lastScrolledDate = ''
   let goalHistoryHeight: number | null = null
+  let goalRhythmVisible = true
+  let goalRhythmAutoShowTimer: number | null = null
   // Empty means "use the built-in green default"; a hex value overrides it.
   let doneTintColor = ''
   let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
@@ -149,7 +152,11 @@
   // Blend the chosen color in lightly so the row reads as a tint, not a fill.
   $: doneTintValue = `color-mix(in srgb, ${doneTintHex} 14%, transparent)`
   $: contentShellStyle = [
-    goalHistoryHeight != null ? `--goal-history-height: ${goalHistoryHeight}px` : '',
+    !goalRhythmVisible
+      ? '--goal-history-height: 0px'
+      : goalHistoryHeight != null
+        ? `--goal-history-height: ${goalHistoryHeight}px`
+        : '',
     doneTintColor ? `--done-tint: ${doneTintValue}` : '',
   ]
     .filter(Boolean)
@@ -202,6 +209,7 @@
     return () => {
       mounted = false
       clearAutoJsonExportTimers()
+      clearGoalRhythmAutoShowTimer()
       window.removeEventListener('focus', checkAutoJsonExport)
       document.removeEventListener('visibilitychange', checkVisibleAutoJsonExport)
     }
@@ -224,7 +232,30 @@
     localStorage.setItem(DONE_TINT_KEY, normalized)
   }
 
+  function clearGoalRhythmAutoShowTimer() {
+    if (goalRhythmAutoShowTimer === null) return
+    window.clearTimeout(goalRhythmAutoShowTimer)
+    goalRhythmAutoShowTimer = null
+  }
+
+  function showGoalRhythm() {
+    clearGoalRhythmAutoShowTimer()
+    goalRhythmVisible = true
+  }
+
+  function toggleGoalRhythm() {
+    if (!goalRhythmVisible) {
+      showGoalRhythm()
+      return
+    }
+
+    goalRhythmVisible = false
+    clearGoalRhythmAutoShowTimer()
+    goalRhythmAutoShowTimer = window.setTimeout(showGoalRhythm, GOAL_RHYTHM_AUTO_SHOW_MS)
+  }
+
   function focusGoalInRhythm(goalId: string) {
+    showGoalRhythm()
     // Bump a nonce so repeated clicks on the same goal badge re-trigger the
     // scroll/highlight in the rhythm panel even when the id is unchanged.
     goalRhythmScrollRequest = { goalId, nonce: (goalRhythmScrollRequest?.nonce ?? 0) + 1 }
@@ -650,6 +681,18 @@
   function handleGlobalKeydown(event: KeyboardEvent) {
     const key = event.key.toLowerCase()
     const primaryModifier = event.metaKey || event.ctrlKey
+
+    if (
+      event.code === 'KeyA' &&
+      event.altKey &&
+      !primaryModifier &&
+      !event.shiftKey
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!event.repeat) toggleGoalRhythm()
+      return
+    }
 
     if (pasteReview) {
       if (pasteReviewEditing) {
@@ -2171,14 +2214,16 @@
     {/if}
     </section>
 
-    <GoalHistoryPanel
-      goals={$plannerStore.goals}
-      completions={$plannerStore.goalCompletions}
-      viewedDate={$plannerStore.activePlanDate || todayISO()}
-      onOpenGoals={openGoals}
-      onResizeStart={startGoalHistoryResize}
-      scrollRequest={goalRhythmScrollRequest}
-    />
+    {#if goalRhythmVisible}
+      <GoalHistoryPanel
+        goals={$plannerStore.goals}
+        completions={$plannerStore.goalCompletions}
+        viewedDate={$plannerStore.activePlanDate || todayISO()}
+        onOpenGoals={openGoals}
+        onResizeStart={startGoalHistoryResize}
+        scrollRequest={goalRhythmScrollRequest}
+      />
+    {/if}
   </div>
 </main>
 
