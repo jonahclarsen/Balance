@@ -2051,6 +2051,12 @@ nav button.active {
 
 /* ---- Lists + Metrics features ---- */
 
+/* Hidden for now: only one day template is in use, so the picker is noise.
+   Remove this rule (and the class) to bring the selector back. */
+.day-template-select-hidden {
+  display: none;
+}
+
 /* Horizontal, scrollable picker of lists / list templates — replaces a dropdown
    so every option is visible at a glance and one click switches. */
 .template-rail {

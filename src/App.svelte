@@ -2001,6 +2001,7 @@ return rows`
           <!-- Bind to the resolved template's id (not the raw selectedTemplateId, which
                starts empty) so the select never renders blank while content is showing. -->
           <select
+            class="day-template-select-hidden"
             value={selectedTemplate.id}
             on:change={(event) => (selectedTemplateId = event.currentTarget.value)}
             aria-label="Select template"
