@@ -363,6 +363,7 @@ test('a new completion starts a new cadence segment and shortens the prior one',
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${firstCompletion} · completed"]`)).toHaveClass(/segment-start/)
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${dayAfterFirst} · active"]`)).toHaveClass(/segment-end/)
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${dayAfterFirst} · active"]`)).toHaveClass(/relieved/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${dayAfterFirst} · active"] .relieved-mark`)).toHaveText('✓')
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${secondCompletion} · completed"]`)).toHaveClass(/segment-start/)
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${dayAfterSecond} · active"]`)).toHaveClass(/relieved/)
 

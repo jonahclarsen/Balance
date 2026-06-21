@@ -1874,9 +1874,7 @@ nav button.active {
 }
 
 .goal-cell-mark.relieved-mark {
-  color: hsl(var(--goal-hue) calc(35% * var(--goal-sat-factor, 1)) 48% / 0.42);
-  font-size: 12px;
-  font-weight: 500;
+  color: hsl(var(--goal-hue) calc(35% * var(--goal-sat-factor, 1)) 48% / 0.5);
 }
 
 .goal-history-empty {
