@@ -77,6 +77,13 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  /* Keep content clear of the Android status bar / notch and the iOS home
+     indicator. The webview renders edge-to-edge on mobile; these insets are 0
+     on desktop, so this is a no-op there. Requires viewport-fit=cover. */
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
 }
 
 button,
@@ -171,8 +178,10 @@ h3 {
 .app-shell {
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
-  height: 100vh;
-  min-height: 100vh;
+  /* Fit within the safe-area padding the body now reserves, so the fixed-height
+     desktop layout doesn't overflow by the inset amount (0 on desktop). */
+  height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow: hidden;
 }
 
