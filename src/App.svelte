@@ -69,6 +69,7 @@
   let selectedListTemplateId = ''
   let listViewTemplateId = ''
   let wordCapUnlocked = false
+  let wordCapScrolledAway = false
   let selectedMetricId = ''
   let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
   let listOverlayArmed = false
@@ -545,6 +546,9 @@ return rows`
     if (workspaceEl && lastScrolledDate) {
       scrollPositionsByDate[lastScrolledDate] = workspaceEl.scrollTop
     }
+    // The list-template max-word lock/input only stays visible near the top; once
+    // scrolled away it fades out so it doesn't hover over the items being edited.
+    if (workspaceEl) wordCapScrolledAway = workspaceEl.scrollTop > 40
   }
 
   async function restoreScrollForDate(date: string) {
@@ -2154,7 +2158,7 @@ return rows`
               {selectedListWordCount} / {selectedListTemplate.maxExpectedWords || '∞'} expected words ·
               {selectedListTotalWordCount} total words
             </span>
-            <div class="word-cap-edit">
+            <div class="word-cap-edit" class:faded={wordCapScrolledAway}>
               <button
                 class="icon-button"
                 type="button"
