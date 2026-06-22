@@ -68,6 +68,9 @@
   // Lists + Metrics feature state
   let selectedListTemplateId = ''
   let listViewTemplateId = ''
+  // Generated list items can't be edited, but you can still click one to select
+  // it, then Cmd+D to toggle done and arrow up/down to move the selection.
+  let selectedListItemId: Id | null = null
   let wordCapUnlocked = false
   let wordCapScrolledAway = false
   let selectedMetricId = ''
@@ -191,6 +194,12 @@ return rows`
   $: listViewInstance = $plannerStore.lists.find(
     (list) => list.listTemplateId === listViewTemplateId && list.date === $plannerStore.activePlanDate,
   )
+  // Drop a stale selection when the list it pointed into is gone (date/template
+  // switch, regeneration), so keyboard actions never target a vanished item.
+  $: if (selectedListItemId && (!listViewInstance || !findPlanItem(listViewInstance.items, selectedListItemId))) {
+    selectedListItemId = null
+  }
+  $: selectedListItemIdSet = new Set(selectedListItemId ? [selectedListItemId] : [])
   // ---- Metrics ----
   $: metrics = $plannerStore.metrics
   $: selectedMetric = metrics.find((metric) => metric.id === selectedMetricId) ?? metrics[0]
@@ -970,6 +979,25 @@ return rows`
       return
     }
 
+    if (view === 'lists' && selectedListItemId && event.key === 'Escape') {
+      event.preventDefault()
+      selectedListItemId = null
+      return
+    }
+
+    if (
+      view === 'lists' &&
+      listViewInstance &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !primaryModifier &&
+      (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+    ) {
+      event.preventDefault()
+      moveListSelection(event.key === 'ArrowUp' ? -1 : 1)
+      return
+    }
+
     if (
       view === 'today' &&
       activePlan &&
@@ -1032,8 +1060,8 @@ return rows`
       return
     }
 
-    if (view === 'today' && event.altKey && !primaryModifier && !event.shiftKey) {
-      if (activePlan && selectedPlanItemIds.length > 0 && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+    if ((view === 'today' || view === 'lists') && event.altKey && !primaryModifier && !event.shiftKey) {
+      if (view === 'today' && activePlan && selectedPlanItemIds.length > 0 && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         const rootIds = selectedPlanRootIds()
         if (rootIds.length === 0) return
 
@@ -1056,6 +1084,15 @@ return rows`
     }
 
     if (!primaryModifier || event.altKey) return
+
+    if (view === 'lists' && key === 'd' && !event.shiftKey && selectedListItemId && listViewInstance) {
+      const item = findPlanItem(listViewInstance.items, selectedListItemId)
+      if (!item) return
+
+      event.preventDefault()
+      plannerStore.patchListItem(listViewInstance.id, item.id, { done: !item.done })
+      return
+    }
 
     if (view === 'today' && activePlan && key === 'd' && !event.shiftKey && selectedPlanItemIds.length > 0) {
       const selectedItems = selectedPlanItems()
@@ -1122,6 +1159,23 @@ return rows`
     const active = document.activeElement
     const row = active instanceof Element ? active.closest<HTMLElement>('[data-plan-item-id]') : null
     return row?.dataset.planItemId ?? null
+  }
+
+  function moveListSelection(direction: -1 | 1) {
+    if (!listViewInstance) return
+
+    const ids = flattenPlanItemIds(listViewInstance.items)
+    if (ids.length === 0) return
+
+    const currentIndex = selectedListItemId ? ids.indexOf(selectedListItemId) : -1
+    const nextIndex =
+      currentIndex === -1
+        ? direction === 1
+          ? 0
+          : ids.length - 1
+        : Math.min(ids.length - 1, Math.max(0, currentIndex + direction))
+
+    selectedListItemId = ids[nextIndex]
   }
 
   function findPlanItem(items: PlanItem[], itemId: string): PlanItem | null {
@@ -2137,7 +2191,6 @@ return rows`
           <p class="eyebrow">Generator</p>
           <h2>List template</h2>
         </div>
-        <button type="button" on:click={createListTemplateAndSelect}>+ New list</button>
       </header>
 
       {#if listTemplates.length > 0}
@@ -2153,6 +2206,7 @@ return rows`
               {template.name || 'Untitled list'}
             </button>
           {/each}
+          <button type="button" class="rail-chip dashed-edge" on:click={createListTemplateAndSelect}>New list</button>
         </nav>
       {/if}
 
@@ -2295,6 +2349,8 @@ return rows`
               historyRevision={$plannerStore.historyRevision}
               {listTemplates}
               {metrics}
+              selectedItemIds={selectedListItemIdSet}
+              onLockedSelect={(itemId) => (selectedListItemId = itemId)}
               onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: listViewInstance.id, itemId })}
               locked
             />
@@ -2339,7 +2395,7 @@ return rows`
               {metric.name || 'Untitled metric'}
             </button>
           {/each}
-          <button type="button" class="rail-chip rail-chip-add" on:click={createMetricAndSelect}>+ New metric</button>
+          <button type="button" class="rail-chip dashed-edge" on:click={createMetricAndSelect}>New metric</button>
         </nav>
       {/if}
 
