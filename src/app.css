@@ -2278,6 +2278,7 @@ nav button.active {
   display: grid;
   gap: 10px;
   max-width: 760px;
+  margin-top: 40px;
 }
 
 .metric-import textarea {
