@@ -53,6 +53,9 @@
   let activeDropRow: HTMLElement | null = null
 
   $: probabilityTotal = item.options.reduce((sum, option) => sum + (Number(option.probability) || 0), 0)
+  // A lone option is allowed to sit below 100%: the missing share is an implicit
+  // "skip" (the item just doesn't appear that often), so it isn't a bad total.
+  $: badProbabilityTotal = item.options.length > 1 && probabilityTotal !== 100
   $: timeOverlapsPrevious =
     item.startMinutes !== null &&
     item.endMinutes !== null &&
@@ -295,6 +298,7 @@
           <ProbabilitySlider
             value={option.probability}
             min={0}
+            editable
             onChange={(probability) => patchOption(templateId, item.id, option.id, { probability })}
           />
           <button
@@ -311,7 +315,7 @@
     </div>
 
     <div class="template-actions">
-      <span class:bad-total={probabilityTotal !== 100} class="total">{probabilityTotal}%</span>
+      <span class:bad-total={badProbabilityTotal} class="total">{probabilityTotal}%</span>
       <button class="icon-button" type="button" title="Add option" on:click={() => addOption(templateId, item.id)}>±</button>
       <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(templateId, item.id)}>↳</button>
       <button class="icon-button danger" type="button" title="Delete item" on:click={() => deleteItem(templateId, item.id)}>×</button>
