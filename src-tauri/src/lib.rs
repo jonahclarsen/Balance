@@ -5,6 +5,7 @@ use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use data_encoding::BASE32_NOPAD;
+#[cfg(not(target_os = "android"))]
 use keyring::{Entry, Error as KeyringError};
 use rand::{rngs::OsRng, RngCore};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
@@ -14,7 +15,9 @@ use tauri::Manager;
 
 const APP_DATABASE_FILE: &str = "balance.sqlite3";
 const APP_DATA_DIR: &str = "Balance";
+#[cfg(not(target_os = "android"))]
 const KEYCHAIN_SERVICE: &str = "app.balance.local";
+#[cfg(not(target_os = "android"))]
 const KEYCHAIN_ACCOUNT: &str = "database-recovery-key";
 const RECOVERY_KEY_CONFIRMED: &str = "recovery_key_confirmed";
 const EXPORT_DIRECTORY: &str = "export_directory";
@@ -4423,6 +4426,7 @@ fn patch_has_key(value: &Value, key: &str) -> bool {
     value.get(key).is_some()
 }
 
+#[cfg(not(target_os = "android"))]
 fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
     let entry =
         Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).map_err(|error| error.to_string())?;
@@ -4439,6 +4443,42 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
         Err(KeyringError::NoEntry) => Err(missing_recovery_key_error()),
         Err(error) => Err(error.to_string()),
     }
+}
+
+// Android has no OS keychain that the `keyring` crate supports, so the recovery
+// key lives in a file alongside the database. Both sit in the app's private
+// internal storage, which the OS sandboxes per-application.
+#[cfg(target_os = "android")]
+fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
+    let key_path = recovery_key_path(database_path);
+
+    match fs::read_to_string(&key_path) {
+        Ok(contents) => {
+            let recovery_key = contents.trim().to_string();
+            if recovery_key.is_empty() {
+                Err(missing_recovery_key_error())
+            } else {
+                Ok(recovery_key)
+            }
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound && !database_path.exists() => {
+            let recovery_key = generate_recovery_key();
+            if let Some(parent) = key_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+            }
+            fs::write(&key_path, &recovery_key).map_err(|error| error.to_string())?;
+            Ok(recovery_key)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(missing_recovery_key_error())
+        }
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[cfg(target_os = "android")]
+fn recovery_key_path(database_path: &PathBuf) -> PathBuf {
+    database_path.with_file_name("balance-recovery.key")
 }
 
 fn missing_recovery_key_error() -> String {
