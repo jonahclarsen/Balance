@@ -2129,8 +2129,10 @@ nav button.active {
   white-space: pre-wrap;
 }
 
-/* Generated list items aren't editable; clicking selects the row instead. */
-.list-panel .item-text-display {
+/* Generated list items aren't editable; clicking selects the row instead.
+   Editable plan items keep the text cursor — only the locked rows (rendered
+   with role="button") opt out. */
+.item-text-display[role='button'] {
   cursor: default;
 }
 
@@ -2143,16 +2145,6 @@ nav button.active {
 
 .item-text-display .inline-link:hover {
   color: var(--accent);
-}
-
-.link-edit {
-  flex: 0 0 auto;
-  opacity: 0;
-}
-
-.plan-row:hover .link-edit,
-.link-edit:focus-visible {
-  opacity: 1;
 }
 
 /* Segmented [Day | List] / view toggles */
