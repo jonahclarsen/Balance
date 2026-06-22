@@ -4445,16 +4445,22 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
     }
 }
 
-// Android has no OS keychain that the `keyring` crate supports, so the recovery
-// key lives in a file alongside the database. Both sit in the app's private
-// internal storage, which the OS sandboxes per-application.
+// Android has no OS keychain that the `keyring` crate supports. The SQLCipher
+// recovery key is generated once, then encrypted with a non-exportable,
+// hardware-backed AES-GCM key from the Android Keystore; only the ciphertext is
+// written to a file in the app's private internal storage. The plaintext key
+// therefore never touches disk.
 #[cfg(target_os = "android")]
 fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
     let key_path = recovery_key_path(database_path);
 
-    match fs::read_to_string(&key_path) {
-        Ok(contents) => {
-            let recovery_key = contents.trim().to_string();
+    match fs::read(&key_path) {
+        Ok(blob) => {
+            let plaintext = android_keystore::unwrap_key(&blob)?;
+            let recovery_key = String::from_utf8(plaintext)
+                .map_err(|error| error.to_string())?
+                .trim()
+                .to_string();
             if recovery_key.is_empty() {
                 Err(missing_recovery_key_error())
             } else {
@@ -4463,10 +4469,11 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound && !database_path.exists() => {
             let recovery_key = generate_recovery_key();
+            let blob = android_keystore::wrap_key(recovery_key.as_bytes())?;
             if let Some(parent) = key_path.parent() {
                 fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
-            fs::write(&key_path, &recovery_key).map_err(|error| error.to_string())?;
+            fs::write(&key_path, &blob).map_err(|error| error.to_string())?;
             Ok(recovery_key)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -4478,7 +4485,232 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
 
 #[cfg(target_os = "android")]
 fn recovery_key_path(database_path: &PathBuf) -> PathBuf {
-    database_path.with_file_name("balance-recovery.key")
+    database_path.with_file_name("balance-recovery.key.enc")
+}
+
+// Wraps/unwraps a secret with a hardware-backed AES-256-GCM key stored in the
+// Android Keystore. The Keystore key is non-exportable; this code only ever
+// hands it plaintext to encrypt or ciphertext to decrypt, over JNI.
+#[cfg(target_os = "android")]
+mod android_keystore {
+    use jni::objects::{JByteArray, JObject};
+    use jni::{JNIEnv, JavaVM};
+
+    const KEYSTORE_PROVIDER: &str = "AndroidKeyStore";
+    const KEYSTORE_ALIAS: &str = "balance-db-recovery-key";
+    const ENCRYPT_MODE: i32 = 1;
+    const DECRYPT_MODE: i32 = 2;
+    // KeyProperties.PURPOSE_ENCRYPT | PURPOSE_DECRYPT
+    const PURPOSE_ENCRYPT_DECRYPT: i32 = 1 | 2;
+    const GCM_TAG_BITS: i32 = 128;
+    const AES_KEY_BITS: i32 = 256;
+
+    pub fn wrap_key(plaintext: &[u8]) -> Result<Vec<u8>, String> {
+        with_env(|env| {
+            encrypt(env, plaintext).map_err(|error| format!("Keystore wrap failed: {error}"))
+        })
+    }
+
+    pub fn unwrap_key(blob: &[u8]) -> Result<Vec<u8>, String> {
+        let (iv, ciphertext) = split_blob(blob)?;
+        with_env(|env| {
+            decrypt(env, iv, ciphertext).map_err(|error| format!("Keystore unwrap failed: {error}"))
+        })
+    }
+
+    // Stored layout: [iv_len: u8][iv][ciphertext+tag].
+    fn split_blob(blob: &[u8]) -> Result<(&[u8], &[u8]), String> {
+        let (&iv_len, rest) = blob
+            .split_first()
+            .ok_or_else(|| "The recovery key file is empty.".to_string())?;
+        if rest.len() < iv_len as usize {
+            return Err("The recovery key file is corrupt.".to_string());
+        }
+        Ok(rest.split_at(iv_len as usize))
+    }
+
+    fn with_env<T>(f: impl FnOnce(&mut JNIEnv) -> Result<T, String>) -> Result<T, String> {
+        let ctx = ndk_context::android_context();
+        let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) }.map_err(|error| error.to_string())?;
+        let mut guard = vm
+            .attach_current_thread()
+            .map_err(|error| error.to_string())?;
+        let result = f(&mut guard);
+        // Leave no pending Java exception behind when we bail out.
+        if result.is_err() && guard.exception_check().unwrap_or(false) {
+            let _ = guard.exception_describe();
+            let _ = guard.exception_clear();
+        }
+        result
+    }
+
+    fn encrypt(env: &mut JNIEnv, plaintext: &[u8]) -> Result<Vec<u8>, jni::errors::Error> {
+        let key = get_or_create_key(env)?;
+        let cipher = new_cipher(env)?;
+        env.call_method(
+            &cipher,
+            "init",
+            "(ILjava/security/Key;)V",
+            &[ENCRYPT_MODE.into(), (&key).into()],
+        )?;
+
+        let iv_obj = env.call_method(&cipher, "getIV", "()[B", &[])?.l()?;
+        let iv = env.convert_byte_array(JByteArray::from(iv_obj))?;
+        let input = env.byte_array_from_slice(plaintext)?;
+        let ciphertext_obj = env
+            .call_method(&cipher, "doFinal", "([B)[B", &[(&input).into()])?
+            .l()?;
+        let ciphertext = env.convert_byte_array(JByteArray::from(ciphertext_obj))?;
+
+        let mut blob = Vec::with_capacity(1 + iv.len() + ciphertext.len());
+        blob.push(iv.len() as u8);
+        blob.extend_from_slice(&iv);
+        blob.extend_from_slice(&ciphertext);
+        Ok(blob)
+    }
+
+    fn decrypt(
+        env: &mut JNIEnv,
+        iv: &[u8],
+        ciphertext: &[u8],
+    ) -> Result<Vec<u8>, jni::errors::Error> {
+        let key = get_or_create_key(env)?;
+        let cipher = new_cipher(env)?;
+
+        let iv_arr = env.byte_array_from_slice(iv)?;
+        let gcm_spec = env.new_object(
+            "javax/crypto/spec/GCMParameterSpec",
+            "(I[B)V",
+            &[GCM_TAG_BITS.into(), (&iv_arr).into()],
+        )?;
+        env.call_method(
+            &cipher,
+            "init",
+            "(ILjava/security/Key;Ljava/security/spec/AlgorithmParameterSpec;)V",
+            &[DECRYPT_MODE.into(), (&key).into(), (&gcm_spec).into()],
+        )?;
+
+        let input = env.byte_array_from_slice(ciphertext)?;
+        let plaintext_obj = env
+            .call_method(&cipher, "doFinal", "([B)[B", &[(&input).into()])?
+            .l()?;
+        env.convert_byte_array(JByteArray::from(plaintext_obj))
+    }
+
+    fn new_cipher<'local>(
+        env: &mut JNIEnv<'local>,
+    ) -> Result<JObject<'local>, jni::errors::Error> {
+        let transformation = env.new_string("AES/GCM/NoPadding")?;
+        env.call_static_method(
+            "javax/crypto/Cipher",
+            "getInstance",
+            "(Ljava/lang/String;)Ljavax/crypto/Cipher;",
+            &[(&transformation).into()],
+        )?
+        .l()
+    }
+
+    fn get_or_create_key<'local>(
+        env: &mut JNIEnv<'local>,
+    ) -> Result<JObject<'local>, jni::errors::Error> {
+        let alias = env.new_string(KEYSTORE_ALIAS)?;
+        let provider = env.new_string(KEYSTORE_PROVIDER)?;
+
+        let key_store = env
+            .call_static_method(
+                "java/security/KeyStore",
+                "getInstance",
+                "(Ljava/lang/String;)Ljava/security/KeyStore;",
+                &[(&provider).into()],
+            )?
+            .l()?;
+        env.call_method(
+            &key_store,
+            "load",
+            "(Ljava/security/KeyStore$LoadStoreParameter;)V",
+            &[(&JObject::null()).into()],
+        )?;
+
+        let exists = env
+            .call_method(
+                &key_store,
+                "containsAlias",
+                "(Ljava/lang/String;)Z",
+                &[(&alias).into()],
+            )?
+            .z()?;
+        if exists {
+            return env
+                .call_method(
+                    &key_store,
+                    "getKey",
+                    "(Ljava/lang/String;[C)Ljava/security/Key;",
+                    &[(&alias).into(), (&JObject::null()).into()],
+                )?
+                .l();
+        }
+
+        let generator = env
+            .call_static_method(
+                "javax/crypto/KeyGenerator",
+                "getInstance",
+                "(Ljava/lang/String;Ljava/lang/String;)Ljavax/crypto/KeyGenerator;",
+                &[(&env.new_string("AES")?).into(), (&provider).into()],
+            )?
+            .l()?;
+
+        let builder = env.new_object(
+            "android/security/keystore/KeyGenParameterSpec$Builder",
+            "(Ljava/lang/String;I)V",
+            &[(&alias).into(), PURPOSE_ENCRYPT_DECRYPT.into()],
+        )?;
+        let block_modes = string_array(env, "GCM")?;
+        env.call_method(
+            &builder,
+            "setBlockModes",
+            "([Ljava/lang/String;)Landroid/security/keystore/KeyGenParameterSpec$Builder;",
+            &[(&block_modes).into()],
+        )?;
+        let paddings = string_array(env, "NoPadding")?;
+        env.call_method(
+            &builder,
+            "setEncryptionPaddings",
+            "([Ljava/lang/String;)Landroid/security/keystore/KeyGenParameterSpec$Builder;",
+            &[(&paddings).into()],
+        )?;
+        env.call_method(
+            &builder,
+            "setKeySize",
+            "(I)Landroid/security/keystore/KeyGenParameterSpec$Builder;",
+            &[AES_KEY_BITS.into()],
+        )?;
+        let spec = env
+            .call_method(
+                &builder,
+                "build",
+                "()Landroid/security/keystore/KeyGenParameterSpec;",
+                &[],
+            )?
+            .l()?;
+
+        env.call_method(
+            &generator,
+            "init",
+            "(Ljava/security/spec/AlgorithmParameterSpec;)V",
+            &[(&spec).into()],
+        )?;
+        env.call_method(&generator, "generateKey", "()Ljavax/crypto/SecretKey;", &[])?
+            .l()
+    }
+
+    fn string_array<'local>(
+        env: &mut JNIEnv<'local>,
+        value: &str,
+    ) -> Result<JObject<'local>, jni::errors::Error> {
+        let element = env.new_string(value)?;
+        let array = env.new_object_array(1, "java/lang/String", &element)?;
+        Ok(array.into())
+    }
 }
 
 fn missing_recovery_key_error() -> String {
