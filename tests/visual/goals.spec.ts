@@ -310,12 +310,13 @@ test('old goal snapshots survive rule edits and archiving, and deletion advises 
   })
 })
 
-test('cadence periods stay anchored to the end of the previous period', async ({ page }, testInfo) => {
-  const firstCompletion = addDays(todayISO(), -8)
-  const firstPeriodEnd = addDays(firstCompletion, 3)
-  const secondPeriodStart = addDays(firstCompletion, 4)
+test('a completion resets a rolling deadline and late days stay overdue', async ({ page }, testInfo) => {
+  const firstCompletion = addDays(todayISO(), -7)
+  const coverageEnd = addDays(firstCompletion, 3)
+  const dueDate = addDays(firstCompletion, 4)
+  const firstOverdueDate = addDays(firstCompletion, 5)
+  const lastOverdueDate = addDays(firstCompletion, 6)
   const secondCompletion = addDays(firstCompletion, 7)
-  const thirdPeriodStart = addDays(firstCompletion, 8)
 
   await page.evaluate(
     ({ firstCompletion, secondCompletion }) => {
@@ -362,11 +363,12 @@ test('cadence periods stay anchored to the end of the previous period', async ({
     .toBe('120')
 
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${firstCompletion} · completed"]`)).toHaveClass(/segment-start/)
-  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${firstPeriodEnd} · active"]`)).toHaveClass(/segment-end/)
-  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${secondPeriodStart} · active"]`)).toHaveClass(/segment-start/)
-  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${secondPeriodStart} · active"]`)).toHaveClass(/relieved/)
-  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${secondCompletion} · completed"]`)).toHaveClass(/segment-end/)
-  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${thirdPeriodStart} · active"]`)).toHaveClass(/segment-start/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${coverageEnd} · active"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${dueDate} · missed"]`)).toHaveClass(/segment-start/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${firstOverdueDate} · overdue"] .overdue-mark`)).toHaveText('×')
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${lastOverdueDate} · overdue"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${secondCompletion} · completed"]`)).toHaveClass(/segment-start/)
+  await expect(page.locator('.goal-history-name', { hasText: 'Make a beat' }).locator('.goal-lapse')).toHaveText('4d left')
 
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-goal-cadence-segments.png`,
@@ -374,13 +376,11 @@ test('cadence periods stay anchored to the end of the previous period', async ({
   })
 })
 
-test('an unmet cycle ends on schedule and a late completion satisfies its fixed cycle', async ({ page }) => {
+test('an unmet rolling deadline stays overdue until a completion resets it', async ({ page }) => {
   const start = addDays(todayISO(), -7)
   const deadline = addDays(start, 2)
   const secondStart = addDays(start, 3)
   const lateCompletion = addDays(todayISO(), -2)
-  const currentStart = addDays(start, 6)
-  const currentEnd = addDays(start, 8)
 
   await page.evaluate((start) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -403,16 +403,14 @@ test('an unmet cycle ends on schedule and a late completion satisfies its fixed 
   await page.reload()
 
   const lapsePill = page.locator('.goal-history-name', { hasText: 'Read' }).locator('.goal-lapse')
-  await expect(lapsePill).toHaveText('1d left')
-  await expect(lapsePill).not.toHaveClass(/overdue/)
+  await expect(lapsePill).toHaveText('5d over')
+  await expect(lapsePill).toHaveClass(/overdue/)
   await expect(page.locator('.goal-history-toolbar > div > span')).toHaveText('1 upcoming in the next 3 days')
 
   await expect(page.locator(`.goal-day-cell[title="Read · ${start} · missed"]`)).toHaveClass(/segment-start/)
   await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · missed"]`)).toBeVisible()
-  await expect(page.locator(`.goal-day-cell[title="Read · ${secondStart} · missed"]`)).toHaveClass(/segment-start/)
-  await expect(page.locator(`.goal-day-cell[title="Read · ${lateCompletion} · missed"]`)).toHaveClass(/segment-end/)
-  await expect(page.locator(`.goal-day-cell[title="Read · ${currentStart} · active"]`)).toHaveClass(/segment-start/)
-  await expect(page.locator(`.goal-day-cell[title="Read · ${currentEnd} · active"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${secondStart} · overdue"] .overdue-mark`)).toHaveText('×')
+  await expect(page.locator(`.goal-day-cell[title="Read · ${todayISO()} · overdue"]`)).toHaveClass(/segment-end/)
 
   await expect(page.locator('.goal-date-head.future')).toHaveCount(6)
 
@@ -433,9 +431,10 @@ test('an unmet cycle ends on schedule and a late completion satisfies its fixed 
 
   await expect(lapsePill).toHaveText('1d left')
   await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · missed"]`)).toBeVisible()
-  await expect(page.locator(`.goal-day-cell[title="Read · ${secondStart} · active"]`)).toHaveClass(/segment-start/)
-  await expect(page.locator(`.goal-day-cell[title="Read · ${secondStart} · active"]`)).toHaveClass(/relieved/)
-  await expect(page.locator(`.goal-day-cell[title="Read · ${lateCompletion} · completed"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${secondStart} · overdue"]`)).toBeVisible()
+  await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(lateCompletion, -1)} · overdue"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${lateCompletion} · completed"]`)).toHaveClass(/segment-start/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${todayISO()} · active"]`)).toHaveClass(/segment-end/)
 })
 
 test('goal rhythm keeps rounded segment ends when saved activity periods overlap', async ({ page }) => {
@@ -469,10 +468,10 @@ test('goal rhythm keeps rounded segment ends when saved activity periods overlap
   )
   await page.reload()
 
-  const overlapBoundary = page.locator(`.goal-day-cell[title="Overlapping history · ${overlapStart} · missed"]`)
-  await expect(overlapBoundary).toHaveClass(/segment-start/)
+  const overlapBoundary = page.locator(`.goal-day-cell[title="Overlapping history · ${overlapStart} · overdue"]`)
+  await expect(overlapBoundary).not.toHaveClass(/segment-start/)
 
-  const currentEnd = page.locator(`.goal-day-cell[title="Overlapping history · ${todayISO()} · active"]`)
+  const currentEnd = page.locator(`.goal-day-cell[title="Overlapping history · ${todayISO()} · overdue"]`)
   await expect(currentEnd).toHaveClass(/segment-end/)
   await expect(currentEnd).toHaveCSS('border-bottom-right-radius', '999px')
 })
