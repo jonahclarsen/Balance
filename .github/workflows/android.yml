@@ -151,23 +151,34 @@ jobs:
             # The runner executes this with /bin/sh (dash), which has no pipefail.
             set -eu
             adb install -r balance-debug.apk
-            PKG="$(adb shell pm list packages | grep -i balance | head -n 1 | sed 's/package://' | tr -d '\r')"
-            echo "Installed package: $PKG"
+            # Resolve the installed package id. pm can lag right after install, so
+            # retry, and filter to third-party packages (-3) to avoid surprises.
+            PKG=""
+            for _ in $(seq 1 15); do
+              PKG="$(adb shell pm list packages -3 | tr -d '\r' | sed 's/^package://' | grep -i balance | head -n 1 || true)"
+              [ -n "$PKG" ] && break
+              sleep 2
+            done
+            echo "===== installed third-party packages ====="
+            adb shell pm list packages -3 | tr -d '\r'
+            echo "Resolved package: '$PKG'"
             test -n "$PKG"
             adb logcat -c
             adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
             # Give the webview time to initialize, open the database (SQLCipher /
             # OpenSSL) and render the frontend.
             sleep 25
-            echo "===== logcat (app + crashes) ====="
             adb logcat -d > logcat.txt || true
-            grep -iE "FATAL EXCEPTION|beginning of crash|libbalance_lib|tauri|balance" logcat.txt || true
+            echo "===== app / crash log lines ====="
+            grep -iE "FATAL EXCEPTION|beginning of crash|libbalance_lib|UnsatisfiedLink|RustStdoutStderr|balance" logcat.txt || true
             echo "===== checks ====="
-            # The process must still be alive (no crash on startup).
-            PID="$(adb shell pidof "$PKG" | tr -d '\r')"
+            # The process must still be alive (no crash on startup). If the native
+            # library had failed to load, the process would have died with an
+            # UnsatisfiedLinkError before reaching here.
+            PID="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
             echo "App pid: '$PID'"
             test -n "$PID"
-            # No fatal native or Java crash referencing our app.
+            # No fatal native or Java crash anywhere in the log.
             if grep -qE "FATAL EXCEPTION" logcat.txt; then
               echo "Found a fatal exception in logcat:"
               grep -A 20 "FATAL EXCEPTION" logcat.txt
