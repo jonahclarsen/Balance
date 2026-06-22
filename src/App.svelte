@@ -977,25 +977,6 @@ return rows`
       return
     }
 
-    if (view === 'lists' && selectedListItemId && event.key === 'Escape') {
-      event.preventDefault()
-      selectedListItemId = null
-      return
-    }
-
-    if (
-      view === 'lists' &&
-      listViewInstance &&
-      !event.shiftKey &&
-      !event.altKey &&
-      !primaryModifier &&
-      (event.key === 'ArrowUp' || event.key === 'ArrowDown')
-    ) {
-      event.preventDefault()
-      moveListSelection(event.key === 'ArrowUp' ? -1 : 1)
-      return
-    }
-
     if (
       view === 'today' &&
       activePlan &&
@@ -1083,15 +1064,6 @@ return rows`
 
     if (!primaryModifier || event.altKey) return
 
-    if (view === 'lists' && key === 'd' && !event.shiftKey && selectedListItemId && listViewInstance) {
-      const item = findPlanItem(listViewInstance.items, selectedListItemId)
-      if (!item) return
-
-      event.preventDefault()
-      plannerStore.patchListItem(listViewInstance.id, item.id, { done: !item.done })
-      return
-    }
-
     if (view === 'today' && activePlan && key === 'd' && !event.shiftKey && selectedPlanItemIds.length > 0) {
       const selectedItems = selectedPlanItems()
       if (selectedItems.length === 0) return
@@ -1159,6 +1131,36 @@ return rows`
     return row?.dataset.planItemId ?? null
   }
 
+  // Keyboard handling for the generated-list view is scoped to the list panel
+  // (which holds focus once a row is clicked) rather than the global window
+  // handler, so it fires reliably regardless of what else is on the page.
+  function handleListKeydown(event: KeyboardEvent) {
+    if (!listViewInstance) return
+
+    const primaryModifier = event.metaKey || event.ctrlKey
+
+    if (event.key === 'Escape' && selectedListItemId) {
+      event.preventDefault()
+      selectedListItemId = null
+      return
+    }
+
+    if (!event.shiftKey && !event.altKey && !primaryModifier && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault()
+      moveListSelection(event.key === 'ArrowUp' ? -1 : 1)
+      return
+    }
+
+    if (primaryModifier && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'd' && selectedListItemId) {
+      const item = findPlanItem(listViewInstance.items, selectedListItemId)
+      if (!item) return
+
+      event.preventDefault()
+      plannerStore.patchListItem(listViewInstance.id, item.id, { done: !item.done })
+      return
+    }
+  }
+
   function moveListSelection(direction: -1 | 1) {
     if (!listViewInstance) return
 
@@ -1173,7 +1175,26 @@ return rows`
           : ids.length - 1
         : Math.min(ids.length - 1, Math.max(0, currentIndex + direction))
 
-    selectedListItemId = ids[nextIndex]
+    selectListItem(ids[nextIndex])
+  }
+
+  // Selecting a row also moves DOM focus onto it (keeping focus inside the panel
+  // so the next keystroke still reaches handleListKeydown) and scrolls it into view.
+  function selectListItem(itemId: Id) {
+    selectedListItemId = itemId
+    void focusSelectedListRow()
+  }
+
+  async function focusSelectedListRow() {
+    await tick()
+    if (!selectedListItemId) return
+
+    const row = document.querySelector<HTMLElement>(`.list-panel [data-plan-item-id="${selectedListItemId}"]`)
+    const focusTarget = row?.querySelector<HTMLElement>('.item-text-display')
+    if (focusTarget) {
+      focusTarget.focus()
+      focusTarget.scrollIntoView({ block: 'nearest' })
+    }
   }
 
   function findPlanItem(items: PlanItem[], itemId: string): PlanItem | null {
@@ -2330,7 +2351,8 @@ return rows`
           <button class="primary" type="button" on:click={createListTemplateAndSelect}>+ New list template</button>
         </div>
       {:else if listViewInstance}
-        <div class="list-panel">
+        <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+        <div class="list-panel" role="list" on:keydown={handleListKeydown}>
           {#each listViewInstance.items as item (item.id)}
             <PlanItemEditor
               {item}
@@ -2348,7 +2370,7 @@ return rows`
               {listTemplates}
               {metrics}
               selectedItemIds={selectedListItemIdSet}
-              onLockedSelect={(itemId) => (selectedListItemId = itemId)}
+              onLockedSelect={(itemId) => selectListItem(itemId)}
               onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: listViewInstance.id, itemId })}
               locked
             />
