@@ -65,6 +65,7 @@ export type MetricQuestionType = 'text' | 'boolean'
 export type MetricQuestion = {
   id: Id
   prompt: string
+  html: string
   type: MetricQuestionType
 }
 

@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import { escapeHTML } from './planner'
   import type { Id, Metric } from './types'
 
   export let metric: Metric
@@ -69,7 +70,7 @@
 <div class="metric-quiz">
   {#if question}
     <p class="metric-progress">Question {index + 1} of {total}</p>
-    <p class="metric-prompt">{question.prompt || 'Untitled question'}</p>
+    <p class="metric-prompt">{@html question.html || escapeHTML(question.prompt || 'Untitled question')}</p>
 
     {#if question.type === 'boolean'}
       {@const current = answers[question.id] ?? draft}
