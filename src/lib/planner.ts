@@ -1093,6 +1093,7 @@ function sanitizeNode(node: Node): string {
   if (tag === 'br') return '<br>'
   if (tag === 'b' || tag === 'strong') return `<strong>${children}</strong>`
   if (tag === 'i' || tag === 'em') return `<em>${children}</em>`
+  if (tag === 'u') return `<u>${children}</u>`
   if (tag === 'p' || tag === 'div') return children ? `${children}<br>` : ''
 
   if (tag === 'a') {

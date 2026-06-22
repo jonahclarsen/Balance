@@ -155,6 +155,13 @@
       return
     }
 
+    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'u') {
+      event.preventDefault()
+      document.execCommand('underline')
+      persistEditor(event.currentTarget as HTMLDivElement, false)
+      return
+    }
+
     if (
       onHorizontalBoundaryKey &&
       !event.metaKey &&
