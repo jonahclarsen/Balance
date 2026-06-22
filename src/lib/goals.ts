@@ -322,12 +322,39 @@ export function buildGoalDayCells(
 
     let segmentStart = period.startDate
     const periodEnd = period.endDate ?? visibleEnd
+    let deadline = minISODate(shiftISODate(segmentStart, goal.cadenceDays - 1), periodEnd)
 
     while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
-      const deadline = minISODate(shiftISODate(segmentStart, goal.cadenceDays - 1), periodEnd)
-      const satisfied = sortedCompletions.some((date) => date >= segmentStart && date <= deadline)
-      markSegment(cells, indexesByDate, segmentStart, deadline, satisfied, completionDates, currentDate)
-      segmentStart = shiftISODate(deadline, 1)
+      const nextCompletion = sortedCompletions.find((date) => date >= segmentStart && date <= periodEnd)
+      if (!nextCompletion) {
+        const openEnd = minISODate(maxISODate(deadline, currentDate), periodEnd)
+        markSegment(cells, indexesByDate, segmentStart, openEnd, deadline, false, currentDate)
+        break
+      }
+
+      if (nextCompletion > segmentStart) {
+        const completedOnTime = nextCompletion <= deadline
+        markSegment(
+          cells,
+          indexesByDate,
+          segmentStart,
+          shiftISODate(nextCompletion, -1),
+          deadline,
+          completedOnTime,
+          currentDate,
+        )
+      }
+
+      const coverageEnd = minISODate(shiftISODate(nextCompletion, goal.cadenceDays - 1), periodEnd)
+      const followingCompletion = sortedCompletions.find(
+        (date) => date > nextCompletion && date <= coverageEnd,
+      )
+      const segmentEnd = followingCompletion ? shiftISODate(followingCompletion, -1) : coverageEnd
+      markSegment(cells, indexesByDate, nextCompletion, segmentEnd, coverageEnd, true, currentDate)
+
+      segmentStart = followingCompletion ?? shiftISODate(segmentEnd, 1)
+      // Once coverage from a real completion ends, the following day is due.
+      deadline = segmentStart
     }
   }
 
@@ -336,16 +363,15 @@ export function buildGoalDayCells(
 
 /**
  * Days from `currentDate` until the goal is defaulted on (or, when negative,
- * since it defaulted). Uses the same segment logic as `buildGoalDayCells`: a
- * segment starts at the activity-period start or immediately after the prior
- * segment ends, and its deadline is
- * `min(segmentStart + cadenceDays - 1, periodEnd)`. Any completion within a
- * segment satisfies that segment.
+ * since it defaulted). Uses the same rolling logic as `buildGoalDayCells`.
+ * Before the first completion, the initial deadline is the last day of the
+ * first cadence window. After a completion, `cadenceDays - 1` empty days are
+ * allowed and the following day is due; any later completion resets that
+ * rolling deadline.
  *
- * - Owed current period (including a goal not yet done for the first time): its
- *   deadline is the end of the fixed cadence window.
- * - Satisfied current period: you are covered through its end, so the deadline
- *   is the natural end of the *next* period.
+ * An unmet run stays open and becomes increasingly overdue until completion.
+ * A completed run is safe through its coverage, with the next day becoming the
+ * due date for the next completion.
  *
  * Returns the signed day delta (0 = due today, negative = overdue). Returns
  * `null` when the goal is not active on `currentDate`, has no current segment,
@@ -366,20 +392,16 @@ export function goalDaysUntilLapse(
 
   const sortedCompletions = [
     ...new Set(completions.filter((completion) => completion.goalId === goal.id).map((completion) => completion.date)),
-  ].sort()
-  const daysSincePeriodStart = isoDateDiffDays(period.startDate, currentDate)
-  const segmentOffset = Math.floor(daysSincePeriodStart / goal.cadenceDays) * goal.cadenceDays
-  const segmentStart = shiftISODate(period.startDate, segmentOffset)
-  const cadenceEnd = shiftISODate(segmentStart, goal.cadenceDays - 1)
-  const deadline = period.endDate ? minISODate(cadenceEnd, period.endDate) : cadenceEnd
-  const satisfied = sortedCompletions.some((date) => date >= segmentStart && date <= deadline)
+  ]
+    .filter((date) => date >= period.startDate && date <= currentDate)
+    .sort()
+  const latestCompletion = sortedCompletions.at(-1)
+  const deadline = latestCompletion
+    ? shiftISODate(latestCompletion, goal.cadenceDays)
+    : shiftISODate(period.startDate, goal.cadenceDays - 1)
 
-  if (!satisfied) return isoDateDiffDays(currentDate, deadline)
-  if (period.endDate && deadline >= period.endDate) return null
-
-  const nextCadenceEnd = shiftISODate(deadline, goal.cadenceDays)
-  const nextDeadline = period.endDate ? minISODate(nextCadenceEnd, period.endDate) : nextCadenceEnd
-  return isoDateDiffDays(currentDate, nextDeadline)
+  if (period.endDate && deadline > period.endDate) return null
+  return isoDateDiffDays(currentDate, deadline)
 }
 
 /**
@@ -504,15 +526,15 @@ function markSegment(
   indexesByDate: Map<string, number>,
   startDate: string,
   endDate: string,
+  deadline: string,
   satisfied: boolean,
-  completionDates: Set<string>,
   currentDate: string,
 ) {
   const startIndex = indexesByDate.get(maxISODate(startDate, cells[0]?.date ?? startDate))
   const endIndex = indexesByDate.get(minISODate(endDate, cells.at(-1)?.date ?? endDate))
   if (startIndex === undefined || endIndex === undefined || startIndex > endIndex) return
 
-  const failed = !satisfied && endDate < currentDate
+  const failed = !satisfied && deadline < currentDate
   const isCurrentSegment = startDate <= currentDate && currentDate <= endDate
 
   for (let index = startIndex; index <= endIndex; index += 1) {
@@ -520,8 +542,8 @@ function markSegment(
     cell.segmentStart = index === startIndex
     cell.segmentEnd = index === endIndex
     cell.relieved = satisfied && !cell.completed
-    cell.missed = failed && !cell.completed
-    cell.overdue = false
+    cell.missed = failed && !cell.completed && cell.date <= deadline
+    cell.overdue = !satisfied && !cell.completed && cell.date > deadline && cell.date <= currentDate
     cell.current = isCurrentSegment
   }
 }
