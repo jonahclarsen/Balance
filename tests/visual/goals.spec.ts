@@ -405,8 +405,12 @@ test('an unmet cycle stays overdue until a late completion starts the next cycle
 
   await expect(page.locator(`.goal-day-cell[title="Read · ${start} · missed"]`)).toHaveClass(/segment-start/)
   await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · missed"]`)).toBeVisible()
-  await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(deadline, 1)} · overdue"]`)).toBeVisible()
-  await expect(page.locator(`.goal-day-cell[title="Read · ${todayISO()} · overdue"]`)).toHaveClass(/segment-end/)
+  const firstOverdueCell = page.locator(`.goal-day-cell[title="Read · ${addDays(deadline, 1)} · overdue"]`)
+  await expect(firstOverdueCell.locator('.overdue-mark')).toHaveText('×')
+  await expect(firstOverdueCell.locator('.goal-cell-mark.open')).toHaveCount(0)
+  const overdueEndCap = page.locator(`.goal-day-cell[title="Read · ${todayISO()} · overdue"]`)
+  await expect(overdueEndCap).toHaveClass(/segment-end/)
+  await expect(overdueEndCap.locator('.overdue-mark')).toHaveText('×')
 
   // The overdue stretch ends at the viewed day; the future shows projected
   // cadence-length cycles across a fixed six-day window.

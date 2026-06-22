@@ -1877,6 +1877,11 @@ nav button.active {
   color: hsl(var(--goal-hue) calc(35% * var(--goal-sat-factor, 1)) 48% / 0.5);
 }
 
+.goal-cell-mark.overdue-mark {
+  color: var(--danger);
+  font-weight: 600;
+}
+
 .goal-history-empty {
   position: sticky;
   left: 0;

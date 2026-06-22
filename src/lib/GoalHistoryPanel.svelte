@@ -215,6 +215,8 @@
               <span class="goal-cell-mark checked">✓</span>
             {:else if cell.relieved}
               <span class="goal-cell-mark relieved-mark">✓</span>
+            {:else if cell.overdue}
+              <span class="goal-cell-mark overdue-mark">×</span>
             {:else if cell.active}
               <span class="goal-cell-mark open"></span>
             {/if}
