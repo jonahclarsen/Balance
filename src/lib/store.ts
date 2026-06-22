@@ -679,8 +679,8 @@ function createPlannerStore() {
       )
     },
 
-    addGoal(name: string, cadenceDays: number, matchTerms: string[], hue: number, neutral = false) {
-      const goal = createGoal(name, cadenceDays, matchTerms, hue, todayISO(), createId('goal'), neutral)
+    addGoal(name: string, cadenceDays: number, matchTerms: string[], hue: number, lightness = 50) {
+      const goal = createGoal(name, cadenceDays, matchTerms, hue, lightness, todayISO(), createId('goal'))
       commit('replace_goal_data', { action: 'add_goal', goalId: goal.id }, (state) => ({
         ...state,
         goals: [...state.goals, goal],
@@ -688,7 +688,7 @@ function createPlannerStore() {
       return goal.id
     },
 
-    patchGoal(goalId: Id, patch: Partial<Pick<Goal, 'name' | 'cadenceDays' | 'matchTerms' | 'hue' | 'neutral'>>) {
+    patchGoal(goalId: Id, patch: Partial<Pick<Goal, 'name' | 'cadenceDays' | 'matchTerms' | 'hue' | 'lightness'>>) {
       commit(
         'replace_goal_data',
         { action: 'patch_goal', goalId, patch },
