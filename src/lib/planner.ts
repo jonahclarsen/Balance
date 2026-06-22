@@ -1368,6 +1368,14 @@ export function expectedWordCount(items: ListTemplateItem[]): number {
   }, 0)
 }
 
+// Unweighted word count of every item, regardless of appearance probability.
+export function totalWordCount(items: ListTemplateItem[]): number {
+  return items.reduce((sum, item) => {
+    const itemWords = wordCount(htmlToPlainText(item.html)) || wordCount(item.text)
+    return sum + itemWords + totalWordCount(item.children)
+  }, 0)
+}
+
 // ---------------------------------------------------------------------------
 // Metrics
 // ---------------------------------------------------------------------------

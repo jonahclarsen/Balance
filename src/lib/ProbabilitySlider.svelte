@@ -12,7 +12,8 @@
 
   function handleInput(event: Event) {
     const next = Number((event.currentTarget as HTMLInputElement).value)
-    onChange(Number.isFinite(next) ? next : min)
+    const rounded = min + Math.round((next - min) / step) * step
+    onChange(Number.isFinite(next) ? Math.min(max, Math.max(min, rounded)) : min)
   }
 </script>
 

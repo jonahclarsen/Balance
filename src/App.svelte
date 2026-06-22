@@ -23,7 +23,7 @@
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { Id, Metric, MetricQuestion, MoveDirection, PlanItem } from './lib/types'
-  import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, type ItemLink } from './lib/planner'
+  import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
 
   // Pasting four or more items onto a different day routes through a review queue
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
@@ -183,7 +183,8 @@ return rows`
   $: selectedListTemplate = listTemplates.find((template) => template.id === selectedListTemplateId) ?? listTemplates[0]
   $: if (!selectedListTemplateId && listTemplates[0]) selectedListTemplateId = listTemplates[0].id
   $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = listTemplates[0].id
-  $: selectedListWordCount = selectedListTemplate ? Math.round(expectedWordCount(selectedListTemplate.items) * 10) / 10 : 0
+  $: selectedListWordCount = selectedListTemplate ? Math.round(expectedWordCount(selectedListTemplate.items)) : 0
+  $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items) : 0
   $: listViewInstance = $plannerStore.lists.find(
     (list) => list.listTemplateId === listViewTemplateId && list.date === $plannerStore.activePlanDate,
   )
@@ -2149,7 +2150,8 @@ return rows`
               class:over={selectedListTemplate.maxExpectedWords > 0 &&
                 selectedListWordCount > selectedListTemplate.maxExpectedWords}
             >
-              {selectedListWordCount} / {selectedListTemplate.maxExpectedWords || '∞'} expected words
+              {selectedListWordCount} / {selectedListTemplate.maxExpectedWords || '∞'} expected words ·
+              {selectedListTotalWordCount} total words
             </span>
             <div class="word-cap-edit">
               <button
