@@ -148,7 +148,8 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
           script: |
-            set -euo pipefail
+            # The runner executes this with /bin/sh (dash), which has no pipefail.
+            set -eu
             adb install -r balance-debug.apk
             PKG="$(adb shell pm list packages | grep -i balance | head -n 1 | sed 's/package://' | tr -d '\r')"
             echo "Installed package: $PKG"
