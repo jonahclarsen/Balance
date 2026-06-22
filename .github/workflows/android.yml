@@ -150,19 +150,21 @@ jobs:
           script: |
             # The runner executes this with /bin/sh (dash), which has no pipefail.
             set -eu
+            # The debug applicationId is the tauri identifier plus the configured
+            # debugApplicationIdSuffix (".debug").
+            PKG=app.balance.local.debug
             adb install -r balance-debug.apk
-            # Resolve the installed package id. pm can lag right after install, so
-            # retry, and filter to third-party packages (-3) to avoid surprises.
-            PKG=""
+            # PackageManager can lag a second or two behind a successful install,
+            # so wait until it can resolve the package before launching. The `if`
+            # condition is exempt from `set -e`, unlike a bare `cmd && break`.
             for _ in $(seq 1 15); do
-              PKG="$(adb shell pm list packages -3 | tr -d '\r' | sed 's/^package://' | grep -i balance | head -n 1 || true)"
-              [ -n "$PKG" ] && break
+              if adb shell pm path "$PKG" >/dev/null 2>&1; then
+                break
+              fi
               sleep 2
             done
-            echo "===== installed third-party packages ====="
-            adb shell pm list packages -3 | tr -d '\r'
-            echo "Resolved package: '$PKG'"
-            test -n "$PKG"
+            # Fail loudly if the package never registered.
+            adb shell pm path "$PKG"
             adb logcat -c
             adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
             # Give the webview time to initialize, open the database (SQLCipher /
