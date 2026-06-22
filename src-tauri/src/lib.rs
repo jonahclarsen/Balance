@@ -4493,8 +4493,28 @@ fn recovery_key_path(database_path: &PathBuf) -> PathBuf {
 // hands it plaintext to encrypt or ciphertext to decrypt, over JNI.
 #[cfg(target_os = "android")]
 mod android_keystore {
+    use std::ffi::c_void;
+    use std::sync::OnceLock;
+
     use jni::objects::{JByteArray, JObject};
     use jni::{JNIEnv, JavaVM};
+
+    // Tauri/tao keep the JavaVM in their own private android glue and don't
+    // initialize the `ndk-context` crate, so we capture it ourselves when the
+    // JVM loads this library. The Keystore APIs need only a JNIEnv (no Activity
+    // Context), so the VM alone is enough.
+    static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
+
+    #[no_mangle]
+    pub extern "system" fn JNI_OnLoad(
+        vm: *mut jni::sys::JavaVM,
+        _reserved: *mut c_void,
+    ) -> jni::sys::jint {
+        if let Ok(vm) = unsafe { JavaVM::from_raw(vm) } {
+            let _ = JAVA_VM.set(vm);
+        }
+        jni::sys::JNI_VERSION_1_6
+    }
 
     const KEYSTORE_PROVIDER: &str = "AndroidKeyStore";
     const KEYSTORE_ALIAS: &str = "balance-db-recovery-key";
@@ -4530,8 +4550,9 @@ mod android_keystore {
     }
 
     fn with_env<T>(f: impl FnOnce(&mut JNIEnv) -> Result<T, String>) -> Result<T, String> {
-        let ctx = ndk_context::android_context();
-        let vm = unsafe { JavaVM::from_raw(ctx.vm().cast()) }.map_err(|error| error.to_string())?;
+        let vm = JAVA_VM
+            .get()
+            .ok_or_else(|| "The Java VM was not captured when the library loaded.".to_string())?;
         let mut guard = vm
             .attach_current_thread()
             .map_err(|error| error.to_string())?;
