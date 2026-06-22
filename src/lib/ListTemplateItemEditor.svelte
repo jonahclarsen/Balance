@@ -240,6 +240,7 @@
         <ProbabilitySlider
           value={item.probability}
           min={50}
+          step={10}
           ariaLabel="Appearance probability"
           onChange={(probability) => patchItem(templateId, item.id, { probability })}
         />
