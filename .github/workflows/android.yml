@@ -120,6 +120,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
@@ -147,46 +150,9 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          script: |
-            # The runner executes this with /bin/sh (dash), which has no pipefail.
-            set -eu
-            # The debug applicationId is the tauri identifier plus the configured
-            # debugApplicationIdSuffix (".debug").
-            PKG=app.balance.local.debug
-            adb install -r balance-debug.apk
-            # PackageManager can lag a second or two behind a successful install,
-            # so wait until it can resolve the package before launching. The `if`
-            # condition is exempt from `set -e`, unlike a bare `cmd && break`.
-            for _ in $(seq 1 15); do
-              if adb shell pm path "$PKG" >/dev/null 2>&1; then
-                break
-              fi
-              sleep 2
-            done
-            # Fail loudly if the package never registered.
-            adb shell pm path "$PKG"
-            adb logcat -c
-            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
-            # Give the webview time to initialize, open the database (SQLCipher /
-            # OpenSSL) and render the frontend.
-            sleep 25
-            adb logcat -d > logcat.txt || true
-            echo "===== app / crash log lines ====="
-            grep -iE "FATAL EXCEPTION|beginning of crash|libbalance_lib|UnsatisfiedLink|RustStdoutStderr|balance" logcat.txt || true
-            echo "===== checks ====="
-            # The process must still be alive (no crash on startup). If the native
-            # library had failed to load, the process would have died with an
-            # UnsatisfiedLinkError before reaching here.
-            PID="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
-            echo "App pid: '$PID'"
-            test -n "$PID"
-            # No fatal native or Java crash anywhere in the log.
-            if grep -qE "FATAL EXCEPTION" logcat.txt; then
-              echo "Found a fatal exception in logcat:"
-              grep -A 20 "FATAL EXCEPTION" logcat.txt
-              exit 1
-            fi
-            echo "App launched and is running (pid $PID) with no fatal exceptions."
+          # The runner executes the `script` input line-by-line in separate
+          # shells, so the test logic lives in a committed file run as one process.
+          script: bash .github/scripts/android-smoke-test.sh
 
       - name: Upload logcat
         if: always()
