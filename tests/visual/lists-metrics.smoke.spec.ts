@@ -74,7 +74,7 @@ test('metric quiz records answers and bulk import backfills', async ({ page }) =
   await page.getByRole('button', { name: 'Metrics', exact: true }).click()
   await page.getByRole('button', { name: '+ New metric' }).first().click()
   await page.getByLabel('Metric name').fill('Mood')
-  await page.getByPlaceholder('Question prompt').first().fill('Score')
+  await page.getByLabel('Question prompt').first().fill('Score')
 
   // Link from a daily task.
   await page.getByRole('button', { name: 'Today', exact: true }).click()

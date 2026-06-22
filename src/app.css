@@ -2111,6 +2111,11 @@ nav button.active {
   font-weight: 600;
 }
 
+/* The trailing "+ New metric" pill reads as an action rather than a tab. */
+.rail-chip-add {
+  border-style: dashed;
+}
+
 .template-panel-actions {
   display: flex;
   align-items: center;
@@ -2287,6 +2292,12 @@ nav button.active {
   gap: 10px;
   max-width: 760px;
   margin-top: 40px;
+}
+
+/* Inside the import modal the section already has the dialog padding, so the
+   standalone top margin isn't needed. */
+.overlay-body .metric-import {
+  margin-top: 0;
 }
 
 .metric-import textarea {
