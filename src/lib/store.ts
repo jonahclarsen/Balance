@@ -1222,7 +1222,7 @@ function createPlannerStore() {
       return question.id
     },
 
-    patchMetricQuestion(metricId: Id, questionId: Id, patch: Partial<Pick<MetricQuestion, 'prompt' | 'type'>>) {
+    patchMetricQuestion(metricId: Id, questionId: Id, patch: Partial<Pick<MetricQuestion, 'prompt' | 'html' | 'type'>>) {
       const isTextPatch = 'prompt' in patch
       commit(
         'patch_metric_question',
@@ -1683,6 +1683,7 @@ function normalizeState(state: AppState): AppState {
       ...metric,
       questions: (metric.questions ?? []).map((question) => ({
         ...question,
+        html: sanitizeInlineHTML(question.html ?? escapeHTML(question.prompt ?? '')),
         type: question.type === 'boolean' ? 'boolean' : 'text',
       })),
     })),

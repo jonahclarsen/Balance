@@ -9,6 +9,7 @@
   import OverlayModal from './lib/OverlayModal.svelte'
   import MetricQuiz from './lib/MetricQuiz.svelte'
   import MetricGraph from './lib/MetricGraph.svelte'
+  import RichTextEditor from './lib/RichTextEditor.svelte'
   import { filterGoalsByPhrase, goalDaysUntilLapse, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
@@ -2332,11 +2333,16 @@ return rows`
 
               {#each metric.questions as question, index (question.id)}
                 <div class="metric-question-row">
-                  <input
-                    type="text"
+                  <RichTextEditor
+                    className="metric-question-prompt"
+                    kind="metric-question"
+                    inputId={question.id}
                     placeholder="Question prompt"
-                    value={question.prompt}
-                    on:input={(event) => plannerStore.patchMetricQuestion(metric.id, question.id, { prompt: event.currentTarget.value })}
+                    html={question.html}
+                    text={question.prompt}
+                    ariaLabel="Question prompt"
+                    revision={$plannerStore.historyRevision}
+                    onChange={(html, prompt) => plannerStore.patchMetricQuestion(metric.id, question.id, { html, prompt })}
                   />
                   <select
                     aria-label="Question type"
@@ -2360,7 +2366,7 @@ return rows`
                 {@const graph = buildGraph(metric, question)}
                 {#if graph}
                   <div class="metric-graph-block">
-                    <h4>{question.prompt || 'Untitled question'}</h4>
+                    <h4>{@html question.html || escapeHTML(question.prompt || 'Untitled question')}</h4>
                     <MetricGraph type={graph.type} points={graph.points} />
                   </div>
                 {/if}

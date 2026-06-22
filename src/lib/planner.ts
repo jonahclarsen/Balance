@@ -1382,7 +1382,7 @@ export function totalWordCount(items: ListTemplateItem[]): number {
 // ---------------------------------------------------------------------------
 
 export function createMetricQuestion(prompt = '', type: MetricQuestionType = 'text'): MetricQuestion {
-  return { id: createId('metric_question'), prompt, type }
+  return { id: createId('metric_question'), prompt, html: escapeHTML(prompt), type }
 }
 
 export function createMetric(name = 'New metric'): Metric {

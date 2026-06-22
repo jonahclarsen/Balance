@@ -16,7 +16,7 @@
   export let html = ''
   export let text = ''
   export let inputId: Id
-  export let kind: 'plan' | 'template-option' | 'list-template-item'
+  export let kind: 'plan' | 'template-option' | 'list-template-item' | 'metric-question'
   export let className = ''
   export let done = false
   export let placeholder = ''

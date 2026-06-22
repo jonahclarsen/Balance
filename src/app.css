@@ -2235,8 +2235,31 @@ nav button.active {
   gap: 8px;
 }
 
-.metric-question-row input[type='text'] {
+.metric-question-prompt {
   flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper);
+  outline: none;
+  white-space: pre-wrap;
+}
+
+.metric-question-prompt:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.metric-question-prompt:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+}
+
+.metric-question-prompt a {
+  color: var(--accent-strong);
+  text-decoration: underline;
 }
 
 .metric-graph-block {
