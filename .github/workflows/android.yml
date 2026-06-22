@@ -89,6 +89,12 @@ jobs:
       - name: Initialize Android project
         run: pnpm tauri android init
 
+      - name: Apply app launcher icons
+        # `tauri android init` scaffolds gen/android with placeholder launcher
+        # icons. Overlay the committed mipmaps (generated from app-icon.png with
+        # `tauri icon`) so the APK uses the real app icon.
+        run: cp -R src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
+
       - name: Build universal debug APK (arm64 + x86_64)
         run: pnpm tauri android build --apk --debug --target aarch64 --target x86_64
 
