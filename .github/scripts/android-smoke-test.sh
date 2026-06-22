@@ -78,10 +78,46 @@ if [ -z "$KEY_FILE" ]; then
 fi
 
 # Second launch: the key file and database already exist, so the app must unwrap
-# the recovery key via the Keystore again and reopen the database.
-adb shell am force-stop "$PKG"
-sleep 2
-launch
-assert_running "relaunch" logcat2.txt
+# the recovery key via the Keystore again and reopen the database. A failed
+# unwrap surfaces as the frontend's "Could not load encrypted Balance app state"
+# error (the same signature the pre-fix ndk_context panic produced) and the DB
+# never reopens. We also require the process to stay alive, but retry if the
+# emulator's Play Services cycles and collaterally kills the app (its Chromium
+# webview depends on the GMS fonts provider) - an environment flake, not a bug.
+UNWRAP_OK=0
+for attempt in 1 2 3; do
+  adb shell am force-stop "$PKG"
+  sleep 2
+  adb logcat -c
+  adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
+  sleep 18
+  adb logcat -d > logcat2.txt || true
 
-echo "App builds, launches, persists an encrypted database, and survives a relaunch."
+  if grep -qE "Could not load encrypted Balance app state|Keystore unwrap failed|FATAL EXCEPTION" logcat2.txt; then
+    echo "[relaunch] unwrap / load failed:"
+    grep -iE "Could not load encrypted Balance app state|Keystore unwrap failed|FATAL EXCEPTION|recovery|keystore" logcat2.txt | head -20
+    exit 1
+  fi
+
+  PID="$(adb shell pidof "$PKG" | tr -d '\r' || true)"
+  if [ -n "$PID" ]; then
+    echo "[relaunch] running (pid $PID); unwrapped the key and reopened the database with no errors."
+    UNWRAP_OK=1
+    break
+  fi
+
+  if grep -qE "depends on provider com.google.android.gms|dying proc com.google.android.gms.persistent" logcat2.txt; then
+    echo "[relaunch] attempt $attempt: app collaterally killed by Play Services cycling; retrying."
+    continue
+  fi
+
+  echo "[relaunch] app process is gone with no app-level error and no GMS kill - treating as failure."
+  exit 1
+done
+
+if [ "$UNWRAP_OK" != 1 ]; then
+  echo "[relaunch] could not get a stable relaunch after retries (emulator instability)."
+  exit 1
+fi
+
+echo "App builds, launches, persists an encrypted database, and reopens it via the Keystore on relaunch."
