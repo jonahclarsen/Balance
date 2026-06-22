@@ -2201,6 +2201,14 @@ nav button.active {
   gap: 8px;
   color: var(--muted);
   font-size: 13px;
+  transition: opacity 1s ease;
+}
+
+/* Once the editor is scrolled past the top, the lock/input fades away over a
+   second and stops intercepting clicks. */
+.word-cap-edit.faded {
+  opacity: 0;
+  pointer-events: none;
 }
 
 .word-cap-edit input {
