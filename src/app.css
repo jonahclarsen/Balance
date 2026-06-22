@@ -917,6 +917,7 @@ nav button.active {
 
 .paste-review-item {
   position: relative;
+  height: auto;
   margin-left: calc(var(--paste-depth) * 18px);
   opacity: 0.62;
   transform-origin: center right;
@@ -974,11 +975,14 @@ nav button.active {
 
 .paste-review-line {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  min-width: 0;
   gap: 6px;
 }
 
 .paste-review-text {
+  min-width: 0;
+  height: auto;
   margin: 0;
   font-size: 17px;
   line-height: 1.4;
