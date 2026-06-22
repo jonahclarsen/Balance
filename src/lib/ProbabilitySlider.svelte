@@ -5,15 +5,38 @@
   export let step = 1
   export let ariaLabel = 'Probability'
   export let onChange: (value: number) => void
+  // When true the readout becomes an editable number box for typing a precise
+  // percentage; otherwise it stays a plain readout.
+  export let editable = false
 
   // Position the visual thumb/fill by percentage so the handle reaches both
   // literal edges at min/max, instead of the native thumb's inset behaviour.
   $: pct = max > min ? Math.min(100, Math.max(0, ((value - min) / (max - min)) * 100)) : 0
 
+  function clampToStep(next: number): number {
+    const rounded = min + Math.round((next - min) / step) * step
+    return Math.min(max, Math.max(min, rounded))
+  }
+
   function handleInput(event: Event) {
     const next = Number((event.currentTarget as HTMLInputElement).value)
-    const rounded = min + Math.round((next - min) / step) * step
-    onChange(Number.isFinite(next) ? Math.min(max, Math.max(min, rounded)) : min)
+    onChange(Number.isFinite(next) ? clampToStep(next) : min)
+  }
+
+  // Commit the typed value on change/blur so intermediate keystrokes aren't
+  // clamped mid-entry; revert the box if the field is left empty/invalid.
+  function handleNumberChange(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    const next = Number(input.value)
+
+    if (input.value.trim() === '' || !Number.isFinite(next)) {
+      input.value = String(Math.round(value))
+      return
+    }
+
+    const clamped = clampToStep(next)
+    input.value = String(clamped)
+    onChange(clamped)
   }
 </script>
 
@@ -33,7 +56,23 @@
       on:input={handleInput}
     />
   </div>
-  <span class="probability-readout">{Math.round(value)}%</span>
+  {#if editable}
+    <label class="probability-input-wrap">
+      <input
+        class="probability-input"
+        type="number"
+        {min}
+        {max}
+        {step}
+        value={Math.round(value)}
+        aria-label={`${ariaLabel} percent`}
+        on:change={handleNumberChange}
+      />
+      <span class="probability-suffix" aria-hidden="true">%</span>
+    </label>
+  {:else}
+    <span class="probability-readout">{Math.round(value)}%</span>
+  {/if}
 </div>
 
 <style>
@@ -100,5 +139,38 @@
     color: var(--muted);
     font-size: 12px;
     font-variant-numeric: tabular-nums;
+  }
+
+  .probability-input-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .probability-input {
+    width: 34px;
+    padding: 1px 2px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    background: var(--paper);
+    color: inherit;
+    font: inherit;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+    appearance: textfield;
+  }
+
+  .probability-input::-webkit-outer-spin-button,
+  .probability-input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  .probability-input:focus-visible {
+    outline: none;
+    border-color: var(--accent);
   }
 </style>

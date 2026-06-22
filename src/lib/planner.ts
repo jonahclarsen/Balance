@@ -262,7 +262,15 @@ function sampleRandom<T>(values: T[], count: number): T[] {
 
 function pickOption(options: TemplateOption[]): TemplateOption | null {
   if (options.length === 0) return null
-  if (options.length === 1) return options[0]
+
+  // A lone option below 100% implicitly competes with an empty "skip" of the
+  // remaining probability: it appears that often and is simply omitted the rest
+  // of the time. (At 100% it always appears, matching the previous behaviour.)
+  if (options.length === 1) {
+    const probability = Math.max(0, Math.min(100, options[0].probability || 0))
+    if (probability >= 100) return options[0]
+    return Math.random() * 100 < probability ? options[0] : null
+  }
 
   const total = options.reduce((sum, option) => sum + Math.max(0, option.probability || 0), 0)
   if (total <= 0) return options[0]
