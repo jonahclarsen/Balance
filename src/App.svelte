@@ -1464,6 +1464,16 @@ return rows`
     pasteReviewCooldownFrame = requestAnimationFrame(step)
   }
 
+  function scrollCurrentPasteReviewItem() {
+    const current = pasteReviewList?.querySelector<HTMLElement>('[aria-current="true"]')
+    if (!pasteReviewList || !current) return
+
+    const listRect = pasteReviewList.getBoundingClientRect()
+    const currentRect = current.getBoundingClientRect()
+    const top = pasteReviewList.scrollTop + currentRect.top - listRect.top - pasteReviewList.clientHeight * 0.3
+    pasteReviewList.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+  }
+
   function cancelPasteReviewCooldown() {
     if (pasteReviewCooldownFrame != null) {
       cancelAnimationFrame(pasteReviewCooldownFrame)
@@ -1526,7 +1536,7 @@ return rows`
     pasteReview = { ...pasteReview, approved, rejected, index: next }
     startPasteReviewCooldown()
     await tick()
-    pasteReviewList?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    scrollCurrentPasteReviewItem()
   }
 
   function cancelPasteReview() {
