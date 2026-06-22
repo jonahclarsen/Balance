@@ -2913,7 +2913,7 @@ return rows`
         {/if}
       </div>
 
-      <p class="paste-review-hint">{pasteReview.approved.length} kept so far</p>
+      <p class="paste-review-hint">{pasteReview.approved.length}/{pasteReview.nodes.length} kept so far</p>
     </div>
   </div>
 {/if}
