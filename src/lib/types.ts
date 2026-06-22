@@ -122,7 +122,9 @@ export type Goal = {
   cadenceDays: number
   matchTerms: string[]
   hue: number
-  neutral?: boolean
+  // 0–100 lightness control; 50 is the neutral baseline (no shift from the
+  // designed colors). Renders as a ±25pp shift applied to every goal color.
+  lightness: number
   activityPeriods: GoalActivityPeriod[]
   createdAt: string
   updatedAt: string

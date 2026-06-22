@@ -10,7 +10,7 @@
   import MetricQuiz from './lib/MetricQuiz.svelte'
   import MetricGraph from './lib/MetricGraph.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
-  import { filterGoalsByPhrase, goalDaysUntilLapse, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
+  import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
     exportHTML,
@@ -163,12 +163,10 @@ return rows`
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
   let newGoalHue = 165
-  let newGoalNeutral = false
+  let newGoalLightness = 50
   let goalFormStatus = ''
   let goalSearch = ''
   let highlightedGoalCardId: Id | null = null
-
-  const NEUTRAL_SWATCH = '#9aa0a6'
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
@@ -597,12 +595,12 @@ return rows`
       return
     }
 
-    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue, newGoalNeutral)
+    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue, newGoalLightness)
     newGoalName = ''
     newGoalCadenceDays = 1
     newGoalTerms = ''
     newGoalHue = (newGoalHue + 47) % 360
-    newGoalNeutral = false
+    newGoalLightness = 50
     goalFormStatus = ''
   }
 
@@ -2518,7 +2516,7 @@ return rows`
           <div class="goal-color-controls">
             <span
               class="goal-color-swatch"
-              style={`background: ${newGoalNeutral ? NEUTRAL_SWATCH : hueToHex(newGoalHue)}`}
+              style={`background: ${hueToHex(newGoalHue, newGoalLightness)}`}
             ></span>
             <input
               class="goal-hue-slider"
@@ -2526,21 +2524,19 @@ return rows`
               type="range"
               min="0"
               max="359"
-              disabled={newGoalNeutral}
-              class:dimmed={newGoalNeutral}
               value={newGoalHue}
               on:input={(event) => (newGoalHue = Number(event.currentTarget.value))}
             />
-            <button
-              class="goal-neutral-toggle"
-              class:active={newGoalNeutral}
-              type="button"
-              aria-pressed={newGoalNeutral}
-              aria-label="Make this goal gray"
-              on:click={() => (newGoalNeutral = !newGoalNeutral)}
-            >
-              Gray
-            </button>
+            <input
+              class="goal-lightness-slider"
+              aria-label="New goal lightness"
+              type="range"
+              min="0"
+              max="100"
+              style={`--goal-hue: ${newGoalHue}`}
+              value={newGoalLightness}
+              on:input={(event) => (newGoalLightness = Number(event.currentTarget.value))}
+            />
           </div>
         </div>
         <button class="primary goal-add-button" type="button" on:click={addGoal}>Add goal</button>
@@ -2559,7 +2555,7 @@ return rows`
             class:archived={!active}
             class:goal-card-focus={highlightedGoalCardId === goal.id}
             data-goal-id={goal.id}
-            style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
+            style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
           >
             <div class="goal-card-accent"></div>
             <div class="goal-card-main">
@@ -2616,7 +2612,7 @@ return rows`
                   <div class="goal-color-controls">
                     <span
                       class="goal-color-swatch"
-                      style={`background: ${goal.neutral ? NEUTRAL_SWATCH : hueToHex(goal.hue)}`}
+                      style={`background: ${hueToHex(goal.hue, goal.lightness)}`}
                     ></span>
                     <input
                       class="goal-hue-slider"
@@ -2624,21 +2620,19 @@ return rows`
                       type="range"
                       min="0"
                       max="359"
-                      disabled={goal.neutral}
-                      class:dimmed={goal.neutral}
                       value={goal.hue}
                       on:input={(event) => plannerStore.patchGoal(goal.id, { hue: Number(event.currentTarget.value) })}
                     />
-                    <button
-                      class="goal-neutral-toggle"
-                      class:active={goal.neutral}
-                      type="button"
-                      aria-pressed={goal.neutral}
-                      aria-label={`Make ${goal.name} gray`}
-                      on:click={() => plannerStore.patchGoal(goal.id, { neutral: !goal.neutral })}
-                    >
-                      Gray
-                    </button>
+                    <input
+                      class="goal-lightness-slider"
+                      aria-label={`Lightness for ${goal.name}`}
+                      type="range"
+                      min="0"
+                      max="100"
+                      style={`--goal-hue: ${goal.hue}`}
+                      value={goal.lightness}
+                      on:input={(event) => plannerStore.patchGoal(goal.id, { lightness: Number(event.currentTarget.value) })}
+                    />
                   </div>
                 </div>
               </div>

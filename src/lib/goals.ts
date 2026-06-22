@@ -27,9 +27,9 @@ export function createGoal(
   cadenceDays: number,
   matchTerms: string[],
   hue: number,
+  lightness: number,
   startDate = todayISO(),
   id: Id,
-  neutral = false,
 ): Goal {
   const timestamp = nowISO()
 
@@ -39,7 +39,7 @@ export function createGoal(
     cadenceDays: normalizeCadenceDays(cadenceDays),
     matchTerms: normalizeMatchTerms(matchTerms),
     hue: normalizeHue(hue),
-    neutral: Boolean(neutral),
+    lightness: normalizeLightness(lightness),
     activityPeriods: [{ startDate, endDate: null }],
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -53,7 +53,7 @@ export function normalizeGoal(goal: Goal): Goal {
     cadenceDays: normalizeCadenceDays(goal.cadenceDays),
     matchTerms: normalizeMatchTerms(goal.matchTerms ?? []),
     hue: normalizeHue(goal.hue ?? 165),
-    neutral: Boolean(goal.neutral),
+    lightness: normalizeLightness(goal.lightness),
     activityPeriods: normalizeActivityPeriods(goal.activityPeriods ?? []),
     createdAt: goal.createdAt ?? nowISO(),
     updatedAt: goal.updatedAt ?? goal.createdAt ?? nowISO(),
@@ -75,6 +75,19 @@ export function normalizeCadenceDays(value: number): number {
 
 export function normalizeHue(value: number): number {
   return ((Math.round(Number(value) || 0) % 360) + 360) % 360
+}
+
+// Lightness is a 0–100 control where 50 means "leave the designed colors alone".
+// Older goals (and any with a missing value) fall back to that neutral baseline.
+export function normalizeLightness(value: number | undefined): number {
+  if (value == null || Number.isNaN(Number(value))) return 50
+  return Math.max(0, Math.min(100, Math.round(Number(value))))
+}
+
+// Convert the 0–100 lightness control into the percentage-point shift applied to
+// every goal color: 50 → 0pp, 0 → -25pp, 100 → +25pp.
+export function goalLightnessShift(lightness: number | undefined): number {
+  return (normalizeLightness(lightness) - 50) / 2
 }
 
 export function normalizeMatchTerms(terms: string[]): string[] {
@@ -445,10 +458,11 @@ export function shiftISODate(date: string, days: number): string {
   return `${year}-${month}-${day}`
 }
 
-export function hueToHex(hue: number): string {
+export function hueToHex(hue: number, lightnessControl = 50): string {
   const normalized = normalizeHue(hue)
   const saturation = 0.58
-  const lightness = 0.48
+  // Mirror the CSS: a representative 48% base lightness shifted by the control.
+  const lightness = Math.max(0, Math.min(1, 0.48 + goalLightnessShift(lightnessControl) / 100))
   const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation
   const x = chroma * (1 - Math.abs(((normalized / 60) % 2) - 1))
   const offset = lightness - chroma / 2

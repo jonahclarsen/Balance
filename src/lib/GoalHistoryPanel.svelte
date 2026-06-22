@@ -5,6 +5,7 @@
     filterGoalsByPhrase,
     GOAL_FUTURE_DAYS,
     goalDaysUntilLapse,
+    goalLightnessShift,
     GOAL_HISTORY_DEFAULT_DAYS,
     GOAL_HISTORY_MAX_DAYS,
     goalWasActiveInRange,
@@ -184,7 +185,7 @@
           class:goal-row-focus={highlightedGoalId === goal.id}
           data-goal-id={goal.id}
           type="button"
-          style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
+          style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
           title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}${lapseTooltip(daysUntilLapse)}\nMatch keywords: ${goal.matchTerms.join(', ')}`}
           on:click={() => onOpenGoals(goal.id)}
         >
@@ -208,7 +209,7 @@
             class:overdue={cell.overdue}
             class:viewed={cell.date === viewedDate}
             class:future={cell.date > today}
-            style={`--goal-hue: ${goal.hue}; --goal-sat-factor: ${goal.neutral ? 0 : 1}`}
+            style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
             title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.overdue ? ' · overdue' : cell.missed ? ' · missed' : cell.active ? ' · active' : ' · inactive'}`}
           >
             {#if cell.completed}
