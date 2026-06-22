@@ -170,10 +170,39 @@
     }
 
     if (!onArrowKey || (event.key !== 'ArrowUp' && event.key !== 'ArrowDown')) return
-    if (event.metaKey || event.ctrlKey) return
+    if (event.ctrlKey) return
+
+    const direction = event.key === 'ArrowUp' ? 'up' : 'down'
+    const alwaysMoveBetweenItems = event.metaKey || event.altKey || event.shiftKey
+    if (!alwaysMoveBetweenItems && !isCaretOnBoundaryLine(activeEditor, direction)) return
 
     event.preventDefault()
-    await onArrowKey(event.key === 'ArrowUp' ? 'up' : 'down', event.currentTarget as HTMLDivElement, event)
+    await onArrowKey(direction, activeEditor, event)
+  }
+
+  function isCaretOnBoundaryLine(activeEditor: HTMLDivElement, direction: MoveDirection) {
+    const selection = document.getSelection()
+    if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return false
+
+    const caretRange = selection.getRangeAt(0)
+    if (!rangeIsInside(activeEditor, caretRange)) return false
+
+    const contentRange = document.createRange()
+    contentRange.selectNodeContents(activeEditor)
+    const contentRects = Array.from(contentRange.getClientRects()).filter((rect) => rect.height > 0)
+    if (contentRects.length === 0) return true
+
+    const caretRect = caretRange.getBoundingClientRect()
+    const lineHeight = Number.parseFloat(getComputedStyle(activeEditor).lineHeight) || 20
+    const tolerance = lineHeight * 0.4
+
+    if (direction === 'up') {
+      const firstLineTop = Math.min(...contentRects.map((rect) => rect.top))
+      return caretRect.top <= firstLineTop + tolerance
+    }
+
+    const lastLineBottom = Math.max(...contentRects.map((rect) => rect.bottom))
+    return caretRect.bottom >= lastLineBottom - tolerance
   }
 
   function isEditorEmpty(activeEditor: HTMLDivElement) {
