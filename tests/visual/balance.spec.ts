@@ -709,6 +709,31 @@ test('plan item text fields support left and right boundary focus', async ({ pag
     .toEqual({ activeText: 'Work block', caretOffset: 'Work block'.length })
 })
 
+test('vertical arrow keeps navigating after arrowing into an adjacent item', async ({ page }) => {
+  // Regression: arrowing into an item places the caret at an element boundary
+  // (selectNodeContents + collapse), whose getBoundingClientRect reports an
+  // empty rect. That broke the boundary-line check, so the very next vertical
+  // arrow in the opposite direction did nothing until Left/Right nudged the
+  // caret back into a text node.
+  await seedPlanItems(page, ['Alpha', 'Bravo', 'Charlie'])
+
+  // Arrow UP into the previous item, then DOWN must return to where we started.
+  await focusInputByValue(page, 'Bravo')
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('ArrowUp')
+  expect(await activeInputValue(page)).toBe('Alpha')
+  await page.keyboard.press('ArrowDown')
+  expect(await activeInputValue(page)).toBe('Bravo')
+
+  // And the mirror image: arrow DOWN into the next item, then UP returns.
+  await focusInputByValue(page, 'Bravo')
+  await setCaretOffsetInFocusedEditor(page, 'Bravo'.length)
+  await page.keyboard.press('ArrowDown')
+  expect(await activeInputValue(page)).toBe('Charlie')
+  await page.keyboard.press('ArrowUp')
+  expect(await activeInputValue(page)).toBe('Bravo')
+})
+
 test('template item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1617,6 +1642,43 @@ test('global undo and redo apply to item movement', async ({ page }) => {
   await page.keyboard.press('Meta+Shift+C')
   await expect.poll(async () => topLevelTexts(page)).toEqual(movedOrder)
 })
+
+async function seedPlanItems(page: import('@playwright/test').Page, texts: string[]) {
+  await page.goto('/')
+  await page.evaluate((itemTexts) => {
+    const date = new Date().toISOString().slice(0, 10)
+    const state = {
+      schemaVersion: 1,
+      deviceId: 'test-device',
+      localSequence: 0,
+      historyRevision: 0,
+      activePlanDate: date,
+      templates: [],
+      plans: [
+        {
+          id: 'plan_test',
+          date,
+          dailyReminder: '',
+          items: itemTexts.map((text, index) => ({
+            id: `item_${index}`,
+            text,
+            html: text,
+            done: false,
+            startMinutes: null,
+            endMinutes: null,
+            children: [],
+          })),
+        },
+      ],
+      goals: [],
+      goalCompletions: [],
+      operations: [],
+    }
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, texts)
+  await page.reload()
+  await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
+}
 
 async function focusInputByValue(page: import('@playwright/test').Page, value: string) {
   await page.evaluate((expectedValue) => {
