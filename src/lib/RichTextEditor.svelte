@@ -199,7 +199,11 @@
     const contentRects = Array.from(contentRange.getClientRects()).filter((rect) => rect.height > 0)
     if (contentRects.length === 0) return true
 
-    const caretRect = caretRange.getBoundingClientRect()
+    const caretRect = caretLineRect(caretRange)
+    // If the caret position can't be measured at all, treat it as being on the
+    // boundary line so navigation isn't silently swallowed.
+    if (!caretRect) return true
+
     const lineHeight = Number.parseFloat(getComputedStyle(activeEditor).lineHeight) || 20
     const tolerance = lineHeight * 0.4
 
@@ -210,6 +214,53 @@
 
     const lastLineBottom = Math.max(...contentRects.map((rect) => rect.bottom))
     return caretRect.bottom >= lastLineBottom - tolerance
+  }
+
+  // A collapsed range resting on an element boundary — e.g. right after
+  // focusTextInput() runs selectNodeContents()+collapse(), leaving the caret at
+  // (editor, childCount) — reports an empty 0×0 rect in both Blink and WebKit.
+  // That empty rect made vertical boundary detection misfire (down navigation
+  // got stuck until an arrow key dropped the caret back into a text node, which
+  // is why pressing Left/Right first "fixed" it). Re-anchor to the boundary
+  // character so the caret's real line can always be measured.
+  function caretLineRect(caretRange: Range): DOMRect | null {
+    const direct = caretRange.getBoundingClientRect()
+    if (direct.height > 0) return direct
+
+    let node: Node = caretRange.startContainer
+    let offset = caretRange.startOffset
+
+    // Walk an element boundary down to the adjacent leaf node.
+    while (node.nodeType === Node.ELEMENT_NODE) {
+      const children: NodeListOf<ChildNode> = node.childNodes
+      if (children.length === 0) break
+
+      if (offset > 0) {
+        const next = children[Math.min(offset, children.length) - 1]
+        offset = next.nodeType === Node.TEXT_NODE ? next.textContent?.length ?? 0 : next.childNodes.length
+        node = next
+      } else {
+        node = children[0]
+        offset = 0
+      }
+    }
+
+    if (node.nodeType !== Node.TEXT_NODE) return null
+
+    const text = node as Text
+    if (text.length === 0) return null
+
+    const probe = document.createRange()
+    if (offset >= text.length) {
+      probe.setStart(text, text.length - 1)
+      probe.setEnd(text, text.length)
+    } else {
+      probe.setStart(text, offset)
+      probe.setEnd(text, offset + 1)
+    }
+
+    const rect = probe.getBoundingClientRect()
+    return rect.height > 0 ? rect : null
   }
 
   function isEditorEmpty(activeEditor: HTMLDivElement) {
