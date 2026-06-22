@@ -75,6 +75,7 @@
   let listOverlayArmed = false
   let metricOverlay: { metricId: Id; date: string } | null = null
   let importMetricId = ''
+  let importOverlayOpen = false
   let importRaw = ''
   let importParser = `// Return an array of rows: { date: 'YYYY-MM-DD', answers: { questionKey: value } }
 // questionKey matches a question's prompt (case-insensitive) or its 0-based index.
@@ -192,6 +193,8 @@ return rows`
   )
   // ---- Metrics ----
   $: metrics = $plannerStore.metrics
+  $: selectedMetric = metrics.find((metric) => metric.id === selectedMetricId) ?? metrics[0]
+  $: if (!selectedMetricId && metrics[0]) selectedMetricId = metrics[0].id
   $: if (!importMetricId && metrics[0]) importMetricId = metrics[0].id
 
   // ---- Overlays: auto-close a list toast once every box is checked ----
@@ -370,6 +373,12 @@ return rows`
     const id = plannerStore.addMetric()
     selectedMetricId = id
     if (!importMetricId) importMetricId = id
+  }
+
+  function openImportModal() {
+    if (selectedMetricId) importMetricId = selectedMetricId
+    importError = ''
+    importOverlayOpen = true
   }
 
   onMount(() => {
@@ -2312,8 +2321,27 @@ return rows`
           <p class="eyebrow">Tracking</p>
           <h2>Metrics</h2>
         </div>
-        <button type="button" on:click={createMetricAndSelect}>+ New metric</button>
+        {#if metrics.length > 0}
+          <button type="button" on:click={openImportModal}>Import past data</button>
+        {/if}
       </header>
+
+      {#if metrics.length > 0}
+        <nav class="template-rail" aria-label="Select metric">
+          {#each metrics as metric (metric.id)}
+            <button
+              type="button"
+              class="rail-chip"
+              class:active={selectedMetric?.id === metric.id}
+              aria-current={selectedMetric?.id === metric.id}
+              on:click={() => (selectedMetricId = metric.id)}
+            >
+              {metric.name || 'Untitled metric'}
+            </button>
+          {/each}
+          <button type="button" class="rail-chip rail-chip-add" on:click={createMetricAndSelect}>+ New metric</button>
+        </nav>
+      {/if}
 
       {#if metrics.length === 0}
         <div class="empty-state">
@@ -2321,88 +2349,61 @@ return rows`
           <p>Create a metric to start gathering data, one question at a time.</p>
           <button class="primary" type="button" on:click={createMetricAndSelect}>+ New metric</button>
         </div>
-      {:else}
+      {:else if selectedMetric}
+        {@const metric = selectedMetric}
         <div class="metric-list">
-          {#each metrics as metric (metric.id)}
-            <div class="metric-card">
-              <div class="metric-card-header">
-                <input
-                  class="title-input"
-                  value={metric.name}
-                  aria-label="Metric name"
-                  on:input={(event) => plannerStore.renameMetric(metric.id, event.currentTarget.value)}
-                />
-                <button class="icon-button danger" type="button" title="Delete metric" on:click={() => plannerStore.deleteMetric(metric.id)}>×</button>
-              </div>
-
-              {#each metric.questions as question, index (question.id)}
-                <div class="metric-question-row">
-                  <RichTextEditor
-                    className="metric-question-prompt"
-                    kind="metric-question"
-                    inputId={question.id}
-                    placeholder="Question prompt"
-                    html={question.html}
-                    text={question.prompt}
-                    ariaLabel="Question prompt"
-                    revision={$plannerStore.historyRevision}
-                    onChange={(html, prompt) => plannerStore.patchMetricQuestion(metric.id, question.id, { html, prompt })}
-                  />
-                  <select
-                    aria-label="Question type"
-                    value={question.type}
-                    on:change={(event) =>
-                      plannerStore.patchMetricQuestion(metric.id, question.id, {
-                        type: event.currentTarget.value === 'boolean' ? 'boolean' : 'text',
-                      })}
-                  >
-                    <option value="text">Text / number</option>
-                    <option value="boolean">Yes / no</option>
-                  </select>
-                  <button class="icon-button" type="button" title="Move up" disabled={index === 0} on:click={() => plannerStore.moveMetricQuestion(metric.id, question.id, 'up')}>↑</button>
-                  <button class="icon-button" type="button" title="Move down" disabled={index === metric.questions.length - 1} on:click={() => plannerStore.moveMetricQuestion(metric.id, question.id, 'down')}>↓</button>
-                  <button class="icon-button danger" type="button" title="Delete question" on:click={() => plannerStore.deleteMetricQuestion(metric.id, question.id)}>×</button>
-                </div>
-              {/each}
-              <button class="add-row" type="button" on:click={() => plannerStore.addMetricQuestion(metric.id)}>+ Add question</button>
-
-              {#each metric.questions as question (question.id)}
-                {@const graph = buildGraph(metric, question)}
-                {#if graph}
-                  <div class="metric-graph-block">
-                    <h4>{@html question.html || escapeHTML(question.prompt || 'Untitled question')}</h4>
-                    <MetricGraph type={graph.type} points={graph.points} />
-                  </div>
-                {/if}
-              {/each}
+          <div class="metric-card">
+            <div class="metric-card-header">
+              <input
+                class="title-input"
+                value={metric.name}
+                aria-label="Metric name"
+                on:input={(event) => plannerStore.renameMetric(metric.id, event.currentTarget.value)}
+              />
+              <button class="icon-button danger" type="button" title="Delete metric" on:click={() => plannerStore.deleteMetric(metric.id)}>×</button>
             </div>
-          {/each}
-        </div>
 
-        <div class="metric-import">
-          <h3>Import past data</h3>
-          <label class="field-label" for="import-metric">Target metric</label>
-          <select id="import-metric" bind:value={importMetricId}>
-            {#each metrics as metric (metric.id)}
-              <option value={metric.id}>{metric.name}</option>
+            {#each metric.questions as question, index (question.id)}
+              <div class="metric-question-row">
+                <RichTextEditor
+                  className="metric-question-prompt"
+                  kind="metric-question"
+                  inputId={question.id}
+                  placeholder="Question prompt"
+                  html={question.html}
+                  text={question.prompt}
+                  ariaLabel="Question prompt"
+                  revision={$plannerStore.historyRevision}
+                  onChange={(html, prompt) => plannerStore.patchMetricQuestion(metric.id, question.id, { html, prompt })}
+                />
+                <select
+                  aria-label="Question type"
+                  value={question.type}
+                  on:change={(event) =>
+                    plannerStore.patchMetricQuestion(metric.id, question.id, {
+                      type: event.currentTarget.value === 'boolean' ? 'boolean' : 'text',
+                    })}
+                >
+                  <option value="text">Text / number</option>
+                  <option value="boolean">Yes / no</option>
+                </select>
+                <button class="icon-button" type="button" title="Move up" disabled={index === 0} on:click={() => plannerStore.moveMetricQuestion(metric.id, question.id, 'up')}>↑</button>
+                <button class="icon-button" type="button" title="Move down" disabled={index === metric.questions.length - 1} on:click={() => plannerStore.moveMetricQuestion(metric.id, question.id, 'down')}>↓</button>
+                <button class="icon-button danger" type="button" title="Delete question" on:click={() => plannerStore.deleteMetricQuestion(metric.id, question.id)}>×</button>
+              </div>
             {/each}
-          </select>
-          <label class="field-label" for="import-raw">Raw data</label>
-          <textarea id="import-raw" bind:value={importRaw} placeholder="Paste your raw data here"></textarea>
-          <label class="field-label" for="import-parser">Parser (JS function body, receives `raw`, returns rows)</label>
-          <textarea id="import-parser" bind:value={importParser}></textarea>
-          <div class="template-panel-actions">
-            <button type="button" on:click={runImportPreview}>Preview</button>
-            <button class="primary" type="button" on:click={runImport} disabled={!importPreview || Boolean(importError)}>Import</button>
+            <button class="add-row" type="button" on:click={() => plannerStore.addMetricQuestion(metric.id)}>+ Add question</button>
+
+            {#each metric.questions as question (question.id)}
+              {@const graph = buildGraph(metric, question)}
+              {#if graph}
+                <div class="metric-graph-block">
+                  <h4>{@html question.html || escapeHTML(question.prompt || 'Untitled question')}</h4>
+                  <MetricGraph type={graph.type} points={graph.points} />
+                </div>
+              {/if}
+            {/each}
           </div>
-          {#if importError}
-            <p class="metric-import-error">{importError}</p>
-          {/if}
-          {#if importPreview}
-            <p class="metric-import-preview">
-              Parsed {importPreview.length} row(s); {importPreview.filter((row) => row.answers.length > 0).length} with mapped answers.
-            </p>
-          {/if}
         </div>
       {/if}
     {/if}
@@ -2828,6 +2829,35 @@ return rows`
           onAnswer={(questionId, value) => plannerStore.upsertMetricAnswer(overlay.metricId, overlay.date, questionId, value)}
           onClose={() => (metricOverlay = null)}
         />
+      </OverlayModal>
+    {/if}
+
+    {#if importOverlayOpen}
+      <OverlayModal title="Import past data" z={70} onClose={() => (importOverlayOpen = false)}>
+        <div class="metric-import">
+          <label class="field-label" for="import-metric">Target metric</label>
+          <select id="import-metric" bind:value={importMetricId}>
+            {#each metrics as metric (metric.id)}
+              <option value={metric.id}>{metric.name}</option>
+            {/each}
+          </select>
+          <label class="field-label" for="import-raw">Raw data</label>
+          <textarea id="import-raw" bind:value={importRaw} placeholder="Paste your raw data here"></textarea>
+          <label class="field-label" for="import-parser">Parser (JS function body, receives `raw`, returns rows)</label>
+          <textarea id="import-parser" bind:value={importParser}></textarea>
+          <div class="template-panel-actions">
+            <button type="button" on:click={runImportPreview}>Preview</button>
+            <button class="primary" type="button" on:click={runImport} disabled={!importPreview || Boolean(importError)}>Import</button>
+          </div>
+          {#if importError}
+            <p class="metric-import-error">{importError}</p>
+          {/if}
+          {#if importPreview}
+            <p class="metric-import-preview">
+              Parsed {importPreview.length} row(s); {importPreview.filter((row) => row.answers.length > 0).length} with mapped answers.
+            </p>
+          {/if}
+        </div>
       </OverlayModal>
     {/if}
   </div>
