@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   build:
-    name: Build debug APK (arm64)
+    name: Build debug APK
     runs-on: ubuntu-latest
 
     env:
@@ -58,17 +58,19 @@ jobs:
           # NDK r23+ ships only llvm-prefixed binutils (llvm-ar, llvm-ranlib, ...).
           # The vendored OpenSSL build still calls the GCC-era names such as
           # aarch64-linux-android-ranlib, so add the toolchain to PATH and create
-          # the legacy-named symlinks it expects.
+          # the legacy-named symlinks it expects, for every ABI we cross-compile.
           TOOLCHAIN="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin"
           echo "${TOOLCHAIN}" >> "$GITHUB_PATH"
-          for tool in ar ranlib nm strip; do
-            ln -sf "${TOOLCHAIN}/llvm-${tool}" "${TOOLCHAIN}/aarch64-linux-android-${tool}"
+          for prefix in aarch64-linux-android x86_64-linux-android; do
+            for tool in ar ranlib nm strip; do
+              ln -sf "${TOOLCHAIN}/llvm-${tool}" "${TOOLCHAIN}/${prefix}-${tool}"
+            done
           done
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android,x86_64-linux-android
 
       - name: Cache Cargo build
         uses: actions/cache@v4
@@ -87,21 +89,95 @@ jobs:
       - name: Initialize Android project
         run: pnpm tauri android init
 
-      - name: Build debug APK
-        run: pnpm tauri android build --apk --debug --target aarch64
+      - name: Build universal debug APK (arm64 + x86_64)
+        run: pnpm tauri android build --apk --debug --target aarch64 --target x86_64
 
-      - name: Locate APK
+      - name: Locate and verify APK
         id: apk
         run: |
           APK_PATH="$(find src-tauri/gen/android -name '*.apk' -path '*debug*' | head -n 1)"
           test -n "$APK_PATH"
           echo "Found APK at $APK_PATH"
           file "$APK_PATH"
-          echo "path=$APK_PATH" >> "$GITHUB_OUTPUT"
+          # The APK must bundle the Rust native library for both ABIs, otherwise
+          # the app cannot start on a device or the emulator.
+          unzip -l "$APK_PATH" | tee apk-contents.txt
+          grep -q "lib/arm64-v8a/libbalance_lib.so" apk-contents.txt
+          grep -q "lib/x86_64/libbalance_lib.so" apk-contents.txt
+          cp "$APK_PATH" balance-debug.apk
+          echo "path=balance-debug.apk" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
-          name: Balance-android-arm64-debug
-          path: ${{ steps.apk.outputs.path }}
+          name: Balance-android-debug
+          path: balance-debug.apk
           if-no-files-found: error
+
+  smoke-test:
+    name: Launch on emulator
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-debug
+
+      - name: Launch app on emulator and check for crashes
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            adb install -r balance-debug.apk
+            PKG="$(adb shell pm list packages | grep -i balance | head -n 1 | sed 's/package://' | tr -d '\r')"
+            echo "Installed package: $PKG"
+            test -n "$PKG"
+            adb logcat -c
+            adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
+            # Give the webview time to initialize, open the database (SQLCipher /
+            # OpenSSL) and render the frontend.
+            sleep 25
+            echo "===== logcat (app + crashes) ====="
+            adb logcat -d > logcat.txt || true
+            grep -iE "FATAL EXCEPTION|beginning of crash|libbalance_lib|tauri|balance" logcat.txt || true
+            echo "===== checks ====="
+            # The process must still be alive (no crash on startup).
+            PID="$(adb shell pidof "$PKG" | tr -d '\r')"
+            echo "App pid: '$PID'"
+            test -n "$PID"
+            # No fatal native or Java crash referencing our app.
+            if grep -qE "FATAL EXCEPTION" logcat.txt; then
+              echo "Found a fatal exception in logcat:"
+              grep -A 20 "FATAL EXCEPTION" logcat.txt
+              exit 1
+            fi
+            echo "App launched and is running (pid $PID) with no fatal exceptions."
+
+      - name: Upload logcat
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: emulator-logcat
+          path: logcat.txt
+          if-no-files-found: ignore
