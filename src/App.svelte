@@ -121,7 +121,12 @@ return rows`
   let planSelectionFocusId: Id | null = null
   let selectedPlanPlanId: Id | null = null
   let selectingPlanItems = false
-  let planItemClipboard: { items: PlanItem[]; cut: boolean; sourceDate: string } | null = null
+  type PlanItemClipboard = { items: PlanItem[]; cut: boolean; sourceDate: string }
+  type ClipboardContents = { structuredPayload: string | null; plainText: string | null; html: string | null }
+  // Browser-only fallback for Vite/Playwright, where native pasteboard commands do
+  // not exist. It is accepted only while its plain text still matches the real clipboard.
+  let browserPlanItemClipboard: PlanItemClipboard | null = null
+  let clipboardWritePending: Promise<unknown> | null = null
   // Each pasted node — parent or child — is reviewed on its own, so the queue is a
   // flat list annotated with the node's original depth. Kept nodes are re-nested from
   // those depths once the queue empties.
@@ -1061,9 +1066,9 @@ return rows`
         return
       }
 
-      if (key === 'v' && !event.shiftKey && planItemClipboard) {
+      if (key === 'v' && !event.shiftKey) {
         event.preventDefault()
-        pastePlanItemClipboard()
+        void pasteSystemClipboard()
         return
       }
 
@@ -1349,8 +1354,7 @@ return rows`
     const items = plannerStore.copyPlanItems(activePlan.id, selectedPlanItemIds)
     if (items.length === 0) return
 
-    planItemClipboard = { items, cut: false, sourceDate: activePlan.date }
-    writePlanItemsToSystemClipboard(items)
+    writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: activePlan.date })
   }
 
   function cutSelectedPlanItems() {
@@ -1359,8 +1363,7 @@ return rows`
     const items = plannerStore.cutPlanItems(activePlan.id, selectedPlanItemIds)
     if (items.length === 0) return
 
-    planItemClipboard = { items, cut: true, sourceDate: activePlan.date }
-    writePlanItemsToSystemClipboard(items)
+    writePlanItemsToSystemClipboard({ items, cut: true, sourceDate: activePlan.date })
     clearPlanSelection()
   }
 
@@ -1371,8 +1374,19 @@ return rows`
     if (deletedIds.length > 0) clearPlanSelection()
   }
 
-  function pastePlanItemClipboard() {
-    if (!activePlan || !planItemClipboard) return
+  async function pasteSystemClipboard() {
+    const clipboard = await readSystemClipboard()
+    const structured = parsePlanItemClipboard(clipboard.structuredPayload)
+    if (structured) {
+      pastePlanItemClipboard(structured)
+      return
+    }
+
+    pastePlainClipboardIntoActiveEditor(clipboard)
+  }
+
+  function pastePlanItemClipboard(planItemClipboard: PlanItemClipboard) {
+    if (!activePlan) return
 
     const targetId = pasteTargetPlanItemId()
     const placement = shouldReplaceFocusedPlanItemOnPaste(targetId) ? 'replace' : 'after'
@@ -1477,8 +1491,7 @@ return rows`
     // clipboard alive makes subsequent pastes create more task rows instead of falling
     // through to the browser's plain-text clipboard handling.
     if (cut) {
-      planItemClipboard = { items, cut: false, sourceDate: activePlan.date }
-      writePlanItemsToSystemClipboard(items)
+      writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: activePlan.date })
     }
   }
 
@@ -1725,13 +1738,55 @@ return rows`
     return rootIds.at(-1) ?? null
   }
 
-  function writePlanItemsToSystemClipboard(items: PlanItem[]) {
-    const text = planItemsToPlainText(items)
-    if (!text || !navigator.clipboard?.writeText) return
+  function writePlanItemsToSystemClipboard(clipboard: PlanItemClipboard) {
+    const plainText = planItemsToPlainText(clipboard.items)
+    if (!plainText) return
 
-    void navigator.clipboard.writeText(text).catch(() => {
-      // The internal clipboard still works when system clipboard access is blocked.
-    })
+    const structuredPayload = JSON.stringify(clipboard)
+    if (isTauri()) {
+      clipboardWritePending = invoke('write_balance_clipboard', { plainText, structuredPayload })
+        .catch(async () => {
+          browserPlanItemClipboard = clipboard
+          await navigator.clipboard?.writeText(plainText).catch(() => {})
+        })
+      return
+    }
+
+    browserPlanItemClipboard = clipboard
+    clipboardWritePending = navigator.clipboard?.writeText(plainText).catch(() => {}) ?? null
+  }
+
+  async function readSystemClipboard(): Promise<ClipboardContents> {
+    await clipboardWritePending
+    clipboardWritePending = null
+    if (isTauri()) {
+      const nativeClipboard = await invoke<ClipboardContents>('read_balance_clipboard')
+      if (nativeClipboard.structuredPayload || nativeClipboard.plainText || nativeClipboard.html) return nativeClipboard
+    }
+
+    const plainText = await navigator.clipboard?.readText().catch(() => null) ?? null
+    const structuredPayload = browserPlanItemClipboard && (plainText === null || planItemsToPlainText(browserPlanItemClipboard.items) === plainText)
+      ? JSON.stringify(browserPlanItemClipboard)
+      : null
+    if (!structuredPayload) browserPlanItemClipboard = null
+    return { structuredPayload, plainText, html: null }
+  }
+
+  function parsePlanItemClipboard(raw: string | null): PlanItemClipboard | null {
+    if (!raw) return null
+    try {
+      const value = JSON.parse(raw) as Partial<PlanItemClipboard>
+      if (!Array.isArray(value.items) || typeof value.cut !== 'boolean' || typeof value.sourceDate !== 'string') return null
+      return value as PlanItemClipboard
+    } catch {
+      return null
+    }
+  }
+
+  function pastePlainClipboardIntoActiveEditor(clipboard: ClipboardContents) {
+    const editor = document.activeElement
+    if (!(editor instanceof HTMLElement) || !editor.matches('[data-plan-text-input]')) return
+    editor.dispatchEvent(new CustomEvent('balancepaste', { detail: clipboard }))
   }
 
   function planItemsToPlainText(items: PlanItem[], depth = 0): string {

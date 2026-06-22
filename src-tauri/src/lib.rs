@@ -31,6 +31,8 @@ const GOAL_DATA: &str = "goal_data";
 const LISTS_METRICS_DATA: &str = "lists_metrics_data";
 const DEFAULT_AUTO_JSON_EXPORT_TIME: &str = "23:55";
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
+#[cfg(target_os = "macos")]
+const BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE: &str = "com.balance.plan-items+json";
 
 #[cfg(target_os = "macos")]
 fn disable_automatic_text_replacement() {
@@ -47,6 +49,71 @@ fn disable_automatic_text_replacement() {
 
 #[cfg(not(target_os = "macos"))]
 fn disable_automatic_text_replacement() {}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ClipboardContents {
+    structured_payload: Option<String>,
+    plain_text: Option<String>,
+    html: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn write_balance_clipboard(plain_text: String, structured_payload: String) -> Result<(), String> {
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeString};
+    use objc2_foundation::NSString;
+
+    let pasteboard = NSPasteboard::generalPasteboard();
+    let plain_text = NSString::from_str(&plain_text);
+    let payload = NSString::from_str(&structured_payload);
+    let payload_type = NSString::from_str(BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE);
+
+    pasteboard.clearContents();
+    if !pasteboard.setString_forType(&plain_text, unsafe { NSPasteboardTypeString })
+        || !pasteboard.setString_forType(&payload, &payload_type)
+    {
+        return Err("Could not write task items to the system pasteboard".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn write_balance_clipboard(_plain_text: String, _structured_payload: String) -> Result<(), String> {
+    Err("Structured system clipboard is currently supported on macOS".to_string())
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn read_balance_clipboard() -> ClipboardContents {
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeHTML, NSPasteboardTypeString};
+    use objc2_foundation::NSString;
+
+    let pasteboard = NSPasteboard::generalPasteboard();
+    let payload_type = NSString::from_str(BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE);
+    ClipboardContents {
+        structured_payload: pasteboard
+            .stringForType(&payload_type)
+            .map(|value| value.to_string()),
+        plain_text: pasteboard
+            .stringForType(unsafe { NSPasteboardTypeString })
+            .map(|value| value.to_string()),
+        html: pasteboard
+            .stringForType(unsafe { NSPasteboardTypeHTML })
+            .map(|value| value.to_string()),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn read_balance_clipboard() -> ClipboardContents {
+    ClipboardContents {
+        structured_payload: None,
+        plain_text: None,
+        html: None,
+    }
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -4441,7 +4508,9 @@ pub fn run() {
             record_auto_json_export_error,
             acknowledge_auto_json_export_error,
             reveal_path_in_file_manager,
-            open_external_url
+            open_external_url,
+            write_balance_clipboard,
+            read_balance_clipboard
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

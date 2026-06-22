@@ -1027,6 +1027,32 @@ test('pasting plan items into an empty focused item replaces it', async ({ page 
   await expect.poll(async () => topLevelTexts(page)).toEqual([...before.slice(0, 2), ...before.slice(0, 2), ...before.slice(2)])
 })
 
+test('replacing the system clipboard prevents stale structured task paste', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this regression test')
+
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  await focusInputByValue(page, before[0])
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Meta+C')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(before.slice(0, 2).join('\n'))
+
+  await focusInputByValue(page, 'Work block')
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Enter')
+  await page.evaluate(() => navigator.clipboard.writeText('Current clipboard value'))
+  await page.keyboard.press('Meta+V')
+
+  await expect
+    .poll(async () => topLevelTexts(page))
+    .toEqual([...before.slice(0, 2), 'Current clipboard value', ...before.slice(2)])
+})
+
 test('pasting a moved group again keeps it as structured task items', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

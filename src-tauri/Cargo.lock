@@ -135,6 +135,7 @@ dependencies = [
  "data-encoding",
  "keyring",
  "log",
+ "objc2-app-kit",
  "objc2-foundation",
  "rand",
  "rusqlite",

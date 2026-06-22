@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke, isTauri } from '@tauri-apps/api/core'
+  import { onMount } from 'svelte'
   import { escapeHTML, htmlToPlainText, isURL, sanitizeInlineHTML } from './planner'
   import type { Id, MoveDirection } from './types'
 
@@ -46,6 +47,12 @@
   let restoreSelectionOnNextFocus = false
   let restoreRequest = 0
   let pendingPasteInput = false
+
+  onMount(() => {
+    const listener = (event: Event) => handleProgrammaticPaste(event as CustomEvent<{ plainText: string | null; html: string | null }>)
+    editor.addEventListener('balancepaste', listener)
+    return () => editor.removeEventListener('balancepaste', listener)
+  })
 
   $: {
     const nextHTML = html || escapeHTML(text)
@@ -266,8 +273,19 @@
     const clipboardText = event.clipboardData?.getData('text/plain') ?? ''
     const clipboardHTML = event.clipboardData?.getData('text/html') ?? ''
 
+    if (!clipboardHTML && !clipboardText) return
+    event.preventDefault()
+    insertClipboardContents(activeEditor, clipboardText, clipboardHTML)
+  }
+
+  function handleProgrammaticPaste(event: CustomEvent<{ plainText: string | null; html: string | null }>) {
+    if (!editor) return
+    insertClipboardContents(editor, event.detail.plainText ?? '', event.detail.html ?? '')
+  }
+
+  function insertClipboardContents(activeEditor: HTMLDivElement, clipboardText: string, clipboardHTML: string) {
+
     if (clipboardText && isURL(clipboardText) && hasNonCollapsedSelectionInside(activeEditor)) {
-      event.preventDefault()
       pendingPasteInput = true
       document.execCommand('createLink', false, clipboardText.trim())
       persistPasteIfInputDidNotFire(activeEditor)
@@ -275,7 +293,6 @@
     }
 
     if (clipboardHTML || clipboardText) {
-      event.preventDefault()
       const trimmedText = clipboardText.trim()
       let pastedHTML = clipboardHTML
         ? sanitizeInlineHTML(clipboardHTML)
