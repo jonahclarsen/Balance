@@ -2111,8 +2111,9 @@ nav button.active {
   font-weight: 600;
 }
 
-/* The trailing "+ New metric" pill reads as an action rather than a tab. */
-.rail-chip-add {
+/* The trailing "New metric" pill reads as an action rather than a tab. The
+   dashed edge is shared with other "add" buttons (e.g. New list). */
+.dashed-edge {
   border-style: dashed;
 }
 
@@ -2129,6 +2130,11 @@ nav button.active {
   cursor: text;
   outline: none;
   white-space: pre-wrap;
+}
+
+/* Generated list items aren't editable; clicking selects the row instead. */
+.list-panel .item-text-display {
+  cursor: default;
 }
 
 .item-text-display .inline-link {

@@ -1409,9 +1409,11 @@ export function createMetricEntry(metricId: Id, date: string): MetricEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Internal links — a plan/list item whose text matches a list template name
-// (exact, case-insensitive) or contains a metric name (substring) becomes a
-// clickable opener.
+// Internal links — a plan/list item whose text contains a list template name
+// or a metric name (case-insensitive substring) becomes a clickable opener.
+// Matching mirrors the cheap lowercase-substring scan goal completion uses: we
+// only ever walk the handful of list templates / metrics, never the full text
+// repeatedly, so this stays fast even on long item text.
 // ---------------------------------------------------------------------------
 
 export type ItemLink =
@@ -1427,7 +1429,7 @@ export function resolveItemLinks(text: string, listTemplates: ListTemplate[], me
 
   for (const template of listTemplates) {
     const name = template.name.trim()
-    if (name && name.toLowerCase() === lower) {
+    if (name && lower.includes(name.toLowerCase())) {
       links.push({ kind: 'list', listTemplateId: template.id, label: name })
     }
   }
@@ -1444,34 +1446,33 @@ export function resolveItemLinks(text: string, listTemplates: ListTemplate[], me
 
 export type ItemTextSegment = { text: string; link: ItemLink | null }
 
-// Splits an item's text into segments, marking only the matching substrings as
-// links: the whole text for a list-name match (exact), or each metric-name
-// occurrence (substring) for metrics. Everything else stays plain text.
+// Splits an item's text into segments, marking each list-name or metric-name
+// occurrence (case-insensitive substring) as a link and leaving everything else
+// as plain text. Each name is scanned with indexOf over the lowercased text, so
+// cost is bounded by the small number of templates/metrics, not the text length.
 export function linkifyItemText(text: string, listTemplates: ListTemplate[], metrics: Metric[]): ItemTextSegment[] {
   if (text === '') return [{ text, link: null }]
 
-  const trimmed = text.trim()
-  if (trimmed) {
-    const lower = trimmed.toLowerCase()
-    for (const template of listTemplates) {
-      const name = template.name.trim()
-      if (name && name.toLowerCase() === lower) {
-        return [{ text, link: { kind: 'list', listTemplateId: template.id, label: name } }]
-      }
-    }
-  }
-
   const haystack = text.toLowerCase()
   const matches: { start: number; end: number; link: ItemLink }[] = []
-  for (const metric of metrics) {
-    const name = metric.name.trim()
-    if (!name) continue
+  const collect = (name: string, link: ItemLink) => {
     const needle = name.toLowerCase()
     let index = haystack.indexOf(needle)
     while (index !== -1) {
-      matches.push({ start: index, end: index + name.length, link: { kind: 'metric', metricId: metric.id, label: name } })
+      matches.push({ start: index, end: index + name.length, link })
       index = haystack.indexOf(needle, index + name.length)
     }
+  }
+
+  for (const template of listTemplates) {
+    const name = template.name.trim()
+    if (!name) continue
+    collect(name, { kind: 'list', listTemplateId: template.id, label: name })
+  }
+  for (const metric of metrics) {
+    const name = metric.name.trim()
+    if (!name) continue
+    collect(name, { kind: 'metric', metricId: metric.id, label: name })
   }
 
   if (matches.length === 0) return [{ text, link: null }]
