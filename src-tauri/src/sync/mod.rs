@@ -128,9 +128,9 @@ pub struct ChangeSet {
 }
 
 /// Load the cr-sqlite extension into an already-open (and unlocked) connection
-/// at runtime. Desktop only: the dylib/.so/.dll is shipped as a Tauri resource.
-/// `entry_point` is `sqlite3_crsqlite_init`.
-#[cfg(not(target_os = "android"))]
+/// at runtime. The loadable library (crsqlite.dylib/.so/.dll, including the
+/// Android `.so`) is shipped as a Tauri resource. `entry_point` is
+/// `sqlite3_crsqlite_init`.
 pub fn load_extension(conn: &Connection, extension_path: impl AsRef<Path>) -> Result<()> {
     unsafe {
         conn.load_extension_enable()?;
@@ -141,43 +141,10 @@ pub fn load_extension(conn: &Connection, extension_path: impl AsRef<Path>) -> Re
     Ok(())
 }
 
-/// Initialise the **statically-linked** cr-sqlite engine on a connection.
-/// Android only: the archive is linked by build.rs, so instead of loading a
-/// `.so` at runtime we call the extension's init entry point directly with the
-/// raw connection handle. (Validated by the Android CI/device build, not the
-/// desktop test suite.)
-#[cfg(target_os = "android")]
-pub fn init_static(conn: &Connection) -> Result<()> {
-    use std::os::raw::{c_char, c_int, c_void};
-    extern "C" {
-        fn sqlite3_crsqlite_init(
-            db: *mut rusqlite::ffi::sqlite3,
-            pz_err_msg: *mut *mut c_char,
-            p_api: *const c_void,
-        ) -> c_int;
-    }
-    // SQLITE_OK == 0. For a statically-linked extension the api-routines pointer
-    // is unused, so a null pointer is correct here.
-    let rc = unsafe { sqlite3_crsqlite_init(conn.handle(), std::ptr::null_mut(), std::ptr::null()) };
-    if rc != 0 {
-        return Err(Error::Crypto(format!("crsqlite init failed: rc={rc}")));
-    }
-    Ok(())
-}
-
-/// Activate cr-sqlite on a connection, choosing runtime load (desktop) vs the
-/// statically-linked init (Android). `extension_path` is only consulted on
-/// desktop.
+/// Activate cr-sqlite on a connection by loading the extension at runtime
+/// (same mechanism on every platform).
 pub fn activate(conn: &Connection, extension_path: impl AsRef<Path>) -> Result<()> {
-    #[cfg(not(target_os = "android"))]
-    {
-        load_extension(conn, extension_path)
-    }
-    #[cfg(target_os = "android")]
-    {
-        let _ = extension_path;
-        init_static(conn)
-    }
+    load_extension(conn, extension_path)
 }
 
 /// Promote a table to a CRR so its writes become mergeable.

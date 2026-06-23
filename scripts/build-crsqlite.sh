@@ -48,16 +48,40 @@ git -c url."https://github.com/".insteadOf="git@github.com:" \
 rustup toolchain install "$NIGHTLY" --component rust-src --profile minimal
 COMMIT_SHA="$(git rev-parse HEAD)"
 
+# Build a runtime-loadable cr-sqlite extension (crsqlite.so) for an Android ABI.
+# Same shape as `make loadable`, cross-compiled with the NDK clang: build the
+# Rust core as a loadable-extension archive, then link it with the C wrapper
+# (which provides sqlite3_crsqlite_init) into a self-contained shared object.
+# Undefined sqlite3_* symbols are resolved at load time by the host SQLite, so
+# we tell the linker to ignore them. Requires the Android NDK (CI has it).
+find_ndk_clang() {
+  local triple="$1"
+  local ndk="${ANDROID_NDK_HOME:-${NDK_HOME:-/nonexistent}}"
+  # e.g. aarch64-linux-android24-clang ; pick the lowest API available.
+  find "$ndk" -name "${triple}*-clang" 2>/dev/null | sort -V | head -1
+}
+
 build_android() {
   local triple="$1" abi="$2"
   rustup target add "$triple" --toolchain "$NIGHTLY"
   ( cd core/rs/bundle_static
     CRSQLITE_COMMIT_SHA="$COMMIT_SHA" \
-      cargo +"$NIGHTLY" build --release --features static --target "$triple" )
+      cargo +"$NIGHTLY" build --release --features loadable_extension --target "$triple" )
+
+  local cc
+  cc="$(find_ndk_clang "$triple")"
+  if [ -z "$cc" ]; then
+    echo "note: NDK clang for $triple not found; skipping $abi .so link" >&2
+    return 0
+  fi
   mkdir -p "$RES/android/$abi"
-  cp "core/rs/bundle_static/target/$triple/release/libcrsql_bundle_static.a" \
-     "$RES/android/$abi/"
-  echo "built android $abi static lib"
+  "$cc" -O2 -std=c99 -fPIC -shared \
+    -I core/src -I core/src/sqlite \
+    -Wl,--unresolved-symbols=ignore-all \
+    core/src/crsqlite.c core/src/changes-vtab.c core/src/ext-data.c \
+    "core/rs/bundle_static/target/$triple/release/libcrsql_bundle_static.a" \
+    -o "$RES/android/$abi/crsqlite.so"
+  echo "built android $abi loadable extension"
 }
 
 case "${1:-all}" in
