@@ -1618,6 +1618,33 @@ export async function listRecoveryEntries(): Promise<RecoveryEntry[]> {
   return parsed.entries ?? []
 }
 
+// --- Multi-device sync (cr-sqlite engine; see src-tauri/src/sync) -----------
+
+/** Whether this device's database has been migrated to the sync-ready schema. */
+export async function syncStatus(): Promise<boolean> {
+  if (!isTauri()) return false
+  return invoke<boolean>('sync_status')
+}
+
+/** Generate a fresh account sync key and return its QR/pairing code. */
+export async function syncNewPairingCode(): Promise<string> {
+  if (!isTauri()) return ''
+  return invoke<string>('sync_new_pairing_code')
+}
+
+/** Pull local changes since `since`, sealed (E2EE) with the pairing key. */
+export async function syncPullSealed(pairingCode: string, since: number): Promise<Uint8Array> {
+  if (!isTauri()) return new Uint8Array()
+  const bytes = await invoke<number[]>('sync_pull_sealed', { pairingCode, since })
+  return Uint8Array.from(bytes)
+}
+
+/** Apply a peer's sealed changeset envelope into this device's database. */
+export async function syncApplySealed(pairingCode: string, envelope: Uint8Array): Promise<void> {
+  if (!isTauri()) return
+  await invoke('sync_apply_sealed', { pairingCode, envelope: Array.from(envelope) })
+}
+
 export type MetadataEntry = {
   key: string
   value: string

@@ -86,6 +86,12 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build cr-sqlite engine (Android static libs)
+        # Cross-compiles the cr-sqlite engine to per-ABI static archives that
+        # build.rs links into the app. Needs no NDK — pure cargo against the
+        # installed android rust-std. Produces resources/android/<abi>/.
+        run: bash scripts/build-crsqlite.sh android
+
       - name: Initialize Android project
         run: pnpm tauri android init
 

@@ -7,6 +7,7 @@
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
   import ListTemplateItemEditor from './lib/ListTemplateItemEditor.svelte'
   import OverlayModal from './lib/OverlayModal.svelte'
+  import SyncPanel from './lib/SyncPanel.svelte'
   import MetricQuiz from './lib/MetricQuiz.svelte'
   import MetricGraph from './lib/MetricGraph.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
@@ -2893,6 +2894,8 @@ return rows`
 
           </div>
         </section>
+
+        <SyncPanel />
 
         <section class="settings-section">
           <div>

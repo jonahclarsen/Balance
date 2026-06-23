@@ -14,6 +14,14 @@ artifacts
 *.local
 sleep.sh
 
+# cr-sqlite sync engine build artifacts (produced by scripts/build-crsqlite.sh)
+.crsqlite-build
+sync-spike
+src-tauri/resources/crsqlite.dylib
+src-tauri/resources/crsqlite.so
+src-tauri/resources/crsqlite.dll
+src-tauri/resources/android
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
