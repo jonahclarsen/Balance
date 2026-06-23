@@ -57,8 +57,8 @@
 
   let view: View = 'today'
   let workspaceEl: HTMLElement
-  let scrollPositionsByDate: Record<string, number> = {}
-  let lastScrolledDate = ''
+  let scrollPositionsByPage: Record<string, number> = {}
+  let lastScrolledPage = ''
   let goalHistoryHeight: number | null = null
   let goalRhythmVisible = true
   let goalRhythmAutoShowTimer: number | null = null
@@ -177,7 +177,10 @@ return rows`
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
-  $: restoreScrollForDate($plannerStore.activePlanDate)
+  // Scroll position is remembered per page. The Today view scrolls independently
+  // for each plan date; every other view keeps a single position under its name.
+  $: scrollPageKey = view === 'today' ? `today:${$plannerStore.activePlanDate || ''}` : `view:${view}`
+  $: restoreScrollForPage(scrollPageKey)
   $: dueTodayGoals = activePlan
     ? $plannerStore.goals.filter((goal) => {
         const daysUntilLapse = goalDaysUntilLapse(goal, $plannerStore.goalCompletions, activePlan.date)
@@ -634,20 +637,20 @@ return rows`
   }
 
   function handleWorkspaceScroll() {
-    if (workspaceEl && lastScrolledDate) {
-      scrollPositionsByDate[lastScrolledDate] = workspaceEl.scrollTop
+    if (workspaceEl && lastScrolledPage) {
+      scrollPositionsByPage[lastScrolledPage] = workspaceEl.scrollTop
     }
     // The list-template max-word lock/input only stays visible near the top; once
     // scrolled away it fades out so it doesn't hover over the items being edited.
     if (workspaceEl) wordCapScrolledAway = workspaceEl.scrollTop > 40
   }
 
-  async function restoreScrollForDate(date: string) {
-    if (!date || date === lastScrolledDate) return
-    lastScrolledDate = date
+  async function restoreScrollForPage(pageKey: string) {
+    if (!pageKey || pageKey === lastScrolledPage) return
+    lastScrolledPage = pageKey
     await tick()
     if (workspaceEl) {
-      workspaceEl.scrollTop = scrollPositionsByDate[date] ?? 0
+      workspaceEl.scrollTop = scrollPositionsByPage[pageKey] ?? 0
     }
   }
 
