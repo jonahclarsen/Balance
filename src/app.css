@@ -1012,7 +1012,18 @@ nav button.active {
 
 .paste-review-edit {
   width: 100%;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--paper-strong);
+  font-family: inherit;
   font-size: 17px;
+  line-height: 1.4;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
 }
 
 .paste-review-cooldown {

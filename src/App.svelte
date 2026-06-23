@@ -157,7 +157,7 @@ return rows`
   let pasteReviewEditing = false
   let pasteReviewRejecting = false
   let pasteReviewEditDraft = ''
-  let pasteReviewInput: HTMLInputElement | null = null
+  let pasteReviewInput: HTMLTextAreaElement | null = null
   let pasteReviewList: HTMLDivElement | null = null
   // Each card enforces a read-cooldown before "Keep"/Enter is armed, so items
   // can't be blown through without being read. pasteReviewProgress drives the bar.
@@ -1807,6 +1807,22 @@ return rows`
     void tick().then(() => pasteReviewInput?.focus())
   }
 
+  // Grow the paste-review edit field to fit its content so large blocks of text
+  // aren't clipped to a single line — matching how task items expand.
+  function autoGrowPasteReviewEdit(node: HTMLTextAreaElement) {
+    const resize = () => {
+      node.style.height = 'auto'
+      node.style.height = `${node.scrollHeight}px`
+    }
+    resize()
+    node.addEventListener('input', resize)
+    return {
+      destroy() {
+        node.removeEventListener('input', resize)
+      },
+    }
+  }
+
   function savePasteReviewEdit() {
     if (!pasteReview) return
 
@@ -3134,13 +3150,14 @@ return rows`
             aria-current={isCurrent ? 'true' : undefined}
           >
             {#if isCurrent && pasteReviewEditing}
-              <input
+              <textarea
                 class="paste-review-edit"
-                type="text"
+                rows="1"
                 bind:value={pasteReviewEditDraft}
                 bind:this={pasteReviewInput}
                 placeholder="Item text"
-              />
+                use:autoGrowPasteReviewEdit
+              ></textarea>
             {:else}
               <div class="paste-review-line">
                 {#if isCurrent}
