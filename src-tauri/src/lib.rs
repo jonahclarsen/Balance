@@ -4773,12 +4773,21 @@ fn app_database_path_from_data_dir(data_dir: &Path) -> PathBuf {
 /// Resolve the bundled cr-sqlite loadable extension for this platform. In a
 /// packaged app it's a Tauri resource; in dev it sits beside the crate.
 fn crsqlite_extension_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    // On Android the extension ships as a jniLib (libcrsqlite.so). The OS
+    // extracts jniLibs into the app's nativeLibraryDir, which is on the dynamic
+    // linker's search path, so dlopen resolves it by soname alone.
+    #[cfg(target_os = "android")]
+    {
+        let _ = app;
+        return Ok(PathBuf::from("libcrsqlite.so"));
+    }
+    #[cfg(not(target_os = "android"))]
+    {
     let file = if cfg!(target_os = "windows") {
         "crsqlite.dll"
     } else if cfg!(target_os = "macos") {
         "crsqlite.dylib"
     } else {
-        // Linux and Android both use the ELF shared object.
         "crsqlite.so"
     };
     if let Ok(dir) = app.path().resource_dir() {
@@ -4795,6 +4804,7 @@ fn crsqlite_extension_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         return Ok(dev);
     }
     Err(format!("cr-sqlite extension not found ({file})"))
+    }
 }
 
 /// Open the encrypted DB, load cr-sqlite, ensure the data is migrated + CRRs are
