@@ -57,8 +57,12 @@ COMMIT_SHA="$(git rev-parse HEAD)"
 find_ndk_clang() {
   local triple="$1"
   local ndk="${ANDROID_NDK_HOME:-${NDK_HOME:-/nonexistent}}"
-  # e.g. aarch64-linux-android24-clang ; pick the lowest API available.
-  find "$ndk" -name "${triple}*-clang" 2>/dev/null | sort -V | head -1
+  # The real wrappers live in toolchains/llvm/prebuilt/<host>/bin and are named
+  # with an API level, e.g. aarch64-linux-android24-clang. Require a file in
+  # that path with a digit after the triple, to avoid matching legacy ndk-build
+  # toolchain *directories* like aarch64-linux-android-clang. Pick lowest API.
+  find "$ndk" -type f -path '*/llvm/prebuilt/*/bin/*' \
+       -name "${triple}[0-9]*-clang" 2>/dev/null | sort -V | head -1
 }
 
 build_android() {
