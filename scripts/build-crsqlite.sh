@@ -32,6 +32,11 @@ fi
 cd "$WORK/cr-sqlite"
 git fetch --depth 1 origin "$CRSQLITE_REF" || true
 git checkout "$CRSQLITE_REF"
+# The sqlite-rs-embedded submodule is pinned with an SSH URL (git@github.com:),
+# which CI runners can't authenticate. Rewrite SSH GitHub URLs to HTTPS for this
+# repo so the submodule clones anonymously. Local-scoped so it can't leak into a
+# developer's global git config.
+git config url."https://github.com/".insteadOf "git@github.com:"
 git submodule update --init --recursive
 
 # --- Toolchain ---------------------------------------------------------------
