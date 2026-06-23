@@ -33,11 +33,16 @@ cd "$WORK/cr-sqlite"
 git fetch --depth 1 origin "$CRSQLITE_REF" || true
 git checkout "$CRSQLITE_REF"
 # The sqlite-rs-embedded submodule is pinned with an SSH URL (git@github.com:),
-# which CI runners can't authenticate. Rewrite SSH GitHub URLs to HTTPS for this
-# repo so the submodule clones anonymously. Local-scoped so it can't leak into a
-# developer's global git config.
-git config url."https://github.com/".insteadOf "git@github.com:"
-git submodule update --init --recursive
+# which CI runners can't authenticate. Rewrite SSH GitHub URLs to HTTPS so it
+# clones anonymously: edit .gitmodules + sync the recorded URLs, and also pass
+# the rewrite inline with -c so it propagates to any nested submodule clones.
+if [ -f .gitmodules ]; then
+  sed -i.bak 's#git@github.com:#https://github.com/#g' .gitmodules
+  rm -f .gitmodules.bak
+  git submodule sync --recursive
+fi
+git -c url."https://github.com/".insteadOf="git@github.com:" \
+    submodule update --init --recursive
 
 # --- Toolchain ---------------------------------------------------------------
 rustup toolchain install "$NIGHTLY" --component rust-src --profile minimal
