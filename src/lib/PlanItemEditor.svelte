@@ -367,7 +367,18 @@
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       onLockedSelect(item.id)
+      patchItem(planId, item.id, { done: !item.done })
     }
+  }
+
+  function handleLockedRowClick(event: MouseEvent) {
+    if (!locked) return
+
+    const target = event.target instanceof Element ? event.target : null
+    if (target?.closest('a, button, input, textarea, select, [contenteditable="true"], .time-range, .check-target')) return
+
+    onLockedSelect(item.id)
+    patchItem(planId, item.id, { done: !item.done })
   }
 
   function focusTextInputAtOffset(input: HTMLDivElement, offset: number) {
@@ -407,6 +418,7 @@
 </script>
 
 <div class="item-shell" style={`--depth: ${depth}`}>
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <div
     class="plan-row"
     data-plan-item-id={item.id}
@@ -415,6 +427,7 @@
     aria-label={`Plan item: ${item.text || 'Untitled'}`}
     class:done={item.done}
     class:selected
+    on:click={handleLockedRowClick}
     on:pointerenter={() => {
       if (selectionDragging) onSelectionPointerEnter(item.id)
     }}
@@ -483,14 +496,13 @@
 
     {#if locked}
       <!-- Generated list items are fixed: text is static, but inline links stay
-           clickable and clicking the text selects the row for keyboard actions. -->
+           clickable and row clicks toggle completion. -->
       <div
         class="item-text item-text-display"
         class:done={item.done}
         role="button"
         tabindex="0"
-        aria-label="Select item"
-        on:click={() => onLockedSelect(item.id)}
+        aria-label="Toggle item"
         on:keydown={handleDisplayKeydown}
       >{#each displaySegments as segment, index (index)}{#if segment.link}{@const link = segment.link}<a
             href={'#'}
