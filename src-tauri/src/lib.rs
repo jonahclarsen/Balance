@@ -4771,15 +4771,14 @@ fn app_database_path_from_data_dir(data_dir: &Path) -> PathBuf {
 // ---------------------------------------------------------------------------
 
 /// Resolve the bundled cr-sqlite loadable extension for this platform. In a
-/// packaged app it's a Tauri resource; in dev it sits beside the crate. Desktop
-/// only — Android statically links the engine instead (see build.rs).
-#[cfg(not(target_os = "android"))]
+/// packaged app it's a Tauri resource; in dev it sits beside the crate.
 fn crsqlite_extension_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let file = if cfg!(target_os = "windows") {
         "crsqlite.dll"
     } else if cfg!(target_os = "macos") {
         "crsqlite.dylib"
     } else {
+        // Linux and Android both use the ELF shared object.
         "crsqlite.so"
     };
     if let Ok(dir) = app.path().resource_dir() {
@@ -4805,10 +4804,7 @@ fn with_synced_connection<T>(
     task: impl FnOnce(&Connection) -> Result<T, String>,
 ) -> Result<T, String> {
     let connection = open_database(app)?;
-    #[cfg(not(target_os = "android"))]
     let extension = crsqlite_extension_path(app)?;
-    #[cfg(target_os = "android")]
-    let extension = PathBuf::new(); // unused on Android (statically linked)
     sync::activate(&connection, &extension).map_err(sync::Error::into_string)?;
     sync::migrate_to_crr(&connection).map_err(sync::Error::into_string)?;
     sync::enable_crrs(&connection, sync::SYNCED_TABLES).map_err(sync::Error::into_string)?;

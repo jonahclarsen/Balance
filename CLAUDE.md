@@ -11,10 +11,15 @@ All Android verification happens in CI: `.github/workflows/android.yml` builds t
 debug APK (arm64 + x86_64) and runs an emulator smoke test. To validate Android
 changes, push the branch and let that workflow run.
 
-What *is* fine locally for the sync engine: cross-compiling the cr-sqlite **static
-libs** for Android (`scripts/build-crsqlite.sh android`) — that's pure `cargo`
-against the installed android rust-std, needs no NDK, and is what `build.rs` links.
-Everything else Android-shaped is CI's job.
+The cr-sqlite engine loads at runtime (`load_extension`) on every platform —
+including Android — so the APK build does NOT link it. The Android loadable
+extension (`crsqlite.so`) is cross-compiled by `scripts/build-crsqlite.sh android`
+(needs the NDK clang, so CI only) and is bundled + loaded at runtime separately.
+Static-linking was attempted and abandoned: cr-sqlite's `sqlite3_crsqlite_init`
+lives in its C wrapper and static integration needs the host SQLite recompiled
+with `-DSQLITE_EXTRA_INIT`, which rusqlite's bundled SQLCipher doesn't do.
+Remaining Android-runtime work: bundle `crsqlite.so` per-ABI and resolve its path
+at load time (jniLibs / nativeLibraryDir).
 
 ## Multi-device sync (cr-sqlite)
 
