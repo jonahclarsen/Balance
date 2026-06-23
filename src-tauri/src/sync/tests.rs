@@ -213,6 +213,13 @@ fn real_schema_migration_preserves_data_and_enables_crrs() {
 }
 
 #[test]
+fn selftest_round_trips_against_real_extension() {
+    // The same routine the Android debug build runs on-device, exercised here
+    // with the desktop extension so the logic is covered locally.
+    selftest(&ext_path(), &std::env::temp_dir()).expect("sync self-test must converge");
+}
+
+#[test]
 fn pairing_code_round_trips_and_rejects_corruption() {
     let key = SyncKey::generate();
     let code = key.to_pairing_code();
