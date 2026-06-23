@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { dueTodayGoalsForItem, goalLightnessShift, goalMatchesForItem } from './goals'
-  import { defaultPlanItemTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeOverlapsPrevious, type ItemLink, type ItemTextSegment } from './planner'
+  import { defaultPlanItemTimeRange, htmlToPlainTextWithBreaks, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeOverlapsPrevious, type ItemLink, type ItemTextSegment } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import type { Goal, GoalCompletion, Id, ListTemplate, Metric, MoveDirection, MovePlacement, PlanItem } from './types'
@@ -101,6 +101,23 @@
     if (scanKey !== linkScanKey) {
       linkScanKey = scanKey
       linkSegments = linkifyItemText(item.text, listTemplates, metrics)
+    }
+  }
+
+  // Locked (generated) list items render static text via these segments. Their
+  // plain `item.text` has lost the line breaks that htmlToPlainText drops, so for
+  // display we re-derive text from the HTML with <br> kept as newlines, then let
+  // white-space: pre-wrap show them. (The editable path keeps editing item.html.)
+  let displaySegments: ItemTextSegment[] = linkSegments
+  let displayScanKey: string | null = null
+  $: if (locked) {
+    const displayText = htmlToPlainTextWithBreaks(item.html) || item.text
+    const scanKey = `${displayText}|${listTemplates.map((template) => `${template.id}:${template.name}`).join(',')}|${metrics
+      .map((metric) => `${metric.id}:${metric.name}`)
+      .join(',')}`
+    if (scanKey !== displayScanKey) {
+      displayScanKey = scanKey
+      displaySegments = linkifyItemText(displayText, listTemplates, metrics)
     }
   }
 
@@ -475,7 +492,7 @@
         aria-label="Select item"
         on:click={() => onLockedSelect(item.id)}
         on:keydown={handleDisplayKeydown}
-      >{#each linkSegments as segment, index (index)}{#if segment.link}{@const link = segment.link}<a
+      >{#each displaySegments as segment, index (index)}{#if segment.link}{@const link = segment.link}<a
             href={'#'}
             class="inline-link"
             title={`Open ${link.label}`}

@@ -1078,6 +1078,18 @@ export function htmlToPlainText(value: string): string {
   return div.textContent ?? ''
 }
 
+// Like htmlToPlainText, but keeps line breaks: <br> becomes a newline instead of
+// being dropped. Used for read-only rendering (e.g. locked list items) where the
+// text is shown with white-space: pre-wrap, so the breaks need to survive.
+export function htmlToPlainTextWithBreaks(value: string): string {
+  const withBreaks = sanitizeInlineHTML(value).replace(/<br>/g, '\n')
+  if (!globalThis.document) return withBreaks.replace(/<[^>]+>/g, '')
+
+  const div = document.createElement('div')
+  div.innerHTML = withBreaks
+  return div.textContent ?? ''
+}
+
 export function isURL(value: string): boolean {
   const trimmed = value.trim()
   if (!trimmed) return false
