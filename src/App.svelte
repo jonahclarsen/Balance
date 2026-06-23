@@ -1928,10 +1928,12 @@ return rows`
   }
 
   function focusPlanItemTextInput(itemId: Id) {
-    const input = document.querySelector<HTMLDivElement>(`[data-plan-text-input-id="${CSS.escape(itemId)}"]`)
+    const input = document.querySelector<HTMLDivElement>(`[data-plan-text-focus-target-id="${CSS.escape(itemId)}"]`)
     if (!input) return
 
     input.focus()
+    if (!input.matches('[contenteditable="true"]')) return
+
     const range = document.createRange()
     range.selectNodeContents(input)
     range.collapse(false)

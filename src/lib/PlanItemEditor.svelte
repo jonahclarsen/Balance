@@ -246,15 +246,15 @@
   }
 
   async function handleBackspaceEmpty(current: HTMLDivElement) {
-    const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
-    const index = inputs.indexOf(current)
+    const targets = planTextFocusTargets()
+    const index = targets.indexOf(current)
 
     deleteItem(planId, item.id)
     await tick()
 
-    const nextInputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
-    const target = nextInputs[Math.max(0, index - 1)] ?? nextInputs[0]
-    if (target) focusTextInput(target)
+    const nextTargets = planTextFocusTargets()
+    const target = nextTargets[Math.max(0, index - 1)] ?? nextTargets[0]
+    if (target) focusTextTarget(target)
   }
 
   async function handleBackspaceStart(current: HTMLDivElement) {
@@ -311,19 +311,19 @@
   }
 
   function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection, position: 'start' | 'end' = 'end') {
-    const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]'))
-    const index = inputs.indexOf(current)
-    const target = inputs[direction === 'up' ? index - 1 : index + 1]
+    const targets = planTextFocusTargets()
+    const index = targets.indexOf(current)
+    const target = targets[direction === 'up' ? index - 1 : index + 1]
 
-    if (target) focusTextInput(target, position)
+    if (target) focusTextTarget(target, position)
   }
 
   function focusItemTextInput(itemId: Id, position: 'start' | 'end' = 'end') {
-    const input = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]')).find(
-      (candidate) => candidate.dataset.planTextInputId === itemId,
+    const input = planTextFocusTargets().find(
+      (candidate) => candidate.dataset.planTextFocusTargetId === itemId,
     )
 
-    if (input) focusTextInput(input, position)
+    if (input) focusTextTarget(input, position)
   }
 
   function focusItemTextInputAtOffset(itemId: Id, offset: number) {
@@ -334,10 +334,17 @@
     if (input) focusTextInputAtOffset(input, offset)
   }
 
-  function focusTextInput(input: HTMLDivElement, position: 'start' | 'end' = 'end') {
-    input.focus()
+  function planTextFocusTargets() {
+    return Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-focus-target]'))
+  }
+
+  function focusTextTarget(target: HTMLDivElement, position: 'start' | 'end' = 'end') {
+    target.focus()
+
+    if (!target.matches('[contenteditable="true"]')) return
+
     const range = document.createRange()
-    range.selectNodeContents(input)
+    range.selectNodeContents(target)
     range.collapse(position === 'start')
 
     const selection = document.getSelection()
@@ -352,11 +359,30 @@
     const input = document.querySelector<HTMLDivElement>(
       `[data-plan-text-input][data-plan-text-input-id="${item.id}"]`,
     )
-    if (input) focusTextInput(input)
+    if (input) focusTextTarget(input)
   }
 
   function handleEditorFocusChange(focused: boolean) {
     editing = focused
+  }
+
+  function handleDisplayKeydown(event: KeyboardEvent) {
+    if (!locked && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault()
+      void handleTextArrowKey(event.key === 'ArrowUp' ? 'up' : 'down', event.currentTarget as HTMLDivElement, event)
+      return
+    }
+
+    if (!locked && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault()
+      void startEditing()
+      return
+    }
+
+    if (locked && (event.key === 'Enter' || event.key === ' ')) {
+      event.preventDefault()
+      onLockedSelect(item.id)
+    }
   }
 
   function focusTextInputAtOffset(input: HTMLDivElement, offset: number) {
@@ -480,12 +506,7 @@
         tabindex="0"
         aria-label="Select item"
         on:click={() => onLockedSelect(item.id)}
-        on:keydown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            onLockedSelect(item.id)
-          }
-        }}
+        on:keydown={handleDisplayKeydown}
       >{#each linkSegments as segment, index (index)}{#if segment.link}{@const link = segment.link}<a
             href={'#'}
             class="inline-link"
@@ -499,16 +520,13 @@
       <div
         class="item-text item-text-display"
         class:done={item.done}
+        data-plan-text-focus-target
+        data-plan-text-focus-target-id={item.id}
         role="textbox"
         tabindex="0"
         aria-label="Edit item text"
         on:click={startEditing}
-        on:keydown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault()
-            void startEditing()
-          }
-        }}
+        on:keydown={handleDisplayKeydown}
       >{#each linkSegments as segment, index (index)}{#if segment.link}{@const link = segment.link}<a
             href={'#'}
             class="inline-link"

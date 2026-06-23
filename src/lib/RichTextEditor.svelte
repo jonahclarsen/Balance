@@ -578,6 +578,8 @@
   data-rich-text-input-id={inputId}
   data-plan-text-input={kind === 'plan' ? '' : undefined}
   data-plan-text-input-id={kind === 'plan' ? inputId : undefined}
+  data-plan-text-focus-target={kind === 'plan' ? '' : undefined}
+  data-plan-text-focus-target-id={kind === 'plan' ? inputId : undefined}
   data-template-option-text-input={kind === 'template-option' ? '' : undefined}
   data-template-option-text-input-id={kind === 'template-option' ? inputId : undefined}
   data-list-template-text-input={kind === 'list-template-item' ? '' : undefined}
