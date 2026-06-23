@@ -16,8 +16,9 @@
 
 use std::path::Path;
 
+use rand::RngCore;
 use rusqlite::types::Value;
-use rusqlite::{params, params_from_iter, Connection};
+use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
@@ -26,22 +27,12 @@ pub mod crypto;
 pub mod relay;
 pub mod transport;
 
-/// Tables promoted to CRRs by [`enable_crrs`] / created by [`migrate_to_crr`].
-/// Templates/options follow the identical recipe and are added here as they're
-/// migrated.
-pub const SYNCED_TABLES: &[&str] = &[
-    "plans",
-    "plan_items",
-    "templates",
-    "template_items",
-    "template_options",
-    "goals",
-    "goal_completions",
-    "list_templates",
-    "lists",
-    "metrics",
-    "metric_entries",
-];
+/// Multi-device sync replicates only the append-only operation log. It is
+/// insert-only with globally-unique ids, so it converges trivially as a CRR and
+/// — crucially — the app's real data tables are never restructured. Each device
+/// rebuilds its materialized state from the merged log via the existing
+/// `apply_operation` path (see [`rematerialize`]).
+pub const SYNCED_TABLES: &[&str] = &["operations"];
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -160,9 +151,18 @@ pub fn enable_crrs(conn: &Connection, tables: &[&str]) -> Result<()> {
     Ok(())
 }
 
-/// Whether [`migrate_to_crr`] has already run on this database.
-pub fn is_migrated(conn: &Connection) -> Result<bool> {
-    column_exists(conn, "plan_items", "position_key")
+/// Whether sync has been enabled on this database (the operation log is a CRR).
+pub fn is_sync_enabled(conn: &Connection) -> Result<bool> {
+    // cr-sqlite records each CRR in crsql_master / its clock tables; the simplest
+    // durable marker is our own metadata flag set by `enable_*`.
+    let enabled: Option<String> = conn
+        .query_row(
+            "SELECT value FROM metadata WHERE key = 'sync_enabled'",
+            [],
+            |r| r.get(0),
+        )
+        .ok();
+    Ok(enabled.as_deref() == Some("true"))
 }
 
 /// Exercise the full sync stack against real, throwaway encrypted databases:
@@ -327,294 +327,6 @@ fn column_names(conn: &Connection, table: &str) -> Result<Vec<String>> {
     Ok(names)
 }
 
-/// Migrate the live Balance schema into a sync-ready, CRR-compatible shape:
-///
-///  * `plan_items` gains a fractional `position_key` (backfilled from the
-///    integer `position` order) and is rebuilt with CRR-legal column defaults.
-///  * `plans` is rebuilt without the `UNIQUE(date)` constraint and with
-///    defaults (deterministic IDs handle dedup for *new* plans).
-///  * the `goal_data` metadata blob is exploded into `goals` /
-///    `goal_completions` rows so concurrent edits to different entities merge.
-///
-/// Existing row IDs and all field values are preserved. Idempotent: a second
-/// run is a no-op once `plan_items.position_key` exists.
-pub fn migrate_to_crr(conn: &Connection) -> Result<()> {
-    if column_exists(conn, "plan_items", "position_key")? {
-        return Ok(()); // already migrated
-    }
-
-    // Rebuilding tables means renaming/dropping referenced tables. Do it with FK
-    // enforcement off and legacy_alter_table on, so RENAME doesn't rewrite other
-    // tables' FK references and DROP doesn't trip enforcement. These pragmas are
-    // no-ops inside a transaction, so set them before opening one.
-    let fk_was_on: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
-    conn.pragma_update(None, "foreign_keys", false)?;
-    conn.pragma_update(None, "legacy_alter_table", true)?;
-
-    let tx = conn.unchecked_transaction()?;
-
-    // --- plans: drop UNIQUE(date), add defaults --------------------------------
-    tx.execute_batch(
-        "ALTER TABLE plans RENAME TO plans_legacy;
-         CREATE TABLE plans (
-            id TEXT PRIMARY KEY NOT NULL,
-            date TEXT NOT NULL DEFAULT '',
-            title TEXT NOT NULL DEFAULT '',
-            daily_reminder TEXT NOT NULL DEFAULT '',
-            generated_from_template_id TEXT,
-            created_at TEXT NOT NULL DEFAULT ''
-         );
-         INSERT INTO plans (id, date, title, daily_reminder, generated_from_template_id, created_at)
-            SELECT id, date, title, daily_reminder, generated_from_template_id, created_at
-            FROM plans_legacy;
-         DROP TABLE plans_legacy;",
-    )?;
-
-    // --- plan_items: fractional position_key per (plan_id, parent_id) ----------
-    tx.execute_batch(
-        "ALTER TABLE plan_items RENAME TO plan_items_legacy;
-         CREATE TABLE plan_items (
-            id TEXT PRIMARY KEY NOT NULL,
-            plan_id TEXT NOT NULL DEFAULT '',
-            parent_id TEXT,
-            position_key TEXT NOT NULL DEFAULT '',
-            text TEXT NOT NULL DEFAULT '',
-            html TEXT NOT NULL DEFAULT '',
-            done INTEGER NOT NULL DEFAULT 0,
-            start_minutes INTEGER,
-            end_minutes INTEGER
-         );",
-    )?;
-    backfill_fractional(
-        &tx,
-        "plan_items_legacy",
-        "plan_items",
-        &["id", "plan_id", "parent_id", "text", "html", "done", "start_minutes", "end_minutes"],
-        &["plan_id", "parent_id"],
-    )?;
-    tx.execute_batch("DROP TABLE plan_items_legacy;")?;
-
-    // --- templates: a flat ordered list ----------------------------------------
-    tx.execute_batch(
-        "ALTER TABLE templates RENAME TO templates_legacy;
-         CREATE TABLE templates (
-            id TEXT PRIMARY KEY NOT NULL,
-            name TEXT NOT NULL DEFAULT '',
-            created_at TEXT NOT NULL DEFAULT '',
-            updated_at TEXT NOT NULL DEFAULT '',
-            position_key TEXT NOT NULL DEFAULT ''
-         );",
-    )?;
-    backfill_fractional(
-        &tx,
-        "templates_legacy",
-        "templates",
-        &["id", "name", "created_at", "updated_at"],
-        &[],
-    )?;
-    tx.execute_batch("DROP TABLE templates_legacy;")?;
-
-    // --- template_items: per (template_id, parent_id) --------------------------
-    tx.execute_batch(
-        "ALTER TABLE template_items RENAME TO template_items_legacy;
-         CREATE TABLE template_items (
-            id TEXT PRIMARY KEY NOT NULL,
-            template_id TEXT NOT NULL DEFAULT '',
-            parent_id TEXT,
-            position_key TEXT NOT NULL DEFAULT '',
-            start_minutes INTEGER,
-            end_minutes INTEGER
-         );",
-    )?;
-    backfill_fractional(
-        &tx,
-        "template_items_legacy",
-        "template_items",
-        &["id", "template_id", "parent_id", "start_minutes", "end_minutes"],
-        &["template_id", "parent_id"],
-    )?;
-    tx.execute_batch("DROP TABLE template_items_legacy;")?;
-
-    // --- template_options: per item_id -----------------------------------------
-    tx.execute_batch(
-        "ALTER TABLE template_options RENAME TO template_options_legacy;
-         CREATE TABLE template_options (
-            id TEXT PRIMARY KEY NOT NULL,
-            item_id TEXT NOT NULL DEFAULT '',
-            position_key TEXT NOT NULL DEFAULT '',
-            text TEXT NOT NULL DEFAULT '',
-            html TEXT NOT NULL DEFAULT '',
-            probability REAL NOT NULL DEFAULT 0
-         );",
-    )?;
-    backfill_fractional(
-        &tx,
-        "template_options_legacy",
-        "template_options",
-        &["id", "item_id", "text", "html", "probability"],
-        &["item_id"],
-    )?;
-    tx.execute_batch("DROP TABLE template_options_legacy;")?;
-
-    // --- goals / goal_completions: blob -> rows --------------------------------
-    tx.execute_batch(
-        "CREATE TABLE IF NOT EXISTS goals (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL DEFAULT '{}');
-         CREATE TABLE IF NOT EXISTS goal_completions (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL DEFAULT '{}');",
-    )?;
-    if let Some(raw) = metadata_blob(&tx, "goal_data")? {
-        let parsed: JsonValue = serde_json::from_str(&raw).unwrap_or_else(|_| json!({}));
-        explode_entities(&tx, "goals", parsed.get("goals"))?;
-        explode_entities(&tx, "goal_completions", parsed.get("goalCompletions"))?;
-        tx.execute("DELETE FROM metadata WHERE key='goal_data'", [])?;
-    }
-
-    // --- lists / metrics: blob -> rows -----------------------------------------
-    tx.execute_batch(
-        "CREATE TABLE IF NOT EXISTS list_templates (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL DEFAULT '{}');
-         CREATE TABLE IF NOT EXISTS lists (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL DEFAULT '{}');
-         CREATE TABLE IF NOT EXISTS metrics (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL DEFAULT '{}');
-         CREATE TABLE IF NOT EXISTS metric_entries (id TEXT PRIMARY KEY NOT NULL, data TEXT NOT NULL DEFAULT '{}');",
-    )?;
-    if let Some(raw) = metadata_blob(&tx, "lists_metrics_data")? {
-        let parsed: JsonValue = serde_json::from_str(&raw).unwrap_or_else(|_| json!({}));
-        explode_entities(&tx, "list_templates", parsed.get("listTemplates"))?;
-        explode_entities(&tx, "lists", parsed.get("lists"))?;
-        explode_entities(&tx, "metrics", parsed.get("metrics"))?;
-        explode_entities(&tx, "metric_entries", parsed.get("metricEntries"))?;
-        tx.execute("DELETE FROM metadata WHERE key='lists_metrics_data'", [])?;
-    }
-
-    tx.commit()?;
-
-    // Restore enforcement to the connection's prior state.
-    conn.pragma_update(None, "legacy_alter_table", false)?;
-    conn.pragma_update(None, "foreign_keys", fk_was_on)?;
-    Ok(())
-}
-
-/// Rebuild an ordered table from its `_legacy` copy, replacing the integer
-/// `position` with a fractional `position_key`. Rows are grouped by `group_cols`
-/// (the columns that define one ordered collection, e.g. `[plan_id, parent_id]`;
-/// empty for a single flat list) and, within each group, assigned sequential
-/// fractional keys in the original `position` order — so ordering is preserved
-/// exactly. `copy_cols` are the columns carried over verbatim (everything except
-/// `position`/`position_key`). Generic over column shape via dynamic SQL +
-/// `params_from_iter`, so every ordered table reuses one code path.
-fn backfill_fractional(
-    conn: &Connection,
-    legacy: &str,
-    target: &str,
-    copy_cols: &[&str],
-    group_cols: &[&str],
-) -> Result<()> {
-    // The set of ordered collections to rebuild.
-    let groups: Vec<Vec<Value>> = if group_cols.is_empty() {
-        vec![Vec::new()]
-    } else {
-        let sql = format!(
-            "SELECT DISTINCT {} FROM \"{legacy}\"",
-            group_cols
-                .iter()
-                .map(|c| format!("\"{c}\""))
-                .collect::<Vec<_>>()
-                .join(", ")
-        );
-        let mut stmt = conn.prepare(&sql)?;
-        let n = group_cols.len();
-        let collected = stmt
-            .query_map([], |r| {
-                (0..n).map(|i| r.get::<_, Value>(i)).collect::<rusqlite::Result<Vec<_>>>()
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        collected
-    };
-
-    let select_list = copy_cols
-        .iter()
-        .map(|c| format!("\"{c}\""))
-        .collect::<Vec<_>>()
-        .join(", ");
-    let placeholders = std::iter::repeat("?")
-        .take(copy_cols.len() + 1)
-        .collect::<Vec<_>>()
-        .join(", ");
-    let insert_sql =
-        format!("INSERT INTO \"{target}\" ({select_list}, position_key) VALUES ({placeholders})");
-
-    for group in groups {
-        let where_clause = if group_cols.is_empty() {
-            String::new()
-        } else {
-            // `IS` is null-safe, so NULL parent_id groups match correctly.
-            let conds = group_cols
-                .iter()
-                .map(|c| format!("\"{c}\" IS ?"))
-                .collect::<Vec<_>>()
-                .join(" AND ");
-            format!("WHERE {conds}")
-        };
-        let select_sql =
-            format!("SELECT {select_list} FROM \"{legacy}\" {where_clause} ORDER BY position");
-
-        let ncopy = copy_cols.len();
-        let mut stmt = conn.prepare(&select_sql)?;
-        let rows: Vec<Vec<Value>> = stmt
-            .query_map(params_from_iter(group.iter()), |r| {
-                (0..ncopy).map(|i| r.get::<_, Value>(i)).collect::<rusqlite::Result<Vec<_>>>()
-            })?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-
-        let mut prev_key: Option<String> = None;
-        for mut row in rows {
-            let key: String = conn.query_row(
-                "SELECT crsql_fract_key_between(?1, NULL)",
-                params![prev_key],
-                |r| r.get(0),
-            )?;
-            row.push(Value::Text(key.clone()));
-            conn.execute(&insert_sql, params_from_iter(row.iter()))?;
-            prev_key = Some(key);
-        }
-    }
-    Ok(())
-}
-
-/// Insert each element of a JSON array as a row keyed by its `id`, preserving
-/// the entire object (so no field is lost regardless of shape).
-fn explode_entities(conn: &Connection, table: &str, arr: Option<&JsonValue>) -> Result<()> {
-    let Some(items) = arr.and_then(JsonValue::as_array) else {
-        return Ok(());
-    };
-    for (i, item) in items.iter().enumerate() {
-        let id = item
-            .get("id")
-            .and_then(JsonValue::as_str)
-            .map(|s| s.to_string())
-            .unwrap_or_else(|| format!("legacy-{table}-{i}"));
-        let data = serde_json::to_string(item).map_err(|e| Error::Codec(e.to_string()))?;
-        conn.execute(
-            &format!("INSERT OR REPLACE INTO \"{table}\" (id, data) VALUES (?1, ?2)"),
-            params![id, data],
-        )?;
-    }
-    Ok(())
-}
-
-fn metadata_blob(conn: &Connection, key: &str) -> Result<Option<String>> {
-    Ok(conn
-        .query_row(
-            "SELECT value FROM metadata WHERE key = ?1",
-            params![key],
-            |r| r.get::<_, String>(0),
-        )
-        .ok())
-}
-
-fn column_exists(conn: &Connection, table: &str, column: &str) -> Result<bool> {
-    let cols = column_names(conn, table)?;
-    Ok(cols.iter().any(|c| c == column))
-}
-
 fn hash_value(hasher: &mut Sha256, v: &Value) {
     match v {
         Value::Null => hasher.update([0u8]),
@@ -655,6 +367,195 @@ pub fn unhex(s: &str) -> Result<Vec<u8>> {
         .step_by(2)
         .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| Error::Codec(e.to_string())))
         .collect()
+}
+
+// ---------------------------------------------------------------------------
+// Op-log sync. We replicate only the append-only `operations` table (a CRR),
+// and rebuild materialized state from it via the app's existing materializer.
+// ---------------------------------------------------------------------------
+
+fn random_id() -> String {
+    let mut b = [0u8; 16];
+    rand::rngs::OsRng.fill_bytes(&mut b);
+    hex(&b)
+}
+
+fn mark_enabled(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "INSERT INTO metadata (key, value) VALUES ('sync_enabled','true') \
+         ON CONFLICT(key) DO UPDATE SET value='true'",
+        [],
+    )?;
+    Ok(())
+}
+
+fn operations_has_defaults(conn: &Connection) -> Result<bool> {
+    let mut stmt = conn.prepare("PRAGMA table_info(operations)")?;
+    let cols = stmt
+        .query_map([], |r| {
+            Ok((r.get::<_, String>(1)?, r.get::<_, Option<String>>(4)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(cols
+        .iter()
+        .any(|(name, dflt)| name == "payload_json" && dflt.is_some()))
+}
+
+/// cr-sqlite requires CRR columns to be nullable or have defaults. Rebuild the
+/// `operations` table with identical columns plus defaults, preserving all rows.
+/// The app always inserts explicit values, so the defaults are transparent.
+/// Idempotent: a no-op once the defaults are present.
+fn rebuild_operations_with_defaults(conn: &Connection) -> Result<()> {
+    if operations_has_defaults(conn)? {
+        return Ok(());
+    }
+    // Renames/drops referenced tables; do it with FK enforcement off and
+    // legacy_alter_table on (pragmas are no-ops inside a transaction).
+    let fk_was_on: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
+    conn.pragma_update(None, "foreign_keys", false)?;
+    conn.pragma_update(None, "legacy_alter_table", true)?;
+    {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(
+            "ALTER TABLE operations RENAME TO operations_legacy;
+             CREATE TABLE operations (
+                id TEXT PRIMARY KEY NOT NULL,
+                device_id TEXT NOT NULL DEFAULT '',
+                sequence INTEGER NOT NULL DEFAULT 0,
+                type TEXT NOT NULL DEFAULT '',
+                timestamp TEXT NOT NULL DEFAULT '',
+                payload_json TEXT NOT NULL DEFAULT '{}'
+             );
+             INSERT INTO operations (id, device_id, sequence, type, timestamp, payload_json)
+                SELECT id, device_id, sequence, type, timestamp, payload_json FROM operations_legacy;
+             DROP TABLE operations_legacy;
+             CREATE INDEX IF NOT EXISTS idx_operations_sequence ON operations(sequence);",
+        )?;
+        tx.commit()?;
+    }
+    conn.pragma_update(None, "legacy_alter_table", false)?;
+    conn.pragma_update(None, "foreign_keys", fk_was_on)?;
+    Ok(())
+}
+
+/// Build a `replace_full_state` baseline op capturing the current domain state,
+/// timestamped so it always sorts first in a canonical replay.
+fn snapshot_current_state_op(conn: &Connection) -> Result<JsonValue> {
+    let state = crate::read_app_state_from_database(conn)
+        .map_err(Error::Codec)?
+        .unwrap_or_else(|| {
+            json!({
+                "templates": [], "plans": [],
+                "goals": [], "goalCompletions": [],
+                "listTemplates": [], "lists": [], "metrics": [], "metricEntries": [],
+                "activePlanDate": ""
+            })
+        });
+    let device_id = crate::metadata_value(conn, "device_id")
+        .map_err(Error::Codec)?
+        .unwrap_or_default();
+    Ok(json!({
+        "id": random_id(),
+        "deviceId": device_id,
+        "sequence": 0,
+        // Sorts before any real ISO-8601 timestamp, so it's the replay baseline.
+        "timestamp": "0000-00-00T00:00:00.000Z",
+        "type": "replace_full_state",
+        "payload": { "state": state },
+    }))
+}
+
+/// Enable sync on the device that holds the canonical data ("Create sync key").
+/// Snapshot the current state into a single baseline op, reset the log to just
+/// that snapshot, and promote the log to a CRR. The real data tables are not
+/// touched.
+pub fn enable_primary(conn: &Connection) -> Result<()> {
+    rebuild_operations_with_defaults(conn)?;
+    let snapshot = snapshot_current_state_op(conn)?;
+    {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM operations", [])?;
+        tx.execute("DELETE FROM history_entries", [])?;
+        crate::upsert_operation(&tx, &snapshot).map_err(Error::Codec)?;
+        tx.commit()?;
+    }
+    as_crr(conn, "operations")?;
+    mark_enabled(conn)?;
+    Ok(())
+}
+
+/// Enable sync on a device that will adopt another's data ("Pair with another
+/// device"). Clear local domain state and the op log (the caller takes a backup
+/// first), promote the log to a CRR, then wait to receive the primary's baseline
+/// via sync + [`rematerialize`].
+pub fn enable_joiner(conn: &Connection) -> Result<()> {
+    rebuild_operations_with_defaults(conn)?;
+    {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(
+            "DELETE FROM operations; DELETE FROM history_entries;
+             DELETE FROM plan_items; DELETE FROM plans;
+             DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
+             DELETE FROM metadata WHERE key IN ('goal_data','lists_metrics_data');",
+        )?;
+        tx.commit()?;
+    }
+    as_crr(conn, "operations")?;
+    mark_enabled(conn)?;
+    Ok(())
+}
+
+/// Reconstruct the op `Value`s from the `operations` rows in canonical order
+/// (timestamp, device_id, sequence) — the deterministic total order every device
+/// agrees on.
+fn read_operations_canonical(conn: &Connection) -> Result<Vec<JsonValue>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, device_id, sequence, type, timestamp, payload_json FROM operations \
+         ORDER BY timestamp, device_id, sequence",
+    )?;
+    let rows = stmt
+        .query_map([], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, String>(1)?,
+                r.get::<_, i64>(2)?,
+                r.get::<_, String>(3)?,
+                r.get::<_, String>(4)?,
+                r.get::<_, String>(5)?,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut ops = Vec::with_capacity(rows.len());
+    for (id, device_id, sequence, ty, timestamp, payload_json) in rows {
+        let payload: JsonValue =
+            serde_json::from_str(&payload_json).map_err(|e| Error::Codec(e.to_string()))?;
+        ops.push(json!({
+            "id": id,
+            "deviceId": device_id,
+            "sequence": sequence,
+            "type": ty,
+            "timestamp": timestamp,
+            "payload": payload,
+        }));
+    }
+    Ok(ops)
+}
+
+/// Rebuild the materialized domain tables by replaying every operation in
+/// canonical order through the app's existing `apply_operation`. Called after a
+/// sync merge so all devices converge to identical state.
+pub fn rematerialize(conn: &Connection) -> Result<()> {
+    let ops = read_operations_canonical(conn)?;
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(
+        "DELETE FROM plan_items; DELETE FROM plans;
+         DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;",
+    )?;
+    for op in &ops {
+        crate::apply_operation(&tx, op).map_err(Error::Codec)?;
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 #[cfg(test)]

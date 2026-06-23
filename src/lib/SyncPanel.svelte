@@ -1,7 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte'
   import QRCode from 'qrcode'
-  import { syncStatus, syncNewPairingCode, syncPullSealed, syncApplySealed } from './store'
+  import {
+    syncStatus,
+    syncNewPairingCode,
+    syncEnablePrimary,
+    syncEnableJoiner,
+    syncPullSealed,
+    syncApplySealed,
+  } from './store'
 
   // The pairing code IS the end-to-end key (encoded). It is held only on the
   // user's devices; the relay never sees it. Persisted in localStorage so the
@@ -47,8 +54,12 @@
     try {
       pairingCode = await syncNewPairingCode()
       localStorage.setItem(STORAGE_KEY, pairingCode)
+      // This device becomes the source of truth; its data is snapshotted into
+      // the synced log (and backed up first).
+      await syncEnablePrimary()
+      migrated = true
       await renderQr()
-      setStatus('New sync key created. Scan or paste it on your other device.')
+      setStatus('Sync enabled. Scan or paste this code on your other device to join.')
     } catch (err) {
       setStatus(`Could not create a sync key: ${err}`, true)
     } finally {
@@ -62,11 +73,22 @@
       setStatus('That does not look like a Balance pairing code.', true)
       return
     }
-    pairingCode = code
-    localStorage.setItem(STORAGE_KEY, pairingCode)
-    joinInput = ''
-    await renderQr()
-    setStatus('Paired. This device now shares the same end-to-end key.')
+    busy = true
+    try {
+      pairingCode = code
+      localStorage.setItem(STORAGE_KEY, pairingCode)
+      joinInput = ''
+      // Joining adopts the other device's data; this device's current data is
+      // backed up and replaced on the next sync.
+      await syncEnableJoiner()
+      migrated = true
+      await renderQr()
+      setStatus('Paired. Tap "Sync now" to pull your data from the other device.')
+    } catch (err) {
+      setStatus(`Could not pair: ${err}`, true)
+    } finally {
+      busy = false
+    }
   }
 
   function saveRelay() {
@@ -111,11 +133,17 @@
       const pullRes = await fetch(`${base}/pull`)
       if (!pullRes.ok) throw new Error(`relay pull ${pullRes.status}`)
       const envelopes = (await pullRes.json()) as number[][]
+      let applied = 0
       for (const env of envelopes) {
-        await syncApplySealed(pairingCode, Uint8Array.from(env))
+        const newState = await syncApplySealed(pairingCode, Uint8Array.from(env))
+        if (newState) applied += 1
       }
       migrated = true
-      setStatus(`Synced. Applied ${envelopes.length} update(s) from the server.`)
+      setStatus(`Synced. Applied ${applied} update(s) from the server.`)
+      if (applied > 0) {
+        // Reload so the rebuilt state shows immediately.
+        setTimeout(() => location.reload(), 600)
+      }
     } catch (err) {
       setStatus(`Sync failed: ${err}`, true)
     } finally {
