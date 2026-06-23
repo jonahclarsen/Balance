@@ -70,7 +70,10 @@
   let listViewTemplateId = ''
   // Generated list items can't be edited, but you can still click one to select
   // it, then Cmd+D to toggle done and arrow up/down to move the selection.
+  // Tracked separately for the Lists tab and for the list overlay toast, since
+  // each shows its own list instance.
   let selectedListItemId: Id | null = null
+  let selectedOverlayItemId: Id | null = null
   let wordCapUnlocked = false
   let wordCapScrolledAway = false
   let selectedMetricId = ''
@@ -215,6 +218,11 @@ return rows`
       completeListOverlay()
     }
   }
+  // Drop a stale overlay selection when the toast closes or its item disappears.
+  $: if (selectedOverlayItemId && (!listOverlayInstance || !findPlanItem(listOverlayInstance.items, selectedOverlayItemId))) {
+    selectedOverlayItemId = null
+  }
+  $: selectedOverlayItemIdSet = new Set(selectedOverlayItemId ? [selectedOverlayItemId] : [])
   $: metricOverlayMetric = metricOverlay ? metrics.find((metric) => metric.id === metricOverlay?.metricId) : null
   $: metricOverlayAnswers =
     metricOverlay && metricOverlayMetric ? answersForEntry(metricOverlay.metricId, metricOverlay.date) : {}
@@ -1189,7 +1197,64 @@ return rows`
     await tick()
     if (!selectedListItemId) return
 
-    const row = document.querySelector<HTMLElement>(`.list-panel [data-plan-item-id="${selectedListItemId}"]`)
+    focusListRowIn(`.lists-view-panel [data-plan-item-id="${selectedListItemId}"]`)
+  }
+
+  // The list overlay toast shows its own list instance, so it carries a parallel
+  // selection + keyboard flow scoped to the dialog's panel.
+  function handleOverlayKeydown(event: KeyboardEvent) {
+    if (!listOverlayInstance) return
+
+    const primaryModifier = event.metaKey || event.ctrlKey
+
+    // Escape is left to the modal so it still closes the toast.
+    if (!event.shiftKey && !event.altKey && !primaryModifier && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+      event.preventDefault()
+      moveOverlaySelection(event.key === 'ArrowUp' ? -1 : 1)
+      return
+    }
+
+    if (primaryModifier && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'd' && selectedOverlayItemId) {
+      const item = findPlanItem(listOverlayInstance.items, selectedOverlayItemId)
+      if (!item) return
+
+      event.preventDefault()
+      plannerStore.patchListItem(listOverlayInstance.id, item.id, { done: !item.done })
+      return
+    }
+  }
+
+  function moveOverlaySelection(direction: -1 | 1) {
+    if (!listOverlayInstance) return
+
+    const ids = flattenPlanItemIds(listOverlayInstance.items)
+    if (ids.length === 0) return
+
+    const currentIndex = selectedOverlayItemId ? ids.indexOf(selectedOverlayItemId) : -1
+    const nextIndex =
+      currentIndex === -1
+        ? direction === 1
+          ? 0
+          : ids.length - 1
+        : Math.min(ids.length - 1, Math.max(0, currentIndex + direction))
+
+    selectOverlayItem(ids[nextIndex])
+  }
+
+  function selectOverlayItem(itemId: Id) {
+    selectedOverlayItemId = itemId
+    void focusSelectedOverlayRow()
+  }
+
+  async function focusSelectedOverlayRow() {
+    await tick()
+    if (!selectedOverlayItemId) return
+
+    focusListRowIn(`.list-overlay-panel [data-plan-item-id="${selectedOverlayItemId}"]`)
+  }
+
+  function focusListRowIn(rowSelector: string) {
+    const row = document.querySelector<HTMLElement>(rowSelector)
     const focusTarget = row?.querySelector<HTMLElement>('.item-text-display')
     if (focusTarget) {
       focusTarget.focus()
@@ -2354,7 +2419,7 @@ return rows`
         </div>
       {:else if listViewInstance}
         <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-        <div class="list-panel" role="list" on:keydown={handleListKeydown}>
+        <div class="list-panel lists-view-panel" role="list" on:keydown={handleListKeydown}>
           {#each listViewInstance.items as item (item.id)}
             <PlanItemEditor
               {item}
@@ -2866,7 +2931,8 @@ return rows`
       {@const instance = listOverlayInstance}
       {@const template = listTemplates.find((candidate) => candidate.id === instance.listTemplateId)}
       <OverlayModal title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
-        <div class="list-panel">
+        <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+        <div class="list-panel list-overlay-panel" role="list" on:keydown={handleOverlayKeydown}>
           {#if instance.items.length === 0}
             <p class="empty">This list generated no items.</p>
           {/if}
@@ -2886,6 +2952,8 @@ return rows`
               historyRevision={$plannerStore.historyRevision}
               {listTemplates}
               {metrics}
+              selectedItemIds={selectedOverlayItemIdSet}
+              onLockedSelect={(itemId) => selectOverlayItem(itemId)}
               onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
               locked
             />
