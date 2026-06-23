@@ -2130,11 +2130,11 @@ nav button.active {
   white-space: pre-wrap;
 }
 
-/* Generated list items aren't editable; clicking selects the row instead.
+/* Generated list items aren't editable; clicking toggles the row instead.
    Editable plan items keep the text cursor — only the locked rows (rendered
    with role="button") opt out. */
 .item-text-display[role='button'] {
-  cursor: default;
+  cursor: pointer;
 }
 
 .item-text-display .inline-link {

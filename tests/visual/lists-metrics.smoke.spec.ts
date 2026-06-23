@@ -33,9 +33,8 @@ test('list link opens a toast, completing it auto-checks the task', async ({ pag
   await expect(dialog).toBeVisible()
   await expect(dialog.getByText('Milk')).toBeVisible()
 
-  // Check every box; the toast auto-closes and the task gets checked.
-  const checkbox = dialog.getByRole('checkbox').first()
-  await checkbox.click()
+  // Click the task row outside the checkbox; the toast auto-closes and the task gets checked.
+  await dialog.getByRole('listitem', { name: 'Plan item: Milk' }).click({ position: { x: 120, y: 12 } })
   await expect(dialog).toBeHidden()
   await expect(page.locator('.plan-row.done').first()).toBeVisible()
 
