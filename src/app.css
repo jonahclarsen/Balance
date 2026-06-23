@@ -477,6 +477,7 @@ nav button.active {
 .template-text a {
   color: var(--accent-strong);
   text-decoration: underline;
+  cursor: pointer;
 }
 
 .item-text.done {
