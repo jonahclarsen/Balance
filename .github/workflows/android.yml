@@ -86,12 +86,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Note: the cr-sqlite extension is loaded at runtime, so the APK build does
-      # not link it. The Android loadable .so (scripts/build-crsqlite.sh android,
-      # needs the NDK) is bundled + loaded separately; see CLAUDE.md.
+      - name: Build cr-sqlite loadable extension (Android .so per ABI)
+        # Cross-compiles crsqlite.so for each ABI (uses the NDK clang set up
+        # above) into src-tauri/resources/android/<abi>/. Loaded at runtime via
+        # load_extension; bundled as a jniLib below.
+        run: bash scripts/build-crsqlite.sh android
 
       - name: Initialize Android project
         run: pnpm tauri android init
+
+      - name: Bundle cr-sqlite extension as jniLibs
+        # jniLibs/<abi>/libcrsqlite.so is extracted by Android into the app's
+        # nativeLibraryDir, so the dynamic linker resolves it by soname at load.
+        run: |
+          JNI="src-tauri/gen/android/app/src/main/jniLibs"
+          for abi in arm64-v8a x86_64; do
+            mkdir -p "$JNI/$abi"
+            cp "src-tauri/resources/android/$abi/crsqlite.so" "$JNI/$abi/libcrsqlite.so"
+          done
+          echo "jniLibs:" && find "$JNI" -name '*.so'
 
       - name: Apply app launcher icons
         # `tauri android init` scaffolds gen/android with placeholder launcher
