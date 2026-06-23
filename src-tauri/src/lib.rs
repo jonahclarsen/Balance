@@ -1543,6 +1543,11 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             Ok(())
         }
         "replace_goal_data" => Ok(()),
+        // A full-state snapshot, used by multi-device sync to bootstrap a fresh
+        // device (and as the replay baseline). Restores the entire domain state
+        // from the payload via the same path as a wholesale state replace, but
+        // leaves device-local metadata (device_id, local_sequence) untouched.
+        "replace_full_state" => replace_domain_state(tx, required_value(payload, "state")?),
         "insert_template_option_at" => insert_template_option(
             tx,
             required_string(payload, "itemId")?,
@@ -4807,8 +4812,9 @@ fn crsqlite_extension_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     }
 }
 
-/// Open the encrypted DB, load cr-sqlite, ensure the data is migrated + CRRs are
-/// enabled, run `task`, then finalize cr-sqlite before the connection closes.
+/// Open the encrypted DB, load cr-sqlite, run `task`, then finalize cr-sqlite
+/// before the connection closes. Sync must already be enabled (see
+/// `sync_enable_*`) for the operation log to be a CRR.
 fn with_synced_connection<T>(
     app: &tauri::AppHandle,
     task: impl FnOnce(&Connection) -> Result<T, String>,
@@ -4816,20 +4822,42 @@ fn with_synced_connection<T>(
     let connection = open_database(app)?;
     let extension = crsqlite_extension_path(app)?;
     sync::activate(&connection, &extension).map_err(sync::Error::into_string)?;
-    sync::migrate_to_crr(&connection).map_err(sync::Error::into_string)?;
-    sync::enable_crrs(&connection, sync::SYNCED_TABLES).map_err(sync::Error::into_string)?;
     let result = task(&connection);
     // Finalize regardless of task outcome so cr-sqlite releases cleanly.
     let _ = sync::finalize(&connection);
     result
 }
 
-/// Whether this device's database has been migrated to the sync-ready schema.
+/// Write a timestamped JSON backup of the current state into the app data dir,
+/// so enabling sync (which rewrites the operation log) can never lose data.
+fn backup_state_before_sync(
+    app: &tauri::AppHandle,
+    connection: &Connection,
+) -> Result<(), String> {
+    let Some(state) = read_app_state_from_database(connection)? else {
+        return Ok(()); // nothing to back up yet
+    };
+    let dir = app_database_path(app)?
+        .parent()
+        .ok_or_else(|| "no data dir".to_string())?
+        .join("backups");
+    fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    let stamp = current_timestamp().replace([':', '.'], "-");
+    let path = dir.join(format!("pre-sync-{stamp}.json"));
+    fs::write(
+        &path,
+        serde_json::to_vec_pretty(&state).map_err(|error| error.to_string())?,
+    )
+    .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+/// Whether multi-device sync has been enabled on this device.
 #[tauri::command]
 async fn sync_status(app: tauri::AppHandle) -> Result<bool, String> {
     run_database_task(move || {
         let connection = open_database(&app)?;
-        sync::is_migrated(&connection).map_err(sync::Error::into_string)
+        sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)
     })
     .await
 }
@@ -4841,8 +4869,34 @@ async fn sync_new_pairing_code() -> Result<String, String> {
     Ok(sync::crypto::SyncKey::generate().to_pairing_code())
 }
 
-/// Pull this device's local changes since `since`, sealed with the pairing key,
-/// ready to hand to any transport (P2P socket or relay server).
+/// Enable sync as the **primary** device: keep this device's data as the shared
+/// baseline (snapshots it into the synced operation log). Backs up first.
+#[tauri::command]
+async fn sync_enable_primary(app: tauri::AppHandle) -> Result<(), String> {
+    run_database_task(move || {
+        with_synced_connection(&app, |connection| {
+            backup_state_before_sync(&app, connection)?;
+            sync::enable_primary(connection).map_err(sync::Error::into_string)
+        })
+    })
+    .await
+}
+
+/// Enable sync as a **joining** device: adopt the primary's data, clearing this
+/// device's local data (which is backed up first).
+#[tauri::command]
+async fn sync_enable_joiner(app: tauri::AppHandle) -> Result<(), String> {
+    run_database_task(move || {
+        with_synced_connection(&app, |connection| {
+            backup_state_before_sync(&app, connection)?;
+            sync::enable_joiner(connection).map_err(sync::Error::into_string)
+        })
+    })
+    .await
+}
+
+/// Pull this device's changes (sealed with the pairing key) since `since`, ready
+/// to hand to any transport (P2P socket or relay server).
 #[tauri::command]
 async fn sync_pull_sealed(
     app: tauri::AppHandle,
@@ -4853,6 +4907,9 @@ async fn sync_pull_sealed(
         let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
             .map_err(sync::Error::into_string)?;
         with_synced_connection(&app, |connection| {
+            if !sync::is_sync_enabled(connection).map_err(sync::Error::into_string)? {
+                return Err("Sync is not enabled on this device.".to_string());
+            }
             let changes = sync::pull(connection, since, None).map_err(sync::Error::into_string)?;
             key.seal(&changes).map_err(sync::Error::into_string)
         })
@@ -4860,19 +4917,25 @@ async fn sync_pull_sealed(
     .await
 }
 
-/// Apply a peer's sealed changeset envelope into this device's database.
+/// Apply a peer's sealed changeset, rebuild materialized state, and return the
+/// new state JSON so the UI can refresh.
 #[tauri::command]
 async fn sync_apply_sealed(
     app: tauri::AppHandle,
     pairing_code: String,
     envelope: Vec<u8>,
-) -> Result<(), String> {
+) -> Result<Option<String>, String> {
     run_database_task(move || {
         let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
             .map_err(sync::Error::into_string)?;
         let changes = key.open(&envelope).map_err(sync::Error::into_string)?;
         with_synced_connection(&app, |connection| {
-            sync::apply(connection, &changes).map_err(sync::Error::into_string)
+            if !sync::is_sync_enabled(connection).map_err(sync::Error::into_string)? {
+                return Err("Sync is not enabled on this device.".to_string());
+            }
+            sync::apply(connection, &changes).map_err(sync::Error::into_string)?;
+            sync::rematerialize(connection).map_err(sync::Error::into_string)?;
+            read_app_state_from_database(connection).map(|state| state.map(|value| value.to_string()))
         })
     })
     .await
@@ -4949,6 +5012,8 @@ pub fn run() {
             read_balance_clipboard,
             sync_status,
             sync_new_pairing_code,
+            sync_enable_primary,
+            sync_enable_joiner,
             sync_pull_sealed,
             sync_apply_sealed
         ])
