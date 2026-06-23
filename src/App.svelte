@@ -23,7 +23,7 @@
     plannerStore,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { Id, Metric, MetricQuestion, MoveDirection, PlanItem } from './lib/types'
+  import type { Id, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
 
   // Pasting four or more items onto a different day routes through a review queue
@@ -79,6 +79,9 @@
   let selectedMetricId = ''
   let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
   let listOverlayArmed = false
+  // The page the list overlay was opened over. Navigating to any other page
+  // closes the overlay, so it never lingers over unrelated content.
+  let listOverlayView: View | null = null
   let metricOverlay: { metricId: Id; date: string } | null = null
   let importMetricId = ''
   let importOverlayOpen = false
@@ -252,6 +255,11 @@ return rows`
   $: if ((view !== 'today' || activePlan?.id !== selectedPlanPlanId) && selectedPlanItemIds.length > 0) {
     clearPlanSelection()
   }
+  // Opening any other page dismisses the list overlay so it never floats over
+  // unrelated content.
+  $: if (listOverlay && view !== listOverlayView) {
+    listOverlay = null
+  }
   $: filteredDatabaseOperations = filterDatabaseRows(databaseInspection?.operations ?? [], databaseSearch)
   $: filteredDatabaseHistoryEntries = filterDatabaseRows(databaseInspection?.historyEntries ?? [], databaseSearch)
   $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
@@ -267,11 +275,69 @@ return rows`
       const listId = plannerStore.ensureListForDate(link.listTemplateId, date)
       if (listId) {
         listOverlayArmed = false
+        listOverlayView = view
         listOverlay = { listId, date, opener }
       }
     } else {
       metricOverlay = { metricId: link.metricId, date }
     }
+  }
+
+  // Jump from a generated list item in the overlay to the source item on the
+  // list-templates page (so it can actually be edited), then close the overlay.
+  // Generated items carry fresh ids, so the template item is matched by content.
+  function editListItemInTemplate(itemId: Id) {
+    const instance = listOverlayInstance
+    if (!instance) return
+    const listItem = findPlanItem(instance.items, itemId)
+    if (!listItem) return
+
+    const template = $plannerStore.listTemplates.find((candidate) => candidate.id === instance.listTemplateId)
+    const templateItem = template ? findListTemplateItemByContent(template.items, listItem) : null
+
+    view = 'listTemplates'
+    selectedListTemplateId = instance.listTemplateId
+    listOverlay = null
+
+    if (templateItem) void focusListTemplateItem(templateItem.id)
+  }
+
+  function findListTemplateItemByContent(items: ListTemplateItem[], target: PlanItem): ListTemplateItem | null {
+    // Prefer an exact html+text match; fall back to plain text so items whose
+    // html was normalized at generation time still resolve.
+    const exact = findListTemplateItem(items, (item) => item.html === target.html && item.text === target.text)
+    return exact ?? findListTemplateItem(items, (item) => item.text === target.text)
+  }
+
+  function findListTemplateItem(
+    items: ListTemplateItem[],
+    predicate: (item: ListTemplateItem) => boolean,
+  ): ListTemplateItem | null {
+    for (const item of items) {
+      if (predicate(item)) return item
+      const child = findListTemplateItem(item.children, predicate)
+      if (child) return child
+    }
+    return null
+  }
+
+  async function focusListTemplateItem(itemId: Id) {
+    await tick()
+    const input = Array.from(
+      document.querySelectorAll<HTMLElement>('[data-list-template-text-input-id]'),
+    ).find((candidate) => candidate.dataset.listTemplateTextInputId === itemId)
+    if (!input) return
+
+    input.scrollIntoView({ block: 'center' })
+    input.focus()
+    if (!input.matches('[contenteditable="true"]')) return
+
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
   }
 
   function completeListOverlay() {
@@ -2988,6 +3054,7 @@ return rows`
               selectedItemIds={selectedOverlayItemIdSet}
               onLockedSelect={(itemId) => selectOverlayItem(itemId)}
               onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
+              onEditTemplate={editListItemInTemplate}
               locked
             />
           {/each}

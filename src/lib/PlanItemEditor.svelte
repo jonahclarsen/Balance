@@ -61,6 +61,9 @@
   // Locked (generated) list items can't be edited, but clicking one selects it so
   // it can be marked done / navigated by keyboard from the list view.
   export let onLockedSelect: (itemId: Id) => void = () => {}
+  // When set on a locked (generated) list item, an edit button is shown that
+  // jumps to the matching item on the list-templates page so it can be edited.
+  export let onEditTemplate: ((itemId: Id) => void) | null = null
   // Generated list instances are fixed once created for a day: structure and text
   // come from the list template, so locked items expose only the done checkbox and
   // any inline links. To change a list, edit its template and regenerate.
@@ -559,6 +562,17 @@
         <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(planId, item.id)}>↳</button>
         <button class="icon-button danger" type="button" title="Delete item" on:click={() => deleteItem(planId, item.id)}>×</button>
       </div>
+    {:else if onEditTemplate}
+      {@const edit = onEditTemplate}
+      <div class="row-actions">
+        <button
+          class="icon-button"
+          type="button"
+          title="Edit this item in the list template"
+          aria-label="Edit this item in the list template"
+          on:click|stopPropagation={() => edit(item.id)}
+        >✎</button>
+      </div>
     {/if}
   </div>
 
@@ -595,6 +609,7 @@
           {metrics}
           {onOpenLink}
           {onLockedSelect}
+          {onEditTemplate}
           {locked}
         />
       {/each}
