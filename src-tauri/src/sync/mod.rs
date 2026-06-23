@@ -165,6 +165,58 @@ pub fn is_migrated(conn: &Connection) -> Result<bool> {
     column_exists(conn, "plan_items", "position_key")
 }
 
+/// Exercise the full sync stack against real, throwaway encrypted databases:
+/// load the cr-sqlite extension, make two CRR databases diverge, ship the
+/// changes as an end-to-end-sealed envelope, apply them, and assert the two
+/// converge. Used as an on-device smoke test (Android) to confirm the bundled
+/// `.so` actually loads and the engine works on the target — not just that the
+/// app launches. Cleans up after itself.
+pub fn selftest(extension_path: &Path, scratch_dir: &Path) -> Result<()> {
+    let a_path = scratch_dir.join("crsql-selftest-a.sqlite3");
+    let b_path = scratch_dir.join("crsql-selftest-b.sqlite3");
+    let _ = std::fs::remove_file(&a_path);
+    let _ = std::fs::remove_file(&b_path);
+
+    let open = |path: &Path, key: &str| -> Result<Connection> {
+        let conn = Connection::open(path)?;
+        conn.pragma_update(None, "key", key)?;
+        conn.query_row("pragma cipher_version", [], |r| r.get::<_, String>(0))?;
+        load_extension(&conn, extension_path)?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS t (id TEXT PRIMARY KEY NOT NULL, v TEXT NOT NULL DEFAULT '');",
+        )?;
+        as_crr(&conn, "t")?;
+        Ok(conn)
+    };
+
+    let result = (|| -> Result<()> {
+        let a = open(&a_path, "selftest-key-a")?;
+        let b = open(&b_path, "selftest-key-b")?;
+
+        a.execute("INSERT INTO t (id, v) VALUES ('x', 'hello')", [])?;
+
+        // Ship A's change to B as an E2E-sealed envelope and apply it.
+        let key = crypto::SyncKey::generate();
+        let sealed = key.seal(&pull(&a, 0, None)?)?;
+        apply(&b, &key.open(&sealed)?)?;
+
+        let converged = state_hash(&a, &["t"])? == state_hash(&b, &["t"])?;
+        let got: String = b.query_row("SELECT v FROM t WHERE id='x'", [], |r| r.get(0))?;
+
+        finalize(&a)?;
+        finalize(&b)?;
+
+        if !converged || got != "hello" {
+            return Err(Error::Crypto("selftest did not converge".into()));
+        }
+        Ok(())
+    })();
+
+    let _ = std::fs::remove_file(&a_path);
+    let _ = std::fs::remove_file(&b_path);
+    result
+}
+
 pub fn site_hex(conn: &Connection) -> Result<String> {
     let blob: Vec<u8> = conn.query_row("SELECT crsql_site_id()", [], |r| r.get(0))?;
     Ok(hex(&blob))

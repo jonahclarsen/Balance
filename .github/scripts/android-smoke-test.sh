@@ -77,6 +77,33 @@ if [ -z "$KEY_FILE" ]; then
   exit 1
 fi
 
+# Multi-device sync self-test: on debug launch the app loads the bundled
+# cr-sqlite .so and runs a full E2E-encrypted convergence round-trip against
+# throwaway databases, logging BALANCE_SYNC_SELFTEST. This confirms sync
+# actually FUNCTIONS on the device (the .so loads, CRRs merge), not just that
+# the app launches. Poll a few times since it runs on a background thread.
+SYNC_OK=0
+for _ in $(seq 1 10); do
+  adb logcat -d > sync-log.txt 2>/dev/null || true
+  if grep -q "BALANCE_SYNC_SELFTEST: OK" sync-log.txt; then
+    SYNC_OK=1
+    break
+  fi
+  if grep -q "BALANCE_SYNC_SELFTEST: FAIL" sync-log.txt; then
+    echo "[sync] self-test FAILED on device:"
+    grep "BALANCE_SYNC_SELFTEST" sync-log.txt | head
+    grep -iE "crsqlite|load_extension|UnsatisfiedLink|dlopen|library" sync-log.txt | head -20 || true
+    exit 1
+  fi
+  sleep 3
+done
+if [ "$SYNC_OK" != 1 ]; then
+  echo "[sync] self-test marker never appeared - the cr-sqlite .so likely did not load."
+  grep -iE "crsqlite|load_extension|UnsatisfiedLink|dlopen|RustStdoutStderr" sync-log.txt | head -20 || true
+  exit 1
+fi
+echo "[sync] cr-sqlite loaded and E2EE sync converged on-device."
+
 # Second launch: the key file and database already exist, so the app must unwrap
 # the recovery key via the Keystore again and reopen the database. A failed
 # unwrap surfaces as the frontend's "Could not load encrypted Balance app state"

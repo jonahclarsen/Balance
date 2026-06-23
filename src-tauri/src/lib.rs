@@ -4892,6 +4892,35 @@ pub fn run() {
                 )?;
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
+
+            // On Android debug builds, prove the bundled cr-sqlite .so actually
+            // loads and the sync engine converges on-device (the CI emulator
+            // smoke test greps logcat for this marker). Runs off the main thread.
+            #[cfg(all(target_os = "android", debug_assertions))]
+            {
+                let handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    let outcome = (|| -> Result<(), String> {
+                        let ext = crsqlite_extension_path(&handle)?;
+                        let scratch = app_database_path(&handle)?
+                            .parent()
+                            .ok_or("no data dir")?
+                            .to_path_buf();
+                        sync::selftest(&ext, &scratch).map_err(sync::Error::into_string)
+                    })();
+                    match outcome {
+                        Ok(()) => {
+                            log::info!("BALANCE_SYNC_SELFTEST: OK");
+                            eprintln!("BALANCE_SYNC_SELFTEST: OK");
+                        }
+                        Err(e) => {
+                            log::error!("BALANCE_SYNC_SELFTEST: FAIL {e}");
+                            eprintln!("BALANCE_SYNC_SELFTEST: FAIL {e}");
+                        }
+                    }
+                });
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
