@@ -27,7 +27,10 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 data-encoding = "2.11.0"
 rand = "0.8.5"
-rusqlite = { version = "0.32.1", features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "0.32.1", features = ["bundled-sqlcipher-vendored-openssl", "load_extension"] }
+# Multi-device sync (see src/sync): E2E sealing of changesets + convergence hashing.
+chacha20poly1305 = "0.10"
+sha2 = "0.10"
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"

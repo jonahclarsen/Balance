@@ -13,6 +13,8 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 use tauri::Manager;
 
+mod sync;
+
 const APP_DATABASE_FILE: &str = "balance.sqlite3";
 const APP_DATA_DIR: &str = "Balance";
 #[cfg(not(target_os = "android"))]
@@ -4764,6 +4766,112 @@ fn app_database_path_from_data_dir(data_dir: &Path) -> PathBuf {
     data_dir.join(APP_DATA_DIR).join(APP_DATABASE_FILE)
 }
 
+// ---------------------------------------------------------------------------
+// Multi-device sync command surface (see src/sync).
+// ---------------------------------------------------------------------------
+
+/// Resolve the bundled cr-sqlite loadable extension for this platform. In a
+/// packaged app it's a Tauri resource; in dev it sits beside the crate. Desktop
+/// only — Android statically links the engine instead (see build.rs).
+#[cfg(not(target_os = "android"))]
+fn crsqlite_extension_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let file = if cfg!(target_os = "windows") {
+        "crsqlite.dll"
+    } else if cfg!(target_os = "macos") {
+        "crsqlite.dylib"
+    } else {
+        "crsqlite.so"
+    };
+    if let Ok(dir) = app.path().resource_dir() {
+        for candidate in [dir.join("resources").join(file), dir.join(file)] {
+            if candidate.exists() {
+                return Ok(candidate);
+            }
+        }
+    }
+    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join(file);
+    if dev.exists() {
+        return Ok(dev);
+    }
+    Err(format!("cr-sqlite extension not found ({file})"))
+}
+
+/// Open the encrypted DB, load cr-sqlite, ensure the data is migrated + CRRs are
+/// enabled, run `task`, then finalize cr-sqlite before the connection closes.
+fn with_synced_connection<T>(
+    app: &tauri::AppHandle,
+    task: impl FnOnce(&Connection) -> Result<T, String>,
+) -> Result<T, String> {
+    let connection = open_database(app)?;
+    #[cfg(not(target_os = "android"))]
+    let extension = crsqlite_extension_path(app)?;
+    #[cfg(target_os = "android")]
+    let extension = PathBuf::new(); // unused on Android (statically linked)
+    sync::activate(&connection, &extension).map_err(sync::Error::into_string)?;
+    sync::migrate_to_crr(&connection).map_err(sync::Error::into_string)?;
+    sync::enable_crrs(&connection, sync::SYNCED_TABLES).map_err(sync::Error::into_string)?;
+    let result = task(&connection);
+    // Finalize regardless of task outcome so cr-sqlite releases cleanly.
+    let _ = sync::finalize(&connection);
+    result
+}
+
+/// Whether this device's database has been migrated to the sync-ready schema.
+#[tauri::command]
+async fn sync_status(app: tauri::AppHandle) -> Result<bool, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        sync::is_migrated(&connection).map_err(sync::Error::into_string)
+    })
+    .await
+}
+
+/// Generate a fresh account sync key and return its QR/pairing code. The new
+/// device scans this; both devices then share the same end-to-end key.
+#[tauri::command]
+async fn sync_new_pairing_code() -> Result<String, String> {
+    Ok(sync::crypto::SyncKey::generate().to_pairing_code())
+}
+
+/// Pull this device's local changes since `since`, sealed with the pairing key,
+/// ready to hand to any transport (P2P socket or relay server).
+#[tauri::command]
+async fn sync_pull_sealed(
+    app: tauri::AppHandle,
+    pairing_code: String,
+    since: i64,
+) -> Result<Vec<u8>, String> {
+    run_database_task(move || {
+        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+            .map_err(sync::Error::into_string)?;
+        with_synced_connection(&app, |connection| {
+            let changes = sync::pull(connection, since, None).map_err(sync::Error::into_string)?;
+            key.seal(&changes).map_err(sync::Error::into_string)
+        })
+    })
+    .await
+}
+
+/// Apply a peer's sealed changeset envelope into this device's database.
+#[tauri::command]
+async fn sync_apply_sealed(
+    app: tauri::AppHandle,
+    pairing_code: String,
+    envelope: Vec<u8>,
+) -> Result<(), String> {
+    run_database_task(move || {
+        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+            .map_err(sync::Error::into_string)?;
+        let changes = key.open(&envelope).map_err(sync::Error::into_string)?;
+        with_synced_connection(&app, |connection| {
+            sync::apply(connection, &changes).map_err(sync::Error::into_string)
+        })
+    })
+    .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     disable_automatic_text_replacement();
@@ -4803,7 +4911,11 @@ pub fn run() {
             reveal_path_in_file_manager,
             open_external_url,
             write_balance_clipboard,
-            read_balance_clipboard
+            read_balance_clipboard,
+            sync_status,
+            sync_new_pairing_code,
+            sync_pull_sealed,
+            sync_apply_sealed
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
