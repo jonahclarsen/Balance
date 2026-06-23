@@ -45,6 +45,97 @@ test('list link opens a toast, completing it auto-checks the task', async ({ pag
   await expect(page.getByRole('dialog', { name: 'Groceries' })).toBeVisible()
 })
 
+test('arrow navigation lands on list-linked plan items', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    const date = new Date().toISOString().slice(0, 10)
+    const item = (id: string, text: string) => ({
+      id,
+      text,
+      html: text,
+      done: false,
+      startMinutes: null,
+      endMinutes: null,
+      children: [],
+    })
+
+    localStorage.setItem(
+      'balance.appState.v1',
+      JSON.stringify({
+        schemaVersion: 1,
+        deviceId: 'test-device',
+        localSequence: 0,
+        historyRevision: 0,
+        activePlanDate: date,
+        templates: [],
+        plans: [
+          {
+            id: 'plan_test',
+            date,
+            title: 'Today',
+            dailyReminder: '',
+            generatedFromTemplateId: null,
+            createdAt: new Date().toISOString(),
+            items: [item('item_0', 'Above'), item('item_1', 'Groceries'), item('item_2', 'Below')],
+          },
+        ],
+        listTemplates: [
+          {
+            id: 'list_template_groceries',
+            name: 'Groceries',
+            maxExpectedWords: 0,
+            items: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ],
+        lists: [],
+        metrics: [],
+        metricEntries: [],
+        goals: [],
+        goalCompletions: [],
+        operations: [],
+      }),
+    )
+  })
+  await page.reload()
+
+  await expect(page.getByTitle('Open Groceries')).toBeVisible()
+  await focusPlanTextTarget(page, 'item_2')
+  await page.keyboard.press('ArrowUp')
+  await expect.poll(() => activePlanTextTarget(page)).toEqual({ id: 'item_1', display: true })
+
+  await page.keyboard.press('ArrowDown')
+  await expect.poll(() => activePlanTextTarget(page)).toEqual({ id: 'item_2', display: false })
+})
+
+async function focusPlanTextTarget(page: import('@playwright/test').Page, itemId: string) {
+  await page.evaluate((id) => {
+    const target = document.querySelector<HTMLElement>(`[data-plan-text-focus-target-id="${id}"]`)
+    target?.focus()
+
+    if (!target?.matches('[contenteditable="true"]')) return
+
+    const range = document.createRange()
+    range.selectNodeContents(target)
+    range.collapse(false)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }, itemId)
+}
+
+async function activePlanTextTarget(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement)) return null
+    return {
+      id: active.dataset.planTextFocusTargetId ?? null,
+      display: active.classList.contains('item-text-display'),
+    }
+  })
+}
+
 test('list template word cap blocks typing past the max', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
