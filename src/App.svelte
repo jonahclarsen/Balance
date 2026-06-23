@@ -1197,7 +1197,7 @@ return rows`
     await tick()
     if (!selectedListItemId) return
 
-    focusListRowIn(`.lists-view-panel [data-plan-item-id="${selectedListItemId}"]`)
+    focusListRowIn('.lists-view-panel', selectedListItemId)
   }
 
   // The list overlay toast shows its own list instance, so it carries a parallel
@@ -1242,7 +1242,9 @@ return rows`
   }
 
   function selectOverlayItem(itemId: Id) {
+    const previousItemId = selectedOverlayItemId
     selectedOverlayItemId = itemId
+    checkPreviousOverlayItem(previousItemId, itemId)
     void focusSelectedOverlayRow()
   }
 
@@ -1250,16 +1252,47 @@ return rows`
     await tick()
     if (!selectedOverlayItemId) return
 
-    focusListRowIn(`.list-overlay-panel [data-plan-item-id="${selectedOverlayItemId}"]`)
+    focusListRowIn('.list-overlay-panel', selectedOverlayItemId, 'one-third')
   }
 
-  function focusListRowIn(rowSelector: string) {
-    const row = document.querySelector<HTMLElement>(rowSelector)
+  function checkPreviousOverlayItem(previousItemId: Id | null, nextItemId: Id) {
+    if (!listOverlayInstance || !previousItemId || previousItemId === nextItemId) return
+
+    const previousItem = findPlanItem(listOverlayInstance.items, previousItemId)
+    if (!previousItem || previousItem.done) return
+
+    plannerStore.patchListItem(listOverlayInstance.id, previousItem.id, { done: true })
+  }
+
+  function focusListRowIn(panelSelector: string, itemId: Id, scrollMode: 'nearest' | 'one-third' = 'nearest') {
+    const panel = document.querySelector<HTMLElement>(panelSelector)
+    const row = Array.from(panel?.querySelectorAll<HTMLElement>('[data-plan-item-id]') ?? []).find(
+      (candidate) => candidate.dataset.planItemId === itemId,
+    )
     const focusTarget = row?.querySelector<HTMLElement>('.item-text-display')
     if (focusTarget) {
       focusTarget.focus()
-      focusTarget.scrollIntoView({ block: 'nearest' })
+      if (scrollMode === 'one-third' && row) {
+        scrollRowTopToOneThird(row)
+      } else {
+        focusTarget.scrollIntoView({ block: 'nearest' })
+      }
     }
+  }
+
+  function scrollRowTopToOneThird(row: HTMLElement) {
+    const scrollContainer = findScrollContainer(row)
+    const rowRect = row.getBoundingClientRect()
+
+    if (scrollContainer) {
+      scrollContainer.scrollTo({
+        top: scrollContainer.scrollTop + rowRect.top - window.innerHeight / 3,
+        behavior: 'smooth',
+      })
+      return
+    }
+
+    window.scrollBy({ top: rowRect.top - window.innerHeight / 3, behavior: 'smooth' })
   }
 
   function findPlanItem(items: PlanItem[], itemId: string): PlanItem | null {
