@@ -103,10 +103,14 @@ test('arrow navigation lands on list-linked plan items', async ({ page }) => {
   await expect(page.getByTitle('Open Groceries')).toBeVisible()
   await focusPlanTextTarget(page, 'item_2')
   await page.keyboard.press('ArrowUp')
-  await expect.poll(() => activePlanTextTarget(page)).toEqual({ id: 'item_1', display: true })
+  await expect.poll(() => activePlanTextTarget(page)).toEqual({ id: 'item_1', display: false, collapsedCaret: true })
+
+  await page.getByTitle('Open Groceries').click()
+  await expect(page.getByRole('dialog', { name: 'Groceries' })).toBeVisible()
+  await page.keyboard.press('Escape')
 
   await page.keyboard.press('ArrowDown')
-  await expect.poll(() => activePlanTextTarget(page)).toEqual({ id: 'item_2', display: false })
+  await expect.poll(() => activePlanTextTarget(page)).toEqual({ id: 'item_2', display: false, collapsedCaret: true })
 })
 
 async function focusPlanTextTarget(page: import('@playwright/test').Page, itemId: string) {
@@ -129,9 +133,11 @@ async function activePlanTextTarget(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const active = document.activeElement
     if (!(active instanceof HTMLElement)) return null
+    const selection = document.getSelection()
     return {
       id: active.dataset.planTextFocusTargetId ?? null,
       display: active.classList.contains('item-text-display'),
+      collapsedCaret: Boolean(selection?.isCollapsed && selection.rangeCount > 0 && active.contains(selection.getRangeAt(0).startContainer)),
     }
   })
 }
@@ -177,7 +183,7 @@ test('metric quiz records answers and bulk import backfills', async ({ page }) =
   // Only the matching substring "Mood" is the hyperlink, not the whole task.
   const moodLink = page.getByTitle('Open Mood').first()
   await expect(moodLink).toHaveText('Mood')
-  await expect(page.locator('.item-text-display').first()).toContainText('log')
+  await expect(page.locator('[data-plan-text-input]').first()).toContainText('log')
 
   await moodLink.click()
   const dialog = page.getByRole('dialog', { name: 'Mood' })
