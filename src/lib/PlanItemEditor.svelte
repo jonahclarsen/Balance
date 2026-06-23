@@ -68,12 +68,6 @@
 
   let dragging = false
   let activeDropRow: HTMLElement | null = null
-  // While a linked item isn't being edited, its text renders as segments with only
-  // the matching substrings as hyperlinks; focusing it (or the edit pencil) returns
-  // to the plain editor.
-  let editing = false
-  $: hasLink = linkSegments.some((segment) => segment.link !== null)
-  $: showAsLink = hasLink && !editing
   $: selected = selectedItemIds.has(item.id)
   $: matchedGoals = goalMatchesForItem(goals, goalCompletions, planDate, item.id)
   // Only rescan the item text when it or the due-goal set actually changes:
@@ -352,34 +346,8 @@
     selection?.addRange(range)
   }
 
-  async function startEditing() {
-    if (locked) return
-    editing = true
-    await tick()
-    const input = document.querySelector<HTMLDivElement>(
-      `[data-plan-text-input][data-plan-text-input-id="${item.id}"]`,
-    )
-    if (input) focusTextTarget(input)
-  }
-
-  function handleEditorFocusChange(focused: boolean) {
-    editing = focused
-  }
-
   function handleDisplayKeydown(event: KeyboardEvent) {
-    if (!locked && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-      event.preventDefault()
-      void handleTextArrowKey(event.key === 'ArrowUp' ? 'up' : 'down', event.currentTarget as HTMLDivElement, event)
-      return
-    }
-
-    if (!locked && (event.key === 'Enter' || event.key === ' ')) {
-      event.preventDefault()
-      void startEditing()
-      return
-    }
-
-    if (locked && (event.key === 'Enter' || event.key === ' ')) {
+    if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       onLockedSelect(item.id)
     }
@@ -514,26 +482,6 @@
             aria-label={`Open ${link.label}`}
             on:click|preventDefault|stopPropagation={() => onOpenLink(link, item.id)}
           >{segment.text}</a>{:else}{segment.text}{/if}{/each}</div>
-    {:else if showAsLink}
-      <!-- Only the matching substrings are hyperlinks; the rest stays plain text.
-           Links remain clickable when the task is done. -->
-      <div
-        class="item-text item-text-display"
-        class:done={item.done}
-        data-plan-text-focus-target
-        data-plan-text-focus-target-id={item.id}
-        role="textbox"
-        tabindex="0"
-        aria-label="Edit item text"
-        on:click={startEditing}
-        on:keydown={handleDisplayKeydown}
-      >{#each linkSegments as segment, index (index)}{#if segment.link}{@const link = segment.link}<a
-            href={'#'}
-            class="inline-link"
-            title={`Open ${link.label}`}
-            aria-label={`Open ${link.label}`}
-            on:click|preventDefault|stopPropagation={() => onOpenLink(link, item.id)}
-          >{segment.text}</a>{:else}{segment.text}{/if}{/each}</div>
     {:else}
       <RichTextEditor
         className="item-text"
@@ -553,7 +501,8 @@
         onMetaBackspaceEnd={handleMetaBackspaceEnd}
         onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
         onTabKey={handleTextTab}
-        onFocusChange={handleEditorFocusChange}
+        internalLinkSegments={linkSegments}
+        onInternalLinkClick={(link) => onOpenLink(link, item.id)}
       />
     {/if}
 
