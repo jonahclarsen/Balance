@@ -172,6 +172,8 @@ pub fn is_migrated(conn: &Connection) -> Result<bool> {
 /// `.so` actually loads and the engine works on the target — not just that the
 /// app launches. Cleans up after itself.
 pub fn selftest(extension_path: &Path, scratch_dir: &Path) -> Result<()> {
+    // The self-test may run before the main database has created this directory.
+    std::fs::create_dir_all(scratch_dir).map_err(|e| Error::Codec(e.to_string()))?;
     let a_path = scratch_dir.join("crsql-selftest-a.sqlite3");
     let b_path = scratch_dir.join("crsql-selftest-b.sqlite3");
     let _ = std::fs::remove_file(&a_path);
