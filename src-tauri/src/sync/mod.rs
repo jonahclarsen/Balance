@@ -24,6 +24,7 @@ use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
 
 pub mod crypto;
+pub mod p2p;
 pub mod relay;
 pub mod transport;
 
@@ -387,6 +388,28 @@ fn mark_enabled(conn: &Connection) -> Result<()> {
         [],
     )?;
     Ok(())
+}
+
+/// Persist the pairing code (the E2E key) in the encrypted DB so the background
+/// P2P listener can decrypt incoming changesets without UI involvement.
+pub fn store_pairing_code(conn: &Connection, pairing_code: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO metadata (key, value) VALUES ('sync_pairing_code', ?1) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![pairing_code],
+    )?;
+    Ok(())
+}
+
+/// Read the stored pairing code, if sync has been enabled on this device.
+pub fn read_pairing_code(conn: &Connection) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT value FROM metadata WHERE key = 'sync_pairing_code'",
+            [],
+            |r| r.get::<_, String>(0),
+        )
+        .ok())
 }
 
 fn operations_has_defaults(conn: &Connection) -> Result<bool> {

@@ -175,6 +175,41 @@ fn incremental_edits_propagate_both_directions() {
 }
 
 #[test]
+fn p2p_socket_sync_bootstraps_over_the_network() {
+    use super::transport::{sync_accept, sync_connect, Cursors};
+    use std::net::TcpListener;
+
+    let sa = Scratch::new("p2p-a");
+    let sb = Scratch::new("p2p-b");
+    let a = open_seeded(&sa.path, "ka", &state("device-A", json!([{ "id": "g1", "name": "Read" }])));
+    let b = open_seeded(&sb.path, "kb", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+
+    let key = SyncKey::generate();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap().to_string();
+
+    // B (joiner) listens; A (primary) connects and pushes its data.
+    let key_b = key.clone();
+    let handle = std::thread::spawn(move || {
+        let mut cursors = Cursors::new();
+        sync_accept(&listener, &b, &key_b, &mut cursors).unwrap();
+        let goals = read_app_state_from_database(&b).unwrap().unwrap()["goals"].clone();
+        finalize(&b).unwrap();
+        goals
+    });
+
+    let mut cursors = Cursors::new();
+    sync_connect(&addr, &a, &key, &mut cursors).unwrap();
+    let b_goals = handle.join().unwrap();
+
+    // The joiner adopted the primary's data, peer-to-peer, no server involved.
+    assert_eq!(b_goals, json!([{ "id": "g1", "name": "Read" }]));
+    finalize(&a).unwrap();
+}
+
+#[test]
 fn selftest_round_trips_against_real_extension() {
     // The same routine the Android debug build runs on-device, exercised here
     // with the desktop extension so the logic is covered locally.

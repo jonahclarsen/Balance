@@ -31,6 +31,8 @@ rusqlite = { version = "0.32.1", features = ["bundled-sqlcipher-vendored-openssl
 # Multi-device sync (see src/sync): E2E sealing of changesets + convergence hashing.
 chacha20poly1305 = "0.10"
 sha2 = "0.10"
+# LAN peer discovery for P2P sync (advertise + browse for other Balance devices).
+mdns-sd = "0.11"
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"
@@ -48,3 +50,8 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["N
 # key over JNI (see android_keystore in lib.rs).
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
+
+# Camera QR-code scanning for sync pairing is mobile-only (Android/iOS); the
+# plugin uses the native camera, so it isn't compiled into desktop builds.
+[target.'cfg(any(target_os = "android", target_os = "ios"))'.dependencies]
+tauri-plugin-barcode-scanner = "2"

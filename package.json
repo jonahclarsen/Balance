@@ -27,6 +27,7 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.0",
+    "@tauri-apps/plugin-barcode-scanner": "^2.1.0",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "qrcode": "^1.5.4"
   }

@@ -95,6 +95,8 @@ pub fn sync_connect(
 
     let (peer_hdr, peer_sealed) = recv(&mut stream)?;
     apply(conn, &key.open(&peer_sealed)?)?;
+    // Rebuild materialized state from the merged op log.
+    super::rematerialize(conn)?;
 
     cursors.set(&peer_hdr.from_site, hw);
     cursors.set("peer", hw);
@@ -113,6 +115,8 @@ pub fn sync_accept(
 
     let (peer_hdr, peer_sealed) = recv(&mut stream)?;
     apply(conn, &key.open(&peer_sealed)?)?;
+    // Rebuild materialized state from the merged op log.
+    super::rematerialize(conn)?;
     let peer_site = peer_hdr.from_site.clone();
 
     let outgoing = pull(conn, cursors.get(&peer_site), Some(&peer_site))?;

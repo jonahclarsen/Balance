@@ -1,6 +1,13 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
   import QRCode from 'qrcode'
+  import {
+    scan,
+    cancel,
+    checkPermissions,
+    requestPermissions,
+    Format,
+  } from '@tauri-apps/plugin-barcode-scanner'
   import {
     syncStatus,
     syncNewPairingCode,
@@ -8,6 +15,10 @@
     syncEnableJoiner,
     syncPullSealed,
     syncApplySealed,
+    syncP2pServe,
+    syncP2pPeers,
+    syncP2pSync,
+    type SyncPeer,
   } from './store'
 
   // The pairing code IS the end-to-end key (encoded). It is held only on the
@@ -15,6 +26,9 @@
   // device remembers its account between launches.
   const STORAGE_KEY = 'balance.sync.pairingCode'
   const RELAY_KEY = 'balance.sync.relayUrl'
+
+  // Camera QR scanning is mobile-only (native plugin); on desktop you paste.
+  const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent)
 
   let migrated = false
   let pairingCode = ''
@@ -24,6 +38,14 @@
   let status = ''
   let busy = false
   let isError = false
+  let scanning = false
+  let copyLabel = 'Copy code'
+  let copyTimer: ReturnType<typeof setTimeout> | undefined
+
+  let localAddress = ''
+  let peers: SyncPeer[] = []
+  let peerAddress = ''
+  let peerPoll: ReturnType<typeof setInterval> | undefined
 
   onMount(async () => {
     pairingCode = localStorage.getItem(STORAGE_KEY) ?? ''
@@ -34,7 +56,108 @@
       migrated = false
     }
     if (pairingCode) await renderQr()
+    if (migrated && pairingCode) await startP2p()
   })
+
+  onDestroy(() => {
+    if (peerPoll) clearInterval(peerPoll)
+    if (copyTimer) clearTimeout(copyTimer)
+    // Make sure the camera is released and the UI restored if we unmount mid-scan.
+    if (scanning) void stopScan()
+  })
+
+  // Teleport the scan overlay to <body> so it survives `#app` being hidden while
+  // the native camera renders behind the (transparent) webview.
+  function portal(node: HTMLElement) {
+    document.body.appendChild(node)
+    return { destroy: () => node.remove() }
+  }
+
+  // Open the native camera scanner and pair with whatever pairing code it reads.
+  async function scanCode() {
+    try {
+      let perm = await checkPermissions()
+      if (perm !== 'granted') perm = await requestPermissions()
+      if (perm !== 'granted') {
+        setStatus('Camera permission is needed to scan a code.', true)
+        return
+      }
+    } catch (err) {
+      setStatus(`Camera unavailable: ${err}`, true)
+      return
+    }
+
+    scanning = true
+    // The camera renders behind the webview, so hide the app and go transparent.
+    document.documentElement.classList.add('qr-scanning')
+    try {
+      const result = await scan({ windowed: true, formats: [Format.QRCode] })
+      const content = (result?.content ?? '').trim()
+      await stopScan()
+      if (content) {
+        joinInput = content
+        await join()
+      }
+    } catch (err) {
+      await stopScan()
+      setStatus(`Could not scan: ${err}`, true)
+    }
+  }
+
+  // Stop the camera and restore the normal UI. Safe to call more than once.
+  async function stopScan() {
+    if (!scanning) return
+    scanning = false
+    document.documentElement.classList.remove('qr-scanning')
+    try {
+      await cancel()
+    } catch {
+      // Already stopped (e.g. after a successful read) — nothing to cancel.
+    }
+  }
+
+  // Start advertising this device on the LAN and begin polling for discovered
+  // peers. Idempotent on the backend, so safe to call on every panel open.
+  async function startP2p() {
+    try {
+      localAddress = (await syncP2pServe()) ?? ''
+      await refreshPeers()
+      if (!peerPoll) peerPoll = setInterval(refreshPeers, 4000)
+    } catch (err) {
+      // P2P is best-effort (e.g. mDNS unavailable); manual address still works.
+      console.warn('P2P start failed', err)
+    }
+  }
+
+  async function refreshPeers() {
+    try {
+      peers = await syncP2pPeers()
+    } catch {
+      // ignore transient discovery errors
+    }
+  }
+
+  // Direct device-to-device sync over the LAN: exchange sealed changesets with a
+  // peer, then reload if our state changed.
+  async function syncWithPeer(address: string) {
+    const addr = address.trim()
+    if (!addr) return
+    if (!pairingCode) {
+      setStatus('Create or paste a pairing code first.', true)
+      return
+    }
+    busy = true
+    try {
+      await syncP2pSync(addr)
+      migrated = true
+      setStatus(`Synced directly with ${addr}.`)
+      setTimeout(() => location.reload(), 600)
+    } catch (err) {
+      setStatus(`Direct sync failed: ${err}`, true)
+    } finally {
+      busy = false
+    }
+  }
 
   async function renderQr() {
     try {
@@ -56,9 +179,10 @@
       localStorage.setItem(STORAGE_KEY, pairingCode)
       // This device becomes the source of truth; its data is snapshotted into
       // the synced log (and backed up first).
-      await syncEnablePrimary()
+      await syncEnablePrimary(pairingCode)
       migrated = true
       await renderQr()
+      await startP2p()
       setStatus('Sync enabled. Scan or paste this code on your other device to join.')
     } catch (err) {
       setStatus(`Could not create a sync key: ${err}`, true)
@@ -80,10 +204,11 @@
       joinInput = ''
       // Joining adopts the other device's data; this device's current data is
       // backed up and replaced on the next sync.
-      await syncEnableJoiner()
+      await syncEnableJoiner(pairingCode)
       migrated = true
       await renderQr()
-      setStatus('Paired. Tap "Sync now" to pull your data from the other device.')
+      await startP2p()
+      setStatus('Paired. Use a device below (or "Sync now") to pull your data.')
     } catch (err) {
       setStatus(`Could not pair: ${err}`, true)
     } finally {
@@ -100,6 +225,9 @@
     try {
       await navigator.clipboard.writeText(pairingCode)
       setStatus('Pairing code copied.')
+      copyLabel = 'Copied!'
+      if (copyTimer) clearTimeout(copyTimer)
+      copyTimer = setTimeout(() => (copyLabel = 'Copy code'), 2000)
     } catch {
       setStatus('Copy failed — select the code and copy manually.', true)
     }
@@ -172,7 +300,7 @@
           <label for="sync-code">This device's pairing code</label>
           <code id="sync-code" class="sync-code">{pairingCode}</code>
           <div class="sync-actions">
-            <button type="button" on:click={copyCode}>Copy code</button>
+            <button type="button" on:click={copyCode}>{copyLabel}</button>
             <button type="button" class="ghost" on:click={generate} disabled={busy}>
               Replace key…
             </button>
@@ -187,8 +315,19 @@
 
     <div class="sync-join">
       <label for="sync-join-input">Pair with another device</label>
-      <p>Paste the pairing code shown on your other device.</p>
+      <p>
+        {#if isMobile}
+          Scan the QR code shown on your other device, or paste its pairing code.
+        {:else}
+          Paste the pairing code shown on your other device.
+        {/if}
+      </p>
       <div class="sync-actions">
+        {#if isMobile}
+          <button type="button" on:click={scanCode} disabled={busy || scanning}>
+            Scan QR code
+          </button>
+        {/if}
         <input
           id="sync-join-input"
           type="text"
@@ -199,6 +338,49 @@
         <button type="button" on:click={join} disabled={busy || !joinInput.trim()}>Pair</button>
       </div>
     </div>
+
+    {#if migrated}
+      <div class="sync-p2p">
+        <label for="sync-peer-input">Direct device-to-device (same Wi-Fi)</label>
+        <p>
+          No server needed — devices on the same network sync directly. Your data
+          is sealed end-to-end either way.
+        </p>
+        {#if localAddress}
+          <p class="sync-self">
+            This device: <code>{localAddress}</code>
+          </p>
+        {/if}
+
+        {#if peers.length > 0}
+          <ul class="sync-peers">
+            {#each peers as peer (peer.address)}
+              <li>
+                <span class="sync-peer-addr"><code>{peer.address}</code></span>
+                <button type="button" on:click={() => syncWithPeer(peer.address)} disabled={busy}>
+                  Sync
+                </button>
+              </li>
+            {/each}
+          </ul>
+        {:else}
+          <p class="sync-empty">No devices discovered yet. You can enter an address manually.</p>
+        {/if}
+
+        <div class="sync-actions">
+          <input
+            id="sync-peer-input"
+            type="text"
+            placeholder="192.168.1.42:port"
+            spellcheck="false"
+            bind:value={peerAddress}
+          />
+          <button type="button" on:click={() => syncWithPeer(peerAddress)} disabled={busy || !peerAddress.trim()}>
+            Sync with address
+          </button>
+        </div>
+      </div>
+    {/if}
 
     <div class="sync-relay">
       <label for="sync-relay-input">Relay server (for server-mediated sync)</label>
@@ -229,6 +411,14 @@
     {/if}
   </div>
 </section>
+
+{#if scanning}
+  <div class="qr-scan-overlay" use:portal>
+    <div class="qr-scan-reticle"></div>
+    <p class="qr-scan-hint">Point the camera at the pairing QR code on your other device.</p>
+    <button type="button" class="qr-scan-cancel" on:click={stopScan}>Cancel</button>
+  </div>
+{/if}
 
 <style>
   .sync-body {
@@ -263,10 +453,38 @@
     background: rgba(127, 127, 127, 0.12);
   }
   .sync-join,
-  .sync-relay {
+  .sync-relay,
+  .sync-p2p {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
+  }
+  .sync-self code,
+  .sync-peer-addr code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.8rem;
+  }
+  .sync-peers {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+  .sync-peers li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border-radius: 6px;
+    background: rgba(127, 127, 127, 0.1);
+  }
+  .sync-empty {
+    font-size: 0.82rem;
+    opacity: 0.7;
+    margin: 0;
   }
   .sync-actions {
     display: flex;
@@ -288,5 +506,52 @@
   .sync-state {
     font-size: 0.8rem;
     opacity: 0.7;
+  }
+
+  /* While the native camera scans, it renders *behind* the webview. Hide the
+     app and make the document transparent so the camera feed shows through; the
+     teleported overlay below stays visible because it lives outside #app. */
+  :global(html.qr-scanning),
+  :global(html.qr-scanning body) {
+    background: transparent !important;
+  }
+  :global(html.qr-scanning #app) {
+    display: none !important;
+  }
+
+  .qr-scan-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.5rem;
+    padding: env(safe-area-inset-top) 1.5rem env(safe-area-inset-bottom);
+    pointer-events: none;
+  }
+  .qr-scan-reticle {
+    width: min(70vw, 260px);
+    aspect-ratio: 1;
+    border: 3px solid rgba(255, 255, 255, 0.92);
+    border-radius: 18px;
+    box-shadow: 0 0 0 100vmax rgba(0, 0, 0, 0.35);
+  }
+  .qr-scan-hint {
+    margin: 0;
+    max-width: 22rem;
+    text-align: center;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+    font-size: 0.95rem;
+  }
+  .qr-scan-cancel {
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.55);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    padding: 0.6rem 1.4rem;
+    border-radius: 999px;
   }
 </style>

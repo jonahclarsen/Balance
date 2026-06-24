@@ -1633,15 +1633,35 @@ export async function syncNewPairingCode(): Promise<string> {
 }
 
 /** Enable sync as the primary device — keep this device's data as the baseline. */
-export async function syncEnablePrimary(): Promise<void> {
+export async function syncEnablePrimary(pairingCode: string): Promise<void> {
   if (!isTauri()) return
-  await invoke('sync_enable_primary')
+  await invoke('sync_enable_primary', { pairingCode })
 }
 
 /** Enable sync as a joining device — adopt the primary's data (local is backed up). */
-export async function syncEnableJoiner(): Promise<void> {
+export async function syncEnableJoiner(pairingCode: string): Promise<void> {
   if (!isTauri()) return
-  await invoke('sync_enable_joiner')
+  await invoke('sync_enable_joiner', { pairingCode })
+}
+
+export type SyncPeer = { name: string; address: string }
+
+/** Start the P2P listener + mDNS discovery; returns this device's LAN address. */
+export async function syncP2pServe(): Promise<string | null> {
+  if (!isTauri()) return null
+  return invoke<string | null>('sync_p2p_serve')
+}
+
+/** Balance devices discovered on the local network. */
+export async function syncP2pPeers(): Promise<SyncPeer[]> {
+  if (!isTauri()) return []
+  return invoke<SyncPeer[]>('sync_p2p_peers')
+}
+
+/** Sync directly with a peer at `address` (host:port). Returns new state JSON. */
+export async function syncP2pSync(address: string): Promise<string | null> {
+  if (!isTauri()) return null
+  return invoke<string | null>('sync_p2p_sync', { address })
 }
 
 /** Pull local changes since `since`, sealed (E2EE) with the pairing key. */
