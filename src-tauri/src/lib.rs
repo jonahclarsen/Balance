@@ -158,9 +158,10 @@ async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String>
 #[tauri::command]
 async fn initialize_app_state(app: tauri::AppHandle, state_json: String) -> Result<(), String> {
     run_database_task(move || {
-        let mut connection = open_database(&app)?;
-        let state = parse_json(&state_json)?;
-        replace_app_state(&mut connection, &state)
+        with_database(&app, |connection| {
+            let state = parse_json(&state_json)?;
+            replace_app_state(connection, &state)
+        })
     })
     .await
 }
@@ -168,9 +169,10 @@ async fn initialize_app_state(app: tauri::AppHandle, state_json: String) -> Resu
 #[tauri::command]
 async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Result<(), String> {
     run_database_task(move || {
-        let mut connection = open_database(&app)?;
-        let operation = parse_json(&operation_json)?;
-        persist_operation_to_database(&mut connection, &operation)
+        with_database(&app, |connection| {
+            let operation = parse_json(&operation_json)?;
+            persist_operation_to_database(connection, &operation)
+        })
     })
     .await
 }
@@ -178,9 +180,10 @@ async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Res
 #[tauri::command]
 async fn undo_last_operation(app: tauri::AppHandle) -> Result<Option<String>, String> {
     run_database_task(move || {
-        let mut connection = open_database(&app)?;
-        undo_last_operation_in_database(&mut connection)
-            .map(|state| state.map(|value| value.to_string()))
+        with_database(&app, |connection| {
+            undo_last_operation_in_database(connection)
+                .map(|state| state.map(|value| value.to_string()))
+        })
     })
     .await
 }
@@ -188,9 +191,10 @@ async fn undo_last_operation(app: tauri::AppHandle) -> Result<Option<String>, St
 #[tauri::command]
 async fn redo_last_operation(app: tauri::AppHandle) -> Result<Option<String>, String> {
     run_database_task(move || {
-        let mut connection = open_database(&app)?;
-        redo_last_operation_in_database(&mut connection)
-            .map(|state| state.map(|value| value.to_string()))
+        with_database(&app, |connection| {
+            redo_last_operation_in_database(connection)
+                .map(|state| state.map(|value| value.to_string()))
+        })
     })
     .await
 }
@@ -228,9 +232,10 @@ async fn restore_recovery_entry(
     history_id: String,
 ) -> Result<Option<String>, String> {
     run_database_task(move || {
-        let mut connection = open_database(&app)?;
-        restore_recovery_entry_in_database(&mut connection, &history_id)
-            .map(|state| state.map(|value| value.to_string()))
+        with_database(&app, |connection| {
+            restore_recovery_entry_in_database(connection, &history_id)
+                .map(|state| state.map(|value| value.to_string()))
+        })
     })
     .await
 }
@@ -4825,6 +4830,31 @@ fn with_synced_connection<T>(
     let result = task(&connection);
     // Finalize regardless of task outcome so cr-sqlite releases cleanly.
     let _ = sync::finalize(&connection);
+    result
+}
+
+/// Open the DB and run `task`, transparently loading + finalizing cr-sqlite when
+/// sync is enabled. Once sync is on, the `operations` log is a CRR whose triggers
+/// call cr-sqlite functions (`crsql_internal_sync_bit`); any connection that
+/// writes the log must have the extension loaded or the write fails with
+/// "no such function". Loading it here also captures the local write into
+/// `crsql_changes` so it can replicate. When sync is off this is just
+/// `open_database` + `task`, with no extension cost.
+fn with_database<T>(
+    app: &tauri::AppHandle,
+    task: impl FnOnce(&mut Connection) -> Result<T, String>,
+) -> Result<T, String> {
+    let mut connection = open_database(app)?;
+    let synced = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
+    if synced {
+        let extension = crsqlite_extension_path(app)?;
+        sync::activate(&connection, &extension).map_err(sync::Error::into_string)?;
+    }
+    let result = task(&mut connection);
+    // Finalize regardless of task outcome so cr-sqlite releases cleanly.
+    if synced {
+        let _ = sync::finalize(&connection);
+    }
     result
 }
 

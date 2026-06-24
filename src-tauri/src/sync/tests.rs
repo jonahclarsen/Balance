@@ -174,6 +174,58 @@ fn incremental_edits_propagate_both_directions() {
     finalize(&b).unwrap();
 }
 
+/// Regression: once sync is enabled the `operations` log is a CRR whose triggers
+/// call `crsql_internal_sync_bit()`. A later write on a *fresh* connection that
+/// did not load cr-sqlite (the normal app open path) fails with "no such
+/// function" — which is exactly what broke real data. The fix is that every
+/// writer loads the extension when sync is on; this test pins both halves.
+#[test]
+fn writes_after_sync_enabled_require_the_extension_loaded() {
+    let s = Scratch::new("crr-write");
+    let key = "key-crr";
+
+    // Enable sync on this device, then finalize + drop the connection, mirroring
+    // the app closing the connection after the sync_enable command returns.
+    {
+        let mut conn = open_seeded(&s.path, key, &state("device-A", json!([])));
+        enable_primary(&conn).unwrap();
+        finalize(&conn).unwrap();
+        // (conn dropped here)
+        let _ = &mut conn;
+    }
+
+    let op = json!({
+        "id": "op-x", "deviceId": "device-A", "sequence": 1,
+        "timestamp": "2026-06-23T12:00:00.000Z",
+        "type": "set_active_plan_date", "payload": { "date": "2027-03-03" }
+    });
+
+    // Reproduce the failure: a plain reopen (no extension) cannot write the CRR.
+    {
+        let mut bare = open_database_at(&s.path, key).unwrap();
+        let err = persist_operation_to_database(&mut bare, &op).unwrap_err();
+        assert!(
+            err.contains("crsql_internal_sync_bit"),
+            "expected the CRR-trigger failure, got: {err}"
+        );
+    }
+
+    // The fix: load the extension first (what `with_database` does in the app),
+    // and the same write succeeds and is captured for replication.
+    {
+        let mut conn = open_database_at(&s.path, key).unwrap();
+        load_extension(&conn, ext_path()).unwrap();
+        persist_operation_to_database(&mut conn, &op).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&conn).unwrap().unwrap()["activePlanDate"],
+            "2027-03-03"
+        );
+        // The write landed in the replication log.
+        assert!(!pull(&conn, 0, None).unwrap().rows.is_empty(), "write captured for sync");
+        finalize(&conn).unwrap();
+    }
+}
+
 #[test]
 fn p2p_socket_sync_bootstraps_over_the_network() {
     use super::transport::{sync_accept, sync_connect, Cursors};
