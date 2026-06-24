@@ -4870,13 +4870,15 @@ async fn sync_new_pairing_code() -> Result<String, String> {
 }
 
 /// Enable sync as the **primary** device: keep this device's data as the shared
-/// baseline (snapshots it into the synced operation log). Backs up first.
+/// baseline (snapshots it into the synced operation log). Backs up first. The
+/// pairing code is stored (in the encrypted DB) so the P2P listener can use it.
 #[tauri::command]
-async fn sync_enable_primary(app: tauri::AppHandle) -> Result<(), String> {
+async fn sync_enable_primary(app: tauri::AppHandle, pairing_code: String) -> Result<(), String> {
     run_database_task(move || {
         with_synced_connection(&app, |connection| {
             backup_state_before_sync(&app, connection)?;
-            sync::enable_primary(connection).map_err(sync::Error::into_string)
+            sync::enable_primary(connection).map_err(sync::Error::into_string)?;
+            sync::store_pairing_code(connection, &pairing_code).map_err(sync::Error::into_string)
         })
     })
     .await
@@ -4885,11 +4887,12 @@ async fn sync_enable_primary(app: tauri::AppHandle) -> Result<(), String> {
 /// Enable sync as a **joining** device: adopt the primary's data, clearing this
 /// device's local data (which is backed up first).
 #[tauri::command]
-async fn sync_enable_joiner(app: tauri::AppHandle) -> Result<(), String> {
+async fn sync_enable_joiner(app: tauri::AppHandle, pairing_code: String) -> Result<(), String> {
     run_database_task(move || {
         with_synced_connection(&app, |connection| {
             backup_state_before_sync(&app, connection)?;
-            sync::enable_joiner(connection).map_err(sync::Error::into_string)
+            sync::enable_joiner(connection).map_err(sync::Error::into_string)?;
+            sync::store_pairing_code(connection, &pairing_code).map_err(sync::Error::into_string)
         })
     })
     .await
@@ -4941,6 +4944,52 @@ async fn sync_apply_sealed(
     .await
 }
 
+/// Read the stored pairing code (the E2E key) from the encrypted DB.
+fn stored_sync_key(app: &tauri::AppHandle) -> Result<Option<sync::crypto::SyncKey>, String> {
+    let connection = open_database(app)?;
+    let Some(code) = sync::read_pairing_code(&connection).map_err(sync::Error::into_string)? else {
+        return Ok(None);
+    };
+    sync::crypto::SyncKey::from_pairing_code(&code)
+        .map(Some)
+        .map_err(sync::Error::into_string)
+}
+
+/// Start (idempotently) the P2P listener + mDNS discovery, returning the LAN
+/// address other devices can connect to.
+#[tauri::command]
+async fn sync_p2p_serve(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    run_database_task(move || {
+        let Some(key) = stored_sync_key(&app)? else {
+            return Ok(None); // sync not enabled yet
+        };
+        sync::p2p::ensure_serving(app.clone(), key).map_err(sync::Error::into_string)?;
+        Ok(sync::p2p::local_address())
+    })
+    .await
+}
+
+/// Other Balance devices discovered on the LAN.
+#[tauri::command]
+async fn sync_p2p_peers() -> Result<Vec<sync::p2p::Peer>, String> {
+    Ok(sync::p2p::peers())
+}
+
+/// Sync directly with a peer at `address` (host:port), then return the rebuilt
+/// app state so the UI can refresh.
+#[tauri::command]
+async fn sync_p2p_sync(app: tauri::AppHandle, address: String) -> Result<Option<String>, String> {
+    run_database_task(move || {
+        let Some(key) = stored_sync_key(&app)? else {
+            return Err("Sync is not enabled on this device.".to_string());
+        };
+        sync::p2p::sync_with(&app, &key, &address).map_err(sync::Error::into_string)?;
+        let connection = open_database(&app)?;
+        read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
+    })
+    .await
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     disable_automatic_text_replacement();
@@ -4955,6 +5004,10 @@ pub fn run() {
                 )?;
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
+
+            // Camera QR-code scanning for sync pairing (mobile only).
+            #[cfg(mobile)]
+            app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
 
             // On Android debug builds, prove the bundled cr-sqlite .so actually
             // loads and the sync engine converges on-device (the CI emulator
@@ -5015,7 +5068,10 @@ pub fn run() {
             sync_enable_primary,
             sync_enable_joiner,
             sync_pull_sealed,
-            sync_apply_sealed
+            sync_apply_sealed,
+            sync_p2p_serve,
+            sync_p2p_peers,
+            sync_p2p_sync
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
