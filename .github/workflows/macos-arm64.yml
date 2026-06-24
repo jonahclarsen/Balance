@@ -2,9 +2,8 @@ name: Build macOS arm64 app
 
 on:
   push:
-    branches:
-      - main
-  pull_request:
+    tags:
+      - "v*.*.*"
   workflow_dispatch:
 
 permissions:
