@@ -107,6 +107,7 @@ return rows`
   let exportStatusIsError = false
   let exportSavedPath = ''
   let exportSettings: ExportSettings | null = null
+  let buildInfo: { version: string; commit: string } | null = null
   let exportSettingsStatus = ''
   let exportSettingsStatusIsError = false
   let exportSettingsBusy = false
@@ -491,6 +492,12 @@ return rows`
       await loadExportSettings()
 
       if (!mounted || !isTauri()) return
+
+      try {
+        buildInfo = await invoke<{ version: string; commit: string }>('build_info')
+      } catch (error) {
+        console.error('Failed to load build info', error)
+      }
 
       window.addEventListener('focus', checkAutoJsonExport)
       document.addEventListener('visibilitychange', checkVisibleAutoJsonExport)
@@ -3027,6 +3034,19 @@ return rows`
             {#if exportSettings?.lastAutoJsonExportError}
               <p class="export-status error">Last auto-export failed: {exportSettings.lastAutoJsonExportError}</p>
             {/if}
+          </section>
+        {/if}
+
+        {#if buildInfo}
+          <section class="settings-section">
+            <div>
+              <h3>About</h3>
+              <p>The version and source commit this build came from.</p>
+            </div>
+
+            <div class="path-row">
+              <span>Balance {buildInfo.version} · {buildInfo.commit}</span>
+            </div>
           </section>
         {/if}
       </div>

@@ -285,6 +285,20 @@ async fn save_export_file(
     .await
 }
 
+#[derive(serde::Serialize)]
+struct BuildInfo {
+    version: String,
+    commit: String,
+}
+
+#[tauri::command]
+fn build_info() -> BuildInfo {
+    BuildInfo {
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        commit: env!("GIT_COMMIT").to_string(),
+    }
+}
+
 #[tauri::command]
 async fn get_export_settings(app: tauri::AppHandle) -> Result<ExportSettings, String> {
     run_database_task(move || {
@@ -5081,6 +5095,7 @@ pub fn run() {
             restore_recovery_entry,
             get_recovery_key_status,
             confirm_recovery_key,
+            build_info,
             save_export_file,
             get_export_settings,
             set_export_directory,
