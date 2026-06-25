@@ -1,5 +1,10 @@
 # Balance — agent guidance
 
+## Always commit and push after making changes
+
+After completing a code change, always commit it and push to the remote — don't
+leave work uncommitted. Use a clear commit message describing the change.
+
 ## Android: CI only — never build locally
 
 Do **not** build, link, or run anything Android locally (no `tauri android build`,

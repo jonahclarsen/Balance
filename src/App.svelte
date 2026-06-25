@@ -83,7 +83,7 @@
   // The page the list overlay was opened over. Navigating to any other page
   // closes the overlay, so it never lingers over unrelated content.
   let listOverlayView: View | null = null
-  let metricOverlay: { metricId: Id; date: string } | null = null
+  let metricOverlay: { metricId: Id; date: string; opener: Opener | null } | null = null
   let importMetricId = ''
   let importOverlayOpen = false
   let importRaw = ''
@@ -282,7 +282,7 @@ return rows`
         listOverlay = { listId, date, opener }
       }
     } else {
-      metricOverlay = { metricId: link.metricId, date }
+      metricOverlay = { metricId: link.metricId, date, opener }
     }
   }
 
@@ -372,6 +372,21 @@ return rows`
         plannerStore.patchListItem(opener.containerId, opener.itemId, { done: true })
       }
     })
+  }
+
+  // Finishing a metric survey checks off the list/plan item it was opened from,
+  // mirroring completeListOverlay. Dismissing the survey early does not.
+  function completeMetricOverlay() {
+    const overlay = metricOverlay
+    metricOverlay = null
+    if (!overlay) return
+    const opener = overlay.opener
+    if (!opener) return
+    if (opener.container === 'plan') {
+      plannerStore.patchPlanItem(opener.containerId, opener.itemId, { done: true })
+    } else {
+      plannerStore.patchListItem(opener.containerId, opener.itemId, { done: true })
+    }
   }
 
   function answersForEntry(metricId: Id, date: string): Record<Id, string> {
@@ -3147,6 +3162,7 @@ return rows`
           answers={metricOverlayAnswers}
           onAnswer={(questionId, value) => plannerStore.upsertMetricAnswer(overlay.metricId, overlay.date, questionId, value)}
           onClose={() => (metricOverlay = null)}
+          onComplete={completeMetricOverlay}
         />
       </OverlayModal>
     {/if}

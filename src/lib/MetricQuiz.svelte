@@ -7,6 +7,9 @@
   export let answers: Record<Id, string>
   export let onAnswer: (questionId: Id, value: string) => void
   export let onClose: () => void
+  // Called when the survey is finished (advanced past the last question), as
+  // opposed to onClose which also fires when the modal is dismissed early.
+  export let onComplete: () => void = onClose
 
   let index = 0
   let draft = ''
@@ -30,7 +33,7 @@
 
   function advance() {
     if (index >= total - 1) {
-      onClose()
+      onComplete()
       return
     }
     index += 1
