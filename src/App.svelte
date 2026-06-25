@@ -1349,13 +1349,14 @@ return rows`
           : ids.length - 1
         : Math.min(ids.length - 1, Math.max(0, currentIndex + direction))
 
-    selectOverlayItem(ids[nextIndex])
+    // Only moving down completes the item you're leaving; moving up just revisits.
+    selectOverlayItem(ids[nextIndex], direction === 1)
   }
 
-  function selectOverlayItem(itemId: Id) {
+  function selectOverlayItem(itemId: Id, completePrevious = true) {
     const previousItemId = selectedOverlayItemId
     selectedOverlayItemId = itemId
-    checkPreviousOverlayItem(previousItemId, itemId)
+    if (completePrevious) checkPreviousOverlayItem(previousItemId, itemId)
     void focusSelectedOverlayRow()
   }
 
