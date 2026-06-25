@@ -260,11 +260,9 @@ return rows`
   $: if ((view !== 'today' || activePlan?.id !== selectedPlanPlanId) && selectedPlanItemIds.length > 0) {
     clearPlanSelection()
   }
-  // Opening any other page dismisses the list overlay so it never floats over
-  // unrelated content.
-  $: if (listOverlay && view !== listOverlayView) {
-    listOverlay = null
-  }
+  // The list overlay toast belongs to the page it was opened over: leaving that
+  // page hides it, returning shows it again (its state + selection persist).
+  $: listOverlayVisible = Boolean(listOverlay && listOverlayInstance && view === listOverlayView)
   $: filteredDatabaseOperations = filterDatabaseRows(databaseInspection?.operations ?? [], databaseSearch)
   $: filteredDatabaseHistoryEntries = filterDatabaseRows(databaseInspection?.historyEntries ?? [], databaseSearch)
   $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
@@ -327,22 +325,36 @@ return rows`
   }
 
   async function focusListTemplateItem(itemId: Id) {
-    await tick()
-    const input = Array.from(
-      document.querySelectorAll<HTMLElement>('[data-list-template-text-input-id]'),
-    ).find((candidate) => candidate.dataset.listTemplateTextInputId === itemId)
+    // Switching views remounts the whole template editor, so the target row may
+    // not exist yet after a single tick — poll a few frames until it appears.
+    const input = await waitForListTemplateInput(itemId)
     if (!input) return
 
-    input.scrollIntoView({ block: 'center' })
     input.focus()
-    if (!input.matches('[contenteditable="true"]')) return
+    if (input.matches('[contenteditable="true"]')) {
+      const range = document.createRange()
+      range.selectNodeContents(input)
+      range.collapse(false)
+      const selection = document.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
 
-    const range = document.createRange()
-    range.selectNodeContents(input)
-    range.collapse(false)
-    const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
+    // Scroll last (after focus, on the next frame) so the browser's own
+    // focus-scroll doesn't override the centering and the layout has settled.
+    requestAnimationFrame(() => input.scrollIntoView({ block: 'center' }))
+  }
+
+  async function waitForListTemplateInput(itemId: Id, attempts = 10): Promise<HTMLElement | null> {
+    for (let i = 0; i < attempts; i++) {
+      await tick()
+      const input = Array.from(
+        document.querySelectorAll<HTMLElement>('[data-list-template-text-input-id]'),
+      ).find((candidate) => candidate.dataset.listTemplateTextInputId === itemId)
+      if (input) return input
+      await new Promise((resolve) => requestAnimationFrame(resolve))
+    }
+    return null
   }
 
   function completeListOverlay() {
@@ -1023,6 +1035,28 @@ return rows`
         cancelPasteReview()
       }
       return
+    }
+
+    // While the list overlay toast is open it owns the keyboard: route arrows and
+    // Cmd-D to its own selection before any plan-level shortcut can fire (an
+    // unscoped ArrowUp would otherwise jump focus to a plan row behind the toast).
+    if (listOverlayVisible && listOverlayInstance) {
+      if (!event.shiftKey && !event.altKey && !primaryModifier && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
+        event.preventDefault()
+        event.stopPropagation()
+        moveOverlaySelection(event.key === 'ArrowUp' ? -1 : 1)
+        return
+      }
+
+      if (primaryModifier && !event.altKey && !event.shiftKey && key === 'd' && selectedOverlayItemId) {
+        const item = findPlanItem(listOverlayInstance.items, selectedOverlayItemId)
+        if (item) {
+          event.preventDefault()
+          event.stopPropagation()
+          plannerStore.patchListItem(listOverlayInstance.id, item.id, { done: !item.done })
+          return
+        }
+      }
     }
 
     if (primaryModifier && event.shiftKey && key === 'p') {
@@ -3068,7 +3102,7 @@ return rows`
       />
     {/if}
 
-    {#if listOverlay && listOverlayInstance}
+    {#if listOverlayVisible && listOverlayInstance}
       {@const instance = listOverlayInstance}
       {@const template = listTemplates.find((candidate) => candidate.id === instance.listTemplateId)}
       <OverlayModal title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
