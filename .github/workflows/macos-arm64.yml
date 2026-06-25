@@ -37,6 +37,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Build cr-sqlite loadable extension (macOS crsqlite.dylib)
+        # Produces src-tauri/resources/crsqlite.dylib, which is gitignored and
+        # bundled as a Tauri resource (see tauri.macos.conf.json). Without it the
+        # Tauri build script fails: "resource path `resources/crsqlite.dylib`
+        # doesn't exist". Loaded at runtime via load_extension.
+        run: bash scripts/build-crsqlite.sh desktop
+
       - name: Build macOS arm64 app
         run: pnpm tauri build --target aarch64-apple-darwin --bundles app
 
