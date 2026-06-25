@@ -3196,9 +3196,13 @@ return rows`
                 {:else}
                   <span class="paste-review-status" aria-hidden="true">{wasKept ? '✓' : nodeIndex + 1}</span>
                 {/if}
-                <p class="paste-review-text item-text" class:done={node.item.done} class:empty={!node.item.text?.trim()}>
-                  {node.item.text?.trim() || '(empty item)'}
-                </p>
+                <!-- Same read-only text treatment as a real (locked) list item:
+                     .item-text + .item-text-display wraps and grows with content. -->
+                <div
+                  class="paste-review-text item-text item-text-display"
+                  class:done={node.item.done}
+                  class:empty={!node.item.text?.trim()}
+                >{node.item.text?.trim() || '(empty item)'}</div>
               </div>
             {/if}
             {#if node.depth}

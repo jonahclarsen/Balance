@@ -911,10 +911,14 @@ nav button.active {
 }
 
 .paste-review-card {
-  display: grid;
+  /* Flex column (like the real .plan-row) so the card grows with wrapped text.
+     A grid with align-content: center sized the row shorter than its content and
+     centred it, letting long items bleed past the card border. */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   gap: 8px;
   min-height: 64px;
-  align-content: center;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--paper-strong);
@@ -923,6 +927,12 @@ nav button.active {
 
 .paste-review-list {
   display: grid;
+  /* Pack rows to their own content height. The list has a definite height (the
+     dialog's 1fr row), and the default align-content: stretch would divide that
+     height equally across the cards — capping tall items so their text spills
+     out. Starting the rows lets each card grow to fit and the list scroll. */
+  align-content: start;
+  grid-auto-rows: min-content;
   min-height: 0;
   gap: 8px;
   overflow-y: auto;
@@ -997,7 +1007,6 @@ nav button.active {
 
 .paste-review-text {
   min-width: 0;
-  height: auto;
   margin: 0;
   font-size: 17px;
   line-height: 1.4;
