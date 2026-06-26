@@ -1510,3 +1510,43 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
   if (cursor < text.length) segments.push({ text: text.slice(cursor), link: null })
   return segments
 }
+
+export function internalLinkId(link: ItemLink): string {
+  return link.kind === 'list' ? link.listTemplateId : link.metricId
+}
+
+// Renders an item's saved HTML for read-only display, re-inserting clickable
+// internal-link anchors when the text carries no inline formatting. When the
+// item has real formatting (bold/italic/underline) we keep that HTML as-is,
+// matching what the editable RichTextEditor shows. Both the editor and the
+// locked list rows go through this so their rendering stays identical.
+export function renderItemDisplayHTML(sourceHTML: string, sourceText: string, segments: ItemTextSegment[]): string {
+  const fallbackHTML = sourceHTML || escapeHTML(sourceText)
+  if (!canRenderInternalLinks(fallbackHTML, sourceText, segments)) return fallbackHTML
+
+  return segments
+    .map((segment) => {
+      if (!segment.link) return escapeHTML(segment.text)
+      return `<a href="#" data-internal-link-kind="${segment.link.kind}" data-internal-link-id="${escapeHTML(
+        internalLinkId(segment.link),
+      )}" data-internal-link-label="${escapeHTML(segment.link.label)}" title="Open ${escapeHTML(segment.link.label)}">${escapeHTML(
+        segment.text,
+      )}</a>`
+    })
+    .join('')
+}
+
+function canRenderInternalLinks(fallbackHTML: string, sourceText: string, segments: ItemTextSegment[]): boolean {
+  if (!segments.some((segment) => segment.link)) return false
+  return sanitizeInlineHTML(fallbackHTML) === escapeHTML(sourceText)
+}
+
+export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
+  const kind = anchor.dataset.internalLinkKind
+  const id = anchor.dataset.internalLinkId
+  const label = anchor.dataset.internalLinkLabel ?? anchor.textContent ?? ''
+
+  if (kind === 'list' && id) return { kind, listTemplateId: id, label }
+  if (kind === 'metric' && id) return { kind, metricId: id, label }
+  return null
+}

@@ -532,8 +532,8 @@ nav button.active {
   gap: 4px;
 }
 
-/* Nudge the overlay-toast edit pencil away from the panel's right edge. */
-.list-overlay-panel .row-actions {
+/* Nudge the checklist edit pencil away from the panel's right edge. */
+.checklist-panel .row-actions {
   margin-right: 6px;
 }
 
@@ -2162,14 +2162,14 @@ nav button.active {
   cursor: pointer;
 }
 
-.item-text-display .inline-link {
+.item-text-display a[data-internal-link-kind] {
   color: var(--accent-strong);
   text-decoration: underline;
   text-underline-offset: 2px;
   cursor: pointer;
 }
 
-.item-text-display .inline-link:hover {
+.item-text-display a[data-internal-link-kind]:hover {
   color: var(--accent);
 }
 

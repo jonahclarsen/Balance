@@ -1,7 +1,17 @@
 <script lang="ts">
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { onMount } from 'svelte'
-  import { escapeHTML, htmlToPlainText, isURL, sanitizeInlineHTML, type ItemLink, type ItemTextSegment } from './planner'
+  import {
+    escapeHTML,
+    htmlToPlainText,
+    internalLinkId,
+    isURL,
+    itemLinkFromAnchor,
+    renderItemDisplayHTML,
+    sanitizeInlineHTML,
+    type ItemLink,
+    type ItemTextSegment,
+  } from './planner'
   import type { Id, MoveDirection } from './types'
 
   type HorizontalBoundaryDirection = 'left' | 'right'
@@ -43,7 +53,7 @@
   export let onInternalLinkClick: ((link: ItemLink, event: MouseEvent) => void | Promise<void>) | null = null
 
   let editor: HTMLDivElement
-  let renderedHTML = renderEditorHTML(html, text, internalLinkSegments)
+  let renderedHTML = renderItemDisplayHTML(html, text, internalLinkSegments)
   let lastRevision = revision
   let lastInternalLinkKey = internalLinkKey(internalLinkSegments)
   let savedSelection: SavedSelection | null = null
@@ -59,7 +69,7 @@
 
   $: {
     const nextInternalLinkKey = internalLinkKey(internalLinkSegments)
-    const nextHTML = renderEditorHTML(html, text, internalLinkSegments)
+    const nextHTML = renderItemDisplayHTML(html, text, internalLinkSegments)
     const revisionWasApplied = revision !== lastRevision
 
     if (revisionWasApplied) {
@@ -447,32 +457,10 @@
     if (syncRenderedHTML && activeEditor.innerHTML !== nextHTML) activeEditor.innerHTML = nextHTML
     const nextText = htmlToPlainText(nextHTML)
     if (syncRenderedHTML) {
-      renderedHTML = renderEditorHTML(nextHTML, nextText, internalLinkSegments)
+      renderedHTML = renderItemDisplayHTML(nextHTML, nextText, internalLinkSegments)
       if (activeEditor.innerHTML !== renderedHTML) activeEditor.innerHTML = renderedHTML
     }
     onChange(nextHTML, nextText, options)
-  }
-
-  function renderEditorHTML(sourceHTML: string, sourceText: string, segments: ItemTextSegment[]) {
-    const fallbackHTML = sourceHTML || escapeHTML(sourceText)
-    if (!canRenderInternalLinks(sourceHTML, sourceText, segments)) return fallbackHTML
-
-    return segments
-      .map((segment) => {
-        if (!segment.link) return escapeHTML(segment.text)
-        return `<a href="#" data-internal-link-kind="${segment.link.kind}" data-internal-link-id="${escapeHTML(
-          internalLinkId(segment.link),
-        )}" data-internal-link-label="${escapeHTML(segment.link.label)}" title="Open ${escapeHTML(segment.link.label)}">${escapeHTML(
-          segment.text,
-        )}</a>`
-      })
-      .join('')
-  }
-
-  function canRenderInternalLinks(sourceHTML: string, sourceText: string, segments: ItemTextSegment[]) {
-    if (!segments.some((segment) => segment.link)) return false
-    const fallbackHTML = sourceHTML || escapeHTML(sourceText)
-    return sanitizeInlineHTML(fallbackHTML) === escapeHTML(sourceText)
   }
 
   function internalLinkKey(segments: ItemTextSegment[]) {
@@ -481,19 +469,6 @@
       .join('|')
   }
 
-  function internalLinkId(link: ItemLink) {
-    return link.kind === 'list' ? link.listTemplateId : link.metricId
-  }
-
-  function itemLinkFromAnchor(anchor: HTMLAnchorElement): ItemLink | null {
-    const kind = anchor.dataset.internalLinkKind
-    const id = anchor.dataset.internalLinkId
-    const label = anchor.dataset.internalLinkLabel ?? anchor.textContent ?? ''
-
-    if (kind === 'list' && id) return { kind, listTemplateId: id, label }
-    if (kind === 'metric' && id) return { kind, metricId: id, label }
-    return null
-  }
 
   function hasNonCollapsedSelectionInside(activeEditor: HTMLDivElement) {
     const selection = document.getSelection()

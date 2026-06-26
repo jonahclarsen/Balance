@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { dueTodayGoalsForItem, goalLightnessShift, goalMatchesForItem } from './goals'
-  import { defaultPlanItemTimeRange, htmlToPlainTextWithBreaks, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeOverlapsPrevious, type ItemLink, type ItemTextSegment } from './planner'
+  import { defaultPlanItemTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeOverlapsPrevious, renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import type { Goal, GoalCompletion, Id, ListTemplate, Metric, MoveDirection, MovePlacement, PlanItem } from './types'
@@ -107,22 +107,12 @@
     }
   }
 
-  // Locked (generated) list items render static text via these segments. Their
-  // plain `item.text` has lost the line breaks that htmlToPlainText drops, so for
-  // display we re-derive text from the HTML with <br> kept as newlines, then let
-  // white-space: pre-wrap show them. (The editable path keeps editing item.html.)
-  let displaySegments: ItemTextSegment[] = linkSegments
-  let displayScanKey: string | null = null
-  $: if (locked) {
-    const displayText = htmlToPlainTextWithBreaks(item.html) || item.text
-    const scanKey = `${displayText}|${listTemplates.map((template) => `${template.id}:${template.name}`).join(',')}|${metrics
-      .map((metric) => `${metric.id}:${metric.name}`)
-      .join(',')}`
-    if (scanKey !== displayScanKey) {
-      displayScanKey = scanKey
-      displaySegments = linkifyItemText(displayText, listTemplates, metrics)
-    }
-  }
+  // Locked (generated) list items render the item's saved HTML read-only, so
+  // their formatting (bold/italic/underline) shows exactly as in the editor.
+  // The same renderer re-inserts clickable internal-link anchors when the text
+  // carries no inline formatting; handleDisplayLinkClick below delegates anchor
+  // clicks back to onOpenLink.
+  $: displayHTML = locked ? renderItemDisplayHTML(item.html, item.text, linkSegments) : ''
 
   function addTime() {
     patchItem(planId, item.id, defaultPlanItemTimeRange(allItems, item.id))
@@ -374,6 +364,22 @@
     }
   }
 
+  // The locked display renders via {@html}, so internal-link anchors have no
+  // Svelte handlers. Catch clicks on them here and route to onOpenLink, stopping
+  // the event before handleLockedRowClick toggles the row done.
+  function handleDisplayLinkClick(event: MouseEvent) {
+    const target = event.target instanceof Element ? event.target : null
+    const anchor = target?.closest<HTMLAnchorElement>('a[data-internal-link-kind]')
+    if (!anchor) return
+
+    const link = itemLinkFromAnchor(anchor)
+    if (!link) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    onOpenLink(link, item.id)
+  }
+
   function handleLockedRowClick(event: MouseEvent) {
     if (!locked) return
 
@@ -500,6 +506,7 @@
     {#if locked}
       <!-- Generated list items are fixed: text is static, but inline links stay
            clickable and row clicks toggle completion. -->
+      <!-- svelte-ignore a11y_click_events_have_key_events -->
       <div
         class="item-text item-text-display"
         class:done={item.done}
@@ -507,13 +514,8 @@
         tabindex="0"
         aria-label="Toggle item"
         on:keydown={handleDisplayKeydown}
-      >{#each displaySegments as segment, index (index)}{#if segment.link}{@const link = segment.link}<a
-            href={'#'}
-            class="inline-link"
-            title={`Open ${link.label}`}
-            aria-label={`Open ${link.label}`}
-            on:click|preventDefault|stopPropagation={() => onOpenLink(link, item.id)}
-          >{segment.text}</a>{:else}{segment.text}{/if}{/each}</div>
+        on:click={handleDisplayLinkClick}
+      >{@html displayHTML}</div>
     {:else}
       <RichTextEditor
         className="item-text"
