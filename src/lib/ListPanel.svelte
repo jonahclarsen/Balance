@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
-  import { findPlanItem, type ItemLink } from './planner'
+  import { findPlanItem, itemMetricLink, type ItemLink } from './planner'
   import { plannerStore } from './store'
   import type { Id, ListTemplate, Metric, PlanItem } from './types'
 
@@ -42,6 +42,9 @@
     if (!previousItemId || previousItemId === nextItemId) return
     const previousItem = findPlanItem(instance.items, previousItemId)
     if (!previousItem || previousItem.done) return
+    // Items that reference a metric can only be completed via their survey, so
+    // advancing past one must not silently check it off.
+    if (itemMetricLink(previousItem.text, listTemplates, metrics)) return
     plannerStore.patchListItem(instance.id, previousItem.id, { done: true })
   }
 
@@ -104,6 +107,13 @@
     if (!selectedItemId) return
     const item = findPlanItem(instance.items, selectedItemId)
     if (!item) return
+    // A metric-linked item can only be checked off through its survey; route the
+    // keyboard shortcut there instead. Unchecking a done item stays direct.
+    const metricLink = itemMetricLink(item.text, listTemplates, metrics)
+    if (metricLink && !item.done) {
+      onOpenLink(metricLink, item.id)
+      return
+    }
     plannerStore.patchListItem(instance.id, item.id, { done: !item.done })
   }
 

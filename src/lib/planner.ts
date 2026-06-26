@@ -1464,6 +1464,20 @@ export function resolveItemLinks(text: string, listTemplates: ListTemplate[], me
   return links
 }
 
+// The metric an item links to, if any. List/plan items that reference a metric
+// can only be completed by finishing that metric's survey, so callers use this
+// to gate direct done-toggles and route clicks to the survey instead.
+export function itemMetricLink(
+  text: string,
+  listTemplates: ListTemplate[],
+  metrics: Metric[],
+): Extract<ItemLink, { kind: 'metric' }> | null {
+  for (const link of resolveItemLinks(text, listTemplates, metrics)) {
+    if (link.kind === 'metric') return link
+  }
+  return null
+}
+
 export type ItemTextSegment = { text: string; link: ItemLink | null }
 
 // Splits an item's text into segments, marking each list-name or metric-name

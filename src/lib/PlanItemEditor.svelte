@@ -107,6 +107,14 @@
     }
   }
 
+  // An item whose text references a metric can only be checked off by finishing
+  // that metric's survey, so row clicks / Enter open the survey instead of
+  // toggling done. (Unchecking an already-done item is still allowed directly.)
+  $: metricLink =
+    (linkSegments.find((segment) => segment.link?.kind === 'metric')?.link as
+      | Extract<ItemLink, { kind: 'metric' }>
+      | undefined) ?? null
+
   // Locked (generated) list items render the item's saved HTML read-only, so
   // their formatting (bold/italic/underline) shows exactly as in the editor.
   // The same renderer re-inserts clickable internal-link anchors when the text
@@ -360,6 +368,10 @@
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault()
       onLockedSelect(item.id)
+      if (metricLink && !item.done) {
+        onOpenLink(metricLink, item.id)
+        return
+      }
       patchItem(planId, item.id, { done: !item.done })
     }
   }
@@ -387,6 +399,10 @@
     if (target?.closest('a, button, input, textarea, select, [contenteditable="true"], .time-range, .check-target')) return
 
     onLockedSelect(item.id)
+    if (metricLink && !item.done) {
+      onOpenLink(metricLink, item.id)
+      return
+    }
     patchItem(planId, item.id, { done: !item.done })
   }
 
