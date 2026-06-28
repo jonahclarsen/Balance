@@ -51,3 +51,50 @@ test('navigating to another page closes the list overlay', async ({ page }) => {
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
   await expect(dialog).toBeHidden()
 })
+
+test('reopening a list overlay restores the selected item near the one-third scroll line', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+
+  const listItems = page.locator('[data-list-template-text-input]')
+  await listItems.first().fill('Item 01')
+  for (let index = 2; index <= 52; index += 1) {
+    await page.getByRole('button', { name: '+ Add list item' }).click()
+    await listItems.nth(index - 1).fill(`Item ${String(index).padStart(2, '0')}`)
+  }
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const firstItem = page.locator('[data-plan-text-input]').first()
+  await firstItem.fill('Groceries')
+  await firstItem.blur()
+
+  await page.getByTitle('Open Groceries').first().click()
+  let dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog).toBeVisible()
+
+  const targetText = 'Item 24'
+  await dialog.locator('.plan-row', { hasText: targetText }).click()
+  await expect(dialog.locator('.plan-row.selected')).toContainText(targetText)
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await expect(dialog).toBeHidden()
+
+  await page.getByTitle('Open Groceries').first().click()
+  dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('.plan-row.selected')).toContainText(targetText)
+
+  await expect
+    .poll(async () => {
+      return dialog.locator('.plan-row.selected').evaluate((row) => {
+        const top = row.getBoundingClientRect().top
+        return Math.abs(top - window.innerHeight / 3)
+      })
+    })
+    .toBeLessThan(72)
+})

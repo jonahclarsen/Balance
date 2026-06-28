@@ -89,4 +89,31 @@ test('long pasted items stay inside their review cards', async ({ page }, testIn
     expect(card.textOverflowsBottom).toBe(false)
     expect(card.textOverflowsRight).toBe(false)
   }
+
+  const selectedAlignment = await page.locator('.paste-review-list').evaluate((list) => {
+    const cards = Array.from(list.querySelectorAll<HTMLElement>('.paste-review-card'))
+    const current = cards.find((card) => card.getAttribute('aria-current') === 'true')
+    const comparison = cards.find((card) => card !== current)
+    if (!current || !comparison) return null
+
+    const listRect = list.getBoundingClientRect()
+    const currentRect = current.getBoundingClientRect()
+    const comparisonRect = comparison.getBoundingClientRect()
+    const leftGrowth = comparisonRect.left - currentRect.left
+    const rightGrowth = currentRect.right - comparisonRect.right
+    const glowSpread = 3
+
+    return {
+      centeredGrowthDelta: Math.abs(leftGrowth - rightGrowth),
+      growsRight: rightGrowth > 1,
+      glowFitsLeft: currentRect.left - glowSpread >= listRect.left,
+      glowFitsRight: currentRect.right + glowSpread <= listRect.right,
+    }
+  })
+
+  expect(selectedAlignment).not.toBeNull()
+  expect(selectedAlignment?.centeredGrowthDelta).toBeLessThan(1.5)
+  expect(selectedAlignment?.growsRight).toBe(true)
+  expect(selectedAlignment?.glowFitsLeft).toBe(true)
+  expect(selectedAlignment?.glowFitsRight).toBe(true)
 })

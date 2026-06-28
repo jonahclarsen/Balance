@@ -937,7 +937,7 @@ nav button.active {
   gap: 8px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 4px 10px 4px 4px;
+  padding: 8px 12px;
 }
 
 .paste-review-item {
@@ -945,7 +945,7 @@ nav button.active {
   height: auto;
   margin-left: calc(var(--paste-depth) * 18px);
   opacity: 0.62;
-  transform-origin: center right;
+  transform-origin: center;
   transition: border-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease, transform 160ms ease;
 }
 

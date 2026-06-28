@@ -78,6 +78,7 @@
   let wordCapScrolledAway = false
   let selectedMetricId = ''
   let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
+  let selectedListOverlayItemIdsByList: Record<Id, Id | null> = {}
   let listOverlayArmed = false
   // The page the list overlay was opened over. Navigating to any other page
   // closes the overlay, so it never lingers over unrelated content.
@@ -2937,6 +2938,7 @@ return rows`
           {instance}
           {listTemplates}
           {metrics}
+          bind:selectedItemId={selectedListOverlayItemIdsByList[instance.id]}
           onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
           onEditTemplate={(itemId) => editListItemInTemplate(instance, itemId)}
         />

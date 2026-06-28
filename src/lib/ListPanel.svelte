@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
   import { findPlanItem, itemMetricLink, type ItemLink } from './planner'
   import { plannerStore } from './store'
@@ -15,13 +15,17 @@
   // In a modal the panel doesn't reliably hold DOM focus, so Escape is left to
   // the dialog to close it. On a plain page Escape just drops the selection.
   export let escapeClearsSelection = false
+  export let selectedItemId: Id | null = null
 
   let panel: HTMLDivElement
-  let selectedItemId: Id | null = null
 
   // Drop a stale selection when the item it pointed at disappears.
   $: if (selectedItemId && !findPlanItem(instance.items, selectedItemId)) selectedItemId = null
   $: selectedItemIdSet = new Set(selectedItemId ? [selectedItemId] : [])
+
+  onMount(() => {
+    if (selectedItemId) void focusSelectedRow()
+  })
 
   function flattenIds(items: PlanItem[]): Id[] {
     return items.flatMap((item) => [item.id, ...flattenIds(item.children)])
