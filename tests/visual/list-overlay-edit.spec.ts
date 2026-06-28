@@ -84,10 +84,37 @@ test('reopening a list overlay restores the selected item near the one-third scr
   await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(dialog).toBeHidden()
 
+  await page.evaluate(() => {
+    const win = window as Window & {
+      __listOverlayScrollBehaviors?: string[]
+      __originalElementScrollTo?: typeof Element.prototype.scrollTo
+    }
+    win.__listOverlayScrollBehaviors = []
+    if (win.__originalElementScrollTo) return
+
+    win.__originalElementScrollTo = Element.prototype.scrollTo
+    const originalScrollTo = win.__originalElementScrollTo
+    Element.prototype.scrollTo = function (arg0?: ScrollToOptions | number, arg1?: number) {
+      if (arg0 && typeof arg0 === 'object' && 'behavior' in arg0) {
+        win.__listOverlayScrollBehaviors?.push(String(arg0.behavior))
+        return originalScrollTo.call(this, arg0)
+      }
+      return originalScrollTo.call(this, arg0 ?? 0, arg1 ?? 0)
+    }
+  })
+
   await page.getByTitle('Open Groceries').first().click()
   dialog = page.getByRole('dialog', { name: 'Groceries' })
   await expect(dialog).toBeVisible()
   await expect(dialog.locator('.plan-row.selected')).toContainText(targetText)
+  await expect
+    .poll(async () =>
+      page.evaluate(() => (window as Window & { __listOverlayScrollBehaviors?: string[] }).__listOverlayScrollBehaviors ?? []),
+    )
+    .toContain('auto')
+  expect(await page.evaluate(() => (window as Window & { __listOverlayScrollBehaviors?: string[] }).__listOverlayScrollBehaviors ?? [])).not.toContain(
+    'smooth',
+  )
 
   await expect
     .poll(async () => {

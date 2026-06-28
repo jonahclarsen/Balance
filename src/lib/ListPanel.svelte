@@ -24,7 +24,7 @@
   $: selectedItemIdSet = new Set(selectedItemId ? [selectedItemId] : [])
 
   onMount(() => {
-    if (selectedItemId) void focusSelectedRow()
+    if (selectedItemId) void focusSelectedRow('auto')
   })
 
   function flattenIds(items: PlanItem[]): Id[] {
@@ -39,7 +39,7 @@
     const previousItemId = selectedItemId
     selectedItemId = itemId
     if (completePrevious) completeItem(previousItemId, itemId)
-    void focusSelectedRow()
+    void focusSelectedRow('smooth')
   }
 
   function completeItem(previousItemId: Id | null, nextItemId: Id) {
@@ -52,7 +52,7 @@
     plannerStore.patchListItem(instance.id, previousItem.id, { done: true })
   }
 
-  async function focusSelectedRow() {
+  async function focusSelectedRow(behavior: ScrollBehavior) {
     await tick()
     if (!selectedItemId || !panel) return
 
@@ -61,22 +61,22 @@
     )
     const focusTarget = row?.querySelector<HTMLElement>('.item-text-display')
     if (focusTarget && row) {
-      focusTarget.focus()
-      scrollRowTopToOneThird(row)
+      focusTarget.focus({ preventScroll: true })
+      scrollRowTopToOneThird(row, behavior)
     }
   }
 
-  function scrollRowTopToOneThird(row: HTMLElement) {
+  function scrollRowTopToOneThird(row: HTMLElement, behavior: ScrollBehavior) {
     const scrollContainer = findScrollContainer(row)
     const rowRect = row.getBoundingClientRect()
     if (scrollContainer) {
       scrollContainer.scrollTo({
         top: scrollContainer.scrollTop + rowRect.top - window.innerHeight / 3,
-        behavior: 'smooth',
+        behavior,
       })
       return
     }
-    window.scrollBy({ top: rowRect.top - window.innerHeight / 3, behavior: 'smooth' })
+    window.scrollBy({ top: rowRect.top - window.innerHeight / 3, behavior })
   }
 
   function findScrollContainer(element: HTMLElement): HTMLElement | null {
