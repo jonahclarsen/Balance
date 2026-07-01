@@ -79,6 +79,7 @@
   let selectedMetricId = ''
   let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
   let selectedListOverlayItemIdsByList: Record<Id, Id | null> = {}
+  let listOverlayScrollTopsByList: Record<Id, number> = {}
   let listOverlayArmed = false
   // The page the list overlay was opened over. Navigating to any other page
   // hides the overlay, then returning shows it again with its state intact.
@@ -268,6 +269,7 @@ return rows`
       if (listId) {
         listOverlayArmed = false
         listOverlayView = view
+        delete listOverlayScrollTopsByList[listId]
         listOverlay = { listId, date, opener }
       }
     } else {
@@ -2939,6 +2941,8 @@ return rows`
           {listTemplates}
           {metrics}
           bind:selectedItemId={selectedListOverlayItemIdsByList[instance.id]}
+          initialScrollTop={listOverlayScrollTopsByList[instance.id] ?? null}
+          onScrollTopChange={(scrollTop) => (listOverlayScrollTopsByList[instance.id] = scrollTop)}
           onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
           onEditTemplate={(itemId) => editListItemInTemplate(instance, itemId)}
         />

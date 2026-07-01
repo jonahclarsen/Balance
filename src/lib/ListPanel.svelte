@@ -16,15 +16,39 @@
   // the dialog to close it. On a plain page Escape just drops the selection.
   export let escapeClearsSelection = false
   export let selectedItemId: Id | null = null
+  export let initialScrollTop: number | null = null
+  export let onScrollTopChange: ((scrollTop: number) => void) | null = null
 
   let panel: HTMLDivElement
+  let scrollContainer: HTMLElement | null = null
 
   // Drop a stale selection when the item it pointed at disappears.
   $: if (selectedItemId && !findPlanItem(instance.items, selectedItemId)) selectedItemId = null
   $: selectedItemIdSet = new Set(selectedItemId ? [selectedItemId] : [])
 
   onMount(() => {
-    if (selectedItemId) void focusSelectedRow('auto')
+    const setup = async () => {
+      await tick()
+      if (!panel) return
+
+      scrollContainer = findScrollContainer(panel)
+      if (scrollContainer && onScrollTopChange) {
+        scrollContainer.addEventListener('scroll', handleScrollContainerScroll)
+      }
+
+      if (initialScrollTop != null && scrollContainer) {
+        scrollContainer.scrollTop = initialScrollTop
+        focusSelectedRowWithoutScroll()
+      } else if (selectedItemId) {
+        await focusSelectedRow('auto')
+      }
+    }
+
+    void setup()
+
+    return () => {
+      scrollContainer?.removeEventListener('scroll', handleScrollContainerScroll)
+    }
   })
 
   function flattenIds(items: PlanItem[]): Id[] {
@@ -64,6 +88,19 @@
       focusTarget.focus({ preventScroll: true })
       scrollRowTopToOneThird(row, behavior)
     }
+  }
+
+  function focusSelectedRowWithoutScroll() {
+    if (!selectedItemId || !panel) return
+
+    const row = Array.from(panel.querySelectorAll<HTMLElement>('[data-plan-item-id]')).find(
+      (candidate) => candidate.dataset.planItemId === selectedItemId,
+    )
+    row?.querySelector<HTMLElement>('.item-text-display')?.focus({ preventScroll: true })
+  }
+
+  function handleScrollContainerScroll() {
+    if (scrollContainer) onScrollTopChange?.(scrollContainer.scrollTop)
   }
 
   function scrollRowTopToOneThird(row: HTMLElement, behavior: ScrollBehavior) {

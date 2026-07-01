@@ -29,6 +29,34 @@ async function openGroceriesOverlay(page: import('@playwright/test').Page) {
   return dialog
 }
 
+async function openLongGroceriesOverlay(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+
+  const listItems = page.locator('[data-list-template-text-input]')
+  await listItems.first().fill('Item 01')
+  for (let index = 2; index <= 52; index += 1) {
+    await page.getByRole('button', { name: '+ Add list item' }).click()
+    await listItems.nth(index - 1).fill(`Item ${String(index).padStart(2, '0')}`)
+  }
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const firstItem = page.locator('[data-plan-text-input]').first()
+  await firstItem.fill('Groceries')
+  await firstItem.blur()
+
+  await page.getByTitle('Open Groceries').first().click()
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
 test('list overlay item shows an edit pencil that jumps to the template and reopens on return', async ({ page }) => {
   const dialog = await openGroceriesOverlay(page)
 
@@ -58,31 +86,32 @@ test('navigating to another page hides the list overlay until returning', async 
   await expect(page.getByRole('dialog', { name: 'Groceries' })).toBeVisible()
 })
 
-test('reopening a list overlay restores the selected item near the one-third scroll line', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
+test('returning to Today restores the list overlay scroll position', async ({ page }) => {
+  const dialog = await openLongGroceriesOverlay(page)
+  const targetText = 'Item 24'
+  await dialog.locator('.plan-row', { hasText: targetText }).click()
+  await expect(dialog.locator('.plan-row.selected')).toContainText(targetText)
+  await page.waitForTimeout(350)
+  await dialog.locator('.overlay-body').evaluate((element) => {
+    element.scrollTop = Math.min(element.scrollHeight - element.clientHeight, element.scrollTop + 180)
+  })
+  await page.waitForTimeout(50)
+  const scrollTopBefore = await dialog.locator('.overlay-body').evaluate((element) => element.scrollTop)
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  await page.getByRole('button', { name: '+ New list template' }).click()
-  await page.getByLabel('List name').fill('Groceries')
-
-  const listItems = page.locator('[data-list-template-text-input]')
-  await listItems.first().fill('Item 01')
-  for (let index = 2; index <= 52; index += 1) {
-    await page.getByRole('button', { name: '+ Add list item' }).click()
-    await listItems.nth(index - 1).fill(`Item ${String(index).padStart(2, '0')}`)
-  }
+  await expect(dialog).toBeHidden()
 
   await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
-  const firstItem = page.locator('[data-plan-text-input]').first()
-  await firstItem.fill('Groceries')
-  await firstItem.blur()
+  const reopenedDialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(reopenedDialog).toBeVisible()
+  await expect
+    .poll(() => reopenedDialog.locator('.overlay-body').evaluate((element) => element.scrollTop))
+    .toBeGreaterThanOrEqual(scrollTopBefore - 2)
+  expect(await reopenedDialog.locator('.overlay-body').evaluate((element) => element.scrollTop)).toBeLessThanOrEqual(scrollTopBefore + 2)
+})
 
-  await page.getByTitle('Open Groceries').first().click()
-  let dialog = page.getByRole('dialog', { name: 'Groceries' })
-  await expect(dialog).toBeVisible()
+test('reopening a list overlay restores the selected item near the one-third scroll line', async ({ page }) => {
+  let dialog = await openLongGroceriesOverlay(page)
 
   const targetText = 'Item 24'
   await dialog.locator('.plan-row', { hasText: targetText }).click()
