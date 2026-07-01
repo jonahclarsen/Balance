@@ -29,7 +29,7 @@ async function openGroceriesOverlay(page: import('@playwright/test').Page) {
   return dialog
 }
 
-test('list overlay item shows an edit pencil that jumps to the template and closes the toast', async ({ page }) => {
+test('list overlay item shows an edit pencil that jumps to the template and reopens on return', async ({ page }) => {
   const dialog = await openGroceriesOverlay(page)
 
   // Each generated item exposes an edit-in-template button.
@@ -37,19 +37,25 @@ test('list overlay item shows an edit pencil that jumps to the template and clos
   await expect(editButton).toBeVisible()
   await editButton.click()
 
-  // The toast closes and we land on the list-templates editor with the source item focused.
+  // The toast hides while we land on the list-templates editor with the source item focused.
   await expect(dialog).toBeHidden()
   await expect(page.getByRole('heading', { name: 'List template' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-list-template-text-input-id') ?? null)).not.toBeNull()
   await expect(page.locator('[data-list-template-text-input]').first()).toContainText('Milk')
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Groceries' })).toBeVisible()
 })
 
-test('navigating to another page closes the list overlay', async ({ page }) => {
+test('navigating to another page hides the list overlay until returning', async ({ page }) => {
   const dialog = await openGroceriesOverlay(page)
 
-  // Clicking any other page (Lists) dismisses the toast so it never floats over unrelated content.
+  // Clicking any other page (Lists) hides the toast so it never floats over unrelated content.
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
   await expect(dialog).toBeHidden()
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await expect(page.getByRole('dialog', { name: 'Groceries' })).toBeVisible()
 })
 
 test('reopening a list overlay restores the selected item near the one-third scroll line', async ({ page }) => {

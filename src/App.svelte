@@ -81,7 +81,7 @@
   let selectedListOverlayItemIdsByList: Record<Id, Id | null> = {}
   let listOverlayArmed = false
   // The page the list overlay was opened over. Navigating to any other page
-  // closes the overlay, so it never lingers over unrelated content.
+  // hides the overlay, then returning shows it again with its state intact.
   let listOverlayView: View | null = null
   let metricOverlay: { metricId: Id; date: string; opener: Opener | null } | null = null
   let importMetricId = ''
@@ -276,7 +276,8 @@ return rows`
   }
 
   // Jump from a generated list item to the source item on the list-templates
-  // page (so it can actually be edited), then close the overlay if one is open.
+  // page (so it can actually be edited). The overlay stays armed over the page
+  // it opened from, so returning there brings it back.
   // Generated items carry fresh ids, so the template item is matched by content.
   function editListItemInTemplate(instance: { id: Id; listTemplateId: Id; items: PlanItem[] }, itemId: Id) {
     const listItem = findPlanItem(instance.items, itemId)
@@ -287,7 +288,6 @@ return rows`
 
     view = 'listTemplates'
     selectedListTemplateId = instance.listTemplateId
-    listOverlay = null
 
     if (templateItem) void focusListTemplateItem(templateItem.id)
   }
