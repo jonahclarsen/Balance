@@ -755,6 +755,32 @@ test('clicking a goal rhythm row scrolls to that goal on the goals page', async 
   await expect.poll(() => goalCardCenterOffset(page, targetGoal)).toBeLessThanOrEqual(1)
 })
 
+test('goal rhythm copy button copies the goal name without opening the row', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  const row = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
+  const copyButton = row.getByRole('button', { name: 'Copy Exercise' })
+  await expect(copyButton.locator('svg')).toBeVisible()
+
+  const buttonIsLeftOfCadence = await row.evaluate((element) => {
+    const button = element.querySelector<HTMLElement>('.goal-copy-button')
+    const cadence = Array.from(element.querySelectorAll('small')).find((small) => small.textContent === '3d')
+    if (!button || !cadence) return false
+    return button.getBoundingClientRect().right <= cadence.getBoundingClientRect().left
+  })
+  expect(buttonIsLeftOfCadence).toBe(true)
+
+  await copyButton.click()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('Exercise')
+  await expect(copyButton).toHaveAttribute('title', 'Copied goal name')
+  await expect(page.getByRole('button', { name: 'Today', exact: true })).toHaveClass(/active/)
+
+  await row.click()
+  await expect(page.getByRole('button', { name: 'Goals', exact: true })).toHaveClass(/active/)
+})
+
 test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' })
   await createGoal(page, 'Exercise', 3, 'lift, swim')

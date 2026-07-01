@@ -31,6 +31,8 @@
   let search = ''
   let scrollEl: HTMLDivElement | undefined
   let highlightedGoalId: string | null = null
+  let copiedGoalId: string | null = null
+  let copyResetTimer: ReturnType<typeof setTimeout> | undefined
   let lastHandledScrollNonce = -1
 
   $: if (scrollRequest && scrollRequest.nonce !== lastHandledScrollNonce) {
@@ -92,10 +94,27 @@
     document.addEventListener('visibilitychange', refreshDay)
     return () => {
       clearInterval(dayTimer)
+      if (copyResetTimer) clearTimeout(copyResetTimer)
       window.removeEventListener('focus', refreshDay)
       document.removeEventListener('visibilitychange', refreshDay)
     }
   })
+
+  async function copyGoalName(event: MouseEvent, goal: Goal) {
+    event.stopPropagation()
+    await navigator.clipboard?.writeText(goal.name)
+    copiedGoalId = goal.id
+    if (copyResetTimer) clearTimeout(copyResetTimer)
+    copyResetTimer = setTimeout(() => {
+      if (copiedGoalId === goal.id) copiedGoalId = null
+    }, 1200)
+  }
+
+  function handleGoalNameKeydown(event: KeyboardEvent, goalId: string) {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    onOpenGoals(goalId)
+  }
 
   function updateHistoryDays(value: number) {
     historyDays = Math.max(1, Math.min(GOAL_HISTORY_MAX_DAYS, Math.round(value) || GOAL_HISTORY_DEFAULT_DAYS))
@@ -180,22 +199,42 @@
       {#each visibleGoals as goal (goal.id)}
         {@const cells = buildGoalDayCells(goal, completions, dates, today)}
         {@const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)}
-        <button
+        <div
           class="goal-history-name"
           class:goal-row-focus={highlightedGoalId === goal.id}
           data-goal-id={goal.id}
-          type="button"
+          role="button"
+          tabindex="0"
           style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
           title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}${lapseTooltip(daysUntilLapse)}\nMatch keywords: ${goal.matchTerms.join(', ')}`}
           on:click={() => onOpenGoals(goal.id)}
+          on:keydown={(event) => handleGoalNameKeydown(event, goal.id)}
         >
           <span class="goal-color-dot"></span>
           <span>{goal.name}</span>
+          <button
+            class="goal-copy-button"
+            type="button"
+            aria-label={`Copy ${goal.name}`}
+            title={copiedGoalId === goal.id ? 'Copied goal name' : 'Copy goal name'}
+            on:click={(event) => copyGoalName(event, goal)}
+            on:keydown={(event) => event.stopPropagation()}
+          >
+            {#if copiedGoalId === goal.id}
+              <span aria-hidden="true">✓</span>
+            {:else}
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M9 5h6" />
+                <path d="M9 4h6a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2Z" />
+                <path d="M7 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1" />
+              </svg>
+            {/if}
+          </button>
           <small>{goal.cadenceDays}d</small>
           {#if daysUntilLapse !== null}
             <small class="goal-lapse" class:overdue={daysUntilLapse <= 0}>{lapseLabel(daysUntilLapse)}</small>
           {/if}
-        </button>
+        </div>
         {#each cells as cell (cell.date)}
           <div
             class="goal-day-cell"

@@ -1757,6 +1757,38 @@ nav button.active {
   font-size: 9px;
 }
 
+.goal-copy-button {
+  display: inline-grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-color: transparent;
+  border-radius: 4px;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.goal-copy-button:hover,
+.goal-copy-button:focus-visible {
+  border-color: var(--line-strong);
+  background: var(--sidebar);
+  color: var(--ink);
+}
+
+.goal-copy-button svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
 .goal-history-name small.goal-lapse {
   flex: 0 0 auto;
   border-radius: 999px;
