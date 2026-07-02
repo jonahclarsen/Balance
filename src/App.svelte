@@ -262,6 +262,19 @@ return rows`
     return items.every((item) => item.done && (item.children.length === 0 || allPlanItemsDone(item.children)))
   }
 
+  function planItemCompletion(items: PlanItem[]): { done: number; total: number } {
+    return items.reduce(
+      (counts, item) => {
+        const childCounts = planItemCompletion(item.children)
+        return {
+          done: counts.done + (item.done ? 1 : 0) + childCounts.done,
+          total: counts.total + 1 + childCounts.total,
+        }
+      },
+      { done: 0, total: 0 },
+    )
+  }
+
   function openLink(link: ItemLink, opener: Opener) {
     const date = $plannerStore.activePlanDate
     if (link.kind === 'list') {
@@ -2934,7 +2947,21 @@ return rows`
     {#if listOverlayVisible && listOverlayInstance}
       {@const instance = listOverlayInstance}
       {@const template = listTemplates.find((candidate) => candidate.id === instance.listTemplateId)}
+      {@const completion = planItemCompletion(instance.items)}
+      {@const completionPercent = completion.total === 0 ? 0 : Math.round((completion.done / completion.total) * 100)}
       <OverlayModal title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
+        <div
+          slot="header-middle"
+          class="list-progress"
+          style={`--list-progress: ${completionPercent}%`}
+          role="progressbar"
+          aria-label="List completion"
+          aria-valuemin="0"
+          aria-valuemax={completion.total}
+          aria-valuenow={completion.done}
+        >
+          <span class="list-progress-fill"></span>
+        </div>
         <ListPanel
           bind:this={overlayListPanel}
           {instance}

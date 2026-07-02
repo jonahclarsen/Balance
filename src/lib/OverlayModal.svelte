@@ -25,7 +25,12 @@
 >
   <div class="overlay-card" role="dialog" aria-modal="true" aria-label={ariaLabel}>
     <header class="overlay-header">
-      {#if title}<h3>{title}</h3>{:else}<span></span>{/if}
+      <div class="overlay-title">
+        {#if title}<h3>{title}</h3>{:else}<span></span>{/if}
+      </div>
+      <div class="overlay-header-middle">
+        <slot name="header-middle" />
+      </div>
       <button class="icon-button quiet" type="button" title="Close (Esc)" aria-label="Close" on:click={onClose}>✕</button>
     </header>
     <div class="overlay-body">
@@ -61,14 +66,26 @@
   .overlay-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 12px;
     padding: 14px 18px;
     border-bottom: 1px solid var(--line);
   }
 
+  .overlay-title {
+    min-width: 0;
+    flex: 0 1 auto;
+  }
+
   .overlay-header h3 {
     margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .overlay-header-middle {
+    flex: 1 1 96px;
+    min-width: 64px;
   }
 
   .overlay-body {

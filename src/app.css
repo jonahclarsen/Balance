@@ -848,6 +848,64 @@ nav button.active {
   flex: 0 0 auto;
 }
 
+.list-progress {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 8px;
+  border: 1px solid color-mix(in srgb, var(--line-strong) 72%, transparent);
+  border-radius: 999px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.38), transparent),
+    color-mix(in srgb, var(--line) 54%, transparent);
+  box-shadow:
+    inset 0 1px 2px rgba(20, 24, 26, 0.12),
+    0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.list-progress-fill {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  border-radius: inherit;
+  clip-path: inset(0 calc(100% - var(--list-progress, 0%)) 0 0);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.12) 43%, rgba(255, 255, 255, 0.44)),
+    linear-gradient(120deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0) 22% 48%, rgba(255, 255, 255, 0.34) 68%, rgba(255, 255, 255, 0) 86%),
+    linear-gradient(
+      90deg,
+      #ff65b3 0%,
+      #ffd36f 4%,
+      #8dffbf 8%,
+      #78e8ff 12%,
+      #b9a0ff 16%,
+      #ff8ade 20%,
+      #fff18a 25%,
+      #7fffd4 29%,
+      #8fb8ff 33%,
+      #eaa2ff 37%,
+      #ff9d7a 42%,
+      #d9ff87 46%,
+      #69f0ff 50%,
+      #c9b3ff 54%,
+      #ff77c8 58%,
+      #ffe07f 63%,
+      #91ffc8 67%,
+      #76dfff 71%,
+      #d8a7ff 75%,
+      #ffb08f 79%,
+      #f1ff9a 83%,
+      #72ffd9 87%,
+      #9ab4ff 91%,
+      #f7a2ff 95%,
+      #ff65b3 100%
+    );
+  box-shadow:
+    0 0 12px color-mix(in srgb, #78e8ff 30%, transparent),
+    0 0 18px color-mix(in srgb, #ff8ade 18%, transparent),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;

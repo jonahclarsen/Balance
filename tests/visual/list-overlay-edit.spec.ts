@@ -57,6 +57,48 @@ async function openLongGroceriesOverlay(page: import('@playwright/test').Page) {
   return dialog
 }
 
+async function openTwoItemGroceriesOverlay(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+
+  const listItems = page.locator('[data-list-template-text-input]')
+  await listItems.first().fill('Milk')
+  await page.getByRole('button', { name: '+ Add list item' }).click()
+  await listItems.nth(1).fill('Eggs')
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const firstItem = page.locator('[data-plan-text-input]').first()
+  await firstItem.fill('Groceries')
+  await firstItem.blur()
+
+  await page.getByTitle('Open Groceries').first().click()
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('Milk')).toBeVisible()
+  await expect(dialog.getByText('Eggs')).toBeVisible()
+  return dialog
+}
+
+test('list overlay header progress fills as items are checked off', async ({ page }) => {
+  const dialog = await openTwoItemGroceriesOverlay(page)
+  const progress = dialog.getByRole('progressbar', { name: 'List completion' })
+
+  await expect(progress).toHaveAttribute('aria-valuemax', '2')
+  await expect(progress).toHaveAttribute('aria-valuenow', '0')
+  await expect(progress).toHaveCSS('--list-progress', '0%')
+
+  await dialog.locator('.plan-row', { hasText: 'Milk' }).getByRole('checkbox').check()
+
+  await expect(progress).toHaveAttribute('aria-valuenow', '1')
+  await expect(progress).toHaveCSS('--list-progress', '50%')
+})
+
 test('list overlay item shows an edit pencil that jumps to the template and reopens on return', async ({ page }) => {
   const dialog = await openGroceriesOverlay(page)
 
