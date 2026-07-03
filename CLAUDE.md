@@ -5,6 +5,10 @@
 After completing a code change, always commit it and push to the remote — don't
 leave work uncommitted. Use a clear commit message describing the change.
 
+When the change is a follow-up to the most recent commit (fixing, tweaking, or
+extending what it did), don't make a new commit — amend the most recent commit
+and force-push with lease (`git commit --amend` then `git push --force-with-lease`).
+
 ## Android: CI only — never build locally
 
 Do **not** build, link, or run anything Android locally (no `tauri android build`,
