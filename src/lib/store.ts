@@ -29,7 +29,6 @@ import {
   outdentTemplateItem as outdentTemplateItemInTree,
   clonePlanItemsForPaste,
   copyPlanItems as copyPlanItemsFromTree,
-  findPlanItem,
   pastePlanItems as pastePlanItemsIntoTree,
   sanitizeInlineHTML,
   splitPlanItem,
@@ -527,15 +526,6 @@ function createPlannerStore() {
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
       let moveChildrenToNewItem = shouldMoveChildrenToSplitItem(before, after)
-
-      const plan = get(store).plans.find((candidate) => candidate.id === planId)
-      const target = plan ? findPlanItem(plan.items, itemId) : null
-      const afterIsEmpty = (after.html ?? '') === '' && (after.text ?? '') === ''
-      const hasChildren = (target?.children.length ?? 0) > 0
-      if (placement === 'after' && afterIsEmpty && hasChildren) {
-        placement = 'firstChild'
-        moveChildrenToNewItem = false
-      }
 
       const newItem = {
         ...createPlanItem(inserted.text ?? ''),
@@ -1120,15 +1110,6 @@ function createPlannerStore() {
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
       let moveChildrenToNewItem = shouldMoveChildrenToSplitItem(before, after)
-
-      const list = get(store).lists.find((candidate) => candidate.id === listId)
-      const target = list ? findPlanItem(list.items, itemId) : null
-      const afterIsEmpty = (after.html ?? '') === '' && (after.text ?? '') === ''
-      const hasChildren = (target?.children.length ?? 0) > 0
-      if (placement === 'after' && afterIsEmpty && hasChildren) {
-        placement = 'firstChild'
-        moveChildrenToNewItem = false
-      }
 
       const newItem = { ...createPlanItem(inserted.text ?? ''), html: inserted.html ?? '' }
 

@@ -1016,6 +1016,57 @@ test('cmd backspace at the end of a plan item deletes the whole task', async ({ 
     })
 })
 
+test('option backspace clears freshly typed new plan items without leaving newline-only content', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const attempts: Array<{ source: 'add-button' | 'enter-split'; text: string; preflight?: () => Promise<void> }> = []
+  for (let index = 0; index < 30; index += 1) {
+    attempts.push({ source: 'add-button', text: `draft${index}` })
+    attempts.push({
+      source: 'enter-split',
+      text: `split${index}`,
+      preflight: async () => {
+        await focusInputByValue(page, 'Work block')
+        await setCaretOffsetInFocusedEditor(page, 'Work block'.length)
+        await page.keyboard.press('Enter')
+      },
+    })
+  }
+
+  for (const attempt of attempts) {
+    if (attempt.preflight) {
+      await attempt.preflight()
+    } else {
+      await page.getByRole('button', { name: '+ Add item' }).click()
+      await page.locator('[data-plan-text-input]').last().focus()
+    }
+
+    await expect.poll(async () => activeInputValue(page)).toBe('')
+    await page.keyboard.type(attempt.text)
+    await expect.poll(async () => activeInputValue(page)).toBe(attempt.text)
+    await page.keyboard.press('Alt+Backspace')
+
+    await expect
+      .poll(async () => activeItemRichTextState(page))
+      .toEqual({
+        domText: '',
+        innerHTML: '',
+        storedText: '',
+        storedHTML: '',
+        isNewlineOnly: false,
+      })
+
+    await page.keyboard.type(`next-${attempt.text}`)
+    await expect.poll(async () => activeInputValue(page)).toBe(`next-${attempt.text}`)
+    await page.keyboard.press('Meta+A')
+    await page.keyboard.press('Backspace')
+    await expect.poll(async () => activeInputValue(page)).toBe('')
+  }
+})
+
 test('cmd shift a selects the focused plan item instead of its text', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1763,6 +1814,36 @@ async function richHTMLForFocusedItem(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const active = document.activeElement
     return active instanceof HTMLElement && active.matches('[data-plan-text-input]') ? active.innerHTML : null
+  })
+}
+
+async function activeItemRichTextState(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-input]')) return null
+
+    const itemId = active.dataset.planTextInputId
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const findItem = (
+      items: Array<{ id: string; text: string; html: string; children?: unknown[] }>,
+    ): { text: string; html: string } | null => {
+      for (const item of items) {
+        if (item.id === itemId) return item
+        const child = findItem((item.children ?? []) as Array<{ id: string; text: string; html: string; children?: unknown[] }>)
+        if (child) return child
+      }
+      return null
+    }
+    const item = findItem(state.plans?.[0]?.items ?? [])
+    const values = [active.textContent ?? '', active.innerHTML, item?.text ?? '', item?.html ?? '']
+
+    return {
+      domText: active.textContent ?? '',
+      innerHTML: active.innerHTML,
+      storedText: item?.text ?? '',
+      storedHTML: item?.html ?? '',
+      isNewlineOnly: values.some((value) => value.length > 0 && value.trim() === ''),
+    }
   })
 }
 

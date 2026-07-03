@@ -453,8 +453,12 @@
   }
 
   function persistEditor(activeEditor: HTMLDivElement, syncRenderedHTML = true, options: TextChangeOptions = {}) {
-    const nextHTML = sanitizeInlineHTML(activeEditor.innerHTML)
-    if (syncRenderedHTML && activeEditor.innerHTML !== nextHTML) activeEditor.innerHTML = nextHTML
+    const sanitizedHTML = sanitizeInlineHTML(activeEditor.innerHTML)
+    const nextHTML = sanitizedHTML.trim() === '' ? '' : sanitizedHTML
+    if (activeEditor.innerHTML !== nextHTML && (syncRenderedHTML || nextHTML === '')) {
+      activeEditor.innerHTML = nextHTML
+      if (activeEditor === document.activeElement) focusTextInput(activeEditor)
+    }
     const nextText = htmlToPlainText(nextHTML)
     if (syncRenderedHTML) {
       renderedHTML = renderItemDisplayHTML(nextHTML, nextText, internalLinkSegments)
