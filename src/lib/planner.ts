@@ -1067,7 +1067,63 @@ export function sanitizeInlineHTML(value: string): string {
 
   const template = document.createElement('template')
   template.innerHTML = value
-  return Array.from(template.content.childNodes).map(sanitizeNode).join('').replace(/(<br>)+$/g, '')
+  const sanitized = Array.from(template.content.childNodes).map(sanitizeNode).join('')
+  return stripTrailingLineBreaks(sanitized)
+}
+
+// Removes line breaks at the rendered end of the content. A flat regex isn't
+// enough: when the last formatted line of an item is deleted, WebKit (and
+// Chromium) keep the caret placeholder inside the formatting wrapper — e.g.
+// `<b><br></b>` — so an item that looks empty would otherwise persist as a
+// phantom newline. Descends through trailing inline wrappers, drops the breaks
+// (including raw trailing "\n" text pasted from pretty-printed HTML), and
+// removes wrappers the pruning left empty.
+function stripTrailingLineBreaks(html: string): string {
+  const template = document.createElement('template')
+  template.innerHTML = html
+  if (!pruneTrailingLineBreaks(template.content)) return html
+  return Array.from(template.content.childNodes).map(sanitizeNode).join('')
+}
+
+function pruneTrailingLineBreaks(parent: ParentNode): boolean {
+  let pruned = false
+
+  for (let last = parent.lastChild; last; last = parent.lastChild) {
+    if (last.nodeType === Node.TEXT_NODE) {
+      const text = last.textContent ?? ''
+      const stripped = text.replace(/\n+$/, '')
+      if (stripped === '') {
+        if (stripped !== text) pruned = true
+        last.remove()
+        continue
+      }
+      if (stripped === text) return pruned
+      last.textContent = stripped
+      return true
+    }
+
+    if (last.nodeName === 'BR') {
+      last.remove()
+      pruned = true
+      continue
+    }
+
+    if (last.nodeType === Node.ELEMENT_NODE) {
+      const childPruned = pruneTrailingLineBreaks(last as ParentNode)
+      if (!last.hasChildNodes()) {
+        last.remove()
+        pruned = true
+        continue
+      }
+      if (!childPruned) return pruned
+      return true
+    }
+
+    last.remove()
+    pruned = true
+  }
+
+  return pruned
 }
 
 export function htmlToPlainText(value: string): string {

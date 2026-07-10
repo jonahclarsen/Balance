@@ -1067,6 +1067,57 @@ test('option backspace clears freshly typed new plan items without leaving newli
   }
 })
 
+test('backspacing bold multi-line content to empty leaves no phantom newline', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await page.getByRole('button', { name: '+ Add item' }).click()
+  await page.locator('[data-plan-text-input]').last().focus()
+  await expect.poll(async () => activeInputValue(page)).toBe('')
+
+  // Bold text with a soft line break: deleting the last formatted line makes
+  // the browser keep the caret placeholder inside the wrapper (`<b><br></b>`),
+  // which used to survive sanitization and persist as a newline-only item.
+  await page.keyboard.press('Meta+B')
+  await page.keyboard.type('ab')
+  await page.keyboard.press('Shift+Enter')
+  await page.keyboard.type('cd')
+  await expect.poll(async () => activeInputValue(page)).toBe('abcd')
+
+  for (let press = 0; press < 5; press += 1) {
+    await page.keyboard.press('Backspace')
+  }
+
+  await expect
+    .poll(async () => activeItemRichTextState(page))
+    .toEqual({
+      domText: '',
+      innerHTML: '',
+      storedText: '',
+      storedHTML: '',
+      isNewlineOnly: false,
+    })
+
+  // One more backspace merges into the previous item; the phantom wrapper used
+  // to be concatenated onto it (`…<strong><br></strong>`).
+  await page.keyboard.press('Backspace')
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        type Item = { text: string; html: string; children?: Item[] }
+        const flatten = (items: Item[]): Item[] =>
+          items.flatMap((item) => [item, ...flatten((item.children ?? []) as Item[])])
+        return flatten(state.plans?.[0]?.items ?? []).filter(
+          (item) => /<(strong|em|u)>(<br>)*<\/\1>/.test(item.html) || (item.html.length > 0 && item.html.replace(/<br>/g, '').trim() === ''),
+        )
+      }),
+    )
+    .toEqual([])
+})
+
 test('cmd shift a selects the focused plan item instead of its text', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
