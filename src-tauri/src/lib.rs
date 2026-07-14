@@ -5492,11 +5492,23 @@ async fn sync_new_pairing_code() -> Result<String, String> {
     Ok(sync::crypto::SyncKey::generate().to_pairing_code())
 }
 
+/// Trim and fully validate a pairing code before any sync migration touches the
+/// database. Checking only the prefix is unsafe: enabling a joiner clears its
+/// local materialized state in preparation for bootstrap, so a malformed key
+/// must be rejected before that work begins.
+fn normalize_sync_pairing_code(pairing_code: &str) -> Result<String, String> {
+    let pairing_code = pairing_code.trim();
+    sync::crypto::SyncKey::from_pairing_code(pairing_code)
+        .map_err(sync::Error::into_string)?;
+    Ok(pairing_code.to_string())
+}
+
 /// Enable sync as the **primary** device: keep this device's data as the shared
 /// baseline (snapshots it into the synced operation log). Backs up first. The
 /// pairing code is stored (in the encrypted DB) so the P2P listener can use it.
 #[tauri::command]
 async fn sync_enable_primary(app: tauri::AppHandle, pairing_code: String) -> Result<(), String> {
+    let pairing_code = normalize_sync_pairing_code(&pairing_code)?;
     run_database_task(move || {
         with_synced_connection(&app, |connection| {
             backup_state_before_sync(&app, connection)?;
@@ -5511,6 +5523,7 @@ async fn sync_enable_primary(app: tauri::AppHandle, pairing_code: String) -> Res
 /// device's local data (which is backed up first).
 #[tauri::command]
 async fn sync_enable_joiner(app: tauri::AppHandle, pairing_code: String) -> Result<(), String> {
+    let pairing_code = normalize_sync_pairing_code(&pairing_code)?;
     run_database_task(move || {
         with_synced_connection(&app, |connection| {
             backup_state_before_sync(&app, connection)?;
@@ -5627,9 +5640,9 @@ pub fn run() {
             #[cfg(mobile)]
             app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
 
-            // On Android debug builds, prove the bundled cr-sqlite .so actually
-            // loads and the sync engine converges on-device (the CI emulator
-            // smoke test greps logcat for this marker). Runs off the main thread.
+            // On Android debug builds, run the real two-database pairing and
+            // transport flow on-device. CI greps logcat for the marker below.
+            // It runs off the main thread and only touches throwaway databases.
             #[cfg(all(target_os = "android", debug_assertions))]
             {
                 let handle = app.handle().clone();
@@ -5644,12 +5657,12 @@ pub fn run() {
                     })();
                     match outcome {
                         Ok(()) => {
-                            log::info!("BALANCE_SYNC_SELFTEST: OK");
-                            eprintln!("BALANCE_SYNC_SELFTEST: OK");
+                            log::info!("BALANCE_SYNC_E2E: OK");
+                            eprintln!("BALANCE_SYNC_E2E: OK");
                         }
                         Err(e) => {
-                            log::error!("BALANCE_SYNC_SELFTEST: FAIL {e}");
-                            eprintln!("BALANCE_SYNC_SELFTEST: FAIL {e}");
+                            log::error!("BALANCE_SYNC_E2E: FAIL {e}");
+                            eprintln!("BALANCE_SYNC_E2E: FAIL {e}");
                         }
                     }
                 });
@@ -7927,6 +7940,14 @@ mod tests {
         assert!(normalize_sync_relay_url("relay.example.com").is_err());
         assert!(normalize_sync_relay_url("https://").is_err());
         assert!(normalize_sync_relay_url("https://relay.example.com/path with space").is_err());
+    }
+
+    #[test]
+    fn pairing_code_is_fully_validated_before_sync_migration() {
+        let code = sync::crypto::SyncKey::generate().to_pairing_code();
+        assert_eq!(normalize_sync_pairing_code(&format!("  {code}\n")).unwrap(), code);
+        assert!(normalize_sync_pairing_code("BALSYNC1:not-a-real-key").is_err());
+        assert!(normalize_sync_pairing_code("not-a-code").is_err());
     }
 
     #[test]

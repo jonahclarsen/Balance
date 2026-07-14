@@ -39,6 +39,7 @@
   let joinInput = ''
   let status = ''
   let busy = false
+  let pairing = false
   let isError = false
   let scanning = false
   let copyLabel = 'Copy code'
@@ -214,6 +215,8 @@
       return
     }
     busy = true
+    pairing = true
+    setStatus('Pairing…')
     try {
       // Joining adopts the other device's data; this device's current data is
       // backed up and replaced on the next sync.
@@ -227,6 +230,7 @@
     } catch (err) {
       setStatus(`Could not pair: ${err}`, true)
     } finally {
+      pairing = false
       busy = false
     }
   }
@@ -345,7 +349,7 @@
           Paste the pairing code shown on your other device.
         {/if}
       </p>
-      <div class="sync-actions">
+      <form class="sync-actions" on:submit|preventDefault={join}>
         {#if isMobile}
           <button type="button" on:click={scanCode} disabled={busy || scanning}>
             Scan QR code
@@ -354,12 +358,15 @@
         <input
           id="sync-join-input"
           type="text"
+          aria-label="Pair with another device"
           placeholder="BALSYNC1:…"
           spellcheck="false"
           bind:value={joinInput}
         />
-        <button type="button" on:click={join} disabled={busy || !joinInput.trim()}>Pair</button>
-      </div>
+        <button type="submit" disabled={busy || !joinInput.trim()}>
+          {pairing ? 'Pairing…' : 'Pair'}
+        </button>
+      </form>
     </div>
 
     {#if migrated}
@@ -394,6 +401,7 @@
           <input
             id="sync-peer-input"
             type="text"
+            aria-label="Direct device-to-device (same Wi-Fi)"
             placeholder="192.168.1.42:port"
             spellcheck="false"
             bind:value={peerAddress}

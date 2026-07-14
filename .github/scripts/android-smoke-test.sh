@@ -77,32 +77,31 @@ if [ -z "$KEY_FILE" ]; then
   exit 1
 fi
 
-# Multi-device sync self-test: on debug launch the app loads the bundled
-# cr-sqlite .so and runs a full E2E-encrypted convergence round-trip against
-# throwaway databases, logging BALANCE_SYNC_SELFTEST. This confirms sync
-# actually FUNCTIONS on the device (the .so loads, CRRs merge), not just that
-# the app launches. Poll a few times since it runs on a background thread.
+# Multi-device sync E2E: on debug launch the app creates real primary/joiner
+# Balance databases, pairs them with an encoded key, syncs their operation logs
+# over TCP, and verifies user data reached the joiner. This runs inside the APK,
+# so it also proves the Android cr-sqlite .so and SQLCipher paths work.
 SYNC_OK=0
 for _ in $(seq 1 10); do
   adb logcat -d > sync-log.txt 2>/dev/null || true
-  if grep -q "BALANCE_SYNC_SELFTEST: OK" sync-log.txt; then
+  if grep -q "BALANCE_SYNC_E2E: OK" sync-log.txt; then
     SYNC_OK=1
     break
   fi
-  if grep -q "BALANCE_SYNC_SELFTEST: FAIL" sync-log.txt; then
-    echo "[sync] self-test FAILED on device:"
-    grep "BALANCE_SYNC_SELFTEST" sync-log.txt | head
+  if grep -q "BALANCE_SYNC_E2E: FAIL" sync-log.txt; then
+    echo "[sync] Android E2E FAILED on device:"
+    grep "BALANCE_SYNC_E2E" sync-log.txt | head
     grep -iE "crsqlite|load_extension|UnsatisfiedLink|dlopen|library" sync-log.txt | head -20 || true
     exit 1
   fi
   sleep 3
 done
 if [ "$SYNC_OK" != 1 ]; then
-  echo "[sync] self-test marker never appeared - the cr-sqlite .so likely did not load."
+  echo "[sync] E2E marker never appeared."
   grep -iE "crsqlite|load_extension|UnsatisfiedLink|dlopen|RustStdoutStderr" sync-log.txt | head -20 || true
   exit 1
 fi
-echo "[sync] cr-sqlite loaded and E2EE sync converged on-device."
+echo "[sync] paired Android databases exchanged E2EE data over TCP and converged."
 
 # Second launch: the key file and database already exist, so the app must unwrap
 # the recovery key via the Keystore again and reopen the database. A failed
@@ -147,4 +146,294 @@ if [ "$UNWRAP_OK" != 1 ]; then
   exit 1
 fi
 
-echo "App builds, launches, persists an encrypted database, and reopens it via the Keystore on relaunch."
+# ---------------------------------------------------------------------------
+# Real UI pairing test
+# ---------------------------------------------------------------------------
+# Install the same APK into a managed profile. Android gives the profile an
+# independent UID, process, Keystore namespace, and app-data directory, so the
+# two installations behave like separate phones while sharing the emulator's
+# network. Drive the visible WebView with UI Automator: create primary data and
+# a key, submit that key on the joining installation with the keyboard's Enter
+# action, connect to the primary's displayed address, then assert the primary's
+# user-visible goal appears on the joiner.
+
+UI_XML=sync-e2e-ui.xml
+E2E_ACTIVE=1
+
+capture_e2e_diagnostics() {
+  if [ "${E2E_ACTIVE:-0}" != 1 ]; then
+    return
+  fi
+  adb logcat -d > logcat-sync-e2e.txt 2>/dev/null || true
+  adb shell uiautomator dump /sdcard/sync-e2e-window.xml >/dev/null 2>&1 || true
+  adb exec-out cat /sdcard/sync-e2e-window.xml > sync-e2e-window.xml 2>/dev/null || true
+  adb exec-out screencap -p > sync-e2e-failure.png 2>/dev/null || true
+}
+trap capture_e2e_diagnostics EXIT
+
+dump_ui() {
+  adb shell uiautomator dump /sdcard/sync-e2e-window.xml >/dev/null
+  adb exec-out cat /sdcard/sync-e2e-window.xml > "$UI_XML"
+}
+
+# Print the center of the best matching accessibility node. Inputs and buttons
+# are preferred over their associated label text.
+find_ui_node() {
+  attribute="$1"
+  query="$2"
+  match_mode="${3:-exact}"
+  python3 - "$UI_XML" "$attribute" "$query" "$match_mode" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, attribute, query, mode = sys.argv[1:]
+root = ET.parse(path).getroot()
+candidates = []
+for node in root.iter("node"):
+    value = node.attrib.get(attribute, "")
+    matches = value == query if mode == "exact" else query in value
+    if not matches:
+        continue
+    bounds = node.attrib.get("bounds", "")
+    numbers = [int(number) for number in re.findall(r"\d+", bounds)]
+    if len(numbers) != 4:
+        continue
+    class_name = node.attrib.get("class", "")
+    score = 0
+    if "EditText" in class_name:
+        score += 20
+    if "Button" in class_name:
+        score += 10
+    if node.attrib.get("clickable") == "true":
+        score += 5
+    if node.attrib.get("focusable") == "true":
+        score += 2
+    x1, y1, x2, y2 = numbers
+    candidates.append((score, (x1 + x2) // 2, (y1 + y2) // 2))
+
+if candidates:
+    _, x, y = max(candidates)
+    print(f"{x} {y}")
+PY
+}
+
+tap_ui() {
+  attribute="$1"
+  query="$2"
+  attempts="${3:-20}"
+  for _ in $(seq 1 "$attempts"); do
+    dump_ui
+    point="$(find_ui_node "$attribute" "$query" exact)"
+    if [ -n "$point" ]; then
+      # shellcheck disable=SC2086
+      adb shell input tap $point
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Could not find UI node: $attribute=$query"
+  return 1
+}
+
+tap_ui_scrolling() {
+  attribute="$1"
+  query="$2"
+  for _ in $(seq 1 8); do
+    if tap_ui "$attribute" "$query" 1; then
+      return 0
+    fi
+    adb shell input swipe 540 1500 540 500 300
+    sleep 1
+  done
+  echo "Could not find UI node after scrolling: $attribute=$query"
+  return 1
+}
+
+tap_ui_scrolling_contains() {
+  attribute="$1"
+  query="$2"
+  for _ in $(seq 1 8); do
+    dump_ui
+    point="$(find_ui_node "$attribute" "$query" contains)"
+    if [ -n "$point" ]; then
+      # shellcheck disable=SC2086
+      adb shell input tap $point
+      return 0
+    fi
+    adb shell input swipe 540 1500 540 500 300
+    sleep 1
+  done
+  echo "Could not find UI node after scrolling: $attribute contains $query"
+  return 1
+}
+
+wait_for_ui_text() {
+  query="$1"
+  attempts="${2:-30}"
+  for _ in $(seq 1 "$attempts"); do
+    dump_ui
+    if python3 - "$UI_XML" "$query" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+query = sys.argv[2]
+found = any(
+    query in node.attrib.get(attribute, "")
+    for node in root.iter("node")
+    for attribute in ("text", "content-desc")
+)
+raise SystemExit(0 if found else 1)
+PY
+    then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Timed out waiting for UI text: $query"
+  return 1
+}
+
+read_pairing_code() {
+  dump_ui
+  python3 - "$UI_XML" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+for node in root.iter("node"):
+    for attribute in ("text", "content-desc"):
+        value = node.attrib.get(attribute, "").strip()
+        if value.startswith("BALSYNC1:"):
+            print(value)
+            raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+read_lan_address() {
+  dump_ui
+  python3 - "$UI_XML" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+pattern = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}:\d+")
+for node in root.iter("node"):
+    for attribute in ("text", "content-desc"):
+        match = pattern.search(node.attrib.get(attribute, ""))
+        if match:
+            print(match.group(0))
+            raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+type_into_ui() {
+  attribute="$1"
+  query="$2"
+  value="$3"
+  tap_ui_scrolling "$attribute" "$query"
+  adb shell input text "$value"
+}
+
+type_into_ui_contains() {
+  attribute="$1"
+  query="$2"
+  value="$3"
+  tap_ui_scrolling_contains "$attribute" "$query"
+  adb shell input text "$value"
+}
+
+dismiss_recovery_key_setup() {
+  dump_ui
+  if [ -n "$(find_ui_node text "Save your recovery key" exact)" ]; then
+    tap_ui class "android.widget.CheckBox"
+    tap_ui text "Continue"
+    sleep 2
+  fi
+}
+
+echo "[ui-sync] creating recognizable data on the primary installation"
+dismiss_recovery_key_setup
+tap_ui text "Goals"
+type_into_ui_contains text "New goal name" "CISyncGoal"
+adb shell input keyevent KEYCODE_ENTER
+adb shell input keyevent KEYCODE_BACK || true
+wait_for_ui_text "CISyncGoal"
+# Let the normal debounced operation writer commit before sync snapshots it.
+sleep 2
+
+tap_ui text "Settings"
+tap_ui_scrolling text "Create a sync key"
+PAIRING_CODE=""
+PRIMARY_ADDRESS=""
+for _ in $(seq 1 60); do
+  PAIRING_CODE="$(read_pairing_code 2>/dev/null || true)"
+  PRIMARY_ADDRESS="$(read_lan_address 2>/dev/null || true)"
+  if [ -n "$PAIRING_CODE" ] && [ -n "$PRIMARY_ADDRESS" ]; then
+    break
+  fi
+  sleep 1
+done
+if [ -z "$PAIRING_CODE" ] || [ -z "$PRIMARY_ADDRESS" ]; then
+  echo "[ui-sync] primary never exposed a pairing code and LAN address"
+  exit 1
+fi
+echo "[ui-sync] primary created a key and is listening at $PRIMARY_ADDRESS"
+
+echo "[ui-sync] installing an isolated joining copy in a managed profile"
+PROFILE_OUTPUT="$(adb shell pm create-user --profileOf 0 --managed --for-testing BalanceSyncPeer | tr -d '\r')"
+PEER_USER="$(printf '%s\n' "$PROFILE_OUTPUT" | awk '{print $NF}')"
+if ! [[ "$PEER_USER" =~ ^[0-9]+$ ]]; then
+  echo "Managed profile creation failed: $PROFILE_OUTPUT"
+  exit 1
+fi
+adb shell am start-user -w "$PEER_USER"
+adb shell cmd package install-existing --user "$PEER_USER" "$PKG"
+
+COMPONENT="$(adb shell cmd package resolve-activity --brief --user 0 \
+  -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" \
+  | tr -d '\r' | tail -n 1)"
+if [[ "$COMPONENT" != */* ]]; then
+  echo "Could not resolve Balance launcher component: $COMPONENT"
+  exit 1
+fi
+adb shell am start --user "$PEER_USER" -n "$COMPONENT"
+sleep 8
+
+echo "[ui-sync] submitting the pairing code through the joining app's visible form"
+dismiss_recovery_key_setup
+tap_ui text "Settings"
+type_into_ui resource-id "sync-join-input" "$PAIRING_CODE"
+# This is the phone keyboard's Done/Enter path that previously did nothing.
+adb shell input keyevent KEYCODE_ENTER
+sleep 2
+adb shell input keyevent KEYCODE_BACK || true
+for _ in $(seq 1 8); do
+  if wait_for_ui_text "Paired." 1; then
+    break
+  fi
+  adb shell input swipe 540 1500 540 500 300
+done
+wait_for_ui_text "Paired." 20
+
+echo "[ui-sync] connecting the joiner to the primary's manual LAN address"
+type_into_ui resource-id "sync-peer-input" "$PRIMARY_ADDRESS"
+adb shell input keyevent KEYCODE_BACK || true
+tap_ui_scrolling text "Sync with address"
+sleep 8
+
+# A successful sync reloads the joining WebView. The primary-only goal must now
+# be present in the joining profile's real materialized state.
+tap_ui text "Goals"
+wait_for_ui_text "CISyncGoal" 30
+echo "[ui-sync] PASS: pairing through the Android UI transferred primary user data to the isolated joiner"
+
+E2E_ACTIVE=0
+trap - EXIT
+adb logcat -d > logcat-sync-e2e.txt 2>/dev/null || true
+
+echo "App builds, launches, reopens its encrypted database, and syncs two isolated Android installations through the real pairing UI."

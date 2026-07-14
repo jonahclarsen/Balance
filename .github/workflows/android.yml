@@ -204,7 +204,7 @@ jobs:
           if-no-files-found: error
 
   smoke-test:
-    name: Launch on emulator
+    name: Android pairing + sync E2E
     needs: build
     runs-on: ubuntu-latest
 
@@ -230,7 +230,7 @@ jobs:
         with:
           name: Balance-android-debug
 
-      - name: Launch app on emulator and check for crashes
+      - name: Pair and sync two isolated app installations
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 34
@@ -248,5 +248,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: emulator-logcat
-          path: logcat*.txt
+          path: |
+            logcat*.txt
+            sync-e2e-*.xml
+            sync-e2e-*.png
           if-no-files-found: ignore

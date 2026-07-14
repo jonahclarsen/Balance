@@ -166,12 +166,14 @@ pub fn is_sync_enabled(conn: &Connection) -> Result<bool> {
     Ok(enabled.as_deref() == Some("true"))
 }
 
-/// Exercise the full sync stack against real, throwaway encrypted databases:
-/// load the cr-sqlite extension, make two CRR databases diverge, ship the
-/// changes as an end-to-end-sealed envelope, apply them, and assert the two
-/// converge. Used as an on-device smoke test (Android) to confirm the bundled
-/// `.so` actually loads and the engine works on the target — not just that the
-/// app launches. Cleans up after itself.
+/// Exercise the real app sync path against two throwaway encrypted Balance
+/// databases. This is intentionally broader than an engine smoke test: it uses
+/// the production schema and materializer, creates and parses the pairing code,
+/// enables a primary and joiner, persists the key on both sides, exchanges the
+/// encrypted operation log over a real TCP socket, and verifies that user data
+/// appears on the joining device. CI runs this inside the Android APK so the
+/// platform extension, SQLCipher, pairing, transport, and bootstrap path are
+/// covered together. Cleans up after itself.
 pub fn selftest(extension_path: &Path, scratch_dir: &Path) -> Result<()> {
     // The self-test may run before the main database has created this directory.
     std::fs::create_dir_all(scratch_dir).map_err(|e| Error::Codec(e.to_string()))?;
@@ -180,38 +182,106 @@ pub fn selftest(extension_path: &Path, scratch_dir: &Path) -> Result<()> {
     let _ = std::fs::remove_file(&a_path);
     let _ = std::fs::remove_file(&b_path);
 
-    let open = |path: &Path, key: &str| -> Result<Connection> {
-        let conn = Connection::open(path)?;
-        conn.pragma_update(None, "key", key)?;
-        conn.query_row("pragma cipher_version", [], |r| r.get::<_, String>(0))?;
-        load_extension(&conn, extension_path)?;
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS t (id TEXT PRIMARY KEY NOT NULL, v TEXT NOT NULL DEFAULT '');",
-        )?;
-        as_crr(&conn, "t")?;
-        Ok(conn)
-    };
-
     let result = (|| -> Result<()> {
-        let a = open(&a_path, "selftest-key-a")?;
-        let b = open(&b_path, "selftest-key-b")?;
+        let app_state = |device_id: &str, goals: JsonValue| {
+            json!({
+                "schemaVersion": 1,
+                "deviceId": device_id,
+                "localSequence": 0,
+                "historyRevision": 0,
+                "activePlanDate": "2026-07-14",
+                "templates": [],
+                "plans": [],
+                "goals": goals,
+                "goalCompletions": [],
+                "listTemplates": [],
+                "lists": [],
+                "metrics": [],
+                "metricEntries": [],
+                "operations": [],
+            })
+        };
 
-        a.execute("INSERT INTO t (id, v) VALUES ('x', 'hello')", [])?;
+        let mut primary = crate::open_database_at(&a_path, "selftest-key-a")
+            .map_err(Error::Codec)?;
+        let mut joiner = crate::open_database_at(&b_path, "selftest-key-b")
+            .map_err(Error::Codec)?;
+        crate::replace_app_state(
+            &mut primary,
+            &app_state(
+                "selftest-primary",
+                json!([{ "id": "ci-sync-goal", "name": "Android E2E sync reached the joiner" }]),
+            ),
+        )
+        .map_err(Error::Codec)?;
+        crate::replace_app_state(
+            &mut joiner,
+            &app_state(
+                "selftest-joiner",
+                json!([{ "id": "joiner-only", "name": "Must be replaced" }]),
+            ),
+        )
+        .map_err(Error::Codec)?;
+        load_extension(&primary, extension_path)?;
+        load_extension(&joiner, extension_path)?;
 
-        // Ship A's change to B as an E2E-sealed envelope and apply it.
-        let key = crypto::SyncKey::generate();
-        let sealed = key.seal(&pull(&a, 0, None)?)?;
-        apply(&b, &key.open(&sealed)?)?;
-
-        let converged = state_hash(&a, &["t"])? == state_hash(&b, &["t"])?;
-        let got: String = b.query_row("SELECT v FROM t WHERE id='x'", [], |r| r.get(0))?;
-
-        finalize(&a)?;
-        finalize(&b)?;
-
-        if !converged || got != "hello" {
-            return Err(Error::Crypto("selftest did not converge".into()));
+        let generated_key = crypto::SyncKey::generate();
+        let pairing_code = generated_key.to_pairing_code();
+        let primary_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
+        let joiner_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
+        if primary_key.as_bytes() != joiner_key.as_bytes() {
+            return Err(Error::Crypto("pairing code produced different keys".into()));
         }
+
+        enable_primary(&primary)?;
+        store_pairing_code(&primary, &pairing_code)?;
+        enable_joiner(&joiner)?;
+        store_pairing_code(&joiner, &pairing_code)?;
+
+        let cleared = crate::read_app_state_from_database(&joiner)
+            .map_err(Error::Codec)?
+            .ok_or_else(|| Error::Codec("joiner state missing after pairing".into()))?;
+        if cleared["goals"] != json!([]) {
+            return Err(Error::Codec("joiner was not cleared before bootstrap".into()));
+        }
+
+        // Mirror the app's manual-address flow: the primary listens and the
+        // joining device initiates a bidirectional, E2EE P2P sync.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0")
+            .map_err(|e| Error::Codec(e.to_string()))?;
+        let address = listener
+            .local_addr()
+            .map_err(|e| Error::Codec(e.to_string()))?
+            .to_string();
+        let primary_thread = std::thread::spawn(move || -> Result<()> {
+            let mut cursors = transport::Cursors::new();
+            transport::sync_accept(&listener, &primary, &primary_key, &mut cursors)?;
+            finalize(&primary)
+        });
+
+        let mut cursors = transport::Cursors::new();
+        transport::sync_connect(&address, &joiner, &joiner_key, &mut cursors)?;
+        primary_thread
+            .join()
+            .map_err(|_| Error::Codec("primary sync thread panicked".into()))??;
+
+        let joined_state = crate::read_app_state_from_database(&joiner)
+            .map_err(Error::Codec)?
+            .ok_or_else(|| Error::Codec("joiner state missing after sync".into()))?;
+        if joined_state["goals"]
+            != json!([{ "id": "ci-sync-goal", "name": "Android E2E sync reached the joiner" }])
+        {
+            return Err(Error::Codec(
+                "paired joiner did not receive the primary's user data".into(),
+            ));
+        }
+        if joined_state["deviceId"] != "selftest-joiner" {
+            return Err(Error::Codec("sync overwrote the joiner's device identity".into()));
+        }
+        if read_pairing_code(&joiner)?.as_deref() != Some(pairing_code.as_str()) {
+            return Err(Error::Crypto("joiner did not persist its pairing key".into()));
+        }
+        finalize(&joiner)?;
         Ok(())
     })();
 
