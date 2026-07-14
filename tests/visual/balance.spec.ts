@@ -558,7 +558,7 @@ test('adding template time starts after the nearest timed item above', async ({ 
     })
 })
 
-test('template time overlap highlighting follows the same-level sibling rules', async ({ page }) => {
+test('template time warnings cover sibling overlaps and ancestor end times', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {
     localStorage.clear()
@@ -591,7 +591,10 @@ test('template time overlap highlighting follows the same-level sibling rules', 
           createdAt: now,
           updatedAt: now,
           items: [
-            item('parent', 'Parent', 540, 720, [item('child', 'Child', 600, 660)]),
+            item('parent', 'Parent', 540, 720, [
+              item('child', 'Child', 600, 660, [item('deep', 'Deep child ending late', 630, 750)]),
+              item('late_child', 'Child ending late', 660, 750),
+            ]),
             item('overlap', 'Overlapping sibling', 690, 750),
             item('later', 'Later sibling', 780, 840),
           ],
@@ -608,11 +611,25 @@ test('template time overlap highlighting follows the same-level sibling rules', 
   await page.reload()
   await page.getByRole('button', { name: 'Day Templates' }).click()
 
-  const childTime = page.getByRole('listitem', { name: 'Template item: Child' }).getByLabel('Time range')
-  const overlapTime = page.getByRole('listitem', { name: 'Template item: Overlapping sibling' }).getByLabel('Time range')
-  const laterTime = page.getByRole('listitem', { name: 'Template item: Later sibling' }).getByLabel('Time range')
+  const childTime = page.getByRole('listitem', { name: 'Template item: Child', exact: true }).getByLabel('Time range')
+  const deepTime = page
+    .getByRole('listitem', { name: 'Template item: Deep child ending late', exact: true })
+    .getByLabel('Time range')
+  const lateChildTime = page
+    .getByRole('listitem', { name: 'Template item: Child ending late', exact: true })
+    .getByLabel('Time range')
+  const overlapTime = page
+    .getByRole('listitem', { name: 'Template item: Overlapping sibling', exact: true })
+    .getByLabel('Time range')
+  const laterTime = page
+    .getByRole('listitem', { name: 'Template item: Later sibling', exact: true })
+    .getByLabel('Time range')
 
   await expect(childTime).not.toHaveClass(/overlaps/)
+  await expect(deepTime).toHaveClass(/overlaps/)
+  await expect(deepTime).toHaveAttribute('title', 'This time ends after a parent or ancestor ends')
+  await expect(lateChildTime).toHaveClass(/overlaps/)
+  await expect(lateChildTime).toHaveAttribute('title', 'This time ends after a parent or ancestor ends')
   await expect(overlapTime).toHaveClass(/overlaps/)
   await expect(overlapTime).toHaveAttribute('title', 'This time starts before the previous timed item ends')
   await expect(laterTime).not.toHaveClass(/overlaps/)

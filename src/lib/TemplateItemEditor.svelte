@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { defaultTemplateItemTimeRange, planItemTimeOverlapsPrevious } from './planner'
+  import { defaultTemplateItemTimeRange, planItemTimeExceedsAncestor, planItemTimeOverlapsPrevious } from './planner'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
@@ -65,6 +65,8 @@
     item.startMinutes !== null &&
     item.endMinutes !== null &&
     planItemTimeOverlapsPrevious(allItems, item.id, item.startMinutes)
+  $: timeExceedsAncestor =
+    item.endMinutes !== null && planItemTimeExceedsAncestor(allItems, item.id, item.endMinutes)
 
   function addTime() {
     patchItem(templateId, item.id, defaultTemplateItemTimeRange(allItems, item.id))
@@ -204,6 +206,7 @@
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
         overlapsPrevious={timeOverlapsPrevious}
+        exceedsAncestor={timeExceedsAncestor}
         onChange={patchTimeRange}
         onRemove={() => patchItem(templateId, item.id, { startMinutes: null, endMinutes: null })}
       />

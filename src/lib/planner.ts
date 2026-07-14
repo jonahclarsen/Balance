@@ -957,6 +957,15 @@ export function planItemTimeOverlapsPrevious<T extends {
   return previousEndMinutes !== null && startMinutes < previousEndMinutes
 }
 
+export function planItemTimeExceedsAncestor<T extends {
+  id: Id
+  endMinutes: number | null
+  children: T[]
+}>(items: T[], itemId: Id, endMinutes: number): boolean {
+  const ancestors = findAncestors(items, itemId)
+  return ancestors?.some((ancestor) => ancestor.endMinutes !== null && endMinutes > ancestor.endMinutes) ?? false
+}
+
 // Overlap highlighting only considers items at the same indentation level, so an
 // item that nests a shorter child (e.g. "3-5pm library" containing "3-4pm study")
 // doesn't make a following sibling like "4:30-6pm hang" look like a conflict.
@@ -984,6 +993,20 @@ function findSiblings<T extends { id: Id; children: T[] }>(items: T[], itemId: I
   for (const item of items) {
     if (item.id === itemId) return items
     const found = findSiblings(item.children, itemId)
+    if (found) return found
+  }
+
+  return null
+}
+
+function findAncestors<T extends { id: Id; children: T[] }>(
+  items: T[],
+  itemId: Id,
+  ancestors: T[] = [],
+): T[] | null {
+  for (const item of items) {
+    if (item.id === itemId) return ancestors
+    const found = findAncestors(item.children, itemId, [...ancestors, item])
     if (found) return found
   }
 

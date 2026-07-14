@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { dueTodayGoalsForItem, goalLightnessShift, goalMatchesForItem } from './goals'
-  import { defaultPlanItemTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeOverlapsPrevious, renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
+  import { defaultPlanItemTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeExceedsAncestor, planItemTimeOverlapsPrevious, renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
@@ -91,6 +91,8 @@
     item.startMinutes !== null &&
     item.endMinutes !== null &&
     planItemTimeOverlapsPrevious(allItems, item.id, item.startMinutes)
+  $: timeExceedsAncestor =
+    item.endMinutes !== null && planItemTimeExceedsAncestor(allItems, item.id, item.endMinutes)
 
   // Recompute link segments only when the text or the available targets change,
   // so unrelated edits elsewhere in the tree don't trigger a rescan per keystroke.
@@ -415,6 +417,7 @@
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
         overlapsPrevious={timeOverlapsPrevious}
+        exceedsAncestor={timeExceedsAncestor}
         onChange={patchTimeRange}
         getShiftTargets={selectedTimeShiftTargets}
         onShift={shiftSelectedTimeRanges}

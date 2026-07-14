@@ -14,8 +14,17 @@
   export let onChange: (startMinutes: number, endMinutes: number) => void
   export let onRemove: () => void
   export let overlapsPrevious = false
+  export let exceedsAncestor = false
   export let getShiftTargets: (() => TimeShiftTarget[] | null) | null = null
   export let onShift: ((targets: TimeShiftTarget[], delta: number) => void) | null = null
+
+  $: warningTitle = overlapsPrevious
+    ? exceedsAncestor
+      ? 'This time starts before the previous timed item ends and ends after a parent or ancestor ends'
+      : 'This time starts before the previous timed item ends'
+    : exceedsAncestor
+      ? 'This time ends after a parent or ancestor ends'
+      : null
 
   let dragState:
     | {
@@ -87,9 +96,9 @@
 
 <span
   class="time-range"
-  class:overlaps={overlapsPrevious}
+  class:overlaps={overlapsPrevious || exceedsAncestor}
   aria-label="Time range"
-  title={overlapsPrevious ? 'This time starts before the previous timed item ends' : null}
+  title={warningTitle}
 >
   <button
     class="time-part"
