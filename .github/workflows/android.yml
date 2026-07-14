@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    name: Build debug APK
+    name: Build debug + signed release
     runs-on: ubuntu-latest
 
     env:
@@ -133,6 +133,71 @@ jobs:
         with:
           name: Balance-android-debug
           path: balance-debug.apk
+          if-no-files-found: error
+
+      - name: Set up Android release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing GitHub Actions secret: $name"
+              exit 1
+            fi
+          done
+
+          KEYSTORE_PATH="$RUNNER_TEMP/balance-upload-keystore.jks"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+          chmod 600 "$KEYSTORE_PATH"
+          export ANDROID_KEYSTORE_PATH="$KEYSTORE_PATH"
+          echo "ANDROID_KEYSTORE_PATH=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_PASSWORD=$ANDROID_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "ANDROID_KEY_ALIAS=$ANDROID_KEY_ALIAS" >> "$GITHUB_ENV"
+
+          node .github/scripts/configure-android-signing.mjs
+
+      - name: Build signed release APK and AAB (arm64 + x86_64)
+        run: |
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid Android release version: $VERSION"
+            exit 1
+          fi
+          echo "Building Android release version $VERSION"
+          pnpm tauri android build \
+            --config "{\"version\":\"$VERSION\"}" \
+            --apk --aab --target aarch64 --target x86_64
+
+      - name: Locate and verify signed release
+        run: |
+          APK_PATH="$(find src-tauri/gen/android -name '*.apk' -path '*release*' | head -n 1)"
+          AAB_PATH="$(find src-tauri/gen/android -name '*.aab' -path '*release*' | head -n 1)"
+          test -n "$APK_PATH"
+          test -n "$AAB_PATH"
+
+          echo "Found APK at $APK_PATH"
+          echo "Found AAB at $AAB_PATH"
+          apksigner verify --verbose --print-certs "$APK_PATH" | tee android-release-signature.txt
+          jarsigner -verify "$AAB_PATH" | tee android-aab-verification.txt
+          grep -q "jar verified" android-aab-verification.txt
+
+          cp "$APK_PATH" balance-release.apk
+          cp "$AAB_PATH" balance-release.aab
+
+      - name: Upload signed release artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: Balance-android-release
+          path: |
+            balance-release.apk
+            balance-release.aab
+            android-release-signature.txt
+            android-aab-verification.txt
           if-no-files-found: error
 
   smoke-test:
