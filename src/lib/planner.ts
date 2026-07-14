@@ -1299,7 +1299,7 @@ function moveTreeNodeWithinLevel<T extends TreeNode<T>>(items: T[], itemId: Id, 
 // List templates
 // ---------------------------------------------------------------------------
 
-export const MIN_LIST_ITEM_PROBABILITY = 50
+export const MIN_LIST_ITEM_PROBABILITY = 40
 
 export function clampListItemProbability(probability: number): number {
   if (!Number.isFinite(probability)) return MIN_LIST_ITEM_PROBABILITY

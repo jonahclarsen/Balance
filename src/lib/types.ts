@@ -30,7 +30,7 @@ export type MovePlacement = 'before' | 'after' | 'inside'
 export type MoveDirection = 'up' | 'down'
 
 // A list-template item has no competing options; it carries a single appearance
-// probability (50-100) = the chance it shows up in a generated list instance.
+// probability (40-100) = the chance it shows up in a generated list instance.
 export type ListTemplateItem = {
   id: Id
   text: string
