@@ -175,14 +175,17 @@ jobs:
 
       - name: Locate and verify signed release
         run: |
+          set -o pipefail
           APK_PATH="$(find src-tauri/gen/android -name '*.apk' -path '*release*' | head -n 1)"
           AAB_PATH="$(find src-tauri/gen/android -name '*.aab' -path '*release*' | head -n 1)"
+          APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$APK_PATH"
           test -n "$AAB_PATH"
+          test -x "$APKSIGNER"
 
           echo "Found APK at $APK_PATH"
           echo "Found AAB at $AAB_PATH"
-          apksigner verify --verbose --print-certs "$APK_PATH" | tee android-release-signature.txt
+          "$APKSIGNER" verify --verbose --print-certs "$APK_PATH" | tee android-release-signature.txt
           jarsigner -verify "$AAB_PATH" | tee android-aab-verification.txt
           grep -q "jar verified" android-aab-verification.txt
 
