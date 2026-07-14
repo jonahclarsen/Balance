@@ -394,9 +394,9 @@ fn mark_enabled(conn: &Connection) -> Result<()> {
 /// P2P listener can decrypt incoming changesets without UI involvement.
 pub fn store_pairing_code(conn: &Connection, pairing_code: &str) -> Result<()> {
     conn.execute(
-        "INSERT INTO metadata (key, value) VALUES ('sync_pairing_code', ?1) \
+        "INSERT INTO metadata (key, value) VALUES (?1, ?2) \
          ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        params![pairing_code],
+        params![crate::SYNC_PAIRING_CODE, pairing_code],
     )?;
     Ok(())
 }
@@ -405,8 +405,8 @@ pub fn store_pairing_code(conn: &Connection, pairing_code: &str) -> Result<()> {
 pub fn read_pairing_code(conn: &Connection) -> Result<Option<String>> {
     Ok(conn
         .query_row(
-            "SELECT value FROM metadata WHERE key = 'sync_pairing_code'",
-            [],
+            "SELECT value FROM metadata WHERE key = ?1",
+            params![crate::SYNC_PAIRING_CODE],
             |r| r.get::<_, String>(0),
         )
         .ok())

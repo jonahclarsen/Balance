@@ -1773,10 +1773,31 @@ export async function listRecoveryEntries(): Promise<RecoveryEntry[]> {
 
 // --- Multi-device sync (cr-sqlite engine; see src-tauri/src/sync) -----------
 
-/** Whether multi-device sync has been enabled on this device. */
-export async function syncStatus(): Promise<boolean> {
-  if (!isTauri()) return false
-  return invoke<boolean>('sync_status')
+export type SyncSettings = {
+  enabled: boolean
+  pairingCode: string | null
+  relayUrl: string
+}
+
+/** Device-local sync configuration from encrypted, non-replicated DB metadata. */
+export async function getSyncSettings(): Promise<SyncSettings> {
+  if (!isTauri()) return { enabled: false, pairingCode: null, relayUrl: '' }
+  return invoke<SyncSettings>('get_sync_settings')
+}
+
+/** Persist this device's relay endpoint outside origin-scoped webview storage. */
+export async function setSyncRelayUrl(relayUrl: string): Promise<SyncSettings> {
+  if (!isTauri()) return { enabled: false, pairingCode: null, relayUrl: relayUrl.trim() }
+  return invoke<SyncSettings>('set_sync_relay_url', { relayUrl })
+}
+
+/** One-time upgrade path from the old dev/prod-specific localStorage values. */
+export async function migrateLegacySyncSettings(
+  pairingCode: string | null,
+  relayUrl: string | null,
+): Promise<SyncSettings> {
+  if (!isTauri()) return { enabled: false, pairingCode, relayUrl: relayUrl ?? '' }
+  return invoke<SyncSettings>('migrate_legacy_sync_settings', { pairingCode, relayUrl })
 }
 
 /** Generate a fresh account sync key and return its QR/pairing code. */
@@ -1817,17 +1838,17 @@ export async function syncP2pSync(address: string): Promise<string | null> {
   return invoke<string | null>('sync_p2p_sync', { address })
 }
 
-/** Pull local changes since `since`, sealed (E2EE) with the pairing key. */
-export async function syncPullSealed(pairingCode: string, since: number): Promise<Uint8Array> {
+/** Pull local changes since `since`, sealed with the device's stored E2EE key. */
+export async function syncPullSealed(since: number): Promise<Uint8Array> {
   if (!isTauri()) return new Uint8Array()
-  const bytes = await invoke<number[]>('sync_pull_sealed', { pairingCode, since })
+  const bytes = await invoke<number[]>('sync_pull_sealed', { since })
   return Uint8Array.from(bytes)
 }
 
 /** Apply a peer's sealed changeset. Returns the new app-state JSON (or null). */
-export async function syncApplySealed(pairingCode: string, envelope: Uint8Array): Promise<string | null> {
+export async function syncApplySealed(envelope: Uint8Array): Promise<string | null> {
   if (!isTauri()) return null
-  return invoke<string | null>('sync_apply_sealed', { pairingCode, envelope: Array.from(envelope) })
+  return invoke<string | null>('sync_apply_sealed', { envelope: Array.from(envelope) })
 }
 
 export type MetadataEntry = {

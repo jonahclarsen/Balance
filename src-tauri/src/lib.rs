@@ -30,6 +30,8 @@ const AUTO_JSON_EXPORT_LAST_PATH: &str = "auto_json_export_last_path";
 const AUTO_JSON_EXPORT_LAST_ERROR: &str = "auto_json_export_last_error";
 const AUTO_JSON_EXPORT_LAST_ERROR_AT: &str = "auto_json_export_last_error_at";
 const AUTO_JSON_EXPORT_ERROR_ACK_AT: &str = "auto_json_export_error_ack_at";
+const SYNC_PAIRING_CODE: &str = "sync_pairing_code";
+const SYNC_RELAY_URL: &str = "sync_relay_url";
 const GOAL_DATA: &str = "goal_data";
 // Lists + Metrics state is stored as a single JSON metadata blob (like GOAL_DATA)
 // rather than materialized into per-row tables.
@@ -144,6 +146,14 @@ struct ExportSettings {
     // a genuinely new failure (new timestamp) occurs.
     last_auto_json_export_error_at: Option<String>,
     auto_json_export_error_ack_at: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SyncSettings {
+    enabled: bool,
+    pairing_code: Option<String>,
+    relay_url: String,
 }
 
 #[tauri::command]
@@ -795,6 +805,32 @@ fn validate_auto_json_export_time(time: &str) -> Result<String, String> {
     Ok(format!("{hour:02}:{minute:02}"))
 }
 
+fn normalize_sync_relay_url(relay_url: &str) -> Result<String, String> {
+    let relay_url = relay_url.trim();
+    if relay_url.is_empty() {
+        return Ok(String::new());
+    }
+    if relay_url.chars().any(char::is_whitespace) {
+        return Err("Relay URL cannot contain whitespace".to_string());
+    }
+
+    let remainder = relay_url
+        .strip_prefix("https://")
+        .or_else(|| relay_url.strip_prefix("http://"))
+        .ok_or_else(|| "Relay URL must start with http:// or https://".to_string())?;
+    let remainder = remainder.trim_end_matches('/');
+    if remainder.is_empty() {
+        return Err("Relay URL must include a host".to_string());
+    }
+
+    let scheme = if relay_url.starts_with("https://") {
+        "https://"
+    } else {
+        "http://"
+    };
+    Ok(format!("{scheme}{remainder}"))
+}
+
 fn validate_export_date(date: &str) -> Result<String, String> {
     let parts = date.split('-').collect::<Vec<_>>();
     if parts.len() == 3
@@ -1132,9 +1168,15 @@ fn list_metadata_from_database(connection: &Connection) -> Result<Value, String>
 
     let rows = statement
         .query_map([], |row| {
+            let key = row.get::<_, String>(0)?;
+            let value = if key == SYNC_PAIRING_CODE {
+                "[redacted]".to_string()
+            } else {
+                row.get::<_, String>(1)?
+            };
             Ok(json!({
-                "key": row.get::<_, String>(0)?,
-                "value": row.get::<_, String>(1)?,
+                "key": key,
+                "value": value,
             }))
         })
         .map_err(|error| error.to_string())?;
@@ -4896,12 +4938,83 @@ fn backup_state_before_sync(
     Ok(())
 }
 
-/// Whether multi-device sync has been enabled on this device.
+fn sync_settings_from_database(connection: &Connection) -> Result<SyncSettings, String> {
+    Ok(SyncSettings {
+        enabled: sync::is_sync_enabled(connection).map_err(sync::Error::into_string)?,
+        pairing_code: sync::read_pairing_code(connection).map_err(sync::Error::into_string)?,
+        relay_url: metadata_value(connection, SYNC_RELAY_URL)?.unwrap_or_default(),
+    })
+}
+
+/// Device-local sync configuration. This metadata lives in the encrypted DB but
+/// is not part of the replicated `operations` CRR, so dev and production share
+/// it on one device without sending it to peers.
 #[tauri::command]
-async fn sync_status(app: tauri::AppHandle) -> Result<bool, String> {
+async fn get_sync_settings(app: tauri::AppHandle) -> Result<SyncSettings, String> {
     run_database_task(move || {
         let connection = open_database(&app)?;
-        sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)
+        sync_settings_from_database(&connection)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn set_sync_relay_url(
+    app: tauri::AppHandle,
+    relay_url: String,
+) -> Result<SyncSettings, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        let relay_url = normalize_sync_relay_url(&relay_url)?;
+        if relay_url.is_empty() {
+            delete_metadata(&connection, SYNC_RELAY_URL)?;
+        } else {
+            set_metadata(&connection, SYNC_RELAY_URL, &relay_url)?;
+        }
+        sync_settings_from_database(&connection)
+    })
+    .await
+}
+
+/// Move settings written by older builds from origin-scoped webview storage
+/// into encrypted device-local metadata. Existing database values always win.
+#[tauri::command]
+async fn migrate_legacy_sync_settings(
+    app: tauri::AppHandle,
+    pairing_code: Option<String>,
+    relay_url: Option<String>,
+) -> Result<SyncSettings, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        let enabled = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
+
+        if enabled
+            && sync::read_pairing_code(&connection)
+                .map_err(sync::Error::into_string)?
+                .is_none()
+        {
+            if let Some(pairing_code) = pairing_code.filter(|value| !value.trim().is_empty()) {
+                sync::crypto::SyncKey::from_pairing_code(pairing_code.trim())
+                    .map_err(sync::Error::into_string)?;
+                sync::store_pairing_code(&connection, pairing_code.trim())
+                    .map_err(sync::Error::into_string)?;
+            }
+        }
+
+        if metadata_value(&connection, SYNC_RELAY_URL)?
+            .filter(|value| !value.is_empty())
+            .is_none()
+        {
+            if let Some(relay_url) = relay_url.filter(|value| !value.trim().is_empty()) {
+                // Old builds accepted arbitrary text here. Invalid legacy values
+                // are safer to drop than to make pairing-key migration fail.
+                if let Ok(relay_url) = normalize_sync_relay_url(&relay_url) {
+                    set_metadata(&connection, SYNC_RELAY_URL, &relay_url)?;
+                }
+            }
+        }
+
+        sync_settings_from_database(&connection)
     })
     .await
 }
@@ -4945,14 +5058,10 @@ async fn sync_enable_joiner(app: tauri::AppHandle, pairing_code: String) -> Resu
 /// Pull this device's changes (sealed with the pairing key) since `since`, ready
 /// to hand to any transport (P2P socket or relay server).
 #[tauri::command]
-async fn sync_pull_sealed(
-    app: tauri::AppHandle,
-    pairing_code: String,
-    since: i64,
-) -> Result<Vec<u8>, String> {
+async fn sync_pull_sealed(app: tauri::AppHandle, since: i64) -> Result<Vec<u8>, String> {
     run_database_task(move || {
-        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
-            .map_err(sync::Error::into_string)?;
+        let key = stored_sync_key(&app)?
+            .ok_or_else(|| "This device's sync key is missing.".to_string())?;
         with_synced_connection(&app, |connection| {
             if !sync::is_sync_enabled(connection).map_err(sync::Error::into_string)? {
                 return Err("Sync is not enabled on this device.".to_string());
@@ -4969,12 +5078,11 @@ async fn sync_pull_sealed(
 #[tauri::command]
 async fn sync_apply_sealed(
     app: tauri::AppHandle,
-    pairing_code: String,
     envelope: Vec<u8>,
 ) -> Result<Option<String>, String> {
     run_database_task(move || {
-        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
-            .map_err(sync::Error::into_string)?;
+        let key = stored_sync_key(&app)?
+            .ok_or_else(|| "This device's sync key is missing.".to_string())?;
         let changes = key.open(&envelope).map_err(sync::Error::into_string)?;
         with_synced_connection(&app, |connection| {
             if !sync::is_sync_enabled(connection).map_err(sync::Error::into_string)? {
@@ -5108,7 +5216,9 @@ pub fn run() {
             open_external_url,
             write_balance_clipboard,
             read_balance_clipboard,
-            sync_status,
+            get_sync_settings,
+            set_sync_relay_url,
+            migrate_legacy_sync_settings,
             sync_new_pairing_code,
             sync_enable_primary,
             sync_enable_joiner,
@@ -6809,6 +6919,39 @@ mod tests {
         );
         assert!(validate_export_result_path("").is_err());
         assert!(validate_export_result_path("/tmp/export.json\nopen").is_err());
+    }
+
+    #[test]
+    fn sync_relay_url_validation_normalizes_safe_urls() {
+        assert_eq!(
+            normalize_sync_relay_url(" https://relay.example.com/ ").unwrap(),
+            "https://relay.example.com"
+        );
+        assert_eq!(
+            normalize_sync_relay_url("http://127.0.0.1:8787///").unwrap(),
+            "http://127.0.0.1:8787"
+        );
+        assert_eq!(normalize_sync_relay_url("  ").unwrap(), "");
+        assert!(normalize_sync_relay_url("relay.example.com").is_err());
+        assert!(normalize_sync_relay_url("https://").is_err());
+        assert!(normalize_sync_relay_url("https://relay.example.com/path with space").is_err());
+    }
+
+    #[test]
+    fn metadata_diagnostics_redact_the_sync_pairing_secret() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+                 INSERT INTO metadata VALUES ('sync_pairing_code', 'BALSYNC1:secret');
+                 INSERT INTO metadata VALUES ('sync_relay_url', 'https://relay.example.com');",
+            )
+            .unwrap();
+
+        let listed = list_metadata_from_database(&connection).unwrap();
+        assert_eq!(listed["entries"][0]["key"], SYNC_PAIRING_CODE);
+        assert_eq!(listed["entries"][0]["value"], "[redacted]");
+        assert_eq!(listed["entries"][1]["value"], "https://relay.example.com");
     }
 
     #[test]

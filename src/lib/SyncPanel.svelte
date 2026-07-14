@@ -9,7 +9,9 @@
     Format,
   } from '@tauri-apps/plugin-barcode-scanner'
   import {
-    syncStatus,
+    getSyncSettings,
+    setSyncRelayUrl,
+    migrateLegacySyncSettings,
     syncNewPairingCode,
     syncEnablePrimary,
     syncEnableJoiner,
@@ -21,11 +23,11 @@
     type SyncPeer,
   } from './store'
 
-  // The pairing code IS the end-to-end key (encoded). It is held only on the
-  // user's devices; the relay never sees it. Persisted in localStorage so the
-  // device remembers its account between launches.
-  const STORAGE_KEY = 'balance.sync.pairingCode'
-  const RELAY_KEY = 'balance.sync.relayUrl'
+  // Older versions used origin-scoped localStorage, which split these values
+  // between dev and production. They are read only for one-time migration into
+  // encrypted, non-replicated database metadata.
+  const LEGACY_STORAGE_KEY = 'balance.sync.pairingCode'
+  const LEGACY_RELAY_KEY = 'balance.sync.relayUrl'
 
   // Camera QR scanning is mobile-only (native plugin); on desktop you paste.
   const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent)
@@ -48,15 +50,29 @@
   let peerPoll: ReturnType<typeof setInterval> | undefined
 
   onMount(async () => {
-    pairingCode = localStorage.getItem(STORAGE_KEY) ?? ''
-    relayUrl = localStorage.getItem(RELAY_KEY) ?? ''
+    const legacyPairingCode = localStorage.getItem(LEGACY_STORAGE_KEY)
+    const legacyRelayUrl = localStorage.getItem(LEGACY_RELAY_KEY)
     try {
-      migrated = await syncStatus()
-    } catch {
+      let settings = await getSyncSettings()
+      if (legacyPairingCode !== null || legacyRelayUrl !== null) {
+        try {
+          settings = await migrateLegacySyncSettings(legacyPairingCode, legacyRelayUrl)
+          localStorage.removeItem(LEGACY_STORAGE_KEY)
+          localStorage.removeItem(LEGACY_RELAY_KEY)
+        } catch (err) {
+          setStatus(`Could not migrate old sync settings: ${err}`, true)
+        }
+      }
+
+      migrated = settings.enabled
+      pairingCode = settings.pairingCode ?? ''
+      relayUrl = settings.relayUrl
+    } catch (err) {
       migrated = false
+      setStatus(`Could not load sync settings: ${err}`, true)
     }
     if (pairingCode) await renderQr()
-    if (migrated && pairingCode) await startP2p()
+    if (migrated) await startP2p()
   })
 
   onDestroy(() => {
@@ -175,11 +191,11 @@
   async function generate() {
     busy = true
     try {
-      pairingCode = await syncNewPairingCode()
-      localStorage.setItem(STORAGE_KEY, pairingCode)
+      const newPairingCode = await syncNewPairingCode()
       // This device becomes the source of truth; its data is snapshotted into
       // the synced log (and backed up first).
-      await syncEnablePrimary(pairingCode)
+      await syncEnablePrimary(newPairingCode)
+      pairingCode = newPairingCode
       migrated = true
       await renderQr()
       await startP2p()
@@ -199,12 +215,11 @@
     }
     busy = true
     try {
-      pairingCode = code
-      localStorage.setItem(STORAGE_KEY, pairingCode)
-      joinInput = ''
       // Joining adopts the other device's data; this device's current data is
       // backed up and replaced on the next sync.
-      await syncEnableJoiner(pairingCode)
+      await syncEnableJoiner(code)
+      pairingCode = code
+      joinInput = ''
       migrated = true
       await renderQr()
       await startP2p()
@@ -216,9 +231,17 @@
     }
   }
 
-  function saveRelay() {
-    localStorage.setItem(RELAY_KEY, relayUrl.trim())
-    setStatus('Relay server saved.')
+  async function saveRelay() {
+    busy = true
+    try {
+      const settings = await setSyncRelayUrl(relayUrl)
+      relayUrl = settings.relayUrl
+      setStatus(relayUrl ? 'Relay server saved.' : 'Relay server cleared.')
+    } catch (err) {
+      setStatus(`Could not save relay server: ${err}`, true)
+    } finally {
+      busy = false
+    }
   }
 
   async function copyCode() {
@@ -249,7 +272,7 @@
       const base = relayUrl.replace(/\/$/, '')
 
       // Push our sealed delta.
-      const sealed = await syncPullSealed(pairingCode, 0)
+      const sealed = await syncPullSealed(0)
       const pushRes = await fetch(`${base}/push`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -263,7 +286,7 @@
       const envelopes = (await pullRes.json()) as number[][]
       let applied = 0
       for (const env of envelopes) {
-        const newState = await syncApplySealed(pairingCode, Uint8Array.from(env))
+        const newState = await syncApplySealed(Uint8Array.from(env))
         if (newState) applied += 1
       }
       migrated = true
@@ -393,7 +416,7 @@
           spellcheck="false"
           bind:value={relayUrl}
         />
-        <button type="button" on:click={saveRelay}>Save</button>
+        <button type="button" on:click={saveRelay} disabled={busy}>Save</button>
       </div>
     </div>
 
