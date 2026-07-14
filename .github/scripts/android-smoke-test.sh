@@ -359,7 +359,7 @@ dismiss_recovery_key_setup() {
 echo "[ui-sync] creating recognizable data on the primary installation"
 dismiss_recovery_key_setup
 tap_ui text "Goals"
-type_into_ui_contains text "New goal name" "CISyncGoal"
+type_into_ui resource-id "goal-name-input" "CISyncGoal"
 adb shell input keyevent KEYCODE_ENTER
 adb shell input keyevent KEYCODE_BACK || true
 wait_for_ui_text "CISyncGoal"
