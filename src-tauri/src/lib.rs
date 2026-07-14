@@ -1559,6 +1559,25 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             .map_err(|error| error.to_string())?;
             Ok(())
         }
+        "delete_template_items" => {
+            for item_id in required_array(payload, "itemIds")? {
+                tx.execute(
+                    "delete from template_items where id = ?1",
+                    params![item_id
+                        .as_str()
+                        .ok_or_else(|| "Expected string item id".to_string())?],
+                )
+                .map_err(|error| error.to_string())?;
+            }
+            Ok(())
+        }
+        "paste_template_items" => paste_template_items_row(
+            tx,
+            required_string(payload, "templateId")?,
+            optional_string(payload, "targetId")?.as_deref(),
+            required_string(payload, "placement")?,
+            required_array(payload, "items")?,
+        ),
         "insert_template_item_at" => insert_template_item(
             tx,
             required_string(payload, "templateId")?,
@@ -1576,6 +1595,17 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             tx,
             required_string(payload, "itemId")?,
             required_string(payload, "direction")?,
+        ),
+        "move_template_items_within_level" => move_template_items_within_level_row(
+            tx,
+            required_string(payload, "templateId")?,
+            required_array(payload, "itemIds")?,
+            required_string(payload, "direction")?,
+        ),
+        "indent_template_items" => indent_template_items_row(
+            tx,
+            required_string(payload, "templateId")?,
+            required_array(payload, "itemIds")?,
         ),
         "outdent_template_item" => {
             outdent_template_item_row(tx, required_string(payload, "itemId")?)
@@ -1898,6 +1928,39 @@ fn build_domain_undo_operation(
                 }),
             )))
         }
+        "delete_template_items" => build_delete_template_items_undo(connection, payload),
+        "paste_template_items" => {
+            let mut operations = required_array(payload, "items")?
+                .iter()
+                .map(|item| {
+                    Ok(storage_operation(
+                        "delete_template_item",
+                        json!({ "itemId": required_string(item, "id")? }),
+                    ))
+                })
+                .collect::<Result<Vec<Value>, String>>()?;
+
+            if required_string(payload, "placement")? == "replace" {
+                if let Some(target_id) = optional_string(payload, "targetId")? {
+                    if let Some(snapshot) = read_template_item_snapshot(connection, &target_id)? {
+                        operations.push(storage_operation(
+                            "insert_template_item_at",
+                            json!({
+                                "templateId": snapshot.template_id,
+                                "parentId": snapshot.parent_id,
+                                "position": snapshot.position,
+                                "item": snapshot.item,
+                            }),
+                        ));
+                    }
+                }
+            }
+
+            Ok(Some(storage_operation(
+                "batch",
+                json!({ "operations": operations }),
+            )))
+        }
         "move_template_item" => {
             let Some(snapshot) =
                 read_template_item_snapshot(connection, required_string(payload, "sourceId")?)?
@@ -1932,6 +1995,10 @@ fn build_domain_undo_operation(
                 }),
             )))
         }
+        "move_template_items_within_level" => {
+            build_move_template_items_within_level_undo(connection, payload)
+        }
+        "indent_template_items" => build_move_template_items_within_level_undo(connection, payload),
         "outdent_template_item" => build_outdent_template_item_undo(connection, payload),
         "outdent_template_items" => build_outdent_template_items_undo(connection, payload),
         "add_template_option" => Ok(Some(storage_operation(
@@ -2298,6 +2365,7 @@ fn build_move_plan_items_within_level_undo(
     payload: &Value,
 ) -> Result<Option<Value>, String> {
     let mut snapshots = Vec::new();
+    let restore_from_end = optional_string(payload, "direction")?.as_deref() == Some("up");
 
     for item_id in required_array(payload, "itemIds")? {
         let Some(item_id) = item_id.as_str() else {
@@ -2314,7 +2382,13 @@ fn build_move_plan_items_within_level_undo(
         a.plan_id
             .cmp(&b.plan_id)
             .then(a.parent_id.cmp(&b.parent_id))
-            .then(a.position.cmp(&b.position))
+            .then_with(|| {
+                if restore_from_end {
+                    b.position.cmp(&a.position)
+                } else {
+                    a.position.cmp(&b.position)
+                }
+            })
     });
 
     if snapshots.is_empty() {
@@ -2335,6 +2409,41 @@ fn build_move_plan_items_within_level_undo(
             ))
         })
         .collect::<Result<Vec<Value>, String>>()?;
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
+    )))
+}
+
+fn build_delete_template_items_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let mut operations = Vec::new();
+
+    for item_id in required_array(payload, "itemIds")? {
+        let Some(item_id) = item_id.as_str() else {
+            return Err("Expected string item id".to_string());
+        };
+        let Some(snapshot) = read_template_item_snapshot(connection, item_id)? else {
+            continue;
+        };
+
+        operations.push(storage_operation(
+            "insert_template_item_at",
+            json!({
+                "templateId": snapshot.template_id,
+                "parentId": snapshot.parent_id,
+                "position": snapshot.position,
+                "item": snapshot.item,
+            }),
+        ));
+    }
+
+    if operations.is_empty() {
+        return Ok(None);
+    }
 
     Ok(Some(storage_operation(
         "batch",
@@ -2371,6 +2480,62 @@ fn build_template_item_patch_undo(
             "itemId": item_id,
             "patch": Value::Object(inverse_patch),
         }),
+    )))
+}
+
+fn build_move_template_items_within_level_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let mut snapshots = Vec::new();
+    let restore_from_end = optional_string(payload, "direction")?.as_deref() == Some("up");
+
+    for item_id in required_array(payload, "itemIds")? {
+        let Some(item_id) = item_id.as_str() else {
+            return Err("Expected string item id".to_string());
+        };
+        let Some(snapshot) = read_template_item_snapshot(connection, item_id)? else {
+            continue;
+        };
+
+        snapshots.push(snapshot);
+    }
+
+    snapshots.sort_by(|a, b| {
+        a.template_id
+            .cmp(&b.template_id)
+            .then(a.parent_id.cmp(&b.parent_id))
+            .then_with(|| {
+                if restore_from_end {
+                    b.position.cmp(&a.position)
+                } else {
+                    a.position.cmp(&b.position)
+                }
+            })
+    });
+
+    if snapshots.is_empty() {
+        return Ok(None);
+    }
+
+    let operations = snapshots
+        .into_iter()
+        .map(|snapshot| {
+            Ok(storage_operation(
+                "move_template_item_to_position",
+                json!({
+                    "itemId": required_string(&snapshot.item, "id")?,
+                    "templateId": snapshot.template_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
+                }),
+            ))
+        })
+        .collect::<Result<Vec<Value>, String>>()?;
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
     )))
 }
 
@@ -3219,6 +3384,82 @@ fn paste_plan_items_row(
     rewrite_plan_item_positions(connection, &siblings)
 }
 
+fn paste_template_items_row(
+    connection: &Connection,
+    template_id: &str,
+    target_id: Option<&str>,
+    placement: &str,
+    items: &[Value],
+) -> Result<(), String> {
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let parent_id = if placement == "inside" {
+        target_id.map(str::to_string)
+    } else if let Some(target_id) = target_id {
+        template_item_parent_id(connection, target_id)?
+    } else {
+        None
+    };
+    let mut siblings = template_item_sibling_ids(connection, template_id, parent_id.as_deref())?;
+    let insert_index = if placement == "inside" || target_id.is_none() {
+        siblings.len()
+    } else {
+        let target_id = target_id.unwrap_or_default();
+        let target_index = siblings
+            .iter()
+            .position(|id| id == target_id)
+            .ok_or_else(|| "Template paste target is not in its sibling list".to_string())?;
+
+        if placement == "before" || placement == "replace" {
+            target_index
+        } else {
+            target_index + 1
+        }
+    };
+    let item_ids = items
+        .iter()
+        .map(|item| required_string(item, "id").map(str::to_string))
+        .collect::<Result<Vec<String>, String>>()?;
+
+    for item_id in &item_ids {
+        siblings.retain(|id| id != item_id);
+    }
+    if placement == "replace" {
+        if let Some(target_id) = target_id {
+            siblings.retain(|id| id != target_id);
+        }
+    }
+
+    for (offset, item_id) in item_ids.iter().enumerate() {
+        siblings.insert(insert_index + offset, item_id.clone());
+    }
+
+    if placement == "replace" {
+        if let Some(target_id) = target_id {
+            connection
+                .execute(
+                    "delete from template_items where id = ?1",
+                    params![target_id],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+    }
+
+    for (offset, item) in items.iter().enumerate() {
+        insert_template_item(
+            connection,
+            template_id,
+            parent_id.as_deref(),
+            item,
+            (insert_index + offset) as i64,
+        )?;
+    }
+
+    rewrite_template_item_positions(connection, &siblings)
+}
+
 fn patch_template_item(connection: &Connection, payload: &Value) -> Result<(), String> {
     let item_id = required_string(payload, "itemId")?;
     let patch = required_value(payload, "patch")?;
@@ -3668,6 +3909,132 @@ fn move_template_item_within_level_row(
 
     siblings.swap(index, target_index);
     rewrite_template_item_positions(connection, &siblings)
+}
+
+fn move_template_items_within_level_row(
+    connection: &Connection,
+    template_id: &str,
+    item_ids: &[Value],
+    direction: &str,
+) -> Result<(), String> {
+    let mut selected_by_parent: HashMap<Option<String>, Vec<String>> = HashMap::new();
+
+    for item_id in item_ids {
+        let item_id = item_id
+            .as_str()
+            .ok_or_else(|| "Expected string item id".to_string())?;
+        if template_item_template_id(connection, item_id)? != template_id {
+            continue;
+        }
+
+        let parent_id = template_item_parent_id(connection, item_id)?;
+        selected_by_parent
+            .entry(parent_id)
+            .or_default()
+            .push(item_id.to_string());
+    }
+
+    for (parent_id, selected_ids) in selected_by_parent {
+        let mut siblings =
+            template_item_sibling_ids(connection, template_id, parent_id.as_deref())?;
+        let mut changed = false;
+
+        if direction == "up" {
+            for index in 1..siblings.len() {
+                if selected_ids.contains(&siblings[index])
+                    && !selected_ids.contains(&siblings[index - 1])
+                {
+                    siblings.swap(index - 1, index);
+                    changed = true;
+                }
+            }
+        } else {
+            for index in (0..siblings.len().saturating_sub(1)).rev() {
+                if selected_ids.contains(&siblings[index])
+                    && !selected_ids.contains(&siblings[index + 1])
+                {
+                    siblings.swap(index, index + 1);
+                    changed = true;
+                }
+            }
+        }
+
+        if changed {
+            rewrite_template_item_positions(connection, &siblings)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn indent_template_items_row(
+    connection: &Connection,
+    template_id: &str,
+    item_ids: &[Value],
+) -> Result<(), String> {
+    let selected_ids = item_ids
+        .iter()
+        .map(|item_id| {
+            item_id
+                .as_str()
+                .map(str::to_string)
+                .ok_or_else(|| "Expected string item id".to_string())
+        })
+        .collect::<Result<Vec<String>, String>>()?;
+    let mut selected_by_parent: HashMap<Option<String>, Vec<String>> = HashMap::new();
+
+    for item_id in &selected_ids {
+        if template_item_template_id(connection, item_id)? != template_id {
+            continue;
+        }
+
+        selected_by_parent
+            .entry(template_item_parent_id(connection, item_id)?)
+            .or_default()
+            .push(item_id.clone());
+    }
+
+    for (parent_id, selected_at_level) in selected_by_parent {
+        let siblings = template_item_sibling_ids(connection, template_id, parent_id.as_deref())?;
+        let mut remaining_siblings = Vec::new();
+        let mut target_id: Option<String> = None;
+        let mut selected_by_target: HashMap<String, Vec<String>> = HashMap::new();
+
+        for sibling_id in siblings {
+            if selected_at_level.contains(&sibling_id) {
+                if let Some(target_id) = target_id.as_ref() {
+                    selected_by_target
+                        .entry(target_id.clone())
+                        .or_default()
+                        .push(sibling_id);
+                } else {
+                    remaining_siblings.push(sibling_id);
+                }
+            } else {
+                target_id = Some(sibling_id.clone());
+                remaining_siblings.push(sibling_id);
+            }
+        }
+
+        for (target_id, selected) in selected_by_target {
+            let mut children =
+                template_item_sibling_ids(connection, template_id, Some(&target_id))?;
+            for item_id in selected {
+                connection
+                    .execute(
+                        "update template_items set parent_id = ?1 where id = ?2",
+                        params![target_id, item_id],
+                    )
+                    .map_err(|error| error.to_string())?;
+                children.push(item_id);
+            }
+            rewrite_template_item_positions(connection, &children)?;
+        }
+
+        rewrite_template_item_positions(connection, &remaining_siblings)?;
+    }
+
+    Ok(())
 }
 
 fn outdent_template_item_row(connection: &Connection, item_id: &str) -> Result<(), String> {
@@ -5336,6 +5703,62 @@ mod tests {
     use super::*;
 
     #[test]
+    fn every_frontend_operation_has_persistence_and_undo_support() {
+        let frontend_source = include_str!("../../src/lib/store.ts");
+        let mut operation_types = std::collections::BTreeSet::new();
+        let mut remaining = frontend_source;
+
+        while let Some(commit_index) = remaining.find("commit(") {
+            remaining = &remaining[commit_index + "commit(".len()..];
+            let argument = remaining.trim_start();
+            let Some(quoted) = argument.strip_prefix('\'') else {
+                continue;
+            };
+            let Some(quote_index) = quoted.find('\'') else {
+                continue;
+            };
+            operation_types.insert(&quoted[..quote_index]);
+            remaining = &quoted[quote_index + 1..];
+        }
+
+        assert!(!operation_types.is_empty());
+
+        let backend_source = include_str!("lib.rs");
+        let apply_source = backend_source
+            .split_once("fn apply_operation(")
+            .expect("apply_operation must exist")
+            .1
+            .split_once("\n#[derive(Clone)]")
+            .expect("apply_operation end marker must exist")
+            .0;
+        let undo_source = backend_source
+            .split_once("fn build_domain_undo_operation(")
+            .expect("build_domain_undo_operation must exist")
+            .1
+            .split_once("\nfn build_plan_item_patch_undo(")
+            .expect("build_domain_undo_operation end marker must exist")
+            .0;
+
+        for operation_type in operation_types {
+            if is_lists_metrics_operation(operation_type) {
+                continue;
+            }
+
+            let match_arm = format!("\"{operation_type}\" =>");
+            assert!(
+                apply_source.contains(&match_arm),
+                "Frontend operation {operation_type:?} has no apply_operation handler"
+            );
+            if operation_type != "replace_goal_data" {
+                assert!(
+                    undo_source.contains(&match_arm),
+                    "Frontend operation {operation_type:?} has no undo handler"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn encrypted_database_round_trips_state_after_reopen() {
         let database = TestDatabase::new("round-trip");
         let recovery_key = generate_recovery_key();
@@ -6810,6 +7233,97 @@ mod tests {
     }
 
     #[test]
+    fn indent_template_items_persists_and_undoes() {
+        let database = TestDatabase::new("template-indent-multi");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Template multi indent test");
+        state["templates"][0]["items"]
+            .as_array_mut()
+            .unwrap()
+            .extend([
+                json!({
+                    "id": "template_item_second",
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "options": [{
+                        "id": "template_option_second",
+                        "text": "Second item",
+                        "html": "Second item",
+                        "probability": 100
+                    }],
+                    "children": []
+                }),
+                json!({
+                    "id": "template_item_third",
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "options": [{
+                        "id": "template_option_third",
+                        "text": "Third item",
+                        "html": "Third item",
+                        "probability": 100
+                    }],
+                    "children": []
+                }),
+            ]);
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "indent_template_items",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemIds": ["template_item_second", "template_item_third"]
+                }
+            }),
+        )
+        .unwrap();
+
+        let indented = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(top_template_item_ids(&indented), ["template_item_wake"]);
+        assert_eq!(
+            indented["templates"][0]["items"][0]["children"][0]["id"],
+            "template_item_second"
+        );
+        assert_eq!(
+            indented["templates"][0]["items"][0]["children"][1]["id"],
+            "template_item_third"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&undone),
+            [
+                "template_item_wake",
+                "template_item_second",
+                "template_item_third"
+            ]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_template_item_ids(&redone), ["template_item_wake"]);
+        assert_eq!(
+            redone["templates"][0]["items"][0]["children"][0]["id"],
+            "template_item_second"
+        );
+        assert_eq!(
+            redone["templates"][0]["items"][0]["children"][1]["id"],
+            "template_item_third"
+        );
+    }
+
+    #[test]
     fn outdent_template_item_promotes_following_siblings_under_it() {
         let database = TestDatabase::new("template-outdent");
         let recovery_key = generate_recovery_key();
@@ -7113,6 +7627,244 @@ mod tests {
     }
 
     #[test]
+    fn delete_template_items_persists_and_undoes() {
+        let database = TestDatabase::new("delete-template-items");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Delete template items test");
+        state["templates"][0]["items"]
+            .as_array_mut()
+            .unwrap()
+            .extend([
+                test_template_item("template_item_second", "Second"),
+                test_template_item("template_item_third", "Third"),
+            ]);
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "delete_template_items",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemIds": ["template_item_wake", "template_item_second"]
+                }
+            }),
+        )
+        .unwrap();
+
+        let deleted = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(top_template_item_ids(&deleted), ["template_item_third"]);
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&undone),
+            [
+                "template_item_wake",
+                "template_item_second",
+                "template_item_third"
+            ]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_template_item_ids(&redone), ["template_item_third"]);
+    }
+
+    #[test]
+    fn paste_template_items_persists_and_undoes() {
+        let database = TestDatabase::new("paste-template-items");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Paste template items test");
+        state["templates"][0]["items"]
+            .as_array_mut()
+            .unwrap()
+            .push(test_template_item("template_item_second", "Second"));
+
+        let mut pasted_item = test_template_item("template_item_pasted", "Pasted");
+        pasted_item["children"] = json!([test_template_item(
+            "template_item_pasted_child",
+            "Pasted child"
+        )]);
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "paste_template_items",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "targetId": "template_item_wake",
+                    "placement": "after",
+                    "items": [pasted_item]
+                }
+            }),
+        )
+        .unwrap();
+
+        let pasted = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_template_item_ids(&pasted),
+            [
+                "template_item_wake",
+                "template_item_pasted",
+                "template_item_second"
+            ]
+        );
+        assert_eq!(
+            pasted["templates"][0]["items"][1]["children"][0]["id"],
+            "template_item_pasted_child"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&undone),
+            ["template_item_wake", "template_item_second"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&redone),
+            [
+                "template_item_wake",
+                "template_item_pasted",
+                "template_item_second"
+            ]
+        );
+    }
+
+    #[test]
+    fn move_template_items_within_level_persists_and_undoes() {
+        let database = TestDatabase::new("move-template-items-within-level");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Move template items test");
+        state["templates"][0]["items"]
+            .as_array_mut()
+            .unwrap()
+            .extend([
+                test_template_item("template_item_second", "Second"),
+                test_template_item("template_item_third", "Third"),
+                test_template_item("template_item_fourth", "Fourth"),
+            ]);
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "move_template_items_within_level",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemIds": ["template_item_second", "template_item_third"],
+                    "direction": "up"
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_template_item_ids(&moved),
+            [
+                "template_item_second",
+                "template_item_third",
+                "template_item_wake",
+                "template_item_fourth"
+            ]
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&undone),
+            [
+                "template_item_wake",
+                "template_item_second",
+                "template_item_third",
+                "template_item_fourth"
+            ]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&redone),
+            [
+                "template_item_second",
+                "template_item_third",
+                "template_item_wake",
+                "template_item_fourth"
+            ]
+        );
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_3",
+                "deviceId": "device_test",
+                "sequence": 3,
+                "type": "move_template_items_within_level",
+                "timestamp": "2026-05-21T00:02:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemIds": ["template_item_second", "template_item_third"],
+                    "direction": "down"
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved_down = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_template_item_ids(&moved_down),
+            [
+                "template_item_wake",
+                "template_item_second",
+                "template_item_third",
+                "template_item_fourth"
+            ]
+        );
+
+        let down_undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&down_undone),
+            [
+                "template_item_second",
+                "template_item_third",
+                "template_item_wake",
+                "template_item_fourth"
+            ]
+        );
+    }
+
+    #[test]
     fn generated_recovery_key_uses_grouped_base32_format() {
         let recovery_key = generate_recovery_key();
         let groups = recovery_key.split('-').collect::<Vec<_>>();
@@ -7253,6 +8005,21 @@ mod tests {
             .iter()
             .map(|item| item["id"].as_str().unwrap().to_string())
             .collect()
+    }
+
+    fn test_template_item(id: &str, text: &str) -> Value {
+        json!({
+            "id": id,
+            "startMinutes": null,
+            "endMinutes": null,
+            "options": [{
+                "id": format!("option_{id}"),
+                "text": text,
+                "html": text,
+                "probability": 100
+            }],
+            "children": []
+        })
     }
 
     struct TestDatabase {
