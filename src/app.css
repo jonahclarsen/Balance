@@ -2222,6 +2222,24 @@ nav button.active {
   -webkit-overflow-scrolling: touch;
 }
 
+.list-template-tab {
+  cursor: grab;
+  user-select: none;
+}
+
+.list-template-tab.dragging {
+  cursor: grabbing;
+  opacity: 0.55;
+}
+
+.list-template-tab.drop-before {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.list-template-tab.drop-after {
+  box-shadow: inset -3px 0 0 var(--accent);
+}
+
 .rail-chip {
   flex: 0 0 auto;
   max-width: 220px;

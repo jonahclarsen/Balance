@@ -1801,6 +1801,15 @@ test('list template rows share multi-select clipboard behavior and hide mouse-on
   await listInputs.nth(1).fill('Second item')
   await expect(page.getByRole('button', { name: 'Add child item' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Delete item' })).toHaveCount(0)
+  await expect
+    .poll(async () => {
+      const slider = page.getByLabel('Appearance probability').first()
+      const thumb = slider.locator('xpath=..').locator('.thumb')
+      const sliderBox = await slider.boundingBox()
+      const thumbBox = await thumb.boundingBox()
+      return sliderBox && thumbBox ? { hitboxHeight: sliderBox.height, thumbHeight: thumbBox.height } : null
+    })
+    .toEqual({ hitboxHeight: 28, thumbHeight: 14 })
 
   const first = page.locator('[data-list-template-text-input-id]').filter({ hasText: 'First item' })
   await first.focus()
@@ -1940,13 +1949,13 @@ test('list template tabs and word cap stay pinned while each template remembers 
 
   const alphaTab = page.getByRole('button', { name: 'Alpha', exact: true })
   const betaTab = page.getByRole('button', { name: 'Beta', exact: true })
-  await page.keyboard.press('Control+ArrowRight')
+  await page.keyboard.press('Alt+W')
   await expect(betaTab).toHaveAttribute('aria-current', 'true')
-  await page.keyboard.press('Control+ArrowLeft')
+  await page.keyboard.press('Alt+Q')
+  await expect(alphaTab).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('Control+ArrowRight')
   await expect(alphaTab).toHaveAttribute('aria-current', 'true')
   await page.keyboard.press('Meta+ArrowRight')
-  await expect(betaTab).toHaveAttribute('aria-current', 'true')
-  await page.keyboard.press('Meta+ArrowLeft')
   await expect(alphaTab).toHaveAttribute('aria-current', 'true')
 
   await betaTab.click()
@@ -1958,6 +1967,56 @@ test('list template tabs and word cap stay pinned while each template remembers 
   await expect.poll(currentScrollTop).toBe(620)
   await betaTab.click()
   await expect.poll(currentScrollTop).toBe(340)
+})
+
+test('list template tabs can be dragged to persist a new order without changing the selection', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    const now = new Date().toISOString()
+    localStorage.setItem(
+      'balance.appState.v1',
+      JSON.stringify({
+        schemaVersion: 1,
+        deviceId: 'test-device',
+        localSequence: 0,
+        historyRevision: 0,
+        activePlanDate: now.slice(0, 10),
+        templates: [],
+        plans: [],
+        listTemplates: ['Alpha', 'Beta', 'Gamma'].map((name) => ({
+          id: `list_template_${name.toLowerCase()}`,
+          name,
+          maxExpectedWords: 0,
+          items: [],
+          createdAt: now,
+          updatedAt: now,
+        })),
+        lists: [],
+        metrics: [],
+        metricEntries: [],
+        goals: [],
+        goalCompletions: [],
+        operations: [],
+      }),
+    )
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+
+  const alphaTab = page.getByRole('button', { name: 'Alpha', exact: true })
+  const betaTab = page.getByRole('button', { name: 'Beta', exact: true })
+  await horizontalPointerDrag(page, alphaTab, betaTab, 'after')
+
+  await expect(alphaTab).toHaveAttribute('aria-current', 'true')
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return state.listTemplates?.map((template: { name: string }) => template.name) ?? []
+      }),
+    )
+    .toEqual(['Beta', 'Alpha', 'Gamma'])
+  await expect(page.locator('[data-list-template-tab-id]')).toHaveText(['Beta', 'Alpha', 'Gamma'])
 })
 
 test('deleting a list template requires confirmation', async ({ page }) => {
@@ -2306,6 +2365,23 @@ async function pointerDrag(
   await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
   await page.mouse.down()
   await page.mouse.move(targetBox.x + Math.min(160, targetBox.width / 2), targetY, { steps: 8 })
+  await page.mouse.up()
+}
+
+async function horizontalPointerDrag(
+  page: import('@playwright/test').Page,
+  source: import('@playwright/test').Locator,
+  target: import('@playwright/test').Locator,
+  placement: 'before' | 'after',
+) {
+  const sourceBox = await source.boundingBox()
+  const targetBox = await target.boundingBox()
+  if (!sourceBox || !targetBox) throw new Error('Missing tab drag geometry')
+
+  const targetX = placement === 'before' ? targetBox.x + 3 : targetBox.x + targetBox.width - 3
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(targetX, targetBox.y + targetBox.height / 2, { steps: 8 })
   await page.mouse.up()
 }
 

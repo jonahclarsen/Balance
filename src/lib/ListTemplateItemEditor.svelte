@@ -190,6 +190,7 @@
         min={40}
         step={10}
         ariaLabel="Appearance probability"
+        generousHitbox
         onChange={(probability) => patchItem(templateId, item.id, { probability })}
       />
     </div>

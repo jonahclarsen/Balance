@@ -1022,6 +1022,25 @@ function createPlannerStore() {
       }))
     },
 
+    moveListTemplate(sourceId: Id, targetId: Id, placement: 'before' | 'after') {
+      if (sourceId === targetId) return
+
+      commit('move_list_template', { sourceId, targetId, placement }, (state) => {
+        const sourceIndex = state.listTemplates.findIndex((template) => template.id === sourceId)
+        const targetIndex = state.listTemplates.findIndex((template) => template.id === targetId)
+        if (sourceIndex === -1 || targetIndex === -1) return state
+
+        const listTemplates = [...state.listTemplates]
+        const [source] = listTemplates.splice(sourceIndex, 1)
+        const remainingTargetIndex = listTemplates.findIndex((template) => template.id === targetId)
+        const insertionIndex = remainingTargetIndex + (placement === 'after' ? 1 : 0)
+        listTemplates.splice(insertionIndex, 0, source)
+
+        if (listTemplates.every((template, index) => template === state.listTemplates[index])) return state
+        return { ...state, listTemplates }
+      })
+    },
+
     renameListTemplate(templateId: Id, name: string) {
       commit(
         'rename_list_template',

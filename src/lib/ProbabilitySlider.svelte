@@ -8,6 +8,9 @@
   // When true the readout becomes an editable number box for typing a precise
   // percentage; otherwise it stays a plain readout.
   export let editable = false
+  // Expands the transparent native control around the visible thumb while
+  // keeping the slider's visual size and surrounding row spacing unchanged.
+  export let generousHitbox = false
 
   // Position the visual thumb/fill by percentage so the handle reaches both
   // literal edges at min/max, instead of the native thumb's inset behaviour.
@@ -41,7 +44,7 @@
 </script>
 
 <div class="probability-slider">
-  <div class="track-wrap">
+  <div class="track-wrap" class:generous-hitbox={generousHitbox}>
     <div class="track"></div>
     <div class="fill" style={`width: ${pct}%`}></div>
     <div class="thumb" style={`left: ${pct}%`}></div>
@@ -89,6 +92,11 @@
     height: 16px;
     display: flex;
     align-items: center;
+  }
+
+  .track-wrap.generous-hitbox {
+    height: 28px;
+    margin-block: -6px;
   }
 
   .track {
