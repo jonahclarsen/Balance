@@ -1805,6 +1805,94 @@ test('day template rows support multi-select copy, cut, paste, and keyboard dele
   await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual(original.slice(0, -1))
 })
 
+test('day template items support horizontal boundary navigation and backspace merging', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+
+  const original = await topLevelTemplateOptionTexts(page)
+  expect(original.length).toBeGreaterThanOrEqual(2)
+
+  await focusTemplateOptionByValue(page, original[0])
+  await setCaretOffsetInFocusedEditor(page, original[0].length)
+  await page.keyboard.press('ArrowRight')
+  await expect
+    .poll(async () => ({
+      activeText: await activeTemplateOptionValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: original[1], caretOffset: 0 })
+
+  await page.keyboard.press('ArrowLeft')
+  await expect
+    .poll(async () => ({
+      activeText: await activeTemplateOptionValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: original[0], caretOffset: original[0].length })
+
+  await focusTemplateOptionByValue(page, original[1])
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Backspace')
+  await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual([
+    `${original[0]}${original[1]}`,
+    ...original.slice(2),
+  ])
+  await expect
+    .poll(async () => ({
+      activeText: await activeTemplateOptionValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: `${original[0]}${original[1]}`, caretOffset: original[0].length })
+
+  await page.keyboard.press('Meta+Z')
+  await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual(original)
+})
+
+test('list template items support horizontal boundary navigation and backspace merging', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Add list item' }).click()
+
+  const inputs = page.locator('[data-list-template-text-input]')
+  await inputs.nth(1).fill('Second item')
+  await inputs.first().focus()
+  await setCaretOffsetInFocusedEditor(page, 'First item'.length)
+  await page.keyboard.press('ArrowRight')
+  await expect
+    .poll(async () => ({
+      activeText: await activeListTemplateItemValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: 'Second item', caretOffset: 0 })
+
+  await page.keyboard.press('ArrowLeft')
+  await expect
+    .poll(async () => ({
+      activeText: await activeListTemplateItemValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: 'First item', caretOffset: 'First item'.length })
+
+  await inputs.nth(1).focus()
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Backspace')
+  await expect.poll(async () => listTemplateTopLevelTexts(page)).toEqual(['First itemSecond item'])
+  await expect
+    .poll(async () => ({
+      activeText: await activeListTemplateItemValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: 'First itemSecond item', caretOffset: 'First item'.length })
+
+  await page.keyboard.press('Meta+Z')
+  await expect.poll(async () => listTemplateTopLevelTexts(page)).toEqual(['First item', 'Second item'])
+})
+
 test('list template rows share multi-select clipboard behavior and hide mouse-only actions', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -2248,6 +2336,13 @@ async function activeTemplateOptionValue(page: import('@playwright/test').Page) 
   })
 }
 
+async function activeListTemplateItemValue(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    return active instanceof HTMLElement && active.matches('[data-list-template-text-input]') ? active.textContent : null
+  })
+}
+
 async function richHTMLForFocusedTemplateOption(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const active = document.activeElement
@@ -2313,7 +2408,12 @@ async function caretOffsetInFocusedEditor(page: import('@playwright/test').Page)
   return page.evaluate(() => {
     const active = document.activeElement
     const selection = document.getSelection()
-    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-input]') || !selection || selection.rangeCount === 0) {
+    if (
+      !(active instanceof HTMLElement) ||
+      !active.matches('[data-plan-text-input], [data-template-option-text-input], [data-list-template-text-input]') ||
+      !selection ||
+      selection.rangeCount === 0
+    ) {
       return null
     }
 

@@ -10,6 +10,7 @@ import {
   createTemplateOption,
   DEFAULT_DAILY_REMINDER,
   backspacePlanItemAtStart as backspacePlanItemAtStartInTree,
+  backspaceTemplateOptionAtStart as backspaceTemplateOptionAtStartInTree,
   deletePlanItem,
   deletePlanItems,
   deleteTemplateItem,
@@ -57,6 +58,7 @@ import {
   moveListTemplateItemWithinLevel,
   outdentListTemplateItem as outdentListTemplateItemInTree,
   splitListTemplateItem,
+  backspaceListTemplateItemAtStart as backspaceListTemplateItemAtStartInTree,
   createListTemplate,
   createListTemplateItem,
   clampListItemProbability,
@@ -827,6 +829,27 @@ function createPlannerStore() {
       return newItem.options[0].id
     },
 
+    backspaceTemplateOptionAtStart(templateId: Id, itemId: Id, optionId: Id) {
+      const template = get(store).templates.find((candidate) => candidate.id === templateId)
+      if (!template) return null
+
+      const result = backspaceTemplateOptionAtStartInTree(template.items, itemId, optionId)
+      if (!result) return null
+
+      commit(
+        'backspace_template_option_at_start',
+        { templateId, itemId, optionId, ...result.operation },
+        (state) =>
+          updateTemplate(state, templateId, (candidate) =>
+            candidate.id === template.id
+              ? { ...candidate, updatedAt: nowISO(), items: result.items }
+              : candidate,
+          ),
+      )
+
+      return { focusOptionId: result.focusOptionId, focusOffset: result.focusOffset }
+    },
+
     deleteTemplateItem(templateId: Id, itemId: Id) {
       commit('delete_template_item', { templateId, itemId }, (state) =>
         updateTemplate(state, templateId, (template) => ({
@@ -1133,6 +1156,24 @@ function createPlannerStore() {
           items: deleteListTemplateItem(template.items, itemId),
         })),
       )
+    },
+
+    backspaceListTemplateItemAtStart(templateId: Id, itemId: Id) {
+      const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
+      if (!template) return null
+
+      const result = backspaceListTemplateItemAtStartInTree(template.items, itemId)
+      if (!result) return null
+
+      commit('backspace_list_template_item_at_start', { templateId, itemId, ...result.operation }, (state) =>
+        updateListTemplate(state, templateId, (candidate) =>
+          candidate.id === template.id
+            ? { ...candidate, updatedAt: nowISO(), items: result.items }
+            : candidate,
+        ),
+      )
+
+      return { focusItemId: result.focusItemId, focusOffset: result.focusOffset }
     },
 
     copyListTemplateItems(templateId: Id, itemIds: Id[]) {

@@ -35,6 +35,30 @@ export type BackspacePlanItemAtStartResult = {
   focusOffset: number
 }
 
+export type BackspaceTemplateOptionAtStartResult = {
+  items: TemplateItem[]
+  operation:
+    | { action: 'delete_previous_item'; previousItemId: Id }
+    | { action: 'delete_previous_option'; previousOptionId: Id }
+    | {
+        action: 'merge'
+        previousItemId: Id
+        previousOptionId: Id
+        patch: Partial<TemplateOption>
+      }
+  focusOptionId: Id
+  focusOffset: number
+}
+
+export type BackspaceListTemplateItemAtStartResult = {
+  items: ListTemplateItem[]
+  operation:
+    | { action: 'delete_previous'; previousId: Id }
+    | { action: 'merge'; previousId: Id; patch: Partial<ListTemplateItem> }
+  focusItemId: Id
+  focusOffset: number
+}
+
 export function createId(prefix = 'id'): Id {
   if (globalThis.crypto?.randomUUID) {
     return `${prefix}_${globalThis.crypto.randomUUID()}`
@@ -664,6 +688,86 @@ export function deleteTemplateItem(items: TemplateItem[], itemId: Id): TemplateI
     }))
 }
 
+export function backspaceTemplateOptionAtStart(
+  items: TemplateItem[],
+  itemId: Id,
+  optionId: Id,
+): BackspaceTemplateOptionAtStartResult | null {
+  const flattened = flattenTemplateOptions(items)
+  const currentIndex = flattened.findIndex((entry) => entry.item.id === itemId && entry.option.id === optionId)
+  if (currentIndex <= 0) return null
+
+  const current = flattened[currentIndex]
+  const previous = flattened[currentIndex - 1]
+
+  if (isTemplateOptionTextEmpty(previous.option)) {
+    if (previous.item.options.length > 1) {
+      return {
+        items: updateTemplateItem(items, previous.item.id, (item) => ({
+          ...item,
+          options: item.options.filter((option) => option.id !== previous.option.id),
+        })),
+        operation: { action: 'delete_previous_option', previousOptionId: previous.option.id },
+        focusOptionId: current.option.id,
+        focusOffset: 0,
+      }
+    }
+
+    if (previous.item.children.length === 0) {
+      return {
+        items: deleteTemplateItem(items, previous.item.id),
+        operation: { action: 'delete_previous_item', previousItemId: previous.item.id },
+        focusOptionId: current.option.id,
+        focusOffset: 0,
+      }
+    }
+  }
+
+  const previousHTML = previous.option.html || escapeHTML(previous.option.text)
+  const currentHTML = current.option.html || escapeHTML(current.option.text)
+  const patch = {
+    text: `${previous.option.text}${current.option.text}`,
+    html: sanitizeInlineHTML(`${previousHTML}${currentHTML}`),
+  }
+  let nextItems = updateTemplateItem(items, previous.item.id, (item) => ({
+    ...item,
+    options: item.options.map((option) => (option.id === previous.option.id ? { ...option, ...patch } : option)),
+    children: previous.item.id === current.item.id ? item.children : [...item.children, ...current.item.children],
+  }))
+
+  if (previous.item.id === current.item.id) {
+    nextItems = updateTemplateItem(nextItems, current.item.id, (item) => ({
+      ...item,
+      options: item.options.filter((option) => option.id !== current.option.id),
+    }))
+  } else {
+    nextItems = deleteTemplateItem(nextItems, current.item.id)
+  }
+
+  return {
+    items: nextItems,
+    operation: {
+      action: 'merge',
+      previousItemId: previous.item.id,
+      previousOptionId: previous.option.id,
+      patch,
+    },
+    focusOptionId: previous.option.id,
+    focusOffset: previous.option.text.length,
+  }
+}
+
+function flattenTemplateOptions(items: TemplateItem[]): Array<{ item: TemplateItem; option: TemplateOption }> {
+  return items.flatMap((item) => [
+    ...item.options.map((option) => ({ item, option })),
+    ...flattenTemplateOptions(item.children),
+  ])
+}
+
+function isTemplateOptionTextEmpty(option: TemplateOption): boolean {
+  return option.text.trim() === '' && htmlToPlainText(option.html).trim() === ''
+}
+
 export function copyTemplateItems(items: TemplateItem[], itemIds: Id[]): TemplateItem[] {
   return copyTreeNodes(items, new Set(itemIds))
 }
@@ -1173,6 +1277,10 @@ function sanitizeNode(node: Node): string {
 
 type TreeNode<T> = { id: Id; children: T[] }
 
+function flattenTreeNodes<T extends TreeNode<T>>(items: T[]): T[] {
+  return items.flatMap((item) => [item, ...flattenTreeNodes(item.children)])
+}
+
 function copyTreeNodes<T extends TreeNode<T>>(items: T[], selectedIds: Set<Id>): T[] {
   if (selectedIds.size === 0) return []
 
@@ -1414,6 +1522,50 @@ export function addListTemplateItem(
 
 export function deleteListTemplateItem(items: ListTemplateItem[], itemId: Id): ListTemplateItem[] {
   return deleteTreeNode(items, itemId)
+}
+
+export function backspaceListTemplateItemAtStart(
+  items: ListTemplateItem[],
+  itemId: Id,
+): BackspaceListTemplateItemAtStartResult | null {
+  const flattened = flattenTreeNodes(items)
+  const currentIndex = flattened.findIndex((item) => item.id === itemId)
+  if (currentIndex <= 0) return null
+
+  const current = flattened[currentIndex]
+  const previous = flattened[currentIndex - 1]
+
+  if (isListTemplateItemTextEmpty(previous) && previous.children.length === 0) {
+    return {
+      items: deleteListTemplateItem(items, previous.id),
+      operation: { action: 'delete_previous', previousId: previous.id },
+      focusItemId: current.id,
+      focusOffset: 0,
+    }
+  }
+
+  const previousHTML = previous.html || escapeHTML(previous.text)
+  const currentHTML = current.html || escapeHTML(current.text)
+  const patch = {
+    text: `${previous.text}${current.text}`,
+    html: sanitizeInlineHTML(`${previousHTML}${currentHTML}`),
+  }
+  const withMergedPrevious = updateListTemplateItem(items, previous.id, (item) => ({
+    ...item,
+    ...patch,
+    children: [...item.children, ...current.children],
+  }))
+
+  return {
+    items: deleteListTemplateItem(withMergedPrevious, current.id),
+    operation: { action: 'merge', previousId: previous.id, patch },
+    focusItemId: previous.id,
+    focusOffset: previous.text.length,
+  }
+}
+
+function isListTemplateItemTextEmpty(item: ListTemplateItem): boolean {
+  return item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
 }
 
 export function copyListTemplateItems(items: ListTemplateItem[], itemIds: Id[]): ListTemplateItem[] {

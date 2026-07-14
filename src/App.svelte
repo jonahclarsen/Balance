@@ -2571,6 +2571,7 @@ return rows`
                 templateId={selectedTemplate.id}
                 patchItem={plannerStore.patchTemplateItem}
                 splitItem={plannerStore.splitTemplateItem}
+                backspaceOptionAtStart={plannerStore.backspaceTemplateOptionAtStart}
                 deleteItem={plannerStore.deleteTemplateItem}
                 moveItem={plannerStore.moveTemplateItem}
                 moveItemWithinLevel={plannerStore.moveTemplateItemWithinLevel}
@@ -2694,6 +2695,7 @@ return rows`
                 maxExpectedWords={selectedListTemplate.maxExpectedWords}
                 patchItem={plannerStore.patchListTemplateItem}
                 splitItem={plannerStore.splitListTemplateItem}
+                backspaceItemAtStart={plannerStore.backspaceListTemplateItemAtStart}
                 deleteItem={plannerStore.deleteListTemplateItem}
                 moveItem={plannerStore.moveListTemplateItem}
                 moveItemWithinLevel={plannerStore.moveListTemplateItemWithinLevel}

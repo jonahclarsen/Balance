@@ -1630,6 +1630,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         ),
         "patch_template_option" => patch_template_option(tx, payload),
         "split_template_item" => split_template_item_row(tx, payload),
+        "backspace_template_option_at_start" => backspace_template_option_at_start_row(tx, payload),
         "delete_template_option" => {
             tx.execute(
                 "delete from template_options where id = ?1",
@@ -2007,6 +2008,9 @@ fn build_domain_undo_operation(
         ))),
         "patch_template_option" => build_template_option_patch_undo(connection, payload),
         "split_template_item" => build_split_template_item_undo(connection, payload),
+        "backspace_template_option_at_start" => {
+            build_backspace_template_option_at_start_undo(connection, payload)
+        }
         "delete_template_option" => {
             let Some(snapshot) =
                 read_template_option_snapshot(connection, required_string(payload, "optionId")?)?
@@ -2594,6 +2598,103 @@ fn build_split_template_item_undo(
         "batch",
         json!({ "operations": operations }),
     )))
+}
+
+fn build_backspace_template_option_at_start_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    match required_string(payload, "action")? {
+        "delete_previous_item" => {
+            let Some(snapshot) = read_template_item_snapshot(
+                connection,
+                required_string(payload, "previousItemId")?,
+            )?
+            else {
+                return Ok(None);
+            };
+
+            Ok(Some(storage_operation(
+                "insert_template_item_at",
+                json!({
+                    "templateId": snapshot.template_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
+                    "item": snapshot.item,
+                }),
+            )))
+        }
+        "delete_previous_option" => {
+            let Some(snapshot) = read_template_option_snapshot(
+                connection,
+                required_string(payload, "previousOptionId")?,
+            )?
+            else {
+                return Ok(None);
+            };
+
+            Ok(Some(storage_operation(
+                "insert_template_option_at",
+                json!({
+                    "itemId": snapshot.item_id,
+                    "position": snapshot.position,
+                    "option": snapshot.option,
+                }),
+            )))
+        }
+        "merge" => {
+            let current_item_id = required_string(payload, "itemId")?;
+            let current_option_id = required_string(payload, "optionId")?;
+            let previous_item_id = required_string(payload, "previousItemId")?;
+            let patch_payload = json!({
+                "templateId": required_string(payload, "templateId")?,
+                "itemId": previous_item_id,
+                "optionId": required_string(payload, "previousOptionId")?,
+                "patch": required_value(payload, "patch")?,
+            });
+            let mut operations = Vec::new();
+
+            if current_item_id == previous_item_id {
+                let Some(snapshot) = read_template_option_snapshot(connection, current_option_id)?
+                else {
+                    return Ok(None);
+                };
+                operations.push(storage_operation(
+                    "insert_template_option_at",
+                    json!({
+                        "itemId": snapshot.item_id,
+                        "position": snapshot.position,
+                        "option": snapshot.option,
+                    }),
+                ));
+            } else {
+                let Some(snapshot) = read_template_item_snapshot(connection, current_item_id)?
+                else {
+                    return Ok(None);
+                };
+                operations.push(storage_operation(
+                    "insert_template_item_at",
+                    json!({
+                        "templateId": snapshot.template_id,
+                        "parentId": snapshot.parent_id,
+                        "position": snapshot.position,
+                        "item": snapshot.item,
+                    }),
+                ));
+            }
+
+            if let Some(patch_undo) = build_template_option_patch_undo(connection, &patch_payload)?
+            {
+                operations.push(patch_undo);
+            }
+
+            Ok(Some(storage_operation(
+                "batch",
+                json!({ "operations": operations }),
+            )))
+        }
+        other => Err(format!("Unsupported template backspace action: {other}")),
+    }
 }
 
 fn build_outdent_template_item_undo(
@@ -3514,6 +3615,80 @@ fn patch_template_option(connection: &Connection, payload: &Value) -> Result<(),
     }
 
     Ok(())
+}
+
+fn backspace_template_option_at_start_row(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<(), String> {
+    match required_string(payload, "action")? {
+        "delete_previous_item" => {
+            connection
+                .execute(
+                    "delete from template_items where id = ?1",
+                    params![required_string(payload, "previousItemId")?],
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        "delete_previous_option" => {
+            connection
+                .execute(
+                    "delete from template_options where id = ?1",
+                    params![required_string(payload, "previousOptionId")?],
+                )
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        "merge" => {
+            let template_id = required_string(payload, "templateId")?;
+            let item_id = required_string(payload, "itemId")?;
+            let option_id = required_string(payload, "optionId")?;
+            let previous_item_id = required_string(payload, "previousItemId")?;
+            patch_template_option(
+                connection,
+                &json!({
+                    "templateId": template_id,
+                    "itemId": previous_item_id,
+                    "optionId": required_string(payload, "previousOptionId")?,
+                    "patch": required_value(payload, "patch")?,
+                }),
+            )?;
+
+            if item_id == previous_item_id {
+                connection
+                    .execute(
+                        "delete from template_options where id = ?1",
+                        params![option_id],
+                    )
+                    .map_err(|error| error.to_string())?;
+                return Ok(());
+            }
+
+            let child_ids = template_item_sibling_ids(connection, template_id, Some(item_id))?;
+            let next_position =
+                next_template_item_position(connection, template_id, Some(previous_item_id))?;
+
+            for (index, child_id) in child_ids.iter().enumerate() {
+                connection
+                    .execute(
+                        "
+                        update template_items
+                        set parent_id = ?1, position = ?2
+                        where id = ?3
+                        ",
+                        params![previous_item_id, next_position + index as i64, child_id],
+                    )
+                    .map_err(|error| error.to_string())?;
+            }
+
+            connection
+                .execute("delete from template_items where id = ?1", params![item_id])
+                .map_err(|error| error.to_string())?;
+            Ok(())
+        }
+        other => Err(format!("Unsupported template backspace action: {other}")),
+    }
 }
 
 fn split_template_item_row(connection: &Connection, payload: &Value) -> Result<(), String> {
@@ -6978,6 +7153,93 @@ mod tests {
             redone["templates"][0]["items"][0]["options"][0]["html"],
             "<strong>Wake up formatted</strong>"
         );
+    }
+
+    #[test]
+    fn backspace_template_option_merge_persists_children_and_undoes() {
+        let database = TestDatabase::new("backspace-template-option-merge");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Template backspace test");
+        state["templates"][0]["items"] = json!([
+            {
+                "id": "template_item_first",
+                "options": [{
+                    "id": "template_option_first",
+                    "text": "First",
+                    "html": "<strong>First</strong>",
+                    "probability": 100
+                }],
+                "children": []
+            },
+            {
+                "id": "template_item_second",
+                "options": [{
+                    "id": "template_option_second",
+                    "text": "Second",
+                    "html": "<em>Second</em>",
+                    "probability": 100
+                }],
+                "children": [{
+                    "id": "template_item_child",
+                    "options": [{
+                        "id": "template_option_child",
+                        "text": "Child",
+                        "html": "Child",
+                        "probability": 100
+                    }],
+                    "children": []
+                }]
+            }
+        ]);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "backspace_template_option_at_start",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemId": "template_item_second",
+                    "optionId": "template_option_second",
+                    "action": "merge",
+                    "previousItemId": "template_item_first",
+                    "previousOptionId": "template_option_first",
+                    "patch": {
+                        "text": "FirstSecond",
+                        "html": "<strong>First</strong><em>Second</em>"
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        let saved_items = saved["templates"][0]["items"].as_array().unwrap();
+        assert_eq!(saved_items.len(), 1);
+        assert_eq!(saved_items[0]["options"][0]["text"], "FirstSecond");
+        assert_eq!(saved_items[0]["children"][0]["id"], "template_item_child");
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        let undone_items = undone["templates"][0]["items"].as_array().unwrap();
+        assert_eq!(undone_items.len(), 2);
+        assert_eq!(undone_items[0]["options"][0]["text"], "First");
+        assert_eq!(undone_items[1]["options"][0]["text"], "Second");
+        assert_eq!(undone_items[1]["children"][0]["id"], "template_item_child");
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        let redone_items = redone["templates"][0]["items"].as_array().unwrap();
+        assert_eq!(redone_items.len(), 1);
+        assert_eq!(redone_items[0]["options"][0]["text"], "FirstSecond");
+        assert_eq!(redone_items[0]["children"][0]["id"], "template_item_child");
     }
 
     #[test]

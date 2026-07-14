@@ -34,6 +34,11 @@
     patch: Partial<TemplateOption>,
     after: { html: string; text: string },
   ) => Id
+  export let backspaceOptionAtStart: (
+    templateId: Id,
+    itemId: Id,
+    optionId: Id,
+  ) => { focusOptionId: Id; focusOffset: number } | null = () => null
   export let deleteItem: (templateId: Id, itemId: Id) => void
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (templateId: Id, itemId: Id, direction: MoveDirection) => void
@@ -157,6 +162,26 @@
     if (target) focusTextInput(target)
   }
 
+  async function handleBackspaceStart(option: TemplateOption, index: number, current: HTMLDivElement) {
+    const result = backspaceOptionAtStart(templateId, item.id, option.id)
+
+    if (!result) {
+      if (option.text.trim() === '') await handleBackspaceEmpty(option, index, current)
+      return
+    }
+
+    await tick()
+    focusTemplateOptionTextInputAtOffset(result.focusOptionId, result.focusOffset)
+  }
+
+  function handleHorizontalBoundaryKey(direction: 'left' | 'right', current: HTMLDivElement) {
+    focusAdjacentTemplateOptionTextInput(
+      current,
+      direction === 'left' ? 'up' : 'down',
+      direction === 'left' ? 'end' : 'start',
+    )
+  }
+
   function focusTemplateOptionTextInput(optionId: Id | undefined, position: 'start' | 'end' = 'end') {
     if (!optionId) return
 
@@ -167,12 +192,24 @@
     if (input) focusTextInput(input, position)
   }
 
-  function focusAdjacentTemplateOptionTextInput(current: HTMLDivElement, direction: MoveDirection) {
+  function focusAdjacentTemplateOptionTextInput(
+    current: HTMLDivElement,
+    direction: MoveDirection,
+    position: 'start' | 'end' = 'end',
+  ) {
     const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-template-option-text-input]'))
     const index = inputs.indexOf(current)
     const target = inputs[direction === 'up' ? index - 1 : index + 1]
 
-    if (target) focusTextInput(target)
+    if (target) focusTextInput(target, position)
+  }
+
+  function focusTemplateOptionTextInputAtOffset(optionId: Id, offset: number) {
+    const input = Array.from(document.querySelectorAll<HTMLDivElement>('[data-template-option-text-input]')).find(
+      (candidate) => candidate.dataset.templateOptionTextInputId === optionId,
+    )
+
+    if (input) focusTextInputAtOffset(input, offset)
   }
 
   function focusTextInput(input: HTMLDivElement, position: 'start' | 'end' = 'end') {
@@ -181,6 +218,38 @@
     range.selectNodeContents(input)
     range.collapse(position === 'start')
 
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
+
+  function focusTextInputAtOffset(input: HTMLDivElement, offset: number) {
+    input.focus()
+    const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT)
+    let remaining = offset
+    let targetNode: Node = input
+    let nodeOffset = 0
+    let node = walker.nextNode()
+
+    while (node) {
+      const length = node.textContent?.length ?? 0
+      if (remaining <= length) {
+        targetNode = node
+        nodeOffset = remaining
+        break
+      }
+      remaining -= length
+      node = walker.nextNode()
+    }
+
+    if (!node) {
+      targetNode = input
+      nodeOffset = input.childNodes.length
+    }
+
+    const range = document.createRange()
+    range.setStart(targetNode, nodeOffset)
+    range.collapse(true)
     const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
@@ -239,7 +308,9 @@
             onSplit={(before, after) => handleTextSplit(option.id, before, after)}
             onTabKey={handleTextTab}
             onBackspaceEmpty={(editor) => handleBackspaceEmpty(option, index, editor)}
+            onBackspaceStart={(editor) => handleBackspaceStart(option, index, editor)}
             onMetaBackspaceEnd={(editor) => handleBackspaceEmpty(option, index, editor)}
+            onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
           />
           <ProbabilitySlider
             value={option.probability}
@@ -277,6 +348,7 @@
             parentId={item.id}
             {patchItem}
             {splitItem}
+            {backspaceOptionAtStart}
             {deleteItem}
             {moveItem}
             {moveItemWithinLevel}

@@ -30,6 +30,10 @@
     before: { html: string; text: string },
     after: { html: string; text: string },
   ) => Id
+  export let backspaceItemAtStart: (
+    templateId: Id,
+    itemId: Id,
+  ) => { focusItemId: Id; focusOffset: number } | null = () => null
   export let deleteItem: (templateId: Id, itemId: Id) => void
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (templateId: Id, itemId: Id, direction: MoveDirection) => void
@@ -128,6 +132,26 @@
     if (target) focusTextInput(target)
   }
 
+  async function handleBackspaceStart(current: HTMLDivElement) {
+    const result = backspaceItemAtStart(templateId, item.id)
+
+    if (!result) {
+      if (item.text.trim() === '') await handleBackspaceEmpty()
+      return
+    }
+
+    await tick()
+    focusListItemInputAtOffset(result.focusItemId, result.focusOffset)
+  }
+
+  function handleHorizontalBoundaryKey(direction: 'left' | 'right', current: HTMLDivElement) {
+    focusAdjacentListItemInput(
+      current,
+      direction === 'left' ? 'up' : 'down',
+      direction === 'left' ? 'end' : 'start',
+    )
+  }
+
   function focusListItemInput(itemId: Id | undefined, position: 'start' | 'end' = 'end') {
     if (!itemId) return
     const input = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]')).find(
@@ -136,11 +160,22 @@
     if (input) focusTextInput(input, position)
   }
 
-  function focusAdjacentListItemInput(current: HTMLDivElement, direction: MoveDirection) {
+  function focusAdjacentListItemInput(
+    current: HTMLDivElement,
+    direction: MoveDirection,
+    position: 'start' | 'end' = 'end',
+  ) {
     const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
     const index = inputs.indexOf(current)
     const target = inputs[direction === 'up' ? index - 1 : index + 1]
-    if (target) focusTextInput(target)
+    if (target) focusTextInput(target, position)
+  }
+
+  function focusListItemInputAtOffset(itemId: Id, offset: number) {
+    const input = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]')).find(
+      (candidate) => candidate.dataset.listTemplateTextInputId === itemId,
+    )
+    if (input) focusTextInputAtOffset(input, offset)
   }
 
   function focusTextInput(input: HTMLDivElement, position: 'start' | 'end' = 'end') {
@@ -148,6 +183,38 @@
     const range = document.createRange()
     range.selectNodeContents(input)
     range.collapse(position === 'start')
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
+
+  function focusTextInputAtOffset(input: HTMLDivElement, offset: number) {
+    input.focus()
+    const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT)
+    let remaining = offset
+    let targetNode: Node = input
+    let nodeOffset = 0
+    let node = walker.nextNode()
+
+    while (node) {
+      const length = node.textContent?.length ?? 0
+      if (remaining <= length) {
+        targetNode = node
+        nodeOffset = remaining
+        break
+      }
+      remaining -= length
+      node = walker.nextNode()
+    }
+
+    if (!node) {
+      targetNode = input
+      nodeOffset = input.childNodes.length
+    }
+
+    const range = document.createRange()
+    range.setStart(targetNode, nodeOffset)
+    range.collapse(true)
     const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
@@ -183,7 +250,9 @@
         onSplit={(before, after) => handleTextSplit(before, after)}
         onTabKey={handleTextTab}
         onBackspaceEmpty={handleBackspaceEmpty}
+        onBackspaceStart={handleBackspaceStart}
         onMetaBackspaceEnd={handleBackspaceEmpty}
+        onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
       />
       <ProbabilitySlider
         value={item.probability}
@@ -209,6 +278,7 @@
             {maxExpectedWords}
             {patchItem}
             {splitItem}
+            {backspaceItemAtStart}
             {deleteItem}
             {moveItem}
             {moveItemWithinLevel}
