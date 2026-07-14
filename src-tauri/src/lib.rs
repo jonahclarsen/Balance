@@ -1580,6 +1580,11 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         "outdent_template_item" => {
             outdent_template_item_row(tx, required_string(payload, "itemId")?)
         }
+        "outdent_template_items" => outdent_template_items_row(
+            tx,
+            required_string(payload, "templateId")?,
+            required_array(payload, "itemIds")?,
+        ),
         "move_template_item_to_position" => move_template_item_to_position_row(
             tx,
             required_string(payload, "itemId")?,
@@ -1928,6 +1933,7 @@ fn build_domain_undo_operation(
             )))
         }
         "outdent_template_item" => build_outdent_template_item_undo(connection, payload),
+        "outdent_template_items" => build_outdent_template_items_undo(connection, payload),
         "add_template_option" => Ok(Some(storage_operation(
             "delete_template_option",
             json!({ "optionId": required_string(required_value(payload, "option")?, "id")? }),
@@ -2463,6 +2469,78 @@ fn build_outdent_template_item_undo(
             }),
         ));
     }
+
+    Ok(Some(storage_operation(
+        "batch",
+        json!({ "operations": operations }),
+    )))
+}
+
+fn build_outdent_template_items_undo(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let template_id = required_string(payload, "templateId")?;
+    let mut seen: Vec<String> = Vec::new();
+    let mut snapshots: Vec<TemplateItemSnapshot> = Vec::new();
+
+    for item_id in required_array(payload, "itemIds")? {
+        let Some(item_id) = item_id.as_str() else {
+            return Err("Expected string item id".to_string());
+        };
+        let Some(snapshot) = read_template_item_snapshot(connection, item_id)? else {
+            continue;
+        };
+        if snapshot.template_id != template_id {
+            continue;
+        }
+        let Some(parent_id) = snapshot.parent_id.clone() else {
+            continue;
+        };
+
+        let siblings =
+            template_item_sibling_ids(connection, &snapshot.template_id, Some(&parent_id))?;
+        let Some(source_index) = siblings.iter().position(|id| id == item_id) else {
+            continue;
+        };
+
+        for sibling_id in &siblings[source_index..] {
+            if seen.iter().any(|id| id == sibling_id) {
+                continue;
+            }
+            seen.push(sibling_id.clone());
+
+            if let Some(sibling_snapshot) = read_template_item_snapshot(connection, sibling_id)? {
+                snapshots.push(sibling_snapshot);
+            }
+        }
+    }
+
+    if snapshots.is_empty() {
+        return Ok(None);
+    }
+
+    snapshots.sort_by(|a, b| {
+        a.template_id
+            .cmp(&b.template_id)
+            .then(a.parent_id.cmp(&b.parent_id))
+            .then(a.position.cmp(&b.position))
+    });
+
+    let operations = snapshots
+        .into_iter()
+        .map(|snapshot| {
+            Ok(storage_operation(
+                "move_template_item_to_position",
+                json!({
+                    "itemId": required_string(&snapshot.item, "id")?,
+                    "templateId": snapshot.template_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
+                }),
+            ))
+        })
+        .collect::<Result<Vec<Value>, String>>()?;
 
     Ok(Some(storage_operation(
         "batch",
@@ -3639,6 +3717,27 @@ fn outdent_template_item_row(connection: &Connection, item_id: &str) -> Result<(
     rewrite_template_item_positions(connection, &remaining_child_siblings)?;
     rewrite_template_item_positions(connection, &promoted_child_siblings)?;
     rewrite_template_item_positions(connection, &grandparent_siblings)
+}
+
+fn outdent_template_items_row(
+    connection: &Connection,
+    template_id: &str,
+    item_ids: &[Value],
+) -> Result<(), String> {
+    // Mirror the front-end `outdentTemplateItems`: process selected roots from
+    // last to first so their document order and following siblings are kept.
+    for item_id in item_ids.iter().rev() {
+        let item_id = item_id
+            .as_str()
+            .ok_or_else(|| "Expected string item id".to_string())?;
+        if template_item_template_id(connection, item_id)? != template_id {
+            continue;
+        }
+
+        outdent_template_item_row(connection, item_id)?;
+    }
+
+    Ok(())
 }
 
 fn move_template_item_to_position_row(
@@ -6805,6 +6904,147 @@ mod tests {
         assert_eq!(
             redone["templates"][0]["items"][1]["children"][0]["id"],
             "template_item_second"
+        );
+    }
+
+    #[test]
+    fn outdent_template_items_persists_and_undoes() {
+        let database = TestDatabase::new("template-outdent-multi");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Template multi outdent test");
+        state["templates"][0]["items"][0]["children"] = json!([
+            {
+                "id": "template_item_alpha",
+                "startMinutes": null,
+                "endMinutes": null,
+                "options": [{
+                    "id": "template_option_alpha",
+                    "text": "Alpha",
+                    "html": "Alpha",
+                    "probability": 100
+                }],
+                "children": [{
+                    "id": "template_item_a1",
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "options": [{
+                        "id": "template_option_a1",
+                        "text": "A1",
+                        "html": "A1",
+                        "probability": 100
+                    }],
+                    "children": []
+                }]
+            },
+            {
+                "id": "template_item_beta",
+                "startMinutes": null,
+                "endMinutes": null,
+                "options": [{
+                    "id": "template_option_beta",
+                    "text": "Beta",
+                    "html": "Beta",
+                    "probability": 100
+                }],
+                "children": [{
+                    "id": "template_item_b1",
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "options": [{
+                        "id": "template_option_b1",
+                        "text": "B1",
+                        "html": "B1",
+                        "probability": 100
+                    }],
+                    "children": []
+                }]
+            },
+            {
+                "id": "template_item_gamma",
+                "startMinutes": null,
+                "endMinutes": null,
+                "options": [{
+                    "id": "template_option_gamma",
+                    "text": "Gamma",
+                    "html": "Gamma",
+                    "probability": 100
+                }],
+                "children": []
+            }
+        ]);
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "outdent_template_items",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemIds": ["template_item_alpha", "template_item_beta"]
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_template_item_ids(&moved),
+            [
+                "template_item_wake",
+                "template_item_alpha",
+                "template_item_beta"
+            ]
+        );
+        assert_eq!(
+            moved["templates"][0]["items"][0]["children"]
+                .as_array()
+                .unwrap()
+                .len(),
+            0
+        );
+        assert_eq!(
+            moved["templates"][0]["items"][1]["children"][0]["id"],
+            "template_item_a1"
+        );
+        let beta_children = moved["templates"][0]["items"][2]["children"]
+            .as_array()
+            .unwrap();
+        assert_eq!(beta_children.len(), 2);
+        assert_eq!(beta_children[0]["id"], "template_item_b1");
+        assert_eq!(beta_children[1]["id"], "template_item_gamma");
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(top_template_item_ids(&undone), ["template_item_wake"]);
+        let restored_children = undone["templates"][0]["items"][0]["children"]
+            .as_array()
+            .unwrap();
+        assert_eq!(restored_children.len(), 3);
+        assert_eq!(restored_children[0]["id"], "template_item_alpha");
+        assert_eq!(restored_children[1]["id"], "template_item_beta");
+        assert_eq!(restored_children[2]["id"], "template_item_gamma");
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            top_template_item_ids(&redone),
+            [
+                "template_item_wake",
+                "template_item_alpha",
+                "template_item_beta"
+            ]
+        );
+        assert_eq!(
+            redone["templates"][0]["items"][2]["children"][1]["id"],
+            "template_item_gamma"
         );
     }
 
