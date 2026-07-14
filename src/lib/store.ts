@@ -13,6 +13,13 @@ import {
   deletePlanItem,
   deletePlanItems,
   deleteTemplateItem,
+  copyTemplateItems as copyTemplateItemsFromTree,
+  deleteTemplateItems,
+  cloneTemplateItemsForPaste,
+  pasteTemplateItems as pasteTemplateItemsIntoTree,
+  moveTemplateItemsWithinLevel as moveTemplateItemsWithinLevelInTree,
+  indentTemplateItems as indentTemplateItemsInTree,
+  outdentTemplateItems as outdentTemplateItemsInTree,
   escapeHTML,
   formatMinutes,
   generatePlanFromTemplate,
@@ -39,6 +46,13 @@ import {
   addListTemplateItem,
   updateListTemplateItem,
   deleteListTemplateItem,
+  copyListTemplateItems as copyListTemplateItemsFromTree,
+  deleteListTemplateItems,
+  cloneListTemplateItemsForPaste,
+  pasteListTemplateItems as pasteListTemplateItemsIntoTree,
+  moveListTemplateItemsWithinLevel as moveListTemplateItemsWithinLevelInTree,
+  indentListTemplateItems as indentListTemplateItemsInTree,
+  outdentListTemplateItems as outdentListTemplateItemsInTree,
   moveListTemplateItem,
   moveListTemplateItemWithinLevel,
   outdentListTemplateItem as outdentListTemplateItemInTree,
@@ -823,6 +837,85 @@ function createPlannerStore() {
       )
     },
 
+    copyTemplateItems(templateId: Id, itemIds: Id[]) {
+      const template = get(store).templates.find((candidate) => candidate.id === templateId)
+      return template ? copyTemplateItemsFromTree(template.items, itemIds) : []
+    },
+
+    cutTemplateItems(templateId: Id, itemIds: Id[]) {
+      const template = get(store).templates.find((candidate) => candidate.id === templateId)
+      const copiedItems = template ? copyTemplateItemsFromTree(template.items, itemIds) : []
+      if (copiedItems.length === 0) return []
+
+      const rootIds = copiedItems.map((item) => item.id)
+      commit('delete_template_items', { templateId, itemIds: rootIds }, (state) =>
+        updateTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: deleteTemplateItems(template.items, rootIds),
+        })),
+      )
+      return copiedItems
+    },
+
+    deleteTemplateItems(templateId: Id, itemIds: Id[]) {
+      const template = get(store).templates.find((candidate) => candidate.id === templateId)
+      const rootIds = template ? copyTemplateItemsFromTree(template.items, itemIds).map((item) => item.id) : []
+      if (rootIds.length === 0) return []
+
+      commit('delete_template_items', { templateId, itemIds: rootIds }, (state) =>
+        updateTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: deleteTemplateItems(template.items, rootIds),
+        })),
+      )
+      return rootIds
+    },
+
+    pasteTemplateItems(templateId: Id, itemsToPaste: TemplateItem[], targetId: Id | null, placement: 'after' | 'replace') {
+      if (itemsToPaste.length === 0) return []
+      const pastedItems = cloneTemplateItemsForPaste(itemsToPaste)
+      commit('paste_template_items', { templateId, targetId, placement, items: pastedItems }, (state) =>
+        updateTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: pasteTemplateItemsIntoTree(template.items, pastedItems, targetId, placement),
+        })),
+      )
+      return pastedItems.map((item) => item.id)
+    },
+
+    moveTemplateItemsWithinLevel(templateId: Id, itemIds: Id[], direction: 'up' | 'down') {
+      commit('move_template_items_within_level', { templateId, itemIds, direction }, (state) =>
+        updateTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: moveTemplateItemsWithinLevelInTree(template.items, itemIds, direction),
+        })),
+      )
+    },
+
+    indentTemplateItems(templateId: Id, itemIds: Id[]) {
+      commit('indent_template_items', { templateId, itemIds }, (state) =>
+        updateTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: indentTemplateItemsInTree(template.items, itemIds),
+        })),
+      )
+    },
+
+    outdentTemplateItems(templateId: Id, itemIds: Id[]) {
+      commit('outdent_template_items', { templateId, itemIds }, (state) =>
+        updateTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: outdentTemplateItemsInTree(template.items, itemIds),
+        })),
+      )
+    },
+
     moveTemplateItem(templateId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
       commit('move_template_item', { templateId, sourceId, targetId, placement }, (state) =>
         updateTemplate(state, templateId, (template) => {
@@ -1019,6 +1112,85 @@ function createPlannerStore() {
           ...template,
           updatedAt: nowISO(),
           items: deleteListTemplateItem(template.items, itemId),
+        })),
+      )
+    },
+
+    copyListTemplateItems(templateId: Id, itemIds: Id[]) {
+      const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
+      return template ? copyListTemplateItemsFromTree(template.items, itemIds) : []
+    },
+
+    cutListTemplateItems(templateId: Id, itemIds: Id[]) {
+      const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
+      const copiedItems = template ? copyListTemplateItemsFromTree(template.items, itemIds) : []
+      if (copiedItems.length === 0) return []
+
+      const rootIds = copiedItems.map((item) => item.id)
+      commit('delete_list_template_items', { templateId, itemIds: rootIds }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: deleteListTemplateItems(template.items, rootIds),
+        })),
+      )
+      return copiedItems
+    },
+
+    deleteListTemplateItems(templateId: Id, itemIds: Id[]) {
+      const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
+      const rootIds = template ? copyListTemplateItemsFromTree(template.items, itemIds).map((item) => item.id) : []
+      if (rootIds.length === 0) return []
+
+      commit('delete_list_template_items', { templateId, itemIds: rootIds }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: deleteListTemplateItems(template.items, rootIds),
+        })),
+      )
+      return rootIds
+    },
+
+    pasteListTemplateItems(templateId: Id, itemsToPaste: ListTemplateItem[], targetId: Id | null, placement: 'after' | 'replace') {
+      if (itemsToPaste.length === 0) return []
+      const pastedItems = cloneListTemplateItemsForPaste(itemsToPaste)
+      commit('paste_list_template_items', { templateId, targetId, placement, items: pastedItems }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: pasteListTemplateItemsIntoTree(template.items, pastedItems, targetId, placement),
+        })),
+      )
+      return pastedItems.map((item) => item.id)
+    },
+
+    moveListTemplateItemsWithinLevel(templateId: Id, itemIds: Id[], direction: 'up' | 'down') {
+      commit('move_list_template_items_within_level', { templateId, itemIds, direction }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: moveListTemplateItemsWithinLevelInTree(template.items, itemIds, direction),
+        })),
+      )
+    },
+
+    indentListTemplateItems(templateId: Id, itemIds: Id[]) {
+      commit('indent_list_template_items', { templateId, itemIds }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: indentListTemplateItemsInTree(template.items, itemIds),
+        })),
+      )
+    },
+
+    outdentListTemplateItems(templateId: Id, itemIds: Id[]) {
+      commit('outdent_list_template_items', { templateId, itemIds }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: outdentListTemplateItemsInTree(template.items, itemIds),
         })),
       )
     },

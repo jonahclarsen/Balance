@@ -3,6 +3,7 @@
   import { expectedWordCount, htmlToPlainText, wordCount } from './planner'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
+  import TreeItemRow from './TreeItemRow.svelte'
   import type { Id, ListTemplateItem, MoveDirection, MovePlacement } from './types'
 
   type TextChangeOptions = {
@@ -33,15 +34,19 @@
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (templateId: Id, itemId: Id, direction: MoveDirection) => void
   export let outdentItem: (templateId: Id, itemId: Id) => void
-  export let addChild: (templateId: Id, parentId: Id) => void
   export let historyRevision: number
+  export let selectedItemIds: Set<Id> = new Set()
+  export let selectionDragging = false
+  export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
+  export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
+  export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
+  export let onTextShiftArrow: (itemId: Id, direction: MoveDirection) => void = () => {}
 
-  let dragging = false
-  let activeDropRow: HTMLElement | null = null
   // Bumped to force the contenteditable to revert when a keystroke would push the
   // template's expected word count past the cap.
   let revertNonce = 0
   $: revision = historyRevision + revertNonce
+  $: selected = selectedItemIds.has(item.id)
 
   // Expected words contributed by everything except this item's own text, so we can
   // check whether new text would breach the cap without rebuilding the whole tree.
@@ -64,56 +69,6 @@
     patchItem(templateId, item.id, { html, text }, options)
   }
 
-  function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
-    const rect = row.getBoundingClientRect()
-    const y = clientY - rect.top
-    if (y < rect.height * 0.28) return 'before'
-    if (y > rect.height * 0.72) return 'after'
-    return 'inside'
-  }
-
-  function clearDropMarker() {
-    activeDropRow?.classList.remove('drop-before', 'drop-inside', 'drop-after')
-    activeDropRow = null
-  }
-
-  function markDropTarget(row: HTMLElement, placement: MovePlacement) {
-    if (activeDropRow !== row) clearDropMarker()
-    activeDropRow = row
-    row.classList.remove('drop-before', 'drop-inside', 'drop-after')
-    row.classList.add(`drop-${placement}`)
-  }
-
-  function startPointerDrag(event: PointerEvent) {
-    event.preventDefault()
-    event.stopPropagation()
-    dragging = true
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-  }
-
-  function continuePointerDrag(event: PointerEvent) {
-    if (!dragging) return
-    const hovered = document.elementFromPoint(event.clientX, event.clientY)
-    const row = hovered instanceof Element ? hovered.closest<HTMLElement>('[data-list-template-item-id]') : null
-    if (!row || row.dataset.listTemplateItemId === item.id) {
-      clearDropMarker()
-      return
-    }
-    markDropTarget(row, placementForRow(row, event.clientY))
-  }
-
-  function endPointerDrag(event: PointerEvent) {
-    if (!dragging) return
-    const row = activeDropRow
-    const targetId = row?.dataset.listTemplateItemId
-    const placement = row ? placementForRow(row, event.clientY) : null
-    clearDropMarker()
-    dragging = false
-    if (targetId && targetId !== item.id && placement) {
-      moveItem(templateId, item.id, targetId, placement)
-    }
-  }
-
   async function handleTextSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
     const newItemId = splitItem(templateId, item.id, before, after)
     await tick()
@@ -125,6 +80,10 @@
       moveItemWithinLevel(templateId, item.id, direction)
       await tick()
       focusListItemInput(item.id)
+      return
+    }
+    if (event.shiftKey) {
+      onTextShiftArrow(item.id, direction)
       return
     }
     focusAdjacentListItemInput(current, direction)
@@ -195,84 +154,74 @@
   }
 </script>
 
-<div class="template-item" style={`--depth: ${depth}`}>
-  <div
-    class="template-main"
-    data-list-template-item-id={item.id}
-    data-list-template-item-depth={depth}
-    role="listitem"
-    aria-label={`List item: ${item.text || 'Untitled'}`}
-  >
-    <button
-      class="drag-handle"
-      class:dragging
-      type="button"
-      title="Drag to move item"
-      aria-label="Drag to move item"
-      on:pointerdown={startPointerDrag}
-      on:pointermove={continuePointerDrag}
-      on:pointerup={endPointerDrag}
-      on:pointercancel={() => {
-        dragging = false
-        clearDropMarker()
-      }}
-    >
-      <span class="handle-dots" aria-hidden="true"></span>
-    </button>
-
-    <div class="option-stack">
-      <div class="option-row">
-        <RichTextEditor
-          className="template-text"
-          kind="list-template-item"
-          inputId={item.id}
-          html={item.html}
-          text={item.text}
-          placeholder="List item"
-          ariaLabel="List item"
-          {revision}
-          onChange={handleTextChange}
-          onArrowKey={(direction, editor, event) => handleTextArrowKey(direction, editor, event)}
-          onSplit={(before, after) => handleTextSplit(before, after)}
-          onTabKey={handleTextTab}
-          onBackspaceEmpty={handleBackspaceEmpty}
-        />
-        <ProbabilitySlider
-          value={item.probability}
-          min={40}
-          step={10}
-          ariaLabel="Appearance probability"
-          onChange={(probability) => patchItem(templateId, item.id, { probability })}
-        />
-      </div>
-    </div>
-
-    <div class="template-actions">
-      <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(templateId, item.id)}>↳</button>
-      <button class="icon-button danger" type="button" title="Delete item" on:click={() => deleteItem(templateId, item.id)}>×</button>
+<TreeItemRow
+  kind="list-template"
+  itemId={item.id}
+  containerId={templateId}
+  {depth}
+  ariaLabel={`List item: ${item.text || 'Untitled'}`}
+  {selected}
+  {selectionDragging}
+  {moveItem}
+  {onSelectionPointerDown}
+  {onSelectionPointerMove}
+  {onSelectionPointerEnter}
+>
+  <div class="option-stack">
+    <div class="option-row">
+      <RichTextEditor
+        className="template-text"
+        kind="list-template-item"
+        inputId={item.id}
+        html={item.html}
+        text={item.text}
+        placeholder="List item"
+        ariaLabel="List item"
+        {revision}
+        onChange={handleTextChange}
+        onArrowKey={(direction, editor, event) => handleTextArrowKey(direction, editor, event)}
+        onSplit={(before, after) => handleTextSplit(before, after)}
+        onTabKey={handleTextTab}
+        onBackspaceEmpty={handleBackspaceEmpty}
+        onMetaBackspaceEnd={handleBackspaceEmpty}
+      />
+      <ProbabilitySlider
+        value={item.probability}
+        min={40}
+        step={10}
+        ariaLabel="Appearance probability"
+        onChange={(probability) => patchItem(templateId, item.id, { probability })}
+      />
     </div>
   </div>
 
-  {#if item.children.length > 0}
-    <div class="children">
-      {#each item.children as child (child.id)}
-        <svelte:self
-          item={child}
-          {allItems}
-          depth={depth + 1}
-          {templateId}
-          parentId={item.id}
-          {maxExpectedWords}
-          {patchItem}
-          {splitItem}
-          {deleteItem}
-          {moveItem}
-          {moveItemWithinLevel}
-          {outdentItem}
-          {addChild}
-          {historyRevision}
-        />
-      {/each}
-    </div>
-  {/if}
-</div>
+  <svelte:fragment slot="children">
+    {#if item.children.length > 0}
+      <div class="children">
+        {#each item.children as child (child.id)}
+          <svelte:self
+            item={child}
+            {allItems}
+            depth={depth + 1}
+            {templateId}
+            parentId={item.id}
+            {maxExpectedWords}
+            {patchItem}
+            {splitItem}
+            {deleteItem}
+            {moveItem}
+            {moveItemWithinLevel}
+            {outdentItem}
+            {historyRevision}
+            {selectedItemIds}
+            {selectionDragging}
+            {onSelectionPointerDown}
+            {onSelectionPointerMove}
+            {onSelectionPointerEnter}
+            {onTextShiftArrow}
+          />
+        {/each}
+      </div>
+    {/if}
+  </svelte:fragment>
+</TreeItemRow>

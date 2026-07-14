@@ -397,31 +397,11 @@ export function backspacePlanItemAtStart(items: PlanItem[], itemId: Id): Backspa
 }
 
 export function copyPlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
-  const selectedIds = new Set(itemIds)
-  if (selectedIds.size === 0) return []
-
-  return copySelectedPlanItems(items, selectedIds)
+  return copyTreeNodes(items, new Set(itemIds))
 }
 
 export function deletePlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
-  const selectedIds = new Set(itemIds)
-  if (selectedIds.size === 0) return items
-
-  let changed = false
-  const nextItems = items.flatMap((item) => {
-    if (selectedIds.has(item.id)) {
-      changed = true
-      return []
-    }
-
-    const children = deletePlanItems(item.children, itemIds)
-    if (children === item.children) return [item]
-
-    changed = true
-    return [{ ...item, children }]
-  })
-
-  return changed ? nextItems : items
+  return deleteTreeNodes(items, new Set(itemIds))
 }
 
 export function clonePlanItemsForPaste(items: PlanItem[]): PlanItem[] {
@@ -434,29 +414,7 @@ export function pastePlanItems(
   targetId: Id | null,
   placement: MovePlacement | 'replace',
 ): PlanItem[] {
-  if (itemsToPaste.length === 0) return items
-  if (!targetId) return [...items, ...itemsToPaste]
-
-  let inserted = false
-  const nextItems = items.flatMap((item) => {
-    if (item.id === targetId) {
-      inserted = true
-
-      if (placement === 'before') return [...itemsToPaste, item]
-      if (placement === 'after') return [item, ...itemsToPaste]
-      if (placement === 'replace') return itemsToPaste
-
-      return [{ ...item, children: [...item.children, ...itemsToPaste] }]
-    }
-
-    const children = pastePlanItems(item.children, itemsToPaste, targetId, placement)
-    if (children === item.children) return [item]
-
-    inserted = true
-    return [{ ...item, children }]
-  })
-
-  return inserted ? nextItems : items
+  return pasteTreeNodes(items, itemsToPaste, targetId, placement)
 }
 
 export function movePlanItem(
@@ -501,23 +459,7 @@ export function movePlanItemWithinLevel(items: PlanItem[], itemId: Id, direction
 }
 
 export function movePlanItemsWithinLevel(items: PlanItem[], itemIds: Id[], direction: MoveDirection): PlanItem[] {
-  const selectedIds = new Set(itemIds)
-  if (selectedIds.size === 0) return items
-
-  const movedItems = moveSelectedItemsAtLevel(items, selectedIds, direction)
-  let changed = movedItems !== items
-
-  const nextItems = movedItems.map((item) => {
-    if (selectedIds.has(item.id)) return item
-
-    const children = movePlanItemsWithinLevel(item.children, itemIds, direction)
-    if (children === item.children) return item
-
-    changed = true
-    return { ...item, children }
-  })
-
-  return changed ? nextItems : items
+  return moveTreeNodesWithinLevel(items, new Set(itemIds), direction)
 }
 
 export function outdentPlanItem(items: PlanItem[], itemId: Id): PlanItem[] {
@@ -532,15 +474,7 @@ export function indentPlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
 }
 
 export function outdentPlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
-  const selectedRootIds = copyPlanItems(items, itemIds).map((item) => item.id)
-  if (selectedRootIds.length === 0) return items
-
-  let nextItems = items
-  for (let index = selectedRootIds.length - 1; index >= 0; index -= 1) {
-    nextItems = outdentItem(nextItems, selectedRootIds[index])
-  }
-
-  return nextItems
+  return outdentTreeNodes(items, new Set(itemIds))
 }
 
 export function defaultPlanItemTimeRange(items: PlanItem[], itemId: Id): { startMinutes: number; endMinutes: number } {
@@ -567,21 +501,6 @@ function flattenPlanItems(items: PlanItem[]): PlanItem[] {
 
 function isPlanItemTextEmpty(item: PlanItem): boolean {
   return item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
-}
-
-function copySelectedPlanItems(items: PlanItem[], selectedIds: Set<Id>): PlanItem[] {
-  const copied: PlanItem[] = []
-
-  for (const item of items) {
-    if (selectedIds.has(item.id)) {
-      copied.push(item)
-      continue
-    }
-
-    copied.push(...copySelectedPlanItems(item.children, selectedIds))
-  }
-
-  return copied
 }
 
 function clonePlanItemForPaste(item: PlanItem): PlanItem {
@@ -743,6 +662,48 @@ export function deleteTemplateItem(items: TemplateItem[], itemId: Id): TemplateI
       ...item,
       children: deleteTemplateItem(item.children, itemId),
     }))
+}
+
+export function copyTemplateItems(items: TemplateItem[], itemIds: Id[]): TemplateItem[] {
+  return copyTreeNodes(items, new Set(itemIds))
+}
+
+export function deleteTemplateItems(items: TemplateItem[], itemIds: Id[]): TemplateItem[] {
+  return deleteTreeNodes(items, new Set(itemIds))
+}
+
+export function cloneTemplateItemsForPaste(items: TemplateItem[]): TemplateItem[] {
+  return items.map(cloneTemplateItemForPaste)
+}
+
+function cloneTemplateItemForPaste(item: TemplateItem): TemplateItem {
+  return {
+    ...item,
+    id: createId('template_item'),
+    options: item.options.map((option) => ({ ...option, id: createId('option') })),
+    children: item.children.map(cloneTemplateItemForPaste),
+  }
+}
+
+export function pasteTemplateItems(
+  items: TemplateItem[],
+  itemsToPaste: TemplateItem[],
+  targetId: Id | null,
+  placement: MovePlacement | 'replace',
+): TemplateItem[] {
+  return pasteTreeNodes(items, itemsToPaste, targetId, placement)
+}
+
+export function moveTemplateItemsWithinLevel(items: TemplateItem[], itemIds: Id[], direction: MoveDirection): TemplateItem[] {
+  return moveTreeNodesWithinLevel(items, new Set(itemIds), direction)
+}
+
+export function indentTemplateItems(items: TemplateItem[], itemIds: Id[]): TemplateItem[] {
+  return indentSelectedItems(items, new Set(itemIds))
+}
+
+export function outdentTemplateItems(items: TemplateItem[], itemIds: Id[]): TemplateItem[] {
+  return outdentTreeNodes(items, new Set(itemIds))
 }
 
 export function moveTemplateItem(
@@ -1109,7 +1070,7 @@ function pruneTrailingLineBreaks(parent: ParentNode): boolean {
     }
 
     if (last.nodeType === Node.ELEMENT_NODE) {
-      const childPruned = pruneTrailingLineBreaks(last as ParentNode)
+      const childPruned = pruneTrailingLineBreaks(last as unknown as ParentNode)
       if (!last.hasChildNodes()) {
         last.remove()
         pruned = true
@@ -1188,6 +1149,86 @@ function sanitizeNode(node: Node): string {
 // ---------------------------------------------------------------------------
 
 type TreeNode<T> = { id: Id; children: T[] }
+
+function copyTreeNodes<T extends TreeNode<T>>(items: T[], selectedIds: Set<Id>): T[] {
+  if (selectedIds.size === 0) return []
+
+  const copied: T[] = []
+  for (const item of items) {
+    if (selectedIds.has(item.id)) {
+      copied.push(item)
+      continue
+    }
+    copied.push(...copyTreeNodes(item.children, selectedIds))
+  }
+  return copied
+}
+
+function deleteTreeNodes<T extends TreeNode<T>>(items: T[], selectedIds: Set<Id>): T[] {
+  if (selectedIds.size === 0) return items
+
+  let changed = false
+  const nextItems = items.flatMap((item) => {
+    if (selectedIds.has(item.id)) {
+      changed = true
+      return []
+    }
+    const children = deleteTreeNodes(item.children, selectedIds)
+    if (children === item.children) return [item]
+    changed = true
+    return [{ ...item, children }]
+  })
+  return changed ? nextItems : items
+}
+
+function pasteTreeNodes<T extends TreeNode<T>>(
+  items: T[],
+  itemsToPaste: T[],
+  targetId: Id | null,
+  placement: MovePlacement | 'replace',
+): T[] {
+  if (itemsToPaste.length === 0) return items
+  if (!targetId) return [...items, ...itemsToPaste]
+
+  let inserted = false
+  const nextItems = items.flatMap((item) => {
+    if (item.id === targetId) {
+      inserted = true
+      if (placement === 'before') return [...itemsToPaste, item]
+      if (placement === 'after') return [item, ...itemsToPaste]
+      if (placement === 'replace') return itemsToPaste
+      return [{ ...item, children: [...item.children, ...itemsToPaste] }]
+    }
+    const children = pasteTreeNodes(item.children, itemsToPaste, targetId, placement)
+    if (children === item.children) return [item]
+    inserted = true
+    return [{ ...item, children }]
+  })
+  return inserted ? nextItems : items
+}
+
+function moveTreeNodesWithinLevel<T extends TreeNode<T>>(items: T[], selectedIds: Set<Id>, direction: MoveDirection): T[] {
+  if (selectedIds.size === 0) return items
+  const movedItems = moveSelectedItemsAtLevel(items, selectedIds, direction)
+  let changed = movedItems !== items
+  const nextItems = movedItems.map((item) => {
+    if (selectedIds.has(item.id)) return item
+    const children = moveTreeNodesWithinLevel(item.children, selectedIds, direction)
+    if (children === item.children) return item
+    changed = true
+    return { ...item, children }
+  })
+  return changed ? nextItems : items
+}
+
+function outdentTreeNodes<T extends TreeNode<T>>(items: T[], selectedIds: Set<Id>): T[] {
+  const rootIds = copyTreeNodes(items, selectedIds).map((item) => item.id)
+  let nextItems = items
+  for (let index = rootIds.length - 1; index >= 0; index -= 1) {
+    nextItems = outdentItem(nextItems, rootIds[index])
+  }
+  return nextItems
+}
 
 function findTreeNode<T extends TreeNode<T>>(items: T[], itemId: Id): T | null {
   for (const item of items) {
@@ -1350,6 +1391,44 @@ export function addListTemplateItem(
 
 export function deleteListTemplateItem(items: ListTemplateItem[], itemId: Id): ListTemplateItem[] {
   return deleteTreeNode(items, itemId)
+}
+
+export function copyListTemplateItems(items: ListTemplateItem[], itemIds: Id[]): ListTemplateItem[] {
+  return copyTreeNodes(items, new Set(itemIds))
+}
+
+export function deleteListTemplateItems(items: ListTemplateItem[], itemIds: Id[]): ListTemplateItem[] {
+  return deleteTreeNodes(items, new Set(itemIds))
+}
+
+export function cloneListTemplateItemsForPaste(items: ListTemplateItem[]): ListTemplateItem[] {
+  const clone = (item: ListTemplateItem): ListTemplateItem => ({
+    ...item,
+    id: createId('list_item'),
+    children: item.children.map(clone),
+  })
+  return items.map(clone)
+}
+
+export function pasteListTemplateItems(
+  items: ListTemplateItem[],
+  itemsToPaste: ListTemplateItem[],
+  targetId: Id | null,
+  placement: MovePlacement | 'replace',
+): ListTemplateItem[] {
+  return pasteTreeNodes(items, itemsToPaste, targetId, placement)
+}
+
+export function moveListTemplateItemsWithinLevel(items: ListTemplateItem[], itemIds: Id[], direction: MoveDirection): ListTemplateItem[] {
+  return moveTreeNodesWithinLevel(items, new Set(itemIds), direction)
+}
+
+export function indentListTemplateItems(items: ListTemplateItem[], itemIds: Id[]): ListTemplateItem[] {
+  return indentSelectedItems(items, new Set(itemIds))
+}
+
+export function outdentListTemplateItems(items: ListTemplateItem[], itemIds: Id[]): ListTemplateItem[] {
+  return outdentTreeNodes(items, new Set(itemIds))
 }
 
 export function moveListTemplateItem(

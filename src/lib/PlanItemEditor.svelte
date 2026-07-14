@@ -5,6 +5,7 @@
   import { defaultPlanItemTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeOverlapsPrevious, renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
+  import TreeItemRow from './TreeItemRow.svelte'
   import type { Goal, GoalCompletion, Id, ListTemplate, Metric, MoveDirection, MovePlacement, PlanItem } from './types'
 
   type TextChangeOptions = {
@@ -69,8 +70,6 @@
   // any inline links. To change a list, edit its template and regenerate.
   export let locked = false
 
-  let dragging = false
-  let activeDropRow: HTMLElement | null = null
   $: selected = selectedItemIds.has(item.id)
   $: matchedGoals = goalMatchesForItem(goals, goalCompletions, planDate, item.id)
   // Only rescan the item text when it or the due-goal set actually changes:
@@ -176,63 +175,6 @@
     const latestEnd = Math.max(...targets.map((target) => target.endMinutes))
 
     return Math.max(-earliestStart, Math.min(delta, MAX_TIMELINE_MINUTES - latestEnd))
-  }
-
-  function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
-    const rect = row.getBoundingClientRect()
-    const y = clientY - rect.top
-
-    if (y < rect.height * 0.28) return 'before'
-    if (y > rect.height * 0.72) return 'after'
-    return 'inside'
-  }
-
-  function clearDropMarker() {
-    activeDropRow?.classList.remove('drop-before', 'drop-inside', 'drop-after')
-    activeDropRow = null
-  }
-
-  function markDropTarget(row: HTMLElement, placement: MovePlacement) {
-    if (activeDropRow !== row) clearDropMarker()
-    activeDropRow = row
-    row.classList.remove('drop-before', 'drop-inside', 'drop-after')
-    row.classList.add(`drop-${placement}`)
-  }
-
-  function startPointerDrag(event: PointerEvent) {
-    event.preventDefault()
-    event.stopPropagation()
-    dragging = true
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-  }
-
-  function continuePointerDrag(event: PointerEvent) {
-    if (!dragging) return
-
-    const hovered = document.elementFromPoint(event.clientX, event.clientY)
-    const row = hovered instanceof Element ? hovered.closest<HTMLElement>('[data-plan-item-id]') : null
-
-    if (!row || row.dataset.planItemId === item.id) {
-      clearDropMarker()
-      return
-    }
-
-    markDropTarget(row, placementForRow(row, event.clientY))
-  }
-
-  function endPointerDrag(event: PointerEvent) {
-    if (!dragging) return
-
-    const row = activeDropRow
-    const targetId = row?.dataset.planItemId
-    const placement = row ? placementForRow(row, event.clientY) : null
-
-    clearDropMarker()
-    dragging = false
-
-    if (targetId && targetId !== item.id && placement) {
-      moveItem(planId, item.id, targetId, placement)
-    }
   }
 
   async function handleTextArrowKey(direction: MoveDirection, current: HTMLDivElement, event: KeyboardEvent) {
@@ -442,62 +384,33 @@
   }
 </script>
 
-<div class="item-shell" style={`--depth: ${depth}`}>
-  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
-  <div
-    class="plan-row"
-    data-plan-item-id={item.id}
-    data-plan-item-depth={depth}
-    role="listitem"
-    aria-label={`Plan item: ${item.text || 'Untitled'}`}
-    class:done={item.done}
-    class:selected
-    on:click={handleLockedRowClick}
-    on:pointerenter={() => {
-      if (selectionDragging) onSelectionPointerEnter(item.id)
-    }}
-  >
-    {#if !locked}
-      <button
-        class="select-handle"
-        class:selected
-        type="button"
-        title={selected ? 'Selected' : 'Select item'}
-        aria-label={selected ? 'Selected item' : 'Select item'}
-        aria-pressed={selected}
-        on:pointerdown={(event) => onSelectionPointerDown(item.id, event)}
-        on:pointermove={onSelectionPointerMove}
-      ></button>
+<TreeItemRow
+  kind="plan"
+  itemId={item.id}
+  containerId={planId}
+  {depth}
+  ariaLabel={`Plan item: ${item.text || 'Untitled'}`}
+  {selected}
+  done={item.done}
+  {selectionDragging}
+  interactive={!locked}
+  {moveItem}
+  {onSelectionPointerDown}
+  {onSelectionPointerMove}
+  {onSelectionPointerEnter}
+  onRowClick={handleLockedRowClick}
+>
+  <label class="check-target" title="Complete item">
+    <input
+      class="check"
+      type="checkbox"
+      checked={item.done}
+      on:change={(event) => patchItem(planId, item.id, { done: event.currentTarget.checked })}
+      aria-label="Complete item"
+    />
+  </label>
 
-      <button
-        class="drag-handle"
-        class:dragging
-        type="button"
-        title="Drag to move item"
-        aria-label="Drag to move item"
-        on:pointerdown={startPointerDrag}
-        on:pointermove={continuePointerDrag}
-        on:pointerup={endPointerDrag}
-        on:pointercancel={() => {
-          dragging = false
-          clearDropMarker()
-        }}
-      >
-        <span class="handle-dots" aria-hidden="true"></span>
-      </button>
-    {/if}
-
-    <label class="check-target" title="Complete item">
-      <input
-        class="check"
-        type="checkbox"
-        checked={item.done}
-        on:change={(event) => patchItem(planId, item.id, { done: event.currentTarget.checked })}
-        aria-label="Complete item"
-      />
-    </label>
-
-    {#if item.startMinutes !== null && item.endMinutes !== null}
+  {#if item.startMinutes !== null && item.endMinutes !== null}
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
@@ -517,9 +430,9 @@
       >
         <AlarmClockIcon />
       </button>
-    {/if}
+  {/if}
 
-    {#if locked}
+  {#if locked}
       <!-- Generated list items are fixed: text is static, but inline links stay
            clickable and row clicks toggle completion. -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -554,9 +467,9 @@
         internalLinkSegments={linkSegments}
         onInternalLinkClick={(link) => onOpenLink(link, item.id)}
       />
-    {/if}
+  {/if}
 
-    {#if matchedGoals.length > 0 || visibleDueTodayMatches.length > 0}
+  {#if matchedGoals.length > 0 || visibleDueTodayMatches.length > 0}
       <div class="plan-goal-badges" aria-label="Goals completed by this item">
         {#each visibleDueTodayMatches as goal (goal.id)}
           <span class="plan-due-today" title={`${goal.name} is due today to stay on track`}>due today</span>
@@ -573,9 +486,9 @@
           </button>
         {/each}
       </div>
-    {/if}
+  {/if}
 
-    {#if !locked}
+  {#if !locked}
       <div class="row-actions">
         <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(planId, item.id)}>↳</button>
         <button class="icon-button danger" type="button" title="Delete item" on:click={() => deleteItem(planId, item.id)}>×</button>
@@ -591,46 +504,47 @@
           on:click|stopPropagation={() => edit(item.id)}
         >✎</button>
       </div>
-    {/if}
-  </div>
-
-  {#if item.children.length > 0}
-    <div class="children">
-      {#each item.children as child (child.id)}
-        <svelte:self
-          item={child}
-          {allItems}
-          depth={depth + 1}
-          {planId}
-          parentId={item.id}
-          {patchItem}
-          {splitItem}
-          {backspaceItemAtStart}
-          {addChild}
-          {deleteItem}
-          {moveItem}
-          {moveItemWithinLevel}
-          {outdentItem}
-          {historyRevision}
-          {goals}
-          {goalCompletions}
-          {dueTodayGoals}
-          {planDate}
-          {selectedItemIds}
-          {selectionDragging}
-          {onSelectionPointerDown}
-          {onSelectionPointerMove}
-          {onSelectionPointerEnter}
-          {onTextShiftArrow}
-          {onGoalBadgeClick}
-          {listTemplates}
-          {metrics}
-          {onOpenLink}
-          {onLockedSelect}
-          {onEditTemplate}
-          {locked}
-        />
-      {/each}
-    </div>
   {/if}
-</div>
+
+  <svelte:fragment slot="children">
+    {#if item.children.length > 0}
+      <div class="children">
+        {#each item.children as child (child.id)}
+          <svelte:self
+            item={child}
+            {allItems}
+            depth={depth + 1}
+            {planId}
+            parentId={item.id}
+            {patchItem}
+            {splitItem}
+            {backspaceItemAtStart}
+            {addChild}
+            {deleteItem}
+            {moveItem}
+            {moveItemWithinLevel}
+            {outdentItem}
+            {historyRevision}
+            {goals}
+            {goalCompletions}
+            {dueTodayGoals}
+            {planDate}
+            {selectedItemIds}
+            {selectionDragging}
+            {onSelectionPointerDown}
+            {onSelectionPointerMove}
+            {onSelectionPointerEnter}
+            {onTextShiftArrow}
+            {onGoalBadgeClick}
+            {listTemplates}
+            {metrics}
+            {onOpenLink}
+            {onLockedSelect}
+            {onEditTemplate}
+            {locked}
+          />
+        {/each}
+      </div>
+    {/if}
+  </svelte:fragment>
+</TreeItemRow>

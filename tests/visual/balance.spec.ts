@@ -1745,6 +1745,95 @@ test('global undo and redo apply to item movement', async ({ page }) => {
   await expect.poll(async () => topLevelTexts(page)).toEqual(movedOrder)
 })
 
+test('day template rows support multi-select copy, cut, paste, and keyboard deletion', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+
+  await expect(page.getByRole('button', { name: 'Add child item' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Delete item' })).toHaveCount(0)
+  const original = await topLevelTemplateOptionTexts(page)
+  expect(original.length).toBeGreaterThanOrEqual(2)
+
+  await focusTemplateOptionByValue(page, original[0])
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(page.locator('[data-template-item-id].selected')).toHaveCount(2)
+
+  await page.keyboard.press('Escape')
+  await dragSelectAcrossEditors(
+    page,
+    page.locator('[data-template-option-text-input]').filter({ hasText: original[0] }),
+    page.locator('[data-template-option-text-input]').filter({ hasText: original[1] }),
+  )
+  await expect(page.locator('[data-template-item-id].selected')).toHaveCount(2)
+
+  await page.keyboard.press('Meta+C')
+  await page.keyboard.press('Meta+V')
+  await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual([
+    ...original.slice(0, 2),
+    ...original.slice(0, 2),
+    ...original.slice(2),
+  ])
+
+  await page.keyboard.press('Meta+X')
+  await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual(original)
+
+  const deleteTarget = original.at(-1) as string
+  await focusTemplateOptionByValue(page, deleteTarget)
+  await setCaretOffsetInFocusedEditor(page, deleteTarget.length)
+  await page.keyboard.press('Meta+Backspace')
+  await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual(original.slice(0, -1))
+})
+
+test('list template rows share multi-select clipboard behavior and hide mouse-only actions', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Add list item' }).click()
+
+  const listInputs = page.locator('[data-list-template-text-input]')
+  await expect(listInputs).toHaveCount(2)
+  await listInputs.nth(1).fill('Second item')
+  await expect(page.getByRole('button', { name: 'Add child item' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Delete item' })).toHaveCount(0)
+
+  const first = page.locator('[data-list-template-text-input-id]').filter({ hasText: 'First item' })
+  await first.focus()
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(page.locator('[data-list-template-item-id].selected')).toHaveCount(2)
+
+  await page.keyboard.press('Escape')
+  await dragSelectAcrossEditors(page, first, listInputs.nth(1))
+  await expect(page.locator('[data-list-template-item-id].selected')).toHaveCount(2)
+
+  await page.keyboard.press('Meta+C')
+  await page.keyboard.press('Meta+V')
+  await expect.poll(async () => listTemplateTopLevelTexts(page)).toEqual([
+    'First item',
+    'Second item',
+    'First item',
+    'Second item',
+  ])
+
+  await page.keyboard.press('Backspace')
+  await expect.poll(async () => listTemplateTopLevelTexts(page)).toEqual(['First item', 'Second item'])
+
+  const firstRow = page.getByRole('listitem', { name: 'List item: First item' })
+  const secondRow = page.getByRole('listitem', { name: 'List item: Second item' })
+  await pointerDrag(page, firstRow.getByRole('button', { name: 'Drag to move item' }), secondRow, 'inside')
+  await expect.poll(async () => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const items = state.listTemplates?.[0]?.items ?? []
+    return {
+      roots: items.map((item: { text: string }) => item.text),
+      children: items[0]?.children?.map((item: { text: string }) => item.text) ?? [],
+    }
+  })).toEqual({ roots: ['Second item'], children: ['First item'] })
+})
+
 async function seedPlanItems(page: import('@playwright/test').Page, texts: string[]) {
   await page.goto('/')
   await page.evaluate((itemTexts) => {
@@ -1827,7 +1916,7 @@ async function setFocusedEditorHTML(page: import('@playwright/test').Page, html:
 async function setCaretOffsetInFocusedEditor(page: import('@playwright/test').Page, offset: number) {
   await page.evaluate((targetOffset) => {
     const active = document.activeElement
-    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-input]')) return
+    if (!(active instanceof HTMLElement) || !active.matches('[data-rich-text-input]')) return
 
     const walker = document.createTreeWalker(active, NodeFilter.SHOW_TEXT)
     let remaining = targetOffset
@@ -2032,6 +2121,13 @@ async function topLevelTemplateOptionTexts(page: import('@playwright/test').Page
   })
 }
 
+async function listTemplateTopLevelTexts(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.listTemplates?.[0]?.items?.map((item: { text: string }) => item.text) ?? []
+  })
+}
+
 function addDays(date: string, days: number) {
   const parsed = new Date(`${date}T12:00:00`)
   parsed.setDate(parsed.getDate() + days)
@@ -2061,6 +2157,21 @@ async function pointerDrag(
   await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
   await page.mouse.down()
   await page.mouse.move(targetBox.x + Math.min(160, targetBox.width / 2), targetY, { steps: 8 })
+  await page.mouse.up()
+}
+
+async function dragSelectAcrossEditors(
+  page: import('@playwright/test').Page,
+  source: import('@playwright/test').Locator,
+  target: import('@playwright/test').Locator,
+) {
+  const sourceBox = await source.boundingBox()
+  const targetBox = await target.boundingBox()
+  if (!sourceBox || !targetBox) throw new Error('Missing selection drag geometry')
+
+  await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 8 })
   await page.mouse.up()
 }
 

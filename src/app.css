@@ -354,7 +354,8 @@ nav button.active {
   background: var(--done-tint);
 }
 
-.plan-row.selected {
+.plan-row.selected,
+.template-main.selected {
   background: color-mix(in srgb, var(--drop-inside) 72%, transparent);
   box-shadow: inset 3px 0 0 var(--accent);
 }

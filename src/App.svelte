@@ -25,7 +25,7 @@
     plannerStore,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { Id, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem } from './lib/types'
+  import type { Id, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
   import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
 
   // Pasting four or more items onto a different day routes through a review queue
@@ -131,16 +131,22 @@ return rows`
   let editingDailyReminder = false
   let dailyReminderDraft = ''
   let dailyReminderInput: HTMLInputElement | null = null
-  let selectedPlanItemIds: Id[] = []
-  let planSelectionAnchorId: Id | null = null
-  let planSelectionFocusId: Id | null = null
-  let selectedPlanPlanId: Id | null = null
-  let selectingPlanItems = false
+  type ItemSurface = 'plan' | 'day-template' | 'list-template'
+  type TreeNode = { id: Id; children: TreeNode[] }
+  let selectedItemIds: Id[] = []
+  let selectionAnchorId: Id | null = null
+  let selectionFocusId: Id | null = null
+  let selectedItemContext = ''
+  let selectingItems = false
   type PlanItemClipboard = { items: PlanItem[]; cut: boolean; sourceDate: string }
+  type TemplateItemClipboard =
+    | { kind: 'day-template'; items: TemplateItem[]; cut: boolean }
+    | { kind: 'list-template'; items: ListTemplateItem[]; cut: boolean }
+  type ItemClipboard = PlanItemClipboard | TemplateItemClipboard
   type ClipboardContents = { structuredPayload: string | null; plainText: string | null; html: string | null }
   // Browser-only fallback for Vite/Playwright, where native pasteboard commands do
   // not exist. It is accepted only while its plain text still matches the real clipboard.
-  let browserPlanItemClipboard: PlanItemClipboard | null = null
+  let browserItemClipboard: ItemClipboard | null = null
   let clipboardWritePending: Promise<unknown> | null = null
   // Each pasted node — parent or child — is reviewed on its own, so the queue is a
   // flat list annotated with the node's original depth. Kept nodes are re-nested from
@@ -166,8 +172,8 @@ return rows`
   let pasteReviewReady = false
   let pasteReviewProgress = 0
   let pasteReviewCooldownFrame: number | null = null
-  let planTextDragOrigin: { itemId: Id; input: HTMLElement } | null = null
-  let preservePlanSelectionFocusUntil = 0
+  let itemTextDragOrigin: { itemId: Id; input: HTMLElement } | null = null
+  let preserveSelectionFocusUntil = 0
   let newGoalName = ''
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
@@ -225,7 +231,7 @@ return rows`
   $: metricOverlayAnswers =
     metricOverlay && metricOverlayMetric ? answersForEntry(metricOverlay.metricId, metricOverlay.date) : {}
   $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
-  $: selectedPlanItemIdSet = new Set(selectedPlanItemIds)
+  $: selectedItemIdSet = new Set(selectedItemIds)
   $: activeGoalCount = $plannerStore.goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
   $: sortedGoals = sortGoalsByUrgency($plannerStore.goals, $plannerStore.goalCompletions, todayISO())
   $: filteredGoals = filterGoalsByPhrase(sortedGoals, goalSearch)
@@ -247,8 +253,8 @@ return rows`
       exportSettings.lastAutoJsonExportErrorAt &&
       exportSettings.lastAutoJsonExportErrorAt !== exportSettings.autoJsonExportErrorAckAt,
   )
-  $: if ((view !== 'today' || activePlan?.id !== selectedPlanPlanId) && selectedPlanItemIds.length > 0) {
-    clearPlanSelection()
+  $: if (selectedItemIds.length > 0 && activeItemContextKey() !== selectedItemContext) {
+    clearItemSelection()
   }
   // The list overlay toast belongs to the page it was opened over: leaving that
   // page hides it, returning shows it again (its state + selection persist).
@@ -1080,8 +1086,7 @@ return rows`
     }
 
     if (
-      view === 'today' &&
-      activePlan &&
+      activeItemSurface() &&
       event.metaKey &&
       event.shiftKey &&
       !event.ctrlKey &&
@@ -1089,12 +1094,11 @@ return rows`
       key === 'a' &&
       !isFormFieldActive()
     ) {
-      const itemId = activeFocusedPlanItemId()
+      const itemId = activeFocusedItemId()
       if (!itemId) return
-
       event.preventDefault()
       event.stopPropagation()
-      selectSinglePlanItem(itemId)
+      selectSingleItem(itemId)
       return
     }
 
@@ -1104,16 +1108,14 @@ return rows`
       return
     }
 
-    if (event.key === 'Escape' && selectedPlanItemIds.length > 0) {
+    if (event.key === 'Escape' && selectedItemIds.length > 0) {
       event.preventDefault()
-      clearPlanSelection()
+      clearItemSelection()
       return
     }
 
     if (
-      view === 'today' &&
-      activePlan &&
-      selectedPlanItemIds.length > 0 &&
+      selectedItemIds.length > 0 &&
       !event.shiftKey &&
       !event.altKey &&
       !primaryModifier &&
@@ -1121,14 +1123,12 @@ return rows`
     ) {
       event.preventDefault()
       event.stopPropagation()
-      focusSelectedPlanBoundary(event.key === 'ArrowUp' ? 'up' : 'down')
+      focusSelectedItemBoundary(event.key === 'ArrowUp' ? 'up' : 'down')
       return
     }
 
     if (
-      view === 'today' &&
-      activePlan &&
-      selectedPlanItemIds.length > 0 &&
+      selectedItemIds.length > 0 &&
       event.shiftKey &&
       !event.altKey &&
       !primaryModifier &&
@@ -1136,52 +1136,45 @@ return rows`
     ) {
       event.preventDefault()
       event.stopPropagation()
-      extendPlanSelectionByKeyboard(event.key === 'ArrowUp' ? 'up' : 'down')
+      extendItemSelectionByKeyboard(event.key === 'ArrowUp' ? 'up' : 'down')
       return
     }
 
-    if (
-      view === 'today' &&
-      activePlan &&
-      selectedPlanItemIds.length > 0 &&
-      (event.key === 'Backspace' || event.key === 'Delete')
-    ) {
+    if (selectedItemIds.length > 0 && (event.key === 'Backspace' || event.key === 'Delete')) {
       event.preventDefault()
-      deleteSelectedPlanItems()
+      deleteSelectedItems()
       return
     }
 
     if (
-      view === 'today' &&
-      activePlan &&
-      selectedPlanItemIds.length > 0 &&
+      selectedItemIds.length > 0 &&
       event.key === 'Tab' &&
       !event.altKey &&
       !primaryModifier &&
       !isRichTextActive()
     ) {
-      const rootIds = selectedPlanRootIds()
+      const rootIds = selectedRootIds()
       if (rootIds.length === 0) return
-
       event.preventDefault()
-      if (event.shiftKey) {
-        plannerStore.outdentPlanItems(activePlan.id, rootIds)
-      } else {
-        plannerStore.indentPlanItems(activePlan.id, rootIds)
-      }
+      indentSelectedItems(rootIds, event.shiftKey ? 'out' : 'in')
+      return
+    }
+
+    if (
+      selectedItemIds.length > 0 &&
+      event.altKey &&
+      !primaryModifier &&
+      !event.shiftKey &&
+      (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+    ) {
+      const rootIds = selectedRootIds()
+      if (rootIds.length === 0) return
+      event.preventDefault()
+      moveSelectedItems(rootIds, event.key === 'ArrowUp' ? 'up' : 'down')
       return
     }
 
     if ((view === 'today' || view === 'lists') && event.altKey && !primaryModifier && !event.shiftKey) {
-      if (view === 'today' && activePlan && selectedPlanItemIds.length > 0 && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
-        const rootIds = selectedPlanRootIds()
-        if (rootIds.length === 0) return
-
-        event.preventDefault()
-        plannerStore.movePlanItemsWithinLevel(activePlan.id, rootIds, event.key === 'ArrowUp' ? 'up' : 'down')
-        return
-      }
-
       if (event.code === 'KeyQ') {
         event.preventDefault()
         shiftActivePlanDate(-1)
@@ -1197,7 +1190,7 @@ return rows`
 
     if (!primaryModifier || event.altKey) return
 
-    if (view === 'today' && activePlan && key === 'd' && !event.shiftKey && selectedPlanItemIds.length > 0) {
+    if (activeItemSurface() === 'plan' && activePlan && key === 'd' && !event.shiftKey && selectedItemIds.length > 0) {
       const selectedItems = selectedPlanItems()
       if (selectedItems.length === 0) return
 
@@ -1210,32 +1203,30 @@ return rows`
       return
     }
 
-    if (view === 'today' && activePlan && !hasActiveRichTextSelection() && !isFormFieldActive()) {
-      if ((key === 'c' || key === 'x') && !event.shiftKey && selectedPlanItemIds.length > 0) {
+    if (activeItemSurface() && !hasActiveRichTextSelection() && !isFormFieldActive()) {
+      if ((key === 'c' || key === 'x') && !event.shiftKey && selectedItemIds.length > 0) {
         event.preventDefault()
-        if (key === 'x') {
-          cutSelectedPlanItems()
-        } else {
-          copySelectedPlanItems()
-        }
+        if (key === 'x') cutSelectedItems()
+        else copySelectedItems()
         return
       }
 
       if (key === 'v' && !event.shiftKey) {
         event.preventDefault()
-        void pasteSystemClipboard()
+        if (activeItemSurface() === 'plan') void pasteSystemClipboard()
+        else void pasteTemplateSystemClipboard()
         return
       }
 
       if (key === 'a' && !event.shiftKey && !isRichTextActive()) {
         event.preventDefault()
-        selectAllPlanItems()
+        selectAllItems()
         return
       }
     }
 
     if (key === 'd' && !event.shiftKey) {
-      const itemId = activeFocusedPlanItemId()
+      const itemId = activeItemSurface() === 'plan' ? activeFocusedItemId() : null
       const item = itemId && activePlan ? findPlanItem(activePlan.items, itemId) : null
       if (!activePlan || !item) return
 
@@ -1256,14 +1247,6 @@ return rows`
     }
   }
 
-  function activeFocusedPlanItemId(): string | null {
-    if (view !== 'today') return null
-
-    const active = document.activeElement
-    const row = active instanceof Element ? active.closest<HTMLElement>('[data-plan-item-id]') : null
-    return row?.dataset.planItemId ?? null
-  }
-
   function findPlanItem(items: PlanItem[], itemId: string): PlanItem | null {
     for (const item of items) {
       if (item.id === itemId) return item
@@ -1274,195 +1257,219 @@ return rows`
     return null
   }
 
-  function beginPlanItemSelection(itemId: Id, event: PointerEvent) {
-    if (event.button !== 0 || !activePlan) return
+  function activeItemSurface(): ItemSurface | null {
+    if (view === 'today' && activePlan) return 'plan'
+    if (view === 'templates' && selectedTemplate) return 'day-template'
+    if (view === 'listTemplates' && selectedListTemplate) return 'list-template'
+    return null
+  }
 
+  function activeItemContainerId(): Id | null {
+    const surface = activeItemSurface()
+    if (surface === 'plan') return activePlan?.id ?? null
+    if (surface === 'day-template') return selectedTemplate?.id ?? null
+    if (surface === 'list-template') return selectedListTemplate?.id ?? null
+    return null
+  }
+
+  function activeItemTree(): TreeNode[] {
+    const surface = activeItemSurface()
+    if (surface === 'plan') return (activePlan?.items ?? []) as TreeNode[]
+    if (surface === 'day-template') return (selectedTemplate?.items ?? []) as TreeNode[]
+    if (surface === 'list-template') return (selectedListTemplate?.items ?? []) as TreeNode[]
+    return []
+  }
+
+  function activeItemContextKey() {
+    const surface = activeItemSurface()
+    const containerId = activeItemContainerId()
+    return surface && containerId ? `${surface}:${containerId}` : ''
+  }
+
+  function itemRowSelector() {
+    const surface = activeItemSurface()
+    if (surface === 'plan') return '[data-plan-item-id]'
+    if (surface === 'day-template') return '[data-template-item-id]'
+    return '[data-list-template-item-id]'
+  }
+
+  function rowItemId(row: HTMLElement): Id | null {
+    const surface = activeItemSurface()
+    if (surface === 'plan') return row.dataset.planItemId ?? null
+    if (surface === 'day-template') return row.dataset.templateItemId ?? null
+    return row.dataset.listTemplateItemId ?? null
+  }
+
+  function flattenItemIds(items: TreeNode[]): Id[] {
+    return items.flatMap((item) => [item.id, ...flattenItemIds(item.children)])
+  }
+
+  function activeFocusedItemId(): Id | null {
+    const active = document.activeElement
+    const row = active instanceof Element ? active.closest<HTMLElement>(itemRowSelector()) : null
+    return row ? rowItemId(row) : null
+  }
+
+  function beginItemSelection(itemId: Id, event: PointerEvent) {
+    if (event.button !== 0 || !activeItemSurface()) return
     event.preventDefault()
     event.stopPropagation()
-    selectingPlanItems = true
-    selectedPlanPlanId = activePlan.id
+    selectingItems = true
+    selectedItemContext = activeItemContextKey()
     releaseTextEditingFocus()
 
-    if (event.shiftKey && planSelectionAnchorId) {
-      selectPlanItemRange(planSelectionAnchorId, itemId, event.metaKey || event.ctrlKey)
+    if (event.shiftKey && selectionAnchorId) {
+      selectItemRange(selectionAnchorId, itemId, event.metaKey || event.ctrlKey)
       return
     }
 
-    planSelectionAnchorId = itemId
-
+    selectionAnchorId = itemId
     if (event.metaKey || event.ctrlKey) {
-      selectedPlanItemIds = selectedPlanItemIds.includes(itemId)
-        ? selectedPlanItemIds.filter((selectedId) => selectedId !== itemId)
-        : [...selectedPlanItemIds, itemId]
-      planSelectionFocusId = itemId
+      selectedItemIds = selectedItemIds.includes(itemId)
+        ? selectedItemIds.filter((selectedId) => selectedId !== itemId)
+        : [...selectedItemIds, itemId]
+      selectionFocusId = itemId
       return
     }
-
-    selectSinglePlanItem(itemId)
+    selectSingleItem(itemId)
   }
 
-  function selectSinglePlanItem(itemId: Id) {
-    if (!activePlan) return
-
-    selectedPlanPlanId = activePlan.id
-    planSelectionAnchorId = itemId
-    selectedPlanItemIds = [itemId]
-    planSelectionFocusId = itemId
+  function selectSingleItem(itemId: Id) {
+    if (!activeItemSurface()) return
+    selectedItemContext = activeItemContextKey()
+    selectionAnchorId = itemId
+    selectionFocusId = itemId
+    selectedItemIds = [itemId]
     releaseTextEditingFocus()
   }
 
-  function extendPlanItemSelection(itemId: Id) {
-    if (!selectingPlanItems || !planSelectionAnchorId) return
-    selectPlanItemRange(planSelectionAnchorId, itemId, false)
+  function selectItemRange(fromId: Id, toId: Id, additive: boolean) {
+    const itemIds = flattenItemIds(activeItemTree())
+    const fromIndex = itemIds.indexOf(fromId)
+    const toIndex = itemIds.indexOf(toId)
+    if (fromIndex === -1 || toIndex === -1) return
+    const [start, end] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex]
+    const rangeIds = itemIds.slice(start, end + 1)
+    selectedItemIds = additive ? [...new Set([...selectedItemIds, ...rangeIds])] : rangeIds
+    selectedItemContext = activeItemContextKey()
+    selectionFocusId = toId
+    releaseTextEditingFocus()
   }
 
-  function handlePlanSelectionPointerMove(event: PointerEvent) {
-    if (!selectingPlanItems && planTextDragOrigin && (event.buttons & 1) === 1 && pointerLeftElement(event, planTextDragOrigin.input)) {
+  function extendItemSelection(itemId: Id) {
+    if (!selectingItems || !selectionAnchorId) return
+    selectItemRange(selectionAnchorId, itemId, false)
+  }
+
+  function itemIdAtPoint(clientX: number, clientY: number): Id | null {
+    const rows = Array.from(document.querySelectorAll<HTMLElement>(itemRowSelector()))
+    const row = rows.find((candidate) => {
+      const rect = candidate.getBoundingClientRect()
+      return clientY >= rect.top && clientY <= rect.bottom && clientX >= rect.left && clientX <= rect.right
+    })
+    return row ? rowItemId(row) : null
+  }
+
+  function handleSelectionPointerMove(event: PointerEvent) {
+    if (!selectingItems && itemTextDragOrigin && (event.buttons & 1) === 1 && pointerLeftElement(event, itemTextDragOrigin.input)) {
       event.preventDefault()
-      selectingPlanItems = true
-      selectedPlanPlanId = activePlan?.id ?? null
-      planSelectionAnchorId = planTextDragOrigin.itemId
-      planSelectionFocusId = planTextDragOrigin.itemId
-      selectedPlanItemIds = [planTextDragOrigin.itemId]
+      selectingItems = true
+      selectedItemContext = activeItemContextKey()
+      selectionAnchorId = itemTextDragOrigin.itemId
+      selectionFocusId = itemTextDragOrigin.itemId
+      selectedItemIds = [itemTextDragOrigin.itemId]
       releaseTextEditingFocus()
     }
-
-    if (!selectingPlanItems) return
-
-    const itemId = planItemIdAtPoint(event.clientX, event.clientY)
-    if (itemId) extendPlanItemSelection(itemId)
+    if (!selectingItems) return
+    const itemId = itemIdAtPoint(event.clientX, event.clientY)
+    if (itemId) extendItemSelection(itemId)
   }
 
-  function endPlanItemSelection() {
-    if (selectingPlanItems && selectedPlanItemIds.length > 0) {
-      preservePlanSelectionFocusUntil = Date.now() + 250
-    }
-
-    selectingPlanItems = false
-    planTextDragOrigin = null
+  function endItemSelection() {
+    if (selectingItems && selectedItemIds.length > 0) preserveSelectionFocusUntil = Date.now() + 250
+    selectingItems = false
+    itemTextDragOrigin = null
   }
 
   function handleGlobalPointerDown(event: PointerEvent) {
-    if (event.button !== 0 || view !== 'today' || !activePlan) {
-      planTextDragOrigin = null
+    if (event.button !== 0 || !activeItemSurface()) {
+      itemTextDragOrigin = null
       return
     }
 
     const target = event.target instanceof Element ? event.target : null
-    const input = target?.closest<HTMLElement>('[data-plan-text-input]')
-    const row = input?.closest<HTMLElement>('[data-plan-item-id]')
-    const itemId = row?.dataset.planItemId
+    const input = target?.closest<HTMLElement>('[data-rich-text-input]')
+    const row = input?.closest<HTMLElement>(itemRowSelector())
+    const itemId = row ? rowItemId(row) : null
 
     if (event.shiftKey && input && itemId) {
-      const focusedItemId = activeFocusedPlanItemId()
+      const focusedItemId = activeFocusedItemId()
 
       if (focusedItemId && focusedItemId !== itemId) {
         event.preventDefault()
         event.stopPropagation()
-        planSelectionAnchorId = focusedItemId
-        selectPlanItemRange(focusedItemId, itemId, false)
-        planTextDragOrigin = null
+        selectionAnchorId = focusedItemId
+        selectItemRange(focusedItemId, itemId, false)
+        itemTextDragOrigin = null
         return
       }
     }
 
-    planTextDragOrigin = input && itemId ? { itemId, input } : null
+    itemTextDragOrigin = input && itemId ? { itemId, input } : null
   }
 
   function handleGlobalFocusIn(event: FocusEvent) {
     const target = event.target instanceof Element ? event.target : null
     if (!target?.closest('input, textarea, [contenteditable="true"]')) return
 
-    if (selectedPlanItemIds.length > 0 && (selectingPlanItems || Date.now() < preservePlanSelectionFocusUntil)) {
+    if (selectedItemIds.length > 0 && (selectingItems || Date.now() < preserveSelectionFocusUntil)) {
       releaseTextEditingFocus()
       return
     }
 
-    clearPlanSelection()
+    clearItemSelection()
   }
 
-  function selectPlanItemRange(fromId: Id, toId: Id, additive: boolean) {
-    if (!activePlan) return
-
-    const itemIds = flattenPlanItemIds(activePlan.items)
-    const fromIndex = itemIds.indexOf(fromId)
-    const toIndex = itemIds.indexOf(toId)
-    if (fromIndex === -1 || toIndex === -1) return
-
-    const [start, end] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex]
-    const rangeIds = itemIds.slice(start, end + 1)
-    selectedPlanItemIds = additive ? [...new Set([...selectedPlanItemIds, ...rangeIds])] : rangeIds
-    selectedPlanPlanId = activePlan.id
-    planSelectionFocusId = toId
-    releaseTextEditingFocus()
-  }
-
-  function selectPlanItemWithAdjacent(itemId: Id, direction: MoveDirection) {
-    if (!activePlan) return
-
-    const itemIds = flattenPlanItemIds(activePlan.items)
+  function selectItemWithAdjacent(itemId: Id, direction: MoveDirection) {
+    const itemIds = flattenItemIds(activeItemTree())
     const index = itemIds.indexOf(itemId)
     if (index === -1) return
-
     const targetIndex = direction === 'up' ? Math.max(0, index - 1) : Math.min(itemIds.length - 1, index + 1)
     if (targetIndex === index) return
-
-    planSelectionAnchorId = itemId
-    selectPlanItemRange(itemId, itemIds[targetIndex], false)
+    selectionAnchorId = itemId
+    selectItemRange(itemId, itemIds[targetIndex], false)
   }
 
-  function extendPlanSelectionByKeyboard(direction: MoveDirection) {
-    if (!activePlan) return
-
-    const itemIds = flattenPlanItemIds(activePlan.items)
-    const anchorId = planSelectionAnchorId ?? selectedPlanItemIds[0]
-    const focusId = planSelectionFocusId ?? selectedPlanItemIds.at(-1)
+  function extendItemSelectionByKeyboard(direction: MoveDirection) {
+    const itemIds = flattenItemIds(activeItemTree())
+    const anchorId = selectionAnchorId ?? selectedItemIds[0]
+    const focusId = selectionFocusId ?? selectedItemIds.at(-1)
     const focusIndex = focusId ? itemIds.indexOf(focusId) : -1
     if (!anchorId || focusIndex === -1) return
-
     const targetIndex = direction === 'up' ? Math.max(0, focusIndex - 1) : Math.min(itemIds.length - 1, focusIndex + 1)
     const targetId = itemIds[targetIndex]
     if (targetId === anchorId) {
-      clearPlanSelection()
-      focusPlanItemTextInput(anchorId)
+      clearItemSelection()
+      focusItemTextInput(anchorId)
       return
     }
-
-    selectPlanItemRange(anchorId, targetId, false)
+    selectItemRange(anchorId, targetId, false)
   }
 
-  function selectAllPlanItems() {
-    if (!activePlan) return
-
-    selectedPlanItemIds = flattenPlanItemIds(activePlan.items)
-    selectedPlanPlanId = activePlan.id
-    planSelectionAnchorId = selectedPlanItemIds[0] ?? null
-    planSelectionFocusId = selectedPlanItemIds.at(-1) ?? null
+  function selectAllItems() {
+    selectedItemIds = flattenItemIds(activeItemTree())
+    selectedItemContext = activeItemContextKey()
+    selectionAnchorId = selectedItemIds[0] ?? null
+    selectionFocusId = selectedItemIds.at(-1) ?? null
     releaseTextEditingFocus()
   }
 
-  function clearPlanSelection() {
-    selectedPlanItemIds = []
-    selectedPlanPlanId = null
-    planSelectionAnchorId = null
-    planSelectionFocusId = null
-    selectingPlanItems = false
-  }
-
-  function flattenPlanItemIds(items: PlanItem[]): Id[] {
-    return items.flatMap((item) => [item.id, ...flattenPlanItemIds(item.children)])
-  }
-
-  function planItemIdAtPoint(clientX: number, clientY: number): Id | null {
-    const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
-
-    for (const row of rows) {
-      const rect = row.getBoundingClientRect()
-      const isInsideRow = clientY >= rect.top && clientY <= rect.bottom && clientX >= rect.left && clientX <= rect.right
-      if (isInsideRow) return row.dataset.planItemId ?? null
-    }
-
-    return null
+  function clearItemSelection() {
+    selectedItemIds = []
+    selectedItemContext = ''
+    selectionAnchorId = null
+    selectionFocusId = null
+    selectingItems = false
   }
 
   function pointerLeftElement(event: PointerEvent, element: HTMLElement) {
@@ -1477,56 +1484,128 @@ return rows`
     )
   }
 
-  function selectedPlanRootIds() {
-    if (!activePlan) return []
-
-    return plannerStore.copyPlanItems(activePlan.id, selectedPlanItemIds).map((item) => item.id)
+  function selectedRootIds(): Id[] {
+    const surface = activeItemSurface()
+    const containerId = activeItemContainerId()
+    if (!surface || !containerId) return []
+    if (surface === 'plan') return plannerStore.copyPlanItems(containerId, selectedItemIds).map((item) => item.id)
+    if (surface === 'day-template') return plannerStore.copyTemplateItems(containerId, selectedItemIds).map((item) => item.id)
+    return plannerStore.copyListTemplateItems(containerId, selectedItemIds).map((item) => item.id)
   }
 
   function selectedPlanItems() {
     if (!activePlan) return []
-
-    return selectedPlanItemIds
+    return selectedItemIds
       .map((itemId) => findPlanItem(activePlan.items, itemId))
       .filter((item): item is PlanItem => item !== null)
   }
 
-  function focusSelectedPlanBoundary(direction: MoveDirection) {
-    if (!activePlan) return
-
-    const selectedIds = new Set(selectedPlanItemIds)
-    const orderedSelectedIds = flattenPlanItemIds(activePlan.items).filter((itemId) => selectedIds.has(itemId))
-    const targetId = direction === 'up' ? orderedSelectedIds[0] : orderedSelectedIds.at(-1)
+  function focusSelectedItemBoundary(direction: MoveDirection) {
+    const selectedIds = new Set(selectedItemIds)
+    const orderedIds = flattenItemIds(activeItemTree()).filter((itemId) => selectedIds.has(itemId))
+    const targetId = direction === 'up' ? orderedIds[0] : orderedIds.at(-1)
     if (!targetId) return
-
-    clearPlanSelection()
-    focusPlanItemTextInput(targetId)
+    clearItemSelection()
+    focusItemTextInput(targetId)
   }
 
-  function copySelectedPlanItems() {
-    if (!activePlan || selectedPlanItemIds.length === 0) return
-
-    const items = plannerStore.copyPlanItems(activePlan.id, selectedPlanItemIds)
-    if (items.length === 0) return
-
-    writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: activePlan.date })
+  function copySelectedItems() {
+    const surface = activeItemSurface()
+    const containerId = activeItemContainerId()
+    if (!surface || !containerId || selectedItemIds.length === 0) return
+    if (surface === 'plan' && activePlan) {
+      const items = plannerStore.copyPlanItems(containerId, selectedItemIds)
+      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: activePlan.date })
+      return
+    }
+    if (surface === 'day-template') {
+      const items = plannerStore.copyTemplateItems(containerId, selectedItemIds)
+      if (items.length > 0) writeTemplateItemsToSystemClipboard({ kind: surface, items, cut: false })
+    } else {
+      const items = plannerStore.copyListTemplateItems(containerId, selectedItemIds)
+      if (items.length > 0) writeTemplateItemsToSystemClipboard({ kind: 'list-template', items, cut: false })
+    }
   }
 
-  function cutSelectedPlanItems() {
-    if (!activePlan || selectedPlanItemIds.length === 0) return
-
-    const items = plannerStore.cutPlanItems(activePlan.id, selectedPlanItemIds)
-    if (items.length === 0) return
-
-    writePlanItemsToSystemClipboard({ items, cut: true, sourceDate: activePlan.date })
-    clearPlanSelection()
+  function cutSelectedItems() {
+    const surface = activeItemSurface()
+    const containerId = activeItemContainerId()
+    if (!surface || !containerId || selectedItemIds.length === 0) return
+    if (surface === 'plan' && activePlan) {
+      const items = plannerStore.cutPlanItems(containerId, selectedItemIds)
+      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: true, sourceDate: activePlan.date })
+      clearItemSelection()
+      return
+    }
+    if (surface === 'day-template') {
+      const items = plannerStore.cutTemplateItems(containerId, selectedItemIds)
+      if (items.length > 0) writeTemplateItemsToSystemClipboard({ kind: surface, items, cut: true })
+    } else {
+      const items = plannerStore.cutListTemplateItems(containerId, selectedItemIds)
+      if (items.length > 0) writeTemplateItemsToSystemClipboard({ kind: 'list-template', items, cut: true })
+    }
+    clearItemSelection()
   }
 
-  function deleteSelectedPlanItems() {
-    if (!activePlan || selectedPlanItemIds.length === 0) return
+  function deleteSelectedItems() {
+    const surface = activeItemSurface()
+    const containerId = activeItemContainerId()
+    if (!surface || !containerId || selectedItemIds.length === 0) return
+    const deletedIds = surface === 'plan'
+      ? plannerStore.deletePlanItems(containerId, selectedItemIds)
+      : surface === 'day-template'
+        ? plannerStore.deleteTemplateItems(containerId, selectedItemIds)
+        : plannerStore.deleteListTemplateItems(containerId, selectedItemIds)
+    if (deletedIds.length > 0) clearItemSelection()
+  }
 
-    const deletedIds = plannerStore.deletePlanItems(activePlan.id, selectedPlanItemIds)
-    if (deletedIds.length > 0) clearPlanSelection()
+  function indentSelectedItems(rootIds: Id[], direction: 'in' | 'out') {
+    const surface = activeItemSurface()
+    const containerId = activeItemContainerId()
+    if (!surface || !containerId) return
+    if (surface === 'plan') {
+      if (direction === 'in') plannerStore.indentPlanItems(containerId, rootIds)
+      else plannerStore.outdentPlanItems(containerId, rootIds)
+    } else if (surface === 'day-template') {
+      if (direction === 'in') plannerStore.indentTemplateItems(containerId, rootIds)
+      else plannerStore.outdentTemplateItems(containerId, rootIds)
+    } else {
+      if (direction === 'in') plannerStore.indentListTemplateItems(containerId, rootIds)
+      else plannerStore.outdentListTemplateItems(containerId, rootIds)
+    }
+  }
+
+  function moveSelectedItems(rootIds: Id[], direction: MoveDirection) {
+    const surface = activeItemSurface()
+    const containerId = activeItemContainerId()
+    if (!surface || !containerId) return
+    if (surface === 'plan') plannerStore.movePlanItemsWithinLevel(containerId, rootIds, direction)
+    else if (surface === 'day-template') plannerStore.moveTemplateItemsWithinLevel(containerId, rootIds, direction)
+    else plannerStore.moveListTemplateItemsWithinLevel(containerId, rootIds, direction)
+  }
+
+  async function pasteTemplateSystemClipboard() {
+    const clipboard = await readSystemClipboard()
+    const structured = parseTemplateItemClipboard(clipboard.structuredPayload)
+    const surface = activeItemSurface()
+    const containerId = activeItemContainerId()
+    if (!structured || structured.kind !== surface || !containerId) {
+      pastePlainClipboardIntoActiveEditor(clipboard)
+      return
+    }
+
+    const targetId = activeFocusedItemId() ?? selectedRootIds().at(-1) ?? null
+    const pastedIds = structured.kind === 'day-template'
+      ? plannerStore.pasteTemplateItems(containerId, structured.items, targetId, 'after')
+      : plannerStore.pasteListTemplateItems(containerId, structured.items, targetId, 'after')
+    if (pastedIds.length === 0) return
+
+    selectedItemIds = pastedIds
+    selectedItemContext = activeItemContextKey()
+    selectionAnchorId = pastedIds.at(-1) ?? null
+    selectionFocusId = pastedIds.at(-1) ?? null
+    releaseTextEditingFocus()
+    if (structured.cut) writeTemplateItemsToSystemClipboard({ ...structured, cut: false })
   }
 
   async function pasteSystemClipboard() {
@@ -1647,10 +1726,10 @@ return rows`
     const pastedRootIds = plannerStore.pastePlanItems(activePlan.id, items, targetId, placement)
     if (pastedRootIds.length === 0) return
 
-    selectedPlanItemIds = pastedRootIds
-    selectedPlanPlanId = activePlan.id
-    planSelectionAnchorId = pastedRootIds.at(-1) ?? null
-    planSelectionFocusId = pastedRootIds.at(-1) ?? null
+    selectedItemIds = pastedRootIds
+    selectedItemContext = activeItemContextKey()
+    selectionAnchorId = pastedRootIds.at(-1) ?? null
+    selectionFocusId = pastedRootIds.at(-1) ?? null
     releaseTextEditingFocus()
     // A cut becomes a copy after its first successful paste. Keeping the structured
     // clipboard alive makes subsequent pastes create more task rows instead of falling
@@ -1912,28 +1991,37 @@ return rows`
   }
 
   function pasteTargetPlanItemId() {
-    const focusedItemId = activeFocusedPlanItemId()
+    const focusedItemId = activeFocusedItemId()
     if (focusedItemId) return focusedItemId
 
-    const rootIds = selectedPlanRootIds()
+    const rootIds = selectedRootIds()
     return rootIds.at(-1) ?? null
   }
 
   function writePlanItemsToSystemClipboard(clipboard: PlanItemClipboard) {
     const plainText = planItemsToPlainText(clipboard.items)
+    writeItemClipboard(clipboard, plainText)
+  }
+
+  function writeTemplateItemsToSystemClipboard(clipboard: TemplateItemClipboard) {
+    const plainText = templateClipboardPlainText(clipboard)
+    writeItemClipboard(clipboard, plainText)
+  }
+
+  function writeItemClipboard(clipboard: ItemClipboard, plainText: string) {
     if (!plainText) return
 
     const structuredPayload = JSON.stringify(clipboard)
     if (isTauri()) {
       clipboardWritePending = invoke('write_balance_clipboard', { plainText, structuredPayload })
         .catch(async () => {
-          browserPlanItemClipboard = clipboard
+          browserItemClipboard = clipboard
           await navigator.clipboard?.writeText(plainText).catch(() => {})
         })
       return
     }
 
-    browserPlanItemClipboard = clipboard
+    browserItemClipboard = clipboard
     clipboardWritePending = navigator.clipboard?.writeText(plainText).catch(() => {}) ?? null
   }
 
@@ -1946,10 +2034,10 @@ return rows`
     }
 
     const plainText = await navigator.clipboard?.readText().catch(() => null) ?? null
-    const structuredPayload = browserPlanItemClipboard && (plainText === null || planItemsToPlainText(browserPlanItemClipboard.items) === plainText)
-      ? JSON.stringify(browserPlanItemClipboard)
+    const structuredPayload = browserItemClipboard && (plainText === null || itemClipboardPlainText(browserItemClipboard) === plainText)
+      ? JSON.stringify(browserItemClipboard)
       : null
-    if (!structuredPayload) browserPlanItemClipboard = null
+    if (!structuredPayload) browserItemClipboard = null
     return { structuredPayload, plainText, html: null }
   }
 
@@ -1964,10 +2052,51 @@ return rows`
     }
   }
 
+  function parseTemplateItemClipboard(raw: string | null): TemplateItemClipboard | null {
+    if (!raw) return null
+    try {
+      const value = JSON.parse(raw) as Partial<TemplateItemClipboard>
+      if (
+        (value.kind !== 'day-template' && value.kind !== 'list-template') ||
+        !Array.isArray(value.items) ||
+        typeof value.cut !== 'boolean'
+      ) return null
+      return value as TemplateItemClipboard
+    } catch {
+      return null
+    }
+  }
+
   function pastePlainClipboardIntoActiveEditor(clipboard: ClipboardContents) {
     const editor = document.activeElement
-    if (!(editor instanceof HTMLElement) || !editor.matches('[data-plan-text-input]')) return
+    if (!(editor instanceof HTMLElement) || !editor.matches('[data-rich-text-input]')) return
     editor.dispatchEvent(new CustomEvent('balancepaste', { detail: clipboard }))
+  }
+
+  function itemClipboardPlainText(clipboard: ItemClipboard): string {
+    return 'sourceDate' in clipboard ? planItemsToPlainText(clipboard.items) : templateClipboardPlainText(clipboard)
+  }
+
+  function templateClipboardPlainText(clipboard: TemplateItemClipboard): string {
+    return clipboard.kind === 'day-template'
+      ? dayTemplateItemsToPlainText(clipboard.items)
+      : listTemplateItemsToPlainText(clipboard.items)
+  }
+
+  function dayTemplateItemsToPlainText(items: TemplateItem[], depth = 0): string {
+    return items.map((item) => {
+      const line = `${'  '.repeat(depth)}${item.options[0]?.text ?? ''}`
+      const children = dayTemplateItemsToPlainText(item.children, depth + 1)
+      return children ? `${line}\n${children}` : line
+    }).join('\n')
+  }
+
+  function listTemplateItemsToPlainText(items: ListTemplateItem[], depth = 0): string {
+    return items.map((item) => {
+      const line = `${'  '.repeat(depth)}${item.text}`
+      const children = listTemplateItemsToPlainText(item.children, depth + 1)
+      return children ? `${line}\n${children}` : line
+    }).join('\n')
   }
 
   function planItemsToPlainText(items: PlanItem[], depth = 0): string {
@@ -2010,8 +2139,14 @@ return rows`
     }
   }
 
-  function focusPlanItemTextInput(itemId: Id) {
-    const input = document.querySelector<HTMLDivElement>(`[data-plan-text-focus-target-id="${CSS.escape(itemId)}"]`)
+  function focusItemTextInput(itemId: Id) {
+    const surface = activeItemSurface()
+    const selector = surface === 'plan'
+      ? `[data-plan-text-focus-target-id="${CSS.escape(itemId)}"]`
+      : surface === 'day-template'
+        ? `[data-template-item-id="${CSS.escape(itemId)}"] [data-template-option-text-input]`
+        : `[data-list-template-text-input-id="${CSS.escape(itemId)}"]`
+    const input = document.querySelector<HTMLDivElement>(selector)
     if (!input) return
 
     input.focus()
@@ -2066,8 +2201,8 @@ return rows`
   on:keydown|capture={handleGlobalKeydown}
   on:focusin={handleGlobalFocusIn}
   on:pointerdown|capture={handleGlobalPointerDown}
-  on:pointermove={handlePlanSelectionPointerMove}
-  on:pointerup={endPlanItemSelection}
+  on:pointermove={handleSelectionPointerMove}
+  on:pointerup={endItemSelection}
 />
 
 {#if showAutoExportError}
@@ -2199,12 +2334,12 @@ return rows`
               moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
               outdentItem={plannerStore.outdentPlanItem}
               historyRevision={$plannerStore.historyRevision}
-              selectedItemIds={selectedPlanItemIdSet}
-              selectionDragging={selectingPlanItems}
-              onSelectionPointerDown={beginPlanItemSelection}
-              onSelectionPointerMove={handlePlanSelectionPointerMove}
-              onSelectionPointerEnter={extendPlanItemSelection}
-              onTextShiftArrow={selectPlanItemWithAdjacent}
+              selectedItemIds={selectedItemIdSet}
+              selectionDragging={selectingItems}
+              onSelectionPointerDown={beginItemSelection}
+              onSelectionPointerMove={handleSelectionPointerMove}
+              onSelectionPointerEnter={extendItemSelection}
+              onTextShiftArrow={selectItemWithAdjacent}
               goals={$plannerStore.goals}
               goalCompletions={$plannerStore.goalCompletions}
               {dueTodayGoals}
@@ -2273,11 +2408,16 @@ return rows`
                 moveItem={plannerStore.moveTemplateItem}
                 moveItemWithinLevel={plannerStore.moveTemplateItemWithinLevel}
                 outdentItem={plannerStore.outdentTemplateItem}
-                addChild={plannerStore.addTemplateChild}
                 addOption={plannerStore.addTemplateOption}
                 patchOption={plannerStore.patchTemplateOption}
                 deleteOption={plannerStore.deleteTemplateOption}
                 historyRevision={$plannerStore.historyRevision}
+                selectedItemIds={selectedItemIdSet}
+                selectionDragging={selectingItems}
+                onSelectionPointerDown={beginItemSelection}
+                onSelectionPointerMove={handleSelectionPointerMove}
+                onSelectionPointerEnter={extendItemSelection}
+                onTextShiftArrow={selectItemWithAdjacent}
               />
             {/each}
           </div>
@@ -2371,8 +2511,13 @@ return rows`
                 moveItem={plannerStore.moveListTemplateItem}
                 moveItemWithinLevel={plannerStore.moveListTemplateItemWithinLevel}
                 outdentItem={plannerStore.outdentListTemplateItem}
-                addChild={plannerStore.addListTemplateChild}
                 historyRevision={$plannerStore.historyRevision}
+                selectedItemIds={selectedItemIdSet}
+                selectionDragging={selectingItems}
+                onSelectionPointerDown={beginItemSelection}
+                onSelectionPointerMove={handleSelectionPointerMove}
+                onSelectionPointerEnter={extendItemSelection}
+                onTextShiftArrow={selectItemWithAdjacent}
               />
             {/each}
           </div>

@@ -5,6 +5,7 @@
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
+  import TreeItemRow from './TreeItemRow.svelte'
   import type { Id, MoveDirection, MovePlacement, TemplateItem, TemplateOption } from './types'
 
   type TextChangeOptions = {
@@ -37,7 +38,6 @@
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (templateId: Id, itemId: Id, direction: MoveDirection) => void
   export let outdentItem: (templateId: Id, itemId: Id) => void
-  export let addChild: (templateId: Id, parentId: Id) => void
   export let addOption: (templateId: Id, itemId: Id) => void
   export let patchOption: (
     templateId: Id,
@@ -48,9 +48,14 @@
   ) => void
   export let deleteOption: (templateId: Id, itemId: Id, optionId: Id) => void
   export let historyRevision: number
+  export let selectedItemIds: Set<Id> = new Set()
+  export let selectionDragging = false
+  export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
+  export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
+  export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
+  export let onTextShiftArrow: (itemId: Id, direction: MoveDirection) => void = () => {}
 
-  let dragging = false
-  let activeDropRow: HTMLElement | null = null
+  $: selected = selectedItemIds.has(item.id)
 
   $: probabilityTotal = item.options.reduce((sum, option) => sum + (Number(option.probability) || 0), 0)
   // A lone option is allowed to sit below 100%: the missing share is an implicit
@@ -74,63 +79,6 @@
     )
   }
 
-  function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
-    const rect = row.getBoundingClientRect()
-    const y = clientY - rect.top
-
-    if (y < rect.height * 0.28) return 'before'
-    if (y > rect.height * 0.72) return 'after'
-    return 'inside'
-  }
-
-  function clearDropMarker() {
-    activeDropRow?.classList.remove('drop-before', 'drop-inside', 'drop-after')
-    activeDropRow = null
-  }
-
-  function markDropTarget(row: HTMLElement, placement: MovePlacement) {
-    if (activeDropRow !== row) clearDropMarker()
-    activeDropRow = row
-    row.classList.remove('drop-before', 'drop-inside', 'drop-after')
-    row.classList.add(`drop-${placement}`)
-  }
-
-  function startPointerDrag(event: PointerEvent) {
-    event.preventDefault()
-    event.stopPropagation()
-    dragging = true
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-  }
-
-  function continuePointerDrag(event: PointerEvent) {
-    if (!dragging) return
-
-    const hovered = document.elementFromPoint(event.clientX, event.clientY)
-    const row = hovered instanceof Element ? hovered.closest<HTMLElement>('[data-template-item-id]') : null
-
-    if (!row || row.dataset.templateItemId === item.id) {
-      clearDropMarker()
-      return
-    }
-
-    markDropTarget(row, placementForRow(row, event.clientY))
-  }
-
-  function endPointerDrag(event: PointerEvent) {
-    if (!dragging) return
-
-    const row = activeDropRow
-    const targetId = row?.dataset.templateItemId
-    const placement = row ? placementForRow(row, event.clientY) : null
-
-    clearDropMarker()
-    dragging = false
-
-    if (targetId && targetId !== item.id && placement) {
-      moveItem(templateId, item.id, targetId, placement)
-    }
-  }
-
   async function handleTextSplit(
     optionId: Id,
     before: { html: string; text: string },
@@ -146,6 +94,11 @@
       moveItemWithinLevel(templateId, item.id, direction)
       await tick()
       focusTemplateOptionTextInput(optionId)
+      return
+    }
+
+    if (event.shiftKey) {
+      onTextShiftArrow(item.id, direction)
       return
     }
 
@@ -232,32 +185,21 @@
   }
 </script>
 
-<div class="template-item" style={`--depth: ${depth}`}>
-  <div
-    class="template-main"
-    data-template-item-id={item.id}
-    data-template-item-depth={depth}
-    role="listitem"
-    aria-label={`Template item: ${item.options[0]?.text || 'Untitled'}`}
-  >
-    <button
-      class="drag-handle"
-      class:dragging
-      type="button"
-      title="Drag to move template item"
-      aria-label="Drag to move template item"
-      on:pointerdown={startPointerDrag}
-      on:pointermove={continuePointerDrag}
-      on:pointerup={endPointerDrag}
-      on:pointercancel={() => {
-        dragging = false
-        clearDropMarker()
-      }}
-    >
-      <span class="handle-dots" aria-hidden="true"></span>
-    </button>
-
-    {#if item.startMinutes !== null && item.endMinutes !== null}
+<TreeItemRow
+  kind="day-template"
+  itemId={item.id}
+  containerId={templateId}
+  {depth}
+  ariaLabel={`Template item: ${item.options[0]?.text || 'Untitled'}`}
+  dragLabel="Drag to move template item"
+  {selected}
+  {selectionDragging}
+  {moveItem}
+  {onSelectionPointerDown}
+  {onSelectionPointerMove}
+  {onSelectionPointerEnter}
+>
+  {#if item.startMinutes !== null && item.endMinutes !== null}
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
@@ -275,9 +217,9 @@
       >
         <AlarmClockIcon />
       </button>
-    {/if}
+  {/if}
 
-    <div class="option-stack">
+  <div class="option-stack">
       {#each item.options as option, index (option.id)}
         <div class="option-row">
           <RichTextEditor
@@ -294,6 +236,7 @@
             onSplit={(before, after) => handleTextSplit(option.id, before, after)}
             onTabKey={handleTextTab}
             onBackspaceEmpty={(editor) => handleBackspaceEmpty(option, index, editor)}
+            onMetaBackspaceEnd={(editor) => handleBackspaceEmpty(option, index, editor)}
           />
           <ProbabilitySlider
             value={option.probability}
@@ -312,38 +255,42 @@
           </button>
         </div>
       {/each}
-    </div>
-
-    <div class="template-actions">
-      <span class:bad-total={badProbabilityTotal} class="total">{probabilityTotal}%</span>
-      <button class="icon-button" type="button" title="Add option" on:click={() => addOption(templateId, item.id)}>±</button>
-      <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(templateId, item.id)}>↳</button>
-      <button class="icon-button danger" type="button" title="Delete item" on:click={() => deleteItem(templateId, item.id)}>×</button>
-    </div>
   </div>
 
-  {#if item.children.length > 0}
-    <div class="children">
-      {#each item.children as child (child.id)}
-        <svelte:self
-          item={child}
-          {allItems}
-          depth={depth + 1}
-          {templateId}
-          parentId={item.id}
-          {patchItem}
-          {splitItem}
-          {deleteItem}
-          {moveItem}
-          {moveItemWithinLevel}
-          {outdentItem}
-          {addChild}
-          {addOption}
-          {patchOption}
-          {deleteOption}
-          {historyRevision}
-        />
-      {/each}
-    </div>
-  {/if}
-</div>
+  <div class="template-actions">
+    <span class:bad-total={badProbabilityTotal} class="total">{probabilityTotal}%</span>
+    <button class="icon-button" type="button" title="Add option" on:click={() => addOption(templateId, item.id)}>±</button>
+  </div>
+
+  <svelte:fragment slot="children">
+    {#if item.children.length > 0}
+      <div class="children">
+        {#each item.children as child (child.id)}
+          <svelte:self
+            item={child}
+            {allItems}
+            depth={depth + 1}
+            {templateId}
+            parentId={item.id}
+            {patchItem}
+            {splitItem}
+            {deleteItem}
+            {moveItem}
+            {moveItemWithinLevel}
+            {outdentItem}
+            {addOption}
+            {patchOption}
+            {deleteOption}
+            {historyRevision}
+            {selectedItemIds}
+            {selectionDragging}
+            {onSelectionPointerDown}
+            {onSelectionPointerMove}
+            {onSelectionPointerEnter}
+            {onTextShiftArrow}
+          />
+        {/each}
+      </div>
+    {/if}
+  </svelte:fragment>
+</TreeItemRow>
