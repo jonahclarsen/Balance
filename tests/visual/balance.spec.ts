@@ -39,6 +39,8 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
 
   await page.getByRole('button', { name: 'Day Templates' }).click()
   await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await expect(page.getByLabel('Template name')).toHaveCount(0)
+  await expect(page.locator('#template-name')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Drag to move template item' }).first()).toBeVisible()
   await expect
     .poll(async () =>
@@ -1909,25 +1911,76 @@ test('list template tabs and word cap stay pinned while each template remembers 
     .poll(async () => {
       const railBox = await templateRail.boundingBox()
       const wordCapBox = await wordCapBar.boundingBox()
+      const railPaddingRight = await templateRail.evaluate((rail) => parseFloat(getComputedStyle(rail).paddingRight))
       return railBox && wordCapBox
         ? {
-            railPinned: railBox.y >= 0 && railBox.y <= 28,
-            wordCapBelowRail: wordCapBox.y >= railBox.y + railBox.height - 1,
+            railFlushWithTop: Math.abs(railBox.y) <= 1,
+            wordCapInRail: wordCapBox.y >= railBox.y && wordCapBox.y + wordCapBox.height <= railBox.y + railBox.height,
+            wordCapPinnedRight:
+              Math.abs(wordCapBox.x + wordCapBox.width - (railBox.x + railBox.width - railPaddingRight)) <= 1,
           }
         : null
     })
-    .toEqual({ railPinned: true, wordCapBelowRail: true })
+    .toEqual({ railFlushWithTop: true, wordCapInRail: true, wordCapPinnedRight: true })
   await expect(page.locator('.word-cap-edit')).toHaveCSS('opacity', '1')
 
-  await page.getByRole('button', { name: 'Beta', exact: true }).click()
+  const lockButton = page.getByRole('button', { name: 'Unlock to edit max word count' })
+  await expect
+    .poll(async () => {
+      const buttonBox = await lockButton.boundingBox()
+      const iconBox = await lockButton.locator('.word-cap-lock-icon').boundingBox()
+      return buttonBox && iconBox
+        ? {
+            x: Math.abs(buttonBox.x + buttonBox.width / 2 - (iconBox.x + iconBox.width / 2)),
+            y: Math.abs(buttonBox.y + buttonBox.height / 2 - (iconBox.y + iconBox.height / 2)),
+          }
+        : null
+    })
+    .toEqual({ x: 0, y: 0 })
+
+  const alphaTab = page.getByRole('button', { name: 'Alpha', exact: true })
+  const betaTab = page.getByRole('button', { name: 'Beta', exact: true })
+  await page.keyboard.press('Control+ArrowRight')
+  await expect(betaTab).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('Control+ArrowLeft')
+  await expect(alphaTab).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('Meta+ArrowRight')
+  await expect(betaTab).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('Meta+ArrowLeft')
+  await expect(alphaTab).toHaveAttribute('aria-current', 'true')
+
+  await betaTab.click()
   await expect.poll(currentScrollTop).toBe(0)
   await setScrollTop(340)
   await expect.poll(currentScrollTop).toBe(340)
 
-  await page.getByRole('button', { name: 'Alpha', exact: true }).click()
+  await alphaTab.click()
   await expect.poll(currentScrollTop).toBe(620)
-  await page.getByRole('button', { name: 'Beta', exact: true }).click()
+  await betaTab.click()
   await expect.poll(currentScrollTop).toBe(340)
+})
+
+test('deleting a list template requires confirmation', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByLabel('List name').fill('Errands')
+
+  page.once('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('confirm')
+    expect(dialog.message()).toContain('Delete “Errands”?')
+    await dialog.dismiss()
+  })
+  await page.getByRole('button', { name: 'Delete list template' }).click()
+  await expect(page.getByLabel('List name')).toHaveValue('Errands')
+
+  page.once('dialog', async (dialog) => {
+    await dialog.accept()
+  })
+  await page.getByRole('button', { name: 'Delete list template' }).click()
+  await expect(page.getByRole('heading', { name: 'No list templates yet' })).toBeVisible()
 })
 
 async function seedPlanItems(page: import('@playwright/test').Page, texts: string[]) {

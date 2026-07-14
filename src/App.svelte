@@ -496,6 +496,36 @@ return rows`
     view = 'listTemplates'
   }
 
+  async function selectAdjacentListTemplate(direction: -1 | 1) {
+    if (listTemplates.length < 2 || !selectedListTemplate) return
+
+    const currentIndex = listTemplates.findIndex((template) => template.id === selectedListTemplate.id)
+    if (currentIndex === -1) return
+
+    const nextIndex = (currentIndex + direction + listTemplates.length) % listTemplates.length
+    selectedListTemplateId = listTemplates[nextIndex].id
+
+    await tick()
+    const selectedTab = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[data-list-template-tab-id]'),
+    ).find((tab) => tab.dataset.listTemplateTabId === selectedListTemplateId)
+    selectedTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+
+  async function confirmDeleteListTemplate(templateId: Id, templateName: string) {
+    const savedListCount = $plannerStore.lists.filter((list) => list.listTemplateId === templateId).length
+    const savedListMessage = savedListCount
+      ? ` This will also delete ${savedListCount} generated list${savedListCount === 1 ? '' : 's'} made from it.`
+      : ''
+    const message = `Delete “${templateName || 'Untitled list'}”?${savedListMessage}`
+    const confirmed = isTauri()
+      ? await confirmDialog(message, { title: 'Delete list template?', kind: 'warning' })
+      : window.confirm(message)
+    if (!confirmed) return
+
+    plannerStore.deleteListTemplate(templateId)
+  }
+
   function createMetricAndSelect() {
     const id = plannerStore.addMetric()
     selectedMetricId = id
@@ -1121,6 +1151,19 @@ return rows`
     if (primaryModifier && event.shiftKey && key === 'p') {
       event.preventDefault()
       void openRecoveryPanel()
+      return
+    }
+
+    if (
+      view === 'listTemplates' &&
+      primaryModifier &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (event.key === 'ArrowLeft' || event.key === 'ArrowRight')
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      void selectAdjacentListTemplate(event.key === 'ArrowLeft' ? -1 : 1)
       return
     }
 
@@ -2433,14 +2476,6 @@ return rows`
 
       {#if selectedTemplate}
         <div class="template-panel">
-          <label class="field-label" for="template-name">Template name</label>
-          <input
-            id="template-name"
-            class="title-input"
-            value={selectedTemplate.name}
-            on:input={(event) => plannerStore.renameTemplate(selectedTemplate.id, event.currentTarget.value)}
-          />
-
           <div class="template-list">
             {#each selectedTemplate.items as item (item.id)}
               <TemplateItemEditor
@@ -2484,57 +2519,69 @@ return rows`
 
       {#if listTemplates.length > 0}
         <nav class="template-rail list-template-rail" aria-label="Select list template">
-          {#each listTemplates as template (template.id)}
-            <button
-              type="button"
-              class="rail-chip"
-              class:active={selectedListTemplate?.id === template.id}
-              aria-current={selectedListTemplate?.id === template.id}
-              on:click={() => (selectedListTemplateId = template.id)}
-            >
-              {template.name || 'Untitled list'}
-            </button>
-          {/each}
-          <button type="button" class="rail-chip dashed-edge" on:click={createListTemplateAndSelect}>New list</button>
+          <div class="list-template-tabs">
+            {#each listTemplates as template (template.id)}
+              <button
+                type="button"
+                class="rail-chip"
+                class:active={selectedListTemplate?.id === template.id}
+                aria-current={selectedListTemplate?.id === template.id}
+                data-list-template-tab-id={template.id}
+                on:click={() => (selectedListTemplateId = template.id)}
+              >
+                {template.name || 'Untitled list'}
+              </button>
+            {/each}
+            <button type="button" class="rail-chip dashed-edge" on:click={createListTemplateAndSelect}>New list</button>
+          </div>
+
+          {#if selectedListTemplate}
+            <div class="word-cap-bar">
+              <span
+                class="word-cap-count"
+                class:over={selectedListTemplate.maxExpectedWords > 0 &&
+                  selectedListWordCount > selectedListTemplate.maxExpectedWords}
+              >
+                {selectedListWordCount} / {selectedListTemplate.maxExpectedWords || '∞'} expected words ·
+                {selectedListTotalWordCount} total words
+              </span>
+              <div class="word-cap-edit">
+                <button
+                  class="icon-button"
+                  type="button"
+                  title={wordCapUnlocked ? 'Lock max word count' : 'Unlock to edit max word count'}
+                  aria-label={wordCapUnlocked ? 'Lock max word count' : 'Unlock to edit max word count'}
+                  aria-pressed={wordCapUnlocked}
+                  on:click={() => (wordCapUnlocked = !wordCapUnlocked)}
+                >
+                  <svg class="word-cap-lock-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+                    {#if wordCapUnlocked}
+                      <path d="M10.75 6V4.75a2.75 2.75 0 0 0-5.2-1.25" />
+                    {:else}
+                      <path d="M5.25 6V4.75a2.75 2.75 0 0 1 5.5 0V6" />
+                    {/if}
+                    <rect x="3.25" y="6" width="9.5" height="7.25" rx="1.5" />
+                  </svg>
+                </button>
+                <label>
+                  max
+                  <input
+                    type="number"
+                    min="0"
+                    disabled={!wordCapUnlocked}
+                    value={selectedListTemplate.maxExpectedWords}
+                    on:input={(event) =>
+                      plannerStore.setListTemplateMaxWords(selectedListTemplate.id, Number(event.currentTarget.value) || 0)}
+                  />
+                </label>
+              </div>
+            </div>
+          {/if}
         </nav>
       {/if}
 
       {#if selectedListTemplate}
         <div class="template-panel">
-          <div class="word-cap-bar">
-            <span
-              class="word-cap-count"
-              class:over={selectedListTemplate.maxExpectedWords > 0 &&
-                selectedListWordCount > selectedListTemplate.maxExpectedWords}
-            >
-              {selectedListWordCount} / {selectedListTemplate.maxExpectedWords || '∞'} expected words ·
-              {selectedListTotalWordCount} total words
-            </span>
-            <div class="word-cap-edit">
-              <button
-                class="icon-button"
-                type="button"
-                title={wordCapUnlocked ? 'Lock max word count' : 'Unlock to edit max word count'}
-                aria-label={wordCapUnlocked ? 'Lock max word count' : 'Unlock to edit max word count'}
-                aria-pressed={wordCapUnlocked}
-                on:click={() => (wordCapUnlocked = !wordCapUnlocked)}
-              >
-                {wordCapUnlocked ? '🔓' : '🔒'}
-              </button>
-              <label>
-                max
-                <input
-                  type="number"
-                  min="0"
-                  disabled={!wordCapUnlocked}
-                  value={selectedListTemplate.maxExpectedWords}
-                  on:input={(event) =>
-                    plannerStore.setListTemplateMaxWords(selectedListTemplate.id, Number(event.currentTarget.value) || 0)}
-                />
-              </label>
-            </div>
-          </div>
-
           <label class="field-label" for="list-template-name">List name</label>
           <input
             id="list-template-name"
@@ -2571,7 +2618,11 @@ return rows`
             <button class="add-row" type="button" on:click={() => plannerStore.addRootListTemplateItem(selectedListTemplate.id)}>
               + Add list item
             </button>
-            <button class="ghost danger" type="button" on:click={() => plannerStore.deleteListTemplate(selectedListTemplate.id)}>
+            <button
+              class="ghost danger"
+              type="button"
+              on:click={() => { void confirmDeleteListTemplate(selectedListTemplate.id, selectedListTemplate.name) }}
+            >
               Delete list template
             </button>
           </div>
