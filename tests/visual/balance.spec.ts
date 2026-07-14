@@ -1834,6 +1834,102 @@ test('list template rows share multi-select clipboard behavior and hide mouse-on
   })).toEqual({ roots: ['Second item'], children: ['First item'] })
 })
 
+test('list template tabs and word cap stay pinned while each template remembers its scroll position', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    const now = new Date().toISOString()
+    const makeItems = (prefix: string) =>
+      Array.from({ length: 40 }, (_, index) => ({
+        id: `${prefix}_item_${index}`,
+        text: `${prefix} item ${index + 1}`,
+        html: `${prefix} item ${index + 1}`,
+        children: [],
+      }))
+
+    localStorage.setItem(
+      'balance.appState.v1',
+      JSON.stringify({
+        schemaVersion: 1,
+        deviceId: 'test-device',
+        localSequence: 0,
+        historyRevision: 0,
+        activePlanDate: now.slice(0, 10),
+        templates: [],
+        plans: [],
+        listTemplates: [
+          {
+            id: 'list_template_alpha',
+            name: 'Alpha',
+            maxExpectedWords: 100,
+            items: makeItems('Alpha'),
+            createdAt: now,
+            updatedAt: now,
+          },
+          {
+            id: 'list_template_beta',
+            name: 'Beta',
+            maxExpectedWords: 100,
+            items: makeItems('Beta'),
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        lists: [],
+        metrics: [],
+        metricEntries: [],
+        goals: [],
+        goalCompletions: [],
+        operations: [],
+      }),
+    )
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+
+  const currentScrollTop = () =>
+    page.evaluate(() => {
+      const workspace = document.querySelector<HTMLElement>('.workspace')
+      return window.innerWidth <= 760 ? window.scrollY : (workspace?.scrollTop ?? 0)
+    })
+  const setScrollTop = (top: number) =>
+    page.evaluate((nextTop) => {
+      const workspace = document.querySelector<HTMLElement>('.workspace')
+      if (window.innerWidth <= 760) window.scrollTo(0, nextTop)
+      else if (workspace) workspace.scrollTop = nextTop
+    }, top)
+
+  await setScrollTop(620)
+  await expect.poll(currentScrollTop).toBe(620)
+
+  const templateRail = page.getByRole('navigation', { name: 'Select list template' })
+  const wordCapBar = page.locator('.word-cap-bar')
+  await expect(templateRail).toBeVisible()
+  await expect(wordCapBar).toBeVisible()
+  await expect
+    .poll(async () => {
+      const railBox = await templateRail.boundingBox()
+      const wordCapBox = await wordCapBar.boundingBox()
+      return railBox && wordCapBox
+        ? {
+            railPinned: railBox.y >= 0 && railBox.y <= 28,
+            wordCapBelowRail: wordCapBox.y >= railBox.y + railBox.height - 1,
+          }
+        : null
+    })
+    .toEqual({ railPinned: true, wordCapBelowRail: true })
+  await expect(page.locator('.word-cap-edit')).toHaveCSS('opacity', '1')
+
+  await page.getByRole('button', { name: 'Beta', exact: true }).click()
+  await expect.poll(currentScrollTop).toBe(0)
+  await setScrollTop(340)
+  await expect.poll(currentScrollTop).toBe(340)
+
+  await page.getByRole('button', { name: 'Alpha', exact: true }).click()
+  await expect.poll(currentScrollTop).toBe(620)
+  await page.getByRole('button', { name: 'Beta', exact: true }).click()
+  await expect.poll(currentScrollTop).toBe(340)
+})
+
 async function seedPlanItems(page: import('@playwright/test').Page, texts: string[]) {
   await page.goto('/')
   await page.evaluate((itemTexts) => {

@@ -2074,6 +2074,15 @@ nav button.active {
     padding: 12px;
   }
 
+  .workspace.list-template-workspace {
+    overflow-y: visible;
+  }
+
+  .list-template-rail {
+    margin-inline: -12px;
+    padding-inline: 12px;
+  }
+
   .content-shell {
     display: block;
     height: auto;
@@ -2175,6 +2184,7 @@ nav button.active {
    so every option is visible at a glance and one click switches. */
 .template-rail {
   display: flex;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   margin-bottom: 18px;
@@ -2182,6 +2192,20 @@ nav button.active {
   overflow-x: auto;
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
+}
+
+/* Keep the list-template tabs within reach while moving through a long list.
+   The fixed height also gives the sticky word-cap bar a stable place beneath it. */
+.list-template-rail {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  height: 56px;
+  margin: 0 -28px 18px;
+  padding: 10px 28px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+  box-shadow: 0 8px 16px rgba(38, 35, 27, 0.06);
 }
 
 .rail-chip {
@@ -2274,7 +2298,7 @@ nav button.active {
 /* Word-cap bar in the list-template editor — kept visible while editing. */
 .word-cap-bar {
   position: sticky;
-  top: 0;
+  top: 56px;
   z-index: 5;
   display: flex;
   align-items: center;
@@ -2302,14 +2326,6 @@ nav button.active {
   gap: 8px;
   color: var(--muted);
   font-size: 13px;
-  transition: opacity 1s ease;
-}
-
-/* Once the editor is scrolled past the top, the lock/input fades away over a
-   second and stops intercepting clicks. */
-.word-cap-edit.faded {
-  opacity: 0;
-  pointer-events: none;
 }
 
 .word-cap-edit input {

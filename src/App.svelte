@@ -60,6 +60,8 @@
   let workspaceEl: HTMLElement
   let scrollPositionsByPage: Record<string, number> = {}
   let lastScrolledPage = ''
+  let scrollRestoreNonce = 0
+  let restoringScroll = false
   let goalHistoryHeight: number | null = null
   let goalRhythmVisible = true
   let goalRhythmAutoShowTimer: number | null = null
@@ -75,7 +77,6 @@
   // through this binding. The Lists-tab ListPanel handles its own keys directly.
   let overlayListPanel: ListPanel | null = null
   let wordCapUnlocked = false
-  let wordCapScrolledAway = false
   let selectedMetricId = ''
   let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
   let selectedListOverlayItemIdsByList: Record<Id, Id | null> = {}
@@ -185,9 +186,14 @@ return rows`
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
-  // Scroll position is remembered per page. The Today view scrolls independently
-  // for each plan date; every other view keeps a single position under its name.
-  $: scrollPageKey = view === 'today' ? `today:${$plannerStore.activePlanDate || ''}` : `view:${view}`
+  // Scroll position is remembered per page. Today scrolls independently for each
+  // date, and List Templates scrolls independently for each template.
+  $: scrollPageKey =
+    view === 'today'
+      ? `today:${$plannerStore.activePlanDate || ''}`
+      : view === 'listTemplates'
+        ? `list-template:${selectedListTemplate?.id ?? ''}`
+        : `view:${view}`
   $: restoreScrollForPage(scrollPageKey)
   $: dueTodayGoals = activePlan
     ? $plannerStore.goals.filter((goal) => {
@@ -601,6 +607,9 @@ return rows`
     if (!goalId) return
 
     await tick()
+    // Page scroll restoration also settles after the view update. Center the
+    // explicitly requested goal one frame later so that intentional jump wins.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     const goalCard = workspaceEl?.querySelector<HTMLElement>(`[data-goal-id="${goalId}"]`)
     if (!goalCard) return
 
@@ -678,22 +687,52 @@ return rows`
     plannerStore.setActivePlanDate(shiftISODate($plannerStore.activePlanDate || todayISO(), days))
   }
 
-  function handleWorkspaceScroll() {
-    if (workspaceEl && lastScrolledPage) {
-      scrollPositionsByPage[lastScrolledPage] = workspaceEl.scrollTop
+  function usesWindowScroll() {
+    return window.matchMedia('(max-width: 760px)').matches
+  }
+
+  function currentWorkspaceScrollTop() {
+    return usesWindowScroll() ? window.scrollY : (workspaceEl?.scrollTop ?? 0)
+  }
+
+  function rememberWorkspaceScroll() {
+    if (!restoringScroll && lastScrolledPage) {
+      scrollPositionsByPage[lastScrolledPage] = currentWorkspaceScrollTop()
     }
-    // The list-template max-word lock/input only stays visible near the top; once
-    // scrolled away it fades out so it doesn't hover over the items being edited.
-    if (workspaceEl) wordCapScrolledAway = workspaceEl.scrollTop > 40
+  }
+
+  function handleWorkspaceScroll() {
+    if (!usesWindowScroll()) rememberWorkspaceScroll()
+  }
+
+  function handleWindowScroll() {
+    if (usesWindowScroll()) rememberWorkspaceScroll()
   }
 
   async function restoreScrollForPage(pageKey: string) {
     if (!pageKey || pageKey === lastScrolledPage) return
-    lastScrolledPage = pageKey
-    await tick()
-    if (workspaceEl) {
-      workspaceEl.scrollTop = scrollPositionsByPage[pageKey] ?? 0
+
+    if (lastScrolledPage) {
+      scrollPositionsByPage[lastScrolledPage] = currentWorkspaceScrollTop()
     }
+
+    lastScrolledPage = pageKey
+    const restoreTop = scrollPositionsByPage[pageKey] ?? 0
+    const restoreNonce = ++scrollRestoreNonce
+    restoringScroll = true
+    await tick()
+    if (restoreNonce !== scrollRestoreNonce) return
+    if (!workspaceEl) {
+      restoringScroll = false
+      return
+    }
+
+    if (usesWindowScroll()) window.scrollTo(0, restoreTop)
+    else workspaceEl.scrollTop = restoreTop
+
+    requestAnimationFrame(() => {
+      if (restoreNonce === scrollRestoreNonce) restoringScroll = false
+    })
   }
 
   function shiftISODate(date: string, days: number): string {
@@ -2200,6 +2239,7 @@ return rows`
 <svelte:window
   on:keydown|capture={handleGlobalKeydown}
   on:focusin={handleGlobalFocusIn}
+  on:scroll={handleWindowScroll}
   on:pointerdown|capture={handleGlobalPointerDown}
   on:pointermove={handleSelectionPointerMove}
   on:pointerup={endItemSelection}
@@ -2256,7 +2296,12 @@ return rows`
   </aside>
 
   <div class="content-shell" style={contentShellStyle}>
-    <section class="workspace" bind:this={workspaceEl} on:scroll={handleWorkspaceScroll}>
+    <section
+      class="workspace"
+      class:list-template-workspace={view === 'listTemplates'}
+      bind:this={workspaceEl}
+      on:scroll={handleWorkspaceScroll}
+    >
     {#if view === 'today'}
       <header class="page-header">
         <div>
@@ -2438,7 +2483,7 @@ return rows`
       </header>
 
       {#if listTemplates.length > 0}
-        <nav class="template-rail" aria-label="Select list template">
+        <nav class="template-rail list-template-rail" aria-label="Select list template">
           {#each listTemplates as template (template.id)}
             <button
               type="button"
@@ -2465,7 +2510,7 @@ return rows`
               {selectedListWordCount} / {selectedListTemplate.maxExpectedWords || '∞'} expected words ·
               {selectedListTotalWordCount} total words
             </span>
-            <div class="word-cap-edit" class:faded={wordCapScrolledAway}>
+            <div class="word-cap-edit">
               <button
                 class="icon-button"
                 type="button"
