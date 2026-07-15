@@ -9,6 +9,14 @@ When the change is a follow-up to the most recent commit (fixing, tweaking, or
 extending what it did), don't make a new commit — amend the most recent commit
 and force-push with lease (`git commit --amend` then `git push --force-with-lease`).
 
+## Keep the keyboard-shortcuts reference in sync
+
+Keyboard shortcuts live in `handleGlobalKeydown` in `src/App.svelte`, and the
+user-facing reference is a hand-maintained list in
+`src/lib/KeyboardShortcutsModal.svelte` (opened with `?`). These can drift.
+Whenever you add, remove, or change a shortcut in `handleGlobalKeydown`, update
+`KeyboardShortcutsModal.svelte` in the same change so the modal stays accurate.
+
 ## Android: CI only — never build locally
 
 Do **not** build, link, or run anything Android locally (no `tauri android build`,

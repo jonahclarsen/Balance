@@ -13,6 +13,7 @@
   import MetricGraph from './lib/MetricGraph.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
   import SearchModal from './lib/SearchModal.svelte'
+  import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
   import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
@@ -60,6 +61,7 @@
 
   let view: View = 'today'
   let searchOpen = false
+  let shortcutsHelpOpen = false
   let workspaceEl: HTMLElement
   let scrollPositionsByPage: Record<string, number> = {}
   let lastScrolledPage = ''
@@ -1181,9 +1183,32 @@ return rows`
     return hour * 60 + minute
   }
 
+  // When you add/remove/change a shortcut here, also update the user-facing
+  // reference in src/lib/KeyboardShortcutsModal.svelte (opened with `?`).
   function handleGlobalKeydown(event: KeyboardEvent) {
     const key = event.key.toLowerCase()
     const primaryModifier = event.metaKey || event.ctrlKey
+
+    // `?` (Shift+/) — or any of Cmd/Ctrl/Alt + / — toggles the shortcuts reference.
+    // Modifier combos work even inside inputs; plain `?` only when not typing so it
+    // can still be typed into text fields.
+    if (event.code === 'Slash') {
+      const withModifier = event.altKey || primaryModifier
+      const plainQuestionMark = event.shiftKey && !withModifier
+      if (withModifier || (plainQuestionMark && !isFormFieldActive() && !isRichTextActive())) {
+        event.preventDefault()
+        shortcutsHelpOpen = !shortcutsHelpOpen
+        return
+      }
+    }
+
+    if (shortcutsHelpOpen) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        shortcutsHelpOpen = false
+      }
+      return
+    }
 
     if (
       event.code === 'KeyA' &&
@@ -3434,6 +3459,10 @@ return rows`
         onClose={() => (searchOpen = false)}
         onSelect={(result) => { void openSearchResult(result) }}
       />
+    {/if}
+
+    {#if shortcutsHelpOpen}
+      <KeyboardShortcutsModal onClose={() => (shortcutsHelpOpen = false)} />
     {/if}
   </div>
 </main>
