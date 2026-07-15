@@ -199,6 +199,9 @@ for node in root.iter("node"):
     numbers = [int(number) for number in re.findall(r"\d+", bounds)]
     if len(numbers) != 4:
         continue
+    x1, y1, x2, y2 = numbers
+    if x2 <= x1 or y2 <= y1 or node.attrib.get("enabled") != "true":
+        continue
     class_name = node.attrib.get("class", "")
     score = 0
     if "EditText" in class_name:
@@ -209,7 +212,6 @@ for node in root.iter("node"):
         score += 5
     if node.attrib.get("focusable") == "true":
         score += 2
-    x1, y1, x2, y2 = numbers
     candidates.append((score, (x1 + x2) // 2, (y1 + y2) // 2))
 
 if candidates:
@@ -243,7 +245,7 @@ tap_ui_scrolling() {
     if tap_ui "$attribute" "$query" 1; then
       return 0
     fi
-    adb shell input swipe 540 1500 540 500 300
+    adb shell input swipe 160 580 160 180 300
     sleep 1
   done
   echo "Could not find UI node after scrolling: $attribute=$query"
@@ -261,7 +263,7 @@ tap_ui_scrolling_contains() {
       adb shell input tap $point
       return 0
     fi
-    adb shell input swipe 540 1500 540 500 300
+    adb shell input swipe 160 580 160 180 300
     sleep 1
   done
   echo "Could not find UI node after scrolling: $attribute contains $query"
@@ -351,15 +353,28 @@ dismiss_recovery_key_setup() {
   dump_ui
   if [ -n "$(find_ui_node text "Save your recovery key" exact)" ]; then
     tap_ui class "android.widget.CheckBox"
+    # Enabling Continue is asynchronous in the WebView. tap_ui now ignores
+    # disabled nodes, so it waits for the checked state to render first.
     tap_ui text "Continue"
-    sleep 2
+    for _ in $(seq 1 20); do
+      dump_ui
+      if [ -z "$(find_ui_node text "Save your recovery key" exact)" ]; then
+        return 0
+      fi
+      sleep 1
+    done
+    echo "Recovery-key setup did not close."
+    return 1
   fi
 }
 
 echo "[ui-sync] creating recognizable data on the primary installation"
 dismiss_recovery_key_setup
 tap_ui text "Goals"
-type_into_ui resource-id "goal-name-input" "CISyncGoal"
+wait_for_ui_text "Add a goal"
+# Chromium does not consistently expose HTML input ids through UI Automator.
+# The goal-name field is the lowest full-width enabled EditText on this form.
+type_into_ui class "android.widget.EditText" "CISyncGoal"
 adb shell input keyevent KEYCODE_ENTER
 adb shell input keyevent KEYCODE_BACK || true
 wait_for_ui_text "CISyncGoal"
@@ -416,7 +431,7 @@ for _ in $(seq 1 8); do
   if wait_for_ui_text "Paired." 1; then
     break
   fi
-  adb shell input swipe 540 1500 540 500 300
+  adb shell input swipe 160 580 160 180 300
 done
 wait_for_ui_text "Paired." 20
 

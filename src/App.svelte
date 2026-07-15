@@ -2914,7 +2914,6 @@ return rows`
         <label class="goal-name-field">
           <span>Name</span>
           <input
-            id="goal-name-input"
             aria-label="New goal name"
             placeholder="Strenuous exercise"
             bind:value={newGoalName}
