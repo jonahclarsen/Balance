@@ -235,7 +235,9 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
-          target: google_apis
+          # The AOSP image provides Android/WebView without launching a second
+          # profile's full Play Services fleet, which can OOM the CI runner.
+          target: default
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
