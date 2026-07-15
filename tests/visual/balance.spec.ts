@@ -118,18 +118,17 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
   const final = page.getByRole('listitem', { name: 'Plan item: Final win' }).getByRole('checkbox')
 
   await first.check()
-  await expect(page.getByRole('status', { name: 'Day complete' })).toHaveCount(0)
+  await expect(page.getByRole('status', { name: 'Day finished' })).toHaveCount(0)
 
   await final.check()
-  await expect(page.getByRole('status', { name: 'Day complete' })).toBeVisible()
-  await expect(page.getByText('Everything checked. Nicely done.')).toBeVisible()
-  await expect(page.locator('.confetti i')).toHaveCount(32)
+  await expect(page.getByRole('status', { name: 'Day finished' })).toBeVisible()
+  await expect(page.locator('.celebration-canvas')).toHaveAttribute('width', /\d+/)
 
   await final.uncheck()
-  await expect(page.getByRole('status', { name: 'Day complete' })).toHaveCount(0)
+  await expect(page.getByRole('status', { name: 'Day finished' })).toHaveCount(0)
 
   await final.check()
-  await expect(page.getByRole('status', { name: 'Day complete' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Day finished' })).toBeVisible()
 })
 
 test('plan items can be nested and un-nested with the drag handle', async ({ page }) => {

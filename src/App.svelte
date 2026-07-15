@@ -14,7 +14,7 @@
   import RichTextEditor from './lib/RichTextEditor.svelte'
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
-  import DayCompleteCelebration from './lib/DayCompleteCelebration.svelte'
+  import Celebration from './lib/Celebration.svelte'
   import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
@@ -75,9 +75,8 @@
   let doneTintColor = ''
   let completionTrackingReady = false
   let planCompletionById = new Map<Id, boolean>()
-  let dayCompleteCelebration: { planId: Id; date: string; nonce: number } | null = null
-  let dayCompleteCelebrationTimer: number | null = null
-  let dayCompleteCelebrationNonce = 0
+  let celebration: Celebration | null = null
+  let celebrationDate: string | null = null
   let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
   let selectedTemplateId = ''
   // Lists + Metrics feature state
@@ -304,36 +303,29 @@ return rows`
   ) {
     if (!ready) return
 
-    if (dayCompleteCelebration && dayCompleteCelebration.date !== selectedDate) {
-      dismissDayCompleteCelebration()
+    if (celebrationDate && (celebrationDate !== selectedDate || currentView !== 'today')) {
+      dismissCelebration()
     }
-    if (!plan) return
+    if (!plan) {
+      dismissCelebration()
+      return
+    }
 
     const complete = allPlanItemsDone(plan.items)
     const wasComplete = planCompletionById.get(plan.id)
     planCompletionById.set(plan.id, complete)
 
     if (wasComplete === false && complete && currentView === 'today') {
-      showDayCompleteCelebration(plan)
-    } else if (wasComplete === true && !complete && dayCompleteCelebration?.planId === plan.id) {
-      dismissDayCompleteCelebration()
+      celebrationDate = plan.date
+      celebration?.celebrate()
+    } else if (wasComplete === true && !complete && celebrationDate === plan.date) {
+      dismissCelebration()
     }
   }
 
-  function showDayCompleteCelebration(plan: DailyPlan) {
-    dismissDayCompleteCelebration()
-    dayCompleteCelebrationNonce += 1
-    dayCompleteCelebration = { planId: plan.id, date: plan.date, nonce: dayCompleteCelebrationNonce }
-    dayCompleteCelebrationTimer = window.setTimeout(() => {
-      dayCompleteCelebration = null
-      dayCompleteCelebrationTimer = null
-    }, 3000)
-  }
-
-  function dismissDayCompleteCelebration() {
-    if (dayCompleteCelebrationTimer !== null) window.clearTimeout(dayCompleteCelebrationTimer)
-    dayCompleteCelebrationTimer = null
-    dayCompleteCelebration = null
+  function dismissCelebration() {
+    celebrationDate = null
+    celebration?.dismiss()
   }
 
   function planItemCompletion(items: PlanItem[]): { done: number; total: number } {
@@ -730,7 +722,7 @@ return rows`
       mounted = false
       clearAutoJsonExportTimers()
       clearGoalRhythmAutoShowTimer()
-      dismissDayCompleteCelebration()
+      dismissCelebration()
       window.removeEventListener('focus', checkAutoJsonExport)
       document.removeEventListener('visibilitychange', checkVisibleAutoJsonExport)
     }
@@ -2575,11 +2567,6 @@ return rows`
   </aside>
 
   <div class="content-shell" style={contentShellStyle}>
-    {#if dayCompleteCelebration && view === 'today'}
-      {#key dayCompleteCelebration.nonce}
-        <DayCompleteCelebration />
-      {/key}
-    {/if}
     <section
       class="workspace"
       class:list-template-workspace={view === 'listTemplates'}
@@ -3523,6 +3510,8 @@ return rows`
     {/if}
   </div>
 </main>
+
+<Celebration bind:this={celebration} />
 
 {#if pasteReview}
   <div class="paste-review-backdrop">
