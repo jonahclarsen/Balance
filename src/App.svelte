@@ -1231,6 +1231,12 @@ return rows`
       return
     }
 
+    if (primaryModifier && !event.altKey && !event.shiftKey && key === 'f') {
+      event.preventDefault()
+      searchOpen = true
+      return
+    }
+
     if (searchOpen) {
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -1370,6 +1376,12 @@ return rows`
         event.preventDefault()
         if (view === 'listTemplates') void selectAdjacentListTemplate(1)
         else if (view === 'today' || view === 'lists') shiftActivePlanDate(1)
+        return
+      }
+
+      if (event.code === 'KeyT' && (view === 'today' || view === 'lists')) {
+        event.preventDefault()
+        plannerStore.setActivePlanDate(todayISO())
         return
       }
     }
