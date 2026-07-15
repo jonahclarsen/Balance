@@ -350,22 +350,29 @@ type_into_ui_contains() {
 }
 
 dismiss_recovery_key_setup() {
-  dump_ui
-  if [ -n "$(find_ui_node text "Save your recovery key" exact)" ]; then
-    tap_ui class "android.widget.CheckBox"
-    # Enabling Continue is asynchronous in the WebView. tap_ui now ignores
-    # disabled nodes, so it waits for the checked state to render first.
-    tap_ui text "Continue"
-    for _ in $(seq 1 20); do
-      dump_ui
-      if [ -z "$(find_ui_node text "Save your recovery key" exact)" ]; then
-        return 0
-      fi
-      sleep 1
-    done
-    echo "Recovery-key setup did not close."
-    return 1
-  fi
+  # The Rust process can be ready several seconds before the WebView finishes
+  # rendering this first-run dialog, especially after an emulator/GMS restart.
+  for _ in $(seq 1 30); do
+    dump_ui
+    if [ -n "$(find_ui_node text "Save your recovery key" exact)" ]; then
+      tap_ui class "android.widget.CheckBox"
+      # Enabling Continue is asynchronous in the WebView. tap_ui ignores
+      # disabled nodes, so it waits for the checked state to render first.
+      tap_ui text "Continue"
+      for _ in $(seq 1 20); do
+        dump_ui
+        if [ -z "$(find_ui_node text "Save your recovery key" exact)" ]; then
+          return 0
+        fi
+        sleep 1
+      done
+      echo "Recovery-key setup did not close."
+      return 1
+    fi
+    sleep 1
+  done
+  echo "Recovery-key setup never appeared."
+  return 1
 }
 
 echo "[ui-sync] creating recognizable data on the primary installation"
