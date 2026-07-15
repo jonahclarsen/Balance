@@ -226,6 +226,23 @@ nav button.active {
   color: var(--accent-strong);
 }
 
+.search-result-target {
+  animation: search-result-target 1.8s ease-out;
+}
+
+@keyframes search-result-target {
+  0%,
+  35% {
+    background: color-mix(in srgb, var(--accent) 20%, var(--paper-strong));
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 42%, transparent);
+  }
+
+  100% {
+    background: transparent;
+    box-shadow: 0 0 0 2px transparent;
+  }
+}
+
 .sidebar-footer {
   display: grid;
   gap: 10px;

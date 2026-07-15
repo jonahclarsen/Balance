@@ -12,6 +12,7 @@
   import MetricQuiz from './lib/MetricQuiz.svelte'
   import MetricGraph from './lib/MetricGraph.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
+  import SearchModal from './lib/SearchModal.svelte'
   import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
@@ -26,6 +27,7 @@
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { Id, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
+  import type { SearchResult } from './lib/search'
   import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
 
   // Pasting four or more items onto a different day routes through a review queue
@@ -57,6 +59,7 @@
   const DEFAULT_DONE_TINT = '#3f9d54'
 
   let view: View = 'today'
+  let searchOpen = false
   let workspaceEl: HTMLElement
   let scrollPositionsByPage: Record<string, number> = {}
   let lastScrolledPage = ''
@@ -1222,6 +1225,20 @@ return rows`
       return
     }
 
+    if (primaryModifier && !event.altKey && !event.shiftKey && key === 'k') {
+      event.preventDefault()
+      searchOpen = !searchOpen
+      return
+    }
+
+    if (searchOpen) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        searchOpen = false
+      }
+      return
+    }
+
     // While the list overlay toast is open it owns the keyboard: route arrows and
     // Cmd-D to its own selection before any plan-level shortcut can fire (an
     // unscoped ArrowUp would otherwise jump focus to a plan row behind the toast).
@@ -2364,6 +2381,42 @@ return rows`
       dailyReminderInput?.blur()
     }
   }
+
+  async function openSearchResult(result: SearchResult) {
+    searchOpen = false
+    clearItemSelection()
+
+    if (result.kind === 'day') {
+      plannerStore.setActivePlanDate(result.date)
+      view = 'today'
+    } else if (result.kind === 'list') {
+      plannerStore.setActivePlanDate(result.date)
+      listViewTemplateId = result.listTemplateId
+      view = 'lists'
+    } else if (result.kind === 'day-template') {
+      selectedTemplateId = result.templateId
+      view = 'templates'
+    } else {
+      selectedListTemplateId = result.templateId
+      view = 'listTemplates'
+    }
+
+    if (!result.itemId) return
+    await tick()
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+
+    const selector = result.kind === 'day-template'
+      ? `[data-template-item-id="${CSS.escape(result.itemId)}"]`
+      : result.kind === 'list-template'
+        ? `[data-list-template-item-id="${CSS.escape(result.itemId)}"]`
+        : `[data-plan-item-id="${CSS.escape(result.itemId)}"]`
+    const row = workspaceEl?.querySelector<HTMLElement>(selector)
+    if (!row) return
+
+    scrollElementToCenter(row)
+    row.classList.add('search-result-target')
+    window.setTimeout(() => row.classList.remove('search-result-target'), 1800)
+  }
 </script>
 
 <svelte:window
@@ -2410,6 +2463,13 @@ return rows`
     </div>
 
     <nav aria-label="Primary">
+      <button
+        class:active={searchOpen}
+        type="button"
+        title="Search (Cmd/Ctrl+K)"
+        aria-label="Search"
+        on:click={() => (searchOpen = true)}
+      >⌕ Search</button>
       <button class:active={view === 'today'} type="button" on:click={() => (view = 'today')}>Today</button>
       <button class:active={view === 'lists'} type="button" on:click={() => (view = 'lists')}>Lists</button>
       <button class:active={view === 'templates'} type="button" on:click={() => (view = 'templates')}>Day Templates</button>
@@ -3354,6 +3414,14 @@ return rows`
           {/if}
         </div>
       </OverlayModal>
+    {/if}
+
+    {#if searchOpen}
+      <SearchModal
+        state={$plannerStore}
+        onClose={() => (searchOpen = false)}
+        onSelect={(result) => { void openSearchResult(result) }}
+      />
     {/if}
   </div>
 </main>
