@@ -20,6 +20,7 @@
     syncP2pServe,
     syncP2pPeers,
     syncP2pSync,
+    plannerStore,
     type SyncPeer,
   } from './store'
 
@@ -166,9 +167,9 @@
     busy = true
     try {
       await syncP2pSync(addr)
+      await plannerStore.reloadFromBackend()
       migrated = true
       setStatus(`Synced directly with ${addr}.`)
-      setTimeout(() => location.reload(), 600)
     } catch (err) {
       setStatus(`Direct sync failed: ${err}`, true)
     } finally {
@@ -296,8 +297,9 @@
       migrated = true
       setStatus(`Synced. Applied ${applied} update(s) from the server.`)
       if (applied > 0) {
-        // Reload so the rebuilt state shows immediately.
-        setTimeout(() => location.reload(), 600)
+        // Rehydrate explicitly: location.reload() is unreliable in an embedded
+        // mobile WebView and can leave the pre-sync store visible.
+        await plannerStore.reloadFromBackend()
       }
     } catch (err) {
       setStatus(`Sync failed: ${err}`, true)

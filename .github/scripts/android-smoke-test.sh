@@ -518,10 +518,10 @@ echo "[ui-sync] connecting the joiner to the primary's manual LAN address"
 type_into_ui_after_text "Direct device-to-device (same Wi-Fi)" "$PRIMARY_ADDRESS"
 adb shell input keyevent KEYCODE_BACK || true
 tap_ui_scrolling text "Sync with address"
-sleep 8
+wait_for_ui_text "Synced directly with" 30
 
-# A successful sync reloads the joining WebView. The primary-only goal must now
-# be present in the joining profile's real materialized state.
+# A successful sync rehydrates the frontend from the joining profile's encrypted
+# database. The primary-only goal must now be present in that materialized state.
 tap_ui_scrolling_up text "Goals"
 wait_for_ui_text "CISyncGoal" 30
 echo "[ui-sync] PASS: pairing through the Android UI transferred primary user data to the isolated joiner"
