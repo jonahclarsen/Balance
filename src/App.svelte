@@ -14,6 +14,7 @@
   import RichTextEditor from './lib/RichTextEditor.svelte'
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
+  import DayCompleteCelebration from './lib/DayCompleteCelebration.svelte'
   import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
@@ -27,7 +28,7 @@
     plannerStore,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { Id, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
+  import type { DailyPlan, Id, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
 
@@ -72,6 +73,11 @@
   let goalRhythmAutoShowTimer: number | null = null
   // Empty means "use the built-in green default"; a hex value overrides it.
   let doneTintColor = ''
+  let completionTrackingReady = false
+  let planCompletionById = new Map<Id, boolean>()
+  let dayCompleteCelebration: { planId: Id; date: string; nonce: number } | null = null
+  let dayCompleteCelebrationTimer: number | null = null
+  let dayCompleteCelebrationNonce = 0
   let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
   let selectedTemplateId = ''
   // Lists + Metrics feature state
@@ -283,10 +289,51 @@ return rows`
   $: filteredDatabaseOperations = filterDatabaseRows(databaseInspection?.operations ?? [], databaseSearch)
   $: filteredDatabaseHistoryEntries = filterDatabaseRows(databaseInspection?.historyEntries ?? [], databaseSearch)
   $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
+  $: observeActivePlanCompletion(activePlan, $plannerStore.activePlanDate, view, completionTrackingReady)
 
   function allPlanItemsDone(items: PlanItem[]): boolean {
     if (items.length === 0) return false
     return items.every((item) => item.done && (item.children.length === 0 || allPlanItemsDone(item.children)))
+  }
+
+  function observeActivePlanCompletion(
+    plan: DailyPlan | undefined,
+    selectedDate: string,
+    currentView: View,
+    ready: boolean,
+  ) {
+    if (!ready) return
+
+    if (dayCompleteCelebration && dayCompleteCelebration.date !== selectedDate) {
+      dismissDayCompleteCelebration()
+    }
+    if (!plan) return
+
+    const complete = allPlanItemsDone(plan.items)
+    const wasComplete = planCompletionById.get(plan.id)
+    planCompletionById.set(plan.id, complete)
+
+    if (wasComplete === false && complete && currentView === 'today') {
+      showDayCompleteCelebration(plan)
+    } else if (wasComplete === true && !complete && dayCompleteCelebration?.planId === plan.id) {
+      dismissDayCompleteCelebration()
+    }
+  }
+
+  function showDayCompleteCelebration(plan: DailyPlan) {
+    dismissDayCompleteCelebration()
+    dayCompleteCelebrationNonce += 1
+    dayCompleteCelebration = { planId: plan.id, date: plan.date, nonce: dayCompleteCelebrationNonce }
+    dayCompleteCelebrationTimer = window.setTimeout(() => {
+      dayCompleteCelebration = null
+      dayCompleteCelebrationTimer = null
+    }, 3000)
+  }
+
+  function dismissDayCompleteCelebration() {
+    if (dayCompleteCelebrationTimer !== null) window.clearTimeout(dayCompleteCelebrationTimer)
+    dayCompleteCelebrationTimer = null
+    dayCompleteCelebration = null
   }
 
   function planItemCompletion(items: PlanItem[]): { done: number; total: number } {
@@ -658,6 +705,10 @@ return rows`
     async function initialize() {
       recoveryKeyStatus = await getRecoveryKeyStatus()
       await plannerStore.ready
+      planCompletionById = new Map(
+        $plannerStore.plans.map((plan) => [plan.id, allPlanItemsDone(plan.items)]),
+      )
+      completionTrackingReady = true
       await loadExportSettings()
 
       if (!mounted || !isTauri()) return
@@ -679,6 +730,7 @@ return rows`
       mounted = false
       clearAutoJsonExportTimers()
       clearGoalRhythmAutoShowTimer()
+      dismissDayCompleteCelebration()
       window.removeEventListener('focus', checkAutoJsonExport)
       document.removeEventListener('visibilitychange', checkVisibleAutoJsonExport)
     }
@@ -2523,6 +2575,11 @@ return rows`
   </aside>
 
   <div class="content-shell" style={contentShellStyle}>
+    {#if dayCompleteCelebration && view === 'today'}
+      {#key dayCompleteCelebration.nonce}
+        <DayCompleteCelebration />
+      {/key}
+    {/if}
     <section
       class="workspace"
       class:list-template-workspace={view === 'listTemplates'}

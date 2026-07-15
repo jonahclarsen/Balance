@@ -111,6 +111,27 @@ test('daily reminder edits the selected day and future days inherit it', async (
     .toEqual({ current: 'Keep it concrete', next: 'Keep it concrete' })
 })
 
+test('checking the final item celebrates the completed day', async ({ page }) => {
+  await seedPlanItems(page, ['First win', 'Final win'])
+
+  const first = page.getByRole('listitem', { name: 'Plan item: First win' }).getByRole('checkbox')
+  const final = page.getByRole('listitem', { name: 'Plan item: Final win' }).getByRole('checkbox')
+
+  await first.check()
+  await expect(page.getByRole('status', { name: 'Day complete' })).toHaveCount(0)
+
+  await final.check()
+  await expect(page.getByRole('status', { name: 'Day complete' })).toBeVisible()
+  await expect(page.getByText('Everything checked. Nicely done.')).toBeVisible()
+  await expect(page.locator('.confetti i')).toHaveCount(32)
+
+  await final.uncheck()
+  await expect(page.getByRole('status', { name: 'Day complete' })).toHaveCount(0)
+
+  await final.check()
+  await expect(page.getByRole('status', { name: 'Day complete' })).toBeVisible()
+})
+
 test('plan items can be nested and un-nested with the drag handle', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
