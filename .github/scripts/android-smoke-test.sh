@@ -172,8 +172,20 @@ capture_e2e_diagnostics() {
 trap capture_e2e_diagnostics EXIT
 
 dump_ui() {
-  adb shell uiautomator dump /sdcard/sync-e2e-window.xml >/dev/null
-  adb exec-out cat /sdcard/sync-e2e-window.xml > "$UI_XML"
+  tmp_xml="${UI_XML}.tmp"
+  for attempt in $(seq 1 5); do
+    if adb shell uiautomator dump /sdcard/sync-e2e-window.xml >/dev/null 2>&1 \
+      && adb exec-out cat /sdcard/sync-e2e-window.xml > "$tmp_xml" 2>/dev/null \
+      && grep -q '<hierarchy' "$tmp_xml"; then
+      mv "$tmp_xml" "$UI_XML"
+      return 0
+    fi
+    echo "UI Automator dump attempt $attempt failed; retrying."
+    sleep 1
+  done
+  rm -f "$tmp_xml"
+  echo "UI Automator could not capture the app hierarchy after retries."
+  return 1
 }
 
 # Print the center of the best matching accessibility node. Inputs and buttons
@@ -451,16 +463,22 @@ echo "[ui-sync] creating recognizable data on the primary installation"
 dismiss_recovery_key_setup
 tap_ui text "Goals"
 wait_for_ui_text "Add a goal"
-# Chromium does not consistently expose HTML input ids through UI Automator.
-# The goal-name field is the lowest full-width enabled EditText on this form.
-type_into_ui class "android.widget.EditText" "CISyncGoal"
-adb shell input keyevent KEYCODE_ENTER
+# A goal requires both a name and at least one matching phrase. Fill the real
+# fields and press the visible Add button so seeing the name afterward proves a
+# persisted goal card exists (rather than merely seeing text in an input).
+type_into_ui_after_text "NAME" "CISyncGoal"
 adb shell input keyevent KEYCODE_BACK || true
+type_into_ui_after_text "MATCHES ANY" "ci-sync"
+adb shell input keyevent KEYCODE_BACK || true
+tap_ui_scrolling text "Add goal"
 wait_for_ui_text "CISyncGoal"
 # Let the normal debounced operation writer commit before sync snapshots it.
 sleep 2
 
-tap_ui text "Settings"
+# Adding the goal leaves the mobile document scrolled below the static tab bar.
+# Return toward the top until Settings is visible instead of assuming the nav is
+# still in the current accessibility viewport.
+tap_ui_scrolling_up text "Settings"
 tap_ui_scrolling text "Create a sync key"
 PAIRING_CODE=""
 PRIMARY_ADDRESS=""
@@ -500,7 +518,7 @@ sleep 8
 
 echo "[ui-sync] submitting the pairing code through the joining app's visible form"
 dismiss_recovery_key_setup
-tap_ui text "Settings"
+tap_ui_scrolling_up text "Settings"
 type_into_ui_after_text "Pair with another device" "$PAIRING_CODE"
 # This is the phone keyboard's Done/Enter path that previously did nothing.
 adb shell input keyevent KEYCODE_ENTER
