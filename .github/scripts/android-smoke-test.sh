@@ -220,6 +220,39 @@ if candidates:
 PY
 }
 
+# Print the center of the first matching class after an anchor node in the
+# accessibility tree. Chromium omits HTML ids for some WebView inputs, but it
+# preserves their DOM/accessibility order after the visible label.
+find_ui_class_after_text() {
+  anchor="$1"
+  target_class="$2"
+  python3 - "$UI_XML" "$anchor" "$target_class" <<'PY'
+import re
+import sys
+import xml.etree.ElementTree as ET
+
+path, anchor, target_class = sys.argv[1:]
+nodes = list(ET.parse(path).getroot().iter("node"))
+for index, node in enumerate(nodes):
+    if node.attrib.get("text") != anchor:
+        continue
+    for candidate in nodes[index + 1:]:
+        if candidate.attrib.get("class") != target_class:
+            continue
+        if candidate.attrib.get("enabled") != "true":
+            continue
+        numbers = [int(number) for number in re.findall(r"\d+", candidate.attrib.get("bounds", ""))]
+        if len(numbers) != 4:
+            continue
+        x1, y1, x2, y2 = numbers
+        if x2 <= x1 or y2 <= y1:
+            continue
+        print(f"{(x1 + x2) // 2} {(y1 + y2) // 2}")
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
 tap_ui() {
   attribute="$1"
   query="$2"
@@ -267,6 +300,38 @@ tap_ui_scrolling_contains() {
     sleep 1
   done
   echo "Could not find UI node after scrolling: $attribute contains $query"
+  return 1
+}
+
+tap_ui_class_after_text_scrolling() {
+  anchor="$1"
+  target_class="$2"
+  for _ in $(seq 1 8); do
+    dump_ui
+    point="$(find_ui_class_after_text "$anchor" "$target_class" 2>/dev/null || true)"
+    if [ -n "$point" ]; then
+      # shellcheck disable=SC2086
+      adb shell input tap $point
+      return 0
+    fi
+    adb shell input swipe 160 580 160 180 300
+    sleep 1
+  done
+  echo "Could not find $target_class after text=$anchor"
+  return 1
+}
+
+tap_ui_scrolling_up() {
+  attribute="$1"
+  query="$2"
+  for _ in $(seq 1 8); do
+    if tap_ui "$attribute" "$query" 1; then
+      return 0
+    fi
+    adb shell input swipe 160 180 160 580 300
+    sleep 1
+  done
+  echo "Could not find UI node after scrolling up: $attribute=$query"
   return 1
 }
 
@@ -337,7 +402,7 @@ type_into_ui() {
   attribute="$1"
   query="$2"
   value="$3"
-  tap_ui_scrolling "$attribute" "$query"
+  tap_ui_scrolling "$attribute" "$query" || return 1
   adb shell input text "$value"
 }
 
@@ -345,7 +410,14 @@ type_into_ui_contains() {
   attribute="$1"
   query="$2"
   value="$3"
-  tap_ui_scrolling_contains "$attribute" "$query"
+  tap_ui_scrolling_contains "$attribute" "$query" || return 1
+  adb shell input text "$value"
+}
+
+type_into_ui_after_text() {
+  anchor="$1"
+  value="$2"
+  tap_ui_class_after_text_scrolling "$anchor" "android.widget.EditText" || return 1
   adb shell input text "$value"
 }
 
@@ -429,7 +501,7 @@ sleep 8
 echo "[ui-sync] submitting the pairing code through the joining app's visible form"
 dismiss_recovery_key_setup
 tap_ui text "Settings"
-type_into_ui resource-id "sync-join-input" "$PAIRING_CODE"
+type_into_ui_after_text "Pair with another device" "$PAIRING_CODE"
 # This is the phone keyboard's Done/Enter path that previously did nothing.
 adb shell input keyevent KEYCODE_ENTER
 sleep 2
@@ -443,14 +515,14 @@ done
 wait_for_ui_text "Paired." 20
 
 echo "[ui-sync] connecting the joiner to the primary's manual LAN address"
-type_into_ui resource-id "sync-peer-input" "$PRIMARY_ADDRESS"
+type_into_ui_after_text "Direct device-to-device (same Wi-Fi)" "$PRIMARY_ADDRESS"
 adb shell input keyevent KEYCODE_BACK || true
 tap_ui_scrolling text "Sync with address"
 sleep 8
 
 # A successful sync reloads the joining WebView. The primary-only goal must now
 # be present in the joining profile's real materialized state.
-tap_ui text "Goals"
+tap_ui_scrolling_up text "Goals"
 wait_for_ui_text "CISyncGoal" 30
 echo "[ui-sync] PASS: pairing through the Android UI transferred primary user data to the isolated joiner"
 
