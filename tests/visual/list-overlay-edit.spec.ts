@@ -88,15 +88,47 @@ async function openTwoItemGroceriesOverlay(page: import('@playwright/test').Page
 test('list overlay header progress fills as items are checked off', async ({ page }) => {
   const dialog = await openTwoItemGroceriesOverlay(page)
   const progress = dialog.getByRole('progressbar', { name: 'List completion' })
+  const progressFill = progress.locator('.list-progress-fill')
 
   await expect(progress).toHaveAttribute('aria-valuemax', '2')
   await expect(progress).toHaveAttribute('aria-valuenow', '0')
   await expect(progress).toHaveCSS('--list-progress', '0%')
+  await expect(progressFill).toHaveCSS('transition-property', 'clip-path')
+  await expect(progressFill).toHaveCSS('transition-duration', '0.2s')
+  await expect(progressFill).toHaveCSS('transition-timing-function', 'ease-in-out')
 
   await dialog.locator('.plan-row', { hasText: 'Milk' }).getByRole('checkbox').check()
 
   await expect(progress).toHaveAttribute('aria-valuenow', '1')
   await expect(progress).toHaveCSS('--list-progress', '50%')
+})
+
+test('ArrowUp unchecks the current list item before selecting the previous one', async ({ page }) => {
+  const dialog = await openTwoItemGroceriesOverlay(page)
+  const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })
+  const eggsRow = dialog.locator('.plan-row', { hasText: 'Eggs' })
+  const eggsCheckbox = eggsRow.getByRole('checkbox')
+
+  await eggsRow.click()
+  await eggsCheckbox.check()
+  await expect(eggsCheckbox).toBeChecked()
+
+  await page.keyboard.press('ArrowUp')
+
+  await expect(eggsCheckbox).not.toBeChecked()
+  await expect(milkRow).toHaveClass(/selected/)
+})
+
+test('ArrowDown checks the final list item when it cannot navigate farther', async ({ page }) => {
+  const dialog = await openTwoItemGroceriesOverlay(page)
+  const eggsRow = dialog.locator('.plan-row', { hasText: 'Eggs' })
+  const eggsCheckbox = eggsRow.getByRole('checkbox')
+
+  await eggsRow.click()
+  await page.keyboard.press('ArrowDown')
+
+  await expect(eggsCheckbox).toBeChecked()
+  await expect(eggsRow).toHaveClass(/selected/)
 })
 
 test('list overlay item shows an edit pencil that jumps to the template and reopens on return', async ({ page }) => {

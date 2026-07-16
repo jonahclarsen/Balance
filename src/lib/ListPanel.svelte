@@ -57,23 +57,23 @@
 
   // Selecting a row also moves DOM focus onto it (keeping focus inside the panel
   // so the next keystroke still reaches handleKeydown) and scrolls it into view.
-  // Advancing past a row checks it off; revisiting one (moving up, or clicking)
-  // does not.
-  function selectItem(itemId: Id, completePrevious = false) {
+  // Moving down checks off the row being left; moving up reopens it. Clicking a
+  // different row retains the existing behavior of completing the previous row.
+  function selectItem(itemId: Id, selectedItemDone?: boolean) {
     const previousItemId = selectedItemId
     selectedItemId = itemId
-    if (completePrevious) completeItem(previousItemId, itemId)
+    if (selectedItemDone !== undefined) updateSelectedItem(previousItemId, itemId, selectedItemDone)
     void focusSelectedRow('smooth')
   }
 
-  function completeItem(previousItemId: Id | null, nextItemId: Id) {
-    if (!previousItemId || previousItemId === nextItemId) return
-    const previousItem = findPlanItem(instance.items, previousItemId)
-    if (!previousItem || previousItem.done) return
+  function updateSelectedItem(itemId: Id | null, nextItemId: Id, done: boolean) {
+    if (!itemId || (!done && itemId === nextItemId)) return
+    const item = findPlanItem(instance.items, itemId)
+    if (!item || item.done === done) return
     // Items that reference a metric can only be completed via their survey, so
     // advancing past one must not silently check it off.
-    if (itemMetricLink(previousItem.text, listTemplates, metrics)) return
-    plannerStore.patchListItem(instance.id, previousItem.id, { done: true })
+    if (done && itemMetricLink(item.text, listTemplates, metrics)) return
+    plannerStore.patchListItem(instance.id, item.id, { done })
   }
 
   async function focusSelectedRow(behavior: ScrollBehavior) {
@@ -128,7 +128,8 @@
     return null
   }
 
-  // Arrow keys move the selection; only moving down completes the row you leave.
+  // Arrow keys move the selection, updating the current row in the direction of
+  // travel: down completes it (including the final row) and up reopens it.
   export function moveSelection(direction: -1 | 1) {
     const ids = flattenIds(instance.items)
     if (ids.length === 0) return
