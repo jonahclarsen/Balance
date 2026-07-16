@@ -1634,9 +1634,7 @@ nav button.active {
   gap: 8px;
 }
 
-/* Keep the day-count control and Manage button pinned to the right while the
-   search box stays beside the "Goal rhythm" heading. */
-.goal-history-toolbar .goal-days-control {
+.goal-history-toolbar > button {
   margin-left: auto;
 }
 
@@ -1648,17 +1646,6 @@ nav button.active {
 .goal-history-search {
   flex: 0 1 200px;
   min-width: 0;
-  padding-block: 5px;
-}
-
-.goal-days-control {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.goal-days-control input {
-  width: 74px;
   padding-block: 5px;
 }
 
@@ -2117,17 +2104,12 @@ nav button.active {
     padding: 5px 8px;
   }
 
-  .goal-history-toolbar > div span,
-  .goal-days-control > span {
+  .goal-history-toolbar > div span {
     display: none;
   }
 
   .goal-history-search {
     flex-basis: 120px;
-  }
-
-  .goal-days-control input {
-    width: 58px;
   }
 
   .goal-history-toolbar button {

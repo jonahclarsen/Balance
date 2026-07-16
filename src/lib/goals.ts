@@ -1,8 +1,6 @@
 import { escapeHTML, nowISO, sanitizeInlineHTML, todayISO } from './planner'
 import type { AppState, DailyPlan, Goal, GoalActivityPeriod, GoalCompletion, Id, PlanItem } from './types'
 
-export const GOAL_HISTORY_DEFAULT_DAYS = 30
-export const GOAL_HISTORY_MAX_DAYS = 3660
 export const GOAL_FUTURE_DAYS = 6
 export const GOAL_RECALCULATION_AGE_DAYS = 2
 
@@ -177,11 +175,6 @@ export function setGoalStartDate(goal: Goal, date: string): Goal {
     activityPeriods: normalizeActivityPeriods(activityPeriods),
     updatedAt: nowISO(),
   }
-}
-
-export function visibleGoalDates(days: number, endDate = todayISO()): string[] {
-  const count = Math.max(1, Math.min(GOAL_HISTORY_MAX_DAYS, Math.round(days) || GOAL_HISTORY_DEFAULT_DAYS))
-  return Array.from({ length: count }, (_, index) => shiftISODate(endDate, index - count + 1))
 }
 
 export function goalWasActiveInRange(goal: Goal, dates: string[]): boolean {

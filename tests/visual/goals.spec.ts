@@ -398,6 +398,7 @@ test('old goal snapshots survive rule edits and archiving, and deletion advises 
 })
 
 test('a completion resets a rolling deadline and late days stay overdue', async ({ page }, testInfo) => {
+  const historyStart = addDays(todayISO(), -120)
   const firstCompletion = addDays(todayISO(), -7)
   const coverageEnd = addDays(firstCompletion, 3)
   const dueDate = addDays(firstCompletion, 4)
@@ -406,7 +407,7 @@ test('a completion resets a rolling deadline and late days stay overdue', async 
   const secondCompletion = addDays(firstCompletion, 7)
 
   await page.evaluate(
-    ({ firstCompletion, secondCompletion }) => {
+    ({ historyStart, firstCompletion, secondCompletion }) => {
       const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
       state.goals = [
         {
@@ -415,7 +416,7 @@ test('a completion resets a rolling deadline and late days stay overdue', async 
           cadenceDays: 4,
           matchTerms: ['beat'],
           hue: 278,
-          activityPeriods: [{ startDate: firstCompletion, endDate: null }],
+          activityPeriods: [{ startDate: historyStart, endDate: null }],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         },
@@ -438,16 +439,22 @@ test('a completion resets a rolling deadline and late days stay overdue', async 
       ]
       localStorage.setItem('balance.appState.v1', JSON.stringify(state))
     },
-    { firstCompletion, secondCompletion },
+    { historyStart, firstCompletion, secondCompletion },
   )
   await page.reload()
 
-  await page.getByLabel('Days of goal history').fill('120')
-  await page.getByLabel('Days of goal history').press('Tab')
-  await expect(page.getByLabel('Days of goal history')).toHaveValue('120')
+  await expect(page.getByLabel('Days of goal history')).toHaveCount(0)
+  await expect(page.locator('.goal-date-head').first()).toHaveAttribute('title', historyStart)
+  await expect(page.locator('.goal-date-head')).toHaveCount(127)
   await expect
-    .poll(async () => page.evaluate(() => localStorage.getItem('balance.goalHistoryDays')))
-    .toBe('120')
+    .poll(async () => {
+      const timelineScroll = await page.locator('.goal-history-scroll').evaluate((element) => ({
+        scrollLeft: element.scrollLeft,
+        maxScrollLeft: element.scrollWidth - element.clientWidth,
+      }))
+      return timelineScroll.scrollLeft > 0 && Math.abs(timelineScroll.scrollLeft - timelineScroll.maxScrollLeft) <= 1
+    })
+    .toBe(true)
 
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${firstCompletion} · completed"]`)).toHaveClass(/segment-start/)
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${coverageEnd} · active"]`)).toHaveClass(/segment-end/)
@@ -786,8 +793,7 @@ test('goal rhythm grows a column for the new day after the clock rolls over', as
   await expect(page.locator('.goal-date-head[title="2026-06-17"]').first()).toHaveClass(/future/)
 
   // The day rolls over while the app stays open. Without a reactive clock the
-  // date list would stay anchored to the previous day until an input like the
-  // Days slider forces a recompute.
+  // date list would stay anchored to the previous day.
   await page.clock.setFixedTime(new Date('2026-06-17T12:00:00'))
   await page.clock.runFor(61_000)
 

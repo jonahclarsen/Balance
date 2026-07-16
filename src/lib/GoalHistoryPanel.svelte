@@ -6,18 +6,13 @@
     GOAL_FUTURE_DAYS,
     goalDaysUntilLapse,
     goalLightnessShift,
-    GOAL_HISTORY_DEFAULT_DAYS,
-    GOAL_HISTORY_MAX_DAYS,
     goalWasActiveInRange,
     isoDateDiffDays,
     shiftISODate,
     sortGoalsByUrgency,
-    visibleGoalDates,
   } from './goals'
   import { currentDayISO, todayISO } from './planner'
   import type { Goal, GoalCompletion } from './types'
-
-  const HISTORY_DAYS_KEY = 'balance.goalHistoryDays'
 
   export let goals: Goal[]
   export let completions: GoalCompletion[]
@@ -27,9 +22,10 @@
   // A click on a plan item's goal badge sets this to scroll the goal into view.
   export let scrollRequest: { goalId: string; nonce: number } | null = null
 
-  let historyDays = GOAL_HISTORY_DEFAULT_DAYS
   let search = ''
   let scrollEl: HTMLDivElement | undefined
+  let mounted = false
+  let lastCenteredStartDate: string | null = null
   let highlightedGoalId: string | null = null
   let copiedGoalId: string | null = null
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined
@@ -52,14 +48,21 @@
   }
 
   // Track the wall-clock day reactively so the grid keeps a column for the
-  // current day after the date rolls over while the app stays open — otherwise
-  // the date list only refreshes when an input like the Days slider changes.
+  // current day after the date rolls over while the app stays open.
   // `today` is the calendar day (drives the grid); `currentDay` rolls over at
   // 4am and is only used to bold the active day on the date row.
   let today = todayISO()
   let currentDay = currentDayISO()
 
-  $: pastDates = visibleGoalDates(historyDays, today)
+  $: firstGoalDate = goals.reduce<string | null>((earliest, goal) => {
+    for (const period of goal.activityPeriods) {
+      if (!earliest || period.startDate < earliest) earliest = period.startDate
+    }
+    return earliest
+  }, null)
+  $: historyStartDate = firstGoalDate && firstGoalDate < today ? firstGoalDate : today
+  $: pastDayCount = isoDateDiffDays(historyStartDate, today) + 1
+  $: pastDates = Array.from({ length: pastDayCount }, (_, index) => shiftISODate(historyStartDate, index))
   // The grid always reaches GOAL_FUTURE_DAYS past the viewed day; when
   // viewing the past that range is already covered by the history dates.
   $: futureDayCount = Math.max(0, isoDateDiffDays(today, viewedDate) + GOAL_FUTURE_DAYS)
@@ -78,6 +81,26 @@
     search,
   )
 
+  $: if (mounted && historyStartDate !== lastCenteredStartDate) {
+    lastCenteredStartDate = historyStartDate
+    centerCurrentDay()
+  }
+
+  async function centerCurrentDay() {
+    await tick()
+    if (!scrollEl) return
+
+    const currentDayHead = scrollEl.querySelector<HTMLElement>(`[data-goal-date="${today}"]`)
+    if (!currentDayHead) return
+
+    const stickyGoalColumn = scrollEl.querySelector<HTMLElement>('.goal-history-corner')
+    const stickyWidth = stickyGoalColumn?.offsetWidth ?? 0
+    const visibleDateWidth = scrollEl.clientWidth - stickyWidth
+    const targetCenter =
+      visibleDateWidth > 0 ? stickyWidth + visibleDateWidth / 2 : scrollEl.clientWidth / 2
+    scrollEl.scrollLeft = currentDayHead.offsetLeft + currentDayHead.offsetWidth / 2 - targetCenter
+  }
+
   function refreshDay() {
     const calendarDay = todayISO()
     if (calendarDay !== today) today = calendarDay
@@ -86,8 +109,7 @@
   }
 
   onMount(() => {
-    const stored = Number(localStorage.getItem(HISTORY_DAYS_KEY))
-    if (Number.isFinite(stored) && stored >= 1) historyDays = Math.min(GOAL_HISTORY_MAX_DAYS, Math.round(stored))
+    mounted = true
 
     const dayTimer = setInterval(refreshDay, 60_000)
     window.addEventListener('focus', refreshDay)
@@ -114,11 +136,6 @@
     if (event.key !== 'Enter' && event.key !== ' ') return
     event.preventDefault()
     onOpenGoals(goalId)
-  }
-
-  function updateHistoryDays(value: number) {
-    historyDays = Math.max(1, Math.min(GOAL_HISTORY_MAX_DAYS, Math.round(value) || GOAL_HISTORY_DEFAULT_DAYS))
-    localStorage.setItem(HISTORY_DAYS_KEY, String(historyDays))
   }
 
   function dayLabel(date: string) {
@@ -166,17 +183,6 @@
       placeholder="Search goals…"
       bind:value={search}
     />
-    <label class="goal-days-control">
-      <span>Days</span>
-      <input
-        aria-label="Days of goal history"
-        type="number"
-        min="1"
-        max={GOAL_HISTORY_MAX_DAYS}
-        value={historyDays}
-        on:change={(event) => updateHistoryDays(Number(event.currentTarget.value))}
-      />
-    </label>
     <button type="button" on:click={() => onOpenGoals()}>Manage goals</button>
   </header>
 
@@ -189,6 +195,7 @@
           class:today={date === currentDay}
           class:future={date > today}
           class="goal-date-head"
+          data-goal-date={date}
           title={date}
         >
           <span>{dayLabel(date)}</span>
