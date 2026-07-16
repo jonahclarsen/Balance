@@ -119,6 +119,18 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
 
   await first.check()
   await expect(page.getByRole('status', { name: 'Day finished' })).toHaveCount(0)
+  await expect
+    .poll(() =>
+      first.evaluate((checkbox) => {
+        const style = getComputedStyle(checkbox)
+        return (
+          style.appearance === 'none' &&
+          ['rgb(67, 146, 213)', 'rgb(57, 130, 191)'].includes(style.backgroundColor) &&
+          style.backgroundImage !== 'none'
+        )
+      }),
+    )
+    .toBe(true)
 
   await final.check()
   await expect(page.getByRole('status', { name: 'Day finished' })).toBeVisible()

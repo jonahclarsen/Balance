@@ -15,6 +15,8 @@
   --line-strong: #c3bdb0;
   --accent: #2f6f68;
   --accent-strong: #245a54;
+  --checkbox-checked: #4392d5;
+  --checkbox-checked-hover: #3982bf;
   --danger: #b4453d;
   --shadow: 0 14px 34px rgba(38, 35, 27, 0.09);
   --sidebar: #ebe7dc;
@@ -454,11 +456,41 @@ nav button.active {
 }
 
 .check {
+  -webkit-appearance: none;
+  appearance: none;
   width: 18px;
   height: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background-color: var(--paper-strong);
+  background-position: center;
+  background-repeat: no-repeat;
   margin: 0;
   padding: 0;
   cursor: pointer;
+}
+
+.check:hover {
+  border-color: var(--checkbox-checked);
+}
+
+.check:checked {
+  border-color: var(--checkbox-checked);
+  background-color: var(--checkbox-checked);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'%3E%3Cpath d='m2 6 3 3 7-7' fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.4'/%3E%3C/svg%3E");
+  background-size: 14px 12px;
+}
+
+.check:checked:hover {
+  border-color: var(--checkbox-checked-hover);
+  background-color: var(--checkbox-checked-hover);
+}
+
+@media (forced-colors: active) {
+  .check {
+    -webkit-appearance: auto;
+    appearance: auto;
+  }
 }
 
 .item-text,
