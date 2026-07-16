@@ -2,6 +2,7 @@
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
+  import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
@@ -15,7 +16,7 @@
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
   import Celebration from './lib/Celebration.svelte'
-  import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, hueToHex, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
+  import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
     exportHTML,
@@ -198,6 +199,7 @@ return rows`
   let newGoalName = ''
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
+  let newGoalTermsHtml = ''
   let newGoalHue = 165
   let newGoalLightness = 50
   let goalFormStatus = ''
@@ -926,10 +928,11 @@ return rows`
       return
     }
 
-    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue, newGoalLightness)
+    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue, newGoalLightness, newGoalTermsHtml)
     newGoalName = ''
     newGoalCadenceDays = 1
     newGoalTerms = ''
+    newGoalTermsHtml = ''
     newGoalHue = (newGoalHue + 47) % 360
     newGoalLightness = 50
     goalFormStatus = ''
@@ -3072,42 +3075,32 @@ return rows`
         </label>
         <label class="goal-terms-field">
           <span>Matches any</span>
-          <input
-            aria-label="New goal matching terms"
+          <RichTextEditor
+            className="goal-rules-editor"
+            kind="goal-match-terms"
+            inputId="new-goal-match-terms"
             placeholder="lift, swim, bike"
-            bind:value={newGoalTerms}
-            on:keydown={(event) => {
-              if (event.key === 'Enter') addGoal()
+            html={newGoalTermsHtml}
+            text={newGoalTerms}
+            ariaLabel="New goal matching terms"
+            revision={$plannerStore.historyRevision}
+            onChange={(html, text) => {
+              newGoalTermsHtml = html
+              newGoalTerms = text
             }}
           />
         </label>
         <div class="goal-color-field">
           <span>Color</span>
-          <div class="goal-color-controls">
-            <span
-              class="goal-color-swatch"
-              style={`background: ${hueToHex(newGoalHue, newGoalLightness)}`}
-            ></span>
-            <input
-              class="goal-hue-slider"
-              aria-label="New goal hue"
-              type="range"
-              min="0"
-              max="359"
-              value={newGoalHue}
-              on:input={(event) => (newGoalHue = Number(event.currentTarget.value))}
-            />
-            <input
-              class="goal-lightness-slider"
-              aria-label="New goal lightness"
-              type="range"
-              min="0"
-              max="100"
-              style={`--goal-hue: ${newGoalHue}`}
-              value={newGoalLightness}
-              on:input={(event) => (newGoalLightness = Number(event.currentTarget.value))}
-            />
-          </div>
+          <GoalColorPicker
+            hue={newGoalHue}
+            lightness={newGoalLightness}
+            ariaLabel="New goal color"
+            onChange={(color) => {
+              newGoalHue = color.hue
+              newGoalLightness = color.lightness
+            }}
+          />
         </div>
         <button class="primary goal-add-button" type="button" on:click={addGoal}>Add goal</button>
         {#if goalFormStatus}
@@ -3171,39 +3164,28 @@ return rows`
                 {/if}
                 <label class="goal-rules-field">
                   <span>A checked item matches any of</span>
-                  <input
-                    aria-label={`Matching terms for ${goal.name}`}
-                    value={goal.matchTerms.join(', ')}
-                    on:change={(event) => plannerStore.patchGoal(goal.id, { matchTerms: parseMatchTerms(event.currentTarget.value) })}
+                  <RichTextEditor
+                    className="goal-rules-editor"
+                    kind="goal-match-terms"
+                    inputId={`goal-match-terms:${goal.id}`}
+                    html={goal.matchTermsHtml}
+                    text={goal.matchTerms.join(', ')}
+                    ariaLabel={`Matching terms for ${goal.name}`}
+                    revision={$plannerStore.historyRevision}
+                    onChange={(html, text) => plannerStore.patchGoal(goal.id, {
+                      matchTerms: parseMatchTerms(text),
+                      matchTermsHtml: html,
+                    })}
                   />
                 </label>
                 <div class="goal-color-field">
                   <span>Color</span>
-                  <div class="goal-color-controls">
-                    <span
-                      class="goal-color-swatch"
-                      style={`background: ${hueToHex(goal.hue, goal.lightness)}`}
-                    ></span>
-                    <input
-                      class="goal-hue-slider"
-                      aria-label={`Hue for ${goal.name}`}
-                      type="range"
-                      min="0"
-                      max="359"
-                      value={goal.hue}
-                      on:input={(event) => plannerStore.patchGoal(goal.id, { hue: Number(event.currentTarget.value) })}
-                    />
-                    <input
-                      class="goal-lightness-slider"
-                      aria-label={`Lightness for ${goal.name}`}
-                      type="range"
-                      min="0"
-                      max="100"
-                      style={`--goal-hue: ${goal.hue}`}
-                      value={goal.lightness}
-                      on:input={(event) => plannerStore.patchGoal(goal.id, { lightness: Number(event.currentTarget.value) })}
-                    />
-                  </div>
+                  <GoalColorPicker
+                    hue={goal.hue}
+                    lightness={goal.lightness}
+                    ariaLabel={`Color for ${goal.name}`}
+                    onChange={(color) => plannerStore.patchGoal(goal.id, color)}
+                  />
                 </div>
               </div>
               <p class="goal-card-meta">

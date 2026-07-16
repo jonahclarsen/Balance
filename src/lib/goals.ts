@@ -1,4 +1,4 @@
-import { nowISO, todayISO } from './planner'
+import { escapeHTML, nowISO, sanitizeInlineHTML, todayISO } from './planner'
 import type { AppState, DailyPlan, Goal, GoalActivityPeriod, GoalCompletion, Id, PlanItem } from './types'
 
 export const GOAL_HISTORY_DEFAULT_DAYS = 30
@@ -30,14 +30,17 @@ export function createGoal(
   lightness: number,
   startDate = todayISO(),
   id: Id,
+  matchTermsHtml?: string,
 ): Goal {
   const timestamp = nowISO()
+  const normalizedMatchTerms = normalizeMatchTerms(matchTerms)
 
   return {
     id,
     name: name.trim(),
     cadenceDays: normalizeCadenceDays(cadenceDays),
-    matchTerms: normalizeMatchTerms(matchTerms),
+    matchTerms: normalizedMatchTerms,
+    matchTermsHtml: normalizeMatchTermsHtml(matchTermsHtml, normalizedMatchTerms),
     hue: normalizeHue(hue),
     lightness: normalizeLightness(lightness),
     activityPeriods: [{ startDate, endDate: null }],
@@ -47,11 +50,13 @@ export function createGoal(
 }
 
 export function normalizeGoal(goal: Goal): Goal {
+  const matchTerms = normalizeMatchTerms(goal.matchTerms ?? [])
   return {
     ...goal,
     name: goal.name?.trim() ?? '',
     cadenceDays: normalizeCadenceDays(goal.cadenceDays),
-    matchTerms: normalizeMatchTerms(goal.matchTerms ?? []),
+    matchTerms,
+    matchTermsHtml: normalizeMatchTermsHtml(goal.matchTermsHtml, matchTerms),
     hue: normalizeHue(goal.hue ?? 165),
     lightness: normalizeLightness(goal.lightness),
     activityPeriods: normalizeActivityPeriods(goal.activityPeriods ?? []),
@@ -96,6 +101,11 @@ export function normalizeMatchTerms(terms: string[]): string[] {
 
 export function parseMatchTerms(value: string): string[] {
   return normalizeMatchTerms(value.split(/[\n,]+/))
+}
+
+function normalizeMatchTermsHtml(value: string | undefined, matchTerms: string[]): string {
+  const fallback = escapeHTML(matchTerms.join(', '))
+  return value == null ? fallback : sanitizeInlineHTML(value)
 }
 
 // Live filter for the goal search boxes: matches the typed phrase against a

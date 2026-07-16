@@ -685,8 +685,8 @@ function createPlannerStore() {
       )
     },
 
-    addGoal(name: string, cadenceDays: number, matchTerms: string[], hue: number, lightness = 50) {
-      const goal = createGoal(name, cadenceDays, matchTerms, hue, lightness, todayISO(), createId('goal'))
+    addGoal(name: string, cadenceDays: number, matchTerms: string[], hue: number, lightness = 50, matchTermsHtml?: string) {
+      const goal = createGoal(name, cadenceDays, matchTerms, hue, lightness, todayISO(), createId('goal'), matchTermsHtml)
       commit('replace_goal_data', { action: 'add_goal', goalId: goal.id }, (state) => ({
         ...state,
         goals: [...state.goals, goal],
@@ -694,7 +694,7 @@ function createPlannerStore() {
       return goal.id
     },
 
-    patchGoal(goalId: Id, patch: Partial<Pick<Goal, 'name' | 'cadenceDays' | 'matchTerms' | 'hue' | 'lightness'>>) {
+    patchGoal(goalId: Id, patch: Partial<Pick<Goal, 'name' | 'cadenceDays' | 'matchTerms' | 'matchTermsHtml' | 'hue' | 'lightness'>>) {
       commit(
         'replace_goal_data',
         { action: 'patch_goal', goalId, patch },
@@ -707,6 +707,9 @@ function createPlannerStore() {
               ...goal,
               ...patch,
               matchTerms: patch.matchTerms ? normalizeMatchTerms(patch.matchTerms) : goal.matchTerms,
+              matchTermsHtml:
+                patch.matchTermsHtml ??
+                (patch.matchTerms ? escapeHTML(normalizeMatchTerms(patch.matchTerms).join(', ')) : goal.matchTermsHtml),
               updatedAt: nowISO(),
             })
             if (JSON.stringify(next) !== JSON.stringify(goal)) changed = true

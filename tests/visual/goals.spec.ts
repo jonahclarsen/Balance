@@ -6,6 +6,93 @@ test.beforeEach(async ({ page }) => {
   await page.reload()
 })
 
+test('goal colors use a two-dimensional hue and lightness picker', async ({ page }, testInfo) => {
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+
+  const picker = page.getByRole('button', { name: 'Color for Exercise' })
+  const bounds = await picker.boundingBox()
+  expect(bounds).not.toBeNull()
+  await picker.click({
+    position: {
+      x: bounds!.width * 0.75,
+      y: bounds!.height * 0.25,
+    },
+  })
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const goal = state.goals?.[0]
+        return Math.abs(goal?.hue - 269) <= 3 && Math.abs(goal?.lightness - 75) <= 3
+      }),
+    )
+    .toBe(true)
+
+  const clickedColor = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return { hue: state.goals[0].hue, lightness: state.goals[0].lightness }
+  })
+
+  await picker.press('ArrowUp')
+  await picker.press('Shift+ArrowLeft')
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return { hue: state.goals?.[0]?.hue, lightness: state.goals?.[0]?.lightness }
+      }),
+    )
+    .toEqual({ hue: clickedColor.hue - 10, lightness: clickedColor.lightness + 1 })
+
+  await expect(page.locator('.goal-hue-slider, .goal-lightness-slider')).toHaveCount(0)
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-goal-color-grid.png`,
+    fullPage: true,
+  })
+})
+
+test('goal matching terms preserve rich text and turn a pasted URL into a link', async ({ page }) => {
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+
+  const editor = page.getByRole('textbox', { name: 'Matching terms for Exercise' })
+  await editor.evaluate((element) => {
+    const text = element.firstChild
+    if (!text) throw new Error('Expected matching-term text')
+
+    element.focus()
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 4)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    const clipboard = new DataTransfer()
+    clipboard.setData('text/plain', 'https://example.com/exercise')
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }))
+  })
+
+  const link = editor.getByRole('link', { name: 'lift' })
+  await expect(link).toHaveAttribute('href', 'https://example.com/exercise')
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const goal = state.goals?.[0]
+        return { matchTerms: goal?.matchTerms, matchTermsHtml: goal?.matchTermsHtml }
+      }),
+    )
+    .toEqual({
+      matchTerms: ['lift', 'swim'],
+      matchTermsHtml: '<a href="https://example.com/exercise" target="_blank" rel="noreferrer">lift</a>, swim',
+    })
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Matching terms for Exercise' }).getByRole('link', { name: 'lift' })).toBeVisible()
+})
+
 test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 60 seconds', async ({ page }) => {
   await page.clock.install()
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
