@@ -85,6 +85,33 @@ async function openTwoItemGroceriesOverlay(page: import('@playwright/test').Page
   return dialog
 }
 
+async function openThreeItemGroceriesOverlay(page: import('@playwright/test').Page) {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+
+  const listItems = page.locator('[data-list-template-text-input]')
+  for (const [index, item] of ['Milk', 'Eggs', 'Bread'].entries()) {
+    if (index > 0) await page.getByRole('button', { name: '+ Add list item' }).click()
+    await listItems.nth(index).fill(item)
+  }
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const firstItem = page.locator('[data-plan-text-input]').first()
+  await firstItem.fill('Groceries')
+  await firstItem.blur()
+
+  await page.getByTitle('Open Groceries').first().click()
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog).toBeVisible()
+  return dialog
+}
+
 test('list overlay header progress fills as items are checked off', async ({ page }) => {
   const dialog = await openTwoItemGroceriesOverlay(page)
   const progress = dialog.getByRole('progressbar', { name: 'List completion' })
@@ -109,19 +136,22 @@ test('list overlay selects its first item when initially opened', async ({ page 
   await expect(dialog.locator('.plan-row.selected')).toContainText('Milk')
 })
 
-test('ArrowUp unchecks the previous list item as it selects it', async ({ page }) => {
-  const dialog = await openTwoItemGroceriesOverlay(page)
+test('ArrowUp unchecks both the current and previous list items', async ({ page }) => {
+  const dialog = await openThreeItemGroceriesOverlay(page)
   const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })
   const eggsRow = dialog.locator('.plan-row', { hasText: 'Eggs' })
   const milkCheckbox = milkRow.getByRole('checkbox')
+  const eggsCheckbox = eggsRow.getByRole('checkbox')
 
   await page.keyboard.press('ArrowDown')
   await expect(milkCheckbox).toBeChecked()
   await expect(eggsRow).toHaveClass(/selected/)
+  await eggsCheckbox.check()
 
   await page.keyboard.press('ArrowUp')
 
   await expect(milkCheckbox).not.toBeChecked()
+  await expect(eggsCheckbox).not.toBeChecked()
   await expect(milkRow).toHaveClass(/selected/)
 })
 

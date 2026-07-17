@@ -57,23 +57,28 @@
 
   // Selecting a row also moves DOM focus onto it (keeping focus inside the panel
   // so the next keystroke still reaches handleKeydown) and scrolls it into view.
-  // Moving down checks off the row being left; moving up reopens the row being
-  // selected. Clicking a different row completes the previous row.
+  // Moving down checks off the row being left; moving up reopens both the row
+  // being left and the row being selected. Clicking a different row completes
+  // the previous row.
   function selectItem(itemId: Id, selectedItemDone?: boolean) {
     const previousItemId = selectedItemId
     selectedItemId = itemId
-    if (selectedItemDone !== undefined) updateSelectedItem(previousItemId, itemId, selectedItemDone)
+    if (selectedItemDone !== undefined) updateItemsForSelectionMove(previousItemId, itemId, selectedItemDone)
     void focusSelectedRow('smooth')
   }
 
-  function updateSelectedItem(itemId: Id | null, nextItemId: Id, done: boolean) {
-    if (!itemId || (!done && itemId === nextItemId)) return
-    const item = findPlanItem(instance.items, done ? itemId : nextItemId)
-    if (!item || item.done === done) return
-    // Items that reference a metric can only be completed via their survey, so
-    // advancing past one must not silently check it off.
-    if (done && itemMetricLink(item.text, listTemplates, metrics)) return
-    plannerStore.patchListItem(instance.id, item.id, { done })
+  function updateItemsForSelectionMove(itemId: Id | null, nextItemId: Id, done: boolean) {
+    if (!itemId) return
+
+    const itemIds = done ? [itemId] : Array.from(new Set([itemId, nextItemId]))
+    for (const id of itemIds) {
+      const item = findPlanItem(instance.items, id)
+      if (!item || item.done === done) continue
+      // Items that reference a metric can only be completed via their survey,
+      // so advancing past one must not silently check it off.
+      if (done && itemMetricLink(item.text, listTemplates, metrics)) continue
+      plannerStore.patchListItem(instance.id, item.id, { done })
+    }
   }
 
   async function focusSelectedRow(behavior: ScrollBehavior) {
@@ -130,7 +135,7 @@
 
   // Arrow keys move the selection, updating the row behind the direction of
   // travel: down completes the row being left (including the final row), while
-  // up reopens the row being selected.
+  // up reopens both the row being left and the row being selected.
   export function moveSelection(direction: -1 | 1) {
     const ids = flattenIds(instance.items)
     if (ids.length === 0) return
