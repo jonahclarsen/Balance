@@ -222,6 +222,31 @@ test('a completed matching plan item automatically completes a goal and shows it
     .toBe(0)
 })
 
+test('a single-word goal term only matches at word boundaries', async ({ page }) => {
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await createGoal(page, 'DJ practice', 1, 'dj')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  const row = page.locator('[data-plan-item-id]').first()
+  const editor = row.locator('[contenteditable="true"]')
+  await editor.fill('adjust the playlist')
+  await expect(row.locator('.plan-due-today')).toHaveCount(0)
+
+  await editor.fill('Practice (DJ), then rest')
+  await expect(row.getByRole('button', { name: 'DJ practice is due today — show in goal rhythm' })).toBeVisible()
+
+  await row.getByRole('checkbox', { name: 'Complete item' }).check()
+  await expect(row.locator('.plan-goal-badge', { hasText: 'DJ practice' })).toBeVisible()
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return state.goalCompletions?.[0]?.matchedTerms ?? []
+      }),
+    )
+    .toEqual(['dj'])
+})
+
 test('direct edits to an older plan item can complete an overdue goal', async ({ page }) => {
   const oldDate = addDays(todayISO(), -3)
   const timestamp = new Date().toISOString()
@@ -823,6 +848,28 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   await expect(goalRow).not.toHaveClass(/goal-row-focus/)
 
   await badge.click()
+  await expect(goalRow).toHaveClass(/goal-row-focus/)
+})
+
+test('clicking a due-today badge reveals that goal in the rhythm panel', async ({ page }) => {
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await createGoal(page, 'Exercise', 1, 'lift, swim')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  const matchingText = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.plans?.[0]?.items?.find((item: { text: string }) => /lift|swim/i.test(item.text))?.text ?? ''
+  })
+  expect(matchingText).not.toBe('')
+
+  const row = page.getByRole('listitem', { name: `Plan item: ${matchingText}` })
+  const dueTodayBadge = row.getByRole('button', { name: 'Exercise is due today — show in goal rhythm' })
+  await expect(dueTodayBadge).toBeVisible()
+
+  const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
+  await expect(goalRow).not.toHaveClass(/goal-row-focus/)
+
+  await dueTodayBadge.click()
   await expect(goalRow).toHaveClass(/goal-row-focus/)
 })
 

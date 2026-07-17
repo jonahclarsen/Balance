@@ -279,14 +279,14 @@ export function goalMatchesForItem(
 /**
  * Of the goals already known to be due today, returns those whose match terms
  * appear in the item's text. Kept cheap by parsing text the same way goal
- * completion does (lowercase substring) and only ever scanning the handful of
+ * completion does and only ever scanning the handful of
  * due-today goals the caller precomputes — never the full goal list per item.
  */
 export function dueTodayGoalsForItem(item: PlanItem, dueTodayGoals: Goal[]): Goal[] {
   if (dueTodayGoals.length === 0) return []
 
   const normalizedText = item.text.toLocaleLowerCase()
-  return dueTodayGoals.filter((goal) => goal.matchTerms.some((term) => normalizedText.includes(term)))
+  return dueTodayGoals.filter((goal) => goal.matchTerms.some((term) => textMatchesGoalTerm(normalizedText, term)))
 }
 
 export function planItemGoalMatchesChanged(
@@ -517,7 +517,7 @@ function matchingPlanItems(plan: DailyPlan, goal: Goal): { itemIds: Id[]; matche
     for (const item of items) {
       if (item.done) {
         const normalizedText = item.text.toLocaleLowerCase()
-        const terms = goal.matchTerms.filter((term) => normalizedText.includes(term))
+        const terms = goal.matchTerms.filter((term) => textMatchesGoalTerm(normalizedText, term))
         if (terms.length > 0) {
           itemIds.push(item.id)
           terms.forEach((term) => matchedTerms.add(term))
@@ -535,7 +535,33 @@ function matchingTermsForItem(item: PlanItem, goal: Goal): string[] {
   if (!item.done) return []
 
   const normalizedText = item.text.toLocaleLowerCase()
-  return goal.matchTerms.filter((term) => normalizedText.includes(term))
+  return goal.matchTerms.filter((term) => textMatchesGoalTerm(normalizedText, term))
+}
+
+// A one-word term must stand on its own so a short keyword such as "dj" does
+// not accidentally match "adjust". Multi-word and punctuation-bearing terms
+// retain their existing substring behavior.
+function textMatchesGoalTerm(normalizedText: string, term: string): boolean {
+  if (!isSingleWordTerm(term)) return normalizedText.includes(term)
+
+  let matchIndex = normalizedText.indexOf(term)
+  while (matchIndex !== -1) {
+    const precedingCharacter = Array.from(normalizedText.slice(0, matchIndex)).at(-1)
+    const followingCharacter = Array.from(normalizedText.slice(matchIndex + term.length))[0]
+    if (!isWordCharacter(precedingCharacter) && !isWordCharacter(followingCharacter)) return true
+    matchIndex = normalizedText.indexOf(term, matchIndex + term.length)
+  }
+
+  return false
+}
+
+function isSingleWordTerm(term: string): boolean {
+  const characters = Array.from(term)
+  return characters.length > 0 && characters.every((character) => isWordCharacter(character))
+}
+
+function isWordCharacter(character: string | undefined): boolean {
+  return character !== undefined && /[\p{L}\p{N}\p{M}]/u.test(character)
 }
 
 function markSegment(

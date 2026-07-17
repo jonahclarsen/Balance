@@ -565,6 +565,7 @@ nav button.active {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
+  border: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--danger) 18%, var(--paper));
   padding: 3px 7px;

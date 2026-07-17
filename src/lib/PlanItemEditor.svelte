@@ -475,7 +475,13 @@
   {#if matchedGoals.length > 0 || visibleDueTodayMatches.length > 0}
       <div class="plan-goal-badges" aria-label="Goals completed by this item">
         {#each visibleDueTodayMatches as goal (goal.id)}
-          <span class="plan-due-today" title={`${goal.name} is due today to stay on track`}>due today</span>
+          <button
+            type="button"
+            class="plan-due-today"
+            title={`${goal.name} is due today to stay on track — show in goal rhythm`}
+            aria-label={`${goal.name} is due today — show in goal rhythm`}
+            on:click|stopPropagation={() => onGoalBadgeClick(goal.id)}
+          >due today</button>
         {/each}
         {#each matchedGoals as goal (goal.id)}
           <button
