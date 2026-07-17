@@ -58,9 +58,11 @@
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DONE_TINT_KEY = 'balance:doneTintColor'
+  const CHECKBOX_COLOR_KEY = 'balance:checkboxColor'
   // Matches the light-theme --done-tint base in app.css; shown as the picker
   // value when the user hasn't chosen a custom color yet.
   const DEFAULT_DONE_TINT = '#3f9d54'
+  const DEFAULT_CHECKBOX_COLOR = '#4392d5'
 
   let view: View = 'today'
   let searchOpen = false
@@ -75,6 +77,7 @@
   let goalRhythmAutoShowTimer: number | null = null
   // Empty means "use the built-in green default"; a hex value overrides it.
   let doneTintColor = ''
+  let checkboxColor = ''
   let completionTrackingReady = false
   let planCompletionById = new Map<Id, boolean>()
   let celebration: Celebration | null = null
@@ -265,6 +268,7 @@ return rows`
   $: sortedGoals = sortGoalsByUrgency($plannerStore.goals, $plannerStore.goalCompletions, todayISO())
   $: filteredGoals = filterGoalsByPhrase(sortedGoals, goalSearch)
   $: doneTintHex = doneTintColor || DEFAULT_DONE_TINT
+  $: checkboxColorHex = checkboxColor || DEFAULT_CHECKBOX_COLOR
   // Blend the chosen color in lightly so the row reads as a tint, not a fill.
   $: doneTintValue = `color-mix(in srgb, ${doneTintHex} 14%, transparent)`
   $: contentShellStyle = [
@@ -274,6 +278,8 @@ return rows`
         ? `--goal-history-height: ${goalHistoryHeight}px`
         : '',
     doneTintColor ? `--done-tint: ${doneTintValue}` : '',
+    `--checkbox-checked: ${checkboxColorHex}`,
+    `--checkbox-checked-hover: color-mix(in srgb, ${checkboxColorHex} 88%, black)`,
   ]
     .filter(Boolean)
     .join('; ')
@@ -696,6 +702,9 @@ return rows`
     const storedDoneTint = normalizeHexColor(localStorage.getItem(DONE_TINT_KEY) ?? '')
     if (storedDoneTint) doneTintColor = storedDoneTint
 
+    const storedCheckboxColor = normalizeHexColor(localStorage.getItem(CHECKBOX_COLOR_KEY) ?? '')
+    if (storedCheckboxColor) checkboxColor = storedCheckboxColor
+
     const checkAutoJsonExport = () => {
       if (!mounted) return
       void runAutoJsonExportCatchup()
@@ -753,6 +762,13 @@ return rows`
     if (!normalized) return
     doneTintColor = normalized
     localStorage.setItem(DONE_TINT_KEY, normalized)
+  }
+
+  function updateCheckboxColor(value: string) {
+    const normalized = normalizeHexColor(value)
+    if (!normalized) return
+    checkboxColor = normalized
+    localStorage.setItem(CHECKBOX_COLOR_KEY, normalized)
   }
 
   function clearGoalRhythmAutoShowTimer() {
@@ -3237,31 +3253,53 @@ return rows`
       <div class="settings-panel">
         <section class="settings-section">
           <div>
-            <h3>Completed item color</h3>
-            <p>The tint applied to checked plan items. Pick any color — it's blended in lightly.</p>
+            <h3>Completed item colors</h3>
+            <p>Choose the checkbox color and the light tint applied to checked plan items.</p>
           </div>
 
           <div class="done-tint-row">
-            <label class="done-tint-control">
-              <input
-                type="color"
-                aria-label="Completed item tint color"
-                value={doneTintHex}
-                on:input={(event) => updateDoneTint(event.currentTarget.value)}
-              />
-              <input
-                class="done-tint-hex"
-                type="text"
-                aria-label="Completed item tint hex code"
-                spellcheck="false"
-                maxlength="7"
-                value={doneTintHex}
-                on:change={(event) => updateDoneTint(event.currentTarget.value)}
-              />
-            </label>
+            <div class="completed-color-controls">
+              <label class="done-tint-control">
+                <span class="color-control-label">Checkbox</span>
+                <input
+                  type="color"
+                  aria-label="Checked checkbox color"
+                  value={checkboxColorHex}
+                  on:input={(event) => updateCheckboxColor(event.currentTarget.value)}
+                />
+                <input
+                  class="done-tint-hex"
+                  type="text"
+                  aria-label="Checked checkbox hex code"
+                  spellcheck="false"
+                  maxlength="7"
+                  value={checkboxColorHex}
+                  on:change={(event) => updateCheckboxColor(event.currentTarget.value)}
+                />
+              </label>
+
+              <label class="done-tint-control">
+                <span class="color-control-label">Row tint</span>
+                <input
+                  type="color"
+                  aria-label="Completed item tint color"
+                  value={doneTintHex}
+                  on:input={(event) => updateDoneTint(event.currentTarget.value)}
+                />
+                <input
+                  class="done-tint-hex"
+                  type="text"
+                  aria-label="Completed item tint hex code"
+                  spellcheck="false"
+                  maxlength="7"
+                  value={doneTintHex}
+                  on:change={(event) => updateDoneTint(event.currentTarget.value)}
+                />
+              </label>
+            </div>
 
             <div class="done-tint-preview plan-row done" aria-label="Example completed item">
-              <span class="done-tint-check" aria-hidden="true">✓</span>
+              <input class="check" type="checkbox" checked disabled aria-label="Example checked checkbox" />
               <span class="item-text done">Dress up in a porcupine suit</span>
             </div>
 

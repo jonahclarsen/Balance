@@ -791,10 +791,21 @@ nav button.active {
   gap: 14px;
 }
 
+.completed-color-controls {
+  display: grid;
+  gap: 10px;
+}
+
 .done-tint-control {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+}
+
+.color-control-label {
+  width: 64px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .done-tint-control input[type='color'] {
@@ -822,9 +833,9 @@ nav button.active {
   padding: 8px 12px;
 }
 
-.done-tint-check {
-  color: var(--accent-strong);
-  font-size: 14px;
+.done-tint-preview .check {
+  flex: 0 0 auto;
+  cursor: default;
 }
 
 .export-status {
