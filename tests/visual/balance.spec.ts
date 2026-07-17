@@ -190,6 +190,76 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
   await expect(page.getByRole('status', { name: 'Day finished' })).toBeVisible()
 })
 
+test('checking the final list item celebrates the completed list', async ({ page }) => {
+  await seedListItems(page, ['First errand', 'Final errand'])
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+
+  const first = page.getByRole('listitem', { name: 'Plan item: First errand' }).getByRole('checkbox')
+  const final = page.getByRole('listitem', { name: 'Plan item: Final errand' }).getByRole('checkbox')
+
+  await first.check()
+  await expect(page.getByRole('status', { name: 'List finished' })).toHaveCount(0)
+
+  await final.check()
+  await expect(page.getByRole('status', { name: 'List finished' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Day finished' })).toHaveCount(0)
+  await expect(page.locator('.celebration-canvas')).toHaveAttribute('width', /\d+/)
+
+  await final.uncheck()
+  await expect(page.getByRole('status', { name: 'List finished' })).toHaveCount(0)
+
+  await final.check()
+  await expect(page.getByRole('status', { name: 'List finished' })).toBeVisible()
+})
+
+test('completing a linked list celebrates after its overlay closes', async ({ page }) => {
+  await seedListItems(page, ['Pack charger', 'Pack snacks'])
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    state.plans = [
+      {
+        id: 'plan_with_list',
+        date: state.activePlanDate,
+        title: '',
+        dailyReminder: '',
+        items: [
+          {
+            id: 'list_opener',
+            text: '[[Victory list]]',
+            html: '[[Victory list]]',
+            done: false,
+            startMinutes: null,
+            endMinutes: null,
+            children: [],
+          },
+          {
+            id: 'unfinished_day_item',
+            text: 'Keep the day open',
+            html: 'Keep the day open',
+            done: false,
+            startMinutes: null,
+            endMinutes: null,
+            children: [],
+          },
+        ],
+      },
+    ]
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+
+  await page.getByRole('link', { name: 'Victory list' }).click()
+  const overlay = page.getByRole('dialog', { name: 'Victory list' })
+  await expect(overlay).toBeVisible()
+
+  await overlay.getByRole('listitem', { name: 'Plan item: Pack charger' }).getByRole('checkbox').check()
+  await overlay.getByRole('listitem', { name: 'Plan item: Pack snacks' }).getByRole('checkbox').click()
+
+  await expect(overlay).toHaveCount(0)
+  await expect(page.getByRole('status', { name: 'List finished' })).toBeVisible()
+  await expect(page.getByRole('listitem', { name: 'Plan item: [[Victory list]]' }).getByRole('checkbox')).toBeChecked()
+})
+
 test('checkbox color can be changed in settings and persists', async ({ page }) => {
   await seedPlanItems(page, ['Custom checkbox'])
 
@@ -2353,6 +2423,54 @@ async function seedPlanItems(page: import('@playwright/test').Page, texts: strin
   }, texts)
   await page.reload()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
+}
+
+async function seedListItems(page: import('@playwright/test').Page, texts: string[]) {
+  await page.goto('/')
+  await page.evaluate((itemTexts) => {
+    const date = new Date().toISOString().slice(0, 10)
+    const items = itemTexts.map((text, index) => ({
+      id: `list_item_${index}`,
+      text,
+      html: text,
+      done: false,
+      startMinutes: null,
+      endMinutes: null,
+      children: [],
+    }))
+    const state = {
+      schemaVersion: 1,
+      deviceId: 'test-device',
+      localSequence: 0,
+      historyRevision: 0,
+      activePlanDate: date,
+      templates: [],
+      plans: [],
+      listTemplates: [
+        {
+          id: 'list_template_test',
+          name: 'Victory list',
+          maxExpectedWords: 100,
+          items: items.map((item) => ({ ...item, probability: 100 })),
+        },
+      ],
+      lists: [
+        {
+          id: 'list_test',
+          listTemplateId: 'list_template_test',
+          date,
+          items,
+        },
+      ],
+      metrics: [],
+      metricEntries: [],
+      goals: [],
+      goalCompletions: [],
+      operations: [],
+    }
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, texts)
+  await page.reload()
 }
 
 async function focusInputByValue(page: import('@playwright/test').Page, value: string) {

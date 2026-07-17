@@ -30,7 +30,7 @@
     plannerStore,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { DailyPlan, Id, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
+  import type { DailyPlan, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
@@ -91,8 +91,11 @@
   let checkboxColor = ''
   let completionTrackingReady = false
   let planCompletionById = new Map<Id, boolean>()
+  let listCompletionById = new Map<Id, boolean>()
   let celebration: Celebration | null = null
   let celebrationDate: string | null = null
+  let celebrationListId: Id | null = null
+  let celebrationKind: 'day' | 'list' | null = null
   let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
   let selectedTemplateId = ''
   // Lists + Metrics feature state
@@ -311,6 +314,12 @@ return rows`
   $: filteredDatabaseHistoryEntries = filterDatabaseRows(databaseInspection?.historyEntries ?? [], databaseSearch)
   $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
   $: observeActivePlanCompletion(activePlan, $plannerStore.activePlanDate, view, completionTrackingReady)
+  $: observeListCompletions(
+    $plannerStore.lists,
+    view === 'lists' ? (listViewInstance?.id ?? null) : null,
+    listOverlayVisible ? (listOverlayInstance?.id ?? null) : null,
+    completionTrackingReady,
+  )
 
   function allPlanItemsDone(items: PlanItem[]): boolean {
     if (items.length === 0) return false
@@ -325,11 +334,11 @@ return rows`
   ) {
     if (!ready) return
 
-    if (celebrationDate && (celebrationDate !== selectedDate || currentView !== 'today')) {
+    if (celebrationKind === 'day' && celebrationDate && (celebrationDate !== selectedDate || currentView !== 'today')) {
       dismissCelebration()
     }
     if (!plan) {
-      dismissCelebration()
+      if (celebrationKind === 'day') dismissCelebration()
       return
     }
 
@@ -339,14 +348,53 @@ return rows`
 
     if (wasComplete === false && complete && currentView === 'today') {
       celebrationDate = plan.date
-      celebration?.celebrate()
-    } else if (wasComplete === true && !complete && celebrationDate === plan.date) {
+      celebrationListId = null
+      celebrationKind = 'day'
+      celebration?.celebrate('day')
+    } else if (wasComplete === true && !complete && celebrationKind === 'day' && celebrationDate === plan.date) {
       dismissCelebration()
     }
   }
 
+  function observeListCompletions(
+    lists: ListInstance[],
+    visibleListId: Id | null,
+    visibleOverlayListId: Id | null,
+    ready: boolean,
+  ) {
+    if (!ready) return
+
+    const currentListIds = new Set(lists.map((list) => list.id))
+    for (const trackedId of listCompletionById.keys()) {
+      if (!currentListIds.has(trackedId)) listCompletionById.delete(trackedId)
+    }
+
+    for (const list of lists) {
+      const complete = allPlanItemsDone(list.items)
+      const wasComplete = listCompletionById.get(list.id)
+      listCompletionById.set(list.id, complete)
+
+      const visible = list.id === visibleListId || list.id === visibleOverlayListId
+      if (wasComplete === false && complete && visible) {
+        celebrateList(list.id)
+      } else if (wasComplete === true && !complete && celebrationKind === 'list' && celebrationListId === list.id) {
+        dismissCelebration()
+      }
+    }
+  }
+
+  function celebrateList(listId: Id) {
+    if (celebrationKind === 'list' && celebrationListId === listId) return
+    celebrationDate = null
+    celebrationListId = listId
+    celebrationKind = 'list'
+    celebration?.celebrate('list')
+  }
+
   function dismissCelebration() {
     celebrationDate = null
+    celebrationListId = null
+    celebrationKind = null
     celebration?.dismiss()
   }
 
@@ -457,6 +505,7 @@ return rows`
   function completeListOverlay() {
     const overlay = listOverlay
     if (!overlay) return
+    celebrateList(overlay.listId)
     listOverlay = null
     const opener = overlay.opener
     if (!opener) return
@@ -731,6 +780,9 @@ return rows`
       await plannerStore.ready
       planCompletionById = new Map(
         $plannerStore.plans.map((plan) => [plan.id, allPlanItemsDone(plan.items)]),
+      )
+      listCompletionById = new Map(
+        $plannerStore.lists.map((list) => [list.id, allPlanItemsDone(list.items)]),
       )
       completionTrackingReady = true
       await loadExportSettings()

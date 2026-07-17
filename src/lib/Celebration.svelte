@@ -6,14 +6,21 @@
   let bannerTimer: ReturnType<typeof setTimeout> | undefined
   let raf = 0
 
-  const MESSAGES = [
+  const DAY_MESSAGES = [
     'All done — nice work! ✨',
     'Cleared the board! 🙌',
     'Everything checked off! 🌟',
     'A perfect day! 💫',
   ]
+  const LIST_MESSAGES = [
+    'Checklist conquered! ✅',
+    'That list never stood a chance! 🎉',
+    'Nothing left but victory! 🏆',
+    'List crushed! ✨',
+  ]
   const COLORS = ['#2f6f68', '#79b9ae', '#a5d8cf', '#f4b942', '#ef6f6c', '#8e7dbe']
-  let message = MESSAGES[0]
+  let message = DAY_MESSAGES[0]
+  let ariaLabel = 'Day finished'
 
   type Particle = {
     x: number
@@ -31,8 +38,10 @@
     return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
   }
 
-  export function celebrate() {
-    message = MESSAGES[Math.floor(Math.random() * MESSAGES.length)]
+  export function celebrate(kind: 'day' | 'list' = 'day') {
+    const messages = kind === 'list' ? LIST_MESSAGES : DAY_MESSAGES
+    message = messages[Math.floor(Math.random() * messages.length)]
+    ariaLabel = kind === 'list' ? 'List finished' : 'Day finished'
     banner = true
     clearTimeout(bannerTimer)
     bannerTimer = setTimeout(() => (banner = false), 2200)
@@ -139,7 +148,7 @@
 <canvas class="celebration-canvas" bind:this={canvas} aria-hidden="true"></canvas>
 
 {#if banner}
-  <div class="celebration-banner" role="status" aria-live="polite" aria-atomic="true" aria-label="Day finished">
+  <div class="celebration-banner" role="status" aria-live="polite" aria-atomic="true" aria-label={ariaLabel}>
     {message}
   </div>
 {/if}
