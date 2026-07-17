@@ -103,28 +103,36 @@ test('list overlay header progress fills as items are checked off', async ({ pag
   await expect(progress).toHaveCSS('--list-progress', '50%')
 })
 
-test('ArrowUp unchecks the current list item before selecting the previous one', async ({ page }) => {
+test('list overlay selects its first item when initially opened', async ({ page }) => {
+  const dialog = await openTwoItemGroceriesOverlay(page)
+
+  await expect(dialog.locator('.plan-row.selected')).toContainText('Milk')
+})
+
+test('ArrowUp unchecks the previous list item as it selects it', async ({ page }) => {
   const dialog = await openTwoItemGroceriesOverlay(page)
   const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })
   const eggsRow = dialog.locator('.plan-row', { hasText: 'Eggs' })
-  const eggsCheckbox = eggsRow.getByRole('checkbox')
+  const milkCheckbox = milkRow.getByRole('checkbox')
 
-  await eggsRow.click()
-  await eggsCheckbox.check()
-  await expect(eggsCheckbox).toBeChecked()
+  await page.keyboard.press('ArrowDown')
+  await expect(milkCheckbox).toBeChecked()
+  await expect(eggsRow).toHaveClass(/selected/)
 
   await page.keyboard.press('ArrowUp')
 
-  await expect(eggsCheckbox).not.toBeChecked()
+  await expect(milkCheckbox).not.toBeChecked()
   await expect(milkRow).toHaveClass(/selected/)
 })
 
 test('ArrowDown checks the final list item when it cannot navigate farther', async ({ page }) => {
   const dialog = await openTwoItemGroceriesOverlay(page)
+  const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })
   const eggsRow = dialog.locator('.plan-row', { hasText: 'Eggs' })
   const eggsCheckbox = eggsRow.getByRole('checkbox')
 
-  await eggsRow.click()
+  await page.keyboard.press('ArrowDown')
+  await milkRow.getByRole('checkbox').uncheck()
   await page.keyboard.press('ArrowDown')
 
   await expect(eggsCheckbox).toBeChecked()

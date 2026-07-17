@@ -57,8 +57,8 @@
 
   // Selecting a row also moves DOM focus onto it (keeping focus inside the panel
   // so the next keystroke still reaches handleKeydown) and scrolls it into view.
-  // Moving down checks off the row being left; moving up reopens it. Clicking a
-  // different row retains the existing behavior of completing the previous row.
+  // Moving down checks off the row being left; moving up reopens the row being
+  // selected. Clicking a different row completes the previous row.
   function selectItem(itemId: Id, selectedItemDone?: boolean) {
     const previousItemId = selectedItemId
     selectedItemId = itemId
@@ -68,7 +68,7 @@
 
   function updateSelectedItem(itemId: Id | null, nextItemId: Id, done: boolean) {
     if (!itemId || (!done && itemId === nextItemId)) return
-    const item = findPlanItem(instance.items, itemId)
+    const item = findPlanItem(instance.items, done ? itemId : nextItemId)
     if (!item || item.done === done) return
     // Items that reference a metric can only be completed via their survey, so
     // advancing past one must not silently check it off.
@@ -128,8 +128,9 @@
     return null
   }
 
-  // Arrow keys move the selection, updating the current row in the direction of
-  // travel: down completes it (including the final row) and up reopens it.
+  // Arrow keys move the selection, updating the row behind the direction of
+  // travel: down completes the row being left (including the final row), while
+  // up reopens the row being selected.
   export function moveSelection(direction: -1 | 1) {
     const ids = flattenIds(instance.items)
     if (ids.length === 0) return

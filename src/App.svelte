@@ -349,6 +349,13 @@ return rows`
     if (link.kind === 'list') {
       const listId = plannerStore.ensureListForDate(link.listTemplateId, date)
       if (listId) {
+        if (!Object.prototype.hasOwnProperty.call(selectedListOverlayItemIdsByList, listId)) {
+          const instance = $plannerStore.lists.find((list) => list.id === listId)
+          selectedListOverlayItemIdsByList = {
+            ...selectedListOverlayItemIdsByList,
+            [listId]: instance ? (flattenItemIds(instance.items)[0] ?? null) : null,
+          }
+        }
         listOverlayArmed = false
         listOverlayView = view
         delete listOverlayScrollTopsByList[listId]
