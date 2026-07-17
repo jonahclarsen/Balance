@@ -29,7 +29,7 @@
       title: 'General',
       shortcuts: [
         { keys: ['mod', 'K'], label: 'Open / close search' },
-        { keys: ['mod', 'F'], label: 'Open search' },
+        { keys: ['mod', 'F'], label: 'Find in current document' },
         { keys: ['mod', 'Z'], label: 'Undo' },
         { keys: ['mod', 'shift', 'Z'], label: 'Redo', alt: ['mod', 'shift', 'C'] },
         { keys: ['mod', 'shift', 'P'], label: 'Open recovery panel' },
@@ -39,11 +39,18 @@
       ],
     },
     {
-      title: 'Navigate days',
+      title: 'Navigate',
       shortcuts: [
+        { keys: ['alt', 'C'], label: 'Search' },
+        { keys: ['alt', 'T'], label: 'Open Today / jump to today' },
+        { keys: ['alt', 'R'], label: 'Open Lists' },
+        { keys: ['alt', 'D'], label: 'Open Day Templates' },
+        { keys: ['alt', 'E'], label: 'Open List Templates' },
+        { keys: ['alt', 'V'], label: 'Open Metrics' },
+        { keys: ['alt', 'G'], label: 'Open Goals' },
+        { keys: ['alt', 'S'], label: 'Open Settings' },
         { keys: ['alt', 'Q'], label: 'Previous day (or list template)' },
         { keys: ['alt', 'W'], label: 'Next day (or list template)' },
-        { keys: ['alt', 'T'], label: 'Jump to today' },
       ],
     },
     {

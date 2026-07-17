@@ -15,6 +15,7 @@
   import RichTextEditor from './lib/RichTextEditor.svelte'
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
+  import DocumentFindBar from './lib/DocumentFindBar.svelte'
   import Celebration from './lib/Celebration.svelte'
   import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
@@ -64,9 +65,18 @@
   // value when the user hasn't chosen a custom color yet.
   const DEFAULT_DONE_TINT = '#3f9d54'
   const DEFAULT_CHECKBOX_COLOR = '#4392d5'
+  const isMac = /Mac|iPhone|iPad|iPod/.test(
+    (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '',
+  )
+
+  function altShortcutLabel(key: string): string {
+    return `${isMac ? '⌥' : 'Alt+'}${key}`
+  }
 
   let view: View = 'today'
   let searchOpen = false
+  let documentFindOpen = false
+  let documentFindBar: DocumentFindBar | null = null
   let shortcutsHelpOpen = false
   let workspaceEl: HTMLElement
   let scrollPositionsByPage: Record<string, number> = {}
@@ -1334,13 +1344,29 @@ return rows`
 
     if (primaryModifier && !event.altKey && !event.shiftKey && key === 'k') {
       event.preventDefault()
+      documentFindOpen = false
+      searchOpen = !searchOpen
+      return
+    }
+
+    if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyC') {
+      event.preventDefault()
+      documentFindOpen = false
       searchOpen = !searchOpen
       return
     }
 
     if (primaryModifier && !event.altKey && !event.shiftKey && key === 'f') {
       event.preventDefault()
-      searchOpen = true
+      searchOpen = false
+      documentFindOpen = true
+      void tick().then(() => documentFindBar?.focus())
+      return
+    }
+
+    if (documentFindOpen && event.key === 'Escape') {
+      event.preventDefault()
+      documentFindOpen = false
       return
     }
 
@@ -1350,6 +1376,36 @@ return rows`
         searchOpen = false
       }
       return
+    }
+
+    if (event.altKey && !primaryModifier && !event.shiftKey) {
+      const sidebarViewByCode: Partial<Record<string, View>> = {
+        KeyR: 'lists',
+        KeyD: 'templates',
+        KeyE: 'listTemplates',
+        KeyV: 'metrics',
+        KeyS: 'settings',
+      }
+      const sidebarView = sidebarViewByCode[event.code]
+
+      if (sidebarView) {
+        event.preventDefault()
+        view = sidebarView
+        return
+      }
+
+      if (event.code === 'KeyT') {
+        event.preventDefault()
+        view = 'today'
+        plannerStore.setActivePlanDate(todayISO())
+        return
+      }
+
+      if (event.code === 'KeyG') {
+        event.preventDefault()
+        void openGoals()
+        return
+      }
     }
 
     // While the list overlay toast is open it owns the keyboard: route arrows and
@@ -1483,12 +1539,6 @@ return rows`
         event.preventDefault()
         if (view === 'listTemplates') void selectAdjacentListTemplate(1)
         else if (view === 'today' || view === 'lists') shiftActivePlanDate(1)
-        return
-      }
-
-      if (event.code === 'KeyT' && (view === 'today' || view === 'lists')) {
-        event.preventDefault()
-        plannerStore.setActivePlanDate(todayISO())
         return
       }
     }
@@ -2549,6 +2599,10 @@ return rows`
   on:pointerup={endItemSelection}
 />
 
+{#if documentFindOpen}
+  <DocumentFindBar bind:this={documentFindBar} onClose={() => (documentFindOpen = false)} />
+{/if}
+
 {#if showAutoExportError}
   <div class="auto-export-banner" role="alert">
     <span class="auto-export-banner-icon" aria-hidden="true">⚠</span>
@@ -2583,21 +2637,22 @@ return rows`
       <p class="muted">Local-first daily planning</p>
     </div>
 
-    <nav aria-label="Primary">
+    <nav class="primary-nav" aria-label="Primary">
       <button
         class:active={searchOpen}
         type="button"
-        title="Search (Cmd/Ctrl+K)"
+        title="Search (Alt+C or Cmd/Ctrl+K)"
         aria-label="Search"
+        aria-keyshortcuts="Alt+C"
         on:click={() => (searchOpen = true)}
-      >⌕ Search</button>
-      <button class:active={view === 'today'} type="button" on:click={() => (view = 'today')}>Today</button>
-      <button class:active={view === 'lists'} type="button" on:click={() => (view = 'lists')}>Lists</button>
-      <button class:active={view === 'templates'} type="button" on:click={() => (view = 'templates')}>Day Templates</button>
-      <button class:active={view === 'listTemplates'} type="button" on:click={() => (view = 'listTemplates')}>List Templates</button>
-      <button class:active={view === 'metrics'} type="button" on:click={() => (view = 'metrics')}>Metrics</button>
-      <button class:active={view === 'goals'} type="button" on:click={() => { void openGoals() }}>Goals</button>
-      <button class:active={view === 'settings'} type="button" on:click={() => (view = 'settings')}>Settings</button>
+      ><span>⌕ Search</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd></button>
+      <button class:active={view === 'today'} type="button" title="Today (Alt+T)" aria-keyshortcuts="Alt+T" on:click={() => (view = 'today')}><span>Today</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('T')}</kbd></button>
+      <button class:active={view === 'lists'} type="button" title="Lists (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => (view = 'lists')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
+      <button class:active={view === 'templates'} type="button" title="Day Templates (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => (view = 'templates')}><span>Day Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
+      <button class:active={view === 'listTemplates'} type="button" title="List Templates (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => (view = 'listTemplates')}><span>List Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
+      <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => (view = 'metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
+      <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => { void openGoals() }}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
+      <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => (view = 'settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
     </nav>
 
     <div class="sidebar-footer">

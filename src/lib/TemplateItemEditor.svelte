@@ -317,6 +317,7 @@
           <ProbabilitySlider
             value={option.probability}
             min={0}
+            step={5}
             editable
             onChange={(probability) => patchOption(templateId, item.id, option.id, { probability })}
           />

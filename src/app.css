@@ -228,6 +228,33 @@ nav button.active {
   color: var(--accent-strong);
 }
 
+.primary-nav button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.nav-shortcut {
+  min-width: 30px;
+  border: 1px solid var(--line);
+  border-bottom-color: var(--line-strong);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--paper) 72%, transparent);
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 17px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.primary-nav button.active .nav-shortcut {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  color: inherit;
+}
+
 .search-result-target {
   animation: search-result-target 1.8s ease-out;
 }
@@ -2058,6 +2085,10 @@ nav button.active {
     text-align: center;
     white-space: nowrap;
     font-size: 12px;
+  }
+
+  .nav-shortcut {
+    display: none;
   }
 
   .workspace {

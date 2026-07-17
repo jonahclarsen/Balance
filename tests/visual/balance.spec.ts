@@ -70,6 +70,52 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   })
 })
 
+test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const shortcuts = [
+    { key: 't', label: 'Today' },
+    { key: 'r', label: 'Lists' },
+    { key: 'd', label: 'Day Templates' },
+    { key: 'e', label: 'List Templates' },
+    { key: 'v', label: 'Metrics' },
+    { key: 'g', label: 'Goals' },
+    { key: 's', label: 'Settings' },
+  ]
+
+  for (const { key, label } of shortcuts) {
+    const menuItem = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: label, exact: true })
+    await expect(menuItem).toHaveAttribute('aria-keyshortcuts', `Alt+${key.toUpperCase()}`)
+    await expect(menuItem.locator('.nav-shortcut')).toHaveText(new RegExp(`^(?:⌥|Alt\\+)${key.toUpperCase()}$`))
+    await page.keyboard.press(`Alt+${key}`)
+    await expect(menuItem).toHaveClass(/active/)
+  }
+
+  const search = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Search', exact: true })
+  await expect(search).toHaveAttribute('aria-keyshortcuts', 'Alt+C')
+  await expect(search.locator('.nav-shortcut')).toHaveText(/^(?:⌥|Alt\+)C$/)
+  await page.keyboard.press('Alt+c')
+  await expect(page.getByRole('dialog', { name: 'Search Balance' })).toBeVisible()
+})
+
+test('Cmd or Ctrl+F searches the current document instead of opening overall search', async ({ page }) => {
+  await page.goto('/')
+
+  await page.keyboard.press('Meta+f')
+  const find = page.getByRole('search', { name: 'Find in current document' })
+  await expect(find).toBeVisible()
+  await expect(page.getByRole('dialog', { name: 'Search Balance' })).toHaveCount(0)
+
+  await find.getByLabel('Find text').fill('Daily plan')
+  await expect(find.getByRole('status')).toHaveText('Match')
+  await expect.poll(async () => page.evaluate(() => window.getSelection()?.toString().toLowerCase())).toBe('daily plan')
+
+  await page.keyboard.press('Escape')
+  await expect(find).toHaveCount(0)
+})
+
 test('daily reminder edits the selected day and future days inherit it', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1605,6 +1651,27 @@ test('template options use rich text formatting and generate formatted plan item
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
   await expect.poll(async () => firstPlanItemHTML(page)).toContain('<strong>Template</strong> <em>Link</em>')
+})
+
+test('day template probabilities snap to five-percent increments', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+
+  const probability = page.getByLabel('Probability percent').first()
+  await probability.fill('73')
+  await probability.blur()
+
+  await expect(probability).toHaveValue('75')
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return state.templates?.[0]?.items?.[0]?.options?.[0]?.probability
+      }),
+    )
+    .toBe(75)
 })
 
 test('generating from a future date uses the selected date and latest template edits', async ({ page }) => {
