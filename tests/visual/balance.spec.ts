@@ -152,21 +152,24 @@ test('checkbox color can be changed in settings and persists', async ({ page }) 
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
 
   const colorPicker = page.getByLabel('Checked checkbox color')
-  await colorPicker.fill('#d05080')
+  await colorPicker.focus()
+  await colorPicker.press('Shift+ArrowRight')
+  await colorPicker.press('Shift+ArrowDown')
+  const selectedColor = await page.evaluate(() => localStorage.getItem('balance:checkboxColor'))
+  expect(selectedColor).toMatch(/^#[0-9a-f]{6}$/)
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('balance:checkboxColor')))
-    .toBe('#d05080')
-  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
-    'background-color',
-    'rgb(208, 80, 128)',
+    .toBe(selectedColor)
+  const previewColor = await page.getByRole('checkbox', { name: 'Example checked checkbox' }).evaluate(
+    (checkbox) => getComputedStyle(checkbox).backgroundColor,
   )
 
   await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await expect(planCheckbox).toHaveCSS('background-color', 'rgb(208, 80, 128)')
+  await expect(planCheckbox).toHaveCSS('background-color', previewColor)
 
   await page.reload()
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
-  await expect(colorPicker).toHaveValue('#d05080')
+  await expect(page.getByLabel('Checked checkbox hex code')).toHaveValue(selectedColor!)
 })
 
 test('plan items can be nested and un-nested with the drag handle', async ({ page }) => {

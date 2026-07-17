@@ -1,18 +1,18 @@
 <script lang="ts">
-  import { hueToHex } from './goals'
+  import { normalizePickerHue, normalizePickerLightness, pickerColorToHex, type PickerColor } from './colors'
 
   export let hue: number
   export let lightness: number
-  export let ariaLabel = 'Goal color'
-  export let onChange: (color: { hue: number; lightness: number }) => void
+  export let ariaLabel = 'Color'
+  export let onChange: (color: PickerColor) => void
 
-  $: normalizedHue = Math.max(0, Math.min(359, Math.round(hue)))
-  $: normalizedLightness = Math.max(0, Math.min(100, Math.round(lightness)))
+  $: normalizedHue = normalizePickerHue(hue)
+  $: normalizedLightness = normalizePickerLightness(lightness)
   $: thumbX = (normalizedHue / 359) * 100
   $: thumbY = 100 - normalizedLightness
 
   function updateFromPointer(event: PointerEvent) {
-    const picker = event.currentTarget as HTMLDivElement
+    const picker = event.currentTarget as HTMLButtonElement
     const bounds = picker.getBoundingClientRect()
     const x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width))
     const y = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height))
@@ -26,14 +26,14 @@
   function handlePointerDown(event: PointerEvent) {
     if (event.button !== 0) return
 
-    const picker = event.currentTarget as HTMLDivElement
+    const picker = event.currentTarget as HTMLButtonElement
     picker.setPointerCapture(event.pointerId)
     picker.focus()
     updateFromPointer(event)
   }
 
   function handlePointerMove(event: PointerEvent) {
-    const picker = event.currentTarget as HTMLDivElement
+    const picker = event.currentTarget as HTMLButtonElement
     if (!picker.hasPointerCapture(event.pointerId)) return
     updateFromPointer(event)
   }
@@ -57,7 +57,7 @@
 
 <button
   type="button"
-  class="goal-color-picker"
+  class="color-picker"
   aria-label={ariaLabel}
   title={`Hue ${normalizedHue}°, lightness ${normalizedLightness}%. Use left and right for hue; up and down for lightness.`}
   on:pointerdown={handlePointerDown}
@@ -65,13 +65,14 @@
   on:keydown={handleKeydown}
 >
   <span
-    class="goal-color-picker-thumb"
-    style={`left: clamp(8px, ${thumbX}%, calc(100% - 8px)); top: clamp(8px, ${thumbY}%, calc(100% - 8px)); background: ${hueToHex(normalizedHue, normalizedLightness)}`}
+    class="color-picker-thumb"
+    style={`left: clamp(8px, ${thumbX}%, calc(100% - 8px)); top: clamp(8px, ${thumbY}%, calc(100% - 8px)); background: ${pickerColorToHex({ hue: normalizedHue, lightness: normalizedLightness })}`}
   ></span>
 </button>
 
 <style>
-  .goal-color-picker {
+  .color-picker {
+    appearance: none;
     position: relative;
     display: block;
     width: 100%;
@@ -96,14 +97,19 @@
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.15);
     cursor: crosshair;
     touch-action: none;
+    transition: filter 120ms ease;
   }
 
-  .goal-color-picker:focus-visible {
+  .color-picker:hover {
+    filter: brightness(0.97);
+  }
+
+  .color-picker:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
 
-  .goal-color-picker-thumb {
+  .color-picker-thumb {
     position: absolute;
     width: 16px;
     height: 16px;

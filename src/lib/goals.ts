@@ -461,53 +461,6 @@ export function shiftISODate(date: string, days: number): string {
   return `${year}-${month}-${day}`
 }
 
-export function hueToHex(hue: number, lightnessControl = 50): string {
-  const normalized = normalizeHue(hue)
-  const saturation = 0.58
-  // Mirror the CSS: a representative 48% base lightness shifted by the control.
-  const lightness = Math.max(0, Math.min(1, 0.48 + goalLightnessShift(lightnessControl) / 100))
-  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation
-  const x = chroma * (1 - Math.abs(((normalized / 60) % 2) - 1))
-  const offset = lightness - chroma / 2
-  const [red, green, blue] =
-    normalized < 60
-      ? [chroma, x, 0]
-      : normalized < 120
-        ? [x, chroma, 0]
-        : normalized < 180
-          ? [0, chroma, x]
-          : normalized < 240
-            ? [0, x, chroma]
-            : normalized < 300
-              ? [x, 0, chroma]
-              : [chroma, 0, x]
-
-  return `#${[red, green, blue]
-    .map((channel) => Math.round((channel + offset) * 255).toString(16).padStart(2, '0'))
-    .join('')}`
-}
-
-export function hexToHue(hex: string): number {
-  const match = /^#?([0-9a-f]{6})$/i.exec(hex)
-  if (!match) return 0
-
-  const value = match[1]
-  const red = Number.parseInt(value.slice(0, 2), 16) / 255
-  const green = Number.parseInt(value.slice(2, 4), 16) / 255
-  const blue = Number.parseInt(value.slice(4, 6), 16) / 255
-  const max = Math.max(red, green, blue)
-  const min = Math.min(red, green, blue)
-  const delta = max - min
-  if (delta === 0) return 0
-
-  const raw =
-    max === red
-      ? ((green - blue) / delta) % 6
-      : max === green
-        ? (blue - red) / delta + 2
-        : (red - green) / delta + 4
-  return normalizeHue(raw * 60)
-}
 
 function matchingPlanItems(plan: DailyPlan, goal: Goal): { itemIds: Id[]; matchedTerms: string[] } {
   const itemIds: Id[] = []

@@ -2,7 +2,7 @@
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
-  import GoalColorPicker from './lib/GoalColorPicker.svelte'
+  import ColorPicker from './lib/ColorPicker.svelte'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
@@ -33,6 +33,7 @@
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
 
   // Pasting four or more items onto a different day routes through a review queue
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
@@ -269,6 +270,8 @@ return rows`
   $: filteredGoals = filterGoalsByPhrase(sortedGoals, goalSearch)
   $: doneTintHex = doneTintColor || DEFAULT_DONE_TINT
   $: checkboxColorHex = checkboxColor || DEFAULT_CHECKBOX_COLOR
+  $: doneTintPickerColor = hexToPickerColor(doneTintHex)
+  $: checkboxPickerColor = hexToPickerColor(checkboxColorHex)
   // Blend the chosen color in lightly so the row reads as a tint, not a fill.
   $: doneTintValue = `color-mix(in srgb, ${doneTintHex} 14%, transparent)`
   $: contentShellStyle = [
@@ -769,6 +772,14 @@ return rows`
     if (!normalized) return
     checkboxColor = normalized
     localStorage.setItem(CHECKBOX_COLOR_KEY, normalized)
+  }
+
+  function updateDoneTintFromPicker(color: PickerColor) {
+    updateDoneTint(pickerColorToHex(color))
+  }
+
+  function updateCheckboxColorFromPicker(color: PickerColor) {
+    updateCheckboxColor(pickerColorToHex(color))
   }
 
   function clearGoalRhythmAutoShowTimer() {
@@ -3118,7 +3129,7 @@ return rows`
         </label>
         <div class="goal-color-field">
           <span>Color</span>
-          <GoalColorPicker
+          <ColorPicker
             hue={newGoalHue}
             lightness={newGoalLightness}
             ariaLabel="New goal color"
@@ -3206,7 +3217,7 @@ return rows`
                 </label>
                 <div class="goal-color-field">
                   <span>Color</span>
-                  <GoalColorPicker
+                  <ColorPicker
                     hue={goal.hue}
                     lightness={goal.lightness}
                     ariaLabel={`Color for ${goal.name}`}
@@ -3259,13 +3270,13 @@ return rows`
 
           <div class="done-tint-row">
             <div class="completed-color-controls">
-              <label class="done-tint-control">
+              <div class="done-tint-control">
                 <span class="color-control-label">Checkbox</span>
-                <input
-                  type="color"
-                  aria-label="Checked checkbox color"
-                  value={checkboxColorHex}
-                  on:input={(event) => updateCheckboxColor(event.currentTarget.value)}
+                <ColorPicker
+                  hue={checkboxPickerColor.hue}
+                  lightness={checkboxPickerColor.lightness}
+                  ariaLabel="Checked checkbox color"
+                  onChange={updateCheckboxColorFromPicker}
                 />
                 <input
                   class="done-tint-hex"
@@ -3276,15 +3287,15 @@ return rows`
                   value={checkboxColorHex}
                   on:change={(event) => updateCheckboxColor(event.currentTarget.value)}
                 />
-              </label>
+              </div>
 
-              <label class="done-tint-control">
+              <div class="done-tint-control">
                 <span class="color-control-label">Row tint</span>
-                <input
-                  type="color"
-                  aria-label="Completed item tint color"
-                  value={doneTintHex}
-                  on:input={(event) => updateDoneTint(event.currentTarget.value)}
+                <ColorPicker
+                  hue={doneTintPickerColor.hue}
+                  lightness={doneTintPickerColor.lightness}
+                  ariaLabel="Completed item tint color"
+                  onChange={updateDoneTintFromPicker}
                 />
                 <input
                   class="done-tint-hex"
@@ -3295,7 +3306,7 @@ return rows`
                   value={doneTintHex}
                   on:change={(event) => updateDoneTint(event.currentTarget.value)}
                 />
-              </label>
+              </div>
             </div>
 
             <div class="done-tint-preview plan-row done" aria-label="Example completed item">

@@ -793,30 +793,25 @@ nav button.active {
 
 .completed-color-controls {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 240px));
   gap: 10px;
 }
 
 .done-tint-control {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  gap: 6px;
 }
 
 .color-control-label {
-  width: 64px;
   color: var(--muted);
-  font-size: 13px;
-}
-
-.done-tint-control input[type='color'] {
-  width: 40px;
-  height: 34px;
-  padding: 2px;
-  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .done-tint-hex {
-  width: 92px;
+  width: 100%;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   text-transform: lowercase;
 }
