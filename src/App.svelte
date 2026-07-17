@@ -31,6 +31,7 @@
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { DailyPlan, Id, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
+  import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
 
   // Pasting four or more items onto a different day routes through a review queue
@@ -1427,7 +1428,7 @@ return rows`
       const rootIds = selectedRootIds()
       if (rootIds.length === 0) return
       event.preventDefault()
-      moveSelectedItems(rootIds, event.key === 'ArrowUp' ? 'up' : 'down')
+      void moveSelectedItems(rootIds, event.key === 'ArrowUp' ? 'up' : 'down')
       return
     }
 
@@ -1845,13 +1846,15 @@ return rows`
     }
   }
 
-  function moveSelectedItems(rootIds: Id[], direction: MoveDirection) {
+  async function moveSelectedItems(rootIds: Id[], direction: MoveDirection) {
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
     if (!surface || !containerId) return
     if (surface === 'plan') plannerStore.movePlanItemsWithinLevel(containerId, rootIds, direction)
     else if (surface === 'day-template') plannerStore.moveTemplateItemsWithinLevel(containerId, rootIds, direction)
     else plannerStore.moveListTemplateItemsWithinLevel(containerId, rootIds, direction)
+    await tick()
+    scrollMovedItemsIntoView(surface satisfies ItemRowKind, rootIds, direction)
   }
 
   async function pasteTemplateSystemClipboard() {

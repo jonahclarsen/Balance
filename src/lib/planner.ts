@@ -1159,6 +1159,55 @@ export function sanitizeInlineHTML(value: string): string {
   return stripTrailingLineBreaks(sanitized)
 }
 
+// Converts bare web URLs in pasted content to anchors while preserving its
+// allowed inline formatting. Existing anchors are left alone.
+export function linkifyExternalURLs(value: string): string {
+  const sanitized = sanitizeInlineHTML(value)
+  if (!globalThis.document) return sanitized
+
+  const template = document.createElement('template')
+  template.innerHTML = sanitized
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.parentElement?.closest('a')) continue
+    textNodes.push(node as Text)
+  }
+
+  for (const textNode of textNodes) {
+    const text = textNode.textContent ?? ''
+    const matches = Array.from(text.matchAll(/https?:\/\/[^\s<>"']+/gi))
+    if (matches.length === 0) continue
+
+    const fragment = document.createDocumentFragment()
+    let cursor = 0
+    for (const match of matches) {
+      const start = match.index ?? 0
+      let url = match[0]
+      let trailing = ''
+      while (/[.,!?;:)\]]$/.test(url)) {
+        trailing = url.at(-1) + trailing
+        url = url.slice(0, -1)
+      }
+      if (!isURL(url)) continue
+
+      fragment.append(text.slice(cursor, start))
+      const anchor = document.createElement('a')
+      anchor.setAttribute('href', url)
+      anchor.setAttribute('target', '_blank')
+      anchor.setAttribute('rel', 'noreferrer')
+      anchor.textContent = url
+      fragment.append(anchor, trailing)
+      cursor = start + match[0].length
+    }
+    if (cursor === 0) continue
+    fragment.append(text.slice(cursor))
+    textNode.replaceWith(fragment)
+  }
+
+  return Array.from(template.content.childNodes).map(sanitizeNode).join('')
+}
+
 // Removes line breaks at the rendered end of the content. A flat regex isn't
 // enough: when the last formatted line of an item is deleted, WebKit (and
 // Chromium) keep the caret placeholder inside the formatting wrapper — e.g.

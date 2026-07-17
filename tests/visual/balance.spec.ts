@@ -714,6 +714,35 @@ test('plan item text fields support arrow focus and option-arrow sibling moves',
     .toEqual({ workIndex: 1, childCount: 2 })
 })
 
+test('option-arrow keeps a moved item and two surrounding rows visible', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Desktop workspace scrolling is covered separately from window scrolling')
+
+  const texts = Array.from({ length: 20 }, (_, index) => `Move row ${index + 1}`)
+  await seedPlanItems(page, texts)
+  await focusInputByValue(page, texts[0])
+
+  for (let index = 0; index < 10; index += 1) await page.keyboard.press('Alt+ArrowDown')
+
+  await expect.poll(async () => activeInputValue(page)).toBe(texts[0])
+  await expect
+    .poll(() =>
+      page.evaluate((movedText) => {
+        const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
+        const movedIndex = rows.findIndex((row) => row.textContent?.includes(movedText))
+        const workspace = document.querySelector<HTMLElement>('.workspace')
+        if (movedIndex < 2 || movedIndex + 2 >= rows.length || !workspace) return null
+
+        const viewport = workspace.getBoundingClientRect()
+        return {
+          scrolled: workspace.scrollTop > 0,
+          twoAboveVisible: rows[movedIndex - 2].getBoundingClientRect().top >= viewport.top - 1,
+          twoBelowVisible: rows[movedIndex + 2].getBoundingClientRect().bottom <= viewport.bottom + 1,
+        }
+      }, texts[0]),
+    )
+    .toEqual({ scrolled: true, twoAboveVisible: true, twoBelowVisible: true })
+})
+
 test('plan item text fields support left and right boundary focus', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1498,6 +1527,20 @@ test('plan item rich text preserves paste formatting and supports shortcuts', as
       target: '_blank',
       features: 'noopener,noreferrer',
     })
+
+  await setFocusedEditorHTML(page, '')
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.evaluate(async () => {
+    await navigator.clipboard.writeText('Read https://pasted.local/guide, then continue.')
+  })
+  await page.keyboard.press('Meta+V')
+
+  await expect
+    .poll(async () => richHTMLForFocusedItem(page))
+    .toContain('Read <a href="https://pasted.local/guide" target="_blank" rel="noreferrer">https://pasted.local/guide</a>, then continue.')
+  await expect
+    .poll(async () => storedHTMLForFocusedItem(page))
+    .toContain('Read <a href="https://pasted.local/guide" target="_blank" rel="noreferrer">https://pasted.local/guide</a>, then continue.')
 })
 
 test('template options use rich text formatting and generate formatted plan items', async ({ page, browserName }) => {

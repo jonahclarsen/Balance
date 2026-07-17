@@ -7,6 +7,7 @@
     internalLinkId,
     isURL,
     itemLinkFromAnchor,
+    linkifyExternalURLs,
     renderItemDisplayHTML,
     sanitizeInlineHTML,
     type ItemLink,
@@ -400,14 +401,9 @@
     }
 
     if (clipboardHTML || clipboardText) {
-      const trimmedText = clipboardText.trim()
-      let pastedHTML = clipboardHTML
-        ? sanitizeInlineHTML(clipboardHTML)
-        : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>')
-      if (!clipboardHTML && isURL(trimmedText)) {
-        const url = escapeHTML(trimmedText)
-        pastedHTML = `<a href="${url}" target="_blank" rel="noreferrer">${url}</a>`
-      }
+      const pastedHTML = linkifyExternalURLs(
+        clipboardHTML ? clipboardHTML : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>'),
+      )
       pendingPasteInput = true
       document.execCommand('insertHTML', false, pastedHTML)
       persistPasteIfInputDidNotFire(activeEditor)

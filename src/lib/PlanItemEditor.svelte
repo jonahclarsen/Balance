@@ -3,6 +3,7 @@
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { dueTodayGoalsForItem, goalLightnessShift, goalMatchesForItem } from './goals'
   import { defaultPlanItemTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeExceedsAncestor, planItemTimeOverlapsPrevious, renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
+  import { scrollMovedItemsIntoView } from './itemScroll'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
@@ -184,6 +185,7 @@
       moveItemWithinLevel(planId, item.id, direction)
       await tick()
       focusItemTextInput(item.id)
+      scrollMovedItemsIntoView('plan', [item.id], direction)
       return
     }
 

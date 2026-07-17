@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { expectedWordCount, htmlToPlainText, wordCount } from './planner'
+  import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
@@ -84,6 +85,7 @@
       moveItemWithinLevel(templateId, item.id, direction)
       await tick()
       focusListItemInput(item.id)
+      scrollMovedItemsIntoView('list-template', [item.id], direction)
       return
     }
     if (event.shiftKey) {

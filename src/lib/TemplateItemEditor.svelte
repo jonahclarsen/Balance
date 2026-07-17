@@ -2,6 +2,7 @@
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { defaultTemplateItemTimeRange, planItemTimeExceedsAncestor, planItemTimeOverlapsPrevious } from './planner'
+  import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
@@ -101,6 +102,7 @@
       moveItemWithinLevel(templateId, item.id, direction)
       await tick()
       focusTemplateOptionTextInput(optionId)
+      scrollMovedItemsIntoView('day-template', [item.id], direction)
       return
     }
 
