@@ -926,7 +926,7 @@ nav button.active {
   width: 100%;
   border-radius: inherit;
   clip-path: inset(0 calc(100% - var(--list-progress, 0%)) 0 0);
-  transition: clip-path 200ms ease-in-out;
+  transition: clip-path 200ms ease-out;
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.12) 43%, rgba(255, 255, 255, 0.44)),
     linear-gradient(120deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0) 22% 48%, rgba(255, 255, 255, 0.34) 68%, rgba(255, 255, 255, 0) 86%),

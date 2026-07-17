@@ -122,7 +122,7 @@ test('list overlay header progress fills as items are checked off', async ({ pag
   await expect(progress).toHaveCSS('--list-progress', '0%')
   await expect(progressFill).toHaveCSS('transition-property', 'clip-path')
   await expect(progressFill).toHaveCSS('transition-duration', '0.2s')
-  await expect(progressFill).toHaveCSS('transition-timing-function', 'ease-in-out')
+  await expect(progressFill).toHaveCSS('transition-timing-function', 'ease-out')
 
   await dialog.locator('.plan-row', { hasText: 'Milk' }).getByRole('checkbox').check()
 
