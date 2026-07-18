@@ -289,6 +289,22 @@ export function dueTodayGoalsForItem(item: PlanItem, dueTodayGoals: Goal[]): Goa
   return dueTodayGoals.filter((goal) => goal.matchTerms.some((term) => textMatchesGoalTerm(normalizedText, term)))
 }
 
+/**
+ * Active goals on `date` whose match terms appear in the item's text — i.e. the
+ * goals that checking this item off contributes toward. Unlike
+ * `goalMatchesForItem` (which reads reconciled completions) this scans the text
+ * directly and ignores `item.done`, so callers can react at the exact moment an
+ * item is completed, before reconciliation has run.
+ */
+export function goalsMatchingItemText(item: PlanItem, goals: Goal[], date: string): Goal[] {
+  const normalizedText = item.text.toLocaleLowerCase()
+  return goals.filter(
+    (goal) =>
+      isGoalActiveOnDate(goal, date) &&
+      goal.matchTerms.some((term) => textMatchesGoalTerm(normalizedText, term)),
+  )
+}
+
 export function planItemGoalMatchesChanged(
   goals: Goal[],
   date: string,

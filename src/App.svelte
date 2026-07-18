@@ -17,7 +17,8 @@
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
   import DocumentFindBar from './lib/DocumentFindBar.svelte'
   import Celebration from './lib/Celebration.svelte'
-  import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
+  import GoalBurst from './lib/GoalBurst.svelte'
+  import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, goalsMatchingItemText, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
     exportHTML,
@@ -30,7 +31,7 @@
     plannerStore,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { DailyPlan, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
+  import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
@@ -96,6 +97,10 @@
   let celebrationDate: string | null = null
   let celebrationListId: Id | null = null
   let celebrationKind: 'day' | 'list' | null = null
+  let goalBurst: GoalBurst | null = null
+  // Tracks each plan item's done state so we can fire a goal burst the moment an
+  // item that contributes to a goal transitions to done (via any completion path).
+  let goalItemDoneById = new Map<Id, boolean>()
   let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
   let selectedTemplateId = ''
   // Lists + Metrics feature state
@@ -314,6 +319,7 @@ return rows`
   $: filteredDatabaseHistoryEntries = filterDatabaseRows(databaseInspection?.historyEntries ?? [], databaseSearch)
   $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
   $: observeActivePlanCompletion(activePlan, $plannerStore.activePlanDate, view, completionTrackingReady)
+  $: observeGoalItemCompletions(activePlan, view, completionTrackingReady)
   $: observeListCompletions(
     $plannerStore.lists,
     view === 'lists' ? (listViewInstance?.id ?? null) : null,
@@ -396,6 +402,44 @@ return rows`
     celebrationListId = null
     celebrationKind = null
     celebration?.dismiss()
+  }
+
+  // Fire a fun burst whenever a plan item that contributes to a goal is checked
+  // off. Diffing done state here (rather than at each checkbox) catches every
+  // completion path — checkbox, keyboard `d`, and bulk toggles alike.
+  function observeGoalItemCompletions(plan: DailyPlan | undefined, currentView: View, ready: boolean) {
+    if (!ready || !plan) return
+
+    const goals = $plannerStore.goals
+    const justCompleted: { item: PlanItem; goals: Goal[] }[] = []
+
+    const visit = (items: PlanItem[]) => {
+      for (const item of items) {
+        const wasDone = goalItemDoneById.get(item.id)
+        if (wasDone === false && item.done) {
+          const matched = goalsMatchingItemText(item, goals, plan.date)
+          if (matched.length > 0) justCompleted.push({ item, goals: matched })
+        }
+        goalItemDoneById.set(item.id, item.done)
+        visit(item.children)
+      }
+    }
+    visit(plan.items)
+
+    // Only celebrate on the plan surface, where the checked item is on screen.
+    if (currentView !== 'today') return
+    for (const { item, goals: matched } of justCompleted) fireGoalBurst(item.id, matched)
+  }
+
+  function fireGoalBurst(itemId: Id, goals: Goal[]) {
+    requestAnimationFrame(() => {
+      const selector = `[data-plan-item-id="${CSS.escape(itemId)}"]`
+      const row = document.querySelector(selector)
+      const target = row?.querySelector('.check') ?? row
+      const rect = target?.getBoundingClientRect()
+      if (!rect || rect.width === 0) return
+      goalBurst?.burst(rect.left + rect.width / 2, rect.top + rect.height / 2, goals)
+    })
   }
 
   function planItemCompletion(items: PlanItem[]): { done: number; total: number } {
@@ -3660,6 +3704,7 @@ return rows`
 </main>
 
 <Celebration bind:this={celebration} />
+<GoalBurst bind:this={goalBurst} />
 
 {#if pasteReview}
   <div class="paste-review-backdrop">
