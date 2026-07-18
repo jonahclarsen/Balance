@@ -182,6 +182,7 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
   await final.check()
   await expect(page.getByRole('status', { name: 'Day finished' })).toBeVisible()
   await expect(page.locator('.celebration-canvas')).toHaveAttribute('width', /\d+/)
+  await expect(page.locator('.list-celebration')).toHaveCount(0)
 
   await final.uncheck()
   await expect(page.getByRole('status', { name: 'Day finished' })).toHaveCount(0)
@@ -203,10 +204,12 @@ test('checking the final list item celebrates the completed list', async ({ page
   await final.check()
   await expect(page.getByRole('status', { name: 'List finished' })).toBeVisible()
   await expect(page.getByRole('status', { name: 'Day finished' })).toHaveCount(0)
-  await expect(page.locator('.celebration-canvas')).toHaveAttribute('width', /\d+/)
+  await expect(page.locator('.list-celebration')).toBeVisible()
+  await expect(page.locator('.completed-list-card')).toBeVisible()
 
   await final.uncheck()
   await expect(page.getByRole('status', { name: 'List finished' })).toHaveCount(0)
+  await expect(page.locator('.list-celebration')).toHaveCount(0)
 
   await final.check()
   await expect(page.getByRole('status', { name: 'List finished' })).toBeVisible()
@@ -257,6 +260,7 @@ test('completing a linked list celebrates after its overlay closes', async ({ pa
 
   await expect(overlay).toHaveCount(0)
   await expect(page.getByRole('status', { name: 'List finished' })).toBeVisible()
+  await expect(page.locator('.list-celebration')).toBeVisible()
   await expect(page.getByRole('listitem', { name: 'Plan item: [[Victory list]]' }).getByRole('checkbox')).toBeChecked()
 })
 
