@@ -138,6 +138,17 @@ test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 6
   await expect(goalRhythm).toBeVisible()
 })
 
+test('clicking a goal rhythm date opens that day in Today view', async ({ page }) => {
+  const selectedDate = await page.locator('.date-input').inputValue()
+  const targetDate = addDays(selectedDate, 2)
+
+  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  await page.locator(`[data-goal-date="${targetDate}"]`).click()
+
+  await expect(page.getByRole('button', { name: 'Today', exact: true })).toHaveClass(/active/)
+  await expect(page.locator('.date-input')).toHaveValue(targetDate)
+})
+
 test('a completed matching plan item automatically completes a goal and shows its color badge', async ({ page }, testInfo) => {
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await createGoal(page, 'Exercise', 1, 'lift, swim')

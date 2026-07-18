@@ -18,6 +18,7 @@
   export let completions: GoalCompletion[]
   export let viewedDate: string = todayISO()
   export let onOpenGoals: (goalId?: string) => void
+  export let onOpenDate: (date: string) => void
   export let onResizeStart: ((event: PointerEvent) => void) | undefined = undefined
   // A click on a plan item's goal badge sets this to scroll the goal into view.
   export let scrollRequest: { goalId: string; nonce: number } | null = null
@@ -190,17 +191,20 @@
     <div class="goal-history-grid" style={`--goal-day-count: ${dates.length}`}>
       <div class="goal-history-corner">Goal</div>
       {#each dates as date (date)}
-        <div
+        <button
+          type="button"
           class:viewed={date === viewedDate}
           class:today={date === currentDay}
           class:future={date > today}
           class="goal-date-head"
           data-goal-date={date}
-          title={date}
+          aria-label={`Open ${date} in Today view`}
+          title={`Open ${date} in Today view`}
+          on:click={() => onOpenDate(date)}
         >
           <span>{dayLabel(date)}</span>
           <strong>{dateLabel(date)}</strong>
-        </div>
+        </button>
       {/each}
 
       {#each visibleGoals as goal (goal.id)}

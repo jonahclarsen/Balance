@@ -1002,6 +1002,11 @@ return rows`
     plannerStore.setActivePlanDate(shiftISODate($plannerStore.activePlanDate || todayISO(), days))
   }
 
+  function openDateInToday(date: string) {
+    plannerStore.setActivePlanDate(date)
+    view = 'today'
+  }
+
   function usesWindowScroll() {
     return window.matchMedia('(max-width: 760px)').matches
   }
@@ -3610,6 +3615,7 @@ return rows`
         completions={$plannerStore.goalCompletions}
         viewedDate={$plannerStore.activePlanDate || todayISO()}
         onOpenGoals={openGoals}
+        onOpenDate={openDateInToday}
         onResizeStart={startGoalHistoryResize}
         scrollRequest={goalRhythmScrollRequest}
       />
