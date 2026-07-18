@@ -433,13 +433,46 @@ return rows`
 
   function fireGoalBurst(itemId: Id, goals: Goal[]) {
     requestAnimationFrame(() => {
-      const selector = `[data-plan-item-id="${CSS.escape(itemId)}"]`
-      const row = document.querySelector(selector)
-      const target = row?.querySelector('.check') ?? row
-      const rect = target?.getBoundingClientRect()
+      const row = document.querySelector<HTMLElement>(`[data-plan-item-id="${CSS.escape(itemId)}"]`)
+      const check = row?.querySelector<HTMLElement>('.check') ?? row
+      const rect = check?.getBoundingClientRect()
       if (!rect || rect.width === 0) return
-      goalBurst?.burst(rect.left + rect.width / 2, rect.top + rect.height / 2, goals)
+
+      // A quick springy nudge on the completed row, tinted with the goal color.
+      if (row) {
+        const goal = goals[0]
+        row.style.setProperty('--goal-pop-color', `hsla(${goal.hue}, 74%, 55%, 0.65)`)
+        pulseElement(row, 'goal-row-pop', 600)
+      }
+
+      goalBurst?.burst(rect.left + rect.width / 2, rect.top + rect.height / 2, goals, goalRhythmTarget(goals[0]))
     })
+  }
+
+  // Where the burst's homing comet should fly: the goal's cell for today in the
+  // Goal Rhythm strip, if that panel is open and the goal is showing. The comet
+  // then flares the goal's row so completing an item visibly "feeds" the goal.
+  function goalRhythmTarget(goal: Goal): { x: number; y: number; onArrive?: () => void } | undefined {
+    if (!goalRhythmVisible) return undefined
+    const goalRow = document.querySelector<HTMLElement>(`.goal-history-panel [data-goal-id="${CSS.escape(goal.id)}"]`)
+    const todayHead = document.querySelector<HTMLElement>(`.goal-history-panel [data-goal-date="${todayISO()}"]`)
+    if (!goalRow || !todayHead) return undefined
+
+    const rowRect = goalRow.getBoundingClientRect()
+    const headRect = todayHead.getBoundingClientRect()
+    return {
+      x: headRect.left + headRect.width / 2,
+      y: rowRect.top + rowRect.height / 2,
+      onArrive: () => pulseElement(goalRow, 'goal-rhythm-hit', 700),
+    }
+  }
+
+  function pulseElement(element: HTMLElement, className: string, durationMs: number) {
+    element.classList.remove(className)
+    // Force reflow so re-adding the class restarts the animation on rapid repeats.
+    void element.offsetWidth
+    element.classList.add(className)
+    window.setTimeout(() => element.classList.remove(className), durationMs)
   }
 
   function planItemCompletion(items: PlanItem[]): { done: number; total: number } {
