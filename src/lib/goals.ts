@@ -277,19 +277,6 @@ export function goalMatchesForItem(
 }
 
 /**
- * Of the goals already known to be due today, returns those whose match terms
- * appear in the item's text. Kept cheap by parsing text the same way goal
- * completion does and only ever scanning the handful of
- * due-today goals the caller precomputes — never the full goal list per item.
- */
-export function dueTodayGoalsForItem(item: PlanItem, dueTodayGoals: Goal[]): Goal[] {
-  if (dueTodayGoals.length === 0) return []
-
-  const normalizedText = item.text.toLocaleLowerCase()
-  return dueTodayGoals.filter((goal) => goal.matchTerms.some((term) => textMatchesGoalTerm(normalizedText, term)))
-}
-
-/**
  * Active goals on `date` whose match terms appear in the item's text — i.e. the
  * goals that checking this item off contributes toward. Unlike
  * `goalMatchesForItem` (which reads reconciled completions) this scans the text

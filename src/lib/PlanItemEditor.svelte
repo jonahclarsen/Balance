@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { dueTodayGoalsForItem, goalLightnessShift, goalMatchesForItem } from './goals'
+  import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
   import { defaultPlanItemTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeExceedsAncestor, planItemTimeOverlapsPrevious, renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import RichTextEditor from './RichTextEditor.svelte'
@@ -46,7 +46,6 @@
   export let historyRevision: number
   export let goals: Goal[] = []
   export let goalCompletions: GoalCompletion[] = []
-  export let dueTodayGoals: Goal[] = []
   export let planDate = ''
   export let selectedItemIds: Set<Id> = new Set()
   export let selectionDragging = false
@@ -73,21 +72,21 @@
 
   $: selected = selectedItemIds.has(item.id)
   $: matchedGoals = goalMatchesForItem(goals, goalCompletions, planDate, item.id)
-  // Only rescan the item text when it or the due-goal set actually changes:
-  // in legacy mode the `item` and `dueTodayGoals` props invalidate on every
+  // Only rescan the item text when it or the available goals actually change:
+  // in legacy mode the `item` and `goals` props invalidate on every
   // parent render, so a plain reactive call would rescan on each keystroke
   // anywhere in the plan.
-  let dueTodayMatches: Goal[] = []
-  let dueTodayScanKey: string | null = null
+  let matchingGoals: Goal[] = []
+  let goalScanKey: string | null = null
   $: {
-    const scanKey = `${dueTodayGoals.map((goal) => goal.id).join(',')} ${item.text}`
-    if (scanKey !== dueTodayScanKey) {
-      dueTodayScanKey = scanKey
-      dueTodayMatches = dueTodayGoalsForItem(item, dueTodayGoals)
+    const scanKey = `${planDate}|${item.text}|${goals.map((goal) => `${goal.id}:${goal.updatedAt}`).join(',')}`
+    if (scanKey !== goalScanKey) {
+      goalScanKey = scanKey
+      matchingGoals = goalsMatchingItemText(item, goals, planDate)
     }
   }
   $: matchedGoalIds = new Set(matchedGoals.map((goal) => goal.id))
-  $: visibleDueTodayMatches = dueTodayMatches.filter((goal) => !matchedGoalIds.has(goal.id))
+  $: previewGoals = item.done ? [] : matchingGoals.filter((goal) => !matchedGoalIds.has(goal.id))
   $: timeOverlapsPrevious =
     item.startMinutes !== null &&
     item.endMinutes !== null &&
@@ -474,16 +473,17 @@
       />
   {/if}
 
-  {#if matchedGoals.length > 0 || visibleDueTodayMatches.length > 0}
-      <div class="plan-goal-badges" aria-label="Goals completed by this item">
-        {#each visibleDueTodayMatches as goal (goal.id)}
+  {#if matchedGoals.length > 0 || previewGoals.length > 0}
+      <div class="plan-goal-badges" aria-label="Goals matched by this item">
+        {#each previewGoals as goal (goal.id)}
           <button
             type="button"
-            class="plan-due-today"
-            title={`${goal.name} is due today to stay on track — show in goal rhythm`}
-            aria-label={`${goal.name} is due today — show in goal rhythm`}
+            class="plan-goal-badge"
+            style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
+            title={`Will complete goal: ${goal.name} — show in goal rhythm`}
+            aria-label={`${goal.name} — show in goal rhythm`}
             on:click|stopPropagation={() => onGoalBadgeClick(goal.id)}
-          >due today</button>
+          >{goal.name}</button>
         {/each}
         {#each matchedGoals as goal (goal.id)}
           <button
@@ -538,7 +538,6 @@
             {historyRevision}
             {goals}
             {goalCompletions}
-            {dueTodayGoals}
             {planDate}
             {selectedItemIds}
             {selectionDragging}

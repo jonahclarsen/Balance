@@ -149,7 +149,7 @@ test('clicking a goal rhythm date opens that day in Today view', async ({ page }
   await expect(page.locator('.date-input')).toHaveValue(targetDate)
 })
 
-test('a completed matching plan item automatically completes a goal and shows its color badge', async ({ page }, testInfo) => {
+test('a matching plan item previews its goal, then shows completion when checked', async ({ page }, testInfo) => {
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await createGoal(page, 'Exercise', 1, 'lift, swim')
 
@@ -161,9 +161,13 @@ test('a completed matching plan item automatically completes a goal and shows it
   expect(matchingText).not.toBe('')
 
   const row = page.getByRole('listitem', { name: `Plan item: ${matchingText}` })
+  const goalBadge = row.locator('.plan-goal-badge', { hasText: 'Exercise' })
+  await expect(goalBadge).toBeVisible()
+  await expect(goalBadge.locator('span')).toHaveCount(0)
+
   await row.getByRole('checkbox', { name: 'Complete item' }).check()
 
-  await expect(row.locator('.plan-goal-badge', { hasText: 'Exercise' })).toBeVisible()
+  await expect(goalBadge.locator('span')).toHaveText('✓')
   await expect
     .poll(async () =>
       page.evaluate(() => {
@@ -222,7 +226,8 @@ test('a completed matching plan item automatically completes a goal and shows it
   await expect(row.locator('.plan-goal-badge', { hasText: 'Exercise' })).toBeVisible()
 
   await row.getByRole('checkbox', { name: 'Complete item' }).uncheck()
-  await expect(row.locator('.plan-goal-badge', { hasText: 'Exercise' })).toHaveCount(0)
+  await expect(goalBadge).toBeVisible()
+  await expect(goalBadge.locator('span')).toHaveCount(0)
   await expect
     .poll(async () =>
       page.evaluate(() => {
@@ -233,18 +238,20 @@ test('a completed matching plan item automatically completes a goal and shows it
     .toBe(0)
 })
 
-test('a single-word goal term only matches at word boundaries', async ({ page }) => {
+test('a not-yet-due goal previews when its single-word term matches at a word boundary', async ({ page }) => {
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
-  await createGoal(page, 'DJ practice', 1, 'dj')
+  await createGoal(page, 'DJ practice', 7, 'dj')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
 
   const row = page.locator('[data-plan-item-id]').first()
   const editor = row.locator('[contenteditable="true"]')
   await editor.fill('adjust the playlist')
-  await expect(row.locator('.plan-due-today')).toHaveCount(0)
+  await expect(row.locator('.plan-goal-badge')).toHaveCount(0)
 
   await editor.fill('Practice (DJ), then rest')
-  await expect(row.getByRole('button', { name: 'DJ practice is due today — show in goal rhythm' })).toBeVisible()
+  const goalBadge = row.getByRole('button', { name: 'DJ practice — show in goal rhythm' })
+  await expect(goalBadge).toBeVisible()
+  await expect(goalBadge.locator('span')).toHaveCount(0)
 
   await row.getByRole('checkbox', { name: 'Complete item' }).check()
   await expect(row.locator('.plan-goal-badge', { hasText: 'DJ practice' })).toBeVisible()
@@ -320,7 +327,6 @@ test('direct edits to an older plan item can complete an overdue goal', async ({
   await row.getByRole('checkbox', { name: 'Complete item' }).check()
 
   await expect(row.locator('.plan-goal-badge', { hasText: 'Read' })).toBeVisible()
-  await expect(row.locator('.plan-due-today')).toHaveCount(0)
   await expect
     .poll(async () =>
       page.evaluate(() => {
@@ -862,7 +868,7 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   await expect(goalRow).toHaveClass(/goal-row-focus/)
 })
 
-test('clicking a due-today badge reveals that goal in the rhythm panel', async ({ page }) => {
+test('clicking an unchecked goal preview reveals that goal in the rhythm panel', async ({ page }) => {
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await createGoal(page, 'Exercise', 1, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
@@ -874,13 +880,13 @@ test('clicking a due-today badge reveals that goal in the rhythm panel', async (
   expect(matchingText).not.toBe('')
 
   const row = page.getByRole('listitem', { name: `Plan item: ${matchingText}` })
-  const dueTodayBadge = row.getByRole('button', { name: 'Exercise is due today — show in goal rhythm' })
-  await expect(dueTodayBadge).toBeVisible()
+  const goalPreview = row.getByRole('button', { name: 'Exercise — show in goal rhythm' })
+  await expect(goalPreview).toBeVisible()
 
   const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
   await expect(goalRow).not.toHaveClass(/goal-row-focus/)
 
-  await dueTodayBadge.click()
+  await goalPreview.click()
   await expect(goalRow).toHaveClass(/goal-row-focus/)
 })
 

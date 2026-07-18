@@ -18,7 +18,7 @@
   import DocumentFindBar from './lib/DocumentFindBar.svelte'
   import Celebration from './lib/Celebration.svelte'
   import GoalBurst from './lib/GoalBurst.svelte'
-  import { filterGoalsByPhrase, goalDaysUntilLapse, goalLightnessShift, goalsMatchingItemText, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
+  import { filterGoalsByPhrase, goalLightnessShift, goalsMatchingItemText, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     confirmRecoveryKey,
     exportHTML,
@@ -240,12 +240,6 @@ return rows`
         ? `list-template:${selectedListTemplate?.id ?? ''}`
         : `view:${view}`
   $: restoreScrollForPage(scrollPageKey)
-  $: dueTodayGoals = activePlan
-    ? $plannerStore.goals.filter((goal) => {
-        const daysUntilLapse = goalDaysUntilLapse(goal, $plannerStore.goalCompletions, activePlan.date)
-        return daysUntilLapse !== null && daysUntilLapse <= 0
-      })
-    : []
   $: activeDailyReminder = activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER
   $: if (!editingDailyReminder) dailyReminderDraft = activeDailyReminder
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
@@ -2909,7 +2903,6 @@ return rows`
               onTextShiftArrow={selectItemWithAdjacent}
               goals={$plannerStore.goals}
               goalCompletions={$plannerStore.goalCompletions}
-              {dueTodayGoals}
               planDate={activePlan.date}
               onGoalBadgeClick={focusGoalInRhythm}
               {listTemplates}
