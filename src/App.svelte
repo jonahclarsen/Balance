@@ -1695,7 +1695,7 @@ return rows`
     if (activeItemSurface() && !hasActiveRichTextSelection() && !isFormFieldActive()) {
       if ((key === 'c' || key === 'x') && !event.shiftKey && selectedItemIds.length > 0) {
         event.preventDefault()
-        if (key === 'x') cutSelectedItems()
+        if (key === 'x') void cutSelectedItems()
         else copySelectedItems()
         return
       }
@@ -2016,24 +2016,46 @@ return rows`
     }
   }
 
-  function cutSelectedItems() {
+  async function cutSelectedItems() {
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
     if (!surface || !containerId || selectedItemIds.length === 0) return
+    const orderedIds = flattenItemIds(activeItemTree())
     if (surface === 'plan' && activePlan) {
       const items = plannerStore.cutPlanItems(containerId, selectedItemIds)
       if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: true, sourceDate: activePlan.date })
-      clearItemSelection()
+      await finishCut(orderedIds, items)
       return
     }
     if (surface === 'day-template') {
       const items = plannerStore.cutTemplateItems(containerId, selectedItemIds)
       if (items.length > 0) writeTemplateItemsToSystemClipboard({ kind: surface, items, cut: true })
+      await finishCut(orderedIds, items)
     } else {
       const items = plannerStore.cutListTemplateItems(containerId, selectedItemIds)
       if (items.length > 0) writeTemplateItemsToSystemClipboard({ kind: 'list-template', items, cut: true })
+      await finishCut(orderedIds, items)
     }
+  }
+
+  async function finishCut(orderedIds: Id[], removedItems: TreeNode[]) {
+    if (removedItems.length === 0) {
+      clearItemSelection()
+      return
+    }
+
+    const removedIds = new Set(flattenItemIds(removedItems))
+    const lastRemovedIndex = orderedIds.reduce(
+      (lastIndex, itemId, index) => removedIds.has(itemId) ? index : lastIndex,
+      -1,
+    )
+    const nextItemId = orderedIds[lastRemovedIndex + 1]
+
     clearItemSelection()
+    if (!nextItemId) return
+
+    await tick()
+    focusItemTextInput(nextItemId, 'start')
   }
 
   function deleteSelectedItems() {
@@ -2630,7 +2652,7 @@ return rows`
     }
   }
 
-  function focusItemTextInput(itemId: Id) {
+  function focusItemTextInput(itemId: Id, position: 'start' | 'end' = 'end') {
     const surface = activeItemSurface()
     const selector = surface === 'plan'
       ? `[data-plan-text-focus-target-id="${CSS.escape(itemId)}"]`
@@ -2645,7 +2667,7 @@ return rows`
 
     const range = document.createRange()
     range.selectNodeContents(input)
-    range.collapse(false)
+    range.collapse(position === 'start')
 
     const selection = document.getSelection()
     selection?.removeAllRanges()

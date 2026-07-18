@@ -1362,6 +1362,26 @@ test('cmd shift a selects the focused plan item instead of its text', async ({ p
   await expect.poll(async () => page.evaluate(() => document.activeElement?.matches('[data-plan-text-input]'))).toBe(false)
 })
 
+test('cutting a whole plan item focuses the item below it at the start', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  await focusInputByValue(page, before[0])
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Meta+X')
+
+  await expect.poll(async () => topLevelTexts(page)).toEqual(before.slice(1))
+  await expect
+    .poll(async () => ({
+      activeText: await activeInputValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: before[1], caretOffset: 0 })
+})
+
 test('pasting plan items into an empty focused item replaces it', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
