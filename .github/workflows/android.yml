@@ -255,3 +255,52 @@ jobs:
             sync-e2e-*.xml
             sync-e2e-*.png
           if-no-files-found: ignore
+
+  release:
+    name: Publish GitHub Release
+    needs:
+      - build
+      - smoke-test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download signed release artifacts
+        uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-release
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A run attempt is immutable, so every successful build gets its own
+          # release without overwriting one from an earlier run or rerun. Keep
+          # the generated tag outside the workflow's v*.*.* trigger to avoid a
+          # release tag recursively starting another Android build.
+          RELEASE_TAG="android-build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          RELEASE_TITLE="Balance Android build #${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          COMMIT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+
+          {
+            echo "Automated Android release built from [${GITHUB_SHA:0:7}](${COMMIT_URL})."
+            echo
+            echo "Source ref: \`${GITHUB_REF_NAME}\`"
+            echo
+            echo "The signed universal APK and Play Store AAB passed signing verification and the Android pairing/sync emulator test."
+            echo
+            echo "[GitHub Actions run](${RUN_URL})"
+          } > "$RUNNER_TEMP/release-notes.md"
+
+          gh release create "$RELEASE_TAG" \
+            balance-release.apk \
+            balance-release.aab \
+            android-release-signature.txt \
+            android-aab-verification.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$RELEASE_TITLE" \
+            --notes-file "$RUNNER_TEMP/release-notes.md" \
+            --latest
