@@ -62,6 +62,7 @@
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DONE_TINT_KEY = 'balance:doneTintColor'
   const CHECKBOX_COLOR_KEY = 'balance:checkboxColor'
+  const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
   // Matches the light-theme --done-tint base in app.css; shown as the picker
   // value when the user hasn't chosen a custom color yet.
   const DEFAULT_DONE_TINT = '#3f9d54'
@@ -84,6 +85,7 @@
   let lastScrolledPage = ''
   let scrollRestoreNonce = 0
   let restoringScroll = false
+  let listTemplatesViewStateReady = false
   let goalHistoryHeight: number | null = null
   let goalRhythmVisible = true
   let goalRhythmAutoShowTimer: number | null = null
@@ -249,6 +251,10 @@ return rows`
   $: listTemplates = $plannerStore.listTemplates
   $: selectedListTemplate = listTemplates.find((template) => template.id === selectedListTemplateId) ?? listTemplates[0]
   $: if (!selectedListTemplateId && listTemplates[0]) selectedListTemplateId = listTemplates[0].id
+  $: if (listTemplatesViewStateReady && !listTemplates.some((template) => template.id === selectedListTemplateId)) {
+    selectedListTemplateId = listTemplates[0]?.id ?? ''
+  }
+  $: if (listTemplatesViewStateReady) persistListTemplatesViewState(selectedListTemplateId)
   $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = listTemplates[0].id
   $: selectedListWordCount = selectedListTemplate ? Math.round(expectedWordCount(selectedListTemplate.items)) : 0
   $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items) : 0
@@ -827,6 +833,20 @@ return rows`
   onMount(() => {
     let mounted = true
 
+    const storedListTemplatesViewState = readListTemplatesViewState()
+    if (storedListTemplatesViewState) {
+      selectedListTemplateId = storedListTemplatesViewState.selectedTemplateId
+      scrollPositionsByPage = {
+        ...scrollPositionsByPage,
+        ...Object.fromEntries(
+          Object.entries(storedListTemplatesViewState.scrollTopsByTemplate).map(([templateId, scrollTop]) => [
+            `list-template:${templateId}`,
+            scrollTop,
+          ]),
+        ),
+      }
+    }
+
     const storedGoalHistoryHeight = Number(localStorage.getItem(GOAL_HISTORY_HEIGHT_KEY))
     if (Number.isFinite(storedGoalHistoryHeight) && storedGoalHistoryHeight > 0) {
       goalHistoryHeight = clampGoalHistoryHeight(storedGoalHistoryHeight)
@@ -849,6 +869,7 @@ return rows`
     async function initialize() {
       recoveryKeyStatus = await getRecoveryKeyStatus()
       await plannerStore.ready
+      listTemplatesViewStateReady = true
       planCompletionById = new Map(
         $plannerStore.plans.map((plan) => [plan.id, allPlanItemsDone(plan.items)]),
       )
@@ -1044,8 +1065,13 @@ return rows`
 
   function rememberWorkspaceScroll() {
     if (!restoringScroll && lastScrolledPage) {
-      scrollPositionsByPage[lastScrolledPage] = currentWorkspaceScrollTop()
+      rememberPageScroll(lastScrolledPage, currentWorkspaceScrollTop())
     }
+  }
+
+  function rememberPageScroll(pageKey: string, scrollTop: number) {
+    scrollPositionsByPage[pageKey] = scrollTop
+    if (pageKey.startsWith('list-template:')) persistListTemplatesViewState(selectedListTemplateId)
   }
 
   function handleWorkspaceScroll() {
@@ -1060,7 +1086,7 @@ return rows`
     if (!pageKey || pageKey === lastScrolledPage) return
 
     if (lastScrolledPage) {
-      scrollPositionsByPage[lastScrolledPage] = currentWorkspaceScrollTop()
+      rememberPageScroll(lastScrolledPage, currentWorkspaceScrollTop())
     }
 
     lastScrolledPage = pageKey
@@ -1080,6 +1106,50 @@ return rows`
     requestAnimationFrame(() => {
       if (restoreNonce === scrollRestoreNonce) restoringScroll = false
     })
+  }
+
+  function readListTemplatesViewState(): {
+    selectedTemplateId: string
+    scrollTopsByTemplate: Record<string, number>
+  } | null {
+    const raw = localStorage.getItem(LIST_TEMPLATES_VIEW_STATE_KEY)
+    if (!raw) return null
+
+    try {
+      const parsed = JSON.parse(raw) as {
+        selectedTemplateId?: unknown
+        scrollTopsByTemplate?: unknown
+      }
+      const scrollTopsByTemplate = Object.fromEntries(
+        parsed.scrollTopsByTemplate && typeof parsed.scrollTopsByTemplate === 'object' && !Array.isArray(parsed.scrollTopsByTemplate)
+          ? Object.entries(parsed.scrollTopsByTemplate).filter(
+              (entry): entry is [string, number] =>
+                typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] >= 0,
+            )
+          : [],
+      )
+      return {
+        selectedTemplateId: typeof parsed.selectedTemplateId === 'string' ? parsed.selectedTemplateId : '',
+        scrollTopsByTemplate,
+      }
+    } catch {
+      return null
+    }
+  }
+
+  function persistListTemplatesViewState(selectedTemplateId: string) {
+    if (!listTemplatesViewStateReady) return
+
+    const scrollTopsByTemplate = Object.fromEntries(
+      Object.entries(scrollPositionsByPage)
+        .filter(([pageKey, scrollTop]) =>
+          pageKey.startsWith('list-template:') && Number.isFinite(scrollTop) && scrollTop >= 0)
+        .map(([pageKey, scrollTop]) => [pageKey.slice('list-template:'.length), scrollTop]),
+    )
+    localStorage.setItem(
+      LIST_TEMPLATES_VIEW_STATE_KEY,
+      JSON.stringify({ selectedTemplateId, scrollTopsByTemplate }),
+    )
   }
 
   function shiftISODate(date: string, days: number): string {
@@ -2797,9 +2867,9 @@ return rows`
         on:click={() => (searchOpen = true)}
       ><span>⌕ Search</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd></button>
       <button class:active={view === 'today'} type="button" title="Today (Alt+T)" aria-keyshortcuts="Alt+T" on:click={() => (view = 'today')}><span>Today</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('T')}</kbd></button>
-      <button class:active={view === 'lists'} type="button" title="Lists (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => (view = 'lists')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       <button class:active={view === 'templates'} type="button" title="Day Templates (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => (view = 'templates')}><span>Day Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
       <button class:active={view === 'listTemplates'} type="button" title="List Templates (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => (view = 'listTemplates')}><span>List Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
+      <button class:active={view === 'lists'} type="button" title="Lists (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => (view = 'lists')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => (view = 'metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => { void openGoals() }}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => (view = 'settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>

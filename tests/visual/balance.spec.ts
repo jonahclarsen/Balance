@@ -77,13 +77,18 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
 
   const shortcuts = [
     { key: 't', label: 'Today' },
-    { key: 'r', label: 'Lists' },
     { key: 'd', label: 'Day Templates' },
     { key: 'e', label: 'List Templates' },
+    { key: 'r', label: 'Lists' },
     { key: 'v', label: 'Metrics' },
     { key: 'g', label: 'Goals' },
     { key: 's', label: 'Settings' },
   ]
+
+  await expect(page.locator('.primary-nav > button > span')).toHaveText([
+    '⌕ Search',
+    ...shortcuts.map(({ label }) => label),
+  ])
 
   for (const { key, label } of shortcuts) {
     const menuItem = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: label, exact: true })
@@ -2215,7 +2220,7 @@ test('list template rows share multi-select clipboard behavior and hide mouse-on
   })).toEqual({ roots: ['Second item'], children: ['First item'] })
 })
 
-test('list template tabs and word cap stay pinned while each template remembers its scroll position', async ({ page }) => {
+test('list template tabs stay pinned and selection and scroll positions survive a reload', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {
     const now = new Date().toISOString()
@@ -2336,6 +2341,23 @@ test('list template tabs and word cap stay pinned while each template remembers 
   await alphaTab.click()
   await expect.poll(currentScrollTop).toBe(620)
   await betaTab.click()
+  await expect.poll(currentScrollTop).toBe(340)
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => JSON.parse(localStorage.getItem('balance:listTemplatesViewState') || 'null')),
+    )
+    .toEqual({
+      selectedTemplateId: 'list_template_beta',
+      scrollTopsByTemplate: {
+        list_template_alpha: 620,
+        list_template_beta: 340,
+      },
+    })
+
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await expect(page.getByRole('button', { name: 'Beta', exact: true })).toHaveAttribute('aria-current', 'true')
   await expect.poll(currentScrollTop).toBe(340)
 })
 
