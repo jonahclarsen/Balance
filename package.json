@@ -20,6 +20,7 @@
     "@tsconfig/svelte": "^5.0.8",
     "@types/node": "^24.12.3",
     "@types/qrcode": "^1.5.6",
+    "pngjs": "5.0.0",
     "svelte": "^5.55.5",
     "svelte-check": "^4.4.8",
     "typescript": "~6.0.2",

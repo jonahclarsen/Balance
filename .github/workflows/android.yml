@@ -84,6 +84,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Android camera QR fixture
+        run: node .github/scripts/generate-android-sync-qr.mjs
+
       - name: Build cr-sqlite loadable extension (Android .so per ABI)
         # Cross-compiles crsqlite.so for each ABI (uses the NDK clang set up
         # above) into src-tauri/resources/android/<abi>/. Loaded at runtime via
@@ -92,6 +95,12 @@ jobs:
 
       - name: Initialize Android project
         run: pnpm tauri android init
+
+      - name: Bundle the offline Android barcode model
+        # The upstream plugin uses the dynamically downloaded Play Services
+        # model. Bundle ML Kit instead so scanning works immediately, including
+        # on Android devices and CI images without Google Play Services.
+        run: node .github/scripts/configure-android-barcode-scanner.mjs
 
       - name: Bundle cr-sqlite extension as jniLibs
         # jniLibs/<abi>/libcrsqlite.so is extracted by Android into the app's
@@ -132,7 +141,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: Balance-android-debug
-          path: balance-debug.apk
+          path: |
+            balance-debug.apk
+            sync-e2e-pairing.png
+            sync-e2e-pairing-code.txt
           if-no-files-found: error
 
       - name: Set up Android release signing
@@ -239,7 +251,9 @@ jobs:
           # profile's full Play Services fleet, which can OOM the CI runner.
           target: default
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          # Feed the real QR fixture to Android's emulated back camera. The UI
+          # test must scan it; it never types the joiner's pairing code.
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back imagefile:${{ github.workspace }}/sync-e2e-pairing.png
           disable-animations: true
           # The runner executes the `script` input line-by-line in separate
           # shells, so the test logic lives in a committed file run as one process.

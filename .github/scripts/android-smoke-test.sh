@@ -374,23 +374,6 @@ PY
   return 1
 }
 
-read_pairing_code() {
-  dump_ui
-  python3 - "$UI_XML" <<'PY'
-import sys
-import xml.etree.ElementTree as ET
-
-root = ET.parse(sys.argv[1]).getroot()
-for node in root.iter("node"):
-    for attribute in ("text", "content-desc"):
-        value = node.attrib.get(attribute, "").strip()
-        if value.startswith("BALSYNC1:"):
-            print(value)
-            raise SystemExit(0)
-raise SystemExit(1)
-PY
-}
-
 read_lan_address() {
   dump_ui
   python3 - "$UI_XML" <<'PY'
@@ -459,9 +442,44 @@ dismiss_recovery_key_setup() {
   return 1
 }
 
-echo "[ui-sync] creating recognizable data on the primary installation"
+PAIRING_CODE="$(tr -d '\r\n' < sync-e2e-pairing-code.txt)"
+if [[ "$PAIRING_CODE" != BALSYNC1:* ]]; then
+  echo "The camera fixture did not contain a Balance pairing code."
+  exit 1
+fi
+
+echo "[ui-sync] enabling the source installation with the camera fixture key"
 dismiss_recovery_key_setup
-tap_ui text "Goals"
+tap_ui text "Settings"
+type_into_ui_after_text "Pair with another device" "$PAIRING_CODE"
+# The emulator injects text through its hardware input path, so no soft keyboard
+# is guaranteed to be visible. Submit with Enter and never send Back here: Back
+# would close Balance when the soft keyboard is absent or already dismissed.
+adb shell input keyevent KEYCODE_ENTER
+for _ in $(seq 1 8); do
+  if wait_for_ui_text "Paired." 1; then
+    break
+  fi
+  adb shell input swipe 160 580 160 180 300
+done
+wait_for_ui_text "Paired." 20
+
+PRIMARY_ADDRESS=""
+for _ in $(seq 1 60); do
+  PRIMARY_ADDRESS="$(read_lan_address 2>/dev/null || true)"
+  if [ -n "$PRIMARY_ADDRESS" ]; then
+    break
+  fi
+  sleep 1
+done
+if [ -z "$PRIMARY_ADDRESS" ]; then
+  echo "[ui-sync] source never exposed a LAN address after pairing"
+  exit 1
+fi
+echo "[ui-sync] source is paired and listening at $PRIMARY_ADDRESS"
+
+echo "[ui-sync] creating recognizable data on the source installation"
+tap_ui_scrolling_up text "Goals"
 wait_for_ui_text "Add a goal"
 # A goal requires both a name and at least one matching phrase. Fill the real
 # fields and press the visible Add button so seeing the name afterward proves a
@@ -475,27 +493,6 @@ wait_for_ui_text "CISyncGoal"
 # Let the normal debounced operation writer commit before sync snapshots it.
 sleep 2
 
-# Adding the goal leaves the mobile document scrolled below the static tab bar.
-# Return toward the top until Settings is visible instead of assuming the nav is
-# still in the current accessibility viewport.
-tap_ui_scrolling_up text "Settings"
-tap_ui_scrolling text "Create a sync key"
-PAIRING_CODE=""
-PRIMARY_ADDRESS=""
-for _ in $(seq 1 60); do
-  PAIRING_CODE="$(read_pairing_code 2>/dev/null || true)"
-  PRIMARY_ADDRESS="$(read_lan_address 2>/dev/null || true)"
-  if [ -n "$PAIRING_CODE" ] && [ -n "$PRIMARY_ADDRESS" ]; then
-    break
-  fi
-  sleep 1
-done
-if [ -z "$PAIRING_CODE" ] || [ -z "$PRIMARY_ADDRESS" ]; then
-  echo "[ui-sync] primary never exposed a pairing code and LAN address"
-  exit 1
-fi
-echo "[ui-sync] primary created a key and is listening at $PRIMARY_ADDRESS"
-
 echo "[ui-sync] installing an isolated joining copy in a managed profile"
 PROFILE_OUTPUT="$(adb shell pm create-user --profileOf 0 --managed --for-testing BalanceSyncPeer | tr -d '\r')"
 PEER_USER="$(printf '%s\n' "$PROFILE_OUTPUT" | awk '{print $NF}')"
@@ -505,6 +502,9 @@ if ! [[ "$PEER_USER" =~ ^[0-9]+$ ]]; then
 fi
 adb shell am start-user -w "$PEER_USER"
 adb shell cmd package install-existing --user "$PEER_USER" "$PKG"
+# Avoid a system permission dialog obscuring the scanner. The app still checks
+# the real Android camera permission before it calls the native plugin.
+adb shell pm grant --user "$PEER_USER" "$PKG" android.permission.CAMERA
 
 COMPONENT="$(adb shell cmd package resolve-activity --brief --user 0 \
   -a android.intent.action.MAIN -c android.intent.category.LAUNCHER "$PKG" \
@@ -516,21 +516,17 @@ fi
 adb shell am start --user "$PEER_USER" -n "$COMPONENT"
 sleep 8
 
-echo "[ui-sync] submitting the pairing code through the joining app's visible form"
+echo "[ui-sync] scanning the pairing QR through Android's emulated back camera"
 dismiss_recovery_key_setup
 tap_ui_scrolling_up text "Settings"
-type_into_ui_after_text "Pair with another device" "$PAIRING_CODE"
-# This is the phone keyboard's Done/Enter path that previously did nothing.
-adb shell input keyevent KEYCODE_ENTER
-sleep 2
-adb shell input keyevent KEYCODE_BACK || true
-for _ in $(seq 1 8); do
+tap_ui_scrolling text "Scan QR code"
+for _ in $(seq 1 30); do
   if wait_for_ui_text "Paired." 1; then
     break
   fi
-  adb shell input swipe 160 580 160 180 300
 done
 wait_for_ui_text "Paired." 20
+echo "[ui-sync] camera QR scan paired the isolated joining installation"
 
 echo "[ui-sync] connecting the joiner to the primary's manual LAN address"
 type_into_ui_after_text "Direct device-to-device (same Wi-Fi)" "$PRIMARY_ADDRESS"
@@ -542,10 +538,10 @@ wait_for_ui_text "Synced directly with" 30
 # database. The primary-only goal must now be present in that materialized state.
 tap_ui_scrolling_up text "Goals"
 wait_for_ui_text "CISyncGoal" 30
-echo "[ui-sync] PASS: pairing through the Android UI transferred primary user data to the isolated joiner"
+echo "[ui-sync] PASS: camera QR pairing transferred source user data to the isolated joiner"
 
 E2E_ACTIVE=0
 trap - EXIT
 adb logcat -d > logcat-sync-e2e.txt 2>/dev/null || true
 
-echo "App builds, launches, reopens its encrypted database, and syncs two isolated Android installations through the real pairing UI."
+echo "App builds, launches, reopens its encrypted database, scans a real QR camera frame, and syncs two isolated Android installations."

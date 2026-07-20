@@ -111,22 +111,31 @@
     try {
       const result = await scan({ windowed: true, formats: [Format.QRCode] })
       const content = (result?.content ?? '').trim()
-      await stopScan()
-      if (content) {
-        joinInput = content
-        await join()
+      // A successful native scan has already stopped and released the camera.
+      // Calling cancel() here can race the successful Android callback, so only
+      // restore our web UI before handing the scanned value to pairing.
+      finishScanUi()
+      if (!content) {
+        setStatus('The scanner returned an empty QR code. Please try again.', true)
+        return
       }
+      joinInput = content
+      await join()
     } catch (err) {
       await stopScan()
       setStatus(`Could not scan: ${err}`, true)
     }
   }
 
+  function finishScanUi() {
+    scanning = false
+    document.documentElement.classList.remove('qr-scanning')
+  }
+
   // Stop the camera and restore the normal UI. Safe to call more than once.
   async function stopScan() {
     if (!scanning) return
-    scanning = false
-    document.documentElement.classList.remove('qr-scanning')
+    finishScanUi()
     try {
       await cancel()
     } catch {

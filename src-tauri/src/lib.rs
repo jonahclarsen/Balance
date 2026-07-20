@@ -57,6 +57,25 @@ fn disable_automatic_text_replacement() {
 #[cfg(not(target_os = "macos"))]
 fn disable_automatic_text_replacement() {}
 
+#[cfg(all(target_os = "android", debug_assertions))]
+fn is_android_owner_user() -> bool {
+    // Android assigns app UIDs as user_id * 100_000 + app_id. Run the embedded
+    // database self-test once for the owner installation; CI launches another
+    // copy in a managed profile for the real camera pairing test, and repeating
+    // the SQLCipher/cr-sqlite self-test there can interfere with its first DB
+    // initialization.
+    fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            status
+                .lines()
+                .find_map(|line| line.strip_prefix("Uid:"))
+                .and_then(|uids| uids.split_whitespace().next())
+                .and_then(|uid| uid.parse::<u32>().ok())
+        })
+        .is_some_and(|uid| uid < 100_000)
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct ClipboardContents {
@@ -5817,14 +5836,15 @@ pub fn run() {
 
             // On Android debug builds, run the real two-database pairing and
             // transport flow on-device. CI greps logcat for the marker below.
-            // It runs off the main thread and only touches throwaway databases.
+            // Complete it during setup so its independent SQLCipher connections
+            // cannot race the frontend's first open of the real app database.
             #[cfg(all(target_os = "android", debug_assertions))]
             {
-                let handle = app.handle().clone();
-                std::thread::spawn(move || {
+                if is_android_owner_user() {
+                    let handle = app.handle();
                     let outcome = (|| -> Result<(), String> {
-                        let ext = crsqlite_extension_path(&handle)?;
-                        let scratch = app_database_path(&handle)?
+                        let ext = crsqlite_extension_path(handle)?;
+                        let scratch = app_database_path(handle)?
                             .parent()
                             .ok_or("no data dir")?
                             .to_path_buf();
@@ -5840,7 +5860,7 @@ pub fn run() {
                             eprintln!("BALANCE_SYNC_E2E: FAIL {e}");
                         }
                     }
-                });
+                }
             }
 
             Ok(())
