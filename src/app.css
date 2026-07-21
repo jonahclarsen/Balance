@@ -1722,15 +1722,49 @@ nav button.active {
   padding-block: 5px;
 }
 
+.goal-history-body {
+  display: grid;
+  grid-template-columns: min(450px, 60vw) minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.goal-history-name-pane {
+  display: grid;
+  grid-template-rows: 30px minmax(0, 1fr);
+  min-width: 0;
+  min-height: 0;
+  padding-bottom: var(--goal-scrollbar-height, 0px);
+  background: var(--paper);
+}
+
+.goal-history-name-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+
+.goal-history-name-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.goal-history-name-list {
+  min-height: 100%;
+  padding-bottom: 8px;
+}
+
 .goal-history-scroll {
   min-width: 0;
   min-height: 0;
   overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .goal-history-grid {
   display: grid;
-  grid-template-columns: min(450px, 60vw) repeat(var(--goal-day-count), 30px);
+  grid-template-columns: repeat(var(--goal-day-count), 30px);
   grid-auto-rows: 30px;
   width: max-content;
   min-width: 100%;
@@ -1741,17 +1775,17 @@ nav button.active {
 .goal-history-corner,
 .goal-date-head,
 .goal-history-name {
-  position: sticky;
-  z-index: 3;
   border: 0;
   border-radius: 0;
   background: var(--paper);
 }
 
+.goal-date-head {
+  position: sticky;
+  z-index: 3;
+}
+
 .goal-history-corner {
-  top: 0;
-  left: 0;
-  z-index: 5;
   display: flex;
   align-items: center;
   border-right: 1px solid var(--line);
@@ -1809,8 +1843,8 @@ nav button.active {
 }
 
 .goal-history-name {
-  left: 0;
   display: flex;
+  height: 30px;
   align-items: center;
   gap: 7px;
   font-size: 14px;
@@ -2028,11 +2062,9 @@ nav button.active {
 }
 
 .goal-history-empty {
-  position: sticky;
-  left: 0;
   display: flex;
-  grid-column: 1 / -1;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   padding: 8px 12px;
   color: var(--muted);

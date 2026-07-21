@@ -843,6 +843,51 @@ test('goal rhythm grows a column for the new day after the clock rolls over', as
   await expect(page.locator('.goal-date-head[title="2026-06-17"].today')).toHaveCount(1)
 })
 
+test('goal rhythm keeps its name column aligned while scrolling both axes', async ({ page }, testInfo) => {
+  const historyStart = addDays(todayISO(), -120)
+
+  await page.evaluate((historyStart) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const timestamp = new Date().toISOString()
+    state.goals = Array.from({ length: 24 }, (_, index) => ({
+      id: `goal_scroll_${index}`,
+      name: `Scroll goal ${index + 1}`,
+      cadenceDays: 1,
+      matchTerms: [`scroll-${index + 1}`],
+      hue: index * 15,
+      activityPeriods: [{ startDate: historyStart, endDate: null }],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }))
+    state.goalCompletions = []
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, historyStart)
+  await page.reload()
+
+  const timeline = page.locator('.goal-history-scroll')
+  const names = page.locator('.goal-history-name-scroll')
+  const firstName = page.locator('.goal-history-name').first()
+  await expect(page.locator('.goal-day-cell.overdue').first()).toBeVisible()
+  await expect(firstName).toHaveCSS('position', 'static')
+  await expect.poll(() => goalRhythmPaneGap(page)).toBe(0)
+
+  await timeline.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth - element.clientWidth
+    element.scrollTop = 60
+  })
+  await expect.poll(() => goalRhythmScrollTopDifference(page)).toBe(0)
+
+  await names.evaluate((element) => {
+    element.scrollTop += 120
+  })
+  await expect.poll(() => goalRhythmScrollTopDifference(page)).toBe(0)
+
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-goal-rhythm-split-scroll.png`,
+    fullPage: true,
+  })
+})
+
 test('clicking a plan item goal badge reveals that goal in the rhythm panel', async ({ page }) => {
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await createGoal(page, 'Exercise', 1, 'lift, swim')
@@ -1023,4 +1068,22 @@ async function goalCardCenterOffset(page: import('@playwright/test').Page, goalN
     const cardCenter = cardRect.top + cardRect.height / 2
     return Math.abs(Math.round(cardCenter - (containerTop + containerHeight / 2)))
   }, goalName)
+}
+
+async function goalRhythmPaneGap(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const timeline = document.querySelector<HTMLElement>('.goal-history-scroll')
+    const names = document.querySelector<HTMLElement>('.goal-history-name-pane')
+    if (!timeline || !names) return null
+    return Math.round(timeline.getBoundingClientRect().left - names.getBoundingClientRect().right)
+  })
+}
+
+async function goalRhythmScrollTopDifference(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const timeline = document.querySelector<HTMLElement>('.goal-history-scroll')
+    const names = document.querySelector<HTMLElement>('.goal-history-name-scroll')
+    if (!timeline || !names) return null
+    return Math.round(timeline.scrollTop - names.scrollTop)
+  })
 }

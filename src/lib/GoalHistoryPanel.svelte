@@ -25,6 +25,8 @@
 
   let search = ''
   let scrollEl: HTMLDivElement | undefined
+  let nameScrollEl: HTMLDivElement | undefined
+  let namePaneEl: HTMLDivElement | undefined
   let mounted = false
   let lastCenteredStartDate: string | null = null
   let highlightedGoalId: string | null = null
@@ -39,9 +41,18 @@
 
   async function revealGoal(goalId: string) {
     await tick()
-    const row = scrollEl?.querySelector<HTMLElement>(`[data-goal-id="${goalId}"]`)
-    if (!row) return
-    row.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' })
+    const row = nameScrollEl?.querySelector<HTMLElement>(`[data-goal-id="${goalId}"]`)
+    if (!row || !scrollEl) return
+
+    const visibleHeight = scrollEl.clientHeight - 30
+    const visibleTop = scrollEl.scrollTop
+    const rowTop = row.offsetTop
+    const rowBottom = rowTop + row.offsetHeight
+    if (rowTop < visibleTop) {
+      scrollEl.scrollTo({ top: rowTop, behavior: 'smooth' })
+    } else if (rowBottom > visibleTop + visibleHeight) {
+      scrollEl.scrollTo({ top: rowBottom - visibleHeight, behavior: 'smooth' })
+    }
     highlightedGoalId = goalId
     setTimeout(() => {
       if (highlightedGoalId === goalId) highlightedGoalId = null
@@ -94,12 +105,23 @@
     const currentDayHead = scrollEl.querySelector<HTMLElement>(`[data-goal-date="${today}"]`)
     if (!currentDayHead) return
 
-    const stickyGoalColumn = scrollEl.querySelector<HTMLElement>('.goal-history-corner')
-    const stickyWidth = stickyGoalColumn?.offsetWidth ?? 0
-    const visibleDateWidth = scrollEl.clientWidth - stickyWidth
-    const targetCenter =
-      visibleDateWidth > 0 ? stickyWidth + visibleDateWidth / 2 : scrollEl.clientWidth / 2
-    scrollEl.scrollLeft = currentDayHead.offsetLeft + currentDayHead.offsetWidth / 2 - targetCenter
+    scrollEl.scrollLeft = currentDayHead.offsetLeft + currentDayHead.offsetWidth / 2 - scrollEl.clientWidth / 2
+    syncTimelineScroll()
+  }
+
+  function syncTimelineScroll() {
+    if (!scrollEl || !nameScrollEl) return
+    if (nameScrollEl.scrollTop !== scrollEl.scrollTop) nameScrollEl.scrollTop = scrollEl.scrollTop
+
+    // Keep both vertical viewports the same height when a classic horizontal
+    // scrollbar consumes space in the timeline pane.
+    const scrollbarHeight = scrollEl.offsetHeight - scrollEl.clientHeight
+    namePaneEl?.style.setProperty('--goal-scrollbar-height', `${scrollbarHeight}px`)
+  }
+
+  function syncNameScroll() {
+    if (!scrollEl || !nameScrollEl || scrollEl.scrollTop === nameScrollEl.scrollTop) return
+    scrollEl.scrollTop = nameScrollEl.scrollTop
   }
 
   function refreshDay() {
@@ -187,103 +209,114 @@
     <button type="button" on:click={() => onOpenGoals()}>Manage goals</button>
   </header>
 
-  <div class="goal-history-scroll" bind:this={scrollEl}>
-    <div class="goal-history-grid" style={`--goal-day-count: ${dates.length}`}>
+  <div class="goal-history-body">
+    <div class="goal-history-name-pane" bind:this={namePaneEl}>
       <div class="goal-history-corner">Goal</div>
-      {#each dates as date (date)}
-        <button
-          type="button"
-          class:viewed={date === viewedDate}
-          class:today={date === currentDay}
-          class:future={date > today}
-          class="goal-date-head"
-          data-goal-date={date}
-          aria-label={`Open ${date} in Today view`}
-          title={`Open ${date} in Today view`}
-          on:click={() => onOpenDate(date)}
-        >
-          <span>{dayLabel(date)}</span>
-          <strong>{dateLabel(date)}</strong>
-        </button>
-      {/each}
-
-      {#each visibleGoals as goal (goal.id)}
-        {@const cells = buildGoalDayCells(goal, completions, dates, today)}
-        {@const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)}
-        <div
-          class="goal-history-name"
-          class:goal-row-focus={highlightedGoalId === goal.id}
-          data-goal-id={goal.id}
-          role="button"
-          tabindex="0"
-          style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
-          title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}${lapseTooltip(daysUntilLapse)}\nMatch keywords: ${goal.matchTerms.join(', ')}`}
-          on:click={() => onOpenGoals(goal.id)}
-          on:keydown={(event) => handleGoalNameKeydown(event, goal.id)}
-        >
-          <span class="goal-color-dot"></span>
-          <span>{goal.name}</span>
-          <button
-            class="goal-copy-button"
-            type="button"
-            aria-label={`Copy ${goal.name}`}
-            title={copiedGoalId === goal.id ? 'Copied goal name' : 'Copy goal name'}
-            on:click={(event) => copyGoalName(event, goal)}
-            on:keydown={(event) => event.stopPropagation()}
-          >
-            {#if copiedGoalId === goal.id}
-              <span aria-hidden="true">✓</span>
-            {:else}
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M9 5h6" />
-                <path d="M9 4h6a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2Z" />
-                <path d="M7 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1" />
-              </svg>
-            {/if}
-          </button>
-          <small>{goal.cadenceDays}d</small>
-          {#if daysUntilLapse !== null}
-            <small class="goal-lapse" class:overdue={daysUntilLapse <= 0}>{lapseLabel(daysUntilLapse)}</small>
-          {/if}
-        </div>
-        {#each cells as cell (cell.date)}
-          <div
-            class="goal-day-cell"
-            class:active={cell.active}
-            class:segment-start={cell.segmentStart}
-            class:segment-end={cell.segmentEnd}
-            class:current-period={cell.current}
-            class:completed={cell.completed}
-            class:relieved={cell.relieved}
-            class:missed={cell.missed}
-            class:overdue={cell.overdue}
-            class:viewed={cell.date === viewedDate}
-            class:future={cell.date > today}
-            style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
-            title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.overdue ? ' · overdue' : cell.missed ? ' · missed' : cell.active ? ' · active' : ' · inactive'}`}
-          >
-            {#if cell.completed}
-              <span class="goal-cell-mark checked">✓</span>
-            {:else if cell.relieved}
-              <span class="goal-cell-mark relieved-mark">✓</span>
-            {:else if cell.overdue}
-              <span class="goal-cell-mark overdue-mark">×</span>
-            {:else if cell.active}
-              <span class="goal-cell-mark open"></span>
-            {/if}
-          </div>
-        {/each}
-      {:else}
-        <div class="goal-history-empty">
-          {#if search.trim()}
-            <span>No goals match “{search.trim()}”.</span>
-            <button type="button" on:click={() => (search = '')}>Clear search</button>
+      <div class="goal-history-name-scroll" bind:this={nameScrollEl} on:scroll={syncNameScroll}>
+        <div class="goal-history-name-list">
+          {#each visibleGoals as goal (goal.id)}
+            {@const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)}
+            <div
+              class="goal-history-name"
+              class:goal-row-focus={highlightedGoalId === goal.id}
+              data-goal-id={goal.id}
+              role="button"
+              tabindex="0"
+              style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
+              title={`${goal.name}: every ${goal.cadenceDays} day${goal.cadenceDays === 1 ? '' : 's'}${lapseTooltip(daysUntilLapse)}\nMatch keywords: ${goal.matchTerms.join(', ')}`}
+              on:click={() => onOpenGoals(goal.id)}
+              on:keydown={(event) => handleGoalNameKeydown(event, goal.id)}
+            >
+              <span class="goal-color-dot"></span>
+              <span>{goal.name}</span>
+              <button
+                class="goal-copy-button"
+                type="button"
+                aria-label={`Copy ${goal.name}`}
+                title={copiedGoalId === goal.id ? 'Copied goal name' : 'Copy goal name'}
+                on:click={(event) => copyGoalName(event, goal)}
+                on:keydown={(event) => event.stopPropagation()}
+              >
+                {#if copiedGoalId === goal.id}
+                  <span aria-hidden="true">✓</span>
+                {:else}
+                  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M9 5h6" />
+                    <path d="M9 4h6a2 2 0 0 1 2 2v1H7V6a2 2 0 0 1 2-2Z" />
+                    <path d="M7 7H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-1" />
+                  </svg>
+                {/if}
+              </button>
+              <small>{goal.cadenceDays}d</small>
+              {#if daysUntilLapse !== null}
+                <small class="goal-lapse" class:overdue={daysUntilLapse <= 0}>{lapseLabel(daysUntilLapse)}</small>
+              {/if}
+            </div>
           {:else}
-            <span>No goals active in this range.</span>
-            <button type="button" on:click={() => onOpenGoals()}>Add your first goal</button>
-          {/if}
+            <div class="goal-history-empty">
+              {#if search.trim()}
+                <span>No goals match “{search.trim()}”.</span>
+                <button type="button" on:click={() => (search = '')}>Clear search</button>
+              {:else}
+                <span>No goals active in this range.</span>
+                <button type="button" on:click={() => onOpenGoals()}>Add your first goal</button>
+              {/if}
+            </div>
+          {/each}
         </div>
-      {/each}
+      </div>
+    </div>
+
+    <div class="goal-history-scroll" bind:this={scrollEl} on:scroll={syncTimelineScroll}>
+      <div class="goal-history-grid" style={`--goal-day-count: ${dates.length}`}>
+        {#each dates as date (date)}
+          <button
+            type="button"
+            class:viewed={date === viewedDate}
+            class:today={date === currentDay}
+            class:future={date > today}
+            class="goal-date-head"
+            data-goal-date={date}
+            aria-label={`Open ${date} in Today view`}
+            title={`Open ${date} in Today view`}
+            on:click={() => onOpenDate(date)}
+          >
+            <span>{dayLabel(date)}</span>
+            <strong>{dateLabel(date)}</strong>
+          </button>
+        {/each}
+
+        {#each visibleGoals as goal (goal.id)}
+          {@const cells = buildGoalDayCells(goal, completions, dates, today)}
+          {#each cells as cell (cell.date)}
+            <div
+              class="goal-day-cell"
+              class:active={cell.active}
+              class:segment-start={cell.segmentStart}
+              class:segment-end={cell.segmentEnd}
+              class:current-period={cell.current}
+              class:completed={cell.completed}
+              class:relieved={cell.relieved}
+              class:missed={cell.missed}
+              class:overdue={cell.overdue}
+              class:viewed={cell.date === viewedDate}
+              class:future={cell.date > today}
+              style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
+              title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.overdue ? ' · overdue' : cell.missed ? ' · missed' : cell.active ? ' · active' : ' · inactive'}`}
+            >
+              {#if cell.completed}
+                <span class="goal-cell-mark checked">✓</span>
+              {:else if cell.relieved}
+                <span class="goal-cell-mark relieved-mark">✓</span>
+              {:else if cell.overdue}
+                <span class="goal-cell-mark overdue-mark">×</span>
+              {:else if cell.active}
+                <span class="goal-cell-mark open"></span>
+              {/if}
+            </div>
+          {/each}
+        {/each}
+      </div>
     </div>
   </div>
 </section>
