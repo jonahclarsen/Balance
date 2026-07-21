@@ -601,6 +601,23 @@ nav button.active {
   margin-right: 6px;
 }
 
+.row-actions.edit-shortcut-action {
+  flex-direction: column;
+  gap: 0;
+}
+
+.edit-shortcut-hint {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 10px;
+  text-transform: lowercase;
+}
+
 .icon-button {
   display: inline-grid;
   place-items: center;

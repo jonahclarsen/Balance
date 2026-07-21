@@ -136,6 +136,20 @@ test('list overlay selects its first item when initially opened', async ({ page 
   await expect(dialog.locator('.plan-row.selected')).toContainText('Milk')
 })
 
+test('clicking a list row selects it without checking it', async ({ page }) => {
+  const dialog = await openTwoItemGroceriesOverlay(page)
+  const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })
+  const eggsRow = dialog.locator('.plan-row', { hasText: 'Eggs' })
+
+  await milkRow.click()
+  await expect(milkRow.getByRole('checkbox')).not.toBeChecked()
+
+  await eggsRow.click()
+
+  await expect(eggsRow).toHaveClass(/selected/)
+  await expect(eggsRow.getByRole('checkbox')).not.toBeChecked()
+})
+
 test('ArrowUp unchecks both the current and previous list items', async ({ page }) => {
   const dialog = await openThreeItemGroceriesOverlay(page)
   const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })
@@ -175,6 +189,7 @@ test('list overlay item shows an edit pencil that jumps to the template and reop
   // Each generated item exposes an edit-in-template button.
   const editButton = dialog.getByRole('button', { name: 'Edit this item in the list template' })
   await expect(editButton).toBeVisible()
+  await expect(editButton.locator('xpath=..').getByText('E', { exact: true })).toBeVisible()
   await editButton.click()
 
   // The toast hides while we land on the list-templates editor with the source item focused.
@@ -185,6 +200,20 @@ test('list overlay item shows an edit pencil that jumps to the template and reop
 
   await page.getByRole('button', { name: 'Today', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'Groceries' })).toBeVisible()
+})
+
+test('E edits the selected item in a list overlay', async ({ page }) => {
+  const dialog = await openTwoItemGroceriesOverlay(page)
+
+  await page.keyboard.press('ArrowDown')
+  await expect(dialog.locator('.plan-row.selected')).toContainText('Eggs')
+  await page.keyboard.press('e')
+
+  await expect(dialog).toBeHidden()
+  await expect(page.getByRole('heading', { name: 'List template' })).toBeVisible()
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.textContent ?? ''))
+    .toBe('Eggs')
 })
 
 test('navigating to another page hides the list overlay until returning', async ({ page }) => {
@@ -220,6 +249,36 @@ test('returning to Today restores the list overlay scroll position', async ({ pa
     .poll(() => reopenedDialog.locator('.overlay-body').evaluate((element) => element.scrollTop))
     .toBeGreaterThanOrEqual(scrollTopBefore - 2)
   expect(await reopenedDialog.locator('.overlay-body').evaluate((element) => element.scrollTop)).toBeLessThanOrEqual(scrollTopBefore + 2)
+})
+
+test('an open list overlay, its selection, and its scroll position survive a reload', async ({ page }) => {
+  let dialog = await openLongGroceriesOverlay(page)
+  const targetText = 'Item 24'
+  await dialog.locator('.plan-row', { hasText: targetText }).click()
+  await expect(dialog.locator('.plan-row.selected')).toContainText(targetText)
+  await page.waitForTimeout(350)
+  await dialog.locator('.overlay-body').evaluate((element) => {
+    element.scrollTop = Math.min(element.scrollHeight - element.clientHeight, element.scrollTop + 180)
+  })
+  const scrollTopBefore = await dialog.locator('.overlay-body').evaluate((element) => element.scrollTop)
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance:workspaceViewState') || 'null')
+        return state?.listOverlayScrollTopsByList?.[state?.listOverlay?.listId] ?? null
+      }),
+    )
+    .toBe(scrollTopBefore)
+
+  await page.reload()
+  dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.locator('.plan-row.selected')).toContainText(targetText)
+  await expect
+    .poll(() => dialog.locator('.overlay-body').evaluate((element) => element.scrollTop))
+    .toBeGreaterThanOrEqual(scrollTopBefore - 2)
+  expect(await dialog.locator('.overlay-body').evaluate((element) => element.scrollTop)).toBeLessThanOrEqual(scrollTopBefore + 2)
 })
 
 test('reopening a list overlay restores the selected item near the one-third scroll line', async ({ page }) => {

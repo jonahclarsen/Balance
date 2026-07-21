@@ -18,6 +18,9 @@
   export let selectedItemId: Id | null = null
   export let initialScrollTop: number | null = null
   export let onScrollTopChange: ((scrollTop: number) => void) | null = null
+  // Modal list panels show the E hint beneath each edit button. The page version
+  // omits it because the plain-key shortcut is modal-only.
+  export let showEditShortcutHint = false
 
   let panel: HTMLDivElement
   let scrollContainer: HTMLElement | null = null
@@ -60,10 +63,12 @@
   // Moving down checks off the row being left; moving up reopens both the row
   // being left and the row being selected. Clicking a different row completes
   // the previous row.
-  function selectItem(itemId: Id, selectedItemDone?: boolean) {
+  function selectItem(itemId: Id, selectedItemDone?: boolean, updateWhenUnchanged = false) {
     const previousItemId = selectedItemId
     selectedItemId = itemId
-    if (selectedItemDone !== undefined) updateItemsForSelectionMove(previousItemId, itemId, selectedItemDone)
+    if (selectedItemDone !== undefined && (previousItemId !== itemId || updateWhenUnchanged)) {
+      updateItemsForSelectionMove(previousItemId, itemId, selectedItemDone)
+    }
     void focusSelectedRow('smooth')
   }
 
@@ -148,7 +153,7 @@
           : ids.length - 1
         : Math.min(ids.length - 1, Math.max(0, currentIndex + direction))
 
-    selectItem(ids[nextIndex], direction === 1)
+    selectItem(ids[nextIndex], direction === 1, true)
   }
 
   export function toggleSelectedDone() {
@@ -167,6 +172,10 @@
 
   export function hasSelection() {
     return Boolean(selectedItemId)
+  }
+
+  export function editSelectedTemplateItem() {
+    if (selectedItemId) onEditTemplate(selectedItemId)
   }
 
   // The panel only holds focus once a row is clicked, so this fires reliably
@@ -219,6 +228,7 @@
       onLockedSelect={(itemId) => selectItem(itemId, true)}
       onOpenLink={(link, itemId) => onOpenLink(link, itemId)}
       onEditTemplate={onEditTemplate}
+      {showEditShortcutHint}
       locked
     />
   {/each}

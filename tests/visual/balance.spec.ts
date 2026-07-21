@@ -897,6 +897,46 @@ test('option-arrow keeps a moved item and two surrounding rows visible', async (
     .toEqual({ scrolled: true, twoAboveVisible: true, twoBelowVisible: true })
 })
 
+test('today scroll position survives a reload', async ({ page }) => {
+  const texts = Array.from({ length: 50 }, (_, index) => `Reload row ${index + 1}`)
+  await seedPlanItems(page, texts)
+
+  const scrollTop = () =>
+    page.evaluate(() => {
+      const workspace = document.querySelector<HTMLElement>('.workspace')
+      return window.innerWidth <= 760 ? window.scrollY : (workspace?.scrollTop ?? 0)
+    })
+  const targetScrollTop = await page.evaluate(() => {
+    const workspace = document.querySelector<HTMLElement>('.workspace')
+    const target = 620
+    if (window.innerWidth <= 760) {
+      const top = Math.min(target, document.documentElement.scrollHeight - window.innerHeight)
+      window.scrollTo(0, top)
+      return top
+    }
+    if (!workspace) return 0
+    const top = Math.min(target, workspace.scrollHeight - workspace.clientHeight)
+    workspace.scrollTop = top
+    return top
+  })
+  expect(targetScrollTop).toBeGreaterThan(0)
+  await expect.poll(scrollTop).toBe(targetScrollTop)
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance:workspaceViewState') || 'null')
+        const todayEntry = Object.entries(state?.scrollPositionsByPage ?? {}).find(([key]) => key.startsWith('today:'))
+        return todayEntry?.[1] ?? null
+      }),
+    )
+    .toBe(targetScrollTop)
+
+  await page.reload()
+
+  await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
+  await expect.poll(scrollTop).toBe(targetScrollTop)
+})
+
 test('plan item text fields support left and right boundary focus', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

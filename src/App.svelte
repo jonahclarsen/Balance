@@ -63,6 +63,7 @@
   const DONE_TINT_KEY = 'balance:doneTintColor'
   const CHECKBOX_COLOR_KEY = 'balance:checkboxColor'
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
+  const WORKSPACE_VIEW_STATE_KEY = 'balance:workspaceViewState'
   // Matches the light-theme --done-tint base in app.css; shown as the picker
   // value when the user hasn't chosen a custom color yet.
   const DEFAULT_DONE_TINT = '#3f9d54'
@@ -85,6 +86,7 @@
   let lastScrolledPage = ''
   let scrollRestoreNonce = 0
   let restoringScroll = false
+  let workspaceViewStateReady = false
   let listTemplatesViewStateReady = false
   let goalHistoryHeight: number | null = null
   let goalRhythmVisible = true
@@ -241,7 +243,7 @@ return rows`
       : view === 'listTemplates'
         ? `list-template:${selectedListTemplate?.id ?? ''}`
         : `view:${view}`
-  $: restoreScrollForPage(scrollPageKey)
+  $: if (workspaceViewStateReady) restoreScrollForPage(scrollPageKey)
   $: activeDailyReminder = activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER
   $: if (!editingDailyReminder) dailyReminderDraft = activeDailyReminder
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
@@ -315,6 +317,15 @@ return rows`
   // The list overlay toast belongs to the page it was opened over: leaving that
   // page hides it, returning shows it again (its state + selection persist).
   $: listOverlayVisible = Boolean(listOverlay && listOverlayInstance && view === listOverlayView)
+  $: if (workspaceViewStateReady) {
+    persistWorkspaceViewState(
+      view,
+      listOverlay,
+      listOverlayView,
+      selectedListOverlayItemIdsByList,
+      listOverlayScrollTopsByList,
+    )
+  }
   $: filteredDatabaseOperations = filterDatabaseRows(databaseInspection?.operations ?? [], databaseSearch)
   $: filteredDatabaseHistoryEntries = filterDatabaseRows(databaseInspection?.historyEntries ?? [], databaseSearch)
   $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
@@ -832,6 +843,7 @@ return rows`
 
   onMount(() => {
     let mounted = true
+    const storedWorkspaceViewState = readWorkspaceViewState()
 
     const storedListTemplatesViewState = readListTemplatesViewState()
     if (storedListTemplatesViewState) {
@@ -869,6 +881,31 @@ return rows`
     async function initialize() {
       recoveryKeyStatus = await getRecoveryKeyStatus()
       await plannerStore.ready
+
+      if (storedWorkspaceViewState) {
+        scrollPositionsByPage = {
+          ...scrollPositionsByPage,
+          ...storedWorkspaceViewState.scrollPositionsByPage,
+        }
+        selectedListOverlayItemIdsByList = storedWorkspaceViewState.selectedListOverlayItemIdsByList
+        listOverlayScrollTopsByList = storedWorkspaceViewState.listOverlayScrollTopsByList
+
+        const storedOverlay = storedWorkspaceViewState.listOverlay
+        if (storedOverlay && $plannerStore.lists.some((list) => list.id === storedOverlay.listId)) {
+          listOverlay = {
+            listId: storedOverlay.listId,
+            date: storedOverlay.date,
+            opener: storedOverlay.opener,
+          }
+          listOverlayView = storedOverlay.view
+          view = storedOverlay.view
+          if ($plannerStore.activePlanDate !== storedOverlay.date) {
+            plannerStore.setActivePlanDate(storedOverlay.date)
+          }
+        }
+      }
+
+      workspaceViewStateReady = true
       listTemplatesViewStateReady = true
       planCompletionById = new Map(
         $plannerStore.plans.map((plan) => [plan.id, allPlanItemsDone(plan.items)]),
@@ -895,6 +932,7 @@ return rows`
     void initialize()
 
     return () => {
+      rememberWorkspaceScroll()
       mounted = false
       clearAutoJsonExportTimers()
       clearGoalRhythmAutoShowTimer()
@@ -1072,6 +1110,15 @@ return rows`
   function rememberPageScroll(pageKey: string, scrollTop: number) {
     scrollPositionsByPage[pageKey] = scrollTop
     if (pageKey.startsWith('list-template:')) persistListTemplatesViewState(selectedListTemplateId)
+    if (pageKey.startsWith('today:')) {
+      persistWorkspaceViewState(
+        view,
+        listOverlay,
+        listOverlayView,
+        selectedListOverlayItemIdsByList,
+        listOverlayScrollTopsByList,
+      )
+    }
   }
 
   function handleWorkspaceScroll() {
@@ -1106,6 +1153,111 @@ return rows`
     requestAnimationFrame(() => {
       if (restoreNonce === scrollRestoreNonce) restoringScroll = false
     })
+  }
+
+  function readWorkspaceViewState(): {
+    scrollPositionsByPage: Record<string, number>
+    listOverlay: ({ listId: Id; date: string; opener: Opener | null; view: View }) | null
+    selectedListOverlayItemIdsByList: Record<Id, Id | null>
+    listOverlayScrollTopsByList: Record<Id, number>
+  } | null {
+    const raw = localStorage.getItem(WORKSPACE_VIEW_STATE_KEY)
+    if (!raw) return null
+
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>
+      const rawOverlay = parsed.listOverlay
+      let storedOverlay: { listId: Id; date: string; opener: Opener | null; view: View } | null = null
+
+      if (rawOverlay && typeof rawOverlay === 'object' && !Array.isArray(rawOverlay)) {
+        const overlay = rawOverlay as Record<string, unknown>
+        const overlayView = isView(overlay.view) ? overlay.view : null
+        const opener = readStoredOpener(overlay.opener)
+        if (typeof overlay.listId === 'string' && typeof overlay.date === 'string' && overlayView) {
+          storedOverlay = { listId: overlay.listId, date: overlay.date, opener, view: overlayView }
+        }
+      }
+
+      return {
+        scrollPositionsByPage: readStoredNumberRecord(parsed.scrollPositionsByPage, (key) => key.startsWith('today:')),
+        listOverlay: storedOverlay,
+        selectedListOverlayItemIdsByList: readStoredNullableIdRecord(parsed.selectedListOverlayItemIdsByList),
+        listOverlayScrollTopsByList: readStoredNumberRecord(parsed.listOverlayScrollTopsByList),
+      }
+    } catch {
+      return null
+    }
+  }
+
+  function isView(value: unknown): value is View {
+    return (
+      value === 'today' ||
+      value === 'templates' ||
+      value === 'listTemplates' ||
+      value === 'lists' ||
+      value === 'metrics' ||
+      value === 'goals' ||
+      value === 'settings'
+    )
+  }
+
+  function readStoredOpener(value: unknown): Opener | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+    const opener = value as Record<string, unknown>
+    if (
+      (opener.container === 'plan' || opener.container === 'list') &&
+      typeof opener.containerId === 'string' &&
+      typeof opener.itemId === 'string'
+    ) {
+      return { container: opener.container, containerId: opener.containerId, itemId: opener.itemId }
+    }
+    return null
+  }
+
+  function readStoredNumberRecord(value: unknown, includeKey: (key: string) => boolean = () => true): Record<string, number> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    return Object.fromEntries(
+      Object.entries(value).filter(
+        (entry): entry is [string, number] =>
+          includeKey(entry[0]) && typeof entry[1] === 'number' && Number.isFinite(entry[1]) && entry[1] >= 0,
+      ),
+    )
+  }
+
+  function readStoredNullableIdRecord(value: unknown): Record<Id, Id | null> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+    return Object.fromEntries(
+      Object.entries(value).filter(
+        (entry): entry is [string, string | null] => typeof entry[1] === 'string' || entry[1] === null,
+      ),
+    )
+  }
+
+  function persistWorkspaceViewState(
+    currentView: View,
+    overlay: { listId: Id; date: string; opener: Opener | null } | null,
+    overlayView: View | null,
+    selectedItemIdsByList: Record<Id, Id | null>,
+    overlayScrollTopsByList: Record<Id, number>,
+  ) {
+    if (!workspaceViewStateReady) return
+
+    const scrollPositions = Object.fromEntries(
+      Object.entries(scrollPositionsByPage).filter(
+        ([pageKey, scrollTop]) => pageKey.startsWith('today:') && Number.isFinite(scrollTop) && scrollTop >= 0,
+      ),
+    )
+    const visibleOverlay = overlay && overlayView === currentView ? { ...overlay, view: overlayView } : null
+
+    localStorage.setItem(
+      WORKSPACE_VIEW_STATE_KEY,
+      JSON.stringify({
+        scrollPositionsByPage: scrollPositions,
+        listOverlay: visibleOverlay,
+        selectedListOverlayItemIdsByList: selectedItemIdsByList,
+        listOverlayScrollTopsByList: overlayScrollTopsByList,
+      }),
+    )
   }
 
   function readListTemplatesViewState(): {
@@ -1621,6 +1773,22 @@ return rows`
         event.preventDefault()
         event.stopPropagation()
         overlayListPanel.toggleSelectedDone()
+        return
+      }
+
+      if (
+        key === 'e' &&
+        !event.shiftKey &&
+        !event.altKey &&
+        !primaryModifier &&
+        !metricOverlay &&
+        !isFormFieldActive() &&
+        !isRichTextActive() &&
+        overlayListPanel.hasSelection()
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        overlayListPanel.editSelectedTemplateItem()
         return
       }
     }
@@ -3764,9 +3932,12 @@ return rows`
           {metrics}
           bind:selectedItemId={selectedListOverlayItemIdsByList[instance.id]}
           initialScrollTop={listOverlayScrollTopsByList[instance.id] ?? null}
-          onScrollTopChange={(scrollTop) => (listOverlayScrollTopsByList[instance.id] = scrollTop)}
+          onScrollTopChange={(scrollTop) => {
+            listOverlayScrollTopsByList = { ...listOverlayScrollTopsByList, [instance.id]: scrollTop }
+          }}
           onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
           onEditTemplate={(itemId) => editListItemInTemplate(instance, itemId)}
+          showEditShortcutHint
         />
       </OverlayModal>
     {/if}

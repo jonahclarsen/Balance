@@ -67,6 +67,7 @@
       title: 'Editing items',
       shortcuts: [
         { keys: ['mod', 'D'], label: 'Toggle done' },
+        { keys: ['E'], label: 'Edit selected list item (overlay)' },
         { keys: ['alt', 'up'], label: 'Move item up / down', alt: ['alt', 'down'] },
         { keys: ['tab'], label: 'Indent', alt: ['shift', 'tab'] },
         { keys: ['mod', 'C'], label: 'Copy items' },
