@@ -14,17 +14,17 @@
   export let onChange: (startMinutes: number, endMinutes: number) => void
   export let onRemove: () => void
   export let overlapsPrevious = false
+  export let overlapsNext = false
   export let exceedsAncestor = false
   export let getShiftTargets: (() => TimeShiftTarget[] | null) | null = null
   export let onShift: ((targets: TimeShiftTarget[], delta: number) => void) | null = null
 
-  $: warningTitle = overlapsPrevious
-    ? exceedsAncestor
-      ? 'This time starts before the previous timed item ends and ends after a parent or ancestor ends'
-      : 'This time starts before the previous timed item ends'
-    : exceedsAncestor
-      ? 'This time ends after a parent or ancestor ends'
-      : null
+  $: warningReasons = [
+    overlapsPrevious ? 'starts before the previous timed item ends' : null,
+    overlapsNext ? 'ends after the next timed item starts' : null,
+    exceedsAncestor ? 'ends after a parent or ancestor ends' : null,
+  ].filter(Boolean)
+  $: warningTitle = warningReasons.length > 0 ? `This time ${warningReasons.join(' and ')}` : null
 
   let dragState:
     | {
@@ -96,32 +96,35 @@
 
 <span
   class="time-range"
-  class:overlaps={overlapsPrevious || exceedsAncestor}
   aria-label="Time range"
   title={warningTitle}
 >
-  <button
-    class="time-part"
-    type="button"
-    title="Drag up or down to move the whole time range. Hold Alt to change only the start time."
-    on:pointerdown={(event) => beginDrag('start', event)}
-    on:pointermove={continueDrag}
-    on:pointerup={endDrag}
-    on:pointercancel={endDrag}
-  >
-    {formatMinutes(startMinutes)}
-  </button>
-  <span class="dash">-</span>
-  <button
-    class="time-part"
-    type="button"
-    title="Drag up or down to change only the end time"
-    on:pointerdown={(event) => beginDrag('end', event)}
-    on:pointermove={continueDrag}
-    on:pointerup={endDrag}
-    on:pointercancel={endDrag}
-  >
-    {formatMinutes(endMinutes)}
-  </button>
+  <span class="time-values">
+    <button
+      class="time-part"
+      class:warning={overlapsPrevious}
+      type="button"
+      title="Drag up or down to move the whole time range. Hold Alt to change only the start time."
+      on:pointerdown={(event) => beginDrag('start', event)}
+      on:pointermove={continueDrag}
+      on:pointerup={endDrag}
+      on:pointercancel={endDrag}
+    >
+      {formatMinutes(startMinutes)}
+    </button>
+    <span class="dash">-</span>
+    <button
+      class="time-part"
+      class:warning={overlapsNext || exceedsAncestor}
+      type="button"
+      title="Drag up or down to change only the end time"
+      on:pointerdown={(event) => beginDrag('end', event)}
+      on:pointermove={continueDrag}
+      on:pointerup={endDrag}
+      on:pointercancel={endDrag}
+    >
+      {formatMinutes(endMinutes)}
+    </button>
+  </span>
   <button class="icon-button quiet" type="button" title="Remove time" on:click={onRemove}>×</button>
 </span>

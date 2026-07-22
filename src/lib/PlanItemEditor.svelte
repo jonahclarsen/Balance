@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
-  import { defaultPlanItemTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, planItemTimeExceedsAncestor, planItemTimeOverlapsPrevious, renderItemDisplayHTML, type ItemLink, type ItemTextSegment } from './planner'
+  import { defaultPlanItemTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
@@ -19,6 +19,7 @@
 
   export let item: PlanItem
   export let allItems: PlanItem[]
+  export let timeWarnings: ReadonlyMap<Id, ItemTimeWarning>
   export let depth = 0
   export let planId: Id
   export let parentId: Id | null = null
@@ -88,12 +89,7 @@
   }
   $: matchedGoalIds = new Set(matchedGoals.map((goal) => goal.id))
   $: previewGoals = item.done ? [] : matchingGoals.filter((goal) => !matchedGoalIds.has(goal.id))
-  $: timeOverlapsPrevious =
-    item.startMinutes !== null &&
-    item.endMinutes !== null &&
-    planItemTimeOverlapsPrevious(allItems, item.id, item.startMinutes)
-  $: timeExceedsAncestor =
-    item.endMinutes !== null && planItemTimeExceedsAncestor(allItems, item.id, item.endMinutes)
+  $: timeWarning = timeWarnings.get(item.id)
 
   // Recompute link segments only when the text or the available targets change,
   // so unrelated edits elsewhere in the tree don't trigger a rescan per keystroke.
@@ -413,8 +409,9 @@
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
-        overlapsPrevious={timeOverlapsPrevious}
-        exceedsAncestor={timeExceedsAncestor}
+        overlapsPrevious={timeWarning?.overlapsPrevious}
+        overlapsNext={timeWarning?.overlapsNext}
+        exceedsAncestor={timeWarning?.exceedsAncestor}
         onChange={patchTimeRange}
         getShiftTargets={selectedTimeShiftTargets}
         onShift={shiftSelectedTimeRanges}
@@ -524,6 +521,7 @@
           <svelte:self
             item={child}
             {allItems}
+            {timeWarnings}
             depth={depth + 1}
             {planId}
             parentId={item.id}

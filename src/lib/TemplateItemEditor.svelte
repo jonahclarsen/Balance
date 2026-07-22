@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { defaultTemplateItemTimeRange, planItemTimeExceedsAncestor, planItemTimeOverlapsPrevious } from './planner'
+  import { defaultTemplateItemTimeRange, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
@@ -19,6 +19,7 @@
 
   export let item: TemplateItem
   export let allItems: TemplateItem[]
+  export let timeWarnings: ReadonlyMap<Id, ItemTimeWarning>
   export let depth = 0
   export let templateId: Id
   export let parentId: Id | null = null
@@ -67,12 +68,7 @@
   // A lone option is allowed to sit below 100%: the missing share is an implicit
   // "skip" (the item just doesn't appear that often), so it isn't a bad total.
   $: badProbabilityTotal = item.options.length > 1 && probabilityTotal !== 100
-  $: timeOverlapsPrevious =
-    item.startMinutes !== null &&
-    item.endMinutes !== null &&
-    planItemTimeOverlapsPrevious(allItems, item.id, item.startMinutes)
-  $: timeExceedsAncestor =
-    item.endMinutes !== null && planItemTimeExceedsAncestor(allItems, item.id, item.endMinutes)
+  $: timeWarning = timeWarnings.get(item.id)
 
   function addTime() {
     patchItem(templateId, item.id, defaultTemplateItemTimeRange(allItems, item.id))
@@ -276,8 +272,9 @@
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
-        overlapsPrevious={timeOverlapsPrevious}
-        exceedsAncestor={timeExceedsAncestor}
+        overlapsPrevious={timeWarning?.overlapsPrevious}
+        overlapsNext={timeWarning?.overlapsNext}
+        exceedsAncestor={timeWarning?.exceedsAncestor}
         onChange={patchTimeRange}
         onRemove={() => patchItem(templateId, item.id, { startMinutes: null, endMinutes: null })}
       />
@@ -346,6 +343,7 @@
           <svelte:self
             item={child}
             {allItems}
+            {timeWarnings}
             depth={depth + 1}
             {templateId}
             parentId={item.id}

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
-  import { findPlanItem, itemMetricLink, type ItemLink } from './planner'
+  import { buildItemTimeWarnings, findPlanItem, itemMetricLink, type ItemLink } from './planner'
   import { plannerStore } from './store'
   import type { Id, ListTemplate, Metric, PlanItem } from './types'
 
@@ -28,6 +28,7 @@
   // Drop a stale selection when the item it pointed at disappears.
   $: if (selectedItemId && !findPlanItem(instance.items, selectedItemId)) selectedItemId = null
   $: selectedItemIdSet = new Set(selectedItemId ? [selectedItemId] : [])
+  $: timeWarnings = buildItemTimeWarnings(instance.items)
 
   onMount(() => {
     const setup = async () => {
@@ -212,6 +213,7 @@
     <PlanItemEditor
       {item}
       allItems={instance.items}
+      {timeWarnings}
       planId={instance.id}
       patchItem={plannerStore.patchListItem}
       splitItem={plannerStore.splitListItem}

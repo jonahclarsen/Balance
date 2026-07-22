@@ -34,7 +34,7 @@
   import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
-  import { DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
 
   // Pasting four or more items onto a different day routes through a review queue
@@ -235,6 +235,7 @@ return rows`
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
+  $: activePlanTimeWarnings = buildItemTimeWarnings(activePlan?.items ?? [])
   // Scroll position is remembered per page. Today scrolls independently for each
   // date, and List Templates scrolls independently for each template.
   $: scrollPageKey =
@@ -247,6 +248,7 @@ return rows`
   $: activeDailyReminder = activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER
   $: if (!editingDailyReminder) dailyReminderDraft = activeDailyReminder
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
+  $: selectedTemplateTimeWarnings = buildItemTimeWarnings(selectedTemplate?.items ?? [])
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
 
   // ---- Lists ----
@@ -3123,6 +3125,7 @@ return rows`
             <PlanItemEditor
               {item}
               allItems={activePlan.items}
+              timeWarnings={activePlanTimeWarnings}
               planId={activePlan.id}
               patchItem={plannerStore.patchPlanItem}
               splitItem={plannerStore.splitPlanItem}
@@ -3191,6 +3194,7 @@ return rows`
               <TemplateItemEditor
                 {item}
                 allItems={selectedTemplate.items}
+                timeWarnings={selectedTemplateTimeWarnings}
                 templateId={selectedTemplate.id}
                 patchItem={plannerStore.patchTemplateItem}
                 splitItem={plannerStore.splitTemplateItem}

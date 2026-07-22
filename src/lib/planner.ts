@@ -1051,70 +1051,73 @@ function latestTimedItemEndMinutes<T extends {
   return lastEndMinutes
 }
 
-export function planItemTimeOverlapsPrevious<T extends {
+export type ItemTimeWarning = {
+  overlapsPrevious: boolean
+  overlapsNext: boolean
+  exceedsAncestor: boolean
+}
+
+type MutableItemTimeWarning = ItemTimeWarning
+const itemTimeWarningsCache = new WeakMap<object, ReadonlyMap<Id, ItemTimeWarning>>()
+
+// Build every time warning in one tree walk. Only adjacent timed items at the
+// same indentation level are compared, so a nested child doesn't make a later
+// top-level item look like a conflict. The earliest ancestor end carries down
+// through recursion.
+export function buildItemTimeWarnings<T extends {
   id: Id
   startMinutes: number | null
   endMinutes: number | null
   children: T[]
-}>(items: T[], itemId: Id, startMinutes: number): boolean {
-  const previousEndMinutes = previousTimedSiblingEndMinutes(items, itemId)
-  return previousEndMinutes !== null && startMinutes < previousEndMinutes
-}
+}>(items: T[]): ReadonlyMap<Id, ItemTimeWarning> {
+  const cached = itemTimeWarningsCache.get(items)
+  if (cached) return cached
 
-export function planItemTimeExceedsAncestor<T extends {
-  id: Id
-  endMinutes: number | null
-  children: T[]
-}>(items: T[], itemId: Id, endMinutes: number): boolean {
-  const ancestors = findAncestors(items, itemId)
-  return ancestors?.some((ancestor) => ancestor.endMinutes !== null && endMinutes > ancestor.endMinutes) ?? false
-}
+  const warnings = new Map<Id, MutableItemTimeWarning>()
 
-// Overlap highlighting only considers items at the same indentation level, so an
-// item that nests a shorter child (e.g. "3-5pm library" containing "3-4pm study")
-// doesn't make a following sibling like "4:30-6pm hang" look like a conflict.
-function previousTimedSiblingEndMinutes<T extends {
-  id: Id
-  startMinutes: number | null
-  endMinutes: number | null
-  children: T[]
-}>(items: T[], itemId: Id): number | null {
-  const siblings = findSiblings(items, itemId)
-  if (!siblings) return null
+  const warningFor = (itemId: Id): MutableItemTimeWarning => {
+    let warning = warnings.get(itemId)
+    if (!warning) {
+      warning = { overlapsPrevious: false, overlapsNext: false, exceedsAncestor: false }
+      warnings.set(itemId, warning)
+    }
+    return warning
+  }
 
-  let lastEndMinutes: number | null = null
-  for (const sibling of siblings) {
-    if (sibling.id === itemId) return lastEndMinutes
-    if (sibling.startMinutes !== null && sibling.endMinutes !== null) {
-      lastEndMinutes = sibling.endMinutes
+  const visit = (siblings: T[], ancestorEndMinutes: number | null) => {
+    let previousTimedItem: T | null = null
+
+    for (const item of siblings) {
+      const isTimed = item.startMinutes !== null && item.endMinutes !== null
+
+      if (isTimed) {
+        const warning = warningFor(item.id)
+
+        if (previousTimedItem && item.startMinutes! < previousTimedItem.endMinutes!) {
+          warning.overlapsPrevious = true
+          warningFor(previousTimedItem.id).overlapsNext = true
+        }
+
+        if (ancestorEndMinutes !== null && item.endMinutes! > ancestorEndMinutes) {
+          warning.exceedsAncestor = true
+        }
+
+        previousTimedItem = item
+      }
+
+      const childAncestorEndMinutes =
+        item.endMinutes === null
+          ? ancestorEndMinutes
+          : ancestorEndMinutes === null
+            ? item.endMinutes
+            : Math.min(ancestorEndMinutes, item.endMinutes)
+      visit(item.children, childAncestorEndMinutes)
     }
   }
 
-  return lastEndMinutes
-}
-
-function findSiblings<T extends { id: Id; children: T[] }>(items: T[], itemId: Id): T[] | null {
-  for (const item of items) {
-    if (item.id === itemId) return items
-    const found = findSiblings(item.children, itemId)
-    if (found) return found
-  }
-
-  return null
-}
-
-function findAncestors<T extends { id: Id; children: T[] }>(
-  items: T[],
-  itemId: Id,
-  ancestors: T[] = [],
-): T[] | null {
-  for (const item of items) {
-    if (item.id === itemId) return ancestors
-    const found = findAncestors(item.children, itemId, [...ancestors, item])
-    if (found) return found
-  }
-
-  return null
+  visit(items, null)
+  itemTimeWarningsCache.set(items, warnings)
+  return warnings
 }
 
 export function formatMinutes(minutes: number): string {

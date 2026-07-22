@@ -26,7 +26,6 @@
   --done-tint: color-mix(in srgb, #3f9d54 11%, transparent);
   --time-border: #c6d6d1;
   --time-bg: #eef7f3;
-  --time-warn-border: #e0c39a;
   --time-warn-bg: #fbf0e1;
   --time-warn-ink: #9a5e22;
   --focus-ring: rgba(47, 111, 104, 0.25);
@@ -59,7 +58,6 @@
     --done-tint: color-mix(in srgb, #4fae6a 16%, transparent);
     --time-border: #40665e;
     --time-bg: #20362f;
-    --time-warn-border: #6d5638;
     --time-warn-bg: #352a1c;
     --time-warn-ink: #dab98e;
     --focus-ring: rgba(121, 185, 174, 0.28);
@@ -644,33 +642,45 @@ nav button.active {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  gap: 1px;
   border: 1px solid var(--time-border);
   border-radius: 6px;
   background: var(--time-bg);
-  padding-left: 5px;
   color: var(--accent-strong);
   font-variant-numeric: tabular-nums;
 }
 
-.time-range.overlaps {
-  border-color: var(--time-warn-border);
-  background: var(--time-warn-bg);
-  color: var(--time-warn-ink);
+.time-values {
+  position: relative;
+  display: inline-grid;
+  grid-template-columns: repeat(2, minmax(max-content, 1fr));
+  align-self: stretch;
+  overflow: hidden;
+  border-radius: 5px 0 0 5px;
 }
 
 .time-part {
   border: 0;
   background: transparent;
   color: inherit;
-  padding: 5px 2px;
+  padding: 5px 8px;
   user-select: none;
   touch-action: none;
   cursor: ns-resize;
 }
 
+.time-part.warning {
+  background: var(--time-warn-bg);
+  color: var(--time-warn-ink);
+}
+
 .dash {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 1;
+  transform: translate(-50%, -50%);
   color: var(--muted);
+  pointer-events: none;
 }
 
 .children {
