@@ -33,6 +33,7 @@ chacha20poly1305 = "0.10"
 sha2 = "0.10"
 # LAN peer discovery for P2P sync (advertise + browse for other Balance devices).
 mdns-sd = "0.11"
+if-addrs = "0.13"
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-log = "2"
 tauri-plugin-dialog = "2"

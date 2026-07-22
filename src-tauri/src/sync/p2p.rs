@@ -9,9 +9,10 @@
 //! same sealed-changeset transport.
 
 use std::collections::HashMap;
-use std::net::{TcpListener, UdpSocket};
+use std::net::{Ipv4Addr, TcpListener, UdpSocket};
 use std::sync::{Mutex, OnceLock};
 
+use if_addrs::IfAddr;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use tauri::AppHandle;
 
@@ -34,9 +35,61 @@ struct P2pState {
 
 static STATE: OnceLock<P2pState> = OnceLock::new();
 
-/// This device's best-guess LAN IP (resolved via the default route, no packets
-/// actually sent).
+#[derive(Debug)]
+struct LocalIpv4Candidate {
+    interface_name: String,
+    ip: Ipv4Addr,
+    has_broadcast: bool,
+}
+
+fn is_likely_virtual_interface(name: &str) -> bool {
+    let name = name.to_ascii_lowercase();
+    [
+        "utun", "tun", "tap", "wg", "tailscale", "zerotier", "docker", "veth", "vmnet",
+        "bridge", "br-",
+    ]
+    .iter()
+    .any(|prefix| name.starts_with(prefix))
+}
+
+fn select_lan_ipv4(candidates: impl IntoIterator<Item = LocalIpv4Candidate>) -> Option<Ipv4Addr> {
+    candidates
+        .into_iter()
+        .filter(|candidate| {
+            !candidate.ip.is_loopback()
+                && !candidate.ip.is_link_local()
+                && !candidate.ip.is_unspecified()
+        })
+        .max_by_key(|candidate| {
+            (
+                !is_likely_virtual_interface(&candidate.interface_name),
+                candidate.has_broadcast,
+                candidate.ip.is_private(),
+            )
+        })
+        .map(|candidate| candidate.ip)
+}
+
+/// This device's best-guess LAN IP. Prefer a physical, broadcast-capable
+/// interface so an active VPN's default route does not hide the Wi-Fi address.
 pub fn local_ip() -> Option<String> {
+    if let Ok(interfaces) = if_addrs::get_if_addrs() {
+        let candidates = interfaces.into_iter().filter_map(|interface| {
+            let IfAddr::V4(address) = interface.addr else {
+                return None;
+            };
+            Some(LocalIpv4Candidate {
+                interface_name: interface.name,
+                ip: address.ip,
+                has_broadcast: address.broadcast.is_some(),
+            })
+        });
+        if let Some(ip) = select_lan_ipv4(candidates) {
+            return Some(ip.to_string());
+        }
+    }
+
+    // Last-resort fallback for platforms where interface enumeration fails.
     let sock = UdpSocket::bind("0.0.0.0:0").ok()?;
     sock.connect("8.8.8.8:80").ok()?;
     sock.local_addr().ok().map(|a| a.ip().to_string())
@@ -160,4 +213,38 @@ pub fn sync_with(app: &AppHandle, key: &SyncKey, addr: &str) -> Result<()> {
     let result = sync_connect(addr, &conn, key, &mut cursors);
     let _ = super::finalize(&conn);
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn candidate(name: &str, ip: [u8; 4], has_broadcast: bool) -> LocalIpv4Candidate {
+        LocalIpv4Candidate {
+            interface_name: name.to_string(),
+            ip: Ipv4Addr::from(ip),
+            has_broadcast,
+        }
+    }
+
+    #[test]
+    fn lan_address_prefers_wifi_over_a_vpn_default_route() {
+        let selected = select_lan_ipv4([
+            candidate("utun4", [10, 5, 0, 2], false),
+            candidate("en0", [192, 168, 1, 248], true),
+        ]);
+
+        assert_eq!(selected, Some(Ipv4Addr::new(192, 168, 1, 248)));
+    }
+
+    #[test]
+    fn lan_address_ignores_loopback_and_link_local_interfaces() {
+        let selected = select_lan_ipv4([
+            candidate("lo0", [127, 0, 0, 1], false),
+            candidate("en0", [169, 254, 10, 20], true),
+            candidate("wlan0", [10, 0, 0, 42], true),
+        ]);
+
+        assert_eq!(selected, Some(Ipv4Addr::new(10, 0, 0, 42)));
+    }
 }

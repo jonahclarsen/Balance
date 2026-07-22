@@ -644,8 +644,15 @@ pub fn rematerialize(conn: &Connection) -> Result<()> {
         "DELETE FROM plan_items; DELETE FROM plans;
          DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;",
     )?;
-    for op in &ops {
-        crate::apply_operation(&tx, op).map_err(Error::Codec)?;
+    for (index, op) in ops.iter().enumerate() {
+        crate::apply_operation(&tx, op).map_err(|error| {
+            let id = op.get("id").and_then(JsonValue::as_str).unwrap_or("unknown");
+            let ty = op.get("type").and_then(JsonValue::as_str).unwrap_or("unknown");
+            Error::Codec(format!(
+                "could not replay synced operation {} ({ty}, {id}): {error}",
+                index + 1
+            ))
+        })?;
     }
     tx.commit()?;
     Ok(())

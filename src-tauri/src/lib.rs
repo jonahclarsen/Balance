@@ -1408,8 +1408,16 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
 
     let result = match operation_type {
         "batch" => {
-            for nested_operation in required_array(payload, "operations")? {
-                apply_operation(tx, nested_operation)?;
+            for (index, nested_operation) in
+                required_array(payload, "operations")?.iter().enumerate()
+            {
+                apply_operation(tx, nested_operation).map_err(|error| {
+                    let ty = nested_operation
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown");
+                    format!("batch operation {} ({ty}) failed: {error}", index + 1)
+                })?;
             }
             Ok(())
         }
@@ -1671,7 +1679,14 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             required_i64(payload, "position")?,
         ),
         "history_undo" | "history_redo" => {
-            apply_operation(tx, required_value(payload, "operation")?)
+            let nested_operation = required_value(payload, "operation")?;
+            apply_operation(tx, nested_operation).map_err(|error| {
+                let ty = nested_operation
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown");
+                format!("history operation ({ty}) failed: {error}")
+            })
         }
         // Lists/Metrics state lives in the LISTS_METRICS_DATA blob below, so these
         // operations need no per-row table mutation.
@@ -3220,6 +3235,24 @@ fn insert_plan_item(
     item: &Value,
     position: i64,
 ) -> Result<(), String> {
+    let plan_exists = connection
+        .query_row(
+            "select 1 from plans where id = ?1",
+            params![plan_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .is_some();
+    if !plan_exists {
+        return Ok(());
+    }
+    if let Some(parent_id) = parent_id {
+        if plan_item_plan_id_if_exists(connection, parent_id)?.as_deref() != Some(plan_id) {
+            return Ok(());
+        }
+    }
+
     let item_id = required_string(item, "id")?;
     connection
         .execute(
@@ -3316,6 +3349,9 @@ fn patch_plan_item(connection: &Connection, payload: &Value) -> Result<(), Strin
 fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), String> {
     let plan_id = required_string(payload, "planId")?;
     let source_id = required_string(payload, "itemId")?;
+    if plan_item_plan_id_if_exists(connection, source_id)?.as_deref() != Some(plan_id) {
+        return Ok(());
+    }
     let move_children_to_new_item =
         optional_bool(payload, "moveChildrenToNewItem")?.unwrap_or(false);
     let child_ids = if move_children_to_new_item {
@@ -3440,6 +3476,11 @@ fn paste_plan_items_row(
 ) -> Result<(), String> {
     if items.is_empty() {
         return Ok(());
+    }
+    if let Some(target_id) = target_id {
+        if plan_item_plan_id_if_exists(connection, target_id)?.as_deref() != Some(plan_id) {
+            return Ok(());
+        }
     }
 
     let parent_id = if placement == "inside" {
@@ -3749,7 +3790,12 @@ fn move_plan_item_row(
     target_id: &str,
     placement: &str,
 ) -> Result<(), String> {
-    let source_plan_id = plan_item_plan_id(connection, source_id)?;
+    let Some(source_plan_id) = plan_item_plan_id_if_exists(connection, source_id)? else {
+        return Ok(());
+    };
+    if plan_item_plan_id_if_exists(connection, target_id)?.as_deref() != Some(&source_plan_id) {
+        return Ok(());
+    }
 
     if placement == "inside" {
         let position = next_plan_item_position(connection, &source_plan_id, Some(target_id))?;
@@ -3791,7 +3837,9 @@ fn move_plan_item_within_level_row(
     item_id: &str,
     direction: &str,
 ) -> Result<(), String> {
-    let plan_id = plan_item_plan_id(connection, item_id)?;
+    let Some(plan_id) = plan_item_plan_id_if_exists(connection, item_id)? else {
+        return Ok(());
+    };
     let parent_id = plan_item_parent_id(connection, item_id)?;
     let mut siblings = plan_item_sibling_ids(connection, &plan_id, parent_id.as_deref())?;
     let index = siblings
@@ -3820,7 +3868,9 @@ fn move_plan_items_within_level_row(
         let item_id = item_id
             .as_str()
             .ok_or_else(|| "Expected string item id".to_string())?;
-        let item_plan_id = plan_item_plan_id(connection, item_id)?;
+        let Some(item_plan_id) = plan_item_plan_id_if_exists(connection, item_id)? else {
+            continue;
+        };
         if item_plan_id != plan_id {
             continue;
         }
@@ -3881,7 +3931,10 @@ fn indent_plan_items_row(
     let mut selected_by_parent: HashMap<Option<String>, Vec<String>> = HashMap::new();
 
     for item_id in &selected_ids {
-        if plan_item_plan_id(connection, item_id)? != plan_id {
+        let Some(item_plan_id) = plan_item_plan_id_if_exists(connection, item_id)? else {
+            continue;
+        };
+        if item_plan_id != plan_id {
             continue;
         }
 
@@ -3934,7 +3987,9 @@ fn indent_plan_items_row(
 }
 
 fn outdent_plan_item_row(connection: &Connection, item_id: &str) -> Result<(), String> {
-    let plan_id = plan_item_plan_id(connection, item_id)?;
+    let Some(plan_id) = plan_item_plan_id_if_exists(connection, item_id)? else {
+        return Ok(());
+    };
     let Some(parent_id) = plan_item_parent_id(connection, item_id)? else {
         return Ok(());
     };
@@ -3994,7 +4049,10 @@ fn outdent_plan_items_row(
         let item_id = item_id
             .as_str()
             .ok_or_else(|| "Expected string item id".to_string())?;
-        if plan_item_plan_id(connection, item_id)? != plan_id {
+        let Some(item_plan_id) = plan_item_plan_id_if_exists(connection, item_id)? else {
+            continue;
+        };
+        if item_plan_id != plan_id {
             continue;
         }
 
@@ -4011,7 +4069,26 @@ fn move_plan_item_to_position_row(
     parent_id: Option<&str>,
     position: i64,
 ) -> Result<(), String> {
-    let current_plan_id = plan_item_plan_id(connection, item_id)?;
+    let Some(current_plan_id) = plan_item_plan_id_if_exists(connection, item_id)? else {
+        return Ok(());
+    };
+    let target_plan_exists = connection
+        .query_row(
+            "select 1 from plans where id = ?1",
+            params![plan_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .is_some();
+    if !target_plan_exists {
+        return Ok(());
+    }
+    if let Some(parent_id) = parent_id {
+        if plan_item_plan_id_if_exists(connection, parent_id)?.as_deref() != Some(plan_id) {
+            return Ok(());
+        }
+    }
     let current_parent_id = plan_item_parent_id(connection, item_id)?;
     let mut current_siblings =
         plan_item_sibling_ids(connection, &current_plan_id, current_parent_id.as_deref())?;
@@ -4397,13 +4474,17 @@ fn next_template_option_position(connection: &Connection, item_id: &str) -> Resu
         .map_err(|error| error.to_string())
 }
 
-fn plan_item_plan_id(connection: &Connection, item_id: &str) -> Result<String, String> {
+fn plan_item_plan_id_if_exists(
+    connection: &Connection,
+    item_id: &str,
+) -> Result<Option<String>, String> {
     connection
         .query_row(
             "select plan_id from plan_items where id = ?1",
             params![item_id],
             |row| row.get(0),
         )
+        .optional()
         .map_err(|error| error.to_string())
 }
 
@@ -8284,6 +8365,93 @@ mod tests {
             )),
             PathBuf::from("/Users/example/Library/Application Support/Balance/balance.sqlite3")
         );
+    }
+
+    #[test]
+    fn stale_plan_tree_operations_are_noops_during_sync_replay() {
+        let database = TestDatabase::new("stale-sync-operations");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Stale sync operations")).unwrap();
+        let before = read_app_state_from_database(&connection).unwrap();
+
+        let stale_item = json!({
+            "id": "stale_new_item",
+            "text": "Stale",
+            "html": "Stale",
+            "done": false,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": []
+        });
+        let operations = [
+            json!({
+                "type": "outdent_plan_items",
+                "payload": { "planId": "plan_today", "itemIds": ["missing_item"] }
+            }),
+            json!({
+                "type": "split_plan_item",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemId": "missing_item",
+                    "patch": { "text": "Ignored" },
+                    "newItem": stale_item,
+                    "placement": "after"
+                }
+            }),
+            json!({
+                "type": "move_plan_item",
+                "payload": {
+                    "sourceId": "missing_item",
+                    "targetId": "plan_item_wake",
+                    "placement": "after"
+                }
+            }),
+            json!({
+                "type": "paste_plan_items",
+                "payload": {
+                    "planId": "plan_today",
+                    "targetId": "missing_item",
+                    "placement": "after",
+                    "items": [stale_item]
+                }
+            }),
+            json!({
+                "type": "history_undo",
+                "payload": {
+                    "operation": {
+                        "type": "batch",
+                        "payload": {
+                            "operations": [{
+                                "type": "insert_plan_item_at",
+                                "payload": {
+                                    "planId": "plan_today",
+                                    "parentId": "missing_parent",
+                                    "position": 0,
+                                    "item": stale_item
+                                }
+                            }, {
+                                "type": "move_plan_item_to_position",
+                                "payload": {
+                                    "itemId": "missing_item",
+                                    "planId": "plan_today",
+                                    "parentId": null,
+                                    "position": 0
+                                }
+                            }]
+                        }
+                    }
+                }
+            }),
+        ];
+
+        let tx = connection.transaction().unwrap();
+        for operation in &operations {
+            apply_operation(&tx, operation).unwrap();
+        }
+        tx.commit().unwrap();
+
+        assert_eq!(read_app_state_from_database(&connection).unwrap(), before);
     }
 
     fn history_entry_count(connection: &Connection) -> i64 {
