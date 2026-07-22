@@ -62,6 +62,7 @@
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DONE_TINT_KEY = 'balance:doneTintColor'
   const CHECKBOX_COLOR_KEY = 'balance:checkboxColor'
+  const DAY_TEMPLATE_SELECTION_KEY = 'balance:selectedDayTemplateId'
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
   const WORKSPACE_VIEW_STATE_KEY = 'balance:workspaceViewState'
   // Matches the light-theme --done-tint base in app.css; shown as the picker
@@ -88,6 +89,7 @@
   let restoringScroll = false
   let workspaceViewStateReady = false
   let listTemplatesViewStateReady = false
+  let dayTemplateSelectionReady = false
   let goalHistoryHeight: number | null = null
   let goalRhythmVisible = true
   let goalRhythmAutoShowTimer: number | null = null
@@ -250,6 +252,12 @@ return rows`
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
   $: selectedTemplateTimeWarnings = buildItemTimeWarnings(selectedTemplate?.items ?? [])
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
+  $: if (dayTemplateSelectionReady && templates.length > 0 && !templates.some((template) => template.id === selectedTemplateId)) {
+    selectedTemplateId = templates[0].id
+  }
+  $: if (dayTemplateSelectionReady && selectedTemplate) {
+    localStorage.setItem(DAY_TEMPLATE_SELECTION_KEY, selectedTemplate.id)
+  }
 
   // ---- Lists ----
   $: listTemplates = $plannerStore.listTemplates
@@ -718,6 +726,30 @@ return rows`
     view = 'listTemplates'
   }
 
+  function selectDayTemplate(templateId: Id) {
+    selectedTemplateId = templateId
+  }
+
+  function createDayTemplateAndSelect() {
+    selectedTemplateId = plannerStore.addTemplate()
+    view = 'templates'
+  }
+
+  async function confirmDeleteDayTemplate(templateId: Id, templateName: string) {
+    if (templates.length <= 1) return
+
+    const message = `Delete “${templateName || 'Untitled day'}”? Saved days generated from it will be kept.`
+    const confirmed = isTauri()
+      ? await confirmDialog(message, { title: 'Delete day template?', kind: 'warning' })
+      : window.confirm(message)
+    if (!confirmed) return
+
+    const currentIndex = templates.findIndex((template) => template.id === templateId)
+    const nextTemplate = templates[currentIndex + 1] ?? templates[currentIndex - 1]
+    plannerStore.deleteTemplate(templateId)
+    if (selectedTemplateId === templateId) selectedTemplateId = nextTemplate?.id ?? ''
+  }
+
   function startListTemplateDrag(templateId: Id, event: PointerEvent) {
     if (event.button !== 0) return
     listTemplateDrag = {
@@ -846,6 +878,7 @@ return rows`
   onMount(() => {
     let mounted = true
     const storedWorkspaceViewState = readWorkspaceViewState()
+    selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
 
     const storedListTemplatesViewState = readListTemplatesViewState()
     if (storedListTemplatesViewState) {
@@ -883,6 +916,11 @@ return rows`
     async function initialize() {
       recoveryKeyStatus = await getRecoveryKeyStatus()
       await plannerStore.ready
+
+      if (!templates.some((template) => template.id === selectedTemplateId)) {
+        selectedTemplateId = templates[0]?.id ?? ''
+      }
+      dayTemplateSelectionReady = true
 
       if (storedWorkspaceViewState) {
         scrollPositionsByPage = {
@@ -3046,8 +3084,21 @@ return rows`
     </nav>
 
     <div class="sidebar-footer">
+      {#if selectedTemplate && view !== 'templates'}
+        <label class="generation-template-field">
+          <span>Template for new days</span>
+          <select
+            value={selectedTemplate.id}
+            on:change={(event) => selectDayTemplate(event.currentTarget.value)}
+          >
+            {#each templates as template (template.id)}
+              <option value={template.id}>{template.name || 'Untitled day'}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       <button class="primary" type="button" on:click={generateSelectedDay}>{generateButtonLabel}</button>
-      <p class="tiny">{templates.length} template · {$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
+      <p class="tiny">{templates.length} template{templates.length === 1 ? '' : 's'} · {$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
     </div>
   </aside>
 
@@ -3159,8 +3210,21 @@ return rows`
       {:else}
         <div class="empty-state">
           <h3>No plan for this date</h3>
-          <p>Generate one from the template, or pick another date.</p>
-          <button class="primary" type="button" on:click={generateSelectedDay}>{generateButtonLabel}</button>
+          <p>Choose a template to generate this day, or pick another date.</p>
+          {#if selectedTemplate}
+            <label class="generation-template-field workspace-generation-template-field">
+              <span>Day template</span>
+              <select
+                value={selectedTemplate.id}
+                on:change={(event) => selectDayTemplate(event.currentTarget.value)}
+              >
+                {#each templates as template (template.id)}
+                  <option value={template.id}>{template.name || 'Untitled day'}</option>
+                {/each}
+              </select>
+            </label>
+            <button class="primary" type="button" on:click={generateSelectedDay}>{generateButtonLabel}</button>
+          {/if}
         </div>
       {/if}
     {/if}
@@ -3171,24 +3235,32 @@ return rows`
           <p class="eyebrow">Generator</p>
           <h2>Daily template</h2>
         </div>
-        {#if selectedTemplate}
-          <!-- Bind to the resolved template's id (not the raw selectedTemplateId, which
-               starts empty) so the select never renders blank while content is showing. -->
-          <select
-            class="day-template-select-hidden"
-            value={selectedTemplate.id}
-            on:change={(event) => (selectedTemplateId = event.currentTarget.value)}
-            aria-label="Select template"
-          >
-            {#each templates as template (template.id)}
-              <option value={template.id}>{template.name}</option>
-            {/each}
-          </select>
-        {/if}
+        <div class="day-template-header-actions">
+          {#if selectedTemplate}
+            <select
+              value={selectedTemplate.id}
+              on:change={(event) => selectDayTemplate(event.currentTarget.value)}
+              aria-label="Select day template"
+            >
+              {#each templates as template (template.id)}
+                <option value={template.id}>{template.name || 'Untitled day'}</option>
+              {/each}
+            </select>
+          {/if}
+          <button type="button" on:click={createDayTemplateAndSelect}>+ New day template</button>
+        </div>
       </header>
 
       {#if selectedTemplate}
         <div class="template-panel">
+          <label class="field-label" for="template-name">Template name</label>
+          <input
+            id="template-name"
+            class="title-input"
+            value={selectedTemplate.name}
+            on:input={(event) => plannerStore.renameTemplate(selectedTemplate.id, event.currentTarget.value)}
+          />
+
           <div class="template-list">
             {#each selectedTemplate.items as item (item.id)}
               <TemplateItemEditor
@@ -3217,9 +3289,26 @@ return rows`
             {/each}
           </div>
 
-          <button class="add-row" type="button" on:click={() => plannerStore.addRootTemplateItem(selectedTemplate.id)}>
-            + Add template item
-          </button>
+          <div class="template-panel-actions">
+            <button class="add-row" type="button" on:click={() => plannerStore.addRootTemplateItem(selectedTemplate.id)}>
+              + Add template item
+            </button>
+            <button
+              class="ghost danger"
+              type="button"
+              disabled={templates.length <= 1}
+              title={templates.length <= 1 ? 'Keep at least one day template' : 'Delete day template'}
+              on:click={() => { void confirmDeleteDayTemplate(selectedTemplate.id, selectedTemplate.name) }}
+            >
+              Delete day template
+            </button>
+          </div>
+        </div>
+      {:else}
+        <div class="empty-state">
+          <h3>No day templates yet</h3>
+          <p>Create one to start generating daily plans.</p>
+          <button class="primary" type="button" on:click={createDayTemplateAndSelect}>+ New day template</button>
         </div>
       {/if}
     {/if}

@@ -290,7 +290,9 @@ tap_ui_scrolling() {
     if tap_ui "$attribute" "$query" 1; then
       return 0
     fi
-    adb shell input swipe 160 580 160 180 300
+    # Stay in the card's right gutter so color/range inputs cannot consume the
+    # gesture instead of scrolling the Settings page.
+    adb shell input swipe 300 580 300 180 300
     sleep 1
   done
   echo "Could not find UI node after scrolling: $attribute=$query"
@@ -308,7 +310,7 @@ tap_ui_scrolling_contains() {
       adb shell input tap $point
       return 0
     fi
-    adb shell input swipe 160 580 160 180 300
+    adb shell input swipe 300 580 300 180 300
     sleep 1
   done
   echo "Could not find UI node after scrolling: $attribute contains $query"
@@ -326,7 +328,7 @@ tap_ui_class_after_text_scrolling() {
       adb shell input tap $point
       return 0
     fi
-    adb shell input swipe 160 580 160 180 300
+    adb shell input swipe 300 580 300 180 300
     sleep 1
   done
   echo "Could not find $target_class after text=$anchor"
@@ -340,7 +342,7 @@ tap_ui_scrolling_up() {
     if tap_ui "$attribute" "$query" 1; then
       return 0
     fi
-    adb shell input swipe 160 180 160 580 300
+    adb shell input swipe 300 180 300 580 300
     sleep 1
   done
   echo "Could not find UI node after scrolling up: $attribute=$query"
@@ -460,7 +462,7 @@ for _ in $(seq 1 8); do
   if wait_for_ui_text "Paired." 1; then
     break
   fi
-  adb shell input swipe 160 580 160 180 300
+  adb shell input swipe 300 580 300 180 300
 done
 wait_for_ui_text "Paired." 20
 

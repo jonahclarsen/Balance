@@ -1554,6 +1554,29 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             optional_string(payload, "parentId")?.as_deref(),
             required_i64(payload, "position")?,
         ),
+        "add_template" => {
+            let position = tx
+                .query_row(
+                    "select coalesce(max(position), -1) + 1 from templates",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .map_err(|error| error.to_string())?;
+            insert_template(tx, required_value(payload, "template")?, position)
+        }
+        "insert_template_at" => insert_template(
+            tx,
+            required_value(payload, "template")?,
+            required_i64(payload, "position")?,
+        ),
+        "delete_template" => {
+            tx.execute(
+                "delete from templates where id = ?1",
+                params![required_string(payload, "templateId")?],
+            )
+            .map_err(|error| error.to_string())?;
+            Ok(())
+        }
         "rename_template" => {
             tx.execute(
                 "update templates set name = ?1, updated_at = ?2 where id = ?3",
@@ -1928,6 +1951,24 @@ fn build_domain_undo_operation(
         "indent_plan_items" => build_move_plan_items_within_level_undo(connection, payload),
         "outdent_plan_item" => build_outdent_plan_item_undo(connection, payload),
         "outdent_plan_items" => build_outdent_plan_items_undo(connection, payload),
+        "add_template" => Ok(Some(storage_operation(
+            "delete_template",
+            json!({
+                "templateId": required_string(required_value(payload, "template")?, "id")?
+            }),
+        ))),
+        "delete_template" => {
+            let Some((position, template)) =
+                read_template_snapshot(connection, required_string(payload, "templateId")?)?
+            else {
+                return Ok(None);
+            };
+
+            Ok(Some(storage_operation(
+                "insert_template_at",
+                json!({ "position": position, "template": template }),
+            )))
+        }
         "rename_template" => {
             let template_id = required_string(payload, "templateId")?;
             let previous = read_template_name_and_updated_at(connection, template_id)?;
@@ -3119,6 +3160,26 @@ fn insert_template_item(
     item: &Value,
     position: i64,
 ) -> Result<(), String> {
+    let template_exists = connection
+        .query_row(
+            "select 1 from templates where id = ?1",
+            params![template_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .is_some();
+    if !template_exists {
+        return Ok(());
+    }
+    if let Some(parent_id) = parent_id {
+        if template_item_template_id_if_exists(connection, parent_id)?.as_deref()
+            != Some(template_id)
+        {
+            return Ok(());
+        }
+    }
+
     let item_id = required_string(item, "id")?;
     connection
         .execute(
@@ -3166,6 +3227,10 @@ fn insert_template_option(
     option: &Value,
     position: i64,
 ) -> Result<(), String> {
+    if template_item_template_id_if_exists(connection, item_id)?.is_none() {
+        return Ok(());
+    }
+
     let text = required_string(option, "text")?;
     let html = optional_string(option, "html")?.unwrap_or_else(|| text.to_string());
 
@@ -3555,6 +3620,13 @@ fn paste_template_items_row(
     if items.is_empty() {
         return Ok(());
     }
+    if let Some(target_id) = target_id {
+        if template_item_template_id_if_exists(connection, target_id)?.as_deref()
+            != Some(template_id)
+        {
+            return Ok(());
+        }
+    }
 
     let parent_id = if placement == "inside" {
         target_id.map(str::to_string)
@@ -3752,10 +3824,13 @@ fn backspace_template_option_at_start_row(
 }
 
 fn split_template_item_row(connection: &Connection, payload: &Value) -> Result<(), String> {
-    patch_template_option(connection, payload)?;
-
     let template_id = required_string(payload, "templateId")?;
     let source_id = required_string(payload, "itemId")?;
+    if template_item_template_id_if_exists(connection, source_id)?.as_deref() != Some(template_id) {
+        return Ok(());
+    }
+    patch_template_option(connection, payload)?;
+
     let new_item = required_value(payload, "newItem")?;
     let new_item_id = required_string(new_item, "id")?;
     let placement = optional_string(payload, "placement")?.unwrap_or_else(|| "after".to_string());
@@ -4118,11 +4193,18 @@ fn move_template_item_row(
     target_id: &str,
     placement: &str,
 ) -> Result<(), String> {
+    let Some(source_template_id) = template_item_template_id_if_exists(connection, source_id)?
+    else {
+        return Ok(());
+    };
+    if template_item_template_id_if_exists(connection, target_id)?.as_deref()
+        != Some(&source_template_id)
+    {
+        return Ok(());
+    }
     if source_id == target_id || template_item_contains(connection, source_id, target_id)? {
         return Ok(());
     }
-
-    let source_template_id = template_item_template_id(connection, source_id)?;
 
     if placement == "inside" {
         let position =
@@ -4165,7 +4247,9 @@ fn move_template_item_within_level_row(
     item_id: &str,
     direction: &str,
 ) -> Result<(), String> {
-    let template_id = template_item_template_id(connection, item_id)?;
+    let Some(template_id) = template_item_template_id_if_exists(connection, item_id)? else {
+        return Ok(());
+    };
     let parent_id = template_item_parent_id(connection, item_id)?;
     let mut siblings = template_item_sibling_ids(connection, &template_id, parent_id.as_deref())?;
     let index = siblings
@@ -4194,7 +4278,11 @@ fn move_template_items_within_level_row(
         let item_id = item_id
             .as_str()
             .ok_or_else(|| "Expected string item id".to_string())?;
-        if template_item_template_id(connection, item_id)? != template_id {
+        let Some(item_template_id) = template_item_template_id_if_exists(connection, item_id)?
+        else {
+            continue;
+        };
+        if item_template_id != template_id {
             continue;
         }
 
@@ -4255,7 +4343,11 @@ fn indent_template_items_row(
     let mut selected_by_parent: HashMap<Option<String>, Vec<String>> = HashMap::new();
 
     for item_id in &selected_ids {
-        if template_item_template_id(connection, item_id)? != template_id {
+        let Some(item_template_id) = template_item_template_id_if_exists(connection, item_id)?
+        else {
+            continue;
+        };
+        if item_template_id != template_id {
             continue;
         }
 
@@ -4309,7 +4401,9 @@ fn indent_template_items_row(
 }
 
 fn outdent_template_item_row(connection: &Connection, item_id: &str) -> Result<(), String> {
-    let template_id = template_item_template_id(connection, item_id)?;
+    let Some(template_id) = template_item_template_id_if_exists(connection, item_id)? else {
+        return Ok(());
+    };
     let Some(parent_id) = template_item_parent_id(connection, item_id)? else {
         return Ok(());
     };
@@ -4368,7 +4462,11 @@ fn outdent_template_items_row(
         let item_id = item_id
             .as_str()
             .ok_or_else(|| "Expected string item id".to_string())?;
-        if template_item_template_id(connection, item_id)? != template_id {
+        let Some(item_template_id) = template_item_template_id_if_exists(connection, item_id)?
+        else {
+            continue;
+        };
+        if item_template_id != template_id {
             continue;
         }
 
@@ -4385,7 +4483,29 @@ fn move_template_item_to_position_row(
     parent_id: Option<&str>,
     position: i64,
 ) -> Result<(), String> {
-    let current_template_id = template_item_template_id(connection, item_id)?;
+    let Some(current_template_id) = template_item_template_id_if_exists(connection, item_id)?
+    else {
+        return Ok(());
+    };
+    let target_template_exists = connection
+        .query_row(
+            "select 1 from templates where id = ?1",
+            params![template_id],
+            |_| Ok(()),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .is_some();
+    if !target_template_exists {
+        return Ok(());
+    }
+    if let Some(parent_id) = parent_id {
+        if template_item_template_id_if_exists(connection, parent_id)?.as_deref()
+            != Some(template_id)
+        {
+            return Ok(());
+        }
+    }
     let current_parent_id = template_item_parent_id(connection, item_id)?;
     let mut current_siblings = template_item_sibling_ids(
         connection,
@@ -4529,13 +4649,17 @@ fn plan_item_sibling_ids(
     }
 }
 
-fn template_item_template_id(connection: &Connection, item_id: &str) -> Result<String, String> {
+fn template_item_template_id_if_exists(
+    connection: &Connection,
+    item_id: &str,
+) -> Result<Option<String>, String> {
     connection
         .query_row(
             "select template_id from template_items where id = ?1",
             params![item_id],
             |row| row.get(0),
         )
+        .optional()
         .map_err(|error| error.to_string())
 }
 
@@ -4792,6 +4916,42 @@ fn read_template_name_and_updated_at(
         )
         .optional()
         .map_err(|error| error.to_string())
+}
+
+fn read_template_snapshot(
+    connection: &Connection,
+    template_id: &str,
+) -> Result<Option<(i64, Value)>, String> {
+    let row = connection
+        .query_row(
+            "select name, created_at, updated_at, position from templates where id = ?1",
+            params![template_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+
+    let Some((name, created_at, updated_at, position)) = row else {
+        return Ok(None);
+    };
+
+    Ok(Some((
+        position,
+        json!({
+            "id": template_id,
+            "name": name,
+            "createdAt": created_at,
+            "updatedAt": updated_at,
+            "items": read_template_items(connection, template_id, None)?,
+        }),
+    )))
 }
 
 fn read_template_item_snapshot(
@@ -6069,6 +6229,73 @@ mod tests {
             saved["templates"][0]["items"][0]["options"][0]["text"],
             "Wake up"
         );
+    }
+
+    #[test]
+    fn day_templates_can_be_added_deleted_and_undone() {
+        let database = TestDatabase::new("day-template-lifecycle");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Template lifecycle")).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "add_template",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "template": {
+                        "id": "template_weekend",
+                        "name": "Weekend",
+                        "createdAt": "2026-05-21T00:01:00Z",
+                        "updatedAt": "2026-05-21T00:01:00Z",
+                        "items": []
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let added = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(added["templates"].as_array().unwrap().len(), 2);
+        assert_eq!(added["templates"][1]["name"], "Weekend");
+
+        let undone_add = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(undone_add["templates"].as_array().unwrap().len(), 1);
+
+        let redone_add = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(redone_add["templates"][1]["name"], "Weekend");
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_5",
+                "deviceId": "device_test",
+                "sequence": 5,
+                "type": "delete_template",
+                "timestamp": "2026-05-21T00:02:00Z",
+                "payload": { "templateId": "template_default" }
+            }),
+        )
+        .unwrap();
+
+        let deleted = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(deleted["templates"].as_array().unwrap().len(), 1);
+        assert_eq!(deleted["templates"][0]["id"], "template_weekend");
+
+        let undone_delete = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(undone_delete["templates"].as_array().unwrap().len(), 2);
+        assert_eq!(undone_delete["templates"][0]["id"], "template_default");
+        assert_eq!(undone_delete["templates"][1]["id"], "template_weekend");
     }
 
     #[test]
@@ -8435,6 +8662,107 @@ mod tests {
                                 "payload": {
                                     "itemId": "missing_item",
                                     "planId": "plan_today",
+                                    "parentId": null,
+                                    "position": 0
+                                }
+                            }]
+                        }
+                    }
+                }
+            }),
+        ];
+
+        let tx = connection.transaction().unwrap();
+        for operation in &operations {
+            apply_operation(&tx, operation).unwrap();
+        }
+        tx.commit().unwrap();
+
+        assert_eq!(read_app_state_from_database(&connection).unwrap(), before);
+    }
+
+    #[test]
+    fn stale_template_tree_operations_are_noops_during_sync_replay() {
+        let database = TestDatabase::new("stale-template-sync-operations");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Stale template sync operations")).unwrap();
+        let before = read_app_state_from_database(&connection).unwrap();
+
+        let stale_item = json!({
+            "id": "stale_template_item",
+            "startMinutes": null,
+            "endMinutes": null,
+            "options": [{
+                "id": "stale_template_option",
+                "text": "Stale",
+                "html": "Stale",
+                "probability": 1.0
+            }],
+            "children": []
+        });
+        let operations = [
+            json!({
+                "type": "outdent_template_items",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemIds": ["missing_template_item"]
+                }
+            }),
+            json!({
+                "type": "split_template_item",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemId": "missing_template_item",
+                    "optionId": "missing_template_option",
+                    "patch": { "text": "Ignored" },
+                    "newItem": stale_item,
+                    "placement": "after"
+                }
+            }),
+            json!({
+                "type": "move_template_item",
+                "payload": {
+                    "sourceId": "missing_template_item",
+                    "targetId": "template_item_wake",
+                    "placement": "after"
+                }
+            }),
+            json!({
+                "type": "paste_template_items",
+                "payload": {
+                    "templateId": "template_default",
+                    "targetId": "missing_template_item",
+                    "placement": "after",
+                    "items": [stale_item]
+                }
+            }),
+            json!({
+                "type": "history_undo",
+                "payload": {
+                    "operation": {
+                        "type": "batch",
+                        "payload": {
+                            "operations": [{
+                                "type": "insert_template_item_at",
+                                "payload": {
+                                    "templateId": "template_default",
+                                    "parentId": "missing_template_parent",
+                                    "position": 0,
+                                    "item": stale_item
+                                }
+                            }, {
+                                "type": "insert_template_option_at",
+                                "payload": {
+                                    "itemId": "missing_template_item",
+                                    "position": 0,
+                                    "option": stale_item["options"][0]
+                                }
+                            }, {
+                                "type": "move_template_item_to_position",
+                                "payload": {
+                                    "itemId": "missing_template_item",
+                                    "templateId": "template_default",
                                     "parentId": null,
                                     "position": 0
                                 }

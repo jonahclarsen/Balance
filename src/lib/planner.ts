@@ -118,6 +118,18 @@ export function createDefaultTemplate(): DailyTemplate {
   }
 }
 
+export function createDailyTemplate(name = 'New day'): DailyTemplate {
+  const createdAt = nowISO()
+
+  return {
+    id: createId('template'),
+    name,
+    createdAt,
+    updatedAt: createdAt,
+    items: [createTemplateItem()],
+  }
+}
+
 export function createInitialState(): AppState {
   return {
     schemaVersion: 1,

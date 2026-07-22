@@ -39,8 +39,8 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
 
   await page.getByRole('button', { name: 'Day Templates' }).click()
   await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
-  await expect(page.getByLabel('Template name')).toHaveCount(0)
-  await expect(page.locator('#template-name')).toHaveCount(0)
+  await expect(page.getByLabel('Template name')).toHaveValue('Default day')
+  await expect(page.getByLabel('Select day template')).toHaveValue(/template_/)
   await expect(page.getByRole('button', { name: 'Drag to move template item' }).first()).toBeVisible()
   await expect
     .poll(async () =>
@@ -68,6 +68,50 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
     path: `artifacts/visual-smoke/${testInfo.project.name}-settings.png`,
     fullPage: true,
   })
+})
+
+test('new days use and remember the last selected day template', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: '+ New day template' }).click()
+  await expect(page.getByLabel('Template name')).toHaveValue('New day')
+  await page.getByLabel('Template name').fill('Weekend')
+  await page.getByRole('textbox', { name: 'Template item' }).fill('Rest')
+
+  const selectedTemplateId = await page.getByLabel('Select day template').inputValue()
+  await expect(page.getByLabel('Select day template').locator('option')).toHaveCount(2)
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('balance:selectedDayTemplateId')))
+    .toBe(selectedTemplateId)
+
+  const templatePicker = page.getByLabel('Select day template')
+  await templatePicker.selectOption({ label: 'Default day' })
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:selectedDayTemplateId'))).not.toBe(selectedTemplateId)
+  await templatePicker.selectOption({ label: 'Weekend' })
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('balance:selectedDayTemplateId')))
+    .toBe(selectedTemplateId)
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  const firstDay = await page.locator('.date-input').inputValue()
+  const firstDayTemplate = page.locator('.empty-state').getByLabel('Day template')
+  await expect(firstDayTemplate).toHaveValue(selectedTemplateId)
+  await expect(firstDayTemplate.locator('option:checked')).toHaveText('Weekend')
+  await page.locator('.empty-state').getByRole('button', { name: 'Generate today' }).click()
+  await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Next day' }).click()
+  await expect(page.locator('.date-input')).toHaveValue(addDays(firstDay, 1))
+  await expect(page.locator('.empty-state').getByLabel('Day template')).toHaveValue(selectedTemplateId)
+
+  await page.reload()
+  await expect(page.locator('.empty-state').getByLabel('Day template')).toHaveValue(selectedTemplateId)
+  await expect(page.locator('.empty-state').getByLabel('Day template').locator('option:checked')).toHaveText('Weekend')
+  await page.locator('.empty-state').getByRole('button', { name: 'Generate selected day' }).click()
+  await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 })
 
 test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) => {

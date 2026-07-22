@@ -5,6 +5,7 @@ import {
   addTemplateItem,
   createId,
   createInitialState,
+  createDailyTemplate,
   createPlanItem,
   createTemplateItem,
   createTemplateOption,
@@ -757,12 +758,38 @@ function createPlannerStore() {
     },
 
     renameTemplate(templateId: Id, name: string) {
-      commit('rename_template', { templateId, name }, (state) => ({
+      commit(
+        'rename_template',
+        { templateId, name },
+        (state) => ({
+          ...state,
+          templates: state.templates.map((template) =>
+            template.id === templateId ? { ...template, name, updatedAt: nowISO() } : template,
+          ),
+        }),
+        { mergeKey: `day-template-name:${templateId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
+      )
+    },
+
+    addTemplate() {
+      const template = createDailyTemplate()
+      commit('add_template', { template }, (state) => ({
         ...state,
-        templates: state.templates.map((template) =>
-          template.id === templateId ? { ...template, name, updatedAt: nowISO() } : template,
-        ),
+        templates: [...state.templates, template],
       }))
+      return template.id
+    },
+
+    deleteTemplate(templateId: Id) {
+      commit('delete_template', { templateId }, (state) => {
+        if (state.templates.length <= 1 || !state.templates.some((template) => template.id === templateId)) {
+          return state
+        }
+        return {
+          ...state,
+          templates: state.templates.filter((template) => template.id !== templateId),
+        }
+      })
     },
 
     addRootTemplateItem(templateId: Id) {

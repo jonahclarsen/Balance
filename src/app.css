@@ -276,6 +276,39 @@ nav button.active {
   margin-top: auto;
 }
 
+.generation-template-field {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.generation-template-field select {
+  width: 100%;
+  min-width: 0;
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.workspace-generation-template-field {
+  width: min(100%, 300px);
+}
+
+.day-template-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.day-template-header-actions select {
+  min-width: 180px;
+}
+
 .primary {
   border-color: var(--accent);
   background: var(--accent);
@@ -2143,6 +2176,11 @@ nav button.active {
     margin-top: 0;
   }
 
+  .sidebar-footer .generation-template-field {
+    grid-template-columns: auto minmax(120px, 1fr);
+    align-items: center;
+  }
+
   /* Compact wrapping tab bar: every button stays fully visible and clickable,
      but tight padding/sizing keeps the nav short so it doesn't push the
      workspace down. */
@@ -2195,6 +2233,15 @@ nav button.active {
   .page-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .day-template-header-actions {
+    align-items: stretch;
+  }
+
+  .day-template-header-actions select {
+    flex: 1;
+    min-width: 0;
   }
 
   .date-controls {
@@ -2266,12 +2313,6 @@ nav button.active {
 }
 
 /* ---- Lists + Metrics features ---- */
-
-/* Hidden for now: only one day template is in use, so the picker is noise.
-   Remove this rule (and the class) to bring the selector back. */
-.day-template-select-hidden {
-  display: none;
-}
 
 /* Horizontal, scrollable picker of lists / list templates — replaces a dropdown
    so every option is visible at a glance and one click switches. */
