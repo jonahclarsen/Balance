@@ -2173,7 +2173,8 @@ test('global undo and redo apply to item movement', async ({ page }) => {
   await expect.poll(async () => topLevelTexts(page)).toEqual(movedOrder)
 })
 
-test('day template rows support multi-select copy, cut, paste, and keyboard deletion', async ({ page }) => {
+test('day template rows support multi-select copy, cut, paste, and keyboard deletion', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Drag-to-select is intentionally disabled on mobile')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -2302,7 +2303,8 @@ test('list template items support horizontal boundary navigation and backspace m
   await expect.poll(async () => listTemplateTopLevelTexts(page)).toEqual(['First item', 'Second item'])
 })
 
-test('list template rows share multi-select clipboard behavior and hide mouse-only actions', async ({ page }) => {
+test('list template rows share multi-select clipboard behavior and hide mouse-only actions', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Drag-to-select is intentionally disabled on mobile')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()

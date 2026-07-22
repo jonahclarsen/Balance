@@ -1,8 +1,29 @@
 <script lang="ts">
+  import { onMount } from 'svelte'
+
   export let onClose: () => void
   export let title = ''
   export let ariaLabel = title || 'Dialog'
   export let z = 60
+  let mobileViewportTop = 0
+
+  function updateMobileViewportTop() {
+    if (!window.matchMedia('(max-width: 760px)').matches) {
+      mobileViewportTop = 0
+      return
+    }
+
+    const sidebar = document.querySelector<HTMLElement>('.sidebar')
+    mobileViewportTop = Math.max(0, Math.min(window.innerHeight, sidebar?.getBoundingClientRect().bottom ?? 0))
+  }
+
+  onMount(() => {
+    updateMobileViewportTop()
+    const sidebar = document.querySelector<HTMLElement>('.sidebar')
+    const observer = sidebar ? new ResizeObserver(updateMobileViewportTop) : null
+    if (sidebar) observer?.observe(sidebar)
+    return () => observer?.disconnect()
+  })
 
   function handleBackdropKeydown(event: KeyboardEvent) {
     if (event.key === 'Escape') {
@@ -12,14 +33,18 @@
   }
 </script>
 
-<svelte:window on:keydown={(event) => event.key === 'Escape' && onClose()} />
+<svelte:window
+  on:keydown={(event) => event.key === 'Escape' && onClose()}
+  on:scroll={updateMobileViewportTop}
+  on:resize={updateMobileViewportTop}
+/>
 
 <!-- Absolute layer inside .content-shell so it covers the main area + goal rhythm
      while leaving the sidebar visible. -->
 <div
   class="overlay-backdrop"
   role="presentation"
-  style={`z-index: ${z}`}
+  style={`z-index: ${z}; --mobile-overlay-top: ${mobileViewportTop}px`}
   on:click|self={onClose}
   on:keydown={handleBackdropKeydown}
 >
@@ -91,5 +116,28 @@
   .overlay-body {
     padding: 18px;
     overflow-y: auto;
+  }
+
+  @media (max-width: 760px) {
+    .overlay-backdrop {
+      position: fixed;
+      inset: max(env(safe-area-inset-top), var(--mobile-overlay-top)) env(safe-area-inset-right)
+        env(safe-area-inset-bottom) env(safe-area-inset-left);
+      padding: 12px;
+    }
+
+    .overlay-card {
+      max-height: calc(
+        100dvh - max(env(safe-area-inset-top), var(--mobile-overlay-top)) - env(safe-area-inset-bottom) - 24px
+      );
+    }
+
+    .overlay-header {
+      padding: 10px 12px;
+    }
+
+    .overlay-body {
+      padding: 12px;
+    }
   }
 </style>

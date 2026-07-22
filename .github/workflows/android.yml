@@ -260,6 +260,9 @@ jobs:
           # test must scan it; it never types the joiner's pairing code.
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back imagefile:${{ github.workspace }}/sync-e2e-pairing.png
           disable-animations: true
+          # UI Automator enters text through adb's hardware-input path. Keep the
+          # soft keyboard from covering the next WebView field between entries.
+          enable-hw-keyboard: true
           # The runner executes the `script` input line-by-line in separate
           # shells, so the test logic lives in a committed file run as one process.
           script: bash .github/scripts/android-smoke-test.sh

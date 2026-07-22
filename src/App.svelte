@@ -2118,7 +2118,7 @@ return rows`
   }
 
   function extendItemSelection(itemId: Id) {
-    if (!selectingItems || !selectionAnchorId) return
+    if (usesMobileLayout() || !selectingItems || !selectionAnchorId) return
     selectItemRange(selectionAnchorId, itemId, false)
   }
 
@@ -2132,6 +2132,11 @@ return rows`
   }
 
   function handleSelectionPointerMove(event: PointerEvent) {
+    if (usesMobileLayout()) {
+      itemTextDragOrigin = null
+      return
+    }
+
     if (!selectingItems && itemTextDragOrigin && (event.buttons & 1) === 1 && pointerLeftElement(event, itemTextDragOrigin.input)) {
       event.preventDefault()
       selectingItems = true
@@ -2154,6 +2159,11 @@ return rows`
 
   function handleGlobalPointerDown(event: PointerEvent) {
     if (event.button !== 0 || !activeItemSurface()) {
+      itemTextDragOrigin = null
+      return
+    }
+
+    if (usesMobileLayout()) {
       itemTextDragOrigin = null
       return
     }
@@ -2243,6 +2253,10 @@ return rows`
       event.clientY < rect.top - threshold ||
       event.clientY > rect.bottom + threshold
     )
+  }
+
+  function usesMobileLayout() {
+    return typeof window !== 'undefined' && window.matchMedia('(max-width: 760px)').matches
   }
 
   function selectedRootIds(): Id[] {
@@ -3081,6 +3095,13 @@ return rows`
       <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => (view = 'metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => { void openGoals() }}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => (view = 'settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
+      <button
+        class="mobile-undo-button"
+        type="button"
+        title="Undo"
+        aria-label="Undo"
+        on:click={() => { void plannerStore.undo() }}
+      >↶ Undo</button>
     </nav>
 
     <div class="sidebar-footer">

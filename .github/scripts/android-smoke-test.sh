@@ -349,6 +349,16 @@ tap_ui_scrolling_up() {
   return 1
 }
 
+scroll_page_to_top() {
+  # Use the page's left gutter so form controls and the bottom goal-rhythm
+  # panel cannot consume the gesture. Several swipes make this deterministic
+  # regardless of the scroll position inherited from Settings.
+  for _ in $(seq 1 8); do
+    adb shell input swipe 8 180 8 580 300
+    sleep 0.25
+  done
+}
+
 wait_for_ui_text() {
   query="$1"
   attempts="${2:-30}"
@@ -373,6 +383,33 @@ PY
     sleep 1
   done
   echo "Timed out waiting for UI text: $query"
+  return 1
+}
+
+wait_for_ui_text_gone() {
+  query="$1"
+  attempts="${2:-30}"
+  for _ in $(seq 1 "$attempts"); do
+    dump_ui
+    if python3 - "$UI_XML" "$query" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+
+root = ET.parse(sys.argv[1]).getroot()
+query = sys.argv[2]
+found = any(
+    query in node.attrib.get(attribute, "")
+    for node in root.iter("node")
+    for attribute in ("text", "content-desc")
+)
+raise SystemExit(1 if found else 0)
+PY
+    then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "Timed out waiting for UI text to disappear: $query"
   return 1
 }
 
@@ -416,6 +453,33 @@ type_into_ui_after_text() {
   value="$2"
   tap_ui_class_after_text_scrolling "$anchor" "android.widget.EditText" || return 1
   adb shell input text "$value"
+}
+
+type_into_ui_after_text_verified() {
+  local anchor="$1"
+  local value="$2"
+  local retry_index
+  for retry_index in $(seq 1 3); do
+    type_into_ui_after_text "$anchor" "$value" || return 1
+    if wait_for_ui_text "$value" 3; then
+      return 0
+    fi
+    echo "Text injection for $anchor did not stick (attempt $retry_index); retrying."
+    # Bring the label back into view before locating its input again. This also
+    # recovers when a clipped field at the top edge consumed no injected text.
+    scroll_page_to_top
+  done
+  echo "Could not enter $value after text=$anchor"
+  return 1
+}
+
+dismiss_soft_keyboard() {
+  # Escape dismisses an open IME without navigating away from Balance when
+  # `adb input text` used the hardware-input path and no keyboard was opened.
+  # Back cannot be used safely here: Android's input-method service can retain
+  # stale "shown" state, causing Back to close the app instead.
+  adb shell input keyevent KEYCODE_ESCAPE || true
+  sleep 1
 }
 
 dismiss_recovery_key_setup() {
@@ -486,11 +550,24 @@ wait_for_ui_text "Add a goal"
 # A goal requires both a name and at least one matching phrase. Fill the real
 # fields and press the visible Add button so seeing the name afterward proves a
 # persisted goal card exists (rather than merely seeing text in an input).
-type_into_ui_after_text "NAME" "CISyncGoal"
-adb shell input keyevent KEYCODE_BACK || true
-type_into_ui_after_text "MATCHES ANY" "ci-sync"
-adb shell input keyevent KEYCODE_BACK || true
-tap_ui_scrolling text "Add goal"
+scroll_page_to_top
+type_into_ui_after_text_verified "NAME" "CISyncGoal"
+dismiss_soft_keyboard
+type_into_ui_after_text_verified "MATCHES ANY" "ci-sync"
+dismiss_soft_keyboard
+goal_created=0
+for submit_attempt in $(seq 1 3); do
+  tap_ui_scrolling text "Add goal"
+  if wait_for_ui_text_gone "No goals yet" 5; then
+    goal_created=1
+    break
+  fi
+  echo "Goal submission did not persist (attempt $submit_attempt); retrying."
+done
+if [ "$goal_created" != 1 ]; then
+  echo "The source goal was not created after retries."
+  exit 1
+fi
 wait_for_ui_text "CISyncGoal"
 # Let the normal debounced operation writer commit before sync snapshots it.
 sleep 2

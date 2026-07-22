@@ -253,6 +253,10 @@ nav button.active {
   color: inherit;
 }
 
+.primary-nav .mobile-undo-button {
+  display: none;
+}
+
 .search-result-target {
   animation: search-result-target 1.8s ease-out;
 }
@@ -412,6 +416,10 @@ nav button.active {
 
 .item-shell {
   margin-left: calc(var(--depth, 0) * 12px);
+}
+
+.plan-item-main {
+  display: contents;
 }
 
 .template-item {
@@ -2205,8 +2213,101 @@ nav button.active {
     display: none;
   }
 
+  .primary-nav .mobile-undo-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    border-color: var(--accent);
+    color: var(--accent-strong);
+  }
+
   .workspace {
     padding: 12px;
+  }
+
+  .list-panel,
+  .template-panel {
+    padding: 8px;
+  }
+
+  .item-shell,
+  .template-item {
+    margin-left: min(calc(var(--depth, 0) * 3px), 6px);
+  }
+
+  .children {
+    margin-left: 3px;
+  }
+
+  .plan-row,
+  .template-main {
+    gap: 4px;
+  }
+
+  .plan-row {
+    flex-wrap: wrap;
+  }
+
+  .drag-handle {
+    width: 28px;
+    height: 32px;
+  }
+
+  .select-handle {
+    width: 8px;
+    height: 28px;
+  }
+
+  .check-target {
+    width: 30px;
+    height: 32px;
+  }
+
+  .plan-item-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    flex: 1 1 0;
+    min-width: 0;
+    align-self: stretch;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 0;
+  }
+
+  .plan-item-main .item-text {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+  }
+
+  .plan-item-main.timed .item-text {
+    grid-column: 1 / -1;
+  }
+
+  .plan-item-main .add-time {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .plan-item-main .time-range {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .row-actions {
+    gap: 2px;
+  }
+
+  .row-actions .icon-button {
+    width: 24px;
+    height: 24px;
+  }
+
+  .plan-row > .plan-goal-badges {
+    flex: 1 0 100%;
+    justify-content: flex-start;
+    padding-left: 74px;
   }
 
   .workspace.list-template-workspace {
@@ -2309,6 +2410,20 @@ nav button.active {
     padding-inline: 7px;
     font-size: 12px;
     white-space: nowrap;
+  }
+}
+
+@media (max-width: 360px) {
+  .plan-row > .select-handle {
+    display: none;
+  }
+
+  .plan-row > .plan-item-main {
+    flex-basis: calc(100% - 66px);
+  }
+
+  .plan-row > .row-actions {
+    margin-left: auto;
   }
 }
 

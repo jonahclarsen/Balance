@@ -405,31 +405,32 @@
     />
   </label>
 
-  {#if item.startMinutes !== null && item.endMinutes !== null}
-      <TimeRange
-        startMinutes={item.startMinutes}
-        endMinutes={item.endMinutes}
-        overlapsPrevious={timeWarning?.overlapsPrevious}
-        overlapsNext={timeWarning?.overlapsNext}
-        exceedsAncestor={timeWarning?.exceedsAncestor}
-        onChange={patchTimeRange}
-        getShiftTargets={selectedTimeShiftTargets}
-        onShift={shiftSelectedTimeRanges}
-        onRemove={() => patchItem(planId, item.id, { startMinutes: null, endMinutes: null })}
-      />
-    {:else if !locked}
-      <button
-        class="icon-button quiet add-time"
-        type="button"
-        title="Add time range"
-        aria-label="Add time range"
-        on:click={addTime}
-      >
-        <AlarmClockIcon />
-      </button>
-  {/if}
+  <div class="plan-item-main" class:timed={item.startMinutes !== null && item.endMinutes !== null}>
+    {#if item.startMinutes !== null && item.endMinutes !== null}
+        <TimeRange
+          startMinutes={item.startMinutes}
+          endMinutes={item.endMinutes}
+          overlapsPrevious={timeWarning?.overlapsPrevious}
+          overlapsNext={timeWarning?.overlapsNext}
+          exceedsAncestor={timeWarning?.exceedsAncestor}
+          onChange={patchTimeRange}
+          getShiftTargets={selectedTimeShiftTargets}
+          onShift={shiftSelectedTimeRanges}
+          onRemove={() => patchItem(planId, item.id, { startMinutes: null, endMinutes: null })}
+        />
+      {:else if !locked}
+        <button
+          class="icon-button quiet add-time"
+          type="button"
+          title="Add time range"
+          aria-label="Add time range"
+          on:click={addTime}
+        >
+          <AlarmClockIcon />
+        </button>
+    {/if}
 
-  {#if locked}
+    {#if locked}
       <!-- Generated list items are fixed: text is static, but inline links stay
            clickable and row clicks toggle completion. -->
       <!-- svelte-ignore a11y_click_events_have_key_events -->
@@ -442,7 +443,7 @@
         on:keydown={handleDisplayKeydown}
         on:click={handleDisplayLinkClick}
       >{@html displayHTML}</div>
-    {:else}
+      {:else}
       <RichTextEditor
         className="item-text"
         kind="plan"
@@ -464,7 +465,8 @@
         internalLinkSegments={linkSegments}
         onInternalLinkClick={(link) => onOpenLink(link, item.id)}
       />
-  {/if}
+    {/if}
+  </div>
 
   {#if matchedGoals.length > 0 || previewGoals.length > 0}
       <div class="plan-goal-badges" aria-label="Goals matched by this item">
