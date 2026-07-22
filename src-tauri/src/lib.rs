@@ -5465,13 +5465,14 @@ mod android_keystore {
     use std::ffi::c_void;
     use std::sync::OnceLock;
 
-    use jni::objects::{JByteArray, JObject};
+    use jni::objects::{GlobalRef, JByteArray, JObject, JValue};
     use jni::{JNIEnv, JavaVM};
+    use tauri::Manager;
 
-    // Tauri/tao keep the JavaVM in their own private android glue and don't
+    // Tauri/tao keep the JavaVM in their own private Android glue and don't
     // initialize the `ndk-context` crate, so we capture it ourselves when the
-    // JVM loads this library. The Keystore APIs need only a JNIEnv (no Activity
-    // Context), so the VM alone is enough.
+    // JVM loads this library. Keystore calls need only this VM; direct-sync
+    // locks obtain the Activity through Tauri's supported JNI handle.
     static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
     #[no_mangle]
@@ -5493,6 +5494,7 @@ mod android_keystore {
     const PURPOSE_ENCRYPT_DECRYPT: i32 = 1 | 2;
     const GCM_TAG_BITS: i32 = 128;
     const AES_KEY_BITS: i32 = 256;
+    const SYNC_WAKE_LOCK_TIMEOUT_MS: i64 = 10 * 60 * 1000;
 
     pub fn wrap_key(plaintext: &[u8]) -> Result<Vec<u8>, String> {
         with_env(|env| {
@@ -5505,6 +5507,147 @@ mod android_keystore {
         with_env(|env| {
             decrypt(env, iv, ciphertext).map_err(|error| format!("Keystore unwrap failed: {error}"))
         })
+    }
+
+    /// Keep the CPU and Wi-Fi radio awake only while an active direct sync is
+    /// running. Android may otherwise suspend either one when the display goes
+    /// dark, aborting an in-flight TCP connection.
+    pub(crate) fn with_sync_wake_locks<T>(
+        app: &tauri::AppHandle,
+        work: impl FnOnce() -> T,
+    ) -> Result<T, String> {
+        let webview = app
+            .get_webview_window("main")
+            .ok_or_else(|| "The main Android webview is unavailable.".to_string())?;
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+
+        webview
+            .with_webview(move |webview| {
+                webview.jni_handle().exec(move |env, activity, _webview| {
+                    let result = acquire_sync_wake_locks(env, activity);
+                    if result.is_err() && env.exception_check().unwrap_or(false) {
+                        let _ = env.exception_describe();
+                        let _ = env.exception_clear();
+                    }
+                    let _ = sender.send(result);
+                });
+            })
+            .map_err(|error| format!("Could not access the Android activity: {error}"))?;
+
+        let locks = receiver
+            .recv()
+            .map_err(|_| "Android wake-lock setup was interrupted.".to_string())??;
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work));
+        release_sync_wake_locks(&locks);
+
+        match result {
+            Ok(value) => Ok(value),
+            Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
+    struct SyncWakeLocks {
+        cpu: GlobalRef,
+        wifi: GlobalRef,
+    }
+
+    fn acquire_sync_wake_locks(
+        env: &mut JNIEnv,
+        activity: &JObject,
+    ) -> Result<SyncWakeLocks, String> {
+        let tag = env
+            .new_string("Balance:directSync")
+            .map_err(|error| error.to_string())?;
+        let power_service = env.new_string("power").map_err(|error| error.to_string())?;
+        let power_manager = env
+            .call_method(
+                activity,
+                "getSystemService",
+                "(Ljava/lang/String;)Ljava/lang/Object;",
+                &[(&power_service).into()],
+            )
+            .and_then(|value| value.l())
+            .map_err(|error| format!("Could not get Android PowerManager: {error}"))?;
+        let cpu_lock = env
+            .call_method(
+                &power_manager,
+                "newWakeLock",
+                "(ILjava/lang/String;)Landroid/os/PowerManager$WakeLock;",
+                &[1.into(), (&tag).into()], // PowerManager.PARTIAL_WAKE_LOCK
+            )
+            .and_then(|value| value.l())
+            .map_err(|error| format!("Could not create Android wake lock: {error}"))?;
+
+        let wifi_service = env.new_string("wifi").map_err(|error| error.to_string())?;
+        let wifi_manager = env
+            .call_method(
+                activity,
+                "getSystemService",
+                "(Ljava/lang/String;)Ljava/lang/Object;",
+                &[(&wifi_service).into()],
+            )
+            .and_then(|value| value.l())
+            .map_err(|error| format!("Could not get Android WifiManager: {error}"))?;
+        let wifi_lock = env
+            .call_method(
+                &wifi_manager,
+                "createWifiLock",
+                "(ILjava/lang/String;)Landroid/net/wifi/WifiManager$WifiLock;",
+                &[3.into(), (&tag).into()], // WifiManager.WIFI_MODE_FULL_HIGH_PERF
+            )
+            .and_then(|value| value.l())
+            .map_err(|error| format!("Could not create Android Wi-Fi lock: {error}"))?;
+
+        env.call_method(&cpu_lock, "setReferenceCounted", "(Z)V", &[JValue::Bool(0)])
+            .map_err(|error| format!("Could not configure Android wake lock: {error}"))?;
+        env.call_method(
+            &wifi_lock,
+            "setReferenceCounted",
+            "(Z)V",
+            &[JValue::Bool(0)],
+        )
+        .map_err(|error| format!("Could not configure Android Wi-Fi lock: {error}"))?;
+
+        // The timeout is a last-resort safeguard; both locks are explicitly
+        // released as soon as this sync pass succeeds or fails.
+        env.call_method(
+            &cpu_lock,
+            "acquire",
+            "(J)V",
+            &[JValue::Long(SYNC_WAKE_LOCK_TIMEOUT_MS)],
+        )
+        .map_err(|error| format!("Could not acquire Android wake lock: {error}"))?;
+        if let Err(error) = env.call_method(&wifi_lock, "acquire", "()V", &[]) {
+            let _ = env.call_method(&cpu_lock, "release", "()V", &[]);
+            return Err(format!("Could not acquire Android Wi-Fi lock: {error}"));
+        }
+
+        let cpu = env.new_global_ref(&cpu_lock).map_err(|error| {
+            let _ = env.call_method(&wifi_lock, "release", "()V", &[]);
+            let _ = env.call_method(&cpu_lock, "release", "()V", &[]);
+            format!("Could not retain Android wake lock: {error}")
+        })?;
+        let wifi = env.new_global_ref(&wifi_lock).map_err(|error| {
+            let _ = env.call_method(&wifi_lock, "release", "()V", &[]);
+            let _ = env.call_method(&cpu_lock, "release", "()V", &[]);
+            format!("Could not retain Android Wi-Fi lock: {error}")
+        })?;
+
+        Ok(SyncWakeLocks { cpu, wifi })
+    }
+
+    fn release_sync_wake_locks(locks: &SyncWakeLocks) {
+        if let Err(error) = with_env(|env| {
+            if let Err(error) = env.call_method(locks.wifi.as_obj(), "release", "()V", &[]) {
+                log::warn!("Could not release Android direct-sync Wi-Fi lock: {error}");
+            }
+            if let Err(error) = env.call_method(locks.cpu.as_obj(), "release", "()V", &[]) {
+                log::warn!("Could not release Android direct-sync wake lock: {error}");
+            }
+            Ok(())
+        }) {
+            log::warn!("Could not attach to Android to release direct-sync locks: {error}");
+        }
     }
 
     // Stored layout: [iv_len: u8][iv][ciphertext+tag].
@@ -5526,9 +5669,11 @@ mod android_keystore {
             .attach_current_thread()
             .map_err(|error| error.to_string())?;
         let result = f(&mut guard);
-        // Leave no pending Java exception behind when we bail out.
-        if result.is_err() && guard.exception_check().unwrap_or(false) {
-            let _ = guard.exception_describe();
+        // Leave no pending Java exception behind when we return to Rust.
+        if guard.exception_check().unwrap_or(false) {
+            if result.is_err() {
+                let _ = guard.exception_describe();
+            }
             let _ = guard.exception_clear();
         }
         result

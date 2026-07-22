@@ -206,6 +206,19 @@ fn serve_one(
 
 /// Initiate a one-shot bidirectional sync with a peer at `addr` (host:port).
 pub fn sync_with(app: &AppHandle, key: &SyncKey, addr: &str) -> Result<()> {
+    #[cfg(target_os = "android")]
+    {
+        return crate::android_keystore::with_sync_wake_locks(app, || {
+            sync_with_connection(app, key, addr)
+        })
+        .map_err(Error::Codec)?;
+    }
+
+    #[cfg(not(target_os = "android"))]
+    sync_with_connection(app, key, addr)
+}
+
+fn sync_with_connection(app: &AppHandle, key: &SyncKey, addr: &str) -> Result<()> {
     let conn = crate::open_database(app).map_err(Error::Codec)?;
     let ext = crate::crsqlite_extension_path(app).map_err(Error::Codec)?;
     super::activate(&conn, &ext)?;

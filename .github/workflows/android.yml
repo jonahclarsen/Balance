@@ -96,6 +96,11 @@ jobs:
       - name: Initialize Android project
         run: pnpm tauri android init
 
+      - name: Allow active direct sync to survive screen-off sleep
+        # The Rust sync command holds CPU + Wi-Fi locks only for the lifetime of
+        # an in-flight direct sync, then releases them immediately.
+        run: node .github/scripts/configure-android-sync-wake-lock.mjs
+
       - name: Bundle the offline Android barcode model
         # The upstream plugin uses the dynamically downloaded Play Services
         # model. Bundle ML Kit instead so scanning works immediately, including
