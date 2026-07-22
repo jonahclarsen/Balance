@@ -96,10 +96,12 @@
 
 <span
   class="time-range"
+  class:warning-start={overlapsPrevious}
+  class:warning-end={overlapsNext || exceedsAncestor}
   aria-label="Time range"
   title={warningTitle}
 >
-  <span class="time-values">
+  <span class="time-side time-start-side">
     <button
       class="time-part"
       class:warning={overlapsPrevious}
@@ -112,7 +114,9 @@
     >
       {formatMinutes(startMinutes)}
     </button>
-    <span class="dash">-</span>
+  </span>
+  <span class="dash">-</span>
+  <span class="time-side time-end-side">
     <button
       class="time-part"
       class:warning={overlapsNext || exceedsAncestor}
@@ -125,6 +129,6 @@
     >
       {formatMinutes(endMinutes)}
     </button>
+    <button class="icon-button quiet" type="button" title="Remove time" on:click={onRemove}>×</button>
   </span>
-  <button class="icon-button quiet" type="button" title="Remove time" on:click={onRemove}>×</button>
 </span>

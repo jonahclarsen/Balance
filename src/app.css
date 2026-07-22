@@ -639,6 +639,8 @@ nav button.active {
 }
 
 .time-range {
+  --time-start-bg: var(--time-bg);
+  --time-end-bg: var(--time-bg);
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
@@ -649,38 +651,53 @@ nav button.active {
   font-variant-numeric: tabular-nums;
 }
 
-.time-values {
-  position: relative;
-  display: inline-grid;
-  grid-template-columns: repeat(2, minmax(max-content, 1fr));
+.time-range.warning-start {
+  --time-start-bg: var(--time-warn-bg);
+}
+
+.time-range.warning-end {
+  --time-end-bg: var(--time-warn-bg);
+}
+
+.time-side {
+  display: inline-flex;
+  align-items: center;
   align-self: stretch;
-  overflow: hidden;
+}
+
+.time-start-side {
   border-radius: 5px 0 0 5px;
+  background: var(--time-start-bg);
+  padding-left: 5px;
+}
+
+.time-end-side {
+  gap: 1px;
+  border-radius: 0 5px 5px 0;
+  background: var(--time-end-bg);
 }
 
 .time-part {
   border: 0;
   background: transparent;
   color: inherit;
-  padding: 5px 8px;
+  padding: 5px 2px;
   user-select: none;
   touch-action: none;
   cursor: ns-resize;
 }
 
 .time-part.warning {
-  background: var(--time-warn-bg);
   color: var(--time-warn-ink);
 }
 
 .dash {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  z-index: 1;
-  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  align-self: stretch;
+  background: linear-gradient(to right, var(--time-start-bg) 0 50%, var(--time-end-bg) 50% 100%);
   color: var(--muted);
-  pointer-events: none;
+  padding: 0 1px;
 }
 
 .children {

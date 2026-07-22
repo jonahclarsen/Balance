@@ -783,6 +783,8 @@ test('template time warnings cover sibling overlaps and ancestor end times', asy
             ]),
             item('overlap', 'Overlapping sibling', 690, 750),
             item('later', 'Later sibling', 780, 840),
+            item('uneven', 'Uneven time width', 1320, 1350),
+            item('uneven_next', 'Overlapping uneven sibling', 1335, 1395),
           ],
         },
       ],
@@ -811,18 +813,22 @@ test('template time warnings cover sibling overlaps and ancestor end times', asy
   const laterTime = page
     .getByRole('listitem', { name: 'Template item: Later sibling', exact: true })
     .getByLabel('Time range')
+  const unevenTime = page
+    .getByRole('listitem', { name: 'Template item: Uneven time width', exact: true })
+    .getByLabel('Time range')
 
   await expect(parentTime.getByRole('button', { name: '9am' })).not.toHaveClass(/warning/)
   await expect(parentTime.getByRole('button', { name: '12pm' })).toHaveClass(/warning/)
-  await expect(parentTime).toHaveCSS('background-color', 'rgb(238, 247, 243)')
+  await expect(parentTime).toHaveClass(/warning-end/)
+  await expect(parentTime).not.toHaveClass(/warning-start/)
+  await expect(parentTime.locator('.time-start-side')).toHaveCSS('padding-left', '5px')
+  await expect(parentTime.locator('.time-end-side')).toHaveCSS('gap', '1px')
+  await expect(parentTime.locator('.dash')).toHaveCSS('padding', '0px 1px')
+  await expect(parentTime.getByRole('button', { name: '9am' })).toHaveCSS('padding', '5px 2px')
   await expect(parentTime.getByRole('button', { name: '9am' })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
-  await expect(parentTime.getByRole('button', { name: '12pm' })).toHaveCSS('background-color', 'rgb(251, 240, 225)')
-  const startHalfBox = await parentTime.getByRole('button', { name: '9am' }).boundingBox()
-  const endHalfBox = await parentTime.getByRole('button', { name: '12pm' }).boundingBox()
-  expect(startHalfBox).not.toBeNull()
-  expect(endHalfBox).not.toBeNull()
-  expect(Math.abs(startHalfBox!.width - endHalfBox!.width)).toBeLessThan(0.5)
-  expect(Math.abs(startHalfBox!.x + startHalfBox!.width - endHalfBox!.x)).toBeLessThan(0.5)
+  await expect(parentTime.getByRole('button', { name: '12pm' })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(parentTime.locator('.time-start-side')).toHaveCSS('background-color', 'rgb(238, 247, 243)')
+  await expect(parentTime.locator('.time-end-side')).toHaveCSS('background-color', 'rgb(251, 240, 225)')
   await expect(parentTime).toHaveAttribute('title', 'This time ends after the next timed item starts')
   await expect(childTime.locator('.time-part.warning')).toHaveCount(0)
   await expect(deepTime.getByRole('button', { name: '10:30am' })).not.toHaveClass(/warning/)
@@ -833,10 +839,41 @@ test('template time warnings cover sibling overlaps and ancestor end times', asy
   await expect(lateChildTime).toHaveAttribute('title', 'This time ends after a parent or ancestor ends')
   await expect(overlapTime.getByRole('button', { name: '11:30am' })).toHaveClass(/warning/)
   await expect(overlapTime.getByRole('button', { name: '12:30pm' })).not.toHaveClass(/warning/)
-  await expect(overlapTime.getByRole('button', { name: '11:30am' })).toHaveCSS('background-color', 'rgb(251, 240, 225)')
-  await expect(overlapTime.getByRole('button', { name: '12:30pm' })).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
+  await expect(overlapTime).toHaveClass(/warning-start/)
+  await expect(overlapTime).not.toHaveClass(/warning-end/)
+  await expect(overlapTime.locator('.time-start-side')).toHaveCSS('background-color', 'rgb(251, 240, 225)')
+  await expect(overlapTime.locator('.time-end-side')).toHaveCSS('background-color', 'rgb(238, 247, 243)')
   await expect(overlapTime).toHaveAttribute('title', 'This time starts before the previous timed item ends')
   await expect(laterTime.locator('.time-part.warning')).toHaveCount(0)
+
+  const unevenStart = unevenTime.getByRole('button', { name: '10pm' })
+  const unevenEnd = unevenTime.getByRole('button', { name: '10:30pm' })
+  const unevenRemove = unevenTime.locator('.icon-button.quiet')
+  const unevenSeparator = unevenTime.locator('.dash')
+  const unevenRangeBox = await unevenTime.boundingBox()
+  const unevenStartBox = await unevenStart.boundingBox()
+  const unevenEndBox = await unevenEnd.boundingBox()
+  const unevenRemoveBox = await unevenRemove.boundingBox()
+  const unevenSeparatorBox = await unevenSeparator.boundingBox()
+  expect(unevenRangeBox).not.toBeNull()
+  expect(unevenStartBox).not.toBeNull()
+  expect(unevenEndBox).not.toBeNull()
+  expect(unevenRemoveBox).not.toBeNull()
+  expect(unevenSeparatorBox).not.toBeNull()
+  expect(unevenEndBox!.width).toBeGreaterThan(unevenStartBox!.width)
+  expect(Math.abs(unevenStartBox!.x + unevenStartBox!.width - unevenSeparatorBox!.x)).toBeLessThan(0.5)
+  expect(Math.abs(unevenSeparatorBox!.x + unevenSeparatorBox!.width - unevenEndBox!.x)).toBeLessThan(0.5)
+  const originalLayoutWidth =
+    2 + 5 + unevenStartBox!.width + unevenSeparatorBox!.width + unevenEndBox!.width + 1 + unevenRemoveBox!.width
+  expect(Math.abs(unevenRangeBox!.width - originalLayoutWidth)).toBeLessThan(0.5)
+  await expect(unevenTime).toHaveClass(/warning-end/)
+  await expect(unevenTime).not.toHaveClass(/warning-start/)
+  await expect(unevenTime.locator('.time-start-side')).toHaveCSS('background-color', 'rgb(238, 247, 243)')
+  await expect(unevenTime.locator('.time-end-side')).toHaveCSS('background-color', 'rgb(251, 240, 225)')
+  await expect(unevenSeparator).toHaveCSS(
+    'background-image',
+    'linear-gradient(to right, rgb(238, 247, 243) 0px, rgb(238, 247, 243) 50%, rgb(251, 240, 225) 50%, rgb(251, 240, 225) 100%)',
+  )
 })
 
 test('plan item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
