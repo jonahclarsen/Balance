@@ -49,8 +49,8 @@
         { keys: ['alt', 'V'], label: 'Open Metrics' },
         { keys: ['alt', 'G'], label: 'Open Goals' },
         { keys: ['alt', 'S'], label: 'Open Settings' },
-        { keys: ['alt', 'Q'], label: 'Previous day (or list template)' },
-        { keys: ['alt', 'W'], label: 'Next day (or list template)' },
+        { keys: ['alt', 'Q'], label: 'Previous day or template' },
+        { keys: ['alt', 'W'], label: 'Next day or template' },
       ],
     },
     {

@@ -303,16 +303,6 @@ nav button.active {
   width: min(100%, 300px);
 }
 
-.day-template-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.day-template-header-actions select {
-  min-width: 180px;
-}
-
 .primary {
   border-color: var(--accent);
   background: var(--accent);
@@ -2334,15 +2324,6 @@ nav button.active {
   .page-header {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .day-template-header-actions {
-    align-items: stretch;
-  }
-
-  .day-template-header-actions select {
-    flex: 1;
-    min-width: 0;
   }
 
   .date-controls {

@@ -730,6 +730,22 @@ return rows`
     selectedTemplateId = templateId
   }
 
+  async function selectAdjacentDayTemplate(direction: -1 | 1) {
+    if (templates.length < 2 || !selectedTemplate) return
+
+    const currentIndex = templates.findIndex((template) => template.id === selectedTemplate.id)
+    if (currentIndex === -1) return
+
+    const nextIndex = (currentIndex + direction + templates.length) % templates.length
+    selectedTemplateId = templates[nextIndex].id
+
+    await tick()
+    const selectedTab = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[data-day-template-tab-id]'),
+    ).find((tab) => tab.dataset.dayTemplateTabId === selectedTemplateId)
+    selectedTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+
   function createDayTemplateAndSelect() {
     selectedTemplateId = plannerStore.addTemplate()
     view = 'templates'
@@ -1929,21 +1945,23 @@ return rows`
     }
 
     if (
-      (view === 'today' || view === 'lists' || view === 'listTemplates') &&
+      (view === 'today' || view === 'templates' || view === 'lists' || view === 'listTemplates') &&
       event.altKey &&
       !primaryModifier &&
       !event.shiftKey
     ) {
       if (event.code === 'KeyQ') {
         event.preventDefault()
-        if (view === 'listTemplates') void selectAdjacentListTemplate(-1)
+        if (view === 'templates') void selectAdjacentDayTemplate(-1)
+        else if (view === 'listTemplates') void selectAdjacentListTemplate(-1)
         else if (view === 'today' || view === 'lists') shiftActivePlanDate(-1)
         return
       }
 
       if (event.code === 'KeyW') {
         event.preventDefault()
-        if (view === 'listTemplates') void selectAdjacentListTemplate(1)
+        if (view === 'templates') void selectAdjacentDayTemplate(1)
+        else if (view === 'listTemplates') void selectAdjacentListTemplate(1)
         else if (view === 'today' || view === 'lists') shiftActivePlanDate(1)
         return
       }
@@ -3126,7 +3144,7 @@ return rows`
   <div class="content-shell" style={contentShellStyle}>
     <section
       class="workspace"
-      class:list-template-workspace={view === 'listTemplates'}
+      class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
       bind:this={workspaceEl}
       on:scroll={handleWorkspaceScroll}
     >
@@ -3256,21 +3274,27 @@ return rows`
           <p class="eyebrow">Generator</p>
           <h2>Daily template</h2>
         </div>
-        <div class="day-template-header-actions">
-          {#if selectedTemplate}
-            <select
-              value={selectedTemplate.id}
-              on:change={(event) => selectDayTemplate(event.currentTarget.value)}
-              aria-label="Select day template"
-            >
-              {#each templates as template (template.id)}
-                <option value={template.id}>{template.name || 'Untitled day'}</option>
-              {/each}
-            </select>
-          {/if}
-          <button type="button" on:click={createDayTemplateAndSelect}>+ New day template</button>
-        </div>
       </header>
+
+      {#if templates.length > 0}
+        <nav class="template-rail list-template-rail" aria-label="Select day template">
+          <div class="list-template-tabs">
+            {#each templates as template (template.id)}
+              <button
+                type="button"
+                class="rail-chip"
+                class:active={selectedTemplate?.id === template.id}
+                aria-current={selectedTemplate?.id === template.id}
+                data-day-template-tab-id={template.id}
+                on:click={() => selectDayTemplate(template.id)}
+              >
+                {template.name || 'Untitled day'}
+              </button>
+            {/each}
+            <button type="button" class="rail-chip dashed-edge" on:click={createDayTemplateAndSelect}>New day</button>
+          </div>
+        </nav>
+      {/if}
 
       {#if selectedTemplate}
         <div class="template-panel">

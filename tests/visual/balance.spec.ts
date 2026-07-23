@@ -40,7 +40,8 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   await page.getByRole('button', { name: 'Day Templates' }).click()
   await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
   await expect(page.getByLabel('Template name')).toHaveValue('Default day')
-  await expect(page.getByLabel('Select day template')).toHaveValue(/template_/)
+  await expect(page.getByRole('navigation', { name: 'Select day template' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Default day', exact: true })).toHaveAttribute('aria-current', 'true')
   await expect(page.getByRole('button', { name: 'Drag to move template item' }).first()).toBeVisible()
   await expect
     .poll(async () =>
@@ -76,21 +77,25 @@ test('new days use and remember the last selected day template', async ({ page }
   await page.reload()
 
   await page.getByRole('button', { name: 'Day Templates' }).click()
-  await page.getByRole('button', { name: '+ New day template' }).click()
+  await page.getByRole('button', { name: 'New day', exact: true }).click()
   await expect(page.getByLabel('Template name')).toHaveValue('New day')
   await page.getByLabel('Template name').fill('Weekend')
   await page.getByRole('textbox', { name: 'Template item' }).fill('Rest')
 
-  const selectedTemplateId = await page.getByLabel('Select day template').inputValue()
-  await expect(page.getByLabel('Select day template').locator('option')).toHaveCount(2)
+  const weekendTab = page.getByRole('button', { name: 'Weekend', exact: true })
+  const selectedTemplateId = await weekendTab.getAttribute('data-day-template-tab-id')
+  expect(selectedTemplateId).toBeTruthy()
+  await expect(page.locator('[data-day-template-tab-id]')).toHaveCount(2)
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('balance:selectedDayTemplateId')))
     .toBe(selectedTemplateId)
 
-  const templatePicker = page.getByLabel('Select day template')
-  await templatePicker.selectOption({ label: 'Default day' })
+  const defaultDayTab = page.getByRole('button', { name: 'Default day', exact: true })
+  await page.keyboard.press('Alt+Q')
+  await expect(defaultDayTab).toHaveAttribute('aria-current', 'true')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:selectedDayTemplateId'))).not.toBe(selectedTemplateId)
-  await templatePicker.selectOption({ label: 'Weekend' })
+  await page.keyboard.press('Alt+W')
+  await expect(weekendTab).toHaveAttribute('aria-current', 'true')
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem('balance:selectedDayTemplateId')))
     .toBe(selectedTemplateId)
