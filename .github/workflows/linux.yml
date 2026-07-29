@@ -1,0 +1,116 @@
+name: Build Linux app
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and smoke-test AppImage + deb
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux build and smoke-test dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            dbus-x11 \
+            libappindicator3-dev \
+            librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
+            patchelf \
+            xauth \
+            xvfb
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-linux-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-linux-cargo-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build cr-sqlite loadable extension (Linux .so)
+        # Produces the runtime-loaded resource required by tauri.linux.conf.json.
+        run: bash scripts/build-crsqlite.sh desktop
+
+      - name: Build Linux packages
+        run: pnpm tauri build --bundles appimage,deb
+
+      - name: Verify packages and bundled cr-sqlite
+        id: packages
+        run: |
+          APPIMAGE="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
+          DEB="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+
+          test -n "$APPIMAGE"
+          test -n "$DEB"
+          test -x "$APPIMAGE"
+          file src-tauri/target/release/Balance | tee executable-architecture.txt
+          file src-tauri/target/release/Balance | grep -q "ELF 64-bit.*x86-64"
+
+          "$APPIMAGE" --appimage-extract >/dev/null
+          find squashfs-root -type f -name crsqlite.so | tee appimage-crsqlite.txt
+          test -s appimage-crsqlite.txt
+
+          dpkg-deb --contents "$DEB" | tee deb-contents.txt
+          grep -q 'crsqlite.so' deb-contents.txt
+
+          cp "$APPIMAGE" Balance-linux-x86_64.AppImage
+          cp "$DEB" Balance-linux-x86_64.deb
+
+      - name: Smoke-test packaged app startup
+        run: |
+          set +e
+          timeout 15s dbus-run-session -- xvfb-run -a \
+            ./squashfs-root/AppRun >linux-smoke-test.log 2>&1
+          STATUS=$?
+          set -e
+
+          cat linux-smoke-test.log
+          if [[ "$STATUS" -ne 0 && "$STATUS" -ne 124 ]]; then
+            echo "::error::Packaged app exited unexpectedly with status $STATUS"
+            exit "$STATUS"
+          fi
+
+      - name: Upload Linux artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Balance-linux-x86_64
+          path: |
+            Balance-linux-x86_64.AppImage
+            Balance-linux-x86_64.deb
+            executable-architecture.txt
+            appimage-crsqlite.txt
+            deb-contents.txt
+            linux-smoke-test.log
+          if-no-files-found: error
