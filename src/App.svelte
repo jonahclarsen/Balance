@@ -69,6 +69,9 @@
   // value when the user hasn't chosen a custom color yet.
   const DEFAULT_DONE_TINT = '#3f9d54'
   const DEFAULT_CHECKBOX_COLOR = '#4392d5'
+  const isMobile = /android|iphone|ipad|ipod/i.test(
+    (typeof navigator !== 'undefined' && navigator.userAgent) || '',
+  )
   const isMac = /Mac|iPhone|iPad|iPod/.test(
     (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '',
   )
@@ -317,7 +320,8 @@ return rows`
     .filter(Boolean)
     .join('; ')
   $: showAutoExportError = Boolean(
-    exportSettings?.lastAutoJsonExportError &&
+    !isMobile &&
+      exportSettings?.lastAutoJsonExportError &&
       exportSettings.lastAutoJsonExportErrorAt &&
       exportSettings.lastAutoJsonExportErrorAt !== exportSettings.autoJsonExportErrorAckAt,
   )
@@ -1485,6 +1489,8 @@ return rows`
   }
 
   function downloadJSON() {
+    if (isMobile) return
+
     void download(`balance-export-${todayISO()}.json`, exportJSON($plannerStore), 'application/json')
   }
 
@@ -1588,7 +1594,7 @@ return rows`
   function restartAutoJsonExportScheduler() {
     clearAutoJsonExportTimers()
 
-    if (!isTauri() || !exportSettings?.autoJsonExportEnabled) return
+    if (isMobile || !isTauri() || !exportSettings?.autoJsonExportEnabled) return
 
     void runAutoJsonExportCatchup()
     scheduleNextAutoJsonExport()
@@ -1611,7 +1617,14 @@ return rows`
   }
 
   async function runAutoJsonExportCatchup() {
-    if (!isTauri() || autoJsonExportBusy || !exportSettings || !shouldRunAutoJsonExport(exportSettings)) return
+    if (
+      isMobile ||
+      !isTauri() ||
+      autoJsonExportBusy ||
+      !exportSettings ||
+      !shouldRunAutoJsonExport(exportSettings)
+    )
+      return
 
     autoJsonExportBusy = true
 
@@ -3906,11 +3919,13 @@ return rows`
           </div>
 
           <div class="export-panel">
-            <div>
-              <h4>Canonical JSON</h4>
-              <p>Full app state for restore or migration.</p>
-              <button class="primary" type="button" on:click={downloadJSON}>Export JSON</button>
-            </div>
+            {#if !isMobile}
+              <div>
+                <h4>Canonical JSON</h4>
+                <p>Full app state for restore or migration.</p>
+                <button class="primary" type="button" on:click={downloadJSON}>Export JSON</button>
+              </div>
+            {/if}
 
             <div>
               <h4>Readable HTML</h4>
@@ -3965,7 +3980,7 @@ return rows`
           {/if}
         </section>
 
-        {#if isTauri()}
+        {#if isTauri() && !isMobile}
           <section class="settings-section">
             <div>
               <h3>Automatic JSON export</h3>

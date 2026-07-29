@@ -62,7 +62,12 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Manual export' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Export JSON' })).toBeVisible()
+  if (testInfo.project.name === 'mobile') {
+    await expect(page.getByRole('button', { name: 'Export JSON' })).toHaveCount(0)
+    await expect(page.getByRole('heading', { name: 'Canonical JSON' })).toHaveCount(0)
+  } else {
+    await expect(page.getByRole('button', { name: 'Export JSON' })).toBeVisible()
+  }
   await expect(page.getByRole('button', { name: 'Export HTML' })).toBeVisible()
   await expect(page.getByText('Browser downloads')).toBeVisible()
   await page.screenshot({
