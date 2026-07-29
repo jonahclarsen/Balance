@@ -1752,13 +1752,16 @@ export function wordCount(text: string): number {
   return trimmed.split(/\s+/).length
 }
 
-// Probability-weighted expected word count of a whole list template:
-// sum over every item of wordCount(text) * probability / 100.
-export function expectedWordCount(items: ListTemplateItem[]): number {
+// Probability-weighted expected word count of a whole list template. A child
+// can only appear when every ancestor appears, so its effective probability is
+// the product of its own probability and all ancestor probabilities.
+export function expectedWordCount(items: ListTemplateItem[], ancestorProbability = 1): number {
   return items.reduce((sum, item) => {
+    const appearanceProbability =
+      ancestorProbability * (clampListItemProbability(item.probability) / 100)
     const itemWords = (wordCount(htmlToPlainText(item.html)) || wordCount(item.text)) *
-      (clampListItemProbability(item.probability) / 100)
-    return sum + itemWords + expectedWordCount(item.children)
+      appearanceProbability
+    return sum + itemWords + expectedWordCount(item.children, appearanceProbability)
   }, 0)
 }
 

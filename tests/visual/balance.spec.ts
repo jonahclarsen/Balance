@@ -2378,6 +2378,107 @@ test('list template items support horizontal boundary navigation and backspace m
   await expect.poll(async () => listTemplateTopLevelTexts(page)).toEqual(['First item', 'Second item'])
 })
 
+test('list template items support rich text formatting shortcuts while over the word cap', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Unlock to edit max word count' }).click()
+  await page.getByRole('spinbutton', { name: 'max' }).fill('1')
+
+  const editor = page.locator('[data-list-template-text-input]').first()
+  await editor.focus()
+
+  for (const [shortcut, editorTag, storedTag] of [
+    ['Meta+B', 'b', 'strong'],
+    ['Meta+I', 'i', 'em'],
+    ['Meta+U', 'u', 'u'],
+  ] as const) {
+    await page.keyboard.press('Meta+A')
+    await page.keyboard.press(shortcut)
+
+    await expect.poll(async () => editor.evaluate((element) => element.innerHTML)).toContain(`<${editorTag}>`)
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+          return state.listTemplates?.[0]?.items?.[0]?.html ?? ''
+        }),
+      )
+      .toContain(`<${storedTag}>`)
+    await expect.poll(async () => selectedText(page)).toBe('First item')
+  }
+})
+
+test('nested list items include ancestor probabilities in expected words and cap checks', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    const now = new Date().toISOString()
+    type SeedItem = {
+      id: string
+      text: string
+      html: string
+      probability: number
+      children: SeedItem[]
+    }
+    const item = (
+      id: string,
+      text: string,
+      probability: number,
+      children: SeedItem[] = [],
+    ): SeedItem => ({ id, text, html: text, probability, children })
+
+    localStorage.setItem(
+      'balance.appState.v1',
+      JSON.stringify({
+        schemaVersion: 1,
+        deviceId: 'test-device',
+        localSequence: 0,
+        historyRevision: 0,
+        activePlanDate: now.slice(0, 10),
+        templates: [],
+        plans: [],
+        listTemplates: [
+          {
+            id: 'list_template_nested_words',
+            name: 'Nested words',
+            maxExpectedWords: 5,
+            items: [
+              item('parent', 'parent words', 50, [
+                item('child', 'one two three four', 50, [
+                  item('grandchild', 'one two three four five six seven eight', 50),
+                ]),
+              ]),
+              item('root_sibling', 'root', 100),
+            ],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        lists: [],
+        metrics: [],
+        metricEntries: [],
+        goals: [],
+        goalCompletions: [],
+        operations: [],
+      }),
+    )
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+
+  await expect(page.locator('.word-cap-count')).toContainText('4 / 5 expected words')
+
+  const grandchild = page.locator('[data-list-template-text-input-id="grandchild"]')
+  await grandchild.fill('one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen')
+
+  await expect(grandchild).toHaveText(
+    'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen',
+  )
+  await expect(page.locator('.word-cap-count')).toContainText('5 / 5 expected words')
+})
+
 test('list template rows share multi-select clipboard behavior and hide mouse-only actions', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Drag-to-select is intentionally disabled on mobile')
   await page.goto('/')

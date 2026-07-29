@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { expectedWordCount, htmlToPlainText, wordCount } from './planner'
+  import { clampListItemProbability, expectedWordCount, htmlToPlainText, wordCount } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
@@ -16,6 +16,7 @@
   export let item: ListTemplateItem
   export let allItems: ListTemplateItem[]
   export let depth = 0
+  export let ancestorProbability = 1
   export let templateId: Id
   export let parentId: Id | null = null
   export let maxExpectedWords = 0
@@ -56,13 +57,20 @@
   // Expected words contributed by everything except this item's own text, so we can
   // check whether new text would breach the cap without rebuilding the whole tree.
   $: currentExpected = expectedWordCount(allItems)
-  $: itemContribution = wordCount(htmlToPlainText(item.html) || item.text) * (item.probability / 100)
+  $: appearanceProbability =
+    ancestorProbability * (clampListItemProbability(item.probability) / 100)
+  $: itemContribution = wordCount(htmlToPlainText(item.html) || item.text) * appearanceProbability
 
   function wouldExceedCap(text: string, probability: number): boolean {
     if (!maxExpectedWords) return false
     const base = currentExpected - itemContribution
-    const next = base + wordCount(text) * (probability / 100)
-    return next > maxExpectedWords + 1e-9
+    const nextProbability =
+      ancestorProbability * (clampListItemProbability(probability) / 100)
+    const next = base + wordCount(text) * nextProbability
+    // A lowered cap or a probability change can leave an existing template over
+    // its limit. Keep rejecting edits that make that state worse, but allow
+    // formatting-only changes and text edits that preserve or reduce its size.
+    return next > maxExpectedWords + 1e-9 && next > currentExpected + 1e-9
   }
 
   function handleTextChange(html: string, text: string, options?: TextChangeOptions) {
@@ -275,6 +283,7 @@
             item={child}
             {allItems}
             depth={depth + 1}
+            ancestorProbability={appearanceProbability}
             {templateId}
             parentId={item.id}
             {maxExpectedWords}

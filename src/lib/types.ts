@@ -42,7 +42,8 @@ export type ListTemplateItem = {
 export type ListTemplate = {
   id: Id
   name: string
-  // Cap on the probability-weighted "expected word count" of the whole list.
+  // Cap on the probability-weighted "expected word count" of the whole list,
+  // including the conditional probability of every item's ancestors.
   // 0 means unlimited.
   maxExpectedWords: number
   items: ListTemplateItem[]
