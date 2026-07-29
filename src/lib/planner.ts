@@ -1006,8 +1006,13 @@ function defaultTimeRangeAfterPreviousTimedItem<T extends {
   endMinutes: number | null
   children: T[]
 }>(items: T[], itemId: Id): { startMinutes: number; endMinutes: number } {
-  const previousEndMinutes = previousTimedItemEndMinutes(items, itemId).endMinutes
-  const startMinutes = previousEndMinutes ?? DEFAULT_TIME_START_MINUTES
+  const previousResult = previousTimedItem(items, itemId)
+  const previous = previousResult.found ? previousResult.previous : null
+  const startMinutes = previous
+    ? previousResult.depth > previous.depth
+      ? previous.startMinutes
+      : previous.endMinutes
+    : DEFAULT_TIME_START_MINUTES
   const endMinutes = Math.min(startMinutes + DEFAULT_TIME_DURATION_MINUTES, MAX_TIMELINE_MINUTES)
 
   if (endMinutes > startMinutes) return { startMinutes, endMinutes }
@@ -1018,7 +1023,13 @@ function defaultTimeRangeAfterPreviousTimedItem<T extends {
   }
 }
 
-function previousTimedItemEndMinutes<T extends {
+type TimedItemPosition = {
+  startMinutes: number
+  endMinutes: number
+  depth: number
+}
+
+function previousTimedItem<T extends {
   id: Id
   startMinutes: number | null
   endMinutes: number | null
@@ -1026,41 +1037,29 @@ function previousTimedItemEndMinutes<T extends {
 }>(
   items: T[],
   itemId: Id,
-  previousEndMinutes: number | null = null,
-): { found: boolean; endMinutes: number | null } {
-  let lastEndMinutes = previousEndMinutes
+  previous: TimedItemPosition | null = null,
+  depth = 0,
+): { found: boolean; previous: TimedItemPosition | null; depth: number } {
+  let lastTimedItem = previous
 
   for (const item of items) {
-    if (item.id === itemId) return { found: true, endMinutes: lastEndMinutes }
+    if (item.id === itemId) return { found: true, previous: lastTimedItem, depth }
 
     if (item.startMinutes !== null && item.endMinutes !== null) {
-      lastEndMinutes = item.endMinutes
+      lastTimedItem = {
+        startMinutes: item.startMinutes,
+        endMinutes: item.endMinutes,
+        depth,
+      }
     }
 
-    const childResult = previousTimedItemEndMinutes(item.children, itemId, lastEndMinutes)
+    const childResult = previousTimedItem(item.children, itemId, lastTimedItem, depth + 1)
     if (childResult.found) return childResult
 
-    lastEndMinutes = latestTimedItemEndMinutes(item.children, lastEndMinutes)
+    lastTimedItem = childResult.previous
   }
 
-  return { found: false, endMinutes: previousEndMinutes }
-}
-
-function latestTimedItemEndMinutes<T extends {
-  startMinutes: number | null
-  endMinutes: number | null
-  children: T[]
-}>(items: T[], previousEndMinutes: number | null): number | null {
-  let lastEndMinutes = previousEndMinutes
-
-  for (const item of items) {
-    if (item.startMinutes !== null && item.endMinutes !== null) {
-      lastEndMinutes = item.endMinutes
-    }
-    lastEndMinutes = latestTimedItemEndMinutes(item.children, lastEndMinutes)
-  }
-
-  return lastEndMinutes
+  return { found: false, previous: lastTimedItem, depth }
 }
 
 export type ItemTimeWarning = {

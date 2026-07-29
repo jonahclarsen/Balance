@@ -636,7 +636,7 @@ test('shift-tab outdents a template item without jumping below following sibling
     })
 })
 
-test('adding plan time starts after the nearest timed item above', async ({ page }) => {
+test('adding plan time starts with a shallower timed item and after a same-level item', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -668,8 +668,73 @@ test('adding plan time starts after the nearest timed item above', async ({ page
       }),
     )
     .toEqual({
-      pick: [600, 660],
-      write: [660, 720],
+      pick: [540, 600],
+      write: [600, 660],
+    })
+})
+
+test('adding time to deeper descendants reuses the previous timed task start', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    localStorage.clear()
+    const date = new Date().toISOString().slice(0, 10)
+    const item = (id: string, text: string, children: unknown[] = []) => ({
+      id,
+      text,
+      html: text,
+      done: false,
+      startMinutes: null,
+      endMinutes: null,
+      children,
+    })
+    const state = {
+      schemaVersion: 1,
+      deviceId: 'test-device',
+      localSequence: 0,
+      historyRevision: 0,
+      activePlanDate: date,
+      templates: [],
+      plans: [
+        {
+          id: 'plan_nested_time',
+          date,
+          dailyReminder: '',
+          items: [
+            item('parent', 'Parent', [
+              item('child', 'Child', [item('grandchild', 'Grandchild')]),
+              item('next_child', 'Next child'),
+            ]),
+          ],
+        },
+      ],
+      goals: [],
+      goalCompletions: [],
+      operations: [],
+    }
+
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+
+  for (const text of ['Parent', 'Child', 'Grandchild', 'Next child']) {
+    await page
+      .getByRole('listitem', { name: `Plan item: ${text}`, exact: true })
+      .getByRole('button', { name: 'Add time range' })
+      .click()
+  }
+
+  await expect
+    .poll(async () => ({
+      parent: await planItemTimeRange(page, 'Parent'),
+      child: await planItemTimeRange(page, 'Child'),
+      grandchild: await planItemTimeRange(page, 'Grandchild'),
+      nextChild: await planItemTimeRange(page, 'Next child'),
+    }))
+    .toEqual({
+      parent: [540, 600],
+      child: [540, 600],
+      grandchild: [540, 600],
+      nextChild: [600, 660],
     })
 })
 
@@ -762,7 +827,7 @@ test('dragging a selected plan end time shifts selected timed tasks together', a
     })
 })
 
-test('adding template time starts after the nearest timed item above', async ({ page }) => {
+test('adding template time starts with the nearest shallower timed item', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -789,7 +854,7 @@ test('adding template time starts after the nearest timed item above', async ({ 
       }),
     )
     .toEqual({
-      pick: [600, 660],
+      pick: [540, 600],
     })
 })
 
