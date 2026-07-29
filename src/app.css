@@ -595,8 +595,8 @@ nav button.active {
   display: flex;
   max-width: min(38%, 420px);
   flex: 0 1 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 4px;
 }
 
@@ -2296,6 +2296,9 @@ nav button.active {
 
   .plan-row > .plan-goal-badges {
     flex: 1 0 100%;
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
     justify-content: flex-start;
     padding-left: 74px;
   }

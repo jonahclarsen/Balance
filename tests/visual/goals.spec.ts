@@ -843,6 +843,91 @@ test('goal rhythm grows a column for the new day after the clock rolls over', as
   await expect(page.locator('.goal-date-head[title="2026-06-17"].today')).toHaveCount(1)
 })
 
+test('long tasks use a vertical desktop goal stack and a wrapping mobile goal row', async ({ page }, testInfo) => {
+  const taskText = [
+    'Stack the research notes into a careful project update that explains every open question,',
+    'captures the decisions from the longer planning conversation, and records the follow-up work',
+    'for the design review, implementation pass, documentation pass, and final release checklist.',
+  ].join(' ')
+
+  await page.evaluate((text) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const date = new Date().toISOString().slice(0, 10)
+    const timestamp = new Date().toISOString()
+
+    state.activePlanDate = date
+    state.plans = [
+      {
+        id: 'long_goal_plan',
+        date,
+        dailyReminder: '',
+        items: [
+          {
+            id: 'long_goal_item',
+            text,
+            html: text,
+            done: false,
+            startMinutes: null,
+            endMinutes: null,
+            children: [],
+          },
+        ],
+      },
+    ]
+    state.goals = ['Health routines', 'Creative practice', 'Personal projects'].map((name, index) => ({
+      id: `stacked_goal_${index}`,
+      name,
+      cadenceDays: 1,
+      matchTerms: ['stack'],
+      matchTermsHtml: 'stack',
+      hue: 80 + index * 90,
+      lightness: 50,
+      activityPeriods: [{ startDate: date, endDate: null }],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }))
+    state.goalCompletions = []
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, taskText)
+  await page.reload()
+
+  const row = page.locator('[data-plan-item-id="long_goal_item"]')
+  const badges = row.locator('.plan-goal-badge')
+  await expect(badges).toHaveCount(3)
+
+  const geometry = await row.evaluate((element) => {
+    const text = element.querySelector<HTMLElement>('.item-text')
+    const badgeElements = Array.from(element.querySelectorAll<HTMLElement>('.plan-goal-badge'))
+    if (!text || badgeElements.length !== 3) throw new Error('Missing long task layout elements')
+
+    const textRect = text.getBoundingClientRect()
+    const badgeRects = badgeElements.map((badge) => badge.getBoundingClientRect())
+    return {
+      textHeight: textRect.height,
+      textBottom: textRect.bottom,
+      badgeStackHeight: badgeRects.reduce((height, rect) => height + rect.height, 0) + 8,
+      badgeRights: badgeRects.map((rect) => rect.right),
+      badgeTops: badgeRects.map((rect) => rect.top),
+    }
+  })
+
+  if (testInfo.project.name === 'desktop') {
+    expect(geometry.textHeight).toBeGreaterThanOrEqual(geometry.badgeStackHeight)
+    expect(Math.max(...geometry.badgeRights) - Math.min(...geometry.badgeRights)).toBeLessThanOrEqual(1)
+    expect(geometry.badgeTops[1]).toBeGreaterThan(geometry.badgeTops[0])
+    expect(geometry.badgeTops[2]).toBeGreaterThan(geometry.badgeTops[1])
+  } else {
+    expect(Math.abs(geometry.badgeTops[1] - geometry.badgeTops[0])).toBeLessThanOrEqual(1)
+    expect(geometry.badgeTops[2]).toBeGreaterThan(geometry.badgeTops[1])
+    expect(geometry.badgeTops[0]).toBeGreaterThanOrEqual(geometry.textBottom)
+  }
+
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-long-task-stacked-goals.png`,
+    fullPage: true,
+  })
+})
+
 test('goal rhythm keeps its name column aligned while scrolling both axes', async ({ page }, testInfo) => {
   const historyStart = addDays(todayISO(), -120)
 
