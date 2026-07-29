@@ -10,7 +10,10 @@ use serde_json::{json, Value};
 
 use super::crypto::SyncKey;
 use super::*;
-use crate::{open_database_at, persist_operation_to_database, read_app_state_from_database, replace_app_state};
+use crate::{
+    open_database_at, persist_operation_to_database, read_app_state_from_database,
+    replace_app_state,
+};
 
 fn ext_path() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -88,8 +91,16 @@ fn joiner_bootstraps_primary_data_without_touching_real_tables() {
     let sb = Scratch::new("join");
 
     // Primary (Mac) has real data; joiner (phone) has its own different data.
-    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([{ "id": "g1", "name": "Read" }])));
-    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([{ "id": "gx", "name": "PhoneJunk" }])));
+    let a = open_seeded(
+        &sa.path,
+        "key-a",
+        &state("device-A", json!([{ "id": "g1", "name": "Read" }])),
+    );
+    let b = open_seeded(
+        &sb.path,
+        "key-b",
+        &state("device-B", json!([{ "id": "gx", "name": "PhoneJunk" }])),
+    );
 
     enable_primary(&a).expect("enable primary");
     enable_joiner(&b).expect("enable joiner");
@@ -105,7 +116,11 @@ fn joiner_bootstraps_primary_data_without_touching_real_tables() {
 
     let a_state = read_app_state_from_database(&a).unwrap().unwrap();
     let b_state = read_app_state_from_database(&b).unwrap().unwrap();
-    assert_eq!(domain(&a_state), domain(&b_state), "joiner adopted the primary's state");
+    assert_eq!(
+        domain(&a_state),
+        domain(&b_state),
+        "joiner adopted the primary's state"
+    );
     assert_eq!(b_state["goals"], json!([{ "id": "g1", "name": "Read" }]));
     // Device identity stays local — the joiner keeps its own deviceId.
     assert_eq!(b_state["deviceId"], "device-B");
@@ -114,10 +129,19 @@ fn joiner_bootstraps_primary_data_without_touching_real_tables() {
     // `position` column (no `position_key`), proving the app schema is intact.
     let cols: Vec<String> = {
         let mut stmt = b.prepare("PRAGMA table_info(plan_items)").unwrap();
-        stmt.query_map([], |r| r.get::<_, String>(1)).unwrap().map(|r| r.unwrap()).collect()
+        stmt.query_map([], |r| r.get::<_, String>(1))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect()
     };
-    assert!(cols.iter().any(|c| c == "position"), "integer position column preserved");
-    assert!(!cols.iter().any(|c| c == "position_key"), "no destructive migration happened");
+    assert!(
+        cols.iter().any(|c| c == "position"),
+        "integer position column preserved"
+    );
+    assert!(
+        !cols.iter().any(|c| c == "position_key"),
+        "no destructive migration happened"
+    );
 
     finalize(&a).unwrap();
     finalize(&b).unwrap();
@@ -174,6 +198,298 @@ fn incremental_edits_propagate_both_directions() {
     finalize(&b).unwrap();
 }
 
+#[test]
+fn checkpoint_replays_exact_state_and_clears_accumulated_history() {
+    let scratch = Scratch::new("checkpoint-state");
+    let initial = json!({
+        "schemaVersion": 1,
+        "deviceId": "device-A",
+        "localSequence": 0,
+        "historyRevision": 0,
+        "activePlanDate": "2026-07-29",
+        "templates": [{
+            "id": "template-1",
+            "name": "Morning",
+            "createdAt": "2026-07-29T08:00:00Z",
+            "updatedAt": "2026-07-29T08:00:00Z",
+            "items": [{
+                "id": "template-item-1",
+                "startMinutes": 480,
+                "endMinutes": 510,
+                "options": [{
+                    "id": "template-option-1",
+                    "text": "Breakfast",
+                    "html": "<strong>Breakfast</strong>",
+                    "probability": 100
+                }],
+                "children": []
+            }]
+        }],
+        "plans": [{
+            "id": "plan-1",
+            "date": "2026-07-29",
+            "title": "Tuesday",
+            "dailyReminder": "Be kind",
+            "generatedFromTemplateId": "template-1",
+            "createdAt": "2026-07-29T08:00:00Z",
+            "items": [{
+                "id": "plan-item-1",
+                "text": "Breakfast",
+                "html": "<strong>Breakfast</strong>",
+                "done": false,
+                "startMinutes": 480,
+                "endMinutes": 510,
+                "children": []
+            }]
+        }],
+        "goals": [{ "id": "goal-1", "name": "Eat well" }],
+        "goalCompletions": [{ "goalId": "goal-1", "date": "2026-07-29", "completed": true }],
+        "listTemplates": [{
+            "id": "list-template-1",
+            "name": "Groceries",
+            "createdAt": "2026-07-29T08:00:00Z",
+            "updatedAt": "2026-07-29T08:00:00Z",
+            "items": []
+        }],
+        "lists": [{
+            "id": "list-1",
+            "listTemplateId": "list-template-1",
+            "date": "2026-07-29",
+            "title": "Groceries",
+            "createdAt": "2026-07-29T08:00:00Z",
+            "updatedAt": "2026-07-29T08:00:00Z",
+            "items": []
+        }],
+        "metrics": [{
+            "id": "metric-1",
+            "name": "Energy",
+            "createdAt": "2026-07-29T08:00:00Z",
+            "updatedAt": "2026-07-29T08:00:00Z",
+            "questions": []
+        }],
+        "metricEntries": [{
+            "id": "metric-entry-1",
+            "metricId": "metric-1",
+            "date": "2026-07-29",
+            "createdAt": "2026-07-29T08:00:00Z",
+            "updatedAt": "2026-07-29T08:00:00Z",
+            "answers": []
+        }],
+        "operations": [],
+    });
+    let mut connection = open_seeded(&scratch.path, "key", &initial);
+    enable_primary(&connection).unwrap();
+
+    persist_operation_to_database(
+        &mut connection,
+        &json!({
+            "id": "op-a-1",
+            "deviceId": "device-A",
+            "sequence": 1,
+            "timestamp": "2026-07-29T09:00:00Z",
+            "type": "patch_plan_item",
+            "payload": {
+                "planId": "plan-1",
+                "itemId": "plan-item-1",
+                "patch": { "done": true }
+            }
+        }),
+    )
+    .unwrap();
+    persist_operation_to_database(
+        &mut connection,
+        &json!({
+            "id": "op-a-2",
+            "deviceId": "device-A",
+            "sequence": 2,
+            "timestamp": "2026-07-29T09:01:00Z",
+            "type": "set_active_plan_date",
+            "payload": { "date": "2026-07-30" }
+        }),
+    )
+    .unwrap();
+
+    let before = read_app_state_from_database(&connection).unwrap().unwrap();
+    let operations_before: i64 = connection
+        .query_row("SELECT count(*) FROM operations", [], |row| row.get(0))
+        .unwrap();
+    let history_before: i64 = connection
+        .query_row("SELECT count(*) FROM history_entries", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(operations_before, 3);
+    assert_eq!(history_before, 2);
+
+    let stats = checkpoint_operation_log(&connection).unwrap();
+    assert_eq!(
+        stats,
+        CheckpointStats {
+            operations_removed: 2,
+            history_entries_removed: 2,
+        }
+    );
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        before,
+        "checkpoint replay must preserve every app-state field"
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM operations", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT type FROM operations", [], |row| row
+                .get::<_, String>(0))
+            .unwrap(),
+        "replace_full_state"
+    );
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM history_entries", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        0
+    );
+
+    rematerialize(&connection).unwrap();
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        before,
+        "a later sync replay must also reconstruct the same state"
+    );
+    finalize(&connection).unwrap();
+}
+
+#[test]
+fn checkpoint_mismatch_rolls_back_log_history_and_state() {
+    let scratch = Scratch::new("checkpoint-rollback");
+    let mut connection = open_seeded(
+        &scratch.path,
+        "key",
+        &state("device-A", json!([{ "id": "goal-1", "name": "Keep me" }])),
+    );
+    enable_primary(&connection).unwrap();
+    persist_operation_to_database(
+        &mut connection,
+        &json!({
+            "id": "op-a-1",
+            "deviceId": "device-A",
+            "sequence": 1,
+            "timestamp": "2026-07-29T09:00:00Z",
+            "type": "set_active_plan_date",
+            "payload": { "date": "2026-08-01" }
+        }),
+    )
+    .unwrap();
+
+    let before_state = read_app_state_from_database(&connection).unwrap().unwrap();
+    let before_operations: Vec<(String, String)> = {
+        let mut statement = connection
+            .prepare("SELECT id, payload_json FROM operations ORDER BY id")
+            .unwrap();
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap()
+    };
+    let before_history: i64 = connection
+        .query_row("SELECT count(*) FROM history_entries", [], |row| row.get(0))
+        .unwrap();
+
+    let mut invalid_snapshot = snapshot_state_op(&connection, &before_state).unwrap();
+    invalid_snapshot["payload"]["state"]["activePlanDate"] = json!("2099-01-01");
+    let error = install_checkpoint(&connection, &before_state, &invalid_snapshot).unwrap_err();
+    assert!(error
+        .to_string()
+        .contains("did not exactly reproduce the current app state"));
+
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        before_state
+    );
+    let after_operations: Vec<(String, String)> = {
+        let mut statement = connection
+            .prepare("SELECT id, payload_json FROM operations ORDER BY id")
+            .unwrap();
+        statement
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .collect::<std::result::Result<_, _>>()
+            .unwrap()
+    };
+    assert_eq!(after_operations, before_operations);
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM history_entries", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        before_history
+    );
+    finalize(&connection).unwrap();
+}
+
+#[test]
+fn checkpoint_tombstones_prevent_offline_peer_from_restoring_old_operations() {
+    let sa = Scratch::new("checkpoint-peer-a");
+    let sb = Scratch::new("checkpoint-peer-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let mut b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    apply(&b, &pull(&a, 0, None).unwrap()).unwrap();
+    rematerialize(&b).unwrap();
+
+    let op_b = json!({
+        "id": "op-b-old",
+        "deviceId": "device-B",
+        "sequence": 1,
+        "timestamp": "2026-07-29T09:00:00Z",
+        "type": "set_active_plan_date",
+        "payload": { "date": "2026-08-02" }
+    });
+    persist_operation_to_database(&mut b, &op_b).unwrap();
+    let stale_peer_changes = pull(&b, 0, None).unwrap();
+    apply(&a, &stale_peer_changes).unwrap();
+    rematerialize(&a).unwrap();
+    let expected = read_app_state_from_database(&a).unwrap().unwrap();
+    let version_before_checkpoint = db_version(&a).unwrap();
+
+    checkpoint_operation_log(&a).unwrap();
+    apply(&a, &stale_peer_changes).unwrap();
+    rematerialize(&a).unwrap();
+    assert_eq!(
+        read_app_state_from_database(&a).unwrap().unwrap(),
+        expected,
+        "stale peer rows must not resurrect after their checkpoint tombstones"
+    );
+
+    let checkpoint_changes = pull(&a, version_before_checkpoint, None).unwrap();
+    assert!(
+        !checkpoint_changes.rows.is_empty(),
+        "checkpoint must produce replicated deletes and baseline insert"
+    );
+    apply(&b, &checkpoint_changes).unwrap();
+    rematerialize(&b).unwrap();
+    assert_eq!(
+        domain(&read_app_state_from_database(&a).unwrap().unwrap()),
+        domain(&read_app_state_from_database(&b).unwrap().unwrap()),
+        "offline peer must converge after receiving the checkpoint"
+    );
+    assert_eq!(
+        b.query_row("SELECT count(*) FROM operations", [], |row| row
+            .get::<_, i64>(0))
+            .unwrap(),
+        1
+    );
+
+    finalize(&a).unwrap();
+    finalize(&b).unwrap();
+}
+
 /// Regression: once sync is enabled the `operations` log is a CRR whose triggers
 /// call `crsql_internal_sync_bit()`. A later write on a *fresh* connection that
 /// did not load cr-sqlite (the normal app open path) fails with "no such
@@ -221,7 +537,10 @@ fn writes_after_sync_enabled_require_the_extension_loaded() {
             "2027-03-03"
         );
         // The write landed in the replication log.
-        assert!(!pull(&conn, 0, None).unwrap().rows.is_empty(), "write captured for sync");
+        assert!(
+            !pull(&conn, 0, None).unwrap().rows.is_empty(),
+            "write captured for sync"
+        );
         finalize(&conn).unwrap();
     }
 }
@@ -233,7 +552,11 @@ fn p2p_socket_sync_bootstraps_over_the_network() {
 
     let sa = Scratch::new("p2p-a");
     let sb = Scratch::new("p2p-b");
-    let a = open_seeded(&sa.path, "ka", &state("device-A", json!([{ "id": "g1", "name": "Read" }])));
+    let a = open_seeded(
+        &sa.path,
+        "ka",
+        &state("device-A", json!([{ "id": "g1", "name": "Read" }])),
+    );
     let b = open_seeded(&sb.path, "kb", &state("device-B", json!([])));
     enable_primary(&a).unwrap();
     enable_joiner(&b).unwrap();
@@ -277,7 +600,10 @@ fn pairing_code_round_trips_and_rejects_corruption() {
     let restored = SyncKey::from_pairing_code(&code).unwrap();
     assert_eq!(key.as_bytes(), restored.as_bytes());
 
-    let cs = ChangeSet { origin_site_hex: "abcd".into(), rows: vec![] };
+    let cs = ChangeSet {
+        origin_site_hex: "abcd".into(),
+        rows: vec![],
+    };
     let sealed = key.seal(&cs).unwrap();
     assert!(restored.open(&sealed).is_ok());
 

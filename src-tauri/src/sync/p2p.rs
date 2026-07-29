@@ -9,7 +9,7 @@
 //! same sealed-changeset transport.
 
 use std::collections::HashMap;
-use std::net::{Ipv4Addr, TcpListener, UdpSocket};
+use std::net::{Ipv4Addr, TcpListener, TcpStream, UdpSocket};
 use std::sync::{Mutex, OnceLock};
 
 use if_addrs::IfAddr;
@@ -17,7 +17,7 @@ use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
 use tauri::AppHandle;
 
 use super::crypto::SyncKey;
-use super::transport::{sync_connect, Cursors};
+use super::transport::{sync_accept_stream, sync_connect, Cursors};
 use super::{Error, Result};
 
 const SERVICE_TYPE: &str = "_balance-sync._tcp.local.";
@@ -45,8 +45,17 @@ struct LocalIpv4Candidate {
 fn is_likely_virtual_interface(name: &str) -> bool {
     let name = name.to_ascii_lowercase();
     [
-        "utun", "tun", "tap", "wg", "tailscale", "zerotier", "docker", "veth", "vmnet",
-        "bridge", "br-",
+        "utun",
+        "tun",
+        "tap",
+        "wg",
+        "tailscale",
+        "zerotier",
+        "docker",
+        "veth",
+        "vmnet",
+        "bridge",
+        "br-",
     ]
     .iter()
     .any(|prefix| name.starts_with(prefix))
@@ -106,7 +115,10 @@ pub fn peers() -> Vec<Peer> {
 /// The address other devices should connect to (LAN ip:port), once serving.
 pub fn local_address() -> Option<String> {
     let port = STATE.get()?.local_port;
-    Some(format!("{}:{port}", local_ip().unwrap_or_else(|| "127.0.0.1".into())))
+    Some(format!(
+        "{}:{port}",
+        local_ip().unwrap_or_else(|| "127.0.0.1".into())
+    ))
 }
 
 /// Idempotently start the P2P listener plus mDNS advertise + browse. Safe to
@@ -181,25 +193,34 @@ fn start_accept_loop(listener: TcpListener, app: AppHandle, key: SyncKey) {
     std::thread::spawn(move || {
         let mut cursors = Cursors::new();
         loop {
-            if let Err(e) = serve_one(&listener, &app, &key, &mut cursors) {
+            let stream = match listener.accept() {
+                Ok((stream, _)) => stream,
+                Err(error) => {
+                    log::warn!("p2p accept error: {error}");
+                    continue;
+                }
+            };
+            if let Err(e) = serve_one(stream, &app, &key, &mut cursors) {
                 log::warn!("p2p serve error: {e}");
             }
         }
     });
 }
 
-/// Accept one inbound connection and run the responder side of a sync against a
-/// fresh DB connection (with cr-sqlite loaded).
+/// Run one accepted inbound connection against a fresh DB connection (with
+/// cr-sqlite loaded). The global guard prevents atomic database replacement
+/// from racing an active sync; no DB connection exists while `accept` is idle.
 fn serve_one(
-    listener: &TcpListener,
+    stream: TcpStream,
     app: &AppHandle,
     key: &SyncKey,
     cursors: &mut Cursors,
 ) -> Result<()> {
+    let _guard = crate::database_access_guard().map_err(Error::Codec)?;
     let conn = crate::open_database(app).map_err(Error::Codec)?;
     let ext = crate::crsqlite_extension_path(app).map_err(Error::Codec)?;
     super::activate(&conn, &ext)?;
-    let result = super::transport::sync_accept(listener, &conn, key, cursors);
+    let result = sync_accept_stream(stream, &conn, key, cursors);
     let _ = super::finalize(&conn);
     result
 }

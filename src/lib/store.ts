@@ -172,6 +172,22 @@ export type DatabaseInspection = {
   plans: DailyPlan[]
 }
 
+export type DatabaseCompactionResult = {
+  beforeBytes: number
+  afterBytes: number
+  reclaimedBytes: number
+  operationsRemoved: number
+  historyEntriesRemoved: number
+  backupPath: string
+  checkpointCreated: boolean
+}
+
+export type DatabaseMaintenanceStatus = {
+  due: boolean
+  lastCompletedAt: string | null
+  checkpointCoordinator: boolean
+}
+
 let undoStack: HistoryEntry[] = []
 let redoStack: HistoryEntry[] = []
 let persistenceTarget: 'tauri' | 'localStorage' | null = null
@@ -1978,6 +1994,28 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       operations: [],
     }).plans,
   }
+}
+
+export async function compactDatabase(): Promise<DatabaseCompactionResult | null> {
+  if (!isTauri()) return null
+  await flushOperations()
+  return invoke<DatabaseCompactionResult>('compact_database')
+}
+
+export async function getDatabaseMaintenanceStatus(): Promise<DatabaseMaintenanceStatus | null> {
+  if (!isTauri()) return null
+  return invoke<DatabaseMaintenanceStatus>('get_database_maintenance_status')
+}
+
+export async function runWeeklyDatabaseMaintenance(): Promise<DatabaseCompactionResult | null> {
+  if (!isTauri()) return null
+  await flushOperations()
+  return invoke<DatabaseCompactionResult | null>('run_weekly_database_maintenance')
+}
+
+export async function completeDatabaseMaintenanceStartup(): Promise<void> {
+  if (!isTauri()) return
+  await invoke('complete_database_maintenance_startup')
 }
 
 function normalizeState(state: AppState): AppState {

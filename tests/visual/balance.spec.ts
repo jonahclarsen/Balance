@@ -76,6 +76,161 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   })
 })
 
+test('settings opens recovery and diagnostics above goal rhythm', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
+  await expect(goalRhythm).toBeVisible()
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  const openRecovery = page.getByRole('button', { name: 'Open recovery & diagnostics' })
+  await expect(openRecovery).toBeVisible()
+  await openRecovery.click()
+
+  const dialog = page.getByRole('dialog', { name: 'Restore removed items' })
+  await expect(dialog).toBeVisible()
+
+  const stacking = await page.evaluate(() => {
+    const backdrop = document.querySelector<HTMLElement>('.modal-backdrop')
+    const rhythm = document.querySelector<HTMLElement>('.goal-history-panel')
+    if (!backdrop || !rhythm) return null
+
+    const rhythmRect = rhythm.getBoundingClientRect()
+    const visibleLeft = Math.max(0, rhythmRect.left)
+    const visibleRight = Math.min(window.innerWidth, rhythmRect.right)
+    const visibleTop = Math.max(0, rhythmRect.top)
+    const visibleBottom = Math.min(window.innerHeight, rhythmRect.bottom)
+    const hasVisibleOverlap = visibleRight > visibleLeft && visibleBottom > visibleTop
+    const backdropZIndex = Number.parseInt(getComputedStyle(backdrop).zIndex, 10)
+    const rhythmZIndex = Number.parseInt(getComputedStyle(rhythm).zIndex, 10)
+    if (!hasVisibleOverlap) {
+      return { backdropZIndex, rhythmZIndex, hasVisibleOverlap, backdropOwnsTopElement: false }
+    }
+
+    const topElement = document.elementFromPoint(
+      visibleLeft + Math.min(12, (visibleRight - visibleLeft) / 2),
+      visibleTop + Math.min(12, (visibleBottom - visibleTop) / 2),
+    )
+    return {
+      backdropZIndex,
+      rhythmZIndex,
+      hasVisibleOverlap,
+      backdropOwnsTopElement: Boolean(topElement && backdrop.contains(topElement)),
+    }
+  })
+
+  expect(stacking).not.toBeNull()
+  expect(stacking?.backdropZIndex).toBeGreaterThan(stacking?.rhythmZIndex ?? Number.MAX_SAFE_INTEGER)
+  if (stacking?.hasVisibleOverlap) expect(stacking.backdropOwnsTopElement).toBe(true)
+
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-recovery-diagnostics-modal.png`,
+    fullPage: true,
+  })
+
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await expect(dialog).toHaveCount(0)
+})
+
+test('weekly launch maintenance clearly blocks the app until verification completes', async ({ page }, testInfo) => {
+  await page.addInitScript(() => {
+    type TestRuntime = typeof globalThis & {
+      isTauri: boolean
+      __finishDatabaseMaintenance: () => void
+      __TAURI_INTERNALS__: {
+        invoke: (command: string) => Promise<unknown>
+      }
+    }
+    const runtime = globalThis as TestRuntime
+    let maintenanceComplete = false
+    let finishMaintenance: (() => void) | null = null
+
+    runtime.isTauri = true
+    runtime.__finishDatabaseMaintenance = () => finishMaintenance?.()
+    runtime.__TAURI_INTERNALS__ = {
+      invoke: async (command: string) => {
+        switch (command) {
+          case 'read_app_state':
+            return null
+          case 'initialize_app_state':
+          case 'complete_database_maintenance_startup':
+            return null
+          case 'get_recovery_key_status':
+            return {
+              confirmed: true,
+              recoveryKey: null,
+              databasePath: '/tmp/balance.sqlite3',
+            }
+          case 'get_export_settings':
+            return {
+              exportDirectory: '/tmp',
+              defaultExportDirectory: '/tmp',
+              usesDefaultExportDirectory: true,
+              autoJsonExportEnabled: false,
+              autoJsonExportTime: '23:55',
+              lastAutoJsonExportDate: null,
+              lastAutoJsonExportPath: null,
+              lastAutoJsonExportError: null,
+              lastAutoJsonExportErrorAt: null,
+              autoJsonExportErrorAckAt: null,
+            }
+          case 'get_sync_settings':
+            return { enabled: false, pairingCode: null, relayUrl: '' }
+          case 'build_info':
+            return { version: 'test', commit: 'test' }
+          case 'get_database_maintenance_status':
+            return {
+              due: !maintenanceComplete,
+              lastCompletedAt: maintenanceComplete ? 'unix-ms-2000000000000' : null,
+              checkpointCoordinator: true,
+            }
+          case 'run_weekly_database_maintenance':
+            return new Promise((resolve) => {
+              finishMaintenance = () => {
+                maintenanceComplete = true
+                resolve({
+                  beforeBytes: 8 * 1024 * 1024,
+                  afterBytes: 2 * 1024 * 1024,
+                  reclaimedBytes: 6 * 1024 * 1024,
+                  operationsRemoved: 500,
+                  historyEntriesRemoved: 120,
+                  backupPath: '/tmp/balance-backup.sqlite3',
+                  checkpointCreated: true,
+                })
+              }
+            })
+          default:
+            return null
+        }
+      },
+    }
+  })
+
+  await page.goto('/')
+  const runningDialog = page.getByRole('dialog', { name: 'Optimizing your database' })
+  await expect(runningDialog).toBeVisible()
+  await expect(runningDialog.getByRole('status')).toContainText('Creating a verified shared checkpoint')
+  await expect(runningDialog.getByRole('button')).toHaveCount(0)
+
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-weekly-database-maintenance-running.png`,
+    fullPage: false,
+  })
+
+  await page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __finishDatabaseMaintenance: () => void }
+    runtime.__finishDatabaseMaintenance()
+  })
+
+  const completedDialog = page.getByRole('dialog', { name: 'Database maintenance complete' })
+  await expect(completedDialog).toBeVisible()
+  await expect(completedDialog).toContainText('6.00 MiB reclaimed')
+  await completedDialog.getByRole('button', { name: 'Continue' }).click()
+  await expect(completedDialog).toHaveCount(0)
+})
+
 test('new days use and remember the last selected day template', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

@@ -2,13 +2,14 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Mutex, MutexGuard};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use data_encoding::BASE32_NOPAD;
 #[cfg(not(target_os = "android"))]
 use keyring::{Entry, Error as KeyringError};
 use rand::{rngs::OsRng, RngCore};
-use rusqlite::{params, Connection, OptionalExtension, Transaction};
+use rusqlite::{backup::Backup, params, Connection, OptionalExtension, Transaction};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
 use tauri::Manager;
@@ -32,12 +33,18 @@ const AUTO_JSON_EXPORT_LAST_ERROR_AT: &str = "auto_json_export_last_error_at";
 const AUTO_JSON_EXPORT_ERROR_ACK_AT: &str = "auto_json_export_error_ack_at";
 const SYNC_PAIRING_CODE: &str = "sync_pairing_code";
 const SYNC_RELAY_URL: &str = "sync_relay_url";
+const SYNC_COMPACTION_COORDINATOR: &str = "sync_compaction_coordinator";
+const DATABASE_MAINTENANCE_LAST_AT: &str = "database_maintenance_last_at";
+const DATABASE_MAINTENANCE_LATEST_BACKUP: &str = "database_maintenance_latest_backup";
+const DATABASE_MAINTENANCE_PREVIOUS_BACKUP: &str = "database_maintenance_previous_backup";
+const DATABASE_MAINTENANCE_INTERVAL_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 const GOAL_DATA: &str = "goal_data";
 // Lists + Metrics state is stored as a single JSON metadata blob (like GOAL_DATA)
 // rather than materialized into per-row tables.
 const LISTS_METRICS_DATA: &str = "lists_metrics_data";
 const DEFAULT_AUTO_JSON_EXPORT_TIME: &str = "23:55";
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
+static DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
 #[cfg(target_os = "macos")]
 const BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE: &str = "com.balance.plan-items+json";
 
@@ -175,6 +182,26 @@ struct SyncSettings {
     relay_url: String,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DatabaseCompactionResult {
+    before_bytes: u64,
+    after_bytes: u64,
+    reclaimed_bytes: u64,
+    operations_removed: i64,
+    history_entries_removed: i64,
+    backup_path: String,
+    checkpoint_created: bool,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DatabaseMaintenanceStatus {
+    due: bool,
+    last_completed_at: Option<String>,
+    checkpoint_coordinator: bool,
+}
+
 #[tauri::command]
 async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String> {
     run_database_task(move || {
@@ -251,6 +278,78 @@ async fn inspect_database(app: tauri::AppHandle) -> Result<String, String> {
     run_database_task(move || {
         let connection = open_database(&app)?;
         inspect_database_from_database(&connection).map(|value| value.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn compact_database(app: tauri::AppHandle) -> Result<DatabaseCompactionResult, String> {
+    run_database_task(move || {
+        let database_path = app_database_path(&app)?;
+        let recovery_key = database_recovery_key(&database_path)?;
+        let connection = open_database_at(&database_path, &recovery_key)?;
+        let checkpoint_coordinator = database_checkpoint_coordinator(&connection)?;
+        drop(connection);
+        let extension_path = checkpoint_coordinator
+            .then(|| crsqlite_extension_path(&app))
+            .transpose()?;
+        maintain_database_at(
+            &database_path,
+            &recovery_key,
+            extension_path.as_deref(),
+            checkpoint_coordinator,
+        )
+    })
+    .await
+}
+
+#[tauri::command]
+async fn get_database_maintenance_status(
+    app: tauri::AppHandle,
+) -> Result<DatabaseMaintenanceStatus, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        database_maintenance_status_from_database(&connection, current_timestamp_ms())
+    })
+    .await
+}
+
+#[tauri::command]
+async fn run_weekly_database_maintenance(
+    app: tauri::AppHandle,
+) -> Result<Option<DatabaseCompactionResult>, String> {
+    run_database_task(move || {
+        let database_path = app_database_path(&app)?;
+        let recovery_key = database_recovery_key(&database_path)?;
+        let connection = open_database_at(&database_path, &recovery_key)?;
+        let status =
+            database_maintenance_status_from_database(&connection, current_timestamp_ms())?;
+        drop(connection);
+        if !status.due {
+            return Ok(None);
+        }
+
+        let extension_path = status
+            .checkpoint_coordinator
+            .then(|| crsqlite_extension_path(&app))
+            .transpose()?;
+        maintain_database_at(
+            &database_path,
+            &recovery_key,
+            extension_path.as_deref(),
+            status.checkpoint_coordinator,
+        )
+        .map(Some)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn complete_database_maintenance_startup(app: tauri::AppHandle) -> Result<(), String> {
+    run_database_task(move || {
+        let database_path = app_database_path(&app)?;
+        let connection = open_database(&app)?;
+        complete_database_maintenance_startup_at(&connection, &database_path)
     })
     .await
 }
@@ -456,9 +555,444 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, String> + Send + 'static,
 {
-    tauri::async_runtime::spawn_blocking(task)
-        .await
+    tauri::async_runtime::spawn_blocking(move || {
+        let _guard = database_access_guard()?;
+        task()
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+fn database_access_guard() -> Result<MutexGuard<'static, ()>, String> {
+    DATABASE_ACCESS_LOCK
+        .lock()
+        .map_err(|_| "Database access lock is poisoned".to_string())
+}
+
+fn copy_database_snapshot(
+    source: &Connection,
+    destination_path: &Path,
+    recovery_key: &str,
+) -> Result<(), String> {
+    if destination_path.exists() {
+        fs::remove_file(destination_path).map_err(|error| {
+            format!(
+                "Could not remove stale compaction file {}: {error}",
+                destination_path.display()
+            )
+        })?;
+    }
+
+    let mut destination = Connection::open(destination_path).map_err(|error| error.to_string())?;
+    destination
+        .pragma_update(None, "key", recovery_key)
+        .map_err(|error| error.to_string())?;
+    destination
+        .query_row("pragma cipher_version", [], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("SQLCipher is not available for compaction: {error}"))?;
+
+    let backup = Backup::new(source, &mut destination).map_err(|error| error.to_string())?;
+    backup
+        .run_to_completion(256, Duration::from_millis(10), None)
+        .map_err(|error| error.to_string())?;
+    drop(backup);
+    drop(destination);
+    Ok(())
+}
+
+fn verify_database_state(connection: &Connection, expected_state: &Value) -> Result<(), String> {
+    let integrity_rows = connection
+        .prepare("pragma integrity_check")
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|error| error.to_string())?;
+    if integrity_rows.as_slice() != ["ok"] {
+        return Err(format!(
+            "Compacted database failed integrity check: {}",
+            integrity_rows.join("; ")
+        ));
+    }
+
+    let actual_state = read_app_state_from_database(connection)?
+        .ok_or_else(|| "Compacted database contains no app state".to_string())?;
+    if actual_state != *expected_state {
+        return Err(
+            "Compacted database state differs from the state before compaction".to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn database_checkpoint_coordinator(connection: &Connection) -> Result<bool, String> {
+    if !sync::is_sync_enabled(connection).map_err(sync::Error::into_string)? {
+        return Ok(true);
+    }
+
+    if let Some(value) = metadata_value(connection, SYNC_COMPACTION_COORDINATOR)? {
+        return match value.as_str() {
+            "true" => Ok(true),
+            "false" => Ok(false),
+            _ => Err("Invalid sync compaction coordinator metadata".to_string()),
+        };
+    }
+
+    // Older synced databases predate the explicit role flag. The device that
+    // authored the existing full-state baseline is the original sync primary;
+    // joining devices retain their own device_id, so this inference is local
+    // and deterministic. Persist it before any future checkpoint replaces the
+    // baseline author.
+    let local_device_id = metadata_value(connection, "device_id")?.unwrap_or_default();
+    let baseline_device_id = connection
+        .query_row(
+            "select device_id
+             from operations
+             where type = 'replace_full_state'
+             order by timestamp, device_id, sequence, id
+             limit 1",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+    let coordinator = baseline_device_id.as_deref() == Some(local_device_id.as_str());
+    set_metadata(
+        connection,
+        SYNC_COMPACTION_COORDINATOR,
+        if coordinator { "true" } else { "false" },
+    )?;
+    Ok(coordinator)
+}
+
+fn database_maintenance_status_from_database(
+    connection: &Connection,
+    now_ms: i64,
+) -> Result<DatabaseMaintenanceStatus, String> {
+    let last_completed_at = metadata_value(connection, DATABASE_MAINTENANCE_LAST_AT)?;
+    let last_completed_ms = last_completed_at
+        .as_deref()
+        .and_then(|value| value.strip_prefix("unix-ms-"))
+        .and_then(|value| value.parse::<i64>().ok());
+    let due = last_completed_ms
+        .map(|last| now_ms.saturating_sub(last) >= DATABASE_MAINTENANCE_INTERVAL_MS)
+        .unwrap_or(true);
+
+    Ok(DatabaseMaintenanceStatus {
+        due,
+        last_completed_at,
+        checkpoint_coordinator: database_checkpoint_coordinator(connection)?,
+    })
+}
+
+fn managed_database_backup_path(database_path: &Path, candidate: &str) -> Option<PathBuf> {
+    let backup_path = PathBuf::from(candidate);
+    let expected_parent = database_path.parent()?.join("backups");
+    let filename = backup_path.file_name()?.to_str()?;
+    (backup_path.parent() == Some(expected_parent.as_path())
+        && filename.starts_with("balance-pre-compact-")
+        && filename.ends_with(".sqlite3"))
+    .then_some(backup_path)
+}
+
+fn complete_database_maintenance_startup_at(
+    connection: &Connection,
+    database_path: &Path,
+) -> Result<(), String> {
+    let previous = metadata_value(connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP)?;
+    let latest = metadata_value(connection, DATABASE_MAINTENANCE_LATEST_BACKUP)?;
+    if let Some(previous) = previous {
+        let previous_path = managed_database_backup_path(database_path, &previous)
+            .ok_or_else(|| "Refusing to remove an invalid database backup path".to_string())?;
+        let latest_path = latest
+            .as_deref()
+            .map(|path| {
+                managed_database_backup_path(database_path, path).ok_or_else(|| {
+                    "Refusing to trust an invalid latest database backup path".to_string()
+                })
+            })
+            .transpose()?;
+
+        if latest.as_deref() != Some(previous.as_str())
+            && latest_path.as_ref().is_some_and(|path| path.exists())
+        {
+            if previous_path.exists() {
+                fs::remove_file(&previous_path).map_err(|error| {
+                    format!(
+                        "Could not remove superseded database backup {}: {error}",
+                        previous_path.display()
+                    )
+                })?;
+            }
+        } else if previous_path.exists() {
+            // If the newest backup was manually removed or never landed, retain
+            // and promote the older known-good backup instead of deleting the
+            // last recovery copy.
+            set_metadata(connection, DATABASE_MAINTENANCE_LATEST_BACKUP, &previous)?;
+        } else if let Some(path) = latest_path.filter(|path| path.exists()) {
+            set_metadata(
+                connection,
+                DATABASE_MAINTENANCE_LATEST_BACKUP,
+                &path.display().to_string(),
+            )?;
+        } else {
+            delete_metadata(connection, DATABASE_MAINTENANCE_LATEST_BACKUP)?;
+        }
+        delete_metadata(connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP)?;
+    }
+    Ok(())
+}
+
+fn stage_database_maintenance_metadata(
+    connection: &Connection,
+    previous_latest_backup: Option<&str>,
+    backup_path: &Path,
+) -> Result<(), String> {
+    let backup_path = backup_path.display().to_string();
+    if let Some(previous) = previous_latest_backup.filter(|path| *path != backup_path) {
+        set_metadata(connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP, previous)?;
+    } else {
+        delete_metadata(connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP)?;
+    }
+    set_metadata(connection, DATABASE_MAINTENANCE_LATEST_BACKUP, &backup_path)?;
+    set_metadata(
+        connection,
+        DATABASE_MAINTENANCE_LAST_AT,
+        &current_timestamp(),
+    )?;
+    Ok(())
+}
+
+fn compaction_paths(database_path: &Path) -> Result<(PathBuf, PathBuf), String> {
+    let parent = database_path
+        .parent()
+        .ok_or_else(|| "Could not resolve database directory".to_string())?;
+    let backup_dir = parent.join("backups");
+    fs::create_dir_all(&backup_dir).map_err(|error| error.to_string())?;
+
+    let mut random = [0_u8; 4];
+    OsRng.fill_bytes(&mut random);
+    let nonce = format!(
+        "{}-{}-{}",
+        std::process::id(),
+        current_timestamp_ms(),
+        random
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    );
+    let working_path = parent.join(format!(".balance-compacting-{nonce}.sqlite3"));
+    let stamp = current_timestamp().replace([':', '.'], "-");
+    let backup_path = backup_dir.join(format!("balance-pre-compact-{stamp}-{nonce}.sqlite3"));
+    Ok((working_path, backup_path))
+}
+
+#[cfg(test)]
+fn compact_database_at(
+    database_path: &Path,
+    recovery_key: &str,
+    extension_path: Option<&Path>,
+) -> Result<DatabaseCompactionResult, String> {
+    maintain_database_at(database_path, recovery_key, extension_path, true)
+}
+
+#[cfg(test)]
+fn vacuum_database_at(
+    database_path: &Path,
+    recovery_key: &str,
+) -> Result<DatabaseCompactionResult, String> {
+    maintain_database_at(database_path, recovery_key, None, false)
+}
+
+fn maintain_database_at(
+    database_path: &Path,
+    recovery_key: &str,
+    extension_path: Option<&Path>,
+    create_checkpoint: bool,
+) -> Result<DatabaseCompactionResult, String> {
+    let before_bytes = fs::metadata(database_path)
         .map_err(|error| error.to_string())?
+        .len();
+    let (working_path, backup_path) = compaction_paths(database_path)?;
+
+    let result = (|| {
+        let source = open_database_at(database_path, recovery_key)?;
+        let synced = sync::is_sync_enabled(&source).map_err(sync::Error::into_string)?;
+        if create_checkpoint && synced && extension_path.is_none() {
+            return Err(
+                "Cannot compact a synced database because cr-sqlite is unavailable".to_string(),
+            );
+        }
+        let expected_operation_count: i64 = source
+            .query_row("select count(*) from operations", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        let expected_history_count: i64 = source
+            .query_row("select count(*) from history_entries", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        let previous_latest_backup = metadata_value(&source, DATABASE_MAINTENANCE_LATEST_BACKUP)?;
+
+        // SQLite's online-backup API produces a transactionally consistent
+        // encrypted copy without mutating the live database.
+        copy_database_snapshot(&source, &working_path, recovery_key)?;
+
+        // Close the tiny race between backup completion and source locking:
+        // freeze writers, then require the copied state to exactly match the
+        // now-locked live state before changing anything in the copy.
+        source
+            .execute_batch("begin immediate")
+            .map_err(|error| format!("Could not lock database for compaction: {error}"))?;
+        let expected_state = read_app_state_from_database(&source)?
+            .ok_or_else(|| "Database contains no app state to compact".to_string())?;
+
+        let working = open_database_at(&working_path, recovery_key)?;
+        let copied_state = read_app_state_from_database(&working)?
+            .ok_or_else(|| "Compaction copy contains no app state".to_string())?;
+        if copied_state != expected_state {
+            return Err(
+                "Database changed while its compaction copy was being made; try again".to_string(),
+            );
+        }
+        if create_checkpoint && synced {
+            sync::activate(
+                &working,
+                extension_path.expect("synced compaction requires extension"),
+            )
+            .map_err(sync::Error::into_string)?;
+        }
+        let checkpoint = create_checkpoint
+            .then(|| sync::checkpoint_operation_log(&working).map_err(sync::Error::into_string))
+            .transpose()?;
+        if create_checkpoint && synced {
+            sync::finalize(&working).map_err(sync::Error::into_string)?;
+        }
+        drop(working);
+
+        // VACUUM only the disposable copy. If it or any later verification
+        // fails, the locked live database remains byte-for-byte untouched.
+        let compacted = open_database_at(&working_path, recovery_key)?;
+        stage_database_maintenance_metadata(
+            &compacted,
+            previous_latest_backup.as_deref(),
+            &backup_path,
+        )?;
+        compacted
+            .execute_batch("vacuum")
+            .map_err(|error| format!("Could not vacuum compacted database: {error}"))?;
+        verify_database_state(&compacted, &expected_state)?;
+        let operation_count: i64 = compacted
+            .query_row("select count(*) from operations", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        let history_count: i64 = compacted
+            .query_row("select count(*) from history_entries", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        let expected_compacted_operation_count = if create_checkpoint {
+            1
+        } else {
+            expected_operation_count
+        };
+        let expected_compacted_history_count = if create_checkpoint {
+            0
+        } else {
+            expected_history_count
+        };
+        if operation_count != expected_compacted_operation_count
+            || history_count != expected_compacted_history_count
+        {
+            return Err(format!(
+                "Maintained database has unexpected log counts: {operation_count} operations, {history_count} history entries"
+            ));
+        }
+        drop(compacted);
+
+        // Re-read while the source write lock is still held. This catches any
+        // accidental source-state drift before replacing the live file.
+        let locked_state = read_app_state_from_database(&source)?
+            .ok_or_else(|| "Live database lost its app state during compaction".to_string())?;
+        if locked_state != expected_state {
+            return Err("Live database changed during compaction".to_string());
+        }
+        source
+            .execute_batch("rollback")
+            .map_err(|error| format!("Could not release compaction lock: {error}"))?;
+        drop(source);
+
+        // The old encrypted DB becomes the recovery backup. Both renames stay
+        // on one filesystem, so each step is atomic. Restore immediately if the
+        // second rename fails.
+        fs::rename(database_path, &backup_path).map_err(|error| {
+            format!(
+                "Could not preserve original database at {}: {error}",
+                backup_path.display()
+            )
+        })?;
+        if let Err(error) = fs::rename(&working_path, database_path) {
+            let restore = fs::rename(&backup_path, database_path);
+            return Err(match restore {
+                Ok(()) => format!(
+                    "Could not install compacted database; original was restored: {error}"
+                ),
+                Err(restore_error) => format!(
+                    "Could not install compacted database ({error}) or restore original ({restore_error}). Original remains at {}",
+                    backup_path.display()
+                ),
+            });
+        }
+
+        // Verify the exact installed path too. A failure restores the original
+        // and leaves the rejected compacted file beside it for diagnosis.
+        let installed = open_database_at(database_path, recovery_key)?;
+        let installed_check = verify_database_state(&installed, &expected_state).and_then(|()| {
+            let operation_count: i64 = installed
+                .query_row("select count(*) from operations", [], |row| row.get(0))
+                .map_err(|error| error.to_string())?;
+            let history_count: i64 = installed
+                .query_row("select count(*) from history_entries", [], |row| row.get(0))
+                .map_err(|error| error.to_string())?;
+            if operation_count != expected_compacted_operation_count
+                || history_count != expected_compacted_history_count
+            {
+                return Err(format!(
+                    "Installed database has unexpected log counts: {operation_count} operations, {history_count} history entries"
+                ));
+            }
+            Ok(())
+        });
+        drop(installed);
+        if let Err(error) = installed_check {
+            let rejected_path = working_path.with_extension("rejected.sqlite3");
+            let _ = fs::rename(database_path, &rejected_path);
+            fs::rename(&backup_path, database_path).map_err(|restore_error| {
+                format!(
+                    "{error}; original database could not be restored from {}: {restore_error}",
+                    backup_path.display()
+                )
+            })?;
+            return Err(format!("{error}; original database was restored"));
+        }
+
+        let after_bytes = fs::metadata(database_path)
+            .map_err(|error| error.to_string())?
+            .len();
+        Ok(DatabaseCompactionResult {
+            before_bytes,
+            after_bytes,
+            reclaimed_bytes: before_bytes.saturating_sub(after_bytes),
+            operations_removed: checkpoint
+                .map(|stats| stats.operations_removed)
+                .unwrap_or(0),
+            history_entries_removed: checkpoint
+                .map(|stats| stats.history_entries_removed)
+                .unwrap_or(0),
+            backup_path: backup_path.display().to_string(),
+            checkpoint_created: create_checkpoint,
+        })
+    })();
+
+    if result.is_err() && working_path.exists() {
+        let _ = fs::remove_file(&working_path);
+    }
+    result
 }
 
 fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>, String> {
@@ -5732,9 +6266,7 @@ mod android_keystore {
         env.convert_byte_array(JByteArray::from(plaintext_obj))
     }
 
-    fn new_cipher<'local>(
-        env: &mut JNIEnv<'local>,
-    ) -> Result<JObject<'local>, jni::errors::Error> {
+    fn new_cipher<'local>(env: &mut JNIEnv<'local>) -> Result<JObject<'local>, jni::errors::Error> {
         let transformation = env.new_string("AES/GCM/NoPadding")?;
         env.call_static_method(
             "javax/crypto/Cipher",
@@ -5895,27 +6427,27 @@ fn crsqlite_extension_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     }
     #[cfg(not(target_os = "android"))]
     {
-    let file = if cfg!(target_os = "windows") {
-        "crsqlite.dll"
-    } else if cfg!(target_os = "macos") {
-        "crsqlite.dylib"
-    } else {
-        "crsqlite.so"
-    };
-    if let Ok(dir) = app.path().resource_dir() {
-        for candidate in [dir.join("resources").join(file), dir.join(file)] {
-            if candidate.exists() {
-                return Ok(candidate);
+        let file = if cfg!(target_os = "windows") {
+            "crsqlite.dll"
+        } else if cfg!(target_os = "macos") {
+            "crsqlite.dylib"
+        } else {
+            "crsqlite.so"
+        };
+        if let Ok(dir) = app.path().resource_dir() {
+            for candidate in [dir.join("resources").join(file), dir.join(file)] {
+                if candidate.exists() {
+                    return Ok(candidate);
+                }
             }
         }
-    }
-    let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources")
-        .join(file);
-    if dev.exists() {
-        return Ok(dev);
-    }
-    Err(format!("cr-sqlite extension not found ({file})"))
+        let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join(file);
+        if dev.exists() {
+            return Ok(dev);
+        }
+        Err(format!("cr-sqlite extension not found ({file})"))
     }
 }
 
@@ -5962,10 +6494,7 @@ fn with_database<T>(
 
 /// Write a timestamped JSON backup of the current state into the app data dir,
 /// so enabling sync (which rewrites the operation log) can never lose data.
-fn backup_state_before_sync(
-    app: &tauri::AppHandle,
-    connection: &Connection,
-) -> Result<(), String> {
+fn backup_state_before_sync(app: &tauri::AppHandle, connection: &Connection) -> Result<(), String> {
     let Some(state) = read_app_state_from_database(connection)? else {
         return Ok(()); // nothing to back up yet
     };
@@ -6078,8 +6607,7 @@ async fn sync_new_pairing_code() -> Result<String, String> {
 /// must be rejected before that work begins.
 fn normalize_sync_pairing_code(pairing_code: &str) -> Result<String, String> {
     let pairing_code = pairing_code.trim();
-    sync::crypto::SyncKey::from_pairing_code(pairing_code)
-        .map_err(sync::Error::into_string)?;
+    sync::crypto::SyncKey::from_pairing_code(pairing_code).map_err(sync::Error::into_string)?;
     Ok(pairing_code.to_string())
 }
 
@@ -6093,7 +6621,9 @@ async fn sync_enable_primary(app: tauri::AppHandle, pairing_code: String) -> Res
         with_synced_connection(&app, |connection| {
             backup_state_before_sync(&app, connection)?;
             sync::enable_primary(connection).map_err(sync::Error::into_string)?;
-            sync::store_pairing_code(connection, &pairing_code).map_err(sync::Error::into_string)
+            sync::store_pairing_code(connection, &pairing_code)
+                .map_err(sync::Error::into_string)?;
+            set_metadata(connection, SYNC_COMPACTION_COORDINATOR, "true")
         })
     })
     .await
@@ -6108,7 +6638,9 @@ async fn sync_enable_joiner(app: tauri::AppHandle, pairing_code: String) -> Resu
         with_synced_connection(&app, |connection| {
             backup_state_before_sync(&app, connection)?;
             sync::enable_joiner(connection).map_err(sync::Error::into_string)?;
-            sync::store_pairing_code(connection, &pairing_code).map_err(sync::Error::into_string)
+            sync::store_pairing_code(connection, &pairing_code)
+                .map_err(sync::Error::into_string)?;
+            set_metadata(connection, SYNC_COMPACTION_COORDINATOR, "false")
         })
     })
     .await
@@ -6149,7 +6681,8 @@ async fn sync_apply_sealed(
             }
             sync::apply(connection, &changes).map_err(sync::Error::into_string)?;
             sync::rematerialize(connection).map_err(sync::Error::into_string)?;
-            read_app_state_from_database(connection).map(|state| state.map(|value| value.to_string()))
+            read_app_state_from_database(connection)
+                .map(|state| state.map(|value| value.to_string()))
         })
     })
     .await
@@ -6260,6 +6793,10 @@ pub fn run() {
             list_recovery_entries,
             list_metadata,
             inspect_database,
+            compact_database,
+            get_database_maintenance_status,
+            run_weekly_database_maintenance,
+            complete_database_maintenance_startup,
             restore_recovery_entry,
             get_recovery_key_status,
             confirm_recovery_key,
@@ -6374,6 +6911,485 @@ mod tests {
             saved["templates"][0]["items"][0]["options"][0]["text"],
             "Wake up"
         );
+    }
+
+    #[test]
+    fn compaction_atomically_replaces_database_with_verified_checkpoint() {
+        let database = TestDatabase::new("compact-atomic");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Compact me")).unwrap();
+        set_metadata(&connection, EXPORT_DIRECTORY, "/tmp/balance-exports").unwrap();
+        set_metadata(&connection, AUTO_JSON_EXPORT_ENABLED, "false").unwrap();
+        set_metadata(&connection, RECOVERY_KEY_CONFIRMED, "true").unwrap();
+
+        let large_text = "repeated-list-state-".repeat(2_000);
+        for sequence in 2..=32 {
+            persist_operation_to_database(
+                &mut connection,
+                &json!({
+                    "id": format!("op_compact_{sequence}"),
+                    "deviceId": "device_test",
+                    "sequence": sequence,
+                    "type": "patch_list_item",
+                    "timestamp": format!("2026-07-29T10:{:02}:00Z", sequence - 2),
+                    "payload": {
+                        "listId": "list-1",
+                        "itemId": "item-1",
+                        "patch": { "done": sequence % 2 == 0 },
+                        "listsMetricsData": {
+                            "listTemplates": [],
+                            "lists": [{ "id": "list-1", "content": format!("{large_text}{sequence}") }],
+                            "metrics": [],
+                            "metricEntries": []
+                        }
+                    }
+                }),
+            )
+            .unwrap();
+        }
+        let before_state = read_app_state_from_database(&connection).unwrap().unwrap();
+        let before_operations: i64 = connection
+            .query_row("select count(*) from operations", [], |row| row.get(0))
+            .unwrap();
+        let before_history: i64 = connection
+            .query_row("select count(*) from history_entries", [], |row| row.get(0))
+            .unwrap();
+        drop(connection);
+
+        let result = compact_database_at(&database.path, &recovery_key, None).unwrap();
+        assert!(result.checkpoint_created);
+        assert_eq!(result.operations_removed, before_operations - 1);
+        assert_eq!(result.history_entries_removed, before_history);
+        assert!(result.after_bytes < result.before_bytes);
+        assert!(
+            result.reclaimed_bytes > 1_000_000,
+            "large repeated snapshots should be physically reclaimed"
+        );
+        assert_eq!(
+            result.reclaimed_bytes,
+            result.before_bytes - result.after_bytes
+        );
+        assert!(Path::new(&result.backup_path).exists());
+
+        let compacted = open_database_at(&database.path, &recovery_key).unwrap();
+        verify_database_state(&compacted, &before_state).unwrap();
+        assert_eq!(
+            compacted
+                .query_row("select count(*) from operations", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1
+        );
+        assert_eq!(
+            compacted
+                .query_row("select count(*) from history_entries", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            metadata_value(&compacted, EXPORT_DIRECTORY)
+                .unwrap()
+                .as_deref(),
+            Some("/tmp/balance-exports")
+        );
+        assert_eq!(
+            metadata_value(&compacted, AUTO_JSON_EXPORT_ENABLED)
+                .unwrap()
+                .as_deref(),
+            Some("false")
+        );
+        assert_eq!(
+            metadata_value(&compacted, RECOVERY_KEY_CONFIRMED)
+                .unwrap()
+                .as_deref(),
+            Some("true")
+        );
+        drop(compacted);
+
+        let backup = open_database_at(Path::new(&result.backup_path), &recovery_key).unwrap();
+        verify_database_state(&backup, &before_state).unwrap();
+        assert_eq!(
+            backup
+                .query_row("select count(*) from operations", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            before_operations
+        );
+        assert_eq!(
+            backup
+                .query_row("select count(*) from history_entries", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            before_history
+        );
+        drop(backup);
+        fs::remove_file(&result.backup_path).unwrap();
+    }
+
+    #[test]
+    fn synced_database_compaction_preserves_crr_and_future_writes() {
+        let database = TestDatabase::new("compact-synced");
+        let recovery_key = generate_recovery_key();
+        let extension = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("crsqlite.dylib");
+        let pairing_code = sync::crypto::SyncKey::generate().to_pairing_code();
+        let expected_state = {
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            replace_app_state(&mut connection, &test_state("Synced compact")).unwrap();
+            sync::activate(&connection, &extension).unwrap();
+            sync::enable_primary(&connection).unwrap();
+            sync::store_pairing_code(&connection, &pairing_code).unwrap();
+            set_metadata(&connection, SYNC_RELAY_URL, "https://relay.example.com").unwrap();
+            persist_operation_to_database(
+                &mut connection,
+                &json!({
+                    "id": "op_synced_before_compact",
+                    "deviceId": "device_test",
+                    "sequence": 2,
+                    "type": "set_active_plan_date",
+                    "timestamp": "2026-07-29T11:00:00Z",
+                    "payload": { "date": "2026-07-30" }
+                }),
+            )
+            .unwrap();
+            let state = read_app_state_from_database(&connection).unwrap().unwrap();
+            sync::finalize(&connection).unwrap();
+            state
+        };
+
+        let result = compact_database_at(&database.path, &recovery_key, Some(&extension)).unwrap();
+        assert!(result.checkpoint_created);
+        let mut compacted = open_database_at(&database.path, &recovery_key).unwrap();
+        assert!(sync::is_sync_enabled(&compacted).unwrap());
+        assert_eq!(
+            sync::read_pairing_code(&compacted).unwrap().as_deref(),
+            Some(pairing_code.as_str())
+        );
+        assert_eq!(
+            metadata_value(&compacted, SYNC_RELAY_URL)
+                .unwrap()
+                .as_deref(),
+            Some("https://relay.example.com")
+        );
+        assert_eq!(
+            read_app_state_from_database(&compacted).unwrap().unwrap(),
+            expected_state
+        );
+
+        sync::activate(&compacted, &extension).unwrap();
+        persist_operation_to_database(
+            &mut compacted,
+            &json!({
+                "id": "op_synced_after_compact",
+                "deviceId": "device_test",
+                "sequence": 3,
+                "type": "set_active_plan_date",
+                "timestamp": "2026-07-29T11:01:00Z",
+                "payload": { "date": "2026-07-31" }
+            }),
+        )
+        .unwrap();
+        assert_eq!(
+            read_app_state_from_database(&compacted).unwrap().unwrap()["activePlanDate"],
+            "2026-07-31"
+        );
+        assert!(
+            !sync::pull(&compacted, 0, None).unwrap().rows.is_empty(),
+            "post-compaction writes remain replicated"
+        );
+        sync::finalize(&compacted).unwrap();
+        drop(compacted);
+        fs::remove_file(&result.backup_path).unwrap();
+    }
+
+    #[test]
+    fn compaction_failure_leaves_synced_database_byte_for_byte_unchanged() {
+        let database = TestDatabase::new("compact-failure");
+        let recovery_key = generate_recovery_key();
+        let extension = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("crsqlite.dylib");
+        {
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            replace_app_state(&mut connection, &test_state("Do not change")).unwrap();
+            sync::activate(&connection, &extension).unwrap();
+            sync::enable_primary(&connection).unwrap();
+            persist_operation_to_database(
+                &mut connection,
+                &json!({
+                    "id": "op_keep",
+                    "deviceId": "device_test",
+                    "sequence": 2,
+                    "type": "set_active_plan_date",
+                    "timestamp": "2026-07-29T12:00:00Z",
+                    "payload": { "date": "2026-08-01" }
+                }),
+            )
+            .unwrap();
+            sync::finalize(&connection).unwrap();
+        }
+        let bytes_before = fs::read(&database.path).unwrap();
+        let state_before = {
+            let connection = open_database_at(&database.path, &recovery_key).unwrap();
+            read_app_state_from_database(&connection).unwrap().unwrap()
+        };
+
+        let missing_extension = database.path.with_file_name("missing-crsqlite.dylib");
+        let error = compact_database_at(&database.path, &recovery_key, Some(&missing_extension))
+            .unwrap_err();
+        assert!(!error.is_empty());
+        assert_eq!(fs::read(&database.path).unwrap(), bytes_before);
+        let connection = open_database_at(&database.path, &recovery_key).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&connection).unwrap().unwrap(),
+            state_before
+        );
+        assert_eq!(
+            connection
+                .query_row("select count(*) from operations", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            2
+        );
+    }
+
+    #[test]
+    fn weekly_database_maintenance_is_due_immediately_then_every_seven_days() {
+        let database = TestDatabase::new("maintenance-schedule");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Weekly maintenance")).unwrap();
+        let now = 2_000_000_000_000_i64;
+
+        let first = database_maintenance_status_from_database(&connection, now).unwrap();
+        assert!(first.due);
+        assert!(first.checkpoint_coordinator);
+        assert_eq!(first.last_completed_at, None);
+
+        set_metadata(
+            &connection,
+            DATABASE_MAINTENANCE_LAST_AT,
+            &format!("unix-ms-{now}"),
+        )
+        .unwrap();
+        assert!(
+            !database_maintenance_status_from_database(
+                &connection,
+                now + DATABASE_MAINTENANCE_INTERVAL_MS - 1
+            )
+            .unwrap()
+            .due
+        );
+        assert!(
+            database_maintenance_status_from_database(
+                &connection,
+                now + DATABASE_MAINTENANCE_INTERVAL_MS
+            )
+            .unwrap()
+            .due
+        );
+    }
+
+    #[test]
+    fn synced_joiner_vacuums_locally_without_creating_a_competing_checkpoint() {
+        let primary_database = TestDatabase::new("maintenance-primary");
+        let joiner_database = TestDatabase::new("maintenance-joiner");
+        let primary_key = generate_recovery_key();
+        let joiner_key = generate_recovery_key();
+        let extension = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("crsqlite.dylib");
+
+        let mut primary_state = test_state("Shared state");
+        primary_state["deviceId"] = json!("device-primary");
+        let mut joiner_state = test_state("Will be replaced");
+        joiner_state["deviceId"] = json!("device-joiner");
+
+        let primary = {
+            let mut connection = open_database_at(&primary_database.path, &primary_key).unwrap();
+            replace_app_state(&mut connection, &primary_state).unwrap();
+            sync::activate(&connection, &extension).unwrap();
+            sync::enable_primary(&connection).unwrap();
+            connection
+        };
+        let mut joiner = {
+            let mut connection = open_database_at(&joiner_database.path, &joiner_key).unwrap();
+            replace_app_state(&mut connection, &joiner_state).unwrap();
+            sync::activate(&connection, &extension).unwrap();
+            sync::enable_joiner(&connection).unwrap();
+            sync::apply(&connection, &sync::pull(&primary, 0, None).unwrap()).unwrap();
+            sync::rematerialize(&connection).unwrap();
+            connection
+        };
+
+        assert!(database_checkpoint_coordinator(&primary).unwrap());
+        assert!(!database_checkpoint_coordinator(&joiner).unwrap());
+        persist_operation_to_database(
+            &mut joiner,
+            &json!({
+                "id": "joiner-operation-before-vacuum",
+                "deviceId": "device-joiner",
+                "sequence": 2,
+                "type": "set_active_plan_date",
+                "timestamp": "2026-07-29T15:00:00Z",
+                "payload": { "date": "2026-07-30" }
+            }),
+        )
+        .unwrap();
+        let state_before = read_app_state_from_database(&joiner).unwrap().unwrap();
+        let operation_rows_before = {
+            let mut statement = joiner
+                .prepare(
+                    "select id, device_id, sequence, type, timestamp, payload_json
+                     from operations order by id",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        let history_count_before: i64 = joiner
+            .query_row("select count(*) from history_entries", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(history_count_before, 1);
+
+        // Create free pages so the test proves a physical vacuum can reclaim
+        // space without modifying the replicated operation log.
+        set_metadata(&joiner, "maintenance-test-padding", &"x".repeat(500_000)).unwrap();
+        delete_metadata(&joiner, "maintenance-test-padding").unwrap();
+        sync::finalize(&primary).unwrap();
+        sync::finalize(&joiner).unwrap();
+        drop(primary);
+        drop(joiner);
+
+        let result = vacuum_database_at(&joiner_database.path, &joiner_key).unwrap();
+        assert!(!result.checkpoint_created);
+        assert_eq!(result.operations_removed, 0);
+        assert_eq!(result.history_entries_removed, 0);
+        assert!(result.after_bytes < result.before_bytes);
+
+        let maintained = open_database_at(&joiner_database.path, &joiner_key).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&maintained).unwrap().unwrap(),
+            state_before
+        );
+        let operation_rows_after = {
+            let mut statement = maintained
+                .prepare(
+                    "select id, device_id, sequence, type, timestamp, payload_json
+                     from operations order by id",
+                )
+                .unwrap();
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, String>(3)?,
+                        row.get::<_, String>(4)?,
+                        row.get::<_, String>(5)?,
+                    ))
+                })
+                .unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .unwrap()
+        };
+        assert_eq!(operation_rows_after, operation_rows_before);
+        assert_eq!(
+            maintained
+                .query_row("select count(*) from history_entries", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            history_count_before
+        );
+        assert!(!database_checkpoint_coordinator(&maintained).unwrap());
+        drop(maintained);
+        fs::remove_file(&result.backup_path).unwrap();
+    }
+
+    #[test]
+    fn database_maintenance_rotates_backup_only_after_a_successful_later_launch() {
+        let database = TestDatabase::new("maintenance-backup-rotation");
+        let recovery_key = generate_recovery_key();
+        {
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            replace_app_state(&mut connection, &test_state("Rotate backups")).unwrap();
+        }
+
+        let first = compact_database_at(&database.path, &recovery_key, None).unwrap();
+        assert!(Path::new(&first.backup_path).exists());
+        let second = compact_database_at(&database.path, &recovery_key, None).unwrap();
+        assert!(Path::new(&first.backup_path).exists());
+        assert!(Path::new(&second.backup_path).exists());
+
+        let connection = open_database_at(&database.path, &recovery_key).unwrap();
+        assert_eq!(
+            metadata_value(&connection, DATABASE_MAINTENANCE_LATEST_BACKUP)
+                .unwrap()
+                .as_deref(),
+            Some(second.backup_path.as_str())
+        );
+        assert_eq!(
+            metadata_value(&connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP)
+                .unwrap()
+                .as_deref(),
+            Some(first.backup_path.as_str())
+        );
+
+        complete_database_maintenance_startup_at(&connection, &database.path).unwrap();
+        assert!(!Path::new(&first.backup_path).exists());
+        assert!(Path::new(&second.backup_path).exists());
+        assert_eq!(
+            metadata_value(&connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP).unwrap(),
+            None
+        );
+        drop(connection);
+        fs::remove_file(&second.backup_path).unwrap();
+    }
+
+    #[test]
+    fn database_maintenance_keeps_previous_backup_if_newest_was_removed() {
+        let database = TestDatabase::new("maintenance-backup-fallback");
+        let recovery_key = generate_recovery_key();
+        {
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            replace_app_state(&mut connection, &test_state("Keep fallback")).unwrap();
+        }
+
+        let first = compact_database_at(&database.path, &recovery_key, None).unwrap();
+        let second = compact_database_at(&database.path, &recovery_key, None).unwrap();
+        fs::remove_file(&second.backup_path).unwrap();
+
+        let connection = open_database_at(&database.path, &recovery_key).unwrap();
+        complete_database_maintenance_startup_at(&connection, &database.path).unwrap();
+        assert!(Path::new(&first.backup_path).exists());
+        assert_eq!(
+            metadata_value(&connection, DATABASE_MAINTENANCE_LATEST_BACKUP)
+                .unwrap()
+                .as_deref(),
+            Some(first.backup_path.as_str())
+        );
+        assert_eq!(
+            metadata_value(&connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP).unwrap(),
+            None
+        );
+        drop(connection);
+        fs::remove_file(&first.backup_path).unwrap();
     }
 
     #[test]
@@ -8640,6 +9656,26 @@ mod tests {
     }
 
     #[test]
+    fn database_access_lock_serializes_atomic_maintenance_and_sync() {
+        let guard = database_access_guard().unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            let _guard = database_access_guard().unwrap();
+            sender.send(()).unwrap();
+        });
+
+        assert!(
+            receiver.recv_timeout(Duration::from_millis(50)).is_err(),
+            "second database task must wait while maintenance owns the lock"
+        );
+        drop(guard);
+        receiver
+            .recv_timeout(Duration::from_secs(1))
+            .expect("waiting database task should continue after maintenance");
+        waiter.join().unwrap();
+    }
+
+    #[test]
     fn auto_json_export_time_validation_normalizes_valid_times() {
         assert_eq!(validate_auto_json_export_time("23:55").unwrap(), "23:55");
         assert_eq!(validate_auto_json_export_time("7:05").unwrap(), "07:05");
@@ -8680,7 +9716,10 @@ mod tests {
     #[test]
     fn pairing_code_is_fully_validated_before_sync_migration() {
         let code = sync::crypto::SyncKey::generate().to_pairing_code();
-        assert_eq!(normalize_sync_pairing_code(&format!("  {code}\n")).unwrap(), code);
+        assert_eq!(
+            normalize_sync_pairing_code(&format!("  {code}\n")).unwrap(),
+            code
+        );
         assert!(normalize_sync_pairing_code("BALSYNC1:not-a-real-key").is_err());
         assert!(normalize_sync_pairing_code("not-a-code").is_err());
     }
@@ -8831,7 +9870,11 @@ mod tests {
         let database = TestDatabase::new("stale-template-sync-operations");
         let recovery_key = generate_recovery_key();
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
-        replace_app_state(&mut connection, &test_state("Stale template sync operations")).unwrap();
+        replace_app_state(
+            &mut connection,
+            &test_state("Stale template sync operations"),
+        )
+        .unwrap();
         let before = read_app_state_from_database(&connection).unwrap();
 
         let stale_item = json!({

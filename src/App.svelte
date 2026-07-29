@@ -20,17 +20,21 @@
   import GoalBurst from './lib/GoalBurst.svelte'
   import { filterGoalsByPhrase, goalLightnessShift, goalsMatchingItemText, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
+    compactDatabase,
+    completeDatabaseMaintenanceStartup,
     confirmRecoveryKey,
     exportHTML,
     exportJSON,
+    getDatabaseMaintenanceStatus,
     getRecoveryKeyStatus,
     inspectDatabase,
     listMetadata,
     listRecoveryEntries,
     persistenceError,
     plannerStore,
+    runWeeklyDatabaseMaintenance,
   } from './lib/store'
-  import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
+  import type { DatabaseCompactionResult, DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
@@ -178,6 +182,13 @@ return rows`
   let metadataEntries: MetadataEntry[] = []
   let databaseInspection: DatabaseInspection | null = null
   let databaseInspectionBusy = false
+  let databaseCompactionBusy = false
+  let databaseMaintenanceStatus: DatabaseMaintenanceStatus | null = null
+  let weeklyMaintenanceStarted = false
+  let weeklyMaintenanceOpen = false
+  let weeklyMaintenancePhase: 'running' | 'complete' | 'error' = 'running'
+  let weeklyMaintenanceMessage = ''
+  let weeklyMaintenanceResult: DatabaseCompactionResult | null = null
   let databaseInspectionError = ''
   let databaseSearch = ''
   let databaseExpandedId: string | null = null
@@ -983,6 +994,10 @@ return rows`
         buildInfo = await invoke<{ version: string; commit: string }>('build_info')
       } catch (error) {
         console.error('Failed to load build info', error)
+      }
+
+      if (!recoveryKeyStatus?.recoveryKey) {
+        await runLaunchDatabaseMaintenance()
       }
 
       window.addEventListener('focus', checkAutoJsonExport)
@@ -2665,7 +2680,12 @@ return rows`
   async function openRecoveryPanel() {
     recoveryPanelOpen = true
     recoveryExpandedId = null
-    await Promise.all([refreshRecoveryEntries(), refreshMetadata(), refreshDatabaseInspection()])
+    await Promise.all([
+      refreshRecoveryEntries(),
+      refreshMetadata(),
+      refreshDatabaseInspection(),
+      refreshDatabaseMaintenanceStatus(),
+    ])
   }
 
   async function refreshMetadata() {
@@ -2693,7 +2713,139 @@ return rows`
     }
   }
 
+  function formatDatabaseBytes(bytes: number): string {
+    if (bytes < 1024) return `${bytes} B`
+    const units = ['KiB', 'MiB', 'GiB']
+    let value = bytes / 1024
+    let unit = units[0]
+    for (let index = 1; index < units.length && value >= 1024; index += 1) {
+      value /= 1024
+      unit = units[index]
+    }
+    return `${value.toFixed(value >= 100 ? 0 : value >= 10 ? 1 : 2)} ${unit}`
+  }
+
+  function formatMaintenanceTimestamp(timestamp: string | null | undefined): string {
+    const milliseconds = Number(timestamp?.replace(/^unix-ms-/, ''))
+    if (!Number.isFinite(milliseconds)) return 'Never'
+    return new Date(milliseconds).toLocaleString()
+  }
+
+  async function refreshDatabaseMaintenanceStatus() {
+    databaseMaintenanceStatus = await getDatabaseMaintenanceStatus()
+  }
+
+  async function runLaunchDatabaseMaintenance() {
+    if (!isTauri() || weeklyMaintenanceStarted) return
+    weeklyMaintenanceStarted = true
+
+    try {
+      // Reaching this point means the new database completed a subsequent app
+      // launch, so an older rotated backup can now be removed safely.
+      await completeDatabaseMaintenanceStartup()
+      await refreshDatabaseMaintenanceStatus()
+      if (!databaseMaintenanceStatus?.due) return
+
+      weeklyMaintenanceOpen = true
+      weeklyMaintenancePhase = 'running'
+      weeklyMaintenanceResult = null
+      weeklyMaintenanceMessage = databaseMaintenanceStatus.checkpointCoordinator
+        ? 'Creating a verified shared checkpoint, vacuuming this device, and preserving an encrypted backup…'
+        : 'Vacuuming this device’s encrypted database. The original sync device remains responsible for the shared checkpoint…'
+      await tick()
+
+      const result = await runWeeklyDatabaseMaintenance()
+      if (!result) {
+        weeklyMaintenanceOpen = false
+        return
+      }
+
+      weeklyMaintenanceResult = result
+      await plannerStore.reloadFromBackend()
+      await refreshDatabaseMaintenanceStatus()
+      weeklyMaintenancePhase = 'complete'
+      weeklyMaintenanceMessage = result.checkpointCreated
+        ? 'The shared checkpoint and this device’s physical database optimization were verified successfully.'
+        : 'This device’s physical database optimization was verified successfully. Synced operations were left for the original sync device to checkpoint.'
+    } catch (error) {
+      weeklyMaintenancePhase = 'error'
+      weeklyMaintenanceOpen = true
+      weeklyMaintenanceMessage = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  function closeWeeklyMaintenance() {
+    if (weeklyMaintenancePhase === 'running') return
+    weeklyMaintenanceOpen = false
+  }
+
+  async function retryWeeklyMaintenance() {
+    weeklyMaintenancePhase = 'running'
+    weeklyMaintenanceMessage = 'Retrying verified database maintenance…'
+    weeklyMaintenanceResult = null
+    try {
+      const result = await runWeeklyDatabaseMaintenance()
+      if (!result) {
+        await refreshDatabaseMaintenanceStatus()
+        weeklyMaintenancePhase = 'complete'
+        weeklyMaintenanceMessage = 'Database maintenance was already completed.'
+        return
+      }
+      weeklyMaintenanceResult = result
+      await plannerStore.reloadFromBackend()
+      await refreshDatabaseMaintenanceStatus()
+      weeklyMaintenancePhase = 'complete'
+      weeklyMaintenanceMessage = 'Database maintenance completed and passed verification.'
+    } catch (error) {
+      weeklyMaintenancePhase = 'error'
+      weeklyMaintenanceMessage = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  async function optimizeDatabase() {
+    if (databaseCompactionBusy || recoveryBusy) return
+
+    const createsCheckpoint = databaseMaintenanceStatus?.checkpointCoordinator ?? true
+    const confirmed = await confirmDialog(
+      createsCheckpoint
+        ? 'Optimize the database now? Balance will verify a full-state checkpoint before replacing anything, preserve the original encrypted database as a backup, then clear operation and undo history. This may temporarily need space for a second copy of the database.'
+        : 'Optimize this device’s database now? Balance will preserve the original encrypted database as a backup and safely vacuum this local file. The original sync device remains responsible for the shared checkpoint.',
+      { title: 'Optimize database?', kind: 'warning' },
+    )
+    if (!confirmed) return
+
+    databaseCompactionBusy = true
+    recoveryStatus = 'Creating and verifying encrypted database checkpoint…'
+    recoveryStatusIsError = false
+
+    try {
+      const result = await compactDatabase()
+      if (!result) throw new Error('Database optimization is available only in the desktop or mobile app.')
+
+      await plannerStore.reloadFromBackend()
+      recoveryEntries = await listRecoveryEntries()
+      await Promise.all([
+        refreshMetadata(),
+        refreshDatabaseInspection(),
+        refreshDatabaseMaintenanceStatus(),
+      ])
+      recoveryStatus = result.checkpointCreated
+        ? `Optimized ${formatDatabaseBytes(result.beforeBytes)} → ${formatDatabaseBytes(result.afterBytes)} ` +
+          `(${formatDatabaseBytes(result.reclaimedBytes)} reclaimed). Removed ${result.operationsRemoved} old operations ` +
+          `and ${result.historyEntriesRemoved} undo entries. Encrypted backup: ${result.backupPath}`
+        : `Vacuumed this device ${formatDatabaseBytes(result.beforeBytes)} → ${formatDatabaseBytes(result.afterBytes)} ` +
+          `(${formatDatabaseBytes(result.reclaimedBytes)} reclaimed) without changing the synced operation log. ` +
+          `Encrypted backup: ${result.backupPath}`
+    } catch (error) {
+      recoveryStatusIsError = true
+      recoveryStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      databaseCompactionBusy = false
+    }
+  }
+
   function closeRecoveryPanel() {
+    if (databaseCompactionBusy) return
     recoveryPanelOpen = false
   }
 
@@ -3008,6 +3160,7 @@ return rows`
     await confirmRecoveryKey()
     recoveryKeyStatus = await getRecoveryKeyStatus()
     recoveryKeySaved = false
+    await runLaunchDatabaseMaintenance()
   }
 
   async function startDailyReminderEdit() {
@@ -3926,6 +4079,34 @@ return rows`
 
         <section class="settings-section">
           <div>
+            <h3>Recovery &amp; diagnostics</h3>
+            {#if isTauri()}
+              <p>
+                Balance automatically performs verified database maintenance once a week after launch.
+                {databaseMaintenanceStatus?.checkpointCoordinator === false
+                  ? ' This synced device vacuums only its local file; the original sync device creates shared checkpoints.'
+                  : ' This device creates the shared checkpoint and vacuums its local file.'}
+              </p>
+            {:else}
+              <p>Restore removed items and inspect database history. Weekly maintenance runs in the installed app.</p>
+            {/if}
+          </div>
+
+          {#if isTauri()}
+            <p class="export-status">
+              Last completed: {formatMaintenanceTimestamp(databaseMaintenanceStatus?.lastCompletedAt)}
+            </p>
+          {/if}
+
+          <div class="settings-actions">
+            <button type="button" on:click={() => { void openRecoveryPanel() }}>
+              Open recovery &amp; diagnostics
+            </button>
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div>
             <h3>Manual export</h3>
             <p>Save a portable copy of your plans, templates, goals, and operation log.</p>
           </div>
@@ -4296,6 +4477,58 @@ return rows`
   </div>
 {/if}
 
+{#if weeklyMaintenanceOpen}
+  <div class="modal-backdrop database-maintenance-backdrop">
+    <div
+      class="recovery-dialog database-maintenance-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="database-maintenance-title"
+    >
+      <p class="eyebrow">Weekly database maintenance</p>
+      <h2 id="database-maintenance-title">
+        {weeklyMaintenancePhase === 'running'
+          ? 'Optimizing your database'
+          : weeklyMaintenancePhase === 'complete'
+            ? 'Database maintenance complete'
+            : 'Database maintenance needs attention'}
+      </h2>
+
+      <div class="database-maintenance-progress" role="status" aria-live="polite">
+        {#if weeklyMaintenancePhase === 'running'}
+          <span class="database-maintenance-spinner" aria-hidden="true"></span>
+        {/if}
+        <p>{weeklyMaintenanceMessage}</p>
+      </div>
+
+      {#if weeklyMaintenanceResult}
+        <p class="recovery-copy">
+          {formatDatabaseBytes(weeklyMaintenanceResult.beforeBytes)}
+          →
+          {formatDatabaseBytes(weeklyMaintenanceResult.afterBytes)}
+          · {formatDatabaseBytes(weeklyMaintenanceResult.reclaimedBytes)} reclaimed
+        </p>
+      {/if}
+
+      <p class="recovery-copy">
+        Balance verifies the complete app state and database integrity before replacing the local file. The previous
+        encrypted database remains as the current recovery backup.
+      </p>
+
+      {#if weeklyMaintenancePhase === 'complete'}
+        <div class="recovery-actions">
+          <button class="primary" type="button" on:click={closeWeeklyMaintenance}>Continue</button>
+        </div>
+      {:else if weeklyMaintenancePhase === 'error'}
+        <div class="recovery-actions">
+          <button class="primary" type="button" on:click={() => { void retryWeeklyMaintenance() }}>Try again</button>
+          <button type="button" on:click={closeWeeklyMaintenance}>Continue without optimizing</button>
+        </div>
+      {/if}
+    </div>
+  </div>
+{/if}
+
 {#if recoveryPanelOpen}
   <div class="modal-backdrop">
     <div class="recovery-panel" role="dialog" aria-modal="true" aria-labelledby="recovery-panel-title">
@@ -4304,7 +4537,7 @@ return rows`
           <p class="eyebrow">Recovery &amp; diagnostics</p>
           <h2 id="recovery-panel-title">Restore removed items</h2>
         </div>
-        <button type="button" class="ghost" on:click={closeRecoveryPanel}>Close</button>
+        <button type="button" class="ghost" on:click={closeRecoveryPanel} disabled={databaseCompactionBusy}>Close</button>
       </div>
       <p class="recovery-copy">
         Each entry is a saved undo snapshot. Restoring reverses the action that removed those items — useful when an
@@ -4319,11 +4552,25 @@ return rows`
         <button
           type="button"
           on:click={() => { void refreshRecoveryEntries(); void refreshMetadata(); void refreshDatabaseInspection() }}
-          disabled={recoveryBusy || databaseInspectionBusy}
+          disabled={recoveryBusy || databaseInspectionBusy || databaseCompactionBusy}
         >
           Refresh
         </button>
+        <button
+          type="button"
+          class="primary"
+          on:click={() => { void optimizeDatabase() }}
+          disabled={recoveryBusy || databaseInspectionBusy || databaseCompactionBusy}
+        >
+          {databaseCompactionBusy ? 'Optimizing…' : 'Optimize database'}
+        </button>
       </div>
+      <p class="recovery-copy metadata-hint">
+        {databaseMaintenanceStatus?.checkpointCoordinator === false
+          ? 'This synced device vacuums only its local database file. The original sync device creates the shared full-state checkpoint.'
+          : 'Optimization replaces accumulated operation and undo history with one verified full-state checkpoint.'}
+        Current plans, templates, lists, metrics, goals, settings, encryption, and sync configuration are preserved.
+      </p>
 
       <div class="recovery-scroll">
       <details class="metadata-section">
@@ -4352,7 +4599,7 @@ return rows`
                   >
                     {recoveryExpandedId === entry.historyId ? 'Hide' : 'Inspect'}
                   </button>
-                  <button type="button" class="primary" disabled={recoveryBusy} on:click={() => restoreRecoveryEntry(entry)}>
+                  <button type="button" class="primary" disabled={recoveryBusy || databaseCompactionBusy} on:click={() => restoreRecoveryEntry(entry)}>
                     Restore
                   </button>
                 </div>

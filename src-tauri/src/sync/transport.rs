@@ -149,7 +149,19 @@ pub fn sync_accept(
     key: &SyncKey,
     cursors: &mut Cursors,
 ) -> Result<()> {
-    let (mut stream, _) = listener.accept().map_err(io)?;
+    let (stream, _) = listener.accept().map_err(io)?;
+    sync_accept_stream(stream, conn, key, cursors)
+}
+
+/// Responder flow for an already-accepted socket. The background P2P listener
+/// accepts before opening the database, so it never pins an obsolete database
+/// file while idle or during atomic maintenance.
+pub fn sync_accept_stream(
+    mut stream: TcpStream,
+    conn: &Connection,
+    key: &SyncKey,
+    cursors: &mut Cursors,
+) -> Result<()> {
     configure_stream(&stream)?;
     let my_site = site_hex(conn)?;
 

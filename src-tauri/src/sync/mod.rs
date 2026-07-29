@@ -202,10 +202,10 @@ pub fn selftest(extension_path: &Path, scratch_dir: &Path) -> Result<()> {
             })
         };
 
-        let mut primary = crate::open_database_at(&a_path, "selftest-key-a")
-            .map_err(Error::Codec)?;
-        let mut joiner = crate::open_database_at(&b_path, "selftest-key-b")
-            .map_err(Error::Codec)?;
+        let mut primary =
+            crate::open_database_at(&a_path, "selftest-key-a").map_err(Error::Codec)?;
+        let mut joiner =
+            crate::open_database_at(&b_path, "selftest-key-b").map_err(Error::Codec)?;
         crate::replace_app_state(
             &mut primary,
             &app_state(
@@ -242,13 +242,15 @@ pub fn selftest(extension_path: &Path, scratch_dir: &Path) -> Result<()> {
             .map_err(Error::Codec)?
             .ok_or_else(|| Error::Codec("joiner state missing after pairing".into()))?;
         if cleared["goals"] != json!([]) {
-            return Err(Error::Codec("joiner was not cleared before bootstrap".into()));
+            return Err(Error::Codec(
+                "joiner was not cleared before bootstrap".into(),
+            ));
         }
 
         // Mirror the app's manual-address flow: the primary listens and the
         // joining device initiates a bidirectional, E2EE P2P sync.
-        let listener = std::net::TcpListener::bind("127.0.0.1:0")
-            .map_err(|e| Error::Codec(e.to_string()))?;
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
         let address = listener
             .local_addr()
             .map_err(|e| Error::Codec(e.to_string()))?
@@ -276,10 +278,14 @@ pub fn selftest(extension_path: &Path, scratch_dir: &Path) -> Result<()> {
             ));
         }
         if joined_state["deviceId"] != "selftest-joiner" {
-            return Err(Error::Codec("sync overwrote the joiner's device identity".into()));
+            return Err(Error::Codec(
+                "sync overwrote the joiner's device identity".into(),
+            ));
         }
         if read_pairing_code(&joiner)?.as_deref() != Some(pairing_code.as_str()) {
-            return Err(Error::Crypto("joiner did not persist its pairing key".into()));
+            return Err(Error::Crypto(
+                "joiner did not persist its pairing key".into(),
+            ));
         }
         finalize(&joiner)?;
         Ok(())
@@ -531,19 +537,15 @@ fn rebuild_operations_with_defaults(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Build a `replace_full_state` baseline op capturing the current domain state,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CheckpointStats {
+    pub operations_removed: i64,
+    pub history_entries_removed: i64,
+}
+
+/// Build a `replace_full_state` baseline op from an already-read state,
 /// timestamped so it always sorts first in a canonical replay.
-fn snapshot_current_state_op(conn: &Connection) -> Result<JsonValue> {
-    let state = crate::read_app_state_from_database(conn)
-        .map_err(Error::Codec)?
-        .unwrap_or_else(|| {
-            json!({
-                "templates": [], "plans": [],
-                "goals": [], "goalCompletions": [],
-                "listTemplates": [], "lists": [], "metrics": [], "metricEntries": [],
-                "activePlanDate": ""
-            })
-        });
+fn snapshot_state_op(conn: &Connection, state: &JsonValue) -> Result<JsonValue> {
     let device_id = crate::metadata_value(conn, "device_id")
         .map_err(Error::Codec)?
         .unwrap_or_default();
@@ -554,8 +556,55 @@ fn snapshot_current_state_op(conn: &Connection) -> Result<JsonValue> {
         // Sorts before any real ISO-8601 timestamp, so it's the replay baseline.
         "timestamp": "0000-00-00T00:00:00.000Z",
         "type": "replace_full_state",
-        "payload": { "state": state },
+        "payload": { "state": state.clone() },
     }))
+}
+
+/// Replace the operation log with one full-state checkpoint and prove, inside
+/// the same transaction, that replaying only that checkpoint reconstructs the
+/// exact app state that existed before compaction. Any mismatch rolls back the
+/// log, history, and materialized tables together.
+fn install_checkpoint(
+    conn: &Connection,
+    expected_state: &JsonValue,
+    snapshot: &JsonValue,
+) -> Result<CheckpointStats> {
+    let operation_count: i64 =
+        conn.query_row("SELECT count(*) FROM operations", [], |row| row.get(0))?;
+    let history_count: i64 =
+        conn.query_row("SELECT count(*) FROM history_entries", [], |row| row.get(0))?;
+
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM history_entries", [])?;
+    tx.execute("DELETE FROM operations", [])?;
+    crate::upsert_operation(&tx, snapshot).map_err(Error::Codec)?;
+    crate::apply_operation(&tx, snapshot).map_err(Error::Codec)?;
+
+    let replayed_state = crate::read_app_state_from_database(&tx)
+        .map_err(Error::Codec)?
+        .ok_or_else(|| Error::Codec("checkpoint replay produced no app state".into()))?;
+    if replayed_state != *expected_state {
+        return Err(Error::Codec(
+            "checkpoint replay did not exactly reproduce the current app state".into(),
+        ));
+    }
+
+    tx.commit()?;
+    Ok(CheckpointStats {
+        operations_removed: operation_count.saturating_sub(1),
+        history_entries_removed: history_count,
+    })
+}
+
+/// Collapse all replay history into one verified `replace_full_state` baseline.
+/// The operations table may already be a cr-sqlite CRR; callers must load the
+/// extension before invoking this function in that case.
+pub fn checkpoint_operation_log(conn: &Connection) -> Result<CheckpointStats> {
+    let state = crate::read_app_state_from_database(conn)
+        .map_err(Error::Codec)?
+        .ok_or_else(|| Error::Codec("database has no app state to checkpoint".into()))?;
+    let snapshot = snapshot_state_op(conn, &state)?;
+    install_checkpoint(conn, &state, &snapshot)
 }
 
 /// Enable sync on the device that holds the canonical data ("Create sync key").
@@ -564,14 +613,7 @@ fn snapshot_current_state_op(conn: &Connection) -> Result<JsonValue> {
 /// touched.
 pub fn enable_primary(conn: &Connection) -> Result<()> {
     rebuild_operations_with_defaults(conn)?;
-    let snapshot = snapshot_current_state_op(conn)?;
-    {
-        let tx = conn.unchecked_transaction()?;
-        tx.execute("DELETE FROM operations", [])?;
-        tx.execute("DELETE FROM history_entries", [])?;
-        crate::upsert_operation(&tx, &snapshot).map_err(Error::Codec)?;
-        tx.commit()?;
-    }
+    checkpoint_operation_log(conn)?;
     as_crr(conn, "operations")?;
     mark_enabled(conn)?;
     Ok(())
@@ -646,8 +688,14 @@ pub fn rematerialize(conn: &Connection) -> Result<()> {
     )?;
     for (index, op) in ops.iter().enumerate() {
         crate::apply_operation(&tx, op).map_err(|error| {
-            let id = op.get("id").and_then(JsonValue::as_str).unwrap_or("unknown");
-            let ty = op.get("type").and_then(JsonValue::as_str).unwrap_or("unknown");
+            let id = op
+                .get("id")
+                .and_then(JsonValue::as_str)
+                .unwrap_or("unknown");
+            let ty = op
+                .get("type")
+                .and_then(JsonValue::as_str)
+                .unwrap_or("unknown");
             Error::Codec(format!(
                 "could not replay synced operation {} ({ty}, {id}): {error}",
                 index + 1
