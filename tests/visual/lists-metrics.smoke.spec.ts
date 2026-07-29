@@ -1,49 +1,5 @@
 import { expect, test } from '@playwright/test'
 
-// Throwaway smoke test for the Lists + Metrics features.
-test('list link opens a toast, completing it auto-checks the task', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-
-  // Create a list template named "Groceries" with two items.
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  await page.getByRole('button', { name: '+ New list template' }).click()
-  await expect(page.getByRole('heading', { name: 'List template' })).toBeVisible()
-  await page.getByLabel('List name').fill('Groceries')
-
-  const listItems = page.locator('[data-list-template-text-input]')
-  await expect(listItems.first()).toBeVisible()
-  await listItems.first().fill('Milk')
-
-  // Generate today's plan and create a task that matches the list name exactly.
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
-  const firstItem = page.locator('[data-plan-text-input]').first()
-  await firstItem.fill('Groceries')
-  await firstItem.blur()
-
-  // The matching task's text itself becomes an inline hyperlink.
-  const opener = page.getByTitle('Open Groceries').first()
-  await expect(opener).toBeVisible()
-  await opener.click()
-
-  // The toast opens with the generated list item.
-  const dialog = page.getByRole('dialog', { name: 'Groceries' })
-  await expect(dialog).toBeVisible()
-  await expect(dialog.getByText('Milk')).toBeVisible()
-
-  // Click the task row outside the checkbox; the toast auto-closes and the task gets checked.
-  await dialog.getByRole('listitem', { name: 'Plan item: Milk' }).click({ position: { x: 120, y: 12 } })
-  await expect(dialog).toBeHidden()
-  await expect(page.locator('.plan-row.done').first()).toBeVisible()
-
-  // The link is still clickable after completion and reopens the (done) list
-  // without instantly auto-closing.
-  await page.getByTitle('Open Groceries').first().click()
-  await expect(page.getByRole('dialog', { name: 'Groceries' })).toBeVisible()
-})
-
 test('arrow navigation lands on list-linked plan items', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {

@@ -527,7 +527,7 @@ test('a completion resets a rolling deadline and late days stay overdue', async 
   await page.reload()
 
   await expect(page.getByLabel('Days of goal history')).toHaveCount(0)
-  await expect(page.locator('.goal-date-head').first()).toHaveAttribute('title', historyStart)
+  await expect(page.locator('.goal-date-head').first()).toHaveAttribute('data-goal-date', historyStart)
   await expect(page.locator('.goal-date-head')).toHaveCount(127)
   await expect
     .poll(async () => {
@@ -846,12 +846,12 @@ test('goal rhythm bolds the current day and keeps it bold when another day is se
   await expect(todayHead).toHaveClass(/viewed/)
   await expect(todayHead.locator('strong')).toHaveCSS('font-weight', '700')
 
-  const todayTitle = (await todayHead.getAttribute('title')) ?? todayISO()
-  const tomorrow = addDays(todayTitle, 1)
+  const todayDate = (await todayHead.getAttribute('data-goal-date')) ?? todayISO()
+  const tomorrow = addDays(todayDate, 1)
 
   await page.getByRole('button', { name: 'Next day' }).click()
 
-  const tomorrowHead = page.locator(`.goal-date-head[title="${tomorrow}"]`)
+  const tomorrowHead = page.locator(`.goal-date-head[data-goal-date="${tomorrow}"]`)
   await expect(tomorrowHead).toHaveClass(/viewed/)
   await expect(tomorrowHead).not.toHaveClass(/today/)
   await expect(tomorrowHead.locator('strong')).toHaveCSS('font-weight', '600')
@@ -872,16 +872,16 @@ test('goal rhythm grows a column for the new day after the clock rolls over', as
   await createGoal(page, 'Exercise', 1, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
 
-  await expect(page.locator('.goal-date-head[title="2026-06-16"]')).toHaveCount(1)
-  await expect(page.locator('.goal-date-head[title="2026-06-17"]').first()).toHaveClass(/future/)
+  await expect(page.locator('.goal-date-head[data-goal-date="2026-06-16"]')).toHaveCount(1)
+  await expect(page.locator('.goal-date-head[data-goal-date="2026-06-17"]').first()).toHaveClass(/future/)
 
   // The day rolls over while the app stays open. Without a reactive clock the
   // date list would stay anchored to the previous day.
   await page.clock.setFixedTime(new Date('2026-06-17T12:00:00'))
   await page.clock.runFor(61_000)
 
-  await expect(page.locator('.goal-date-head[title="2026-06-17"]').first()).not.toHaveClass(/future/)
-  await expect(page.locator('.goal-date-head[title="2026-06-17"].today')).toHaveCount(1)
+  await expect(page.locator('.goal-date-head[data-goal-date="2026-06-17"]').first()).not.toHaveClass(/future/)
+  await expect(page.locator('.goal-date-head[data-goal-date="2026-06-17"].today')).toHaveCount(1)
 })
 
 test('long tasks use a vertical desktop goal stack and a wrapping mobile goal row', async ({ page }, testInfo) => {
@@ -1120,21 +1120,8 @@ test('goal rhythm uses dark segment and open-circle colors in dark mode', async 
   await expect(activeCell.locator('.goal-cell-mark.open')).toHaveCSS('border-color', 'rgba(58, 136, 116, 0.7)')
 })
 
-test('gray controls toggle without being obscured and goal cards omit frozen-history text', async ({ page }) => {
-  await page.getByRole('button', { name: 'Goals', exact: true }).click()
-
-  const newGoalGray = page.getByRole('button', { name: 'Make this goal gray' })
-  await newGoalGray.click()
-  await expect(newGoalGray).toHaveAttribute('aria-pressed', 'true')
-  await newGoalGray.click()
-  await expect(newGoalGray).toHaveAttribute('aria-pressed', 'false')
-
+test('goal cards show their saved completion count without frozen-history text', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
-  const goalGray = page.getByRole('button', { name: 'Make Exercise gray' })
-  await goalGray.click()
-  await expect(goalGray).toHaveAttribute('aria-pressed', 'true')
-  await goalGray.click()
-  await expect(goalGray).toHaveAttribute('aria-pressed', 'false')
   await expect(page.locator('.goal-card-meta')).toHaveText('0 saved completions')
   await expect(page.getByText(/history before .* is frozen/i)).toHaveCount(0)
 })

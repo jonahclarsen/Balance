@@ -323,7 +323,7 @@ test('Cmd or Ctrl+F searches the current document instead of opening overall sea
   await expect(page.getByRole('dialog', { name: 'Search Balance' })).toHaveCount(0)
 
   await find.getByLabel('Find text').fill('Daily plan')
-  await expect(find.getByRole('status')).toHaveText('Match')
+  await expect(find.locator('.find-status')).toHaveText('Match')
   await expect.poll(async () => page.evaluate(() => window.getSelection()?.toString().toLowerCase())).toBe('daily plan')
 
   await page.keyboard.press('Escape')
@@ -1358,6 +1358,7 @@ test('template item text fields support arrow focus and option-arrow sibling mov
   await page.getByRole('button', { name: 'Day Templates' }).click()
 
   await focusTemplateOptionByValue(page, 'Wake up')
+  await setCaretOffsetInFocusedEditor(page, 'Wake up'.length)
   await page.keyboard.press('ArrowDown')
 
   const focusedAfterDown = await activeTemplateOptionValue(page)
