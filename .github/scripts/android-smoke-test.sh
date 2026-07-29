@@ -257,7 +257,10 @@ for index, node in enumerate(nodes):
         if len(numbers) != 4:
             continue
         x1, y1, x2, y2 = numbers
-        if x2 <= x1 or y2 <= y1:
+        # Chromium can expose a control that is only a few pixels visible at
+        # the screen edge. Reject clipped controls so the caller scrolls them
+        # fully onscreen instead of tapping a sliver that cannot take input.
+        if x2 - x1 < 30 or y2 - y1 < 30:
             continue
         print(f"{(x1 + x2) // 2} {(y1 + y2) // 2}")
         raise SystemExit(0)
@@ -320,6 +323,7 @@ tap_ui_scrolling_contains() {
 tap_ui_class_after_text_scrolling() {
   anchor="$1"
   target_class="$2"
+  scroll_strategy="${3:-300}"
   for _ in $(seq 1 8); do
     dump_ui
     point="$(find_ui_class_after_text "$anchor" "$target_class" 2>/dev/null || true)"
@@ -328,7 +332,13 @@ tap_ui_class_after_text_scrolling() {
       adb shell input tap $point
       return 0
     fi
-    adb shell input swipe 300 580 300 180 300
+    if [ "$scroll_strategy" = "page" ]; then
+      # WebView handles Page Down at its scroll container, so nested cards and
+      # inputs cannot swallow the gesture before the field becomes visible.
+      adb shell input keyevent KEYCODE_PAGE_DOWN
+    else
+      adb shell input swipe "$scroll_strategy" 580 "$scroll_strategy" 180 300
+    fi
     sleep 1
   done
   echo "Could not find $target_class after text=$anchor"
@@ -451,16 +461,18 @@ type_into_ui_contains() {
 type_into_ui_after_text() {
   anchor="$1"
   value="$2"
-  tap_ui_class_after_text_scrolling "$anchor" "android.widget.EditText" || return 1
+  scroll_strategy="${3:-300}"
+  tap_ui_class_after_text_scrolling "$anchor" "android.widget.EditText" "$scroll_strategy" || return 1
   adb shell input text "$value"
 }
 
 type_into_ui_after_text_verified() {
   local anchor="$1"
   local value="$2"
+  local scroll_strategy="${3:-300}"
   local retry_index
   for retry_index in $(seq 1 3); do
-    type_into_ui_after_text "$anchor" "$value" || return 1
+    type_into_ui_after_text "$anchor" "$value" "$scroll_strategy" || return 1
     if wait_for_ui_text "$value" 3; then
       return 0
     fi
@@ -551,9 +563,9 @@ wait_for_ui_text "Add a goal"
 # fields and press the visible Add button so seeing the name afterward proves a
 # persisted goal card exists (rather than merely seeing text in an input).
 scroll_page_to_top
-type_into_ui_after_text_verified "NAME" "CISyncGoal"
+type_into_ui_after_text_verified "NAME" "CISyncGoal" page
 dismiss_soft_keyboard
-type_into_ui_after_text_verified "MATCHES ANY" "ci-sync"
+type_into_ui_after_text_verified "MATCHES ANY" "ci-sync" page
 dismiss_soft_keyboard
 goal_created=0
 for submit_attempt in $(seq 1 3); do
