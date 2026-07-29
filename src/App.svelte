@@ -3753,11 +3753,16 @@ return rows`
             <div class="goal-card-accent"></div>
             <div class="goal-card-main">
               <div class="goal-card-title-row">
-                <input
-                  class="goal-name-input"
-                  aria-label={`Goal name: ${goal.name}`}
-                  value={goal.name}
-                  on:input={(event) => plannerStore.patchGoal(goal.id, { name: event.currentTarget.value })}
+                <RichTextEditor
+                  className="goal-name-input"
+                  kind="goal-name"
+                  inputId={`goal-name:${goal.id}`}
+                  html={goal.nameHtml}
+                  text={goal.name}
+                  ariaLabel={`Goal name: ${goal.name}`}
+                  revision={$plannerStore.historyRevision}
+                  singleLine
+                  onChange={(html, text) => plannerStore.patchGoal(goal.id, { name: text, nameHtml: html })}
                 />
                 <span class:active class="goal-state">{active ? 'Active' : 'Archived'}</span>
               </div>

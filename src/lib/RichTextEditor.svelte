@@ -27,9 +27,10 @@
   export let html = ''
   export let text = ''
   export let inputId: Id
-  export let kind: 'plan' | 'template-option' | 'list-template-item' | 'metric-question' | 'goal-match-terms'
+  export let kind: 'plan' | 'template-option' | 'list-template-item' | 'metric-question' | 'goal-name' | 'goal-match-terms'
   export let className = ''
   export let done = false
+  export let singleLine = false
   export let placeholder = ''
   export let ariaLabel = 'Text'
   export let revision = 0
@@ -144,6 +145,11 @@
     }
 
     if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey && !event.isComposing) {
+      if (singleLine) {
+        event.preventDefault()
+        return
+      }
+
       if (event.shiftKey) {
         event.preventDefault()
         document.execCommand('insertLineBreak')
@@ -401,9 +407,10 @@
     }
 
     if (clipboardHTML || clipboardText) {
-      const pastedHTML = linkifyExternalURLs(
+      let pastedHTML = linkifyExternalURLs(
         clipboardHTML ? clipboardHTML : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>'),
       )
+      if (singleLine) pastedHTML = pastedHTML.replace(/<br>/g, ' ')
       pendingPasteInput = true
       document.execCommand('insertHTML', false, pastedHTML)
       persistPasteIfInputDidNotFire(activeEditor)

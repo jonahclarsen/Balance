@@ -120,6 +120,7 @@ export type GoalActivityPeriod = {
 export type Goal = {
   id: Id
   name: string
+  nameHtml: string
   cadenceDays: number
   matchTerms: string[]
   matchTermsHtml: string

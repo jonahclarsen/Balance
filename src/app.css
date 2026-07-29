@@ -1671,16 +1671,26 @@ nav button.active {
 .goal-name-input {
   min-width: 0;
   flex: 1;
-  border-color: transparent;
-  background: transparent;
   padding: 3px 4px;
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  outline: none;
   font-size: 18px;
   font-weight: 700;
+  white-space: nowrap;
 }
 
 .goal-name-input:focus {
   border-color: hsl(var(--goal-hue) 48% calc(48% + var(--goal-lightness-shift, 0%)));
   background: var(--paper-strong);
+}
+
+.goal-name-input a {
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .goal-state {

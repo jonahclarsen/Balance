@@ -695,7 +695,7 @@ function createPlannerStore() {
       return goal.id
     },
 
-    patchGoal(goalId: Id, patch: Partial<Pick<Goal, 'name' | 'cadenceDays' | 'matchTerms' | 'matchTermsHtml' | 'hue' | 'lightness'>>) {
+    patchGoal(goalId: Id, patch: Partial<Pick<Goal, 'name' | 'nameHtml' | 'cadenceDays' | 'matchTerms' | 'matchTermsHtml' | 'hue' | 'lightness'>>) {
       commit(
         'replace_goal_data',
         { action: 'patch_goal', goalId, patch },
@@ -707,6 +707,7 @@ function createPlannerStore() {
             const next = normalizeGoal({
               ...goal,
               ...patch,
+              nameHtml: patch.nameHtml ?? (patch.name != null ? escapeHTML(patch.name.trim()) : goal.nameHtml),
               matchTerms: patch.matchTerms ? normalizeMatchTerms(patch.matchTerms) : goal.matchTerms,
               matchTermsHtml:
                 patch.matchTermsHtml ??

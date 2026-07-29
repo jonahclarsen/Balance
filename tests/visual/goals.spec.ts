@@ -93,6 +93,47 @@ test('goal matching terms preserve rich text and turn a pasted URL into a link',
   await expect(page.getByRole('textbox', { name: 'Matching terms for Exercise' }).getByRole('link', { name: 'lift' })).toBeVisible()
 })
 
+test('goal names preserve rich text and turn a pasted URL into a link', async ({ page }) => {
+  await createGoal(page, 'Exercise daily', 3, 'lift, swim')
+
+  const editor = page.getByRole('textbox', { name: 'Goal name: Exercise daily' })
+  await editor.evaluate((element) => {
+    const text = element.firstChild
+    if (!text) throw new Error('Expected goal-name text')
+
+    element.focus()
+    const range = document.createRange()
+    range.setStart(text, 0)
+    range.setEnd(text, 8)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    const clipboard = new DataTransfer()
+    clipboard.setData('text/plain', 'https://example.com/exercise')
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }))
+  })
+
+  const link = editor.getByRole('link', { name: 'Exercise' })
+  await expect(link).toHaveAttribute('href', 'https://example.com/exercise')
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const goal = state.goals?.[0]
+        return { name: goal?.name, nameHtml: goal?.nameHtml }
+      }),
+    )
+    .toEqual({
+      name: 'Exercise daily',
+      nameHtml: '<a href="https://example.com/exercise" target="_blank" rel="noreferrer">Exercise</a> daily',
+    })
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  await expect(page.getByRole('textbox', { name: 'Goal name: Exercise daily' }).getByRole('link', { name: 'Exercise' })).toBeVisible()
+})
+
 test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 60 seconds', async ({ page }) => {
   await page.clock.install()
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
@@ -680,7 +721,7 @@ test('goals put daily intervals first, then order by days until lapse and shorte
   await page.getByRole('button', { name: 'Goals', exact: true }).click()
   await expect(
     page.locator('.goal-card .goal-name-input').evaluateAll((inputs) =>
-      inputs.map((input) => (input as HTMLInputElement).value),
+      inputs.map((input) => input.textContent),
     ),
   ).resolves.toEqual(['Archived daily', 'Sooner', 'Short tie', 'Long tie'])
 })
@@ -1143,7 +1184,7 @@ async function goalCardCenterOffset(page: import('@playwright/test').Page, goalN
   return page.evaluate((name) => {
     const workspace = document.querySelector<HTMLElement>('.workspace')
     const card = [...document.querySelectorAll<HTMLElement>('.goal-card')].find((candidate) =>
-      candidate.querySelector<HTMLInputElement>('.goal-name-input')?.value === name,
+      candidate.querySelector<HTMLElement>('.goal-name-input')?.textContent === name,
     )
     if (!workspace || !card) return null
     const workspaceScrolls = workspace.scrollHeight > workspace.clientHeight

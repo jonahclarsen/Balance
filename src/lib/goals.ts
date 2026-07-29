@@ -36,6 +36,7 @@ export function createGoal(
   return {
     id,
     name: name.trim(),
+    nameHtml: escapeHTML(name.trim()),
     cadenceDays: normalizeCadenceDays(cadenceDays),
     matchTerms: normalizedMatchTerms,
     matchTermsHtml: normalizeMatchTermsHtml(matchTermsHtml, normalizedMatchTerms),
@@ -49,9 +50,11 @@ export function createGoal(
 
 export function normalizeGoal(goal: Goal): Goal {
   const matchTerms = normalizeMatchTerms(goal.matchTerms ?? [])
+  const name = goal.name?.trim() ?? ''
   return {
     ...goal,
-    name: goal.name?.trim() ?? '',
+    name,
+    nameHtml: normalizeGoalNameHtml(goal.nameHtml, name),
     cadenceDays: normalizeCadenceDays(goal.cadenceDays),
     matchTerms,
     matchTermsHtml: normalizeMatchTermsHtml(goal.matchTermsHtml, matchTerms),
@@ -99,6 +102,11 @@ export function normalizeMatchTerms(terms: string[]): string[] {
 
 export function parseMatchTerms(value: string): string[] {
   return normalizeMatchTerms(value.split(/[\n,]+/))
+}
+
+function normalizeGoalNameHtml(value: string | undefined, name: string): string {
+  const fallback = escapeHTML(name)
+  return value == null ? fallback : sanitizeInlineHTML(value)
 }
 
 function normalizeMatchTermsHtml(value: string | undefined, matchTerms: string[]): string {
