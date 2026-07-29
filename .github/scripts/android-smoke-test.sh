@@ -520,6 +520,27 @@ dismiss_recovery_key_setup() {
   return 1
 }
 
+dismiss_weekly_database_maintenance() {
+  # Confirming the recovery key starts first-run weekly maintenance. It is a
+  # deliberately blocking modal, so wait for its verified completion before
+  # the UI pairing test tries to open Settings.
+  for _ in $(seq 1 60); do
+    dump_ui
+    if [ -n "$(find_ui_node text "Database maintenance complete" exact)" ]; then
+      tap_ui text "Continue"
+      wait_for_ui_text_gone "Database maintenance complete" 20
+      return 0
+    fi
+    if [ -n "$(find_ui_node text "Database maintenance needs attention" exact)" ]; then
+      echo "Weekly database maintenance failed during Android smoke testing."
+      return 1
+    fi
+    sleep 1
+  done
+  echo "Weekly database maintenance did not complete."
+  return 1
+}
+
 PAIRING_CODE="$(tr -d '\r\n' < sync-e2e-pairing-code.txt)"
 if [[ "$PAIRING_CODE" != BALSYNC1:* ]]; then
   echo "The camera fixture did not contain a Balance pairing code."
@@ -528,6 +549,7 @@ fi
 
 echo "[ui-sync] enabling the source installation with the camera fixture key"
 dismiss_recovery_key_setup
+dismiss_weekly_database_maintenance
 tap_ui text "Settings"
 type_into_ui_after_text "Pair with another device" "$PAIRING_CODE"
 # The emulator injects text through its hardware input path, so no soft keyboard
