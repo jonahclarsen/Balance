@@ -175,6 +175,20 @@ test('Cmd or Ctrl+F searches the current document instead of opening overall sea
   await expect(find).toHaveCount(0)
 })
 
+test('Cmd or Ctrl+F focuses goal search on the Goals page', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+
+  const goalSearch = page.locator('.goal-search-input')
+  await expect(goalSearch).toHaveAttribute('placeholder', /Search goals… \((?:⌘F|Ctrl\+F)\)/)
+  await page.getByLabel('New goal name').focus()
+  await page.keyboard.press('Meta+f')
+
+  await expect(goalSearch).toBeFocused()
+  await expect(page.getByRole('search', { name: 'Find in current document' })).toHaveCount(0)
+  await expect(page.getByRole('dialog', { name: 'Search Balance' })).toHaveCount(0)
+})
+
 test('daily reminder edits the selected day and future days inherit it', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

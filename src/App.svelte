@@ -236,6 +236,7 @@ return rows`
   let newGoalLightness = 50
   let goalFormStatus = ''
   let goalSearch = ''
+  let goalSearchInput: HTMLInputElement | null = null
   let highlightedGoalCardId: Id | null = null
 
   $: templates = $plannerStore.templates
@@ -1778,6 +1779,11 @@ return rows`
     if (primaryModifier && !event.altKey && !event.shiftKey && key === 'f') {
       event.preventDefault()
       searchOpen = false
+      if (view === 'goals') {
+        documentFindOpen = false
+        goalSearchInput?.focus()
+        return
+      }
       documentFindOpen = true
       void tick().then(() => documentFindBar?.focus())
       return
@@ -3675,7 +3681,8 @@ return rows`
           class="goal-search-input"
           type="search"
           aria-label="Search goals"
-          placeholder="Search goals…"
+          placeholder={`Search goals… (${isMac ? '⌘F' : 'Ctrl+F'})`}
+          bind:this={goalSearchInput}
           bind:value={goalSearch}
         />
       </header>

@@ -29,7 +29,7 @@
       title: 'General',
       shortcuts: [
         { keys: ['mod', 'K'], label: 'Open / close search' },
-        { keys: ['mod', 'F'], label: 'Find in current document' },
+        { keys: ['mod', 'F'], label: 'Find in current document / search goals' },
         { keys: ['mod', 'Z'], label: 'Undo' },
         { keys: ['mod', 'shift', 'Z'], label: 'Redo', alt: ['mod', 'shift', 'C'] },
         { keys: ['mod', 'shift', 'P'], label: 'Open recovery panel' },
