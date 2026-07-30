@@ -631,6 +631,7 @@ sleep 8
 
 echo "[ui-sync] scanning the pairing QR through Android's emulated back camera"
 dismiss_recovery_key_setup
+dismiss_weekly_database_maintenance
 tap_ui_scrolling_up text "Settings"
 tap_ui_scrolling text "Scan QR code"
 for _ in $(seq 1 30); do

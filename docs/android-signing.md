@@ -6,13 +6,15 @@ installed version. For Google Play releases, this repository's key is normally
 the upload key; Play App Signing keeps a separate app-signing key and signs the
 APKs delivered to users.
 
-The Android workflow produces two kinds of artifact:
+The Android workflow produces two artifacts:
 
-- `Balance-android-debug` is signed with CI's disposable debug key and is only
-  used by the emulator smoke test.
-- `Balance-android-release` contains a signed APK for direct installation, a
-  signed AAB for Google Play, and the signing certificate fingerprint reported
-  by `apksigner`.
+- `Balance-android-debug` is an x86_64 APK signed with CI's disposable debug key
+  and is only used by the emulator smoke test.
+- `Balance-android-arm64` contains the signed arm64 APK for direct installation
+  on the target Samsung phone, its native-library inventory, and the signing
+  certificate fingerprint reported by `apksigner`. Successful runs retain these
+  as workflow artifacts; they do not create a GitHub Release or a generated Git
+  tag.
 
 For tag builds, the release version and Android version code come from the
 `v<major>.<minor>.<patch>` tag. A manual workflow run uses the version in

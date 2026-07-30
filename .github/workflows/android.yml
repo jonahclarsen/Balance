@@ -124,8 +124,8 @@ jobs:
         # `tauri icon`) so the APK uses the real app icon.
         run: cp -R src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
 
-      - name: Build universal debug APK (arm64 + x86_64)
-        run: pnpm tauri android build --apk --debug --target aarch64 --target x86_64
+      - name: Build x86_64 debug APK for the emulator
+        run: pnpm tauri android build --apk --debug --target x86_64
 
       - name: Locate and verify APK
         id: apk
@@ -134,11 +134,15 @@ jobs:
           test -n "$APK_PATH"
           echo "Found APK at $APK_PATH"
           file "$APK_PATH"
-          # The APK must bundle the Rust native library for both ABIs, otherwise
-          # the app cannot start on a device or the emulator.
+          # This APK only runs in CI's x86_64 emulator. The separately signed
+          # release APK below targets the arm64 Samsung device.
           unzip -l "$APK_PATH" | tee apk-contents.txt
-          grep -q "lib/arm64-v8a/libbalance_lib.so" apk-contents.txt
           grep -q "lib/x86_64/libbalance_lib.so" apk-contents.txt
+          grep -q "lib/x86_64/libcrsqlite.so" apk-contents.txt
+          if grep -q "lib/arm64-v8a/" apk-contents.txt; then
+            echo "::error::The emulator APK unexpectedly contains arm64 libraries"
+            exit 1
+          fi
           cp "$APK_PATH" balance-debug.apk
           echo "path=balance-debug.apk" >> "$GITHUB_OUTPUT"
 
@@ -175,7 +179,7 @@ jobs:
 
           node .github/scripts/configure-android-signing.mjs
 
-      - name: Build signed release APK and AAB (arm64 + x86_64)
+      - name: Build signed arm64 release APK
         run: |
           VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
@@ -188,36 +192,36 @@ jobs:
           echo "Building Android release version $VERSION"
           pnpm tauri android build \
             --config "{\"version\":\"$VERSION\"}" \
-            --apk --aab --target aarch64 --target x86_64
+            --apk --target aarch64
 
       - name: Locate and verify signed release
         run: |
           set -o pipefail
           APK_PATH="$(find src-tauri/gen/android -name '*.apk' -path '*release*' | head -n 1)"
-          AAB_PATH="$(find src-tauri/gen/android -name '*.aab' -path '*release*' | head -n 1)"
           APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -n "$APK_PATH"
-          test -n "$AAB_PATH"
           test -x "$APKSIGNER"
 
           echo "Found APK at $APK_PATH"
-          echo "Found AAB at $AAB_PATH"
           "$APKSIGNER" verify --verbose --print-certs "$APK_PATH" | tee android-release-signature.txt
-          jarsigner -verify "$AAB_PATH" | tee android-aab-verification.txt
-          grep -q "jar verified" android-aab-verification.txt
+          unzip -l "$APK_PATH" | tee android-release-contents.txt
+          grep -q "lib/arm64-v8a/libbalance_lib.so" android-release-contents.txt
+          grep -q "lib/arm64-v8a/libcrsqlite.so" android-release-contents.txt
+          if grep -q "lib/x86_64/" android-release-contents.txt; then
+            echo "::error::The phone APK unexpectedly contains x86_64 libraries"
+            exit 1
+          fi
 
-          cp "$APK_PATH" balance-release.apk
-          cp "$AAB_PATH" balance-release.aab
+          cp "$APK_PATH" balance-arm64.apk
 
       - name: Upload signed release artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: Balance-android-release
+          name: Balance-android-arm64
           path: |
-            balance-release.apk
-            balance-release.aab
+            balance-arm64.apk
             android-release-signature.txt
-            android-aab-verification.txt
+            android-release-contents.txt
           if-no-files-found: error
 
   smoke-test:
@@ -277,52 +281,3 @@ jobs:
             sync-e2e-*.xml
             sync-e2e-*.png
           if-no-files-found: ignore
-
-  release:
-    name: Publish GitHub Release
-    needs:
-      - build
-      - smoke-test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
-    steps:
-      - name: Download signed release artifacts
-        uses: actions/download-artifact@v7
-        with:
-          name: Balance-android-release
-
-      - name: Publish GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # A run attempt is immutable, so every successful build gets its own
-          # release without overwriting one from an earlier run or rerun. Keep
-          # the generated tag outside the workflow's v*.*.* trigger to avoid a
-          # release tag recursively starting another Android build.
-          RELEASE_TAG="android-build-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
-          RELEASE_TITLE="Balance Android build #${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
-          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          COMMIT_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
-
-          {
-            echo "Automated Android release built from [${GITHUB_SHA:0:7}](${COMMIT_URL})."
-            echo
-            echo "Source ref: \`${GITHUB_REF_NAME}\`"
-            echo
-            echo "The signed universal APK and Play Store AAB passed signing verification and the Android pairing/sync emulator test."
-            echo
-            echo "[GitHub Actions run](${RUN_URL})"
-          } > "$RUNNER_TEMP/release-notes.md"
-
-          gh release create "$RELEASE_TAG" \
-            balance-release.apk \
-            balance-release.aab \
-            android-release-signature.txt \
-            android-aab-verification.txt \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "$RELEASE_TITLE" \
-            --notes-file "$RUNNER_TEMP/release-notes.md" \
-            --latest
