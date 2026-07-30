@@ -10032,6 +10032,232 @@ mod tests {
         }
     }
 
+    /// Opt-in profile for the complete native undo path. This deliberately uses a
+    /// disk-backed encrypted database and a few thousand historical plan items so
+    /// it measures the same open -> persist -> open -> undo -> full-state-read work
+    /// performed by the Tauri commands, without touching the user's real database.
+    ///
+    /// Run with:
+    ///   pnpm test:undo-performance
+    #[test]
+    #[ignore = "performance profile; run explicitly with --ignored --nocapture"]
+    fn undo_performance_profile() {
+        let plan_count = undo_performance_size("BALANCE_UNDO_PERF_PLANS", 180);
+        let items_per_plan = undo_performance_size("BALANCE_UNDO_PERF_ITEMS_PER_PLAN", 25);
+        let goal_count = undo_performance_size("BALANCE_UNDO_PERF_GOALS", 80);
+        let target_plan_index = plan_count - 1;
+        let target_item_index = items_per_plan - 1;
+        let original_target_text = format!("Plan {target_plan_index} item {target_item_index}");
+
+        let database = TestDatabase::new("undo-performance");
+        let recovery_key = generate_recovery_key();
+        let state = undo_performance_state(plan_count, items_per_plan, goal_count);
+
+        let setup_started = std::time::Instant::now();
+        {
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            replace_app_state(&mut connection, &state).unwrap();
+        }
+        let setup_ms = setup_started.elapsed().as_secs_f64() * 1_000.0;
+
+        let read_open_started = std::time::Instant::now();
+        let read_connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let read_open_ms = read_open_started.elapsed().as_secs_f64() * 1_000.0;
+        let read_started = std::time::Instant::now();
+        let loaded = read_app_state_from_database(&read_connection)
+            .unwrap()
+            .unwrap();
+        let read_ms = read_started.elapsed().as_secs_f64() * 1_000.0;
+        let state_bytes = loaded.to_string().len();
+        drop(read_connection);
+
+        let plan_operation = json!({
+            "id": "op_device_perf_2",
+            "deviceId": "device_perf",
+            "sequence": 2,
+            "type": "patch_plan_item",
+            "timestamp": "2026-07-30T12:00:00Z",
+            "payload": {
+                "planId": format!("plan_{target_plan_index}"),
+                "itemId": format!("plan_{target_plan_index}_item_{target_item_index}"),
+                "patch": {
+                    "text": "Linked task",
+                    "html": "<a href=\"https://example.com\" target=\"_blank\" rel=\"noreferrer\">Linked task</a>"
+                }
+            }
+        });
+        let plan_profile =
+            profile_native_undo(&database.path, &recovery_key, &plan_operation, |undone| {
+                assert_eq!(
+                    undone["plans"][0]["items"][target_item_index]["text"],
+                    original_target_text
+                );
+            });
+
+        let mut changed_goal_data = json!({
+            "goals": loaded["goals"].clone(),
+            "goalCompletions": loaded["goalCompletions"].clone(),
+        });
+        changed_goal_data["goals"][0]["name"] = json!("Linked goal");
+        changed_goal_data["goals"][0]["nameHtml"] = json!(
+            "<a href=\"https://example.com\" target=\"_blank\" rel=\"noreferrer\">Linked goal</a>"
+        );
+        let goal_operation = json!({
+            "id": "op_device_perf_4",
+            "deviceId": "device_perf",
+            "sequence": 4,
+            "type": "replace_goal_data",
+            "timestamp": "2026-07-30T12:01:00Z",
+            "payload": {
+                "action": "patch_goal",
+                "goalId": "goal_0",
+                "goalData": changed_goal_data
+            }
+        });
+        let goal_profile =
+            profile_native_undo(&database.path, &recovery_key, &goal_operation, |undone| {
+                assert_eq!(undone["goals"][0]["name"], "Goal 0");
+            });
+
+        let database_bytes = fs::metadata(&database.path).unwrap().len();
+        eprintln!(
+            "UNDO_PERF backend {}",
+            json!({
+                "plans": plan_count,
+                "items": plan_count * items_per_plan,
+                "goals": goal_count,
+                "stateBytes": state_bytes,
+                "databaseBytes": database_bytes,
+                "setupMs": setup_ms,
+                "baselineOpenMs": read_open_ms,
+                "baselineFullStateReadMs": read_ms,
+                "planText": plan_profile,
+                "goalTitle": goal_profile,
+            })
+        );
+    }
+
+    fn undo_performance_size(variable: &str, default: usize) -> usize {
+        std::env::var(variable)
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(default)
+    }
+
+    fn profile_native_undo(
+        database_path: &Path,
+        recovery_key: &str,
+        operation: &Value,
+        assert_undone: impl FnOnce(&Value),
+    ) -> Value {
+        let persist_open_started = std::time::Instant::now();
+        let mut persist_connection = open_database_at(database_path, recovery_key).unwrap();
+        let persist_open_ms = persist_open_started.elapsed().as_secs_f64() * 1_000.0;
+        let persist_started = std::time::Instant::now();
+        persist_operation_to_database(&mut persist_connection, operation).unwrap();
+        let persist_ms = persist_started.elapsed().as_secs_f64() * 1_000.0;
+        drop(persist_connection);
+
+        let undo_open_started = std::time::Instant::now();
+        let mut undo_connection = open_database_at(database_path, recovery_key).unwrap();
+        let undo_open_ms = undo_open_started.elapsed().as_secs_f64() * 1_000.0;
+        let undo_started = std::time::Instant::now();
+        let undone = undo_last_operation_in_database(&mut undo_connection)
+            .unwrap()
+            .unwrap();
+        let undo_ms = undo_started.elapsed().as_secs_f64() * 1_000.0;
+        assert_undone(&undone);
+
+        json!({
+            "persistOpenMs": persist_open_ms,
+            "persistMs": persist_ms,
+            "undoOpenMs": undo_open_ms,
+            "undoAndFullStateReadMs": undo_ms,
+        })
+    }
+
+    fn undo_performance_state(
+        plan_count: usize,
+        items_per_plan: usize,
+        goal_count: usize,
+    ) -> Value {
+        let plans = (0..plan_count)
+            .map(|plan_index| {
+                let date = undo_performance_date(plan_index);
+                let items = (0..items_per_plan)
+                    .map(|item_index| {
+                        let text = format!("Plan {plan_index} item {item_index}");
+                        json!({
+                            "id": format!("plan_{plan_index}_item_{item_index}"),
+                            "text": text,
+                            "html": text,
+                            "done": item_index % 3 == 0,
+                            "startMinutes": null,
+                            "endMinutes": null,
+                            "children": []
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                json!({
+                    "id": format!("plan_{plan_index}"),
+                    "date": date,
+                    "title": format!("Plan {plan_index}"),
+                    "dailyReminder": "",
+                    "generatedFromTemplateId": null,
+                    "createdAt": "2026-01-01T00:00:00Z",
+                    "items": items
+                })
+            })
+            .collect::<Vec<_>>();
+        let goals = (0..goal_count)
+            .map(|goal_index| {
+                json!({
+                    "id": format!("goal_{goal_index}"),
+                    "name": format!("Goal {goal_index}"),
+                    "nameHtml": format!("Goal {goal_index}"),
+                    "cadenceDays": 3,
+                    "matchTerms": [format!("term-{goal_index}")],
+                    "matchTermsHtml": format!("term-{goal_index}"),
+                    "hue": goal_index * 360 / goal_count,
+                    "lightness": 50,
+                    "activityPeriods": [{
+                        "startDate": "2026-01-01",
+                        "endDate": null
+                    }],
+                    "createdAt": "2026-01-01T00:00:00Z",
+                    "updatedAt": "2026-01-01T00:00:00Z"
+                })
+            })
+            .collect::<Vec<_>>();
+
+        json!({
+            "schemaVersion": 1,
+            "deviceId": "device_perf",
+            "localSequence": 1,
+            "historyRevision": 0,
+            "activePlanDate": "2026-06-12",
+            "templates": [],
+            "plans": plans,
+            "listTemplates": [],
+            "lists": [],
+            "metrics": [],
+            "metricEntries": [],
+            "goals": goals,
+            "goalCompletions": [],
+            "operations": []
+        })
+    }
+
+    fn undo_performance_date(index: usize) -> String {
+        const DAYS_PER_TEST_YEAR: usize = 12 * 28;
+        let year = 2020 + index / DAYS_PER_TEST_YEAR;
+        let day_of_year = index % DAYS_PER_TEST_YEAR;
+        let month = day_of_year / 28 + 1;
+        let day = day_of_year % 28 + 1;
+        format!("{year}-{month:02}-{day:02}")
+    }
+
     /// Reproduces the reported data loss: pasting onto an empty-titled parent that still
     /// has children sends `placement: "replace"`, which deletes the parent and cascade-deletes
     /// its children. Verifies the recovery panel can find and fully restore the subtree.

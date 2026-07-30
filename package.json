@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "test:undo-performance": "cargo test --manifest-path src-tauri/Cargo.toml tests::undo_performance_profile -- --exact --ignored --nocapture && playwright test --config playwright.undo-performance.config.ts",
     "test:visual": "playwright test"
   },
   "devDependencies": {
