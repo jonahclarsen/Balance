@@ -72,6 +72,28 @@ jobs:
             echo "::error::Invalid Linux release version: $VERSION"
             exit 1
           fi
+          # Tauri's CLI config override controls bundle filenames, while its
+          # generated Debian metadata can read the physical config and Rust
+          # package version during compilation. Keep all version sources in
+          # sync for tag builds without requiring a source version bump commit.
+          node - "$VERSION" <<'NODE'
+          const fs = require('node:fs')
+          const version = process.argv[2]
+          const cargoPath = 'src-tauri/Cargo.toml'
+          const cargoInput = fs.readFileSync(cargoPath, 'utf8')
+          if (!/^version = "[^"]+"$/m.test(cargoInput)) {
+            throw new Error('Could not find the Rust package version')
+          }
+          const cargoOutput = cargoInput.replace(/^version = "[^"]+"$/m, `version = "${version}"`)
+          fs.writeFileSync(cargoPath, cargoOutput)
+
+          const tauriPath = 'src-tauri/tauri.conf.json'
+          const tauriConfig = JSON.parse(fs.readFileSync(tauriPath, 'utf8'))
+          tauriConfig.version = version
+          fs.writeFileSync(tauriPath, `${JSON.stringify(tauriConfig, null, 2)}\n`)
+          NODE
+          grep -q "^version = \"$VERSION\"$" src-tauri/Cargo.toml
+          test "$(node -p "require('./src-tauri/tauri.conf.json').version")" = "$VERSION"
           echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Build Linux packages
@@ -83,8 +105,8 @@ jobs:
       - name: Verify packages and bundled cr-sqlite
         id: packages
         run: |
-          APPIMAGE="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name '*.AppImage' -print -quit)"
-          DEB="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name '*.deb' -print -quit)"
+          APPIMAGE="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name "*_${APP_VERSION}_*.AppImage" -print -quit)"
+          DEB="$(find src-tauri/target/release/bundle/deb -maxdepth 1 -name "*_${APP_VERSION}_*.deb" -print -quit)"
 
           test -n "$APPIMAGE"
           test -n "$DEB"
@@ -98,7 +120,15 @@ jobs:
 
           dpkg-deb --contents "$DEB" | tee deb-contents.txt
           grep -q 'crsqlite.so' deb-contents.txt
-          test "$(dpkg-deb --field "$DEB" Version)" = "$APP_VERSION"
+          DEB_VERSION="$(dpkg-deb --field "$DEB" Version)"
+          echo "Debian package version: $DEB_VERSION"
+          # Debian permits a packaging revision suffix (for example
+          # 0.2.2-1). The upstream application version before that suffix must
+          # still match the version tag.
+          if [[ "$DEB_VERSION" != "$APP_VERSION" && "$DEB_VERSION" != "$APP_VERSION-"* ]]; then
+            echo "::error::Expected Debian version $APP_VERSION, got $DEB_VERSION"
+            exit 1
+          fi
 
           cp "$APPIMAGE" Balance-linux-x86_64.AppImage
           cp "$DEB" Balance-linux-x86_64.deb
