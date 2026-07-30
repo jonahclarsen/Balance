@@ -1,0 +1,115 @@
+name: Publish version release
+
+on:
+  workflow_run:
+    workflows:
+      - Build Android
+      - Build Linux app
+      - Build macOS arm64 app
+    types:
+      - completed
+
+concurrency:
+  group: version-release-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    name: Publish coordinated GitHub Release
+    if: >-
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
+      RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
+
+    steps:
+      - name: Locate successful platform runs
+        id: runs
+        run: |
+          set -euo pipefail
+
+          find_run() {
+            local workflow="$1"
+            gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow "$workflow" \
+              --commit "$RELEASE_SHA" \
+              --event push \
+              --limit 20 \
+              --json databaseId,status,conclusion,headBranch,createdAt \
+              --jq \
+                "map(select(.headBranch == \"$RELEASE_TAG\")) | sort_by(.createdAt) | last | [.databaseId, .status, .conclusion] | @tsv"
+          }
+
+          ANDROID_RUN="$(find_run android.yml)"
+          MACOS_RUN="$(find_run macos-arm64.yml)"
+          LINUX_RUN="$(find_run linux.yml)"
+
+          for platform_run in "$ANDROID_RUN" "$MACOS_RUN" "$LINUX_RUN"; do
+            read -r run_id status conclusion <<< "$platform_run"
+            if [[ -z "$run_id" || "$status" != "completed" ]]; then
+              echo "All platform runs are not complete yet; a later workflow completion will retry publication."
+              exit 0
+            fi
+            if [[ "$conclusion" != "success" ]]; then
+              echo "::error::Required platform run $run_id concluded with $conclusion"
+              exit 1
+            fi
+          done
+
+          read -r android_run_id _ <<< "$ANDROID_RUN"
+          read -r macos_run_id _ <<< "$MACOS_RUN"
+          read -r linux_run_id _ <<< "$LINUX_RUN"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+          echo "android_run_id=$android_run_id" >> "$GITHUB_OUTPUT"
+          echo "macos_run_id=$macos_run_id" >> "$GITHUB_OUTPUT"
+          echo "linux_run_id=$linux_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Download verified platform artifacts
+        if: steps.runs.outputs.ready == 'true'
+        run: |
+          mkdir -p release-assets/android release-assets/macos release-assets/linux
+          gh run download "${{ steps.runs.outputs.android_run_id }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name Balance-android-arm64 \
+            --dir release-assets/android
+          gh run download "${{ steps.runs.outputs.macos_run_id }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name Balance-macos-arm64 \
+            --dir release-assets/macos
+          gh run download "${{ steps.runs.outputs.linux_run_id }}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name Balance-linux-x86_64 \
+            --dir release-assets/linux
+
+          test -f release-assets/android/balance-arm64.apk
+          test -f release-assets/macos/Balance-macos-arm64.app.zip
+          test -f release-assets/linux/Balance-linux-x86_64.AppImage
+          test -f release-assets/linux/Balance-linux-x86_64.deb
+
+      - name: Create or update GitHub Release
+        if: steps.runs.outputs.ready == 'true'
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Balance $RELEASE_TAG" \
+              --generate-notes
+          fi
+
+          gh release upload "$RELEASE_TAG" \
+            release-assets/android/balance-arm64.apk \
+            release-assets/macos/Balance-macos-arm64.app.zip \
+            release-assets/linux/Balance-linux-x86_64.AppImage \
+            release-assets/linux/Balance-linux-x86_64.deb \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber

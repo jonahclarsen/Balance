@@ -12,9 +12,12 @@ The Android workflow produces two artifacts:
   and is only used by the emulator smoke test.
 - `Balance-android-arm64` contains the signed arm64 APK for direct installation
   on the target Samsung phone, its native-library inventory, and the signing
-  certificate fingerprint reported by `apksigner`. Successful runs retain these
-  as workflow artifacts; they do not create a GitHub Release or a generated Git
-  tag.
+  certificate fingerprint reported by `apksigner`.
+
+Successful version-tag builds retain these as workflow artifacts and the release
+coordinator attaches the signed arm64 APK to the matching GitHub Release. It
+publishes against the existing `v<major>.<minor>.<patch>` tag and never creates
+a generated build tag.
 
 For tag builds, the release version and Android version code come from the
 `v<major>.<minor>.<patch>` tag. A manual workflow run uses the version in

@@ -62,8 +62,23 @@ jobs:
         # Produces the runtime-loaded resource required by tauri.linux.conf.json.
         run: bash scripts/build-crsqlite.sh desktop
 
+      - name: Resolve app version
+        run: |
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid Linux release version: $VERSION"
+            exit 1
+          fi
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+
       - name: Build Linux packages
-        run: pnpm tauri build --bundles appimage,deb
+        run: |
+          pnpm tauri build \
+            --config "{\"version\":\"$APP_VERSION\"}" \
+            --bundles appimage,deb
 
       - name: Verify packages and bundled cr-sqlite
         id: packages
@@ -83,6 +98,7 @@ jobs:
 
           dpkg-deb --contents "$DEB" | tee deb-contents.txt
           grep -q 'crsqlite.so' deb-contents.txt
+          test "$(dpkg-deb --field "$DEB" Version)" = "$APP_VERSION"
 
           cp "$APPIMAGE" Balance-linux-x86_64.AppImage
           cp "$DEB" Balance-linux-x86_64.deb

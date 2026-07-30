@@ -44,17 +44,35 @@ jobs:
         # doesn't exist". Loaded at runtime via load_extension.
         run: bash scripts/build-crsqlite.sh desktop
 
+      - name: Resolve app version
+        run: |
+          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid macOS release version: $VERSION"
+            exit 1
+          fi
+          echo "APP_VERSION=$VERSION" >> "$GITHUB_ENV"
+
       - name: Build macOS arm64 app
-        run: pnpm tauri build --target aarch64-apple-darwin --bundles app
+        run: |
+          pnpm tauri build \
+            --config "{\"version\":\"$APP_VERSION\"}" \
+            --target aarch64-apple-darwin \
+            --bundles app
 
       - name: Verify and package app
         run: |
           APP_PATH="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Balance.app"
           APP_EXECUTABLE="$APP_PATH/Contents/MacOS/Balance"
+          PLIST="$APP_PATH/Contents/Info.plist"
 
           test -d "$APP_PATH"
           file "$APP_EXECUTABLE" | tee executable-architecture.txt
           file "$APP_EXECUTABLE" | grep -q "arm64"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")" = "$APP_VERSION"
           ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Balance-macos-arm64.app.zip
 
       - name: Upload app artifact
