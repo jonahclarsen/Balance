@@ -93,6 +93,92 @@ test('goal matching terms preserve rich text and turn a pasted URL into a link',
   await expect(page.getByRole('textbox', { name: 'Matching terms for Exercise' }).getByRole('link', { name: 'lift' })).toBeVisible()
 })
 
+test('a goal stays in place while its matching terms are being edited', async ({ page }) => {
+  const currentDate = todayISO()
+  const timestamp = new Date().toISOString()
+
+  await page.evaluate(
+    ({ currentDate, timestamp }) => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      state.plans = [
+        {
+          id: 'plan_today',
+          date: currentDate,
+          title: 'Today',
+          dailyReminder: '',
+          generatedFromTemplateId: null,
+          createdAt: timestamp,
+          items: [
+            {
+              id: 'item_alpha',
+              text: 'alpha',
+              html: 'alpha',
+              done: true,
+              startMinutes: null,
+              endMinutes: null,
+              children: [],
+            },
+          ],
+        },
+      ]
+      state.goals = [
+        {
+          id: 'goal_edit',
+          name: 'Edit me',
+          nameHtml: 'Edit me',
+          cadenceDays: 3,
+          matchTerms: ['alpha'],
+          matchTermsHtml: 'alpha',
+          hue: 180,
+          lightness: 50,
+          activityPeriods: [{ startDate: currentDate, endDate: null }],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        {
+          id: 'goal_other',
+          name: 'Other goal',
+          nameHtml: 'Other goal',
+          cadenceDays: 3,
+          matchTerms: ['other'],
+          matchTermsHtml: 'other',
+          hue: 240,
+          lightness: 50,
+          activityPeriods: [{ startDate: currentDate, endDate: null }],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ]
+      state.goalCompletions = [
+        {
+          goalId: 'goal_edit',
+          date: currentDate,
+          itemIds: ['item_alpha'],
+          matchedTerms: ['alpha'],
+          computedAt: timestamp,
+        },
+      ]
+      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    },
+    { currentDate, timestamp },
+  )
+  await page.reload()
+  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+
+  const cards = page.locator('.goal-card')
+  const goalCardOrder = () => cards.evaluateAll((elements) => elements.map((element) => element.dataset.goalId))
+  await expect.poll(goalCardOrder).toEqual(['goal_other', 'goal_edit'])
+
+  const editor = page.getByRole('textbox', { name: 'Matching terms for Edit me' })
+  await editor.fill('beta')
+
+  await expect(editor).toBeFocused()
+  await expect.poll(goalCardOrder).toEqual(['goal_other', 'goal_edit'])
+
+  await editor.press('Tab')
+  await expect.poll(goalCardOrder).toEqual(['goal_edit', 'goal_other'])
+})
+
 test('goal names preserve rich text and turn a pasted URL into a link', async ({ page }) => {
   await createGoal(page, 'Exercise daily', 3, 'lift, swim')
 

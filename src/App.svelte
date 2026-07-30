@@ -249,6 +249,7 @@ return rows`
   let goalSearch = ''
   let goalSearchInput: HTMLInputElement | null = null
   let highlightedGoalCardId: Id | null = null
+  let lockedGoalOrder: Id[] | null = null
 
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
@@ -312,7 +313,8 @@ return rows`
   $: selectedItemIdSet = new Set(selectedItemIds)
   $: activeGoalCount = $plannerStore.goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
   $: sortedGoals = sortGoalsByUrgency($plannerStore.goals, $plannerStore.goalCompletions, todayISO())
-  $: filteredGoals = filterGoalsByPhrase(sortedGoals, goalSearch)
+  $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
+  $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
   $: doneTintHex = doneTintColor || DEFAULT_DONE_TINT
   $: checkboxColorHex = checkboxColor || DEFAULT_CHECKBOX_COLOR
   $: doneTintPickerColor = hexToPickerColor(doneTintHex)
@@ -1077,6 +1079,17 @@ return rows`
     // Bump a nonce so repeated clicks on the same goal badge re-trigger the
     // scroll/highlight in the rhythm panel even when the id is unchanged.
     goalRhythmScrollRequest = { goalId, nonce: (goalRhythmScrollRequest?.nonce ?? 0) + 1 }
+  }
+
+  function applyGoalOrder(goals: Goal[], order: Id[]): Goal[] {
+    const positions = new Map(order.map((goalId, index) => [goalId, index]))
+    return [...goals].sort(
+      (left, right) => (positions.get(left.id) ?? Number.POSITIVE_INFINITY) - (positions.get(right.id) ?? Number.POSITIVE_INFINITY),
+    )
+  }
+
+  function setGoalMatchTermsFocus(focused: boolean) {
+    lockedGoalOrder = focused ? sortedGoals.map((goal) => goal.id) : null
   }
 
   async function openGoals(goalId?: Id) {
@@ -3967,6 +3980,7 @@ return rows`
                     text={goal.matchTerms.join(', ')}
                     ariaLabel={`Matching terms for ${goal.name}`}
                     revision={$plannerStore.historyRevision}
+                    onFocusChange={setGoalMatchTermsFocus}
                     onChange={(html, text) => plannerStore.patchGoal(goal.id, {
                       matchTerms: parseMatchTerms(text),
                       matchTermsHtml: html,
