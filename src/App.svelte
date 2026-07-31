@@ -52,16 +52,8 @@
     exportDirectory: string
     defaultExportDirectory: string
     usesDefaultExportDirectory: boolean
-    autoJsonExportEnabled: boolean
-    autoJsonExportTime: string
-    lastAutoJsonExportDate: string | null
-    lastAutoJsonExportPath: string | null
-    lastAutoJsonExportError: string | null
-    lastAutoJsonExportErrorAt: string | null
-    autoJsonExportErrorAckAt: string | null
   }
 
-  const AUTO_JSON_EXPORT_CHECK_INTERVAL_MS = 15 * 60 * 1000
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DONE_TINT_KEY = 'balance:doneTintColor'
@@ -171,9 +163,6 @@ return rows`
   let exportSettingsStatus = ''
   let exportSettingsStatusIsError = false
   let exportSettingsBusy = false
-  let autoJsonExportBusy = false
-  let autoJsonExportTimer: number | null = null
-  let autoJsonExportCheckTimer: number | null = null
   let recoveryPanelOpen = false
   let recoveryEntries: RecoveryEntry[] = []
   let recoveryBusy = false
@@ -372,12 +361,6 @@ return rows`
   ]
     .filter(Boolean)
     .join('; ')
-  $: showAutoExportError = Boolean(
-    !isMobile &&
-      exportSettings?.lastAutoJsonExportError &&
-      exportSettings.lastAutoJsonExportErrorAt &&
-      exportSettings.lastAutoJsonExportErrorAt !== exportSettings.autoJsonExportErrorAckAt,
-  )
   // Derived rather than computed on demand so that switching surfaces — including
   // switching between the two side-by-side days — retriggers the guard below.
   $: activeItemContext =
@@ -991,14 +974,6 @@ return rows`
     const storedCheckboxColor = normalizeHexColor(localStorage.getItem(CHECKBOX_COLOR_KEY) ?? '')
     if (storedCheckboxColor) checkboxColor = storedCheckboxColor
 
-    const checkAutoJsonExport = () => {
-      if (!mounted) return
-      void runAutoJsonExportCatchup()
-    }
-    const checkVisibleAutoJsonExport = () => {
-      if (document.visibilityState === 'visible') checkAutoJsonExport()
-    }
-
     async function initialize() {
       recoveryKeyStatus = await getRecoveryKeyStatus()
       await plannerStore.ready
@@ -1054,9 +1029,6 @@ return rows`
         await runLaunchDatabaseMaintenance()
       }
 
-      window.addEventListener('focus', checkAutoJsonExport)
-      document.addEventListener('visibilitychange', checkVisibleAutoJsonExport)
-      restartAutoJsonExportScheduler()
     }
 
     void initialize()
@@ -1064,11 +1036,8 @@ return rows`
     return () => {
       rememberWorkspaceScroll()
       mounted = false
-      clearAutoJsonExportTimers()
       clearGoalRhythmAutoShowTimer()
       dismissCelebration()
-      window.removeEventListener('focus', checkAutoJsonExport)
-      document.removeEventListener('visibilitychange', checkVisibleAutoJsonExport)
     }
   })
 
@@ -1693,7 +1662,6 @@ return rows`
       if (typeof selected === 'string') {
         exportSettings = await invoke<ExportSettings>('set_export_directory', { directory: selected })
         exportSettingsStatus = `Exports save to ${exportSettings.exportDirectory}`
-        restartAutoJsonExportScheduler()
       }
     } catch (error) {
       exportSettingsStatusIsError = true
@@ -1713,149 +1681,12 @@ return rows`
     try {
       exportSettings = await invoke<ExportSettings>('reset_export_directory')
       exportSettingsStatus = `Exports save to ${exportSettings.exportDirectory}`
-      restartAutoJsonExportScheduler()
     } catch (error) {
       exportSettingsStatusIsError = true
       exportSettingsStatus = error instanceof Error ? error.message : String(error)
     } finally {
       exportSettingsBusy = false
     }
-  }
-
-  async function updateAutoJsonExportSettings(enabled: boolean, time: string) {
-    if (!isTauri()) return
-
-    exportSettingsStatus = ''
-    exportSettingsStatusIsError = false
-    autoJsonExportBusy = true
-
-    try {
-      exportSettings = await invoke<ExportSettings>('set_auto_json_export_settings', { enabled, time })
-      exportSettingsStatus = exportSettings.autoJsonExportEnabled
-        ? `Automatic JSON export runs at ${exportSettings.autoJsonExportTime}.`
-        : 'Automatic JSON export is disabled.'
-      restartAutoJsonExportScheduler()
-    } catch (error) {
-      exportSettingsStatusIsError = true
-      exportSettingsStatus = error instanceof Error ? error.message : String(error)
-    } finally {
-      autoJsonExportBusy = false
-    }
-  }
-
-  function clearAutoJsonExportTimers() {
-    if (autoJsonExportTimer !== null) {
-      window.clearTimeout(autoJsonExportTimer)
-      autoJsonExportTimer = null
-    }
-
-    if (autoJsonExportCheckTimer !== null) {
-      window.clearInterval(autoJsonExportCheckTimer)
-      autoJsonExportCheckTimer = null
-    }
-  }
-
-  function restartAutoJsonExportScheduler() {
-    clearAutoJsonExportTimers()
-
-    if (isMobile || !isTauri() || !exportSettings?.autoJsonExportEnabled) return
-
-    void runAutoJsonExportCatchup()
-    scheduleNextAutoJsonExport()
-    autoJsonExportCheckTimer = window.setInterval(() => {
-      void runAutoJsonExportCatchup()
-    }, AUTO_JSON_EXPORT_CHECK_INTERVAL_MS)
-  }
-
-  function scheduleNextAutoJsonExport() {
-    if (!exportSettings?.autoJsonExportEnabled) return
-
-    if (autoJsonExportTimer !== null) window.clearTimeout(autoJsonExportTimer)
-
-    autoJsonExportTimer = window.setTimeout(() => {
-      void (async () => {
-        await runAutoJsonExportCatchup()
-        scheduleNextAutoJsonExport()
-      })()
-    }, millisecondsUntilNextAutoJsonExport(exportSettings))
-  }
-
-  async function runAutoJsonExportCatchup() {
-    if (
-      isMobile ||
-      !isTauri() ||
-      autoJsonExportBusy ||
-      !exportSettings ||
-      !shouldRunAutoJsonExport(exportSettings)
-    )
-      return
-
-    autoJsonExportBusy = true
-
-    try {
-      const date = todayISO()
-      const savedPath = await saveTauriExportFile(`balance-auto-export-${date}.json`, exportJSON($plannerStore))
-      exportSettings = await invoke<ExportSettings>('record_auto_json_export_success', { date, path: savedPath })
-      scheduleNextAutoJsonExport()
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-
-      try {
-        exportSettings = await invoke<ExportSettings>('record_auto_json_export_error', { error: message })
-      } catch {
-        exportSettings = {
-          ...exportSettings,
-          lastAutoJsonExportError: message,
-        }
-      }
-    } finally {
-      autoJsonExportBusy = false
-    }
-  }
-
-  function shouldRunAutoJsonExport(settings: ExportSettings): boolean {
-    // Export once per day. Previously this also required the current time to be past the
-    // configured time, so a day where the app wasn't open at that moment was skipped entirely
-    // (and never backfilled). Now any launch or periodic check on a not-yet-exported day runs
-    // the export, guaranteeing one daily backup whenever the app is opened. The configured time
-    // still drives scheduleNextAutoJsonExport for sessions that stay open across the boundary.
-    return settings.autoJsonExportEnabled && settings.lastAutoJsonExportDate !== todayISO()
-  }
-
-  async function dismissAutoExportError() {
-    try {
-      exportSettings = await invoke<ExportSettings>('acknowledge_auto_json_export_error')
-    } catch {
-      // If the ack write fails, hide it locally so we don't nag; a genuinely new failure
-      // (new error timestamp) will still resurface because it won't match this ack.
-      if (exportSettings) {
-        exportSettings = { ...exportSettings, autoJsonExportErrorAckAt: exportSettings.lastAutoJsonExportErrorAt }
-      }
-    }
-  }
-
-  function millisecondsUntilNextAutoJsonExport(settings: ExportSettings): number {
-    const scheduledMinutes = parseTimeMinutes(settings.autoJsonExportTime) ?? 23 * 60 + 55
-    const now = new Date()
-    const target = new Date(now)
-    target.setHours(Math.floor(scheduledMinutes / 60), scheduledMinutes % 60, 0, 0)
-
-    if (target.getTime() <= now.getTime() || settings.lastAutoJsonExportDate === todayISO()) {
-      target.setDate(target.getDate() + 1)
-    }
-
-    return Math.max(1_000, target.getTime() - now.getTime())
-  }
-
-  function parseTimeMinutes(time: string): number | null {
-    const match = /^(\d{2}):(\d{2})$/.exec(time)
-    if (!match) return null
-
-    const hour = Number(match[1])
-    const minute = Number(match[2])
-    if (hour > 23 || minute > 59) return null
-
-    return hour * 60 + minute
   }
 
   // When you add/remove/change a shortcut here, also update the user-facing
@@ -3411,28 +3242,14 @@ return rows`
   <DocumentFindBar bind:this={documentFindBar} onClose={() => (documentFindOpen = false)} />
 {/if}
 
-{#if showAutoExportError}
-  <div class="auto-export-banner" role="alert">
-    <span class="auto-export-banner-icon" aria-hidden="true">⚠</span>
-    <div class="auto-export-banner-text">
-      <strong>Auto-export failed</strong>
-      <span>{exportSettings?.lastAutoJsonExportError}</span>
-    </div>
-    <div class="auto-export-banner-actions">
-      <button type="button" class="ghost" on:click={() => { void openRecoveryPanel() }}>Details</button>
-      <button type="button" class="ghost" on:click={() => { void dismissAutoExportError() }}>Dismiss</button>
-    </div>
-  </div>
-{/if}
-
 {#if $persistenceError}
-  <div class="auto-export-banner persistence-error-banner" role="alert">
-    <span class="auto-export-banner-icon" aria-hidden="true">!</span>
-    <div class="auto-export-banner-text">
+  <div class="app-error-banner persistence-error-banner" role="alert">
+    <span class="app-error-banner-icon" aria-hidden="true">!</span>
+    <div class="app-error-banner-text">
       <strong>Database save failed</strong>
       <span>{$persistenceError}</span>
     </div>
-    <div class="auto-export-banner-actions">
+    <div class="app-error-banner-actions">
       <button type="button" class="ghost" on:click={() => { void openRecoveryPanel() }}>Inspect DB</button>
     </div>
   </div>
@@ -4321,7 +4138,8 @@ return rows`
             <h3>Recovery &amp; diagnostics</h3>
             {#if isTauri()}
               <p>
-                Balance automatically performs verified database maintenance once a week after launch.
+                Balance automatically performs verified database maintenance once a week after launch and keeps an
+                encrypted copy of the previous database on disk.
                 {databaseMaintenanceStatus?.checkpointCoordinator === false
                   ? ' This synced device vacuums only its local file; the original sync device creates shared checkpoints.'
                   : ' This device creates the shared checkpoint and vacuums its local file.'}
@@ -4411,54 +4229,6 @@ return rows`
             </div>
           {/if}
         </section>
-
-        {#if isTauri() && !isMobile}
-          <section class="settings-section">
-            <div>
-              <h3>Automatic JSON export</h3>
-              <p>
-                {exportSettings?.autoJsonExportEnabled
-                  ? `Runs once per day at ${exportSettings.autoJsonExportTime}.`
-                  : 'Automatic daily JSON export is off.'}
-              </p>
-            </div>
-
-            <label class="setting-toggle">
-              <input
-                type="checkbox"
-                checked={Boolean(exportSettings?.autoJsonExportEnabled)}
-                disabled={autoJsonExportBusy || !exportSettings}
-                on:change={(event) =>
-                  updateAutoJsonExportSettings(
-                    event.currentTarget.checked,
-                    exportSettings?.autoJsonExportTime ?? '23:55',
-                  )}
-              />
-              <span>Export JSON automatically every day</span>
-            </label>
-
-            <label class="time-setting">
-              <span>Daily export time</span>
-              <input
-                type="time"
-                value={exportSettings?.autoJsonExportTime ?? '23:55'}
-                disabled={autoJsonExportBusy || !exportSettings?.autoJsonExportEnabled}
-                on:change={(event) =>
-                  updateAutoJsonExportSettings(Boolean(exportSettings?.autoJsonExportEnabled), event.currentTarget.value)}
-              />
-            </label>
-
-            {#if exportSettings?.lastAutoJsonExportPath}
-              <p class="export-status">Last auto-export: {exportSettings.lastAutoJsonExportPath}</p>
-            {:else if exportSettings?.lastAutoJsonExportDate}
-              <p class="export-status">Last auto-export: {exportSettings.lastAutoJsonExportDate}</p>
-            {/if}
-
-            {#if exportSettings?.lastAutoJsonExportError}
-              <p class="export-status error">Last auto-export failed: {exportSettings.lastAutoJsonExportError}</p>
-            {/if}
-          </section>
-        {/if}
 
         {#if buildInfo}
           <section class="settings-section">
@@ -4747,6 +4517,7 @@ return rows`
           {formatDatabaseBytes(weeklyMaintenanceResult.afterBytes)}
           · {formatDatabaseBytes(weeklyMaintenanceResult.reclaimedBytes)} reclaimed
         </p>
+        <p class="database-path">Backup: {weeklyMaintenanceResult.backupPath}</p>
       {/if}
 
       <p class="recovery-copy">
@@ -4972,10 +4743,7 @@ return rows`
 
       <details class="metadata-section">
         <summary>Database metadata ({metadataEntries.length})</summary>
-        <p class="recovery-copy metadata-hint">
-          Session and export diagnostics. Watch <code>last_auto_json_export_error</code> and
-          <code>last_auto_json_export_date</code> to see whether auto-export is running.
-        </p>
+        <p class="recovery-copy metadata-hint">Session and database diagnostics.</p>
         <table class="metadata-table">
           <tbody>
             {#each metadataEntries as entry (entry.key)}

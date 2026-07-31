@@ -24,13 +24,6 @@ const KEYCHAIN_SERVICE: &str = "app.balance.local";
 const KEYCHAIN_ACCOUNT: &str = "database-recovery-key";
 const RECOVERY_KEY_CONFIRMED: &str = "recovery_key_confirmed";
 const EXPORT_DIRECTORY: &str = "export_directory";
-const AUTO_JSON_EXPORT_ENABLED: &str = "auto_json_export_enabled";
-const AUTO_JSON_EXPORT_TIME: &str = "auto_json_export_time";
-const AUTO_JSON_EXPORT_LAST_DATE: &str = "auto_json_export_last_date";
-const AUTO_JSON_EXPORT_LAST_PATH: &str = "auto_json_export_last_path";
-const AUTO_JSON_EXPORT_LAST_ERROR: &str = "auto_json_export_last_error";
-const AUTO_JSON_EXPORT_LAST_ERROR_AT: &str = "auto_json_export_last_error_at";
-const AUTO_JSON_EXPORT_ERROR_ACK_AT: &str = "auto_json_export_error_ack_at";
 const SYNC_PAIRING_CODE: &str = "sync_pairing_code";
 const SYNC_RELAY_URL: &str = "sync_relay_url";
 const SYNC_COMPACTION_COORDINATOR: &str = "sync_compaction_coordinator";
@@ -42,7 +35,6 @@ const GOAL_DATA: &str = "goal_data";
 // Lists + Metrics state is stored as a single JSON metadata blob (like GOAL_DATA)
 // rather than materialized into per-row tables.
 const LISTS_METRICS_DATA: &str = "lists_metrics_data";
-const DEFAULT_AUTO_JSON_EXPORT_TIME: &str = "23:55";
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 static DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
 #[cfg(target_os = "macos")]
@@ -162,16 +154,6 @@ struct ExportSettings {
     export_directory: String,
     default_export_directory: String,
     uses_default_export_directory: bool,
-    auto_json_export_enabled: bool,
-    auto_json_export_time: String,
-    last_auto_json_export_date: Option<String>,
-    last_auto_json_export_path: Option<String>,
-    last_auto_json_export_error: Option<String>,
-    // Timestamp the current error was recorded, and the timestamp the user last acknowledged.
-    // The UI surfaces the error only while these differ, so a dismissed error stays quiet until
-    // a genuinely new failure (new timestamp) occurs.
-    last_auto_json_export_error_at: Option<String>,
-    auto_json_export_error_ack_at: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -441,80 +423,6 @@ async fn reset_export_directory(app: tauri::AppHandle) -> Result<ExportSettings,
     run_database_task(move || {
         let connection = open_database(&app)?;
         delete_metadata(&connection, EXPORT_DIRECTORY)?;
-        export_settings(&app, &connection)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn set_auto_json_export_settings(
-    app: tauri::AppHandle,
-    enabled: bool,
-    time: String,
-) -> Result<ExportSettings, String> {
-    run_database_task(move || {
-        let connection = open_database(&app)?;
-        let time = validate_auto_json_export_time(&time)?;
-        set_metadata(
-            &connection,
-            AUTO_JSON_EXPORT_ENABLED,
-            if enabled { "true" } else { "false" },
-        )?;
-        set_metadata(&connection, AUTO_JSON_EXPORT_TIME, &time)?;
-        export_settings(&app, &connection)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn record_auto_json_export_success(
-    app: tauri::AppHandle,
-    date: String,
-    path: String,
-) -> Result<ExportSettings, String> {
-    run_database_task(move || {
-        let connection = open_database(&app)?;
-        let date = validate_export_date(&date)?;
-        let path = validate_export_result_path(&path)?;
-        set_metadata(&connection, AUTO_JSON_EXPORT_LAST_DATE, &date)?;
-        set_metadata(&connection, AUTO_JSON_EXPORT_LAST_PATH, &path)?;
-        delete_metadata(&connection, AUTO_JSON_EXPORT_LAST_ERROR)?;
-        delete_metadata(&connection, AUTO_JSON_EXPORT_LAST_ERROR_AT)?;
-        export_settings(&app, &connection)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn record_auto_json_export_error(
-    app: tauri::AppHandle,
-    error: String,
-) -> Result<ExportSettings, String> {
-    run_database_task(move || {
-        let connection = open_database(&app)?;
-        set_metadata(&connection, AUTO_JSON_EXPORT_LAST_ERROR, error.trim())?;
-        set_metadata(
-            &connection,
-            AUTO_JSON_EXPORT_LAST_ERROR_AT,
-            &current_timestamp(),
-        )?;
-        export_settings(&app, &connection)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn acknowledge_auto_json_export_error(
-    app: tauri::AppHandle,
-) -> Result<ExportSettings, String> {
-    run_database_task(move || {
-        let connection = open_database(&app)?;
-        // Mark the current error event as seen so the UI stops surfacing it. A later failure
-        // records a new timestamp, which won't match this ack, so it surfaces again.
-        match metadata_value(&connection, AUTO_JSON_EXPORT_LAST_ERROR_AT)? {
-            Some(error_at) => set_metadata(&connection, AUTO_JSON_EXPORT_ERROR_ACK_AT, &error_at)?,
-            None => delete_metadata(&connection, AUTO_JSON_EXPORT_ERROR_ACK_AT)?,
-        }
         export_settings(&app, &connection)
     })
     .await
@@ -1264,18 +1172,6 @@ fn export_settings(
         export_directory: export_directory.display().to_string(),
         default_export_directory: default_export_directory.display().to_string(),
         uses_default_export_directory: configured_export_directory.is_none(),
-        auto_json_export_enabled: metadata_value(connection, AUTO_JSON_EXPORT_ENABLED)?
-            .as_deref()
-            .unwrap_or("true")
-            == "true",
-        auto_json_export_time: metadata_value(connection, AUTO_JSON_EXPORT_TIME)?
-            .filter(|time| validate_auto_json_export_time(time).is_ok())
-            .unwrap_or_else(|| DEFAULT_AUTO_JSON_EXPORT_TIME.to_string()),
-        last_auto_json_export_date: metadata_value(connection, AUTO_JSON_EXPORT_LAST_DATE)?,
-        last_auto_json_export_path: metadata_value(connection, AUTO_JSON_EXPORT_LAST_PATH)?,
-        last_auto_json_export_error: metadata_value(connection, AUTO_JSON_EXPORT_LAST_ERROR)?,
-        last_auto_json_export_error_at: metadata_value(connection, AUTO_JSON_EXPORT_LAST_ERROR_AT)?,
-        auto_json_export_error_ack_at: metadata_value(connection, AUTO_JSON_EXPORT_ERROR_ACK_AT)?,
     })
 }
 
@@ -1319,24 +1215,6 @@ fn validate_export_directory(directory: &str) -> Result<PathBuf, String> {
     Ok(path)
 }
 
-fn validate_auto_json_export_time(time: &str) -> Result<String, String> {
-    let mut parts = time.split(':');
-    let hour = parts
-        .next()
-        .and_then(|part| part.parse::<u8>().ok())
-        .ok_or_else(|| "Auto-export time must use HH:MM format".to_string())?;
-    let minute = parts
-        .next()
-        .and_then(|part| part.parse::<u8>().ok())
-        .ok_or_else(|| "Auto-export time must use HH:MM format".to_string())?;
-
-    if parts.next().is_some() || hour > 23 || minute > 59 {
-        return Err("Auto-export time must use HH:MM format".to_string());
-    }
-
-    Ok(format!("{hour:02}:{minute:02}"))
-}
-
 fn normalize_sync_relay_url(relay_url: &str) -> Result<String, String> {
     let relay_url = relay_url.trim();
     if relay_url.is_empty() {
@@ -1361,31 +1239,6 @@ fn normalize_sync_relay_url(relay_url: &str) -> Result<String, String> {
         "http://"
     };
     Ok(format!("{scheme}{remainder}"))
-}
-
-fn validate_export_date(date: &str) -> Result<String, String> {
-    let parts = date.split('-').collect::<Vec<_>>();
-    if parts.len() == 3
-        && parts[0].len() == 4
-        && parts[1].len() == 2
-        && parts[2].len() == 2
-        && parts
-            .iter()
-            .all(|part| part.chars().all(|character| character.is_ascii_digit()))
-    {
-        return Ok(date.to_string());
-    }
-
-    Err("Auto-export date must use YYYY-MM-DD format".to_string())
-}
-
-fn validate_export_result_path(path: &str) -> Result<String, String> {
-    let path = path.trim();
-    if path.is_empty() || path.chars().any(char::is_control) {
-        return Err("Auto-export path is invalid".to_string());
-    }
-
-    Ok(path.to_string())
 }
 
 fn reveal_path(path: PathBuf) -> Result<(), String> {
@@ -1692,7 +1545,7 @@ fn restore_recovery_entry_in_database(
 }
 
 /// Returns every metadata key/value, sorted, so the diagnostics view can surface
-/// device/session state and auto-export status (including any recorded export error).
+/// device, session, sync, and maintenance state.
 fn list_metadata_from_database(connection: &Connection) -> Result<Value, String> {
     let mut statement = connection
         .prepare("select key, value from metadata order by key")
@@ -6825,10 +6678,6 @@ pub fn run() {
             get_export_settings,
             set_export_directory,
             reset_export_directory,
-            set_auto_json_export_settings,
-            record_auto_json_export_success,
-            record_auto_json_export_error,
-            acknowledge_auto_json_export_error,
             reveal_path_in_file_manager,
             open_external_url,
             write_balance_clipboard,
@@ -6940,7 +6789,6 @@ mod tests {
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
         replace_app_state(&mut connection, &test_state("Compact me")).unwrap();
         set_metadata(&connection, EXPORT_DIRECTORY, "/tmp/balance-exports").unwrap();
-        set_metadata(&connection, AUTO_JSON_EXPORT_ENABLED, "false").unwrap();
         set_metadata(&connection, RECOVERY_KEY_CONFIRMED, "true").unwrap();
 
         let large_text = "repeated-list-state-".repeat(2_000);
@@ -7013,12 +6861,6 @@ mod tests {
                 .unwrap()
                 .as_deref(),
             Some("/tmp/balance-exports")
-        );
-        assert_eq!(
-            metadata_value(&compacted, AUTO_JSON_EXPORT_ENABLED)
-                .unwrap()
-                .as_deref(),
-            Some("false")
         );
         assert_eq!(
             metadata_value(&compacted, RECOVERY_KEY_CONFIRMED)
@@ -9865,28 +9707,6 @@ mod tests {
             .recv_timeout(Duration::from_secs(1))
             .expect("waiting database task should continue after maintenance");
         waiter.join().unwrap();
-    }
-
-    #[test]
-    fn auto_json_export_time_validation_normalizes_valid_times() {
-        assert_eq!(validate_auto_json_export_time("23:55").unwrap(), "23:55");
-        assert_eq!(validate_auto_json_export_time("7:05").unwrap(), "07:05");
-        assert!(validate_auto_json_export_time("24:00").is_err());
-        assert!(validate_auto_json_export_time("12:60").is_err());
-        assert!(validate_auto_json_export_time("noon").is_err());
-    }
-
-    #[test]
-    fn auto_json_export_result_validation_rejects_invalid_metadata() {
-        assert_eq!(validate_export_date("2026-05-31").unwrap(), "2026-05-31");
-        assert!(validate_export_date("2026-5-31").is_err());
-        assert!(validate_export_date("2026-05-31.json").is_err());
-        assert_eq!(
-            validate_export_result_path(" /tmp/balance-auto-export.json ").unwrap(),
-            "/tmp/balance-auto-export.json"
-        );
-        assert!(validate_export_result_path("").is_err());
-        assert!(validate_export_result_path("/tmp/export.json\nopen").is_err());
     }
 
     #[test]

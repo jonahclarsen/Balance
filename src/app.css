@@ -1015,27 +1015,6 @@ nav button.active {
   padding-top: 22px;
 }
 
-.setting-toggle,
-.time-setting {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  color: var(--ink);
-}
-
-.setting-toggle input {
-  width: 18px;
-  height: 18px;
-}
-
-.time-setting {
-  flex-wrap: wrap;
-}
-
-.time-setting span {
-  color: var(--muted);
-}
-
 .path-row {
   display: block;
   overflow-wrap: anywhere;
@@ -1130,7 +1109,7 @@ nav button.active {
   color: var(--accent);
 }
 
-.auto-export-banner {
+.app-error-banner {
   position: fixed;
   top: 12px;
   left: 50%;
@@ -1147,29 +1126,29 @@ nav button.active {
   padding: 10px 14px;
 }
 
-.auto-export-banner-icon {
+.app-error-banner-icon {
   color: var(--danger);
   font-size: 18px;
   flex: 0 0 auto;
 }
 
-.auto-export-banner-text {
+.app-error-banner-text {
   display: grid;
   gap: 2px;
   min-width: 0;
   font-size: 13px;
 }
 
-.auto-export-banner-text strong {
+.app-error-banner-text strong {
   color: var(--ink);
 }
 
-.auto-export-banner-text span {
+.app-error-banner-text span {
   color: var(--muted);
   overflow-wrap: anywhere;
 }
 
-.auto-export-banner-actions {
+.app-error-banner-actions {
   display: flex;
   gap: 6px;
   margin-left: auto;
