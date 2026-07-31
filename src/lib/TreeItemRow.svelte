@@ -14,13 +14,22 @@
   export let selectionDragging = false
   export let interactive = true
   export let moveItem: (containerId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
+  // Set only where dropping into a *different* container is meaningful (the
+  // side-by-side day comparison). Left null everywhere else, so a drag that
+  // wanders outside its own container is simply ignored, as before. `targetId`
+  // is null when the drop lands on a container's empty tail zone.
+  export let moveItemAcrossContainers:
+    | ((sourceContainerId: Id, sourceId: Id, targetContainerId: Id, targetId: Id | null, placement: MovePlacement) => void)
+    | null = null
   export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
   export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
   export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
   export let onRowClick: (event: MouseEvent) => void = () => {}
 
+  type DropTarget = { element: HTMLElement; containerId: Id; targetId: Id | null; placement: MovePlacement }
+
   let dragging = false
-  let activeDropRow: HTMLElement | null = null
+  let activeDropTarget: DropTarget | null = null
 
   $: rowSelector =
     kind === 'plan'
@@ -35,6 +44,30 @@
     return row.dataset.listTemplateItemId ?? null
   }
 
+  function rowContainerId(row: HTMLElement): Id {
+    return row.dataset.itemContainerId ?? containerId
+  }
+
+  // Resolves what is under the pointer: a row in this or another container, or a
+  // container's tail drop zone (which appends to the end of that container).
+  function dropTargetAt(clientX: number, clientY: number): DropTarget | null {
+    const hovered = document.elementFromPoint(clientX, clientY)
+    if (!(hovered instanceof Element)) return null
+
+    const row = hovered.closest<HTMLElement>(rowSelector)
+    if (row) {
+      const targetId = rowItemId(row)
+      if (!targetId || targetId === itemId) return null
+      return { element: row, containerId: rowContainerId(row), targetId, placement: placementForRow(row, clientY) }
+    }
+
+    const zone = moveItemAcrossContainers ? hovered.closest<HTMLElement>('[data-item-drop-zone]') : null
+    const zoneContainerId = zone?.dataset.itemDropZone
+    if (!zone || !zoneContainerId || zoneContainerId === containerId) return null
+
+    return { element: zone, containerId: zoneContainerId, targetId: null, placement: 'after' }
+  }
+
   function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
     const rect = row.getBoundingClientRect()
     const y = clientY - rect.top
@@ -44,15 +77,15 @@
   }
 
   function clearDropMarker() {
-    activeDropRow?.classList.remove('drop-before', 'drop-inside', 'drop-after')
-    activeDropRow = null
+    activeDropTarget?.element.classList.remove('drop-before', 'drop-inside', 'drop-after', 'drop-into-container')
+    activeDropTarget = null
   }
 
-  function markDropTarget(row: HTMLElement, placement: MovePlacement) {
-    if (activeDropRow !== row) clearDropMarker()
-    activeDropRow = row
-    row.classList.remove('drop-before', 'drop-inside', 'drop-after')
-    row.classList.add(`drop-${placement}`)
+  function markDropTarget(target: DropTarget) {
+    if (activeDropTarget?.element !== target.element) clearDropMarker()
+    activeDropTarget = target
+    target.element.classList.remove('drop-before', 'drop-inside', 'drop-after', 'drop-into-container')
+    target.element.classList.add(target.targetId ? `drop-${target.placement}` : 'drop-into-container')
   }
 
   function startPointerDrag(event: PointerEvent) {
@@ -64,23 +97,31 @@
 
   function continuePointerDrag(event: PointerEvent) {
     if (!dragging) return
-    const hovered = document.elementFromPoint(event.clientX, event.clientY)
-    const row = hovered instanceof Element ? hovered.closest<HTMLElement>(rowSelector) : null
-    if (!row || rowItemId(row) === itemId) {
+    const target = dropTargetAt(event.clientX, event.clientY)
+    if (!target || (target.containerId !== containerId && !moveItemAcrossContainers)) {
       clearDropMarker()
       return
     }
-    markDropTarget(row, placementForRow(row, event.clientY))
+    markDropTarget(target)
   }
 
   function endPointerDrag(event: PointerEvent) {
     if (!dragging) return
-    const row = activeDropRow
-    const targetId = row ? rowItemId(row) : null
-    const placement = row ? placementForRow(row, event.clientY) : null
+    // Re-resolve at the drop point: the pointer may have moved within the last
+    // hovered row, which changes before/inside/after.
+    const target = dropTargetAt(event.clientX, event.clientY) ?? activeDropTarget
     clearDropMarker()
     dragging = false
-    if (targetId && targetId !== itemId && placement) moveItem(containerId, itemId, targetId, placement)
+    if (!target) return
+
+    if (target.containerId !== containerId) {
+      moveItemAcrossContainers?.(containerId, itemId, target.containerId, target.targetId, target.placement)
+      return
+    }
+
+    if (target.targetId && target.targetId !== itemId) {
+      moveItem(containerId, itemId, target.targetId, target.placement)
+    }
   }
 </script>
 
@@ -95,6 +136,7 @@
     class:template-main={kind !== 'plan'}
     class:done
     class:selected
+    data-item-container-id={containerId}
     data-plan-item-id={kind === 'plan' ? itemId : undefined}
     data-plan-item-depth={kind === 'plan' ? depth : undefined}
     data-template-item-id={kind === 'day-template' ? itemId : undefined}

@@ -42,6 +42,11 @@
   export let addChild: (planId: Id, parentId: Id) => void
   export let deleteItem: (planId: Id, itemId: Id) => void
   export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
+  // Only the side-by-side day comparison supplies this; elsewhere a drag that
+  // leaves its own plan does nothing.
+  export let moveItemAcrossContainers:
+    | ((sourcePlanId: Id, sourceId: Id, targetPlanId: Id, targetId: Id | null, placement: MovePlacement) => void)
+    | null = null
   export let moveItemWithinLevel: (planId: Id, itemId: Id, direction: MoveDirection) => void
   export let outdentItem: (planId: Id, itemId: Id) => void
   export let historyRevision: number
@@ -200,13 +205,14 @@
   }
 
   async function handleBackspaceEmpty(current: HTMLDivElement) {
-    const targets = planTextFocusTargets()
+    const scope = planScopeFor(current)
+    const targets = Array.from(scope.querySelectorAll<HTMLDivElement>('[data-plan-text-focus-target]'))
     const index = targets.indexOf(current)
 
     deleteItem(planId, item.id)
     await tick()
 
-    const nextTargets = planTextFocusTargets()
+    const nextTargets = Array.from(scope.querySelectorAll<HTMLDivElement>('[data-plan-text-focus-target]'))
     const target = nextTargets[Math.max(0, index - 1)] ?? nextTargets[0]
     if (target) focusTextTarget(target)
   }
@@ -231,9 +237,15 @@
     focusAdjacentTextInput(current, direction === 'left' ? 'up' : 'down', direction === 'left' ? 'end' : 'start')
   }
 
+  // Two plans can be on screen at once (side-by-side days), so keyboard traversal
+  // is scoped to the panel the caret is in rather than the whole document.
+  function planScopeFor(element: HTMLElement): ParentNode {
+    return element.closest<HTMLElement>('[data-plan-item-scope]') ?? document
+  }
+
   async function handleTextTab(direction: 'in' | 'out', current: HTMLDivElement) {
     if (direction === 'in') {
-      const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
+      const rows = Array.from(planScopeFor(current).querySelectorAll<HTMLElement>('[data-plan-item-id]'))
       const currentRow = current.closest<HTMLElement>('[data-plan-item-id]')
       const index = currentRow ? rows.indexOf(currentRow) : -1
       const targetId = findPreviousSameDepthPlanItemId(rows, index)
@@ -265,7 +277,7 @@
   }
 
   function focusAdjacentTextInput(current: HTMLDivElement, direction: MoveDirection, position: 'start' | 'end' = 'end') {
-    const targets = planTextFocusTargets()
+    const targets = planTextFocusTargets(current)
     const index = targets.indexOf(current)
     const target = targets[direction === 'up' ? index - 1 : index + 1]
 
@@ -288,8 +300,9 @@
     if (input) focusTextInputAtOffset(input, offset)
   }
 
-  function planTextFocusTargets() {
-    return Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-focus-target]'))
+  function planTextFocusTargets(scopeFrom?: HTMLElement) {
+    const root = scopeFrom ? planScopeFor(scopeFrom) : document
+    return Array.from(root.querySelectorAll<HTMLDivElement>('[data-plan-text-focus-target]'))
   }
 
   function focusTextTarget(target: HTMLDivElement, position: 'start' | 'end' = 'end') {
@@ -390,6 +403,7 @@
   {selectionDragging}
   interactive={!locked}
   {moveItem}
+  {moveItemAcrossContainers}
   {onSelectionPointerDown}
   {onSelectionPointerMove}
   {onSelectionPointerEnter}
@@ -533,6 +547,7 @@
             {addChild}
             {deleteItem}
             {moveItem}
+            {moveItemAcrossContainers}
             {moveItemWithinLevel}
             {outdentItem}
             {historyRevision}

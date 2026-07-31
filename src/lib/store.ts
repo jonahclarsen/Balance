@@ -23,6 +23,7 @@ import {
   indentTemplateItems as indentTemplateItemsInTree,
   outdentTemplateItems as outdentTemplateItemsInTree,
   escapeHTML,
+  findPlanItem,
   formatMinutes,
   generatePlanFromTemplate,
   htmlToPlainText,
@@ -442,7 +443,9 @@ function createPlannerStore() {
       }))
     },
 
-    generatePlan(templateId: Id, date: string, replaceExisting: boolean) {
+    // Generating normally moves the app onto the generated day. The side-by-side
+    // comparison fills its second pane instead, so it passes the date to stay on.
+    generatePlan(templateId: Id, date: string, replaceExisting: boolean, activePlanDate = date) {
       const current = get(store)
       const template = current.templates.find((candidate) => candidate.id === templateId)
       if (!template) return
@@ -454,12 +457,12 @@ function createPlannerStore() {
         current.goalCompletions,
       )
 
-      commit('generate_plan', { templateId, date, replaceExisting, generatedPlan: generated }, (state) => {
+      commit('generate_plan', { templateId, date, replaceExisting, activePlanDate, generatedPlan: generated }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans
 
         return {
           ...state,
-          activePlanDate: date,
+          activePlanDate,
           plans: [...plans, generated].sort((a, b) => b.date.localeCompare(a.date)),
         }
       })
@@ -653,6 +656,43 @@ function createPlannerStore() {
         ...plan,
         items: movePlanItem(plan.items, sourceId, targetId, placement),
       })))
+    },
+
+    // Cross-day move, used by the side-by-side day comparison. The whole subtree
+    // travels with the item, so it ships in the payload and lands in the target
+    // plan the same way a paste would; the source plan just drops it.
+    movePlanItemToPlan(
+      sourcePlanId: Id,
+      targetPlanId: Id,
+      itemId: Id,
+      targetId: Id | null,
+      placement: 'before' | 'after' | 'inside',
+    ) {
+      if (sourcePlanId === targetPlanId) return
+
+      const current = get(store)
+      const sourcePlan = current.plans.find((plan) => plan.id === sourcePlanId)
+      const targetPlan = current.plans.find((plan) => plan.id === targetPlanId)
+      if (!sourcePlan || !targetPlan) return
+
+      const item = findPlanItem(sourcePlan.items, itemId)
+      if (!item) return
+      if (targetId && !findPlanItem(targetPlan.items, targetId)) return
+
+      commit(
+        'move_plan_item_to_plan',
+        { sourcePlanId, targetPlanId, itemId, targetId, placement, item },
+        (state) => ({
+          ...state,
+          plans: state.plans.map((plan) => {
+            if (plan.id === sourcePlanId) return { ...plan, items: deletePlanItem(plan.items, itemId) }
+            if (plan.id === targetPlanId) {
+              return { ...plan, items: pastePlanItemsIntoTree(plan.items, [item], targetId, placement) }
+            }
+            return plan
+          }),
+        }),
+      )
     },
 
     movePlanItemWithinLevel(planId: Id, itemId: Id, direction: 'up' | 'down') {

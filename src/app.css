@@ -451,6 +451,56 @@ nav button.active {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
+/* An item dragged from the other day and released over empty panel space lands
+   at the end of that day. */
+.list-panel.drop-into-container {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* ---- Side-by-side days ---- */
+
+.day-panes {
+  display: grid;
+  gap: 24px;
+  min-width: 0;
+}
+
+.day-panes.comparing {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+}
+
+.day-pane {
+  min-width: 0;
+}
+
+.day-pane-heading {
+  min-width: 0;
+}
+
+.day-panes.comparing .page-header {
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Only marked while comparing: it shows which day the keyboard shortcuts,
+   selection and clipboard are currently pointed at. */
+.day-pane.focused-pane .eyebrow {
+  color: var(--accent);
+}
+
+.day-pane.focused-pane .list-panel,
+.day-pane.focused-pane .empty-state {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+
+.compare-toggle.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
 .drag-handle {
   display: inline-grid;
   place-items: center;
@@ -2273,6 +2323,12 @@ nav button.active {
 
   .workspace {
     padding: 12px;
+  }
+
+  /* Two day columns don't fit a phone; stack them so the comparison is still
+     readable (dragging between them still works, just vertically). */
+  .day-panes.comparing {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .list-panel,

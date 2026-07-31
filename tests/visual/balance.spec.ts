@@ -1751,6 +1751,32 @@ test('cmd shift a selects the focused plan item instead of its text', async ({ p
   await expect.poll(async () => page.evaluate(() => document.activeElement?.matches('[data-plan-text-input]'))).toBe(false)
 })
 
+test('arrow keys enter a selected plan item at the matching text boundary', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const text = 'Wake up'
+  for (const [key, caretOffset] of [
+    ['ArrowUp', 0],
+    ['ArrowLeft', 0],
+    ['ArrowDown', text.length],
+    ['ArrowRight', text.length],
+  ] as const) {
+    await focusInputByValue(page, text)
+    await page.keyboard.press('Meta+Shift+A')
+    await page.keyboard.press(key)
+
+    await expect
+      .poll(async () => ({
+        activeText: await activeInputValue(page),
+        caretOffset: await caretOffsetInFocusedEditor(page),
+      }))
+      .toEqual({ activeText: text, caretOffset })
+  }
+})
+
 test('cutting a whole plan item focuses the item below it at the start', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1795,7 +1821,7 @@ test('pasting plan items into an empty focused item replaces it', async ({ page 
 test('replacing the system clipboard prevents stale structured task paste', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this regression test')
 
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -1991,7 +2017,7 @@ test('pasting four or more items onto a different day opens a review queue', asy
 test('plan item rich text preserves paste formatting and supports shortcuts', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -2104,7 +2130,7 @@ test('plan item rich text preserves paste formatting and supports shortcuts', as
 test('template options use rich text formatting and generate formatted plan items', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -2369,7 +2395,7 @@ test('global undo and redo batch text edits', async ({ page }) => {
 test('global undo reverts pasted rich text edits', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()

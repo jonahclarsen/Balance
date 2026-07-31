@@ -1170,7 +1170,7 @@ test('clicking a goal rhythm row scrolls to that goal on the goals page', async 
 })
 
 test('goal rhythm copy button copies the goal name without opening the row', async ({ page }) => {
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5174' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
 

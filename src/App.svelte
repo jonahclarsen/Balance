@@ -35,7 +35,7 @@
     runWeeklyDatabaseMaintenance,
   } from './lib/store'
   import type { DatabaseCompactionResult, DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, PlanItem, TemplateItem } from './lib/types'
+  import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
@@ -69,6 +69,7 @@
   const DAY_TEMPLATE_SELECTION_KEY = 'balance:selectedDayTemplateId'
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
   const WORKSPACE_VIEW_STATE_KEY = 'balance:workspaceViewState'
+  const COMPARE_DAY_KEY = 'balance:compareDay'
   // Matches the light-theme --done-tint base in app.css; shown as the picker
   // value when the user hasn't chosen a custom color yet.
   const DEFAULT_DONE_TINT = '#3f9d54'
@@ -193,9 +194,20 @@ return rows`
   let databaseSearch = ''
   let databaseExpandedId: string | null = null
   let databaseCopyStatus = ''
-  let editingDailyReminder = false
+  // Holds the id of the plan whose reminder is being edited, so either day in the
+  // side-by-side comparison can be edited without the other pane's input opening.
+  let editingReminderPlanId: Id | null = null
   let dailyReminderDraft = ''
   let dailyReminderInput: HTMLInputElement | null = null
+  // ---- Side-by-side days ----
+  // The comparison day is view state, not app state: it lives next to the active
+  // plan date rather than in the store, and only survives via localStorage.
+  let compareDayOpen = false
+  let compareDayDate = ''
+  let compareDayStateReady = false
+  // Which of the two panes owns the item selection / plan keyboard shortcuts.
+  // Null (and always, when the comparison is closed) means the primary pane.
+  let focusedPlanId: Id | null = null
   type ItemSurface = 'plan' | 'day-template' | 'list-template'
   type TreeNode = { id: Id; children: TreeNode[] }
   let selectedItemIds: Id[] = []
@@ -254,6 +266,33 @@ return rows`
   $: templates = $plannerStore.templates
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
   $: activePlanTimeWarnings = buildItemTimeWarnings(activePlan?.items ?? [])
+  $: comparePlan = compareDayOpen ? $plannerStore.plans.find((plan) => plan.date === compareDayDate) : undefined
+  $: comparePlanTimeWarnings = buildItemTimeWarnings(comparePlan?.items ?? [])
+  // One pane when closed, two when comparing. Rendering the normal day through
+  // the same loop keeps a single copy of the day markup.
+  $: dayPanes = [
+    {
+      key: 'primary' as const,
+      date: $plannerStore.activePlanDate,
+      plan: activePlan,
+      timeWarnings: activePlanTimeWarnings,
+    },
+    ...(compareDayOpen
+      ? [
+          {
+            key: 'compare' as const,
+            date: compareDayDate,
+            plan: comparePlan,
+            timeWarnings: comparePlanTimeWarnings,
+          },
+        ]
+      : []),
+  ]
+  // Selection, clipboard and the plan keyboard shortcuts act on whichever day was
+  // last touched; everything else (celebrations, goal tracking, generation) stays
+  // anchored to the active plan date.
+  $: focusedPlan = compareDayOpen && comparePlan && focusedPlanId === comparePlan.id ? comparePlan : activePlan
+  $: if (compareDayStateReady) persistCompareDayState(compareDayOpen, compareDayDate)
   // Scroll position is remembered per page. Today scrolls independently for each
   // date, and List Templates scrolls independently for each template.
   $: scrollPageKey =
@@ -264,7 +303,7 @@ return rows`
         : `view:${view}`
   $: if (workspaceViewStateReady) restoreScrollForPage(scrollPageKey)
   $: activeDailyReminder = activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER
-  $: if (!editingDailyReminder) dailyReminderDraft = activeDailyReminder
+  $: if (!editingReminderPlanId) dailyReminderDraft = activeDailyReminder
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
   $: selectedTemplateTimeWarnings = buildItemTimeWarnings(selectedTemplate?.items ?? [])
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
@@ -339,7 +378,17 @@ return rows`
       exportSettings.lastAutoJsonExportErrorAt &&
       exportSettings.lastAutoJsonExportErrorAt !== exportSettings.autoJsonExportErrorAckAt,
   )
-  $: if (selectedItemIds.length > 0 && activeItemContextKey() !== selectedItemContext) {
+  // Derived rather than computed on demand so that switching surfaces — including
+  // switching between the two side-by-side days — retriggers the guard below.
+  $: activeItemContext =
+    view === 'today' && focusedPlan
+      ? `plan:${focusedPlan.id}`
+      : view === 'templates' && selectedTemplate
+        ? `day-template:${selectedTemplate.id}`
+        : view === 'listTemplates' && selectedListTemplate
+          ? `list-template:${selectedListTemplate.id}`
+          : ''
+  $: if (selectedItemIds.length > 0 && activeItemContext !== selectedItemContext) {
     clearItemSelection()
   }
   // The list overlay toast belongs to the page it was opened over: leaving that
@@ -359,6 +408,7 @@ return rows`
   $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
   $: observeActivePlanCompletion(activePlan, $plannerStore.activePlanDate, view, completionTrackingReady)
   $: observeGoalItemCompletions(activePlan, view, completionTrackingReady)
+  $: observeGoalItemCompletions(comparePlan, view, completionTrackingReady)
   $: observeListCompletions(
     $plannerStore.lists,
     view === 'lists' ? (listViewInstance?.id ?? null) : null,
@@ -933,6 +983,8 @@ return rows`
       goalHistoryHeight = clampGoalHistoryHeight(storedGoalHistoryHeight)
     }
 
+    restoreCompareDayState()
+
     const storedDoneTint = normalizeHexColor(localStorage.getItem(DONE_TINT_KEY) ?? '')
     if (storedDoneTint) doneTintColor = storedDoneTint
 
@@ -1175,6 +1227,87 @@ return rows`
 
   function shiftActivePlanDate(days: number) {
     plannerStore.setActivePlanDate(shiftISODate($plannerStore.activePlanDate || todayISO(), days))
+  }
+
+  // ---- Side-by-side days ----
+
+  function openCompareDay() {
+    const activeDate = $plannerStore.activePlanDate || todayISO()
+    if (!compareDayDate || compareDayDate === activeDate) compareDayDate = shiftISODate(activeDate, 1)
+    compareDayOpen = true
+  }
+
+  function closeCompareDay() {
+    compareDayOpen = false
+    focusedPlanId = null
+    // The compare pane's reminder input unmounts without blurring, so release the
+    // edit explicitly rather than leaving the draft stuck to a hidden day.
+    if (editingReminderPlanId && editingReminderPlanId !== activePlan?.id) editingReminderPlanId = null
+    if (selectedItemIds.length > 0) clearItemSelection()
+  }
+
+  function toggleCompareDay() {
+    if (compareDayOpen) closeCompareDay()
+    else openCompareDay()
+  }
+
+  function shiftCompareDayDate(days: number) {
+    compareDayDate = shiftISODate(compareDayDate || todayISO(), days)
+  }
+
+  function swapCompareDays() {
+    const primaryDate = $plannerStore.activePlanDate
+    plannerStore.setActivePlanDate(compareDayDate)
+    compareDayDate = primaryDate
+  }
+
+  // Alt+Q / Alt+W walk whichever pane the user last touched, so the comparison
+  // day can be scrubbed without reaching for its date picker.
+  function shiftFocusedPaneDate(days: number) {
+    if (compareDayOpen && focusedPlanId !== null && focusedPlanId === comparePlan?.id) {
+      shiftCompareDayDate(days)
+      return
+    }
+    shiftActivePlanDate(days)
+  }
+
+  function focusPane(planId: Id | undefined) {
+    focusedPlanId = planId ?? null
+  }
+
+  function movePlanItemAcrossDays(
+    sourcePlanId: Id,
+    sourceItemId: Id,
+    targetPlanId: Id,
+    targetId: Id | null,
+    placement: MovePlacement,
+  ) {
+    // Guard against a stray drop into some other plan-item surface (a generated
+    // list renders through the same rows): only the two visible days are valid.
+    const paneIds = dayPanes.map((pane) => pane.plan?.id).filter(Boolean)
+    if (!paneIds.includes(sourcePlanId) || !paneIds.includes(targetPlanId)) return
+
+    clearItemSelection()
+    plannerStore.movePlanItemToPlan(sourcePlanId, targetPlanId, sourceItemId, targetId, placement)
+    focusedPlanId = targetPlanId
+  }
+
+  function persistCompareDayState(open: boolean, date: string) {
+    localStorage.setItem(COMPARE_DAY_KEY, JSON.stringify({ open, date }))
+  }
+
+  function restoreCompareDayState() {
+    try {
+      const stored = localStorage.getItem(COMPARE_DAY_KEY)
+      if (stored) {
+        const parsed = JSON.parse(stored) as { open?: unknown; date?: unknown }
+        if (typeof parsed.date === 'string') compareDayDate = parsed.date
+        if (parsed.open === true) compareDayOpen = true
+      }
+    } catch {
+      // Corrupt view state just means the comparison starts closed.
+    }
+    compareDayStateReady = true
   }
 
   function openDateInToday(date: string) {
@@ -1454,20 +1587,22 @@ return rows`
     return window.confirm(message)
   }
 
-  async function generateSelectedDay() {
+  // `forDate` lets the comparison pane fill its own empty day instead of the
+  // active one; without it this generates the active day, as before.
+  async function generateSelectedDay(forDate?: string) {
     if (!selectedTemplate) return
 
-    const date = $plannerStore.activePlanDate || todayISO()
+    const date = forDate || $plannerStore.activePlanDate || todayISO()
     const exists = $plannerStore.plans.some((plan) => plan.date === date)
     const replaceExisting = exists ? await confirmReplaceExistingPlan() : false
 
     if (exists && !replaceExisting) {
-      plannerStore.setActivePlanDate(date)
+      if (!forDate) plannerStore.setActivePlanDate(date)
       view = 'today'
       return
     }
 
-    plannerStore.generatePlan(selectedTemplate.id, date, replaceExisting)
+    plannerStore.generatePlan(selectedTemplate.id, date, replaceExisting, forDate ? $plannerStore.activePlanDate : date)
     view = 'today'
   }
 
@@ -1859,6 +1994,13 @@ return rows`
         void openGoals()
         return
       }
+
+      if (event.code === 'KeyB') {
+        event.preventDefault()
+        view = 'today'
+        toggleCompareDay()
+        return
+      }
     }
 
     // While the list overlay toast is open it owns the keyboard: route arrows and
@@ -1942,11 +2084,14 @@ return rows`
       !event.shiftKey &&
       !event.altKey &&
       !primaryModifier &&
-      (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+      (event.key === 'ArrowUp' ||
+        event.key === 'ArrowDown' ||
+        event.key === 'ArrowLeft' ||
+        event.key === 'ArrowRight')
     ) {
       event.preventDefault()
       event.stopPropagation()
-      focusSelectedItemBoundary(event.key === 'ArrowUp' ? 'up' : 'down')
+      focusSelectedItemBoundary(event.key === 'ArrowUp' || event.key === 'ArrowLeft' ? 'start' : 'end')
       return
     }
 
@@ -2007,7 +2152,8 @@ return rows`
         event.preventDefault()
         if (view === 'templates') void selectAdjacentDayTemplate(-1)
         else if (view === 'listTemplates') void selectAdjacentListTemplate(-1)
-        else if (view === 'today' || view === 'lists') shiftActivePlanDate(-1)
+        else if (view === 'today') shiftFocusedPaneDate(-1)
+        else if (view === 'lists') shiftActivePlanDate(-1)
         return
       }
 
@@ -2015,20 +2161,21 @@ return rows`
         event.preventDefault()
         if (view === 'templates') void selectAdjacentDayTemplate(1)
         else if (view === 'listTemplates') void selectAdjacentListTemplate(1)
-        else if (view === 'today' || view === 'lists') shiftActivePlanDate(1)
+        else if (view === 'today') shiftFocusedPaneDate(1)
+        else if (view === 'lists') shiftActivePlanDate(1)
         return
       }
     }
 
     if (!primaryModifier || event.altKey) return
 
-    if (activeItemSurface() === 'plan' && activePlan && key === 'd' && !event.shiftKey && selectedItemIds.length > 0) {
+    if (activeItemSurface() === 'plan' && focusedPlan && key === 'd' && !event.shiftKey && selectedItemIds.length > 0) {
       const selectedItems = selectedPlanItems()
       if (selectedItems.length === 0) return
 
       event.preventDefault()
       plannerStore.patchPlanItemsDone(
-        activePlan.id,
+        focusedPlan.id,
         selectedItems.map((item) => item.id),
         !selectedItems.every((item) => item.done),
       )
@@ -2059,11 +2206,12 @@ return rows`
 
     if (key === 'd' && !event.shiftKey) {
       const itemId = activeItemSurface() === 'plan' ? activeFocusedItemId() : null
-      const item = itemId && activePlan ? findPlanItem(activePlan.items, itemId) : null
-      if (!activePlan || !item) return
+      const plan = itemId ? planContainingItem(itemId) : undefined
+      const item = itemId && plan ? findPlanItem(plan.items, itemId) : null
+      if (!plan || !item) return
 
       event.preventDefault()
-      plannerStore.patchPlanItem(activePlan.id, item.id, { done: !item.done })
+      plannerStore.patchPlanItem(plan.id, item.id, { done: !item.done })
       return
     }
 
@@ -2089,8 +2237,18 @@ return rows`
     return null
   }
 
+  // With the day comparison open a focused row can belong to either pane, so
+  // resolve its owner rather than assuming the active plan.
+  function planContainingItem(itemId: Id): DailyPlan | undefined {
+    for (const pane of dayPanes) {
+      if (pane.plan && findPlanItem(pane.plan.items, itemId)) return pane.plan
+    }
+
+    return undefined
+  }
+
   function activeItemSurface(): ItemSurface | null {
-    if (view === 'today' && activePlan) return 'plan'
+    if (view === 'today' && focusedPlan) return 'plan'
     if (view === 'templates' && selectedTemplate) return 'day-template'
     if (view === 'listTemplates' && selectedListTemplate) return 'list-template'
     return null
@@ -2098,7 +2256,7 @@ return rows`
 
   function activeItemContainerId(): Id | null {
     const surface = activeItemSurface()
-    if (surface === 'plan') return activePlan?.id ?? null
+    if (surface === 'plan') return focusedPlan?.id ?? null
     if (surface === 'day-template') return selectedTemplate?.id ?? null
     if (surface === 'list-template') return selectedListTemplate?.id ?? null
     return null
@@ -2106,16 +2264,14 @@ return rows`
 
   function activeItemTree(): TreeNode[] {
     const surface = activeItemSurface()
-    if (surface === 'plan') return (activePlan?.items ?? []) as TreeNode[]
+    if (surface === 'plan') return (focusedPlan?.items ?? []) as TreeNode[]
     if (surface === 'day-template') return (selectedTemplate?.items ?? []) as TreeNode[]
     if (surface === 'list-template') return (selectedListTemplate?.items ?? []) as TreeNode[]
     return []
   }
 
   function activeItemContextKey() {
-    const surface = activeItemSurface()
-    const containerId = activeItemContainerId()
-    return surface && containerId ? `${surface}:${containerId}` : ''
+    return activeItemContext
   }
 
   function itemRowSelector() {
@@ -2340,28 +2496,29 @@ return rows`
   }
 
   function selectedPlanItems() {
-    if (!activePlan) return []
+    if (!focusedPlan) return []
+    const plan = focusedPlan
     return selectedItemIds
-      .map((itemId) => findPlanItem(activePlan.items, itemId))
+      .map((itemId) => findPlanItem(plan.items, itemId))
       .filter((item): item is PlanItem => item !== null)
   }
 
-  function focusSelectedItemBoundary(direction: MoveDirection) {
+  function focusSelectedItemBoundary(position: 'start' | 'end') {
     const selectedIds = new Set(selectedItemIds)
     const orderedIds = flattenItemIds(activeItemTree()).filter((itemId) => selectedIds.has(itemId))
-    const targetId = direction === 'up' ? orderedIds[0] : orderedIds.at(-1)
+    const targetId = position === 'start' ? orderedIds[0] : orderedIds.at(-1)
     if (!targetId) return
     clearItemSelection()
-    focusItemTextInput(targetId)
+    focusItemTextInput(targetId, position)
   }
 
   function copySelectedItems() {
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
     if (!surface || !containerId || selectedItemIds.length === 0) return
-    if (surface === 'plan' && activePlan) {
+    if (surface === 'plan' && focusedPlan) {
       const items = plannerStore.copyPlanItems(containerId, selectedItemIds)
-      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: activePlan.date })
+      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: focusedPlan.date })
       return
     }
     if (surface === 'day-template') {
@@ -2378,9 +2535,9 @@ return rows`
     const containerId = activeItemContainerId()
     if (!surface || !containerId || selectedItemIds.length === 0) return
     const orderedIds = flattenItemIds(activeItemTree())
-    if (surface === 'plan' && activePlan) {
+    if (surface === 'plan' && focusedPlan) {
       const items = plannerStore.cutPlanItems(containerId, selectedItemIds)
-      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: true, sourceDate: activePlan.date })
+      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: true, sourceDate: focusedPlan.date })
       await finishCut(orderedIds, items)
       return
     }
@@ -2490,13 +2647,13 @@ return rows`
   }
 
   function pastePlanItemClipboard(planItemClipboard: PlanItemClipboard) {
-    if (!activePlan) return
+    if (!focusedPlan) return
 
     const targetId = pasteTargetPlanItemId()
     const placement = shouldReplaceFocusedPlanItemOnPaste(targetId) ? 'replace' : 'after'
 
     const nodes = flattenPlanItemsForReview(planItemClipboard.items)
-    if (nodes.length >= PASTE_REVIEW_THRESHOLD && planItemClipboard.sourceDate !== activePlan.date) {
+    if (nodes.length >= PASTE_REVIEW_THRESHOLD && planItemClipboard.sourceDate !== focusedPlan.date) {
       pasteReview = {
         nodes,
         index: 0,
@@ -2504,7 +2661,7 @@ return rows`
         rejected: [],
         targetId,
         placement,
-        planId: activePlan.id,
+        planId: focusedPlan.id,
         cut: planItemClipboard.cut,
       }
       pasteReviewEditing = false
@@ -2591,9 +2748,9 @@ return rows`
     placement: 'after' | 'replace',
     cut: boolean,
   ) {
-    if (!activePlan) return
+    if (!focusedPlan) return
 
-    const pastedRootIds = plannerStore.pastePlanItems(activePlan.id, items, targetId, placement)
+    const pastedRootIds = plannerStore.pastePlanItems(focusedPlan.id, items, targetId, placement)
     if (pastedRootIds.length === 0) return
 
     selectedItemIds = pastedRootIds
@@ -2605,7 +2762,7 @@ return rows`
     // clipboard alive makes subsequent pastes create more task rows instead of falling
     // through to the browser's plain-text clipboard handling.
     if (cut) {
-      writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: activePlan.date })
+      writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: focusedPlan.date })
     }
   }
 
@@ -2986,10 +3143,10 @@ return rows`
   }
 
   function shouldReplaceFocusedPlanItemOnPaste(targetId: Id | null) {
-    if (!activePlan || !targetId) return false
+    if (!focusedPlan || !targetId) return false
     if (!(document.activeElement instanceof HTMLElement) || !document.activeElement.matches('[data-plan-text-input]')) return false
 
-    const item = findPlanItem(activePlan.items, targetId)
+    const item = findPlanItem(focusedPlan.items, targetId)
     // Only replace a genuinely empty leaf. Replacing an empty-titled item that still has
     // children would cascade-delete the whole subtree (data loss on paste).
     return Boolean(
@@ -3182,11 +3339,11 @@ return rows`
     await runLaunchDatabaseMaintenance()
   }
 
-  async function startDailyReminderEdit() {
-    if (!activePlan) return
+  async function startDailyReminderEdit(plan: DailyPlan | undefined) {
+    if (!plan) return
 
-    dailyReminderDraft = activePlan.dailyReminder
-    editingDailyReminder = true
+    dailyReminderDraft = plan.dailyReminder
+    editingReminderPlanId = plan.id
     await tick()
     dailyReminderInput?.focus()
     dailyReminderInput?.select()
@@ -3194,7 +3351,7 @@ return rows`
 
   function updateDailyReminder(value: string) {
     dailyReminderDraft = value
-    if (activePlan) plannerStore.patchPlanDailyReminder(activePlan.id, value)
+    if (editingReminderPlanId) plannerStore.patchPlanDailyReminder(editingReminderPlanId, value)
   }
 
   function handleDailyReminderKeydown(event: KeyboardEvent) {
@@ -3327,7 +3484,7 @@ return rows`
           </select>
         </label>
       {/if}
-      <button class="primary" type="button" on:click={generateSelectedDay}>{generateButtonLabel}</button>
+      <button class="primary" type="button" on:click={() => { void generateSelectedDay() }}>{generateButtonLabel}</button>
       <p class="tiny">{templates.length} template{templates.length === 1 ? '' : 's'} · {$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
     </div>
   </aside>
@@ -3340,123 +3497,186 @@ return rows`
       on:scroll={handleWorkspaceScroll}
     >
     {#if view === 'today'}
-      <header class="page-header">
-        <div>
-          <p class="eyebrow">Daily plan</p>
-          <h2>
-            {activePlan?.title ?? formatPlanTitle($plannerStore.activePlanDate)}
-            {#if editingDailyReminder && activePlan}
-              <span class="daily-reminder-prefix">—</span>
-              <input
-                bind:this={dailyReminderInput}
-                class="daily-reminder-input"
-                aria-label="Edit daily reminder"
-                value={dailyReminderDraft}
-                on:input={(event) => updateDailyReminder(event.currentTarget.value)}
-                on:blur={() => (editingDailyReminder = false)}
-                on:keydown={handleDailyReminderKeydown}
-              />
-            {:else}
-              <button
-                class="daily-reminder-button"
-                type="button"
-                title={activePlan ? 'Edit daily reminder' : 'Generate a day before editing the reminder'}
-                on:click={startDailyReminderEdit}
-              >
-                — {activeDailyReminder}
-              </button>
-            {/if}
-          </h2>
-        </div>
-        <div class="date-controls" aria-label="Day navigation">
-          <button
-            class="date-nav-button"
-            type="button"
-            aria-label="Previous day"
-            title="Previous day (Option+Q)"
-            on:click={() => shiftActivePlanDate(-1)}
+      <div class="day-panes" class:comparing={compareDayOpen}>
+        {#each dayPanes as pane (pane.key)}
+          {@const plan = pane.plan}
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <section
+            class="day-pane"
+            class:focused-pane={compareDayOpen && focusedPlan?.id === plan?.id}
+            aria-label={pane.key === 'compare' ? 'Compared day' : 'Daily plan'}
+            on:pointerdown|capture={() => focusPane(plan?.id)}
+            on:focusin={() => focusPane(plan?.id)}
           >
-            &lt;
-          </button>
-          <button
-            class="date-nav-button"
-            type="button"
-            aria-label="Next day"
-            title="Next day (Option+W)"
-            on:click={() => shiftActivePlanDate(1)}
-          >
-            &gt;
-          </button>
-          <input
-            class="date-input"
-            type="date"
-            value={$plannerStore.activePlanDate}
-            on:input={(event) => plannerStore.setActivePlanDate(event.currentTarget.value)}
-          />
-        </div>
-      </header>
+            <header class="page-header">
+              <div class="day-pane-heading">
+                <p class="eyebrow">{pane.key === 'compare' ? 'Compared day' : 'Daily plan'}</p>
+                <h2>
+                  {plan?.title ?? formatPlanTitle(pane.date)}
+                  {#if editingReminderPlanId && plan && editingReminderPlanId === plan.id}
+                    <span class="daily-reminder-prefix">—</span>
+                    <input
+                      bind:this={dailyReminderInput}
+                      class="daily-reminder-input"
+                      aria-label="Edit daily reminder"
+                      value={dailyReminderDraft}
+                      on:input={(event) => updateDailyReminder(event.currentTarget.value)}
+                      on:blur={() => (editingReminderPlanId = null)}
+                      on:keydown={handleDailyReminderKeydown}
+                    />
+                  {:else}
+                    <button
+                      class="daily-reminder-button"
+                      type="button"
+                      title={plan ? 'Edit daily reminder' : 'Generate a day before editing the reminder'}
+                      on:click={() => { void startDailyReminderEdit(plan) }}
+                    >
+                      — {plan?.dailyReminder ?? DEFAULT_DAILY_REMINDER}
+                    </button>
+                  {/if}
+                </h2>
+              </div>
+              <div class="date-controls" aria-label="Day navigation">
+                <button
+                  class="date-nav-button"
+                  type="button"
+                  aria-label="Previous day"
+                  title="Previous day (Option+Q)"
+                  on:click={() => (pane.key === 'compare' ? shiftCompareDayDate(-1) : shiftActivePlanDate(-1))}
+                >
+                  &lt;
+                </button>
+                <button
+                  class="date-nav-button"
+                  type="button"
+                  aria-label="Next day"
+                  title="Next day (Option+W)"
+                  on:click={() => (pane.key === 'compare' ? shiftCompareDayDate(1) : shiftActivePlanDate(1))}
+                >
+                  &gt;
+                </button>
+                <input
+                  class="date-input"
+                  type="date"
+                  aria-label={pane.key === 'compare' ? 'Compared day date' : 'Day date'}
+                  value={pane.date}
+                  on:input={(event) =>
+                    pane.key === 'compare'
+                      ? (compareDayDate = event.currentTarget.value)
+                      : plannerStore.setActivePlanDate(event.currentTarget.value)}
+                />
+                {#if pane.key === 'primary'}
+                  <button
+                    class="date-nav-button compare-toggle"
+                    class:active={compareDayOpen}
+                    type="button"
+                    aria-pressed={compareDayOpen}
+                    aria-label="Compare with another day"
+                    title={`Compare with another day (${altShortcutLabel('B')})`}
+                    on:click={toggleCompareDay}
+                  >
+                    ⧉
+                  </button>
+                {:else}
+                  <button
+                    class="date-nav-button"
+                    type="button"
+                    aria-label="Swap the two days"
+                    title="Swap the two days"
+                    on:click={swapCompareDays}
+                  >
+                    ⇄
+                  </button>
+                  <button
+                    class="date-nav-button"
+                    type="button"
+                    aria-label="Close day comparison"
+                    title="Close day comparison"
+                    on:click={closeCompareDay}
+                  >
+                    ×
+                  </button>
+                {/if}
+              </div>
+            </header>
 
-      {#if activePlan}
-        <div class="list-panel">
-          {#if activePlan.items.length === 0}
-            <p class="empty">No items yet.</p>
-          {/if}
-
-          {#each activePlan.items as item (item.id)}
-            <PlanItemEditor
-              {item}
-              allItems={activePlan.items}
-              timeWarnings={activePlanTimeWarnings}
-              planId={activePlan.id}
-              patchItem={plannerStore.patchPlanItem}
-              splitItem={plannerStore.splitPlanItem}
-              backspaceItemAtStart={plannerStore.backspacePlanItemAtStart}
-              addChild={plannerStore.addPlanChild}
-              deleteItem={plannerStore.deletePlanItem}
-              moveItem={plannerStore.movePlanItem}
-              moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
-              outdentItem={plannerStore.outdentPlanItem}
-              historyRevision={$plannerStore.historyRevision}
-              selectedItemIds={selectedItemIdSet}
-              selectionDragging={selectingItems}
-              onSelectionPointerDown={beginItemSelection}
-              onSelectionPointerMove={handleSelectionPointerMove}
-              onSelectionPointerEnter={extendItemSelection}
-              onTextShiftArrow={selectItemWithAdjacent}
-              goals={$plannerStore.goals}
-              goalCompletions={$plannerStore.goalCompletions}
-              planDate={activePlan.date}
-              onGoalBadgeClick={focusGoalInRhythm}
-              {listTemplates}
-              {metrics}
-              onOpenLink={(link, itemId) => openLink(link, { container: 'plan', containerId: activePlan.id, itemId })}
-            />
-          {/each}
-
-          <button class="add-row" type="button" on:click={() => plannerStore.addRootPlanItem(activePlan.id)}>
-            + Add item
-          </button>
-        </div>
-      {:else}
-        <div class="empty-state">
-          <h3>No plan for this date</h3>
-          <p>Choose a template to generate this day, or pick another date.</p>
-          {#if selectedTemplate}
-            <label class="generation-template-field workspace-generation-template-field">
-              <span>Day template</span>
-              <select
-                value={selectedTemplate.id}
-                on:change={(event) => selectDayTemplate(event.currentTarget.value)}
+            {#if plan}
+              <!-- The drop zone covers the whole panel, so an item dragged from the
+                   other day can be released anywhere in this one to land at its end. -->
+              <div
+                class="list-panel"
+                data-plan-item-scope={plan.id}
+                data-item-drop-zone={compareDayOpen ? plan.id : undefined}
               >
-                {#each templates as template (template.id)}
-                  <option value={template.id}>{template.name || 'Untitled day'}</option>
+                {#if plan.items.length === 0}
+                  <p class="empty">No items yet.</p>
+                {/if}
+
+                {#each plan.items as item (item.id)}
+                  <PlanItemEditor
+                    {item}
+                    allItems={plan.items}
+                    timeWarnings={pane.timeWarnings}
+                    planId={plan.id}
+                    patchItem={plannerStore.patchPlanItem}
+                    splitItem={plannerStore.splitPlanItem}
+                    backspaceItemAtStart={plannerStore.backspacePlanItemAtStart}
+                    addChild={plannerStore.addPlanChild}
+                    deleteItem={plannerStore.deletePlanItem}
+                    moveItem={plannerStore.movePlanItem}
+                    moveItemAcrossContainers={compareDayOpen ? movePlanItemAcrossDays : null}
+                    moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
+                    outdentItem={plannerStore.outdentPlanItem}
+                    historyRevision={$plannerStore.historyRevision}
+                    selectedItemIds={selectedItemIdSet}
+                    selectionDragging={selectingItems}
+                    onSelectionPointerDown={beginItemSelection}
+                    onSelectionPointerMove={handleSelectionPointerMove}
+                    onSelectionPointerEnter={extendItemSelection}
+                    onTextShiftArrow={selectItemWithAdjacent}
+                    goals={$plannerStore.goals}
+                    goalCompletions={$plannerStore.goalCompletions}
+                    planDate={plan.date}
+                    onGoalBadgeClick={focusGoalInRhythm}
+                    {listTemplates}
+                    {metrics}
+                    onOpenLink={(link, itemId) => openLink(link, { container: 'plan', containerId: plan.id, itemId })}
+                  />
                 {/each}
-              </select>
-            </label>
-            <button class="primary" type="button" on:click={generateSelectedDay}>{generateButtonLabel}</button>
-          {/if}
-        </div>
-      {/if}
+
+                <button class="add-row" type="button" on:click={() => plannerStore.addRootPlanItem(plan.id)}>
+                  + Add item
+                </button>
+              </div>
+            {:else}
+              <div class="empty-state">
+                <h3>No plan for this date</h3>
+                <p>Choose a template to generate this day, or pick another date.</p>
+                {#if selectedTemplate}
+                  <label class="generation-template-field workspace-generation-template-field">
+                    <span>Day template</span>
+                    <select
+                      value={selectedTemplate.id}
+                      on:change={(event) => selectDayTemplate(event.currentTarget.value)}
+                    >
+                      {#each templates as template (template.id)}
+                        <option value={template.id}>{template.name || 'Untitled day'}</option>
+                      {/each}
+                    </select>
+                  </label>
+                  <button
+                    class="primary"
+                    type="button"
+                    on:click={() => { void generateSelectedDay(pane.key === 'compare' ? pane.date : undefined) }}
+                  >
+                    {pane.key === 'compare' ? 'Generate this day' : generateButtonLabel}
+                  </button>
+                {/if}
+              </div>
+            {/if}
+          </section>
+        {/each}
+      </div>
     {/if}
 
     {#if view === 'templates'}

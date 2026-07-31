@@ -15,6 +15,8 @@
     shift: isMac ? '⇧' : 'Shift',
     up: '↑',
     down: '↓',
+    left: '←',
+    right: '→',
     esc: 'Esc',
     enter: '↵',
     tab: 'Tab',
@@ -51,6 +53,7 @@
         { keys: ['alt', 'S'], label: 'Open Settings' },
         { keys: ['alt', 'Q'], label: 'Previous day or template' },
         { keys: ['alt', 'W'], label: 'Next day or template' },
+        { keys: ['alt', 'B'], label: 'Show two days side by side' },
       ],
     },
     {
@@ -58,7 +61,8 @@
       shortcuts: [
         { keys: ['mod', 'A'], label: 'Select all items' },
         { keys: ['mod', 'shift', 'A'], label: 'Select focused item, then all items' },
-        { keys: ['up'], label: 'Move focus above selection', alt: ['down'] },
+        { keys: ['up'], label: 'Edit selection from start', alt: ['left'] },
+        { keys: ['down'], label: 'Edit selection from end', alt: ['right'] },
         { keys: ['shift', 'up'], label: 'Extend selection', alt: ['shift', 'down'] },
         { keys: ['esc'], label: 'Clear selection' },
       ],

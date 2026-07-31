@@ -1977,7 +1977,14 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             }
             let plan = required_value(payload, "generatedPlan")?;
             insert_plan(tx, plan)?;
-            set_metadata(tx, "active_plan_date", required_string(payload, "date")?)
+            // Generating from the side-by-side comparison fills the second pane
+            // without moving the app off the day it is on; older operations have
+            // no `activePlanDate` and still land on the generated day.
+            let active_plan_date = match optional_string(payload, "activePlanDate")? {
+                Some(date) => date,
+                None => required_string(payload, "date")?.to_string(),
+            };
+            set_metadata(tx, "active_plan_date", &active_plan_date)
         }
         "add_plan_item" => insert_plan_item(
             tx,
@@ -2058,6 +2065,14 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             required_string(payload, "sourceId")?,
             required_string(payload, "targetId")?,
             required_string(payload, "placement")?,
+        ),
+        "move_plan_item_to_plan" => move_plan_item_to_plan_row(
+            tx,
+            required_string(payload, "targetPlanId")?,
+            required_string(payload, "itemId")?,
+            optional_string(payload, "targetId")?.as_deref(),
+            required_string(payload, "placement")?,
+            required_value(payload, "item")?,
         ),
         "move_plan_item_within_level" => move_plan_item_within_level_row(
             tx,
@@ -2459,6 +2474,32 @@ fn build_domain_undo_operation(
                     "planId": snapshot.plan_id,
                     "parentId": snapshot.parent_id,
                     "position": snapshot.position,
+                }),
+            )))
+        }
+        "move_plan_item_to_plan" => {
+            let item_id = required_string(payload, "itemId")?;
+            let Some(snapshot) = read_plan_item_snapshot(connection, item_id)? else {
+                return Ok(None);
+            };
+
+            // The item is re-created in the target plan, so undo removes it there
+            // and re-inserts the pre-move subtree at its old slot in the old day.
+            Ok(Some(storage_operation(
+                "batch",
+                json!({
+                    "operations": [
+                        storage_operation("delete_plan_item", json!({ "itemId": item_id })),
+                        storage_operation(
+                            "insert_plan_item_at",
+                            json!({
+                                "planId": snapshot.plan_id,
+                                "parentId": snapshot.parent_id,
+                                "position": snapshot.position,
+                                "item": snapshot.item,
+                            }),
+                        ),
+                    ]
                 }),
             )))
         }
@@ -4439,6 +4480,42 @@ fn move_plan_item_row(
         )
         .map_err(|error| error.to_string())?;
     rewrite_plan_item_positions(connection, &siblings)
+}
+
+/// Moves an item (and everything under it) into a different day's plan.
+///
+/// Every descendant row carries its own `plan_id`, so re-parenting the top row
+/// alone would strand the subtree in the old plan. Instead the subtree is deleted
+/// (children cascade) and re-inserted into the target plan from the payload copy,
+/// which is exactly what `paste_plan_items_row` already does.
+fn move_plan_item_to_plan_row(
+    connection: &Connection,
+    target_plan_id: &str,
+    item_id: &str,
+    target_id: Option<&str>,
+    placement: &str,
+    item: &Value,
+) -> Result<(), String> {
+    if plan_item_plan_id_if_exists(connection, item_id)?.is_none() {
+        return Ok(());
+    }
+    if let Some(target_id) = target_id {
+        if plan_item_plan_id_if_exists(connection, target_id)?.as_deref() != Some(target_plan_id) {
+            return Ok(());
+        }
+    }
+
+    connection
+        .execute("delete from plan_items where id = ?1", params![item_id])
+        .map_err(|error| error.to_string())?;
+
+    paste_plan_items_row(
+        connection,
+        target_plan_id,
+        target_id,
+        placement,
+        std::slice::from_ref(item),
+    )
 }
 
 fn move_plan_item_within_level_row(
@@ -8172,6 +8249,137 @@ mod tests {
     }
 
     #[test]
+    fn move_plan_item_to_plan_carries_the_subtree_across_days() {
+        let database = TestDatabase::new("move-plan-item-across-days");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Cross-day move test");
+        state["plans"][0]["items"] = json!([
+            {
+                "id": "plan_item_wake",
+                "text": "Wake up",
+                "html": "Wake up",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            },
+            {
+                "id": "plan_item_errands",
+                "text": "Errands",
+                "html": "Errands",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": [
+                    {
+                        "id": "plan_item_groceries",
+                        "text": "Groceries",
+                        "html": "Groceries",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }
+                ]
+            }
+        ]);
+        state["plans"].as_array_mut().unwrap().push(json!({
+            "id": "plan_tomorrow",
+            "date": "2026-05-22",
+            "title": "Tomorrow",
+            "dailyReminder": "This shouldn't be aspirational",
+            "generatedFromTemplateId": "template_default",
+            "createdAt": "2026-05-21T00:00:00Z",
+            "items": [
+                {
+                    "id": "plan_item_rest",
+                    "text": "Rest",
+                    "html": "Rest",
+                    "done": false,
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "children": []
+                }
+            ]
+        }));
+        replace_app_state(&mut connection, &state).unwrap();
+
+        let move_operation = json!({
+            "id": "op_device_test_2",
+            "deviceId": "device_test",
+            "sequence": 2,
+            "type": "move_plan_item_to_plan",
+            "timestamp": "2026-05-21T00:01:00Z",
+            "payload": {
+                "sourcePlanId": "plan_today",
+                "targetPlanId": "plan_tomorrow",
+                "itemId": "plan_item_errands",
+                "targetId": "plan_item_rest",
+                "placement": "before",
+                "item": {
+                    "id": "plan_item_errands",
+                    "text": "Errands",
+                    "html": "Errands",
+                    "done": false,
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "children": [
+                        {
+                            "id": "plan_item_groceries",
+                            "text": "Groceries",
+                            "html": "Groceries",
+                            "done": false,
+                            "startMinutes": null,
+                            "endMinutes": null,
+                            "children": []
+                        }
+                    ]
+                }
+            }
+        });
+        persist_operation_to_database(&mut connection, &move_operation).unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(plan_item_ids_for_plan(&saved, "plan_today"), ["plan_item_wake"]);
+        assert_eq!(
+            plan_item_ids_for_plan(&saved, "plan_tomorrow"),
+            ["plan_item_errands", "plan_item_rest"]
+        );
+        // The child must travel with its parent: a descendant left behind in the
+        // old plan would silently vanish from both days.
+        assert_eq!(
+            plan_by_id(&saved, "plan_tomorrow")["items"][0]["children"][0]["id"],
+            "plan_item_groceries"
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            plan_item_ids_for_plan(&undone, "plan_today"),
+            ["plan_item_wake", "plan_item_errands"]
+        );
+        assert_eq!(
+            plan_by_id(&undone, "plan_today")["items"][1]["children"][0]["id"],
+            "plan_item_groceries"
+        );
+        assert_eq!(
+            plan_item_ids_for_plan(&undone, "plan_tomorrow"),
+            ["plan_item_rest"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(plan_item_ids_for_plan(&redone, "plan_today"), ["plan_item_wake"]);
+        assert_eq!(
+            plan_item_ids_for_plan(&redone, "plan_tomorrow"),
+            ["plan_item_errands", "plan_item_rest"]
+        );
+    }
+
+    #[test]
     fn undo_and_redo_use_inverse_operations_not_full_state_snapshots() {
         let database = TestDatabase::new("operation-history");
         let recovery_key = generate_recovery_key();
@@ -9978,6 +10186,24 @@ mod tests {
 
     fn top_plan_item_ids(state: &Value) -> Vec<String> {
         state["plans"][0]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| item["id"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    fn plan_by_id<'a>(state: &'a Value, plan_id: &str) -> &'a Value {
+        state["plans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|plan| plan["id"] == plan_id)
+            .unwrap_or_else(|| panic!("plan {plan_id} should exist"))
+    }
+
+    fn plan_item_ids_for_plan(state: &Value, plan_id: &str) -> Vec<String> {
+        plan_by_id(state, plan_id)["items"]
             .as_array()
             .unwrap()
             .iter()
