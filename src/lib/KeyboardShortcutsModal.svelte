@@ -57,7 +57,7 @@
       title: 'Selecting items',
       shortcuts: [
         { keys: ['mod', 'A'], label: 'Select all items' },
-        { keys: ['mod', 'shift', 'A'], label: 'Select just the focused item' },
+        { keys: ['mod', 'shift', 'A'], label: 'Select focused item, then all items' },
         { keys: ['up'], label: 'Move focus above selection', alt: ['down'] },
         { keys: ['shift', 'up'], label: 'Extend selection', alt: ['shift', 'down'] },
         { keys: ['esc'], label: 'Clear selection' },

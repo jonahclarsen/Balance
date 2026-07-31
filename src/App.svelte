@@ -1904,13 +1904,19 @@ return rows`
 
     if (
       activeItemSurface() &&
-      event.metaKey &&
+      primaryModifier &&
       event.shiftKey &&
-      !event.ctrlKey &&
       !event.altKey &&
       key === 'a' &&
       !isFormFieldActive()
     ) {
+      if (selectedItemIds.length > 0) {
+        event.preventDefault()
+        event.stopPropagation()
+        selectAllItems()
+        return
+      }
+
       const itemId = activeFocusedItemId()
       if (!itemId) return
       event.preventDefault()
