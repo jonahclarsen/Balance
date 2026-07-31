@@ -80,7 +80,7 @@ fi
 # Multi-device sync E2E: on debug launch the app creates real primary/joiner
 # Balance databases, pairs them with an encoded key, syncs their operation logs
 # over TCP, and verifies user data reached the joiner. This runs inside the APK,
-# so it also proves the Android cr-sqlite .so and SQLCipher paths work.
+# so it also proves the Android SQLCipher path works.
 SYNC_OK=0
 for _ in $(seq 1 10); do
   adb logcat -d > sync-log.txt 2>/dev/null || true
@@ -91,14 +91,14 @@ for _ in $(seq 1 10); do
   if grep -q "BALANCE_SYNC_E2E: FAIL" sync-log.txt; then
     echo "[sync] Android E2E FAILED on device:"
     grep "BALANCE_SYNC_E2E" sync-log.txt | head
-    grep -iE "crsqlite|load_extension|UnsatisfiedLink|dlopen|library" sync-log.txt | head -20 || true
+    grep -iE "UnsatisfiedLink|dlopen|library" sync-log.txt | head -20 || true
     exit 1
   fi
   sleep 3
 done
 if [ "$SYNC_OK" != 1 ]; then
   echo "[sync] E2E marker never appeared."
-  grep -iE "crsqlite|load_extension|UnsatisfiedLink|dlopen|RustStdoutStderr" sync-log.txt | head -20 || true
+  grep -iE "UnsatisfiedLink|dlopen|RustStdoutStderr" sync-log.txt | head -20 || true
   exit 1
 fi
 echo "[sync] paired Android databases exchanged E2EE data over TCP and converged."

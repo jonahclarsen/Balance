@@ -1,10 +1,16 @@
-//! End-to-end encryption for changeset blobs.
+//! End-to-end encryption for sync payloads.
 //!
 //! The *sync key* is a 32-byte symmetric secret shared across a user's devices
 //! (transferred device-to-device at pairing, e.g. via QR). It is distinct from
-//! each device's local SQLCipher at-rest key. Every changeset is sealed with
+//! each device's local SQLCipher at-rest key. Every payload is sealed with
 //! XChaCha20-Poly1305 (24-byte random nonce) before it touches any transport,
 //! so relays and sockets only ever see ciphertext.
+//!
+//! [`SyncKey::seal`] and [`SyncKey::open`] work on opaque bytes; serialization
+//! is the caller's business (the transport seals JSON [`Message`]s, the relay
+//! commands seal JSON envelopes).
+//!
+//! [`Message`]: super::transport::Message
 
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{XChaCha20Poly1305, XNonce};
@@ -12,7 +18,7 @@ use data_encoding::BASE32_NOPAD;
 use rand::RngCore;
 use sha2::{Digest, Sha256};
 
-use super::{ChangeSet, Error, Result};
+use super::{Error, Result};
 
 /// Prefix identifying a Balance v1 pairing payload (the string a QR encodes).
 const PAIRING_PREFIX: &str = "BALSYNC1:";
@@ -65,14 +71,14 @@ impl SyncKey {
         Ok(SyncKey(key))
     }
 
-    pub fn seal(&self, set: &ChangeSet) -> Result<Vec<u8>> {
-        let plaintext = serde_json::to_vec(set).map_err(|e| Error::Codec(e.to_string()))?;
+    /// Encrypt `plaintext`, returning `nonce ‖ ciphertext`.
+    pub fn seal(&self, plaintext: &[u8]) -> Result<Vec<u8>> {
         let cipher = XChaCha20Poly1305::new(self.0.as_ref().into());
         let mut nonce_bytes = [0u8; 24];
         rand::rngs::OsRng.fill_bytes(&mut nonce_bytes);
         let nonce = XNonce::from_slice(&nonce_bytes);
         let ct = cipher
-            .encrypt(nonce, plaintext.as_ref())
+            .encrypt(nonce, plaintext)
             .map_err(|e| Error::Crypto(e.to_string()))?;
         let mut out = Vec::with_capacity(24 + ct.len());
         out.extend_from_slice(&nonce_bytes);
@@ -80,17 +86,17 @@ impl SyncKey {
         Ok(out)
     }
 
-    pub fn open(&self, envelope: &[u8]) -> Result<ChangeSet> {
+    /// Decrypt a `nonce ‖ ciphertext` envelope produced by [`SyncKey::seal`].
+    pub fn open(&self, envelope: &[u8]) -> Result<Vec<u8>> {
         if envelope.len() < 24 {
             return Err(Error::Crypto("envelope too short".into()));
         }
         let (nonce_bytes, ct) = envelope.split_at(24);
         let cipher = XChaCha20Poly1305::new(self.0.as_ref().into());
         let nonce = XNonce::from_slice(nonce_bytes);
-        let pt = cipher
+        cipher
             .decrypt(nonce, ct)
-            .map_err(|e| Error::Crypto(e.to_string()))?;
-        serde_json::from_slice(&pt).map_err(|e| Error::Codec(e.to_string()))
+            .map_err(|e| Error::Crypto(e.to_string()))
     }
 }
 

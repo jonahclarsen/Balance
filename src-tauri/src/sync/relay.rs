@@ -1,17 +1,19 @@
-//! Server-mediated transport: a *dumb* relay that stores opaque encrypted
-//! changeset envelopes keyed by origin site + version. It never holds the sync
-//! key, so it cannot read what it stores — E2EE at the transport layer.
+//! Server-mediated transport: a *dumb* relay that stores opaque sealed
+//! envelopes, tagged only with the device that pushed them. It never holds the
+//! sync key, so it cannot read what it stores — E2EE at the transport layer.
 //!
-//! In production this is a network service (HTTP/WebSocket); the contract here
-//! (push/pull of sealed envelopes) is identical.
+//! This in-memory implementation is a test double for the reference relay in
+//! `scripts/relay-server.mjs`. The contract is deliberately tiny: push a blob,
+//! pull back every blob some *other* device pushed. Reconciliation itself is
+//! the receiving device's job (`merge_ops`), so the relay needs no cursors,
+//! versions, or knowledge of the payload format.
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
 pub struct StoredEnvelope {
-    pub origin_site_hex: String,
-    pub max_db_version: i64,
+    /// The device that pushed this blob, so a device never pulls its own.
+    pub origin_device_id: String,
     pub ciphertext: Vec<u8>,
 }
 
@@ -25,36 +27,31 @@ impl Relay {
         Relay::default()
     }
 
-    pub fn push(&self, env: StoredEnvelope) {
-        self.inner.lock().unwrap().push(env);
+    pub fn push(&self, origin_device_id: &str, ciphertext: Vec<u8>) {
+        self.inner.lock().unwrap().push(StoredEnvelope {
+            origin_device_id: origin_device_id.to_string(),
+            ciphertext,
+        });
     }
 
-    pub fn pull_for(
-        &self,
-        my_site_hex: &str,
-        cursors: &HashMap<String, i64>,
-    ) -> Vec<StoredEnvelope> {
+    /// Every envelope pushed by a device other than `my_device_id`.
+    pub fn pull_for(&self, my_device_id: &str) -> Vec<StoredEnvelope> {
         self.inner
             .lock()
             .unwrap()
             .iter()
-            .filter(|e| e.origin_site_hex != my_site_hex)
-            .filter(|e| {
-                cursors
-                    .get(&e.origin_site_hex)
-                    .map(|seen| e.max_db_version > *seen)
-                    .unwrap_or(true)
-            })
+            .filter(|envelope| envelope.origin_device_id != my_device_id)
             .cloned()
             .collect()
     }
 
+    /// Exactly what the server can see: opaque ciphertext.
     pub fn stored_blobs(&self) -> Vec<Vec<u8>> {
         self.inner
             .lock()
             .unwrap()
             .iter()
-            .map(|e| e.ciphertext.clone())
+            .map(|envelope| envelope.ciphertext.clone())
             .collect()
     }
 }

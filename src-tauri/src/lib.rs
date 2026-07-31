@@ -290,15 +290,7 @@ async fn compact_database(app: tauri::AppHandle) -> Result<DatabaseCompactionRes
         let connection = open_database_at(&database_path, &recovery_key)?;
         let checkpoint_coordinator = database_checkpoint_coordinator(&connection)?;
         drop(connection);
-        let extension_path = checkpoint_coordinator
-            .then(|| crsqlite_extension_path(&app))
-            .transpose()?;
-        maintain_database_at(
-            &database_path,
-            &recovery_key,
-            extension_path.as_deref(),
-            checkpoint_coordinator,
-        )
+        maintain_database_at(&database_path, &recovery_key, checkpoint_coordinator)
     })
     .await
 }
@@ -329,17 +321,7 @@ async fn run_weekly_database_maintenance(
             return Ok(None);
         }
 
-        let extension_path = status
-            .checkpoint_coordinator
-            .then(|| crsqlite_extension_path(&app))
-            .transpose()?;
-        maintain_database_at(
-            &database_path,
-            &recovery_key,
-            extension_path.as_deref(),
-            status.checkpoint_coordinator,
-        )
-        .map(Some)
+        maintain_database_at(&database_path, &recovery_key, status.checkpoint_coordinator).map(Some)
     })
     .await
 }
@@ -792,9 +774,8 @@ fn compaction_paths(database_path: &Path) -> Result<(PathBuf, PathBuf), String> 
 fn compact_database_at(
     database_path: &Path,
     recovery_key: &str,
-    extension_path: Option<&Path>,
 ) -> Result<DatabaseCompactionResult, String> {
-    maintain_database_at(database_path, recovery_key, extension_path, true)
+    maintain_database_at(database_path, recovery_key, true)
 }
 
 #[cfg(test)]
@@ -802,13 +783,12 @@ fn vacuum_database_at(
     database_path: &Path,
     recovery_key: &str,
 ) -> Result<DatabaseCompactionResult, String> {
-    maintain_database_at(database_path, recovery_key, None, false)
+    maintain_database_at(database_path, recovery_key, false)
 }
 
 fn maintain_database_at(
     database_path: &Path,
     recovery_key: &str,
-    extension_path: Option<&Path>,
     create_checkpoint: bool,
 ) -> Result<DatabaseCompactionResult, String> {
     let before_bytes = fs::metadata(database_path)
@@ -818,12 +798,6 @@ fn maintain_database_at(
 
     let result = (|| {
         let source = open_database_at(database_path, recovery_key)?;
-        let synced = sync::is_sync_enabled(&source).map_err(sync::Error::into_string)?;
-        if create_checkpoint && synced && extension_path.is_none() {
-            return Err(
-                "Cannot compact a synced database because cr-sqlite is unavailable".to_string(),
-            );
-        }
         let expected_operation_count: i64 = source
             .query_row("select count(*) from operations", [], |row| row.get(0))
             .map_err(|error| error.to_string())?;
@@ -853,19 +827,12 @@ fn maintain_database_at(
                 "Database changed while its compaction copy was being made; try again".to_string(),
             );
         }
-        if create_checkpoint && synced {
-            sync::activate(
-                &working,
-                extension_path.expect("synced compaction requires extension"),
-            )
-            .map_err(sync::Error::into_string)?;
-        }
+        // Checkpointing is plain SQL over the op log — a synced database needs
+        // no special handling here beyond the `replaces`/tombstone bookkeeping
+        // that `checkpoint_operation_log` already does.
         let checkpoint = create_checkpoint
             .then(|| sync::checkpoint_operation_log(&working).map_err(sync::Error::into_string))
             .transpose()?;
-        if create_checkpoint && synced {
-            sync::finalize(&working).map_err(sync::Error::into_string)?;
-        }
         drop(working);
 
         // VACUUM only the disposable copy. If it or any later verification
@@ -1159,6 +1126,12 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           updated_at_ms integer not null
         );
 
+        -- Ids of operations a sync checkpoint permanently replaced. Kept so a
+        -- peer that still holds the compacted history cannot resurrect it.
+        create table if not exists sync_tombstones (
+          id text primary key
+        );
+
         create index if not exists idx_template_items_parent on template_items(template_id, parent_id, position);
         create index if not exists idx_template_options_item on template_options(item_id, position);
         create index if not exists idx_plan_items_parent on plan_items(plan_id, parent_id, position);
@@ -1188,6 +1161,12 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
             [],
         )
         .map_err(|error| error.to_string())?;
+
+    // Databases synced by an older build still carry cr-sqlite's triggers and
+    // bookkeeping tables. The extension is never loaded now, so those triggers
+    // would make every `operations` write fail with "no such function" — heal
+    // the file on every open, before anything can write to it.
+    sync::strip_crsqlite_artifacts(connection).map_err(sync::Error::into_string)?;
 
     Ok(())
 }
@@ -6491,82 +6470,15 @@ fn app_database_path_from_data_dir(data_dir: &Path) -> PathBuf {
 // Multi-device sync command surface (see src/sync).
 // ---------------------------------------------------------------------------
 
-/// Resolve the bundled cr-sqlite loadable extension for this platform. In a
-/// packaged app it's a Tauri resource; in dev it sits beside the crate.
-fn crsqlite_extension_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    // On Android the extension ships as a jniLib (libcrsqlite.so). The OS
-    // extracts jniLibs into the app's nativeLibraryDir, which is on the dynamic
-    // linker's search path, so dlopen resolves it by soname alone.
-    #[cfg(target_os = "android")]
-    {
-        let _ = app;
-        return Ok(PathBuf::from("libcrsqlite.so"));
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let file = if cfg!(target_os = "windows") {
-            "crsqlite.dll"
-        } else if cfg!(target_os = "macos") {
-            "crsqlite.dylib"
-        } else {
-            "crsqlite.so"
-        };
-        if let Ok(dir) = app.path().resource_dir() {
-            for candidate in [dir.join("resources").join(file), dir.join(file)] {
-                if candidate.exists() {
-                    return Ok(candidate);
-                }
-            }
-        }
-        let dev = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("resources")
-            .join(file);
-        if dev.exists() {
-            return Ok(dev);
-        }
-        Err(format!("cr-sqlite extension not found ({file})"))
-    }
-}
-
-/// Open the encrypted DB, load cr-sqlite, run `task`, then finalize cr-sqlite
-/// before the connection closes. Sync must already be enabled (see
-/// `sync_enable_*`) for the operation log to be a CRR.
-fn with_synced_connection<T>(
-    app: &tauri::AppHandle,
-    task: impl FnOnce(&Connection) -> Result<T, String>,
-) -> Result<T, String> {
-    let connection = open_database(app)?;
-    let extension = crsqlite_extension_path(app)?;
-    sync::activate(&connection, &extension).map_err(sync::Error::into_string)?;
-    let result = task(&connection);
-    // Finalize regardless of task outcome so cr-sqlite releases cleanly.
-    let _ = sync::finalize(&connection);
-    result
-}
-
-/// Open the DB and run `task`, transparently loading + finalizing cr-sqlite when
-/// sync is enabled. Once sync is on, the `operations` log is a CRR whose triggers
-/// call cr-sqlite functions (`crsql_internal_sync_bit`); any connection that
-/// writes the log must have the extension loaded or the write fails with
-/// "no such function". Loading it here also captures the local write into
-/// `crsql_changes` so it can replicate. When sync is off this is just
-/// `open_database` + `task`, with no extension cost.
+/// Open the encrypted DB and run `task`. Sync replicates the `operations` log
+/// as ordinary rows, so a writing connection needs nothing beyond the normal
+/// open path whether or not sync is enabled.
 fn with_database<T>(
     app: &tauri::AppHandle,
     task: impl FnOnce(&mut Connection) -> Result<T, String>,
 ) -> Result<T, String> {
     let mut connection = open_database(app)?;
-    let synced = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
-    if synced {
-        let extension = crsqlite_extension_path(app)?;
-        sync::activate(&connection, &extension).map_err(sync::Error::into_string)?;
-    }
-    let result = task(&mut connection);
-    // Finalize regardless of task outcome so cr-sqlite releases cleanly.
-    if synced {
-        let _ = sync::finalize(&connection);
-    }
-    result
+    task(&mut connection)
 }
 
 /// Write a timestamped JSON backup of the current state into the app data dir,
@@ -6695,13 +6607,11 @@ fn normalize_sync_pairing_code(pairing_code: &str) -> Result<String, String> {
 async fn sync_enable_primary(app: tauri::AppHandle, pairing_code: String) -> Result<(), String> {
     let pairing_code = normalize_sync_pairing_code(&pairing_code)?;
     run_database_task(move || {
-        with_synced_connection(&app, |connection| {
-            backup_state_before_sync(&app, connection)?;
-            sync::enable_primary(connection).map_err(sync::Error::into_string)?;
-            sync::store_pairing_code(connection, &pairing_code)
-                .map_err(sync::Error::into_string)?;
-            set_metadata(connection, SYNC_COMPACTION_COORDINATOR, "true")
-        })
+        let connection = open_database(&app)?;
+        backup_state_before_sync(&app, &connection)?;
+        sync::enable_primary(&connection).map_err(sync::Error::into_string)?;
+        sync::store_pairing_code(&connection, &pairing_code).map_err(sync::Error::into_string)?;
+        set_metadata(&connection, SYNC_COMPACTION_COORDINATOR, "true")
     })
     .await
 }
@@ -6712,37 +6622,43 @@ async fn sync_enable_primary(app: tauri::AppHandle, pairing_code: String) -> Res
 async fn sync_enable_joiner(app: tauri::AppHandle, pairing_code: String) -> Result<(), String> {
     let pairing_code = normalize_sync_pairing_code(&pairing_code)?;
     run_database_task(move || {
-        with_synced_connection(&app, |connection| {
-            backup_state_before_sync(&app, connection)?;
-            sync::enable_joiner(connection).map_err(sync::Error::into_string)?;
-            sync::store_pairing_code(connection, &pairing_code)
-                .map_err(sync::Error::into_string)?;
-            set_metadata(connection, SYNC_COMPACTION_COORDINATOR, "false")
-        })
+        let connection = open_database(&app)?;
+        backup_state_before_sync(&app, &connection)?;
+        sync::enable_joiner(&connection).map_err(sync::Error::into_string)?;
+        sync::store_pairing_code(&connection, &pairing_code).map_err(sync::Error::into_string)?;
+        set_metadata(&connection, SYNC_COMPACTION_COORDINATOR, "false")
     })
     .await
 }
 
-/// Pull this device's changes (sealed with the pairing key) since `since`, ready
-/// to hand to any transport (P2P socket or relay server).
+/// This device's whole operation log, sealed with the pairing key, ready to hand
+/// to any transport (relay server or a manual export).
+///
+/// `since` is accepted and ignored: reconciliation is now by op *id*, not by a
+/// version cursor, and the receiver already skips ids it holds or has tombstoned
+/// (see `sync::merge_ops`). Sending everything is what makes the relay path
+/// stateless and self-healing. The parameter stays so the existing frontend
+/// command signature is unchanged.
 #[tauri::command]
 async fn sync_pull_sealed(app: tauri::AppHandle, since: i64) -> Result<Vec<u8>, String> {
+    let _ = since;
     run_database_task(move || {
         let key = stored_sync_key(&app)?
             .ok_or_else(|| "This device's sync key is missing.".to_string())?;
-        with_synced_connection(&app, |connection| {
-            if !sync::is_sync_enabled(connection).map_err(sync::Error::into_string)? {
-                return Err("Sync is not enabled on this device.".to_string());
-            }
-            let changes = sync::pull(connection, since, None).map_err(sync::Error::into_string)?;
-            key.seal(&changes).map_err(sync::Error::into_string)
-        })
+        let connection = open_database(&app)?;
+        if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
+            return Err("Sync is not enabled on this device.".to_string());
+        }
+        let ops = sync::all_ops(&connection).map_err(sync::Error::into_string)?;
+        let envelope = serde_json::json!({ "v": sync::PROTOCOL_VERSION, "ops": ops });
+        let plaintext = serde_json::to_vec(&envelope).map_err(|error| error.to_string())?;
+        key.seal(&plaintext).map_err(sync::Error::into_string)
     })
     .await
 }
 
-/// Apply a peer's sealed changeset, rebuild materialized state, and return the
-/// new state JSON so the UI can refresh.
+/// Merge a peer's sealed operation log, rebuild materialized state if anything
+/// was new, and return the state JSON so the UI can refresh.
 #[tauri::command]
 async fn sync_apply_sealed(
     app: tauri::AppHandle,
@@ -6751,16 +6667,30 @@ async fn sync_apply_sealed(
     run_database_task(move || {
         let key = stored_sync_key(&app)?
             .ok_or_else(|| "This device's sync key is missing.".to_string())?;
-        let changes = key.open(&envelope).map_err(sync::Error::into_string)?;
-        with_synced_connection(&app, |connection| {
-            if !sync::is_sync_enabled(connection).map_err(sync::Error::into_string)? {
-                return Err("Sync is not enabled on this device.".to_string());
-            }
-            sync::apply(connection, &changes).map_err(sync::Error::into_string)?;
-            sync::rematerialize(connection).map_err(sync::Error::into_string)?;
-            read_app_state_from_database(connection)
-                .map(|state| state.map(|value| value.to_string()))
-        })
+        let plaintext = key.open(&envelope).map_err(sync::Error::into_string)?;
+        let payload: Value = serde_json::from_slice(&plaintext)
+            .map_err(|error| format!("Could not read the synced payload: {error}"))?;
+        let version = payload.get("v").and_then(Value::as_u64).unwrap_or_default();
+        if version != u64::from(sync::PROTOCOL_VERSION) {
+            return Err(
+                "The other device is running an incompatible Balance version — update both devices."
+                    .to_string(),
+            );
+        }
+        let ops: Vec<sync::Op> = serde_json::from_value(
+            payload
+                .get("ops")
+                .cloned()
+                .unwrap_or_else(|| Value::Array(Vec::new())),
+        )
+        .map_err(|error| format!("Could not read the synced operations: {error}"))?;
+
+        let connection = open_database(&app)?;
+        if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
+            return Err("Sync is not enabled on this device.".to_string());
+        }
+        sync::merge_and_rematerialize(&connection, ops).map_err(sync::Error::into_string)?;
+        read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
     })
     .await
 }
@@ -6798,17 +6728,31 @@ async fn sync_p2p_peers() -> Result<Vec<sync::p2p::Peer>, String> {
 
 /// Sync directly with a peer at `address` (host:port), then return the rebuilt
 /// app state so the UI can refresh.
+///
+/// Deliberately *not* wrapped in `run_database_task`: that would hold
+/// `DATABASE_ACCESS_LOCK` for the entire network exchange, so two devices
+/// syncing at each other would each wait on a socket while owning the lock the
+/// other's responder needs — a distributed deadlock until both time out.
+/// Instead each phase takes the guard on its own and releases it before any
+/// socket I/O (see `sync::p2p::AppStore`).
 #[tauri::command]
 async fn sync_p2p_sync(app: tauri::AppHandle, address: String) -> Result<Option<String>, String> {
-    run_database_task(move || {
-        let Some(key) = stored_sync_key(&app)? else {
-            return Err("Sync is not enabled on this device.".to_string());
-        };
+    tauri::async_runtime::spawn_blocking(move || {
+        let key = {
+            let _guard = database_access_guard()?;
+            stored_sync_key(&app)?
+        }
+        .ok_or_else(|| "Sync is not enabled on this device.".to_string())?;
+
+        // No guard held here; the exchange takes it per database phase.
         sync::p2p::sync_with(&app, &key, &address).map_err(sync::Error::into_string)?;
+
+        let _guard = database_access_guard()?;
         let connection = open_database(&app)?;
         read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
     })
     .await
+    .map_err(|error| error.to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -6839,12 +6783,11 @@ pub fn run() {
                 if is_android_owner_user() {
                     let handle = app.handle();
                     let outcome = (|| -> Result<(), String> {
-                        let ext = crsqlite_extension_path(handle)?;
                         let scratch = app_database_path(handle)?
                             .parent()
                             .ok_or("no data dir")?
                             .to_path_buf();
-                        sync::selftest(&ext, &scratch).map_err(sync::Error::into_string)
+                        sync::selftest(&scratch).map_err(sync::Error::into_string)
                     })();
                     match outcome {
                         Ok(()) => {
@@ -7034,7 +6977,7 @@ mod tests {
             .unwrap();
         drop(connection);
 
-        let result = compact_database_at(&database.path, &recovery_key, None).unwrap();
+        let result = compact_database_at(&database.path, &recovery_key).unwrap();
         assert!(result.checkpoint_created);
         assert_eq!(result.operations_removed, before_operations - 1);
         assert_eq!(result.history_entries_removed, before_history);
@@ -7106,17 +7049,13 @@ mod tests {
     }
 
     #[test]
-    fn synced_database_compaction_preserves_crr_and_future_writes() {
+    fn synced_database_compaction_tombstones_the_log_and_keeps_future_writes_syncable() {
         let database = TestDatabase::new("compact-synced");
         let recovery_key = generate_recovery_key();
-        let extension = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("resources")
-            .join("crsqlite.dylib");
         let pairing_code = sync::crypto::SyncKey::generate().to_pairing_code();
-        let expected_state = {
+        let (expected_state, replaced_ids) = {
             let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
             replace_app_state(&mut connection, &test_state("Synced compact")).unwrap();
-            sync::activate(&connection, &extension).unwrap();
             sync::enable_primary(&connection).unwrap();
             sync::store_pairing_code(&connection, &pairing_code).unwrap();
             set_metadata(&connection, SYNC_RELAY_URL, "https://relay.example.com").unwrap();
@@ -7133,11 +7072,18 @@ mod tests {
             )
             .unwrap();
             let state = read_app_state_from_database(&connection).unwrap().unwrap();
-            sync::finalize(&connection).unwrap();
-            state
+            let ids = sync::local_op_ids(&connection).unwrap();
+            assert_eq!(ids.len(), 2);
+            // `enable_primary` already checkpointed once, so this database
+            // carries tombstones from that generation too. A checkpoint's
+            // `replaces` set is cumulative, which is what makes coverage
+            // transitive for a peer that skipped a generation.
+            let earlier_tombstones = read_sync_tombstones(&connection);
+            assert_eq!(earlier_tombstones, ["op_device_test_1"]);
+            (state, [ids, earlier_tombstones].concat())
         };
 
-        let result = compact_database_at(&database.path, &recovery_key, Some(&extension)).unwrap();
+        let result = compact_database_at(&database.path, &recovery_key).unwrap();
         assert!(result.checkpoint_created);
         let mut compacted = open_database_at(&database.path, &recovery_key).unwrap();
         assert!(sync::is_sync_enabled(&compacted).unwrap());
@@ -7156,7 +7102,30 @@ mod tests {
             expected_state
         );
 
-        sync::activate(&compacted, &extension).unwrap();
+        // The compacted log is one checkpoint that declares — and tombstones —
+        // exactly the ops it replaced, so a peer holding the old history
+        // collapses to the same log instead of resurrecting it.
+        let checkpoint_ids = sync::local_op_ids(&compacted).unwrap();
+        assert_eq!(checkpoint_ids.len(), 1);
+        let checkpoint = sync::ops_by_id(&compacted, &checkpoint_ids).unwrap()[0].clone();
+        let payload: Value = serde_json::from_str(&checkpoint.payload_json).unwrap();
+        let replaces = payload["replaces"].as_array().unwrap();
+        for id in &replaced_ids {
+            assert!(
+                replaces.iter().any(|value| value == id),
+                "checkpoint payload must declare {id} replaced"
+            );
+        }
+        let mut expected_tombstones = replaced_ids.clone();
+        expected_tombstones.sort();
+        assert_eq!(read_sync_tombstones(&compacted), expected_tombstones);
+        assert_eq!(
+            sync::merge_ops(&compacted, std::slice::from_ref(&checkpoint)).unwrap(),
+            0,
+            "the checkpoint is already present"
+        );
+
+        // Writes made after compaction still replicate normally.
         persist_operation_to_database(
             &mut compacted,
             &json!({
@@ -7173,26 +7142,41 @@ mod tests {
             read_app_state_from_database(&compacted).unwrap().unwrap()["activePlanDate"],
             "2026-07-31"
         );
+        let after = sync::local_op_ids(&compacted).unwrap();
         assert!(
-            !sync::pull(&compacted, 0, None).unwrap().rows.is_empty(),
-            "post-compaction writes remain replicated"
+            after.contains(&"op_synced_after_compact".to_string()),
+            "post-compaction writes are offered to peers"
         );
-        sync::finalize(&compacted).unwrap();
+        // A peer that already holds the checkpoint is offered only the new op.
+        let (ops, want) = sync::diff_against(&compacted, &checkpoint_ids).unwrap();
+        assert!(want.is_empty());
+        assert_eq!(
+            ops.iter().map(|op| op.id.as_str()).collect::<Vec<_>>(),
+            ["op_synced_after_compact"]
+        );
+
         drop(compacted);
         fs::remove_file(&result.backup_path).unwrap();
     }
 
     #[test]
     fn compaction_failure_leaves_synced_database_byte_for_byte_unchanged() {
-        let database = TestDatabase::new("compact-failure");
+        // Its own directory: this test deliberately sabotages the sibling
+        // `backups/` path, which must not disturb any other test.
+        let directory = std::env::temp_dir().join(format!(
+            "balance-compact-failure-{}-{}",
+            std::process::id(),
+            generate_recovery_key().replace('-', "")
+        ));
+        fs::create_dir_all(&directory).unwrap();
+        let database = TestDatabaseAt {
+            path: directory.join("balance.sqlite3"),
+            directory,
+        };
         let recovery_key = generate_recovery_key();
-        let extension = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("resources")
-            .join("crsqlite.dylib");
         {
             let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
             replace_app_state(&mut connection, &test_state("Do not change")).unwrap();
-            sync::activate(&connection, &extension).unwrap();
             sync::enable_primary(&connection).unwrap();
             persist_operation_to_database(
                 &mut connection,
@@ -7206,7 +7190,6 @@ mod tests {
                 }),
             )
             .unwrap();
-            sync::finalize(&connection).unwrap();
         }
         let bytes_before = fs::read(&database.path).unwrap();
         let state_before = {
@@ -7214,9 +7197,12 @@ mod tests {
             read_app_state_from_database(&connection).unwrap().unwrap()
         };
 
-        let missing_extension = database.path.with_file_name("missing-crsqlite.dylib");
-        let error = compact_database_at(&database.path, &recovery_key, Some(&missing_extension))
-            .unwrap_err();
+        // Block compaction by occupying the path it needs for the pre-compaction
+        // backup with a plain file. Any failure must leave the live database
+        // exactly as it was — that invariant is the point of this test.
+        fs::write(database.directory.join("backups"), b"not a directory").unwrap();
+
+        let error = compact_database_at(&database.path, &recovery_key).unwrap_err();
         assert!(!error.is_empty());
         assert_eq!(fs::read(&database.path).unwrap(), bytes_before);
         let connection = open_database_at(&database.path, &recovery_key).unwrap();
@@ -7276,9 +7262,6 @@ mod tests {
         let joiner_database = TestDatabase::new("maintenance-joiner");
         let primary_key = generate_recovery_key();
         let joiner_key = generate_recovery_key();
-        let extension = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("resources")
-            .join("crsqlite.dylib");
 
         let mut primary_state = test_state("Shared state");
         primary_state["deviceId"] = json!("device-primary");
@@ -7288,17 +7271,14 @@ mod tests {
         let primary = {
             let mut connection = open_database_at(&primary_database.path, &primary_key).unwrap();
             replace_app_state(&mut connection, &primary_state).unwrap();
-            sync::activate(&connection, &extension).unwrap();
             sync::enable_primary(&connection).unwrap();
             connection
         };
         let mut joiner = {
             let mut connection = open_database_at(&joiner_database.path, &joiner_key).unwrap();
             replace_app_state(&mut connection, &joiner_state).unwrap();
-            sync::activate(&connection, &extension).unwrap();
             sync::enable_joiner(&connection).unwrap();
-            sync::apply(&connection, &sync::pull(&primary, 0, None).unwrap()).unwrap();
-            sync::rematerialize(&connection).unwrap();
+            sync::merge_and_rematerialize(&connection, sync::all_ops(&primary).unwrap()).unwrap();
             connection
         };
 
@@ -7348,8 +7328,6 @@ mod tests {
         // space without modifying the replicated operation log.
         set_metadata(&joiner, "maintenance-test-padding", &"x".repeat(500_000)).unwrap();
         delete_metadata(&joiner, "maintenance-test-padding").unwrap();
-        sync::finalize(&primary).unwrap();
-        sync::finalize(&joiner).unwrap();
         drop(primary);
         drop(joiner);
 
@@ -7408,9 +7386,9 @@ mod tests {
             replace_app_state(&mut connection, &test_state("Rotate backups")).unwrap();
         }
 
-        let first = compact_database_at(&database.path, &recovery_key, None).unwrap();
+        let first = compact_database_at(&database.path, &recovery_key).unwrap();
         assert!(Path::new(&first.backup_path).exists());
-        let second = compact_database_at(&database.path, &recovery_key, None).unwrap();
+        let second = compact_database_at(&database.path, &recovery_key).unwrap();
         assert!(Path::new(&first.backup_path).exists());
         assert!(Path::new(&second.backup_path).exists());
 
@@ -7448,8 +7426,8 @@ mod tests {
             replace_app_state(&mut connection, &test_state("Keep fallback")).unwrap();
         }
 
-        let first = compact_database_at(&database.path, &recovery_key, None).unwrap();
-        let second = compact_database_at(&database.path, &recovery_key, None).unwrap();
+        let first = compact_database_at(&database.path, &recovery_key).unwrap();
+        let second = compact_database_at(&database.path, &recovery_key).unwrap();
         fs::remove_file(&second.backup_path).unwrap();
 
         let connection = open_database_at(&database.path, &recovery_key).unwrap();
@@ -8341,7 +8319,10 @@ mod tests {
         persist_operation_to_database(&mut connection, &move_operation).unwrap();
 
         let saved = read_app_state_from_database(&connection).unwrap().unwrap();
-        assert_eq!(plan_item_ids_for_plan(&saved, "plan_today"), ["plan_item_wake"]);
+        assert_eq!(
+            plan_item_ids_for_plan(&saved, "plan_today"),
+            ["plan_item_wake"]
+        );
         assert_eq!(
             plan_item_ids_for_plan(&saved, "plan_tomorrow"),
             ["plan_item_errands", "plan_item_rest"]
@@ -8372,7 +8353,10 @@ mod tests {
         let redone = redo_last_operation_in_database(&mut connection)
             .unwrap()
             .unwrap();
-        assert_eq!(plan_item_ids_for_plan(&redone, "plan_today"), ["plan_item_wake"]);
+        assert_eq!(
+            plan_item_ids_for_plan(&redone, "plan_today"),
+            ["plan_item_wake"]
+        );
         assert_eq!(
             plan_item_ids_for_plan(&redone, "plan_tomorrow"),
             ["plan_item_errands", "plan_item_rest"]
@@ -10255,6 +10239,32 @@ mod tests {
     impl Drop for TestDatabase {
         fn drop(&mut self) {
             let _ = fs::remove_file(&self.path);
+        }
+    }
+
+    /// Ids a checkpoint has permanently replaced on this database, sorted.
+    fn read_sync_tombstones(connection: &Connection) -> Vec<String> {
+        let mut statement = connection
+            .prepare("select id from sync_tombstones order by id")
+            .unwrap();
+        let ids = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        ids
+    }
+
+    /// A test database that owns its whole directory, for tests that need to
+    /// manipulate the sibling `backups/` path without affecting other tests.
+    struct TestDatabaseAt {
+        path: PathBuf,
+        directory: PathBuf,
+    }
+
+    impl Drop for TestDatabaseAt {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.directory);
         }
     }
 

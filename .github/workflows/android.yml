@@ -87,12 +87,6 @@ jobs:
       - name: Generate Android camera QR fixture
         run: node .github/scripts/generate-android-sync-qr.mjs
 
-      - name: Build cr-sqlite loadable extension (Android .so per ABI)
-        # Cross-compiles crsqlite.so for each ABI (uses the NDK clang set up
-        # above) into src-tauri/resources/android/<abi>/. Loaded at runtime via
-        # load_extension; bundled as a jniLib below.
-        run: bash scripts/build-crsqlite.sh android
-
       - name: Initialize Android project
         run: pnpm tauri android init
 
@@ -106,17 +100,6 @@ jobs:
         # model. Bundle ML Kit instead so scanning works immediately, including
         # on Android devices and CI images without Google Play Services.
         run: node .github/scripts/configure-android-barcode-scanner.mjs
-
-      - name: Bundle cr-sqlite extension as jniLibs
-        # jniLibs/<abi>/libcrsqlite.so is extracted by Android into the app's
-        # nativeLibraryDir, so the dynamic linker resolves it by soname at load.
-        run: |
-          JNI="src-tauri/gen/android/app/src/main/jniLibs"
-          for abi in arm64-v8a x86_64; do
-            mkdir -p "$JNI/$abi"
-            cp "src-tauri/resources/android/$abi/crsqlite.so" "$JNI/$abi/libcrsqlite.so"
-          done
-          echo "jniLibs:" && find "$JNI" -name '*.so'
 
       - name: Apply app launcher icons
         # `tauri android init` scaffolds gen/android with placeholder launcher
@@ -138,7 +121,6 @@ jobs:
           # release APK below targets the arm64 Samsung device.
           unzip -l "$APK_PATH" | tee apk-contents.txt
           grep -q "lib/x86_64/libbalance_lib.so" apk-contents.txt
-          grep -q "lib/x86_64/libcrsqlite.so" apk-contents.txt
           if grep -q "lib/arm64-v8a/" apk-contents.txt; then
             echo "::error::The emulator APK unexpectedly contains arm64 libraries"
             exit 1
@@ -206,7 +188,6 @@ jobs:
           "$APKSIGNER" verify --verbose --print-certs "$APK_PATH" | tee android-release-signature.txt
           unzip -l "$APK_PATH" | tee android-release-contents.txt
           grep -q "lib/arm64-v8a/libbalance_lib.so" android-release-contents.txt
-          grep -q "lib/arm64-v8a/libcrsqlite.so" android-release-contents.txt
           if grep -q "lib/x86_64/" android-release-contents.txt; then
             echo "::error::The phone APK unexpectedly contains x86_64 libraries"
             exit 1

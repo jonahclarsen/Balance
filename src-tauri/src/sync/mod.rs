@@ -1,19 +1,27 @@
 //! Multi-device sync for Balance.
 //!
 //! The database stays a normal SQLCipher-encrypted file (see `open_database_at`
-//! in the crate root). This module loads the cr-sqlite extension (Superfly
-//! fork), turns selected tables into conflict-free replicated relations (CRRs),
-//! and exposes the `crsql_changes` delta stream as sealed, transport-agnostic
-//! envelopes. P2P and server transports both consume that one primitive.
+//! in the crate root). The only replicated table is `operations`: an append-only
+//! log of immutable rows with globally-unique TEXT ids, a canonical total order
+//! of `(timestamp, device_id, sequence)`, and a deterministic materializer
+//! (`apply_operation`, driven by [`rematerialize`]).
+//!
+//! Because the log is insert-only and ids are globally unique, two devices hold
+//! the same state exactly when they hold the same *set* of op ids. Sync is
+//! therefore plain set reconciliation: offer my ids, receive the ops I lack plus
+//! the ids the peer lacks, ship those back. No CRDT engine, no site ids, no
+//! version cursors — and no native extension to cross-compile per platform.
+//!
+//! Compaction (checkpointing) is the one operation that *removes* ops. The
+//! resulting `replace_full_state` baseline carries the ids it replaces, and each
+//! device records them in `sync_tombstones` so a peer that was offline during
+//! the checkpoint cannot resurrect the compacted history.
 //!
 //! These are free functions over `&Connection` so they compose with the app's
 //! existing connection lifecycle rather than owning their own.
-//!
-//! Much of the public surface (transports, relay, crypto) is the API the
-//! not-yet-wired network/command layer will call, so dead-code is allowed here
-//! until that layer lands.
 #![allow(dead_code)]
 
+use std::collections::HashSet;
 use std::path::Path;
 
 use rand::RngCore;
@@ -28,12 +36,8 @@ pub mod p2p;
 pub mod relay;
 pub mod transport;
 
-/// Multi-device sync replicates only the append-only operation log. It is
-/// insert-only with globally-unique ids, so it converges trivially as a CRR and
-/// — crucially — the app's real data tables are never restructured. Each device
-/// rebuilds its materialized state from the merged log via the existing
-/// `apply_operation` path (see [`rematerialize`]).
-pub const SYNCED_TABLES: &[&str] = &["operations"];
+/// Wire-protocol version. Bump only for incompatible framing/semantics changes.
+pub const PROTOCOL_VERSION: u32 = 2;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -65,97 +69,311 @@ impl Error {
     }
 }
 
-/// Transport-neutral mirror of `rusqlite::types::Value`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum SqlValue {
-    Null,
-    Integer(i64),
-    Real(f64),
-    Text(String),
-    Blob(Vec<u8>),
+/// One row of the replicated `operations` log, exactly as it is stored.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct Op {
+    pub id: String,
+    pub device_id: String,
+    pub sequence: i64,
+    #[serde(rename = "type")]
+    pub op_type: String,
+    pub timestamp: String,
+    pub payload_json: String,
 }
 
-impl From<Value> for SqlValue {
-    fn from(v: Value) -> Self {
-        match v {
-            Value::Null => SqlValue::Null,
-            Value::Integer(i) => SqlValue::Integer(i),
-            Value::Real(r) => SqlValue::Real(r),
-            Value::Text(t) => SqlValue::Text(t),
-            Value::Blob(b) => SqlValue::Blob(b),
+/// The database side of a sync exchange. The transport calls these between
+/// socket reads and writes; each implementation decides how it gets a
+/// connection (a borrowed one in tests, a freshly opened + globally guarded one
+/// in the app) so that **no lock and no connection is held across socket I/O**.
+pub trait SyncStore {
+    /// Ids of every op this device holds.
+    fn local_ids(&self) -> Result<Vec<String>>;
+    /// `(ops the peer is missing, ids this device wants from the peer)`.
+    fn diff(&self, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)>;
+    /// Full rows for the requested ids (ids this device does not have are
+    /// silently skipped).
+    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>>;
+    /// Merge received ops, rematerializing state if anything was inserted.
+    /// Returns the number of ops actually inserted.
+    fn merge(&self, ops: Vec<Op>) -> Result<usize>;
+}
+
+/// [`SyncStore`] over an already-open connection (tests and [`selftest`]).
+pub struct ConnectionStore<'a>(pub &'a Connection);
+
+impl SyncStore for ConnectionStore<'_> {
+    fn local_ids(&self) -> Result<Vec<String>> {
+        local_op_ids(self.0)
+    }
+
+    fn diff(&self, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)> {
+        diff_against(self.0, peer_ids)
+    }
+
+    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
+        ops_by_id(self.0, ids)
+    }
+
+    fn merge(&self, ops: Vec<Op>) -> Result<usize> {
+        merge_and_rematerialize(self.0, ops)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Op-log reads
+// ---------------------------------------------------------------------------
+
+/// `sync_tombstones` holds ids of ops that a checkpoint permanently replaced.
+/// They must never be re-accepted from a peer that still has the old history.
+pub fn ensure_tombstones_table(conn: &Connection) -> Result<()> {
+    conn.execute_batch("create table if not exists sync_tombstones (id text primary key)")?;
+    Ok(())
+}
+
+fn tombstone_ids(conn: &Connection) -> Result<HashSet<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM sync_tombstones")?;
+    let ids = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<HashSet<_>, _>>()?;
+    Ok(ids)
+}
+
+fn row_to_op(row: &rusqlite::Row<'_>) -> rusqlite::Result<Op> {
+    Ok(Op {
+        id: row.get(0)?,
+        device_id: row.get(1)?,
+        sequence: row.get(2)?,
+        op_type: row.get(3)?,
+        timestamp: row.get(4)?,
+        payload_json: row.get(5)?,
+    })
+}
+
+const SELECT_OPS: &str = "SELECT id, device_id, sequence, type, timestamp, payload_json \
+     FROM operations ORDER BY timestamp, device_id, sequence, id";
+
+/// Ids of every op held locally (tombstoned ids can never be present, but the
+/// filter keeps a hand-edited database from re-offering them).
+pub fn local_op_ids(conn: &Connection) -> Result<Vec<String>> {
+    ensure_tombstones_table(conn)?;
+    let mut stmt = conn.prepare(
+        "SELECT id FROM operations WHERE id NOT IN (SELECT id FROM sync_tombstones) \
+         ORDER BY timestamp, device_id, sequence, id",
+    )?;
+    let ids = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(ids)
+}
+
+/// Every op held locally, in canonical order.
+pub fn all_ops(conn: &Connection) -> Result<Vec<Op>> {
+    ensure_tombstones_table(conn)?;
+    let tombstones = tombstone_ids(conn)?;
+    let mut stmt = conn.prepare(SELECT_OPS)?;
+    let ops = stmt
+        .query_map([], row_to_op)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(ops
+        .into_iter()
+        .filter(|op| !tombstones.contains(&op.id))
+        .collect())
+}
+
+/// Full rows for `ids`; unknown ids are skipped.
+pub fn ops_by_id(conn: &Connection, ids: &[String]) -> Result<Vec<Op>> {
+    if ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let wanted: HashSet<&str> = ids.iter().map(String::as_str).collect();
+    let mut stmt = conn.prepare(SELECT_OPS)?;
+    let ops = stmt
+        .query_map([], row_to_op)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(ops
+        .into_iter()
+        .filter(|op| wanted.contains(op.id.as_str()))
+        .collect())
+}
+
+/// The responder's half of reconciliation: what the peer is missing, and what
+/// this device wants back. Tombstoned ids are never wanted — they were
+/// deliberately compacted away.
+pub fn diff_against(conn: &Connection, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)> {
+    ensure_tombstones_table(conn)?;
+    let tombstones = tombstone_ids(conn)?;
+    let mine = local_op_ids(conn)?;
+    let mine_set: HashSet<&str> = mine.iter().map(String::as_str).collect();
+    let peer_set: HashSet<&str> = peer_ids.iter().map(String::as_str).collect();
+
+    let want = peer_ids
+        .iter()
+        .filter(|id| !mine_set.contains(id.as_str()) && !tombstones.contains(*id))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let ops = all_ops(conn)?
+        .into_iter()
+        .filter(|op| !peer_set.contains(op.id.as_str()))
+        .collect::<Vec<_>>();
+
+    Ok((ops, want))
+}
+
+// ---------------------------------------------------------------------------
+// Merge
+// ---------------------------------------------------------------------------
+
+/// Ids a `replace_full_state` checkpoint declares it permanently replaced.
+fn replaced_ids(op: &Op) -> Vec<String> {
+    if op.op_type != "replace_full_state" {
+        return Vec::new();
+    }
+    let Ok(payload) = serde_json::from_str::<JsonValue>(&op.payload_json) else {
+        return Vec::new();
+    };
+    payload
+        .get("replaces")
+        .and_then(JsonValue::as_array)
+        .map(|ids| {
+            ids.iter()
+                .filter_map(JsonValue::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Insert every op this device does not already have (and has not tombstoned),
+/// honouring any checkpoint's `replaces` list, in a single transaction.
+/// Returns how many ops were inserted; the caller rematerializes iff `> 0`.
+pub fn merge_ops(conn: &Connection, ops: &[Op]) -> Result<usize> {
+    ensure_tombstones_table(conn)?;
+    let tx = conn.unchecked_transaction()?;
+    let mut inserted = 0usize;
+    {
+        let existing: HashSet<String> = {
+            let mut stmt = tx.prepare("SELECT id FROM operations")?;
+            let ids = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<std::result::Result<_, _>>()?;
+            ids
+        };
+        let tombstones: HashSet<String> = {
+            let mut stmt = tx.prepare("SELECT id FROM sync_tombstones")?;
+            let ids = stmt
+                .query_map([], |r| r.get::<_, String>(0))?
+                .collect::<std::result::Result<_, _>>()?;
+            ids
+        };
+
+        let mut insert = tx.prepare(
+            "INSERT INTO operations (id, device_id, sequence, type, timestamp, payload_json) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )?;
+        let mut delete_replaced = tx.prepare("DELETE FROM operations WHERE id = ?1")?;
+        let mut tombstone = tx.prepare("INSERT OR IGNORE INTO sync_tombstones (id) VALUES (?1)")?;
+
+        let mut accepted = Vec::new();
+        for op in ops {
+            if existing.contains(&op.id) || tombstones.contains(&op.id) {
+                continue;
+            }
+            insert.execute(params![
+                op.id,
+                op.device_id,
+                op.sequence,
+                op.op_type,
+                op.timestamp,
+                op.payload_json,
+            ])?;
+            inserted += 1;
+            accepted.push(op);
+        }
+
+        // Applying `replaces` after every insert keeps the outcome independent
+        // of the order ops arrived in.
+        for op in accepted {
+            for replaced in replaced_ids(op) {
+                if replaced == op.id {
+                    continue; // a checkpoint never deletes itself
+                }
+                delete_replaced.execute(params![replaced])?;
+                tombstone.execute(params![replaced])?;
+            }
         }
     }
+    tx.commit()?;
+    Ok(inserted)
 }
-impl From<SqlValue> for Value {
-    fn from(v: SqlValue) -> Self {
-        match v {
-            SqlValue::Null => Value::Null,
-            SqlValue::Integer(i) => Value::Integer(i),
-            SqlValue::Real(r) => Value::Real(r),
-            SqlValue::Text(t) => Value::Text(t),
-            SqlValue::Blob(b) => Value::Blob(b),
+
+/// [`merge_ops`] plus the state rebuild every caller needs when anything landed.
+pub fn merge_and_rematerialize(conn: &Connection, ops: Vec<Op>) -> Result<usize> {
+    let inserted = merge_ops(conn, &ops)?;
+    if inserted > 0 {
+        rematerialize(conn)?;
+    }
+    Ok(inserted)
+}
+
+// ---------------------------------------------------------------------------
+// Migration off cr-sqlite
+// ---------------------------------------------------------------------------
+
+/// Earlier builds promoted `operations` to a cr-sqlite CRR, which installs
+/// triggers that call `crsql_*` SQL functions plus a set of bookkeeping tables.
+/// Now that the extension is never loaded, those triggers would make *every*
+/// insert into `operations` fail with "no such function", so any database that
+/// was ever synced has to be healed before it is written to.
+///
+/// Plain DDL, no extension required. Idempotent, and guarded by a single
+/// `sqlite_master` query so the common (clean) case costs nothing.
+pub fn strip_crsqlite_artifacts(conn: &Connection) -> Result<()> {
+    let objects: Vec<(String, String)> = {
+        let mut stmt = conn.prepare(
+            "SELECT type, name FROM sqlite_master \
+             WHERE name LIKE '%crsql%' OR name LIKE '%\\_\\_crsql\\_%' ESCAPE '\\'",
+        )?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<std::result::Result<_, _>>()?;
+        rows
+    };
+    if objects.is_empty() {
+        return Ok(());
+    }
+
+    // Triggers first: dropping a table whose trigger still references a missing
+    // function is fine, but dropping the triggers first keeps the DB writable
+    // even if a later statement fails.
+    for (kind, name) in objects.iter().filter(|(kind, _)| kind == "trigger") {
+        let _ = kind;
+        conn.execute_batch(&format!("DROP TRIGGER IF EXISTS \"{}\"", escape(name)))?;
+    }
+    for (kind, name) in objects.iter().filter(|(kind, _)| kind == "view") {
+        let _ = kind;
+        conn.execute_batch(&format!("DROP VIEW IF EXISTS \"{}\"", escape(name)))?;
+    }
+    for (kind, name) in objects.iter().filter(|(kind, _)| kind == "table") {
+        let _ = kind;
+        if name.starts_with("sqlite_") {
+            continue; // internal (autoindex/sequence) objects go with their table
         }
-    }
-}
-
-/// One row of `crsql_changes` (Superfly fork column set; `site_id` required).
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChangeRow {
-    pub table: String,
-    pub pk: SqlValue,
-    pub cid: String,
-    pub val: SqlValue,
-    pub col_version: i64,
-    pub db_version: i64,
-    pub site_id: SqlValue,
-    pub cl: i64,
-    pub seq: i64,
-}
-
-/// A batch of changes plus the originating site, ready to seal and ship.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ChangeSet {
-    pub origin_site_hex: String,
-    pub rows: Vec<ChangeRow>,
-}
-
-/// Load the cr-sqlite extension into an already-open (and unlocked) connection
-/// at runtime. The loadable library (crsqlite.dylib/.so/.dll, including the
-/// Android `.so`) is shipped as a Tauri resource. `entry_point` is
-/// `sqlite3_crsqlite_init`.
-pub fn load_extension(conn: &Connection, extension_path: impl AsRef<Path>) -> Result<()> {
-    unsafe {
-        conn.load_extension_enable()?;
-        let res = conn.load_extension(extension_path.as_ref(), Some("sqlite3_crsqlite_init"));
-        conn.load_extension_disable()?;
-        res?;
+        conn.execute_batch(&format!("DROP TABLE IF EXISTS \"{}\"", escape(name)))?;
     }
     Ok(())
 }
 
-/// Activate cr-sqlite on a connection by loading the extension at runtime
-/// (same mechanism on every platform).
-pub fn activate(conn: &Connection, extension_path: impl AsRef<Path>) -> Result<()> {
-    load_extension(conn, extension_path)
+fn escape(identifier: &str) -> String {
+    identifier.replace('"', "\"\"")
 }
 
-/// Promote a table to a CRR so its writes become mergeable.
-pub fn as_crr(conn: &Connection, table: &str) -> Result<()> {
-    conn.query_row("SELECT crsql_as_crr(?1)", params![table], |_| Ok(()))?;
-    Ok(())
-}
+// ---------------------------------------------------------------------------
+// Enable / pairing metadata
+// ---------------------------------------------------------------------------
 
-pub fn enable_crrs(conn: &Connection, tables: &[&str]) -> Result<()> {
-    for t in tables {
-        as_crr(conn, t)?;
-    }
-    Ok(())
-}
-
-/// Whether sync has been enabled on this database (the operation log is a CRR).
+/// Whether sync has been enabled on this database.
 pub fn is_sync_enabled(conn: &Connection) -> Result<bool> {
-    // cr-sqlite records each CRR in crsql_master / its clock tables; the simplest
-    // durable marker is our own metadata flag set by `enable_*`.
     let enabled: Option<String> = conn
         .query_row(
             "SELECT value FROM metadata WHERE key = 'sync_enabled'",
@@ -166,208 +384,256 @@ pub fn is_sync_enabled(conn: &Connection) -> Result<bool> {
     Ok(enabled.as_deref() == Some("true"))
 }
 
-/// Exercise the real app sync path against two throwaway encrypted Balance
-/// databases. This is intentionally broader than an engine smoke test: it uses
-/// the production schema and materializer, creates and parses the pairing code,
-/// enables a primary and joiner, persists the key on both sides, exchanges the
-/// encrypted operation log over a real TCP socket, and verifies that user data
-/// appears on the joining device. CI runs this inside the Android APK so the
-/// platform extension, SQLCipher, pairing, transport, and bootstrap path are
-/// covered together. Cleans up after itself.
-pub fn selftest(extension_path: &Path, scratch_dir: &Path) -> Result<()> {
-    // The self-test may run before the main database has created this directory.
-    std::fs::create_dir_all(scratch_dir).map_err(|e| Error::Codec(e.to_string()))?;
-    let a_path = scratch_dir.join("crsql-selftest-a.sqlite3");
-    let b_path = scratch_dir.join("crsql-selftest-b.sqlite3");
-    let _ = std::fs::remove_file(&a_path);
-    let _ = std::fs::remove_file(&b_path);
-
-    let result = (|| -> Result<()> {
-        let app_state = |device_id: &str, goals: JsonValue| {
-            json!({
-                "schemaVersion": 1,
-                "deviceId": device_id,
-                "localSequence": 0,
-                "historyRevision": 0,
-                "activePlanDate": "2026-07-14",
-                "templates": [],
-                "plans": [],
-                "goals": goals,
-                "goalCompletions": [],
-                "listTemplates": [],
-                "lists": [],
-                "metrics": [],
-                "metricEntries": [],
-                "operations": [],
-            })
-        };
-
-        let mut primary =
-            crate::open_database_at(&a_path, "selftest-key-a").map_err(Error::Codec)?;
-        let mut joiner =
-            crate::open_database_at(&b_path, "selftest-key-b").map_err(Error::Codec)?;
-        crate::replace_app_state(
-            &mut primary,
-            &app_state(
-                "selftest-primary",
-                json!([{ "id": "ci-sync-goal", "name": "Android E2E sync reached the joiner" }]),
-            ),
-        )
-        .map_err(Error::Codec)?;
-        crate::replace_app_state(
-            &mut joiner,
-            &app_state(
-                "selftest-joiner",
-                json!([{ "id": "joiner-only", "name": "Must be replaced" }]),
-            ),
-        )
-        .map_err(Error::Codec)?;
-        load_extension(&primary, extension_path)?;
-        load_extension(&joiner, extension_path)?;
-
-        let generated_key = crypto::SyncKey::generate();
-        let pairing_code = generated_key.to_pairing_code();
-        let primary_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
-        let joiner_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
-        if primary_key.as_bytes() != joiner_key.as_bytes() {
-            return Err(Error::Crypto("pairing code produced different keys".into()));
-        }
-
-        enable_primary(&primary)?;
-        store_pairing_code(&primary, &pairing_code)?;
-        enable_joiner(&joiner)?;
-        store_pairing_code(&joiner, &pairing_code)?;
-
-        let cleared = crate::read_app_state_from_database(&joiner)
-            .map_err(Error::Codec)?
-            .ok_or_else(|| Error::Codec("joiner state missing after pairing".into()))?;
-        if cleared["goals"] != json!([]) {
-            return Err(Error::Codec(
-                "joiner was not cleared before bootstrap".into(),
-            ));
-        }
-
-        // Mirror the app's manual-address flow: the primary listens and the
-        // joining device initiates a bidirectional, E2EE P2P sync.
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
-        let address = listener
-            .local_addr()
-            .map_err(|e| Error::Codec(e.to_string()))?
-            .to_string();
-        let primary_thread = std::thread::spawn(move || -> Result<()> {
-            let mut cursors = transport::Cursors::new();
-            transport::sync_accept(&listener, &primary, &primary_key, &mut cursors)?;
-            finalize(&primary)
-        });
-
-        let mut cursors = transport::Cursors::new();
-        transport::sync_connect(&address, &joiner, &joiner_key, &mut cursors)?;
-        primary_thread
-            .join()
-            .map_err(|_| Error::Codec("primary sync thread panicked".into()))??;
-
-        let joined_state = crate::read_app_state_from_database(&joiner)
-            .map_err(Error::Codec)?
-            .ok_or_else(|| Error::Codec("joiner state missing after sync".into()))?;
-        if joined_state["goals"]
-            != json!([{ "id": "ci-sync-goal", "name": "Android E2E sync reached the joiner" }])
-        {
-            return Err(Error::Codec(
-                "paired joiner did not receive the primary's user data".into(),
-            ));
-        }
-        if joined_state["deviceId"] != "selftest-joiner" {
-            return Err(Error::Codec(
-                "sync overwrote the joiner's device identity".into(),
-            ));
-        }
-        if read_pairing_code(&joiner)?.as_deref() != Some(pairing_code.as_str()) {
-            return Err(Error::Crypto(
-                "joiner did not persist its pairing key".into(),
-            ));
-        }
-        finalize(&joiner)?;
-        Ok(())
-    })();
-
-    let _ = std::fs::remove_file(&a_path);
-    let _ = std::fs::remove_file(&b_path);
-    result
-}
-
-pub fn site_hex(conn: &Connection) -> Result<String> {
-    let blob: Vec<u8> = conn.query_row("SELECT crsql_site_id()", [], |r| r.get(0))?;
-    Ok(hex(&blob))
-}
-
-pub fn db_version(conn: &Connection) -> Result<i64> {
-    Ok(conn.query_row("SELECT crsql_db_version()", [], |r| r.get(0))?)
-}
-
-/// cr-sqlite must be finalized before the connection closes.
-pub fn finalize(conn: &Connection) -> Result<()> {
-    conn.query_row("SELECT crsql_finalize()", [], |_| Ok(()))?;
+fn mark_enabled(conn: &Connection) -> Result<()> {
+    conn.execute(
+        "INSERT INTO metadata (key, value) VALUES ('sync_enabled','true') \
+         ON CONFLICT(key) DO UPDATE SET value='true'",
+        [],
+    )?;
     Ok(())
 }
 
-/// Pull changes with `db_version > since`, excluding rows that originated at
-/// `exclude_site_hex` (so a peer's own writes aren't echoed back to it).
-pub fn pull(conn: &Connection, since: i64, exclude_site_hex: Option<&str>) -> Result<ChangeSet> {
-    let exclude_blob = exclude_site_hex.map(unhex).transpose()?;
-    let mut stmt = conn.prepare(
-        "SELECT \"table\", pk, cid, val, col_version, db_version, site_id, cl, seq \
-         FROM crsql_changes \
-         WHERE db_version > ?1 AND (?2 IS NULL OR site_id IS NOT ?2) \
-         ORDER BY db_version, seq",
+/// Persist the pairing code (the E2E key) in the encrypted DB so the background
+/// P2P listener can decrypt incoming frames without UI involvement.
+pub fn store_pairing_code(conn: &Connection, pairing_code: &str) -> Result<()> {
+    conn.execute(
+        "INSERT INTO metadata (key, value) VALUES (?1, ?2) \
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![crate::SYNC_PAIRING_CODE, pairing_code],
     )?;
-    let rows = stmt
-        .query_map(params![since, exclude_blob], |r| {
-            Ok(ChangeRow {
-                table: r.get(0)?,
-                pk: r.get::<_, Value>(1)?.into(),
-                cid: r.get(2)?,
-                val: r.get::<_, Value>(3)?.into(),
-                col_version: r.get(4)?,
-                db_version: r.get(5)?,
-                site_id: r.get::<_, Value>(6)?.into(),
-                cl: r.get(7)?,
-                seq: r.get(8)?,
-            })
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(ChangeSet {
-        origin_site_hex: site_hex(conn)?,
-        rows,
+    Ok(())
+}
+
+/// Read the stored pairing code, if sync has been enabled on this device.
+pub fn read_pairing_code(conn: &Connection) -> Result<Option<String>> {
+    Ok(conn
+        .query_row(
+            "SELECT value FROM metadata WHERE key = ?1",
+            params![crate::SYNC_PAIRING_CODE],
+            |r| r.get::<_, String>(0),
+        )
+        .ok())
+}
+
+/// Enable sync on the device that holds the canonical data ("Create sync key").
+/// Snapshot the current state into a single baseline op and reset the log to
+/// just that snapshot. The real data tables are not touched.
+pub fn enable_primary(conn: &Connection) -> Result<()> {
+    ensure_tombstones_table(conn)?;
+    // A fresh pairing starts a fresh replication history: nothing from before is
+    // reachable, so old tombstones would only bloat future checkpoints.
+    conn.execute("DELETE FROM sync_tombstones", [])?;
+    checkpoint_operation_log(conn)?;
+    mark_enabled(conn)?;
+    Ok(())
+}
+
+/// Enable sync on a device that will adopt another's data ("Pair with another
+/// device"). Clear local domain state and the op log (the caller takes a backup
+/// first), then wait to receive the primary's baseline via sync + merge.
+pub fn enable_joiner(conn: &Connection) -> Result<()> {
+    ensure_tombstones_table(conn)?;
+    {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute_batch(
+            "DELETE FROM operations; DELETE FROM history_entries;
+             DELETE FROM sync_tombstones;
+             DELETE FROM plan_items; DELETE FROM plans;
+             DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
+             DELETE FROM metadata WHERE key IN ('goal_data','lists_metrics_data');",
+        )?;
+        tx.commit()?;
+    }
+    mark_enabled(conn)?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// Checkpoints (weekly maintenance, coordinator device only)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CheckpointStats {
+    pub operations_removed: i64,
+    pub history_entries_removed: i64,
+}
+
+fn random_id() -> String {
+    let mut b = [0u8; 16];
+    rand::rngs::OsRng.fill_bytes(&mut b);
+    hex(&b)
+}
+
+/// Build a `replace_full_state` baseline op from an already-read state,
+/// timestamped so it always sorts first in a canonical replay.
+///
+/// `replaces` lists every op id this checkpoint supersedes: the whole current
+/// log **plus** every id already tombstoned here. Carrying the accumulated set
+/// forward makes coverage transitive, so a peer that missed one checkpoint
+/// generation still learns about the ops that generation removed.
+fn snapshot_state_op(conn: &Connection, state: &JsonValue) -> Result<JsonValue> {
+    let device_id = crate::metadata_value(conn, "device_id")
+        .map_err(Error::Codec)?
+        .unwrap_or_default();
+    ensure_tombstones_table(conn)?;
+    let mut replaces: Vec<String> = {
+        let mut stmt = conn.prepare("SELECT id FROM operations")?;
+        let ids = stmt
+            .query_map([], |r| r.get::<_, String>(0))?
+            .collect::<std::result::Result<_, _>>()?;
+        ids
+    };
+    replaces.extend(tombstone_ids(conn)?);
+    replaces.sort();
+    replaces.dedup();
+    Ok(json!({
+        "id": random_id(),
+        "deviceId": device_id,
+        "sequence": 0,
+        // Sorts before any real ISO-8601 timestamp, so it's the replay baseline.
+        "timestamp": "0000-00-00T00:00:00.000Z",
+        "type": "replace_full_state",
+        // `apply_operation` reads only `payload.state`; `replaces` is inert for
+        // replay and only consulted by `merge_ops`.
+        "payload": { "state": state.clone(), "replaces": replaces },
+    }))
+}
+
+/// Replace the operation log with one full-state checkpoint and prove, inside
+/// the same transaction, that replaying only that checkpoint reconstructs the
+/// exact app state that existed before compaction. Any mismatch rolls back the
+/// log, history, tombstones, and materialized tables together.
+fn install_checkpoint(
+    conn: &Connection,
+    expected_state: &JsonValue,
+    snapshot: &JsonValue,
+) -> Result<CheckpointStats> {
+    ensure_tombstones_table(conn)?;
+    let operation_count: i64 =
+        conn.query_row("SELECT count(*) FROM operations", [], |row| row.get(0))?;
+    let history_count: i64 =
+        conn.query_row("SELECT count(*) FROM history_entries", [], |row| row.get(0))?;
+    let snapshot_id = snapshot
+        .get("id")
+        .and_then(JsonValue::as_str)
+        .unwrap_or_default()
+        .to_string();
+    let replaces = snapshot
+        .get("payload")
+        .and_then(|payload| payload.get("replaces"))
+        .and_then(JsonValue::as_array)
+        .map(|ids| {
+            ids.iter()
+                .filter_map(JsonValue::as_str)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    let tx = conn.unchecked_transaction()?;
+    tx.execute("DELETE FROM history_entries", [])?;
+    tx.execute("DELETE FROM operations", [])?;
+    crate::upsert_operation(&tx, snapshot).map_err(Error::Codec)?;
+    crate::apply_operation(&tx, snapshot).map_err(Error::Codec)?;
+    {
+        let mut tombstone = tx.prepare("INSERT OR IGNORE INTO sync_tombstones (id) VALUES (?1)")?;
+        for id in &replaces {
+            if *id == snapshot_id {
+                continue;
+            }
+            tombstone.execute(params![id])?;
+        }
+    }
+
+    let replayed_state = crate::read_app_state_from_database(&tx)
+        .map_err(Error::Codec)?
+        .ok_or_else(|| Error::Codec("checkpoint replay produced no app state".into()))?;
+    if replayed_state != *expected_state {
+        return Err(Error::Codec(
+            "checkpoint replay did not exactly reproduce the current app state".into(),
+        ));
+    }
+
+    tx.commit()?;
+    Ok(CheckpointStats {
+        operations_removed: operation_count.saturating_sub(1),
+        history_entries_removed: history_count,
     })
 }
 
-/// Apply a peer's changes (column-level LWW merge; idempotent, order-independent).
-pub fn apply(conn: &Connection, set: &ChangeSet) -> Result<()> {
+/// Collapse all replay history into one verified `replace_full_state` baseline.
+pub fn checkpoint_operation_log(conn: &Connection) -> Result<CheckpointStats> {
+    let state = crate::read_app_state_from_database(conn)
+        .map_err(Error::Codec)?
+        .ok_or_else(|| Error::Codec("database has no app state to checkpoint".into()))?;
+    let snapshot = snapshot_state_op(conn, &state)?;
+    install_checkpoint(conn, &state, &snapshot)
+}
+
+// ---------------------------------------------------------------------------
+// Rematerialization
+// ---------------------------------------------------------------------------
+
+/// Reconstruct the op `Value`s from the `operations` rows in canonical order
+/// (timestamp, device_id, sequence) — the deterministic total order every device
+/// agrees on.
+fn read_operations_canonical(conn: &Connection) -> Result<Vec<JsonValue>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, device_id, sequence, type, timestamp, payload_json FROM operations \
+         ORDER BY timestamp, device_id, sequence",
+    )?;
+    let rows = stmt
+        .query_map([], row_to_op)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut ops = Vec::with_capacity(rows.len());
+    for op in rows {
+        let payload: JsonValue =
+            serde_json::from_str(&op.payload_json).map_err(|e| Error::Codec(e.to_string()))?;
+        ops.push(json!({
+            "id": op.id,
+            "deviceId": op.device_id,
+            "sequence": op.sequence,
+            "type": op.op_type,
+            "timestamp": op.timestamp,
+            "payload": payload,
+        }));
+    }
+    Ok(ops)
+}
+
+/// Rebuild the materialized domain tables by replaying every operation in
+/// canonical order through the app's existing `apply_operation`. Called after a
+/// sync merge so all devices converge to identical state.
+pub fn rematerialize(conn: &Connection) -> Result<()> {
+    let ops = read_operations_canonical(conn)?;
     let tx = conn.unchecked_transaction()?;
-    {
-        let mut stmt = tx.prepare(
-            "INSERT INTO crsql_changes \
-             (\"table\", pk, cid, val, col_version, db_version, site_id, cl, seq) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-        )?;
-        for c in &set.rows {
-            stmt.execute(params![
-                c.table,
-                Value::from(c.pk.clone()),
-                c.cid,
-                Value::from(c.val.clone()),
-                c.col_version,
-                c.db_version,
-                Value::from(c.site_id.clone()),
-                c.cl,
-                c.seq,
-            ])?;
-        }
+    tx.execute_batch(
+        "DELETE FROM plan_items; DELETE FROM plans;
+         DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;",
+    )?;
+    for (index, op) in ops.iter().enumerate() {
+        crate::apply_operation(&tx, op).map_err(|error| {
+            let id = op
+                .get("id")
+                .and_then(JsonValue::as_str)
+                .unwrap_or("unknown");
+            let ty = op
+                .get("type")
+                .and_then(JsonValue::as_str)
+                .unwrap_or("unknown");
+            Error::Codec(format!(
+                "could not replay synced operation {} ({ty}, {id}): {error}",
+                index + 1
+            ))
+        })?;
     }
     tx.commit()?;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// Convergence hashing (test/diagnostic helper)
+// ---------------------------------------------------------------------------
 
 /// Deterministic hash of the materialized contents of `tables`, for asserting
 /// two devices converged (state, not history).
@@ -436,274 +702,132 @@ pub fn hex(bytes: &[u8]) -> String {
     s
 }
 
-pub fn unhex(s: &str) -> Result<Vec<u8>> {
-    if s.len() % 2 != 0 {
-        return Err(Error::Codec("odd-length hex".into()));
-    }
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| Error::Codec(e.to_string())))
-        .collect()
-}
-
 // ---------------------------------------------------------------------------
-// Op-log sync. We replicate only the append-only `operations` table (a CRR),
-// and rebuild materialized state from it via the app's existing materializer.
+// Self-test (also runs on-device in the Android debug APK)
 // ---------------------------------------------------------------------------
 
-fn random_id() -> String {
-    let mut b = [0u8; 16];
-    rand::rngs::OsRng.fill_bytes(&mut b);
-    hex(&b)
-}
+/// Exercise the real app sync path against two throwaway encrypted Balance
+/// databases. This is intentionally broader than an engine smoke test: it uses
+/// the production schema and materializer, creates and parses the pairing code,
+/// enables a primary and joiner, persists the key on both sides, exchanges the
+/// encrypted operation log over a real TCP socket, and verifies that user data
+/// appears on the joining device. CI runs this inside the Android APK so
+/// SQLCipher, pairing, transport, and the bootstrap path are covered together.
+/// Cleans up after itself.
+pub fn selftest(scratch_dir: &Path) -> Result<()> {
+    // The self-test may run before the main database has created this directory.
+    std::fs::create_dir_all(scratch_dir).map_err(|e| Error::Codec(e.to_string()))?;
+    let a_path = scratch_dir.join("balance-sync-selftest-a.sqlite3");
+    let b_path = scratch_dir.join("balance-sync-selftest-b.sqlite3");
+    let _ = std::fs::remove_file(&a_path);
+    let _ = std::fs::remove_file(&b_path);
 
-fn mark_enabled(conn: &Connection) -> Result<()> {
-    conn.execute(
-        "INSERT INTO metadata (key, value) VALUES ('sync_enabled','true') \
-         ON CONFLICT(key) DO UPDATE SET value='true'",
-        [],
-    )?;
-    Ok(())
-}
+    let result = (|| -> Result<()> {
+        let app_state = |device_id: &str, goals: JsonValue| {
+            json!({
+                "schemaVersion": 1,
+                "deviceId": device_id,
+                "localSequence": 0,
+                "historyRevision": 0,
+                "activePlanDate": "2026-07-14",
+                "templates": [],
+                "plans": [],
+                "goals": goals,
+                "goalCompletions": [],
+                "listTemplates": [],
+                "lists": [],
+                "metrics": [],
+                "metricEntries": [],
+                "operations": [],
+            })
+        };
 
-/// Persist the pairing code (the E2E key) in the encrypted DB so the background
-/// P2P listener can decrypt incoming changesets without UI involvement.
-pub fn store_pairing_code(conn: &Connection, pairing_code: &str) -> Result<()> {
-    conn.execute(
-        "INSERT INTO metadata (key, value) VALUES (?1, ?2) \
-         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-        params![crate::SYNC_PAIRING_CODE, pairing_code],
-    )?;
-    Ok(())
-}
-
-/// Read the stored pairing code, if sync has been enabled on this device.
-pub fn read_pairing_code(conn: &Connection) -> Result<Option<String>> {
-    Ok(conn
-        .query_row(
-            "SELECT value FROM metadata WHERE key = ?1",
-            params![crate::SYNC_PAIRING_CODE],
-            |r| r.get::<_, String>(0),
+        let mut primary =
+            crate::open_database_at(&a_path, "selftest-key-a").map_err(Error::Codec)?;
+        let mut joiner =
+            crate::open_database_at(&b_path, "selftest-key-b").map_err(Error::Codec)?;
+        crate::replace_app_state(
+            &mut primary,
+            &app_state(
+                "selftest-primary",
+                json!([{ "id": "ci-sync-goal", "name": "Android E2E sync reached the joiner" }]),
+            ),
         )
-        .ok())
-}
+        .map_err(Error::Codec)?;
+        crate::replace_app_state(
+            &mut joiner,
+            &app_state(
+                "selftest-joiner",
+                json!([{ "id": "joiner-only", "name": "Must be replaced" }]),
+            ),
+        )
+        .map_err(Error::Codec)?;
 
-fn operations_has_defaults(conn: &Connection) -> Result<bool> {
-    let mut stmt = conn.prepare("PRAGMA table_info(operations)")?;
-    let cols = stmt
-        .query_map([], |r| {
-            Ok((r.get::<_, String>(1)?, r.get::<_, Option<String>>(4)?))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    Ok(cols
-        .iter()
-        .any(|(name, dflt)| name == "payload_json" && dflt.is_some()))
-}
+        let generated_key = crypto::SyncKey::generate();
+        let pairing_code = generated_key.to_pairing_code();
+        let primary_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
+        let joiner_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
+        if primary_key.as_bytes() != joiner_key.as_bytes() {
+            return Err(Error::Crypto("pairing code produced different keys".into()));
+        }
 
-/// cr-sqlite requires CRR columns to be nullable or have defaults. Rebuild the
-/// `operations` table with identical columns plus defaults, preserving all rows.
-/// The app always inserts explicit values, so the defaults are transparent.
-/// Idempotent: a no-op once the defaults are present.
-fn rebuild_operations_with_defaults(conn: &Connection) -> Result<()> {
-    if operations_has_defaults(conn)? {
-        return Ok(());
-    }
-    // Renames/drops referenced tables; do it with FK enforcement off and
-    // legacy_alter_table on (pragmas are no-ops inside a transaction).
-    let fk_was_on: bool = conn.query_row("PRAGMA foreign_keys", [], |r| r.get(0))?;
-    conn.pragma_update(None, "foreign_keys", false)?;
-    conn.pragma_update(None, "legacy_alter_table", true)?;
-    {
-        let tx = conn.unchecked_transaction()?;
-        tx.execute_batch(
-            "ALTER TABLE operations RENAME TO operations_legacy;
-             CREATE TABLE operations (
-                id TEXT PRIMARY KEY NOT NULL,
-                device_id TEXT NOT NULL DEFAULT '',
-                sequence INTEGER NOT NULL DEFAULT 0,
-                type TEXT NOT NULL DEFAULT '',
-                timestamp TEXT NOT NULL DEFAULT '',
-                payload_json TEXT NOT NULL DEFAULT '{}'
-             );
-             INSERT INTO operations (id, device_id, sequence, type, timestamp, payload_json)
-                SELECT id, device_id, sequence, type, timestamp, payload_json FROM operations_legacy;
-             DROP TABLE operations_legacy;
-             CREATE INDEX IF NOT EXISTS idx_operations_sequence ON operations(sequence);",
-        )?;
-        tx.commit()?;
-    }
-    conn.pragma_update(None, "legacy_alter_table", false)?;
-    conn.pragma_update(None, "foreign_keys", fk_was_on)?;
-    Ok(())
-}
+        enable_primary(&primary)?;
+        store_pairing_code(&primary, &pairing_code)?;
+        enable_joiner(&joiner)?;
+        store_pairing_code(&joiner, &pairing_code)?;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CheckpointStats {
-    pub operations_removed: i64,
-    pub history_entries_removed: i64,
-}
+        let cleared = crate::read_app_state_from_database(&joiner)
+            .map_err(Error::Codec)?
+            .ok_or_else(|| Error::Codec("joiner state missing after pairing".into()))?;
+        if cleared["goals"] != json!([]) {
+            return Err(Error::Codec(
+                "joiner was not cleared before bootstrap".into(),
+            ));
+        }
 
-/// Build a `replace_full_state` baseline op from an already-read state,
-/// timestamped so it always sorts first in a canonical replay.
-fn snapshot_state_op(conn: &Connection, state: &JsonValue) -> Result<JsonValue> {
-    let device_id = crate::metadata_value(conn, "device_id")
-        .map_err(Error::Codec)?
-        .unwrap_or_default();
-    Ok(json!({
-        "id": random_id(),
-        "deviceId": device_id,
-        "sequence": 0,
-        // Sorts before any real ISO-8601 timestamp, so it's the replay baseline.
-        "timestamp": "0000-00-00T00:00:00.000Z",
-        "type": "replace_full_state",
-        "payload": { "state": state.clone() },
-    }))
-}
+        // Mirror the app's manual-address flow: the primary listens and the
+        // joining device initiates a bidirectional, E2EE P2P sync.
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
+        let address = listener
+            .local_addr()
+            .map_err(|e| Error::Codec(e.to_string()))?
+            .to_string();
+        let primary_thread = std::thread::spawn(move || -> Result<()> {
+            transport::sync_accept(&listener, &primary_key, &ConnectionStore(&primary))
+        });
 
-/// Replace the operation log with one full-state checkpoint and prove, inside
-/// the same transaction, that replaying only that checkpoint reconstructs the
-/// exact app state that existed before compaction. Any mismatch rolls back the
-/// log, history, and materialized tables together.
-fn install_checkpoint(
-    conn: &Connection,
-    expected_state: &JsonValue,
-    snapshot: &JsonValue,
-) -> Result<CheckpointStats> {
-    let operation_count: i64 =
-        conn.query_row("SELECT count(*) FROM operations", [], |row| row.get(0))?;
-    let history_count: i64 =
-        conn.query_row("SELECT count(*) FROM history_entries", [], |row| row.get(0))?;
+        transport::sync_connect(&address, &joiner_key, &ConnectionStore(&joiner))?;
+        primary_thread
+            .join()
+            .map_err(|_| Error::Codec("primary sync thread panicked".into()))??;
 
-    let tx = conn.unchecked_transaction()?;
-    tx.execute("DELETE FROM history_entries", [])?;
-    tx.execute("DELETE FROM operations", [])?;
-    crate::upsert_operation(&tx, snapshot).map_err(Error::Codec)?;
-    crate::apply_operation(&tx, snapshot).map_err(Error::Codec)?;
+        let joined_state = crate::read_app_state_from_database(&joiner)
+            .map_err(Error::Codec)?
+            .ok_or_else(|| Error::Codec("joiner state missing after sync".into()))?;
+        if joined_state["goals"]
+            != json!([{ "id": "ci-sync-goal", "name": "Android E2E sync reached the joiner" }])
+        {
+            return Err(Error::Codec(
+                "paired joiner did not receive the primary's user data".into(),
+            ));
+        }
+        if joined_state["deviceId"] != "selftest-joiner" {
+            return Err(Error::Codec(
+                "sync overwrote the joiner's device identity".into(),
+            ));
+        }
+        if read_pairing_code(&joiner)?.as_deref() != Some(pairing_code.as_str()) {
+            return Err(Error::Crypto(
+                "joiner did not persist its pairing key".into(),
+            ));
+        }
+        Ok(())
+    })();
 
-    let replayed_state = crate::read_app_state_from_database(&tx)
-        .map_err(Error::Codec)?
-        .ok_or_else(|| Error::Codec("checkpoint replay produced no app state".into()))?;
-    if replayed_state != *expected_state {
-        return Err(Error::Codec(
-            "checkpoint replay did not exactly reproduce the current app state".into(),
-        ));
-    }
-
-    tx.commit()?;
-    Ok(CheckpointStats {
-        operations_removed: operation_count.saturating_sub(1),
-        history_entries_removed: history_count,
-    })
-}
-
-/// Collapse all replay history into one verified `replace_full_state` baseline.
-/// The operations table may already be a cr-sqlite CRR; callers must load the
-/// extension before invoking this function in that case.
-pub fn checkpoint_operation_log(conn: &Connection) -> Result<CheckpointStats> {
-    let state = crate::read_app_state_from_database(conn)
-        .map_err(Error::Codec)?
-        .ok_or_else(|| Error::Codec("database has no app state to checkpoint".into()))?;
-    let snapshot = snapshot_state_op(conn, &state)?;
-    install_checkpoint(conn, &state, &snapshot)
-}
-
-/// Enable sync on the device that holds the canonical data ("Create sync key").
-/// Snapshot the current state into a single baseline op, reset the log to just
-/// that snapshot, and promote the log to a CRR. The real data tables are not
-/// touched.
-pub fn enable_primary(conn: &Connection) -> Result<()> {
-    rebuild_operations_with_defaults(conn)?;
-    checkpoint_operation_log(conn)?;
-    as_crr(conn, "operations")?;
-    mark_enabled(conn)?;
-    Ok(())
-}
-
-/// Enable sync on a device that will adopt another's data ("Pair with another
-/// device"). Clear local domain state and the op log (the caller takes a backup
-/// first), promote the log to a CRR, then wait to receive the primary's baseline
-/// via sync + [`rematerialize`].
-pub fn enable_joiner(conn: &Connection) -> Result<()> {
-    rebuild_operations_with_defaults(conn)?;
-    {
-        let tx = conn.unchecked_transaction()?;
-        tx.execute_batch(
-            "DELETE FROM operations; DELETE FROM history_entries;
-             DELETE FROM plan_items; DELETE FROM plans;
-             DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
-             DELETE FROM metadata WHERE key IN ('goal_data','lists_metrics_data');",
-        )?;
-        tx.commit()?;
-    }
-    as_crr(conn, "operations")?;
-    mark_enabled(conn)?;
-    Ok(())
-}
-
-/// Reconstruct the op `Value`s from the `operations` rows in canonical order
-/// (timestamp, device_id, sequence) — the deterministic total order every device
-/// agrees on.
-fn read_operations_canonical(conn: &Connection) -> Result<Vec<JsonValue>> {
-    let mut stmt = conn.prepare(
-        "SELECT id, device_id, sequence, type, timestamp, payload_json FROM operations \
-         ORDER BY timestamp, device_id, sequence",
-    )?;
-    let rows = stmt
-        .query_map([], |r| {
-            Ok((
-                r.get::<_, String>(0)?,
-                r.get::<_, String>(1)?,
-                r.get::<_, i64>(2)?,
-                r.get::<_, String>(3)?,
-                r.get::<_, String>(4)?,
-                r.get::<_, String>(5)?,
-            ))
-        })?
-        .collect::<std::result::Result<Vec<_>, _>>()?;
-    let mut ops = Vec::with_capacity(rows.len());
-    for (id, device_id, sequence, ty, timestamp, payload_json) in rows {
-        let payload: JsonValue =
-            serde_json::from_str(&payload_json).map_err(|e| Error::Codec(e.to_string()))?;
-        ops.push(json!({
-            "id": id,
-            "deviceId": device_id,
-            "sequence": sequence,
-            "type": ty,
-            "timestamp": timestamp,
-            "payload": payload,
-        }));
-    }
-    Ok(ops)
-}
-
-/// Rebuild the materialized domain tables by replaying every operation in
-/// canonical order through the app's existing `apply_operation`. Called after a
-/// sync merge so all devices converge to identical state.
-pub fn rematerialize(conn: &Connection) -> Result<()> {
-    let ops = read_operations_canonical(conn)?;
-    let tx = conn.unchecked_transaction()?;
-    tx.execute_batch(
-        "DELETE FROM plan_items; DELETE FROM plans;
-         DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;",
-    )?;
-    for (index, op) in ops.iter().enumerate() {
-        crate::apply_operation(&tx, op).map_err(|error| {
-            let id = op
-                .get("id")
-                .and_then(JsonValue::as_str)
-                .unwrap_or("unknown");
-            let ty = op
-                .get("type")
-                .and_then(JsonValue::as_str)
-                .unwrap_or("unknown");
-            Error::Codec(format!(
-                "could not replay synced operation {} ({ty}, {id}): {error}",
-                index + 1
-            ))
-        })?;
-    }
-    tx.commit()?;
-    Ok(())
+    let _ = std::fs::remove_file(&a_path);
+    let _ = std::fs::remove_file(&b_path);
+    result
 }
 
 #[cfg(test)]

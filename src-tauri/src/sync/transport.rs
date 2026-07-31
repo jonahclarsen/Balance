@@ -1,48 +1,62 @@
-//! Peer-to-peer transport: two devices exchange sealed changesets directly over
-//! a TCP socket (pairs with mDNS discovery on a LAN). The same `SyncKey`-sealed
-//! envelopes the relay uses move over the wire, so an observer sees only
-//! ciphertext.
+//! Peer-to-peer transport: two devices reconcile their operation logs directly
+//! over a TCP socket (pairs with mDNS discovery on a LAN). Every frame is a
+//! `SyncKey`-sealed JSON [`Message`], so an observer sees only ciphertext.
 //!
-//! Cursor model: each node tracks, per peer, the high-water `db_version` of its
-//! *own* database it has already sent that peer (`sent_upto`). A sync ships
-//! `crsql_changes` with `db_version > sent_upto AND site_id != peer`, then
-//! advances the cursor. Apply is idempotent, so a lost ack just resends.
+//! Protocol (three frames, one round trip each way):
+//!
+//! ```text
+//! initiator                                   responder
+//!   Offer { v, ids }            ------------>
+//!                               <------------  Diff { ops, want }
+//!   Ops { ops }                 ------------>
+//! ```
+//!
+//! The ordering is the whole point. Each side does its expensive work — merging
+//! and rematerializing the log — only *after* its last network obligation, so
+//! neither peer can be left blocking on a socket while the other rebuilds its
+//! database. The responder's only work between receiving and replying is a
+//! bounded id-set diff.
+//!
+//! Every database touch goes through [`SyncStore`], whose implementations take
+//! the app's global database guard for the duration of that call and release it
+//! before returning. No guard and no connection is ever held across socket I/O,
+//! so two devices can sync at each other simultaneously without deadlocking.
 
-use std::collections::HashMap;
-use std::io::{Read, Write};
+use std::io::{ErrorKind, Read, Write};
 use std::net::{TcpListener, TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
-use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 
 use super::crypto::SyncKey;
-use super::{apply, db_version, pull, site_hex, Error, Result};
+use super::{Error, Op, Result, SyncStore, PROTOCOL_VERSION};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const IO_TIMEOUT: Duration = Duration::from_secs(60);
 
-#[derive(Default)]
-pub struct Cursors {
-    sent_upto: HashMap<String, i64>,
+pub(crate) const TIMEOUT_MESSAGE: &str =
+    "timed out waiting for the other device — is Balance open there?";
+const VERSION_MESSAGE: &str =
+    "the other device is running an incompatible Balance version — update both devices";
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "t")]
+pub enum Message {
+    /// Initiator's complete op-id list.
+    Offer { v: u32, ids: Vec<String> },
+    /// Responder's answer: ops the initiator lacks, plus ids it wants back.
+    Diff { ops: Vec<Op>, want: Vec<String> },
+    /// Initiator's reply with the ops the responder asked for.
+    Ops { ops: Vec<Op> },
 }
 
-impl Cursors {
-    pub fn new() -> Self {
-        Cursors::default()
+fn io(e: std::io::Error) -> Error {
+    match e.kind() {
+        // A 60s read/write deadline surfaces as TimedOut (or EAGAIN/WouldBlock
+        // on Android). "os error 11" tells a user nothing; this does.
+        ErrorKind::TimedOut | ErrorKind::WouldBlock => Error::Codec(TIMEOUT_MESSAGE.to_string()),
+        _ => Error::Codec(format!("io: {e}")),
     }
-    fn get(&self, peer: &str) -> i64 {
-        self.sent_upto.get(peer).copied().unwrap_or(0)
-    }
-    fn set(&mut self, peer: &str, v: i64) {
-        self.sent_upto.insert(peer.to_string(), v);
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-struct Header {
-    from_site: String,
-    hw: i64,
 }
 
 fn write_frame(stream: &mut TcpStream, bytes: &[u8]) -> Result<()> {
@@ -60,10 +74,6 @@ fn read_frame(stream: &mut TcpStream) -> Result<Vec<u8>> {
     let mut buf = vec![0u8; u32::from_be_bytes(len) as usize];
     stream.read_exact(&mut buf).map_err(io)?;
     Ok(buf)
-}
-
-fn io(e: std::io::Error) -> Error {
-    Error::Codec(format!("io: {e}"))
 }
 
 fn configure_stream(stream: &TcpStream) -> Result<()> {
@@ -95,105 +105,98 @@ fn connect(addr: &str) -> Result<TcpStream> {
         .unwrap_or_else(|| Error::Codec(format!("io: no socket addresses resolved for {addr}"))))
 }
 
-fn send(stream: &mut TcpStream, header: &Header, sealed: &[u8]) -> Result<()> {
-    write_frame(
-        stream,
-        &serde_json::to_vec(header).map_err(|e| Error::Codec(e.to_string()))?,
-    )?;
-    write_frame(stream, sealed)
+fn send(stream: &mut TcpStream, key: &SyncKey, message: &Message) -> Result<()> {
+    let plaintext = serde_json::to_vec(message).map_err(|e| Error::Codec(e.to_string()))?;
+    write_frame(stream, &key.seal(&plaintext)?)
 }
 
-fn recv(stream: &mut TcpStream) -> Result<(Header, Vec<u8>)> {
-    let hdr = read_frame(stream)?;
-    let header: Header = serde_json::from_slice(&hdr).map_err(|e| Error::Codec(e.to_string()))?;
-    Ok((header, read_frame(stream)?))
+fn recv(stream: &mut TcpStream, key: &SyncKey) -> Result<Message> {
+    let sealed = read_frame(stream)?;
+    let plaintext = key.open(&sealed)?;
+    serde_json::from_slice(&plaintext).map_err(|e| Error::Codec(e.to_string()))
 }
 
-/// Initiator side of a one-shot bidirectional sync.
-pub fn sync_connect(
-    addr: &str,
-    conn: &Connection,
-    key: &SyncKey,
-    cursors: &mut Cursors,
-) -> Result<()> {
-    let mut stream = connect(addr)?;
-    let my_site = site_hex(conn)?;
-
-    // Peer site unknown on this first push, so we can't exclude it; cr-sqlite
-    // ignores changes the peer already has, and the return leg does exclude us.
-    let outgoing = pull(conn, cursors.get("peer"), None)?;
-    let hw = db_version(conn)?;
+/// Initiator half of a one-shot bidirectional sync.
+pub fn run_initiator(stream: &mut TcpStream, key: &SyncKey, store: &dyn SyncStore) -> Result<()> {
+    let ids = store.local_ids()?;
     send(
-        &mut stream,
-        &Header {
-            from_site: my_site,
-            hw,
+        stream,
+        key,
+        &Message::Offer {
+            v: PROTOCOL_VERSION,
+            ids,
         },
-        &key.seal(&outgoing)?,
     )?;
 
-    let (peer_hdr, peer_sealed) = recv(&mut stream)?;
-    apply(conn, &key.open(&peer_sealed)?)?;
-    // Rebuild materialized state from the merged op log.
-    super::rematerialize(conn)?;
+    let (ops, want) = match recv(stream, key)? {
+        Message::Diff { ops, want } => (ops, want),
+        _ => return Err(Error::Codec("unexpected reply to sync offer".into())),
+    };
 
-    cursors.set(&peer_hdr.from_site, hw);
-    cursors.set("peer", hw);
+    // Answer the peer *before* merging: everything below is local-only work.
+    let requested = store.ops_by_id(&want)?;
+    send(stream, key, &Message::Ops { ops: requested })?;
+
+    store.merge(ops)?;
     Ok(())
 }
 
-/// Responder side of a one-shot bidirectional sync.
-pub fn sync_accept(
-    listener: &TcpListener,
-    conn: &Connection,
-    key: &SyncKey,
-    cursors: &mut Cursors,
-) -> Result<()> {
+/// Responder half of a one-shot bidirectional sync.
+pub fn run_responder(stream: &mut TcpStream, key: &SyncKey, store: &dyn SyncStore) -> Result<()> {
+    let ids = match recv(stream, key)? {
+        Message::Offer { v, ids } => {
+            if v != PROTOCOL_VERSION {
+                return Err(Error::Codec(VERSION_MESSAGE.to_string()));
+            }
+            ids
+        }
+        _ => return Err(Error::Codec("expected a sync offer".into())),
+    };
+
+    // Bounded id-set diff only — no rematerialization before the reply.
+    let (ops, want) = store.diff(&ids)?;
+    send(stream, key, &Message::Diff { ops, want })?;
+
+    let received = match recv(stream, key)? {
+        Message::Ops { ops } => ops,
+        _ => return Err(Error::Codec("unexpected reply to sync diff".into())),
+    };
+
+    store.merge(received)?;
+    Ok(())
+}
+
+/// Initiator entry point: dial `addr` and run the exchange.
+pub fn sync_connect(addr: &str, key: &SyncKey, store: &dyn SyncStore) -> Result<()> {
+    let mut stream = connect(addr)?;
+    run_initiator(&mut stream, key, store)
+}
+
+/// Responder entry point that owns the accept.
+pub fn sync_accept(listener: &TcpListener, key: &SyncKey, store: &dyn SyncStore) -> Result<()> {
     let (stream, _) = listener.accept().map_err(io)?;
-    sync_accept_stream(stream, conn, key, cursors)
+    sync_accept_stream(stream, key, store)
 }
 
 /// Responder flow for an already-accepted socket. The background P2P listener
-/// accepts before opening the database, so it never pins an obsolete database
+/// accepts before touching the database, so it never pins an obsolete database
 /// file while idle or during atomic maintenance.
 pub fn sync_accept_stream(
     mut stream: TcpStream,
-    conn: &Connection,
     key: &SyncKey,
-    cursors: &mut Cursors,
+    store: &dyn SyncStore,
 ) -> Result<()> {
     configure_stream(&stream)?;
-    let my_site = site_hex(conn)?;
-
-    let (peer_hdr, peer_sealed) = recv(&mut stream)?;
-    apply(conn, &key.open(&peer_sealed)?)?;
-    // Rebuild materialized state from the merged op log.
-    super::rematerialize(conn)?;
-    let peer_site = peer_hdr.from_site.clone();
-
-    let outgoing = pull(conn, cursors.get(&peer_site), Some(&peer_site))?;
-    let hw = db_version(conn)?;
-    send(
-        &mut stream,
-        &Header {
-            from_site: my_site,
-            hw,
-        },
-        &key.seal(&outgoing)?,
-    )?;
-
-    cursors.set(&peer_site, hw);
-    Ok(())
+    run_responder(&mut stream, key, store)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::ErrorKind;
     use std::time::Instant;
 
     #[test]
-    fn stalled_socket_read_returns_after_its_deadline() {
+    fn stalled_socket_read_reports_a_human_timeout_message() {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
         let (mut stream, _) = listener.accept().unwrap();
@@ -204,12 +207,13 @@ mod tests {
         assert_eq!(stream.write_timeout().unwrap(), Some(timeout));
 
         let started = Instant::now();
-        let error = stream.read_exact(&mut [0_u8; 1]).unwrap_err();
-        assert!(matches!(
-            error.kind(),
-            ErrorKind::TimedOut | ErrorKind::WouldBlock
-        ));
+        let error = read_frame(&mut stream).unwrap_err();
         assert!(started.elapsed() < Duration::from_secs(2));
+        assert_eq!(error.to_string(), format!("codec: {TIMEOUT_MESSAGE}"));
+        assert!(
+            !error.to_string().contains("os error"),
+            "raw errno must not reach the user: {error}"
+        );
 
         drop(peer);
     }

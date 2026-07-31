@@ -58,10 +58,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Build cr-sqlite loadable extension (Linux .so)
-        # Produces the runtime-loaded resource required by tauri.linux.conf.json.
-        run: bash scripts/build-crsqlite.sh desktop
-
       - name: Resolve app version
         run: |
           VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
@@ -102,7 +98,7 @@ jobs:
             --config "{\"version\":\"$APP_VERSION\"}" \
             --bundles appimage,deb
 
-      - name: Verify packages and bundled cr-sqlite
+      - name: Verify packages
         id: packages
         run: |
           APPIMAGE="$(find src-tauri/target/release/bundle/appimage -maxdepth 1 -name "*_${APP_VERSION}_*.AppImage" -print -quit)"
@@ -114,12 +110,10 @@ jobs:
           file src-tauri/target/release/Balance | tee executable-architecture.txt
           file src-tauri/target/release/Balance | grep -q "ELF 64-bit.*x86-64"
 
+          # Extracted here so the smoke-test step below can run ./squashfs-root/AppRun.
           "$APPIMAGE" --appimage-extract >/dev/null
-          find squashfs-root -type f -name crsqlite.so | tee appimage-crsqlite.txt
-          test -s appimage-crsqlite.txt
 
           dpkg-deb --contents "$DEB" | tee deb-contents.txt
-          grep -q 'crsqlite.so' deb-contents.txt
           DEB_VERSION="$(dpkg-deb --field "$DEB" Version)"
           echo "Debian package version: $DEB_VERSION"
           # Debian permits a packaging revision suffix (for example
@@ -156,7 +150,6 @@ jobs:
             Balance-linux-x86_64.AppImage
             Balance-linux-x86_64.deb
             executable-architecture.txt
-            appimage-crsqlite.txt
             deb-contents.txt
             linux-smoke-test.log
           if-no-files-found: error

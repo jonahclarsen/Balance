@@ -2,24 +2,25 @@
 //! layer: the app's own `open_database_at` (SQLCipher), `replace_app_state`, and
 //! `persist_operation_to_database`. These prove that two devices converge by
 //! replicating the operation log and rebuilding state through the existing
-//! materializer — without ever restructuring the user's real data tables.
+//! materializer — without ever restructuring the user's real data tables, and
+//! without any native extension.
 
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
+use rusqlite::Connection;
 use serde_json::{json, Value};
 
 use super::crypto::SyncKey;
+use super::transport::{self, TIMEOUT_MESSAGE};
 use super::*;
 use crate::{
     open_database_at, persist_operation_to_database, read_app_state_from_database,
     replace_app_state,
 };
-
-fn ext_path() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("resources")
-        .join("crsqlite.dylib")
-}
 
 /// A unique scratch DB path that cleans up on drop.
 struct Scratch {
@@ -66,11 +67,10 @@ fn state(device_id: &str, goals: Value) -> Value {
     })
 }
 
-/// Open a real encrypted DB seeded with `initial`, then load cr-sqlite.
-fn open_seeded(path: &std::path::Path, key: &str, initial: &Value) -> rusqlite::Connection {
+/// Open a real encrypted DB seeded with `initial`.
+fn open_seeded(path: &std::path::Path, key: &str, initial: &Value) -> Connection {
     let mut conn = open_database_at(path, key).expect("open encrypted real schema");
     replace_app_state(&mut conn, initial).expect("seed state");
-    load_extension(&conn, ext_path()).expect("load cr-sqlite");
     conn
 }
 
@@ -85,8 +85,128 @@ fn domain(state: &Value) -> Value {
     })
 }
 
+/// The tables whose materialized contents must match once two devices converge.
+const MATERIALIZED_TABLES: [&str; 5] = [
+    "templates",
+    "template_items",
+    "template_options",
+    "plans",
+    "plan_items",
+];
+
+/// A [`SyncStore`] shaped exactly like the app's `p2p::AppStore`: one shared
+/// connection behind a lock that is taken *per call* and released before the
+/// transport touches the socket again. Also counts merged ops, so tests can
+/// assert that a redundant sync inserts nothing.
+#[derive(Clone)]
+struct TestStore {
+    connection: Arc<Mutex<Connection>>,
+    merged: Arc<AtomicUsize>,
+}
+
+impl TestStore {
+    fn new(connection: Connection) -> Self {
+        TestStore {
+            connection: Arc::new(Mutex::new(connection)),
+            merged: Arc::new(AtomicUsize::new(0)),
+        }
+    }
+
+    /// Ops merged into this device since the last [`TestStore::reset_merged`].
+    fn merged(&self) -> usize {
+        self.merged.load(Ordering::SeqCst)
+    }
+
+    fn reset_merged(&self) {
+        self.merged.store(0, Ordering::SeqCst);
+    }
+
+    fn read<T>(&self, task: impl FnOnce(&Connection) -> T) -> T {
+        task(&self.connection.lock().unwrap())
+    }
+
+    fn write<T>(&self, task: impl FnOnce(&mut Connection) -> T) -> T {
+        task(&mut self.connection.lock().unwrap())
+    }
+
+    fn state(&self) -> Value {
+        self.read(|conn| read_app_state_from_database(conn).unwrap().unwrap())
+    }
+
+    fn operation_ids(&self) -> Vec<String> {
+        self.read(|conn| local_op_ids(conn).unwrap())
+    }
+
+    fn tombstones(&self) -> Vec<String> {
+        self.read(|conn| {
+            let mut stmt = conn
+                .prepare("SELECT id FROM sync_tombstones ORDER BY id")
+                .unwrap();
+            let ids = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .unwrap()
+                .collect::<std::result::Result<Vec<String>, _>>()
+                .unwrap();
+            ids
+        })
+    }
+}
+
+impl SyncStore for TestStore {
+    fn local_ids(&self) -> Result<Vec<String>> {
+        self.read(local_op_ids)
+    }
+
+    fn diff(&self, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)> {
+        self.read(|conn| diff_against(conn, peer_ids))
+    }
+
+    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
+        self.read(|conn| ops_by_id(conn, ids))
+    }
+
+    fn merge(&self, ops: Vec<Op>) -> Result<usize> {
+        let inserted = self.read(|conn| merge_and_rematerialize(conn, ops))?;
+        self.merged.fetch_add(inserted, Ordering::SeqCst);
+        Ok(inserted)
+    }
+}
+
+/// Run one complete bidirectional exchange over a real loopback socket.
+fn exchange(initiator: &TestStore, responder: &TestStore, key: &SyncKey) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap().to_string();
+    let responder_key = key.clone();
+    let responder = responder.clone();
+    let accepted =
+        std::thread::spawn(move || transport::sync_accept(&listener, &responder_key, &responder));
+    transport::sync_connect(&address, key, initiator).expect("initiator sync");
+    accepted.join().unwrap().expect("responder sync");
+}
+
+fn set_active_plan_date_op(
+    id: &str,
+    device_id: &str,
+    sequence: i64,
+    at: &str,
+    date: &str,
+) -> Value {
+    json!({
+        "id": id,
+        "deviceId": device_id,
+        "sequence": sequence,
+        "timestamp": at,
+        "type": "set_active_plan_date",
+        "payload": { "date": date },
+    })
+}
+
+// ---------------------------------------------------------------------------
+// 1. First sync over a real socket
+// ---------------------------------------------------------------------------
+
 #[test]
-fn joiner_bootstraps_primary_data_without_touching_real_tables() {
+fn first_sync_converges_and_the_joiner_keeps_its_own_device_id() {
     let sa = Scratch::new("prim");
     let sb = Scratch::new("join");
 
@@ -101,102 +221,472 @@ fn joiner_bootstraps_primary_data_without_touching_real_tables() {
         "key-b",
         &state("device-B", json!([{ "id": "gx", "name": "PhoneJunk" }])),
     );
-
     enable_primary(&a).expect("enable primary");
     enable_joiner(&b).expect("enable joiner");
 
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+
     // The joiner's local data is cleared, ready to adopt the primary's.
-    let b_before = read_app_state_from_database(&b).unwrap().unwrap();
-    assert_eq!(b_before["goals"], json!([]), "joiner cleared its own data");
+    assert_eq!(b.state()["goals"], json!([]), "joiner cleared its own data");
 
-    // Sync primary -> joiner: ship ops, apply, replay.
-    let changes = pull(&a, 0, None).unwrap();
-    apply(&b, &changes).unwrap();
-    rematerialize(&b).unwrap();
+    exchange(&b, &a, &SyncKey::generate());
 
-    let a_state = read_app_state_from_database(&a).unwrap().unwrap();
-    let b_state = read_app_state_from_database(&b).unwrap().unwrap();
     assert_eq!(
-        domain(&a_state),
-        domain(&b_state),
+        domain(&a.state()),
+        domain(&b.state()),
         "joiner adopted the primary's state"
     );
-    assert_eq!(b_state["goals"], json!([{ "id": "g1", "name": "Read" }]));
+    assert_eq!(b.state()["goals"], json!([{ "id": "g1", "name": "Read" }]));
+    assert_eq!(
+        a.read(|conn| state_hash(conn, &MATERIALIZED_TABLES).unwrap()),
+        b.read(|conn| state_hash(conn, &MATERIALIZED_TABLES).unwrap()),
+        "materialized tables are byte-identical"
+    );
     // Device identity stays local — the joiner keeps its own deviceId.
-    assert_eq!(b_state["deviceId"], "device-B");
+    assert_eq!(b.state()["deviceId"], "device-B");
+    assert_eq!(a.operation_ids(), b.operation_ids());
 
     // The real tables were never restructured: plan_items still has the integer
     // `position` column (no `position_key`), proving the app schema is intact.
-    let cols: Vec<String> = {
-        let mut stmt = b.prepare("PRAGMA table_info(plan_items)").unwrap();
-        stmt.query_map([], |r| r.get::<_, String>(1))
+    let columns: Vec<String> = b.read(|conn| {
+        let mut stmt = conn.prepare("PRAGMA table_info(plan_items)").unwrap();
+        let names = stmt
+            .query_map([], |r| r.get::<_, String>(1))
             .unwrap()
             .map(|r| r.unwrap())
-            .collect()
-    };
+            .collect();
+        names
+    });
     assert!(
-        cols.iter().any(|c| c == "position"),
+        columns.iter().any(|column| column == "position"),
         "integer position column preserved"
     );
     assert!(
-        !cols.iter().any(|c| c == "position_key"),
+        !columns.iter().any(|column| column == "position_key"),
         "no destructive migration happened"
     );
+}
 
-    finalize(&a).unwrap();
-    finalize(&b).unwrap();
+// ---------------------------------------------------------------------------
+// 2. Re-sync is a no-op
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_second_sync_with_no_new_operations_merges_nothing() {
+    let sa = Scratch::new("idem-a");
+    let sb = Scratch::new("idem-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let key = SyncKey::generate();
+
+    exchange(&b, &a, &key);
+    assert_eq!(b.merged(), 1, "joiner adopts the primary's baseline op");
+    assert_eq!(a.merged(), 0);
+
+    a.reset_merged();
+    b.reset_merged();
+    exchange(&b, &a, &key);
+    assert_eq!(a.merged(), 0, "nothing new to insert");
+    assert_eq!(b.merged(), 0, "nothing new to insert");
+    assert_eq!(a.operation_ids(), b.operation_ids());
+}
+
+// ---------------------------------------------------------------------------
+// 3. Edits made on both sides between syncs
+// ---------------------------------------------------------------------------
+
+#[test]
+fn operations_created_on_both_devices_between_syncs_all_propagate() {
+    let sa = Scratch::new("both-a");
+    let sb = Scratch::new("both-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let key = SyncKey::generate();
+
+    exchange(&b, &a, &key);
+
+    // Each device edits independently while offline from the other.
+    a.write(|conn| {
+        persist_operation_to_database(
+            conn,
+            &set_active_plan_date_op(
+                "op-a-1",
+                "device-A",
+                1,
+                "2026-06-23T12:00:00.000Z",
+                "2027-01-01",
+            ),
+        )
+        .unwrap()
+    });
+    b.write(|conn| {
+        persist_operation_to_database(
+            conn,
+            &set_active_plan_date_op(
+                "op-b-1",
+                "device-B",
+                1,
+                "2026-06-23T13:00:00.000Z",
+                "2028-02-02",
+            ),
+        )
+        .unwrap()
+    });
+
+    a.reset_merged();
+    b.reset_merged();
+    exchange(&a, &b, &key);
+
+    assert_eq!(a.merged(), 1, "A receives B's op");
+    assert_eq!(b.merged(), 1, "B receives A's op");
+    assert_eq!(a.operation_ids(), b.operation_ids());
+    // Both converge on the later edit — canonical order is by timestamp.
+    assert_eq!(a.state()["activePlanDate"], "2028-02-02");
+    assert_eq!(domain(&a.state()), domain(&b.state()));
+
+    // A third sync changes nothing.
+    a.reset_merged();
+    b.reset_merged();
+    exchange(&b, &a, &key);
+    assert_eq!((a.merged(), b.merged()), (0, 0));
+}
+
+// ---------------------------------------------------------------------------
+// 4. Checkpoint propagation
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_checkpoint_replaces_the_peers_old_operations_and_leaves_them_tombstoned() {
+    let sa = Scratch::new("ckpt-a");
+    let sb = Scratch::new("ckpt-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let key = SyncKey::generate();
+
+    exchange(&b, &a, &key);
+    a.write(|conn| {
+        persist_operation_to_database(
+            conn,
+            &set_active_plan_date_op(
+                "op-a-1",
+                "device-A",
+                1,
+                "2026-06-23T12:00:00.000Z",
+                "2027-01-01",
+            ),
+        )
+        .unwrap()
+    });
+    exchange(&b, &a, &key);
+    let shared_ids = a.operation_ids();
+    assert_eq!(shared_ids.len(), 2);
+    assert_eq!(shared_ids, b.operation_ids());
+
+    // The coordinator compacts: the whole log collapses into one checkpoint.
+    let expected_state = a.state();
+    a.read(|conn| checkpoint_operation_log(conn).unwrap());
+    let checkpoint_ids = a.operation_ids();
+    assert_eq!(checkpoint_ids.len(), 1, "log is now one baseline op");
+    assert_eq!(a.state(), expected_state, "compaction preserves state");
+
+    let checkpoint = a.read(|conn| ops_by_id(conn, &checkpoint_ids).unwrap())[0].clone();
+    let replaces: Vec<String> = serde_json::from_value(
+        serde_json::from_str::<Value>(&checkpoint.payload_json).unwrap()["replaces"].clone(),
+    )
+    .unwrap();
+    for id in &shared_ids {
+        assert!(replaces.contains(id), "checkpoint declares {id} replaced");
+    }
+    assert_eq!(a.tombstones(), {
+        let mut sorted = shared_ids.clone();
+        sorted.sort();
+        sorted
+    });
+
+    // The peer still holds the pre-checkpoint log; syncing must collapse it.
+    a.reset_merged();
+    b.reset_merged();
+    exchange(&b, &a, &key);
+
+    assert_eq!(
+        a.merged(),
+        0,
+        "the stale ops are tombstoned, never re-added"
+    );
+    assert_eq!(b.merged(), 1, "the peer accepts only the checkpoint");
+    assert_eq!(b.operation_ids(), checkpoint_ids);
+    assert_eq!(b.tombstones(), {
+        let mut sorted = shared_ids.clone();
+        sorted.sort();
+        sorted
+    });
+    assert_eq!(domain(&a.state()), domain(&b.state()));
+    assert_eq!(b.state()["activePlanDate"], "2027-01-01");
+
+    // A third sync must not resurrect anything.
+    a.reset_merged();
+    b.reset_merged();
+    exchange(&a, &b, &key);
+    assert_eq!((a.merged(), b.merged()), (0, 0));
+    assert_eq!(a.operation_ids(), checkpoint_ids);
+    assert_eq!(b.operation_ids(), checkpoint_ids);
+}
+
+// ---------------------------------------------------------------------------
+// 5. Stale peer re-offering tombstoned ids
+// ---------------------------------------------------------------------------
+
+#[test]
+fn tombstoned_operations_are_neither_wanted_nor_re_accepted() {
+    let scratch = Scratch::new("stale");
+    let mut conn = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
+    enable_primary(&conn).unwrap();
+    persist_operation_to_database(
+        &mut conn,
+        &set_active_plan_date_op(
+            "op-doomed",
+            "device-A",
+            1,
+            "2026-06-23T12:00:00.000Z",
+            "2027-01-01",
+        ),
+    )
+    .unwrap();
+
+    let stale_ops = all_ops(&conn).unwrap();
+    let stale_ids: Vec<String> = stale_ops.iter().map(|op| op.id.clone()).collect();
+    let expected_state = read_app_state_from_database(&conn).unwrap().unwrap();
+
+    checkpoint_operation_log(&conn).unwrap();
+
+    // A peer that missed the checkpoint offers the compacted ids back.
+    let (ops, want) = diff_against(&conn, &stale_ids).unwrap();
+    assert!(want.is_empty(), "tombstoned ids must never be requested");
+    assert_eq!(ops.len(), 1, "the peer is offered the checkpoint instead");
+
+    // Even if handed the raw rows, the merge refuses them.
+    assert_eq!(merge_ops(&conn, &stale_ops).unwrap(), 0);
+    assert_eq!(local_op_ids(&conn).unwrap().len(), 1);
+    rematerialize(&conn).unwrap();
+    assert_eq!(
+        read_app_state_from_database(&conn).unwrap().unwrap(),
+        expected_state,
+        "compacted history cannot be resurrected"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// 6. Timeouts surface a human message
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_peer_that_never_speaks_produces_a_readable_timeout() {
+    let scratch = Scratch::new("timeout");
+    let conn = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
+    let store = TestStore::new(conn);
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    // Connect but never send an Offer, exactly like a device that went to sleep.
+    let silent = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+    let (mut stream, _) = listener.accept().unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_millis(50)))
+        .unwrap();
+
+    let error = transport::run_responder(&mut stream, &SyncKey::generate(), &store).unwrap_err();
+    assert_eq!(error.to_string(), format!("codec: {TIMEOUT_MESSAGE}"));
+    assert!(
+        !error.to_string().contains("os error"),
+        "raw errno must not reach the user: {error}"
+    );
+    drop(silent);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Simultaneous mutual sync
+// ---------------------------------------------------------------------------
+
+#[test]
+fn two_devices_syncing_at_each_other_at_once_converge_without_deadlock() {
+    let sa = Scratch::new("mutual-a");
+    let sb = Scratch::new("mutual-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let key = SyncKey::generate();
+
+    exchange(&b, &a, &key);
+    a.write(|conn| {
+        persist_operation_to_database(
+            conn,
+            &set_active_plan_date_op(
+                "op-a-1",
+                "device-A",
+                1,
+                "2026-06-23T12:00:00.000Z",
+                "2027-01-01",
+            ),
+        )
+        .unwrap()
+    });
+    b.write(|conn| {
+        persist_operation_to_database(
+            conn,
+            &set_active_plan_date_op(
+                "op-b-1",
+                "device-B",
+                1,
+                "2026-06-23T13:00:00.000Z",
+                "2028-02-02",
+            ),
+        )
+        .unwrap()
+    });
+
+    // Both devices listen and both dial the other at the same moment. Under the
+    // old design each side held the global database lock across the whole
+    // exchange, so this pair deadlocked until the 60s read timeout fired.
+    let listener_a = TcpListener::bind("127.0.0.1:0").unwrap();
+    let listener_b = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address_a = listener_a.local_addr().unwrap().to_string();
+    let address_b = listener_b.local_addr().unwrap().to_string();
+
+    let threads = [
+        {
+            let (store, key) = (a.clone(), key.clone());
+            std::thread::spawn(move || transport::sync_accept(&listener_a, &key, &store))
+        },
+        {
+            let (store, key) = (b.clone(), key.clone());
+            std::thread::spawn(move || transport::sync_accept(&listener_b, &key, &store))
+        },
+        {
+            let (store, key) = (a.clone(), key.clone());
+            std::thread::spawn(move || transport::sync_connect(&address_b, &key, &store))
+        },
+        {
+            let (store, key) = (b.clone(), key.clone());
+            std::thread::spawn(move || transport::sync_connect(&address_a, &key, &store))
+        },
+    ];
+    for thread in threads {
+        thread.join().unwrap().expect("simultaneous sync");
+    }
+
+    assert_eq!(a.operation_ids(), b.operation_ids());
+    assert_eq!(domain(&a.state()), domain(&b.state()));
+    assert_eq!(a.state()["activePlanDate"], "2028-02-02");
+}
+
+// ---------------------------------------------------------------------------
+// 8. Migration off cr-sqlite
+// ---------------------------------------------------------------------------
+
+/// Simulates (without the real extension) what earlier builds left behind: a
+/// promoted `operations` table whose triggers call `crsql_*` SQL functions.
+/// Those functions no longer exist, so every op write fails until the artifacts
+/// are stripped.
+#[test]
+fn stripping_crsqlite_artifacts_makes_a_promoted_database_writable_again() {
+    let scratch = Scratch::new("crsql-migration");
+    let mut conn = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
+    conn.execute_batch(
+        "CREATE TABLE operations__crsql_clock (id TEXT PRIMARY KEY, db_version INTEGER);
+         CREATE TABLE crsql_site_id (site_id BLOB);
+         CREATE INDEX operations__crsql_clock_dbv ON operations__crsql_clock (db_version);
+         CREATE TRIGGER operations__crsql_itrig AFTER INSERT ON operations
+         BEGIN
+           SELECT crsql_internal_sync_bit();
+         END;",
+    )
+    .unwrap();
+
+    let op = set_active_plan_date_op(
+        "op-after-migration",
+        "device-A",
+        1,
+        "2026-06-23T12:00:00.000Z",
+        "2027-01-01",
+    );
+    let blocked = persist_operation_to_database(&mut conn, &op).unwrap_err();
+    assert!(
+        blocked.contains("crsql_internal_sync_bit"),
+        "expected the stale CRR trigger to break writes, got: {blocked}"
+    );
+
+    strip_crsqlite_artifacts(&conn).unwrap();
+
+    let leftovers: i64 = conn
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE name LIKE '%crsql%'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(leftovers, 0, "triggers, tables and their indexes are gone");
+
+    persist_operation_to_database(&mut conn, &op).expect("writes work after migration");
+    assert_eq!(
+        read_app_state_from_database(&conn).unwrap().unwrap()["activePlanDate"],
+        "2027-01-01"
+    );
+
+    // Idempotent: running it again on a now-clean database changes nothing.
+    strip_crsqlite_artifacts(&conn).unwrap();
+    assert_eq!(local_op_ids(&conn).unwrap(), ["op-after-migration"]);
 }
 
 #[test]
-fn incremental_edits_propagate_both_directions() {
-    let sa = Scratch::new("inc-a");
-    let sb = Scratch::new("inc-b");
-    let mut a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
-    let mut b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+fn stripping_crsqlite_artifacts_is_a_no_op_on_a_clean_database() {
+    let scratch = Scratch::new("crsql-clean");
+    let conn = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
+    let before: Vec<String> = {
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master ORDER BY name")
+            .unwrap();
+        let names = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        names
+    };
 
-    enable_primary(&a).unwrap();
-    enable_joiner(&b).unwrap();
-    // Initial bootstrap so both start converged.
-    apply(&b, &pull(&a, 0, None).unwrap()).unwrap();
-    rematerialize(&b).unwrap();
+    strip_crsqlite_artifacts(&conn).unwrap();
 
-    // Device A makes an edit (changes the active plan date) through the real
-    // op path, which logs it to `operations`.
-    let op_a = json!({
-        "id": "op-a-1", "deviceId": "device-A", "sequence": 1,
-        "timestamp": "2026-06-23T12:00:00.000Z",
-        "type": "set_active_plan_date", "payload": { "date": "2027-01-01" }
-    });
-    persist_operation_to_database(&mut a, &op_a).unwrap();
-
-    // Sync A -> B.
-    apply(&b, &pull(&a, 0, None).unwrap()).unwrap();
-    rematerialize(&b).unwrap();
-    assert_eq!(
-        read_app_state_from_database(&b).unwrap().unwrap()["activePlanDate"],
-        "2027-01-01",
-        "A's edit reached B"
-    );
-
-    // Device B makes its own edit; sync back to A.
-    let op_b = json!({
-        "id": "op-b-1", "deviceId": "device-B", "sequence": 1,
-        "timestamp": "2026-06-23T13:00:00.000Z",
-        "type": "set_active_plan_date", "payload": { "date": "2028-02-02" }
-    });
-    persist_operation_to_database(&mut b, &op_b).unwrap();
-    apply(&a, &pull(&b, 0, None).unwrap()).unwrap();
-    rematerialize(&a).unwrap();
-
-    // Both converge to the later edit (canonical order by timestamp).
-    let a_date = read_app_state_from_database(&a).unwrap().unwrap()["activePlanDate"].clone();
-    let b_date = read_app_state_from_database(&b).unwrap().unwrap()["activePlanDate"].clone();
-    assert_eq!(a_date, b_date, "devices converge");
-    assert_eq!(a_date, "2028-02-02");
-
-    finalize(&a).unwrap();
-    finalize(&b).unwrap();
+    let after: Vec<String> = {
+        let mut stmt = conn
+            .prepare("SELECT name FROM sqlite_master ORDER BY name")
+            .unwrap();
+        let names = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .collect::<std::result::Result<Vec<_>, _>>()
+            .unwrap();
+        names
+    };
+    assert_eq!(before, after);
 }
+
+// ---------------------------------------------------------------------------
+// Checkpoint mechanics (independent of the wire protocol)
+// ---------------------------------------------------------------------------
 
 #[test]
 fn checkpoint_replays_exact_state_and_clears_accumulated_history() {
@@ -298,14 +788,13 @@ fn checkpoint_replays_exact_state_and_clears_accumulated_history() {
     .unwrap();
     persist_operation_to_database(
         &mut connection,
-        &json!({
-            "id": "op-a-2",
-            "deviceId": "device-A",
-            "sequence": 2,
-            "timestamp": "2026-07-29T09:01:00Z",
-            "type": "set_active_plan_date",
-            "payload": { "date": "2026-07-30" }
-        }),
+        &set_active_plan_date_op(
+            "op-a-2",
+            "device-A",
+            2,
+            "2026-07-29T09:01:00Z",
+            "2026-07-30",
+        ),
     )
     .unwrap();
 
@@ -360,7 +849,6 @@ fn checkpoint_replays_exact_state_and_clears_accumulated_history() {
         before,
         "a later sync replay must also reconstruct the same state"
     );
-    finalize(&connection).unwrap();
 }
 
 #[test]
@@ -374,14 +862,13 @@ fn checkpoint_mismatch_rolls_back_log_history_and_state() {
     enable_primary(&connection).unwrap();
     persist_operation_to_database(
         &mut connection,
-        &json!({
-            "id": "op-a-1",
-            "deviceId": "device-A",
-            "sequence": 1,
-            "timestamp": "2026-07-29T09:00:00Z",
-            "type": "set_active_plan_date",
-            "payload": { "date": "2026-08-01" }
-        }),
+        &set_active_plan_date_op(
+            "op-a-1",
+            "device-A",
+            1,
+            "2026-07-29T09:00:00Z",
+            "2026-08-01",
+        ),
     )
     .unwrap();
 
@@ -390,11 +877,12 @@ fn checkpoint_mismatch_rolls_back_log_history_and_state() {
         let mut statement = connection
             .prepare("SELECT id, payload_json FROM operations ORDER BY id")
             .unwrap();
-        statement
+        let rows = statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .unwrap()
             .collect::<std::result::Result<_, _>>()
-            .unwrap()
+            .unwrap();
+        rows
     };
     let before_history: i64 = connection
         .query_row("SELECT count(*) FROM history_entries", [], |row| row.get(0))
@@ -415,11 +903,12 @@ fn checkpoint_mismatch_rolls_back_log_history_and_state() {
         let mut statement = connection
             .prepare("SELECT id, payload_json FROM operations ORDER BY id")
             .unwrap();
-        statement
+        let rows = statement
             .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
             .unwrap()
             .collect::<std::result::Result<_, _>>()
-            .unwrap()
+            .unwrap();
+        rows
     };
     assert_eq!(after_operations, before_operations);
     assert_eq!(
@@ -429,166 +918,20 @@ fn checkpoint_mismatch_rolls_back_log_history_and_state() {
             .unwrap(),
         before_history
     );
-    finalize(&connection).unwrap();
-}
-
-#[test]
-fn checkpoint_tombstones_prevent_offline_peer_from_restoring_old_operations() {
-    let sa = Scratch::new("checkpoint-peer-a");
-    let sb = Scratch::new("checkpoint-peer-b");
-    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
-    let mut b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
-    enable_primary(&a).unwrap();
-    enable_joiner(&b).unwrap();
-    apply(&b, &pull(&a, 0, None).unwrap()).unwrap();
-    rematerialize(&b).unwrap();
-
-    let op_b = json!({
-        "id": "op-b-old",
-        "deviceId": "device-B",
-        "sequence": 1,
-        "timestamp": "2026-07-29T09:00:00Z",
-        "type": "set_active_plan_date",
-        "payload": { "date": "2026-08-02" }
-    });
-    persist_operation_to_database(&mut b, &op_b).unwrap();
-    let stale_peer_changes = pull(&b, 0, None).unwrap();
-    apply(&a, &stale_peer_changes).unwrap();
-    rematerialize(&a).unwrap();
-    let expected = read_app_state_from_database(&a).unwrap().unwrap();
-    let version_before_checkpoint = db_version(&a).unwrap();
-
-    checkpoint_operation_log(&a).unwrap();
-    apply(&a, &stale_peer_changes).unwrap();
-    rematerialize(&a).unwrap();
-    assert_eq!(
-        read_app_state_from_database(&a).unwrap().unwrap(),
-        expected,
-        "stale peer rows must not resurrect after their checkpoint tombstones"
-    );
-
-    let checkpoint_changes = pull(&a, version_before_checkpoint, None).unwrap();
     assert!(
-        !checkpoint_changes.rows.is_empty(),
-        "checkpoint must produce replicated deletes and baseline insert"
+        tombstone_ids(&connection).unwrap().is_empty(),
+        "a rolled-back checkpoint records no tombstones"
     );
-    apply(&b, &checkpoint_changes).unwrap();
-    rematerialize(&b).unwrap();
-    assert_eq!(
-        domain(&read_app_state_from_database(&a).unwrap().unwrap()),
-        domain(&read_app_state_from_database(&b).unwrap().unwrap()),
-        "offline peer must converge after receiving the checkpoint"
-    );
-    assert_eq!(
-        b.query_row("SELECT count(*) FROM operations", [], |row| row
-            .get::<_, i64>(0))
-            .unwrap(),
-        1
-    );
-
-    finalize(&a).unwrap();
-    finalize(&b).unwrap();
 }
 
-/// Regression: once sync is enabled the `operations` log is a CRR whose triggers
-/// call `crsql_internal_sync_bit()`. A later write on a *fresh* connection that
-/// did not load cr-sqlite (the normal app open path) fails with "no such
-/// function" — which is exactly what broke real data. The fix is that every
-/// writer loads the extension when sync is on; this test pins both halves.
-#[test]
-fn writes_after_sync_enabled_require_the_extension_loaded() {
-    let s = Scratch::new("crr-write");
-    let key = "key-crr";
-
-    // Enable sync on this device, then finalize + drop the connection, mirroring
-    // the app closing the connection after the sync_enable command returns.
-    {
-        let mut conn = open_seeded(&s.path, key, &state("device-A", json!([])));
-        enable_primary(&conn).unwrap();
-        finalize(&conn).unwrap();
-        // (conn dropped here)
-        let _ = &mut conn;
-    }
-
-    let op = json!({
-        "id": "op-x", "deviceId": "device-A", "sequence": 1,
-        "timestamp": "2026-06-23T12:00:00.000Z",
-        "type": "set_active_plan_date", "payload": { "date": "2027-03-03" }
-    });
-
-    // Reproduce the failure: a plain reopen (no extension) cannot write the CRR.
-    {
-        let mut bare = open_database_at(&s.path, key).unwrap();
-        let err = persist_operation_to_database(&mut bare, &op).unwrap_err();
-        assert!(
-            err.contains("crsql_internal_sync_bit"),
-            "expected the CRR-trigger failure, got: {err}"
-        );
-    }
-
-    // The fix: load the extension first (what `with_database` does in the app),
-    // and the same write succeeds and is captured for replication.
-    {
-        let mut conn = open_database_at(&s.path, key).unwrap();
-        load_extension(&conn, ext_path()).unwrap();
-        persist_operation_to_database(&mut conn, &op).unwrap();
-        assert_eq!(
-            read_app_state_from_database(&conn).unwrap().unwrap()["activePlanDate"],
-            "2027-03-03"
-        );
-        // The write landed in the replication log.
-        assert!(
-            !pull(&conn, 0, None).unwrap().rows.is_empty(),
-            "write captured for sync"
-        );
-        finalize(&conn).unwrap();
-    }
-}
+// ---------------------------------------------------------------------------
+// Crypto + relay + the on-device self-test
+// ---------------------------------------------------------------------------
 
 #[test]
-fn p2p_socket_sync_bootstraps_over_the_network() {
-    use super::transport::{sync_accept, sync_connect, Cursors};
-    use std::net::TcpListener;
-
-    let sa = Scratch::new("p2p-a");
-    let sb = Scratch::new("p2p-b");
-    let a = open_seeded(
-        &sa.path,
-        "ka",
-        &state("device-A", json!([{ "id": "g1", "name": "Read" }])),
-    );
-    let b = open_seeded(&sb.path, "kb", &state("device-B", json!([])));
-    enable_primary(&a).unwrap();
-    enable_joiner(&b).unwrap();
-
-    let key = SyncKey::generate();
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let addr = listener.local_addr().unwrap().to_string();
-
-    // B (joiner) listens; A (primary) connects and pushes its data.
-    let key_b = key.clone();
-    let handle = std::thread::spawn(move || {
-        let mut cursors = Cursors::new();
-        sync_accept(&listener, &b, &key_b, &mut cursors).unwrap();
-        let goals = read_app_state_from_database(&b).unwrap().unwrap()["goals"].clone();
-        finalize(&b).unwrap();
-        goals
-    });
-
-    let mut cursors = Cursors::new();
-    sync_connect(&addr, &a, &key, &mut cursors).unwrap();
-    let b_goals = handle.join().unwrap();
-
-    // The joiner adopted the primary's data, peer-to-peer, no server involved.
-    assert_eq!(b_goals, json!([{ "id": "g1", "name": "Read" }]));
-    finalize(&a).unwrap();
-}
-
-#[test]
-fn selftest_round_trips_against_real_extension() {
-    // The same routine the Android debug build runs on-device, exercised here
-    // with the desktop extension so the logic is covered locally.
-    selftest(&ext_path(), &std::env::temp_dir()).expect("sync self-test must converge");
+fn selftest_round_trips_two_real_databases() {
+    // The same routine the Android debug build runs on-device.
+    selftest(&std::env::temp_dir()).expect("sync self-test must converge");
 }
 
 #[test]
@@ -600,12 +943,9 @@ fn pairing_code_round_trips_and_rejects_corruption() {
     let restored = SyncKey::from_pairing_code(&code).unwrap();
     assert_eq!(key.as_bytes(), restored.as_bytes());
 
-    let cs = ChangeSet {
-        origin_site_hex: "abcd".into(),
-        rows: vec![],
-    };
-    let sealed = key.seal(&cs).unwrap();
-    assert!(restored.open(&sealed).is_ok());
+    let sealed = key.seal(b"{\"v\":2,\"ops\":[]}").unwrap();
+    assert_eq!(restored.open(&sealed).unwrap(), b"{\"v\":2,\"ops\":[]}");
+    assert!(SyncKey::generate().open(&sealed).is_err());
 
     let mut corrupt: Vec<char> = code.chars().collect();
     let last = corrupt.len() - 1;
@@ -613,4 +953,24 @@ fn pairing_code_round_trips_and_rejects_corruption() {
     let corrupt: String = corrupt.into_iter().collect();
     assert!(SyncKey::from_pairing_code(&corrupt).is_err());
     assert!(SyncKey::from_pairing_code("not-a-code").is_err());
+}
+
+#[test]
+fn a_relay_only_ever_holds_ciphertext_and_never_echoes_a_device_its_own_push() {
+    let key = SyncKey::generate();
+    let relay = relay::Relay::new();
+    let plaintext = br#"{"v":2,"ops":[]}"#;
+    relay.push("device-A", key.seal(plaintext).unwrap());
+
+    assert!(relay.pull_for("device-A").is_empty());
+    let pulled = relay.pull_for("device-B");
+    assert_eq!(pulled.len(), 1);
+    assert_eq!(key.open(&pulled[0].ciphertext).unwrap(), plaintext);
+
+    for blob in relay.stored_blobs() {
+        assert!(
+            !blob.windows(4).any(|window| window == b"\"ops"),
+            "the relay must never see plaintext"
+        );
+    }
 }

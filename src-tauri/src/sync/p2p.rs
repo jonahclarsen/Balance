@@ -1,12 +1,12 @@
 //! LAN peer-to-peer sync: advertise this device over mDNS, discover other
-//! Balance devices on the network, and exchange sealed changesets directly over
+//! Balance devices on the network, and reconcile operation logs directly over
 //! TCP. No server and no localhost requirement — the devices just need to be on
 //! the same Wi-Fi/LAN.
 //!
 //! Reliability note: mDNS auto-discovery works well on desktop; on Android it
 //! needs a WifiManager multicast lock (not yet wired), so the manual
 //! "enter address" path is the dependable cross-platform option. Both share the
-//! same sealed-changeset transport.
+//! same sealed transport and the same [`AppStore`] database discipline.
 
 use std::collections::HashMap;
 use std::net::{Ipv4Addr, TcpListener, TcpStream, UdpSocket};
@@ -14,11 +14,12 @@ use std::sync::{Mutex, OnceLock};
 
 use if_addrs::IfAddr;
 use mdns_sd::{ServiceDaemon, ServiceEvent, ServiceInfo};
+use rusqlite::Connection;
 use tauri::AppHandle;
 
 use super::crypto::SyncKey;
-use super::transport::{sync_accept_stream, sync_connect, Cursors};
-use super::{Error, Result};
+use super::transport::{sync_accept_stream, sync_connect};
+use super::{Error, Op, Result, SyncStore};
 
 const SERVICE_TYPE: &str = "_balance-sync._tcp.local.";
 
@@ -190,39 +191,27 @@ fn start_mdns(port: u16) {
 }
 
 fn start_accept_loop(listener: TcpListener, app: AppHandle, key: SyncKey) {
-    std::thread::spawn(move || {
-        let mut cursors = Cursors::new();
-        loop {
-            let stream = match listener.accept() {
-                Ok((stream, _)) => stream,
-                Err(error) => {
-                    log::warn!("p2p accept error: {error}");
-                    continue;
-                }
-            };
-            if let Err(e) = serve_one(stream, &app, &key, &mut cursors) {
-                log::warn!("p2p serve error: {e}");
+    std::thread::spawn(move || loop {
+        let stream = match listener.accept() {
+            Ok((stream, _)) => stream,
+            Err(error) => {
+                log::warn!("p2p accept error: {error}");
+                continue;
             }
+        };
+        if let Err(e) = serve_one(stream, &app, &key) {
+            log::warn!("p2p serve error: {e}");
         }
     });
 }
 
-/// Run one accepted inbound connection against a fresh DB connection (with
-/// cr-sqlite loaded). The global guard prevents atomic database replacement
-/// from racing an active sync; no DB connection exists while `accept` is idle.
-fn serve_one(
-    stream: TcpStream,
-    app: &AppHandle,
-    key: &SyncKey,
-    cursors: &mut Cursors,
-) -> Result<()> {
-    let _guard = crate::database_access_guard().map_err(Error::Codec)?;
-    let conn = crate::open_database(app).map_err(Error::Codec)?;
-    let ext = crate::crsqlite_extension_path(app).map_err(Error::Codec)?;
-    super::activate(&conn, &ext)?;
-    let result = sync_accept_stream(stream, &conn, key, cursors);
-    let _ = super::finalize(&conn);
-    result
+/// Serve one accepted inbound connection. Note what is *not* here: no database
+/// guard and no connection. [`AppStore`] takes both per call and drops them
+/// before returning, so the responder holds nothing while it waits for the
+/// peer's frames — and nothing at all while `accept` is idle, which also keeps
+/// atomic database replacement (maintenance) unblocked.
+fn serve_one(stream: TcpStream, app: &AppHandle, key: &SyncKey) -> Result<()> {
+    sync_accept_stream(stream, key, &AppStore { app })
 }
 
 /// Initiate a one-shot bidirectional sync with a peer at `addr` (host:port).
@@ -230,23 +219,49 @@ pub fn sync_with(app: &AppHandle, key: &SyncKey, addr: &str) -> Result<()> {
     #[cfg(target_os = "android")]
     {
         return crate::android_keystore::with_sync_wake_locks(app, || {
-            sync_with_connection(app, key, addr)
+            sync_connect(addr, key, &AppStore { app })
         })
         .map_err(Error::Codec)?;
     }
 
     #[cfg(not(target_os = "android"))]
-    sync_with_connection(app, key, addr)
+    sync_connect(addr, key, &AppStore { app })
 }
 
-fn sync_with_connection(app: &AppHandle, key: &SyncKey, addr: &str) -> Result<()> {
-    let conn = crate::open_database(app).map_err(Error::Codec)?;
-    let ext = crate::crsqlite_extension_path(app).map_err(Error::Codec)?;
-    super::activate(&conn, &ext)?;
-    let mut cursors = Cursors::new();
-    let result = sync_connect(addr, &conn, key, &mut cursors);
-    let _ = super::finalize(&conn);
-    result
+/// [`SyncStore`] over the live app database.
+///
+/// Every method takes the global `DATABASE_ACCESS_LOCK`, opens its own
+/// connection, does its work, and releases both. Holding neither across socket
+/// I/O is what lets two devices sync *at each other* simultaneously: neither
+/// can be parked on a socket read while owning the lock the other needs.
+pub struct AppStore<'a> {
+    pub app: &'a AppHandle,
+}
+
+impl AppStore<'_> {
+    fn with_connection<T>(&self, task: impl FnOnce(&Connection) -> Result<T>) -> Result<T> {
+        let _guard = crate::database_access_guard().map_err(Error::Codec)?;
+        let connection = crate::open_database(self.app).map_err(Error::Codec)?;
+        task(&connection)
+    }
+}
+
+impl SyncStore for AppStore<'_> {
+    fn local_ids(&self) -> Result<Vec<String>> {
+        self.with_connection(super::local_op_ids)
+    }
+
+    fn diff(&self, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)> {
+        self.with_connection(|connection| super::diff_against(connection, peer_ids))
+    }
+
+    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
+        self.with_connection(|connection| super::ops_by_id(connection, ids))
+    }
+
+    fn merge(&self, ops: Vec<Op>) -> Result<usize> {
+        self.with_connection(move |connection| super::merge_and_rematerialize(connection, ops))
+    }
 }
 
 #[cfg(test)]

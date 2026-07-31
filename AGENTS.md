@@ -38,20 +38,18 @@ All Android verification happens in CI: `.github/workflows/android.yml` builds t
 debug APK (arm64 + x86_64) and runs an emulator smoke test. To validate Android
 changes, push the branch and let that workflow run.
 
-The cr-sqlite engine loads at runtime (`load_extension`) on every platform —
-including Android — so the APK build does NOT link it. The Android loadable
-extension (`crsqlite.so`) is cross-compiled by `scripts/build-crsqlite.sh android`
-(needs the NDK clang, so CI only) and is bundled + loaded at runtime separately.
-Static-linking was attempted and abandoned: cr-sqlite's `sqlite3_crsqlite_init`
-lives in its C wrapper and static integration needs the host SQLite recompiled
-with `-DSQLITE_EXTRA_INIT`, which rusqlite's bundled SQLCipher doesn't do.
-Remaining Android-runtime work: bundle `crsqlite.so` per-ABI and resolve its path
-at load time (jniLibs / nativeLibraryDir).
+Sync loads no SQLite extension on any platform, so there is nothing
+sync-specific to cross-compile for Android. The NDK setup in the workflow is
+still required — the vendored OpenSSL that SQLCipher links against is
+cross-compiled with it.
 
-## Multi-device sync (cr-sqlite)
+## Multi-device sync
 
-E2EE sync built on the Superfly cr-sqlite fork lives in `src-tauri/src/sync/`
-(engine, migration, transports, pairing) with the frontend in
-`src/lib/SyncPanel.svelte`. Build the extension with `scripts/build-crsqlite.sh`;
-run the reference relay with `node scripts/relay-server.mjs`. See the project
-memory for the full design and current state.
+Sync is a native Rust op-log reconciliation engine in `src-tauri/src/sync/`,
+with the frontend in `src/lib/SyncPanel.svelte`. Devices pair via QR codes and
+exchange E2EE sealed envelopes (XChaCha20-Poly1305) over direct TCP, discovering
+each other with mDNS. Reconciliation is an id-set diff of the append-only
+operations log; compaction uses checkpoint ops carrying a `replaces` list plus a
+`sync_tombstones` table. No SQLite extension is loaded on any platform, so sync
+has no platform-specific build step. Run the reference relay with
+`node scripts/relay-server.mjs`.
