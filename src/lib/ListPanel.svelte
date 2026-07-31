@@ -218,7 +218,6 @@
       patchItem={plannerStore.patchListItem}
       splitItem={plannerStore.splitListItem}
       backspaceItemAtStart={plannerStore.backspaceListItemAtStart}
-      addChild={plannerStore.addListChild}
       deleteItem={plannerStore.deleteListItem}
       moveItem={plannerStore.moveListItem}
       moveItemWithinLevel={plannerStore.moveListItemWithinLevel}

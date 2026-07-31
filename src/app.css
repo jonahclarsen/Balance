@@ -404,7 +404,11 @@ nav button.active {
   max-width: 460px;
 }
 
+/* Each task row is its own container so the chrome responds to the width the row
+   actually has — which shrinks with nesting depth and with the side-by-side day
+   comparison, not just with the viewport. */
 .item-shell {
+  container: task-row / inline-size;
   margin-left: calc(var(--depth, 0) * 12px);
 }
 
@@ -423,6 +427,13 @@ nav button.active {
   gap: 8px;
   min-height: 42px;
   border-bottom: 1px solid var(--row-border);
+}
+
+/* Total width of the leading controls (select + drag + checkbox and their gaps).
+   Kept in step with the sizes below so wrapped content can line up under the text
+   instead of under the handles. */
+.plan-row {
+  --row-chrome-width: 106px;
 }
 
 .plan-row.done {
@@ -648,6 +659,10 @@ nav button.active {
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
+  /* Badges are the last thing on the row, so they need the gutter the row's
+     buttons used to provide. Matches .item-text's inner padding, which lines the
+     pills up with where the text stops rather than with the row's hard edge. */
+  margin-right: 10px;
 }
 
 .plan-goal-badge {
@@ -695,6 +710,115 @@ nav button.active {
   font-weight: 700;
   line-height: 10px;
   text-transform: lowercase;
+}
+
+/* ---- Task rows adapt to their own width ----
+   Three tiers, each giving the text back the space the chrome was taking:
+   trim the controls, then drop the goal badges to their own line, then drop the
+   time range under the text. A deeply indented row hits these on a wide screen
+   exactly as a top-level row does on a phone. */
+
+@container task-row (max-width: 620px) {
+  .plan-row {
+    --row-chrome-width: 83px;
+    gap: 5px;
+  }
+
+  .drag-handle {
+    width: 28px;
+    height: 32px;
+  }
+
+  .check-target {
+    width: 30px;
+    height: 32px;
+  }
+
+  .select-handle {
+    height: 28px;
+  }
+
+  .time-range {
+    font-size: 12px;
+  }
+
+  .time-part {
+    padding: 4px 1px;
+  }
+
+  .plan-goal-badges {
+    max-width: min(32%, 240px);
+  }
+
+  .plan-goal-badge {
+    max-width: 130px;
+  }
+}
+
+@container task-row (max-width: 480px) {
+  .plan-row {
+    flex-wrap: wrap;
+  }
+
+  /* Once a row is this tight its own children are tighter still, so they indent
+     less. The .children rule keeps its left border as the depth cue. */
+  .item-shell {
+    margin-left: calc(var(--depth, 0) * 6px);
+  }
+
+  .children {
+    margin-left: 5px;
+  }
+
+  /* Badges stop competing with the text for the same line and sit under it.
+     The gutter moves from margin to padding here: this item does not shrink, so
+     a margin on top of a 100% basis would push it past the row's right edge. */
+  .plan-row > .plan-goal-badges {
+    flex: 1 0 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-start;
+    max-width: none;
+    margin-right: 0;
+    padding-left: var(--row-chrome-width);
+    padding-right: 10px;
+    padding-bottom: 4px;
+  }
+}
+
+@container task-row (max-width: 380px) {
+  .plan-item-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    flex: 1 1 0;
+    min-width: 0;
+    align-self: stretch;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 0;
+  }
+
+  .plan-item-main .item-text {
+    grid-column: 1;
+    grid-row: 1;
+    width: 100%;
+  }
+
+  .plan-item-main.timed .item-text {
+    grid-column: 1 / -1;
+  }
+
+  .plan-item-main .add-time {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .plan-item-main .time-range {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+  }
 }
 
 .icon-button {
@@ -2345,60 +2469,19 @@ nav button.active {
     margin-left: 3px;
   }
 
+  /* Row chrome now shrinks off the row's own width (see the task-row container
+     queries); phones only need the narrower gaps and select handle. */
   .plan-row,
   .template-main {
     gap: 4px;
   }
 
   .plan-row {
-    flex-wrap: wrap;
-  }
-
-  .drag-handle {
-    width: 28px;
-    height: 32px;
+    --row-chrome-width: 78px;
   }
 
   .select-handle {
     width: 8px;
-    height: 28px;
-  }
-
-  .check-target {
-    width: 30px;
-    height: 32px;
-  }
-
-  .plan-item-main {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    flex: 1 1 0;
-    min-width: 0;
-    align-self: stretch;
-    align-items: center;
-    gap: 4px;
-    padding: 3px 0;
-  }
-
-  .plan-item-main .item-text {
-    grid-column: 1;
-    grid-row: 1;
-    width: 100%;
-  }
-
-  .plan-item-main.timed .item-text {
-    grid-column: 1 / -1;
-  }
-
-  .plan-item-main .add-time {
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .plan-item-main .time-range {
-    grid-column: 1 / -1;
-    grid-row: 2;
-    justify-self: start;
   }
 
   .row-actions {
@@ -2408,15 +2491,6 @@ nav button.active {
   .row-actions .icon-button {
     width: 24px;
     height: 24px;
-  }
-
-  .plan-row > .plan-goal-badges {
-    flex: 1 0 100%;
-    flex-direction: row;
-    align-items: center;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    padding-left: 74px;
   }
 
   .workspace.list-template-workspace {
@@ -2481,8 +2555,8 @@ nav button.active {
     margin: -14px -14px 0;
   }
 
-  .goal-card-actions,
-  .plan-goal-badges {
+  /* Goal badge sizing is owned by the task-row container queries now. */
+  .goal-card-actions {
     max-width: none;
     flex-wrap: wrap;
   }

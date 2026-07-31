@@ -3621,7 +3621,6 @@ return rows`
                     patchItem={plannerStore.patchPlanItem}
                     splitItem={plannerStore.splitPlanItem}
                     backspaceItemAtStart={plannerStore.backspacePlanItemAtStart}
-                    addChild={plannerStore.addPlanChild}
                     deleteItem={plannerStore.deletePlanItem}
                     moveItem={plannerStore.movePlanItem}
                     moveItemAcrossContainers={compareDayOpen ? movePlanItemAcrossDays : null}

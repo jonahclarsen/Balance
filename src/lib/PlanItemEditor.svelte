@@ -39,7 +39,6 @@
     planId: Id,
     itemId: Id,
   ) => { focusItemId: Id; focusOffset: number } | null = () => null
-  export let addChild: (planId: Id, parentId: Id) => void
   export let deleteItem: (planId: Id, itemId: Id) => void
   export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   // Only the side-by-side day comparison supplies this; elsewhere a drag that
@@ -508,12 +507,10 @@
       </div>
   {/if}
 
-  {#if !locked}
-      <div class="row-actions">
-        <button class="icon-button" type="button" title="Add child item" on:click={() => addChild(planId, item.id)}>↳</button>
-        <button class="icon-button danger" type="button" title="Delete item" on:click={() => deleteItem(planId, item.id)}>×</button>
-      </div>
-    {:else if onEditTemplate}
+  <!-- Editable rows carry no per-row buttons: add-child is Tab and delete is
+       Backspace / Del on a selection, and the width they cost is what makes
+       deeply indented text unreadable. -->
+  {#if locked && onEditTemplate}
       {@const edit = onEditTemplate}
       <div class="row-actions" class:edit-shortcut-action={showEditShortcutHint}>
         <button
@@ -544,7 +541,6 @@
             {patchItem}
             {splitItem}
             {backspaceItemAtStart}
-            {addChild}
             {deleteItem}
             {moveItem}
             {moveItemAcrossContainers}

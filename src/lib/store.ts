@@ -485,14 +485,6 @@ function createPlannerStore() {
       })))
     },
 
-    addPlanChild(planId: Id, parentId: Id) {
-      const item = createPlanItem()
-      commit('add_plan_item', { planId, parentId, item }, (state) => updatePlan(state, planId, (plan) => ({
-        ...plan,
-        items: addPlanItem(plan.items, parentId, item),
-      })))
-    },
-
     patchPlanItem(
       planId: Id,
       itemId: Id,
@@ -1392,13 +1384,6 @@ function createPlannerStore() {
       const item = createPlanItem()
       commit('add_list_item', { listId, parentId: null, item }, (state) =>
         updateList(state, listId, (list) => ({ ...list, items: addPlanItem(list.items, null, item) })),
-      )
-    },
-
-    addListChild(listId: Id, parentId: Id) {
-      const item = createPlanItem()
-      commit('add_list_item', { listId, parentId, item }, (state) =>
-        updateList(state, listId, (list) => ({ ...list, items: addPlanItem(list.items, parentId, item) })),
       )
     },
 
