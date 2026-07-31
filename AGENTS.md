@@ -1,5 +1,15 @@
 # Balance — agent guidance
 
+## This is a public repo — never commit secrets
+
+Balance is open source and the remote is public. Never commit API keys, tokens,
+passwords, private keys, sync/relay credentials, or personal data — anything
+pushed here is world-readable and stays in the git history even after removal.
+Keep secrets in untracked local files (`.env*`, gitignored) or the OS keychain,
+and reference them via environment variables. In CI, use GitHub Actions secrets.
+Before committing, check the diff for anything credential-shaped; if a secret
+does get pushed, treat it as compromised and rotate it.
+
 ## Always commit and push after making changes
 
 After completing a code change, always commit it and push to the remote — don't
