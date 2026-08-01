@@ -1,0 +1,35 @@
+# Cloudflare Worker deployment for the Balance sync relay.
+#
+# Deploy:
+#   cd relay-worker
+#   npx wrangler secret put RELAY_SECRET     # 24+ URL-safe chars; never commit it
+#   npx wrangler deploy
+#
+# account_id is deliberately absent — this repo is public. Set CLOUDFLARE_ACCOUNT_ID
+# in the environment instead, or let wrangler prompt.
+
+name = "balance-relay"
+main = "src/index.js"
+compatibility_date = "2026-07-29"
+
+# One public URL is enough; per-version preview URLs only widen the surface.
+# These must stay above the tables below — TOML would otherwise read them as
+# fields of the preceding table rather than as top-level keys.
+workers_dev = true
+preview_urls = false
+
+# Holds the stored envelopes. The Worker itself is stateless, and a push must be
+# visible to the next pull, which rules out KV.
+[[durable_objects.bindings]]
+name = "RELAY_ROOM"
+class_name = "RelayRoom"
+
+# new_sqlite_classes (not new_classes) is what makes this work on the free plan.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RelayRoom"]
+
+# The relay stores only opaque ciphertext, but there is no reason to log paths
+# that contain the shared secret.
+[observability]
+enabled = false

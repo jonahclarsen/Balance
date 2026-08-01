@@ -59,3 +59,14 @@ refuses to start without a secret and prints a suggested one. Every route lives
 under `/<secret>/`, which is the access control — the relay URL saved in the app
 is the base plus that prefix, so no app-side change is needed. It binds loopback
 only (override with `BALANCE_RELAY_HOST`), so expose it deliberately.
+
+For always-on sync that does not depend on a dev box being awake, `relay-worker/`
+is the same contract as a Cloudflare Worker (`npx wrangler deploy` from that
+directory). State lives in a Durable Object because the Worker is stateless and a
+push must be visible to the very next pull. `RELAY_SECRET` is a wrangler secret —
+never put it in `wrangler.toml`, which is committed to this public repo. Envelopes
+are chunked at 96 KiB because Durable Object storage caps values at 128 KiB.
+
+`POST /<secret>/reset` empties the room. Reach for it if a malformed envelope
+ever lands there: a device that cannot decrypt one aborts its entire sync pass,
+and devices re-push their full sealed op log anyway, so clearing loses nothing.

@@ -1,0 +1,5 @@
+# Local wrangler state: dev Durable Object databases and cached account info.
+.wrangler/
+# Local secrets for `wrangler dev`. The deployed secret lives in Cloudflare.
+.dev.vars
+node_modules/
