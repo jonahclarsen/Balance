@@ -51,5 +51,11 @@ exchange E2EE sealed envelopes (XChaCha20-Poly1305) over direct TCP, discovering
 each other with mDNS. Reconciliation is an id-set diff of the append-only
 operations log; compaction uses checkpoint ops carrying a `replaces` list plus a
 `sync_tombstones` table. No SQLite extension is loaded on any platform, so sync
-has no platform-specific build step. Run the reference relay with
-`node scripts/relay-server.mjs`.
+has no platform-specific build step.
+
+Run the reference relay with
+`BALANCE_RELAY_SECRET=<24+ url-safe chars> node scripts/relay-server.mjs`; it
+refuses to start without a secret and prints a suggested one. Every route lives
+under `/<secret>/`, which is the access control — the relay URL saved in the app
+is the base plus that prefix, so no app-side change is needed. It binds loopback
+only (override with `BALANCE_RELAY_HOST`), so expose it deliberately.
