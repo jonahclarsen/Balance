@@ -46,12 +46,12 @@ cross-compiled with it.
 ## Multi-device sync
 
 Sync is a native Rust op-log reconciliation engine in `src-tauri/src/sync/`,
-with the frontend in `src/lib/SyncPanel.svelte`. Devices pair via QR codes and
-exchange E2EE sealed envelopes (XChaCha20-Poly1305) over direct TCP, discovering
-each other with mDNS. Reconciliation is an id-set diff of the append-only
-operations log; compaction uses checkpoint ops carrying a `replaces` list plus a
-`sync_tombstones` table. No SQLite extension is loaded on any platform, so sync
-has no platform-specific build step.
+with the frontend in `src/lib/SyncPanel.svelte` and automatic foreground
+scheduling in `src/lib/syncScheduler.ts`. Devices pair via QR codes and exchange
+compressed E2EE envelopes (XChaCha20-Poly1305). Relay sync uploads only durable
+incremental operation batches; direct TCP sync uses an id-set inventory plus
+compact per-device checkpoint frontiers. Legacy v2 id tombstones remain only for
+migration. No SQLite extension is loaded on any platform.
 
 Run the reference relay with
 `BALANCE_RELAY_SECRET=<24+ url-safe chars> node scripts/relay-server.mjs`; it
@@ -61,12 +61,20 @@ is the base plus that prefix, so no app-side change is needed. It binds loopback
 only (override with `BALANCE_RELAY_HOST`), so expose it deliberately.
 
 For always-on sync that does not depend on a dev box being awake, `relay-worker/`
-is the same contract as a Cloudflare Worker (`npx wrangler deploy` from that
-directory). State lives in a Durable Object because the Worker is stateless and a
-push must be visible to the very next pull. `RELAY_SECRET` is a wrangler secret —
-never put it in `wrangler.toml`, which is committed to this public repo. Envelopes
-are chunked at 96 KiB because Durable Object storage caps values at 128 KiB.
+implements the v3 contract as a Cloudflare Worker (`npx wrangler deploy` from
+that directory). State lives in a Durable Object because the Worker is stateless
+and a push must be visible to the very next pull. `RELAY_SECRET` is a wrangler
+secret — never put it in `wrangler.toml`, which is committed to this public repo.
+Ciphertext is chunked at 96 KiB because Durable Object storage caps values at
+128 KiB. Generations compact after 32 MiB, seven days, or 128 batches; one prior
+generation is retained for rollback for 24 hours and then deleted.
 
-`POST /<secret>/reset` empties the room. Reach for it if a malformed envelope
-ever lands there: a device that cannot decrypt one aborts its entire sync pass,
-and devices re-push their full sealed op log anyway, so clearing loses nothing.
+The app syncs after persisted edits (2-second debounce), at launch/resume/online,
+and on a five-minute foreground safety interval. Android additionally schedules
+a network-constrained WorkManager pass at the platform minimum 15-minute period;
+`.github/scripts/configure-android-background-sync.mjs` patches the generated
+Android project in CI. Never generate or build that project locally.
+
+`POST /<secret>/reset` empties the room. Prefer the v3 generation rollback route
+for a bad current checkpoint. Malformed delta batches are quarantined locally so
+one damaged blob does not prevent later batches from syncing.

@@ -15,14 +15,13 @@
     syncNewPairingCode,
     syncEnablePrimary,
     syncEnableJoiner,
-    syncPullSealed,
-    syncApplySealed,
     syncP2pServe,
     syncP2pPeers,
     syncP2pSync,
     plannerStore,
     type SyncPeer,
   } from './store'
+  import { automaticSyncStatus, requestSync } from './syncScheduler'
 
   // Older versions used origin-scoped localStorage, which split these values
   // between dev and production. They are read only for one-time migration into
@@ -210,7 +209,8 @@
       migrated = true
       await renderQr()
       await startP2p()
-      setStatus('Sync enabled. Scan or paste this code on your other device to join.')
+      if (relayUrl) await requestSync('sync-enabled')
+      setStatus('Sync enabled and automatic. Scan or paste this code on your other device to join.')
     } catch (err) {
       setStatus(`Could not create a sync key: ${err}`, true)
     } finally {
@@ -236,7 +236,12 @@
       migrated = true
       await renderQr()
       await startP2p()
-      setStatus('Paired. Use a device below (or "Sync now") to pull your data.')
+      if (relayUrl) await requestSync('paired')
+      setStatus(
+        relayUrl
+          ? 'Paired. Relay changes now sync automatically.'
+          : 'Paired. Use a device below to sync directly, or configure a relay.',
+      )
     } catch (err) {
       setStatus(`Could not pair: ${err}`, true)
     } finally {
@@ -250,7 +255,8 @@
     try {
       const settings = await setSyncRelayUrl(relayUrl)
       relayUrl = settings.relayUrl
-      setStatus(relayUrl ? 'Relay server saved.' : 'Relay server cleared.')
+      if (relayUrl && pairingCode) await requestSync('relay-configured')
+      setStatus(relayUrl ? 'Relay server saved. Automatic sync is active.' : 'Relay server cleared.')
     } catch (err) {
       setStatus(`Could not save relay server: ${err}`, true)
     } finally {
@@ -283,33 +289,13 @@
     }
     busy = true
     try {
-      const base = relayUrl.replace(/\/$/, '')
-
-      // Push our sealed delta.
-      const sealed = await syncPullSealed(0)
-      const pushRes = await fetch(`${base}/push`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(Array.from(sealed)),
-      })
-      if (!pushRes.ok) throw new Error(`relay push ${pushRes.status}`)
-
-      // Pull others' envelopes and apply them.
-      const pullRes = await fetch(`${base}/pull`)
-      if (!pullRes.ok) throw new Error(`relay pull ${pullRes.status}`)
-      const envelopes = (await pullRes.json()) as number[][]
-      let applied = 0
-      for (const env of envelopes) {
-        const newState = await syncApplySealed(Uint8Array.from(env))
-        if (newState) applied += 1
-      }
+      const result = await requestSync('manual')
+      if (!result) throw new Error('The relay sync did not complete; it will retry automatically.')
       migrated = true
-      setStatus(`Synced. Applied ${applied} update(s) from the server.`)
-      if (applied > 0) {
-        // Rehydrate explicitly: location.reload() is unreliable in an embedded
-        // mobile WebView and can leave the pre-sync store visible.
-        await plannerStore.reloadFromBackend()
-      }
+      const checkpoint = result.checkpointCommitted ? ' Relay storage was compacted.' : ''
+      setStatus(
+        `Synced ${result.pushedOperations} outgoing and ${result.pulledOperations} incoming operation(s).${checkpoint}`,
+      )
     } catch (err) {
       setStatus(`Sync failed: ${err}`, true)
     } finally {
@@ -444,7 +430,15 @@
         {busy ? 'Syncing…' : 'Sync now'}
       </button>
       <span class="sync-state" aria-live="polite">
-        {migrated ? 'Sync ready on this device.' : 'Not yet synced.'}
+        {#if $automaticSyncStatus.running}
+          Automatic sync is running…
+        {:else if $automaticSyncStatus.lastError}
+          Automatic sync will retry: {$automaticSyncStatus.lastError}
+        {:else if $automaticSyncStatus.lastSuccessAt}
+          Last automatically synced at {new Date($automaticSyncStatus.lastSuccessAt).toLocaleTimeString()}.
+        {:else}
+          {migrated ? 'Automatic sync is ready on this device.' : 'Not yet synced.'}
+        {/if}
       </span>
     </div>
 

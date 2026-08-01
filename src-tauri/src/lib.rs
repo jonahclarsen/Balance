@@ -1040,6 +1040,11 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           id text primary key
         );
 
+        create table if not exists sync_frontiers (
+          device_id text primary key,
+          sequence integer not null
+        );
+
         create index if not exists idx_template_items_parent on template_items(template_id, parent_id, position);
         create index if not exists idx_template_options_item on template_options(item_id, position);
         create index if not exists idx_plan_items_parent on plan_items(plan_id, parent_id, position);
@@ -1075,6 +1080,7 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
     // would make every `operations` write fail with "no such function" — heal
     // the file on every open, before anything can write to it.
     sync::strip_crsqlite_artifacts(connection).map_err(sync::Error::into_string)?;
+    sync::relay_client::ensure_relay_tables(connection).map_err(sync::Error::into_string)?;
 
     Ok(())
 }
@@ -5906,9 +5912,10 @@ fn recovery_key_path(database_path: &PathBuf) -> PathBuf {
 #[cfg(target_os = "android")]
 mod android_keystore {
     use std::ffi::c_void;
+    use std::path::Path;
     use std::sync::OnceLock;
 
-    use jni::objects::{GlobalRef, JByteArray, JObject, JValue};
+    use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JString, JValue};
     use jni::{JNIEnv, JavaVM};
     use tauri::Manager;
 
@@ -5986,6 +5993,32 @@ mod android_keystore {
         match result {
             Ok(value) => Ok(value),
             Err(payload) => std::panic::resume_unwind(payload),
+        }
+    }
+
+    #[no_mangle]
+    pub extern "system" fn Java_app_balance_local_BalanceSyncWorker_runNativeSync(
+        mut env: JNIEnv,
+        _class: JClass,
+        app_data_path: JString,
+    ) -> jni::sys::jint {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let path: String = env
+                .get_string(&app_data_path)
+                .map_err(|error| error.to_string())?
+                .into();
+            super::run_android_background_sync_at(Path::new(&path))
+        }));
+        match result {
+            Ok(Ok(())) => 0,
+            Ok(Err(error)) => {
+                log::warn!("Android background relay sync will retry: {error}");
+                1
+            }
+            Err(_) => {
+                log::warn!("Android background relay sync panicked and will retry");
+                1
+            }
         }
     }
 
@@ -6289,6 +6322,37 @@ mod android_keystore {
     }
 }
 
+#[cfg(target_os = "android")]
+fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
+    let _guard = database_access_guard()?;
+    let database_path = app_database_path_from_data_dir(data_dir);
+    if !database_path.exists() {
+        return Ok(());
+    }
+    let recovery_key = database_recovery_key(&database_path)?;
+    let connection = open_database_at(&database_path, &recovery_key)?;
+    if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
+        return Ok(());
+    }
+    let Some(relay_url) =
+        metadata_value(&connection, SYNC_RELAY_URL)?.filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+    let Some(pairing_code) =
+        sync::read_pairing_code(&connection).map_err(sync::Error::into_string)?
+    else {
+        return Ok(());
+    };
+    let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+        .map_err(sync::Error::into_string)?;
+    // Background work is capped by Android. Apply ordinary incremental batches
+    // here; potentially large checkpoint promotion waits for the foreground.
+    sync::relay_client::sync_once(&connection, &relay_url, &key, false)
+        .map(|_| ())
+        .map_err(sync::Error::into_string)
+}
+
 fn missing_recovery_key_error() -> String {
     "The encrypted Balance database exists, but its recovery key is not in this keychain."
         .to_string()
@@ -6314,7 +6378,7 @@ fn app_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .map_err(|error| error.to_string())
 }
 
-#[cfg(test)]
+#[cfg(any(test, target_os = "android"))]
 fn app_database_path_from_data_dir(data_dir: &Path) -> PathBuf {
     data_dir.join(APP_DATA_DIR).join(APP_DATABASE_FILE)
 }
@@ -6548,6 +6612,34 @@ async fn sync_apply_sealed(
     .await
 }
 
+/// Perform one complete incremental relay pass. All automatic and manual
+/// triggers share this command so retries, cursors, outbox durability, and
+/// checkpoint races have exactly one implementation.
+#[tauri::command]
+async fn sync_relay_once(
+    app: tauri::AppHandle,
+    reason: String,
+) -> Result<sync::relay_client::SyncPassResult, String> {
+    let _ = reason;
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
+            return Err("Sync is not enabled on this device.".to_string());
+        }
+        let relay_url = metadata_value(&connection, SYNC_RELAY_URL)?
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "Set a relay server URL first.".to_string())?;
+        let pairing_code = sync::read_pairing_code(&connection)
+            .map_err(sync::Error::into_string)?
+            .ok_or_else(|| "This device's sync key is missing.".to_string())?;
+        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+            .map_err(sync::Error::into_string)?;
+        sync::relay_client::sync_once(&connection, &relay_url, &key, true)
+            .map_err(sync::Error::into_string)
+    })
+    .await
+}
+
 /// Read the stored pairing code (the E2E key) from the encrypted DB.
 fn stored_sync_key(app: &tauri::AppHandle) -> Result<Option<sync::crypto::SyncKey>, String> {
     let connection = open_database(app)?;
@@ -6690,6 +6782,7 @@ pub fn run() {
             sync_enable_joiner,
             sync_pull_sealed,
             sync_apply_sealed,
+            sync_relay_once,
             sync_p2p_serve,
             sync_p2p_peers,
             sync_p2p_sync
@@ -6891,11 +6984,11 @@ mod tests {
     }
 
     #[test]
-    fn synced_database_compaction_tombstones_the_log_and_keeps_future_writes_syncable() {
+    fn synced_database_compaction_frontiers_the_log_and_keeps_future_writes_syncable() {
         let database = TestDatabase::new("compact-synced");
         let recovery_key = generate_recovery_key();
         let pairing_code = sync::crypto::SyncKey::generate().to_pairing_code();
-        let (expected_state, replaced_ids) = {
+        let expected_state = {
             let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
             replace_app_state(&mut connection, &test_state("Synced compact")).unwrap();
             sync::enable_primary(&connection).unwrap();
@@ -6916,13 +7009,8 @@ mod tests {
             let state = read_app_state_from_database(&connection).unwrap().unwrap();
             let ids = sync::local_op_ids(&connection).unwrap();
             assert_eq!(ids.len(), 2);
-            // `enable_primary` already checkpointed once, so this database
-            // carries tombstones from that generation too. A checkpoint's
-            // `replaces` set is cumulative, which is what makes coverage
-            // transitive for a peer that skipped a generation.
-            let earlier_tombstones = read_sync_tombstones(&connection);
-            assert_eq!(earlier_tombstones, ["op_device_test_1"]);
-            (state, [ids, earlier_tombstones].concat())
+            assert!(read_sync_tombstones(&connection).is_empty());
+            state
         };
 
         let result = compact_database_at(&database.path, &recovery_key).unwrap();
@@ -6944,23 +7032,15 @@ mod tests {
             expected_state
         );
 
-        // The compacted log is one checkpoint that declares — and tombstones —
-        // exactly the ops it replaced, so a peer holding the old history
-        // collapses to the same log instead of resurrecting it.
+        // The compacted log is one checkpoint with a per-device frontier, so a
+        // peer holding old history collapses without an ever-growing id list.
         let checkpoint_ids = sync::local_op_ids(&compacted).unwrap();
         assert_eq!(checkpoint_ids.len(), 1);
         let checkpoint = sync::ops_by_id(&compacted, &checkpoint_ids).unwrap()[0].clone();
         let payload: Value = serde_json::from_str(&checkpoint.payload_json).unwrap();
-        let replaces = payload["replaces"].as_array().unwrap();
-        for id in &replaced_ids {
-            assert!(
-                replaces.iter().any(|value| value == id),
-                "checkpoint payload must declare {id} replaced"
-            );
-        }
-        let mut expected_tombstones = replaced_ids.clone();
-        expected_tombstones.sort();
-        assert_eq!(read_sync_tombstones(&compacted), expected_tombstones);
+        assert_eq!(payload["frontiers"]["device_test"], 2);
+        assert_eq!(payload["legacyReplaces"], json!([]));
+        assert!(read_sync_tombstones(&compacted).is_empty());
         assert_eq!(
             sync::merge_ops(&compacted, std::slice::from_ref(&checkpoint)).unwrap(),
             0,
@@ -6990,7 +7070,16 @@ mod tests {
             "post-compaction writes are offered to peers"
         );
         // A peer that already holds the checkpoint is offered only the new op.
-        let (ops, want) = sync::diff_against(&compacted, &checkpoint_ids).unwrap();
+        let peer_inventory = sync::SyncInventory {
+            items: vec![sync::InventoryItem {
+                id: checkpoint_ids[0].clone(),
+                device_id: checkpoint.device_id.clone(),
+                sequence: checkpoint.sequence,
+                checkpoint: true,
+            }],
+            frontiers: sync::sync_frontiers(&compacted).unwrap(),
+        };
+        let (ops, want) = sync::diff_against(&compacted, &peer_inventory).unwrap();
         assert!(want.is_empty());
         assert_eq!(
             ops.iter().map(|op| op.id.as_str()).collect::<Vec<_>>(),

@@ -59,6 +59,26 @@ adb shell pm path "$PKG"
 launch
 assert_running "first-launch" logcat.txt
 
+# The frontend schedules both WorkManager's 15-minute periodic pass and an
+# immediate network-constrained pass on launch. Confirm Android registered the
+# generated worker service; the job itself safely no-ops until relay sync is
+# configured.
+BACKGROUND_JOB_OK=0
+for _ in $(seq 1 10); do
+  adb shell dumpsys jobscheduler > jobscheduler.txt
+  if grep -Fq "$PKG/androidx.work.impl.background.systemjob.SystemJobService" jobscheduler.txt; then
+    BACKGROUND_JOB_OK=1
+    break
+  fi
+  sleep 2
+done
+if [ "$BACKGROUND_JOB_OK" != 1 ]; then
+  echo "Android WorkManager did not register the automatic relay-sync job."
+  grep -iE "$PKG|workmanager|systemjobservice" jobscheduler.txt | head -40 || true
+  exit 1
+fi
+echo "[background-sync] WorkManager periodic relay sync is registered."
+
 # The debug build is debuggable, so we can inspect its private storage. Both the
 # encrypted database and the Keystore-wrapped key file must now exist - that only
 # happens if the Keystore wrap and the SQLCipher open both succeeded.

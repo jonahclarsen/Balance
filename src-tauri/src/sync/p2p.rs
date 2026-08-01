@@ -19,7 +19,7 @@ use tauri::AppHandle;
 
 use super::crypto::SyncKey;
 use super::transport::{sync_accept_stream, sync_connect};
-use super::{Error, Op, Result, SyncStore};
+use super::{Error, Op, Result, SyncInventory, SyncStore};
 
 const SERVICE_TYPE: &str = "_balance-sync._tcp.local.";
 
@@ -247,12 +247,12 @@ impl AppStore<'_> {
 }
 
 impl SyncStore for AppStore<'_> {
-    fn local_ids(&self) -> Result<Vec<String>> {
-        self.with_connection(super::local_op_ids)
+    fn inventory(&self) -> Result<SyncInventory> {
+        self.with_connection(super::sync_inventory)
     }
 
-    fn diff(&self, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)> {
-        self.with_connection(|connection| super::diff_against(connection, peer_ids))
+    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
+        self.with_connection(|connection| super::diff_against(connection, peer))
     }
 
     fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {

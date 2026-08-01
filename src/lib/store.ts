@@ -199,8 +199,18 @@ let operationFlushPromise: Promise<void> | null = null
 let operationFlushTimer: number | null = null
 let lastOperationMergeKey: string | null = null
 let lastOperationMergeUpdatedAt = 0
+const persistedOperationListeners = new Set<() => void>()
 
 export const persistenceError = writable('')
+
+export function onPersistedOperation(listener: () => void): () => void {
+  persistedOperationListeners.add(listener)
+  return () => persistedOperationListeners.delete(listener)
+}
+
+function notifyPersistedOperation(): void {
+  for (const listener of persistedOperationListeners) listener()
+}
 
 function parseStoredState(raw: string | null): AppState | null {
   if (!raw) return null
@@ -306,6 +316,10 @@ async function flushOperationsNow(): Promise<void> {
         try {
           await invoke('persist_operation', { operationJson: JSON.stringify(operation) })
           persistenceError.set('')
+          // Once an id has reached the database it is immutable for sync. Text
+          // coalescing may continue only while an operation is still pending.
+          lastOperationMergeKey = null
+          notifyPersistedOperation()
         } catch (error) {
           for (const operationToRetry of operations.slice(index)) {
             pendingOperations.set(operationToRetry.id, operationToRetry)
@@ -1603,6 +1617,7 @@ function createPlannerStore() {
         if (parsed) {
           lastOperationMergeKey = null
           store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+          notifyPersistedOperation()
         }
         return
       }
@@ -1631,6 +1646,7 @@ function createPlannerStore() {
         if (parsed) {
           lastOperationMergeKey = null
           store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+          notifyPersistedOperation()
         }
         return
       }
@@ -1661,6 +1677,7 @@ function createPlannerStore() {
 
       lastOperationMergeKey = null
       store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+      notifyPersistedOperation()
       return true
     },
 
@@ -1941,12 +1958,14 @@ export async function syncNewPairingCode(): Promise<string> {
 /** Enable sync as the primary device — keep this device's data as the baseline. */
 export async function syncEnablePrimary(pairingCode: string): Promise<void> {
   if (!isTauri()) return
+  await flushOperations()
   await invoke('sync_enable_primary', { pairingCode })
 }
 
 /** Enable sync as a joining device — adopt the primary's data (local is backed up). */
 export async function syncEnableJoiner(pairingCode: string): Promise<void> {
   if (!isTauri()) return
+  await flushOperations()
   await invoke('sync_enable_joiner', { pairingCode })
 }
 
@@ -1967,12 +1986,14 @@ export async function syncP2pPeers(): Promise<SyncPeer[]> {
 /** Sync directly with a peer at `address` (host:port). Returns new state JSON. */
 export async function syncP2pSync(address: string): Promise<string | null> {
   if (!isTauri()) return null
+  await flushOperations()
   return invoke<string | null>('sync_p2p_sync', { address })
 }
 
 /** Pull local changes since `since`, sealed with the device's stored E2EE key. */
 export async function syncPullSealed(since: number): Promise<Uint8Array> {
   if (!isTauri()) return new Uint8Array()
+  await flushOperations()
   const bytes = await invoke<number[]>('sync_pull_sealed', { since })
   return Uint8Array.from(bytes)
 }
@@ -1981,6 +2002,20 @@ export async function syncPullSealed(since: number): Promise<Uint8Array> {
 export async function syncApplySealed(envelope: Uint8Array): Promise<string | null> {
   if (!isTauri()) return null
   return invoke<string | null>('sync_apply_sealed', { envelope: Array.from(envelope) })
+}
+
+export type SyncPassResult = {
+  pulledOperations: number
+  pushedOperations: number
+  stateChanged: boolean
+  checkpointCommitted: boolean
+  epoch: string
+  latestSequence: number
+}
+
+export async function syncRelayOnce(reason: string): Promise<SyncPassResult> {
+  await flushOperations()
+  return invoke<SyncPassResult>('sync_relay_once', { reason })
 }
 
 export type MetadataEntry = {

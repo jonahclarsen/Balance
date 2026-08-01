@@ -5,8 +5,10 @@
 //! materializer — without ever restructuring the user's real data tables, and
 //! without any native extension.
 
+use std::io::{BufRead, BufReader};
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -43,6 +45,48 @@ impl Scratch {
 impl Drop for Scratch {
     fn drop(&mut self) {
         let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+struct ReferenceRelay {
+    child: Child,
+    url: String,
+}
+
+impl ReferenceRelay {
+    fn start() -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        drop(listener);
+        let project = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let secret = "balance_rust_client_test_1234";
+        let mut child = Command::new("node")
+            .arg(project.join("scripts/relay-server.mjs"))
+            .arg(port.to_string())
+            .env("BALANCE_RELAY_SECRET", secret)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("start the Node reference relay");
+        let mut line = String::new();
+        BufReader::new(child.stdout.take().unwrap())
+            .read_line(&mut line)
+            .expect("wait for relay startup");
+        assert!(line.contains("Balance relay listening"), "{line}");
+        Self {
+            child,
+            url: format!("http://127.0.0.1:{port}/{secret}"),
+        }
+    }
+}
+
+impl Drop for ReferenceRelay {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
@@ -153,12 +197,12 @@ impl TestStore {
 }
 
 impl SyncStore for TestStore {
-    fn local_ids(&self) -> Result<Vec<String>> {
-        self.read(local_op_ids)
+    fn inventory(&self) -> Result<SyncInventory> {
+        self.read(sync_inventory)
     }
 
-    fn diff(&self, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)> {
-        self.read(|conn| diff_against(conn, peer_ids))
+    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
+        self.read(|conn| diff_against(conn, peer))
     }
 
     fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
@@ -199,6 +243,52 @@ fn set_active_plan_date_op(
         "type": "set_active_plan_date",
         "payload": { "date": date },
     })
+}
+
+#[test]
+fn the_v3_http_client_bootstraps_then_sends_only_incremental_operations() {
+    let relay = ReferenceRelay::start();
+    let sa = Scratch::new("http-a");
+    let sb = Scratch::new("http-b");
+    let mut a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let key = SyncKey::generate();
+
+    let bootstrap = relay_client::sync_once(&a, &relay.url, &key, true).unwrap();
+    assert!(bootstrap.checkpoint_committed);
+    let joined = relay_client::sync_once(&b, &relay.url, &key, true).unwrap();
+    assert!(joined.state_changed);
+    assert_eq!(
+        domain(&read_app_state_from_database(&a).unwrap().unwrap()),
+        domain(&read_app_state_from_database(&b).unwrap().unwrap())
+    );
+
+    persist_operation_to_database(
+        &mut a,
+        &set_active_plan_date_op(
+            "http-increment",
+            "device-A",
+            1,
+            "2026-08-01T12:00:00Z",
+            "2027-08-01",
+        ),
+    )
+    .unwrap();
+    let pushed = relay_client::sync_once(&a, &relay.url, &key, true).unwrap();
+    assert_eq!(pushed.pushed_operations, 1);
+    assert!(!pushed.checkpoint_committed);
+
+    let pulled = relay_client::sync_once(&b, &relay.url, &key, true).unwrap();
+    assert_eq!(pulled.pulled_operations, 1);
+    assert_eq!(
+        read_app_state_from_database(&b).unwrap().unwrap()["activePlanDate"],
+        "2027-08-01",
+    );
+    let redundant = relay_client::sync_once(&b, &relay.url, &key, true).unwrap();
+    assert_eq!(redundant.pulled_operations, 0);
+    assert_eq!(redundant.pushed_operations, 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -365,7 +455,7 @@ fn operations_created_on_both_devices_between_syncs_all_propagate() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn a_checkpoint_replaces_the_peers_old_operations_and_leaves_them_tombstoned() {
+fn a_checkpoint_replaces_the_peers_old_operations_with_a_compact_frontier() {
     let sa = Scratch::new("ckpt-a");
     let sb = Scratch::new("ckpt-b");
     let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
@@ -403,18 +493,10 @@ fn a_checkpoint_replaces_the_peers_old_operations_and_leaves_them_tombstoned() {
     assert_eq!(a.state(), expected_state, "compaction preserves state");
 
     let checkpoint = a.read(|conn| ops_by_id(conn, &checkpoint_ids).unwrap())[0].clone();
-    let replaces: Vec<String> = serde_json::from_value(
-        serde_json::from_str::<Value>(&checkpoint.payload_json).unwrap()["replaces"].clone(),
-    )
-    .unwrap();
-    for id in &shared_ids {
-        assert!(replaces.contains(id), "checkpoint declares {id} replaced");
-    }
-    assert_eq!(a.tombstones(), {
-        let mut sorted = shared_ids.clone();
-        sorted.sort();
-        sorted
-    });
+    let payload = serde_json::from_str::<Value>(&checkpoint.payload_json).unwrap();
+    assert_eq!(payload["frontiers"]["device-A"], 1);
+    assert_eq!(payload["legacyReplaces"], json!([]));
+    assert!(a.tombstones().is_empty());
 
     // The peer still holds the pre-checkpoint log; syncing must collapse it.
     a.reset_merged();
@@ -424,15 +506,11 @@ fn a_checkpoint_replaces_the_peers_old_operations_and_leaves_them_tombstoned() {
     assert_eq!(
         a.merged(),
         0,
-        "the stale ops are tombstoned, never re-added"
+        "the stale ops are covered by the checkpoint, never re-added"
     );
     assert_eq!(b.merged(), 1, "the peer accepts only the checkpoint");
     assert_eq!(b.operation_ids(), checkpoint_ids);
-    assert_eq!(b.tombstones(), {
-        let mut sorted = shared_ids.clone();
-        sorted.sort();
-        sorted
-    });
+    assert!(b.tombstones().is_empty());
     assert_eq!(domain(&a.state()), domain(&b.state()));
     assert_eq!(b.state()["activePlanDate"], "2027-01-01");
 
@@ -446,11 +524,11 @@ fn a_checkpoint_replaces_the_peers_old_operations_and_leaves_them_tombstoned() {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Stale peer re-offering tombstoned ids
+// 5. Stale peer re-offering frontier-covered operations
 // ---------------------------------------------------------------------------
 
 #[test]
-fn tombstoned_operations_are_neither_wanted_nor_re_accepted() {
+fn frontier_covered_operations_are_neither_wanted_nor_re_accepted() {
     let scratch = Scratch::new("stale");
     let mut conn = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
     enable_primary(&conn).unwrap();
@@ -467,14 +545,33 @@ fn tombstoned_operations_are_neither_wanted_nor_re_accepted() {
     .unwrap();
 
     let stale_ops = all_ops(&conn).unwrap();
-    let stale_ids: Vec<String> = stale_ops.iter().map(|op| op.id.clone()).collect();
+    let stale_inventory = SyncInventory {
+        items: stale_ops
+            .iter()
+            .map(|op| InventoryItem {
+                id: op.id.clone(),
+                device_id: op.device_id.clone(),
+                sequence: op.sequence,
+                checkpoint: op.op_type == "replace_full_state",
+            })
+            .collect(),
+        frontiers: HashMap::new(),
+    };
     let expected_state = read_app_state_from_database(&conn).unwrap().unwrap();
 
     checkpoint_operation_log(&conn).unwrap();
 
     // A peer that missed the checkpoint offers the compacted ids back.
-    let (ops, want) = diff_against(&conn, &stale_ids).unwrap();
-    assert!(want.is_empty(), "tombstoned ids must never be requested");
+    let (ops, want) = diff_against(&conn, &stale_inventory).unwrap();
+    assert_eq!(
+        want,
+        stale_ops
+            .iter()
+            .filter(|op| op.op_type == "replace_full_state")
+            .map(|op| op.id.clone())
+            .collect::<Vec<_>>(),
+        "covered ordinary ops are never requested; an older checkpoint may be requested and deterministically rejected",
+    );
     assert_eq!(ops.len(), 1, "the peer is offered the checkpoint instead");
 
     // Even if handed the raw rows, the merge refuses them.
@@ -486,6 +583,32 @@ fn tombstoned_operations_are_neither_wanted_nor_re_accepted() {
         expected_state,
         "compacted history cannot be resurrected"
     );
+}
+
+#[test]
+fn a_checkpoint_tombstones_sparse_operations_instead_of_claiming_a_gap() {
+    let scratch = Scratch::new("frontier-gap");
+    let connection = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
+    enable_primary(&connection).unwrap();
+    let sparse = Op {
+        id: "device-b-sequence-2".into(),
+        device_id: "device-B".into(),
+        sequence: 2,
+        op_type: "set_active_plan_date".into(),
+        timestamp: "2026-08-01T12:00:00Z".into(),
+        payload_json: json!({ "date": "2028-01-01" }).to_string(),
+    };
+    assert_eq!(
+        merge_and_rematerialize(&connection, vec![sparse.clone()]).unwrap(),
+        1
+    );
+
+    checkpoint_operation_log(&connection).unwrap();
+    let checkpoint = all_ops(&connection).unwrap().remove(0);
+    let payload: Value = serde_json::from_str(&checkpoint.payload_json).unwrap();
+    assert!(payload["frontiers"].get("device-B").is_none());
+    assert_eq!(payload["legacyReplaces"], json!([sparse.id]));
+    assert_eq!(merge_ops(&connection, &[sparse]).unwrap(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -852,6 +975,38 @@ fn checkpoint_replays_exact_state_and_clears_accumulated_history() {
 }
 
 #[test]
+fn relay_generation_checkpoint_preserves_local_undo_history() {
+    let scratch = Scratch::new("relay-checkpoint-history");
+    let mut connection = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
+    enable_primary(&connection).unwrap();
+    persist_operation_to_database(
+        &mut connection,
+        &set_active_plan_date_op(
+            "op-with-undo",
+            "device-A",
+            1,
+            "2026-08-01T12:00:00Z",
+            "2028-08-01",
+        ),
+    )
+    .unwrap();
+    let history_before: i64 = connection
+        .query_row("SELECT count(*) FROM history_entries", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(history_before, 1);
+
+    let stats = checkpoint_operation_log_for_relay(&connection).unwrap();
+    assert_eq!(stats.history_entries_removed, 0);
+    assert_eq!(
+        connection
+            .query_row("SELECT count(*) FROM history_entries", [], |row| row
+                .get::<_, i64>(0))
+            .unwrap(),
+        history_before,
+    );
+}
+
+#[test]
 fn checkpoint_mismatch_rolls_back_log_history_and_state() {
     let scratch = Scratch::new("checkpoint-rollback");
     let mut connection = open_seeded(
@@ -921,6 +1076,32 @@ fn checkpoint_mismatch_rolls_back_log_history_and_state() {
     assert!(
         tombstone_ids(&connection).unwrap().is_empty(),
         "a rolled-back checkpoint records no tombstones"
+    );
+}
+
+#[test]
+fn a_malformed_incoming_batch_rolls_back_both_log_and_materialized_state() {
+    let scratch = Scratch::new("atomic-merge");
+    let connection = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
+    enable_primary(&connection).unwrap();
+    let before_state = read_app_state_from_database(&connection).unwrap().unwrap();
+    let before_ids = local_op_ids(&connection).unwrap();
+
+    let malformed = Op {
+        id: "malformed-op".into(),
+        device_id: "device-B".into(),
+        sequence: 1,
+        op_type: "set_active_plan_date".into(),
+        timestamp: "2026-08-01T12:00:00Z".into(),
+        payload_json: "{not valid json".into(),
+    };
+    assert!(merge_and_rematerialize(&connection, vec![malformed]).is_err());
+
+    assert_eq!(local_op_ids(&connection).unwrap(), before_ids);
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        before_state,
+        "a failed materialization must not leave a partially inserted op",
     );
 }
 

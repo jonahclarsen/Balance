@@ -40,6 +40,7 @@
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
+  import { requestSync, startAutomaticSync } from './lib/syncScheduler'
 
   // Pasting four or more items onto a different day routes through a review queue
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
@@ -944,6 +945,7 @@ return rows`
 
   onMount(() => {
     let mounted = true
+    let stopAutomaticSync: (() => void) | null = null
     const storedWorkspaceViewState = readWorkspaceViewState()
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
 
@@ -1019,6 +1021,10 @@ return rows`
 
       if (!mounted || !isTauri()) return
 
+      stopAutomaticSync = startAutomaticSync()
+      // Pull remote changes before weekly maintenance snapshots the database.
+      await requestSync('launch')
+
       try {
         buildInfo = await invoke<{ version: string; commit: string }>('build_info')
       } catch (error) {
@@ -1036,6 +1042,7 @@ return rows`
     return () => {
       rememberWorkspaceScroll()
       mounted = false
+      stopAutomaticSync?.()
       clearGoalRhythmAutoShowTimer()
       dismissCelebration()
     }
@@ -2769,6 +2776,7 @@ return rows`
 
       weeklyMaintenanceResult = result
       await plannerStore.reloadFromBackend()
+      if (result.checkpointCreated) await requestSync('database-maintenance')
       await refreshDatabaseMaintenanceStatus()
       weeklyMaintenancePhase = 'complete'
       weeklyMaintenanceMessage = result.checkpointCreated
@@ -2800,6 +2808,7 @@ return rows`
       }
       weeklyMaintenanceResult = result
       await plannerStore.reloadFromBackend()
+      if (result.checkpointCreated) await requestSync('database-maintenance-retry')
       await refreshDatabaseMaintenanceStatus()
       weeklyMaintenancePhase = 'complete'
       weeklyMaintenanceMessage = 'Database maintenance completed and passed verification.'
@@ -2830,6 +2839,7 @@ return rows`
       if (!result) throw new Error('Database optimization is available only in the desktop or mobile app.')
 
       await plannerStore.reloadFromBackend()
+      if (result.checkpointCreated) await requestSync('manual-database-optimization')
       recoveryEntries = await listRecoveryEntries()
       await Promise.all([
         refreshMetadata(),

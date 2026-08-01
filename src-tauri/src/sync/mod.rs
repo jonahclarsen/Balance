@@ -6,22 +6,20 @@
 //! of `(timestamp, device_id, sequence)`, and a deterministic materializer
 //! (`apply_operation`, driven by [`rematerialize`]).
 //!
-//! Because the log is insert-only and ids are globally unique, two devices hold
-//! the same state exactly when they hold the same *set* of op ids. Sync is
-//! therefore plain set reconciliation: offer my ids, receive the ops I lack plus
-//! the ids the peer lacks, ship those back. No CRDT engine, no site ids, no
-//! version cursors — and no native extension to cross-compile per platform.
+//! Between checkpoints, globally unique ids make reconciliation an id-set diff.
+//! A checkpoint adds a compact per-device sequence frontier so an offline peer
+//! cannot resurrect removed history. No native SQLite extension is involved.
 //!
 //! Compaction (checkpointing) is the one operation that *removes* ops. The
-//! resulting `replace_full_state` baseline carries the ids it replaces, and each
-//! device records them in `sync_tombstones` so a peer that was offline during
-//! the checkpoint cannot resurrect the compacted history.
+//! resulting `replace_full_state` baseline carries the highest sequence covered
+//! for each device. Legacy v2 tombstones remain readable for migration, but do
+//! not grow as new checkpoints are created.
 //!
 //! These are free functions over `&Connection` so they compose with the app's
 //! existing connection lifecycle rather than owning their own.
 #![allow(dead_code)]
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use rand::RngCore;
@@ -34,10 +32,11 @@ use sha2::{Digest, Sha256};
 pub mod crypto;
 pub mod p2p;
 pub mod relay;
+pub mod relay_client;
 pub mod transport;
 
 /// Wire-protocol version. Bump only for incompatible framing/semantics changes.
-pub const PROTOCOL_VERSION: u32 = 2;
+pub const PROTOCOL_VERSION: u32 = 3;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -81,15 +80,29 @@ pub struct Op {
     pub payload_json: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct InventoryItem {
+    pub id: String,
+    pub device_id: String,
+    pub sequence: i64,
+    pub checkpoint: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
+pub struct SyncInventory {
+    pub items: Vec<InventoryItem>,
+    pub frontiers: HashMap<String, i64>,
+}
+
 /// The database side of a sync exchange. The transport calls these between
 /// socket reads and writes; each implementation decides how it gets a
 /// connection (a borrowed one in tests, a freshly opened + globally guarded one
 /// in the app) so that **no lock and no connection is held across socket I/O**.
 pub trait SyncStore {
-    /// Ids of every op this device holds.
-    fn local_ids(&self) -> Result<Vec<String>>;
+    /// Current post-checkpoint operations plus compact covered frontiers.
+    fn inventory(&self) -> Result<SyncInventory>;
     /// `(ops the peer is missing, ids this device wants from the peer)`.
-    fn diff(&self, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)>;
+    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)>;
     /// Full rows for the requested ids (ids this device does not have are
     /// silently skipped).
     fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>>;
@@ -102,12 +115,12 @@ pub trait SyncStore {
 pub struct ConnectionStore<'a>(pub &'a Connection);
 
 impl SyncStore for ConnectionStore<'_> {
-    fn local_ids(&self) -> Result<Vec<String>> {
-        local_op_ids(self.0)
+    fn inventory(&self) -> Result<SyncInventory> {
+        sync_inventory(self.0)
     }
 
-    fn diff(&self, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)> {
-        diff_against(self.0, peer_ids)
+    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
+        diff_against(self.0, peer)
     }
 
     fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
@@ -126,8 +139,25 @@ impl SyncStore for ConnectionStore<'_> {
 /// `sync_tombstones` holds ids of ops that a checkpoint permanently replaced.
 /// They must never be re-accepted from a peer that still has the old history.
 pub fn ensure_tombstones_table(conn: &Connection) -> Result<()> {
-    conn.execute_batch("create table if not exists sync_tombstones (id text primary key)")?;
+    conn.execute_batch(
+        "create table if not exists sync_tombstones (id text primary key);
+         create table if not exists sync_frontiers (
+           device_id text primary key,
+           sequence integer not null
+         );",
+    )?;
     Ok(())
+}
+
+pub fn sync_frontiers(conn: &Connection) -> Result<std::collections::HashMap<String, i64>> {
+    ensure_tombstones_table(conn)?;
+    let mut stmt = conn.prepare("SELECT device_id, sequence FROM sync_frontiers")?;
+    let frontiers = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .collect::<std::result::Result<_, _>>()?;
+    Ok(frontiers)
 }
 
 fn tombstone_ids(conn: &Connection) -> Result<HashSet<String>> {
@@ -180,6 +210,21 @@ pub fn all_ops(conn: &Connection) -> Result<Vec<Op>> {
         .collect())
 }
 
+pub fn sync_inventory(conn: &Connection) -> Result<SyncInventory> {
+    Ok(SyncInventory {
+        items: all_ops(conn)?
+            .into_iter()
+            .map(|op| InventoryItem {
+                id: op.id,
+                device_id: op.device_id,
+                sequence: op.sequence,
+                checkpoint: op.op_type == "replace_full_state",
+            })
+            .collect(),
+        frontiers: sync_frontiers(conn)?,
+    })
+}
+
 /// Full rows for `ids`; unknown ids are skipped.
 pub fn ops_by_id(conn: &Connection, ids: &[String]) -> Result<Vec<Op>> {
     if ids.is_empty() {
@@ -199,22 +244,38 @@ pub fn ops_by_id(conn: &Connection, ids: &[String]) -> Result<Vec<Op>> {
 /// The responder's half of reconciliation: what the peer is missing, and what
 /// this device wants back. Tombstoned ids are never wanted — they were
 /// deliberately compacted away.
-pub fn diff_against(conn: &Connection, peer_ids: &[String]) -> Result<(Vec<Op>, Vec<String>)> {
+pub fn diff_against(conn: &Connection, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
     ensure_tombstones_table(conn)?;
     let tombstones = tombstone_ids(conn)?;
     let mine = local_op_ids(conn)?;
     let mine_set: HashSet<&str> = mine.iter().map(String::as_str).collect();
-    let peer_set: HashSet<&str> = peer_ids.iter().map(String::as_str).collect();
+    let peer_set: HashSet<&str> = peer.items.iter().map(|item| item.id.as_str()).collect();
+    let local_frontiers = sync_frontiers(conn)?;
 
-    let want = peer_ids
+    let want = peer
+        .items
         .iter()
-        .filter(|id| !mine_set.contains(id.as_str()) && !tombstones.contains(*id))
-        .cloned()
+        .filter(|item| {
+            !mine_set.contains(item.id.as_str())
+                && !tombstones.contains(&item.id)
+                && (item.checkpoint
+                    || !local_frontiers
+                        .get(&item.device_id)
+                        .is_some_and(|covered| item.sequence <= *covered))
+        })
+        .map(|item| item.id.clone())
         .collect::<Vec<_>>();
 
     let ops = all_ops(conn)?
         .into_iter()
-        .filter(|op| !peer_set.contains(op.id.as_str()))
+        .filter(|op| {
+            !peer_set.contains(op.id.as_str())
+                && (op.op_type == "replace_full_state"
+                    || !peer
+                        .frontiers
+                        .get(&op.device_id)
+                        .is_some_and(|covered| op.sequence <= *covered))
+        })
         .collect::<Vec<_>>();
 
     Ok((ops, want))
@@ -233,7 +294,8 @@ fn replaced_ids(op: &Op) -> Vec<String> {
         return Vec::new();
     };
     payload
-        .get("replaces")
+        .get("legacyReplaces")
+        .or_else(|| payload.get("replaces"))
         .and_then(JsonValue::as_array)
         .map(|ids| {
             ids.iter()
@@ -244,39 +306,156 @@ fn replaced_ids(op: &Op) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn checkpoint_frontiers(op: &Op) -> std::collections::HashMap<String, i64> {
+    if op.op_type != "replace_full_state" {
+        return Default::default();
+    }
+    serde_json::from_str::<JsonValue>(&op.payload_json)
+        .ok()
+        .and_then(|payload| payload.get("frontiers").cloned())
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default()
+}
+
+fn checkpoint_generation(op: &Op) -> i64 {
+    if op.op_type != "replace_full_state" {
+        return -1;
+    }
+    serde_json::from_str::<JsonValue>(&op.payload_json)
+        .ok()
+        .and_then(|payload| payload.get("generation").and_then(JsonValue::as_i64))
+        .unwrap_or(0)
+}
+
+fn current_checkpoint(conn: &Connection) -> Result<Option<(i64, String)>> {
+    let mut stmt = conn.prepare(
+        "SELECT id, payload_json FROM operations WHERE type = 'replace_full_state' ORDER BY id",
+    )?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    Ok(rows
+        .into_iter()
+        .map(|(id, payload)| {
+            let generation = serde_json::from_str::<JsonValue>(&payload)
+                .ok()
+                .and_then(|value| value.get("generation").and_then(JsonValue::as_i64))
+                .unwrap_or(0);
+            (generation, id)
+        })
+        .max())
+}
+
 /// Insert every op this device does not already have (and has not tombstoned),
-/// honouring any checkpoint's `replaces` list, in a single transaction.
+/// honouring checkpoint frontiers and legacy `replaces` lists in one transaction.
 /// Returns how many ops were inserted; the caller rematerializes iff `> 0`.
 pub fn merge_ops(conn: &Connection, ops: &[Op]) -> Result<usize> {
     ensure_tombstones_table(conn)?;
     let tx = conn.unchecked_transaction()?;
+    let inserted = merge_ops_uncommitted(&tx, ops)?;
+    tx.commit()?;
+    Ok(inserted)
+}
+
+fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<usize> {
     let mut inserted = 0usize;
     {
-        let existing: HashSet<String> = {
-            let mut stmt = tx.prepare("SELECT id FROM operations")?;
+        let mut existing: HashSet<String> = {
+            let mut stmt = conn.prepare("SELECT id FROM operations")?;
             let ids = stmt
                 .query_map([], |r| r.get::<_, String>(0))?
                 .collect::<std::result::Result<_, _>>()?;
             ids
         };
         let tombstones: HashSet<String> = {
-            let mut stmt = tx.prepare("SELECT id FROM sync_tombstones")?;
+            let mut stmt = conn.prepare("SELECT id FROM sync_tombstones")?;
             let ids = stmt
                 .query_map([], |r| r.get::<_, String>(0))?
                 .collect::<std::result::Result<_, _>>()?;
             ids
         };
+        let mut frontiers: std::collections::HashMap<String, i64> = {
+            let mut stmt = conn.prepare("SELECT device_id, sequence FROM sync_frontiers")?;
+            let rows = stmt
+                .query_map([], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?))
+                })?
+                .collect::<std::result::Result<_, _>>()?;
+            rows
+        };
+        let active_checkpoint = current_checkpoint(conn)?;
 
-        let mut insert = tx.prepare(
+        let mut insert = conn.prepare(
             "INSERT INTO operations (id, device_id, sequence, type, timestamp, payload_json) \
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )?;
-        let mut delete_replaced = tx.prepare("DELETE FROM operations WHERE id = ?1")?;
-        let mut tombstone = tx.prepare("INSERT OR IGNORE INTO sync_tombstones (id) VALUES (?1)")?;
+        let mut delete_replaced = conn.prepare("DELETE FROM operations WHERE id = ?1")?;
+        let mut tombstone =
+            conn.prepare("INSERT OR IGNORE INTO sync_tombstones (id) VALUES (?1)")?;
+        let mut upsert_frontier = conn.prepare(
+            "INSERT INTO sync_frontiers (device_id, sequence) VALUES (?1, ?2)
+             ON CONFLICT(device_id) DO UPDATE SET sequence = max(sequence, excluded.sequence)",
+        )?;
 
-        let mut accepted = Vec::new();
-        for op in ops {
+        // Select exactly one checkpoint before considering ordinary ops. This
+        // prevents a losing checkpoint in the same batch from contributing a
+        // frontier and makes the result independent of wire order.
+        let incoming_checkpoint = ops
+            .iter()
+            .filter(|op| {
+                op.op_type == "replace_full_state"
+                    && !existing.contains(&op.id)
+                    && !tombstones.contains(&op.id)
+            })
+            .max_by_key(|op| (checkpoint_generation(op), op.id.clone()))
+            .filter(|op| {
+                let candidate = (checkpoint_generation(op), op.id.clone());
+                active_checkpoint
+                    .as_ref()
+                    .map_or(true, |current| candidate > *current)
+            });
+
+        if let Some(checkpoint) = incoming_checkpoint {
+            conn.execute(
+                "DELETE FROM operations WHERE type = 'replace_full_state'",
+                [],
+            )?;
+            insert.execute(params![
+                checkpoint.id,
+                checkpoint.device_id,
+                checkpoint.sequence,
+                checkpoint.op_type,
+                checkpoint.timestamp,
+                checkpoint.payload_json,
+            ])?;
+            existing.insert(checkpoint.id.clone());
+            inserted += 1;
+
+            for replaced in replaced_ids(checkpoint) {
+                if replaced != checkpoint.id {
+                    delete_replaced.execute(params![replaced])?;
+                    tombstone.execute(params![replaced])?;
+                }
+            }
+            for (device_id, sequence) in checkpoint_frontiers(checkpoint) {
+                upsert_frontier.execute(params![device_id, sequence])?;
+                frontiers
+                    .entry(device_id)
+                    .and_modify(|current| *current = (*current).max(sequence))
+                    .or_insert(sequence);
+            }
+        }
+
+        for op in ops.iter().filter(|op| op.op_type != "replace_full_state") {
             if existing.contains(&op.id) || tombstones.contains(&op.id) {
+                continue;
+            }
+            if frontiers
+                .get(&op.device_id)
+                .is_some_and(|covered| op.sequence <= *covered)
+            {
                 continue;
             }
             insert.execute(params![
@@ -287,32 +466,28 @@ pub fn merge_ops(conn: &Connection, ops: &[Op]) -> Result<usize> {
                 op.timestamp,
                 op.payload_json,
             ])?;
+            existing.insert(op.id.clone());
             inserted += 1;
-            accepted.push(op);
         }
-
-        // Applying `replaces` after every insert keeps the outcome independent
-        // of the order ops arrived in.
-        for op in accepted {
-            for replaced in replaced_ids(op) {
-                if replaced == op.id {
-                    continue; // a checkpoint never deletes itself
-                }
-                delete_replaced.execute(params![replaced])?;
-                tombstone.execute(params![replaced])?;
-            }
+        for (device_id, sequence) in &frontiers {
+            conn.execute(
+                "DELETE FROM operations WHERE type != 'replace_full_state' AND device_id = ?1 AND sequence <= ?2",
+                params![device_id, sequence],
+            )?;
         }
     }
-    tx.commit()?;
     Ok(inserted)
 }
 
 /// [`merge_ops`] plus the state rebuild every caller needs when anything landed.
 pub fn merge_and_rematerialize(conn: &Connection, ops: Vec<Op>) -> Result<usize> {
-    let inserted = merge_ops(conn, &ops)?;
+    ensure_tombstones_table(conn)?;
+    let tx = conn.unchecked_transaction()?;
+    let inserted = merge_ops_uncommitted(&tx, &ops)?;
     if inserted > 0 {
-        rematerialize(conn)?;
+        rematerialize_uncommitted(&tx)?;
     }
+    tx.commit()?;
     Ok(inserted)
 }
 
@@ -423,6 +598,7 @@ pub fn enable_primary(conn: &Connection) -> Result<()> {
     // A fresh pairing starts a fresh replication history: nothing from before is
     // reachable, so old tombstones would only bloat future checkpoints.
     conn.execute("DELETE FROM sync_tombstones", [])?;
+    conn.execute("DELETE FROM sync_frontiers", [])?;
     checkpoint_operation_log(conn)?;
     mark_enabled(conn)?;
     Ok(())
@@ -438,6 +614,7 @@ pub fn enable_joiner(conn: &Connection) -> Result<()> {
         tx.execute_batch(
             "DELETE FROM operations; DELETE FROM history_entries;
              DELETE FROM sync_tombstones;
+             DELETE FROM sync_frontiers;
              DELETE FROM plan_items; DELETE FROM plans;
              DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
              DELETE FROM metadata WHERE key IN ('goal_data','lists_metrics_data');",
@@ -467,25 +644,79 @@ fn random_id() -> String {
 /// Build a `replace_full_state` baseline op from an already-read state,
 /// timestamped so it always sorts first in a canonical replay.
 ///
-/// `replaces` lists every op id this checkpoint supersedes: the whole current
-/// log **plus** every id already tombstoned here. Carrying the accumulated set
-/// forward makes coverage transitive, so a peer that missed one checkpoint
-/// generation still learns about the ops that generation removed.
+/// Version frontiers compact the known log in O(device-count) metadata. The
+/// frozen legacy id set exists only to migrate v2 tombstones and never grows.
 fn snapshot_state_op(conn: &Connection, state: &JsonValue) -> Result<JsonValue> {
     let device_id = crate::metadata_value(conn, "device_id")
         .map_err(Error::Codec)?
         .unwrap_or_default();
     ensure_tombstones_table(conn)?;
-    let mut replaces: Vec<String> = {
-        let mut stmt = conn.prepare("SELECT id FROM operations")?;
-        let ids = stmt
-            .query_map([], |r| r.get::<_, String>(0))?
-            .collect::<std::result::Result<_, _>>()?;
-        ids
-    };
-    replaces.extend(tombstone_ids(conn)?);
-    replaces.sort();
-    replaces.dedup();
+    let mut frontiers = sync_frontiers(conn)?;
+    let current_ops = all_ops(conn)?;
+    let legacy_checkpoint = current_ops
+        .iter()
+        .find(|op| op.op_type == "replace_full_state")
+        .is_some_and(|op| checkpoint_generation(&op) == 0 && checkpoint_frontiers(&op).is_empty());
+    let mut sequences_by_device: HashMap<String, Vec<i64>> = HashMap::new();
+    for op in current_ops
+        .iter()
+        .filter(|op| op.op_type != "replace_full_state")
+    {
+        sequences_by_device
+            .entry(op.device_id.clone())
+            .or_default()
+            .push(op.sequence);
+    }
+    for values in sequences_by_device.values_mut() {
+        values.sort_unstable();
+    }
+    for (device_id, values) in sequences_by_device {
+        let Some(first) = values.first().copied() else {
+            continue;
+        };
+        let prior = frontiers.get(&device_id).copied();
+        // V2 checkpoints had no frontier but did have complete state. On the
+        // first v3 checkpoint, the first retained post-checkpoint sequence is
+        // therefore a safe starting point even when its numeric value is high.
+        let mut contiguous = prior.unwrap_or_else(|| {
+            if legacy_checkpoint {
+                first.saturating_sub(1)
+            } else if first == 0 {
+                -1
+            } else {
+                0
+            }
+        });
+        for sequence in values {
+            if sequence <= contiguous {
+                continue;
+            }
+            if sequence != contiguous + 1 {
+                break;
+            }
+            contiguous = sequence;
+        }
+        if prior.is_some() || contiguous >= first {
+            frontiers.insert(device_id, contiguous);
+        }
+    }
+    let mut legacy_replaces = tombstone_ids(conn)?.into_iter().collect::<Vec<_>>();
+    legacy_replaces.extend(
+        current_ops
+            .iter()
+            .filter(|op| {
+                op.op_type != "replace_full_state"
+                    && !frontiers
+                        .get(&op.device_id)
+                        .is_some_and(|covered| op.sequence <= *covered)
+            })
+            .map(|op| op.id.clone()),
+    );
+    legacy_replaces.sort();
+    legacy_replaces.dedup();
+    let generation = current_checkpoint(conn)?
+        .map(|value| value.0 + 1)
+        .unwrap_or(1);
     Ok(json!({
         "id": random_id(),
         "deviceId": device_id,
@@ -493,9 +724,14 @@ fn snapshot_state_op(conn: &Connection, state: &JsonValue) -> Result<JsonValue> 
         // Sorts before any real ISO-8601 timestamp, so it's the replay baseline.
         "timestamp": "0000-00-00T00:00:00.000Z",
         "type": "replace_full_state",
-        // `apply_operation` reads only `payload.state`; `replaces` is inert for
-        // replay and only consulted by `merge_ops`.
-        "payload": { "state": state.clone(), "replaces": replaces },
+        // `apply_operation` reads only `payload.state`; frontier metadata is
+        // inert during replay and consulted only by reconciliation.
+        "payload": {
+            "state": state.clone(),
+            "generation": generation,
+            "frontiers": frontiers,
+            "legacyReplaces": legacy_replaces
+        },
     }))
 }
 
@@ -507,6 +743,15 @@ fn install_checkpoint(
     conn: &Connection,
     expected_state: &JsonValue,
     snapshot: &JsonValue,
+) -> Result<CheckpointStats> {
+    install_checkpoint_with_history_policy(conn, expected_state, snapshot, true)
+}
+
+fn install_checkpoint_with_history_policy(
+    conn: &Connection,
+    expected_state: &JsonValue,
+    snapshot: &JsonValue,
+    clear_history: bool,
 ) -> Result<CheckpointStats> {
     ensure_tombstones_table(conn)?;
     let operation_count: i64 =
@@ -520,7 +765,11 @@ fn install_checkpoint(
         .to_string();
     let replaces = snapshot
         .get("payload")
-        .and_then(|payload| payload.get("replaces"))
+        .and_then(|payload| {
+            payload
+                .get("legacyReplaces")
+                .or_else(|| payload.get("replaces"))
+        })
         .and_then(JsonValue::as_array)
         .map(|ids| {
             ids.iter()
@@ -529,9 +778,17 @@ fn install_checkpoint(
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
+    let frontiers: std::collections::HashMap<String, i64> = snapshot
+        .get("payload")
+        .and_then(|payload| payload.get("frontiers"))
+        .cloned()
+        .and_then(|value| serde_json::from_value(value).ok())
+        .unwrap_or_default();
 
     let tx = conn.unchecked_transaction()?;
-    tx.execute("DELETE FROM history_entries", [])?;
+    if clear_history {
+        tx.execute("DELETE FROM history_entries", [])?;
+    }
     tx.execute("DELETE FROM operations", [])?;
     crate::upsert_operation(&tx, snapshot).map_err(Error::Codec)?;
     crate::apply_operation(&tx, snapshot).map_err(Error::Codec)?;
@@ -542,6 +799,13 @@ fn install_checkpoint(
                 continue;
             }
             tombstone.execute(params![id])?;
+        }
+        let mut upsert = tx.prepare(
+            "INSERT INTO sync_frontiers (device_id, sequence) VALUES (?1, ?2)
+             ON CONFLICT(device_id) DO UPDATE SET sequence = max(sequence, excluded.sequence)",
+        )?;
+        for (device_id, sequence) in frontiers {
+            upsert.execute(params![device_id, sequence])?;
         }
     }
 
@@ -557,7 +821,7 @@ fn install_checkpoint(
     tx.commit()?;
     Ok(CheckpointStats {
         operations_removed: operation_count.saturating_sub(1),
-        history_entries_removed: history_count,
+        history_entries_removed: if clear_history { history_count } else { 0 },
     })
 }
 
@@ -570,6 +834,17 @@ pub fn checkpoint_operation_log(conn: &Connection) -> Result<CheckpointStats> {
     install_checkpoint(conn, &state, &snapshot)
 }
 
+/// Compact replicated operations for a relay generation without silently
+/// discarding the user's local undo/recovery history. Weekly physical database
+/// maintenance calls [`checkpoint_operation_log`] and clears that history.
+pub(crate) fn checkpoint_operation_log_for_relay(conn: &Connection) -> Result<CheckpointStats> {
+    let state = crate::read_app_state_from_database(conn)
+        .map_err(Error::Codec)?
+        .ok_or_else(|| Error::Codec("database has no app state to checkpoint".into()))?;
+    let snapshot = snapshot_state_op(conn, &state)?;
+    install_checkpoint_with_history_policy(conn, &state, &snapshot, false)
+}
+
 // ---------------------------------------------------------------------------
 // Rematerialization
 // ---------------------------------------------------------------------------
@@ -580,7 +855,7 @@ pub fn checkpoint_operation_log(conn: &Connection) -> Result<CheckpointStats> {
 fn read_operations_canonical(conn: &Connection) -> Result<Vec<JsonValue>> {
     let mut stmt = conn.prepare(
         "SELECT id, device_id, sequence, type, timestamp, payload_json FROM operations \
-         ORDER BY timestamp, device_id, sequence",
+         ORDER BY timestamp, device_id, sequence, id",
     )?;
     let rows = stmt
         .query_map([], row_to_op)?
@@ -605,14 +880,20 @@ fn read_operations_canonical(conn: &Connection) -> Result<Vec<JsonValue>> {
 /// canonical order through the app's existing `apply_operation`. Called after a
 /// sync merge so all devices converge to identical state.
 pub fn rematerialize(conn: &Connection) -> Result<()> {
-    let ops = read_operations_canonical(conn)?;
     let tx = conn.unchecked_transaction()?;
+    rematerialize_uncommitted(&tx)?;
+    tx.commit()?;
+    Ok(())
+}
+
+fn rematerialize_uncommitted(tx: &rusqlite::Transaction<'_>) -> Result<()> {
+    let ops = read_operations_canonical(tx)?;
     tx.execute_batch(
         "DELETE FROM plan_items; DELETE FROM plans;
          DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;",
     )?;
     for (index, op) in ops.iter().enumerate() {
-        crate::apply_operation(&tx, op).map_err(|error| {
+        crate::apply_operation(tx, op).map_err(|error| {
             let id = op
                 .get("id")
                 .and_then(JsonValue::as_str)
@@ -627,7 +908,6 @@ pub fn rematerialize(conn: &Connection) -> Result<()> {
             ))
         })?;
     }
-    tx.commit()?;
     Ok(())
 }
 

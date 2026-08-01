@@ -2,11 +2,9 @@
 //! envelopes, tagged only with the device that pushed them. It never holds the
 //! sync key, so it cannot read what it stores — E2EE at the transport layer.
 //!
-//! This in-memory implementation is a test double for the reference relay in
-//! `scripts/relay-server.mjs`. The contract is deliberately tiny: push a blob,
-//! pull back every blob some *other* device pushed. Reconciliation itself is
-//! the receiving device's job (`merge_ops`), so the relay needs no cursors,
-//! versions, or knowledge of the payload format.
+//! This tiny in-memory store is used only by crypto-isolation tests. The real v3
+//! HTTP contract, cursors, durable outbox, and bounded generations live in
+//! [`super::relay_client`] and `scripts/relay-server.mjs`.
 
 use std::sync::{Arc, Mutex};
 
