@@ -10,23 +10,43 @@
 // State lives in a single Durable Object because the Worker itself is
 // stateless, and because a push from one device must be immediately visible to
 // a pull from another (KV's eventual consistency would not be).
+//
+// Envelopes are stored as the exact JSON text the app sent, never parsed. A
+// push is the whole sealed op log, so it runs to megabytes, and JSON.parse plus
+// a byte/base64 round trip on that would burn far more than the CPU budget a
+// request gets. Slicing and concatenating strings costs almost nothing, and the
+// relay has no reason to understand the payload anyway.
 
-/** Reject oversized envelopes: a sealed op log is far smaller. */
-const MAX_ENVELOPE_BYTES = 4 * 1024 * 1024
-/** Cap retained envelopes so a push loop cannot run up unbounded storage. */
-const MAX_STORED = 200
-/** Durable Object storage caps values at 128 KiB, so split envelopes up. */
-const CHUNK_BYTES = 96 * 1024
+/// Cap on the JSON *text* of one envelope. Each byte serializes to up to four
+/// characters ("255,"), so this is roughly a 6 MB sealed envelope.
+const MAX_ENVELOPE_TEXT = 24 * 1024 * 1024
+/// Each envelope is a full op log, not a delta, so retaining many of them costs
+/// real storage and makes /pull assemble a huge response. A handful is enough
+/// to cover every device's most recent push.
+const MAX_STORED = 6
+/// Durable Object storage caps values at 128 KiB, so split envelopes up.
+const CHUNK_CHARS = 96 * 1024
+/// Durable Object put() takes at most 128 entries at a time.
+const MAX_KEYS_PER_PUT = 128
+
+const CORS = {
+  'access-control-allow-origin': '*',
+  'access-control-allow-methods': 'GET,POST,OPTIONS',
+  'access-control-allow-headers': 'content-type',
+}
 
 function json(status, body) {
   return new Response(body === undefined ? '' : JSON.stringify(body), {
     status,
-    headers: {
-      'content-type': 'application/json',
-      'access-control-allow-origin': '*',
-      'access-control-allow-methods': 'GET,POST,OPTIONS',
-      'access-control-allow-headers': 'content-type',
-    },
+    headers: { 'content-type': 'application/json', ...CORS },
+  })
+}
+
+/// Sends an already-serialized JSON string, so a large pull is never re-encoded.
+function rawJson(status, text) {
+  return new Response(text, {
+    status,
+    headers: { 'content-type': 'application/json', ...CORS },
   })
 }
 
@@ -38,22 +58,6 @@ function secretMatches(candidate, secret) {
     diff |= candidate.charCodeAt(i) ^ secret.charCodeAt(i)
   }
   return diff === 0
-}
-
-function bytesToBase64(bytes) {
-  let binary = ''
-  // String.fromCharCode is variadic; feed it in slices to bound the arg count.
-  for (let i = 0; i < bytes.length; i += 0x8000) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  }
-  return btoa(binary)
-}
-
-function base64ToBytes(base64) {
-  const binary = atob(base64)
-  const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
-  return bytes
 }
 
 export class RelayRoom {
@@ -83,37 +87,38 @@ export class RelayRoom {
   }
 
   async push(request) {
-    const raw = await request.text()
-    if (raw.length > MAX_ENVELOPE_BYTES) {
-      return json(413, { error: 'envelope too large' })
+    const raw = (await request.text()).trim()
+    if (raw.length > MAX_ENVELOPE_TEXT) {
+      return json(413, { error: 'envelope too large', characters: raw.length })
     }
-
-    let bytes
-    try {
-      const parsed = JSON.parse(raw)
-      if (!Array.isArray(parsed)) throw new Error('expected number[]')
-      bytes = Uint8Array.from(parsed)
-    } catch (err) {
-      return json(400, { error: String(err) })
+    // A shape check, not a parse: the relay stores ciphertext it cannot read,
+    // and a malformed body simply fails to decrypt on the receiving device.
+    if (!raw.startsWith('[') || !raw.endsWith(']')) {
+      return json(400, { error: 'expected a JSON array' })
     }
 
     return this.serialize(async () => {
       const sequences = (await this.storage.get('sequences')) ?? []
       const next = (await this.storage.get('nextSequence')) ?? 1
 
-      const base64 = bytesToBase64(bytes)
-      const writes = {}
+      let entries = []
       let chunks = 0
-      for (let offset = 0; offset < base64.length; offset += CHUNK_BYTES) {
-        writes[`e:${next}:${chunks}`] = base64.slice(offset, offset + CHUNK_BYTES)
+      for (let offset = 0; offset < raw.length; offset += CHUNK_CHARS) {
+        entries.push([`e:${next}:${chunks}`, raw.slice(offset, offset + CHUNK_CHARS)])
         chunks += 1
+        if (entries.length === MAX_KEYS_PER_PUT) {
+          await this.storage.put(Object.fromEntries(entries))
+          entries = []
+        }
       }
-      writes[`e:${next}:chunks`] = chunks
+      entries.push([`e:${next}:chunks`, chunks])
+      await this.storage.put(Object.fromEntries(entries))
 
       const retained = [...sequences, next]
       const evicted = retained.splice(0, Math.max(0, retained.length - MAX_STORED))
 
-      await this.storage.put(writes)
+      // Only now is the envelope readable, so a crash mid-write cannot publish
+      // a half-stored envelope.
       await this.storage.put({ sequences: retained, nextSequence: next + 1 })
       for (const sequence of evicted) await this.deleteEnvelope(sequence)
 
@@ -123,9 +128,15 @@ export class RelayRoom {
 
   async deleteEnvelope(sequence) {
     const chunks = (await this.storage.get(`e:${sequence}:chunks`)) ?? 0
-    const keys = [`e:${sequence}:chunks`]
-    for (let i = 0; i < chunks; i += 1) keys.push(`e:${sequence}:${i}`)
-    await this.storage.delete(keys)
+    let keys = [`e:${sequence}:chunks`]
+    for (let i = 0; i < chunks; i += 1) {
+      keys.push(`e:${sequence}:${i}`)
+      if (keys.length === MAX_KEYS_PER_PUT) {
+        await this.storage.delete(keys)
+        keys = []
+      }
+    }
+    if (keys.length) await this.storage.delete(keys)
   }
 
   async pull() {
@@ -133,13 +144,14 @@ export class RelayRoom {
     const envelopes = []
     for (const sequence of sequences) {
       const chunks = (await this.storage.get(`e:${sequence}:chunks`)) ?? 0
-      let base64 = ''
+      let text = ''
       for (let i = 0; i < chunks; i += 1) {
-        base64 += (await this.storage.get(`e:${sequence}:${i}`)) ?? ''
+        text += (await this.storage.get(`e:${sequence}:${i}`)) ?? ''
       }
-      if (base64) envelopes.push(Array.from(base64ToBytes(base64)))
+      if (text) envelopes.push(text)
     }
-    return json(200, envelopes)
+    // Each element is already JSON, so wrapping them is pure concatenation.
+    return rawJson(200, `[${envelopes.join(',')}]`)
   }
 
   /// Empties the room. Devices re-push their full sealed op log on the next
