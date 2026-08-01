@@ -1032,7 +1032,7 @@ test('adding template time starts with the nearest shallower timed item', async 
     })
 })
 
-test('template time warnings cover sibling overlaps and ancestor end times', async ({ page }) => {
+test('template time warnings cover sibling overlaps and ancestor boundaries', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {
     localStorage.clear()
@@ -1066,6 +1066,7 @@ test('template time warnings cover sibling overlaps and ancestor end times', asy
           updatedAt: now,
           items: [
             item('parent', 'Parent', 540, 720, [
+              item('early_child', 'Child starting early', 480, 510),
               item('child', 'Child', 600, 660, [item('deep', 'Deep child ending late', 630, 750)]),
               item('late_child', 'Child ending late', 660, 750),
             ]),
@@ -1088,6 +1089,9 @@ test('template time warnings cover sibling overlaps and ancestor end times', asy
   await page.getByRole('button', { name: 'Day Templates' }).click()
 
   const childTime = page.getByRole('listitem', { name: 'Template item: Child', exact: true }).getByLabel('Time range')
+  const earlyChildTime = page
+    .getByRole('listitem', { name: 'Template item: Child starting early', exact: true })
+    .getByLabel('Time range')
   const parentTime = page.getByRole('listitem', { name: 'Template item: Parent', exact: true }).getByLabel('Time range')
   const deepTime = page
     .getByRole('listitem', { name: 'Template item: Deep child ending late', exact: true })
@@ -1119,6 +1123,13 @@ test('template time warnings cover sibling overlaps and ancestor end times', asy
   await expect(parentTime.locator('.time-end-side')).toHaveCSS('background-color', 'rgb(251, 240, 225)')
   await expect(parentTime).toHaveAttribute('title', 'This time ends after the next timed item starts')
   await expect(childTime.locator('.time-part.warning')).toHaveCount(0)
+  await expect(earlyChildTime.getByRole('button', { name: '8am' })).toHaveClass(/warning/)
+  await expect(earlyChildTime.getByRole('button', { name: '8:30am' })).not.toHaveClass(/warning/)
+  await expect(earlyChildTime).toHaveClass(/warning-start/)
+  await expect(earlyChildTime).not.toHaveClass(/warning-end/)
+  await expect(earlyChildTime.locator('.time-start-side')).toHaveCSS('background-color', 'rgb(251, 240, 225)')
+  await expect(earlyChildTime.locator('.time-end-side')).toHaveCSS('background-color', 'rgb(238, 247, 243)')
+  await expect(earlyChildTime).toHaveAttribute('title', 'This time starts before a parent or ancestor starts')
   await expect(deepTime.getByRole('button', { name: '10:30am' })).not.toHaveClass(/warning/)
   await expect(deepTime.getByRole('button', { name: '12:30pm' })).toHaveClass(/warning/)
   await expect(deepTime).toHaveAttribute('title', 'This time ends after a parent or ancestor ends')

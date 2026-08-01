@@ -425,6 +425,7 @@
           endMinutes={item.endMinutes}
           overlapsPrevious={timeWarning?.overlapsPrevious}
           overlapsNext={timeWarning?.overlapsNext}
+          precedesAncestor={timeWarning?.precedesAncestor}
           exceedsAncestor={timeWarning?.exceedsAncestor}
           onChange={patchTimeRange}
           getShiftTargets={selectedTimeShiftTargets}

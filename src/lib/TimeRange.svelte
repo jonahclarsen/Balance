@@ -15,6 +15,7 @@
   export let onRemove: () => void
   export let overlapsPrevious = false
   export let overlapsNext = false
+  export let precedesAncestor = false
   export let exceedsAncestor = false
   export let getShiftTargets: (() => TimeShiftTarget[] | null) | null = null
   export let onShift: ((targets: TimeShiftTarget[], delta: number) => void) | null = null
@@ -22,6 +23,7 @@
   $: warningReasons = [
     overlapsPrevious ? 'starts before the previous timed item ends' : null,
     overlapsNext ? 'ends after the next timed item starts' : null,
+    precedesAncestor ? 'starts before a parent or ancestor starts' : null,
     exceedsAncestor ? 'ends after a parent or ancestor ends' : null,
   ].filter(Boolean)
   $: warningTitle = warningReasons.length > 0 ? `This time ${warningReasons.join(' and ')}` : null
@@ -96,7 +98,7 @@
 
 <span
   class="time-range"
-  class:warning-start={overlapsPrevious}
+  class:warning-start={overlapsPrevious || precedesAncestor}
   class:warning-end={overlapsNext || exceedsAncestor}
   aria-label="Time range"
   title={warningTitle}
@@ -104,7 +106,7 @@
   <span class="time-side time-start-side">
     <button
       class="time-part"
-      class:warning={overlapsPrevious}
+      class:warning={overlapsPrevious || precedesAncestor}
       type="button"
       title="Drag up or down to move the whole time range. Hold Alt to change only the start time."
       on:pointerdown={(event) => beginDrag('start', event)}

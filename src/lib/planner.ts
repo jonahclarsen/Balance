@@ -1065,6 +1065,7 @@ function previousTimedItem<T extends {
 export type ItemTimeWarning = {
   overlapsPrevious: boolean
   overlapsNext: boolean
+  precedesAncestor: boolean
   exceedsAncestor: boolean
 }
 
@@ -1073,8 +1074,8 @@ const itemTimeWarningsCache = new WeakMap<object, ReadonlyMap<Id, ItemTimeWarnin
 
 // Build every time warning in one tree walk. Only adjacent timed items at the
 // same indentation level are compared, so a nested child doesn't make a later
-// top-level item look like a conflict. The earliest ancestor end carries down
-// through recursion.
+// top-level item look like a conflict. The latest ancestor start and earliest
+// ancestor end carry down through recursion.
 export function buildItemTimeWarnings<T extends {
   id: Id
   startMinutes: number | null
@@ -1089,13 +1090,17 @@ export function buildItemTimeWarnings<T extends {
   const warningFor = (itemId: Id): MutableItemTimeWarning => {
     let warning = warnings.get(itemId)
     if (!warning) {
-      warning = { overlapsPrevious: false, overlapsNext: false, exceedsAncestor: false }
+      warning = { overlapsPrevious: false, overlapsNext: false, precedesAncestor: false, exceedsAncestor: false }
       warnings.set(itemId, warning)
     }
     return warning
   }
 
-  const visit = (siblings: T[], ancestorEndMinutes: number | null) => {
+  const visit = (
+    siblings: T[],
+    ancestorStartMinutes: number | null,
+    ancestorEndMinutes: number | null,
+  ) => {
     let previousTimedItem: T | null = null
 
     for (const item of siblings) {
@@ -1109,6 +1114,10 @@ export function buildItemTimeWarnings<T extends {
           warningFor(previousTimedItem.id).overlapsNext = true
         }
 
+        if (ancestorStartMinutes !== null && item.startMinutes! < ancestorStartMinutes) {
+          warning.precedesAncestor = true
+        }
+
         if (ancestorEndMinutes !== null && item.endMinutes! > ancestorEndMinutes) {
           warning.exceedsAncestor = true
         }
@@ -1116,17 +1125,23 @@ export function buildItemTimeWarnings<T extends {
         previousTimedItem = item
       }
 
+      const childAncestorStartMinutes =
+        item.startMinutes === null
+          ? ancestorStartMinutes
+          : ancestorStartMinutes === null
+            ? item.startMinutes
+            : Math.max(ancestorStartMinutes, item.startMinutes)
       const childAncestorEndMinutes =
         item.endMinutes === null
           ? ancestorEndMinutes
           : ancestorEndMinutes === null
             ? item.endMinutes
             : Math.min(ancestorEndMinutes, item.endMinutes)
-      visit(item.children, childAncestorEndMinutes)
+      visit(item.children, childAncestorStartMinutes, childAncestorEndMinutes)
     }
   }
 
-  visit(items, null)
+  visit(items, null, null)
   itemTimeWarningsCache.set(items, warnings)
   return warnings
 }
