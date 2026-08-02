@@ -3357,6 +3357,7 @@ return rows`
                     splitItem={plannerStore.splitPlanItem}
                     backspaceItemAtStart={plannerStore.backspacePlanItemAtStart}
                     deleteItem={plannerStore.deletePlanItem}
+                    deleteItemPreservingChildren={plannerStore.deletePlanItemPreservingChildren}
                     moveItem={plannerStore.movePlanItem}
                     moveItemAcrossContainers={compareDayOpen ? movePlanItemAcrossDays : null}
                     moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
@@ -3457,6 +3458,7 @@ return rows`
                 splitItem={plannerStore.splitTemplateItem}
                 backspaceOptionAtStart={plannerStore.backspaceTemplateOptionAtStart}
                 deleteItem={plannerStore.deleteTemplateItem}
+                deleteItemPreservingChildren={plannerStore.deleteTemplateItemPreservingChildren}
                 moveItem={plannerStore.moveTemplateItem}
                 moveItemWithinLevel={plannerStore.moveTemplateItemWithinLevel}
                 outdentItem={plannerStore.outdentTemplateItem}
@@ -3585,6 +3587,7 @@ return rows`
                 splitItem={plannerStore.splitListTemplateItem}
                 backspaceItemAtStart={plannerStore.backspaceListTemplateItemAtStart}
                 deleteItem={plannerStore.deleteListTemplateItem}
+                deleteItemPreservingChildren={plannerStore.deleteListTemplateItemPreservingChildren}
                 moveItem={plannerStore.moveListTemplateItem}
                 moveItemWithinLevel={plannerStore.moveListTemplateItemWithinLevel}
                 outdentItem={plannerStore.outdentListTemplateItem}

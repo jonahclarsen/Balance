@@ -219,6 +219,7 @@
       splitItem={plannerStore.splitListItem}
       backspaceItemAtStart={plannerStore.backspaceListItemAtStart}
       deleteItem={plannerStore.deleteListItem}
+      deleteItemPreservingChildren={plannerStore.deleteListItemPreservingChildren}
       moveItem={plannerStore.moveListItem}
       moveItemWithinLevel={plannerStore.moveListItemWithinLevel}
       outdentItem={plannerStore.outdentListItem}

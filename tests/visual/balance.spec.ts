@@ -1645,6 +1645,100 @@ test('cmd backspace at the end of a plan item deletes the whole task', async ({ 
     })
 })
 
+test('cmd backspace preserves child indentation by reparenting children to the item above', async ({ page }) => {
+  await seedPlanTree(page, [
+    {
+      id: 'root',
+      text: 'Root',
+      children: [
+        {
+          id: 'previous',
+          text: 'Previous sibling',
+          children: [{ id: 'existing', text: 'Existing child', children: [] }],
+        },
+        {
+          id: 'deleted',
+          text: 'Delete me',
+          children: [
+            {
+              id: 'preserved',
+              text: 'Preserved child',
+              children: [{ id: 'grandchild', text: 'Preserved grandchild', children: [] }],
+            },
+          ],
+        },
+      ],
+    },
+  ])
+
+  await focusInputByValue(page, 'Delete me')
+  await setCaretOffsetInFocusedEditor(page, 'Delete me'.length)
+  await page.keyboard.press('Meta+Backspace')
+
+  await expect
+    .poll(() => planTreeAndDepths(page))
+    .toEqual({
+      tree: [
+        {
+          id: 'root',
+          children: [
+            {
+              id: 'previous',
+              children: [
+                { id: 'existing', children: [] },
+                {
+                  id: 'preserved',
+                  children: [{ id: 'grandchild', children: [] }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      depths: { root: 0, previous: 1, existing: 2, preserved: 2, grandchild: 3 },
+    })
+})
+
+test('cmd backspace outdents children once when there is no preceding sibling', async ({ page }) => {
+  await seedPlanTree(page, [
+    {
+      id: 'root',
+      text: 'Root',
+      children: [
+        {
+          id: 'deleted',
+          text: 'Delete me',
+          children: [
+            { id: 'first-preserved', text: 'First preserved child', children: [] },
+            { id: 'second-preserved', text: 'Second preserved child', children: [] },
+          ],
+        },
+        { id: 'later', text: 'Later sibling', children: [] },
+      ],
+    },
+  ])
+
+  await focusInputByValue(page, 'Delete me')
+  await setCaretOffsetInFocusedEditor(page, 'Delete me'.length)
+  await page.keyboard.press('Meta+Backspace')
+
+  await expect
+    .poll(() => planTreeAndDepths(page))
+    .toEqual({
+      tree: [
+        {
+          id: 'root',
+          children: [
+            { id: 'first-preserved', children: [] },
+            { id: 'second-preserved', children: [] },
+            { id: 'later', children: [] },
+          ],
+        },
+      ],
+      depths: { root: 0, 'first-preserved': 1, 'second-preserved': 1, later: 1 },
+    })
+})
+
 test('option backspace clears freshly typed new plan items without leaving newline-only content', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -2993,6 +3087,64 @@ async function seedPlanItems(page: import('@playwright/test').Page, texts: strin
   }, texts)
   await page.reload()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
+}
+
+type SeedPlanTreeItem = {
+  id: string
+  text: string
+  children: SeedPlanTreeItem[]
+}
+
+async function seedPlanTree(page: import('@playwright/test').Page, items: SeedPlanTreeItem[]) {
+  await page.goto('/')
+  await page.evaluate((seedItems) => {
+    const date = new Date().toISOString().slice(0, 10)
+    const normalize = (item: SeedPlanTreeItem): SeedPlanTreeItem & {
+      html: string
+      done: boolean
+      startMinutes: null
+      endMinutes: null
+    } => ({
+      ...item,
+      html: item.text,
+      done: false,
+      startMinutes: null,
+      endMinutes: null,
+      children: item.children.map(normalize),
+    })
+    localStorage.setItem(
+      'balance.appState.v1',
+      JSON.stringify({
+        schemaVersion: 1,
+        deviceId: 'test-device',
+        localSequence: 0,
+        historyRevision: 0,
+        activePlanDate: date,
+        templates: [],
+        plans: [{ id: 'plan_test', date, dailyReminder: '', items: seedItems.map(normalize) }],
+        goals: [],
+        goalCompletions: [],
+        operations: [],
+      }),
+    )
+  }, items)
+  await page.reload()
+  await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
+}
+
+async function planTreeAndDepths(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    type StoredItem = { id: string; children: StoredItem[] }
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const strip = (item: StoredItem): StoredItem => ({ id: item.id, children: item.children.map(strip) })
+    const depths = Object.fromEntries(
+      Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]')).map((row) => [
+        row.dataset.planItemId,
+        Number(row.dataset.planItemDepth),
+      ]),
+    )
+    return { tree: (state.plans?.[0]?.items ?? []).map(strip), depths }
+  })
 }
 
 async function seedListItems(page: import('@playwright/test').Page, texts: string[]) {

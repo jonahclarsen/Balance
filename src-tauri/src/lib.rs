@@ -1868,6 +1868,9 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         }
         "split_plan_item" => split_plan_item_row(tx, payload),
         "backspace_plan_item_at_start" => backspace_plan_item_at_start_row(tx, payload),
+        "delete_plan_item_preserving_children" => {
+            delete_plan_item_preserving_children_row(tx, required_string(payload, "itemId")?)
+        }
         "delete_plan_item" => {
             tx.execute(
                 "delete from plan_items where id = ?1",
@@ -2003,6 +2006,9 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             )?,
         ),
         "patch_template_item" => patch_template_item(tx, payload),
+        "delete_template_item_preserving_children" => {
+            delete_template_item_preserving_children_row(tx, required_string(payload, "itemId")?)
+        }
         "delete_template_item" => {
             tx.execute(
                 "delete from template_items where id = ?1",
@@ -2263,6 +2269,39 @@ fn build_domain_undo_operation(
         "backspace_plan_item_at_start" => {
             build_backspace_plan_item_at_start_undo(connection, payload)
         }
+        "delete_plan_item_preserving_children" => {
+            let Some(snapshot) =
+                read_plan_item_snapshot(connection, required_string(payload, "itemId")?)?
+            else {
+                return Ok(None);
+            };
+
+            let mut operations = snapshot.item["children"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|child| {
+                    Ok(storage_operation(
+                        "delete_plan_item",
+                        json!({ "itemId": required_string(child, "id")? }),
+                    ))
+                })
+                .collect::<Result<Vec<Value>, String>>()?;
+            operations.push(storage_operation(
+                "insert_plan_item_at",
+                json!({
+                    "planId": snapshot.plan_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
+                    "item": snapshot.item,
+                }),
+            ));
+
+            Ok(Some(storage_operation(
+                "batch",
+                json!({ "operations": operations }),
+            )))
+        }
         "delete_plan_item" => {
             let Some(snapshot) =
                 read_plan_item_snapshot(connection, required_string(payload, "itemId")?)?
@@ -2421,6 +2460,39 @@ fn build_domain_undo_operation(
             json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
         ))),
         "patch_template_item" => build_template_item_patch_undo(connection, payload),
+        "delete_template_item_preserving_children" => {
+            let Some(snapshot) =
+                read_template_item_snapshot(connection, required_string(payload, "itemId")?)?
+            else {
+                return Ok(None);
+            };
+
+            let mut operations = snapshot.item["children"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|child| {
+                    Ok(storage_operation(
+                        "delete_template_item",
+                        json!({ "itemId": required_string(child, "id")? }),
+                    ))
+                })
+                .collect::<Result<Vec<Value>, String>>()?;
+            operations.push(storage_operation(
+                "insert_template_item_at",
+                json!({
+                    "templateId": snapshot.template_id,
+                    "parentId": snapshot.parent_id,
+                    "position": snapshot.position,
+                    "item": snapshot.item,
+                }),
+            ));
+
+            Ok(Some(storage_operation(
+                "batch",
+                json!({ "operations": operations }),
+            )))
+        }
         "delete_template_item" => {
             let Some(snapshot) =
                 read_template_item_snapshot(connection, required_string(payload, "itemId")?)?
@@ -4024,6 +4096,125 @@ fn backspace_plan_item_at_start_row(
         }
         other => Err(format!("Unsupported backspace action: {other}")),
     }
+}
+
+fn delete_plan_item_preserving_children_row(
+    connection: &Connection,
+    item_id: &str,
+) -> Result<(), String> {
+    let Some(plan_id) = plan_item_plan_id_if_exists(connection, item_id)? else {
+        return Ok(());
+    };
+    let parent_id = plan_item_parent_id(connection, item_id)?;
+    let siblings = plan_item_sibling_ids(connection, &plan_id, parent_id.as_deref())?;
+    let Some(index) = siblings.iter().position(|id| id == item_id) else {
+        return Ok(());
+    };
+    let child_ids = plan_item_sibling_ids(connection, &plan_id, Some(item_id))?;
+
+    if index > 0 {
+        let previous_id = &siblings[index - 1];
+        let mut previous_children = plan_item_sibling_ids(connection, &plan_id, Some(previous_id))?;
+        let next_position = previous_children.len();
+
+        for (offset, child_id) in child_ids.iter().enumerate() {
+            connection
+                .execute(
+                    "update plan_items set parent_id = ?1, position = ?2 where id = ?3",
+                    params![previous_id, (next_position + offset) as i64, child_id],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        previous_children.extend(child_ids);
+        rewrite_plan_item_positions(connection, &previous_children)?;
+
+        connection
+            .execute("delete from plan_items where id = ?1", params![item_id])
+            .map_err(|error| error.to_string())?;
+        let remaining_siblings = siblings
+            .into_iter()
+            .filter(|id| id != item_id)
+            .collect::<Vec<_>>();
+        return rewrite_plan_item_positions(connection, &remaining_siblings);
+    }
+
+    for (position, child_id) in child_ids.iter().enumerate() {
+        connection
+            .execute(
+                "update plan_items set parent_id = ?1, position = ?2 where id = ?3",
+                params![parent_id, position as i64, child_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    connection
+        .execute("delete from plan_items where id = ?1", params![item_id])
+        .map_err(|error| error.to_string())?;
+
+    let remaining_siblings = child_ids
+        .into_iter()
+        .chain(siblings.into_iter().skip(1))
+        .collect::<Vec<_>>();
+    rewrite_plan_item_positions(connection, &remaining_siblings)
+}
+
+fn delete_template_item_preserving_children_row(
+    connection: &Connection,
+    item_id: &str,
+) -> Result<(), String> {
+    let Some(template_id) = template_item_template_id_if_exists(connection, item_id)? else {
+        return Ok(());
+    };
+    let parent_id = template_item_parent_id(connection, item_id)?;
+    let siblings = template_item_sibling_ids(connection, &template_id, parent_id.as_deref())?;
+    let Some(index) = siblings.iter().position(|id| id == item_id) else {
+        return Ok(());
+    };
+    let child_ids = template_item_sibling_ids(connection, &template_id, Some(item_id))?;
+
+    if index > 0 {
+        let previous_id = &siblings[index - 1];
+        let mut previous_children =
+            template_item_sibling_ids(connection, &template_id, Some(previous_id))?;
+        let next_position = previous_children.len();
+
+        for (offset, child_id) in child_ids.iter().enumerate() {
+            connection
+                .execute(
+                    "update template_items set parent_id = ?1, position = ?2 where id = ?3",
+                    params![previous_id, (next_position + offset) as i64, child_id],
+                )
+                .map_err(|error| error.to_string())?;
+        }
+        previous_children.extend(child_ids);
+        rewrite_template_item_positions(connection, &previous_children)?;
+
+        connection
+            .execute("delete from template_items where id = ?1", params![item_id])
+            .map_err(|error| error.to_string())?;
+        let remaining_siblings = siblings
+            .into_iter()
+            .filter(|id| id != item_id)
+            .collect::<Vec<_>>();
+        return rewrite_template_item_positions(connection, &remaining_siblings);
+    }
+
+    for (position, child_id) in child_ids.iter().enumerate() {
+        connection
+            .execute(
+                "update template_items set parent_id = ?1, position = ?2 where id = ?3",
+                params![parent_id, position as i64, child_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    connection
+        .execute("delete from template_items where id = ?1", params![item_id])
+        .map_err(|error| error.to_string())?;
+
+    let remaining_siblings = child_ids
+        .into_iter()
+        .chain(siblings.into_iter().skip(1))
+        .collect::<Vec<_>>();
+    rewrite_template_item_positions(connection, &remaining_siblings)
 }
 
 fn paste_plan_items_row(
@@ -7958,6 +8149,141 @@ mod tests {
         );
         assert_eq!(redone["plans"][0]["items"][0]["text"], "Wake");
         assert_eq!(redone["plans"][0]["items"][1]["text"], " up");
+    }
+
+    #[test]
+    fn delete_plan_item_preserving_children_reparents_to_previous_sibling_and_undoes() {
+        let database = TestDatabase::new("delete-plan-item-preserve-depth");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Preserve children test");
+        state["plans"][0]["items"][0]["children"] = json!([
+            {
+                "id": "plan_item_previous",
+                "text": "Previous",
+                "html": "Previous",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            },
+            {
+                "id": "plan_item_deleted",
+                "text": "Delete me",
+                "html": "Delete me",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": [{
+                    "id": "plan_item_preserved",
+                    "text": "Preserved",
+                    "html": "Preserved",
+                    "done": false,
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "children": []
+                }]
+            }
+        ]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "delete_plan_item_preserving_children",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": { "planId": "plan_today", "itemId": "plan_item_deleted" }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        let root_children = saved["plans"][0]["items"][0]["children"]
+            .as_array()
+            .unwrap();
+        assert_eq!(root_children.len(), 1);
+        assert_eq!(root_children[0]["id"], "plan_item_previous");
+        assert_eq!(root_children[0]["children"][0]["id"], "plan_item_preserved");
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        let root_children = undone["plans"][0]["items"][0]["children"]
+            .as_array()
+            .unwrap();
+        assert_eq!(root_children.len(), 2);
+        assert_eq!(root_children[0]["id"], "plan_item_previous");
+        assert_eq!(root_children[1]["id"], "plan_item_deleted");
+        assert_eq!(root_children[1]["children"][0]["id"], "plan_item_preserved");
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            redone["plans"][0]["items"][0]["children"][0]["children"][0]["id"],
+            "plan_item_preserved"
+        );
+    }
+
+    #[test]
+    fn delete_first_plan_item_preserving_children_promotes_them_one_level() {
+        let database = TestDatabase::new("delete-plan-item-clamp-depth");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Clamp child depth test");
+        state["plans"][0]["items"][0]["children"] = json!([
+            {
+                "id": "plan_item_deleted",
+                "text": "Delete me",
+                "html": "Delete me",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": [{
+                    "id": "plan_item_preserved",
+                    "text": "Preserved",
+                    "html": "Preserved",
+                    "done": false,
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "children": []
+                }]
+            },
+            {
+                "id": "plan_item_later",
+                "text": "Later",
+                "html": "Later",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }
+        ]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "delete_plan_item_preserving_children",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": { "planId": "plan_today", "itemId": "plan_item_deleted" }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        let root_children = saved["plans"][0]["items"][0]["children"]
+            .as_array()
+            .unwrap();
+        assert_eq!(root_children.len(), 2);
+        assert_eq!(root_children[0]["id"], "plan_item_preserved");
+        assert_eq!(root_children[1]["id"], "plan_item_later");
     }
 
     #[test]

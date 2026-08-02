@@ -13,8 +13,10 @@ import {
   backspacePlanItemAtStart as backspacePlanItemAtStartInTree,
   backspaceTemplateOptionAtStart as backspaceTemplateOptionAtStartInTree,
   deletePlanItem,
+  deletePlanItemPreservingChildren,
   deletePlanItems,
   deleteTemplateItem,
+  deleteTemplateItemPreservingChildren,
   copyTemplateItems as copyTemplateItemsFromTree,
   deleteTemplateItems,
   cloneTemplateItemsForPaste,
@@ -49,6 +51,7 @@ import {
   addListTemplateItem,
   updateListTemplateItem,
   deleteListTemplateItem,
+  deleteListTemplateItemPreservingChildren,
   copyListTemplateItems as copyListTemplateItemsFromTree,
   deleteListTemplateItems,
   cloneListTemplateItemsForPaste,
@@ -607,6 +610,15 @@ function createPlannerStore() {
       })))
     },
 
+    deletePlanItemPreservingChildren(planId: Id, itemId: Id) {
+      commit('delete_plan_item_preserving_children', { planId, itemId }, (state) =>
+        updatePlan(state, planId, (plan) => ({
+          ...plan,
+          items: deletePlanItemPreservingChildren(plan.items, itemId),
+        })),
+      )
+    },
+
     backspacePlanItemAtStart(planId: Id, itemId: Id) {
       const plan = get(store).plans.find((candidate) => candidate.id === planId)
       if (!plan) return null
@@ -980,6 +992,16 @@ function createPlannerStore() {
       )
     },
 
+    deleteTemplateItemPreservingChildren(templateId: Id, itemId: Id) {
+      commit('delete_template_item_preserving_children', { templateId, itemId }, (state) =>
+        updateTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: deleteTemplateItemPreservingChildren(template.items, itemId),
+        })),
+      )
+    },
+
     copyTemplateItems(templateId: Id, itemIds: Id[]) {
       const template = get(store).templates.find((candidate) => candidate.id === templateId)
       return template ? copyTemplateItemsFromTree(template.items, itemIds) : []
@@ -1269,6 +1291,16 @@ function createPlannerStore() {
       )
     },
 
+    deleteListTemplateItemPreservingChildren(templateId: Id, itemId: Id) {
+      commit('delete_list_template_item_preserving_children', { templateId, itemId }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: deleteListTemplateItemPreservingChildren(template.items, itemId),
+        })),
+      )
+    },
+
     backspaceListTemplateItemAtStart(templateId: Id, itemId: Id) {
       const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
       if (!template) return null
@@ -1462,6 +1494,15 @@ function createPlannerStore() {
     deleteListItem(listId: Id, itemId: Id) {
       commit('delete_list_item', { listId, itemId }, (state) =>
         updateList(state, listId, (list) => ({ ...list, items: deletePlanItem(list.items, itemId) })),
+      )
+    },
+
+    deleteListItemPreservingChildren(listId: Id, itemId: Id) {
+      commit('delete_list_item_preserving_children', { listId, itemId }, (state) =>
+        updateList(state, listId, (list) => ({
+          ...list,
+          items: deletePlanItemPreservingChildren(list.items, itemId),
+        })),
       )
     },
 

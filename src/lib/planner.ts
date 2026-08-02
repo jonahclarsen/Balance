@@ -391,6 +391,10 @@ export function deletePlanItem(items: PlanItem[], itemId: Id): PlanItem[] {
     }))
 }
 
+export function deletePlanItemPreservingChildren(items: PlanItem[], itemId: Id): PlanItem[] {
+  return deleteTreeNodePreservingChildren(items, itemId)
+}
+
 export function backspacePlanItemAtStart(items: PlanItem[], itemId: Id): BackspacePlanItemAtStartResult | null {
   const flattened = flattenPlanItems(items)
   const currentIndex = flattened.findIndex((item) => item.id === itemId)
@@ -786,6 +790,10 @@ export function copyTemplateItems(items: TemplateItem[], itemIds: Id[]): Templat
 
 export function deleteTemplateItems(items: TemplateItem[], itemIds: Id[]): TemplateItem[] {
   return deleteTreeNodes(items, new Set(itemIds))
+}
+
+export function deleteTemplateItemPreservingChildren(items: TemplateItem[], itemId: Id): TemplateItem[] {
+  return deleteTreeNodePreservingChildren(items, itemId)
 }
 
 export function cloneTemplateItemsForPaste(items: TemplateItem[]): TemplateItem[] {
@@ -1390,6 +1398,43 @@ function deleteTreeNodes<T extends TreeNode<T>>(items: T[], selectedIds: Set<Id>
   return changed ? nextItems : items
 }
 
+function deleteTreeNodePreservingChildren<T extends TreeNode<T>>(items: T[], itemId: Id): T[] {
+  const index = items.findIndex((item) => item.id === itemId)
+
+  if (index >= 0) {
+    const item = items[index]
+
+    // Keep the children's visible indentation whenever the deleted item has a
+    // preceding sibling they can belong to. If there is no such sibling, they
+    // replace the item at its current level, which is the shallowest valid
+    // indentation beneath the item above.
+    if (index > 0) {
+      const previous = items[index - 1]
+      return [
+        ...items.slice(0, index - 1),
+        { ...previous, children: [...previous.children, ...item.children] },
+        ...items.slice(index + 1),
+      ]
+    }
+
+    return [...item.children, ...items.slice(1)]
+  }
+
+  for (let childIndex = 0; childIndex < items.length; childIndex += 1) {
+    const item = items[childIndex]
+    const children = deleteTreeNodePreservingChildren(item.children, itemId)
+    if (children === item.children) continue
+
+    return [
+      ...items.slice(0, childIndex),
+      { ...item, children },
+      ...items.slice(childIndex + 1),
+    ]
+  }
+
+  return items
+}
+
 function pasteTreeNodes<T extends TreeNode<T>>(
   items: T[],
   itemsToPaste: T[],
@@ -1600,6 +1645,13 @@ export function addListTemplateItem(
 
 export function deleteListTemplateItem(items: ListTemplateItem[], itemId: Id): ListTemplateItem[] {
   return deleteTreeNode(items, itemId)
+}
+
+export function deleteListTemplateItemPreservingChildren(
+  items: ListTemplateItem[],
+  itemId: Id,
+): ListTemplateItem[] {
+  return deleteTreeNodePreservingChildren(items, itemId)
 }
 
 export function backspaceListTemplateItemAtStart(

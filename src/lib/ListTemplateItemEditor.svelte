@@ -37,6 +37,7 @@
     itemId: Id,
   ) => { focusItemId: Id; focusOffset: number } | null = () => null
   export let deleteItem: (templateId: Id, itemId: Id) => void
+  export let deleteItemPreservingChildren: (templateId: Id, itemId: Id) => void = deleteItem
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (templateId: Id, itemId: Id, direction: MoveDirection) => void
   export let outdentItem: (templateId: Id, itemId: Id) => void
@@ -136,6 +137,16 @@
     const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
     const current = inputs.findIndex((input) => input.dataset.listTemplateTextInputId === item.id)
     deleteItem(templateId, item.id)
+    await tick()
+    const nextInputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
+    const target = nextInputs[Math.max(0, current - 1)] ?? nextInputs[0]
+    if (target) focusTextInput(target)
+  }
+
+  async function handleMetaBackspaceEnd() {
+    const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
+    const current = inputs.findIndex((input) => input.dataset.listTemplateTextInputId === item.id)
+    deleteItemPreservingChildren(templateId, item.id)
     await tick()
     const nextInputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
     const target = nextInputs[Math.max(0, current - 1)] ?? nextInputs[0]
@@ -261,7 +272,7 @@
         onTabKey={handleTextTab}
         onBackspaceEmpty={handleBackspaceEmpty}
         onBackspaceStart={handleBackspaceStart}
-        onMetaBackspaceEnd={handleBackspaceEmpty}
+        onMetaBackspaceEnd={handleMetaBackspaceEnd}
         onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
       />
       <ProbabilitySlider
@@ -291,6 +302,7 @@
             {splitItem}
             {backspaceItemAtStart}
             {deleteItem}
+            {deleteItemPreservingChildren}
             {moveItem}
             {moveItemWithinLevel}
             {outdentItem}

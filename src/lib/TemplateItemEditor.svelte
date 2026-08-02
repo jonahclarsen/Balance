@@ -42,6 +42,7 @@
     optionId: Id,
   ) => { focusOptionId: Id; focusOffset: number } | null = () => null
   export let deleteItem: (templateId: Id, itemId: Id) => void
+  export let deleteItemPreservingChildren: (templateId: Id, itemId: Id) => void = deleteItem
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (templateId: Id, itemId: Id, direction: MoveDirection) => void
   export let outdentItem: (templateId: Id, itemId: Id) => void
@@ -149,6 +150,23 @@
 
     if (index === 0) {
       deleteItem(templateId, item.id)
+    } else {
+      deleteOption(templateId, item.id, option.id)
+    }
+
+    await tick()
+
+    const nextInputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-template-option-text-input]'))
+    const target = nextInputs[Math.max(0, inputIndex - 1)] ?? nextInputs[0]
+    if (target) focusTextInput(target)
+  }
+
+  async function handleMetaBackspaceEnd(option: TemplateOption, index: number, current: HTMLDivElement) {
+    const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-template-option-text-input]'))
+    const inputIndex = inputs.indexOf(current)
+
+    if (index === 0) {
+      deleteItemPreservingChildren(templateId, item.id)
     } else {
       deleteOption(templateId, item.id, option.id)
     }
@@ -309,7 +327,7 @@
             onTabKey={handleTextTab}
             onBackspaceEmpty={(editor) => handleBackspaceEmpty(option, index, editor)}
             onBackspaceStart={(editor) => handleBackspaceStart(option, index, editor)}
-            onMetaBackspaceEnd={(editor) => handleBackspaceEmpty(option, index, editor)}
+            onMetaBackspaceEnd={(editor) => handleMetaBackspaceEnd(option, index, editor)}
             onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
           />
           <ProbabilitySlider
@@ -352,6 +370,7 @@
             {splitItem}
             {backspaceOptionAtStart}
             {deleteItem}
+            {deleteItemPreservingChildren}
             {moveItem}
             {moveItemWithinLevel}
             {outdentItem}

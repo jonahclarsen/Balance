@@ -40,6 +40,7 @@
     itemId: Id,
   ) => { focusItemId: Id; focusOffset: number } | null = () => null
   export let deleteItem: (planId: Id, itemId: Id) => void
+  export let deleteItemPreservingChildren: (planId: Id, itemId: Id) => void = deleteItem
   export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   // Only the side-by-side day comparison supplies this; elsewhere a drag that
   // leaves its own plan does nothing.
@@ -229,7 +230,16 @@
   }
 
   async function handleMetaBackspaceEnd(current: HTMLDivElement) {
-    await handleBackspaceEmpty(current)
+    const scope = planScopeFor(current)
+    const targets = Array.from(scope.querySelectorAll<HTMLDivElement>('[data-plan-text-focus-target]'))
+    const index = targets.indexOf(current)
+
+    deleteItemPreservingChildren(planId, item.id)
+    await tick()
+
+    const nextTargets = Array.from(scope.querySelectorAll<HTMLDivElement>('[data-plan-text-focus-target]'))
+    const target = nextTargets[Math.max(0, index - 1)] ?? nextTargets[0]
+    if (target) focusTextTarget(target)
   }
 
   function handleHorizontalBoundaryKey(direction: 'left' | 'right', current: HTMLDivElement) {
@@ -543,6 +553,7 @@
             {splitItem}
             {backspaceItemAtStart}
             {deleteItem}
+            {deleteItemPreservingChildren}
             {moveItem}
             {moveItemAcrossContainers}
             {moveItemWithinLevel}
