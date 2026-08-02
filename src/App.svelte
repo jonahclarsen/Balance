@@ -6,6 +6,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
+  import TemplateTabs from './lib/TemplateTabs.svelte'
   import ListTemplateItemEditor from './lib/ListTemplateItemEditor.svelte'
   import ListPanel from './lib/ListPanel.svelte'
   import OverlayModal from './lib/OverlayModal.svelte'
@@ -118,16 +119,6 @@
   // through this binding. The Lists-tab ListPanel handles its own keys directly.
   let overlayListPanel: ListPanel | null = null
   let wordCapUnlocked = false
-  let listTemplateDrag: {
-    templateId: Id
-    pointerId: number
-    startX: number
-    startY: number
-    dragging: boolean
-  } | null = null
-  let listTemplateDropTargetId = ''
-  let listTemplateDropPlacement: 'before' | 'after' = 'before'
-  let suppressListTemplateClickId = ''
   let selectedMetricId = ''
   let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
   let selectedListOverlayItemIdsByList: Record<Id, Id | null> = {}
@@ -816,89 +807,6 @@ return rows`
     const nextTemplate = templates[currentIndex + 1] ?? templates[currentIndex - 1]
     plannerStore.deleteTemplate(templateId)
     if (selectedTemplateId === templateId) selectedTemplateId = nextTemplate?.id ?? ''
-  }
-
-  function startListTemplateDrag(templateId: Id, event: PointerEvent) {
-    if (event.button !== 0) return
-    listTemplateDrag = {
-      templateId,
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      dragging: false,
-    }
-    ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
-  }
-
-  function continueListTemplateDrag(event: PointerEvent) {
-    if (!listTemplateDrag || listTemplateDrag.pointerId !== event.pointerId) return
-
-    if (!listTemplateDrag.dragging) {
-      const distance = Math.hypot(
-        event.clientX - listTemplateDrag.startX,
-        event.clientY - listTemplateDrag.startY,
-      )
-      if (distance < 5) return
-      listTemplateDrag = { ...listTemplateDrag, dragging: true }
-      suppressListTemplateClickId = listTemplateDrag.templateId
-    }
-
-    event.preventDefault()
-    const tabs = document.querySelector<HTMLElement>('.list-template-tabs')
-    if (tabs) {
-      const rect = tabs.getBoundingClientRect()
-      const edgeSize = Math.min(40, rect.width / 4)
-      if (event.clientX < rect.left + edgeSize) tabs.scrollLeft -= 12
-      else if (event.clientX > rect.right - edgeSize) tabs.scrollLeft += 12
-    }
-
-    const hovered = document.elementFromPoint(event.clientX, event.clientY)
-    const target = hovered instanceof Element
-      ? hovered.closest<HTMLElement>('[data-list-template-tab-id]')
-      : null
-    const targetId = target?.dataset.listTemplateTabId ?? ''
-    if (!target || !targetId || targetId === listTemplateDrag.templateId) {
-      listTemplateDropTargetId = ''
-      return
-    }
-
-    const targetRect = target.getBoundingClientRect()
-    listTemplateDropTargetId = targetId
-    listTemplateDropPlacement = event.clientX < targetRect.left + targetRect.width / 2 ? 'before' : 'after'
-  }
-
-  function finishListTemplateDrag(event: PointerEvent) {
-    if (!listTemplateDrag || listTemplateDrag.pointerId !== event.pointerId) return
-
-    const sourceId = listTemplateDrag.templateId
-    const wasDragging = listTemplateDrag.dragging
-    const targetId = listTemplateDropTargetId
-    const placement = listTemplateDropPlacement
-    listTemplateDrag = null
-    listTemplateDropTargetId = ''
-
-    if (!wasDragging) return
-    event.preventDefault()
-    event.stopPropagation()
-    if (targetId) plannerStore.moveListTemplate(sourceId, targetId, placement)
-
-    window.setTimeout(() => {
-      if (suppressListTemplateClickId === sourceId) suppressListTemplateClickId = ''
-    }, 0)
-  }
-
-  function cancelListTemplateDrag() {
-    listTemplateDrag = null
-    listTemplateDropTargetId = ''
-    suppressListTemplateClickId = ''
-  }
-
-  function selectListTemplateFromTab(templateId: Id) {
-    if (suppressListTemplateClickId === templateId) {
-      suppressListTemplateClickId = ''
-      return
-    }
-    selectedListTemplateId = templateId
   }
 
   async function selectAdjacentListTemplate(direction: -1 | 1) {
@@ -3515,21 +3423,16 @@ return rows`
 
       {#if templates.length > 0}
         <nav class="template-rail list-template-rail" aria-label="Select day template">
-          <div class="list-template-tabs">
-            {#each templates as template (template.id)}
-              <button
-                type="button"
-                class="rail-chip"
-                class:active={selectedTemplate?.id === template.id}
-                aria-current={selectedTemplate?.id === template.id}
-                data-day-template-tab-id={template.id}
-                on:click={() => selectDayTemplate(template.id)}
-              >
-                {template.name || 'Untitled day'}
-              </button>
-            {/each}
-            <button type="button" class="rail-chip dashed-edge" on:click={createDayTemplateAndSelect}>New day</button>
-          </div>
+          <TemplateTabs
+            {templates}
+            selectedId={selectedTemplate?.id ?? ''}
+            kind="day"
+            untitledLabel="Untitled day"
+            newLabel="New day"
+            onSelect={selectDayTemplate}
+            onCreate={createDayTemplateAndSelect}
+            onMove={plannerStore.moveTemplate}
+          />
         </nav>
       {/if}
 
@@ -3605,29 +3508,16 @@ return rows`
 
       {#if listTemplates.length > 0}
         <nav class="template-rail list-template-rail" aria-label="Select list template">
-          <div class="list-template-tabs">
-            {#each listTemplates as template (template.id)}
-              <button
-                type="button"
-                class="rail-chip list-template-tab"
-                class:active={selectedListTemplate?.id === template.id}
-                class:dragging={listTemplateDrag?.dragging && listTemplateDrag.templateId === template.id}
-                class:drop-before={listTemplateDropTargetId === template.id && listTemplateDropPlacement === 'before'}
-                class:drop-after={listTemplateDropTargetId === template.id && listTemplateDropPlacement === 'after'}
-                aria-current={selectedListTemplate?.id === template.id}
-                data-list-template-tab-id={template.id}
-                title="Drag to reorder list templates"
-                on:click={() => selectListTemplateFromTab(template.id)}
-                on:pointerdown={(event) => startListTemplateDrag(template.id, event)}
-                on:pointermove={continueListTemplateDrag}
-                on:pointerup={finishListTemplateDrag}
-                on:pointercancel={cancelListTemplateDrag}
-              >
-                {template.name || 'Untitled list'}
-              </button>
-            {/each}
-            <button type="button" class="rail-chip dashed-edge" on:click={createListTemplateAndSelect}>New list</button>
-          </div>
+          <TemplateTabs
+            templates={listTemplates}
+            selectedId={selectedListTemplate?.id ?? ''}
+            kind="list"
+            untitledLabel="Untitled list"
+            newLabel="New list"
+            onSelect={(templateId) => (selectedListTemplateId = templateId)}
+            onCreate={createListTemplateAndSelect}
+            onMove={plannerStore.moveListTemplate}
+          />
 
           {#if selectedListTemplate}
             <div class="word-cap-bar">

@@ -1976,6 +1976,17 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             .map_err(|error| error.to_string())?;
             Ok(())
         }
+        "move_template" => move_template_row(
+            tx,
+            required_string(payload, "sourceId")?,
+            required_string(payload, "targetId")?,
+            required_string(payload, "placement")?,
+        ),
+        "move_template_to_position" => move_template_to_position_row(
+            tx,
+            required_string(payload, "templateId")?,
+            required_i64(payload, "position")?,
+        ),
         "add_template_item" => insert_template_item(
             tx,
             required_string(payload, "templateId")?,
@@ -2394,6 +2405,12 @@ fn build_domain_undo_operation(
                 json!({ "templateId": template_id, "name": name }),
                 &updated_at,
             )))
+        }
+        "move_template" => {
+            build_move_template_undo(connection, required_string(payload, "sourceId")?)
+        }
+        "move_template_to_position" => {
+            build_move_template_undo(connection, required_string(payload, "templateId")?)
         }
         "add_template_item" => Ok(Some(storage_operation(
             "delete_template_item",
@@ -3564,6 +3581,66 @@ fn insert_template(connection: &Connection, template: &Value, position: i64) -> 
     }
 
     Ok(())
+}
+
+fn move_template_row(
+    connection: &Connection,
+    source_id: &str,
+    target_id: &str,
+    placement: &str,
+) -> Result<(), String> {
+    if source_id == target_id {
+        return Ok(());
+    }
+
+    let mut ids = template_ids(connection)?;
+    let Some(source_index) = ids.iter().position(|id| id == source_id) else {
+        return Ok(());
+    };
+    if !ids.iter().any(|id| id == target_id) {
+        return Ok(());
+    }
+
+    let source = ids.remove(source_index);
+    let target_index = ids
+        .iter()
+        .position(|id| id == target_id)
+        .expect("target checked before source removal");
+    let insertion_index = match placement {
+        "before" => target_index,
+        "after" => target_index + 1,
+        _ => return Err(format!("Unsupported template placement: {placement}")),
+    };
+    ids.insert(insertion_index, source);
+    rewrite_template_positions(connection, &ids)
+}
+
+fn move_template_to_position_row(
+    connection: &Connection,
+    template_id: &str,
+    position: i64,
+) -> Result<(), String> {
+    let mut ids = template_ids(connection)?;
+    let Some(source_index) = ids.iter().position(|id| id == template_id) else {
+        return Ok(());
+    };
+
+    let source = ids.remove(source_index);
+    let insertion_index = usize::try_from(position).unwrap_or(0).min(ids.len());
+    ids.insert(insertion_index, source);
+    rewrite_template_positions(connection, &ids)
+}
+
+fn template_ids(connection: &Connection) -> Result<Vec<String>, String> {
+    let mut statement = connection
+        .prepare("select id from templates order by position, id")
+        .map_err(|error| error.to_string())?;
+    let ids = statement
+        .query_map([], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    Ok(ids)
 }
 
 fn insert_template_item(
@@ -5196,6 +5273,19 @@ fn rewrite_plan_item_positions(connection: &Connection, ids: &[String]) -> Resul
     Ok(())
 }
 
+fn rewrite_template_positions(connection: &Connection, ids: &[String]) -> Result<(), String> {
+    for (position, id) in ids.iter().enumerate() {
+        connection
+            .execute(
+                "update templates set position = ?1 where id = ?2",
+                params![position as i64, id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    Ok(())
+}
+
 fn rewrite_template_item_positions(connection: &Connection, ids: &[String]) -> Result<(), String> {
     for (position, id) in ids.iter().enumerate() {
         connection
@@ -5401,6 +5491,27 @@ fn read_template_snapshot(
             "items": read_template_items(connection, template_id, None)?,
         }),
     )))
+}
+
+fn build_move_template_undo(
+    connection: &Connection,
+    template_id: &str,
+) -> Result<Option<Value>, String> {
+    let position = connection
+        .query_row(
+            "select position from templates where id = ?1",
+            params![template_id],
+            |row| row.get::<_, i64>(0),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?;
+
+    Ok(position.map(|position| {
+        storage_operation(
+            "move_template_to_position",
+            json!({ "templateId": template_id, "position": position }),
+        )
+    }))
 }
 
 fn read_template_item_snapshot(
@@ -7443,6 +7554,88 @@ mod tests {
         assert_eq!(undone_delete["templates"].as_array().unwrap().len(), 2);
         assert_eq!(undone_delete["templates"][0]["id"], "template_default");
         assert_eq!(undone_delete["templates"][1]["id"], "template_weekend");
+    }
+
+    #[test]
+    fn day_templates_can_be_reordered_and_undone() {
+        let database = TestDatabase::new("day-template-reorder");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Template reorder");
+        state["templates"].as_array_mut().unwrap().extend([
+            json!({
+                "id": "template_weekday",
+                "name": "Weekday",
+                "createdAt": "2026-05-21T00:01:00Z",
+                "updatedAt": "2026-05-21T00:01:00Z",
+                "items": []
+            }),
+            json!({
+                "id": "template_weekend",
+                "name": "Weekend",
+                "createdAt": "2026-05-21T00:02:00Z",
+                "updatedAt": "2026-05-21T00:02:00Z",
+                "items": []
+            }),
+        ]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "move_template",
+                "timestamp": "2026-05-21T00:03:00Z",
+                "payload": {
+                    "sourceId": "template_default",
+                    "targetId": "template_weekend",
+                    "placement": "after"
+                }
+            }),
+        )
+        .unwrap();
+
+        let reordered = read_app_state_from_database(&connection).unwrap().unwrap();
+        let reordered_ids = reordered["templates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|template| template["id"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            reordered_ids,
+            ["template_weekday", "template_weekend", "template_default"]
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        let undone_ids = undone["templates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|template| template["id"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            undone_ids,
+            ["template_default", "template_weekday", "template_weekend"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        let redone_ids = redone["templates"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|template| template["id"].as_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            redone_ids,
+            ["template_weekday", "template_weekend", "template_default"]
+        );
     }
 
     #[test]

@@ -339,6 +339,24 @@ async function flushOperationsNow(): Promise<void> {
   }
 }
 
+function moveById<T extends { id: Id }>(
+  items: T[],
+  sourceId: Id,
+  targetId: Id,
+  placement: 'before' | 'after',
+): T[] {
+  const sourceIndex = items.findIndex((item) => item.id === sourceId)
+  const targetIndex = items.findIndex((item) => item.id === targetId)
+  if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) return items
+
+  const moved = [...items]
+  const [source] = moved.splice(sourceIndex, 1)
+  const remainingTargetIndex = moved.findIndex((item) => item.id === targetId)
+  moved.splice(remainingTargetIndex + (placement === 'after' ? 1 : 0), 0, source)
+
+  return moved.every((item, index) => item === items[index]) ? items : moved
+}
+
 function createPlannerStore() {
   const store = writable<AppState>(readInitialState())
   store.subscribe((state) => {
@@ -855,6 +873,15 @@ function createPlannerStore() {
       })
     },
 
+    moveTemplate(sourceId: Id, targetId: Id, placement: 'before' | 'after') {
+      if (sourceId === targetId) return
+
+      commit('move_template', { sourceId, targetId, placement }, (state) => {
+        const templates = moveById(state.templates, sourceId, targetId, placement)
+        return templates === state.templates ? state : { ...state, templates }
+      })
+    },
+
     addRootTemplateItem(templateId: Id) {
       const item = createTemplateItem()
       commit('add_template_item', { templateId, parentId: null, item }, (state) =>
@@ -1142,17 +1169,8 @@ function createPlannerStore() {
       if (sourceId === targetId) return
 
       commit('move_list_template', { sourceId, targetId, placement }, (state) => {
-        const sourceIndex = state.listTemplates.findIndex((template) => template.id === sourceId)
-        const targetIndex = state.listTemplates.findIndex((template) => template.id === targetId)
-        if (sourceIndex === -1 || targetIndex === -1) return state
-
-        const listTemplates = [...state.listTemplates]
-        const [source] = listTemplates.splice(sourceIndex, 1)
-        const remainingTargetIndex = listTemplates.findIndex((template) => template.id === targetId)
-        const insertionIndex = remainingTargetIndex + (placement === 'after' ? 1 : 0)
-        listTemplates.splice(insertionIndex, 0, source)
-
-        if (listTemplates.every((template, index) => template === state.listTemplates[index])) return state
+        const listTemplates = moveById(state.listTemplates, sourceId, targetId, placement)
+        if (listTemplates === state.listTemplates) return state
         return { ...state, listTemplates }
       })
     },

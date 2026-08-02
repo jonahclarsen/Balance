@@ -2623,21 +2623,21 @@ nav button.active {
   -webkit-overflow-scrolling: touch;
 }
 
-.list-template-tab {
+.template-tab {
   cursor: grab;
   user-select: none;
 }
 
-.list-template-tab.dragging {
+.template-tab.dragging {
   cursor: grabbing;
   opacity: 0.55;
 }
 
-.list-template-tab.drop-before {
+.template-tab.drop-before {
   box-shadow: inset 3px 0 0 var(--accent);
 }
 
-.list-template-tab.drop-after {
+.template-tab.drop-after {
   box-shadow: inset -3px 0 0 var(--accent);
 }
 
