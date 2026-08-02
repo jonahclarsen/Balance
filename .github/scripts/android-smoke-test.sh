@@ -59,6 +59,30 @@ adb shell pm path "$PKG"
 launch
 assert_running "first-launch" logcat.txt
 
+# The debug app runs an on-device widget self-test after the encrypted database
+# opens. It loads today's native snapshot through SQLCipher + Android Keystore,
+# verifies both providers' home/keyguard metadata, and inflates both RemoteViews.
+WIDGET_OK=0
+for _ in $(seq 1 10); do
+  adb logcat -d > widget-log.txt 2>/dev/null || true
+  if grep -q "BALANCE_WIDGET_E2E: OK home+keyguard native-snapshot" widget-log.txt; then
+    WIDGET_OK=1
+    break
+  fi
+  if grep -q "BALANCE_WIDGET_E2E: FAIL" widget-log.txt; then
+    echo "[widgets] Android widget E2E FAILED on device:"
+    grep -A 20 "BALANCE_WIDGET_E2E: FAIL" widget-log.txt | head -40
+    exit 1
+  fi
+  sleep 2
+done
+if [ "$WIDGET_OK" != 1 ]; then
+  echo "[widgets] Widget E2E marker never appeared."
+  grep -iE "BalanceWidgets|AppWidget|nativeSnapshot|UnsatisfiedLink" widget-log.txt | head -40 || true
+  exit 1
+fi
+echo "[widgets] home + keyguard providers loaded encrypted data and inflated successfully."
+
 # The frontend schedules both WorkManager's 15-minute periodic pass and an
 # immediate network-constrained pass on launch. Confirm Android registered the
 # generated worker service; the job itself safely no-ops until relay sync is

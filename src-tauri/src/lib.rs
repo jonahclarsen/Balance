@@ -14,7 +14,11 @@ use serde::Serialize;
 use serde_json::{json, Map, Value};
 use tauri::Manager;
 
+#[cfg(target_os = "android")]
+mod android_widget;
 mod sync;
+#[cfg(any(test, target_os = "android"))]
+mod widget;
 
 const APP_DATABASE_FILE: &str = "balance.sqlite3";
 const APP_DATA_DIR: &str = "Balance";
