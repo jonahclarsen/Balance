@@ -3393,7 +3393,12 @@ return rows`
           >
             <header class="page-header">
               <div class="day-pane-heading">
-                <p class="eyebrow">{pane.key === 'compare' ? 'Compared day' : 'Daily plan'}</p>
+                <p class="eyebrow day-pane-context">
+                  <span>{pane.key === 'compare' ? 'Compared day' : 'Daily plan'}</span>
+                  {#if pane.date === todayISO()}
+                    <span class="current-day-indicator">Today</span>
+                  {/if}
+                </p>
                 <h2>
                   {plan?.title ?? formatPlanTitle(pane.date)}
                   {#if editingReminderPlanId && plan && editingReminderPlanId === plan.id}
