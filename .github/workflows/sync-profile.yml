@@ -1,0 +1,62 @@
+name: Profile sync empty polls
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+    paths:
+      - ".github/workflows/sync-profile.yml"
+      - "package.json"
+      - "relay-worker/**"
+      - "scripts/profile-empty-relay-poll.mjs"
+      - "src/lib/syncScheduler.ts"
+  pull_request:
+    paths:
+      - ".github/workflows/sync-profile.yml"
+      - "package.json"
+      - "relay-worker/**"
+      - "scripts/profile-empty-relay-poll.mjs"
+      - "src/lib/syncScheduler.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  empty-poll:
+    name: Empty manifest poll
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Test relay contract
+        run: node --test scripts/relay-server.test.mjs relay-worker/src/index.test.js
+
+      - name: Profile empty authenticated polls
+        run: |
+          node scripts/profile-empty-relay-poll.mjs \
+            --samples 20000 \
+            --json empty-poll-profile.json | tee empty-poll-profile.txt
+          {
+            echo '## Empty relay poll profile'
+            echo
+            echo '```json'
+            cat empty-poll-profile.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload profile results
+        uses: actions/upload-artifact@v7
+        with:
+          name: empty-poll-profile
+          path: |
+            empty-poll-profile.json
+            empty-poll-profile.txt

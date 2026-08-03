@@ -8,7 +8,10 @@ import {
 } from './store'
 
 const EDIT_DEBOUNCE_MS = 2_000
-const SAFETY_POLL_MS = 5 * 60 * 1_000
+const ACTIVE_CHANGE_POLL_MS = 2_000
+const ACTIVE_CHANGE_WINDOW_MS = 60_000
+const QUIET_VISIBLE_POLL_MS = 8_000
+const BACKGROUND_POLL_MS = 5 * 60 * 1_000
 const MAX_RETRY_MS = 5 * 60 * 1_000
 
 export type AutomaticSyncStatus = {
@@ -28,8 +31,30 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
 let running: Promise<SyncPassResult | null> | null = null
 let queuedReason: string | null = null
 let editTimer: ReturnType<typeof setTimeout> | null = null
+let pollTimer: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let retryMs = 5_000
+let lastChangeAt = 0
+let automaticSyncStarted = false
+
+function pollDelay(): number {
+  if (document.visibilityState !== 'visible') return BACKGROUND_POLL_MS
+  if (Date.now() - lastChangeAt < ACTIVE_CHANGE_WINDOW_MS) return ACTIVE_CHANGE_POLL_MS
+  return QUIET_VISIBLE_POLL_MS
+}
+
+function schedulePoll(): void {
+  if (!automaticSyncStarted) return
+  if (pollTimer) clearTimeout(pollTimer)
+  pollTimer = setTimeout(() => {
+    pollTimer = null
+    void requestSync('poll').finally(schedulePoll)
+  }, pollDelay())
+}
+
+function hasActualChanges(result: SyncPassResult): boolean {
+  return result.pulledOperations > 0 || result.pushedOperations > 0 || result.stateChanged
+}
 
 async function configured(): Promise<boolean> {
   const settings = await getSyncSettings()
@@ -59,6 +84,10 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
     try {
       const result = await syncRelayOnce(reason)
       if (result.stateChanged) await plannerStore.reloadFromBackend()
+      if (hasActualChanges(result)) {
+        lastChangeAt = Date.now()
+        schedulePoll()
+      }
       retryMs = 5_000
       if (retryTimer) clearTimeout(retryTimer)
       retryTimer = null
@@ -80,6 +109,10 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
 }
 
 export function startAutomaticSync(): () => void {
+  automaticSyncStarted = true
+  lastChangeAt = 0
+  schedulePoll()
+
   const triggerEdit = () => {
     if (editTimer) clearTimeout(editTimer)
     editTimer = setTimeout(() => {
@@ -90,18 +123,19 @@ export function startAutomaticSync(): () => void {
   const onOnline = () => void requestSync('online')
   const onFocus = () => void requestSync('focus')
   const onVisibility = () => {
+    schedulePoll()
     if (document.visibilityState === 'visible') void requestSync('resume')
   }
   const stopPersisted = onPersistedOperation(triggerEdit)
-  const poll = setInterval(() => void requestSync('safety-poll'), SAFETY_POLL_MS)
   window.addEventListener('online', onOnline)
   window.addEventListener('focus', onFocus)
   document.addEventListener('visibilitychange', onVisibility)
 
   return () => {
+    automaticSyncStarted = false
     stopPersisted()
-    clearInterval(poll)
     if (editTimer) clearTimeout(editTimer)
+    if (pollTimer) clearTimeout(pollTimer)
     if (retryTimer) clearTimeout(retryTimer)
     window.removeEventListener('online', onOnline)
     window.removeEventListener('focus', onFocus)
