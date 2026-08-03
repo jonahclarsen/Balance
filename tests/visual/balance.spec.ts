@@ -847,6 +847,56 @@ test('adding plan time starts with a shallower timed item and after a same-level
     })
 })
 
+test('keyboard shortcuts add, adjust, and remove time while editing a plan item', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Pick the first useful task')
+
+  await page.keyboard.press('t')
+  await expect.poll(async () => activeInputValue(page)).toBe('tPick the first useful task')
+  await page.keyboard.press('Backspace')
+  await expect.poll(async () => activeInputValue(page)).toBe('Pick the first useful task')
+
+  await page.keyboard.press('Alt+Shift+t')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+  await expect.poll(async () => activeInputValue(page)).toBe('Pick the first useful task')
+
+  await page.keyboard.press('Alt+[')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([525, 600])
+
+  await page.keyboard.press('Alt+Shift+]')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([525, 615])
+
+  await page.keyboard.press('Alt+]')
+  await page.keyboard.press('Alt+Shift+[')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+
+  await page.keyboard.press('Alt+Shift+t')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([null, null])
+
+  await page.keyboard.press('Alt+/')
+  const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+  await expect(shortcuts.getByText('Add / remove task time', { exact: true })).toBeVisible()
+  await expect(shortcuts.getByText('Move task start earlier / later', { exact: true })).toBeVisible()
+  await expect(shortcuts.getByText('Move task end earlier / later', { exact: true })).toBeVisible()
+})
+
+test('keyboard time shortcuts also work while editing day-template items', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+
+  await focusTemplateOptionByValue(page, 'Pick the first useful task')
+  await page.keyboard.press('Alt+Shift+t')
+  await page.keyboard.press('Alt+Shift+]')
+
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 615])
+})
+
 test('adding time to deeper descendants reuses the previous timed task start', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {
@@ -3225,6 +3275,28 @@ async function planItemTimeRange(page: import('@playwright/test').Page, text: st
 
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return visit(state.plans?.[0]?.items ?? [])
+  }, text)
+}
+
+async function templateItemTimeRange(page: import('@playwright/test').Page, text: string) {
+  return page.evaluate((expectedText) => {
+    type Item = {
+      options?: Array<{ text: string }>
+      startMinutes: number | null
+      endMinutes: number | null
+      children: Item[]
+    }
+    const visit = (items: Item[]): [number | null, number | null] | null => {
+      for (const item of items) {
+        if (item.options?.[0]?.text === expectedText) return [item.startMinutes, item.endMinutes]
+        const match = visit(item.children)
+        if (match) return match
+      }
+      return null
+    }
+
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return visit(state.templates?.[0]?.items ?? [])
   }, text)
 }
 

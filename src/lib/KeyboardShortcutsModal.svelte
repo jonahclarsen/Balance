@@ -72,6 +72,9 @@
       shortcuts: [
         { keys: ['mod', 'D'], label: 'Toggle done' },
         { keys: ['E'], label: 'Edit selected list item (overlay)' },
+        { keys: ['alt', 'shift', 'T'], label: 'Add / remove task time' },
+        { keys: ['alt', '['], label: 'Move task start earlier / later', alt: ['alt', ']'] },
+        { keys: ['alt', 'shift', '['], label: 'Move task end earlier / later', alt: ['alt', 'shift', ']'] },
         { keys: ['alt', 'up'], label: 'Move item up / down', alt: ['alt', 'down'] },
         { keys: ['tab'], label: 'Indent', alt: ['shift', 'tab'] },
         { keys: ['mod', 'C'], label: 'Copy items' },

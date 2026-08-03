@@ -39,7 +39,7 @@
   import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
-  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, escapeHTML, expectedWordCount, formatPlanTitle, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, MAX_TIMELINE_MINUTES, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { requestSync, startAutomaticSync } from './lib/syncScheduler'
 
@@ -47,6 +47,8 @@
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
   const PASTE_REVIEW_THRESHOLD = 4
   const PASTE_REVIEW_COOLDOWN_MS = 2000
+  const TIME_KEYBOARD_STEP_MINUTES = 15
+  const TIME_KEYBOARD_MERGE_WINDOW_MS = 1500
 
   type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'metrics' | 'goals' | 'settings'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
@@ -1819,9 +1821,69 @@ return rows`
       return
     }
 
+    if (
+      event.altKey &&
+      !primaryModifier &&
+      event.shiftKey &&
+      event.code === 'KeyT'
+    ) {
+      const itemIds = activeTimeTargetIds()
+      if (itemIds.length === 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      if (!event.repeat) toggleItemTimes(itemIds)
+      return
+    }
+
+    if (
+      event.altKey &&
+      !primaryModifier &&
+      (event.code === 'BracketLeft' || event.code === 'BracketRight')
+    ) {
+      const itemIds = activeTimeTargetIds()
+      if (itemIds.length === 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      adjustItemTimes(
+        itemIds,
+        event.shiftKey ? 'end' : 'start',
+        event.code === 'BracketLeft' ? -TIME_KEYBOARD_STEP_MINUTES : TIME_KEYBOARD_STEP_MINUTES,
+      )
+      return
+    }
+
     if (event.key === 'Escape' && selectedItemIds.length > 0) {
       event.preventDefault()
       clearItemSelection()
+      return
+    }
+
+    if (
+      selectedItemIds.length > 0 &&
+      !event.altKey &&
+      !primaryModifier &&
+      !event.shiftKey &&
+      event.code === 'KeyT'
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!event.repeat) toggleItemTimes(selectedItemIds)
+      return
+    }
+
+    if (
+      selectedItemIds.length > 0 &&
+      !event.altKey &&
+      !primaryModifier &&
+      (event.code === 'BracketLeft' || event.code === 'BracketRight')
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      adjustItemTimes(
+        selectedItemIds,
+        event.shiftKey ? 'end' : 'start',
+        event.code === 'BracketLeft' ? -TIME_KEYBOARD_STEP_MINUTES : TIME_KEYBOARD_STEP_MINUTES,
+      )
       return
     }
 
@@ -1981,6 +2043,92 @@ return rows`
     }
 
     return null
+  }
+
+  function collectSelectedTimeItems<T extends { id: Id; children: T[] }>(items: T[], selectedIds: Set<Id>): T[] {
+    return items.flatMap((item) => [
+      ...(selectedIds.has(item.id) ? [item] : []),
+      ...collectSelectedTimeItems(item.children, selectedIds),
+    ])
+  }
+
+  function timeItemsForIds(itemIds: Id[]): Array<PlanItem | TemplateItem> {
+    const surface = activeItemSurface()
+    const selectedIds = new Set(itemIds)
+
+    if (surface === 'plan') return collectSelectedTimeItems(focusedPlan?.items ?? [], selectedIds)
+    if (surface === 'day-template') return collectSelectedTimeItems(selectedTemplate?.items ?? [], selectedIds)
+
+    return []
+  }
+
+  function activeTimeTargetIds(): Id[] {
+    const surface = activeItemSurface()
+    if (surface !== 'plan' && surface !== 'day-template') return []
+    if (selectedItemIds.length > 0) return selectedItemIds
+
+    const focusedItemId = activeFocusedItemId()
+    return focusedItemId ? [focusedItemId] : []
+  }
+
+  function patchSelectedTimeItem(
+    itemId: Id,
+    patch: { startMinutes: number | null; endMinutes: number | null },
+    mergeKey?: string,
+  ) {
+    const surface = activeItemSurface()
+    const containerId = activeItemContainerId()
+    if (!containerId) return
+
+    const options = mergeKey
+      ? { mergeKey, mergeWindowMs: TIME_KEYBOARD_MERGE_WINDOW_MS }
+      : undefined
+
+    if (surface === 'plan') plannerStore.patchPlanItem(containerId, itemId, patch, options)
+    else if (surface === 'day-template') plannerStore.patchTemplateItem(containerId, itemId, patch, options)
+  }
+
+  function toggleItemTimes(itemIds: Id[]) {
+    const surface = activeItemSurface()
+    const items = timeItemsForIds(itemIds)
+    if ((surface !== 'plan' && surface !== 'day-template') || items.length === 0) return
+
+    const removeTimes = items.every((item) => item.startMinutes !== null && item.endMinutes !== null)
+
+    for (const item of items) {
+      if (removeTimes) {
+        patchSelectedTimeItem(item.id, { startMinutes: null, endMinutes: null })
+      } else if (item.startMinutes === null || item.endMinutes === null) {
+        const range = surface === 'plan'
+          ? defaultPlanItemTimeRange(focusedPlan?.items ?? [], item.id)
+          : defaultTemplateItemTimeRange(selectedTemplate?.items ?? [], item.id)
+        patchSelectedTimeItem(item.id, range)
+      }
+    }
+  }
+
+  function adjustItemTimes(itemIds: Id[], endpoint: 'start' | 'end', delta: number) {
+    const surface = activeItemSurface()
+    if (surface !== 'plan' && surface !== 'day-template') return
+
+    for (const item of timeItemsForIds(itemIds)) {
+      if (item.startMinutes === null || item.endMinutes === null) continue
+
+      const startMinutes = endpoint === 'start'
+        ? Math.max(0, Math.min(item.startMinutes + delta, item.endMinutes - TIME_KEYBOARD_STEP_MINUTES))
+        : item.startMinutes
+      const endMinutes = endpoint === 'end'
+        ? Math.min(MAX_TIMELINE_MINUTES, Math.max(item.endMinutes + delta, item.startMinutes + TIME_KEYBOARD_STEP_MINUTES))
+        : item.endMinutes
+
+      if (startMinutes === item.startMinutes && endMinutes === item.endMinutes) continue
+
+      patchSelectedTimeItem(
+        item.id,
+        { startMinutes, endMinutes },
+        `${surface}-item-time-keyboard:${activeItemContainerId()}:${item.id}:${endpoint}`,
+      )
+    }
   }
 
   // With the day comparison open a focused row can belong to either pane, so
