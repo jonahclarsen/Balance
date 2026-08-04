@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 use std::fs;
+#[cfg(target_os = "android")]
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, MutexGuard};
@@ -353,6 +355,57 @@ async fn confirm_recovery_key(app: tauri::AppHandle) -> Result<(), String> {
     run_database_task(move || {
         let connection = open_database(&app)?;
         confirm_recovery_key_in_database(&connection)
+    })
+    .await
+}
+
+/// Re-wrap an existing Android database key after the OS Keystore alias became
+/// unavailable. The candidate must first decrypt and verify the intact SQLCipher
+/// database; a wrong value never touches the stored wrapped-key file.
+#[tauri::command]
+async fn recover_database_with_key(
+    app: tauri::AppHandle,
+    recovery_key: String,
+) -> Result<(), String> {
+    #[cfg(not(target_os = "android"))]
+    {
+        let _ = (app, recovery_key);
+        return Err("Recovery-key rewrapping is only needed on Android.".to_string());
+    }
+
+    #[cfg(target_os = "android")]
+    run_database_task(move || {
+        let database_path = app_database_path(&app)?;
+        if !database_path.exists() {
+            return Err(
+                "The encrypted Balance database is missing from this installation.".to_string(),
+            );
+        }
+        let recovery_key = recovery_key.trim().to_string();
+        if recovery_key.is_empty() {
+            return Err("Enter the recovery key you saved when Balance was set up.".to_string());
+        }
+
+        let connection = open_database_at(&database_path, &recovery_key)
+            .map_err(|_| "That recovery key does not unlock this database.".to_string())?;
+        if read_app_state_from_database(&connection)?.is_none() {
+            return Err("The database opened but contains no Balance app state.".to_string());
+        }
+        drop(connection);
+
+        let wrapped = android_keystore::wrap_key(recovery_key.as_bytes())?;
+        let verified = android_keystore::unwrap_key(&wrapped)?;
+        if verified != recovery_key.as_bytes() {
+            return Err("Android Keystore could not verify the replacement wrapper.".to_string());
+        }
+
+        let key_path = recovery_key_path(&database_path);
+        let backup_path = key_path.with_extension("enc.previous");
+        if key_path.exists() {
+            fs::copy(&key_path, &backup_path)
+                .map_err(|error| format!("Could not preserve the previous wrapped key: {error}"))?;
+        }
+        write_android_recovery_key(&key_path, &wrapped)
     })
     .await
 }
@@ -6180,7 +6233,29 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
 
     match fs::read(&key_path) {
         Ok(blob) => {
-            let plaintext = android_keystore::unwrap_key(&blob)?;
+            // Android Keystore can briefly be unavailable while the device is
+            // finishing an unlock or the provider process is restarting. A
+            // transient failure must not make the intact database look empty.
+            let mut last_error = None;
+            let mut plaintext = None;
+            for attempt in 0..3 {
+                match android_keystore::unwrap_key(&blob) {
+                    Ok(value) => {
+                        plaintext = Some(value);
+                        break;
+                    }
+                    Err(error) => {
+                        last_error = Some(error);
+                        if attempt < 2 {
+                            std::thread::sleep(Duration::from_millis(75 * (attempt + 1)));
+                        }
+                    }
+                }
+            }
+            let plaintext = plaintext.ok_or_else(|| {
+                last_error
+                    .unwrap_or_else(|| "Android Keystore did not return a recovery key".into())
+            })?;
             let recovery_key = String::from_utf8(plaintext)
                 .map_err(|error| error.to_string())?
                 .trim()
@@ -6197,7 +6272,7 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
             if let Some(parent) = key_path.parent() {
                 fs::create_dir_all(parent).map_err(|error| error.to_string())?;
             }
-            fs::write(&key_path, &blob).map_err(|error| error.to_string())?;
+            write_android_recovery_key(&key_path, &blob)?;
             Ok(recovery_key)
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -6205,6 +6280,37 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
         }
         Err(error) => Err(error.to_string()),
     }
+}
+
+#[cfg(target_os = "android")]
+fn write_android_recovery_key(key_path: &Path, blob: &[u8]) -> Result<(), String> {
+    let mut nonce = [0_u8; 4];
+    OsRng.fill_bytes(&mut nonce);
+    let temp_path = key_path.with_extension(format!(
+        "enc.tmp-{}-{}",
+        current_timestamp_ms(),
+        nonce
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    ));
+
+    let result = (|| {
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&temp_path)
+            .map_err(|error| error.to_string())?;
+        file.write_all(blob).map_err(|error| error.to_string())?;
+        file.sync_all().map_err(|error| error.to_string())?;
+        drop(file);
+        fs::rename(&temp_path, key_path).map_err(|error| error.to_string())
+    })();
+
+    if result.is_err() {
+        let _ = fs::remove_file(&temp_path);
+    }
+    result
 }
 
 #[cfg(target_os = "android")]
@@ -6451,14 +6557,29 @@ mod android_keystore {
             .attach_current_thread()
             .map_err(|error| error.to_string())?;
         let result = f(&mut guard);
-        // Leave no pending Java exception behind when we return to Rust.
-        if guard.exception_check().unwrap_or(false) {
-            if result.is_err() {
-                let _ = guard.exception_describe();
-            }
-            let _ = guard.exception_clear();
+        let exception = take_pending_exception(&mut guard);
+        match (result, exception) {
+            (Err(error), Some(exception)) => Err(format!("{error}: {exception}")),
+            (Ok(_), Some(exception)) => Err(format!("Android Keystore exception: {exception}")),
+            (result, None) => result,
         }
-        result
+    }
+
+    fn take_pending_exception(env: &mut JNIEnv) -> Option<String> {
+        if !env.exception_check().ok()? {
+            return None;
+        }
+        let throwable = env.exception_occurred().ok()?;
+        let _ = env.exception_clear();
+        let text = env
+            .call_method(&throwable, "toString", "()Ljava/lang/String;", &[])
+            .and_then(|value| value.l())
+            .ok()
+            .and_then(|value| env.get_string(&JString::from(value)).ok().map(Into::into));
+        if env.exception_check().unwrap_or(false) {
+            let _ = env.exception_clear();
+        }
+        text
     }
 
     fn encrypt(env: &mut JNIEnv, plaintext: &[u8]) -> Result<Vec<u8>, jni::errors::Error> {
@@ -6491,7 +6612,9 @@ mod android_keystore {
         iv: &[u8],
         ciphertext: &[u8],
     ) -> Result<Vec<u8>, jni::errors::Error> {
-        let key = get_or_create_key(env)?;
+        // Decryption must never create a replacement alias. A newly generated
+        // key cannot open the existing blob and hides the real recovery issue.
+        let key = get_existing_key(env)?;
         let cipher = new_cipher(env)?;
 
         let iv_arr = env.byte_array_from_slice(iv)?;
@@ -6616,6 +6739,34 @@ mod android_keystore {
         )?;
         env.call_method(&generator, "generateKey", "()Ljavax/crypto/SecretKey;", &[])?
             .l()
+    }
+
+    fn get_existing_key<'local>(
+        env: &mut JNIEnv<'local>,
+    ) -> Result<JObject<'local>, jni::errors::Error> {
+        let alias = env.new_string(KEYSTORE_ALIAS)?;
+        let provider = env.new_string(KEYSTORE_PROVIDER)?;
+        let key_store = env
+            .call_static_method(
+                "java/security/KeyStore",
+                "getInstance",
+                "(Ljava/lang/String;)Ljava/security/KeyStore;",
+                &[(&provider).into()],
+            )?
+            .l()?;
+        env.call_method(
+            &key_store,
+            "load",
+            "(Ljava/security/KeyStore$LoadStoreParameter;)V",
+            &[(&JObject::null()).into()],
+        )?;
+        env.call_method(
+            &key_store,
+            "getKey",
+            "(Ljava/lang/String;[C)Ljava/security/Key;",
+            &[(&alias).into(), (&JObject::null()).into()],
+        )?
+        .l()
     }
 
     fn string_array<'local>(
@@ -7071,6 +7222,7 @@ pub fn run() {
             restore_recovery_entry,
             get_recovery_key_status,
             confirm_recovery_key,
+            recover_database_with_key,
             build_info,
             save_export_file,
             get_export_settings,

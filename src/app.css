@@ -1183,6 +1183,40 @@ nav button.active {
   flex: 0 0 auto;
 }
 
+.database-load-failure-backdrop {
+  z-index: 200;
+}
+
+.database-load-error {
+  padding: 12px;
+  border: 1px solid var(--danger);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 8%, var(--paper-strong));
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.database-key-recovery {
+  display: grid;
+  gap: 10px;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.database-key-recovery label {
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.database-recovery-status {
+  margin: 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+}
+
 .list-progress {
   position: relative;
   overflow: hidden;

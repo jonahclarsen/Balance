@@ -205,6 +205,7 @@ let lastOperationMergeUpdatedAt = 0
 const persistedOperationListeners = new Set<() => void>()
 
 export const persistenceError = writable('')
+export const databaseLoadError = writable('')
 
 export function onPersistedOperation(listener: () => void): () => void {
   persistedOperationListeners.add(listener)
@@ -250,8 +251,11 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
     } else {
       await invoke('initialize_app_state', { stateJson: JSON.stringify(get(store)) })
     }
+    databaseLoadError.set('')
   } catch (error) {
     if (isTauri()) {
+      const message = error instanceof Error ? error.message : String(error)
+      databaseLoadError.set(message)
       console.error('Could not load encrypted Balance app state', error)
     } else {
       persistenceTarget = 'localStorage'
@@ -1970,6 +1974,11 @@ export async function getRecoveryKeyStatus(): Promise<RecoveryKeyStatus | null> 
 export async function confirmRecoveryKey(): Promise<void> {
   if (!isTauri()) return
   await invoke('confirm_recovery_key')
+}
+
+export async function recoverDatabaseWithKey(recoveryKey: string): Promise<void> {
+  if (!isTauri()) return
+  await invoke('recover_database_with_key', { recoveryKey })
 }
 
 export async function listRecoveryEntries(): Promise<RecoveryEntry[]> {

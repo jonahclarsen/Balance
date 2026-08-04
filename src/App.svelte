@@ -24,6 +24,7 @@
     compactDatabase,
     completeDatabaseMaintenanceStartup,
     confirmRecoveryKey,
+    databaseLoadError,
     exportHTML,
     exportJSON,
     getDatabaseMaintenanceStatus,
@@ -33,6 +34,7 @@
     listRecoveryEntries,
     persistenceError,
     plannerStore,
+    recoverDatabaseWithKey,
     runWeeklyDatabaseMaintenance,
   } from './lib/store'
   import type { DatabaseCompactionResult, DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
@@ -62,6 +64,7 @@
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DONE_TINT_KEY = 'balance:doneTintColor'
   const CHECKBOX_COLOR_KEY = 'balance:checkboxColor'
+  const isAndroid = /android/i.test(navigator.userAgent)
   const DAY_TEMPLATE_SELECTION_KEY = 'balance:selectedDayTemplateId'
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
   const WORKSPACE_VIEW_STATE_KEY = 'balance:workspaceViewState'
@@ -149,6 +152,9 @@ return rows`
   let recoveryKeyStatus: RecoveryKeyStatus | null = null
   let recoveryKeySaved = false
   let recoveryKeyCopied = false
+  let databaseRecoveryKey = ''
+  let databaseRecoveryBusy = false
+  let databaseRecoveryStatus = ''
   let exportStatus = ''
   let exportStatusIsError = false
   let exportSavedPath = ''
@@ -887,8 +893,18 @@ return rows`
     if (storedCheckboxColor) checkboxColor = storedCheckboxColor
 
     async function initialize() {
-      recoveryKeyStatus = await getRecoveryKeyStatus()
+      try {
+        recoveryKeyStatus = await getRecoveryKeyStatus()
+      } catch (error) {
+        databaseLoadError.set(error instanceof Error ? error.message : String(error))
+        console.error('Could not open encrypted Balance database', error)
+      }
       await plannerStore.ready
+
+      // The store intentionally starts with a placeholder so Svelte can render
+      // before native hydration. Never treat that placeholder as user data when
+      // SQLCipher or Android Keystore failed to open the real database.
+      if ($databaseLoadError) return
 
       if (!templates.some((template) => template.id === selectedTemplateId)) {
         selectedTemplateId = templates[0]?.id ?? ''
@@ -3236,6 +3252,25 @@ return rows`
     await runLaunchDatabaseMaintenance()
   }
 
+  async function recoverAndroidDatabase() {
+    if (!databaseRecoveryKey.trim()) {
+      databaseRecoveryStatus = 'Enter the recovery key you saved when Balance was set up.'
+      return
+    }
+    databaseRecoveryBusy = true
+    databaseRecoveryStatus = 'Verifying the encrypted database…'
+    try {
+      await recoverDatabaseWithKey(databaseRecoveryKey)
+      databaseRecoveryKey = ''
+      databaseRecoveryStatus = 'Database verified. Reopening Balance…'
+      window.location.reload()
+    } catch (error) {
+      databaseRecoveryStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      databaseRecoveryBusy = false
+    }
+  }
+
   async function startDailyReminderEdit(plan: DailyPlan | undefined) {
     if (!plan) return
 
@@ -3317,6 +3352,53 @@ return rows`
     </div>
     <div class="app-error-banner-actions">
       <button type="button" class="ghost" on:click={() => { void openRecoveryPanel() }}>Inspect DB</button>
+    </div>
+  </div>
+{/if}
+
+{#if $databaseLoadError}
+  <div class="modal-backdrop database-load-failure-backdrop">
+    <div class="recovery-dialog" role="alertdialog" aria-modal="true" aria-labelledby="database-load-failure-title">
+      <p class="eyebrow">Database protected</p>
+      <h2 id="database-load-failure-title">Balance couldn’t open your encrypted database</h2>
+      <p class="recovery-copy">
+        Your saved database has not been replaced. The empty workspace behind this message is only a startup
+        placeholder—do not enter new data or change sync settings in it.
+      </p>
+      <p class="database-load-error">{$databaseLoadError}</p>
+      <p class="recovery-copy">
+        Try again once. If this returns, keep the app installed so its private database and recovery-key file remain
+        available for recovery.
+      </p>
+      <div class="recovery-actions">
+        <button class="primary" type="button" on:click={() => window.location.reload()}>Try opening again</button>
+      </div>
+      {#if isAndroid}
+        <div class="database-key-recovery">
+          <p class="recovery-copy">
+            If Android lost access to its Keystore entry, use the recovery key Balance asked you to save. It is
+            verified against the existing database before any stored key file is changed.
+          </p>
+          <label for="database-recovery-key">Saved database recovery key</label>
+          <input
+            id="database-recovery-key"
+            type="password"
+            autocomplete="off"
+            autocapitalize="none"
+            spellcheck="false"
+            bind:value={databaseRecoveryKey}
+            disabled={databaseRecoveryBusy}
+          />
+          <button
+            type="button"
+            disabled={databaseRecoveryBusy || !databaseRecoveryKey.trim()}
+            on:click={() => { void recoverAndroidDatabase() }}
+          >{databaseRecoveryBusy ? 'Verifying…' : 'Unlock with recovery key'}</button>
+          {#if databaseRecoveryStatus}
+            <p class="database-recovery-status" role="status">{databaseRecoveryStatus}</p>
+          {/if}
+        </div>
+      {/if}
     </div>
   </div>
 {/if}

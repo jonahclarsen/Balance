@@ -190,6 +190,54 @@ if [ "$UNWRAP_OK" != 1 ]; then
   exit 1
 fi
 
+# A database/key failure must never render the frontend's empty bootstrap state
+# as if it were the user's real data. Corrupt only a disposable copy of the
+# wrapped key, verify the blocking recovery screen appears and the encrypted DB
+# stays byte-for-byte intact, then restore the key and prove the app reopens.
+adb shell run-as "$PKG" cp "$KEY_FILE" "${KEY_FILE}.ci-backup"
+DB_HASH_BEFORE="$(adb exec-out run-as "$PKG" cat "$DB_FILE" | sha256sum | awk '{print $1}')"
+adb shell run-as "$PKG" dd if=/dev/null of="$KEY_FILE"
+adb shell am force-stop "$PKG"
+adb logcat -c
+adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
+DATABASE_FAILURE_UI_OK=0
+for _ in $(seq 1 10); do
+  adb shell uiautomator dump /sdcard/sync-e2e-database-load-failure.xml >/dev/null 2>&1 || true
+  adb exec-out cat /sdcard/sync-e2e-database-load-failure.xml > sync-e2e-database-load-failure.xml 2>/dev/null || true
+  if grep -Fq "open your encrypted database" sync-e2e-database-load-failure.xml; then
+    DATABASE_FAILURE_UI_OK=1
+    break
+  fi
+  sleep 3
+done
+adb logcat -d > logcat-database-load-failure.txt || true
+if [ "$DATABASE_FAILURE_UI_OK" != 1 ]; then
+  echo "[database-failure] blocking recovery screen did not appear."
+  grep -iE "database|keystore|recovery" sync-e2e-database-load-failure.xml | head -20 || true
+  grep -iE "database|keystore|recovery|RustStdoutStderr" logcat-database-load-failure.txt | tail -60 || true
+  exit 1
+fi
+DB_HASH_AFTER="$(adb exec-out run-as "$PKG" cat "$DB_FILE" | sha256sum | awk '{print $1}')"
+if [ "$DB_HASH_BEFORE" != "$DB_HASH_AFTER" ]; then
+  echo "[database-failure] encrypted database changed while its key was unavailable."
+  exit 1
+fi
+echo "[database-failure] unavailable key was blocked without changing the encrypted database."
+
+adb shell run-as "$PKG" mv "${KEY_FILE}.ci-backup" "$KEY_FILE"
+adb shell am force-stop "$PKG"
+adb logcat -c
+adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1
+sleep 18
+adb logcat -d > logcat3.txt || true
+if grep -qE "Could not load encrypted Balance app state|Keystore unwrap failed|FATAL EXCEPTION" logcat3.txt; then
+  echo "[database-recovery] restored wrapped key did not reopen the database."
+  grep -iE "Could not load encrypted Balance app state|Keystore unwrap failed|FATAL EXCEPTION|recovery|keystore" logcat3.txt | head -20
+  exit 1
+fi
+assert_running "database-recovery" logcat3.txt
+echo "[database-recovery] original key and database reopened after the simulated failure."
+
 # ---------------------------------------------------------------------------
 # Real UI pairing test
 # ---------------------------------------------------------------------------
