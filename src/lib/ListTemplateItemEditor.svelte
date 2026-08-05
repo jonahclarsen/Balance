@@ -105,6 +105,8 @@
   }
 
   async function handleTextTab(direction: 'in' | 'out', current: HTMLDivElement) {
+    const caretOffset = textOffsetForCaret(current)
+
     if (direction === 'in') {
       const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-list-template-item-id]'))
       const currentRow = current.closest<HTMLElement>('[data-list-template-item-id]')
@@ -113,15 +115,28 @@
       if (targetId) {
         moveItem(templateId, item.id, targetId, 'inside')
         await tick()
-        focusListItemInput(item.id)
+        focusListItemInputAtOffset(item.id, caretOffset)
       }
       return
     }
     if (parentId) {
       outdentItem(templateId, item.id)
       await tick()
-      focusListItemInput(item.id)
+      focusListItemInputAtOffset(item.id, caretOffset)
     }
+  }
+
+  function textOffsetForCaret(input: HTMLDivElement) {
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return input.textContent?.length ?? 0
+
+    const range = selection.getRangeAt(0)
+    if (!input.contains(range.startContainer)) return input.textContent?.length ?? 0
+
+    const beforeCaret = document.createRange()
+    beforeCaret.selectNodeContents(input)
+    beforeCaret.setEnd(range.startContainer, range.startOffset)
+    return beforeCaret.toString().length
   }
 
   function findPreviousSameDepthItemId(rows: HTMLElement[], currentIndex: number): Id | null {

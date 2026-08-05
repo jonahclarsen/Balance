@@ -648,6 +648,7 @@ test('tab indents a plan item only one level after a nested sibling', async ({ p
   expect(topLevelBeforeIndent).toContain('Later')
 
   await focusInputByValue(page, 'Later')
+  await setCaretOffsetInFocusedEditor(page, 2)
   await page.keyboard.press('Tab')
 
   await expect
@@ -670,6 +671,7 @@ test('tab indents a plan item only one level after a nested sibling', async ({ p
       workChildren: ['Pick the first useful task', 'Write down next action', 'Later'],
       writeChildren: [],
     })
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(2)
 })
 
 test('tab indents a template item only one level after a nested sibling', async ({ page }) => {
@@ -705,6 +707,7 @@ test('tab indents a template item only one level after a nested sibling', async 
   expect(topLevelBeforeIndent).toContain('Later')
 
   await focusTemplateOptionByValue(page, 'Later')
+  await setCaretOffsetInFocusedEditor(page, 2)
   await page.keyboard.press('Tab')
 
   await expect
@@ -730,6 +733,7 @@ test('tab indents a template item only one level after a nested sibling', async 
       workChildren: ['Pick the first useful task', 'Write down next action', 'Later'],
       writeChildren: [],
     })
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(2)
 })
 
 test('shift-tab outdents a plan item without jumping below following siblings', async ({ page }) => {
@@ -743,6 +747,7 @@ test('shift-tab outdents a plan item without jumping below following siblings', 
   expect(workIndex).toBeGreaterThanOrEqual(0)
 
   await focusInputByValue(page, 'Pick the first useful task')
+  await setCaretOffsetInFocusedEditor(page, 4)
   await page.keyboard.press('Shift+Tab')
 
   await expect
@@ -769,6 +774,7 @@ test('shift-tab outdents a plan item without jumping below following siblings', 
       workChildren: [],
       promotedChildren: ['Write down next action'],
     })
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
 })
 
 test('shift-tab outdents a template item without jumping below following siblings', async ({ page }) => {
@@ -782,6 +788,7 @@ test('shift-tab outdents a template item without jumping below following sibling
   expect(workIndex).toBeGreaterThanOrEqual(0)
 
   await focusTemplateOptionByValue(page, 'Pick the first useful task')
+  await setCaretOffsetInFocusedEditor(page, 4)
   await page.keyboard.press('Shift+Tab')
 
   await expect
@@ -811,6 +818,7 @@ test('shift-tab outdents a template item without jumping below following sibling
       workChildren: [],
       promotedChildren: ['Write down next action'],
     })
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
 })
 
 test('adding plan time starts with a shallower timed item and after a same-level item', async ({ page }) => {
@@ -2730,6 +2738,39 @@ test('list template items support horizontal boundary navigation and backspace m
 
   await page.keyboard.press('Meta+Z')
   await expect.poll(async () => listTemplateTopLevelTexts(page)).toEqual(['First item', 'Second item'])
+})
+
+test('list template indent and outdent preserve the caret position', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Add list item' }).click()
+
+  const second = page.locator('[data-list-template-text-input]').nth(1)
+  await second.fill('Second item')
+  await second.focus()
+  await setCaretOffsetInFocusedEditor(page, 3)
+  await page.keyboard.press('Tab')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const items = state.listTemplates?.[0]?.items ?? []
+        return {
+          topLevel: items.map((item: { text: string }) => item.text),
+          firstChildren: items[0]?.children?.map((item: { text: string }) => item.text) ?? [],
+        }
+      }),
+    )
+    .toEqual({ topLevel: ['First item'], firstChildren: ['Second item'] })
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(3)
+
+  await page.keyboard.press('Shift+Tab')
+  await expect.poll(async () => listTemplateTopLevelTexts(page)).toEqual(['First item', 'Second item'])
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(3)
 })
 
 test('list template items support rich text formatting shortcuts while over the word cap', async ({ page }) => {

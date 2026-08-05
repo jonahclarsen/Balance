@@ -112,6 +112,9 @@
   }
 
   async function handleTextTab(direction: 'in' | 'out', current: HTMLDivElement) {
+    const optionId = current.dataset.templateOptionTextInputId
+    const caretOffset = textOffsetForCaret(current)
+
     if (direction === 'in') {
       const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-template-item-id]'))
       const currentRow = current.closest<HTMLElement>('[data-template-item-id]')
@@ -121,7 +124,7 @@
       if (targetId) {
         moveItem(templateId, item.id, targetId, 'inside')
         await tick()
-        focusTemplateOptionTextInput(item.options[0]?.id)
+        if (optionId) focusTemplateOptionTextInputAtOffset(optionId, caretOffset)
       }
       return
     }
@@ -129,8 +132,21 @@
     if (parentId) {
       outdentItem(templateId, item.id)
       await tick()
-      focusTemplateOptionTextInput(item.options[0]?.id)
+      if (optionId) focusTemplateOptionTextInputAtOffset(optionId, caretOffset)
     }
+  }
+
+  function textOffsetForCaret(input: HTMLDivElement) {
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return input.textContent?.length ?? 0
+
+    const range = selection.getRangeAt(0)
+    if (!input.contains(range.startContainer)) return input.textContent?.length ?? 0
+
+    const beforeCaret = document.createRange()
+    beforeCaret.selectNodeContents(input)
+    beforeCaret.setEnd(range.startContainer, range.startOffset)
+    return beforeCaret.toString().length
   }
 
   function findPreviousSameDepthTemplateItemId(rows: HTMLElement[], currentIndex: number): Id | null {
