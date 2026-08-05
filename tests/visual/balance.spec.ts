@@ -1984,6 +1984,29 @@ test('pasting plan items into an empty focused item replaces it', async ({ page 
   await expect.poll(async () => topLevelTexts(page)).toEqual([...before.slice(0, 2), ...before.slice(0, 2), ...before.slice(2)])
 })
 
+test('clicking a paste target immediately after whole-item copy honors the clicked task', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  const copiedRow = page.getByRole('listitem', { name: 'Plan item: Work block' })
+  await copiedRow.getByRole('button', { name: 'Select item' }).click()
+  await page.keyboard.press('Meta+C')
+
+  // Whole-item pointer selection briefly suppresses focus caused by that same
+  // gesture. A distinct pointer-down on an editor must end that protection or
+  // this click is ignored and paste incorrectly targets the copied subtree.
+  await page.locator('[data-plan-text-input-id]').filter({ hasText: before[0] }).click()
+  await expect.poll(async () => activeInputValue(page)).toBe(before[0])
+  await page.keyboard.press('Meta+V')
+
+  await expect
+    .poll(async () => topLevelTexts(page))
+    .toEqual([before[0], before[2], before[1], before[2]])
+})
+
 test('replacing the system clipboard prevents stale structured task paste', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this regression test')
 

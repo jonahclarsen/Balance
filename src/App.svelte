@@ -2300,13 +2300,20 @@ return rows`
       return
     }
 
+    const target = event.target instanceof Element ? event.target : null
+    const input = target?.closest<HTMLElement>('[data-rich-text-input]')
+
+    // The short focus guard created after a whole-item pointer selection is only
+    // meant to suppress focus from that same gesture. A new pointer-down in an
+    // editor is an intentional target change and must be allowed to focus before
+    // copy/paste resolves its insertion point.
+    if (input) preserveSelectionFocusUntil = 0
+
     if (usesMobileLayout()) {
       itemTextDragOrigin = null
       return
     }
 
-    const target = event.target instanceof Element ? event.target : null
-    const input = target?.closest<HTMLElement>('[data-rich-text-input]')
     const row = input?.closest<HTMLElement>(itemRowSelector())
     const itemId = row ? rowItemId(row) : null
 
