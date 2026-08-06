@@ -22,6 +22,46 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          # Manual builds need the release tags so their version is guaranteed
+          # to be newer than the APK currently installed on a phone.
+          fetch-depth: 0
+
+      - name: Resolve Android release version
+        id: android-version
+        run: |
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            VERSION_SOURCE="tag $GITHUB_REF_NAME"
+          else
+            LATEST_STABLE_TAG=""
+            while IFS= read -r candidate; do
+              if [[ "$candidate" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+                LATEST_STABLE_TAG="$candidate"
+                MAJOR="${BASH_REMATCH[1]}"
+                MINOR="${BASH_REMATCH[2]}"
+                PATCH="${BASH_REMATCH[3]}"
+                break
+              fi
+            done < <(git tag --list --sort=-version:refname)
+
+            if [[ -n "$LATEST_STABLE_TAG" ]]; then
+              VERSION="${MAJOR}.${MINOR}.$((10#$PATCH + 1))"
+              VERSION_SOURCE="next patch after $LATEST_STABLE_TAG"
+            else
+              VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
+              VERSION_SOURCE="src-tauri/tauri.conf.json (no stable release tag found)"
+            fi
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Invalid Android release version: $VERSION"
+            exit 1
+          fi
+
+          echo "Building Android release version $VERSION from $VERSION_SOURCE"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "ANDROID_RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
@@ -171,17 +211,8 @@ jobs:
 
       - name: Build signed arm64 release APK
         run: |
-          VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            VERSION="${GITHUB_REF_NAME#v}"
-          fi
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
-            echo "::error::Invalid Android release version: $VERSION"
-            exit 1
-          fi
-          echo "Building Android release version $VERSION"
           pnpm tauri android build \
-            --config "{\"version\":\"$VERSION\"}" \
+            --config "{\"version\":\"${ANDROID_RELEASE_VERSION}\"}" \
             --apk --target aarch64
 
       - name: Locate and verify signed release
@@ -189,11 +220,15 @@ jobs:
           set -o pipefail
           APK_PATH="$(find src-tauri/gen/android -name '*.apk' -path '*release*' | head -n 1)"
           APKSIGNER="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          AAPT="$(find "$ANDROID_SDK_ROOT/build-tools" -type f -name aapt | sort -V | tail -n 1)"
           test -n "$APK_PATH"
           test -x "$APKSIGNER"
+          test -x "$AAPT"
 
           echo "Found APK at $APK_PATH"
           "$APKSIGNER" verify --verbose --print-certs "$APK_PATH" | tee android-release-signature.txt
+          "$AAPT" dump badging "$APK_PATH" | sed -n '1p' | tee android-release-package.txt
+          grep -Fq "versionName='${ANDROID_RELEASE_VERSION}'" android-release-package.txt
           unzip -l "$APK_PATH" | tee android-release-contents.txt
           grep -q "lib/arm64-v8a/libbalance_lib.so" android-release-contents.txt
           if grep -q "lib/x86_64/" android-release-contents.txt; then
@@ -210,6 +245,7 @@ jobs:
           path: |
             balance-arm64.apk
             android-release-signature.txt
+            android-release-package.txt
             android-release-contents.txt
           if-no-files-found: error
 
