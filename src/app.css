@@ -597,6 +597,37 @@ nav button.active {
   content: '';
 }
 
+.current-day-scroll-indicator {
+  position: sticky;
+  top: 8px;
+  z-index: 20;
+  display: grid;
+  gap: 24px;
+  grid-template-columns: minmax(0, 1fr);
+  height: 0;
+  pointer-events: none;
+}
+
+.current-day-scroll-indicator.comparing {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.current-day-scroll-slot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.current-day-scroll-indicator .current-day-indicator {
+  padding: 5px 9px 5px 8px;
+  background: color-mix(in srgb, var(--paper-strong) 92%, var(--accent));
+  box-shadow: 0 3px 12px color-mix(in srgb, var(--ink) 14%, transparent);
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
 .day-panes.comparing .page-header {
   align-items: flex-start;
   flex-wrap: wrap;
@@ -2646,6 +2677,22 @@ nav button.active {
      readable (dragging between them still works, just vertically). */
   .day-panes.comparing {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .current-day-scroll-indicator.comparing {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  .current-day-scroll-indicator {
+    position: fixed;
+    top: calc(env(safe-area-inset-top) + 8px);
+    right: 12px;
+    left: 12px;
+  }
+
+  .current-day-scroll-indicator.comparing .current-day-scroll-slot:empty {
+    display: none;
   }
 
   .list-panel,

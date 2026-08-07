@@ -109,6 +109,7 @@
   let lastScrolledPage = ''
   let scrollRestoreNonce = 0
   let restoringScroll = false
+  let workspaceScrolledPastTodayHeader = false
   let workspaceViewStateReady = false
   let listTemplatesViewStateReady = false
   let dayTemplateSelectionReady = false
@@ -1315,11 +1316,17 @@ return rows`
   }
 
   function handleWorkspaceScroll() {
-    if (!usesWindowScroll()) rememberWorkspaceScroll()
+    if (!usesWindowScroll()) {
+      workspaceScrolledPastTodayHeader = currentWorkspaceScrollTop() > 72
+      rememberWorkspaceScroll()
+    }
   }
 
   function handleWindowScroll() {
-    if (usesWindowScroll()) rememberWorkspaceScroll()
+    if (usesWindowScroll()) {
+      workspaceScrolledPastTodayHeader = currentWorkspaceScrollTop() > 72
+      rememberWorkspaceScroll()
+    }
   }
 
   async function restoreScrollForPage(pageKey: string) {
@@ -3580,6 +3587,17 @@ return rows`
       on:scroll={handleWorkspaceScroll}
     >
     {#if view === 'today'}
+      {#if workspaceScrolledPastTodayHeader && dayPanes.some((pane) => pane.date === todayISO())}
+        <div class="current-day-scroll-indicator" class:comparing={compareDayOpen} aria-label="Viewing today">
+          {#each dayPanes as pane (`pinned-${pane.key}`)}
+            <div class="current-day-scroll-slot">
+              {#if pane.date === todayISO()}
+                <span class="current-day-indicator">Today</span>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      {/if}
       <div class="day-panes" class:comparing={compareDayOpen}>
         {#each dayPanes as pane (pane.key)}
           {@const plan = pane.plan}

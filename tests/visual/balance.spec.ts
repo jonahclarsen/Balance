@@ -1,5 +1,59 @@
 import { expect, test } from '@playwright/test'
 
+test('today indicator stays visible after the page header scrolls away', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const primaryPane = page.getByRole('region', { name: 'Daily plan' })
+  const todayDate = await primaryPane.locator('.date-input').inputValue()
+  await primaryPane.getByRole('button', { name: 'Compare with another day' }).click()
+  const comparePane = page.getByRole('region', { name: 'Compared day' })
+  await expect(comparePane).toBeVisible()
+  if (testInfo.project.name === 'desktop') await page.setViewportSize({ width: 1000, height: 450 })
+
+  await expect(page.locator('.current-day-scroll-indicator')).toHaveCount(0)
+  await page.evaluate((mobile) => {
+    if (mobile) window.scrollTo(0, 500)
+    else document.querySelector<HTMLElement>('.workspace')?.scrollTo(0, 200)
+  }, testInfo.project.name === 'mobile')
+
+  const pinnedToday = page.locator('.current-day-scroll-indicator .current-day-indicator')
+  await expect(pinnedToday).toBeVisible()
+  const markerBox = await pinnedToday.boundingBox()
+  expect(markerBox).not.toBeNull()
+  expect(markerBox?.y ?? Number.MAX_SAFE_INTEGER).toBeLessThan(testInfo.project.name === 'mobile' ? 20 : 40)
+  if (testInfo.project.name === 'desktop') {
+    const primaryBox = await primaryPane.boundingBox()
+    expect(markerBox?.x ?? 0).toBeGreaterThan(primaryBox?.x ?? Number.MAX_SAFE_INTEGER)
+    expect((markerBox?.x ?? Number.MAX_SAFE_INTEGER) + (markerBox?.width ?? 0)).toBeLessThanOrEqual(
+      (primaryBox?.x ?? 0) + (primaryBox?.width ?? 0),
+    )
+  }
+
+  await primaryPane.getByRole('button', { name: 'Next day' }).click()
+  await expect(page.locator('.current-day-scroll-indicator')).toHaveCount(0)
+
+  await comparePane.locator('.date-input').fill(todayDate)
+  await page.evaluate((mobile) => {
+    if (mobile) window.scrollTo(0, 500)
+    else document.querySelector<HTMLElement>('.workspace')?.scrollTo(0, 200)
+  }, testInfo.project.name === 'mobile')
+  await expect(pinnedToday).toBeVisible()
+  if (testInfo.project.name === 'desktop') {
+    const compareBox = await comparePane.boundingBox()
+    const comparedMarkerBox = await pinnedToday.boundingBox()
+    expect(comparedMarkerBox?.x ?? 0).toBeGreaterThan(compareBox?.x ?? Number.MAX_SAFE_INTEGER)
+    expect((comparedMarkerBox?.x ?? Number.MAX_SAFE_INTEGER) + (comparedMarkerBox?.width ?? 0)).toBeLessThanOrEqual(
+      (compareBox?.x ?? 0) + (compareBox?.width ?? 0),
+    )
+  }
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-today-indicator-scrolled-split.png`,
+    fullPage: false,
+  })
+})
+
 test('desktop sidebar hides, returns, and remembers its state', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
