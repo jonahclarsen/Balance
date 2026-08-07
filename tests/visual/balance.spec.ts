@@ -1576,6 +1576,33 @@ test('vertical arrow keeps navigating after arrowing into an adjacent item', asy
   expect(await activeInputValue(page)).toBe('Bravo')
 })
 
+test('ArrowUp stays within a multi-line plan item when the caret is on a blank line', async ({ page }) => {
+  await seedPlanItems(page, ['Previous', 'TopBottom', 'Next'])
+
+  await focusInputByValue(page, 'TopBottom')
+  await page.evaluate(() => {
+    const editor = document.activeElement
+    if (!(editor instanceof HTMLDivElement)) throw new Error('Expected a focused plan item editor')
+
+    editor.innerHTML = 'Top<br><br>Bottom'
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+
+    const range = document.createRange()
+    range.setStart(editor, 2)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  })
+
+  await page.keyboard.press('ArrowUp')
+
+  expect(await activeInputValue(page)).toBe('TopBottom')
+
+  await page.keyboard.press('ArrowUp')
+  expect(await activeInputValue(page)).toBe('Previous')
+})
+
 test('template item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -2713,9 +2740,6 @@ test('rich plan item text restores the caret after tabbing away mid-edit', async
     const input = document.activeElement
     if (!(input instanceof HTMLElement) || !input.matches('[data-plan-text-input]')) return
 
-    const originalHasFocus = document.hasFocus.bind(document)
-    ;(document as unknown as { hasFocus: () => boolean }).hasFocus = () => false
-
     // Un-normalized DOM so persistEditor actually rewrites innerHTML (and collapses selection).
     input.innerHTML = 'Wake up<span></span>'
     const range = document.createRange()
@@ -2728,9 +2752,22 @@ test('rich plan item text restores the caret after tabbing away mid-edit', async
     // Real blur so the element stops being document.activeElement, as it does on an app switch.
     input.blur()
     window.dispatchEvent(new FocusEvent('blur'))
+  })
 
-    ;(document as unknown as { hasFocus: () => boolean }).hasFocus = originalHasFocus
+  // Return focus in a later task. Some webviews still report document.hasFocus() during the
+  // editor blur, then deliver the window blur before the app actually enters the background.
+  await page.evaluate(() => {
+    const input = document.querySelector<HTMLElement>('[data-plan-text-input]')
+    if (!input) return
     input.focus()
+
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
     window.dispatchEvent(new FocusEvent('focus'))
   })
 

@@ -60,6 +60,7 @@
   let lastInternalLinkKey = internalLinkKey(internalLinkSegments)
   let savedSelection: SavedSelection | null = null
   let restoreSelectionOnNextFocus = false
+  let windowBlurred = false
   let restoreRequest = 0
   let pendingPasteInput = false
 
@@ -272,10 +273,10 @@
       }
     }
 
-    if (node.nodeType !== Node.TEXT_NODE) return null
+    if (node.nodeType !== Node.TEXT_NODE) return caretMarkerRect(caretRange)
 
     const text = node as Text
-    if (text.length === 0) return null
+    if (text.length === 0) return caretMarkerRect(caretRange)
 
     const probe = document.createRange()
     if (offset >= text.length) {
@@ -287,7 +288,33 @@
     }
 
     const rect = probe.getBoundingClientRect()
-    return rect.height > 0 ? rect : null
+    return rect.height > 0 ? rect : caretMarkerRect(caretRange)
+  }
+
+  // A genuinely empty visual line has no adjacent text character to probe. Insert a
+  // zero-width marker just long enough to measure that line, then restore the exact
+  // collapsed selection. No input event is emitted, so the marker is never persisted.
+  function caretMarkerRect(caretRange: Range): DOMRect | null {
+    const container = caretRange.startContainer
+    const offset = caretRange.startOffset
+    if (container.nodeType !== Node.ELEMENT_NODE || (container as Element).matches('br, img')) return null
+
+    const marker = document.createElement('span')
+    marker.textContent = '\u200b'
+
+    const probe = caretRange.cloneRange()
+    probe.insertNode(marker)
+    const measured = marker.getBoundingClientRect()
+    marker.remove()
+
+    const restored = document.createRange()
+    restored.setStart(container, offset)
+    restored.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(restored)
+
+    return measured.height > 0 ? measured : null
   }
 
   function isEditorEmpty(activeEditor: HTMLDivElement) {
@@ -343,22 +370,29 @@
     // persistEditor below may rewrite innerHTML to its normalized form (when the user just
     // typed un-normalized content). That rewrite collapses the live selection to offset 0 and
     // fires a selectionchange. Arm the restore guard first so handleDocumentSelectionChange
-    // can't overwrite the caret we just saved. If this blur is only an in-document focus move
-    // (the app still has focus), back the guard out once we can observe the real focus state.
+    // can't overwrite the caret we just saved. If this blur is only an in-document focus move,
+    // back the guard out after the window has had a chance to report its own blur. Some webviews
+    // deliver the editor blur first while document.hasFocus() still returns true.
     restoreSelectionOnNextFocus = true
     persistEditor(editor)
-    queueMicrotask(() => {
-      if (document.hasFocus() && editor !== document.activeElement) restoreSelectionOnNextFocus = false
-    })
+    window.setTimeout(() => {
+      if (!windowBlurred && document.hasFocus() && editor !== document.activeElement) {
+        restoreSelectionOnNextFocus = false
+      }
+    }, 0)
   }
 
   function handleWindowFocus() {
+    windowBlurred = false
     if (restoreSelectionOnNextFocus) scheduleSelectionRestore()
   }
 
   function handleWindowBlur() {
-    if (editor !== document.activeElement) return
+    // The editor's blur can arrive before the window's blur, so an already-armed restore is
+    // also evidence that this editor was active when the app switch began.
+    if (editor !== document.activeElement && !restoreSelectionOnNextFocus) return
 
+    windowBlurred = true
     // If handleBlur already armed the restore, it captured the caret before persistEditor could
     // collapse it — don't re-read a possibly-collapsed selection here.
     if (!restoreSelectionOnNextFocus) saveSelection(editor)
@@ -367,11 +401,12 @@
 
   function handleDocumentSelectionChange() {
     if (restoreSelectionOnNextFocus) return
-    if (editor) saveSelection(editor)
+    if (editor === document.activeElement) saveSelection(editor)
   }
 
   function handleDocumentVisibilityChange() {
     if (document.visibilityState === 'hidden') {
+      windowBlurred = true
       if (editor === document.activeElement) {
         saveSelection(editor)
         restoreSelectionOnNextFocus = true
@@ -379,6 +414,7 @@
       return
     }
 
+    windowBlurred = false
     if (restoreSelectionOnNextFocus) scheduleSelectionRestore()
   }
 

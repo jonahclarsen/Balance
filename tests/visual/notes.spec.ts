@@ -72,6 +72,63 @@ test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   expect((documentBox?.x ?? 0) + (documentBox?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
 })
 
+test('note text restores the caret after tabbing away mid-edit', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const noteText = page.locator('[data-note-text-input]').first()
+  await noteText.fill('Draft note')
+  await noteText.focus()
+
+  await page.evaluate(() => {
+    const input = document.activeElement
+    if (!(input instanceof HTMLElement) || !input.matches('[data-note-text-input]')) return
+
+    input.innerHTML = 'Draft note<span></span>'
+    const range = document.createRange()
+    range.setStart(input.firstChild as Node, 5)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    input.blur()
+    window.dispatchEvent(new FocusEvent('blur'))
+  })
+
+  await page.evaluate(() => {
+    const input = document.querySelector<HTMLElement>('[data-note-text-input]')
+    if (!input) return
+    input.focus()
+
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+
+    window.dispatchEvent(new FocusEvent('focus'))
+  })
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const input = document.activeElement
+        const selection = document.getSelection()
+        if (!(input instanceof HTMLElement) || !selection || selection.rangeCount === 0) return null
+        const range = selection.getRangeAt(0).cloneRange()
+        range.selectNodeContents(input)
+        range.setEnd(selection.anchorNode ?? input, selection.anchorOffset)
+        return range.toString().length
+      }),
+    )
+    .toBe(5)
+})
+
 test('deleting a note confirms and remains undoable', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
