@@ -742,8 +742,8 @@ nav button.active {
 
 /* ---- Task rows adapt to their own width ----
    Three tiers, each giving the text back the space the chrome was taking:
-   trim the controls, then drop the goal badges to their own line, then drop the
-   time range under the text. A deeply indented row hits these on a wide screen
+   trim the controls, then drop the goal badges to their own line, then stack the
+   time range with the text. A deeply indented row hits these on a wide screen
    exactly as a top-level row does on a phone. */
 
 @container task-row (max-width: 620px) {
@@ -846,6 +846,16 @@ nav button.active {
     grid-column: 1 / -1;
     grid-row: 2;
     justify-self: start;
+  }
+
+  /* On Android the schedule reads first when a narrow row has to stack. Keep
+     the desktop order unchanged for narrow comparison panes. */
+  .app-shell.android .plan-item-main.timed .item-text {
+    grid-row: 2;
+  }
+
+  .app-shell.android .plan-item-main .time-range {
+    grid-row: 1;
   }
 }
 

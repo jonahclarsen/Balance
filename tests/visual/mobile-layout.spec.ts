@@ -98,7 +98,7 @@ test('task rows stay readable on mobile without changing the desktop arrangement
 
   if (isMobileProject(testInfo.project.name)) {
     expect(geometry.textWidth).toBeGreaterThanOrEqual(190)
-    expect(geometry.timeTop).toBeGreaterThan(geometry.textTop)
+    expect(geometry.timeTop).toBeLessThan(geometry.textTop)
     await expect(undo).toBeVisible()
 
     const checkbox = page

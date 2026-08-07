@@ -3430,6 +3430,7 @@ return rows`
 
 <main
   class="app-shell"
+  class:android={isAndroid}
   inert={$databaseLoadPending || Boolean($databaseLoadError)}
   aria-hidden={$databaseLoadPending || $databaseLoadError ? 'true' : undefined}
 >
