@@ -11,6 +11,26 @@
 # `bash .github/scripts/android-smoke-test.sh`.
 set -euo pipefail
 
+# ADB occasionally wedges while waiting for Android's accessibility stack
+# (notably `uiautomator dump` against a WebView). Without a deadline, one such
+# call holds the runner until GitHub's six-hour default job limit. Route every
+# ADB invocation through GNU timeout so retries and diagnostics can actually run.
+ADB_BIN="$(command -v adb)"
+ADB_TIMEOUT_SECONDS="${ADB_TIMEOUT_SECONDS:-30}"
+
+adb() {
+  local status
+  if timeout --foreground --kill-after=5s "${ADB_TIMEOUT_SECONDS}s" "$ADB_BIN" "$@"; then
+    return 0
+  else
+    status=$?
+  fi
+  if [ "$status" -eq 124 ] || [ "$status" -eq 137 ]; then
+    echo "[adb-timeout] adb $* exceeded ${ADB_TIMEOUT_SECONDS}s." >&2
+  fi
+  return "$status"
+}
+
 # The debug applicationId is the tauri identifier plus the configured
 # debugApplicationIdSuffix (".debug").
 PKG=app.balance.local.debug
@@ -256,22 +276,25 @@ capture_e2e_diagnostics() {
   if [ "${E2E_ACTIVE:-0}" != 1 ]; then
     return
   fi
-  adb logcat -d > logcat-sync-e2e.txt 2>/dev/null || true
-  adb shell uiautomator dump /sdcard/sync-e2e-window.xml >/dev/null 2>&1 || true
-  adb exec-out cat /sdcard/sync-e2e-window.xml > sync-e2e-window.xml 2>/dev/null || true
-  adb exec-out screencap -p > sync-e2e-failure.png 2>/dev/null || true
+  ADB_TIMEOUT_SECONDS=10 adb logcat -d > logcat-sync-e2e.txt 2>/dev/null || true
+  ADB_TIMEOUT_SECONDS=10 adb shell uiautomator dump --compressed /sdcard/sync-e2e-window.xml >/dev/null 2>&1 || true
+  ADB_TIMEOUT_SECONDS=10 adb exec-out cat /sdcard/sync-e2e-window.xml > sync-e2e-window.xml 2>/dev/null || true
+  ADB_TIMEOUT_SECONDS=10 adb exec-out screencap -p > sync-e2e-failure.png 2>/dev/null || true
 }
 trap capture_e2e_diagnostics EXIT
 
 dump_ui() {
   tmp_xml="${UI_XML}.tmp"
   for attempt in $(seq 1 5); do
-    if adb shell uiautomator dump /sdcard/sync-e2e-window.xml >/dev/null 2>&1 \
-      && adb exec-out cat /sdcard/sync-e2e-window.xml > "$tmp_xml" 2>/dev/null \
+    if ADB_TIMEOUT_SECONDS=10 adb shell uiautomator dump --compressed /sdcard/sync-e2e-window.xml >/dev/null 2>&1 \
+      && ADB_TIMEOUT_SECONDS=10 adb exec-out cat /sdcard/sync-e2e-window.xml > "$tmp_xml" 2>/dev/null \
       && grep -q '<hierarchy' "$tmp_xml"; then
       mv "$tmp_xml" "$UI_XML"
       return 0
     fi
+    # A timed-out host-side ADB client can leave the device-side dumper alive.
+    # Stop that stale process before retrying so attempts are independent.
+    ADB_TIMEOUT_SECONDS=5 adb shell 'pkill -f com.android.commands.uiautomator || pkill uiautomator || true' >/dev/null 2>&1 || true
     echo "UI Automator dump attempt $attempt failed; retrying."
     sleep 1
   done

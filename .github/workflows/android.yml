@@ -13,6 +13,7 @@ jobs:
   build:
     name: Build debug + signed release
     runs-on: ubuntu-latest
+    timeout-minutes: 30
 
     env:
       # The vendored OpenSSL that SQLCipher links against is cross-compiled with
@@ -253,6 +254,9 @@ jobs:
     name: Android pairing + sync E2E
     needs: build
     runs-on: ubuntu-latest
+    # Successful runs take about five minutes. Keep a little headroom for a
+    # cold emulator, but never let an ADB/emulator wedge consume hours.
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -294,7 +298,9 @@ jobs:
           enable-hw-keyboard: true
           # The runner executes the `script` input line-by-line in separate
           # shells, so the test logic lives in a committed file run as one process.
-          script: bash .github/scripts/android-smoke-test.sh
+          # This inner deadline exits early enough for the always() diagnostics
+          # upload below to run before the job-level deadline.
+          script: timeout --foreground --kill-after=30s 10m bash .github/scripts/android-smoke-test.sh
 
       - name: Upload logcat
         if: always()
