@@ -4426,6 +4426,32 @@ return rows`
       <div class="settings-panel">
         <section class="settings-section">
           <div>
+            <h3>Opening messages</h3>
+            <p>
+              Add or remove messages, one per line. Balance picks a different one every 10 seconds while your database
+              opens. Leave this empty to show only the opening status.
+            </p>
+          </div>
+
+          <label class="loading-messages-control">
+            <span>Messages</span>
+            <textarea
+              aria-label="Database opening messages"
+              rows="5"
+              value={databaseLoadingMessagesDraft}
+              on:input={(event) => updateDatabaseLoadingMessages(event.currentTarget.value)}
+            ></textarea>
+          </label>
+
+          <div class="settings-actions">
+            <button type="button" on:click={resetDatabaseLoadingMessages}>Restore defaults</button>
+          </div>
+        </section>
+
+        <SyncPanel />
+
+        <section class="settings-section">
+          <div>
             <h3>Completed item colors</h3>
             <p>Choose the checkbox color and the light tint applied to checked plan items.</p>
           </div>
@@ -4478,32 +4504,6 @@ return rows`
 
           </div>
         </section>
-
-        <section class="settings-section">
-          <div>
-            <h3>Opening messages</h3>
-            <p>
-              Add or remove messages, one per line. Balance picks a different one every 10 seconds while your database
-              opens. Leave this empty to show only the opening status.
-            </p>
-          </div>
-
-          <label class="loading-messages-control">
-            <span>Messages</span>
-            <textarea
-              aria-label="Database opening messages"
-              rows="5"
-              value={databaseLoadingMessagesDraft}
-              on:input={(event) => updateDatabaseLoadingMessages(event.currentTarget.value)}
-            ></textarea>
-          </label>
-
-          <div class="settings-actions">
-            <button type="button" on:click={resetDatabaseLoadingMessages}>Restore defaults</button>
-          </div>
-        </section>
-
-        <SyncPanel />
 
         <section class="settings-section">
           <div>
