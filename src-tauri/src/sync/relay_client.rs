@@ -302,6 +302,25 @@ fn checkpoint_safe(conn: &Connection) -> Result<bool> {
     )?)
 }
 
+fn rewind_cursor_for_quarantined_batches(conn: &Connection) -> Result<()> {
+    let has_quarantine = conn.query_row(
+        "SELECT count(*) > 0 FROM sync_relay_quarantine",
+        [],
+        |row| row.get::<_, bool>(0),
+    )?;
+    if has_quarantine {
+        // Builds before the cursor-safety fix advanced past failed batches.
+        // Replaying the current generation from its start is idempotent because
+        // operation ids are immutable, and lets an affected device recover the
+        // skipped operations it still has recorded in quarantine.
+        conn.execute(
+            "UPDATE sync_relay_state SET cursor = 0 WHERE singleton = 1",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
 fn apply_descriptor(
     conn: &Connection,
     client: &Client,
@@ -380,9 +399,19 @@ fn apply_manifest(
             Ok((count, did_change)) => {
                 pulled += count;
                 changed |= did_change;
+                conn.execute(
+                    "DELETE FROM sync_relay_quarantine WHERE blob_id = ?1",
+                    params![batch.id],
+                )?;
             }
             Err(error) => {
                 quarantine(conn, &batch.id, &error)?;
+                // Never acknowledge past a missing or unreadable batch. Doing
+                // so permanently skipped its operations while later batches
+                // continued to apply, leaving apparently random holes in a
+                // delayed device's state. The next pass must retry this exact
+                // sequence before its cursor can move forward.
+                return Err(error);
             }
         }
         cursor = batch.sequence;
@@ -617,6 +646,7 @@ fn sync_once_inner(
     allow_checkpoint: bool,
 ) -> Result<SyncPassResult> {
     ensure_relay_tables(conn)?;
+    rewind_cursor_for_quarantined_batches(conn)?;
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()
@@ -742,6 +772,8 @@ fn sync_once_inner(
 mod tests {
     use super::*;
     use rand::RngCore;
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
 
     fn relay_database() -> Connection {
         let connection = Connection::open_in_memory().unwrap();
@@ -769,6 +801,161 @@ mod tests {
                 params![id, payload],
             )
             .unwrap();
+    }
+
+    #[test]
+    fn a_failed_batch_is_not_acknowledged_past_the_cursor() {
+        let connection = relay_database();
+        connection
+            .execute(
+                "UPDATE sync_relay_state SET epoch = 'epoch-1', cursor = 0 WHERE singleton = 1",
+                [],
+            )
+            .unwrap();
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 2048];
+            let length = stream.read(&mut request).unwrap();
+            assert!(
+                String::from_utf8_lossy(&request[..length])
+                    .starts_with("GET /v3/blobs/missing-batch/0 "),
+                "client requested the expected missing batch"
+            );
+            let body = br#"{"error":"temporarily unavailable"}"#;
+            write!(
+                stream,
+                "HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                body.len()
+            )
+            .unwrap();
+            stream.write_all(body).unwrap();
+        });
+
+        let manifest = Manifest {
+            epoch: "epoch-1".into(),
+            latest_sequence: 1,
+            checkpoint: None,
+            batches: vec![BatchDescriptor {
+                id: "missing-batch".into(),
+                sequence: 1,
+                chunks: 1,
+            }],
+            compact_recommended: false,
+        };
+        let client = Client::builder().build().unwrap();
+        let key = SyncKey::generate();
+
+        let error = apply_manifest(
+            &connection,
+            &client,
+            &format!("http://{address}"),
+            &key,
+            &manifest,
+            "epoch-1",
+        )
+        .unwrap_err();
+        server.join().unwrap();
+
+        assert!(error.to_string().contains("503 Service Unavailable"));
+        assert_eq!(
+            relay_state(&connection).unwrap(),
+            ("epoch-1".into(), 0),
+            "a failed batch must remain behind the cursor so the next sync retries it"
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM sync_relay_quarantine", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            1
+        );
+
+        let ciphertext = seal(
+            &key,
+            &RelayEnvelope {
+                v: PROTOCOL_VERSION,
+                epoch: "epoch-1".into(),
+                ops: Vec::new(),
+            },
+        )
+        .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let retry_address = listener.local_addr().unwrap();
+        let retry_server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 2048];
+            let length = stream.read(&mut request).unwrap();
+            assert!(
+                String::from_utf8_lossy(&request[..length])
+                    .starts_with("GET /v3/blobs/missing-batch/0 "),
+                "the next pass retries the same batch"
+            );
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                ciphertext.len()
+            )
+            .unwrap();
+            stream.write_all(&ciphertext).unwrap();
+        });
+
+        assert_eq!(
+            apply_manifest(
+                &connection,
+                &client,
+                &format!("http://{retry_address}"),
+                &key,
+                &manifest,
+                "epoch-1",
+            )
+            .unwrap(),
+            (0, false)
+        );
+        retry_server.join().unwrap();
+        assert_eq!(
+            relay_state(&connection).unwrap(),
+            ("epoch-1".into(), 1),
+            "the cursor advances after the retried batch succeeds"
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT count(*) FROM sync_relay_quarantine", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .unwrap(),
+            0,
+            "a successful retry clears its quarantine record"
+        );
+    }
+
+    #[test]
+    fn a_cursor_advanced_by_an_older_build_rewinds_when_quarantine_exists() {
+        let connection = relay_database();
+        connection
+            .execute(
+                "UPDATE sync_relay_state SET epoch = 'epoch-1', cursor = 9 WHERE singleton = 1",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sync_relay_quarantine (blob_id, error, recorded_at_ms)
+                 VALUES ('batch-4', 'old transient failure', 1)",
+                [],
+            )
+            .unwrap();
+
+        rewind_cursor_for_quarantined_batches(&connection).unwrap();
+
+        assert_eq!(
+            relay_state(&connection).unwrap(),
+            ("epoch-1".into(), 0),
+            "the next manifest request must include every potentially skipped batch"
+        );
     }
 
     #[test]
