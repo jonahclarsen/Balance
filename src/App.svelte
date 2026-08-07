@@ -25,6 +25,7 @@
     completeDatabaseMaintenanceStartup,
     confirmRecoveryKey,
     databaseLoadError,
+    databaseLoadPending,
     exportHTML,
     exportJSON,
     getDatabaseMaintenanceStatus,
@@ -1625,6 +1626,10 @@ return rows`
   // When you add/remove/change a shortcut here, also update the user-facing
   // reference in src/lib/KeyboardShortcutsModal.svelte (opened with `?`).
   function handleGlobalKeydown(event: KeyboardEvent) {
+    // The native store begins with a disposable bootstrap state. Do not let a
+    // shortcut mutate it while SQLCipher is still opening the real database.
+    if ($databaseLoadPending || $databaseLoadError) return
+
     const key = event.key.toLowerCase()
     const primaryModifier = event.metaKey || event.ctrlKey
 
@@ -3363,6 +3368,19 @@ return rows`
   </div>
 {/if}
 
+{#if $databaseLoadPending && !$databaseLoadError}
+  <div class="database-loading-backdrop" role="status" aria-live="polite" aria-busy="true">
+    <div class="database-loading-card">
+      <span class="database-maintenance-spinner" aria-hidden="true"></span>
+      <div>
+        <p class="eyebrow">Balance</p>
+        <h2>Opening your encrypted database…</h2>
+        <p>Your data is still on this device. A large database can take a little longer to open.</p>
+      </div>
+    </div>
+  </div>
+{/if}
+
 {#if $databaseLoadError}
   <div class="modal-backdrop database-load-failure-backdrop">
     <div class="recovery-dialog" role="alertdialog" aria-modal="true" aria-labelledby="database-load-failure-title">
@@ -3410,7 +3428,11 @@ return rows`
   </div>
 {/if}
 
-<main class="app-shell">
+<main
+  class="app-shell"
+  inert={$databaseLoadPending || Boolean($databaseLoadError)}
+  aria-hidden={$databaseLoadPending || $databaseLoadError ? 'true' : undefined}
+>
   <aside class="sidebar">
     <div>
       <h1>Balance</h1>

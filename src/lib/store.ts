@@ -206,6 +206,7 @@ const persistedOperationListeners = new Set<() => void>()
 
 export const persistenceError = writable('')
 export const databaseLoadError = writable('')
+export const databaseLoadPending = writable(isTauri())
 
 export function onPersistedOperation(listener: () => void): () => void {
   persistedOperationListeners.add(listener)
@@ -269,6 +270,7 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
       }
       if (persistenceTarget === 'tauri' && pendingOperations.size > 0) scheduleOperationFlush()
     }
+    databaseLoadPending.set(false)
   }
 }
 

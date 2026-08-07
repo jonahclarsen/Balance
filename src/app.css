@@ -1187,6 +1187,42 @@ nav button.active {
   z-index: 200;
 }
 
+.database-loading-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--paper-strong);
+}
+
+.database-loading-card {
+  display: flex;
+  width: min(520px, 100%);
+  align-items: flex-start;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper);
+  box-shadow: var(--shadow);
+  padding: 24px;
+}
+
+.database-loading-card > div {
+  display: grid;
+  gap: 10px;
+}
+
+.database-loading-card h2 {
+  font-size: clamp(1.35rem, 5vw, 1.75rem);
+}
+
+.database-loading-card p:last-child {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
 .database-load-error {
   padding: 12px;
   border: 1px solid var(--danger);
