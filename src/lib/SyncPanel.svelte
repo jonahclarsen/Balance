@@ -39,6 +39,8 @@
   let joinInput = ''
   let status = ''
   let busy = false
+  let settingsLoading = true
+  let settingsLoadFailed = false
   let pairing = false
   let isError = false
   let scanning = false
@@ -70,7 +72,10 @@
       relayUrl = settings.relayUrl
     } catch (err) {
       migrated = false
+      settingsLoadFailed = true
       setStatus(`Could not load sync settings: ${err}`, true)
+    } finally {
+      settingsLoading = false
     }
     if (pairingCode) await renderQr()
     if (migrated) await startP2p()
@@ -413,16 +418,22 @@
     <div class="sync-relay">
       <label for="sync-relay-input">Relay server (for server-mediated sync)</label>
       <p>Leave blank to use only direct device-to-device sync.</p>
-      <div class="sync-actions">
-        <input
-          id="sync-relay-input"
-          type="url"
-          placeholder="https://relay.example.com"
-          spellcheck="false"
-          bind:value={relayUrl}
-        />
-        <button type="button" on:click={saveRelay} disabled={busy}>Save</button>
-      </div>
+      {#if settingsLoading}
+        <p class="sync-state" role="status" aria-live="polite">Loading sync settings…</p>
+      {:else if settingsLoadFailed}
+        <p class="sync-state">Sync settings are unavailable.</p>
+      {:else}
+        <div class="sync-actions">
+          <input
+            id="sync-relay-input"
+            type="url"
+            placeholder="https://relay.example.com"
+            spellcheck="false"
+            bind:value={relayUrl}
+          />
+          <button type="button" on:click={saveRelay} disabled={busy}>Save</button>
+        </div>
+      {/if}
     </div>
 
     <div class="sync-actions">
