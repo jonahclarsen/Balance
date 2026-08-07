@@ -1,5 +1,68 @@
 import { expect, test } from '@playwright/test'
 
+test('desktop sidebar hides, returns, and remembers its state', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const sidebar = page.getByRole('complementary')
+  const hideSidebar = page.getByRole('button', { name: 'Hide sidebar' })
+  const showSidebar = page.getByRole('button', { name: 'Show sidebar' })
+
+  if (testInfo.project.name === 'mobile') {
+    await expect(sidebar).toBeVisible()
+    await expect(hideSidebar).toBeHidden()
+    await page.evaluate(() => localStorage.setItem('balance:sidebarHidden', 'true'))
+    await page.reload()
+    await expect(sidebar).toBeVisible()
+    await expect(showSidebar).toBeHidden()
+    return
+  }
+
+  await expect(sidebar).toBeVisible()
+  const openToggleBox = await hideSidebar.boundingBox()
+  const templateSelectBox = await sidebar.getByRole('combobox').boundingBox()
+  const generateButtonBox = await sidebar.getByRole('button', { name: 'Generate today' }).boundingBox()
+  const toggleIconBox = await hideSidebar.locator('svg').boundingBox()
+  expect(openToggleBox).not.toBeNull()
+  expect(templateSelectBox).not.toBeNull()
+  expect(generateButtonBox).not.toBeNull()
+  expect(toggleIconBox).not.toBeNull()
+  expect(Math.abs((templateSelectBox?.x ?? 0) - (generateButtonBox?.x ?? 0))).toBeLessThan(1)
+  expect(Math.abs((templateSelectBox?.width ?? 0) - (generateButtonBox?.width ?? 0))).toBeLessThan(1)
+  expect((openToggleBox?.y ?? 0) + (openToggleBox?.height ?? 0) / 2).toBeGreaterThan(
+    (templateSelectBox?.y ?? 0) + (templateSelectBox?.height ?? 0),
+  )
+  expect((openToggleBox?.y ?? 0) + (openToggleBox?.height ?? 0) / 2).toBeLessThan(generateButtonBox?.y ?? 0)
+  expect(
+    Math.abs(
+      (openToggleBox?.x ?? 0) + (openToggleBox?.width ?? 0) / 2
+        - ((toggleIconBox?.x ?? 0) + (toggleIconBox?.width ?? 0) / 2),
+    ),
+  ).toBeLessThan(1)
+  expect(
+    Math.abs(
+      (openToggleBox?.y ?? 0) + (openToggleBox?.height ?? 0) / 2
+        - ((toggleIconBox?.y ?? 0) + (toggleIconBox?.height ?? 0) / 2),
+    ),
+  ).toBeLessThan(1)
+  await hideSidebar.click()
+  await expect(sidebar).toBeHidden()
+  await expect(showSidebar).toBeVisible()
+  const closedToggleBox = await showSidebar.boundingBox()
+  expect(closedToggleBox).not.toBeNull()
+  expect(Math.abs((openToggleBox?.y ?? 0) - (closedToggleBox?.y ?? 0))).toBeLessThan(1)
+  expect(closedToggleBox?.height).toBe(openToggleBox?.height)
+
+  await page.reload()
+  await expect(sidebar).toBeHidden()
+  await expect(showSidebar).toBeVisible()
+
+  await showSidebar.click()
+  await expect(sidebar).toBeVisible()
+  await expect(hideSidebar).toBeVisible()
+})
+
 test('core planner screens render and screenshot cleanly', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

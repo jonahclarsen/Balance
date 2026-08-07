@@ -176,6 +176,7 @@ h3 {
 }
 
 .app-shell {
+  position: relative;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   /* Fit within the safe-area padding the body now reserves, so the fixed-height
@@ -183,6 +184,10 @@ h3 {
   height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow: hidden;
+}
+
+.app-shell.sidebar-hidden {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .sidebar {
@@ -195,6 +200,55 @@ h3 {
   padding: 24px 18px;
   border-right: 1px solid var(--line);
   background: var(--sidebar);
+}
+
+.sidebar.sidebar-hidden {
+  position: absolute;
+  z-index: 20;
+  left: -248px;
+  width: 248px;
+  visibility: hidden;
+}
+
+.sidebar-toggle {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 21px;
+  line-height: 1;
+}
+
+.sidebar-toggle svg {
+  display: block;
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.sidebar-toggle:hover {
+  border-color: var(--line);
+  background: color-mix(in srgb, var(--paper-strong) 72%, transparent);
+  color: var(--accent-strong);
+}
+
+.sidebar-show-button {
+  position: relative;
+  z-index: 1;
+  visibility: visible;
+  border-left: 0;
+  border-radius: 0 6px 6px 0;
+  background: color-mix(in srgb, var(--sidebar) 88%, transparent);
+  box-shadow: 2px 2px 8px color-mix(in srgb, var(--ink) 10%, transparent);
+  transform: translateX(28px);
 }
 
 .muted,
@@ -275,9 +329,34 @@ nav button.active {
 }
 
 .sidebar-footer {
+  position: relative;
   display: grid;
   gap: 10px;
   margin-top: auto;
+}
+
+.sidebar-toggle-anchor {
+  position: relative;
+}
+
+.sidebar-toggle-anchor:not(.has-template) {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 34px;
+}
+
+.sidebar-toggle-anchor .sidebar-toggle {
+  position: absolute;
+  right: -12px;
+}
+
+.sidebar-toggle-anchor.has-template .sidebar-toggle {
+  bottom: -16px;
+}
+
+.sidebar-toggle-anchor:not(.has-template) .sidebar-toggle {
+  top: 50%;
+  translate: 0 -50%;
 }
 
 .generation-template-field {
@@ -2484,6 +2563,17 @@ nav button.active {
     border-right: 0;
     border-bottom: 1px solid var(--line);
     padding: 12px 10px 8px;
+  }
+
+  .sidebar.sidebar-hidden {
+    display: flex;
+    position: static;
+    width: auto;
+    visibility: visible;
+  }
+
+  .sidebar-toggle {
+    display: none;
   }
 
   .sidebar > div:first-child {

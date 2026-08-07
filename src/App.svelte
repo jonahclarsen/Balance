@@ -77,6 +77,7 @@
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
   const WORKSPACE_VIEW_STATE_KEY = 'balance:workspaceViewState'
   const COMPARE_DAY_KEY = 'balance:compareDay'
+  const SIDEBAR_HIDDEN_KEY = 'balance:sidebarHidden'
   // Matches the light-theme --done-tint base in app.css; shown as the picker
   // value when the user hasn't chosen a custom color yet.
   const DEFAULT_DONE_TINT = '#3f9d54'
@@ -92,7 +93,13 @@
     return `${isMac ? '⌥' : 'Alt+'}${key}`
   }
 
+  function setSidebarHidden(hidden: boolean) {
+    sidebarHidden = hidden
+    localStorage.setItem(SIDEBAR_HIDDEN_KEY, String(hidden))
+  }
+
   let view: View = 'today'
+  let sidebarHidden = false
   let searchOpen = false
   let documentFindOpen = false
   let documentFindBar: DocumentFindBar | null = null
@@ -881,6 +888,7 @@ return rows`
       )
     }, DATABASE_LOADING_MESSAGE_INTERVAL_MS)
     const storedWorkspaceViewState = readWorkspaceViewState()
+    sidebarHidden = localStorage.getItem(SIDEBAR_HIDDEN_KEY) === 'true'
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
 
     const storedListTemplatesViewState = readListTemplatesViewState()
@@ -3493,10 +3501,11 @@ return rows`
 <main
   class="app-shell"
   class:android={isAndroid}
+  class:sidebar-hidden={sidebarHidden}
   inert={$databaseLoadPending || Boolean($databaseLoadError)}
   aria-hidden={$databaseLoadPending || $databaseLoadError ? 'true' : undefined}
 >
-  <aside class="sidebar">
+  <aside class="sidebar" class:sidebar-hidden={sidebarHidden}>
     <div>
       <h1>Balance</h1>
       <p class="muted">Local-first daily planning</p>
@@ -3528,19 +3537,36 @@ return rows`
     </nav>
 
     <div class="sidebar-footer">
-      {#if selectedTemplate && view !== 'templates'}
-        <label class="generation-template-field">
-          <span>Template for new days</span>
-          <select
-            value={selectedTemplate.id}
-            on:change={(event) => selectDayTemplate(event.currentTarget.value)}
-          >
-            {#each templates as template (template.id)}
-              <option value={template.id}>{template.name || 'Untitled day'}</option>
-            {/each}
-          </select>
-        </label>
-      {/if}
+      <div
+        class="sidebar-toggle-anchor"
+        class:has-template={Boolean(selectedTemplate && view !== 'templates')}
+      >
+        {#if selectedTemplate && view !== 'templates'}
+          <label class="generation-template-field">
+            <span>Template for new days</span>
+            <select
+              value={selectedTemplate.id}
+              on:change={(event) => selectDayTemplate(event.currentTarget.value)}
+            >
+              {#each templates as template (template.id)}
+                <option value={template.id}>{template.name || 'Untitled day'}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
+        <button
+          class="sidebar-toggle"
+          class:sidebar-show-button={sidebarHidden}
+          type="button"
+          title={sidebarHidden ? 'Psst… bring the sidebar back' : 'Hide sidebar (shoo!)'}
+          aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
+          on:click={() => setSidebarHidden(!sidebarHidden)}
+        >
+          <svg aria-hidden="true" viewBox="0 0 16 16">
+            <path d={sidebarHidden ? 'M6 3l5 5-5 5' : 'M10 3 5 8l5 5'} />
+          </svg>
+        </button>
+      </div>
       <button class="primary" type="button" on:click={() => { void generateSelectedDay() }}>{generateButtonLabel}</button>
       <p class="tiny">{templates.length} template{templates.length === 1 ? '' : 's'} · {$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
     </div>
