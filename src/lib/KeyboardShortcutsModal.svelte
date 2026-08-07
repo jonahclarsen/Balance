@@ -80,6 +80,7 @@
         { keys: ['mod', 'C'], label: 'Copy items' },
         { keys: ['mod', 'X'], label: 'Cut items' },
         { keys: ['mod', 'V'], label: 'Paste items' },
+        { keys: ['mod', 'alt', 'shift', 'V'], label: 'Paste item text only' },
         { keys: ['del'], label: 'Delete selected items' },
       ],
     },

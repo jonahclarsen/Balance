@@ -2157,6 +2157,33 @@ test('clicking a paste target immediately after whole-item copy honors the click
     .toEqual([before[0], before[2], before[1], before[2]])
 })
 
+test('Paste and Match Style inserts copied item text into the focused item instead of creating a row', async ({ page, browserName }) => {
+  test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this regression test')
+
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  const copiedText = before[0]
+  await page.getByRole('listitem', { name: `Plan item: ${copiedText}` }).getByRole('button', { name: 'Select item' }).click()
+  await page.keyboard.press('Meta+C')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(copiedText)
+
+  await page.locator('[data-plan-text-input-id]').filter({ hasText: before[1] }).click()
+  await expect.poll(async () => activeInputValue(page)).toBe(before[1])
+  await setCaretOffsetInFocusedEditor(page, before[1].length)
+  await page.keyboard.press('Meta+Alt+Shift+V')
+
+  await expect.poll(async () => topLevelTexts(page)).toEqual([
+    before[0],
+    `${before[1]}${copiedText}`,
+    ...before.slice(2),
+  ])
+})
+
 test('replacing the system clipboard prevents stale structured task paste', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this regression test')
 

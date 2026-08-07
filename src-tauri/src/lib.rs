@@ -14,6 +14,8 @@ use rand::{rngs::OsRng, RngCore};
 use rusqlite::{backup::Backup, params, Connection, OptionalExtension, Transaction};
 use serde::Serialize;
 use serde_json::{json, Map, Value};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 use tauri::Manager;
 
 #[cfg(target_os = "android")]
@@ -45,6 +47,10 @@ const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 static DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
 #[cfg(target_os = "macos")]
 const BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE: &str = "com.balance.plan-items+json";
+#[cfg(target_os = "macos")]
+const PASTE_MATCH_STYLE_MENU_ID: &str = "balance-paste-match-style";
+#[cfg(target_os = "macos")]
+const PASTE_MATCH_STYLE_EVENT: &str = "balance-paste-match-style";
 
 #[cfg(target_os = "macos")]
 fn disable_automatic_text_replacement() {
@@ -61,6 +67,39 @@ fn disable_automatic_text_replacement() {
 
 #[cfg(not(target_os = "macos"))]
 fn disable_automatic_text_replacement() {}
+
+#[cfg(target_os = "macos")]
+fn install_paste_and_match_style_menu(app: &tauri::App) -> tauri::Result<()> {
+    use tauri::menu::MenuItem;
+
+    let Some(menu) = app.menu() else {
+        return Ok(());
+    };
+    let edit_menu = menu.items()?.into_iter().find_map(|item| {
+        let submenu = item.as_submenu()?;
+        (submenu.text().ok().as_deref() == Some("Edit")).then(|| submenu.clone())
+    });
+    let Some(edit_menu) = edit_menu else {
+        return Ok(());
+    };
+
+    let paste_match_style = MenuItem::with_id(
+        app,
+        PASTE_MATCH_STYLE_MENU_ID,
+        "Paste and Match Style",
+        true,
+        Some("Cmd+Alt+Shift+V"),
+    )?;
+    // Default Edit menu: Undo, Redo, separator, Cut, Copy, Paste, Select All.
+    edit_menu.insert(&paste_match_style, 6)?;
+    app.on_menu_event(|app, event| {
+        if event.id() == PASTE_MATCH_STYLE_MENU_ID {
+            let _ = app.emit(PASTE_MATCH_STYLE_EVENT, ());
+        }
+    });
+
+    Ok(())
+}
 
 #[cfg(all(target_os = "android", debug_assertions))]
 fn is_android_owner_user() -> bool {
@@ -7163,6 +7202,9 @@ pub fn run() {
 
     tauri::Builder::default()
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            install_paste_and_match_style_menu(app)?;
+
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()

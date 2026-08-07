@@ -1,5 +1,6 @@
 <script lang="ts">
   import { invoke, isTauri } from '@tauri-apps/api/core'
+  import { listen } from '@tauri-apps/api/event'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
   import ColorPicker from './lib/ColorPicker.svelte'
@@ -50,6 +51,7 @@
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
   const PASTE_REVIEW_THRESHOLD = 4
   const PASTE_REVIEW_COOLDOWN_MS = 2000
+  const PASTE_MATCH_STYLE_EVENT = 'balance-paste-match-style'
   const TIME_KEYBOARD_STEP_MINUTES = 15
   const TIME_KEYBOARD_MERGE_WINDOW_MS = 1500
 
@@ -882,6 +884,7 @@ return rows`
   onMount(() => {
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
+    let stopPasteMatchStyleListener: (() => void) | null = null
     const databaseLoadingMessageTimer = window.setInterval(() => {
       if (!$databaseLoadPending || databaseLoadingMessages.length < 2) return
       databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(
@@ -890,6 +893,18 @@ return rows`
       )
     }, DATABASE_LOADING_MESSAGE_INTERVAL_MS)
     const storedWorkspaceViewState = readWorkspaceViewState()
+
+    if (isTauri()) {
+      void listen(PASTE_MATCH_STYLE_EVENT, () => {
+        void pasteSystemClipboardAsPlainText()
+      }).then((stopListening) => {
+        if (mounted) stopPasteMatchStyleListener = stopListening
+        else stopListening()
+      }).catch((error) => {
+        console.error('Could not listen for Paste and Match Style', error)
+      })
+    }
+
     sidebarHidden = localStorage.getItem(SIDEBAR_HIDDEN_KEY) === 'true'
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
 
@@ -997,6 +1012,7 @@ return rows`
       rememberWorkspaceScroll()
       mounted = false
       stopAutomaticSync?.()
+      stopPasteMatchStyleListener?.()
       window.clearInterval(databaseLoadingMessageTimer)
       clearGoalRhythmAutoShowTimer()
       dismissCelebration()
@@ -2092,6 +2108,23 @@ return rows`
       }
     }
 
+    // The native macOS Edit menu owns Paste and Match Style in the desktop app.
+    // Keep the canonical shortcut usable in browser-only development too. Use
+    // `code` because Option changes `key` from "v" to a macOS symbol.
+    if (
+      !isTauri() &&
+      event.code === 'KeyV' &&
+      isRichTextActive() &&
+      primaryModifier &&
+      event.shiftKey &&
+      event.altKey
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      void pasteSystemClipboardAsPlainText()
+      return
+    }
+
     if (!primaryModifier || event.altKey) return
 
     if (activeItemSurface() === 'plan' && focusedPlan && key === 'd' && !event.shiftKey && selectedItemIds.length > 0) {
@@ -2662,6 +2695,19 @@ return rows`
     }
 
     pastePlainClipboardIntoActiveEditor(clipboard)
+  }
+
+  async function pasteSystemClipboardAsPlainText() {
+    const editor = document.activeElement
+    if (!(editor instanceof HTMLElement) || !editor.matches('[data-rich-text-input]')) return
+
+    const clipboard = await readSystemClipboard()
+    // Clipboard reads are asynchronous. Do not paste into a different item if focus
+    // moved while the native pasteboard request was in flight.
+    if (document.activeElement !== editor) return
+    editor.dispatchEvent(new CustomEvent('balancepaste', {
+      detail: { plainText: clipboard.plainText, html: null },
+    }))
   }
 
   function pastePlanItemClipboard(planItemClipboard: PlanItemClipboard) {
