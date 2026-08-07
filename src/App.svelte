@@ -10,6 +10,7 @@
   import TemplateTabs from './lib/TemplateTabs.svelte'
   import ListTemplateItemEditor from './lib/ListTemplateItemEditor.svelte'
   import ListPanel from './lib/ListPanel.svelte'
+  import NotesPanel from './lib/NotesPanel.svelte'
   import OverlayModal from './lib/OverlayModal.svelte'
   import SyncPanel from './lib/SyncPanel.svelte'
   import MetricQuiz from './lib/MetricQuiz.svelte'
@@ -55,7 +56,7 @@
   const TIME_KEYBOARD_STEP_MINUTES = 15
   const TIME_KEYBOARD_MERGE_WINDOW_MS = 1500
 
-  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'metrics' | 'goals' | 'settings'
+  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'metrics' | 'goals' | 'settings'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -144,6 +145,7 @@
   let overlayListPanel: ListPanel | null = null
   let wordCapUnlocked = false
   let selectedMetricId = ''
+  let selectedNoteId = ''
   let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
   let selectedListOverlayItemIdsByList: Record<Id, Id | null> = {}
   let listOverlayScrollTopsByList: Record<Id, number> = {}
@@ -344,6 +346,10 @@ return rows`
   $: selectedMetric = metrics.find((metric) => metric.id === selectedMetricId) ?? metrics[0]
   $: if (!selectedMetricId && metrics[0]) selectedMetricId = metrics[0].id
   $: if (!importMetricId && metrics[0]) importMetricId = metrics[0].id
+  // ---- Notes ----
+  $: notes = $plannerStore.notes
+  $: if (!selectedNoteId && notes[0]) selectedNoteId = notes[0].id
+  $: if (selectedNoteId && !notes.some((note) => note.id === selectedNoteId)) selectedNoteId = notes[0]?.id ?? ''
 
   // ---- Overlays: auto-close a list toast once every box is checked ----
   // Only auto-close when the list *transitions* to complete while open, so
@@ -582,9 +588,14 @@ return rows`
     )
   }
 
-  function openLink(link: ItemLink, opener: Opener) {
+  function openLink(link: ItemLink, opener: Opener | null) {
     const date = $plannerStore.activePlanDate
-    if (link.kind === 'list') {
+    if (link.kind === 'note') {
+      if ($plannerStore.notes.some((note) => note.id === link.noteId)) {
+        selectedNoteId = link.noteId
+        view = 'notes'
+      }
+    } else if (link.kind === 'list') {
       const listId = plannerStore.ensureListForDate(link.listTemplateId, date)
       if (listId) {
         if (!Object.prototype.hasOwnProperty.call(selectedListOverlayItemIdsByList, listId)) {
@@ -602,6 +613,17 @@ return rows`
     } else {
       metricOverlay = { metricId: link.metricId, date, opener }
     }
+  }
+
+  async function confirmDeleteNote(noteId: Id) {
+    const note = $plannerStore.notes.find((candidate) => candidate.id === noteId)
+    if (!note) return
+    const message = `Delete “${note.title.trim() || 'Untitled note'}”?`
+    const confirmed = isTauri()
+      ? await confirmDialog(message, { title: 'Delete note', kind: 'warning' })
+      : window.confirm(message)
+    if (!confirmed) return
+    plannerStore.deleteNote(noteId)
   }
 
   // Jump from a generated list item to the source item on the list-templates
@@ -1852,6 +1874,7 @@ return rows`
         KeyR: 'lists',
         KeyD: 'templates',
         KeyE: 'listTemplates',
+        KeyN: 'notes',
         KeyV: 'metrics',
         KeyS: 'settings',
       }
@@ -3451,7 +3474,10 @@ return rows`
     searchOpen = false
     clearItemSelection()
 
-    if (result.kind === 'day') {
+    if (result.kind === 'note') {
+      selectedNoteId = result.noteId
+      view = 'notes'
+    } else if (result.kind === 'day') {
       plannerStore.setActivePlanDate(result.date)
       view = 'today'
     } else if (result.kind === 'list') {
@@ -3461,7 +3487,7 @@ return rows`
     } else if (result.kind === 'day-template') {
       selectedTemplateId = result.templateId
       view = 'templates'
-    } else {
+    } else if (result.kind === 'list-template') {
       selectedListTemplateId = result.templateId
       view = 'listTemplates'
     }
@@ -3470,7 +3496,9 @@ return rows`
     await tick()
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
 
-    const selector = result.kind === 'day-template'
+    const selector = result.kind === 'note'
+      ? `[data-note-item-id="${CSS.escape(result.itemId)}"]`
+      : result.kind === 'day-template'
       ? `[data-template-item-id="${CSS.escape(result.itemId)}"]`
       : result.kind === 'list-template'
         ? `[data-list-template-item-id="${CSS.escape(result.itemId)}"]`
@@ -3598,6 +3626,7 @@ return rows`
       <button class:active={view === 'templates'} type="button" title="Day Templates (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => (view = 'templates')}><span>Day Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
       <button class:active={view === 'listTemplates'} type="button" title="List Templates (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => (view = 'listTemplates')}><span>List Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
       <button class:active={view === 'lists'} type="button" title="Lists (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => (view = 'lists')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
+      <button class:active={view === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => (view = 'notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
       <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => (view = 'metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => { void openGoals() }}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => (view = 'settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
@@ -3820,6 +3849,7 @@ return rows`
                     onGoalBadgeClick={focusGoalInRhythm}
                     {listTemplates}
                     {metrics}
+                    {notes}
                     onOpenLink={(link, itemId) => openLink(link, { container: 'plan', containerId: plan.id, itemId })}
                   />
                 {/each}
@@ -3917,6 +3947,10 @@ return rows`
                 onSelectionPointerMove={handleSelectionPointerMove}
                 onSelectionPointerEnter={extendItemSelection}
                 onTextShiftArrow={selectItemWithAdjacent}
+                {listTemplates}
+                {metrics}
+                {notes}
+                onOpenLink={(link) => openLink(link, null)}
               />
             {/each}
           </div>
@@ -4043,6 +4077,10 @@ return rows`
                 onSelectionPointerMove={handleSelectionPointerMove}
                 onSelectionPointerEnter={extendItemSelection}
                 onTextShiftArrow={selectItemWithAdjacent}
+                {listTemplates}
+                {metrics}
+                {notes}
+                onOpenLink={(link) => openLink(link, null)}
               />
             {/each}
           </div>
@@ -4115,6 +4153,7 @@ return rows`
           {instance}
           {listTemplates}
           {metrics}
+          {notes}
           escapeClearsSelection
           onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
           onEditTemplate={(itemId) => editListItemInTemplate(instance, itemId)}
@@ -4132,6 +4171,36 @@ return rows`
           </button>
         </div>
       {/if}
+    {/if}
+
+    {#if view === 'notes'}
+      <header class="page-header notes-page-header">
+        <div>
+          <p class="eyebrow">Reference</p>
+          <h2>Notes</h2>
+        </div>
+      </header>
+      <NotesPanel
+        {notes}
+        {selectedNoteId}
+        {listTemplates}
+        {metrics}
+        historyRevision={$plannerStore.historyRevision}
+        onSelect={(noteId) => (selectedNoteId = noteId)}
+        onCreate={plannerStore.addNote}
+        onDelete={confirmDeleteNote}
+        onRename={plannerStore.renameNote}
+        onAddItem={plannerStore.addRootNoteItem}
+        patchItem={plannerStore.patchNoteItem}
+        splitItem={plannerStore.splitNoteItem}
+        backspaceItemAtStart={plannerStore.backspaceNoteItemAtStart}
+        deleteItem={plannerStore.deleteNoteItem}
+        deleteItemPreservingChildren={plannerStore.deleteNoteItemPreservingChildren}
+        moveItem={plannerStore.moveNoteItem}
+        moveItemWithinLevel={plannerStore.moveNoteItemWithinLevel}
+        outdentItem={plannerStore.outdentNoteItem}
+        onOpenLink={(link) => openLink(link, null)}
+      />
     {/if}
 
     {#if view === 'metrics'}
@@ -4657,6 +4726,7 @@ return rows`
           {instance}
           {listTemplates}
           {metrics}
+          {notes}
           bind:selectedItemId={selectedListOverlayItemIdsByList[instance.id]}
           initialScrollTop={listOverlayScrollTopsByList[instance.id] ?? null}
           onScrollTopChange={(scrollTop) => {

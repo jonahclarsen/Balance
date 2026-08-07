@@ -46,6 +46,7 @@
         { keys: ['alt', 'C'], label: 'Search' },
         { keys: ['alt', 'T'], label: 'Open Today / jump to today' },
         { keys: ['alt', 'R'], label: 'Open Lists' },
+        { keys: ['alt', 'N'], label: 'Open Notes' },
         { keys: ['alt', 'D'], label: 'Open Day Templates' },
         { keys: ['alt', 'E'], label: 'Open List Templates' },
         { keys: ['alt', 'V'], label: 'Open Metrics' },

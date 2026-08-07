@@ -25,6 +25,24 @@ export type PlanItem = {
   children: PlanItem[]
 }
 
+export type NoteItemKind = 'paragraph' | 'heading' | 'bullet' | 'numbered' | 'checklist'
+
+// Notes intentionally reuse the plan-item text/HTML/tree shape. That keeps
+// rich-text editing, splitting, indentation, and tree movement on the same
+// code paths as plans and templates while adding only a presentation kind.
+export type NoteItem = PlanItem & {
+  kind: NoteItemKind
+  children: NoteItem[]
+}
+
+export type Note = {
+  id: Id
+  title: string
+  items: NoteItem[]
+  createdAt: string
+  updatedAt: string
+}
+
 export type MovePlacement = 'before' | 'after' | 'inside'
 
 export type MoveDirection = 'up' | 'down'
@@ -162,6 +180,7 @@ export type AppState = {
   lists: ListInstance[]
   metrics: Metric[]
   metricEntries: MetricEntry[]
+  notes: Note[]
   goals: Goal[]
   goalCompletions: GoalCompletion[]
   operations: Operation[]

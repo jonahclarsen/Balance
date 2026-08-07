@@ -143,9 +143,30 @@ export function createInitialState(): AppState {
     lists: [],
     metrics: [],
     metricEntries: [],
+    notes: [],
     goals: [],
     goalCompletions: [],
     operations: [],
+  }
+}
+
+export function createNoteItem(text = '', kind: import('./types').NoteItemKind = 'paragraph'): import('./types').NoteItem {
+  return {
+    ...createPlanItem(text),
+    id: createId('note_item'),
+    kind,
+    children: [],
+  }
+}
+
+export function createNote(title = 'Untitled note'): import('./types').Note {
+  const createdAt = nowISO()
+  return {
+    id: createId('note'),
+    title,
+    items: [createNoteItem()],
+    createdAt,
+    updatedAt: createdAt,
   }
 }
 
@@ -1882,8 +1903,9 @@ export function createMetricEntry(metricId: Id, date: string): MetricEntry {
 export type ItemLink =
   | { kind: 'list'; listTemplateId: Id; label: string }
   | { kind: 'metric'; metricId: Id; label: string }
+  | { kind: 'note'; noteId: Id; label: string }
 
-export function resolveItemLinks(text: string, listTemplates: ListTemplate[], metrics: Metric[]): ItemLink[] {
+export function resolveItemLinks(text: string, listTemplates: ListTemplate[], metrics: Metric[], notes: import('./types').Note[] = []): ItemLink[] {
   const trimmed = text.trim()
   if (!trimmed) return []
 
@@ -1902,6 +1924,11 @@ export function resolveItemLinks(text: string, listTemplates: ListTemplate[], me
     if (name && lower.includes(name.toLowerCase())) {
       links.push({ kind: 'metric', metricId: metric.id, label: name })
     }
+  }
+
+  for (const match of trimmed.matchAll(/balance:\/\/note\/([a-zA-Z0-9_-]+)/g)) {
+    const note = notes.find((candidate) => candidate.id === match[1])
+    if (note) links.push({ kind: 'note', noteId: note.id, label: note.title.trim() || 'Untitled note' })
   }
 
   return links
@@ -1927,7 +1954,7 @@ export type ItemTextSegment = { text: string; link: ItemLink | null }
 // occurrence (case-insensitive substring) as a link and leaving everything else
 // as plain text. Each name is scanned with indexOf over the lowercased text, so
 // cost is bounded by the small number of templates/metrics, not the text length.
-export function linkifyItemText(text: string, listTemplates: ListTemplate[], metrics: Metric[]): ItemTextSegment[] {
+export function linkifyItemText(text: string, listTemplates: ListTemplate[], metrics: Metric[], notes: import('./types').Note[] = []): ItemTextSegment[] {
   if (text === '') return [{ text, link: null }]
 
   const haystack = text.toLowerCase()
@@ -1951,6 +1978,15 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
     if (!name) continue
     collect(name, { kind: 'metric', metricId: metric.id, label: name })
   }
+  for (const match of text.matchAll(/balance:\/\/note\/([a-zA-Z0-9_-]+)/g)) {
+    const note = notes.find((candidate) => candidate.id === match[1])
+    if (!note || match.index === undefined) continue
+    matches.push({
+      start: match.index,
+      end: match.index + match[0].length,
+      link: { kind: 'note', noteId: note.id, label: note.title.trim() || 'Untitled note' },
+    })
+  }
 
   if (matches.length === 0) return [{ text, link: null }]
 
@@ -1969,33 +2005,63 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
 }
 
 export function internalLinkId(link: ItemLink): string {
-  return link.kind === 'list' ? link.listTemplateId : link.metricId
+  if (link.kind === 'list') return link.listTemplateId
+  if (link.kind === 'metric') return link.metricId
+  return link.noteId
 }
 
-// Renders an item's saved HTML for read-only display, re-inserting clickable
-// internal-link anchors when the text carries no inline formatting. When the
-// item has real formatting (bold/italic/underline) we keep that HTML as-is,
-// matching what the editable RichTextEditor shows. Both the editor and the
-// locked list rows go through this so their rendering stays identical.
+// Renders saved rich text while re-inserting clickable internal-link anchors.
+// Links are mapped by plain-text offset into the already-sanitized DOM, so a
+// note URL remains clickable even when it sits inside bold/italic/underlined
+// text. Both editable and locked rows go through this renderer.
 export function renderItemDisplayHTML(sourceHTML: string, sourceText: string, segments: ItemTextSegment[]): string {
-  const fallbackHTML = sourceHTML || escapeHTML(sourceText)
-  if (!canRenderInternalLinks(fallbackHTML, sourceText, segments)) return fallbackHTML
+  const fallbackHTML = sanitizeInlineHTML(sourceHTML || escapeHTML(sourceText))
+  if (!segments.some((segment) => segment.link) || !globalThis.document) return fallbackHTML
 
-  return segments
-    .map((segment) => {
-      if (!segment.link) return escapeHTML(segment.text)
-      return `<a href="#" data-internal-link-kind="${segment.link.kind}" data-internal-link-id="${escapeHTML(
-        internalLinkId(segment.link),
-      )}" data-internal-link-label="${escapeHTML(segment.link.label)}" title="Open ${escapeHTML(segment.link.label)}">${escapeHTML(
-        segment.text,
-      )}</a>`
-    })
-    .join('')
-}
+  const ranges: { start: number; end: number; link: ItemLink }[] = []
+  let segmentOffset = 0
+  for (const segment of segments) {
+    if (segment.link) ranges.push({ start: segmentOffset, end: segmentOffset + segment.text.length, link: segment.link })
+    segmentOffset += segment.text.length
+  }
 
-function canRenderInternalLinks(fallbackHTML: string, sourceText: string, segments: ItemTextSegment[]): boolean {
-  if (!segments.some((segment) => segment.link)) return false
-  return sanitizeInlineHTML(fallbackHTML) === escapeHTML(sourceText)
+  const template = document.createElement('template')
+  template.innerHTML = fallbackHTML
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT)
+  const textNodes: Text[] = []
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) textNodes.push(node as Text)
+
+  let textOffset = 0
+  for (const textNode of textNodes) {
+    const value = textNode.textContent ?? ''
+    const nodeStart = textOffset
+    const nodeEnd = nodeStart + value.length
+    const overlaps = ranges.filter((range) => range.start < nodeEnd && range.end > nodeStart)
+    textOffset = nodeEnd
+    if (textNode.parentElement?.closest('a')) continue
+    if (overlaps.length === 0) continue
+
+    const fragment = document.createDocumentFragment()
+    let cursor = 0
+    for (const range of overlaps) {
+      const start = Math.max(0, range.start - nodeStart)
+      const end = Math.min(value.length, range.end - nodeStart)
+      if (start > cursor) fragment.append(value.slice(cursor, start))
+      const anchor = document.createElement('a')
+      anchor.href = '#'
+      anchor.dataset.internalLinkKind = range.link.kind
+      anchor.dataset.internalLinkId = internalLinkId(range.link)
+      anchor.dataset.internalLinkLabel = range.link.label
+      anchor.title = `Open ${range.link.label}`
+      anchor.textContent = value.slice(start, end)
+      fragment.append(anchor)
+      cursor = end
+    }
+    if (cursor < value.length) fragment.append(value.slice(cursor))
+    textNode.replaceWith(fragment)
+  }
+
+  return template.innerHTML
 }
 
 export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
@@ -2005,5 +2071,6 @@ export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
 
   if (kind === 'list' && id) return { kind, listTemplateId: id, label }
   if (kind === 'metric' && id) return { kind, metricId: id, label }
+  if (kind === 'note' && id) return { kind, noteId: id, label }
   return null
 }

@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test'
 
+const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
+
 test('today indicator stays visible after the page header scrolls away', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -405,6 +407,7 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
     { key: 'd', label: 'Day Templates' },
     { key: 'e', label: 'List Templates' },
     { key: 'r', label: 'Lists' },
+    { key: 'n', label: 'Notes' },
     { key: 'v', label: 'Metrics' },
     { key: 'g', label: 'Goals' },
     { key: 's', label: 'Settings' },
@@ -2160,7 +2163,7 @@ test('clicking a paste target immediately after whole-item copy honors the click
 test('Paste and Match Style inserts copied item text into the focused item instead of creating a row', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this regression test')
 
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: playwrightOrigin })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -2187,7 +2190,7 @@ test('Paste and Match Style inserts copied item text into the focused item inste
 test('replacing the system clipboard prevents stale structured task paste', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this regression test')
 
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: playwrightOrigin })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -2383,7 +2386,7 @@ test('pasting four or more items onto a different day opens a review queue', asy
 test('plan item rich text preserves paste formatting and supports shortcuts', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: playwrightOrigin })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -2496,7 +2499,7 @@ test('plan item rich text preserves paste formatting and supports shortcuts', as
 test('template options use rich text formatting and generate formatted plan items', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: playwrightOrigin })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -2761,7 +2764,7 @@ test('global undo and redo batch text edits', async ({ page }) => {
 test('global undo reverts pasted rich text edits', async ({ page, browserName }) => {
   test.skip(browserName !== 'chromium', 'Clipboard permissions are only configured for Chromium in this smoke test')
 
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: 'http://127.0.0.1:5123' })
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: playwrightOrigin })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()

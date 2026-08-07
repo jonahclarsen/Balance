@@ -1,17 +1,20 @@
 import { defineConfig, devices } from '@playwright/test'
 
+const port = process.env.PLAYWRIGHT_PORT ?? '5123'
+const baseURL = `http://127.0.0.1:${port}`
+
 export default defineConfig({
   testDir: './tests/visual',
   outputDir: './artifacts/playwright',
   fullyParallel: false,
   reporter: [['list']],
   use: {
-    baseURL: 'http://127.0.0.1:5123',
+    baseURL,
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: 'pnpm exec vite --host 127.0.0.1 --port 5123',
-    url: 'http://127.0.0.1:5123',
+    command: `pnpm exec vite --host 127.0.0.1 --port ${port}`,
+    url: baseURL,
     reuseExistingServer: !process.env.CI,
     stdout: 'pipe',
     stderr: 'pipe',

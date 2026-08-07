@@ -27,7 +27,7 @@
   export let html = ''
   export let text = ''
   export let inputId: Id
-  export let kind: 'plan' | 'template-option' | 'list-template-item' | 'metric-question' | 'goal-name' | 'goal-match-terms'
+  export let kind: 'plan' | 'template-option' | 'list-template-item' | 'metric-question' | 'goal-name' | 'goal-match-terms' | 'note'
   export let className = ''
   export let done = false
   export let singleLine = false
@@ -630,6 +630,8 @@
   data-template-option-text-input-id={kind === 'template-option' ? inputId : undefined}
   data-list-template-text-input={kind === 'list-template-item' ? '' : undefined}
   data-list-template-text-input-id={kind === 'list-template-item' ? inputId : undefined}
+  data-note-text-input={kind === 'note' ? '' : undefined}
+  data-note-text-input-id={kind === 'note' ? inputId : undefined}
   contenteditable="true"
   role="textbox"
   tabindex="0"

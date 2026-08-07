@@ -9,6 +9,7 @@
   export let onSelect: (result: SearchResult) => void
 
   const groups: { kind: SearchResult['kind']; label: string }[] = [
+    { kind: 'note', label: 'Notes' },
     { kind: 'day', label: 'Saved days' },
     { kind: 'list', label: 'List instances' },
     { kind: 'day-template', label: 'Day templates' },
@@ -87,7 +88,7 @@
         bind:this={searchInput}
         type="search"
         value={query}
-        placeholder="Search days, lists, and templates"
+        placeholder="Search notes, days, lists, and templates"
         aria-label="Search everything"
         on:input={(event) => updateQuery(event.currentTarget.value)}
         on:keydown={handleKeydown}
@@ -97,8 +98,8 @@
 
     {#if !query.trim()}
       <div class="search-empty">
-        <strong>Search everything you’ve planned.</strong>
-        <span>Saved days, generated lists, day templates, and list templates are all included.</span>
+        <strong>Search everything in Balance.</strong>
+        <span>Notes, saved days, generated lists, and templates are all included.</span>
       </div>
     {:else if !pending && results.length === 0}
       <div class="search-empty" role="status">

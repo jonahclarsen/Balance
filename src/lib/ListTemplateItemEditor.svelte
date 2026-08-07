@@ -1,11 +1,11 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { clampListItemProbability, expectedWordCount, htmlToPlainText, wordCount } from './planner'
+  import { clampListItemProbability, expectedWordCount, htmlToPlainText, linkifyItemText, type ItemLink, wordCount } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
-  import type { Id, ListTemplateItem, MoveDirection, MovePlacement } from './types'
+  import type { Id, ListTemplate, ListTemplateItem, Metric, MoveDirection, MovePlacement, Note } from './types'
 
   type TextChangeOptions = {
     mergeHistory?: boolean
@@ -48,6 +48,10 @@
   export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
   export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
   export let onTextShiftArrow: (itemId: Id, direction: MoveDirection) => void = () => {}
+  export let listTemplates: ListTemplate[] = []
+  export let metrics: Metric[] = []
+  export let notes: Note[] = []
+  export let onOpenLink: (link: ItemLink) => void = () => {}
 
   // Bumped to force the contenteditable to revert when a keystroke would push the
   // template's expected word count past the cap.
@@ -289,6 +293,8 @@
         onBackspaceStart={handleBackspaceStart}
         onMetaBackspaceEnd={handleMetaBackspaceEnd}
         onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
+        internalLinkSegments={linkifyItemText(item.text, listTemplates, metrics, notes)}
+        onInternalLinkClick={(link) => onOpenLink(link)}
       />
       <ProbabilitySlider
         value={item.probability}
@@ -328,6 +334,10 @@
             {onSelectionPointerMove}
             {onSelectionPointerEnter}
             {onTextShiftArrow}
+            {listTemplates}
+            {metrics}
+            {notes}
+            {onOpenLink}
           />
         {/each}
       </div>

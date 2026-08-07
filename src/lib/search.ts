@@ -2,6 +2,15 @@ import type { AppState, Id, ListTemplateItem, PlanItem, TemplateItem } from './t
 
 export type SearchResult =
   | {
+      kind: 'note'
+      id: Id
+      title: string
+      meta: string
+      preview: string
+      noteId: Id
+      itemId: Id | null
+    }
+  | {
       kind: 'day'
       id: Id
       title: string
@@ -120,7 +129,24 @@ export function searchBalanceState(state: AppState, query: string): SearchResult
     }]
   })
 
-  return [...dayResults, ...listResults, ...dayTemplateResults, ...listTemplateResults]
+  const noteResults: SearchResult[] = [...state.notes]
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .flatMap((note) => {
+      const lines = flattenPlanItems(note.items)
+      if (!matchesTerms([note.title, ...lines.map((line) => line.text)].join(' '), terms)) return []
+      const match = bestLine(lines, terms)
+      return [{
+        kind: 'note' as const,
+        id: note.id,
+        title: note.title || 'Untitled note',
+        meta: 'Note',
+        preview: previewText(match?.text || lines[0]?.text || 'Empty note'),
+        noteId: note.id,
+        itemId: match?.itemId ?? null,
+      }]
+    })
+
+  return [...noteResults, ...dayResults, ...listResults, ...dayTemplateResults, ...listTemplateResults]
 }
 
 function normalizedTerms(query: string): string[] {

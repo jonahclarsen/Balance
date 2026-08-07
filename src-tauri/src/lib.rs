@@ -40,7 +40,7 @@ const DATABASE_MAINTENANCE_LATEST_BACKUP: &str = "database_maintenance_latest_ba
 const DATABASE_MAINTENANCE_PREVIOUS_BACKUP: &str = "database_maintenance_previous_backup";
 const DATABASE_MAINTENANCE_INTERVAL_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
 const GOAL_DATA: &str = "goal_data";
-// Lists + Metrics state is stored as a single JSON metadata blob (like GOAL_DATA)
+// Lists + Metrics + Notes state is stored as a single JSON metadata blob (like GOAL_DATA)
 // rather than materialized into per-row tables.
 const LISTS_METRICS_DATA: &str = "lists_metrics_data";
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
@@ -990,6 +990,7 @@ fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>
         "lists": lists_metrics_data["lists"].clone(),
         "metrics": lists_metrics_data["metrics"].clone(),
         "metricEntries": lists_metrics_data["metricEntries"].clone(),
+        "notes": lists_metrics_data["notes"].clone(),
         "goals": goal_data["goals"].clone(),
         "goalCompletions": goal_data["goalCompletions"].clone(),
         "operations": [],
@@ -1219,7 +1220,13 @@ fn goal_data_from_state(state: &Value) -> Value {
     })
 }
 
-const LISTS_METRICS_KEYS: [&str; 4] = ["listTemplates", "lists", "metrics", "metricEntries"];
+const LISTS_METRICS_KEYS: [&str; 5] = [
+    "listTemplates",
+    "lists",
+    "metrics",
+    "metricEntries",
+    "notes",
+];
 
 fn read_lists_metrics_data(connection: &Connection) -> Result<Value, String> {
     let parsed = match metadata_value(connection, LISTS_METRICS_DATA)? {
@@ -1253,9 +1260,11 @@ fn lists_metrics_data_from_state(state: &Value) -> Value {
 }
 
 fn is_lists_metrics_operation(operation_type: &str) -> bool {
-    // All Lists/Metrics operation types contain "list" or "metric"; no existing
+    // All Lists/Metrics/Notes operation types contain "list", "metric", or "note"; no existing
     // plan/template/goal operation type does.
-    operation_type.contains("list") || operation_type.contains("metric")
+    operation_type.contains("list")
+        || operation_type.contains("metric")
+        || operation_type.contains("note")
 }
 
 fn export_settings(
@@ -8083,7 +8092,7 @@ mod tests {
     }
 
     #[test]
-    fn lists_metrics_data_persists_and_undoes_with_operations() {
+    fn lists_metrics_notes_data_persists_and_undoes_with_operations() {
         let database = TestDatabase::new("lists-metrics-data");
         let recovery_key = generate_recovery_key();
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
@@ -8093,6 +8102,7 @@ mod tests {
         let initial = read_app_state_from_database(&connection).unwrap().unwrap();
         assert_eq!(initial["listTemplates"], json!([]));
         assert_eq!(initial["metrics"], json!([]));
+        assert_eq!(initial["notes"], json!([]));
 
         // A previously unsupported operation type must now persist via the blob.
         persist_operation_to_database(
@@ -8116,7 +8126,8 @@ mod tests {
                         }],
                         "lists": [],
                         "metrics": [],
-                        "metricEntries": []
+                        "metricEntries": [],
+                        "notes": []
                     }
                 }
             }),
@@ -8130,6 +8141,40 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(undone["listTemplates"], json!([]));
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_3",
+                "deviceId": "device_test",
+                "sequence": 3,
+                "type": "add_note",
+                "timestamp": "2026-05-21T00:02:00Z",
+                "payload": {
+                    "noteId": "note_1",
+                    "listsMetricsData": {
+                        "listTemplates": [],
+                        "lists": [],
+                        "metrics": [],
+                        "metricEntries": [],
+                        "notes": [{
+                            "id": "note_1",
+                            "title": "Reference",
+                            "items": [],
+                            "createdAt": "2026-05-21T00:02:00Z",
+                            "updatedAt": "2026-05-21T00:02:00Z"
+                        }]
+                    }
+                }
+            }),
+        )
+        .unwrap();
+        let with_note = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(with_note["notes"][0]["title"], "Reference");
+        let note_undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(note_undone["notes"], json!([]));
     }
 
     #[test]

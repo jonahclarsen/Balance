@@ -3,11 +3,12 @@
   import PlanItemEditor from './PlanItemEditor.svelte'
   import { buildItemTimeWarnings, findPlanItem, itemMetricLink, type ItemLink } from './planner'
   import { plannerStore } from './store'
-  import type { Id, ListTemplate, Metric, PlanItem } from './types'
+  import type { Id, ListTemplate, Metric, Note, PlanItem } from './types'
 
   export let instance: { id: Id; items: PlanItem[] }
   export let listTemplates: ListTemplate[]
   export let metrics: Metric[]
+  export let notes: Note[] = []
   // Open an internal [[list]] / [[metric]] link from one of the rows.
   export let onOpenLink: (link: ItemLink, itemId: Id) => void
   // Jump a generated row to its source item on the list-templates page to edit.
@@ -226,6 +227,7 @@
       historyRevision={$plannerStore.historyRevision}
       {listTemplates}
       {metrics}
+      {notes}
       selectedItemIds={selectedItemIdSet}
       onLockedSelect={(itemId) => selectItem(itemId, true)}
       onOpenLink={(link, itemId) => onOpenLink(link, itemId)}

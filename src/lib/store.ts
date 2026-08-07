@@ -71,6 +71,8 @@ import {
   createMetric,
   createMetricQuestion,
   createMetricEntry,
+  createNote,
+  createNoteItem,
 } from './planner'
 import {
   createGoal,
@@ -96,7 +98,12 @@ import type {
   MetricEntry,
   MetricQuestion,
   MetricQuestionType,
+  Note,
+  NoteItem,
+  NoteItemKind,
   Operation,
+  MoveDirection,
+  MovePlacement,
   PlanItem,
   TemplateItem,
   TemplateOption,
@@ -422,7 +429,8 @@ function createPlannerStore() {
         next.listTemplates !== state.listTemplates ||
         next.lists !== state.lists ||
         next.metrics !== state.metrics ||
-        next.metricEntries !== state.metricEntries
+        next.metricEntries !== state.metricEntries ||
+        next.notes !== state.notes
       const previousListsMetricsData =
         canMergeOperation && lastOperation?.payload !== null && typeof lastOperation?.payload === 'object'
           ? (lastOperation.payload as Record<string, unknown>).listsMetricsData
@@ -433,6 +441,7 @@ function createPlannerStore() {
             lists: next.lists,
             metrics: next.metrics,
             metricEntries: next.metricEntries,
+            notes: next.notes,
           }
         : previousListsMetricsData
       const operationPayload =
@@ -1203,6 +1212,135 @@ function createPlannerStore() {
       })
     },
 
+    // ---- Notes (reuse the plan-item tree and shared rich-text editor) ----
+
+    addNote() {
+      const note = createNote()
+      commit('add_note', { noteId: note.id }, (state) => ({ ...state, notes: [note, ...state.notes] }))
+      return note.id
+    },
+
+    deleteNote(noteId: Id) {
+      commit('delete_note', { noteId }, (state) => ({ ...state, notes: state.notes.filter((note) => note.id !== noteId) }))
+    },
+
+    renameNote(noteId: Id, title: string) {
+      commit(
+        'rename_note',
+        { noteId, title },
+        (state) => updateNote(state, noteId, (note) => ({ ...note, title, updatedAt: nowISO() })),
+        { mergeKey: `note-title:${noteId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
+      )
+    },
+
+    addRootNoteItem(noteId: Id, kind: NoteItemKind = 'paragraph') {
+      const item = createNoteItem('', kind)
+      commit('add_note_item', { noteId, item }, (state) =>
+        updateNote(state, noteId, (note) => ({
+          ...note,
+          updatedAt: nowISO(),
+          items: [...note.items, item],
+        })),
+      )
+      return item.id
+    },
+
+    patchNoteItem(noteId: Id, itemId: Id, patch: Partial<NoteItem>, options: TextChangeOptions = {}) {
+      const isTextPatch = 'text' in patch || 'html' in patch
+      const mergeOptions =
+        isTextPatch && options.mergeHistory !== false
+          ? { mergeKey: `note-item-text:${noteId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
+          : {}
+      commit('patch_note_item', { noteId, itemId, patch }, (state) =>
+        updateNote(state, noteId, (note) => {
+          const items = updatePlanItem(note.items, itemId, (item) => applyPatch(item, patch)) as NoteItem[]
+          return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
+        }), mergeOptions)
+    },
+
+    splitNoteItem(noteId: Id, itemId: Id, before: { html: string; text: string }, after: { html: string; text: string }) {
+      const note = get(store).notes.find((candidate) => candidate.id === noteId)
+      const source = note ? findPlanItem(note.items, itemId) as NoteItem | null : null
+      const placement = splitPlacementForBeforeText(before)
+      const patch = placement === 'before' ? after : before
+      const inserted = placement === 'before' ? before : after
+      const nextKind = source?.kind === 'heading' && placement === 'after' ? 'paragraph' : (source?.kind ?? 'paragraph')
+      const newItem = { ...createNoteItem(inserted.text, nextKind), html: inserted.html }
+      commit('split_note_item', { noteId, itemId, patch, newItem, placement }, (state) =>
+        updateNote(state, noteId, (candidate) => ({
+          ...candidate,
+          updatedAt: nowISO(),
+          items: splitPlanItem(candidate.items, itemId, patch, newItem, placement) as NoteItem[],
+        })),
+      )
+      return newItem.id
+    },
+
+    deleteNoteItem(noteId: Id, itemId: Id) {
+      commit('delete_note_item', { noteId, itemId }, (state) =>
+        updateNote(state, noteId, (note) => ({
+          ...note,
+          updatedAt: nowISO(),
+          items: deletePlanItem(note.items, itemId) as NoteItem[],
+        })),
+      )
+    },
+
+    deleteNoteItemPreservingChildren(noteId: Id, itemId: Id) {
+      commit('delete_note_item_preserving_children', { noteId, itemId }, (state) =>
+        updateNote(state, noteId, (note) => ({
+          ...note,
+          updatedAt: nowISO(),
+          items: deletePlanItemPreservingChildren(note.items, itemId) as NoteItem[],
+        })),
+      )
+    },
+
+    backspaceNoteItemAtStart(noteId: Id, itemId: Id) {
+      const note = get(store).notes.find((candidate) => candidate.id === noteId)
+      if (!note) return null
+      const result = backspacePlanItemAtStartInTree(note.items, itemId)
+      if (!result) return null
+      commit('backspace_note_item_at_start', { noteId, itemId, ...result.operation }, (state) =>
+        updateNote(state, noteId, (candidate) => ({
+          ...candidate,
+          updatedAt: nowISO(),
+          items: result.items as NoteItem[],
+        })),
+      )
+      return { focusItemId: result.focusItemId, focusOffset: result.focusOffset }
+    },
+
+    moveNoteItem(noteId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) {
+      commit('move_note_item', { noteId, sourceId, targetId, placement }, (state) =>
+        updateNote(state, noteId, (note) => ({
+          ...note,
+          updatedAt: nowISO(),
+          items: movePlanItem(note.items, sourceId, targetId, placement) as NoteItem[],
+        })),
+      )
+    },
+
+    moveNoteItemWithinLevel(noteId: Id, itemId: Id, direction: MoveDirection) {
+      commit('move_note_item_within_level', { noteId, itemId, direction }, (state) =>
+        updateNote(state, noteId, (note) => ({
+          ...note,
+          updatedAt: nowISO(),
+          items: movePlanItemWithinLevel(note.items, itemId, direction) as NoteItem[],
+        })),
+      )
+    },
+
+    outdentNoteItem(noteId: Id, itemId: Id) {
+      commit('outdent_note_item', { noteId, itemId }, (state) =>
+        updateNote(state, noteId, (note) => ({
+          ...note,
+          updatedAt: nowISO(),
+          items: outdentPlanItemInTree(note.items, itemId) as NoteItem[],
+        })),
+      )
+    },
+
     renameListTemplate(templateId: Id, name: string) {
       commit(
         'rename_list_template',
@@ -1865,6 +2003,17 @@ function updateListTemplate(state: AppState, templateId: Id, updater: (template:
   return changed ? { ...state, listTemplates } : state
 }
 
+function updateNote(state: AppState, noteId: Id, updater: (note: Note) => Note): AppState {
+  let changed = false
+  const notes = state.notes.map((note) => {
+    if (note.id !== noteId) return note
+    const nextNote = updater(note)
+    if (nextNote !== note) changed = true
+    return nextNote
+  })
+  return changed ? { ...state, notes } : state
+}
+
 function updateList(state: AppState, listId: Id, updater: (list: ListInstance) => ListInstance): AppState {
   let changed = false
   const lists = state.lists.map((list) => {
@@ -2119,6 +2268,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       lists: [],
       metrics: [],
       metricEntries: [],
+      notes: [],
       goals: [],
       goalCompletions: [],
       operations: [],
@@ -2183,7 +2333,21 @@ function normalizeState(state: AppState): AppState {
       ...entry,
       answers: (entry.answers ?? []).map((answer) => ({ ...answer })),
     })),
+    notes: (state.notes ?? []).map((note) => ({
+      ...note,
+      title: note.title ?? '',
+      items: normalizeNoteItems(note.items ?? []),
+    })),
   }
+}
+
+function normalizeNoteItems(items: NoteItem[]): NoteItem[] {
+  const kinds = new Set<NoteItemKind>(['paragraph', 'heading', 'bullet', 'numbered', 'checklist'])
+  return normalizePlanItems(items).map((item) => ({
+    ...item,
+    kind: kinds.has((item as NoteItem).kind) ? (item as NoteItem).kind : 'paragraph',
+    children: normalizeNoteItems(item.children as NoteItem[]),
+  }))
 }
 
 function normalizeListTemplateItems(items: ListTemplateItem[]): ListTemplateItem[] {

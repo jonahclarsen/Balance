@@ -7,7 +7,7 @@
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
-  import type { Goal, GoalCompletion, Id, ListTemplate, Metric, MoveDirection, MovePlacement, PlanItem } from './types'
+  import type { Goal, GoalCompletion, Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, PlanItem } from './types'
 
   type TextChangeOptions = {
     mergeHistory?: boolean
@@ -64,6 +64,7 @@
   // contains a metric name becomes a clickable opener.
   export let listTemplates: ListTemplate[] = []
   export let metrics: Metric[] = []
+  export let notes: Note[] = []
   export let onOpenLink: (link: ItemLink, itemId: Id) => void = () => {}
   // Locked (generated) list items can't be edited, but clicking one selects it so
   // it can be marked done / navigated by keyboard from the list view.
@@ -103,10 +104,10 @@
   $: {
     const scanKey = `${item.text}|${listTemplates.map((template) => `${template.id}:${template.name}`).join(',')}|${metrics
       .map((metric) => `${metric.id}:${metric.name}`)
-      .join(',')}`
+      .join(',')}|${notes.map((note) => `${note.id}:${note.title}`).join(',')}`
     if (scanKey !== linkScanKey) {
       linkScanKey = scanKey
-      linkSegments = linkifyItemText(item.text, listTemplates, metrics)
+      linkSegments = linkifyItemText(item.text, listTemplates, metrics, notes)
     }
   }
 
@@ -586,6 +587,7 @@
             {onGoalBadgeClick}
             {listTemplates}
             {metrics}
+            {notes}
             {onOpenLink}
             {onLockedSelect}
             {onEditTemplate}

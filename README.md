@@ -7,6 +7,8 @@ Current slice:
 - Generate a daily checklist from a probability-based template.
 - Save generated daily plans as historical snapshots.
 - Edit nested checklist items.
+- Keep day-independent notes with rich text, headings, nested lists, and checklists.
+- Copy stable `balance://note/...` links that open a note from plans, templates, lists, or other notes.
 - Drag checklist items before, after, or inside other items.
 - Add inline time ranges and drag the start/end times in 15-minute increments.
 - Define recurring goals that complete automatically from checked plan-item text.

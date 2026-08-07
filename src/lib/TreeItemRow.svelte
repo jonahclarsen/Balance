@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Id, MovePlacement } from './types'
 
-  type TreeItemRowKind = 'plan' | 'day-template' | 'list-template'
+  type TreeItemRowKind = 'plan' | 'day-template' | 'list-template' | 'note'
 
   export let kind: TreeItemRowKind
   export let itemId: Id
@@ -36,12 +36,15 @@
       ? '[data-plan-item-id]'
       : kind === 'day-template'
         ? '[data-template-item-id]'
-        : '[data-list-template-item-id]'
+        : kind === 'list-template'
+          ? '[data-list-template-item-id]'
+          : '[data-note-item-id]'
 
   function rowItemId(row: HTMLElement): Id | null {
     if (kind === 'plan') return row.dataset.planItemId ?? null
     if (kind === 'day-template') return row.dataset.templateItemId ?? null
-    return row.dataset.listTemplateItemId ?? null
+    if (kind === 'list-template') return row.dataset.listTemplateItemId ?? null
+    return row.dataset.noteItemId ?? null
   }
 
   function rowContainerId(row: HTMLElement): Id {
@@ -143,6 +146,8 @@
     data-template-item-depth={kind === 'day-template' ? depth : undefined}
     data-list-template-item-id={kind === 'list-template' ? itemId : undefined}
     data-list-template-item-depth={kind === 'list-template' ? depth : undefined}
+    data-note-item-id={kind === 'note' ? itemId : undefined}
+    data-note-item-depth={kind === 'note' ? depth : undefined}
     role="listitem"
     aria-label={ariaLabel}
     on:click={onRowClick}

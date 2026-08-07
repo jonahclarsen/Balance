@@ -1,13 +1,13 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { defaultTemplateItemTimeRange, type ItemTimeWarning } from './planner'
+  import { defaultTemplateItemTimeRange, linkifyItemText, type ItemLink, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
-  import type { Id, MoveDirection, MovePlacement, TemplateItem, TemplateOption } from './types'
+  import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, TemplateItem, TemplateOption } from './types'
 
   type TextChangeOptions = {
     mergeHistory?: boolean
@@ -62,6 +62,10 @@
   export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
   export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
   export let onTextShiftArrow: (itemId: Id, direction: MoveDirection) => void = () => {}
+  export let listTemplates: ListTemplate[] = []
+  export let metrics: Metric[] = []
+  export let notes: Note[] = []
+  export let onOpenLink: (link: ItemLink) => void = () => {}
 
   $: selected = selectedItemIds.has(item.id)
 
@@ -345,6 +349,8 @@
             onBackspaceStart={(editor) => handleBackspaceStart(option, index, editor)}
             onMetaBackspaceEnd={(editor) => handleMetaBackspaceEnd(option, index, editor)}
             onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
+            internalLinkSegments={linkifyItemText(option.text, listTemplates, metrics, notes)}
+            onInternalLinkClick={(link) => onOpenLink(link)}
           />
           <ProbabilitySlider
             value={option.probability}
@@ -400,6 +406,10 @@
             {onSelectionPointerMove}
             {onSelectionPointerEnter}
             {onTextShiftArrow}
+            {listTemplates}
+            {metrics}
+            {notes}
+            {onOpenLink}
           />
         {/each}
       </div>
