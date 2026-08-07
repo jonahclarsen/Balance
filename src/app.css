@@ -636,7 +636,7 @@ nav button.active {
 }
 
 .current-day-scroll-indicator .current-day-indicator {
-  padding: 5px 9px 5px 8px;
+  padding: 6px 9px 6px 8px;
   background: color-mix(in srgb, var(--paper-strong) 92%, var(--accent));
   box-shadow: 0 3px 12px color-mix(in srgb, var(--ink) 14%, transparent);
   color: var(--accent-strong);
