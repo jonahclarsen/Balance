@@ -1072,6 +1072,19 @@ nav button.active {
   gap: 10px;
 }
 
+.loading-messages-control {
+  display: grid;
+  gap: 8px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.loading-messages-control textarea {
+  min-height: 116px;
+  resize: vertical;
+}
+
 .done-tint-row {
   display: flex;
   flex-wrap: wrap;
@@ -1228,8 +1241,11 @@ nav button.active {
   font-size: clamp(1.35rem, 5vw, 1.75rem);
 }
 
-.database-loading-card p:last-child {
-  color: var(--muted);
+.database-loading-message {
+  margin-top: 4px;
+  color: var(--ink);
+  font-size: 1.05rem;
+  font-weight: 600;
   line-height: 1.5;
 }
 

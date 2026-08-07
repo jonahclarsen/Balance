@@ -65,6 +65,13 @@
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DONE_TINT_KEY = 'balance:doneTintColor'
   const CHECKBOX_COLOR_KEY = 'balance:checkboxColor'
+  const DATABASE_LOADING_MESSAGES_KEY = 'balance:databaseLoadingMessages'
+  const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
+  const DEFAULT_DATABASE_LOADING_MESSAGES = [
+    'Good things come to those who briefly wait.',
+    'Pretend this is an intentional mindfulness exercise.',
+    'Fun fact: this message has no fun fact.',
+  ]
   const isAndroid = /android/i.test(navigator.userAgent)
   const DAY_TEMPLATE_SELECTION_KEY = 'balance:selectedDayTemplateId'
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
@@ -184,6 +191,9 @@ return rows`
   let databaseSearch = ''
   let databaseExpandedId: string | null = null
   let databaseCopyStatus = ''
+  let databaseLoadingMessages = readDatabaseLoadingMessages()
+  let databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
+  let databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
   // Holds the id of the plan whose reminder is being edited, so either day in the
   // side-by-side comparison can be edited without the other pane's input opening.
   let editingReminderPlanId: Id | null = null
@@ -863,6 +873,13 @@ return rows`
   onMount(() => {
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
+    const databaseLoadingMessageTimer = window.setInterval(() => {
+      if (!$databaseLoadPending || databaseLoadingMessages.length < 2) return
+      databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(
+        databaseLoadingMessages,
+        databaseLoadingMessageIndex,
+      )
+    }, DATABASE_LOADING_MESSAGE_INTERVAL_MS)
     const storedWorkspaceViewState = readWorkspaceViewState()
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
 
@@ -970,10 +987,53 @@ return rows`
       rememberWorkspaceScroll()
       mounted = false
       stopAutomaticSync?.()
+      window.clearInterval(databaseLoadingMessageTimer)
       clearGoalRhythmAutoShowTimer()
       dismissCelebration()
     }
   })
+
+  function normalizeDatabaseLoadingMessages(value: string): string[] {
+    return value
+      .split(/\r?\n/)
+      .map((message) => message.trim())
+      .filter(Boolean)
+  }
+
+  function readDatabaseLoadingMessages(): string[] {
+    const stored = localStorage.getItem(DATABASE_LOADING_MESSAGES_KEY)
+    if (stored === null) return [...DEFAULT_DATABASE_LOADING_MESSAGES]
+
+    try {
+      const parsed: unknown = JSON.parse(stored)
+      if (!Array.isArray(parsed) || !parsed.every((message) => typeof message === 'string')) {
+        return [...DEFAULT_DATABASE_LOADING_MESSAGES]
+      }
+      return parsed.map((message) => message.trim()).filter(Boolean)
+    } catch {
+      return [...DEFAULT_DATABASE_LOADING_MESSAGES]
+    }
+  }
+
+  function randomDatabaseLoadingMessageIndex(messages: string[], currentIndex = -1): number {
+    if (messages.length < 2) return 0
+    const nextOffset = 1 + Math.floor(Math.random() * (messages.length - 1))
+    return currentIndex < 0 ? Math.floor(Math.random() * messages.length) : (currentIndex + nextOffset) % messages.length
+  }
+
+  function updateDatabaseLoadingMessages(value: string) {
+    databaseLoadingMessagesDraft = value
+    databaseLoadingMessages = normalizeDatabaseLoadingMessages(value)
+    databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
+    localStorage.setItem(DATABASE_LOADING_MESSAGES_KEY, JSON.stringify(databaseLoadingMessages))
+  }
+
+  function resetDatabaseLoadingMessages() {
+    databaseLoadingMessages = [...DEFAULT_DATABASE_LOADING_MESSAGES]
+    databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
+    databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
+    localStorage.removeItem(DATABASE_LOADING_MESSAGES_KEY)
+  }
 
   function clampGoalHistoryHeight(value: number): number {
     return Math.max(140, Math.min(window.innerHeight * 0.7, value))
@@ -3374,8 +3434,10 @@ return rows`
       <span class="database-maintenance-spinner" aria-hidden="true"></span>
       <div>
         <p class="eyebrow">Balance</p>
-        <h2>Opening your encrypted database…</h2>
-        <p>Your data is still on this device. A large database can take a little longer to open.</p>
+        <h2>Loading…</h2>
+        {#if databaseLoadingMessages.length > 0}
+          <p class="database-loading-message">{databaseLoadingMessages[databaseLoadingMessageIndex]}</p>
+        {/if}
       </div>
     </div>
   </div>
@@ -4296,6 +4358,30 @@ return rows`
               <span class="item-text done">Dress up in a porcupine suit</span>
             </div>
 
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div>
+            <h3>Opening messages</h3>
+            <p>
+              Add or remove messages, one per line. Balance picks a different one every 10 seconds while your database
+              opens. Leave this empty to show only the opening status.
+            </p>
+          </div>
+
+          <label class="loading-messages-control">
+            <span>Messages</span>
+            <textarea
+              aria-label="Database opening messages"
+              rows="5"
+              value={databaseLoadingMessagesDraft}
+              on:input={(event) => updateDatabaseLoadingMessages(event.currentTarget.value)}
+            ></textarea>
+          </label>
+
+          <div class="settings-actions">
+            <button type="button" on:click={resetDatabaseLoadingMessages}>Restore defaults</button>
           </div>
         </section>
 

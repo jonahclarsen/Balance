@@ -523,6 +523,43 @@ test('checkbox color can be changed in settings and persists', async ({ page }) 
   await expect(page.getByLabel('Checked checkbox hex code')).toHaveValue(selectedColor!)
 })
 
+test('database opening messages can be customized and restored', async ({ page }) => {
+  const defaultMessages = [
+    'Good things come to those who briefly wait.',
+    'Pretend this is an intentional mindfulness exercise.',
+    'Fun fact: this message has no fun fact.',
+  ]
+  const customMessages = ['Reticulating splines.', 'Counting backwards from purple.']
+
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  const messagesEditor = page.getByLabel('Database opening messages')
+  await expect(messagesEditor).toHaveValue(defaultMessages.join('\n'))
+
+  await messagesEditor.fill(customMessages.join('\n'))
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('balance:databaseLoadingMessages')))
+    .toBe(JSON.stringify(customMessages))
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(messagesEditor).toHaveValue(customMessages.join('\n'))
+
+  await messagesEditor.fill('')
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('balance:databaseLoadingMessages')))
+    .toBe('[]')
+
+  await page.getByRole('button', { name: 'Restore defaults' }).click()
+  await expect(messagesEditor).toHaveValue(defaultMessages.join('\n'))
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('balance:databaseLoadingMessages')))
+    .toBeNull()
+})
+
 test('plan items can be nested and un-nested with the drag handle', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
