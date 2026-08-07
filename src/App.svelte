@@ -110,6 +110,7 @@
   let scrollRestoreNonce = 0
   let restoringScroll = false
   let workspaceScrolledPastTodayHeader = false
+  let scrolledComparePaneKeys: Array<'primary' | 'compare'> = []
   let workspaceViewStateReady = false
   let listTemplatesViewStateReady = false
   let dayTemplateSelectionReady = false
@@ -1205,12 +1206,22 @@ return rows`
 
   function openCompareDay() {
     const activeDate = $plannerStore.activePlanDate || todayISO()
-    if (!compareDayDate || compareDayDate === activeDate) compareDayDate = shiftISODate(activeDate, 1)
+    const currentDate = todayISO()
+    const nextCalendarDate = shiftISODate(currentDate, 1)
+
+    if (activeDate === nextCalendarDate) {
+      plannerStore.setActivePlanDate(currentDate)
+      compareDayDate = nextCalendarDate
+    } else {
+      compareDayDate = shiftISODate(activeDate, 1)
+    }
+    scrolledComparePaneKeys = []
     compareDayOpen = true
   }
 
   function closeCompareDay() {
     compareDayOpen = false
+    scrolledComparePaneKeys = []
     focusedPlanId = null
     // The compare pane's reminder input unmounts without blurring, so release the
     // edit explicitly rather than leaving the draft stuck to a hidden day.
@@ -1327,6 +1338,16 @@ return rows`
       workspaceScrolledPastTodayHeader = currentWorkspaceScrollTop() > 72
       rememberWorkspaceScroll()
     }
+  }
+
+  function handleDayPaneScroll(key: 'primary' | 'compare', pane: HTMLElement) {
+    const scrolledPastHeader = pane.scrollTop > 72
+    const wasScrolledPastHeader = scrolledComparePaneKeys.includes(key)
+    if (scrolledPastHeader === wasScrolledPastHeader) return
+
+    scrolledComparePaneKeys = scrolledPastHeader
+      ? [...scrolledComparePaneKeys, key]
+      : scrolledComparePaneKeys.filter((paneKey) => paneKey !== key)
   }
 
   async function restoreScrollForPage(pageKey: string) {
@@ -3583,11 +3604,12 @@ return rows`
     <section
       class="workspace"
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
+      class:comparing-days={view === 'today' && compareDayOpen}
       bind:this={workspaceEl}
       on:scroll={handleWorkspaceScroll}
     >
     {#if view === 'today'}
-      {#if workspaceScrolledPastTodayHeader && dayPanes.some((pane) => pane.date === todayISO())}
+      {#if workspaceScrolledPastTodayHeader && dayPanes.some((pane) => pane.date === todayISO()) && (!compareDayOpen || usesWindowScroll())}
         <div class="current-day-scroll-indicator" class:comparing={compareDayOpen} aria-label="Viewing today">
           {#each dayPanes as pane (`pinned-${pane.key}`)}
             <div class="current-day-scroll-slot">
@@ -3608,7 +3630,13 @@ return rows`
             aria-label={pane.key === 'compare' ? 'Compared day' : 'Daily plan'}
             on:pointerdown|capture={() => focusPane(plan?.id)}
             on:focusin={() => focusPane(plan?.id)}
+            on:scroll={(event) => handleDayPaneScroll(pane.key, event.currentTarget)}
           >
+            {#if scrolledComparePaneKeys.includes(pane.key) && pane.date === todayISO()}
+              <div class="current-day-scroll-indicator pane-scroll-indicator" aria-label="Viewing today">
+                <span class="current-day-indicator">Today</span>
+              </div>
+            {/if}
             <header class="page-header">
               <div class="day-pane-heading">
                 <p class="eyebrow day-pane-context">

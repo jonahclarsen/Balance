@@ -13,10 +13,8 @@ test('today indicator stays visible after the page header scrolls away', async (
   if (testInfo.project.name === 'desktop') await page.setViewportSize({ width: 1000, height: 450 })
 
   await expect(page.locator('.current-day-scroll-indicator')).toHaveCount(0)
-  await page.evaluate((mobile) => {
-    if (mobile) window.scrollTo(0, 500)
-    else document.querySelector<HTMLElement>('.workspace')?.scrollTo(0, 200)
-  }, testInfo.project.name === 'mobile')
+  if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
+  else await primaryPane.evaluate((pane) => pane.scrollTo(0, 200))
 
   const pinnedToday = page.locator('.current-day-scroll-indicator .current-day-indicator')
   await expect(pinnedToday).toBeVisible()
@@ -35,10 +33,8 @@ test('today indicator stays visible after the page header scrolls away', async (
   await expect(page.locator('.current-day-scroll-indicator')).toHaveCount(0)
 
   await comparePane.locator('.date-input').fill(todayDate)
-  await page.evaluate((mobile) => {
-    if (mobile) window.scrollTo(0, 500)
-    else document.querySelector<HTMLElement>('.workspace')?.scrollTo(0, 200)
-  }, testInfo.project.name === 'mobile')
+  if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
+  else await comparePane.evaluate((pane) => pane.scrollTo(0, 200))
   await expect(pinnedToday).toBeVisible()
   if (testInfo.project.name === 'desktop') {
     const compareBox = await comparePane.boundingBox()

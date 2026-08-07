@@ -85,6 +85,49 @@ test('two days show side by side and items can be dragged between them', async (
   await expect(comparePane.locator('[data-plan-item-id]')).toHaveCount(5)
 })
 
+test('each side-by-side day scrolls independently', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile comparison panes stack in the document flow.')
+
+  await openTwoGeneratedDays(page)
+  await page.setViewportSize({ width: 1000, height: 430 })
+
+  const primaryPane = paneFor(page, 'Daily plan')
+  const comparePane = paneFor(page, 'Compared day')
+  await expect
+    .poll(() => primaryPane.evaluate((pane) => pane.scrollHeight > pane.clientHeight))
+    .toBe(true)
+  await expect
+    .poll(() => comparePane.evaluate((pane) => pane.scrollHeight > pane.clientHeight))
+    .toBe(true)
+
+  await primaryPane.evaluate((pane) => pane.scrollTo(0, pane.scrollHeight))
+  const primaryScrollTop = await primaryPane.evaluate((pane) => pane.scrollTop)
+  expect(primaryScrollTop).toBeGreaterThan(0)
+  await expect.poll(() => comparePane.evaluate((pane) => pane.scrollTop)).toBe(0)
+
+  await comparePane.evaluate((pane) => pane.scrollTo(0, pane.scrollHeight))
+  await expect.poll(() => comparePane.evaluate((pane) => pane.scrollTop)).toBeGreaterThan(0)
+  await expect.poll(() => primaryPane.evaluate((pane) => pane.scrollTop)).toBe(primaryScrollTop)
+})
+
+test('opening comparison from tomorrow shows today followed by tomorrow', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const primaryDateInput = paneFor(page, 'Daily plan').locator('.date-input')
+  const today = await primaryDateInput.inputValue()
+  const tomorrow = new Date(`${today}T00:00:00Z`)
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
+  const tomorrowISO = tomorrow.toISOString().slice(0, 10)
+
+  await primaryDateInput.fill(tomorrowISO)
+  await page.getByRole('button', { name: 'Compare with another day' }).click()
+
+  await expect(paneFor(page, 'Daily plan').locator('.date-input')).toHaveValue(today)
+  await expect(paneFor(page, 'Compared day').locator('.date-input')).toHaveValue(tomorrowISO)
+})
+
 test('dropping on empty panel space appends to the end of the other day', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'The panes stack on mobile; dragging is covered on desktop.')
 

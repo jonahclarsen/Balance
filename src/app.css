@@ -399,6 +399,10 @@ nav button.active {
   padding: 28px;
 }
 
+.workspace.comparing-days {
+  overflow: hidden;
+}
+
 .content-shell {
   position: relative;
   display: grid;
@@ -558,11 +562,20 @@ nav button.active {
 
 .day-panes.comparing {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  align-items: start;
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
 }
 
 .day-pane {
   min-width: 0;
+}
+
+.day-panes.comparing .day-pane {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-gutter: stable;
 }
 
 .day-pane-heading {
@@ -613,6 +626,11 @@ nav button.active {
 }
 
 .current-day-scroll-slot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.pane-scroll-indicator {
   display: flex;
   justify-content: flex-end;
 }
@@ -2673,10 +2691,22 @@ nav button.active {
     padding: 12px;
   }
 
+  .workspace.comparing-days {
+    overflow: visible;
+  }
+
   /* Two day columns don't fit a phone; stack them so the comparison is still
      readable (dragging between them still works, just vertically). */
   .day-panes.comparing {
+    align-items: start;
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .day-panes.comparing .day-pane {
+    overflow-y: visible;
+    padding-right: 0;
+    scrollbar-gutter: auto;
   }
 
   .current-day-scroll-indicator.comparing {
