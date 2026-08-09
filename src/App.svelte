@@ -3106,8 +3106,8 @@ return rows`
     const createsCheckpoint = databaseMaintenanceStatus?.checkpointCoordinator ?? true
     const confirmed = await confirmDialog(
       createsCheckpoint
-        ? 'Optimize the database now? Balance will verify a full-state checkpoint before replacing anything, preserve the original encrypted database as a backup, then clear operation and undo history. This may temporarily need space for a second copy of the database.'
-        : 'Optimize this device’s database now? Balance will preserve the original encrypted database as a backup and safely vacuum this local file. The original sync device remains responsible for the shared checkpoint.',
+        ? 'Optimize the database now? Balance will verify a full-state checkpoint, install the optimized database, and copy that optimized database to an encrypted backup. This may temporarily need space for two additional copies of the database.'
+        : 'Optimize this device’s database now? Balance will safely vacuum this local file and copy the optimized database to an encrypted backup. The original sync device remains responsible for the shared checkpoint.',
       { title: 'Optimize database?', kind: 'warning' },
     )
     if (!confirmed) return
@@ -4613,7 +4613,7 @@ return rows`
             {#if isTauri()}
               <p>
                 Balance automatically performs verified database maintenance once a week after launch and keeps an
-                encrypted copy of the previous database on disk.
+                encrypted copy of the optimized database on disk.
                 {databaseMaintenanceStatus?.checkpointCoordinator === false
                   ? ' This synced device vacuums only its local file; the original sync device creates shared checkpoints.'
                   : ' This device creates the shared checkpoint and vacuums its local file.'}
@@ -4996,8 +4996,8 @@ return rows`
       {/if}
 
       <p class="recovery-copy">
-        Balance verifies the complete app state and database integrity before replacing the local file. The previous
-        encrypted database remains as the current recovery backup.
+        Balance verifies the complete app state and database integrity before replacing the local file, then copies the
+        optimized encrypted database as the current recovery backup.
       </p>
 
       {#if weeklyMaintenancePhase === 'complete'}

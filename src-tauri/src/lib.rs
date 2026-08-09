@@ -677,7 +677,8 @@ fn managed_database_backup_path(database_path: &Path, candidate: &str) -> Option
     let expected_parent = database_path.parent()?.join("backups");
     let filename = backup_path.file_name()?.to_str()?;
     (backup_path.parent() == Some(expected_parent.as_path())
-        && filename.starts_with("balance-pre-compact-")
+        && (filename.starts_with("balance-pre-compact-")
+            || filename.starts_with("balance-post-compact-"))
         && filename.ends_with(".sqlite3"))
     .then_some(backup_path)
 }
@@ -750,7 +751,7 @@ fn stage_database_maintenance_metadata(
     Ok(())
 }
 
-fn compaction_paths(database_path: &Path) -> Result<(PathBuf, PathBuf), String> {
+fn compaction_paths(database_path: &Path) -> Result<(PathBuf, PathBuf, PathBuf), String> {
     let parent = database_path
         .parent()
         .ok_or_else(|| "Could not resolve database directory".to_string())?;
@@ -769,9 +770,10 @@ fn compaction_paths(database_path: &Path) -> Result<(PathBuf, PathBuf), String> 
             .collect::<String>()
     );
     let working_path = parent.join(format!(".balance-compacting-{nonce}.sqlite3"));
+    let rollback_path = parent.join(format!(".balance-original-{nonce}.sqlite3"));
     let stamp = current_timestamp().replace([':', '.'], "-");
-    let backup_path = backup_dir.join(format!("balance-pre-compact-{stamp}-{nonce}.sqlite3"));
-    Ok((working_path, backup_path))
+    let backup_path = backup_dir.join(format!("balance-post-compact-{stamp}-{nonce}.sqlite3"));
+    Ok((working_path, rollback_path, backup_path))
 }
 
 #[cfg(test)]
@@ -798,7 +800,7 @@ fn maintain_database_at(
     let before_bytes = fs::metadata(database_path)
         .map_err(|error| error.to_string())?
         .len();
-    let (working_path, backup_path) = compaction_paths(database_path)?;
+    let (working_path, rollback_path, backup_path) = compaction_paths(database_path)?;
 
     let result = (|| {
         let source = open_database_at(database_path, recovery_key)?;
@@ -888,32 +890,35 @@ fn maintain_database_at(
             .map_err(|error| format!("Could not release compaction lock: {error}"))?;
         drop(source);
 
-        // The old encrypted DB becomes the recovery backup. Both renames stay
-        // on one filesystem, so each step is atomic. Restore immediately if the
-        // second rename fails.
-        fs::rename(database_path, &backup_path).map_err(|error| {
+        // Keep the original encrypted DB only as a temporary rollback file.
+        // Both renames stay on one filesystem, so each step is atomic. The
+        // durable recovery backup is copied from the verified optimized DB
+        // after it has been installed.
+        fs::rename(database_path, &rollback_path).map_err(|error| {
             format!(
-                "Could not preserve original database at {}: {error}",
-                backup_path.display()
+                "Could not stage original database for rollback at {}: {error}",
+                rollback_path.display()
             )
         })?;
         if let Err(error) = fs::rename(&working_path, database_path) {
-            let restore = fs::rename(&backup_path, database_path);
+            let restore = fs::rename(&rollback_path, database_path);
             return Err(match restore {
                 Ok(()) => format!(
                     "Could not install compacted database; original was restored: {error}"
                 ),
                 Err(restore_error) => format!(
                     "Could not install compacted database ({error}) or restore original ({restore_error}). Original remains at {}",
-                    backup_path.display()
+                    rollback_path.display()
                 ),
             });
         }
 
-        // Verify the exact installed path too. A failure restores the original
-        // and leaves the rejected compacted file beside it for diagnosis.
-        let installed = open_database_at(database_path, recovery_key)?;
-        let installed_check = verify_database_state(&installed, &expected_state).and_then(|()| {
+        // Verify the exact installed path, copy that optimized database to the
+        // durable backup path, and independently verify the backup. Any failure
+        // restores the original and leaves the rejected optimized file beside it.
+        let installed_check = (|| {
+            let installed = open_database_at(database_path, recovery_key)?;
+            verify_database_state(&installed, &expected_state)?;
             let operation_count: i64 = installed
                 .query_row("select count(*) from operations", [], |row| row.get(0))
                 .map_err(|error| error.to_string())?;
@@ -927,20 +932,47 @@ fn maintain_database_at(
                     "Installed database has unexpected log counts: {operation_count} operations, {history_count} history entries"
                 ));
             }
+
+            copy_database_snapshot(&installed, &backup_path, recovery_key)?;
+            drop(installed);
+
+            let backup = open_database_at(&backup_path, recovery_key)?;
+            verify_database_state(&backup, &expected_state)?;
+            let backup_operation_count: i64 = backup
+                .query_row("select count(*) from operations", [], |row| row.get(0))
+                .map_err(|error| error.to_string())?;
+            let backup_history_count: i64 = backup
+                .query_row("select count(*) from history_entries", [], |row| row.get(0))
+                .map_err(|error| error.to_string())?;
+            if backup_operation_count != expected_compacted_operation_count
+                || backup_history_count != expected_compacted_history_count
+            {
+                return Err(format!(
+                    "Optimized backup has unexpected log counts: {backup_operation_count} operations, {backup_history_count} history entries"
+                ));
+            }
             Ok(())
-        });
-        drop(installed);
+        })();
         if let Err(error) = installed_check {
             let rejected_path = working_path.with_extension("rejected.sqlite3");
-            let _ = fs::rename(database_path, &rejected_path);
-            fs::rename(&backup_path, database_path).map_err(|restore_error| {
+            fs::rename(database_path, &rejected_path).map_err(|reject_error| {
                 format!(
-                    "{error}; original database could not be restored from {}: {restore_error}",
-                    backup_path.display()
+                    "{error}; optimized database could not be set aside ({reject_error}). Original remains at {}",
+                    rollback_path.display()
                 )
             })?;
+            fs::rename(&rollback_path, database_path).map_err(|restore_error| {
+                format!(
+                    "{error}; original database could not be restored from {}: {restore_error}",
+                    rollback_path.display()
+                )
+            })?;
+            if backup_path.exists() {
+                let _ = fs::remove_file(&backup_path);
+            }
             return Err(format!("{error}; original database was restored"));
         }
+        let _ = fs::remove_file(&rollback_path);
 
         let after_bytes = fs::metadata(database_path)
             .map_err(|error| error.to_string())?
@@ -7441,6 +7473,17 @@ mod tests {
             result.before_bytes - result.after_bytes
         );
         assert!(Path::new(&result.backup_path).exists());
+        assert!(
+            Path::new(&result.backup_path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with("balance-post-compact-")),
+            "maintenance backup must be identified as the post-compaction copy"
+        );
+        assert!(
+            fs::metadata(&result.backup_path).unwrap().len() < result.before_bytes,
+            "maintenance backup should retain the optimized physical size"
+        );
 
         let compacted = open_database_at(&database.path, &recovery_key).unwrap();
         verify_database_state(&compacted, &before_state).unwrap();
@@ -7479,14 +7522,14 @@ mod tests {
                 .query_row("select count(*) from operations", [], |row| row
                     .get::<_, i64>(0))
                 .unwrap(),
-            before_operations
+            1
         );
         assert_eq!(
             backup
                 .query_row("select count(*) from history_entries", [], |row| row
                     .get::<_, i64>(0))
                 .unwrap(),
-            before_history
+            0
         );
         drop(backup);
         fs::remove_file(&result.backup_path).unwrap();
@@ -7637,7 +7680,7 @@ mod tests {
             read_app_state_from_database(&connection).unwrap().unwrap()
         };
 
-        // Block compaction by occupying the path it needs for the pre-compaction
+        // Block compaction by occupying the path it needs for the optimized
         // backup with a plain file. Any failure must leave the live database
         // exactly as it was — that invariant is the point of this test.
         fs::write(database.directory.join("backups"), b"not a directory").unwrap();
