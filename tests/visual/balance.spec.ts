@@ -1031,11 +1031,19 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
   await page.keyboard.press('Alt+[')
   await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([525, 600])
 
-  await page.keyboard.press('Alt+Shift+]')
+  await page.keyboard.press('ControlOrMeta+]')
   await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([525, 615])
 
-  await page.keyboard.press('Alt+]')
+  await page.keyboard.press('Alt+Shift+]')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 630])
+
+  await page.keyboard.press('ControlOrMeta+[')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 615])
+
   await page.keyboard.press('Alt+Shift+[')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([525, 600])
+
+  await page.keyboard.press('Alt+]')
   await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
 
   await page.keyboard.press('Alt+Shift+t')
@@ -1046,6 +1054,7 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
   await expect(shortcuts.getByText('Add / remove task time', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Move task start earlier / later', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Move task end earlier / later', { exact: true })).toBeVisible()
+  await expect(shortcuts.getByText('Shift task time earlier / later', { exact: true })).toBeVisible()
 })
 
 test('keyboard time shortcuts also work while editing day-template items', async ({ page }) => {
@@ -1058,7 +1067,7 @@ test('keyboard time shortcuts also work while editing day-template items', async
   await page.keyboard.press('Alt+Shift+t')
   await page.keyboard.press('Alt+Shift+]')
 
-  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 615])
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([555, 615])
 })
 
 test('adding time to deeper descendants reuses the previous timed task start', async ({ page }) => {

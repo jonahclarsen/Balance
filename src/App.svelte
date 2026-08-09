@@ -2002,7 +2002,25 @@ return rows`
       event.stopPropagation()
       adjustItemTimes(
         itemIds,
-        event.shiftKey ? 'end' : 'start',
+        event.shiftKey ? 'both' : 'start',
+        event.code === 'BracketLeft' ? -TIME_KEYBOARD_STEP_MINUTES : TIME_KEYBOARD_STEP_MINUTES,
+      )
+      return
+    }
+
+    if (
+      primaryModifier &&
+      !event.altKey &&
+      !event.shiftKey &&
+      (event.code === 'BracketLeft' || event.code === 'BracketRight')
+    ) {
+      const itemIds = activeTimeTargetIds()
+      if (itemIds.length === 0) return
+      event.preventDefault()
+      event.stopPropagation()
+      adjustItemTimes(
+        itemIds,
+        'end',
         event.code === 'BracketLeft' ? -TIME_KEYBOARD_STEP_MINUTES : TIME_KEYBOARD_STEP_MINUTES,
       )
       return
@@ -2280,19 +2298,34 @@ return rows`
     }
   }
 
-  function adjustItemTimes(itemIds: Id[], endpoint: 'start' | 'end', delta: number) {
+  function adjustItemTimes(itemIds: Id[], endpoint: 'start' | 'end' | 'both', delta: number) {
     const surface = activeItemSurface()
     if (surface !== 'plan' && surface !== 'day-template') return
 
-    for (const item of timeItemsForIds(itemIds)) {
-      if (item.startMinutes === null || item.endMinutes === null) continue
+    const timedItems = timeItemsForIds(itemIds).filter(
+      (item): item is (PlanItem | TemplateItem) & { startMinutes: number; endMinutes: number } =>
+        item.startMinutes !== null && item.endMinutes !== null,
+    )
+    if (timedItems.length === 0) return
 
-      const startMinutes = endpoint === 'start'
-        ? Math.max(0, Math.min(item.startMinutes + delta, item.endMinutes - TIME_KEYBOARD_STEP_MINUTES))
-        : item.startMinutes
-      const endMinutes = endpoint === 'end'
-        ? Math.min(MAX_TIMELINE_MINUTES, Math.max(item.endMinutes + delta, item.startMinutes + TIME_KEYBOARD_STEP_MINUTES))
-        : item.endMinutes
+    const adjustedDelta = endpoint === 'both'
+      ? Math.max(
+          -Math.min(...timedItems.map((item) => item.startMinutes)),
+          Math.min(delta, MAX_TIMELINE_MINUTES - Math.max(...timedItems.map((item) => item.endMinutes))),
+        )
+      : delta
+
+    for (const item of timedItems) {
+      const startMinutes = endpoint === 'both'
+        ? item.startMinutes + adjustedDelta
+        : endpoint === 'start'
+          ? Math.max(0, Math.min(item.startMinutes + delta, item.endMinutes - TIME_KEYBOARD_STEP_MINUTES))
+          : item.startMinutes
+      const endMinutes = endpoint === 'both'
+        ? item.endMinutes + adjustedDelta
+        : endpoint === 'end'
+          ? Math.min(MAX_TIMELINE_MINUTES, Math.max(item.endMinutes + delta, item.startMinutes + TIME_KEYBOARD_STEP_MINUTES))
+          : item.endMinutes
 
       if (startMinutes === item.startMinutes && endMinutes === item.endMinutes) continue
 
