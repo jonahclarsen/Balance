@@ -6104,20 +6104,112 @@ fn read_plans(connection: &Connection) -> Result<Vec<Value>, String> {
         })
         .map_err(|error| error.to_string())?;
 
-    rows.map(|row| {
-        let (id, date, title, daily_reminder, generated_from_template_id, created_at) =
-            row.map_err(|error| error.to_string())?;
-        Ok(json!({
-            "id": id,
-            "date": date,
-            "title": title,
-            "dailyReminder": daily_reminder,
-            "generatedFromTemplateId": generated_from_template_id,
-            "createdAt": created_at,
-            "items": read_plan_items(connection, &id, None)?,
-        }))
-    })
-    .collect()
+    let plans = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    drop(statement);
+
+    // Loading each item's children recursively used to issue one indexed query
+    // for every item, including leaves. Undo reads the complete app state, so the
+    // query count grew with all historical items. Fetch all rows once, preserve
+    // sibling order inside parent buckets, then assemble each plan in memory.
+    let mut item_buckets_by_plan = read_plan_item_buckets_by_plan(connection)?;
+
+    plans
+        .into_iter()
+        .map(
+            |(id, date, title, daily_reminder, generated_from_template_id, created_at)| {
+                let items = item_buckets_by_plan
+                    .remove(&id)
+                    .map(|mut buckets| build_plan_item_tree(&mut buckets, None))
+                    .unwrap_or_default();
+                Ok(json!({
+                    "id": id,
+                    "date": date,
+                    "title": title,
+                    "dailyReminder": daily_reminder,
+                    "generatedFromTemplateId": generated_from_template_id,
+                    "createdAt": created_at,
+                    "items": items,
+                }))
+            },
+        )
+        .collect()
+}
+
+struct StoredPlanItem {
+    id: String,
+    text: String,
+    html: String,
+    done: bool,
+    start_minutes: Option<i64>,
+    end_minutes: Option<i64>,
+}
+
+type PlanItemBuckets = HashMap<Option<String>, Vec<StoredPlanItem>>;
+
+fn read_plan_item_buckets_by_plan(
+    connection: &Connection,
+) -> Result<HashMap<String, PlanItemBuckets>, String> {
+    let mut statement = connection
+        .prepare(
+            "
+          select plan_id, parent_id, id, text, html, done, start_minutes, end_minutes
+          from plan_items
+          order by plan_id, parent_id, position, id
+        ",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, Option<String>>(1)?,
+                StoredPlanItem {
+                    id: row.get::<_, String>(2)?,
+                    text: row.get::<_, String>(3)?,
+                    html: row.get::<_, String>(4)?,
+                    done: row.get::<_, i64>(5)? != 0,
+                    start_minutes: row.get::<_, Option<i64>>(6)?,
+                    end_minutes: row.get::<_, Option<i64>>(7)?,
+                },
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut item_buckets_by_plan = HashMap::<String, PlanItemBuckets>::new();
+    for row in rows {
+        let (plan_id, parent_id, item) = row.map_err(|error| error.to_string())?;
+        item_buckets_by_plan
+            .entry(plan_id)
+            .or_default()
+            .entry(parent_id)
+            .or_default()
+            .push(item);
+    }
+    Ok(item_buckets_by_plan)
+}
+
+fn build_plan_item_tree(item_buckets: &mut PlanItemBuckets, parent_id: Option<&str>) -> Vec<Value> {
+    let items = item_buckets
+        .remove(&parent_id.map(str::to_owned))
+        .unwrap_or_default();
+
+    items
+        .into_iter()
+        .map(|item| {
+            let children = build_plan_item_tree(item_buckets, Some(&item.id));
+            json!({
+                "id": item.id,
+                "text": item.text,
+                "html": item.html,
+                "done": item.done,
+                "startMinutes": item.start_minutes,
+                "endMinutes": item.end_minutes,
+                "children": children,
+            })
+        })
+        .collect()
 }
 
 fn read_plan_items(
@@ -10954,6 +11046,149 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_file(&self.path);
         }
+    }
+
+    #[test]
+    fn bulk_plan_reader_matches_recursive_tree_loading() {
+        let database = TestDatabase::new("bulk-plan-reader");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Bulk plan reader");
+        state["plans"] = json!([
+            {
+                "id": "plan_today",
+                "date": "2026-05-21",
+                "title": "Today",
+                "dailyReminder": "",
+                "generatedFromTemplateId": null,
+                "createdAt": "2026-05-21T00:00:00Z",
+                "items": [
+                    {
+                        "id": "today_root_a",
+                        "text": "Root A",
+                        "html": "Root A",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": [
+                            {
+                                "id": "today_child_a",
+                                "text": "Child A",
+                                "html": "Child A",
+                                "done": true,
+                                "startMinutes": 540,
+                                "endMinutes": 600,
+                                "children": [{
+                                    "id": "today_grandchild",
+                                    "text": "Grandchild",
+                                    "html": "<strong>Grandchild</strong>",
+                                    "done": false,
+                                    "startMinutes": null,
+                                    "endMinutes": null,
+                                    "children": []
+                                }]
+                            },
+                            {
+                                "id": "today_child_b",
+                                "text": "Child B",
+                                "html": "Child B",
+                                "done": false,
+                                "startMinutes": null,
+                                "endMinutes": null,
+                                "children": []
+                            }
+                        ]
+                    },
+                    {
+                        "id": "today_root_b",
+                        "text": "Root B",
+                        "html": "Root B",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }
+                ]
+            },
+            {
+                "id": "plan_yesterday",
+                "date": "2026-05-20",
+                "title": "Yesterday",
+                "dailyReminder": "",
+                "generatedFromTemplateId": null,
+                "createdAt": "2026-05-20T00:00:00Z",
+                "items": [{
+                    "id": "yesterday_root",
+                    "text": "Yesterday root",
+                    "html": "Yesterday root",
+                    "done": true,
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "children": []
+                }]
+            }
+        ]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        // These references satisfy SQLite's foreign keys but are corrupt at the
+        // domain level. Match the recursive reader: do not cross plan boundaries
+        // and do not make parent cycles reachable from a plan root.
+        connection
+            .execute(
+                "insert into plan_items (
+                    id, plan_id, parent_id, position, text, html, done, start_minutes, end_minutes
+                 ) values (?1, ?2, ?3, 0, ?4, ?4, 0, null, null)",
+                params![
+                    "cross_plan_item",
+                    "plan_yesterday",
+                    "today_root_a",
+                    "Cross-plan item"
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "insert into plan_items (
+                    id, plan_id, parent_id, position, text, html, done, start_minutes, end_minutes
+                 ) values ('cycle_a', 'plan_yesterday', null, 1, 'Cycle A', 'Cycle A', 0, null, null)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "insert into plan_items (
+                    id, plan_id, parent_id, position, text, html, done, start_minutes, end_minutes
+                 ) values ('cycle_b', 'plan_yesterday', 'cycle_a', 0, 'Cycle B', 'Cycle B', 0, null, null)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "update plan_items set parent_id = 'cycle_b' where id = 'cycle_a'",
+                [],
+            )
+            .unwrap();
+
+        let expected_today = read_plan_items(&connection, "plan_today", None).unwrap();
+        let expected_yesterday = read_plan_items(&connection, "plan_yesterday", None).unwrap();
+        let loaded = read_plans(&connection).unwrap();
+        let today = loaded
+            .iter()
+            .find(|plan| plan["id"] == "plan_today")
+            .unwrap();
+        let yesterday = loaded
+            .iter()
+            .find(|plan| plan["id"] == "plan_yesterday")
+            .unwrap();
+
+        assert_eq!(today["items"], json!(expected_today));
+        assert_eq!(yesterday["items"], json!(expected_yesterday));
+        assert_eq!(today["items"][0]["children"][0]["id"], "today_child_a");
+        assert_eq!(today["items"][0]["children"][1]["id"], "today_child_b");
+        let loaded_json = Value::Array(loaded).to_string();
+        assert!(!loaded_json.contains("cross_plan_item"));
+        assert!(!loaded_json.contains("cycle_a"));
+        assert!(!loaded_json.contains("cycle_b"));
     }
 
     /// Ids a checkpoint has permanently replaced on this database, sorted.
