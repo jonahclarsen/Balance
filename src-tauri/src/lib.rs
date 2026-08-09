@@ -12,11 +12,12 @@ use data_encoding::BASE32_NOPAD;
 use keyring::{Entry, Error as KeyringError};
 use rand::{rngs::OsRng, RngCore};
 use rusqlite::{backup::Backup, params, Connection, OptionalExtension, Transaction};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
 use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "android")]
 mod android_widget;
@@ -44,6 +45,9 @@ const GOAL_DATA: &str = "goal_data";
 // rather than materialized into per-row tables.
 const LISTS_METRICS_DATA: &str = "lists_metrics_data";
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
+const GITHUB_LATEST_RELEASE_API: &str =
+    "https://api.github.com/repos/jonahclarsen/Balance/releases/latest";
+const GITHUB_LATEST_RELEASE_URL: &str = "https://github.com/jonahclarsen/Balance/releases/latest";
 static DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
 #[cfg(target_os = "macos")]
 const BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE: &str = "com.balance.plan-items+json";
@@ -473,18 +477,80 @@ async fn save_export_file(
     .await
 }
 
-#[derive(serde::Serialize)]
+#[derive(Serialize)]
 struct BuildInfo {
     version: String,
     commit: String,
 }
 
 #[tauri::command]
-fn build_info() -> BuildInfo {
+fn build_info(app: tauri::AppHandle) -> BuildInfo {
     BuildInfo {
-        version: env!("CARGO_PKG_VERSION").to_string(),
+        version: app.package_info().version.to_string(),
         commit: env!("GIT_COMMIT").to_string(),
     }
+}
+
+#[derive(Deserialize)]
+struct GitHubRelease {
+    tag_name: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AvailableUpdate {
+    version: String,
+    url: String,
+}
+
+fn available_update(
+    current_version: &semver::Version,
+    release: GitHubRelease,
+) -> Result<Option<AvailableUpdate>, String> {
+    let version_text = release
+        .tag_name
+        .strip_prefix('v')
+        .unwrap_or(&release.tag_name);
+    let version = semver::Version::parse(version_text)
+        .map_err(|error| format!("GitHub's latest release tag is not a valid version: {error}"))?;
+
+    if version <= *current_version {
+        return Ok(None);
+    }
+
+    Ok(Some(AvailableUpdate {
+        version: version.to_string(),
+        url: GITHUB_LATEST_RELEASE_URL.to_string(),
+    }))
+}
+
+#[tauri::command]
+async fn check_for_update(app: tauri::AppHandle) -> Result<Option<AvailableUpdate>, String> {
+    if cfg!(debug_assertions) {
+        return Ok(None);
+    }
+
+    let current_version = app.package_info().version.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .user_agent(format!("Balance/{current_version}"))
+            .build()
+            .map_err(|error| error.to_string())?;
+        let release = client
+            .get(GITHUB_LATEST_RELEASE_API)
+            .header("Accept", "application/vnd.github+json")
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .send()
+            .and_then(reqwest::blocking::Response::error_for_status)
+            .map_err(|error| format!("Could not check GitHub Releases: {error}"))?
+            .json::<GitHubRelease>()
+            .map_err(|error| format!("Could not read GitHub's latest release: {error}"))?;
+
+        available_update(&current_version, release)
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -530,10 +596,11 @@ async fn reveal_path_in_file_manager(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn open_external_url(url: String) -> Result<(), String> {
-    tauri::async_runtime::spawn_blocking(move || open_url(&url))
-        .await
-        .map_err(|error| error.to_string())?
+fn open_external_url(app: tauri::AppHandle, url: String) -> Result<(), String> {
+    let url = validate_external_url(&url)?;
+    app.opener()
+        .open_url(url, None::<&str>)
+        .map_err(|error| error.to_string())
 }
 
 async fn run_database_task<T, F>(task: F) -> Result<T, String>
@@ -1422,34 +1489,6 @@ fn reveal_path(path: PathBuf) -> Result<(), String> {
         Ok(())
     } else {
         Err("Could not open the saved export location".to_string())
-    }
-}
-
-fn open_url(url: &str) -> Result<(), String> {
-    let url = validate_external_url(url)?;
-
-    #[cfg(target_os = "macos")]
-    let status = Command::new("open")
-        .arg(url)
-        .status()
-        .map_err(|error| error.to_string())?;
-
-    #[cfg(target_os = "windows")]
-    let status = Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", url])
-        .status()
-        .map_err(|error| error.to_string())?;
-
-    #[cfg(all(not(target_os = "macos"), not(target_os = "windows")))]
-    let status = Command::new("xdg-open")
-        .arg(url)
-        .status()
-        .map_err(|error| error.to_string())?;
-
-    if status.success() {
-        Ok(())
-    } else {
-        Err("Could not open the link".to_string())
     }
 }
 
@@ -7346,6 +7385,11 @@ pub fn run() {
                 )?;
             }
             app.handle().plugin(tauri_plugin_dialog::init())?;
+            app.handle().plugin(
+                tauri_plugin_opener::Builder::new()
+                    .open_js_links_on_click(false)
+                    .build(),
+            )?;
 
             // Camera QR-code scanning for sync pairing (mobile only).
             #[cfg(mobile)]
@@ -7399,6 +7443,7 @@ pub fn run() {
             confirm_recovery_key,
             recover_database_with_key,
             build_info,
+            check_for_update,
             save_export_file,
             get_export_settings,
             set_export_directory,
@@ -7427,6 +7472,46 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn release_check_only_returns_strictly_newer_versions() {
+        let current = semver::Version::parse("0.4.4").unwrap();
+
+        let newer = available_update(
+            &current,
+            GitHubRelease {
+                tag_name: "v0.5.0".to_string(),
+            },
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(newer.version, "0.5.0");
+        assert_eq!(newer.url, GITHUB_LATEST_RELEASE_URL);
+
+        for tag_name in ["v0.4.4", "v0.4.3"] {
+            assert!(available_update(
+                &current,
+                GitHubRelease {
+                    tag_name: tag_name.to_string(),
+                },
+            )
+            .unwrap()
+            .is_none());
+        }
+    }
+
+    #[test]
+    fn release_check_rejects_non_version_tags() {
+        let current = semver::Version::parse("0.4.4").unwrap();
+        let result = available_update(
+            &current,
+            GitHubRelease {
+                tag_name: "latest".to_string(),
+            },
+        );
+
+        assert!(result.is_err());
+    }
 
     #[test]
     fn every_frontend_operation_has_persistence_and_undo_support() {

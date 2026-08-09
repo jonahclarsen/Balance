@@ -63,11 +63,13 @@
     defaultExportDirectory: string
     usesDefaultExportDirectory: boolean
   }
+  type AvailableUpdate = { version: string; url: string }
 
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DONE_TINT_KEY = 'balance:doneTintColor'
   const CHECKBOX_COLOR_KEY = 'balance:checkboxColor'
+  const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
   const DATABASE_LOADING_MESSAGES_KEY = 'balance:databaseLoadingMessages'
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
   const DEFAULT_DATABASE_LOADING_MESSAGES = [
@@ -181,6 +183,7 @@ return rows`
   let exportSavedPath = ''
   let exportSettings: ExportSettings | null = null
   let buildInfo: { version: string; commit: string } | null = null
+  let availableUpdate: AvailableUpdate | null = null
   let exportSettingsStatus = ''
   let exportSettingsStatusIsError = false
   let exportSettingsBusy = false
@@ -925,6 +928,20 @@ return rows`
       }).catch((error) => {
         console.error('Could not listen for Paste and Match Style', error)
       })
+
+      if (import.meta.env.PROD) {
+        void invoke<AvailableUpdate | null>('check_for_update').then((update) => {
+          if (
+            mounted &&
+            update &&
+            localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY) !== update.version
+          ) {
+            availableUpdate = update
+          }
+        }).catch((error) => {
+          console.error('Failed to check GitHub Releases', error)
+        })
+      }
     }
 
     sidebarHidden = localStorage.getItem(SIDEBAR_HIDDEN_KEY) === 'true'
@@ -3543,6 +3560,24 @@ return rows`
     row.classList.add('search-result-target')
     window.setTimeout(() => row.classList.remove('search-result-target'), 1800)
   }
+
+  function dismissAvailableUpdate() {
+    if (availableUpdate) {
+      localStorage.setItem(DISMISSED_UPDATE_VERSION_KEY, availableUpdate.version)
+    }
+    availableUpdate = null
+  }
+
+  async function openAvailableUpdate() {
+    if (!availableUpdate) return
+
+    try {
+      await invoke('open_external_url', { url: availableUpdate.url })
+      dismissAvailableUpdate()
+    } catch (error) {
+      console.error('Could not open the GitHub release', error)
+    }
+  }
 </script>
 
 <svelte:window
@@ -3567,6 +3602,20 @@ return rows`
     </div>
     <div class="app-error-banner-actions">
       <button type="button" class="ghost" on:click={() => { void openRecoveryPanel() }}>Inspect DB</button>
+    </div>
+  </div>
+{/if}
+
+{#if availableUpdate && !$persistenceError}
+  <div class="app-error-banner update-available-banner" role="status" aria-live="polite">
+    <span class="app-error-banner-icon" aria-hidden="true">↑</span>
+    <div class="app-error-banner-text">
+      <strong>Balance {availableUpdate.version} is available</strong>
+      <span>A newer release is ready to download from GitHub.</span>
+    </div>
+    <div class="app-error-banner-actions">
+      <button type="button" class="ghost" on:click={dismissAvailableUpdate}>Not now</button>
+      <button type="button" class="primary" on:click={() => { void openAvailableUpdate() }}>View release</button>
     </div>
   </div>
 {/if}

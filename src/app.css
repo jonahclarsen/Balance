@@ -1295,7 +1295,7 @@ nav button.active {
 
 .app-error-banner {
   position: fixed;
-  top: 12px;
+  top: calc(12px + env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
   z-index: 50;
@@ -1308,6 +1308,14 @@ nav button.active {
   background: var(--paper-strong);
   box-shadow: 0 12px 40px rgba(20, 24, 26, 0.22);
   padding: 10px 14px;
+}
+
+.update-available-banner {
+  border-color: var(--accent);
+}
+
+.update-available-banner .app-error-banner-icon {
+  color: var(--accent);
 }
 
 .app-error-banner-icon {
@@ -1337,6 +1345,18 @@ nav button.active {
   gap: 6px;
   margin-left: auto;
   flex: 0 0 auto;
+}
+
+@media (max-width: 600px) {
+  .app-error-banner {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .app-error-banner-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
 }
 
 .database-load-failure-backdrop {
