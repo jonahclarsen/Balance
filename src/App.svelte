@@ -3064,7 +3064,7 @@ return rows`
       weeklyMaintenanceResult = null
       weeklyMaintenanceMessage = databaseMaintenanceStatus.checkpointCoordinator
         ? 'Creating a verified shared checkpoint, vacuuming this device, and preserving an encrypted backup…'
-        : 'Vacuuming this device’s encrypted database. The original sync device remains responsible for the shared checkpoint…'
+        : 'Clearing local undo history and vacuuming this device’s encrypted database. The original sync device remains responsible for the shared checkpoint…'
       await tick()
 
       const result = await runWeeklyDatabaseMaintenance()
@@ -3080,7 +3080,7 @@ return rows`
       weeklyMaintenancePhase = 'complete'
       weeklyMaintenanceMessage = result.checkpointCreated
         ? 'The shared checkpoint and this device’s physical database optimization were verified successfully.'
-        : 'This device’s physical database optimization was verified successfully. Synced operations were left for the original sync device to checkpoint.'
+        : 'This device’s local undo history was cleared and its physical database optimization was verified. Synced operations were left for the original sync device to checkpoint.'
     } catch (error) {
       weeklyMaintenancePhase = 'error'
       weeklyMaintenanceOpen = true
@@ -3124,7 +3124,7 @@ return rows`
     const confirmed = await confirmDialog(
       createsCheckpoint
         ? 'Optimize the database now? Balance will verify a full-state checkpoint, install the optimized database, and copy that optimized database to an encrypted backup. This may temporarily need space for two additional copies of the database.'
-        : 'Optimize this device’s database now? Balance will safely vacuum this local file and copy the optimized database to an encrypted backup. The original sync device remains responsible for the shared checkpoint.',
+        : 'Optimize this device’s database now? Balance will clear local undo history, safely vacuum this local file, and copy the optimized database to an encrypted backup. The original sync device remains responsible for the shared checkpoint.',
       { title: 'Optimize database?', kind: 'warning' },
     )
     if (!confirmed) return
@@ -3150,7 +3150,8 @@ return rows`
           `(${formatDatabaseBytes(result.reclaimedBytes)} reclaimed). Removed ${result.operationsRemoved} old operations ` +
           `and ${result.historyEntriesRemoved} undo entries. Encrypted backup: ${result.backupPath}`
         : `Vacuumed this device ${formatDatabaseBytes(result.beforeBytes)} → ${formatDatabaseBytes(result.afterBytes)} ` +
-          `(${formatDatabaseBytes(result.reclaimedBytes)} reclaimed) without changing the synced operation log. ` +
+          `(${formatDatabaseBytes(result.reclaimedBytes)} reclaimed). Removed ${result.historyEntriesRemoved} local undo entries ` +
+          `without changing the synced operation log. ` +
           `Encrypted backup: ${result.backupPath}`
     } catch (error) {
       recoveryStatusIsError = true
@@ -5101,7 +5102,7 @@ return rows`
       </div>
       <p class="recovery-copy metadata-hint">
         {databaseMaintenanceStatus?.checkpointCoordinator === false
-          ? 'This synced device vacuums only its local database file. The original sync device creates the shared full-state checkpoint.'
+          ? 'This synced device clears local undo/recovery history and vacuums its database file. The original sync device creates the shared full-state checkpoint.'
           : 'Optimization replaces accumulated operation and undo history with one verified full-state checkpoint.'}
         Current plans, templates, lists, metrics, goals, settings, encryption, and sync configuration are preserved.
       </p>

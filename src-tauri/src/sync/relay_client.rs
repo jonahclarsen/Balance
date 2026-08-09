@@ -127,6 +127,58 @@ pub fn ensure_relay_tables(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
+/// Remove relay delivery bookkeeping for operations that a checkpoint has
+/// already replaced. Known ids matter only while the corresponding local
+/// operation can be offered. A queued batch with no remaining live operation
+/// can likewise be discarded because the checkpoint carries its resulting
+/// state.
+pub(crate) fn prune_obsolete_relay_rows(conn: &Connection) -> Result<(usize, usize)> {
+    let has_tables: bool = conn.query_row(
+        "SELECT count(*) = 2 FROM sqlite_master
+         WHERE type = 'table' AND name IN ('sync_relay_known_ops', 'sync_relay_outbox')",
+        [],
+        |row| row.get(0),
+    )?;
+    if !has_tables {
+        return Ok((0, 0));
+    }
+
+    let known_removed = conn.execute(
+        "DELETE FROM sync_relay_known_ops
+         WHERE NOT EXISTS (
+           SELECT 1 FROM operations WHERE operations.id = sync_relay_known_ops.op_id
+         )",
+        [],
+    )?;
+    let live_ids = super::local_op_ids(conn)?
+        .into_iter()
+        .collect::<HashSet<_>>();
+    let stale_batches = {
+        let mut statement = conn.prepare("SELECT batch_id, op_ids_json FROM sync_relay_outbox")?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        rows.into_iter()
+            .filter_map(|(batch_id, ids_json)| {
+                let ids = serde_json::from_str::<Vec<String>>(&ids_json).ok()?;
+                ids.iter()
+                    .all(|id| !live_ids.contains(id))
+                    .then_some(batch_id)
+            })
+            .collect::<Vec<_>>()
+    };
+    let mut outbox_removed = 0;
+    for batch_id in stale_batches {
+        outbox_removed += conn.execute(
+            "DELETE FROM sync_relay_outbox WHERE batch_id = ?1",
+            params![batch_id],
+        )?;
+    }
+    Ok((known_removed, outbox_removed))
+}
+
 pub fn device_token(key: &SyncKey, device_id: &str) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(key.as_bytes()).expect("HMAC accepts any key");
     mac.update(b"balance-relay-device-v3\0");
@@ -629,6 +681,7 @@ pub fn sync_once(
     allow_checkpoint: bool,
 ) -> Result<SyncPassResult> {
     ensure_relay_tables(conn)?;
+    prune_obsolete_relay_rows(conn)?;
     let result = sync_once_inner(conn, relay_url, key, allow_checkpoint);
     if let Err(error) = &result {
         let _ = conn.execute(
@@ -786,6 +839,17 @@ mod tests {
                    type TEXT NOT NULL,
                    timestamp TEXT NOT NULL,
                    payload_json TEXT NOT NULL
+                 );
+                 CREATE TABLE history_entries (
+                   id TEXT PRIMARY KEY,
+                   operation_id TEXT NOT NULL UNIQUE,
+                   device_id TEXT NOT NULL,
+                   sequence INTEGER NOT NULL,
+                   undo_operation_json TEXT NOT NULL,
+                   redo_operation_json TEXT NOT NULL,
+                   undone INTEGER NOT NULL DEFAULT 0,
+                   created_at_ms INTEGER NOT NULL,
+                   updated_at_ms INTEGER NOT NULL
                  );",
             )
             .unwrap();
@@ -801,6 +865,46 @@ mod tests {
                 params![id, payload],
             )
             .unwrap();
+    }
+
+    #[test]
+    fn obsolete_relay_rows_are_pruned_after_operation_compaction() {
+        let connection = relay_database();
+        insert_op(&connection, "live-op", "{}");
+        for id in ["live-op", "compacted-op"] {
+            connection
+                .execute(
+                    "INSERT INTO sync_relay_known_ops (op_id) VALUES (?1)",
+                    params![id],
+                )
+                .unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO sync_relay_outbox (batch_id, epoch, ciphertext, op_ids_json)
+                 VALUES ('live-batch', 'epoch-1', x'01', '[\"live-op\"]'),
+                        ('stale-batch', 'epoch-1', x'02', '[\"compacted-op\"]')",
+                [],
+            )
+            .unwrap();
+
+        assert_eq!(prune_obsolete_relay_rows(&connection).unwrap(), (1, 1));
+        assert_eq!(
+            connection
+                .query_row("SELECT op_id FROM sync_relay_known_ops", [], |row| {
+                    row.get::<_, String>(0)
+                })
+                .unwrap(),
+            "live-op"
+        );
+        assert_eq!(
+            connection
+                .query_row("SELECT batch_id FROM sync_relay_outbox", [], |row| {
+                    row.get::<_, String>(0)
+                })
+                .unwrap(),
+            "live-batch"
+        );
     }
 
     #[test]

@@ -874,9 +874,6 @@ fn maintain_database_at(
         let expected_operation_count: i64 = source
             .query_row("select count(*) from operations", [], |row| row.get(0))
             .map_err(|error| error.to_string())?;
-        let expected_history_count: i64 = source
-            .query_row("select count(*) from history_entries", [], |row| row.get(0))
-            .map_err(|error| error.to_string())?;
         let previous_latest_backup = metadata_value(&source, DATABASE_MAINTENANCE_LATEST_BACKUP)?;
 
         // SQLite's online-backup API produces a transactionally consistent
@@ -906,6 +903,19 @@ fn maintain_database_at(
         let checkpoint = create_checkpoint
             .then(|| sync::checkpoint_operation_log(&working).map_err(sync::Error::into_string))
             .transpose()?;
+        // Undo/recovery history is local to each device and is not part of sync
+        // reconciliation. Clear it at the maintenance boundary even on a
+        // non-coordinator; only the replicated operation log requires the
+        // single-coordinator checkpoint rule.
+        let local_history_entries_removed = if create_checkpoint {
+            0
+        } else {
+            working
+                .execute("delete from history_entries", [])
+                .map_err(|error| error.to_string())? as i64
+        };
+        sync::relay_client::prune_obsolete_relay_rows(&working)
+            .map_err(sync::Error::into_string)?;
         drop(working);
 
         // VACUUM only the disposable copy. If it or any later verification
@@ -931,11 +941,7 @@ fn maintain_database_at(
         } else {
             expected_operation_count
         };
-        let expected_compacted_history_count = if create_checkpoint {
-            0
-        } else {
-            expected_history_count
-        };
+        let expected_compacted_history_count = 0;
         if operation_count != expected_compacted_operation_count
             || history_count != expected_compacted_history_count
         {
@@ -1053,7 +1059,7 @@ fn maintain_database_at(
                 .unwrap_or(0),
             history_entries_removed: checkpoint
                 .map(|stats| stats.history_entries_removed)
-                .unwrap_or(0),
+                .unwrap_or(local_history_entries_removed),
             backup_path: backup_path.display().to_string(),
             checkpoint_created: create_checkpoint,
         })
@@ -7917,7 +7923,7 @@ mod tests {
     }
 
     #[test]
-    fn synced_joiner_vacuums_locally_without_creating_a_competing_checkpoint() {
+    fn synced_joiner_clears_local_history_without_creating_a_competing_checkpoint() {
         let primary_database = TestDatabase::new("maintenance-primary");
         let joiner_database = TestDatabase::new("maintenance-joiner");
         let primary_key = generate_recovery_key();
@@ -7994,7 +8000,7 @@ mod tests {
         let result = vacuum_database_at(&joiner_database.path, &joiner_key).unwrap();
         assert!(!result.checkpoint_created);
         assert_eq!(result.operations_removed, 0);
-        assert_eq!(result.history_entries_removed, 0);
+        assert_eq!(result.history_entries_removed, history_count_before);
         assert!(result.after_bytes < result.before_bytes);
 
         let maintained = open_database_at(&joiner_database.path, &joiner_key).unwrap();
@@ -8030,7 +8036,7 @@ mod tests {
                 .query_row("select count(*) from history_entries", [], |row| row
                     .get::<_, i64>(0))
                 .unwrap(),
-            history_count_before
+            0
         );
         assert!(!database_checkpoint_coordinator(&maintained).unwrap());
         drop(maintained);

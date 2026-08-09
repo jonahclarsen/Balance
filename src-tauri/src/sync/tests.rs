@@ -523,6 +523,63 @@ fn a_checkpoint_replaces_the_peers_old_operations_with_a_compact_frontier() {
     assert_eq!(b.operation_ids(), checkpoint_ids);
 }
 
+#[test]
+fn an_incoming_checkpoint_prunes_only_the_local_history_it_covers() {
+    let sa = Scratch::new("checkpoint-history-a");
+    let sb = Scratch::new("checkpoint-history-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let mut b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    merge_and_rematerialize(&b, all_ops(&a).unwrap()).unwrap();
+
+    persist_operation_to_database(
+        &mut b,
+        &set_active_plan_date_op(
+            "op-b-1",
+            "device-B",
+            1,
+            "2026-06-23T12:00:00.000Z",
+            "2027-01-01",
+        ),
+    )
+    .unwrap();
+    merge_and_rematerialize(&a, all_ops(&b).unwrap()).unwrap();
+    checkpoint_operation_log(&a).unwrap();
+    let checkpoint = all_ops(&a).unwrap().into_iter().next().unwrap();
+
+    // This edit was made after the coordinator's snapshot and must retain both
+    // its replicated operation and its local undo entry.
+    persist_operation_to_database(
+        &mut b,
+        &set_active_plan_date_op(
+            "op-b-2",
+            "device-B",
+            2,
+            "2026-06-23T12:01:00.000Z",
+            "2027-01-02",
+        ),
+    )
+    .unwrap();
+    assert_eq!(merge_and_rematerialize(&b, vec![checkpoint]).unwrap(), 1);
+
+    let operation_ids = local_op_ids(&b).unwrap();
+    assert!(!operation_ids.contains(&"op-b-1".to_string()));
+    assert!(operation_ids.contains(&"op-b-2".to_string()));
+    let history: Vec<(String, i64)> = b
+        .prepare("SELECT operation_id, sequence FROM history_entries ORDER BY sequence")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<std::result::Result<_, _>>()
+        .unwrap();
+    assert_eq!(history, vec![("op-b-2".to_string(), 2)]);
+    assert_eq!(
+        read_app_state_from_database(&b).unwrap().unwrap()["activePlanDate"],
+        "2027-01-02"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // 5. Stale peer re-offering frontier-covered operations
 // ---------------------------------------------------------------------------

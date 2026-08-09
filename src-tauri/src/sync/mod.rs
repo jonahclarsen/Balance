@@ -392,6 +392,10 @@ fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<usize> {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         )?;
         let mut delete_replaced = conn.prepare("DELETE FROM operations WHERE id = ?1")?;
+        let mut delete_replaced_history =
+            conn.prepare("DELETE FROM history_entries WHERE operation_id = ?1")?;
+        let mut delete_frontier_history =
+            conn.prepare("DELETE FROM history_entries WHERE device_id = ?1 AND sequence <= ?2")?;
         let mut tombstone =
             conn.prepare("INSERT OR IGNORE INTO sync_tombstones (id) VALUES (?1)")?;
         let mut upsert_frontier = conn.prepare(
@@ -436,6 +440,7 @@ fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<usize> {
             for replaced in replaced_ids(checkpoint) {
                 if replaced != checkpoint.id {
                     delete_replaced.execute(params![replaced])?;
+                    delete_replaced_history.execute(params![replaced])?;
                     tombstone.execute(params![replaced])?;
                 }
             }
@@ -470,6 +475,12 @@ fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<usize> {
             inserted += 1;
         }
         for (device_id, sequence) in &frontiers {
+            // Undo/recovery rows are device-local, but they can otherwise
+            // survive forever after their replicated operations have been
+            // replaced. Persisted frontiers prove these sequences are already
+            // represented by an accepted full-state baseline. Consulting the
+            // merged frontiers also heals history left by older app versions.
+            delete_frontier_history.execute(params![device_id, sequence])?;
             conn.execute(
                 "DELETE FROM operations WHERE type != 'replace_full_state' AND device_id = ?1 AND sequence <= ?2",
                 params![device_id, sequence],
