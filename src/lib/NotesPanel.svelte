@@ -26,7 +26,15 @@
 
   let filter = ''
   let copyStatus = ''
+  let activeItemId: Id | null = null
+  let activeNoteId: Id | null = null
+  let toolbarSelection: Range | null = null
   $: selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null
+  $: if (selectedNoteId !== activeNoteId) {
+    activeNoteId = selectedNoteId
+    activeItemId = selectedNote?.items[0]?.id ?? null
+  }
+  $: activeItem = selectedNote && activeItemId ? findItem(selectedNote.items, activeItemId) : null
   $: filteredNotes = [...notes]
     .filter((note) => `${note.title} ${flattenText(note)}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
@@ -34,6 +42,15 @@
   function flattenText(note: Note): string {
     const visit = (items: Note['items']): string => items.map((item) => `${item.text} ${visit(item.children)}`).join(' ')
     return visit(note.items)
+  }
+
+  function findItem(items: Note['items'], itemId: Id): Note['items'][number] | null {
+    for (const item of items) {
+      if (item.id === itemId) return item
+      const child = findItem(item.children, itemId)
+      if (child) return child
+    }
+    return null
   }
 
   function createAndSelect() {
@@ -68,6 +85,74 @@
     if (Number.isNaN(date.getTime())) return ''
     return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }).format(date)
   }
+
+  async function applyBlockKind(kind: NoteItemKind) {
+    if (!selectedNote) return
+    const itemId = activeItemId ?? selectedNote.items[0]?.id
+    if (!itemId) return
+    activeItemId = itemId
+    patchItem(selectedNote.id, itemId, { kind, done: kind === 'checklist' ? (activeItem?.done ?? false) : false })
+    await tick()
+    focusActiveEditor()
+  }
+
+  function applyInlineFormat(command: 'bold' | 'italic' | 'underline') {
+    const editor = activeEditor()
+    if (!editor) return
+    const selection = document.getSelection()
+    const liveRange = selection?.rangeCount ? selection.getRangeAt(0) : null
+    const savedRange = toolbarSelection ?? (liveRange && editor.contains(liveRange.commonAncestorContainer) ? liveRange.cloneRange() : null)
+    editor.focus()
+    if (savedRange && selection) {
+      selection.removeAllRanges()
+      selection.addRange(savedRange)
+    }
+    if (savedRange && !savedRange.collapsed) {
+      const wrapper = document.createElement(command === 'bold' ? 'strong' : command === 'italic' ? 'em' : 'u')
+      wrapper.append(savedRange.extractContents())
+      savedRange.insertNode(wrapper)
+      selection?.selectAllChildren(wrapper)
+    } else {
+      document.execCommand(command)
+    }
+    toolbarSelection = null
+    const inputType = command === 'bold' ? 'formatBold' : command === 'italic' ? 'formatItalic' : 'formatUnderline'
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType }))
+  }
+
+  function rememberToolbarSelection() {
+    const editor = activeEditor()
+    const selection = document.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    toolbarSelection = editor && range && editor.contains(range.commonAncestorContainer) ? range.cloneRange() : null
+  }
+
+  async function addLine() {
+    if (!selectedNote) return
+    const itemId = onAddItem(selectedNote.id)
+    activeItemId = itemId
+    await tick()
+    focusActiveEditor()
+  }
+
+  function activeEditor() {
+    if (!activeItemId) return null
+    return Array.from(document.querySelectorAll<HTMLDivElement>('[data-note-text-input]')).find(
+      (editor) => editor.dataset.noteTextInputId === activeItemId,
+    ) ?? null
+  }
+
+  function focusActiveEditor() {
+    const editor = activeEditor()
+    if (!editor) return
+    editor.focus()
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(false)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
 </script>
 
 <div class="notes-workspace">
@@ -100,7 +185,25 @@
         {#if copyStatus}<p class="note-copy-status" aria-live="polite">{copyStatus}</p>{/if}
       </header>
 
-      <div class="note-blocks" role="list">
+      <div class="note-format-toolbar" role="toolbar" aria-label="Note formatting">
+        <div class="note-format-group" aria-label="Text style">
+          <button type="button" class:active={activeItem?.kind === 'paragraph'} aria-label="Text" title="Text" on:click={() => applyBlockKind('paragraph')}>Aa</button>
+          <button type="button" class:active={activeItem?.kind === 'heading'} aria-label="Heading" title="Heading (# then Space)" on:click={() => applyBlockKind('heading')}>H1</button>
+        </div>
+        <div class="note-format-group" aria-label="Lists">
+          <button type="button" class:active={activeItem?.kind === 'bullet'} aria-label="Bulleted list" title="Bulleted list (- then Space)" on:click={() => applyBlockKind('bullet')}>•</button>
+          <button type="button" class:active={activeItem?.kind === 'numbered'} aria-label="Numbered list" title="Numbered list (1. then Space)" on:click={() => applyBlockKind('numbered')}>1.</button>
+          <button type="button" class:active={activeItem?.kind === 'checklist'} aria-label="Checklist" title="Checklist ([] then Space)" on:click={() => applyBlockKind('checklist')}>✓</button>
+        </div>
+        <div class="note-format-group" aria-label="Inline formatting">
+          <button type="button" aria-label="Bold" title="Bold (⌘B)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('bold')}><strong>B</strong></button>
+          <button type="button" aria-label="Italic" title="Italic (⌘I)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('italic')}><em>I</em></button>
+          <button type="button" aria-label="Underline" title="Underline (⌘U)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('underline')}><u>U</u></button>
+        </div>
+        <span class="note-format-hint">Type <kbd>/</kbd> for more</span>
+      </div>
+
+      <div class="note-blocks">
         {#each selectedNote.items as item (item.id)}
           <NoteItemEditor
             {item}
@@ -119,14 +222,13 @@
             {metrics}
             {notes}
             {onOpenLink}
+            onFocusItem={(itemId) => (activeItemId = itemId)}
           />
         {/each}
       </div>
 
       <div class="note-add-row">
-        <button class="add-row" type="button" on:click={() => onAddItem(selectedNote!.id)}>+ Text</button>
-        <button class="add-row" type="button" on:click={() => onAddItem(selectedNote!.id, 'bullet')}>+ List</button>
-        <button class="add-row" type="button" on:click={() => onAddItem(selectedNote!.id, 'checklist')}>+ Checklist</button>
+        <button class="note-add-line" type="button" on:click={addLine}>+ Add a line</button>
       </div>
     {:else}
       <div class="empty-state note-empty">

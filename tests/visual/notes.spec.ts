@@ -1,6 +1,19 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 
-test('notes support rich blocks, persistence, search, and app links from templates', async ({ page }, testInfo) => {
+async function placeCaretAtEnd(editor: Locator) {
+  await editor.evaluate((element) => {
+    const input = element as HTMLElement
+    input.focus()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(false)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  })
+}
+
+test('notes support a seamless editor, natural formatting, persistence, search, and app links', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -10,16 +23,46 @@ test('notes support rich blocks, persistence, search, and app links from templat
   await page.getByLabel('Note title').fill('Project Brain')
 
   const firstBlock = page.locator('[data-note-text-input]').first()
-  await firstBlock.fill('Reference material with formatted ideas')
-  await page.locator('.note-kind').first().selectOption('heading')
-  await expect(firstBlock).toHaveCSS('font-weight', '700')
+  await firstBlock.fill('/hea')
+  await expect(page.getByRole('listbox', { name: 'Note styles' })).toBeVisible()
+  await firstBlock.press('Enter')
+  await firstBlock.fill('Reference material')
+  await expect(page.locator('.note-item').first()).toHaveClass(/note-heading/)
 
-  await page.getByRole('button', { name: '+ Checklist' }).click()
-  const noteBlocks = page.locator('[data-note-text-input]')
+  await placeCaretAtEnd(firstBlock)
+  await firstBlock.press('Enter')
+  let noteBlocks = page.locator('[data-note-text-input]')
   await expect(noteBlocks).toHaveCount(2)
-  await noteBlocks.nth(1).fill('Ship the notes feature')
+  const bodyBlock = noteBlocks.nth(1)
+  await bodyBlock.fill('Formatted ideas feel like one document')
+  await bodyBlock.press('Meta+A')
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString() ?? '')).toContain('Formatted ideas')
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Bold' }).click()
+  await expect(bodyBlock.locator('strong')).toContainText('Formatted ideas')
+
+  await placeCaretAtEnd(bodyBlock)
+  await bodyBlock.press('Enter')
+  noteBlocks = page.locator('[data-note-text-input]')
+  await expect(noteBlocks).toHaveCount(3)
+  const checklistBlock = noteBlocks.nth(2)
+  await checklistBlock.type('[] ')
+  await checklistBlock.type('Ship the notes feature')
   await page.getByLabel('Mark checked').check()
   await expect(page.locator('.note-done')).toContainText('Ship the notes feature')
+
+  await placeCaretAtEnd(checklistBlock)
+  await checklistBlock.press('Enter')
+  noteBlocks = page.locator('[data-note-text-input]')
+  await expect(noteBlocks).toHaveCount(4)
+  const emptyChecklist = page.locator('.note-item').filter({ has: page.getByLabel('Mark checked') })
+  await expect(emptyChecklist).toHaveCount(1)
+  const emptyChecklistId = await emptyChecklist.getAttribute('data-note-item-id')
+  expect(emptyChecklistId).toBeTruthy()
+  const emptyChecklistItem = page.locator(`[data-note-item-id="${emptyChecklistId}"]`)
+  await emptyChecklistItem.locator('[data-note-text-input]').press('Enter')
+  await expect(noteBlocks).toHaveCount(4)
+  await expect(emptyChecklistItem).not.toHaveClass(/note-list-item/)
+  await expect(page.locator('[data-note-text-input]').nth(1)).toContainText('Formatted ideas')
 
   await page.getByRole('button', { name: 'Copy note link' }).click()
   await expect(page.getByText('Note link copied')).toBeVisible()
@@ -39,17 +82,19 @@ test('notes support rich blocks, persistence, search, and app links from templat
   await expect(templateText.locator('strong')).toContainText('Open')
   await internalLink.click()
   await expect(page.getByLabel('Note title')).toHaveValue('Project Brain')
+  await expect(page.locator('[data-note-text-input]').nth(1)).toContainText('Formatted ideas')
 
   await page.reload()
   await page.getByRole('button', { name: 'Notes', exact: true }).click()
   await expect(page.getByLabel('Note title')).toHaveValue('Project Brain')
+  await expect(page.locator('[data-note-text-input]').nth(1)).toContainText('Formatted ideas')
   await expect(page.locator('.note-done')).toContainText('Ship the notes feature')
   if (testInfo.project.name === 'desktop') {
     await page.screenshot({ path: testInfo.outputPath('notes-desktop.png'), fullPage: true })
   }
 
   await page.getByRole('button', { name: /Search/ }).click()
-  await page.getByRole('searchbox', { name: 'Search everything' }).fill('formatted ideas')
+  await page.getByRole('searchbox', { name: 'Search everything' }).fill('Formatted ideas')
   const searchDialog = page.getByRole('dialog', { name: 'Search Balance' })
   await expect(searchDialog.getByRole('heading', { name: /Notes/ })).toBeVisible()
   await searchDialog.getByRole('button', { name: /Project Brain/ }).click()
@@ -70,6 +115,7 @@ test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   const documentBox = await page.locator('.note-document').boundingBox()
   expect(documentBox?.x).toBeGreaterThanOrEqual(0)
   expect((documentBox?.x ?? 0) + (documentBox?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
+  await page.screenshot({ path: testInfo.outputPath('notes-mobile.png'), fullPage: true })
 })
 
 test('note text restores the caret after tabbing away mid-edit', async ({ page }) => {

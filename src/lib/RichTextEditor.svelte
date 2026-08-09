@@ -34,7 +34,7 @@
   export let placeholder = ''
   export let ariaLabel = 'Text'
   export let revision = 0
-  export let onChange: (html: string, text: string, options?: TextChangeOptions) => void
+  export let onChange: (html: string, text: string, options?: TextChangeOptions, editor?: HTMLDivElement) => void
   export let onArrowKey:
     | ((direction: MoveDirection, editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
@@ -51,6 +51,7 @@
     | ((direction: 'in' | 'out', editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
   export let onFocusChange: ((focused: boolean) => void) | null = null
+  export let onKeyDown: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
   export let internalLinkSegments: ItemTextSegment[] = []
   export let onInternalLinkClick: ((link: ItemLink, event: MouseEvent) => void | Promise<void>) | null = null
 
@@ -96,6 +97,11 @@
 
   async function handleKeydown(event: KeyboardEvent) {
     const activeEditor = event.currentTarget as HTMLDivElement
+
+    if (onKeyDown) {
+      await onKeyDown(activeEditor, event)
+      if (event.defaultPrevented) return
+    }
 
     if (
       event.key === 'Backspace' &&
@@ -503,7 +509,7 @@
       renderedHTML = renderItemDisplayHTML(nextHTML, nextText, internalLinkSegments)
       if (activeEditor.innerHTML !== renderedHTML) activeEditor.innerHTML = renderedHTML
     }
-    onChange(nextHTML, nextText, options)
+    onChange(nextHTML, nextText, options, activeEditor)
   }
 
   function internalLinkKey(segments: ItemTextSegment[]) {

@@ -1,8 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { linkifyItemText, type ItemLink, type ItemTextSegment } from './planner'
+  import { escapeHTML, linkifyItemText, type ItemLink, type ItemTextSegment } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
-  import TreeItemRow from './TreeItemRow.svelte'
   import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, NoteItem, NoteItemKind } from './types'
 
   type TextChangeOptions = { mergeHistory?: boolean }
@@ -25,12 +24,32 @@
   export let metrics: Metric[] = []
   export let notes: Note[] = []
   export let onOpenLink: (link: ItemLink) => void = () => {}
+  export let onFocusItem: (itemId: Id) => void = () => {}
 
   let linkSegments: ItemTextSegment[] = [{ text: item.text, link: null }]
+  let slashQuery: string | null = null
+  let slashIndex = 0
+  const blockCommands: { kind: NoteItemKind; label: string; hint: string }[] = [
+    { kind: 'paragraph', label: 'Text', hint: 'Plain body text' },
+    { kind: 'heading', label: 'Heading', hint: 'Large section heading' },
+    { kind: 'bullet', label: 'Bulleted list', hint: 'Start a simple list' },
+    { kind: 'numbered', label: 'Numbered list', hint: 'Start an ordered list' },
+    { kind: 'checklist', label: 'Checklist', hint: 'Track something to do' },
+  ]
   $: linkSegments = linkifyItemText(item.text, listTemplates, metrics, notes)
-  $: itemNumber = siblings.findIndex((candidate) => candidate.id === item.id) + 1
+  $: itemNumber = numberedPosition(siblings, item.id)
+  $: slashCommands = slashQuery === null
+    ? []
+    : blockCommands.filter((command) => command.label.toLocaleLowerCase().includes(slashQuery ?? ''))
+  $: if (slashIndex >= slashCommands.length) slashIndex = 0
 
   async function handleSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
+    if (item.kind !== 'paragraph' && !before.text.trim() && !after.text.trim()) {
+      patchItem(noteId, item.id, { kind: 'paragraph', done: false })
+      await tick()
+      focusInput(item.id, 'start')
+      return
+    }
     const newItemId = splitItem(noteId, item.id, before, after)
     await tick()
     focusInput(newItemId, 'start')
@@ -85,6 +104,12 @@
   }
 
   async function handleBackspaceStart() {
+    if (item.kind !== 'paragraph') {
+      patchItem(noteId, item.id, { kind: 'paragraph', done: false })
+      await tick()
+      focusInput(item.id, 'start')
+      return
+    }
     const result = backspaceItemAtStart(noteId, item.id)
     if (!result) {
       if (!item.text.trim()) await handleBackspaceEmpty()
@@ -165,28 +190,86 @@
     focusElement(input)
   }
 
-  function changeKind(kind: NoteItemKind) {
-    patchItem(noteId, item.id, { kind, done: kind === 'checklist' ? item.done : false })
+  function numberedPosition(items: NoteItem[], itemId: Id) {
+    const index = items.findIndex((candidate) => candidate.id === itemId)
+    if (index < 0) return 1
+    let start = index
+    while (start > 0 && items[start - 1].kind === 'numbered') start -= 1
+    return index - start + 1
+  }
+
+  function markdownKind(text: string): { kind: NoteItemKind; content: string } | null {
+    const shortcuts: { expression: RegExp; kind: NoteItemKind }[] = [
+      { expression: /^#\s(.*)$/s, kind: 'heading' },
+      { expression: /^(?:-|\*)\s(.*)$/s, kind: 'bullet' },
+      { expression: /^1\.\s(.*)$/s, kind: 'numbered' },
+      { expression: /^\[\s?\]\s(.*)$/s, kind: 'checklist' },
+    ]
+    for (const shortcut of shortcuts) {
+      const match = text.match(shortcut.expression)
+      if (match) return { kind: shortcut.kind, content: match[1] }
+    }
+    return null
+  }
+
+  function handleTextChange(html: string, text: string, options?: TextChangeOptions, editor?: HTMLDivElement) {
+    const shortcut = markdownKind(text)
+    if (shortcut) {
+      const nextHTML = shortcut.content ? escapeHTML(shortcut.content) : ''
+      patchItem(noteId, item.id, { kind: shortcut.kind, done: false, html: nextHTML, text: shortcut.content }, options)
+      slashQuery = null
+      if (editor) replaceEditorContent(editor, nextHTML)
+      return
+    }
+
+    const slashMatch = text.match(/^\/([^\s/]*)$/)
+    slashQuery = slashMatch ? slashMatch[1].toLocaleLowerCase() : null
+    if (slashQuery !== null) slashIndex = 0
+    patchItem(noteId, item.id, { html, text }, options)
+  }
+
+  async function applySlashCommand(command: (typeof blockCommands)[number], editor?: HTMLDivElement) {
+    patchItem(noteId, item.id, { kind: command.kind, done: false, html: '', text: '' })
+    slashQuery = null
+    const target = editor ?? noteInputs().find((candidate) => candidate.dataset.noteTextInputId === item.id)
+    if (target) replaceEditorContent(target, '')
+    await tick()
+    focusInput(item.id, 'start')
+  }
+
+  function replaceEditorContent(editor: HTMLDivElement, html: string) {
+    editor.innerHTML = html
+    focusElement(editor)
+  }
+
+  function handleEditorKeyDown(_editor: HTMLDivElement, event: KeyboardEvent) {
+    if (slashQuery === null || slashCommands.length === 0) return
+    if (event.key === 'ArrowDown') {
+      event.preventDefault()
+      slashIndex = (slashIndex + 1) % slashCommands.length
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault()
+      slashIndex = (slashIndex - 1 + slashCommands.length) % slashCommands.length
+    } else if (event.key === 'Enter') {
+      event.preventDefault()
+      void applySlashCommand(slashCommands[slashIndex], _editor)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      slashQuery = null
+    }
   }
 </script>
 
-<TreeItemRow
-  kind="note"
-  itemId={item.id}
-  containerId={noteId}
-  {depth}
-  ariaLabel={`Note block: ${item.text || 'Empty'}`}
-  {moveItem}
+<div
+  class="note-item"
+  class:note-heading={item.kind === 'heading'}
+  class:note-done={item.kind === 'checklist' && item.done}
+  class:note-list-item={item.kind === 'bullet' || item.kind === 'numbered' || item.kind === 'checklist'}
+  data-note-item-id={item.id}
+  data-note-item-depth={depth}
+  aria-label={`Note block: ${item.text || 'Empty'}`}
 >
-  <div class="note-block" class:note-heading={item.kind === 'heading'} class:note-done={item.kind === 'checklist' && item.done}>
-    <select class="note-kind" value={item.kind} aria-label="Block style" title="Block style" on:change={(event) => changeKind(event.currentTarget.value as NoteItemKind)}>
-      <option value="paragraph">Text</option>
-      <option value="heading">Heading</option>
-      <option value="bullet">Bulleted list</option>
-      <option value="numbered">Numbered list</option>
-      <option value="checklist">Checklist</option>
-    </select>
-
+  <div class="note-block">
     {#if item.kind === 'bullet'}<span class="note-marker" aria-hidden="true">•</span>{/if}
     {#if item.kind === 'numbered'}<span class="note-marker numbered" aria-hidden="true">{itemNumber}.</span>{/if}
     {#if item.kind === 'checklist'}
@@ -206,10 +289,10 @@
       html={item.html}
       text={item.text}
       done={item.kind === 'checklist' && item.done}
-      placeholder={item.kind === 'heading' ? 'Heading' : 'Write something…'}
+      placeholder={item.kind === 'heading' ? 'Heading' : 'Type / for styles'}
       ariaLabel="Note text"
       revision={historyRevision}
-      onChange={(html, text, options) => patchItem(noteId, item.id, { html, text }, options)}
+      onChange={handleTextChange}
       onArrowKey={handleArrow}
       onSplit={handleSplit}
       onTabKey={handleTab}
@@ -217,37 +300,57 @@
       onBackspaceStart={handleBackspaceStart}
       onMetaBackspaceEnd={handleMetaBackspaceEnd}
       onHorizontalBoundaryKey={(direction, editor) => focusAdjacent(editor, direction === 'left' ? 'up' : 'down', direction === 'left' ? 'end' : 'start')}
+      onFocusChange={(focused) => {
+        if (focused) onFocusItem(item.id)
+        else if (slashQuery !== null) window.setTimeout(() => (slashQuery = null), 150)
+      }}
+      onKeyDown={handleEditorKeyDown}
       internalLinkSegments={linkSegments}
       onInternalLinkClick={(link) => onOpenLink(link)}
     />
-  </div>
-
-  <svelte:fragment slot="children">
-    {#if item.children.length > 0}
-      <div class="children">
-        {#each item.children as child (child.id)}
-          <svelte:self
-            item={child}
-            siblings={item.children}
-            depth={depth + 1}
-            {noteId}
-            parentId={item.id}
-            {patchItem}
-            {splitItem}
-            {backspaceItemAtStart}
-            {deleteItem}
-            {deleteItemPreservingChildren}
-            {moveItem}
-            {moveItemWithinLevel}
-            {outdentItem}
-            {historyRevision}
-            {listTemplates}
-            {metrics}
-            {notes}
-            {onOpenLink}
-          />
+    {#if slashQuery !== null && slashCommands.length > 0}
+      <div class="note-slash-menu" role="listbox" aria-label="Note styles">
+        {#each slashCommands as command, index (command.kind)}
+          <button
+            type="button"
+            class:active={index === slashIndex}
+            role="option"
+            aria-selected={index === slashIndex}
+            on:mousedown|preventDefault={() => applySlashCommand(command)}
+          >
+            <span class="note-slash-icon" aria-hidden="true">{command.kind === 'heading' ? 'H' : command.kind === 'bullet' ? '•' : command.kind === 'numbered' ? '1.' : command.kind === 'checklist' ? '✓' : 'Aa'}</span>
+            <span><strong>{command.label}</strong><small>{command.hint}</small></span>
+          </button>
         {/each}
       </div>
     {/if}
-  </svelte:fragment>
-</TreeItemRow>
+  </div>
+
+  {#if item.children.length > 0}
+    <div class="note-children">
+      {#each item.children as child (child.id)}
+        <svelte:self
+          item={child}
+          siblings={item.children}
+          depth={depth + 1}
+          {noteId}
+          parentId={item.id}
+          {patchItem}
+          {splitItem}
+          {backspaceItemAtStart}
+          {deleteItem}
+          {deleteItemPreservingChildren}
+          {moveItem}
+          {moveItemWithinLevel}
+          {outdentItem}
+          {historyRevision}
+          {listTemplates}
+          {metrics}
+          {notes}
+          {onOpenLink}
+          {onFocusItem}
+        />
+      {/each}
+    </div>
+  {/if}
+</div>
