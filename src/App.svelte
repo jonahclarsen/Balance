@@ -3130,10 +3130,19 @@ return rows`
     if (!confirmed) return
 
     databaseCompactionBusy = true
-    recoveryStatus = 'Creating and verifying encrypted database checkpoint…'
+    recoveryStatus = 'Checking for the latest synced database checkpoint…'
     recoveryStatusIsError = false
 
     try {
+      // A coordinator's checkpoint removes the old replicated operation log
+      // when it is merged. Pull it before VACUUM so a joining device can
+      // reclaim those pages in this optimization pass instead of needing a
+      // later sync followed by a second optimization.
+      await requestSync('manual-database-optimization-preflight')
+      recoveryStatus = createsCheckpoint
+        ? 'Creating and verifying encrypted database checkpoint…'
+        : 'Vacuuming the reconciled encrypted database…'
+
       const result = await compactDatabase()
       if (!result) throw new Error('Database optimization is available only in the desktop or mobile app.')
 
