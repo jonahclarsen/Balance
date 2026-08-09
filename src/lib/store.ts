@@ -2343,11 +2343,19 @@ function normalizeState(state: AppState): AppState {
 
 function normalizeNoteItems(items: NoteItem[]): NoteItem[] {
   const kinds = new Set<NoteItemKind>(['paragraph', 'heading', 'bullet', 'numbered', 'checklist'])
-  return normalizePlanItems(items).map((item) => ({
-    ...item,
-    kind: kinds.has((item as NoteItem).kind) ? (item as NoteItem).kind : 'paragraph',
-    children: normalizeNoteItems(item.children as NoteItem[]),
-  }))
+  return items.map((item) => {
+    const html = sanitizeInlineHTML(item.html ?? escapeHTML(item.text ?? ''))
+
+    return {
+      ...item,
+      text: item.text ?? htmlToPlainText(html),
+      html,
+      startMinutes: item.startMinutes ?? null,
+      endMinutes: item.endMinutes ?? null,
+      kind: kinds.has(item.kind) ? item.kind : 'paragraph',
+      children: normalizeNoteItems(item.children ?? []),
+    }
+  })
 }
 
 function normalizeListTemplateItems(items: ListTemplateItem[]): ListTemplateItem[] {
