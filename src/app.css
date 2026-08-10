@@ -3457,6 +3457,30 @@ nav button.active {
   padding: 2px 0 20px;
 }
 
+.note-empty-editor {
+  display: flex;
+  width: 100%;
+  min-height: 240px;
+  align-items: flex-start;
+  border: 0;
+  background: transparent;
+  padding: 3px 2px;
+  color: var(--muted);
+  cursor: text;
+  font-size: 15px;
+  line-height: 1.6;
+  text-align: left;
+}
+
+.note-empty-editor:hover,
+.note-empty-editor:focus-visible {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  outline: none;
+}
+
 .note-item {
   position: relative;
   min-width: 0;

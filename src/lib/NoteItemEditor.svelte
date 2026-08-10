@@ -95,6 +95,12 @@
 
   async function handleBackspaceEmpty() {
     const inputs = noteInputs()
+    if (inputs.length === 1) {
+      patchItem(noteId, item.id, { kind: 'paragraph', done: false, html: '', text: '' })
+      await tick()
+      focusInput(item.id, 'start')
+      return
+    }
     const index = inputs.findIndex((input) => input.dataset.noteTextInputId === item.id)
     deleteItem(noteId, item.id)
     await tick()
@@ -119,8 +125,15 @@
     focusInputAtOffset(result.focusItemId, result.focusOffset)
   }
 
-  async function handleMetaBackspaceEnd() {
+  async function handleMetaBackspaceEnd(current: HTMLDivElement) {
     const inputs = noteInputs()
+    if (inputs.length === 1) {
+      current.innerHTML = ''
+      patchItem(noteId, item.id, { kind: 'paragraph', done: false, html: '', text: '' })
+      await tick()
+      focusInput(item.id, 'start')
+      return
+    }
     const index = inputs.findIndex((input) => input.dataset.noteTextInputId === item.id)
     deleteItemPreservingChildren(noteId, item.id)
     await tick()

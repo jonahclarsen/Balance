@@ -13,6 +13,7 @@
   export let onCreate: () => Id
   export let onDelete: (noteId: Id) => void | Promise<void>
   export let onRename: (noteId: Id, title: string) => void
+  export let onAddItem: (noteId: Id, kind?: NoteItemKind) => Id
   export let patchItem: typeof import('./store').plannerStore.patchNoteItem
   export let splitItem: typeof import('./store').plannerStore.splitNoteItem
   export let backspaceItemAtStart: typeof import('./store').plannerStore.backspaceNoteItemAtStart
@@ -87,10 +88,16 @@
 
   async function applyBlockKind(kind: NoteItemKind) {
     if (!selectedNote) return
-    const itemId = activeItemId ?? selectedNote.items[0]?.id
-    if (!itemId) return
+    const itemId = activeItemId ?? selectedNote.items[0]?.id ?? onAddItem(selectedNote.id)
     activeItemId = itemId
     patchItem(selectedNote.id, itemId, { kind, done: kind === 'checklist' ? (activeItem?.done ?? false) : false })
+    await tick()
+    focusActiveEditor()
+  }
+
+  async function startEmptyNote() {
+    if (!selectedNote || selectedNote.items.length > 0) return
+    activeItemId = onAddItem(selectedNote.id)
     await tick()
     focusActiveEditor()
   }
@@ -195,27 +202,31 @@
       </div>
 
       <div class="note-blocks">
-        {#each selectedNote.items as item (item.id)}
-          <NoteItemEditor
-            {item}
-            siblings={selectedNote.items}
-            noteId={selectedNote.id}
-            {patchItem}
-            {splitItem}
-            {backspaceItemAtStart}
-            {deleteItem}
-            {deleteItemPreservingChildren}
-            {moveItem}
-            {moveItemWithinLevel}
-            {outdentItem}
-            {historyRevision}
-            {listTemplates}
-            {metrics}
-            {notes}
-            {onOpenLink}
-            onFocusItem={(itemId) => (activeItemId = itemId)}
-          />
-        {/each}
+        {#if selectedNote.items.length === 0}
+          <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
+        {:else}
+          {#each selectedNote.items as item (item.id)}
+            <NoteItemEditor
+              {item}
+              siblings={selectedNote.items}
+              noteId={selectedNote.id}
+              {patchItem}
+              {splitItem}
+              {backspaceItemAtStart}
+              {deleteItem}
+              {deleteItemPreservingChildren}
+              {moveItem}
+              {moveItemWithinLevel}
+              {outdentItem}
+              {historyRevision}
+              {listTemplates}
+              {metrics}
+              {notes}
+              {onOpenLink}
+              onFocusItem={(itemId) => (activeItemId = itemId)}
+            />
+          {/each}
+        {/if}
       </div>
 
     {:else}

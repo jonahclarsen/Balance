@@ -118,6 +118,39 @@ test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   await page.screenshot({ path: testInfo.outputPath('notes-mobile.png'), fullPage: true })
 })
 
+test('an empty note always has a place to start typing', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const onlyLine = page.locator('[data-note-text-input]')
+  await onlyLine.fill('Temporary text')
+  await placeCaretAtEnd(onlyLine)
+  await onlyLine.press('Meta+Backspace')
+  await expect(onlyLine).toHaveCount(1)
+  await expect(onlyLine).toHaveText('')
+  await expect(onlyLine).toBeFocused()
+
+  await page.evaluate(() => {
+    const key = 'balance.appState.v1'
+    const state = JSON.parse(localStorage.getItem(key) || '{}')
+    state.notes[0].items = []
+    localStorage.setItem(key, JSON.stringify(state))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+
+  const emptySurface = page.getByRole('button', { name: 'Start writing…' })
+  await expect(emptySurface).toBeVisible()
+  await emptySurface.click()
+  await expect(page.locator('[data-note-text-input]')).toHaveCount(1)
+  await expect(page.locator('[data-note-text-input]')).toBeFocused()
+  await page.locator('[data-note-text-input]').type('The first line')
+  await expect(page.locator('[data-note-text-input]')).toHaveText('The first line')
+})
+
 test('note text restores the caret after tabbing away mid-edit', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
