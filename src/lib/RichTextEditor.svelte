@@ -60,6 +60,7 @@
   let lastRevision = revision
   let lastInternalLinkKey = internalLinkKey(internalLinkSegments)
   let savedSelection: SavedSelection | null = null
+  let selectionGuardAfterEditorBlur = false
   let restoreSelectionOnNextFocus = false
   let windowBlurred = false
   let restoreRequest = 0
@@ -375,17 +376,11 @@
     saveSelection(editor)
     // persistEditor below may rewrite innerHTML to its normalized form (when the user just
     // typed un-normalized content). That rewrite collapses the live selection to offset 0 and
-    // fires a selectionchange. Arm the restore guard first so handleDocumentSelectionChange
-    // can't overwrite the caret we just saved. If this blur is only an in-document focus move,
-    // back the guard out after the window has had a chance to report its own blur. Some webviews
-    // deliver the editor blur first while document.hasFocus() still returns true.
-    restoreSelectionOnNextFocus = true
+    // fires a selectionchange, so guard the saved caret until the browser tells us whether
+    // focus moved within the document or left the window. Native webviews can deliver the
+    // window blur in a later task, which makes a timer-based distinction inherently racy.
+    selectionGuardAfterEditorBlur = !restoreSelectionOnNextFocus && !windowBlurred
     persistEditor(editor)
-    window.setTimeout(() => {
-      if (!windowBlurred && document.hasFocus() && editor !== document.activeElement) {
-        restoreSelectionOnNextFocus = false
-      }
-    }, 0)
   }
 
   function handleWindowFocus() {
@@ -394,27 +389,35 @@
   }
 
   function handleWindowBlur() {
-    // The editor's blur can arrive before the window's blur, so an already-armed restore is
-    // also evidence that this editor was active when the app switch began.
-    if (editor !== document.activeElement && !restoreSelectionOnNextFocus) return
+    // The editor's blur can arrive in an earlier task, so the selection guard is also evidence
+    // that this editor was active when the app switch began.
+    if (editor !== document.activeElement && !selectionGuardAfterEditorBlur) return
 
     windowBlurred = true
-    // If handleBlur already armed the restore, it captured the caret before persistEditor could
-    // collapse it — don't re-read a possibly-collapsed selection here.
-    if (!restoreSelectionOnNextFocus) saveSelection(editor)
+    // If handleBlur already guarded the selection, it captured the caret before persistEditor
+    // could collapse it — don't re-read a possibly-collapsed selection here.
+    if (!selectionGuardAfterEditorBlur) saveSelection(editor)
+    selectionGuardAfterEditorBlur = false
     restoreSelectionOnNextFocus = true
   }
 
   function handleDocumentSelectionChange() {
-    if (restoreSelectionOnNextFocus) return
+    if (selectionGuardAfterEditorBlur || restoreSelectionOnNextFocus) return
     if (editor === document.activeElement) saveSelection(editor)
+  }
+
+  function handleDocumentFocusIn() {
+    // A new focus target inside the still-focused document proves that the editor blur was an
+    // ordinary in-app move, so a later click in this editor must use the newly chosen caret.
+    if (!windowBlurred && !restoreSelectionOnNextFocus) selectionGuardAfterEditorBlur = false
   }
 
   function handleDocumentVisibilityChange() {
     if (document.visibilityState === 'hidden') {
       windowBlurred = true
-      if (editor === document.activeElement) {
-        saveSelection(editor)
+      if (editor === document.activeElement || selectionGuardAfterEditorBlur) {
+        if (!selectionGuardAfterEditorBlur) saveSelection(editor)
+        selectionGuardAfterEditorBlur = false
         restoreSelectionOnNextFocus = true
       }
       return
@@ -655,7 +658,11 @@
 </script>
 
 <svelte:window on:blur={handleWindowBlur} on:focus={handleWindowFocus} />
-<svelte:document on:selectionchange={handleDocumentSelectionChange} on:visibilitychange={handleDocumentVisibilityChange} />
+<svelte:document
+  on:focusin={handleDocumentFocusIn}
+  on:selectionchange={handleDocumentSelectionChange}
+  on:visibilitychange={handleDocumentVisibilityChange}
+/>
 
 <div
   bind:this={editor}

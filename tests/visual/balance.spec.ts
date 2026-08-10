@@ -2739,20 +2739,22 @@ test('rich plan item text restores the caret after tabbing away mid-edit', async
 
   await focusInputByValue(page, 'Wake up')
   await setCaretOffsetInFocusedEditor(page, 4)
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+  await page.keyboard.type('x')
+  await expect.poll(async () => activeInputValue(page)).toBe('Wakex up')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(5)
 
   // Reproduce the app-switch-after-typing case: the editor holds un-normalized markup (as it
   // does right after typing), the app loses focus, and the element blurs. handleBlur's
   // persistEditor rewrites innerHTML, collapsing the live caret to 0 and firing a
   // selectionchange. The saved caret must survive so it restores on refocus.
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
     const input = document.activeElement
     if (!(input instanceof HTMLElement) || !input.matches('[data-plan-text-input]')) return
 
     // Un-normalized DOM so persistEditor actually rewrites innerHTML (and collapses selection).
-    input.innerHTML = 'Wake up<span></span>'
+    input.innerHTML = 'Wakex up<span></span>'
     const range = document.createRange()
-    range.setStart(input.firstChild as Node, 4)
+    range.setStart(input.firstChild as Node, 5)
     range.collapse(true)
     const selection = document.getSelection()
     selection?.removeAllRanges()
@@ -2760,6 +2762,10 @@ test('rich plan item text restores the caret after tabbing away mid-edit', async
 
     // Real blur so the element stops being document.activeElement, as it does on an app switch.
     input.blur()
+
+    // Native webviews can deliver the window blur in a later task. Leave enough time for any
+    // blur cleanup to run so this test covers that ordering instead of only the synchronous one.
+    await new Promise((resolve) => window.setTimeout(resolve, 25))
     window.dispatchEvent(new FocusEvent('blur'))
   })
 
@@ -2780,7 +2786,7 @@ test('rich plan item text restores the caret after tabbing away mid-edit', async
     window.dispatchEvent(new FocusEvent('focus'))
   })
 
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(5)
 })
 
 test('global undo and redo batch text edits', async ({ page }) => {
