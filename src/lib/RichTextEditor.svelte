@@ -60,7 +60,8 @@
   let lastRevision = revision
   let lastInternalLinkKey = internalLinkKey(internalLinkSegments)
   let savedSelection: SavedSelection | null = null
-  let selectionGuardAfterEditorBlur = false
+  let lastInteractionSelection: SavedSelection | null = null
+  let editorBlurPendingWindowOutcome = false
   let restoreSelectionOnNextFocus = false
   let windowBlurred = false
   let restoreRequest = 0
@@ -359,7 +360,17 @@
     const mergeHistory = !pendingPasteInput
     pendingPasteInput = false
     persistEditor(activeEditor, false, { mergeHistory })
-    saveSelection(activeEditor)
+    lastInteractionSelection = saveSelection(activeEditor)
+  }
+
+  function handleKeyup(event: KeyboardEvent) {
+    if (windowBlurred || editorBlurPendingWindowOutcome || restoreSelectionOnNextFocus) return
+    lastInteractionSelection = saveSelection(event.currentTarget as HTMLDivElement)
+  }
+
+  function handlePointerup(event: PointerEvent) {
+    if (windowBlurred || editorBlurPendingWindowOutcome || restoreSelectionOnNextFocus) return
+    lastInteractionSelection = saveSelection(event.currentTarget as HTMLDivElement)
   }
 
   function handleFocus() {
@@ -373,13 +384,12 @@
     if (!editor) return
 
     onFocusChange?.(false)
-    saveSelection(editor)
-    // persistEditor below may rewrite innerHTML to its normalized form (when the user just
-    // typed un-normalized content). That rewrite collapses the live selection to offset 0 and
-    // fires a selectionchange, so guard the saved caret until the browser tells us whether
-    // focus moved within the document or left the window. Native webviews can deliver the
-    // window blur in a later task, which makes a timer-based distinction inherently racy.
-    selectionGuardAfterEditorBlur = !restoreSelectionOnNextFocus && !windowBlurred
+    // Input, keyup, and pointerup save a trusted caret while the user is still interacting with
+    // the editor. Some native webviews collapse the live DOM selection to offset 0 before
+    // delivering editor blur, so reading it here would overwrite that good position.
+    // Guard the saved caret until focusin proves this was an in-app move or window blur confirms
+    // that the app lost focus. The two blur events may arrive in separate tasks.
+    editorBlurPendingWindowOutcome = !restoreSelectionOnNextFocus && !windowBlurred
     persistEditor(editor)
   }
 
@@ -389,35 +399,31 @@
   }
 
   function handleWindowBlur() {
-    // The editor's blur can arrive in an earlier task, so the selection guard is also evidence
-    // that this editor was active when the app switch began.
-    if (editor !== document.activeElement && !selectionGuardAfterEditorBlur) return
+    if (editor !== document.activeElement && !editorBlurPendingWindowOutcome) return
 
     windowBlurred = true
-    // If handleBlur already guarded the selection, it captured the caret before persistEditor
-    // could collapse it — don't re-read a possibly-collapsed selection here.
-    if (!selectionGuardAfterEditorBlur) saveSelection(editor)
-    selectionGuardAfterEditorBlur = false
+    editorBlurPendingWindowOutcome = false
+    useLastInteractionSelection()
     restoreSelectionOnNextFocus = true
   }
 
   function handleDocumentSelectionChange() {
-    if (selectionGuardAfterEditorBlur || restoreSelectionOnNextFocus) return
+    if (editorBlurPendingWindowOutcome || restoreSelectionOnNextFocus) return
     if (editor === document.activeElement) saveSelection(editor)
   }
 
-  function handleDocumentFocusIn() {
-    // A new focus target inside the still-focused document proves that the editor blur was an
-    // ordinary in-app move, so a later click in this editor must use the newly chosen caret.
-    if (!windowBlurred && !restoreSelectionOnNextFocus) selectionGuardAfterEditorBlur = false
+  function handleDocumentInteraction() {
+    // If the editor was deliberately blurred and the user keeps working inside Balance, it was
+    // not an app switch. This also clears pending state when the new target is not focusable.
+    if (!windowBlurred && !restoreSelectionOnNextFocus) editorBlurPendingWindowOutcome = false
   }
 
   function handleDocumentVisibilityChange() {
     if (document.visibilityState === 'hidden') {
       windowBlurred = true
-      if (editor === document.activeElement || selectionGuardAfterEditorBlur) {
-        if (!selectionGuardAfterEditorBlur) saveSelection(editor)
-        selectionGuardAfterEditorBlur = false
+      if (editor === document.activeElement || editorBlurPendingWindowOutcome) {
+        editorBlurPendingWindowOutcome = false
+        useLastInteractionSelection()
         restoreSelectionOnNextFocus = true
       }
       return
@@ -497,7 +503,7 @@
 
     pendingPasteInput = false
     persistEditor(activeEditor, false, { mergeHistory: false })
-    saveSelection(activeEditor)
+    lastInteractionSelection = saveSelection(activeEditor)
   }
 
   function persistEditor(activeEditor: HTMLDivElement, syncRenderedHTML = true, options: TextChangeOptions = {}) {
@@ -577,17 +583,24 @@
     return activeEditor.contains(range.startContainer) && activeEditor.contains(range.endContainer)
   }
 
-  function saveSelection(activeEditor: HTMLDivElement) {
+  function saveSelection(activeEditor: HTMLDivElement): SavedSelection | null {
     const selection = document.getSelection()
-    if (!selection || selection.rangeCount === 0) return
+    if (!selection || selection.rangeCount === 0) return null
 
     const range = selection.getRangeAt(0)
-    if (!rangeIsInside(activeEditor, range)) return
+    if (!rangeIsInside(activeEditor, range)) return null
 
-    savedSelection = {
+    const nextSelection = {
       start: textOffsetForRangeBoundary(activeEditor, range.startContainer, range.startOffset),
       end: textOffsetForRangeBoundary(activeEditor, range.endContainer, range.endOffset),
     }
+    savedSelection = nextSelection
+    return nextSelection
+  }
+
+  function useLastInteractionSelection() {
+    if (!lastInteractionSelection) return
+    savedSelection = { ...lastInteractionSelection }
   }
 
   function restoreSelection(activeEditor: HTMLDivElement) {
@@ -659,7 +672,9 @@
 
 <svelte:window on:blur={handleWindowBlur} on:focus={handleWindowFocus} />
 <svelte:document
-  on:focusin={handleDocumentFocusIn}
+  on:focusin={handleDocumentInteraction}
+  on:keydown={handleDocumentInteraction}
+  on:pointerup={handleDocumentInteraction}
   on:selectionchange={handleDocumentSelectionChange}
   on:visibilitychange={handleDocumentVisibilityChange}
 />
@@ -689,7 +704,9 @@
   on:blur={handleBlur}
   on:focus={handleFocus}
   on:keydown={handleKeydown}
+  on:keyup={handleKeyup}
   on:click={handleClick}
   on:input={handleInput}
   on:paste={handlePaste}
+  on:pointerup={handlePointerup}
 >{@html renderedHTML}</div>

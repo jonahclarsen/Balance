@@ -2675,11 +2675,20 @@ test('rich plan item text restores the caret after focus returns', async ({ page
 
   await focusInputByValue(page, 'Wake up')
   await setCaretOffsetInFocusedEditor(page, 4)
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+  await page.keyboard.type('x')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(5)
 
   await page.evaluate(() => {
     const input = document.activeElement
     if (!(input instanceof HTMLElement) || !input.matches('[data-plan-text-input]')) return
+
+    const collapsed = document.createRange()
+    collapsed.selectNodeContents(input)
+    collapsed.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(collapsed)
+    document.dispatchEvent(new Event('selectionchange'))
 
     window.dispatchEvent(new FocusEvent('blur'))
     input.blur()
@@ -2689,13 +2698,12 @@ test('rich plan item text restores the caret after focus returns', async ({ page
     range.selectNodeContents(input)
     range.collapse(true)
 
-    const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
     window.dispatchEvent(new FocusEvent('focus'))
   })
 
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(5)
 })
 
 test('rich plan item text restores the caret after visibility returns', async ({ page }) => {
@@ -2706,14 +2714,12 @@ test('rich plan item text restores the caret after visibility returns', async ({
 
   await focusInputByValue(page, 'Wake up')
   await setCaretOffsetInFocusedEditor(page, 4)
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+  await page.keyboard.type('x')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(5)
 
   await page.evaluate(() => {
     const input = document.activeElement
     if (!(input instanceof HTMLElement) || !input.matches('[data-plan-text-input]')) return
-
-    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
-    document.dispatchEvent(new Event('visibilitychange'))
 
     const range = document.createRange()
     range.selectNodeContents(input)
@@ -2724,11 +2730,14 @@ test('rich plan item text restores the caret after visibility returns', async ({
     selection?.addRange(range)
     document.dispatchEvent(new Event('selectionchange'))
 
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+    document.dispatchEvent(new Event('visibilitychange'))
+
     Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
     document.dispatchEvent(new Event('visibilitychange'))
   })
 
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(5)
 })
 
 test('rich plan item text restores the caret after tabbing away mid-edit', async ({ page }) => {
@@ -2743,28 +2752,24 @@ test('rich plan item text restores the caret after tabbing away mid-edit', async
   await expect.poll(async () => activeInputValue(page)).toBe('Wakex up')
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(5)
 
-  // Reproduce the app-switch-after-typing case: the editor holds un-normalized markup (as it
-  // does right after typing), the app loses focus, and the element blurs. handleBlur's
-  // persistEditor rewrites innerHTML, collapsing the live caret to 0 and firing a
-  // selectionchange. The saved caret must survive so it restores on refocus.
+  // Reproduce the native app-switch ordering: the input event has already saved the correct
+  // caret, but the webview collapses the live DOM selection before it delivers editor blur.
+  // Blur handling must not replace the input-time caret with that transient offset 0.
   await page.evaluate(async () => {
     const input = document.activeElement
     if (!(input instanceof HTMLElement) || !input.matches('[data-plan-text-input]')) return
 
-    // Un-normalized DOM so persistEditor actually rewrites innerHTML (and collapses selection).
-    input.innerHTML = 'Wakex up<span></span>'
     const range = document.createRange()
-    range.setStart(input.firstChild as Node, 5)
+    range.selectNodeContents(input)
     range.collapse(true)
     const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
 
-    // Real blur so the element stops being document.activeElement, as it does on an app switch.
     input.blur()
 
-    // Native webviews can deliver the window blur in a later task. Leave enough time for any
-    // blur cleanup to run so this test covers that ordering instead of only the synchronous one.
+    // The window blur may follow in a later task in the native webview.
     await new Promise((resolve) => window.setTimeout(resolve, 25))
     window.dispatchEvent(new FocusEvent('blur'))
   })

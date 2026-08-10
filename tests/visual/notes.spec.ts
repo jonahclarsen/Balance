@@ -166,15 +166,31 @@ test('note text restores the caret after tabbing away mid-edit', async ({ page }
     const input = document.activeElement
     if (!(input instanceof HTMLElement) || !input.matches('[data-note-text-input]')) return
 
-    input.innerHTML = 'Draft note<span></span>'
     const range = document.createRange()
     range.setStart(input.firstChild as Node, 5)
     range.collapse(true)
     const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
+  })
+  await noteText.type('x')
+  await expect(noteText).toHaveText('Draftx note')
 
+  await page.evaluate(async () => {
+    const input = document.activeElement
+    if (!(input instanceof HTMLElement) || !input.matches('[data-note-text-input]')) return
+
+    // The native webview can collapse the selection before editor blur is delivered.
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
     input.blur()
+
+    await new Promise((resolve) => window.setTimeout(resolve, 25))
     window.dispatchEvent(new FocusEvent('blur'))
   })
 
@@ -205,7 +221,7 @@ test('note text restores the caret after tabbing away mid-edit', async ({ page }
         return range.toString().length
       }),
     )
-    .toBe(5)
+    .toBe(6)
 })
 
 test('deleting a note confirms and remains undoable', async ({ page }) => {
