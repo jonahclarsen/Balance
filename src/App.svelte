@@ -4282,7 +4282,6 @@ return rows`
         onCreate={plannerStore.addNote}
         onDelete={confirmDeleteNote}
         onRename={plannerStore.renameNote}
-        onAddItem={plannerStore.addRootNoteItem}
         patchItem={plannerStore.patchNoteItem}
         splitItem={plannerStore.splitNoteItem}
         backspaceItemAtStart={plannerStore.backspaceNoteItemAtStart}

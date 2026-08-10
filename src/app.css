@@ -3273,8 +3273,7 @@ nav button.active {
 .note-document-head,
 .note-actions,
 .note-format-toolbar,
-.note-format-group,
-.note-add-row {
+.note-format-group {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3609,25 +3608,6 @@ nav button.active {
 .note-slash-menu small {
   color: var(--muted);
   font-size: 11px;
-}
-
-.note-add-row {
-  padding-top: 4px;
-}
-
-.note-add-line {
-  border-color: transparent;
-  background: transparent;
-  padding: 5px 2px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.note-add-line:hover,
-.note-add-line:focus-visible {
-  border-color: transparent;
-  background: transparent;
-  color: var(--accent-strong);
 }
 
 .note-empty {

@@ -13,7 +13,6 @@
   export let onCreate: () => Id
   export let onDelete: (noteId: Id) => void | Promise<void>
   export let onRename: (noteId: Id, title: string) => void
-  export let onAddItem: (noteId: Id, kind?: NoteItemKind) => Id
   export let patchItem: typeof import('./store').plannerStore.patchNoteItem
   export let splitItem: typeof import('./store').plannerStore.splitNoteItem
   export let backspaceItemAtStart: typeof import('./store').plannerStore.backspaceNoteItemAtStart
@@ -127,14 +126,6 @@
     toolbarSelection = editor && range && editor.contains(range.commonAncestorContainer) ? range.cloneRange() : null
   }
 
-  async function addLine() {
-    if (!selectedNote) return
-    const itemId = onAddItem(selectedNote.id)
-    activeItemId = itemId
-    await tick()
-    focusActiveEditor()
-  }
-
   function activeEditor() {
     if (!activeItemId) return null
     return Array.from(document.querySelectorAll<HTMLDivElement>('[data-note-text-input]')).find(
@@ -227,9 +218,6 @@
         {/each}
       </div>
 
-      <div class="note-add-row">
-        <button class="note-add-line" type="button" on:click={addLine}>+ Add a line</button>
-      </div>
     {:else}
       <div class="empty-state note-empty">
         <h3>{notes.length === 0 ? 'Your notes live here' : 'Choose a note'}</h3>
