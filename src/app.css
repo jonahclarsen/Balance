@@ -3373,14 +3373,6 @@ nav button.active {
   flex: 0 0 auto;
 }
 
-.note-copy-status {
-  position: absolute;
-  right: 0;
-  bottom: 3px;
-  color: var(--accent-strong);
-  font-size: 12px;
-}
-
 .note-format-toolbar {
   position: sticky;
   top: 8px;

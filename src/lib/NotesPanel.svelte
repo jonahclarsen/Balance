@@ -25,7 +25,8 @@
   export let onOpenLink: (link: ItemLink) => void
 
   let filter = ''
-  let copyStatus = ''
+  let copyButtonText = 'Copy note link'
+  let copyButtonResetTimer: number | undefined
   let activeItemId: Id | null = null
   let activeNoteId: Id | null = null
   let toolbarSelection: Range | null = null
@@ -62,9 +63,10 @@
   async function copyLink() {
     if (!selectedNote) return
     const link = `balance://note/${selectedNote.id}`
+    let copied = false
     try {
       await navigator.clipboard.writeText(link)
-      copyStatus = 'Note link copied'
+      copied = true
     } catch {
       const fallback = document.createElement('textarea')
       fallback.value = link
@@ -73,11 +75,12 @@
       fallback.style.opacity = '0'
       document.body.append(fallback)
       fallback.select()
-      const copied = document.execCommand('copy')
+      copied = document.execCommand('copy')
       fallback.remove()
-      copyStatus = copied ? 'Note link copied' : `Copy this link: ${link}`
     }
-    window.setTimeout(() => (copyStatus = ''), 2500)
+    window.clearTimeout(copyButtonResetTimer)
+    copyButtonText = copied ? 'Link copied!' : 'Copy failed'
+    copyButtonResetTimer = window.setTimeout(() => (copyButtonText = 'Copy note link'), 1000)
   }
 
   function readableDate(value: string) {
@@ -177,10 +180,9 @@
       <header class="note-document-head">
         <input id="note-title" class="note-title" value={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} />
         <div class="note-actions">
-          <button type="button" title="Copy an app link to this note" on:click={copyLink}>Copy note link</button>
+          <button type="button" title="Copy an app link to this note" aria-live="polite" on:click={copyLink}>{copyButtonText}</button>
           <button class="ghost danger" type="button" on:click={() => onDelete(selectedNote!.id)}>Delete</button>
         </div>
-        {#if copyStatus}<p class="note-copy-status" aria-live="polite">{copyStatus}</p>{/if}
       </header>
 
       <div class="note-format-toolbar" role="toolbar" aria-label="Note formatting">
