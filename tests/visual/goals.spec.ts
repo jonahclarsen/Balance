@@ -924,6 +924,10 @@ test('goal rhythm hover text includes match keywords', async ({ page }) => {
 })
 
 test('goal rhythm bolds the current day and keeps it bold when another day is selected', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-06-16T12:00:00') })
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
 
