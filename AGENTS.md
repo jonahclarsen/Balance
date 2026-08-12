@@ -10,6 +10,18 @@ and reference them via environment variables. In CI, use GitHub Actions secrets.
 Before committing, check the diff for anything credential-shaped; if a secret
 does get pushed, treat it as compromised and rotate it.
 
+## Never decrypt or inspect the user's database
+
+While working on Balance, never retrieve, reveal, export, or use the user's
+database recovery key, including through the OS keychain or Android Keystore.
+Never open or decrypt the user's installed database, a backup of it, or a copy
+of it, and never use personal application data as a migration or test fixture.
+
+All database, migration, recovery, backup, and sync tests must use databases
+generated specifically for testing with synthetic data and test-only keys. If a
+problem cannot be reproduced with generated fixtures, stop and explain what the
+user can verify themselves without exposing their key or database contents.
+
 ## Always commit and push after making changes
 
 After completing a code change, always commit it and push to the remote — don't

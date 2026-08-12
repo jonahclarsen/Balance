@@ -8282,7 +8282,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_blob_database_migrates_every_user_field_losslessly_and_idempotently() {
+    fn generated_encrypted_legacy_database_migrates_every_user_field_losslessly_and_idempotently() {
         let database = TestDatabase::new("legacy-entity-migration");
         let recovery_key = generate_recovery_key();
         let mut state = test_state("Migration day");
@@ -8456,108 +8456,6 @@ mod tests {
             .unwrap();
         assert_eq!(entity_count, 0);
         assert_eq!(marker, None);
-    }
-
-    #[test]
-    #[ignore = "set BALANCE_MIGRATION_FIXTURE to validate an installed database copy"]
-    fn installed_database_copy_migrates_without_any_user_visible_change() {
-        let source_path = PathBuf::from(
-            std::env::var("BALANCE_MIGRATION_FIXTURE")
-                .expect("BALANCE_MIGRATION_FIXTURE must point to an existing Balance database"),
-        );
-        #[cfg(target_os = "macos")]
-        let recovery_key = {
-            let output = Command::new("security")
-                .args([
-                    "find-generic-password",
-                    "-s",
-                    KEYCHAIN_SERVICE,
-                    "-a",
-                    KEYCHAIN_ACCOUNT,
-                    "-w",
-                ])
-                .output()
-                .unwrap();
-            assert!(output.status.success());
-            String::from_utf8(output.stdout).unwrap().trim().to_string()
-        };
-        #[cfg(not(target_os = "macos"))]
-        let recovery_key = database_recovery_key(&source_path).unwrap();
-        let database = TestDatabase::new("installed-migration-copy");
-        fs::copy(&source_path, &database.path).unwrap();
-
-        let raw = Connection::open(&database.path).unwrap();
-        raw.pragma_update(None, "key", &recovery_key).unwrap();
-        raw.query_row("pragma cipher_version", [], |row| row.get::<_, String>(0))
-            .unwrap();
-        let goal_data = legacy_goal_data(&raw).unwrap();
-        let other_data = legacy_lists_metrics_data(&raw).unwrap();
-        let expected = json!({
-            "schemaVersion": 1,
-            "deviceId": metadata_value(&raw, "device_id").unwrap().unwrap(),
-            "localSequence": metadata_value(&raw, "local_sequence").unwrap().and_then(|value| value.parse::<i64>().ok()).unwrap_or(0),
-            "historyRevision": 0,
-            "activePlanDate": metadata_value(&raw, "active_plan_date").unwrap().unwrap_or_default(),
-            "templates": read_templates(&raw).unwrap(),
-            "plans": read_plans(&raw).unwrap(),
-            "listTemplates": other_data["listTemplates"].clone(),
-            "lists": other_data["lists"].clone(),
-            "metrics": other_data["metrics"].clone(),
-            "metricEntries": other_data["metricEntries"].clone(),
-            "notes": other_data["notes"].clone(),
-            "goals": goal_data["goals"].clone(),
-            "goalCompletions": goal_data["goalCompletions"].clone(),
-            "operations": [],
-        });
-        let operation_stats: (i64, i64) = raw
-            .query_row(
-                "select count(*), coalesce(sum(length(payload_json)), 0) from operations",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        let history_stats: (i64, i64) = raw.query_row(
-            "select count(*), coalesce(sum(length(undo_operation_json) + length(redo_operation_json)), 0) from history_entries",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).unwrap();
-        let metadata_before = raw
-            .prepare("select key, value from metadata order by key")
-            .unwrap()
-            .query_map([], |row| {
-                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })
-            .unwrap()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        drop(raw);
-
-        let migrated = open_database_at(&database.path, &recovery_key).unwrap();
-        assert_eq!(
-            read_app_state_from_database(&migrated).unwrap().unwrap(),
-            expected
-        );
-        let operation_stats_after: (i64, i64) = migrated
-            .query_row(
-                "select count(*), coalesce(sum(length(payload_json)), 0) from operations",
-                [],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .unwrap();
-        let history_stats_after: (i64, i64) = migrated.query_row(
-            "select count(*), coalesce(sum(length(undo_operation_json) + length(redo_operation_json)), 0) from history_entries",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).unwrap();
-        assert_eq!(operation_stats_after, operation_stats);
-        assert_eq!(history_stats_after, history_stats);
-        for (key, value) in metadata_before {
-            assert_eq!(
-                metadata_value(&migrated, &key).unwrap(),
-                Some(value),
-                "metadata changed for {key}"
-            );
-        }
     }
 
     #[test]
