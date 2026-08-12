@@ -14,9 +14,7 @@ use rand::{rngs::OsRng, RngCore};
 use rusqlite::{backup::Backup, params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-#[cfg(target_os = "macos")]
-use tauri::Emitter;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "android")]
@@ -40,6 +38,7 @@ const DATABASE_MAINTENANCE_LAST_AT: &str = "database_maintenance_last_at";
 const DATABASE_MAINTENANCE_LATEST_BACKUP: &str = "database_maintenance_latest_backup";
 const DATABASE_MAINTENANCE_PREVIOUS_BACKUP: &str = "database_maintenance_previous_backup";
 const DATABASE_MAINTENANCE_INTERVAL_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
+const DATABASE_LOAD_PROGRESS_EVENT: &str = "balance-database-load-progress";
 const GOAL_DATA: &str = "goal_data";
 // Lists + Metrics + Notes state is stored as a single JSON metadata blob (like GOAL_DATA)
 // rather than materialized into per-row tables.
@@ -199,6 +198,20 @@ struct RecoveryKeyStatus {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
+struct AppStartup {
+    state_json: Option<String>,
+    recovery_key_status: RecoveryKeyStatus,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DatabaseLoadProgress {
+    percent: u8,
+    stage: &'static str,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ExportSettings {
     export_directory: String,
     default_export_directory: String,
@@ -238,6 +251,31 @@ async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String>
     run_database_task(move || {
         let connection = open_database(&app)?;
         read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
+    })
+    .await
+}
+
+#[tauri::command]
+async fn load_app_startup(app: tauri::AppHandle) -> Result<AppStartup, String> {
+    let progress_app = app.clone();
+    run_database_task(move || {
+        emit_database_load_progress(&progress_app, 5, "Unlocking encrypted database");
+        let (database_path, recovery_key) = database_path_and_recovery_key(&app)?;
+
+        emit_database_load_progress(&progress_app, 15, "Opening encrypted database");
+        let connection = open_database_at(&database_path, &recovery_key)?;
+        let recovery_key_status =
+            recovery_key_status(&connection, &database_path, Some(recovery_key))?;
+
+        let state = read_app_state_from_database_with_progress(&connection, |percent, stage| {
+            emit_database_load_progress(&progress_app, percent, stage);
+        })?;
+        emit_database_load_progress(&progress_app, 92, "Transferring workspace");
+
+        Ok(AppStartup {
+            state_json: state.map(|value| value.to_string()),
+            recovery_key_status,
+        })
     })
     .await
 }
@@ -384,9 +422,8 @@ async fn restore_recovery_entry(
 #[tauri::command]
 async fn get_recovery_key_status(app: tauri::AppHandle) -> Result<RecoveryKeyStatus, String> {
     run_database_task(move || {
-        let database_path = app_database_path(&app)?;
-        let connection = open_database(&app)?;
-        let recovery_key = database_recovery_key(&database_path)?;
+        let (database_path, recovery_key) = database_path_and_recovery_key(&app)?;
+        let connection = open_database_at(&database_path, &recovery_key)?;
 
         recovery_key_status(&connection, &database_path, Some(recovery_key))
     })
@@ -1072,6 +1109,14 @@ fn maintain_database_at(
 }
 
 fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>, String> {
+    read_app_state_from_database_with_progress(connection, |_, _| {})
+}
+
+fn read_app_state_from_database_with_progress(
+    connection: &Connection,
+    mut progress: impl FnMut(u8, &'static str),
+) -> Result<Option<Value>, String> {
+    progress(25, "Reading workspace settings");
     let device_id = match metadata_value(connection, "device_id")? {
         Some(value) => value,
         None => return Ok(None),
@@ -1080,8 +1125,20 @@ fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0);
     let active_plan_date = metadata_value(connection, "active_plan_date")?.unwrap_or_default();
+
+    progress(35, "Loading goals");
     let goal_data = read_goal_data(connection)?;
+
+    progress(45, "Loading lists, metrics, and notes");
     let lists_metrics_data = read_lists_metrics_data(connection)?;
+
+    progress(60, "Loading templates");
+    let templates = read_templates(connection)?;
+
+    progress(75, "Loading plans");
+    let plans = read_plans(connection)?;
+
+    progress(90, "Preparing workspace");
 
     Ok(Some(json!({
         "schemaVersion": 1,
@@ -1089,8 +1146,8 @@ fn read_app_state_from_database(connection: &Connection) -> Result<Option<Value>
         "localSequence": local_sequence,
         "historyRevision": 0,
         "activePlanDate": active_plan_date,
-        "templates": read_templates(connection)?,
-        "plans": read_plans(connection)?,
+        "templates": templates,
+        "plans": plans,
         "listTemplates": lists_metrics_data["listTemplates"].clone(),
         "lists": lists_metrics_data["lists"].clone(),
         "metrics": lists_metrics_data["metrics"].clone(),
@@ -1133,6 +1190,11 @@ fn confirm_recovery_key_in_database(connection: &Connection) -> Result<(), Strin
 }
 
 fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
+    let (database_path, recovery_key) = database_path_and_recovery_key(app)?;
+    open_database_at(&database_path, &recovery_key)
+}
+
+fn database_path_and_recovery_key(app: &tauri::AppHandle) -> Result<(PathBuf, String), String> {
     let database_path = app_database_path(app)?;
     let parent = database_path
         .parent()
@@ -1141,7 +1203,14 @@ fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
     fs::create_dir_all(parent).map_err(|error| error.to_string())?;
 
     let recovery_key = database_recovery_key(&database_path)?;
-    open_database_at(&database_path, &recovery_key)
+    Ok((database_path, recovery_key))
+}
+
+fn emit_database_load_progress(app: &tauri::AppHandle, percent: u8, stage: &'static str) {
+    let _ = app.emit(
+        DATABASE_LOAD_PROGRESS_EVENT,
+        DatabaseLoadProgress { percent, stage },
+    );
 }
 
 fn open_database_at(database_path: &Path, recovery_key: &str) -> Result<Connection, String> {
@@ -7433,6 +7502,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_app_state,
+            load_app_startup,
             initialize_app_state,
             persist_operation,
             undo_last_operation,
@@ -7597,6 +7667,35 @@ mod tests {
             saved["templates"][0]["items"][0]["options"][0]["text"],
             "Wake up"
         );
+    }
+
+    #[test]
+    fn database_load_progress_reports_ordered_workspace_stages() {
+        let database = TestDatabase::new("load-progress");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Progress day")).unwrap();
+
+        let mut reported = Vec::new();
+        let loaded = read_app_state_from_database_with_progress(&connection, |percent, stage| {
+            reported.push((percent, stage))
+        })
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(loaded["plans"][0]["title"], "Progress day");
+        assert_eq!(
+            reported,
+            [
+                (25, "Reading workspace settings"),
+                (35, "Loading goals"),
+                (45, "Loading lists, metrics, and notes"),
+                (60, "Loading templates"),
+                (75, "Loading plans"),
+                (90, "Preparing workspace"),
+            ]
+        );
+        assert!(reported.windows(2).all(|pair| pair[0].0 < pair[1].0));
     }
 
     #[test]

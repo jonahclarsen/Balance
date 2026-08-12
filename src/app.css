@@ -1394,6 +1394,38 @@ nav button.active {
   font-size: clamp(1.35rem, 5vw, 1.75rem);
 }
 
+.database-loading-progress {
+  width: min(360px, 70vw);
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 12%, transparent);
+}
+
+.database-loading-progress > span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 180ms ease-out;
+}
+
+.database-loading-progress-copy {
+  display: flex;
+  width: min(360px, 70vw);
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.database-loading-progress-copy strong {
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
 .database-loading-message {
   margin-top: 4px;
   color: var(--ink);

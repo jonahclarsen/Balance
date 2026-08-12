@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
+import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { get, writable, type Writable } from 'svelte/store'
 import {
   addPlanItem,
@@ -142,6 +143,16 @@ export type RecoveryKeyStatus = {
   databasePath: string
 }
 
+export type DatabaseLoadProgress = {
+  percent: number
+  stage: string
+}
+
+type AppStartup = {
+  stateJson: string | null
+  recoveryKeyStatus: RecoveryKeyStatus
+}
+
 export type RecoveryEntry = {
   historyId: string
   operationId: string
@@ -214,6 +225,12 @@ const persistedOperationListeners = new Set<() => void>()
 export const persistenceError = writable('')
 export const databaseLoadError = writable('')
 export const databaseLoadPending = writable(isTauri())
+export const databaseLoadProgress = writable<DatabaseLoadProgress>({
+  percent: 0,
+  stage: 'Starting Balance',
+})
+
+const DATABASE_LOAD_PROGRESS_EVENT = 'balance-database-load-progress'
 
 export function onPersistedOperation(listener: () => void): () => void {
   persistedOperationListeners.add(listener)
@@ -248,9 +265,29 @@ function readInitialState(): AppState {
   return isTauri() ? createInitialState() : readLocalState()
 }
 
-async function hydratePersistence(store: Writable<AppState>): Promise<void> {
+async function hydratePersistence(store: Writable<AppState>): Promise<RecoveryKeyStatus | null> {
+  let stopProgressListener: UnlistenFn | null = null
+
   try {
-    const stored = await invoke<string | null>('read_app_state')
+    if (isTauri()) {
+      try {
+        stopProgressListener = await listen<DatabaseLoadProgress>(
+          DATABASE_LOAD_PROGRESS_EVENT,
+          ({ payload }) => {
+            databaseLoadProgress.set({
+              percent: Math.max(0, Math.min(100, Math.round(payload.percent))),
+              stage: payload.stage,
+            })
+          },
+        )
+      } catch (error) {
+        console.error('Could not listen for database loading progress', error)
+      }
+    }
+
+    const startup = await invoke<AppStartup>('load_app_startup')
+    databaseLoadProgress.set({ percent: 95, stage: 'Restoring workspace' })
+    const stored = startup.stateJson
     const parsed = parseStoredState(stored)
     persistenceTarget = 'tauri'
 
@@ -259,7 +296,9 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
     } else {
       await invoke('initialize_app_state', { stateJson: JSON.stringify(get(store)) })
     }
+    databaseLoadProgress.set({ percent: 100, stage: 'Ready' })
     databaseLoadError.set('')
+    return startup.recoveryKeyStatus
   } catch (error) {
     if (isTauri()) {
       const message = error instanceof Error ? error.message : String(error)
@@ -268,7 +307,9 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
     } else {
       persistenceTarget = 'localStorage'
     }
+    return null
   } finally {
+    stopProgressListener?.()
     if (persistenceTarget) {
       persistenceReady = true
       if (persistenceTarget === 'localStorage') {

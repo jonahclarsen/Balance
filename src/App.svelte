@@ -28,6 +28,7 @@
     confirmRecoveryKey,
     databaseLoadError,
     databaseLoadPending,
+    databaseLoadProgress,
     exportHTML,
     exportJSON,
     getDatabaseMaintenanceStatus,
@@ -975,13 +976,7 @@ return rows`
     if (storedCheckboxColor) checkboxColor = storedCheckboxColor
 
     async function initialize() {
-      try {
-        recoveryKeyStatus = await getRecoveryKeyStatus()
-      } catch (error) {
-        databaseLoadError.set(error instanceof Error ? error.message : String(error))
-        console.error('Could not open encrypted Balance database', error)
-      }
-      await plannerStore.ready
+      recoveryKeyStatus = await plannerStore.ready
 
       // The store intentionally starts with a placeholder so Svelte can render
       // before native hydration. Never treat that placeholder as user data when
@@ -3637,6 +3632,21 @@ return rows`
       <div>
         <p class="eyebrow">Balance</p>
         <h2>Loading…</h2>
+        <div
+          class="database-loading-progress"
+          role="progressbar"
+          aria-label="Database loading progress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow={$databaseLoadProgress.percent}
+          aria-valuetext={$databaseLoadProgress.stage}
+        >
+          <span style={`width: ${$databaseLoadProgress.percent}%`}></span>
+        </div>
+        <div class="database-loading-progress-copy">
+          <span>{$databaseLoadProgress.stage}</span>
+          <strong>{$databaseLoadProgress.percent}%</strong>
+        </div>
         {#if databaseLoadingMessages.length > 0}
           <p class="database-loading-message">{databaseLoadingMessages[databaseLoadingMessageIndex]}</p>
         {/if}
