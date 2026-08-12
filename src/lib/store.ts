@@ -1,5 +1,4 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
-import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { get, writable, type Writable } from 'svelte/store'
 import {
   addPlanItem,
@@ -114,6 +113,19 @@ const STORAGE_KEY = 'balance.appState.v1'
 const TEXT_MERGE_WINDOW_MS = 1200
 const MAX_HISTORY_ENTRIES = 200
 const PERSIST_DEBOUNCE_MS = 500
+const ENTITY_COLLECTIONS = [
+  'goals',
+  'goalCompletions',
+  'listTemplates',
+  'lists',
+  'metrics',
+  'metricEntries',
+  'notes',
+] as const
+type EntityCollection = (typeof ENTITY_COLLECTIONS)[number]
+type EntityUpsert = { collection: EntityCollection; key: string; position: number; value: unknown }
+type EntityDelete = { collection: EntityCollection; key: string }
+type EntityChanges = { version: 1; upserts: EntityUpsert[]; deletes: EntityDelete[] }
 type SplitPlacement = 'before' | 'after' | 'firstChild'
 
 type Mutator = (state: AppState) => AppState
@@ -146,11 +158,6 @@ export type RecoveryKeyStatus = {
 export type DatabaseLoadProgress = {
   percent: number
   stage: string
-}
-
-type AppStartup = {
-  stateJson: string | null
-  recoveryKeyStatus: RecoveryKeyStatus
 }
 
 export type RecoveryEntry = {
@@ -200,7 +207,7 @@ export type DatabaseCompactionResult = {
   reclaimedBytes: number
   operationsRemoved: number
   historyEntriesRemoved: number
-  backupPath: string
+  backupPath: string | null
   checkpointCreated: boolean
 }
 
@@ -208,6 +215,12 @@ export type DatabaseMaintenanceStatus = {
   due: boolean
   lastCompletedAt: string | null
   checkpointCoordinator: boolean
+  databaseBytes: number
+  reclaimableBytes: number
+  reclaimablePercent: number
+  operationCount: number
+  operationBytes: number
+  checkpointRecommended: boolean
 }
 
 let undoStack: HistoryEntry[] = []
@@ -229,8 +242,6 @@ export const databaseLoadProgress = writable<DatabaseLoadProgress>({
   percent: 0,
   stage: 'Starting Balance',
 })
-
-const DATABASE_LOAD_PROGRESS_EVENT = 'balance-database-load-progress'
 
 export function onPersistedOperation(listener: () => void): () => void {
   persistedOperationListeners.add(listener)
@@ -265,29 +276,14 @@ function readInitialState(): AppState {
   return isTauri() ? createInitialState() : readLocalState()
 }
 
-async function hydratePersistence(store: Writable<AppState>): Promise<RecoveryKeyStatus | null> {
-  let stopProgressListener: UnlistenFn | null = null
-
+async function hydratePersistence(store: Writable<AppState>): Promise<void> {
   try {
-    if (isTauri()) {
-      try {
-        stopProgressListener = await listen<DatabaseLoadProgress>(
-          DATABASE_LOAD_PROGRESS_EVENT,
-          ({ payload }) => {
-            databaseLoadProgress.set({
-              percent: Math.max(0, Math.min(100, Math.round(payload.percent))),
-              stage: payload.stage,
-            })
-          },
-        )
-      } catch (error) {
-        console.error('Could not listen for database loading progress', error)
-      }
-    }
-
-    const startup = await invoke<AppStartup>('load_app_startup')
+    // Keep startup on one command/response path. Emitting progress events from
+    // the blocking native database task can stall Android error delivery while
+    // its WebView is starting, leaving recovery failures stuck at 0%.
+    databaseLoadProgress.set({ percent: 15, stage: 'Opening encrypted database' })
+    const stored = await invoke<string | null>('read_app_state')
     databaseLoadProgress.set({ percent: 95, stage: 'Restoring workspace' })
-    const stored = startup.stateJson
     const parsed = parseStoredState(stored)
     persistenceTarget = 'tauri'
 
@@ -298,7 +294,6 @@ async function hydratePersistence(store: Writable<AppState>): Promise<RecoveryKe
     }
     databaseLoadProgress.set({ percent: 100, stage: 'Ready' })
     databaseLoadError.set('')
-    return startup.recoveryKeyStatus
   } catch (error) {
     if (isTauri()) {
       const message = error instanceof Error ? error.message : String(error)
@@ -307,9 +302,7 @@ async function hydratePersistence(store: Writable<AppState>): Promise<RecoveryKe
     } else {
       persistenceTarget = 'localStorage'
     }
-    return null
   } finally {
-    stopProgressListener?.()
     if (persistenceTarget) {
       persistenceReady = true
       if (persistenceTarget === 'localStorage') {
@@ -341,6 +334,78 @@ function queueOperationPersistence(operation: Operation): void {
   if (!persistenceReady || persistenceTarget !== 'tauri') return
 
   scheduleOperationFlush()
+}
+
+function entityKeys(collection: EntityCollection, values: unknown[]): string[] {
+  const occurrences = new Map<string, number>()
+  return values.map((value, index) => {
+    const record = value && typeof value === 'object' ? value as Record<string, unknown> : {}
+    const base = collection === 'goalCompletions'
+      ? `${String(record.goalId ?? '')}\u001f${String(record.date ?? '')}`
+      : String(record.id ?? `missing-id-${index}`)
+    const occurrence = occurrences.get(base) ?? 0
+    occurrences.set(base, occurrence + 1)
+    return collection === 'goalCompletions' ? `${base}\u001f${occurrence}` : base
+  })
+}
+
+function entityChangesBetween(before: AppState, after: AppState): EntityChanges | null {
+  const upserts: EntityUpsert[] = []
+  const deletes: EntityDelete[] = []
+
+  for (const collection of ENTITY_COLLECTIONS) {
+    const beforeValues = before[collection] as unknown[]
+    const afterValues = after[collection] as unknown[]
+    if (beforeValues === afterValues) continue
+
+    const beforeKeys = entityKeys(collection, beforeValues)
+    const afterKeys = entityKeys(collection, afterValues)
+    const beforeByKey = new Map(beforeKeys.map((key, index) => [key, { value: beforeValues[index], position: index }]))
+    const afterKeySet = new Set(afterKeys)
+
+    afterValues.forEach((value, position) => {
+      const key = afterKeys[position]
+      const previous = beforeByKey.get(key)
+      if (!previous || previous.position !== position || JSON.stringify(previous.value) !== JSON.stringify(value)) {
+        upserts.push({ collection, key, position, value })
+      }
+    })
+    beforeKeys.forEach((key) => {
+      if (!afterKeySet.has(key)) deletes.push({ collection, key })
+    })
+  }
+
+  return upserts.length > 0 || deletes.length > 0 ? { version: 1, upserts, deletes } : null
+}
+
+function operationEntityChanges(operation: Operation | undefined): EntityChanges | null {
+  if (!operation?.payload || typeof operation.payload !== 'object') return null
+  const changes = (operation.payload as Record<string, unknown>).entityChanges
+  if (!changes || typeof changes !== 'object') return null
+  const candidate = changes as Partial<EntityChanges>
+  return candidate.version === 1 && Array.isArray(candidate.upserts) && Array.isArray(candidate.deletes)
+    ? candidate as EntityChanges
+    : null
+}
+
+function composeEntityChanges(previous: EntityChanges | null, latest: EntityChanges | null): EntityChanges | null {
+  if (!previous) return latest
+  if (!latest) return previous
+
+  const actions = new Map<string, { upsert?: EntityUpsert; deletion?: EntityDelete }>()
+  const actionKey = (collection: EntityCollection, key: string) => `${collection}\u0000${key}`
+  for (const upsert of previous.upserts) actions.set(actionKey(upsert.collection, upsert.key), { upsert })
+  for (const deletion of previous.deletes) actions.set(actionKey(deletion.collection, deletion.key), { deletion })
+  for (const upsert of latest.upserts) actions.set(actionKey(upsert.collection, upsert.key), { upsert })
+  for (const deletion of latest.deletes) actions.set(actionKey(deletion.collection, deletion.key), { deletion })
+
+  const upserts: EntityUpsert[] = []
+  const deletes: EntityDelete[] = []
+  for (const action of actions.values()) {
+    if (action.upsert) upserts.push(action.upsert)
+    if (action.deletion) deletes.push(action.deletion)
+  }
+  return { version: 1, upserts, deletes }
 }
 
 function scheduleOperationFlush(): void {
@@ -455,44 +520,16 @@ function createPlannerStore() {
         lastOperation !== undefined &&
         now - lastOperationMergeUpdatedAt <= (options.mergeWindowMs ?? 0)
       const sequence = canMergeOperation ? lastOperation.sequence : state.localSequence + 1
-      const goalDataChanged = next.goals !== state.goals || next.goalCompletions !== state.goalCompletions
-      const previousGoalData =
-        canMergeOperation && lastOperation?.payload !== null && typeof lastOperation?.payload === 'object'
-          ? (lastOperation.payload as Record<string, unknown>).goalData
-          : undefined
-      const goalData = goalDataChanged
+      const entityChanges = composeEntityChanges(
+        canMergeOperation ? operationEntityChanges(lastOperation) : null,
+        entityChangesBetween(state, next),
+      )
+      const operationPayload = entityChanges
         ? {
-            goals: next.goals,
-            goalCompletions: next.goalCompletions,
+            ...(payload && typeof payload === 'object' ? payload : { value: payload }),
+            entityChanges,
           }
-        : previousGoalData
-      const listsMetricsChanged =
-        next.listTemplates !== state.listTemplates ||
-        next.lists !== state.lists ||
-        next.metrics !== state.metrics ||
-        next.metricEntries !== state.metricEntries ||
-        next.notes !== state.notes
-      const previousListsMetricsData =
-        canMergeOperation && lastOperation?.payload !== null && typeof lastOperation?.payload === 'object'
-          ? (lastOperation.payload as Record<string, unknown>).listsMetricsData
-          : undefined
-      const listsMetricsData = listsMetricsChanged
-        ? {
-            listTemplates: next.listTemplates,
-            lists: next.lists,
-            metrics: next.metrics,
-            metricEntries: next.metricEntries,
-            notes: next.notes,
-          }
-        : previousListsMetricsData
-      const operationPayload =
-        goalData !== undefined || listsMetricsData !== undefined
-          ? {
-              ...(payload && typeof payload === 'object' ? payload : { value: payload }),
-              ...(goalData !== undefined ? { goalData } : {}),
-              ...(listsMetricsData !== undefined ? { listsMetricsData } : {}),
-            }
-          : payload
+        : payload
       const operation: Operation = canMergeOperation
         ? { ...lastOperation, timestamp, payload: operationPayload }
         : {
@@ -2328,10 +2365,10 @@ export async function getDatabaseMaintenanceStatus(): Promise<DatabaseMaintenanc
   return invoke<DatabaseMaintenanceStatus>('get_database_maintenance_status')
 }
 
-export async function runWeeklyDatabaseMaintenance(): Promise<DatabaseCompactionResult | null> {
+export async function runDatabaseMaintenanceIfNeeded(): Promise<DatabaseCompactionResult | null> {
   if (!isTauri()) return null
   await flushOperations()
-  return invoke<DatabaseCompactionResult | null>('run_weekly_database_maintenance')
+  return invoke<DatabaseCompactionResult | null>('run_database_maintenance_if_needed')
 }
 
 export async function completeDatabaseMaintenanceStartup(): Promise<void> {

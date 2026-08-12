@@ -252,27 +252,49 @@ test('settings opens recovery and diagnostics above goal rhythm', async ({ page 
   await expect(dialog).toHaveCount(0)
 })
 
-test('weekly launch maintenance clearly blocks the app until verification completes', async ({ page }, testInfo) => {
+test('threshold-based launch housekeeping never blocks the app with a maintenance dialog', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     type TestRuntime = typeof globalThis & {
       isTauri: boolean
       __finishDatabaseMaintenance: () => void
+      __finishDatabaseStartup: () => void
+      __databaseStartupCalls: string[]
       __TAURI_INTERNALS__: {
         invoke: (command: string) => Promise<unknown>
+        transformCallback: () => number
+      }
+      __TAURI_EVENT_PLUGIN_INTERNALS__: {
+        unregisterListener: () => void
       }
     }
     const runtime = globalThis as TestRuntime
     let maintenanceComplete = false
     let finishMaintenance: (() => void) | null = null
+    let finishStartup: (() => void) | null = null
 
+    Object.defineProperty(navigator, 'userAgent', { value: 'Balance Android CI', configurable: true })
     runtime.isTauri = true
+    runtime.__databaseStartupCalls = []
+    runtime.__finishDatabaseStartup = () => finishStartup?.()
     runtime.__finishDatabaseMaintenance = () => finishMaintenance?.()
+    runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
+      transformCallback: () => 1,
       invoke: async (command: string) => {
+        if (command === 'read_app_state' || command === 'plugin:event|listen') {
+          runtime.__databaseStartupCalls.push(command)
+        }
         switch (command) {
           case 'read_app_state':
-            return null
+            return new Promise((resolve) => {
+              finishStartup = () => resolve(null)
+            })
+          case 'plugin:event|listen':
+            // Android may not finish registering this optional listener before
+            // startup. Database hydration must proceed independently.
+            return new Promise(() => undefined)
           case 'initialize_app_state':
+          case 'plugin:event|unlisten':
           case 'complete_database_maintenance_startup':
             return null
           case 'get_recovery_key_status':
@@ -303,8 +325,14 @@ test('weekly launch maintenance clearly blocks the app until verification comple
               due: !maintenanceComplete,
               lastCompletedAt: maintenanceComplete ? 'unix-ms-2000000000000' : null,
               checkpointCoordinator: true,
+              databaseBytes: 80 * 1024 * 1024,
+              reclaimableBytes: maintenanceComplete ? 0 : 24 * 1024 * 1024,
+              reclaimablePercent: maintenanceComplete ? 0 : 30,
+              operationCount: 1,
+              operationBytes: 128,
+              checkpointRecommended: false,
             }
-          case 'run_weekly_database_maintenance':
+          case 'run_database_maintenance_if_needed':
             return new Promise((resolve) => {
               finishMaintenance = () => {
                 maintenanceComplete = true
@@ -312,10 +340,10 @@ test('weekly launch maintenance clearly blocks the app until verification comple
                   beforeBytes: 8 * 1024 * 1024,
                   afterBytes: 2 * 1024 * 1024,
                   reclaimedBytes: 6 * 1024 * 1024,
-                  operationsRemoved: 500,
-                  historyEntriesRemoved: 120,
-                  backupPath: '/tmp/balance-backup.sqlite3',
-                  checkpointCreated: true,
+                  operationsRemoved: 0,
+                  historyEntriesRemoved: 0,
+                  backupPath: '/tmp/balance-daily.sqlite3',
+                  checkpointCreated: false,
                 })
               }
             })
@@ -327,13 +355,23 @@ test('weekly launch maintenance clearly blocks the app until verification comple
   })
 
   await page.goto('/')
-  const runningDialog = page.getByRole('dialog', { name: 'Optimizing your database' })
-  await expect(runningDialog).toBeVisible()
-  await expect(runningDialog.getByRole('status')).toContainText('Creating a verified shared checkpoint')
-  await expect(runningDialog.getByRole('button')).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __databaseStartupCalls: string[] }
+    return runtime.__databaseStartupCalls
+  })).toEqual(['read_app_state'])
+  await page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __finishDatabaseStartup: () => void }
+    runtime.__finishDatabaseStartup()
+  })
+  await expect(page.getByRole('dialog', { name: /database/i })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __databaseStartupCalls: string[] }
+    return runtime.__databaseStartupCalls[0]
+  })).toBe('read_app_state')
 
   await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-weekly-database-maintenance-running.png`,
+    path: `artifacts/visual-smoke/${testInfo.project.name}-background-database-housekeeping.png`,
     fullPage: false,
   })
 
@@ -341,12 +379,36 @@ test('weekly launch maintenance clearly blocks the app until verification comple
     const runtime = globalThis as typeof globalThis & { __finishDatabaseMaintenance: () => void }
     runtime.__finishDatabaseMaintenance()
   })
+  await expect(page.getByRole('dialog', { name: /database/i })).toHaveCount(0)
+})
 
-  const completedDialog = page.getByRole('dialog', { name: 'Database maintenance complete' })
-  await expect(completedDialog).toBeVisible()
-  await expect(completedDialog).toContainText('6.00 MiB reclaimed')
-  await completedDialog.getByRole('button', { name: 'Continue' }).click()
-  await expect(completedDialog).toHaveCount(0)
+test('recovery-key failure surfaces even if state hydration remains blocked', async ({ page }) => {
+  await page.addInitScript(() => {
+    type TestRuntime = typeof globalThis & {
+      isTauri: boolean
+      __TAURI_INTERNALS__: {
+        invoke: (command: string) => Promise<unknown>
+        transformCallback: () => number
+      }
+    }
+    const runtime = globalThis as TestRuntime
+    Object.defineProperty(navigator, 'userAgent', { value: 'Balance Android CI', configurable: true })
+    runtime.isTauri = true
+    runtime.__TAURI_INTERNALS__ = {
+      transformCallback: () => 1,
+      invoke: async (command: string) => {
+        if (command === 'read_app_state') return new Promise(() => undefined)
+        if (command === 'get_recovery_key_status') {
+          throw 'The encrypted Balance database exists, but its recovery key is unavailable.'
+        }
+        return null
+      },
+    }
+  })
+
+  await page.goto('/')
+  await expect(page.getByRole('alertdialog', { name: /couldn.t open your encrypted database/i })).toBeVisible()
+  await expect(page.getByText(/recovery key is unavailable/i)).toBeVisible()
 })
 
 test('new days use and remember the last selected day template', async ({ page }) => {

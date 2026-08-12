@@ -107,6 +107,7 @@ fn state(device_id: &str, goals: Value) -> Value {
         "lists": [],
         "metrics": [],
         "metricEntries": [],
+        "notes": [],
         "operations": [],
     })
 }
@@ -125,17 +126,23 @@ fn domain(state: &Value) -> Value {
         "plans": state["plans"],
         "goals": state["goals"],
         "goalCompletions": state["goalCompletions"],
+        "listTemplates": state["listTemplates"],
+        "lists": state["lists"],
+        "metrics": state["metrics"],
+        "metricEntries": state["metricEntries"],
+        "notes": state["notes"],
         "activePlanDate": state["activePlanDate"],
     })
 }
 
 /// The tables whose materialized contents must match once two devices converge.
-const MATERIALIZED_TABLES: [&str; 5] = [
+const MATERIALIZED_TABLES: [&str; 6] = [
     "templates",
     "template_items",
     "template_options",
     "plans",
     "plan_items",
+    "state_entities",
 ];
 
 /// A [`SyncStore`] shaped exactly like the app's `p2p::AppStore`: one shared
@@ -356,6 +363,58 @@ fn first_sync_converges_and_the_joiner_keeps_its_own_device_id() {
         !columns.iter().any(|column| column == "position_key"),
         "no destructive migration happened"
     );
+}
+
+#[test]
+fn v4_entity_delta_converges_without_replicating_unrelated_entities() {
+    let sa = Scratch::new("entity-delta-a");
+    let sb = Scratch::new("entity-delta-b");
+    let sentinel = "UNRELATED-SYNC-SENTINEL-".repeat(4_000);
+    let mut primary_state = state("device-A", json!([]));
+    primary_state["notes"] = json!([
+        { "id": "edited", "title": "Before", "items": [], "createdAt": "c", "updatedAt": "u" },
+        { "id": "unrelated", "title": sentinel, "items": [], "createdAt": "c", "updatedAt": "u" }
+    ]);
+    let a = open_seeded(&sa.path, "key-a", &primary_state);
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let mut operation_connection = open_database_at(&sa.path, "key-a").unwrap();
+    persist_operation_to_database(
+        &mut operation_connection,
+        &json!({
+            "id": "v4-note-delta", "deviceId": "device-A", "sequence": 1,
+            "type": "rename_note", "timestamp": "2026-08-12T12:00:00Z",
+            "payload": {
+                "noteId": "edited", "title": "After",
+                "entityChanges": {
+                    "version": 1,
+                    "upserts": [{
+                        "collection": "notes", "key": "edited", "position": 0,
+                        "value": { "id": "edited", "title": "After", "items": [], "createdAt": "c", "updatedAt": "v" }
+                    }],
+                    "deletes": []
+                }
+            }
+        }),
+    )
+    .unwrap();
+    let payload: String = operation_connection
+        .query_row(
+            "select payload_json from operations where id = 'v4-note-delta'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert!(!payload.contains("UNRELATED-SYNC-SENTINEL"));
+    drop(operation_connection);
+
+    let a = TestStore::new(open_database_at(&sa.path, "key-a").unwrap());
+    let b = TestStore::new(b);
+    exchange(&b, &a, &SyncKey::generate());
+    assert_eq!(domain(&a.state()), domain(&b.state()));
+    assert_eq!(b.state()["notes"][0]["title"], "After");
+    assert_eq!(b.state()["notes"][1]["title"], sentinel);
 }
 
 // ---------------------------------------------------------------------------
@@ -1052,7 +1111,7 @@ fn relay_generation_checkpoint_preserves_local_undo_history() {
         .unwrap();
     assert_eq!(history_before, 1);
 
-    let stats = checkpoint_operation_log_for_relay(&connection).unwrap();
+    let stats = checkpoint_operation_log_preserving_history(&connection).unwrap();
     assert_eq!(stats.history_entries_removed, 0);
     assert_eq!(
         connection

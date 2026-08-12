@@ -1528,30 +1528,6 @@ nav button.active {
   padding: 24px;
 }
 
-.database-maintenance-backdrop {
-  z-index: 110;
-}
-
-.database-maintenance-dialog {
-  width: min(620px, 100%);
-}
-
-.database-maintenance-progress {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 48px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper-strong);
-  padding: 12px 14px;
-  color: var(--ink);
-}
-
-.database-maintenance-progress p {
-  margin: 0;
-}
-
 .database-maintenance-spinner {
   width: 22px;
   height: 22px;

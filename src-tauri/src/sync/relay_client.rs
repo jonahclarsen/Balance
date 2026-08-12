@@ -15,8 +15,8 @@ use sha2::{Digest, Sha256};
 
 use super::crypto::SyncKey;
 use super::{
-    all_ops, checkpoint_operation_log_for_relay, merge_and_rematerialize, Error, Op, Result,
-    PROTOCOL_VERSION,
+    all_ops, checkpoint_operation_log_preserving_history, merge_and_rematerialize, Error, Op,
+    Result, PROTOCOL_VERSION,
 };
 
 const MAX_BATCH_CIPHERTEXT: usize = 512 * 1024;
@@ -269,7 +269,7 @@ fn import_legacy(
             let plaintext = key.open(&ciphertext)?;
             let envelope: LegacyEnvelope = serde_json::from_slice(&plaintext)
                 .map_err(|error| Error::Codec(format!("legacy relay envelope: {error}")))?;
-            if envelope.v != 2 && envelope.v != PROTOCOL_VERSION {
+            if envelope.v != 2 && envelope.v != 3 && envelope.v != PROTOCOL_VERSION {
                 return Err(Error::Codec(
                     "legacy relay contains an incompatible envelope".into(),
                 ));
@@ -384,7 +384,7 @@ fn apply_descriptor(
 ) -> Result<(usize, bool)> {
     let ciphertext = fetch_blob(client, base, id, chunks)?;
     let envelope: RelayEnvelope = open(key, &ciphertext)?;
-    if envelope.v != PROTOCOL_VERSION || envelope.epoch != epoch {
+    if (envelope.v != 3 && envelope.v != PROTOCOL_VERSION) || envelope.epoch != epoch {
         return Err(Error::Codec(
             "relay blob has incompatible protocol metadata".into(),
         ));
@@ -608,7 +608,7 @@ fn commit_checkpoint(
     epoch: &str,
     latest_sequence: i64,
 ) -> Result<bool> {
-    checkpoint_operation_log_for_relay(conn)?;
+    checkpoint_operation_log_preserving_history(conn)?;
     let new_epoch = random_token();
     let upload_id = random_token();
     let ciphertext = seal(

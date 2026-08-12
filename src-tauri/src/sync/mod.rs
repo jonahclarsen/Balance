@@ -36,7 +36,7 @@ pub mod relay_client;
 pub mod transport;
 
 /// Wire-protocol version. Bump only for incompatible framing/semantics changes.
-pub const PROTOCOL_VERSION: u32 = 3;
+pub const PROTOCOL_VERSION: u32 = 4;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -610,7 +610,7 @@ pub fn enable_primary(conn: &Connection) -> Result<()> {
     // reachable, so old tombstones would only bloat future checkpoints.
     conn.execute("DELETE FROM sync_tombstones", [])?;
     conn.execute("DELETE FROM sync_frontiers", [])?;
-    checkpoint_operation_log(conn)?;
+    checkpoint_operation_log_preserving_history(conn)?;
     mark_enabled(conn)?;
     Ok(())
 }
@@ -628,6 +628,7 @@ pub fn enable_joiner(conn: &Connection) -> Result<()> {
              DELETE FROM sync_frontiers;
              DELETE FROM plan_items; DELETE FROM plans;
              DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
+             DELETE FROM state_entities;
              DELETE FROM metadata WHERE key IN ('goal_data','lists_metrics_data');",
         )?;
         tx.commit()?;
@@ -637,7 +638,7 @@ pub fn enable_joiner(conn: &Connection) -> Result<()> {
 }
 
 // ---------------------------------------------------------------------------
-// Checkpoints (weekly maintenance, coordinator device only)
+// Checkpoints (threshold-driven, coordinator device only)
 // ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -846,9 +847,11 @@ pub fn checkpoint_operation_log(conn: &Connection) -> Result<CheckpointStats> {
 }
 
 /// Compact replicated operations for a relay generation without silently
-/// discarding the user's local undo/recovery history. Weekly physical database
-/// maintenance calls [`checkpoint_operation_log`] and clears that history.
-pub(crate) fn checkpoint_operation_log_for_relay(conn: &Connection) -> Result<CheckpointStats> {
+/// discarding the user's local undo/recovery history. Physical database
+/// maintenance is intentionally independent from this logical compaction.
+pub(crate) fn checkpoint_operation_log_preserving_history(
+    conn: &Connection,
+) -> Result<CheckpointStats> {
     let state = crate::read_app_state_from_database(conn)
         .map_err(Error::Codec)?
         .ok_or_else(|| Error::Codec("database has no app state to checkpoint".into()))?;
@@ -901,7 +904,8 @@ fn rematerialize_uncommitted(tx: &rusqlite::Transaction<'_>) -> Result<()> {
     let ops = read_operations_canonical(tx)?;
     tx.execute_batch(
         "DELETE FROM plan_items; DELETE FROM plans;
-         DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;",
+         DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
+         DELETE FROM state_entities;",
     )?;
     for (index, op) in ops.iter().enumerate() {
         crate::apply_operation(tx, op).map_err(|error| {

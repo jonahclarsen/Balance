@@ -39,9 +39,9 @@
     persistenceError,
     plannerStore,
     recoverDatabaseWithKey,
-    runWeeklyDatabaseMaintenance,
+    runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
-  import type { DatabaseCompactionResult, DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
+  import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
@@ -199,11 +199,7 @@ return rows`
   let databaseInspectionBusy = false
   let databaseCompactionBusy = false
   let databaseMaintenanceStatus: DatabaseMaintenanceStatus | null = null
-  let weeklyMaintenanceStarted = false
-  let weeklyMaintenanceOpen = false
-  let weeklyMaintenancePhase: 'running' | 'complete' | 'error' = 'running'
-  let weeklyMaintenanceMessage = ''
-  let weeklyMaintenanceResult: DatabaseCompactionResult | null = null
+  let launchMaintenanceStarted = false
   let databaseInspectionError = ''
   let databaseSearch = ''
   let databaseExpandedId: string | null = null
@@ -920,31 +916,6 @@ return rows`
     }, DATABASE_LOADING_MESSAGE_INTERVAL_MS)
     const storedWorkspaceViewState = readWorkspaceViewState()
 
-    if (isTauri()) {
-      void listen(PASTE_MATCH_STYLE_EVENT, () => {
-        void pasteSystemClipboardAsPlainText()
-      }).then((stopListening) => {
-        if (mounted) stopPasteMatchStyleListener = stopListening
-        else stopListening()
-      }).catch((error) => {
-        console.error('Could not listen for Paste and Match Style', error)
-      })
-
-      if (import.meta.env.PROD) {
-        void invoke<AvailableUpdate | null>('check_for_update').then((update) => {
-          if (
-            mounted &&
-            update &&
-            localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY) !== update.version
-          ) {
-            availableUpdate = update
-          }
-        }).catch((error) => {
-          console.error('Failed to check GitHub Releases', error)
-        })
-      }
-    }
-
     sidebarHidden = localStorage.getItem(SIDEBAR_HIDDEN_KEY) === 'true'
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
 
@@ -976,12 +947,50 @@ return rows`
     if (storedCheckboxColor) checkboxColor = storedCheckboxColor
 
     async function initialize() {
-      recoveryKeyStatus = await plannerStore.ready
+      if (isTauri()) {
+        try {
+          recoveryKeyStatus = await getRecoveryKeyStatus()
+        } catch (error) {
+          databaseLoadError.set(error instanceof Error ? error.message : String(error))
+          console.error('Could not open encrypted Balance database', error)
+          return
+        }
+      }
+
+      await plannerStore.ready
 
       // The store intentionally starts with a placeholder so Svelte can render
       // before native hydration. Never treat that placeholder as user data when
       // SQLCipher or Android Keystore failed to open the real database.
       if ($databaseLoadError) return
+
+      // Android may serialize event-plugin registration with command IPC while
+      // the WebView is starting. Register optional listeners only after the
+      // encrypted database has either opened or failed visibly.
+      if (isTauri()) {
+        void listen(PASTE_MATCH_STYLE_EVENT, () => {
+          void pasteSystemClipboardAsPlainText()
+        }).then((stopListening) => {
+          if (mounted) stopPasteMatchStyleListener = stopListening
+          else stopListening()
+        }).catch((error) => {
+          console.error('Could not listen for Paste and Match Style', error)
+        })
+
+        if (import.meta.env.PROD) {
+          void invoke<AvailableUpdate | null>('check_for_update').then((update) => {
+            if (
+              mounted &&
+              update &&
+              localStorage.getItem(DISMISSED_UPDATE_VERSION_KEY) !== update.version
+            ) {
+              availableUpdate = update
+            }
+          }).catch((error) => {
+            console.error('Failed to check GitHub Releases', error)
+          })
+        }
+      }
 
       if (!templates.some((template) => template.id === selectedTemplateId)) {
         selectedTemplateId = templates[0]?.id ?? ''
@@ -1025,7 +1034,7 @@ return rows`
       if (!mounted || !isTauri()) return
 
       stopAutomaticSync = startAutomaticSync()
-      // Pull remote changes before weekly maintenance snapshots the database.
+      // Pull remote changes before evaluating threshold-based housekeeping.
       await requestSync('launch')
 
       try {
@@ -3046,119 +3055,52 @@ return rows`
   }
 
   async function runLaunchDatabaseMaintenance() {
-    if (!isTauri() || weeklyMaintenanceStarted) return
-    weeklyMaintenanceStarted = true
+    if (!isTauri() || launchMaintenanceStarted) return
+    launchMaintenanceStarted = true
 
     try {
-      // Reaching this point means the new database completed a subsequent app
-      // launch, so an older rotated backup can now be removed safely.
       await completeDatabaseMaintenanceStartup()
       await refreshDatabaseMaintenanceStatus()
       if (!databaseMaintenanceStatus?.due) return
-
-      weeklyMaintenanceOpen = true
-      weeklyMaintenancePhase = 'running'
-      weeklyMaintenanceResult = null
-      weeklyMaintenanceMessage = databaseMaintenanceStatus.checkpointCoordinator
-        ? 'Creating a verified shared checkpoint, vacuuming this device, and preserving an encrypted backup…'
-        : 'Clearing local undo history and vacuuming this device’s encrypted database. The original sync device remains responsible for the shared checkpoint…'
-      await tick()
-
-      const result = await runWeeklyDatabaseMaintenance()
-      if (!result) {
-        weeklyMaintenanceOpen = false
-        return
-      }
-
-      weeklyMaintenanceResult = result
+      const result = await runDatabaseMaintenanceIfNeeded()
+      if (!result) return
       await plannerStore.reloadFromBackend()
-      if (result.checkpointCreated) await requestSync('database-maintenance')
       await refreshDatabaseMaintenanceStatus()
-      weeklyMaintenancePhase = 'complete'
-      weeklyMaintenanceMessage = result.checkpointCreated
-        ? 'The shared checkpoint and this device’s physical database optimization were verified successfully.'
-        : 'This device’s local undo history was cleared and its physical database optimization was verified. Synced operations were left for the original sync device to checkpoint.'
     } catch (error) {
-      weeklyMaintenancePhase = 'error'
-      weeklyMaintenanceOpen = true
-      weeklyMaintenanceMessage = error instanceof Error ? error.message : String(error)
-    }
-  }
-
-  function closeWeeklyMaintenance() {
-    if (weeklyMaintenancePhase === 'running') return
-    weeklyMaintenanceOpen = false
-  }
-
-  async function retryWeeklyMaintenance() {
-    weeklyMaintenancePhase = 'running'
-    weeklyMaintenanceMessage = 'Retrying verified database maintenance…'
-    weeklyMaintenanceResult = null
-    try {
-      const result = await runWeeklyDatabaseMaintenance()
-      if (!result) {
-        await refreshDatabaseMaintenanceStatus()
-        weeklyMaintenancePhase = 'complete'
-        weeklyMaintenanceMessage = 'Database maintenance was already completed.'
-        return
-      }
-      weeklyMaintenanceResult = result
-      await plannerStore.reloadFromBackend()
-      if (result.checkpointCreated) await requestSync('database-maintenance-retry')
-      await refreshDatabaseMaintenanceStatus()
-      weeklyMaintenancePhase = 'complete'
-      weeklyMaintenanceMessage = 'Database maintenance completed and passed verification.'
-    } catch (error) {
-      weeklyMaintenancePhase = 'error'
-      weeklyMaintenanceMessage = error instanceof Error ? error.message : String(error)
+      console.error('Automatic database housekeeping failed', error)
     }
   }
 
   async function optimizeDatabase() {
     if (databaseCompactionBusy || recoveryBusy) return
 
-    const createsCheckpoint = databaseMaintenanceStatus?.checkpointCoordinator ?? true
     const confirmed = await confirmDialog(
-      createsCheckpoint
-        ? 'Optimize the database now? Balance will verify a full-state checkpoint, install the optimized database, and copy that optimized database to an encrypted backup. This may temporarily need space for two additional copies of the database.'
-        : 'Optimize this device’s database now? Balance will clear local undo history, safely vacuum this local file, and copy the optimized database to an encrypted backup. The original sync device remains responsible for the shared checkpoint.',
+      'Reclaim unused database pages now? Balance verifies the complete state before installing the smaller encrypted file. Sync operations, undo/recovery history, and independently scheduled backups are unchanged.',
       { title: 'Optimize database?', kind: 'warning' },
     )
     if (!confirmed) return
 
     databaseCompactionBusy = true
-    recoveryStatus = 'Checking for the latest synced database checkpoint…'
+    recoveryStatus = 'Measuring and verifying the encrypted database…'
     recoveryStatusIsError = false
 
     try {
-      // A coordinator's checkpoint removes the old replicated operation log
-      // when it is merged. Pull it before VACUUM so a joining device can
-      // reclaim those pages in this optimization pass instead of needing a
-      // later sync followed by a second optimization.
       await requestSync('manual-database-optimization-preflight')
-      recoveryStatus = createsCheckpoint
-        ? 'Creating and verifying encrypted database checkpoint…'
-        : 'Vacuuming the reconciled encrypted database…'
+      recoveryStatus = 'Reclaiming unused pages from a verified copy…'
 
       const result = await compactDatabase()
       if (!result) throw new Error('Database optimization is available only in the desktop or mobile app.')
 
       await plannerStore.reloadFromBackend()
-      if (result.checkpointCreated) await requestSync('manual-database-optimization')
       recoveryEntries = await listRecoveryEntries()
       await Promise.all([
         refreshMetadata(),
         refreshDatabaseInspection(),
         refreshDatabaseMaintenanceStatus(),
       ])
-      recoveryStatus = result.checkpointCreated
-        ? `Optimized ${formatDatabaseBytes(result.beforeBytes)} → ${formatDatabaseBytes(result.afterBytes)} ` +
-          `(${formatDatabaseBytes(result.reclaimedBytes)} reclaimed). Removed ${result.operationsRemoved} old operations ` +
-          `and ${result.historyEntriesRemoved} undo entries. Encrypted backup: ${result.backupPath}`
-        : `Vacuumed this device ${formatDatabaseBytes(result.beforeBytes)} → ${formatDatabaseBytes(result.afterBytes)} ` +
-          `(${formatDatabaseBytes(result.reclaimedBytes)} reclaimed). Removed ${result.historyEntriesRemoved} local undo entries ` +
-          `without changing the synced operation log. ` +
-          `Encrypted backup: ${result.backupPath}`
+      recoveryStatus = `Optimized ${formatDatabaseBytes(result.beforeBytes)} → ${formatDatabaseBytes(result.afterBytes)} ` +
+        `(${formatDatabaseBytes(result.reclaimedBytes)} reclaimed) without changing sync or recovery history.` +
+        (result.backupPath ? ` Latest independent backup: ${result.backupPath}` : '')
     } catch (error) {
       recoveryStatusIsError = true
       recoveryStatus = error instanceof Error ? error.message : String(error)
@@ -4683,20 +4625,18 @@ return rows`
             <h3>Recovery &amp; diagnostics</h3>
             {#if isTauri()}
               <p>
-                Balance automatically performs verified database maintenance once a week after launch and keeps an
-                encrypted copy of the optimized database on disk.
-                {databaseMaintenanceStatus?.checkpointCoordinator === false
-                  ? ' This synced device vacuums only its local file; the original sync device creates shared checkpoints.'
-                  : ' This device creates the shared checkpoint and vacuums its local file.'}
+                Balance continuously bounds undo and sync history, creates a verified encrypted backup after the first
+                change each day, and reclaims file space only when enough unused pages accumulate.
               </p>
             {:else}
-              <p>Restore removed items and inspect database history. Weekly maintenance runs in the installed app.</p>
+              <p>Restore removed items and inspect database history. Automatic housekeeping runs in the installed app.</p>
             {/if}
           </div>
 
           {#if isTauri()}
             <p class="export-status">
-              Last completed: {formatMaintenanceTimestamp(databaseMaintenanceStatus?.lastCompletedAt)}
+              Last physical optimization: {formatMaintenanceTimestamp(databaseMaintenanceStatus?.lastCompletedAt)}
+              · {formatDatabaseBytes(databaseMaintenanceStatus?.reclaimableBytes ?? 0)} currently reclaimable
             </p>
           {/if}
 
@@ -5032,59 +4972,6 @@ return rows`
   </div>
 {/if}
 
-{#if weeklyMaintenanceOpen}
-  <div class="modal-backdrop database-maintenance-backdrop">
-    <div
-      class="recovery-dialog database-maintenance-dialog"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="database-maintenance-title"
-    >
-      <p class="eyebrow">Weekly database maintenance</p>
-      <h2 id="database-maintenance-title">
-        {weeklyMaintenancePhase === 'running'
-          ? 'Optimizing your database'
-          : weeklyMaintenancePhase === 'complete'
-            ? 'Database maintenance complete'
-            : 'Database maintenance needs attention'}
-      </h2>
-
-      <div class="database-maintenance-progress" role="status" aria-live="polite">
-        {#if weeklyMaintenancePhase === 'running'}
-          <span class="database-maintenance-spinner" aria-hidden="true"></span>
-        {/if}
-        <p>{weeklyMaintenanceMessage}</p>
-      </div>
-
-      {#if weeklyMaintenanceResult}
-        <p class="recovery-copy">
-          {formatDatabaseBytes(weeklyMaintenanceResult.beforeBytes)}
-          →
-          {formatDatabaseBytes(weeklyMaintenanceResult.afterBytes)}
-          · {formatDatabaseBytes(weeklyMaintenanceResult.reclaimedBytes)} reclaimed
-        </p>
-        <p class="database-path">Backup: {weeklyMaintenanceResult.backupPath}</p>
-      {/if}
-
-      <p class="recovery-copy">
-        Balance verifies the complete app state and database integrity before replacing the local file, then copies the
-        optimized encrypted database as the current recovery backup.
-      </p>
-
-      {#if weeklyMaintenancePhase === 'complete'}
-        <div class="recovery-actions">
-          <button class="primary" type="button" on:click={closeWeeklyMaintenance}>Continue</button>
-        </div>
-      {:else if weeklyMaintenancePhase === 'error'}
-        <div class="recovery-actions">
-          <button class="primary" type="button" on:click={() => { void retryWeeklyMaintenance() }}>Try again</button>
-          <button type="button" on:click={closeWeeklyMaintenance}>Continue without optimizing</button>
-        </div>
-      {/if}
-    </div>
-  </div>
-{/if}
-
 {#if recoveryPanelOpen}
   <div class="modal-backdrop">
     <div class="recovery-panel" role="dialog" aria-modal="true" aria-labelledby="recovery-panel-title">
@@ -5122,10 +5009,8 @@ return rows`
         </button>
       </div>
       <p class="recovery-copy metadata-hint">
-        {databaseMaintenanceStatus?.checkpointCoordinator === false
-          ? 'This synced device clears local undo/recovery history and vacuums its database file. The original sync device creates the shared full-state checkpoint.'
-          : 'Optimization replaces accumulated operation and undo history with one verified full-state checkpoint.'}
-        Current plans, templates, lists, metrics, goals, settings, encryption, and sync configuration are preserved.
+        Optimization only returns unused pages to the filesystem. It does not remove sync operations or undo/recovery
+        entries. Balance performs logical history cleanup and encrypted daily backups independently.
       </p>
 
       <div class="recovery-scroll">

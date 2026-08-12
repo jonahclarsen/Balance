@@ -14,7 +14,9 @@ use rand::{rngs::OsRng, RngCore};
 use rusqlite::{backup::Backup, params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use tauri::{Emitter, Manager};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
+use tauri::Manager;
 use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "android")]
@@ -37,12 +39,31 @@ const SYNC_COMPACTION_COORDINATOR: &str = "sync_compaction_coordinator";
 const DATABASE_MAINTENANCE_LAST_AT: &str = "database_maintenance_last_at";
 const DATABASE_MAINTENANCE_LATEST_BACKUP: &str = "database_maintenance_latest_backup";
 const DATABASE_MAINTENANCE_PREVIOUS_BACKUP: &str = "database_maintenance_previous_backup";
-const DATABASE_MAINTENANCE_INTERVAL_MS: i64 = 7 * 24 * 60 * 60 * 1_000;
-const DATABASE_LOAD_PROGRESS_EVENT: &str = "balance-database-load-progress";
+const DATABASE_DAILY_BACKUP_LAST_DAY: &str = "database_daily_backup_last_day";
+const DATABASE_DAILY_BACKUP_LATEST: &str = "database_daily_backup_latest";
+const DATABASE_DAILY_BACKUP_RETENTION: usize = 7;
+const DATABASE_RECLAIM_MIN_BYTES: u64 = 16 * 1024 * 1024;
+const DATABASE_RECLAIM_MIN_PERCENT: u64 = 25;
+const HISTORY_RECENT_LIMIT: usize = 200;
+const HISTORY_DESTRUCTIVE_RETENTION_MS: i64 = 90 * 24 * 60 * 60 * 1_000;
+const HISTORY_RECOVERY_EXTENSION_BYTES: usize = 25 * 1024 * 1024;
+const SYNC_CHECKPOINT_OPERATION_LIMIT: i64 = 1_000;
+const SYNC_CHECKPOINT_PAYLOAD_BYTES: i64 = 8 * 1024 * 1024;
+const SYNC_CHECKPOINT_MAX_AGE_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
+const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const GOAL_DATA: &str = "goal_data";
-// Lists + Metrics + Notes state is stored as a single JSON metadata blob (like GOAL_DATA)
-// rather than materialized into per-row tables.
 const LISTS_METRICS_DATA: &str = "lists_metrics_data";
+const STATE_ENTITIES_SCHEMA_VERSION: &str = "state_entities_schema_version";
+const STATE_ENTITIES_VERSION: &str = "1";
+const ENTITY_COLLECTIONS: [&str; 7] = [
+    "goals",
+    "goalCompletions",
+    "listTemplates",
+    "lists",
+    "metrics",
+    "metricEntries",
+    "notes",
+];
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 const GITHUB_LATEST_RELEASE_API: &str =
     "https://api.github.com/repos/jonahclarsen/Balance/releases/latest";
@@ -198,20 +219,6 @@ struct RecoveryKeyStatus {
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
-struct AppStartup {
-    state_json: Option<String>,
-    recovery_key_status: RecoveryKeyStatus,
-}
-
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct DatabaseLoadProgress {
-    percent: u8,
-    stage: &'static str,
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
 struct ExportSettings {
     export_directory: String,
     default_export_directory: String,
@@ -234,7 +241,7 @@ struct DatabaseCompactionResult {
     reclaimed_bytes: u64,
     operations_removed: i64,
     history_entries_removed: i64,
-    backup_path: String,
+    backup_path: Option<String>,
     checkpoint_created: bool,
 }
 
@@ -244,6 +251,12 @@ struct DatabaseMaintenanceStatus {
     due: bool,
     last_completed_at: Option<String>,
     checkpoint_coordinator: bool,
+    database_bytes: u64,
+    reclaimable_bytes: u64,
+    reclaimable_percent: u64,
+    operation_count: i64,
+    operation_bytes: i64,
+    checkpoint_recommended: bool,
 }
 
 #[tauri::command]
@@ -251,31 +264,6 @@ async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String>
     run_database_task(move || {
         let connection = open_database(&app)?;
         read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
-    })
-    .await
-}
-
-#[tauri::command]
-async fn load_app_startup(app: tauri::AppHandle) -> Result<AppStartup, String> {
-    let progress_app = app.clone();
-    run_database_task(move || {
-        emit_database_load_progress(&progress_app, 5, "Unlocking encrypted database");
-        let (database_path, recovery_key) = database_path_and_recovery_key(&app)?;
-
-        emit_database_load_progress(&progress_app, 15, "Opening encrypted database");
-        let connection = open_database_at(&database_path, &recovery_key)?;
-        let recovery_key_status =
-            recovery_key_status(&connection, &database_path, Some(recovery_key))?;
-
-        let state = read_app_state_from_database_with_progress(&connection, |percent, stage| {
-            emit_database_load_progress(&progress_app, percent, stage);
-        })?;
-        emit_database_load_progress(&progress_app, 92, "Transferring workspace");
-
-        Ok(AppStartup {
-            state_json: state.map(|value| value.to_string()),
-            recovery_key_status,
-        })
     })
     .await
 }
@@ -294,10 +282,13 @@ async fn initialize_app_state(app: tauri::AppHandle, state_json: String) -> Resu
 #[tauri::command]
 async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Result<(), String> {
     run_database_task(move || {
-        with_database(&app, |connection| {
-            let operation = parse_json(&operation_json)?;
-            persist_operation_to_database(connection, &operation)
-        })
+        let database_path = app_database_path(&app)?;
+        let recovery_key = database_recovery_key(&database_path)?;
+        let mut connection = open_database_at(&database_path, &recovery_key)?;
+        let operation = parse_json(&operation_json)?;
+        persist_operation_to_database(&mut connection, &operation)?;
+        finish_meaningful_database_write(&connection, &database_path, &recovery_key);
+        Ok(())
     })
     .await
 }
@@ -305,10 +296,14 @@ async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Res
 #[tauri::command]
 async fn undo_last_operation(app: tauri::AppHandle) -> Result<Option<String>, String> {
     run_database_task(move || {
-        with_database(&app, |connection| {
-            undo_last_operation_in_database(connection)
-                .map(|state| state.map(|value| value.to_string()))
-        })
+        let database_path = app_database_path(&app)?;
+        let recovery_key = database_recovery_key(&database_path)?;
+        let mut connection = open_database_at(&database_path, &recovery_key)?;
+        let state = undo_last_operation_in_database(&mut connection)?;
+        if state.is_some() {
+            finish_meaningful_database_write(&connection, &database_path, &recovery_key);
+        }
+        Ok(state.map(|value| value.to_string()))
     })
     .await
 }
@@ -316,10 +311,14 @@ async fn undo_last_operation(app: tauri::AppHandle) -> Result<Option<String>, St
 #[tauri::command]
 async fn redo_last_operation(app: tauri::AppHandle) -> Result<Option<String>, String> {
     run_database_task(move || {
-        with_database(&app, |connection| {
-            redo_last_operation_in_database(connection)
-                .map(|state| state.map(|value| value.to_string()))
-        })
+        let database_path = app_database_path(&app)?;
+        let recovery_key = database_recovery_key(&database_path)?;
+        let mut connection = open_database_at(&database_path, &recovery_key)?;
+        let state = redo_last_operation_in_database(&mut connection)?;
+        if state.is_some() {
+            finish_meaningful_database_write(&connection, &database_path, &recovery_key);
+        }
+        Ok(state.map(|value| value.to_string()))
     })
     .await
 }
@@ -356,10 +355,7 @@ async fn compact_database(app: tauri::AppHandle) -> Result<DatabaseCompactionRes
     run_database_task(move || {
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
-        let connection = open_database_at(&database_path, &recovery_key)?;
-        let checkpoint_coordinator = database_checkpoint_coordinator(&connection)?;
-        drop(connection);
-        maintain_database_at(&database_path, &recovery_key, checkpoint_coordinator)
+        maintain_database_at(&database_path, &recovery_key)
     })
     .await
 }
@@ -376,7 +372,7 @@ async fn get_database_maintenance_status(
 }
 
 #[tauri::command]
-async fn run_weekly_database_maintenance(
+async fn run_database_maintenance_if_needed(
     app: tauri::AppHandle,
 ) -> Result<Option<DatabaseCompactionResult>, String> {
     run_database_task(move || {
@@ -390,7 +386,7 @@ async fn run_weekly_database_maintenance(
             return Ok(None);
         }
 
-        maintain_database_at(&database_path, &recovery_key, status.checkpoint_coordinator).map(Some)
+        maintain_database_at(&database_path, &recovery_key).map(Some)
     })
     .await
 }
@@ -411,10 +407,14 @@ async fn restore_recovery_entry(
     history_id: String,
 ) -> Result<Option<String>, String> {
     run_database_task(move || {
-        with_database(&app, |connection| {
-            restore_recovery_entry_in_database(connection, &history_id)
-                .map(|state| state.map(|value| value.to_string()))
-        })
+        let database_path = app_database_path(&app)?;
+        let recovery_key = database_recovery_key(&database_path)?;
+        let mut connection = open_database_at(&database_path, &recovery_key)?;
+        let state = restore_recovery_entry_in_database(&mut connection, &history_id)?;
+        if state.is_some() {
+            finish_meaningful_database_write(&connection, &database_path, &recovery_key);
+        }
+        Ok(state.map(|value| value.to_string()))
     })
     .await
 }
@@ -690,6 +690,132 @@ fn copy_database_snapshot(
     Ok(())
 }
 
+fn finish_meaningful_database_write(
+    connection: &Connection,
+    database_path: &Path,
+    recovery_key: &str,
+) {
+    if metadata_value(connection, SYNC_LOG_DIRTY_SINCE_MS)
+        .ok()
+        .flatten()
+        .is_none()
+    {
+        let _ = set_metadata(
+            connection,
+            SYNC_LOG_DIRTY_SINCE_MS,
+            &current_timestamp_ms().to_string(),
+        );
+    }
+    // The state change is already durable. Housekeeping is retried on the next
+    // write or foreground sync and must not cause the UI to replay the change.
+    let _ = maybe_checkpoint_operation_log(connection);
+    if let Err(error) = create_daily_database_backup_if_due(
+        connection,
+        database_path,
+        recovery_key,
+        current_timestamp_ms(),
+    ) {
+        eprintln!("Daily database backup failed; it will be retried: {error}");
+    }
+}
+
+fn create_daily_database_backup_if_due(
+    source: &Connection,
+    database_path: &Path,
+    recovery_key: &str,
+    now_ms: i64,
+) -> Result<Option<PathBuf>, String> {
+    const DAY_MS: i64 = 24 * 60 * 60 * 1_000;
+    let day = now_ms.div_euclid(DAY_MS);
+    let day_string = day.to_string();
+    if metadata_value(source, DATABASE_DAILY_BACKUP_LAST_DAY)?.as_deref()
+        == Some(day_string.as_str())
+    {
+        if let Some(path) = metadata_value(source, DATABASE_DAILY_BACKUP_LATEST)? {
+            let path = PathBuf::from(path);
+            if path.exists() {
+                return Ok(Some(path));
+            }
+        }
+    }
+
+    let expected_state = read_app_state_from_database(source)?;
+    if expected_state.is_none() {
+        return Ok(None);
+    }
+    let expected_state = expected_state.expect("checked above");
+    let expected_operation_count: i64 = source
+        .query_row("select count(*) from operations", [], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    let expected_history_count: i64 = source
+        .query_row("select count(*) from history_entries", [], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    let backup_dir = database_path
+        .parent()
+        .ok_or_else(|| "Could not resolve database directory".to_string())?
+        .join("backups");
+    fs::create_dir_all(&backup_dir).map_err(|error| error.to_string())?;
+    let final_path = backup_dir.join(format!("balance-daily-{day}-{now_ms}.sqlite3"));
+    let temporary_path = backup_dir.join(format!(".balance-daily-{day}-{now_ms}.tmp.sqlite3"));
+
+    let result = (|| {
+        copy_database_snapshot(source, &temporary_path, recovery_key)?;
+        let backup = open_database_at(&temporary_path, recovery_key)?;
+        verify_database_state(&backup, &expected_state)?;
+        let operation_count: i64 = backup
+            .query_row("select count(*) from operations", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        let history_count: i64 = backup
+            .query_row("select count(*) from history_entries", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
+        if operation_count != expected_operation_count || history_count != expected_history_count {
+            return Err("Daily backup changed operation or recovery history".to_string());
+        }
+        drop(backup);
+        fs::rename(&temporary_path, &final_path).map_err(|error| error.to_string())?;
+        set_metadata(source, DATABASE_DAILY_BACKUP_LAST_DAY, &day_string)?;
+        set_metadata(
+            source,
+            DATABASE_DAILY_BACKUP_LATEST,
+            &final_path.display().to_string(),
+        )?;
+        // Keep the old diagnostics field useful while backups transition away
+        // from physical compaction.
+        set_metadata(
+            source,
+            DATABASE_MAINTENANCE_LATEST_BACKUP,
+            &final_path.display().to_string(),
+        )?;
+
+        let mut daily_paths = fs::read_dir(&backup_dir)
+            .map_err(|error| error.to_string())?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| {
+                        name.starts_with("balance-daily-") && name.ends_with(".sqlite3")
+                    })
+            })
+            .collect::<Vec<_>>();
+        daily_paths.sort();
+        let remove_count = daily_paths
+            .len()
+            .saturating_sub(DATABASE_DAILY_BACKUP_RETENTION);
+        for path in daily_paths.into_iter().take(remove_count) {
+            if path != final_path {
+                fs::remove_file(path).map_err(|error| error.to_string())?;
+            }
+        }
+        Ok(Some(final_path.clone()))
+    })();
+    if result.is_err() && temporary_path.exists() {
+        let _ = fs::remove_file(&temporary_path);
+    }
+    result
+}
+
 fn verify_database_state(connection: &Connection, expected_state: &Value) -> Result<(), String> {
     let integrity_rows = connection
         .prepare("pragma integrity_check")
@@ -761,19 +887,55 @@ fn database_maintenance_status_from_database(
     now_ms: i64,
 ) -> Result<DatabaseMaintenanceStatus, String> {
     let last_completed_at = metadata_value(connection, DATABASE_MAINTENANCE_LAST_AT)?;
-    let last_completed_ms = last_completed_at
-        .as_deref()
-        .and_then(|value| value.strip_prefix("unix-ms-"))
-        .and_then(|value| value.parse::<i64>().ok());
-    let due = last_completed_ms
-        .map(|last| now_ms.saturating_sub(last) >= DATABASE_MAINTENANCE_INTERVAL_MS)
-        .unwrap_or(true);
+    let page_count = pragma_u64(connection, "page_count")?;
+    let freelist_count = pragma_u64(connection, "freelist_count")?;
+    let page_size = pragma_u64(connection, "page_size")?;
+    let database_bytes = page_count.saturating_mul(page_size);
+    let reclaimable_bytes = freelist_count.saturating_mul(page_size);
+    let reclaimable_percent = if page_count == 0 {
+        0
+    } else {
+        freelist_count.saturating_mul(100) / page_count
+    };
+    let due = reclaimable_bytes >= DATABASE_RECLAIM_MIN_BYTES
+        && reclaimable_percent >= DATABASE_RECLAIM_MIN_PERCENT;
+    let (operation_count, operation_bytes) = operation_log_stats(connection)?;
+    let dirty_since = metadata_value(connection, SYNC_LOG_DIRTY_SINCE_MS)?
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(now_ms);
+    let checkpoint_recommended = database_checkpoint_coordinator(connection)?
+        && (operation_count >= SYNC_CHECKPOINT_OPERATION_LIMIT
+            || operation_bytes >= SYNC_CHECKPOINT_PAYLOAD_BYTES
+            || (operation_count > 0
+                && now_ms.saturating_sub(dirty_since) >= SYNC_CHECKPOINT_MAX_AGE_MS));
 
     Ok(DatabaseMaintenanceStatus {
         due,
         last_completed_at,
         checkpoint_coordinator: database_checkpoint_coordinator(connection)?,
+        database_bytes,
+        reclaimable_bytes,
+        reclaimable_percent,
+        operation_count,
+        operation_bytes,
+        checkpoint_recommended,
     })
+}
+
+fn pragma_u64(connection: &Connection, pragma: &str) -> Result<u64, String> {
+    let value: rusqlite::types::Value = connection
+        .query_row(&format!("pragma {pragma}"), [], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    match value {
+        rusqlite::types::Value::Integer(value) => {
+            u64::try_from(value).map_err(|error| error.to_string())
+        }
+        rusqlite::types::Value::Real(value) if value >= 0.0 => Ok(value as u64),
+        rusqlite::types::Value::Text(value) => {
+            value.parse::<u64>().map_err(|error| error.to_string())
+        }
+        other => Err(format!("Unexpected value for pragma {pragma}: {other:?}")),
+    }
 }
 
 fn managed_database_backup_path(database_path: &Path, candidate: &str) -> Option<PathBuf> {
@@ -782,7 +944,8 @@ fn managed_database_backup_path(database_path: &Path, candidate: &str) -> Option
     let filename = backup_path.file_name()?.to_str()?;
     (backup_path.parent() == Some(expected_parent.as_path())
         && (filename.starts_with("balance-pre-compact-")
-            || filename.starts_with("balance-post-compact-"))
+            || filename.starts_with("balance-post-compact-")
+            || filename.starts_with("balance-daily-"))
         && filename.ends_with(".sqlite3"))
     .then_some(backup_path)
 }
@@ -835,33 +998,10 @@ fn complete_database_maintenance_startup_at(
     Ok(())
 }
 
-fn stage_database_maintenance_metadata(
-    connection: &Connection,
-    previous_latest_backup: Option<&str>,
-    backup_path: &Path,
-) -> Result<(), String> {
-    let backup_path = backup_path.display().to_string();
-    if let Some(previous) = previous_latest_backup.filter(|path| *path != backup_path) {
-        set_metadata(connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP, previous)?;
-    } else {
-        delete_metadata(connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP)?;
-    }
-    set_metadata(connection, DATABASE_MAINTENANCE_LATEST_BACKUP, &backup_path)?;
-    set_metadata(
-        connection,
-        DATABASE_MAINTENANCE_LAST_AT,
-        &current_timestamp(),
-    )?;
-    Ok(())
-}
-
-fn compaction_paths(database_path: &Path) -> Result<(PathBuf, PathBuf, PathBuf), String> {
+fn compaction_paths(database_path: &Path) -> Result<(PathBuf, PathBuf), String> {
     let parent = database_path
         .parent()
         .ok_or_else(|| "Could not resolve database directory".to_string())?;
-    let backup_dir = parent.join("backups");
-    fs::create_dir_all(&backup_dir).map_err(|error| error.to_string())?;
-
     let mut random = [0_u8; 4];
     OsRng.fill_bytes(&mut random);
     let nonce = format!(
@@ -875,9 +1015,7 @@ fn compaction_paths(database_path: &Path) -> Result<(PathBuf, PathBuf, PathBuf),
     );
     let working_path = parent.join(format!(".balance-compacting-{nonce}.sqlite3"));
     let rollback_path = parent.join(format!(".balance-original-{nonce}.sqlite3"));
-    let stamp = current_timestamp().replace([':', '.'], "-");
-    let backup_path = backup_dir.join(format!("balance-post-compact-{stamp}-{nonce}.sqlite3"));
-    Ok((working_path, rollback_path, backup_path))
+    Ok((working_path, rollback_path))
 }
 
 #[cfg(test)]
@@ -885,7 +1023,7 @@ fn compact_database_at(
     database_path: &Path,
     recovery_key: &str,
 ) -> Result<DatabaseCompactionResult, String> {
-    maintain_database_at(database_path, recovery_key, true)
+    maintain_database_at(database_path, recovery_key)
 }
 
 #[cfg(test)]
@@ -893,33 +1031,28 @@ fn vacuum_database_at(
     database_path: &Path,
     recovery_key: &str,
 ) -> Result<DatabaseCompactionResult, String> {
-    maintain_database_at(database_path, recovery_key, false)
+    maintain_database_at(database_path, recovery_key)
 }
 
 fn maintain_database_at(
     database_path: &Path,
     recovery_key: &str,
-    create_checkpoint: bool,
 ) -> Result<DatabaseCompactionResult, String> {
     let before_bytes = fs::metadata(database_path)
         .map_err(|error| error.to_string())?
         .len();
-    let (working_path, rollback_path, backup_path) = compaction_paths(database_path)?;
+    let (working_path, rollback_path) = compaction_paths(database_path)?;
 
     let result = (|| {
         let source = open_database_at(database_path, recovery_key)?;
         let expected_operation_count: i64 = source
             .query_row("select count(*) from operations", [], |row| row.get(0))
             .map_err(|error| error.to_string())?;
-        let previous_latest_backup = metadata_value(&source, DATABASE_MAINTENANCE_LATEST_BACKUP)?;
+        let expected_history_count: i64 = source
+            .query_row("select count(*) from history_entries", [], |row| row.get(0))
+            .map_err(|error| error.to_string())?;
 
-        // SQLite's online-backup API produces a transactionally consistent
-        // encrypted copy without mutating the live database.
         copy_database_snapshot(&source, &working_path, recovery_key)?;
-
-        // Close the tiny race between backup completion and source locking:
-        // freeze writers, then require the copied state to exactly match the
-        // now-locked live state before changing anything in the copy.
         source
             .execute_batch("begin immediate")
             .map_err(|error| format!("Could not lock database for compaction: {error}"))?;
@@ -934,34 +1067,13 @@ fn maintain_database_at(
                 "Database changed while its compaction copy was being made; try again".to_string(),
             );
         }
-        // Checkpointing is plain SQL over the op log — a synced database needs
-        // no special handling here beyond the `replaces`/tombstone bookkeeping
-        // that `checkpoint_operation_log` already does.
-        let checkpoint = create_checkpoint
-            .then(|| sync::checkpoint_operation_log(&working).map_err(sync::Error::into_string))
-            .transpose()?;
-        // Undo/recovery history is local to each device and is not part of sync
-        // reconciliation. Clear it at the maintenance boundary even on a
-        // non-coordinator; only the replicated operation log requires the
-        // single-coordinator checkpoint rule.
-        let local_history_entries_removed = if create_checkpoint {
-            0
-        } else {
-            working
-                .execute("delete from history_entries", [])
-                .map_err(|error| error.to_string())? as i64
-        };
-        sync::relay_client::prune_obsolete_relay_rows(&working)
-            .map_err(sync::Error::into_string)?;
         drop(working);
 
-        // VACUUM only the disposable copy. If it or any later verification
-        // fails, the locked live database remains byte-for-byte untouched.
         let compacted = open_database_at(&working_path, recovery_key)?;
-        stage_database_maintenance_metadata(
+        set_metadata(
             &compacted,
-            previous_latest_backup.as_deref(),
-            &backup_path,
+            DATABASE_MAINTENANCE_LAST_AT,
+            &current_timestamp(),
         )?;
         compacted
             .execute_batch("vacuum")
@@ -973,17 +1085,9 @@ fn maintain_database_at(
         let history_count: i64 = compacted
             .query_row("select count(*) from history_entries", [], |row| row.get(0))
             .map_err(|error| error.to_string())?;
-        let expected_compacted_operation_count = if create_checkpoint {
-            1
-        } else {
-            expected_operation_count
-        };
-        let expected_compacted_history_count = 0;
-        if operation_count != expected_compacted_operation_count
-            || history_count != expected_compacted_history_count
-        {
+        if operation_count != expected_operation_count || history_count != expected_history_count {
             return Err(format!(
-                "Maintained database has unexpected log counts: {operation_count} operations, {history_count} history entries"
+                "Vacuumed database changed logical history: {operation_count} operations, {history_count} history entries"
             ));
         }
         drop(compacted);
@@ -1000,10 +1104,6 @@ fn maintain_database_at(
             .map_err(|error| format!("Could not release compaction lock: {error}"))?;
         drop(source);
 
-        // Keep the original encrypted DB only as a temporary rollback file.
-        // Both renames stay on one filesystem, so each step is atomic. The
-        // durable recovery backup is copied from the verified optimized DB
-        // after it has been installed.
         fs::rename(database_path, &rollback_path).map_err(|error| {
             format!(
                 "Could not stage original database for rollback at {}: {error}",
@@ -1023,9 +1123,6 @@ fn maintain_database_at(
             });
         }
 
-        // Verify the exact installed path, copy that optimized database to the
-        // durable backup path, and independently verify the backup. Any failure
-        // restores the original and leaves the rejected optimized file beside it.
         let installed_check = (|| {
             let installed = open_database_at(database_path, recovery_key)?;
             verify_database_state(&installed, &expected_state)?;
@@ -1035,53 +1132,34 @@ fn maintain_database_at(
             let history_count: i64 = installed
                 .query_row("select count(*) from history_entries", [], |row| row.get(0))
                 .map_err(|error| error.to_string())?;
-            if operation_count != expected_compacted_operation_count
-                || history_count != expected_compacted_history_count
+            if operation_count != expected_operation_count
+                || history_count != expected_history_count
             {
                 return Err(format!(
                     "Installed database has unexpected log counts: {operation_count} operations, {history_count} history entries"
                 ));
             }
-
-            copy_database_snapshot(&installed, &backup_path, recovery_key)?;
-            drop(installed);
-
-            let backup = open_database_at(&backup_path, recovery_key)?;
-            verify_database_state(&backup, &expected_state)?;
-            let backup_operation_count: i64 = backup
-                .query_row("select count(*) from operations", [], |row| row.get(0))
-                .map_err(|error| error.to_string())?;
-            let backup_history_count: i64 = backup
-                .query_row("select count(*) from history_entries", [], |row| row.get(0))
-                .map_err(|error| error.to_string())?;
-            if backup_operation_count != expected_compacted_operation_count
-                || backup_history_count != expected_compacted_history_count
-            {
-                return Err(format!(
-                    "Optimized backup has unexpected log counts: {backup_operation_count} operations, {backup_history_count} history entries"
-                ));
-            }
-            Ok(())
+            metadata_value(&installed, DATABASE_MAINTENANCE_LATEST_BACKUP)
         })();
-        if let Err(error) = installed_check {
-            let rejected_path = working_path.with_extension("rejected.sqlite3");
-            fs::rename(database_path, &rejected_path).map_err(|reject_error| {
+        let latest_backup = match installed_check {
+            Ok(path) => path,
+            Err(error) => {
+                let rejected_path = working_path.with_extension("rejected.sqlite3");
+                fs::rename(database_path, &rejected_path).map_err(|reject_error| {
                 format!(
                     "{error}; optimized database could not be set aside ({reject_error}). Original remains at {}",
                     rollback_path.display()
                 )
             })?;
-            fs::rename(&rollback_path, database_path).map_err(|restore_error| {
-                format!(
-                    "{error}; original database could not be restored from {}: {restore_error}",
-                    rollback_path.display()
-                )
-            })?;
-            if backup_path.exists() {
-                let _ = fs::remove_file(&backup_path);
+                fs::rename(&rollback_path, database_path).map_err(|restore_error| {
+                    format!(
+                        "{error}; original database could not be restored from {}: {restore_error}",
+                        rollback_path.display()
+                    )
+                })?;
+                return Err(format!("{error}; original database was restored"));
             }
-            return Err(format!("{error}; original database was restored"));
-        }
+        };
         let _ = fs::remove_file(&rollback_path);
 
         let after_bytes = fs::metadata(database_path)
@@ -1091,14 +1169,10 @@ fn maintain_database_at(
             before_bytes,
             after_bytes,
             reclaimed_bytes: before_bytes.saturating_sub(after_bytes),
-            operations_removed: checkpoint
-                .map(|stats| stats.operations_removed)
-                .unwrap_or(0),
-            history_entries_removed: checkpoint
-                .map(|stats| stats.history_entries_removed)
-                .unwrap_or(local_history_entries_removed),
-            backup_path: backup_path.display().to_string(),
-            checkpoint_created: create_checkpoint,
+            operations_removed: 0,
+            history_entries_removed: 0,
+            backup_path: latest_backup,
+            checkpoint_created: false,
         })
     })();
 
@@ -1206,13 +1280,6 @@ fn database_path_and_recovery_key(app: &tauri::AppHandle) -> Result<(PathBuf, St
     Ok((database_path, recovery_key))
 }
 
-fn emit_database_load_progress(app: &tauri::AppHandle, percent: u8, stage: &'static str) {
-    let _ = app.emit(
-        DATABASE_LOAD_PROGRESS_EVENT,
-        DatabaseLoadProgress { percent, stage },
-    );
-}
-
 fn open_database_at(database_path: &Path, recovery_key: &str) -> Result<Connection, String> {
     let connection = Connection::open(database_path).map_err(|error| error.to_string())?;
     connection
@@ -1307,6 +1374,14 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           updated_at_ms integer not null
         );
 
+        create table if not exists state_entities (
+          collection text not null,
+          entity_key text not null,
+          position integer not null,
+          value_json text not null,
+          primary key (collection, entity_key)
+        );
+
         -- Ids of operations a sync checkpoint permanently replaced. Kept so a
         -- peer that still holds the compacted history cannot resurrect it.
         create table if not exists sync_tombstones (
@@ -1323,6 +1398,7 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
         create index if not exists idx_plan_items_parent on plan_items(plan_id, parent_id, position);
         create index if not exists idx_operations_sequence on operations(sequence);
         create index if not exists idx_history_entries_undo on history_entries(undone, sequence, updated_at_ms);
+        create index if not exists idx_state_entities_order on state_entities(collection, position, entity_key);
       ",
         )
         .map_err(|error| error.to_string())?;
@@ -1356,6 +1432,7 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
     // the file on every open, before anything can write to it.
     sync::strip_crsqlite_artifacts(connection).map_err(sync::Error::into_string)?;
     sync::relay_client::ensure_relay_tables(connection).map_err(sync::Error::into_string)?;
+    migrate_state_entities(connection)?;
 
     Ok(())
 }
@@ -1371,12 +1448,16 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
         .map_err(|error| error.to_string())
 }
 
-fn read_goal_data(connection: &Connection) -> Result<Value, String> {
-    let Some(raw) = metadata_value(connection, GOAL_DATA)? else {
-        return Ok(json!({ "goals": [], "goalCompletions": [] }));
-    };
+fn legacy_metadata_object(connection: &Connection, key: &str) -> Result<Value, String> {
+    match metadata_value(connection, key)? {
+        Some(raw) => serde_json::from_str::<Value>(&raw)
+            .map_err(|error| format!("Could not migrate legacy {key}: {error}")),
+        None => Ok(json!({})),
+    }
+}
 
-    let parsed = serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| json!({}));
+fn legacy_goal_data(connection: &Connection) -> Result<Value, String> {
+    let parsed = legacy_metadata_object(connection, GOAL_DATA)?;
     Ok(json!({
         "goals": parsed.get("goals").and_then(Value::as_array).cloned().unwrap_or_default(),
         "goalCompletions": parsed
@@ -1406,12 +1487,8 @@ const LISTS_METRICS_KEYS: [&str; 5] = [
     "notes",
 ];
 
-fn read_lists_metrics_data(connection: &Connection) -> Result<Value, String> {
-    let parsed = match metadata_value(connection, LISTS_METRICS_DATA)? {
-        Some(raw) => serde_json::from_str::<Value>(&raw).unwrap_or_else(|_| json!({})),
-        None => json!({}),
-    };
-
+fn legacy_lists_metrics_data(connection: &Connection) -> Result<Value, String> {
+    let parsed = legacy_metadata_object(connection, LISTS_METRICS_DATA)?;
     let mut result = serde_json::Map::new();
     for key in LISTS_METRICS_KEYS {
         let value = parsed
@@ -1437,12 +1514,228 @@ fn lists_metrics_data_from_state(state: &Value) -> Value {
     Value::Object(result)
 }
 
+fn entity_key(collection: &str, value: &Value, index: usize, occurrence: usize) -> String {
+    if collection == "goalCompletions" {
+        return format!(
+            "{}\u{1f}{}\u{1f}{occurrence}",
+            value
+                .get("goalId")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+            value
+                .get("date")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        );
+    }
+    value
+        .get("id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("missing-id-{index}"))
+}
+
+fn replace_entity_collection(
+    connection: &Connection,
+    collection: &str,
+    values: &[Value],
+) -> Result<(), String> {
+    connection
+        .execute(
+            "delete from state_entities where collection = ?1",
+            params![collection],
+        )
+        .map_err(|error| error.to_string())?;
+    let mut insert = connection
+        .prepare(
+            "insert into state_entities (collection, entity_key, position, value_json)
+             values (?1, ?2, ?3, ?4)",
+        )
+        .map_err(|error| error.to_string())?;
+    let mut occurrences = HashMap::<String, usize>::new();
+    for (index, value) in values.iter().enumerate() {
+        let occurrence = if collection == "goalCompletions" {
+            let base = format!(
+                "{}\u{1f}{}",
+                value
+                    .get("goalId")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+                value
+                    .get("date")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default(),
+            );
+            let occurrence = occurrences.entry(base).or_default();
+            let current = *occurrence;
+            *occurrence += 1;
+            current
+        } else {
+            0
+        };
+        insert
+            .execute(params![
+                collection,
+                entity_key(collection, value, index, occurrence),
+                index as i64,
+                value.to_string(),
+            ])
+            .map_err(|error| format!("Could not store {collection} entity {index}: {error}"))?;
+    }
+    Ok(())
+}
+
+fn read_entity_collection(connection: &Connection, collection: &str) -> Result<Value, String> {
+    let mut statement = connection
+        .prepare(
+            "select value_json from state_entities
+             where collection = ?1 order by position, entity_key",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map(params![collection], |row| row.get::<_, String>(0))
+        .map_err(|error| error.to_string())?;
+    let mut values = Vec::new();
+    for row in rows {
+        let raw = row.map_err(|error| error.to_string())?;
+        values.push(
+            serde_json::from_str(&raw)
+                .map_err(|error| format!("Could not read {collection} entity: {error}"))?,
+        );
+    }
+    Ok(Value::Array(values))
+}
+
+fn replace_state_entities_from_state(connection: &Connection, state: &Value) -> Result<(), String> {
+    for collection in ENTITY_COLLECTIONS {
+        let values = state
+            .get(collection)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        replace_entity_collection(connection, collection, &values)?;
+    }
+    Ok(())
+}
+
+fn migrate_state_entities(connection: &Connection) -> Result<(), String> {
+    if metadata_value(connection, STATE_ENTITIES_SCHEMA_VERSION)?.as_deref()
+        == Some(STATE_ENTITIES_VERSION)
+    {
+        return Ok(());
+    }
+
+    let goal_data = legacy_goal_data(connection)?;
+    let lists_metrics_data = legacy_lists_metrics_data(connection)?;
+    let tx = connection
+        .unchecked_transaction()
+        .map_err(|error| error.to_string())?;
+    tx.execute("delete from state_entities", [])
+        .map_err(|error| error.to_string())?;
+    for collection in ENTITY_COLLECTIONS {
+        let source = if collection == "goals" || collection == "goalCompletions" {
+            &goal_data
+        } else {
+            &lists_metrics_data
+        };
+        let expected = source
+            .get(collection)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        replace_entity_collection(&tx, collection, &expected)?;
+        if read_entity_collection(&tx, collection)? != Value::Array(expected) {
+            return Err(format!("Migration verification failed for {collection}"));
+        }
+    }
+    set_metadata(&tx, STATE_ENTITIES_SCHEMA_VERSION, STATE_ENTITIES_VERSION)?;
+    tx.commit().map_err(|error| error.to_string())
+}
+
+fn read_goal_data(connection: &Connection) -> Result<Value, String> {
+    Ok(json!({
+        "goals": read_entity_collection(connection, "goals")?,
+        "goalCompletions": read_entity_collection(connection, "goalCompletions")?,
+    }))
+}
+
+fn read_lists_metrics_data(connection: &Connection) -> Result<Value, String> {
+    let mut result = serde_json::Map::new();
+    for key in LISTS_METRICS_KEYS {
+        result.insert(key.to_string(), read_entity_collection(connection, key)?);
+    }
+    Ok(Value::Object(result))
+}
+
 fn is_lists_metrics_operation(operation_type: &str) -> bool {
     // All Lists/Metrics/Notes operation types contain "list", "metric", or "note"; no existing
     // plan/template/goal operation type does.
     operation_type.contains("list")
         || operation_type.contains("metric")
         || operation_type.contains("note")
+}
+
+fn valid_entity_collection(collection: &str) -> bool {
+    ENTITY_COLLECTIONS.contains(&collection)
+}
+
+fn apply_entity_changes(connection: &Connection, changes: &Value) -> Result<(), String> {
+    if required_i64(changes, "version")? != 1 {
+        return Err("Unsupported entity change version".to_string());
+    }
+    let mut upsert = connection
+        .prepare(
+            "insert into state_entities (collection, entity_key, position, value_json)
+             values (?1, ?2, ?3, ?4)
+             on conflict(collection, entity_key) do update set
+               position = excluded.position,
+               value_json = excluded.value_json",
+        )
+        .map_err(|error| error.to_string())?;
+    for item in required_array(changes, "upserts")? {
+        let collection = required_string(item, "collection")?;
+        if !valid_entity_collection(collection) {
+            return Err(format!("Unsupported entity collection: {collection}"));
+        }
+        upsert
+            .execute(params![
+                collection,
+                required_string(item, "key")?,
+                required_i64(item, "position")?,
+                required_value(item, "value")?.to_string(),
+            ])
+            .map_err(|error| error.to_string())?;
+    }
+    drop(upsert);
+    let mut delete = connection
+        .prepare("delete from state_entities where collection = ?1 and entity_key = ?2")
+        .map_err(|error| error.to_string())?;
+    for item in required_array(changes, "deletes")? {
+        let collection = required_string(item, "collection")?;
+        if !valid_entity_collection(collection) {
+            return Err(format!("Unsupported entity collection: {collection}"));
+        }
+        delete
+            .execute(params![collection, required_string(item, "key")?])
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
+fn replace_entity_collections_from_object(
+    connection: &Connection,
+    object: &Value,
+    collections: &[&str],
+) -> Result<(), String> {
+    for collection in collections {
+        let values = object
+            .get(collection)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        replace_entity_collection(connection, collection, &values)?;
+    }
+    Ok(())
 }
 
 fn export_settings(
@@ -1673,6 +1966,7 @@ fn replace_domain_state(connection: &Connection, state: &Value) -> Result<(), St
         LISTS_METRICS_DATA,
         &lists_metrics_data_from_state(state).to_string(),
     )?;
+    replace_state_entities_from_state(connection, state)?;
 
     if let Some(active_plan_date) = optional_string(state, "activePlanDate")? {
         set_metadata(connection, "active_plan_date", &active_plan_date)?;
@@ -1717,8 +2011,58 @@ fn persist_operation_to_database(
     if let Some(undo_operation) = undo_operation {
         upsert_history_entry(&tx, operation, &undo_operation)?;
     }
+    prune_history_entries(&tx, current_timestamp_ms())?;
 
-    tx.commit().map_err(|error| error.to_string())
+    tx.commit().map_err(|error| error.to_string())?;
+    if metadata_value(connection, SYNC_LOG_DIRTY_SINCE_MS)?.is_none() {
+        set_metadata(
+            connection,
+            SYNC_LOG_DIRTY_SINCE_MS,
+            &current_timestamp_ms().to_string(),
+        )?;
+    }
+    // The user edit is already durable. Housekeeping must never turn that
+    // successful write into a retry that could reinsert a covered operation.
+    let _ = maybe_checkpoint_operation_log(connection);
+    Ok(())
+}
+
+fn operation_log_stats(connection: &Connection) -> Result<(i64, i64), String> {
+    connection
+        .query_row(
+            "select count(*), coalesce(sum(length(payload_json)), 0)
+             from operations where type != 'replace_full_state'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn maybe_checkpoint_operation_log(connection: &Connection) -> Result<bool, String> {
+    if !database_checkpoint_coordinator(connection)? {
+        return Ok(false);
+    }
+    let (operation_count, payload_bytes) = operation_log_stats(connection)?;
+    if operation_count == 0 {
+        delete_metadata(connection, SYNC_LOG_DIRTY_SINCE_MS)?;
+        return Ok(false);
+    }
+    let now_ms = current_timestamp_ms();
+    let dirty_since = metadata_value(connection, SYNC_LOG_DIRTY_SINCE_MS)?
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(now_ms);
+    let due = operation_count >= SYNC_CHECKPOINT_OPERATION_LIMIT
+        || payload_bytes >= SYNC_CHECKPOINT_PAYLOAD_BYTES
+        || now_ms.saturating_sub(dirty_since) >= SYNC_CHECKPOINT_MAX_AGE_MS;
+    if !due {
+        return Ok(false);
+    }
+
+    sync::checkpoint_operation_log_preserving_history(connection)
+        .map_err(sync::Error::into_string)?;
+    sync::relay_client::prune_obsolete_relay_rows(connection).map_err(sync::Error::into_string)?;
+    delete_metadata(connection, SYNC_LOG_DIRTY_SINCE_MS)?;
+    Ok(true)
 }
 
 fn undo_last_operation_in_database(connection: &mut Connection) -> Result<Option<Value>, String> {
@@ -1926,7 +2270,7 @@ fn list_recovery_entries_from_database(connection: &Connection) -> Result<Value,
         .prepare(
             "
           select h.id, h.operation_id, h.sequence, h.undone, h.created_at_ms,
-                 h.undo_operation_json, o.type, o.timestamp
+                 h.undo_operation_json, h.redo_operation_json, o.type, o.timestamp
           from history_entries h
           left join operations o on o.id = h.operation_id
           order by h.created_at_ms desc, h.sequence desc
@@ -1943,17 +2287,43 @@ fn list_recovery_entries_from_database(connection: &Connection) -> Result<Value,
                 row.get::<_, i64>(3)?,
                 row.get::<_, i64>(4)?,
                 row.get::<_, String>(5)?,
-                row.get::<_, Option<String>>(6)?,
+                row.get::<_, String>(6)?,
                 row.get::<_, Option<String>>(7)?,
+                row.get::<_, Option<String>>(8)?,
             ))
         })
         .map_err(|error| error.to_string())?;
 
     let mut entries = Vec::new();
     for row in rows {
-        let (id, operation_id, sequence, undone, created_at_ms, undo_json, op_type, timestamp) =
-            row.map_err(|error| error.to_string())?;
+        let (
+            id,
+            operation_id,
+            sequence,
+            undone,
+            created_at_ms,
+            undo_json,
+            redo_json,
+            mut op_type,
+            mut timestamp,
+        ) = row.map_err(|error| error.to_string())?;
         let undo_operation = serde_json::from_str::<Value>(&undo_json).unwrap_or(Value::Null);
+        if op_type.is_none() || timestamp.is_none() {
+            if let Ok(redo_operation) = serde_json::from_str::<Value>(&redo_json) {
+                op_type = op_type.or_else(|| {
+                    redo_operation
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                });
+                timestamp = timestamp.or_else(|| {
+                    redo_operation
+                        .get("timestamp")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                });
+            }
+        }
         let (restored_item_count, preview) = summarize_undo_operation(&undo_operation);
 
         entries.push(json!({
@@ -2370,8 +2740,9 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
                 format!("history operation ({ty}) failed: {error}")
             })
         }
-        // Lists/Metrics state lives in the LISTS_METRICS_DATA blob below, so these
-        // operations need no per-row table mutation.
+        "apply_entity_changes" => Ok(()),
+        // V4 entity deltas below materialize these operation types. Legacy V3
+        // operations are still materialized from their embedded snapshots.
         "replace_lists_metrics_data" => Ok(()),
         other if is_lists_metrics_operation(other) => Ok(()),
         other => Err(format!("Unsupported operation type: {other}")),
@@ -2380,9 +2751,14 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
     result?;
     if let Some(goal_data) = payload.get("goalData") {
         set_metadata(tx, GOAL_DATA, &goal_data.to_string())?;
+        replace_entity_collections_from_object(tx, goal_data, &["goals", "goalCompletions"])?;
     }
     if let Some(lists_metrics_data) = payload.get("listsMetricsData") {
         set_metadata(tx, LISTS_METRICS_DATA, &lists_metrics_data.to_string())?;
+        replace_entity_collections_from_object(tx, lists_metrics_data, &LISTS_METRICS_KEYS)?;
+    }
+    if let Some(changes) = payload.get("entityChanges") {
+        apply_entity_changes(tx, changes)?;
     }
     Ok(())
 }
@@ -2418,6 +2794,68 @@ fn is_history_operation(operation_type: &str) -> bool {
     operation_type == "history_undo" || operation_type == "history_redo"
 }
 
+fn current_entity(
+    connection: &Connection,
+    collection: &str,
+    key: &str,
+) -> Result<Option<(i64, Value)>, String> {
+    connection
+        .query_row(
+            "select position, value_json from state_entities
+             where collection = ?1 and entity_key = ?2",
+            params![collection, key],
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+        )
+        .optional()
+        .map_err(|error| error.to_string())?
+        .map(|(position, raw)| {
+            serde_json::from_str(&raw)
+                .map(|value| (position, value))
+                .map_err(|error| error.to_string())
+        })
+        .transpose()
+}
+
+fn inverse_entity_changes(connection: &Connection, changes: &Value) -> Result<Value, String> {
+    if required_i64(changes, "version")? != 1 {
+        return Err("Unsupported entity change version".to_string());
+    }
+    let mut upserts = Vec::new();
+    let mut deletes = Vec::new();
+    for item in required_array(changes, "upserts")? {
+        let collection = required_string(item, "collection")?;
+        let key = required_string(item, "key")?;
+        if !valid_entity_collection(collection) {
+            return Err(format!("Unsupported entity collection: {collection}"));
+        }
+        match current_entity(connection, collection, key)? {
+            Some((position, value)) => upserts.push(json!({
+                "collection": collection,
+                "key": key,
+                "position": position,
+                "value": value,
+            })),
+            None => deletes.push(json!({ "collection": collection, "key": key })),
+        }
+    }
+    for item in required_array(changes, "deletes")? {
+        let collection = required_string(item, "collection")?;
+        let key = required_string(item, "key")?;
+        if !valid_entity_collection(collection) {
+            return Err(format!("Unsupported entity collection: {collection}"));
+        }
+        if let Some((position, value)) = current_entity(connection, collection, key)? {
+            upserts.push(json!({
+                "collection": collection,
+                "key": key,
+                "position": position,
+                "value": value,
+            }));
+        }
+    }
+    Ok(json!({ "version": 1, "upserts": upserts, "deletes": deletes }))
+}
+
 fn build_undo_operation(
     connection: &Connection,
     operation: &Value,
@@ -2425,8 +2863,15 @@ fn build_undo_operation(
     let domain_undo = build_domain_undo_operation(connection, operation)?;
     let payload = required_value(operation, "payload")?;
 
-    // Capture pre-apply snapshots of any embedded blob so undo restores them.
+    // V4 operations capture only the changed entities. Legacy V3 operations
+    // retain their full-snapshot inverse so existing logs remain undoable.
     let mut snapshot_undos: Vec<Value> = Vec::new();
+    if let Some(changes) = payload.get("entityChanges") {
+        snapshot_undos.push(storage_operation(
+            "apply_entity_changes",
+            json!({ "entityChanges": inverse_entity_changes(connection, changes)? }),
+        ));
+    }
     if payload.get("goalData").is_some() {
         snapshot_undos.push(storage_operation(
             "replace_goal_data",
@@ -3782,6 +4227,70 @@ fn upsert_history_entry(
         .map_err(|error| error.to_string())?;
 
     Ok(())
+}
+
+fn destructive_history_operation(operation: &Value) -> bool {
+    let operation_type = operation
+        .get("type")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    operation_type.starts_with("delete_")
+        || operation_type.starts_with("backspace_")
+        || operation_type.starts_with("paste_")
+        || matches!(operation_type, "generate_plan" | "generate_list")
+}
+
+fn prune_history_entries(connection: &Connection, now_ms: i64) -> Result<i64, String> {
+    let mut statement = connection
+        .prepare(
+            "select id, undo_operation_json, redo_operation_json, created_at_ms
+             from history_entries
+             order by updated_at_ms desc, sequence desc, id desc",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
+    drop(statement);
+
+    let mut extension_bytes = 0usize;
+    let mut remove = Vec::new();
+    for (index, (id, undo_json, redo_json, created_at_ms)) in rows.into_iter().enumerate() {
+        if index < HISTORY_RECENT_LIMIT {
+            continue;
+        }
+        let operation = serde_json::from_str::<Value>(&redo_json).unwrap_or(Value::Null);
+        let bytes = undo_json.len().saturating_add(redo_json.len());
+        let within_retention =
+            now_ms.saturating_sub(created_at_ms) <= HISTORY_DESTRUCTIVE_RETENTION_MS;
+        let fits_extension =
+            extension_bytes.saturating_add(bytes) <= HISTORY_RECOVERY_EXTENSION_BYTES;
+        if destructive_history_operation(&operation) && within_retention && fits_extension {
+            extension_bytes = extension_bytes.saturating_add(bytes);
+        } else {
+            remove.push(id);
+        }
+    }
+
+    let mut deleted = 0i64;
+    let mut delete = connection
+        .prepare("delete from history_entries where id = ?1")
+        .map_err(|error| error.to_string())?;
+    for id in remove {
+        deleted += delete
+            .execute(params![id])
+            .map_err(|error| error.to_string())? as i64;
+    }
+    Ok(deleted)
 }
 
 fn append_history_action_operation(
@@ -7417,6 +7926,7 @@ async fn sync_apply_sealed(
             return Err("Sync is not enabled on this device.".to_string());
         }
         sync::merge_and_rematerialize(&connection, ops).map_err(sync::Error::into_string)?;
+        maybe_checkpoint_operation_log(&connection)?;
         read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
     })
     .await
@@ -7444,7 +7954,11 @@ async fn sync_relay_once(
             .ok_or_else(|| "This device's sync key is missing.".to_string())?;
         let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
             .map_err(sync::Error::into_string)?;
-        sync::relay_client::sync_once(&connection, &relay_url, &key, true)
+        let checkpoint_coordinator = database_checkpoint_coordinator(&connection)?;
+        if checkpoint_coordinator {
+            maybe_checkpoint_operation_log(&connection)?;
+        }
+        sync::relay_client::sync_once(&connection, &relay_url, &key, checkpoint_coordinator)
             .map_err(sync::Error::into_string)
     })
     .await
@@ -7495,6 +8009,8 @@ async fn sync_p2p_sync(app: tauri::AppHandle, address: String) -> Result<Option<
     tauri::async_runtime::spawn_blocking(move || {
         let key = {
             let _guard = database_access_guard()?;
+            let connection = open_database(&app)?;
+            maybe_checkpoint_operation_log(&connection)?;
             stored_sync_key(&app)?
         }
         .ok_or_else(|| "Sync is not enabled on this device.".to_string())?;
@@ -7504,6 +8020,7 @@ async fn sync_p2p_sync(app: tauri::AppHandle, address: String) -> Result<Option<
 
         let _guard = database_access_guard()?;
         let connection = open_database(&app)?;
+        maybe_checkpoint_operation_log(&connection)?;
         read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
     })
     .await
@@ -7569,7 +8086,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_app_state,
-            load_app_startup,
             initialize_app_state,
             persist_operation,
             undo_last_operation,
@@ -7579,7 +8095,7 @@ pub fn run() {
             inspect_database,
             compact_database,
             get_database_maintenance_status,
-            run_weekly_database_maintenance,
+            run_database_maintenance_if_needed,
             complete_database_maintenance_startup,
             restore_recovery_entry,
             get_recovery_key_status,
@@ -7766,7 +8282,403 @@ mod tests {
     }
 
     #[test]
-    fn compaction_atomically_replaces_database_with_verified_checkpoint() {
+    fn legacy_blob_database_migrates_every_user_field_losslessly_and_idempotently() {
+        let database = TestDatabase::new("legacy-entity-migration");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Migration day");
+        state["activePlanDate"] = json!("2026-08-12");
+        state["goals"] = json!([{
+            "id": "goal-migrate",
+            "name": "Read 🦀",
+            "nameHtml": "<strong>Read 🦀</strong>",
+            "cadenceDays": 3,
+            "matchTerms": ["book", "paper"],
+            "matchTermsHtml": "book, paper",
+            "hue": 217,
+            "lightness": 61,
+            "activityPeriods": [{ "startDate": "2026-01-01", "endDate": null }],
+            "createdAt": "2026-01-01T00:00:00Z",
+            "updatedAt": "2026-08-12T00:00:00Z"
+        }]);
+        state["goalCompletions"] = json!([
+            { "goalId": "goal-migrate", "date": "2026-08-11", "itemIds": ["a"], "matchedTerms": ["book"], "computedAt": "one" },
+            { "goalId": "goal-migrate", "date": "2026-08-11", "itemIds": ["b"], "matchedTerms": ["paper"], "computedAt": "two" }
+        ]);
+        state["listTemplates"] = json!([{
+            "id": "list-template-migrate", "name": "Groceries", "maxExpectedWords": 42,
+            "items": [{ "id": "lt-item", "text": "Tea", "html": "<em>Tea</em>", "probability": 73,
+                "children": [{ "id": "lt-child", "text": "Green", "html": "Green", "probability": 100, "children": [] }] }],
+            "createdAt": "created", "updatedAt": "updated"
+        }]);
+        state["lists"] = json!([{
+            "id": "list-migrate", "date": "2026-08-12", "listTemplateId": "list-template-migrate", "createdAt": "created",
+            "items": [{ "id": "list-item", "text": "Tea", "html": "Tea", "done": true,
+                "startMinutes": 10, "endMinutes": 20, "children": [] }]
+        }]);
+        state["metrics"] = json!([{
+            "id": "metric-migrate", "name": "Mood", "createdAt": "created", "updatedAt": "updated",
+            "questions": [{ "id": "question-migrate", "prompt": "Good?", "html": "<b>Good?</b>", "type": "boolean" }]
+        }]);
+        state["metricEntries"] = json!([{
+            "id": "metric-entry-migrate", "metricId": "metric-migrate", "date": "2026-08-12",
+            "answers": [{ "questionId": "question-migrate", "value": "y" }], "createdAt": "created", "updatedAt": "updated"
+        }]);
+        state["notes"] = json!([{
+            "id": "note-migrate", "title": "Exact note", "createdAt": "created", "updatedAt": "updated",
+            "items": [{ "id": "note-item", "text": "Nested", "html": "<u>Nested</u>", "done": false,
+                "startMinutes": null, "endMinutes": null, "kind": "heading",
+                "children": [{ "id": "note-child", "text": "Child", "html": "Child", "done": true,
+                    "startMinutes": null, "endMinutes": null, "kind": "checklist", "children": [] }] }]
+        }]);
+
+        let (expected_state, expected_operation, expected_history, legacy_goal, legacy_other) = {
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            replace_app_state(&mut connection, &state).unwrap();
+            set_metadata(&connection, "sync_enabled", "true").unwrap();
+            set_metadata(&connection, SYNC_PAIRING_CODE, "secret-preserved").unwrap();
+            set_metadata(
+                &connection,
+                SYNC_RELAY_URL,
+                "https://relay.example.com/room",
+            )
+            .unwrap();
+            set_metadata(&connection, EXPORT_DIRECTORY, "/tmp/exact-export").unwrap();
+            persist_operation_to_database(
+                &mut connection,
+                &json!({
+                    "id": "migration-history-op", "deviceId": "device_test", "sequence": 2,
+                    "type": "patch_plan_daily_reminder", "timestamp": "2026-08-12T12:00:00Z",
+                    "payload": { "planId": "plan_today", "dailyReminder": "Preserved reminder" }
+                }),
+            )
+            .unwrap();
+            let expected_state = read_app_state_from_database(&connection).unwrap().unwrap();
+            let expected_operation: String = connection
+                .query_row(
+                    "select payload_json from operations where id = 'migration-history-op'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            let expected_history: (String, String) = connection
+                .query_row("select undo_operation_json, redo_operation_json from history_entries where operation_id = 'migration-history-op'", [], |row| Ok((row.get(0)?, row.get(1)?)))
+                .unwrap();
+            let legacy_goal = metadata_value(&connection, GOAL_DATA).unwrap().unwrap();
+            let legacy_other = metadata_value(&connection, LISTS_METRICS_DATA)
+                .unwrap()
+                .unwrap();
+            delete_metadata(&connection, STATE_ENTITIES_SCHEMA_VERSION).unwrap();
+            connection
+                .execute("delete from state_entities", [])
+                .unwrap();
+            (
+                expected_state,
+                expected_operation,
+                expected_history,
+                legacy_goal,
+                legacy_other,
+            )
+        };
+
+        for _ in 0..2 {
+            let connection = open_database_at(&database.path, &recovery_key).unwrap();
+            assert_eq!(
+                read_app_state_from_database(&connection).unwrap().unwrap(),
+                expected_state
+            );
+            assert_eq!(
+                metadata_value(&connection, GOAL_DATA).unwrap().as_deref(),
+                Some(legacy_goal.as_str())
+            );
+            assert_eq!(
+                metadata_value(&connection, LISTS_METRICS_DATA)
+                    .unwrap()
+                    .as_deref(),
+                Some(legacy_other.as_str())
+            );
+            assert_eq!(
+                metadata_value(&connection, SYNC_PAIRING_CODE)
+                    .unwrap()
+                    .as_deref(),
+                Some("secret-preserved")
+            );
+            assert_eq!(
+                metadata_value(&connection, SYNC_RELAY_URL)
+                    .unwrap()
+                    .as_deref(),
+                Some("https://relay.example.com/room")
+            );
+            assert_eq!(
+                metadata_value(&connection, EXPORT_DIRECTORY)
+                    .unwrap()
+                    .as_deref(),
+                Some("/tmp/exact-export")
+            );
+            let actual_operation: String = connection
+                .query_row(
+                    "select payload_json from operations where id = 'migration-history-op'",
+                    [],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            let actual_history: (String, String) = connection.query_row("select undo_operation_json, redo_operation_json from history_entries where operation_id = 'migration-history-op'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
+            assert_eq!(actual_operation, expected_operation);
+            assert_eq!(actual_history, expected_history);
+        }
+    }
+
+    #[test]
+    fn malformed_legacy_blob_never_marks_or_partially_commits_migration() {
+        let database = TestDatabase::new("legacy-migration-rollback");
+        let recovery_key = generate_recovery_key();
+        {
+            let connection = open_database_at(&database.path, &recovery_key).unwrap();
+            delete_metadata(&connection, STATE_ENTITIES_SCHEMA_VERSION).unwrap();
+            connection
+                .execute("delete from state_entities", [])
+                .unwrap();
+            set_metadata(&connection, GOAL_DATA, "{not-json").unwrap();
+        }
+        assert!(open_database_at(&database.path, &recovery_key).is_err());
+
+        let raw = Connection::open(&database.path).unwrap();
+        raw.pragma_update(None, "key", &recovery_key).unwrap();
+        let entity_count: i64 = raw
+            .query_row("select count(*) from state_entities", [], |row| row.get(0))
+            .unwrap();
+        let marker: Option<String> = raw
+            .query_row(
+                "select value from metadata where key = ?1",
+                params![STATE_ENTITIES_SCHEMA_VERSION],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert_eq!(entity_count, 0);
+        assert_eq!(marker, None);
+    }
+
+    #[test]
+    #[ignore = "set BALANCE_MIGRATION_FIXTURE to validate an installed database copy"]
+    fn installed_database_copy_migrates_without_any_user_visible_change() {
+        let source_path = PathBuf::from(
+            std::env::var("BALANCE_MIGRATION_FIXTURE")
+                .expect("BALANCE_MIGRATION_FIXTURE must point to an existing Balance database"),
+        );
+        #[cfg(target_os = "macos")]
+        let recovery_key = {
+            let output = Command::new("security")
+                .args([
+                    "find-generic-password",
+                    "-s",
+                    KEYCHAIN_SERVICE,
+                    "-a",
+                    KEYCHAIN_ACCOUNT,
+                    "-w",
+                ])
+                .output()
+                .unwrap();
+            assert!(output.status.success());
+            String::from_utf8(output.stdout).unwrap().trim().to_string()
+        };
+        #[cfg(not(target_os = "macos"))]
+        let recovery_key = database_recovery_key(&source_path).unwrap();
+        let database = TestDatabase::new("installed-migration-copy");
+        fs::copy(&source_path, &database.path).unwrap();
+
+        let raw = Connection::open(&database.path).unwrap();
+        raw.pragma_update(None, "key", &recovery_key).unwrap();
+        raw.query_row("pragma cipher_version", [], |row| row.get::<_, String>(0))
+            .unwrap();
+        let goal_data = legacy_goal_data(&raw).unwrap();
+        let other_data = legacy_lists_metrics_data(&raw).unwrap();
+        let expected = json!({
+            "schemaVersion": 1,
+            "deviceId": metadata_value(&raw, "device_id").unwrap().unwrap(),
+            "localSequence": metadata_value(&raw, "local_sequence").unwrap().and_then(|value| value.parse::<i64>().ok()).unwrap_or(0),
+            "historyRevision": 0,
+            "activePlanDate": metadata_value(&raw, "active_plan_date").unwrap().unwrap_or_default(),
+            "templates": read_templates(&raw).unwrap(),
+            "plans": read_plans(&raw).unwrap(),
+            "listTemplates": other_data["listTemplates"].clone(),
+            "lists": other_data["lists"].clone(),
+            "metrics": other_data["metrics"].clone(),
+            "metricEntries": other_data["metricEntries"].clone(),
+            "notes": other_data["notes"].clone(),
+            "goals": goal_data["goals"].clone(),
+            "goalCompletions": goal_data["goalCompletions"].clone(),
+            "operations": [],
+        });
+        let operation_stats: (i64, i64) = raw
+            .query_row(
+                "select count(*), coalesce(sum(length(payload_json)), 0) from operations",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let history_stats: (i64, i64) = raw.query_row(
+            "select count(*), coalesce(sum(length(undo_operation_json) + length(redo_operation_json)), 0) from history_entries",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+        let metadata_before = raw
+            .prepare("select key, value from metadata order by key")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        drop(raw);
+
+        let migrated = open_database_at(&database.path, &recovery_key).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&migrated).unwrap().unwrap(),
+            expected
+        );
+        let operation_stats_after: (i64, i64) = migrated
+            .query_row(
+                "select count(*), coalesce(sum(length(payload_json)), 0) from operations",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let history_stats_after: (i64, i64) = migrated.query_row(
+            "select count(*), coalesce(sum(length(undo_operation_json) + length(redo_operation_json)), 0) from history_entries",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        ).unwrap();
+        assert_eq!(operation_stats_after, operation_stats);
+        assert_eq!(history_stats_after, history_stats);
+        for (key, value) in metadata_before {
+            assert_eq!(
+                metadata_value(&migrated, &key).unwrap(),
+                Some(value),
+                "metadata changed for {key}"
+            );
+        }
+    }
+
+    #[test]
+    fn entity_delta_is_small_replayable_and_round_trips_undo_redo() {
+        let database = TestDatabase::new("entity-delta-undo");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Entity delta");
+        let untouched = "UNTOUCHED-SENTINEL-".repeat(20_000);
+        state["notes"] = json!([
+            { "id": "note-edited", "title": "Before", "items": [], "createdAt": "c", "updatedAt": "u" },
+            { "id": "note-untouched", "title": untouched, "items": [], "createdAt": "c", "updatedAt": "u" }
+        ]);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+        let operation = json!({
+            "id": "entity-delta-op", "deviceId": "device_test", "sequence": 2,
+            "type": "rename_note", "timestamp": "2026-08-12T12:00:00Z",
+            "payload": {
+                "noteId": "note-edited", "title": "After",
+                "entityChanges": {
+                    "version": 1,
+                    "upserts": [{
+                        "collection": "notes", "key": "note-edited", "position": 0,
+                        "value": { "id": "note-edited", "title": "After", "items": [], "createdAt": "c", "updatedAt": "v" }
+                    }],
+                    "deletes": []
+                }
+            }
+        });
+        persist_operation_to_database(&mut connection, &operation).unwrap();
+        let payload: String = connection
+            .query_row(
+                "select payload_json from operations where id = 'entity-delta-op'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(!payload.contains("listsMetricsData"));
+        assert!(!payload.contains("UNTOUCHED-SENTINEL"));
+        assert!(payload.len() < 1_000);
+        assert_eq!(
+            read_app_state_from_database(&connection).unwrap().unwrap()["notes"][0]["title"],
+            "After"
+        );
+
+        let history: (String, String) = connection
+            .query_row("select undo_operation_json, redo_operation_json from history_entries where operation_id = 'entity-delta-op'", [], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap();
+        assert!(!history.0.contains("UNTOUCHED-SENTINEL"));
+        assert!(!history.1.contains("UNTOUCHED-SENTINEL"));
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(undone["notes"][0]["title"], "Before");
+        assert_eq!(undone["notes"][1]["title"], untouched);
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(redone["notes"][0]["title"], "After");
+        assert_eq!(redone["notes"][1]["title"], untouched);
+    }
+
+    #[test]
+    fn history_keeps_two_hundred_recent_actions_and_extended_destructive_recovery() {
+        let database = TestDatabase::new("bounded-history");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Bound history")).unwrap();
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "old-destructive", "deviceId": "device_test", "sequence": 2,
+                "type": "delete_plan_item", "timestamp": "2026-08-12T00:00:00Z",
+                "payload": { "planId": "plan_today", "itemId": "plan_item_wake" }
+            }),
+        )
+        .unwrap();
+        for sequence in 3..=207 {
+            persist_operation_to_database(
+                &mut connection,
+                &json!({
+                    "id": format!("recent-{sequence}"), "deviceId": "device_test", "sequence": sequence,
+                    "type": "set_active_plan_date", "timestamp": "2026-08-12T00:01:00Z",
+                    "payload": { "date": format!("2026-08-{:02}", sequence % 28 + 1) }
+                }),
+            )
+            .unwrap();
+        }
+        let count: i64 = connection
+            .query_row("select count(*) from history_entries", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, HISTORY_RECENT_LIMIT as i64 + 1);
+        assert_eq!(
+            connection
+                .query_row(
+                    "select count(*) from history_entries where operation_id = 'old-destructive'",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            1
+        );
+
+        connection
+            .execute(
+                "update history_entries set created_at_ms = ?1 where operation_id = 'old-destructive'",
+                params![current_timestamp_ms() - HISTORY_DESTRUCTIVE_RETENTION_MS - 1],
+            )
+            .unwrap();
+        prune_history_entries(&connection, current_timestamp_ms()).unwrap();
+        assert_eq!(
+            connection
+                .query_row("select count(*) from history_entries", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            HISTORY_RECENT_LIMIT as i64
+        );
+    }
+
+    #[test]
+    fn vacuum_atomically_replaces_database_without_changing_log_or_history() {
         let database = TestDatabase::new("compact-atomic");
         let recovery_key = generate_recovery_key();
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
@@ -7806,34 +8718,21 @@ mod tests {
         let before_history: i64 = connection
             .query_row("select count(*) from history_entries", [], |row| row.get(0))
             .unwrap();
+        set_metadata(&connection, "vacuum-test-padding", &"x".repeat(2_000_000)).unwrap();
+        delete_metadata(&connection, "vacuum-test-padding").unwrap();
         drop(connection);
 
         let result = compact_database_at(&database.path, &recovery_key).unwrap();
-        assert!(result.checkpoint_created);
-        assert_eq!(result.operations_removed, before_operations - 1);
-        assert_eq!(result.history_entries_removed, before_history);
+        assert!(!result.checkpoint_created);
+        assert_eq!(result.operations_removed, 0);
+        assert_eq!(result.history_entries_removed, 0);
+        assert_eq!(result.backup_path, None);
         assert!(result.after_bytes < result.before_bytes);
-        assert!(
-            result.reclaimed_bytes > 1_000_000,
-            "large repeated snapshots should be physically reclaimed"
-        );
+        assert!(result.reclaimed_bytes > 1_000_000);
         assert_eq!(
             result.reclaimed_bytes,
             result.before_bytes - result.after_bytes
         );
-        assert!(Path::new(&result.backup_path).exists());
-        assert!(
-            Path::new(&result.backup_path)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.starts_with("balance-post-compact-")),
-            "maintenance backup must be identified as the post-compaction copy"
-        );
-        assert!(
-            fs::metadata(&result.backup_path).unwrap().len() < result.before_bytes,
-            "maintenance backup should retain the optimized physical size"
-        );
-
         let compacted = open_database_at(&database.path, &recovery_key).unwrap();
         verify_database_state(&compacted, &before_state).unwrap();
         assert_eq!(
@@ -7841,14 +8740,14 @@ mod tests {
                 .query_row("select count(*) from operations", [], |row| row
                     .get::<_, i64>(0))
                 .unwrap(),
-            1
+            before_operations
         );
         assert_eq!(
             compacted
                 .query_row("select count(*) from history_entries", [], |row| row
                     .get::<_, i64>(0))
                 .unwrap(),
-            0
+            before_history
         );
         assert_eq!(
             metadata_value(&compacted, EXPORT_DIRECTORY)
@@ -7863,29 +8762,10 @@ mod tests {
             Some("true")
         );
         drop(compacted);
-
-        let backup = open_database_at(Path::new(&result.backup_path), &recovery_key).unwrap();
-        verify_database_state(&backup, &before_state).unwrap();
-        assert_eq!(
-            backup
-                .query_row("select count(*) from operations", [], |row| row
-                    .get::<_, i64>(0))
-                .unwrap(),
-            1
-        );
-        assert_eq!(
-            backup
-                .query_row("select count(*) from history_entries", [], |row| row
-                    .get::<_, i64>(0))
-                .unwrap(),
-            0
-        );
-        drop(backup);
-        fs::remove_file(&result.backup_path).unwrap();
     }
 
     #[test]
-    fn synced_database_compaction_frontiers_the_log_and_keeps_future_writes_syncable() {
+    fn operation_threshold_checkpoints_log_and_preserves_undo_history() {
         let database = TestDatabase::new("compact-synced");
         let recovery_key = generate_recovery_key();
         let pairing_code = sync::crypto::SyncKey::generate().to_pairing_code();
@@ -7914,9 +8794,22 @@ mod tests {
             state
         };
 
-        let result = compact_database_at(&database.path, &recovery_key).unwrap();
-        assert!(result.checkpoint_created);
         let mut compacted = open_database_at(&database.path, &recovery_key).unwrap();
+        for sequence in std::iter::once(1).chain(3..=1_000) {
+            upsert_operation(
+                &compacted,
+                &json!({
+                    "id": format!("op_threshold_{sequence}"),
+                    "deviceId": "device_test",
+                    "sequence": sequence,
+                    "type": "set_active_plan_date",
+                    "timestamp": format!("2026-07-29T12:{:02}:00Z", sequence % 60),
+                    "payload": { "date": "2026-07-30" }
+                }),
+            )
+            .unwrap();
+        }
+        assert!(maybe_checkpoint_operation_log(&compacted).unwrap());
         assert!(sync::is_sync_enabled(&compacted).unwrap());
         assert_eq!(
             sync::read_pairing_code(&compacted).unwrap().as_deref(),
@@ -7939,9 +8832,17 @@ mod tests {
         assert_eq!(checkpoint_ids.len(), 1);
         let checkpoint = sync::ops_by_id(&compacted, &checkpoint_ids).unwrap()[0].clone();
         let payload: Value = serde_json::from_str(&checkpoint.payload_json).unwrap();
-        assert_eq!(payload["frontiers"]["device_test"], 2);
+        assert_eq!(payload["frontiers"]["device_test"], 1_000);
         assert_eq!(payload["legacyReplaces"], json!([]));
         assert!(read_sync_tombstones(&compacted).is_empty());
+        assert_eq!(
+            compacted
+                .query_row("select count(*) from history_entries", [], |row| row
+                    .get::<_, i64>(0))
+                .unwrap(),
+            1,
+            "checkpointing is independent from undo retention"
+        );
         assert_eq!(
             sync::merge_ops(&compacted, std::slice::from_ref(&checkpoint)).unwrap(),
             0,
@@ -7954,7 +8855,7 @@ mod tests {
             &json!({
                 "id": "op_synced_after_compact",
                 "deviceId": "device_test",
-                "sequence": 3,
+                "sequence": 1001,
                 "type": "set_active_plan_date",
                 "timestamp": "2026-07-29T11:01:00Z",
                 "payload": { "date": "2026-07-31" }
@@ -7986,15 +8887,11 @@ mod tests {
             ops.iter().map(|op| op.id.as_str()).collect::<Vec<_>>(),
             ["op_synced_after_compact"]
         );
-
         drop(compacted);
-        fs::remove_file(&result.backup_path).unwrap();
     }
 
     #[test]
-    fn compaction_failure_leaves_synced_database_byte_for_byte_unchanged() {
-        // Its own directory: this test deliberately sabotages the sibling
-        // `backups/` path, which must not disturb any other test.
+    fn daily_backup_failure_leaves_synced_database_byte_for_byte_unchanged() {
         let directory = std::env::temp_dir().join(format!(
             "balance-compact-failure-{}-{}",
             std::process::id(),
@@ -8029,15 +8926,18 @@ mod tests {
             read_app_state_from_database(&connection).unwrap().unwrap()
         };
 
-        // Block compaction by occupying the path it needs for the optimized
-        // backup with a plain file. Any failure must leave the live database
-        // exactly as it was — that invariant is the point of this test.
         fs::write(database.directory.join("backups"), b"not a directory").unwrap();
 
-        let error = compact_database_at(&database.path, &recovery_key).unwrap_err();
+        let connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let error = create_daily_database_backup_if_due(
+            &connection,
+            &database.path,
+            &recovery_key,
+            2_000_000_000_000,
+        )
+        .unwrap_err();
         assert!(!error.is_empty());
         assert_eq!(fs::read(&database.path).unwrap(), bytes_before);
-        let connection = open_database_at(&database.path, &recovery_key).unwrap();
         assert_eq!(
             read_app_state_from_database(&connection).unwrap().unwrap(),
             state_before
@@ -8052,44 +8952,33 @@ mod tests {
     }
 
     #[test]
-    fn weekly_database_maintenance_is_due_immediately_then_every_seven_days() {
+    fn physical_maintenance_is_due_only_for_material_reclaimable_space() {
         let database = TestDatabase::new("maintenance-schedule");
         let recovery_key = generate_recovery_key();
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
-        replace_app_state(&mut connection, &test_state("Weekly maintenance")).unwrap();
+        replace_app_state(&mut connection, &test_state("Threshold maintenance")).unwrap();
         let now = 2_000_000_000_000_i64;
 
         let first = database_maintenance_status_from_database(&connection, now).unwrap();
-        assert!(first.due);
+        assert!(!first.due);
         assert!(first.checkpoint_coordinator);
         assert_eq!(first.last_completed_at, None);
 
         set_metadata(
             &connection,
-            DATABASE_MAINTENANCE_LAST_AT,
-            &format!("unix-ms-{now}"),
+            "reclaim-threshold-padding",
+            &"x".repeat(20 * 1024 * 1024),
         )
         .unwrap();
-        assert!(
-            !database_maintenance_status_from_database(
-                &connection,
-                now + DATABASE_MAINTENANCE_INTERVAL_MS - 1
-            )
-            .unwrap()
-            .due
-        );
-        assert!(
-            database_maintenance_status_from_database(
-                &connection,
-                now + DATABASE_MAINTENANCE_INTERVAL_MS
-            )
-            .unwrap()
-            .due
-        );
+        delete_metadata(&connection, "reclaim-threshold-padding").unwrap();
+        let reclaimable = database_maintenance_status_from_database(&connection, now).unwrap();
+        assert!(reclaimable.due);
+        assert!(reclaimable.reclaimable_bytes >= DATABASE_RECLAIM_MIN_BYTES);
+        assert!(reclaimable.reclaimable_percent >= DATABASE_RECLAIM_MIN_PERCENT);
     }
 
     #[test]
-    fn synced_joiner_clears_local_history_without_creating_a_competing_checkpoint() {
+    fn synced_joiner_vacuum_preserves_history_without_creating_a_competing_checkpoint() {
         let primary_database = TestDatabase::new("maintenance-primary");
         let joiner_database = TestDatabase::new("maintenance-joiner");
         let primary_key = generate_recovery_key();
@@ -8166,7 +9055,7 @@ mod tests {
         let result = vacuum_database_at(&joiner_database.path, &joiner_key).unwrap();
         assert!(!result.checkpoint_created);
         assert_eq!(result.operations_removed, 0);
-        assert_eq!(result.history_entries_removed, history_count_before);
+        assert_eq!(result.history_entries_removed, 0);
         assert!(result.after_bytes < result.before_bytes);
 
         let maintained = open_database_at(&joiner_database.path, &joiner_key).unwrap();
@@ -8202,81 +9091,108 @@ mod tests {
                 .query_row("select count(*) from history_entries", [], |row| row
                     .get::<_, i64>(0))
                 .unwrap(),
-            0
+            history_count_before
         );
         assert!(!database_checkpoint_coordinator(&maintained).unwrap());
         drop(maintained);
-        fs::remove_file(&result.backup_path).unwrap();
     }
 
     #[test]
-    fn database_maintenance_rotates_backup_only_after_a_successful_later_launch() {
-        let database = TestDatabase::new("maintenance-backup-rotation");
+    fn daily_backup_runs_once_per_day_and_is_independent_from_vacuum() {
+        let database = TestDatabaseAt::new("daily-backup-schedule");
         let recovery_key = generate_recovery_key();
-        {
-            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
-            replace_app_state(&mut connection, &test_state("Rotate backups")).unwrap();
-        }
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Daily backup")).unwrap();
+        let day_ms = 24 * 60 * 60 * 1_000_i64;
 
-        let first = compact_database_at(&database.path, &recovery_key).unwrap();
-        assert!(Path::new(&first.backup_path).exists());
-        let second = compact_database_at(&database.path, &recovery_key).unwrap();
-        assert!(Path::new(&first.backup_path).exists());
-        assert!(Path::new(&second.backup_path).exists());
+        let first = create_daily_database_backup_if_due(
+            &connection,
+            &database.path,
+            &recovery_key,
+            100 * day_ms,
+        )
+        .unwrap()
+        .unwrap();
+        let same_day = create_daily_database_backup_if_due(
+            &connection,
+            &database.path,
+            &recovery_key,
+            100 * day_ms + 1,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(same_day, first);
 
-        let connection = open_database_at(&database.path, &recovery_key).unwrap();
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "daily-backup-change",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "set_active_plan_date",
+                "timestamp": "2026-08-01T00:00:00Z",
+                "payload": { "date": "2026-08-01" }
+            }),
+        )
+        .unwrap();
+        let expected = read_app_state_from_database(&connection).unwrap().unwrap();
+        let second = create_daily_database_backup_if_due(
+            &connection,
+            &database.path,
+            &recovery_key,
+            101 * day_ms,
+        )
+        .unwrap()
+        .unwrap();
+        assert_ne!(second, first);
+        assert!(first.exists() && second.exists());
         assert_eq!(
-            metadata_value(&connection, DATABASE_MAINTENANCE_LATEST_BACKUP)
-                .unwrap()
-                .as_deref(),
-            Some(second.backup_path.as_str())
+            metadata_value(&connection, DATABASE_DAILY_BACKUP_LATEST).unwrap(),
+            Some(second.display().to_string())
         );
-        assert_eq!(
-            metadata_value(&connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP)
-                .unwrap()
-                .as_deref(),
-            Some(first.backup_path.as_str())
-        );
-
-        complete_database_maintenance_startup_at(&connection, &database.path).unwrap();
-        assert!(!Path::new(&first.backup_path).exists());
-        assert!(Path::new(&second.backup_path).exists());
-        assert_eq!(
-            metadata_value(&connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP).unwrap(),
-            None
-        );
-        drop(connection);
-        fs::remove_file(&second.backup_path).unwrap();
+        let backup = open_database_at(&second, &recovery_key).unwrap();
+        verify_database_state(&backup, &expected).unwrap();
     }
 
     #[test]
-    fn database_maintenance_keeps_previous_backup_if_newest_was_removed() {
-        let database = TestDatabase::new("maintenance-backup-fallback");
+    fn daily_backup_retains_the_latest_seven_verified_copies() {
+        let database = TestDatabaseAt::new("daily-backup-retention");
         let recovery_key = generate_recovery_key();
-        {
-            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
-            replace_app_state(&mut connection, &test_state("Keep fallback")).unwrap();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Backup retention")).unwrap();
+        let day_ms = 24 * 60 * 60 * 1_000_i64;
+        let mut latest = PathBuf::new();
+        for day in 100..109 {
+            set_metadata(
+                &connection,
+                "active_plan_date",
+                &format!("2026-08-{:02}", day - 99),
+            )
+            .unwrap();
+            latest = create_daily_database_backup_if_due(
+                &connection,
+                &database.path,
+                &recovery_key,
+                day * day_ms,
+            )
+            .unwrap()
+            .unwrap();
         }
-
-        let first = compact_database_at(&database.path, &recovery_key).unwrap();
-        let second = compact_database_at(&database.path, &recovery_key).unwrap();
-        fs::remove_file(&second.backup_path).unwrap();
-
-        let connection = open_database_at(&database.path, &recovery_key).unwrap();
-        complete_database_maintenance_startup_at(&connection, &database.path).unwrap();
-        assert!(Path::new(&first.backup_path).exists());
-        assert_eq!(
-            metadata_value(&connection, DATABASE_MAINTENANCE_LATEST_BACKUP)
-                .unwrap()
-                .as_deref(),
-            Some(first.backup_path.as_str())
-        );
-        assert_eq!(
-            metadata_value(&connection, DATABASE_MAINTENANCE_PREVIOUS_BACKUP).unwrap(),
-            None
-        );
-        drop(connection);
-        fs::remove_file(&first.backup_path).unwrap();
+        let backups = fs::read_dir(database.path.parent().unwrap().join("backups"))
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("balance-daily-"))
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(backups.len(), DATABASE_DAILY_BACKUP_RETENTION);
+        assert!(latest.exists());
+        let expected = read_app_state_from_database(&connection).unwrap().unwrap();
+        let backup = open_database_at(&latest, &recovery_key).unwrap();
+        verify_database_state(&backup, &expected).unwrap();
     }
 
     #[test]
@@ -11511,6 +12427,21 @@ mod tests {
     struct TestDatabaseAt {
         path: PathBuf,
         directory: PathBuf,
+    }
+
+    impl TestDatabaseAt {
+        fn new(name: &str) -> Self {
+            let directory = std::env::temp_dir().join(format!(
+                "balance-{name}-{}-{}",
+                std::process::id(),
+                generate_recovery_key().replace('-', "")
+            ));
+            fs::create_dir_all(&directory).unwrap();
+            Self {
+                path: directory.join("balance.sqlite3"),
+                directory,
+            }
+        }
     }
 
     impl Drop for TestDatabaseAt {

@@ -342,7 +342,9 @@ test('a matching plan item previews its goal, then shows completion when checked
       page.evaluate(() => {
         const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
         const payload = state.operations?.at(-1)?.payload
-        return payload?.goalData?.goalCompletions?.length ?? -1
+        return payload?.entityChanges?.upserts?.filter(
+          (upsert: { collection: string }) => upsert.collection === 'goalCompletions',
+        ).length ?? -1
       }),
     )
     .toBe(1)
