@@ -115,6 +115,43 @@ test('desktop sidebar hides, returns, and remembers its state', async ({ page },
   await expect(hideSidebar).toBeVisible()
 })
 
+test('sidebar shows the task time shortcut legend above the template selector', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const sidebar = page.getByRole('complementary')
+  const legend = sidebar.getByRole('region', { name: 'Task time shortcuts' })
+
+  if (testInfo.project.name === 'mobile') {
+    await expect(legend).toBeHidden()
+    return
+  }
+
+  await expect(legend).toBeVisible()
+  await expect(legend.getByRole('row', { name: /Toggle/ })).toContainText('T')
+  await expect(legend.getByRole('row', { name: /Start/ })).toContainText('[ / ]')
+  await expect(legend.getByRole('row', { name: /End/ })).toContainText('[ / ]')
+  await expect(legend.getByRole('row', { name: /Both/ })).toContainText('[ / ]')
+
+  const isMacPlatform = await page.evaluate(() => /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent))
+  await expect(legend.getByRole('row', { name: /Toggle/ })).toContainText(isMacPlatform ? '⌥⇧T' : 'Alt+Shift+T')
+  await expect(legend.getByRole('row', { name: /End/ })).toContainText(isMacPlatform ? '⌘[ / ]' : 'Ctrl+[ / ]')
+
+  const legendBox = await legend.boundingBox()
+  const templateBox = await sidebar.getByText('Template for new days', { exact: true }).boundingBox()
+  const sidebarBox = await sidebar.boundingBox()
+  const generateButtonBox = await sidebar.getByRole('button', { name: 'Generate today' }).boundingBox()
+  expect(legendBox).not.toBeNull()
+  expect(templateBox).not.toBeNull()
+  expect(sidebarBox).not.toBeNull()
+  expect(generateButtonBox).not.toBeNull()
+  expect((legendBox?.y ?? Number.MAX_SAFE_INTEGER) + (legendBox?.height ?? 0)).toBeLessThan(templateBox?.y ?? 0)
+  expect((generateButtonBox?.y ?? 0) + (generateButtonBox?.height ?? 0)).toBeLessThanOrEqual(
+    (sidebarBox?.y ?? 0) + (sidebarBox?.height ?? 0),
+  )
+})
+
 test('core planner screens render and screenshot cleanly', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

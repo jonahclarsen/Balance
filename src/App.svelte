@@ -100,6 +100,18 @@
     return `${isMac ? '⌥' : 'Alt+'}${key}`
   }
 
+  function primaryShortcutLabel(key: string): string {
+    return `${isMac ? '⌘' : 'Ctrl+'}${key}`
+  }
+
+  function shiftShortcutLabel(key: string): string {
+    return `${isMac ? '⇧' : 'Shift+'}${key}`
+  }
+
+  function altShiftShortcutLabel(key: string): string {
+    return `${isMac ? '⌥⇧' : 'Alt+Shift+'}${key}`
+  }
+
   function setSidebarHidden(hidden: boolean) {
     sidebarHidden = hidden
     localStorage.setItem(SIDEBAR_HIDDEN_KEY, String(hidden))
@@ -3759,6 +3771,42 @@ return rows`
     </nav>
 
     <div class="sidebar-footer">
+      {#if selectedTemplate && view !== 'templates'}
+        <section class="time-shortcut-legend" aria-labelledby="time-shortcut-legend-title">
+          <h2 id="time-shortcut-legend-title">Task time shortcuts</h2>
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Action</th>
+                <th scope="col">Editing</th>
+                <th scope="col">Selected</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Toggle</th>
+                <td><kbd>{altShiftShortcutLabel('T')}</kbd></td>
+                <td><kbd>T</kbd></td>
+              </tr>
+              <tr>
+                <th scope="row">Start</th>
+                <td><kbd>{altShortcutLabel('[ / ]')}</kbd></td>
+                <td><kbd>[ / ]</kbd></td>
+              </tr>
+              <tr>
+                <th scope="row">End</th>
+                <td><kbd>{primaryShortcutLabel('[ / ]')}</kbd></td>
+                <td><kbd>{shiftShortcutLabel('[ / ]')}</kbd></td>
+              </tr>
+              <tr>
+                <th scope="row">Both</th>
+                <td><kbd>{altShiftShortcutLabel('[ / ]')}</kbd></td>
+                <td aria-label="Not available">—</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+      {/if}
       <div
         class="sidebar-toggle-anchor"
         class:has-template={Boolean(selectedTemplate && view !== 'templates')}

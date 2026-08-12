@@ -335,6 +335,69 @@ nav button.active {
   margin-top: auto;
 }
 
+.time-shortcut-legend {
+  display: grid;
+  gap: 5px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--paper) 58%, transparent);
+}
+
+.time-shortcut-legend h2 {
+  color: var(--accent-strong);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.time-shortcut-legend table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.time-shortcut-legend th,
+.time-shortcut-legend td {
+  padding: 1px 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.time-shortcut-legend th:first-child {
+  text-align: left;
+}
+
+.time-shortcut-legend thead th {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.time-shortcut-legend tbody th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.time-shortcut-legend kbd {
+  display: inline-block;
+  min-width: 18px;
+  padding: 1px 3px;
+  border: 1px solid var(--line);
+  border-bottom-color: var(--line-strong);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--paper-strong) 80%, transparent);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
 .sidebar-toggle-anchor {
   position: relative;
   pointer-events: none;
@@ -2700,6 +2763,10 @@ nav button.active {
   .sidebar-footer {
     gap: 4px;
     margin-top: 0;
+  }
+
+  .time-shortcut-legend {
+    display: none;
   }
 
   .sidebar-footer .generation-template-field {
