@@ -185,6 +185,8 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
     await expect(page.getByRole('heading', { name: 'Canonical JSON' })).toHaveCount(0)
   } else {
     await expect(page.getByRole('button', { name: 'Export JSON' })).toBeVisible()
+    await expect(page.getByRole('heading', { name: 'Database encryption key' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Rotate database key' })).toBeDisabled()
   }
   await expect(page.getByRole('button', { name: 'Export HTML' })).toBeVisible()
   await expect(page.getByText('Browser downloads')).toBeVisible()

@@ -14,6 +14,7 @@ use rand::{rngs::OsRng, RngCore};
 use rusqlite::{backup::Backup, params, Connection, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 #[cfg(target_os = "macos")]
 use tauri::Emitter;
 use tauri::Manager;
@@ -31,6 +32,10 @@ const APP_DATA_DIR: &str = "Balance";
 const KEYCHAIN_SERVICE: &str = "app.balance.local";
 #[cfg(not(target_os = "android"))]
 const KEYCHAIN_ACCOUNT: &str = "database-recovery-key";
+#[cfg(not(target_os = "android"))]
+const KEYCHAIN_PENDING_ACCOUNT: &str = "database-recovery-key-pending-rotation";
+#[cfg(not(target_os = "android"))]
+const KEYCHAIN_ARCHIVED_ACCOUNT_PREFIX: &str = "database-recovery-key-archived";
 const RECOVERY_KEY_CONFIRMED: &str = "recovery_key_confirmed";
 const EXPORT_DIRECTORY: &str = "export_directory";
 const SYNC_PAIRING_CODE: &str = "sync_pairing_code";
@@ -215,6 +220,13 @@ struct RecoveryKeyStatus {
     confirmed: bool,
     recovery_key: Option<String>,
     database_path: String,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecoveryKeyRotationResult {
+    recovery_key_status: RecoveryKeyStatus,
+    archived_key_account: String,
 }
 
 #[derive(Serialize)]
@@ -435,6 +447,52 @@ async fn confirm_recovery_key(app: tauri::AppHandle) -> Result<(), String> {
     run_database_task(move || {
         let connection = open_database(&app)?;
         confirm_recovery_key_in_database(&connection)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn rotate_database_recovery_key(
+    app: tauri::AppHandle,
+) -> Result<RecoveryKeyRotationResult, String> {
+    #[cfg(target_os = "android")]
+    {
+        let _ = app;
+        return Err("Recovery-key rotation is currently available on desktop only.".to_string());
+    }
+
+    #[cfg(not(target_os = "android"))]
+    run_database_task(move || {
+        let database_path = app_database_path(&app)?;
+        if !database_path.exists() {
+            return Err("The encrypted Balance database does not exist yet.".to_string());
+        }
+
+        let old_key = database_recovery_key(&database_path)?;
+        let mut new_key = generate_recovery_key();
+        while new_key == old_key {
+            new_key = generate_recovery_key();
+        }
+        let archived_key_account = archived_recovery_key_account();
+        let mut key_store = KeychainRecoveryKeyRotationStore;
+        rotate_database_key_at(
+            &database_path,
+            &old_key,
+            &new_key,
+            &archived_key_account,
+            &mut key_store,
+        )?;
+
+        let connection = open_database_at(&database_path, &new_key)?;
+        let recovery_key_status = recovery_key_status(&connection, &database_path, Some(new_key))?;
+        if recovery_key_status.confirmed || recovery_key_status.recovery_key.is_none() {
+            return Err("The rotated recovery key was not prepared for confirmation.".to_string());
+        }
+
+        Ok(RecoveryKeyRotationResult {
+            recovery_key_status,
+            archived_key_account,
+        })
     })
     .await
 }
@@ -690,6 +748,337 @@ fn copy_database_snapshot(
     Ok(())
 }
 
+fn hash_database_field(hasher: &mut Sha256, bytes: &[u8]) {
+    hasher.update((bytes.len() as u64).to_le_bytes());
+    hasher.update(bytes);
+}
+
+fn quoted_sql_identifier(identifier: &str) -> String {
+    format!("\"{}\"", identifier.replace('"', "\"\""))
+}
+
+/// Hash every schema object and every value in every application table. The
+/// physical SQLCipher pages necessarily change when the key changes, so this
+/// logical digest is the integrity boundary used to prove a rotated copy still
+/// contains all metadata, sync state, undo history, and user data.
+fn database_logical_digest(connection: &Connection) -> Result<[u8; 32], String> {
+    let schema = connection
+        .prepare(
+            "select type, name, tbl_name, coalesce(sql, '')
+             from sqlite_schema
+             where name not like 'sqlite_%'
+             order by type, name, tbl_name, sql",
+        )
+        .and_then(|mut statement| {
+            statement
+                .query_map([], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, String>(3)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut hasher = Sha256::new();
+    for (object_type, name, table_name, sql) in &schema {
+        hash_database_field(&mut hasher, object_type.as_bytes());
+        hash_database_field(&mut hasher, name.as_bytes());
+        hash_database_field(&mut hasher, table_name.as_bytes());
+        hash_database_field(&mut hasher, sql.as_bytes());
+    }
+
+    for (_, table_name, _, _) in schema.iter().filter(|row| row.0 == "table") {
+        let columns = connection
+            .prepare("select name from pragma_table_info(?1) order by cid")
+            .and_then(|mut statement| {
+                statement
+                    .query_map(params![table_name], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .map_err(|error| error.to_string())?;
+        if columns.is_empty() {
+            continue;
+        }
+
+        hash_database_field(&mut hasher, table_name.as_bytes());
+        for column in &columns {
+            hash_database_field(&mut hasher, column.as_bytes());
+        }
+        let order_by = columns
+            .iter()
+            .map(|column| quoted_sql_identifier(column))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let query = format!(
+            "select * from {} order by {order_by}",
+            quoted_sql_identifier(table_name)
+        );
+        let mut statement = connection
+            .prepare(&query)
+            .map_err(|error| error.to_string())?;
+        let column_count = statement.column_count();
+        let mut rows = statement.query([]).map_err(|error| error.to_string())?;
+        while let Some(row) = rows.next().map_err(|error| error.to_string())? {
+            hasher.update([0xff]);
+            for index in 0..column_count {
+                use rusqlite::types::ValueRef;
+                match row.get_ref(index).map_err(|error| error.to_string())? {
+                    ValueRef::Null => hasher.update([0]),
+                    ValueRef::Integer(value) => {
+                        hasher.update([1]);
+                        hasher.update(value.to_le_bytes());
+                    }
+                    ValueRef::Real(value) => {
+                        hasher.update([2]);
+                        hasher.update(value.to_bits().to_le_bytes());
+                    }
+                    ValueRef::Text(value) => {
+                        hasher.update([3]);
+                        hash_database_field(&mut hasher, value);
+                    }
+                    ValueRef::Blob(value) => {
+                        hasher.update([4]);
+                        hash_database_field(&mut hasher, value);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(hasher.finalize().into())
+}
+
+fn database_key_matches(database_path: &Path, recovery_key: &str) -> bool {
+    if !database_path.exists() {
+        return false;
+    }
+    let Ok(connection) = Connection::open(database_path) else {
+        return false;
+    };
+    if connection.pragma_update(None, "key", recovery_key).is_err() {
+        return false;
+    }
+    connection
+        .query_row("select count(*) from sqlite_schema", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .is_ok()
+}
+
+fn key_rotation_paths(database_path: &Path) -> Result<(PathBuf, PathBuf), String> {
+    let parent = database_path
+        .parent()
+        .ok_or_else(|| "Could not resolve database directory".to_string())?;
+    Ok((
+        parent.join(".balance-key-rotation.sqlite3"),
+        parent.join(".balance-key-rotation-original.sqlite3"),
+    ))
+}
+
+fn sync_file(path: &Path) -> Result<(), String> {
+    fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| format!("Could not make {} durable: {error}", path.display()))
+}
+
+#[cfg(unix)]
+fn sync_parent_directory(path: &Path) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Could not resolve database directory".to_string())?;
+    fs::File::open(parent)
+        .and_then(|directory| directory.sync_all())
+        .map_err(|error| format!("Could not make {} durable: {error}", parent.display()))
+}
+
+#[cfg(not(unix))]
+fn sync_parent_directory(_path: &Path) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(unix)]
+fn install_rotated_database(working_path: &Path, database_path: &Path) -> Result<(), String> {
+    // POSIX rename replaces the destination atomically, so there is never a
+    // moment when the live database path is absent.
+    fs::rename(working_path, database_path)
+        .map_err(|error| format!("Could not install rotated database: {error}"))?;
+    sync_parent_directory(database_path)
+}
+
+#[cfg(not(unix))]
+fn install_rotated_database(working_path: &Path, database_path: &Path) -> Result<(), String> {
+    fs::remove_file(database_path)
+        .map_err(|error| format!("Could not stage database for key rotation: {error}"))?;
+    fs::rename(working_path, database_path)
+        .map_err(|error| format!("Could not install rotated database: {error}"))?;
+    sync_parent_directory(database_path)
+}
+
+fn restore_database_after_failed_rotation(
+    rollback_path: &Path,
+    database_path: &Path,
+) -> Result<(), String> {
+    #[cfg(not(unix))]
+    if database_path.exists() {
+        fs::remove_file(database_path)
+            .map_err(|error| format!("Could not remove rejected rotated database: {error}"))?;
+    }
+    fs::rename(rollback_path, database_path)
+        .map_err(|error| format!("Could not restore the original encrypted database: {error}"))?;
+    sync_parent_directory(database_path)
+}
+
+trait RecoveryKeyRotationStore {
+    fn stage(&mut self, old_key: &str, new_key: &str, archive_account: &str) -> Result<(), String>;
+    fn commit(&mut self, new_key: &str) -> Result<(), String>;
+    fn finish(&mut self) -> Result<(), String>;
+    fn abort(&mut self, old_key: &str, archive_account: &str) -> Result<(), String>;
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum KeyRotationCheckpoint {
+    CandidateCopied,
+    CredentialsStaged,
+    DatabaseInstalled,
+}
+
+fn rotate_database_key_at(
+    database_path: &Path,
+    old_key: &str,
+    new_key: &str,
+    archive_account: &str,
+    key_store: &mut impl RecoveryKeyRotationStore,
+) -> Result<(), String> {
+    rotate_database_key_at_with_checkpoint(
+        database_path,
+        old_key,
+        new_key,
+        archive_account,
+        key_store,
+        |_, _| Ok(()),
+    )
+}
+
+fn rotate_database_key_at_with_checkpoint(
+    database_path: &Path,
+    old_key: &str,
+    new_key: &str,
+    archive_account: &str,
+    key_store: &mut impl RecoveryKeyRotationStore,
+    mut checkpoint: impl FnMut(KeyRotationCheckpoint, &Path) -> Result<(), String>,
+) -> Result<(), String> {
+    if old_key == new_key {
+        return Err("The replacement database key must be different.".to_string());
+    }
+    let (working_path, rollback_path) = key_rotation_paths(database_path)?;
+    if working_path.exists() || rollback_path.exists() {
+        return Err(
+            "An interrupted database-key rotation must be recovered before starting another."
+                .to_string(),
+        );
+    }
+
+    let mut staged = false;
+    let mut installed = false;
+    let result = (|| {
+        let source = open_database_at(database_path, old_key)?;
+        copy_database_snapshot(&source, &working_path, new_key)?;
+        checkpoint(KeyRotationCheckpoint::CandidateCopied, &working_path)?;
+
+        source
+            .execute_batch("begin immediate")
+            .map_err(|error| format!("Could not lock database for key rotation: {error}"))?;
+        let expected_state = read_app_state_from_database(&source)?
+            .ok_or_else(|| "Database contains no app state to rotate".to_string())?;
+        let expected_digest = database_logical_digest(&source)?;
+
+        let candidate = open_database_at(&working_path, new_key)?;
+        verify_database_state(&candidate, &expected_state)?;
+        if database_logical_digest(&candidate)? != expected_digest {
+            return Err("Rotated database copy changed stored data or schema.".to_string());
+        }
+        set_metadata(&candidate, RECOVERY_KEY_CONFIRMED, "false")?;
+        let installed_digest = database_logical_digest(&candidate)?;
+        drop(candidate);
+        sync_file(&working_path)?;
+
+        source
+            .execute_batch("rollback")
+            .map_err(|error| format!("Could not release database rotation lock: {error}"))?;
+        drop(source);
+
+        key_store.stage(old_key, new_key, archive_account)?;
+        staged = true;
+        checkpoint(KeyRotationCheckpoint::CredentialsStaged, &working_path)?;
+
+        fs::copy(database_path, &rollback_path).map_err(|error| {
+            format!("Could not preserve the original encrypted database for rollback: {error}")
+        })?;
+        sync_file(&rollback_path)?;
+        install_rotated_database(&working_path, database_path)?;
+        installed = true;
+        checkpoint(KeyRotationCheckpoint::DatabaseInstalled, database_path)?;
+
+        let installed_connection = open_database_at(database_path, new_key)?;
+        verify_database_state(&installed_connection, &expected_state)?;
+        if database_logical_digest(&installed_connection)? != installed_digest {
+            return Err("Installed rotated database changed stored data or schema.".to_string());
+        }
+        drop(installed_connection);
+        if database_key_matches(database_path, old_key) {
+            return Err("The previous key still unlocks the rotated database.".to_string());
+        }
+
+        key_store.commit(new_key)?;
+        if let Err(error) = key_store.finish() {
+            eprintln!(
+                "Rotated key is active, but its pending credential could not be removed: {error}"
+            );
+        }
+        if rollback_path.exists() {
+            fs::remove_file(&rollback_path).map_err(|error| {
+                format!("Database key rotated, but rollback cleanup failed: {error}")
+            })?;
+        }
+        Ok(())
+    })();
+
+    if let Err(error) = result {
+        if installed && rollback_path.exists() {
+            if let Err(restore_error) =
+                restore_database_after_failed_rotation(&rollback_path, database_path)
+            {
+                return Err(format!(
+                    "{error} The original database remains at {} because automatic restoration failed: {restore_error}",
+                    rollback_path.display()
+                ));
+            }
+        }
+        if staged {
+            if let Err(key_error) = key_store.abort(old_key, archive_account) {
+                return Err(format!(
+                    "{error} The original database was restored, but credential rollback failed: {key_error}"
+                ));
+            }
+        }
+        if working_path.exists() {
+            let _ = fs::remove_file(&working_path);
+        }
+        if rollback_path.exists() {
+            let _ = fs::remove_file(&rollback_path);
+        }
+        return Err(error);
+    }
+
+    Ok(())
+}
+
 fn finish_meaningful_database_write(
     connection: &Connection,
     database_path: &Path,
@@ -827,7 +1216,7 @@ fn verify_database_state(connection: &Connection, expected_state: &Value) -> Res
         .map_err(|error| error.to_string())?;
     if integrity_rows.as_slice() != ["ok"] {
         return Err(format!(
-            "Compacted database failed integrity check: {}",
+            "Database failed integrity check: {}",
             integrity_rows.join("; ")
         ));
     }
@@ -835,9 +1224,7 @@ fn verify_database_state(connection: &Connection, expected_state: &Value) -> Res
     let actual_state = read_app_state_from_database(connection)?
         .ok_or_else(|| "Compacted database contains no app state".to_string())?;
     if actual_state != *expected_state {
-        return Err(
-            "Compacted database state differs from the state before compaction".to_string(),
-        );
+        return Err("Database state differs from the expected state".to_string());
     }
     Ok(())
 }
@@ -7066,21 +7453,211 @@ fn patch_has_key(value: &Value, key: &str) -> bool {
 }
 
 #[cfg(not(target_os = "android"))]
-fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
-    let entry =
-        Entry::new(KEYCHAIN_SERVICE, KEYCHAIN_ACCOUNT).map_err(|error| error.to_string())?;
+fn keychain_entry(account: &str) -> Result<Entry, String> {
+    Entry::new(KEYCHAIN_SERVICE, account).map_err(|error| error.to_string())
+}
 
-    match entry.get_password() {
-        Ok(password) => Ok(password),
-        Err(KeyringError::NoEntry) if !database_path.exists() => {
-            let recovery_key = generate_recovery_key();
-            entry
-                .set_password(&recovery_key)
-                .map_err(|error| error.to_string())?;
-            Ok(recovery_key)
-        }
-        Err(KeyringError::NoEntry) => Err(missing_recovery_key_error()),
+#[cfg(not(target_os = "android"))]
+fn optional_keychain_password(account: &str) -> Result<Option<String>, String> {
+    match keychain_entry(account)?.get_password() {
+        Ok(password) => Ok(Some(password)),
+        Err(KeyringError::NoEntry) => Ok(None),
         Err(error) => Err(error.to_string()),
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn set_verified_keychain_password(account: &str, password: &str) -> Result<(), String> {
+    let entry = keychain_entry(account)?;
+    entry
+        .set_password(password)
+        .map_err(|error| error.to_string())?;
+    let stored = entry.get_password().map_err(|error| error.to_string())?;
+    if stored != password {
+        return Err(format!(
+            "The system credential store did not verify {account}."
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+fn delete_keychain_password_if_present(account: &str) -> Result<(), String> {
+    match keychain_entry(account)?.delete_credential() {
+        Ok(()) | Err(KeyringError::NoEntry) => Ok(()),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn archived_recovery_key_account() -> String {
+    let mut random = [0_u8; 3];
+    OsRng.fill_bytes(&mut random);
+    format!(
+        "{KEYCHAIN_ARCHIVED_ACCOUNT_PREFIX}-{}-{}",
+        current_timestamp_ms(),
+        random
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    )
+}
+
+#[cfg(not(target_os = "android"))]
+struct KeychainRecoveryKeyRotationStore;
+
+#[cfg(not(target_os = "android"))]
+impl RecoveryKeyRotationStore for KeychainRecoveryKeyRotationStore {
+    fn stage(&mut self, old_key: &str, new_key: &str, archive_account: &str) -> Result<(), String> {
+        set_verified_keychain_password(archive_account, old_key)?;
+        if let Err(error) = set_verified_keychain_password(KEYCHAIN_PENDING_ACCOUNT, new_key) {
+            let _ = delete_keychain_password_if_present(archive_account);
+            return Err(format!(
+                "Could not stage the replacement recovery key: {error}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn commit(&mut self, new_key: &str) -> Result<(), String> {
+        set_verified_keychain_password(KEYCHAIN_ACCOUNT, new_key)
+            .map_err(|error| format!("Could not activate the replacement recovery key: {error}"))
+    }
+
+    fn finish(&mut self) -> Result<(), String> {
+        delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)
+    }
+
+    fn abort(&mut self, old_key: &str, archive_account: &str) -> Result<(), String> {
+        set_verified_keychain_password(KEYCHAIN_ACCOUNT, old_key)?;
+        delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+        delete_keychain_password_if_present(archive_account)
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+#[derive(Debug, Eq, PartialEq)]
+enum InterruptedKeyRotationAction {
+    NoDatabaseOrRotation,
+    KeepActive,
+    ActivatePending,
+    RestoreActiveRollback,
+    InstallPendingWorking,
+}
+
+#[cfg(not(target_os = "android"))]
+fn interrupted_key_rotation_action(
+    database_path: &Path,
+    working_path: &Path,
+    rollback_path: &Path,
+    active_key: Option<&str>,
+    pending_key: Option<&str>,
+) -> Result<InterruptedKeyRotationAction, String> {
+    if let Some(pending_key) = pending_key {
+        if database_key_matches(database_path, pending_key) {
+            return Ok(InterruptedKeyRotationAction::ActivatePending);
+        }
+        if active_key.is_some_and(|key| database_key_matches(database_path, key)) {
+            return Ok(InterruptedKeyRotationAction::KeepActive);
+        }
+        if active_key.is_some_and(|key| database_key_matches(rollback_path, key)) {
+            return Ok(InterruptedKeyRotationAction::RestoreActiveRollback);
+        }
+        if !database_path.exists() && database_key_matches(working_path, pending_key) {
+            return Ok(InterruptedKeyRotationAction::InstallPendingWorking);
+        }
+        return Err(
+            "An interrupted database-key rotation could not match the database to either retained key. No files or credentials were removed."
+                .to_string(),
+        );
+    }
+
+    if active_key.is_some_and(|key| database_key_matches(database_path, key)) {
+        return Ok(InterruptedKeyRotationAction::KeepActive);
+    }
+    if active_key.is_some_and(|key| database_key_matches(rollback_path, key)) {
+        return Ok(InterruptedKeyRotationAction::RestoreActiveRollback);
+    }
+    if !database_path.exists()
+        && active_key.is_none()
+        && !working_path.exists()
+        && !rollback_path.exists()
+    {
+        return Ok(InterruptedKeyRotationAction::NoDatabaseOrRotation);
+    }
+    Err(
+        "The active database key does not match the database or its retained rotation copy. No files or credentials were removed."
+            .to_string(),
+    )
+}
+
+#[cfg(not(target_os = "android"))]
+fn recover_interrupted_key_rotation(
+    database_path: &Path,
+    active_key: Option<String>,
+) -> Result<Option<String>, String> {
+    let pending_key = optional_keychain_password(KEYCHAIN_PENDING_ACCOUNT)?;
+    let (working_path, rollback_path) = key_rotation_paths(database_path)?;
+    let action = interrupted_key_rotation_action(
+        database_path,
+        &working_path,
+        &rollback_path,
+        active_key.as_deref(),
+        pending_key.as_deref(),
+    )?;
+
+    let selected_key = match action {
+        InterruptedKeyRotationAction::NoDatabaseOrRotation => return Ok(None),
+        InterruptedKeyRotationAction::KeepActive => {
+            if pending_key.is_some() {
+                delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+            }
+            active_key
+        }
+        InterruptedKeyRotationAction::ActivatePending => {
+            let pending_key = pending_key.expect("action requires pending key");
+            set_verified_keychain_password(KEYCHAIN_ACCOUNT, &pending_key)?;
+            delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+            Some(pending_key)
+        }
+        InterruptedKeyRotationAction::RestoreActiveRollback => {
+            restore_database_after_failed_rotation(&rollback_path, database_path)?;
+            if pending_key.is_some() {
+                delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+            }
+            active_key
+        }
+        InterruptedKeyRotationAction::InstallPendingWorking => {
+            install_rotated_database(&working_path, database_path)?;
+            let pending_key = pending_key.expect("action requires pending key");
+            set_verified_keychain_password(KEYCHAIN_ACCOUNT, &pending_key)?;
+            delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+            Some(pending_key)
+        }
+    };
+
+    if working_path.exists() {
+        let _ = fs::remove_file(&working_path);
+    }
+    if rollback_path.exists() {
+        let _ = fs::remove_file(&rollback_path);
+    }
+    Ok(selected_key)
+}
+
+#[cfg(not(target_os = "android"))]
+fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
+    let active_key = optional_keychain_password(KEYCHAIN_ACCOUNT)?;
+    if let Some(recovery_key) = recover_interrupted_key_rotation(database_path, active_key)? {
+        return Ok(recovery_key);
+    }
+
+    if !database_path.exists() {
+        let recovery_key = generate_recovery_key();
+        set_verified_keychain_password(KEYCHAIN_ACCOUNT, &recovery_key)?;
+        Ok(recovery_key)
+    } else {
+        Err(missing_recovery_key_error())
     }
 }
 
@@ -8100,6 +8677,7 @@ pub fn run() {
             restore_recovery_entry,
             get_recovery_key_status,
             confirm_recovery_key,
+            rotate_database_recovery_key,
             recover_database_with_key,
             build_info,
             check_for_update,
@@ -8131,6 +8709,57 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Default)]
+    struct TestRecoveryKeyStore {
+        active: Option<String>,
+        pending: Option<String>,
+        archived: HashMap<String, String>,
+        fail_commit: bool,
+    }
+
+    impl TestRecoveryKeyStore {
+        fn with_active(active: &str) -> Self {
+            Self {
+                active: Some(active.to_string()),
+                ..Self::default()
+            }
+        }
+    }
+
+    impl RecoveryKeyRotationStore for TestRecoveryKeyStore {
+        fn stage(
+            &mut self,
+            old_key: &str,
+            new_key: &str,
+            archive_account: &str,
+        ) -> Result<(), String> {
+            self.archived
+                .insert(archive_account.to_string(), old_key.to_string());
+            self.pending = Some(new_key.to_string());
+            Ok(())
+        }
+
+        fn commit(&mut self, new_key: &str) -> Result<(), String> {
+            if self.fail_commit {
+                return Err("simulated active credential failure".to_string());
+            }
+            self.active = Some(new_key.to_string());
+            Ok(())
+        }
+
+        fn finish(&mut self) -> Result<(), String> {
+            self.pending = None;
+            Ok(())
+        }
+
+        fn abort(&mut self, old_key: &str, archive_account: &str) -> Result<(), String> {
+            self.active = Some(old_key.to_string());
+            self.pending = None;
+            self.archived.remove(archive_account);
+            Ok(())
+        }
+    }
 
     #[test]
     fn release_check_only_returns_strictly_newer_versions() {
@@ -8249,6 +8878,348 @@ mod tests {
         assert_eq!(
             saved["templates"][0]["items"][0]["options"][0]["text"],
             "Wake up"
+        );
+    }
+
+    fn generated_rotation_database(name: &str) -> (TestDatabaseAt, String, Value) {
+        let database = TestDatabaseAt::new(name);
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Rotation preserves every field 🛡️");
+        state["notes"] = json!([{
+            "id": "rotation-note",
+            "title": "Binary-safe values",
+            "createdAt": "created",
+            "updatedAt": "updated",
+            "items": [{
+                "id": "rotation-note-item",
+                "text": "Unicode, commas, and null-like text: null",
+                "html": "<strong>Unicode 🛡️</strong>",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "kind": "text",
+                "children": []
+            }]
+        }]);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "rotation-operation",
+                "deviceId": "rotation-device",
+                "sequence": 41,
+                "type": "set_active_plan_date",
+                "timestamp": "2026-08-12T12:00:00Z",
+                "payload": { "date": "2026-08-11" }
+            }),
+        )
+        .unwrap();
+        set_metadata(
+            &connection,
+            "rotation-extra-metadata",
+            "Preserve values outside the rendered app state",
+        )
+        .unwrap();
+        let expected = read_app_state_from_database(&connection).unwrap().unwrap();
+        drop(connection);
+        (database, recovery_key, expected)
+    }
+
+    fn assert_no_key_rotation_files(database_path: &Path) {
+        let (working_path, rollback_path) = key_rotation_paths(database_path).unwrap();
+        assert!(!working_path.exists());
+        assert!(!rollback_path.exists());
+    }
+
+    #[test]
+    fn key_rotation_preserves_all_data_and_archives_the_old_key() {
+        let (database, old_key, expected_state) =
+            generated_rotation_database("key-rotation-success");
+        let backup_path = database.directory.join("old-key-backup.sqlite3");
+        let source = open_database_at(&database.path, &old_key).unwrap();
+        copy_database_snapshot(&source, &backup_path, &old_key).unwrap();
+        let expected_operation_count: i64 = source
+            .query_row("select count(*) from operations", [], |row| row.get(0))
+            .unwrap();
+        let expected_history_count: i64 = source
+            .query_row("select count(*) from history_entries", [], |row| row.get(0))
+            .unwrap();
+        drop(source);
+
+        let new_key = generate_recovery_key();
+        let archive_account = "database-recovery-key-archived-test";
+        let mut key_store = TestRecoveryKeyStore::with_active(&old_key);
+        rotate_database_key_at(
+            &database.path,
+            &old_key,
+            &new_key,
+            archive_account,
+            &mut key_store,
+        )
+        .unwrap();
+
+        assert_eq!(key_store.active.as_deref(), Some(new_key.as_str()));
+        assert_eq!(key_store.pending, None);
+        assert_eq!(
+            key_store.archived.get(archive_account),
+            Some(&old_key),
+            "the old key must remain available for pre-rotation backups"
+        );
+        assert!(!database_key_matches(&database.path, &old_key));
+        assert!(database_key_matches(&database.path, &new_key));
+
+        let rotated = open_database_at(&database.path, &new_key).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&rotated).unwrap().unwrap(),
+            expected_state
+        );
+        assert_eq!(
+            rotated
+                .query_row::<i64, _, _>("select count(*) from operations", [], |row| row.get(0))
+                .unwrap(),
+            expected_operation_count
+        );
+        assert_eq!(
+            rotated
+                .query_row::<i64, _, _>("select count(*) from history_entries", [], |row| {
+                    row.get(0)
+                })
+                .unwrap(),
+            expected_history_count
+        );
+        assert_eq!(
+            metadata_value(&rotated, RECOVERY_KEY_CONFIRMED).unwrap(),
+            Some("false".to_string())
+        );
+        drop(rotated);
+
+        let old_backup = open_database_at(&backup_path, &old_key).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&old_backup).unwrap().unwrap(),
+            expected_state
+        );
+        assert_no_key_rotation_files(&database.path);
+    }
+
+    #[test]
+    fn key_rotation_rejects_a_corrupted_candidate_before_touching_credentials() {
+        let (database, old_key, expected_state) =
+            generated_rotation_database("key-rotation-corrupt-candidate");
+        let new_key = generate_recovery_key();
+        let archive_account = "database-recovery-key-archived-corrupt";
+        let mut key_store = TestRecoveryKeyStore::with_active(&old_key);
+
+        let error = rotate_database_key_at_with_checkpoint(
+            &database.path,
+            &old_key,
+            &new_key,
+            archive_account,
+            &mut key_store,
+            |checkpoint, path| {
+                if checkpoint == KeyRotationCheckpoint::CandidateCopied {
+                    let candidate = open_database_at(path, &new_key)?;
+                    candidate
+                        .execute(
+                            "update metadata set value = 'corrupted' where key = 'rotation-extra-metadata'",
+                            [],
+                        )
+                        .map_err(|error| error.to_string())?;
+                }
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert!(error.contains("changed stored data"));
+        assert_eq!(key_store.active.as_deref(), Some(old_key.as_str()));
+        assert_eq!(key_store.pending, None);
+        assert!(key_store.archived.is_empty());
+        let original = open_database_at(&database.path, &old_key).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&original).unwrap().unwrap(),
+            expected_state
+        );
+        assert_no_key_rotation_files(&database.path);
+    }
+
+    #[test]
+    fn key_rotation_rolls_back_database_and_credentials_after_install_failure() {
+        let (database, old_key, expected_state) =
+            generated_rotation_database("key-rotation-install-rollback");
+        let new_key = generate_recovery_key();
+        let archive_account = "database-recovery-key-archived-rollback";
+        let mut key_store = TestRecoveryKeyStore::with_active(&old_key);
+
+        let error = rotate_database_key_at_with_checkpoint(
+            &database.path,
+            &old_key,
+            &new_key,
+            archive_account,
+            &mut key_store,
+            |checkpoint, _| {
+                if checkpoint == KeyRotationCheckpoint::DatabaseInstalled {
+                    return Err("simulated interruption after database installation".to_string());
+                }
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert!(error.contains("simulated interruption"));
+        assert_eq!(key_store.active.as_deref(), Some(old_key.as_str()));
+        assert_eq!(key_store.pending, None);
+        assert!(key_store.archived.is_empty());
+        assert!(database_key_matches(&database.path, &old_key));
+        assert!(!database_key_matches(&database.path, &new_key));
+        let restored = open_database_at(&database.path, &old_key).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&restored).unwrap().unwrap(),
+            expected_state
+        );
+        assert_no_key_rotation_files(&database.path);
+    }
+
+    #[test]
+    fn key_rotation_restores_original_when_active_credential_update_fails() {
+        let (database, old_key, expected_state) =
+            generated_rotation_database("key-rotation-credential-rollback");
+        let new_key = generate_recovery_key();
+        let archive_account = "database-recovery-key-archived-credential-failure";
+        let mut key_store = TestRecoveryKeyStore {
+            fail_commit: true,
+            ..TestRecoveryKeyStore::with_active(&old_key)
+        };
+
+        let error = rotate_database_key_at(
+            &database.path,
+            &old_key,
+            &new_key,
+            archive_account,
+            &mut key_store,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("simulated active credential failure"));
+        assert_eq!(key_store.active.as_deref(), Some(old_key.as_str()));
+        assert_eq!(key_store.pending, None);
+        assert!(key_store.archived.is_empty());
+        assert!(database_key_matches(&database.path, &old_key));
+        assert!(!database_key_matches(&database.path, &new_key));
+        let restored = open_database_at(&database.path, &old_key).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&restored).unwrap().unwrap(),
+            expected_state
+        );
+        assert_no_key_rotation_files(&database.path);
+    }
+
+    #[cfg(not(target_os = "android"))]
+    #[test]
+    fn interrupted_rotation_selects_pending_key_for_an_installed_rotated_database() {
+        let (database, old_key, _) = generated_rotation_database("key-rotation-crash-commit");
+        let new_key = generate_recovery_key();
+        let (working_path, rollback_path) = key_rotation_paths(&database.path).unwrap();
+        let source = open_database_at(&database.path, &old_key).unwrap();
+        copy_database_snapshot(&source, &working_path, &new_key).unwrap();
+        copy_database_snapshot(&source, &rollback_path, &old_key).unwrap();
+        drop(source);
+        install_rotated_database(&working_path, &database.path).unwrap();
+
+        assert_eq!(
+            interrupted_key_rotation_action(
+                &database.path,
+                &working_path,
+                &rollback_path,
+                Some(&old_key),
+                Some(&new_key),
+            )
+            .unwrap(),
+            InterruptedKeyRotationAction::ActivatePending
+        );
+    }
+
+    #[cfg(not(target_os = "android"))]
+    #[test]
+    fn interrupted_rotation_prefers_intact_active_database_before_install() {
+        let (database, old_key, _) = generated_rotation_database("key-rotation-crash-stage");
+        let new_key = generate_recovery_key();
+        let (working_path, rollback_path) = key_rotation_paths(&database.path).unwrap();
+        let source = open_database_at(&database.path, &old_key).unwrap();
+        copy_database_snapshot(&source, &working_path, &new_key).unwrap();
+        copy_database_snapshot(&source, &rollback_path, &old_key).unwrap();
+        drop(source);
+
+        assert_eq!(
+            interrupted_key_rotation_action(
+                &database.path,
+                &working_path,
+                &rollback_path,
+                Some(&old_key),
+                Some(&new_key),
+            )
+            .unwrap(),
+            InterruptedKeyRotationAction::KeepActive
+        );
+    }
+
+    #[cfg(not(target_os = "android"))]
+    #[test]
+    fn interrupted_rotation_restores_only_a_rollback_matching_the_active_key() {
+        let (database, old_key, _) = generated_rotation_database("key-rotation-crash-restore");
+        let wrong_key = generate_recovery_key();
+        let (working_path, rollback_path) = key_rotation_paths(&database.path).unwrap();
+        let source = open_database_at(&database.path, &old_key).unwrap();
+        copy_database_snapshot(&source, &rollback_path, &old_key).unwrap();
+        drop(source);
+        fs::remove_file(&database.path).unwrap();
+
+        assert_eq!(
+            interrupted_key_rotation_action(
+                &database.path,
+                &working_path,
+                &rollback_path,
+                Some(&old_key),
+                None,
+            )
+            .unwrap(),
+            InterruptedKeyRotationAction::RestoreActiveRollback
+        );
+        assert!(interrupted_key_rotation_action(
+            &database.path,
+            &working_path,
+            &rollback_path,
+            Some(&wrong_key),
+            None,
+        )
+        .is_err());
+        assert!(
+            rollback_path.exists(),
+            "an unmatched rollback is never deleted"
+        );
+    }
+
+    #[cfg(not(target_os = "android"))]
+    #[test]
+    fn interrupted_rotation_can_finish_installing_a_verified_pending_copy() {
+        let (database, old_key, _) = generated_rotation_database("key-rotation-crash-rename");
+        let new_key = generate_recovery_key();
+        let (working_path, rollback_path) = key_rotation_paths(&database.path).unwrap();
+        let source = open_database_at(&database.path, &old_key).unwrap();
+        copy_database_snapshot(&source, &working_path, &new_key).unwrap();
+        drop(source);
+        fs::remove_file(&database.path).unwrap();
+
+        assert_eq!(
+            interrupted_key_rotation_action(
+                &database.path,
+                &working_path,
+                &rollback_path,
+                Some(&old_key),
+                Some(&new_key),
+            )
+            .unwrap(),
+            InterruptedKeyRotationAction::InstallPendingWorking
         );
     }
 

@@ -155,6 +155,11 @@ export type RecoveryKeyStatus = {
   databasePath: string
 }
 
+export type RecoveryKeyRotationResult = {
+  recoveryKeyStatus: RecoveryKeyStatus
+  archivedKeyAccount: string
+}
+
 export type DatabaseLoadProgress = {
   percent: number
   stage: string
@@ -2203,6 +2208,11 @@ export async function getRecoveryKeyStatus(): Promise<RecoveryKeyStatus | null> 
 export async function confirmRecoveryKey(): Promise<void> {
   if (!isTauri()) return
   await invoke('confirm_recovery_key')
+}
+
+export async function rotateDatabaseRecoveryKey(): Promise<RecoveryKeyRotationResult | null> {
+  if (!isTauri()) return null
+  return invoke<RecoveryKeyRotationResult>('rotate_database_recovery_key')
 }
 
 export async function recoverDatabaseWithKey(recoveryKey: string): Promise<void> {

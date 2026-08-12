@@ -39,6 +39,7 @@
     persistenceError,
     plannerStore,
     recoverDatabaseWithKey,
+    rotateDatabaseRecoveryKey,
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
@@ -176,6 +177,10 @@ return rows`
   let recoveryKeyStatus: RecoveryKeyStatus | null = null
   let recoveryKeySaved = false
   let recoveryKeyCopied = false
+  let recoveryKeyRotationArchivedAccount = ''
+  let recoveryKeyRotationBusy = false
+  let recoveryKeyRotationStatus = ''
+  let recoveryKeyRotationStatusIsError = false
   let databaseRecoveryKey = ''
   let databaseRecoveryBusy = false
   let databaseRecoveryStatus = ''
@@ -3425,7 +3430,41 @@ return rows`
     await confirmRecoveryKey()
     recoveryKeyStatus = await getRecoveryKeyStatus()
     recoveryKeySaved = false
+    if (recoveryKeyRotationArchivedAccount) {
+      recoveryKeyRotationStatus = `Database key rotated. The previous key remains in Keychain as “${recoveryKeyRotationArchivedAccount}” for older backups.`
+      recoveryKeyRotationArchivedAccount = ''
+    }
     await runLaunchDatabaseMaintenance()
+  }
+
+  async function rotateRecoveryKey() {
+    if (recoveryKeyRotationBusy || !isTauri()) return
+
+    const confirmed = await confirmDialog(
+      'Rotate the key that encrypts the live Balance database? Balance will build and verify a complete encrypted copy before switching. The previous key will remain in Keychain for backups created before this rotation.',
+      { title: 'Rotate database key?', kind: 'warning' },
+    )
+    if (!confirmed) return
+
+    recoveryKeyRotationBusy = true
+    recoveryKeyRotationStatusIsError = false
+    recoveryKeyRotationStatus = 'Creating and verifying a newly encrypted database…'
+    try {
+      await requestSync('manual-database-key-rotation-preflight')
+      const result = await rotateDatabaseRecoveryKey()
+      if (!result) throw new Error('Database-key rotation is available only in the installed app.')
+      recoveryKeyStatus = result.recoveryKeyStatus
+      recoveryKeyRotationArchivedAccount = result.archivedKeyAccount
+      recoveryKeySaved = false
+      recoveryKeyCopied = false
+      recoveryKeyRotationStatus = 'Rotation verified. Save the new recovery key to finish.'
+      await plannerStore.reloadFromBackend()
+    } catch (error) {
+      recoveryKeyRotationStatusIsError = true
+      recoveryKeyRotationStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      recoveryKeyRotationBusy = false
+    }
   }
 
   async function recoverAndroidDatabase() {
@@ -4620,6 +4659,35 @@ return rows`
           </div>
         </section>
 
+        {#if isMac && !isMobile}
+          <section class="settings-section">
+            <div>
+              <h3>Database encryption key</h3>
+              <p>
+                Replace the key used by the live encrypted database. Balance verifies a complete newly encrypted copy
+                before switching, and retains the previous key in Keychain so backups from before the rotation remain
+                recoverable.
+              </p>
+            </div>
+
+            <div class="settings-actions">
+              <button
+                type="button"
+                disabled={!isTauri() || recoveryKeyRotationBusy || databaseCompactionBusy || recoveryBusy}
+                on:click={() => { void rotateRecoveryKey() }}
+              >
+                {recoveryKeyRotationBusy ? 'Rotating and verifying…' : 'Rotate database key'}
+              </button>
+            </div>
+
+            {#if recoveryKeyRotationStatus}
+              <p class:error={recoveryKeyRotationStatusIsError} class="export-status">
+                {recoveryKeyRotationStatus}
+              </p>
+            {/if}
+          </section>
+        {/if}
+
         <section class="settings-section">
           <div>
             <h3>Recovery &amp; diagnostics</h3>
@@ -4948,10 +5016,17 @@ return rows`
   <div class="modal-backdrop">
     <div class="recovery-dialog" role="dialog" aria-modal="true" aria-labelledby="recovery-title">
       <p class="eyebrow">Encryption</p>
-      <h2 id="recovery-title">Save your recovery key</h2>
+      <h2 id="recovery-title">
+        {recoveryKeyRotationArchivedAccount ? 'Save your new recovery key' : 'Save your recovery key'}
+      </h2>
       <p class="recovery-copy">
-        This key unlocks your encrypted Balance database from a backup or another device. Keep it somewhere private;
-        Balance cannot recover it for you.
+        {#if recoveryKeyRotationArchivedAccount}
+          This key now unlocks your live Balance database. Your previous key remains in Keychain as
+          “{recoveryKeyRotationArchivedAccount}” for backups created before the rotation.
+        {:else}
+          This key unlocks your encrypted Balance database from a backup or another device. Keep it somewhere private;
+          Balance cannot recover it for you.
+        {/if}
       </p>
 
       <div class="recovery-key" aria-label="Recovery key">{recoveryKeyStatus.recoveryKey}</div>
