@@ -2146,7 +2146,7 @@ function renderItems(items: PlanItem[]): string {
   return `<ul>${items
     .map((item) => {
       const time =
-        item.startMinutes !== null && item.endMinutes !== null
+        item.timeHidden !== true && item.startMinutes !== null && item.endMinutes !== null
           ? `<span class="time">${formatMinutes(item.startMinutes)}-${formatMinutes(item.endMinutes)}</span>`
           : ''
       const html = item.html ? sanitizeInlineHTML(item.html) : escapeHTML(item.text)
@@ -2422,6 +2422,7 @@ function normalizePlanItems(items: PlanItem[]): PlanItem[] {
       html,
       startMinutes: item.startMinutes ?? null,
       endMinutes: item.endMinutes ?? null,
+      timeHidden: item.timeHidden === true || undefined,
       children: normalizePlanItems(item.children ?? []),
     }
   })
@@ -2432,6 +2433,7 @@ function normalizeTemplateItems(items: TemplateItem[]): TemplateItem[] {
     ...item,
     startMinutes: item.startMinutes ?? null,
     endMinutes: item.endMinutes ?? null,
+    timeHidden: item.timeHidden === true || undefined,
     options: item.options.map((option) => {
       const html = sanitizeInlineHTML(option.html ?? escapeHTML(option.text ?? ''))
 

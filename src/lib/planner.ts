@@ -240,6 +240,7 @@ function generatePlanItems(
         ...createPlanItem(goal.name),
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
+        timeHidden: item.timeHidden,
       }))
     }
 
@@ -249,6 +250,7 @@ function generatePlanItems(
         html: option.html || escapeHTML(option.text),
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
+        timeHidden: item.timeHidden,
         children: generatePlanItems(item.children, date, goals, goalCompletions),
       },
     ]
@@ -1033,6 +1035,7 @@ function defaultTimeRangeAfterPreviousTimedItem<T extends {
   id: Id
   startMinutes: number | null
   endMinutes: number | null
+  timeHidden?: boolean | null
   children: T[]
 }>(items: T[], itemId: Id): { startMinutes: number; endMinutes: number } {
   const previousResult = previousTimedItem(items, itemId)
@@ -1062,6 +1065,7 @@ function previousTimedItem<T extends {
   id: Id
   startMinutes: number | null
   endMinutes: number | null
+  timeHidden?: boolean | null
   children: T[]
 }>(
   items: T[],
@@ -1074,7 +1078,7 @@ function previousTimedItem<T extends {
   for (const item of items) {
     if (item.id === itemId) return { found: true, previous: lastTimedItem, depth }
 
-    if (item.startMinutes !== null && item.endMinutes !== null) {
+    if (hasActiveTimeRange(item)) {
       lastTimedItem = {
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
@@ -1109,6 +1113,7 @@ export function buildItemTimeWarnings<T extends {
   id: Id
   startMinutes: number | null
   endMinutes: number | null
+  timeHidden?: boolean | null
   children: T[]
 }>(items: T[]): ReadonlyMap<Id, ItemTimeWarning> {
   const cached = itemTimeWarningsCache.get(items)
@@ -1133,7 +1138,7 @@ export function buildItemTimeWarnings<T extends {
     let previousTimedItem: T | null = null
 
     for (const item of siblings) {
-      const isTimed = item.startMinutes !== null && item.endMinutes !== null
+      const isTimed = hasActiveTimeRange(item)
 
       if (isTimed) {
         const warning = warningFor(item.id)
@@ -1155,13 +1160,13 @@ export function buildItemTimeWarnings<T extends {
       }
 
       const childAncestorStartMinutes =
-        item.startMinutes === null
+        !isTimed
           ? ancestorStartMinutes
           : ancestorStartMinutes === null
             ? item.startMinutes
             : Math.max(ancestorStartMinutes, item.startMinutes)
       const childAncestorEndMinutes =
-        item.endMinutes === null
+        !isTimed
           ? ancestorEndMinutes
           : ancestorEndMinutes === null
             ? item.endMinutes
@@ -1173,6 +1178,14 @@ export function buildItemTimeWarnings<T extends {
   visit(items, null, null)
   itemTimeWarningsCache.set(items, warnings)
   return warnings
+}
+
+export function hasActiveTimeRange(item: {
+  startMinutes: number | null
+  endMinutes: number | null
+  timeHidden?: boolean | null
+}): item is { startMinutes: number; endMinutes: number; timeHidden?: boolean | null } {
+  return item.timeHidden !== true && item.startMinutes !== null && item.endMinutes !== null
 }
 
 export function formatMinutes(minutes: number): string {

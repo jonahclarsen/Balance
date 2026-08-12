@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
-  import { defaultPlanItemTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
+  import { defaultPlanItemTimeRange, hasActiveTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
@@ -127,7 +127,13 @@
   $: displayHTML = locked ? renderItemDisplayHTML(item.html, item.text, linkSegments) : ''
 
   function addTime() {
-    patchItem(planId, item.id, defaultPlanItemTimeRange(allItems, item.id))
+    patchItem(
+      planId,
+      item.id,
+      item.timeHidden === true && item.startMinutes !== null && item.endMinutes !== null
+        ? { timeHidden: null }
+        : { ...defaultPlanItemTimeRange(allItems, item.id), timeHidden: null },
+    )
   }
 
   function patchTimeRange(startMinutes: number, endMinutes: number) {
@@ -150,7 +156,7 @@
     const targets: TimeShiftTarget[] = []
 
     for (const planItem of items) {
-      if (selectedIds.has(planItem.id) && planItem.startMinutes !== null && planItem.endMinutes !== null) {
+      if (selectedIds.has(planItem.id) && hasActiveTimeRange(planItem)) {
         targets.push({
           itemId: planItem.id,
           startMinutes: planItem.startMinutes,
@@ -444,8 +450,8 @@
     />
   </label>
 
-  <div class="plan-item-main" class:timed={item.startMinutes !== null && item.endMinutes !== null}>
-    {#if item.startMinutes !== null && item.endMinutes !== null}
+  <div class="plan-item-main" class:timed={hasActiveTimeRange(item)}>
+    {#if hasActiveTimeRange(item)}
         <TimeRange
           startMinutes={item.startMinutes}
           endMinutes={item.endMinutes}
@@ -456,7 +462,7 @@
           onChange={patchTimeRange}
           getShiftTargets={selectedTimeShiftTargets}
           onShift={shiftSelectedTimeRanges}
-          onRemove={() => patchItem(planId, item.id, { startMinutes: null, endMinutes: null })}
+          onRemove={() => patchItem(planId, item.id, { timeHidden: true })}
         />
       {:else if !locked}
         <button

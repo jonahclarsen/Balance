@@ -45,7 +45,7 @@
   import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
-  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, MAX_TIMELINE_MINUTES, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, MAX_TIMELINE_MINUTES, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { requestSync, startAutomaticSync } from './lib/syncScheduler'
 
@@ -2276,7 +2276,7 @@ return rows`
 
   function patchSelectedTimeItem(
     itemId: Id,
-    patch: { startMinutes: number | null; endMinutes: number | null },
+    patch: Pick<Partial<PlanItem>, 'startMinutes' | 'endMinutes' | 'timeHidden'>,
     mergeKey?: string,
   ) {
     const surface = activeItemSurface()
@@ -2296,16 +2296,18 @@ return rows`
     const items = timeItemsForIds(itemIds)
     if ((surface !== 'plan' && surface !== 'day-template') || items.length === 0) return
 
-    const removeTimes = items.every((item) => item.startMinutes !== null && item.endMinutes !== null)
+    const removeTimes = items.every(hasActiveTimeRange)
 
     for (const item of items) {
       if (removeTimes) {
-        patchSelectedTimeItem(item.id, { startMinutes: null, endMinutes: null })
-      } else if (item.startMinutes === null || item.endMinutes === null) {
+        patchSelectedTimeItem(item.id, { timeHidden: true })
+      } else if (item.timeHidden === true && item.startMinutes !== null && item.endMinutes !== null) {
+        patchSelectedTimeItem(item.id, { timeHidden: null })
+      } else if (!hasActiveTimeRange(item)) {
         const range = surface === 'plan'
           ? defaultPlanItemTimeRange(focusedPlan?.items ?? [], item.id)
           : defaultTemplateItemTimeRange(selectedTemplate?.items ?? [], item.id)
-        patchSelectedTimeItem(item.id, range)
+        patchSelectedTimeItem(item.id, { ...range, timeHidden: null })
       }
     }
   }
@@ -2316,7 +2318,7 @@ return rows`
 
     const timedItems = timeItemsForIds(itemIds).filter(
       (item): item is (PlanItem | TemplateItem) & { startMinutes: number; endMinutes: number } =>
-        item.startMinutes !== null && item.endMinutes !== null,
+        hasActiveTimeRange(item),
     )
     if (timedItems.length === 0) return
 

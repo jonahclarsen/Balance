@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { defaultTemplateItemTimeRange, linkifyItemText, type ItemLink, type ItemTimeWarning } from './planner'
+  import { defaultTemplateItemTimeRange, hasActiveTimeRange, linkifyItemText, type ItemLink, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
@@ -76,7 +76,13 @@
   $: timeWarning = timeWarnings.get(item.id)
 
   function addTime() {
-    patchItem(templateId, item.id, defaultTemplateItemTimeRange(allItems, item.id))
+    patchItem(
+      templateId,
+      item.id,
+      item.timeHidden === true && item.startMinutes !== null && item.endMinutes !== null
+        ? { timeHidden: null }
+        : { ...defaultTemplateItemTimeRange(allItems, item.id), timeHidden: null },
+    )
   }
 
   function patchTimeRange(startMinutes: number, endMinutes: number) {
@@ -306,7 +312,7 @@
   {onSelectionPointerMove}
   {onSelectionPointerEnter}
 >
-  {#if item.startMinutes !== null && item.endMinutes !== null}
+  {#if hasActiveTimeRange(item)}
       <TimeRange
         startMinutes={item.startMinutes}
         endMinutes={item.endMinutes}
@@ -315,7 +321,7 @@
         precedesAncestor={timeWarning?.precedesAncestor}
         exceedsAncestor={timeWarning?.exceedsAncestor}
         onChange={patchTimeRange}
-        onRemove={() => patchItem(templateId, item.id, { startMinutes: null, endMinutes: null })}
+        onRemove={() => patchItem(templateId, item.id, { timeHidden: true })}
       />
     {:else}
       <button

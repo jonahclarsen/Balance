@@ -1251,6 +1251,7 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           parent_id text references template_items(id) on delete cascade,
           start_minutes integer,
           end_minutes integer,
+          time_hidden integer,
           position integer not null
         );
 
@@ -1281,7 +1282,8 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           html text not null,
           done integer not null,
           start_minutes integer,
-          end_minutes integer
+          end_minutes integer,
+          time_hidden integer
         );
 
         create table if not exists operations (
@@ -1333,6 +1335,8 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
     )?;
     add_missing_column(connection, "template_items", "start_minutes", "integer")?;
     add_missing_column(connection, "template_items", "end_minutes", "integer")?;
+    add_missing_column(connection, "template_items", "time_hidden", "integer")?;
+    add_missing_column(connection, "plan_items", "time_hidden", "integer")?;
     add_missing_column(
         connection,
         "plans",
@@ -2865,7 +2869,7 @@ fn build_plan_item_patch_undo(
 ) -> Result<Option<Value>, String> {
     let item_id = required_string(payload, "itemId")?;
     let patch = required_value(payload, "patch")?;
-    let Some((text, html, done, start_minutes, end_minutes)) =
+    let Some((text, html, done, start_minutes, end_minutes, time_hidden)) =
         read_plan_item_fields(connection, item_id)?
     else {
         return Ok(None);
@@ -2886,6 +2890,9 @@ fn build_plan_item_patch_undo(
     }
     if patch_has_key(patch, "endMinutes") {
         inverse_patch.insert("endMinutes".into(), json!(end_minutes));
+    }
+    if patch_has_key(patch, "timeHidden") {
+        inverse_patch.insert("timeHidden".into(), json!(time_hidden));
     }
 
     if inverse_patch.is_empty() {
@@ -2910,7 +2917,7 @@ fn build_patch_plan_items_done_undo(
         .iter()
         .filter_map(|item_id| item_id.as_str())
         .map(|item_id| {
-            let Some((_, _, done, _, _)) = read_plan_item_fields(connection, item_id)? else {
+            let Some((_, _, done, _, _, _)) = read_plan_item_fields(connection, item_id)? else {
                 return Ok(None);
             };
 
@@ -3289,7 +3296,9 @@ fn build_template_item_patch_undo(
 ) -> Result<Option<Value>, String> {
     let item_id = required_string(payload, "itemId")?;
     let patch = required_value(payload, "patch")?;
-    let Some((start_minutes, end_minutes)) = read_template_item_fields(connection, item_id)? else {
+    let Some((start_minutes, end_minutes, time_hidden)) =
+        read_template_item_fields(connection, item_id)?
+    else {
         return Ok(None);
     };
 
@@ -3299,6 +3308,9 @@ fn build_template_item_patch_undo(
     }
     if patch_has_key(patch, "endMinutes") {
         inverse_patch.insert("endMinutes".into(), json!(end_minutes));
+    }
+    if patch_has_key(patch, "timeHidden") {
+        inverse_patch.insert("timeHidden".into(), json!(time_hidden));
     }
 
     if inverse_patch.is_empty() {
@@ -3997,13 +4009,14 @@ fn insert_template_item(
     connection
         .execute(
             "
-        insert into template_items (id, template_id, parent_id, start_minutes, end_minutes, position)
-        values (?1, ?2, ?3, ?4, ?5, ?6)
+        insert into template_items (id, template_id, parent_id, start_minutes, end_minutes, time_hidden, position)
+        values (?1, ?2, ?3, ?4, ?5, ?6, ?7)
         on conflict(id) do update set
           template_id = excluded.template_id,
           parent_id = excluded.parent_id,
           start_minutes = excluded.start_minutes,
           end_minutes = excluded.end_minutes,
+          time_hidden = excluded.time_hidden,
           position = excluded.position
       ",
             params![
@@ -4012,6 +4025,7 @@ fn insert_template_item(
                 parent_id,
                 optional_i64(item, "startMinutes")?,
                 optional_i64(item, "endMinutes")?,
+                optional_bool(item, "timeHidden")?.map(|value| if value { 1 } else { 0 }),
                 position
             ],
         )
@@ -4136,9 +4150,9 @@ fn insert_plan_item(
         .execute(
             "
         insert into plan_items (
-          id, plan_id, parent_id, position, text, html, done, start_minutes, end_minutes
+          id, plan_id, parent_id, position, text, html, done, start_minutes, end_minutes, time_hidden
         )
-        values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+        values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
         on conflict(id) do update set
           plan_id = excluded.plan_id,
           parent_id = excluded.parent_id,
@@ -4147,7 +4161,8 @@ fn insert_plan_item(
           html = excluded.html,
           done = excluded.done,
           start_minutes = excluded.start_minutes,
-          end_minutes = excluded.end_minutes
+          end_minutes = excluded.end_minutes,
+          time_hidden = excluded.time_hidden
       ",
             params![
                 item_id,
@@ -4159,6 +4174,7 @@ fn insert_plan_item(
                 if bool_value(item, "done")? { 1 } else { 0 },
                 optional_i64(item, "startMinutes")?,
                 optional_i64(item, "endMinutes")?,
+                optional_bool(item, "timeHidden")?.map(|value| if value { 1 } else { 0 }),
             ],
         )
         .map_err(|error| error.to_string())?;
@@ -4217,6 +4233,17 @@ fn patch_plan_item(connection: &Connection, payload: &Value) -> Result<(), Strin
             .execute(
                 "update plan_items set end_minutes = ?1 where id = ?2",
                 params![optional_i64(patch, "endMinutes")?, item_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    if patch_has_key(patch, "timeHidden") {
+        connection
+            .execute(
+                "update plan_items set time_hidden = ?1 where id = ?2",
+                params![
+                    optional_bool(patch, "timeHidden")?.map(|value| if value { 1 } else { 0 }),
+                    item_id
+                ],
             )
             .map_err(|error| error.to_string())?;
     }
@@ -4642,6 +4669,17 @@ fn patch_template_item(connection: &Connection, payload: &Value) -> Result<(), S
             .execute(
                 "update template_items set end_minutes = ?1 where id = ?2",
                 params![optional_i64(patch, "endMinutes")?, item_id],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+    if patch_has_key(patch, "timeHidden") {
+        connection
+            .execute(
+                "update template_items set time_hidden = ?1 where id = ?2",
+                params![
+                    optional_bool(patch, "timeHidden")?.map(|value| if value { 1 } else { 0 }),
+                    item_id
+                ],
             )
             .map_err(|error| error.to_string())?;
     }
@@ -5817,7 +5855,7 @@ fn read_plan_item_snapshot(
     let row = connection
         .query_row(
             "
-          select plan_id, parent_id, position, text, html, done, start_minutes, end_minutes
+          select plan_id, parent_id, position, text, html, done, start_minutes, end_minutes, time_hidden
           from plan_items
           where id = ?1
         ",
@@ -5832,13 +5870,24 @@ fn read_plan_item_snapshot(
                     row.get::<_, i64>(5)?,
                     row.get::<_, Option<i64>>(6)?,
                     row.get::<_, Option<i64>>(7)?,
+                    row.get::<_, Option<i64>>(8)?.map(|value| value != 0),
                 ))
             },
         )
         .optional()
         .map_err(|error| error.to_string())?;
 
-    let Some((plan_id, parent_id, position, text, html, done, start_minutes, end_minutes)) = row
+    let Some((
+        plan_id,
+        parent_id,
+        position,
+        text,
+        html,
+        done,
+        start_minutes,
+        end_minutes,
+        time_hidden,
+    )) = row
     else {
         return Ok(None);
     };
@@ -5854,6 +5903,7 @@ fn read_plan_item_snapshot(
             "done": done != 0,
             "startMinutes": start_minutes,
             "endMinutes": end_minutes,
+            "timeHidden": time_hidden,
             "children": read_plan_items(connection, &plan_id, Some(item_id))?,
         }),
     }))
@@ -5862,11 +5912,11 @@ fn read_plan_item_snapshot(
 fn read_plan_item_fields(
     connection: &Connection,
     item_id: &str,
-) -> Result<Option<(String, String, bool, Option<i64>, Option<i64>)>, String> {
+) -> Result<Option<(String, String, bool, Option<i64>, Option<i64>, Option<bool>)>, String> {
     connection
         .query_row(
             "
-          select text, html, done, start_minutes, end_minutes
+          select text, html, done, start_minutes, end_minutes, time_hidden
           from plan_items
           where id = ?1
         ",
@@ -5878,6 +5928,7 @@ fn read_plan_item_fields(
                     row.get::<_, i64>(2)? != 0,
                     row.get::<_, Option<i64>>(3)?,
                     row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, Option<i64>>(5)?.map(|value| value != 0),
                 ))
             },
         )
@@ -5963,7 +6014,7 @@ fn read_template_item_snapshot(
     let row = connection
         .query_row(
             "
-          select template_id, parent_id, position, start_minutes, end_minutes
+          select template_id, parent_id, position, start_minutes, end_minutes, time_hidden
           from template_items
           where id = ?1
         ",
@@ -5975,13 +6026,15 @@ fn read_template_item_snapshot(
                     row.get::<_, i64>(2)?,
                     row.get::<_, Option<i64>>(3)?,
                     row.get::<_, Option<i64>>(4)?,
+                    row.get::<_, Option<i64>>(5)?.map(|value| value != 0),
                 ))
             },
         )
         .optional()
         .map_err(|error| error.to_string())?;
 
-    let Some((template_id, parent_id, position, start_minutes, end_minutes)) = row else {
+    let Some((template_id, parent_id, position, start_minutes, end_minutes, time_hidden)) = row
+    else {
         return Ok(None);
     };
 
@@ -5993,6 +6046,7 @@ fn read_template_item_snapshot(
             "id": item_id,
             "startMinutes": start_minutes,
             "endMinutes": end_minutes,
+            "timeHidden": time_hidden,
             "options": read_template_options(connection, item_id)?,
             "children": read_template_items(connection, &template_id, Some(item_id))?,
         }),
@@ -6002,12 +6056,18 @@ fn read_template_item_snapshot(
 fn read_template_item_fields(
     connection: &Connection,
     item_id: &str,
-) -> Result<Option<(Option<i64>, Option<i64>)>, String> {
+) -> Result<Option<(Option<i64>, Option<i64>, Option<bool>)>, String> {
     connection
         .query_row(
-            "select start_minutes, end_minutes from template_items where id = ?1",
+            "select start_minutes, end_minutes, time_hidden from template_items where id = ?1",
             params![item_id],
-            |row| Ok((row.get::<_, Option<i64>>(0)?, row.get::<_, Option<i64>>(1)?)),
+            |row| {
+                Ok((
+                    row.get::<_, Option<i64>>(0)?,
+                    row.get::<_, Option<i64>>(1)?,
+                    row.get::<_, Option<i64>>(2)?.map(|value| value != 0),
+                ))
+            },
         )
         .optional()
         .map_err(|error| error.to_string())
@@ -6121,7 +6181,7 @@ fn read_template_items(
     let mut statement = if parent_id.is_some() {
         connection.prepare(
             "
-          select id, start_minutes, end_minutes
+          select id, start_minutes, end_minutes, time_hidden
           from template_items
           where template_id = ?1 and parent_id = ?2
           order by position, id
@@ -6130,7 +6190,7 @@ fn read_template_items(
     } else {
         connection.prepare(
             "
-          select id, start_minutes, end_minutes
+          select id, start_minutes, end_minutes, time_hidden
           from template_items
           where template_id = ?1 and parent_id is null
           order by position, id
@@ -6146,6 +6206,7 @@ fn read_template_items(
                     row.get::<_, String>(0)?,
                     row.get::<_, Option<i64>>(1)?,
                     row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, Option<i64>>(3)?.map(|value| value != 0),
                 ))
             })
             .map_err(|error| error.to_string())?
@@ -6158,6 +6219,7 @@ fn read_template_items(
                     row.get::<_, String>(0)?,
                     row.get::<_, Option<i64>>(1)?,
                     row.get::<_, Option<i64>>(2)?,
+                    row.get::<_, Option<i64>>(3)?.map(|value| value != 0),
                 ))
             })
             .map_err(|error| error.to_string())?
@@ -6166,11 +6228,12 @@ fn read_template_items(
     };
 
     ids.into_iter()
-        .map(|(id, start_minutes, end_minutes)| {
+        .map(|(id, start_minutes, end_minutes, time_hidden)| {
             Ok(json!({
                 "id": id,
                 "startMinutes": start_minutes,
                 "endMinutes": end_minutes,
+                "timeHidden": time_hidden,
                 "options": read_template_options(connection, &id)?,
                 "children": read_template_items(connection, template_id, Some(&id))?,
             }))
@@ -6258,6 +6321,7 @@ struct StoredPlanItem {
     done: bool,
     start_minutes: Option<i64>,
     end_minutes: Option<i64>,
+    time_hidden: Option<bool>,
 }
 
 type PlanItemBuckets = HashMap<Option<String>, Vec<StoredPlanItem>>;
@@ -6268,7 +6332,7 @@ fn read_plan_item_buckets_by_plan(
     let mut statement = connection
         .prepare(
             "
-          select plan_id, parent_id, id, text, html, done, start_minutes, end_minutes
+          select plan_id, parent_id, id, text, html, done, start_minutes, end_minutes, time_hidden
           from plan_items
           order by plan_id, parent_id, position, id
         ",
@@ -6286,6 +6350,7 @@ fn read_plan_item_buckets_by_plan(
                     done: row.get::<_, i64>(5)? != 0,
                     start_minutes: row.get::<_, Option<i64>>(6)?,
                     end_minutes: row.get::<_, Option<i64>>(7)?,
+                    time_hidden: row.get::<_, Option<i64>>(8)?.map(|value| value != 0),
                 },
             ))
         })
@@ -6320,6 +6385,7 @@ fn build_plan_item_tree(item_buckets: &mut PlanItemBuckets, parent_id: Option<&s
                 "done": item.done,
                 "startMinutes": item.start_minutes,
                 "endMinutes": item.end_minutes,
+                "timeHidden": item.time_hidden,
                 "children": children,
             })
         })
@@ -6334,7 +6400,7 @@ fn read_plan_items(
     let mut statement = if parent_id.is_some() {
         connection.prepare(
             "
-          select id, text, html, done, start_minutes, end_minutes
+          select id, text, html, done, start_minutes, end_minutes, time_hidden
           from plan_items
           where plan_id = ?1 and parent_id = ?2
           order by position, id
@@ -6343,7 +6409,7 @@ fn read_plan_items(
     } else {
         connection.prepare(
             "
-          select id, text, html, done, start_minutes, end_minutes
+          select id, text, html, done, start_minutes, end_minutes, time_hidden
           from plan_items
           where plan_id = ?1 and parent_id is null
           order by position, id
@@ -6376,6 +6442,7 @@ fn plan_item_from_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<Value> {
         "done": row.get::<_, i64>(3)? != 0,
         "startMinutes": row.get::<_, Option<i64>>(4)?,
         "endMinutes": row.get::<_, Option<i64>>(5)?,
+        "timeHidden": row.get::<_, Option<i64>>(6)?.map(|value| value != 0),
         "children": [],
     }))
 }
@@ -9989,6 +10056,51 @@ mod tests {
             .unwrap();
         assert_eq!(redone["templates"][0]["items"][0]["startMinutes"], 540);
         assert_eq!(redone["templates"][0]["items"][0]["endMinutes"], 600);
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_3",
+                "deviceId": "device_test",
+                "sequence": 3,
+                "type": "patch_template_item",
+                "timestamp": "2026-05-21T00:02:00Z",
+                "payload": {
+                    "templateId": "template_default",
+                    "itemId": "template_item_wake",
+                    "patch": { "timeHidden": true }
+                }
+            }),
+        )
+        .unwrap();
+
+        let hidden = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(hidden["templates"][0]["items"][0]["startMinutes"], 540);
+        assert_eq!(hidden["templates"][0]["items"][0]["endMinutes"], 600);
+        assert_eq!(hidden["templates"][0]["items"][0]["timeHidden"], true);
+
+        let visible_again = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            visible_again["templates"][0]["items"][0]["timeHidden"],
+            Value::Null
+        );
+        assert_eq!(
+            visible_again["templates"][0]["items"][0]["startMinutes"],
+            540
+        );
+        assert_eq!(visible_again["templates"][0]["items"][0]["endMinutes"], 600);
+
+        let hidden_again = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(hidden_again["templates"][0]["items"][0]["timeHidden"], true);
+        assert_eq!(
+            hidden_again["templates"][0]["items"][0]["startMinutes"],
+            540
+        );
+        assert_eq!(hidden_again["templates"][0]["items"][0]["endMinutes"], 600);
     }
 
     #[test]

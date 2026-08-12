@@ -1047,10 +1047,26 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
   await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
 
   await page.keyboard.press('Alt+Shift+t')
-  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([null, null])
+  await expect.poll(async () => planItemStoredTime(page, 'Pick the first useful task')).toEqual({
+    startMinutes: 540,
+    endMinutes: 600,
+    timeHidden: true,
+    hasTimeHiddenField: true,
+  })
+  await expect
+    .poll(async () => planItemStoredTime(page, 'Wake up'))
+    .toEqual({ startMinutes: null, endMinutes: null, timeHidden: null, hasTimeHiddenField: false })
+
+  await page.reload()
+  await focusInputByValue(page, 'Pick the first useful task')
+  await page.keyboard.press('Alt+Shift+t')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
 
   await page.keyboard.press('Alt+/')
   const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+  await expect(shortcuts.getByText('Add / remove time from selected items', { exact: true })).toBeVisible()
+  await expect(shortcuts.getByText('Move selected start earlier / later', { exact: true })).toBeVisible()
+  await expect(shortcuts.getByText('Move selected end earlier / later', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Add / remove task time', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Move task start earlier / later', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Move task end earlier / later', { exact: true })).toBeVisible()
@@ -1067,6 +1083,13 @@ test('keyboard time shortcuts also work while editing day-template items', async
   await page.keyboard.press('Alt+Shift+t')
   await page.keyboard.press('Alt+Shift+]')
 
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([555, 615])
+
+  await page.keyboard.press('Alt+Shift+t')
+  await page.reload()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await focusTemplateOptionByValue(page, 'Pick the first useful task')
+  await page.keyboard.press('Alt+Shift+t')
   await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([555, 615])
 })
 
@@ -3579,6 +3602,37 @@ async function planItemTimeRange(page: import('@playwright/test').Page, text: st
 
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return visit(state.plans?.[0]?.items ?? [])
+  }, text)
+}
+
+async function planItemStoredTime(page: import('@playwright/test').Page, text: string) {
+  return page.evaluate((expectedText) => {
+    type Item = {
+      text: string
+      startMinutes: number | null
+      endMinutes: number | null
+      timeHidden?: boolean | null
+      children: Item[]
+    }
+    const visit = (items: Item[]): Item | null => {
+      for (const item of items) {
+        if (item.text === expectedText) return item
+        const match = visit(item.children)
+        if (match) return match
+      }
+      return null
+    }
+
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const item = visit(state.plans?.[0]?.items ?? [])
+    return item
+      ? {
+          startMinutes: item.startMinutes,
+          endMinutes: item.endMinutes,
+          timeHidden: item.timeHidden ?? null,
+          hasTimeHiddenField: Object.prototype.hasOwnProperty.call(item, 'timeHidden'),
+        }
+      : null
   }, text)
 }
 

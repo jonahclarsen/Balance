@@ -11,6 +11,7 @@ export type TemplateItem = {
   id: Id
   startMinutes: number | null
   endMinutes: number | null
+  timeHidden?: boolean | null
   options: TemplateOption[]
   children: TemplateItem[]
 }
@@ -22,6 +23,7 @@ export type PlanItem = {
   done: boolean
   startMinutes: number | null
   endMinutes: number | null
+  timeHidden?: boolean | null
   children: PlanItem[]
 }
 
