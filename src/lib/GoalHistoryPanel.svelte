@@ -32,30 +32,54 @@
   let highlightedGoalId: string | null = null
   let copiedGoalId: string | null = null
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined
+  let highlightResetTimer: ReturnType<typeof setTimeout> | undefined
   let lastHandledScrollNonce = -1
 
   $: if (scrollRequest && scrollRequest.nonce !== lastHandledScrollNonce) {
     lastHandledScrollNonce = scrollRequest.nonce
-    revealGoal(scrollRequest.goalId)
+    revealGoal(scrollRequest.goalId, scrollRequest.nonce)
   }
 
-  async function revealGoal(goalId: string) {
+  async function revealGoal(goalId: string, nonce: number) {
     await tick()
+    // When the badge also opens Goal Rhythm, its grid row is still changing
+    // from 0px during this tick. Wait for that layout before measuring the
+    // viewport, otherwise the target scroll is calculated against no height.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    if (lastHandledScrollNonce !== nonce) return
     const row = nameScrollEl?.querySelector<HTMLElement>(`[data-goal-id="${goalId}"]`)
-    if (!row || !scrollEl) return
+    if (!row || !scrollEl || !nameScrollEl) return
 
-    const visibleHeight = scrollEl.clientHeight - 30
-    const visibleTop = scrollEl.scrollTop
+    const visibleHeight = nameScrollEl.clientHeight
+    const visibleTop = nameScrollEl.scrollTop
     const rowTop = row.offsetTop
     const rowBottom = rowTop + row.offsetHeight
+    let targetTop: number | null = null
     if (rowTop < visibleTop) {
-      scrollEl.scrollTo({ top: rowTop, behavior: 'smooth' })
+      targetTop = rowTop
     } else if (rowBottom > visibleTop + visibleHeight) {
-      scrollEl.scrollTo({ top: rowBottom - visibleHeight, behavior: 'smooth' })
+      targetTop = rowBottom - visibleHeight
     }
+    if (targetTop !== null) {
+      // Set both synchronized panes to the destination in the same turn. A
+      // smooth scroll fires intermediate events from each pane, causing their
+      // reciprocal handlers to cancel the animation after only a small nudge.
+      nameScrollEl.scrollTop = targetTop
+      scrollEl.scrollTop = targetTop
+    }
+
+    // Paint the final scroll position before starting the pulse. Clearing the
+    // class first also makes another click restart an in-progress animation.
+    highlightedGoalId = null
+    if (highlightResetTimer) clearTimeout(highlightResetTimer)
+    await tick()
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    )
+    if (lastHandledScrollNonce !== nonce) return
     highlightedGoalId = goalId
-    setTimeout(() => {
-      if (highlightedGoalId === goalId) highlightedGoalId = null
+    highlightResetTimer = setTimeout(() => {
+      if (lastHandledScrollNonce === nonce && highlightedGoalId === goalId) highlightedGoalId = null
     }, 1600)
   }
 
@@ -140,6 +164,7 @@
     return () => {
       clearInterval(dayTimer)
       if (copyResetTimer) clearTimeout(copyResetTimer)
+      if (highlightResetTimer) clearTimeout(highlightResetTimer)
       window.removeEventListener('focus', refreshDay)
       document.removeEventListener('visibilitychange', refreshDay)
     }

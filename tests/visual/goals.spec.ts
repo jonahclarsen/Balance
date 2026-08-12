@@ -1125,12 +1125,58 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   const badge = row.locator('.plan-goal-badge', { hasText: 'Exercise' })
   await expect(badge).toBeVisible()
 
+  await page.evaluate((currentDate) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const exercise = state.goals?.find((goal: { name: string }) => goal.name === 'Exercise')
+    if (!exercise) throw new Error('Expected the Exercise goal')
+
+    const timestamp = new Date().toISOString()
+    const decoys = Array.from({ length: 30 }, (_, index) => ({
+      id: `goal_decoy_${index}`,
+      name: `Decoy goal ${index + 1}`,
+      nameHtml: `Decoy goal ${index + 1}`,
+      cadenceDays: 1,
+      matchTerms: [`decoy-${index + 1}`],
+      matchTermsHtml: `decoy-${index + 1}`,
+      hue: index * 12,
+      lightness: 50,
+      activityPeriods: [{ startDate: currentDate, endDate: null }],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }))
+    state.goals = [...decoys.slice(0, 20), exercise, ...decoys.slice(20)]
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, todayISO())
+  await page.reload()
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
   const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
   await expect(goalRow).toHaveCount(1)
+  await expect.poll(() => goalRhythmRowIsFullyVisible(page, 'Exercise')).toBe(false)
   await expect(goalRow).not.toHaveClass(/goal-row-focus/)
 
+  await page.keyboard.press('Alt+a')
+  await expect(page.locator('.goal-history-panel')).toHaveCount(0)
+  await page.evaluate(() => {
+    const testWindow = window as Window & { goalHighlightAnimationStarts?: number }
+    testWindow.goalHighlightAnimationStarts = 0
+    document.addEventListener('animationstart', (event) => {
+      const target = event.target
+      if (target instanceof HTMLElement && target.matches('.goal-history-name[data-goal-id]') && target.textContent?.includes('Exercise')) {
+        testWindow.goalHighlightAnimationStarts = (testWindow.goalHighlightAnimationStarts ?? 0) + 1
+      }
+    })
+  })
+
   await badge.click()
+  await expect(page.locator('.goal-history-panel')).toBeVisible()
   await expect(goalRow).toHaveClass(/goal-row-focus/)
+  expect(await goalRhythmRowIsFullyVisible(page, 'Exercise')).toBe(true)
+  expect(await goalRhythmScrollTopDifference(page)).toBe(0)
+  await expect.poll(() => goalHighlightAnimationStarts(page)).toBe(1)
+
+  await badge.click()
+  await expect.poll(() => goalHighlightAnimationStarts(page)).toBe(2)
 })
 
 test('clicking an unchecked goal preview reveals that goal in the rhythm panel', async ({ page }) => {
@@ -1293,4 +1339,21 @@ async function goalRhythmScrollTopDifference(page: import('@playwright/test').Pa
     if (!timeline || !names) return null
     return Math.round(timeline.scrollTop - names.scrollTop)
   })
+}
+
+async function goalRhythmRowIsFullyVisible(page: import('@playwright/test').Page, goalName: string) {
+  return page.evaluate((name) => {
+    const viewport = document.querySelector<HTMLElement>('.goal-history-name-scroll')
+    const row = [...document.querySelectorAll<HTMLElement>('.goal-history-name')].find((candidate) =>
+      candidate.textContent?.includes(name),
+    )
+    if (!viewport || !row) return null
+    const viewportRect = viewport.getBoundingClientRect()
+    const rowRect = row.getBoundingClientRect()
+    return rowRect.top >= viewportRect.top && rowRect.bottom <= viewportRect.bottom
+  }, goalName)
+}
+
+async function goalHighlightAnimationStarts(page: import('@playwright/test').Page) {
+  return page.evaluate(() => (window as Window & { goalHighlightAnimationStarts?: number }).goalHighlightAnimationStarts ?? 0)
 }
