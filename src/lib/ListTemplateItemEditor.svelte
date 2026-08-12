@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { clampListItemProbability, expectedWordCount, htmlToPlainText, linkifyItemText, type ItemLink, wordCount } from './planner'
+  import { clampListItemProbability, expectedWordCount, htmlToPlainText, linkifyItemText, MIN_LIST_ITEM_PROBABILITY, type ItemLink, wordCount } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
@@ -299,7 +299,7 @@
       />
       <ProbabilitySlider
         value={item.probability}
-        min={40}
+        min={MIN_LIST_ITEM_PROBABILITY}
         step={10}
         ariaLabel="Appearance probability"
         generousHitbox
