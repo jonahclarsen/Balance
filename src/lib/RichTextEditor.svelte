@@ -38,6 +38,8 @@
   export let onArrowKey:
     | ((direction: MoveDirection, editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
+  export let interceptShiftArrow = false
+  export let interceptShiftArrowAtBoundary = false
   export let onSplit:
     | ((before: { html: string; text: string }, after: { html: string; text: string }, editor: HTMLDivElement) => void | Promise<void>)
     | null = null
@@ -216,11 +218,33 @@
     if (event.ctrlKey) return
 
     const direction = event.key === 'ArrowUp' ? 'up' : 'down'
+    let navigationEditor = activeEditor
+    if (event.shiftKey && !event.metaKey && !event.altKey && !interceptShiftArrow) {
+      if (!interceptShiftArrowAtBoundary) return
+      navigationEditor = selectionFocusEditor(activeEditor)
+      if (!isSelectionFocusOnBoundaryLine(navigationEditor, direction)) return
+    }
     const alwaysMoveBetweenItems = event.metaKey || event.altKey || event.shiftKey
     if (!alwaysMoveBetweenItems && !isCaretOnBoundaryLine(activeEditor, direction)) return
 
     event.preventDefault()
-    await onArrowKey(direction, activeEditor, event)
+    await onArrowKey(direction, navigationEditor, event)
+  }
+
+  function selectionFocusEditor(fallback: HTMLDivElement) {
+    const focusNode = document.getSelection()?.focusNode
+    const focusElement = focusNode instanceof Element ? focusNode : focusNode?.parentElement
+    return focusElement?.closest<HTMLDivElement>('[data-rich-text-input]') ?? fallback
+  }
+
+  function isSelectionFocusOnBoundaryLine(activeEditor: HTMLDivElement, direction: MoveDirection) {
+    const selection = document.getSelection()
+    if (!selection?.focusNode || !activeEditor.contains(selection.focusNode)) return false
+
+    const focusRange = document.createRange()
+    focusRange.setStart(selection.focusNode, selection.focusOffset)
+    focusRange.collapse(true)
+    return isRangeOnBoundaryLine(activeEditor, focusRange, direction)
   }
 
   function isCaretOnBoundaryLine(activeEditor: HTMLDivElement, direction: MoveDirection) {
@@ -230,6 +254,10 @@
     const caretRange = selection.getRangeAt(0)
     if (!rangeIsInside(activeEditor, caretRange)) return false
 
+    return isRangeOnBoundaryLine(activeEditor, caretRange, direction)
+  }
+
+  function isRangeOnBoundaryLine(activeEditor: HTMLDivElement, caretRange: Range, direction: MoveDirection) {
     const contentRange = document.createRange()
     contentRange.selectNodeContents(activeEditor)
     const contentRects = Array.from(contentRange.getClientRects()).filter((rect) => rect.height > 0)

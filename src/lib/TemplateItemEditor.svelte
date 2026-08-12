@@ -343,6 +343,7 @@
             revision={historyRevision}
             onChange={(html, text, options) => patchOption(templateId, item.id, option.id, { html, text }, options)}
             onArrowKey={(direction, editor, event) => handleTextArrowKey(option.id, direction, editor, event)}
+            interceptShiftArrow
             onSplit={(before, after) => handleTextSplit(option.id, before, after)}
             onTabKey={handleTextTab}
             onBackspaceEmpty={(editor) => handleBackspaceEmpty(option, index, editor)}

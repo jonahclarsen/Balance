@@ -62,7 +62,60 @@
       focusInput(item.id)
       return
     }
+    if (event.shiftKey) {
+      extendSelectionToAdjacentLine(current, direction)
+      return
+    }
     focusAdjacent(current, direction)
+  }
+
+  function extendSelectionToAdjacentLine(current: HTMLDivElement, direction: MoveDirection) {
+    const selection = document.getSelection()
+    if (!selection?.anchorNode || !selection.focusNode) return
+
+    const inputs = noteInputs()
+    const index = inputs.indexOf(current)
+    if (index < 0) return
+
+    const adjacent = inputs[direction === 'up' ? index - 1 : index + 1]
+    const target = adjacent ?? current
+    const sourceOffset = textOffsetAtPoint(current, selection.focusNode, selection.focusOffset)
+    const targetOffset = adjacent
+      ? Math.min(sourceOffset, target.textContent?.length ?? 0)
+      : direction === 'up'
+        ? 0
+        : target.textContent?.length ?? 0
+    const targetPoint = pointAtTextOffset(target, targetOffset)
+
+    selection.setBaseAndExtent(
+      selection.anchorNode,
+      selection.anchorOffset,
+      targetPoint.node,
+      targetPoint.offset,
+    )
+  }
+
+  function textOffsetAtPoint(input: HTMLDivElement, node: Node, offset: number) {
+    if (!input.contains(node)) return 0
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.setEnd(node, offset)
+    return range.toString().length
+  }
+
+  function pointAtTextOffset(input: HTMLDivElement, requestedOffset: number) {
+    const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT)
+    let remaining = requestedOffset
+    let node = walker.nextNode()
+
+    while (node) {
+      const length = node.textContent?.length ?? 0
+      if (remaining <= length) return { node, offset: remaining }
+      remaining -= length
+      node = walker.nextNode()
+    }
+
+    return { node: input as Node, offset: requestedOffset <= 0 ? 0 : input.childNodes.length }
   }
 
   async function handleTab(direction: 'in' | 'out', current: HTMLDivElement) {
@@ -307,6 +360,7 @@
       revision={historyRevision}
       onChange={handleTextChange}
       onArrowKey={handleArrow}
+      interceptShiftArrowAtBoundary
       onSplit={handleSplit}
       onTabKey={handleTab}
       onBackspaceEmpty={handleBackspaceEmpty}

@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 async function placeCaretAtEnd(editor: Locator) {
   await editor.evaluate((element) => {
@@ -12,6 +12,70 @@ async function placeCaretAtEnd(editor: Locator) {
     selection?.addRange(range)
   })
 }
+
+async function placeCaretAtOffset(editor: Locator, offset: number) {
+  await editor.evaluate((element, caretOffset) => {
+    const input = element as HTMLElement
+    const node = input.firstChild
+    if (!node) return
+    input.focus()
+    const range = document.createRange()
+    range.setStart(node, caretOffset)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }, offset)
+}
+
+async function noteSelectionEndpoints(page: Page) {
+  return page.evaluate(() => {
+    const selection = document.getSelection()
+    if (!selection?.anchorNode || !selection.focusNode) return null
+    const endpoint = (node: Node, offset: number) => {
+      const element = node instanceof Element ? node : node.parentElement
+      const input = element?.closest<HTMLElement>('[data-note-text-input]')
+      if (!input) return null
+      const before = document.createRange()
+      before.selectNodeContents(input)
+      before.setEnd(node, offset)
+      return { text: input.textContent, offset: before.toString().length }
+    }
+    return {
+      anchor: endpoint(selection.anchorNode, selection.anchorOffset),
+      focus: endpoint(selection.focusNode, selection.focusOffset),
+    }
+  })
+}
+
+test('shift arrow keys extend note selection to the matching position on an adjacent block', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const firstLine = page.locator('[data-note-text-input]').first()
+  await firstLine.type('First line')
+  await placeCaretAtEnd(firstLine)
+  await firstLine.press('Enter')
+  const secondLine = page.locator('[data-note-text-input]').nth(1)
+  await secondLine.type('Second line')
+
+  await placeCaretAtOffset(secondLine, 4)
+  await secondLine.press('Shift+ArrowUp')
+  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+    anchor: { text: 'Second line', offset: 4 },
+    focus: { text: 'First line', offset: 4 },
+  })
+
+  await placeCaretAtOffset(firstLine, 4)
+  await firstLine.press('Shift+ArrowDown')
+  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+    anchor: { text: 'First line', offset: 4 },
+    focus: { text: 'Second line', offset: 4 },
+  })
+})
 
 test('notes support a seamless editor, natural formatting, persistence, search, and app links', async ({ page }, testInfo) => {
   await page.goto('/')
