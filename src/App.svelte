@@ -48,7 +48,7 @@
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, MAX_TIMELINE_MINUTES, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
-  import { requestSync, startAutomaticSync } from './lib/syncScheduler'
+  import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
 
   // Pasting four or more items onto a different day routes through a review queue
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
@@ -3594,7 +3594,7 @@ return rows`
   </div>
 {/if}
 
-{#if availableUpdate && !$persistenceError}
+{#if availableUpdate && !$persistenceError && $automaticSyncStatus.initialSyncComplete && !$automaticSyncStatus.lastError}
   <div class="app-error-banner update-available-banner" role="status" aria-live="polite">
     <span class="app-error-banner-icon" aria-hidden="true">↑</span>
     <div class="app-error-banner-text">
@@ -3605,6 +3605,37 @@ return rows`
       <button type="button" class="ghost" on:click={dismissAvailableUpdate}>Not now</button>
       <button type="button" class="primary" on:click={() => { void openAvailableUpdate() }}>View release</button>
     </div>
+  </div>
+{/if}
+
+{#if isTauri() && !$persistenceError && !$databaseLoadPending && !$databaseLoadError && $automaticSyncStatus.configured !== false && (!$automaticSyncStatus.initialSyncComplete || Boolean($automaticSyncStatus.lastError))}
+  <div
+    class="app-error-banner sync-freshness-banner"
+    class:sync-error={Boolean($automaticSyncStatus.lastError)}
+    role={$automaticSyncStatus.lastError ? 'alert' : 'status'}
+    aria-live="polite"
+    aria-busy={$automaticSyncStatus.running}
+  >
+    <span class="app-error-banner-icon" aria-hidden="true">{$automaticSyncStatus.lastError ? '!' : '↻'}</span>
+    <div class="app-error-banner-text">
+      {#if $automaticSyncStatus.lastError}
+        <strong>Balance may be out of date</strong>
+        <span>Sync hasn’t completed. {$automaticSyncStatus.lastError}</span>
+      {:else}
+        <strong>Checking for changes…</strong>
+        <span>The data shown is this device’s saved copy until sync completes.</span>
+      {/if}
+    </div>
+    {#if $automaticSyncStatus.lastError}
+      <div class="app-error-banner-actions">
+        <button
+          type="button"
+          class="primary"
+          disabled={$automaticSyncStatus.running}
+          on:click={() => { void requestSync('warning-retry') }}
+        >{$automaticSyncStatus.running ? 'Retrying…' : 'Retry now'}</button>
+      </div>
+    {/if}
   </div>
 {/if}
 

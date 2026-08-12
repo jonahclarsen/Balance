@@ -19,6 +19,8 @@ export type AutomaticSyncStatus = {
   lastSuccessAt: number | null
   lastError: string
   pending: boolean
+  configured: boolean | null
+  initialSyncComplete: boolean
 }
 
 export const automaticSyncStatus = writable<AutomaticSyncStatus>({
@@ -26,6 +28,8 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
   lastSuccessAt: null,
   lastError: '',
   pending: false,
+  configured: null,
+  initialSyncComplete: false,
 })
 
 let running: Promise<SyncPassResult | null> | null = null
@@ -56,6 +60,12 @@ function hasActualChanges(result: SyncPassResult): boolean {
   return result.pulledOperations > 0 || result.pushedOperations > 0 || result.stateChanged
 }
 
+function syncErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error)
+  const cleaned = message.replace(/^codec:\s*/i, '').trim()
+  return cleaned ? `${cleaned[0].toUpperCase()}${cleaned.slice(1)}` : 'Unknown sync error.'
+}
+
 async function configured(): Promise<boolean> {
   const settings = await getSyncSettings()
   return settings.enabled && Boolean(settings.pairingCode && settings.relayUrl)
@@ -77,10 +87,40 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
     automaticSyncStatus.update((status) => ({ ...status, pending: true }))
     return running
   }
-  if (!(await configured())) return null
+  let syncConfigured: boolean
+  try {
+    syncConfigured = await configured()
+  } catch (error) {
+    const message = syncErrorMessage(error)
+    automaticSyncStatus.update((status) => ({
+      ...status,
+      running: false,
+      lastError: message,
+      configured: null,
+      initialSyncComplete: false,
+    }))
+    scheduleRetry()
+    return null
+  }
+  if (!syncConfigured) {
+    automaticSyncStatus.set({
+      running: false,
+      lastSuccessAt: null,
+      lastError: '',
+      pending: false,
+      configured: false,
+      initialSyncComplete: true,
+    })
+    return null
+  }
 
   running = (async () => {
-    automaticSyncStatus.update((status) => ({ ...status, running: true, pending: false }))
+    automaticSyncStatus.update((status) => ({
+      ...status,
+      running: true,
+      pending: false,
+      configured: true,
+    }))
     try {
       const result = await syncRelayOnce(reason)
       if (result.stateChanged) await plannerStore.reloadFromBackend()
@@ -91,11 +131,24 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       retryMs = 5_000
       if (retryTimer) clearTimeout(retryTimer)
       retryTimer = null
-      automaticSyncStatus.set({ running: false, lastSuccessAt: Date.now(), lastError: '', pending: false })
+      automaticSyncStatus.set({
+        running: false,
+        lastSuccessAt: Date.now(),
+        lastError: '',
+        pending: false,
+        configured: true,
+        initialSyncComplete: true,
+      })
       return result
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      automaticSyncStatus.update((status) => ({ ...status, running: false, lastError: message }))
+      const message = syncErrorMessage(error)
+      automaticSyncStatus.update((status) => ({
+        ...status,
+        running: false,
+        lastError: message,
+        configured: true,
+        initialSyncComplete: false,
+      }))
       scheduleRetry()
       return null
     } finally {
@@ -111,6 +164,11 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
 export function startAutomaticSync(): () => void {
   automaticSyncStarted = true
   lastChangeAt = 0
+  automaticSyncStatus.update((status) => ({
+    ...status,
+    configured: null,
+    initialSyncComplete: false,
+  }))
   schedulePoll()
 
   const triggerEdit = () => {

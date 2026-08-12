@@ -24,6 +24,30 @@ const TARGET_BATCH_PLAINTEXT: usize = 256 * 1024;
 const CHECKPOINT_CHUNK_BYTES: usize = 96 * 1024;
 const BACKGROUND_MAX_DOWNLOAD_CHUNKS: usize = 64;
 
+#[derive(Debug, Clone, Copy)]
+pub struct SyncOptions {
+    /// Foreground passes may finish large downloads while the app is open.
+    pub foreground: bool,
+    /// Only the designated coordinator may replace relay history with a checkpoint.
+    pub allow_checkpoint: bool,
+}
+
+impl SyncOptions {
+    pub const fn background() -> Self {
+        Self {
+            foreground: false,
+            allow_checkpoint: false,
+        }
+    }
+
+    pub const fn foreground(allow_checkpoint: bool) -> Self {
+        Self {
+            foreground: true,
+            allow_checkpoint,
+        }
+    }
+}
+
 fn random_token() -> String {
     let mut bytes = [0u8; 16];
     rand::rngs::OsRng.fill_bytes(&mut bytes);
@@ -678,11 +702,11 @@ pub fn sync_once(
     conn: &Connection,
     relay_url: &str,
     key: &SyncKey,
-    allow_checkpoint: bool,
+    options: SyncOptions,
 ) -> Result<SyncPassResult> {
     ensure_relay_tables(conn)?;
     prune_obsolete_relay_rows(conn)?;
-    let result = sync_once_inner(conn, relay_url, key, allow_checkpoint);
+    let result = sync_once_inner(conn, relay_url, key, options);
     if let Err(error) = &result {
         let _ = conn.execute(
             "UPDATE sync_relay_state SET last_error = ?1 WHERE singleton = 1",
@@ -696,7 +720,7 @@ fn sync_once_inner(
     conn: &Connection,
     relay_url: &str,
     key: &SyncKey,
-    allow_checkpoint: bool,
+    options: SyncOptions,
 ) -> Result<SyncPassResult> {
     ensure_relay_tables(conn)?;
     rewind_cursor_for_quarantined_batches(conn)?;
@@ -716,7 +740,7 @@ fn sync_once_inner(
         (0, false)
     };
     let first = manifest(&client, base, &local_epoch, cursor)?;
-    enforce_background_budget(&first, allow_checkpoint)?;
+    enforce_background_budget(&first, options.foreground)?;
     let (first_pulled, first_changed) =
         apply_manifest(conn, &client, base, key, &first, &local_epoch)?;
     let mut pulled = legacy_pulled + first_pulled;
@@ -725,7 +749,7 @@ fn sync_once_inner(
     // A hard generation limit can reject further deltas. Compact immediately
     // after pulling when the manifest asks, before attempting an upload; the
     // checkpoint already includes every local pending operation.
-    if allow_checkpoint
+    if options.allow_checkpoint
         && checkpoint_safe(conn)?
         && first.compact_recommended
         && commit_checkpoint(
@@ -755,7 +779,7 @@ fn sync_once_inner(
     let active_epoch = relay_state(conn)?.0;
     if stage_outbox(conn, key, &active_epoch)? {
         let latest_sequence = relay_state(conn)?.1;
-        if !allow_checkpoint {
+        if !options.allow_checkpoint {
             return Err(Error::Codec(
                 "one incremental operation is too large and checkpoint promotion is disabled"
                     .into(),
@@ -789,13 +813,13 @@ fn sync_once_inner(
 
     let cursor = relay_state(conn)?.1;
     let second = manifest(&client, base, &active_epoch, cursor)?;
-    enforce_background_budget(&second, allow_checkpoint)?;
+    enforce_background_budget(&second, options.foreground)?;
     let (second_pulled, second_changed) =
         apply_manifest(conn, &client, base, key, &second, &active_epoch)?;
     pulled += second_pulled;
     changed |= second_changed;
 
-    let checkpoint_committed = allow_checkpoint
+    let checkpoint_committed = options.allow_checkpoint
         && checkpoint_safe(conn)?
         && second.compact_recommended
         && commit_checkpoint(
@@ -865,6 +889,29 @@ mod tests {
                 params![id, payload],
             )
             .unwrap();
+    }
+
+    #[test]
+    fn foreground_joiner_can_download_a_large_pending_sync() {
+        let manifest = Manifest {
+            epoch: "epoch-1".into(),
+            latest_sequence: 1,
+            checkpoint: Some(BlobDescriptor {
+                id: "large-checkpoint".into(),
+                chunks: BACKGROUND_MAX_DOWNLOAD_CHUNKS + 1,
+            }),
+            batches: Vec::new(),
+            compact_recommended: false,
+        };
+
+        let background = SyncOptions::background();
+        assert!(enforce_background_budget(&manifest, background.foreground).is_err());
+
+        // A joining device is not the checkpoint coordinator, but opening the
+        // app must still lift the background download budget.
+        let foreground_joiner = SyncOptions::foreground(false);
+        assert!(!foreground_joiner.allow_checkpoint);
+        enforce_background_budget(&manifest, foreground_joiner.foreground).unwrap();
     }
 
     #[test]

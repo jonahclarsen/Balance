@@ -263,9 +263,21 @@ fn the_v3_http_client_bootstraps_then_sends_only_incremental_operations() {
     enable_joiner(&b).unwrap();
     let key = SyncKey::generate();
 
-    let bootstrap = relay_client::sync_once(&a, &relay.url, &key, true).unwrap();
+    let bootstrap = relay_client::sync_once(
+        &a,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
     assert!(bootstrap.checkpoint_committed);
-    let joined = relay_client::sync_once(&b, &relay.url, &key, true).unwrap();
+    let joined = relay_client::sync_once(
+        &b,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
     assert!(joined.state_changed);
     assert_eq!(
         domain(&read_app_state_from_database(&a).unwrap().unwrap()),
@@ -283,19 +295,106 @@ fn the_v3_http_client_bootstraps_then_sends_only_incremental_operations() {
         ),
     )
     .unwrap();
-    let pushed = relay_client::sync_once(&a, &relay.url, &key, true).unwrap();
+    let pushed = relay_client::sync_once(
+        &a,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
     assert_eq!(pushed.pushed_operations, 1);
     assert!(!pushed.checkpoint_committed);
 
-    let pulled = relay_client::sync_once(&b, &relay.url, &key, true).unwrap();
+    let pulled = relay_client::sync_once(
+        &b,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
     assert_eq!(pulled.pulled_operations, 1);
     assert_eq!(
         read_app_state_from_database(&b).unwrap().unwrap()["activePlanDate"],
         "2027-08-01",
     );
-    let redundant = relay_client::sync_once(&b, &relay.url, &key, true).unwrap();
+    let redundant = relay_client::sync_once(
+        &b,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
     assert_eq!(redundant.pulled_operations, 0);
     assert_eq!(redundant.pushed_operations, 0);
+}
+
+#[test]
+fn a_large_relay_bootstrap_finishes_for_a_foreground_joiner() {
+    let relay = ReferenceRelay::start();
+    let sa = Scratch::new("large-http-a");
+    let sb = Scratch::new("large-http-b");
+
+    // Synthetic, high-entropy text keeps the encrypted checkpoint above the
+    // Android background budget after compression without touching user data.
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+    let mut random_state = 0x1234_5678_9abc_def0_u64;
+    let large_title = (0..10 * 1024 * 1024)
+        .map(|_| {
+            random_state ^= random_state << 13;
+            random_state ^= random_state >> 7;
+            random_state ^= random_state << 17;
+            alphabet[(random_state as usize) & 63] as char
+        })
+        .collect::<String>();
+    let mut primary_state = state("device-A", json!([]));
+    primary_state["notes"] = json!([{
+        "id": "large-note",
+        "title": large_title,
+        "items": [],
+        "createdAt": "created",
+        "updatedAt": "updated"
+    }]);
+
+    let a = open_seeded(&sa.path, "key-a", &primary_state);
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let key = SyncKey::generate();
+
+    let uploaded = relay_client::sync_once(
+        &a,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert!(uploaded.checkpoint_committed);
+
+    let deferred = relay_client::sync_once(
+        &b,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::background(),
+    )
+    .unwrap_err();
+    assert!(deferred
+        .to_string()
+        .contains("the pending sync is large and will finish next time Balance is open"));
+
+    // Joiners cannot promote checkpoints, but foreground status—not coordinator
+    // authority—is what permits this download to finish.
+    let joined = relay_client::sync_once(
+        &b,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(false),
+    )
+    .unwrap();
+    assert!(joined.state_changed);
+    assert_eq!(
+        domain(&read_app_state_from_database(&a).unwrap().unwrap()),
+        domain(&read_app_state_from_database(&b).unwrap().unwrap())
+    );
 }
 
 // ---------------------------------------------------------------------------

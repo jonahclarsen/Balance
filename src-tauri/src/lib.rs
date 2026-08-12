@@ -8244,9 +8244,14 @@ fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
         .map_err(sync::Error::into_string)?;
     // Background work is capped by Android. Apply ordinary incremental batches
     // here; potentially large checkpoint promotion waits for the foreground.
-    sync::relay_client::sync_once(&connection, &relay_url, &key, false)
-        .map(|_| ())
-        .map_err(sync::Error::into_string)
+    sync::relay_client::sync_once(
+        &connection,
+        &relay_url,
+        &key,
+        sync::relay_client::SyncOptions::background(),
+    )
+    .map(|_| ())
+    .map_err(sync::Error::into_string)
 }
 
 fn missing_recovery_key_error() -> String {
@@ -8535,8 +8540,13 @@ async fn sync_relay_once(
         if checkpoint_coordinator {
             maybe_checkpoint_operation_log(&connection)?;
         }
-        sync::relay_client::sync_once(&connection, &relay_url, &key, checkpoint_coordinator)
-            .map_err(sync::Error::into_string)
+        sync::relay_client::sync_once(
+            &connection,
+            &relay_url,
+            &key,
+            sync::relay_client::SyncOptions::foreground(checkpoint_coordinator),
+        )
+        .map_err(sync::Error::into_string)
     })
     .await
 }

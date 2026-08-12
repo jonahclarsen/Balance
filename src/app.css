@@ -1318,6 +1318,22 @@ nav button.active {
   color: var(--accent);
 }
 
+.sync-freshness-banner {
+  border-color: var(--accent);
+}
+
+.sync-freshness-banner .app-error-banner-icon {
+  color: var(--accent);
+}
+
+.sync-freshness-banner.sync-error {
+  border-color: var(--danger);
+}
+
+.sync-freshness-banner.sync-error .app-error-banner-icon {
+  color: var(--danger);
+}
+
 .app-error-banner-icon {
   color: var(--danger);
   font-size: 18px;
