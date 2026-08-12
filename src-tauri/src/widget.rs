@@ -1,7 +1,7 @@
 use serde::Serialize;
 use serde_json::Value;
 
-const MAX_VISIBLE_ITEMS: usize = 4;
+const MAX_VISIBLE_ITEMS: usize = 10;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -122,7 +122,13 @@ mod tests {
                 { "text": "", "done": false, "children": [] },
                 { "text": "Third", "done": false, "children": [] },
                 { "text": "Fourth", "done": false, "children": [] },
-                { "text": "Fifth hidden", "done": false, "children": [] }
+                { "text": "Fifth", "done": false, "children": [] },
+                { "text": "Sixth", "done": false, "children": [] },
+                { "text": "Seventh", "done": false, "children": [] },
+                { "text": "Eighth", "done": false, "children": [] },
+                { "text": "Ninth", "done": false, "children": [] },
+                { "text": "Tenth", "done": false, "children": [] },
+                { "text": "Eleventh hidden", "done": false, "children": [] }
             ]
         });
 
@@ -132,10 +138,21 @@ mod tests {
         assert_eq!(snapshot.title, "Launch day");
         assert_eq!(snapshot.reminder, "Ship calmly");
         assert_eq!(snapshot.done, 1);
-        assert_eq!(snapshot.total, 6);
+        assert_eq!(snapshot.total, 12);
         assert_eq!(
             snapshot.items,
-            ["Nested pending", "Second", "Third", "Fourth"]
+            [
+                "Nested pending",
+                "Second",
+                "Third",
+                "Fourth",
+                "Fifth",
+                "Sixth",
+                "Seventh",
+                "Eighth",
+                "Ninth",
+                "Tenth",
+            ]
         );
     }
 

@@ -93,6 +93,13 @@ class BalanceSyncWorker {
     assert.match(kotlin, /getAttributeIntValue/)
     assert.match(kotlin, /initialKeyguardLayout/)
     assert.match(kotlin, /BALANCE_WIDGET_E2E: OK home\+keyguard native-snapshot/)
+    assert.match(kotlin, /R\.id\.widget_item_10/)
+
+    const homeLayout = await readFile(
+      join(root, 'res/layout/balance_home_widget.xml'),
+      'utf8',
+    )
+    assert.match(homeLayout, /@\+id\/widget_item_10/)
 
     const homeInfo = await readFile(
       join(root, 'res/xml/balance_home_widget_info.xml'),

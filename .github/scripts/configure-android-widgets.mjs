@@ -133,6 +133,12 @@ object BalanceWidgets {
             R.id.widget_item_2,
             R.id.widget_item_3,
             R.id.widget_item_4,
+            R.id.widget_item_5,
+            R.id.widget_item_6,
+            R.id.widget_item_7,
+            R.id.widget_item_8,
+            R.id.widget_item_9,
+            R.id.widget_item_10,
         )
         for (index in rows.indices) {
             val text = snapshot.items.getOrNull(index)
@@ -349,6 +355,12 @@ const homeLayout = `<?xml version="1.0" encoding="utf-8"?>
     <TextView android:id="@+id/widget_item_2" style="@style/BalanceWidgetItem" />
     <TextView android:id="@+id/widget_item_3" style="@style/BalanceWidgetItem" />
     <TextView android:id="@+id/widget_item_4" style="@style/BalanceWidgetItem" />
+    <TextView android:id="@+id/widget_item_5" style="@style/BalanceWidgetItem" />
+    <TextView android:id="@+id/widget_item_6" style="@style/BalanceWidgetItem" />
+    <TextView android:id="@+id/widget_item_7" style="@style/BalanceWidgetItem" />
+    <TextView android:id="@+id/widget_item_8" style="@style/BalanceWidgetItem" />
+    <TextView android:id="@+id/widget_item_9" style="@style/BalanceWidgetItem" />
+    <TextView android:id="@+id/widget_item_10" style="@style/BalanceWidgetItem" />
 </LinearLayout>
 `
 
