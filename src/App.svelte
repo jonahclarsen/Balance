@@ -3614,13 +3614,16 @@ return rows`
     class:sync-error={Boolean($automaticSyncStatus.lastError)}
     role={$automaticSyncStatus.lastError ? 'alert' : 'status'}
     aria-live="polite"
-    aria-busy={$automaticSyncStatus.running}
+    aria-busy={$automaticSyncStatus.running || $automaticSyncStatus.configured === null}
   >
     <span class="app-error-banner-icon" aria-hidden="true">{$automaticSyncStatus.lastError ? '!' : '↻'}</span>
     <div class="app-error-banner-text">
       {#if $automaticSyncStatus.lastError}
         <strong>Balance may be out of date</strong>
         <span>Sync hasn’t completed. {$automaticSyncStatus.lastError}</span>
+      {:else if $automaticSyncStatus.configured === null}
+        <strong>Loading sync settings…</strong>
+        <span>Preparing automatic sync using this device’s saved settings.</span>
       {:else}
         <strong>Checking for changes…</strong>
         <span>The data shown is this device’s saved copy until sync completes.</span>

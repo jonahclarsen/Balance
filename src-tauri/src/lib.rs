@@ -74,6 +74,8 @@ const GITHUB_LATEST_RELEASE_API: &str =
     "https://api.github.com/repos/jonahclarsen/Balance/releases/latest";
 const GITHUB_LATEST_RELEASE_URL: &str = "https://github.com/jonahclarsen/Balance/releases/latest";
 static DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
+#[cfg(target_os = "android")]
+static ANDROID_DATABASE_RECOVERY_KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 #[cfg(target_os = "macos")]
 const BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE: &str = "com.balance.plan-items+json";
 #[cfg(target_os = "macos")]
@@ -436,6 +438,8 @@ async fn get_recovery_key_status(app: tauri::AppHandle) -> Result<RecoveryKeySta
     run_database_task(move || {
         let (database_path, recovery_key) = database_path_and_recovery_key(&app)?;
         let connection = open_database_at(&database_path, &recovery_key)?;
+        #[cfg(target_os = "android")]
+        let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key.clone());
 
         recovery_key_status(&connection, &database_path, Some(recovery_key))
     })
@@ -543,7 +547,9 @@ async fn recover_database_with_key(
             fs::copy(&key_path, &backup_path)
                 .map_err(|error| format!("Could not preserve the previous wrapped key: {error}"))?;
         }
-        write_android_recovery_key(&key_path, &wrapped)
+        write_android_recovery_key(&key_path, &wrapped)?;
+        let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key);
+        Ok(())
     })
     .await
 }
@@ -1652,7 +1658,12 @@ fn confirm_recovery_key_in_database(connection: &Connection) -> Result<(), Strin
 
 fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
     let (database_path, recovery_key) = database_path_and_recovery_key(app)?;
-    open_database_at(&database_path, &recovery_key)
+    let connection = open_database_at(&database_path, &recovery_key)?;
+    // Only cache a key after SQLCipher has proved that it opens the live DB.
+    // This keeps Android recovery usable if a wrapped key is stale or corrupt.
+    #[cfg(target_os = "android")]
+    let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key);
+    Ok(connection)
 }
 
 fn database_path_and_recovery_key(app: &tauri::AppHandle) -> Result<(PathBuf, String), String> {
@@ -7668,6 +7679,14 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
 // therefore never touches disk.
 #[cfg(target_os = "android")]
 fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
+    // Android Keystore access can occasionally take many seconds while the OS
+    // is finishing an unlock or restarting its provider. Once it has unlocked
+    // this process's database, reuse the plaintext key in memory instead of
+    // making every serialized database command repeat that hardware-backed IPC.
+    if let Some(recovery_key) = ANDROID_DATABASE_RECOVERY_KEY.get() {
+        return Ok(recovery_key.clone());
+    }
+
     let key_path = recovery_key_path(database_path);
 
     match fs::read(&key_path) {
@@ -8227,6 +8246,7 @@ fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
     }
     let recovery_key = database_recovery_key(&database_path)?;
     let connection = open_database_at(&database_path, &recovery_key)?;
+    let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key.clone());
     if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
         return Ok(());
     }

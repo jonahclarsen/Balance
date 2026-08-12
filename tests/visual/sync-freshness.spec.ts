@@ -58,6 +58,9 @@ test.beforeEach(async ({ page }) => {
               autoJsonExportErrorAckAt: null,
             }
           case 'get_sync_settings':
+            if (new URLSearchParams(location.search).has('hold-settings')) {
+              return new Promise(() => undefined)
+            }
             return {
               enabled: true,
               pairingCode: 'BALSYNC1:synthetic-test-code',
@@ -94,6 +97,15 @@ test.beforeEach(async ({ page }) => {
       },
     }
   })
+})
+
+test('the app identifies when it is still loading sync settings', async ({ page }) => {
+  await page.goto('/?hold-settings=1')
+
+  const loading = page.getByRole('status')
+  await expect(loading.getByText('Loading sync settings…')).toBeVisible()
+  await expect(loading.getByText('Preparing automatic sync using this device’s saved settings.')).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
 })
 
 test('the app identifies local state while its launch sync is still running', async ({ page }) => {
