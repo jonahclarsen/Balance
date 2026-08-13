@@ -320,6 +320,8 @@ jobs:
           name: emulator-logcat
           path: |
             logcat*.txt
+            android-startup-profile.json
+            startup-profile-log.txt
             sync-e2e-*.xml
             sync-e2e-*.png
           if-no-files-found: ignore

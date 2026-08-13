@@ -167,6 +167,36 @@ if [ "$SYNC_OK" != 1 ]; then
 fi
 echo "[sync] paired Android databases exchanged E2EE data over TCP and converged."
 
+# Profile only synthetic, app-generated data. The native harness compares the
+# current two-connection blocking startup path with the same work performed on
+# one SQLCipher connection, alternating order across seven iterations.
+STARTUP_PROFILE_OK=0
+for _ in $(seq 1 20); do
+  adb logcat -d > startup-profile-log.txt 2>/dev/null || true
+  if grep -q "BALANCE_ANDROID_STARTUP_PROFILE_FAIL" startup-profile-log.txt; then
+    echo "[startup-profile] native profile failed:"
+    grep "BALANCE_ANDROID_STARTUP_PROFILE_FAIL" startup-profile-log.txt | tail -5
+    exit 1
+  fi
+  if grep -q "BALANCE_ANDROID_STARTUP_PROFILE:" startup-profile-log.txt; then
+    grep "BALANCE_ANDROID_STARTUP_PROFILE:" startup-profile-log.txt \
+      | tail -1 \
+      | sed 's/^.*BALANCE_ANDROID_STARTUP_PROFILE: //' \
+      > android-startup-profile.json
+    python3 -m json.tool android-startup-profile.json >/dev/null
+    STARTUP_PROFILE_OK=1
+    break
+  fi
+  sleep 3
+done
+if [ "$STARTUP_PROFILE_OK" != 1 ]; then
+  echo "[startup-profile] profile marker never appeared."
+  grep -iE "BALANCE_ANDROID_STARTUP_PROFILE|RustStdoutStderr" startup-profile-log.txt | tail -40 || true
+  exit 1
+fi
+echo "[startup-profile] synthetic Android startup profile:"
+python3 -m json.tool android-startup-profile.json
+
 # Second launch: the key file and database already exist, so the app must unwrap
 # the recovery key via the Keystore again and reopen the database. A failed
 # unwrap surfaces as the frontend's "Could not load encrypted Balance app state"

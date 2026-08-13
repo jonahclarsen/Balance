@@ -73,7 +73,30 @@ const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 const GITHUB_LATEST_RELEASE_API: &str =
     "https://api.github.com/repos/jonahclarsen/Balance/releases/latest";
 const GITHUB_LATEST_RELEASE_URL: &str = "https://github.com/jonahclarsen/Balance/releases/latest";
+
+#[derive(Clone, Copy)]
+enum StartupDatabaseRead {
+    RecoveryStatus,
+    AppState,
+    ExportSettings,
+    SyncSettings,
+    RelaySync,
+}
+
+struct StartupDatabaseConnection {
+    database_path: PathBuf,
+    recovery_key: String,
+    connection: Connection,
+    recovery_status_read: bool,
+    app_state_read: bool,
+    export_settings_read: bool,
+    sync_settings_read: bool,
+    relay_sync_required: Option<bool>,
+    relay_sync_finished: bool,
+}
+
 static DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
+static STARTUP_DATABASE_CONNECTION: Mutex<Option<StartupDatabaseConnection>> = Mutex::new(None);
 #[cfg(target_os = "android")]
 static ANDROID_DATABASE_RECOVERY_KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
 #[cfg(target_os = "macos")]
@@ -149,6 +172,258 @@ fn is_android_owner_user() -> bool {
                 .and_then(|uid| uid.parse::<u32>().ok())
         })
         .is_some_and(|uid| uid < 100_000)
+}
+
+#[cfg(all(target_os = "android", debug_assertions))]
+fn android_startup_profile_state() -> Value {
+    let templates = (0..8)
+        .map(|template_index| {
+            let items = (0..12)
+                .map(|item_index| {
+                    json!({
+                        "id": format!("profile-template-{template_index}-item-{item_index}"),
+                        "startMinutes": item_index * 30,
+                        "endMinutes": item_index * 30 + 25,
+                        "timeHidden": false,
+                        "options": [{
+                            "id": format!("profile-option-{template_index}-{item_index}"),
+                            "text": format!("Template option {template_index}-{item_index}"),
+                            "html": format!("Template option {template_index}-{item_index}"),
+                            "probability": 1.0
+                        }],
+                        "children": []
+                    })
+                })
+                .collect::<Vec<_>>();
+            json!({
+                "id": format!("profile-template-{template_index}"),
+                "name": format!("Profile template {template_index}"),
+                "items": items,
+                "createdAt": "2026-01-01T00:00:00.000Z",
+                "updatedAt": "2026-01-01T00:00:00.000Z"
+            })
+        })
+        .collect::<Vec<_>>();
+    let plans = (0..45)
+        .map(|plan_index| {
+            let items = (0..24)
+                .map(|item_index| {
+                    json!({
+                        "id": format!("profile-plan-{plan_index}-item-{item_index}"),
+                        "text": format!("Profile task {plan_index}-{item_index}"),
+                        "html": format!("Profile task {plan_index}-{item_index}"),
+                        "done": item_index % 3 == 0,
+                        "startMinutes": item_index * 30,
+                        "endMinutes": item_index * 30 + 25,
+                        "timeHidden": false,
+                        "children": []
+                    })
+                })
+                .collect::<Vec<_>>();
+            json!({
+                "id": format!("profile-plan-{plan_index}"),
+                "date": format!("2026-{:02}-{:02}", 1 + plan_index / 28, 1 + plan_index % 28),
+                "title": format!("Profile day {plan_index}"),
+                "dailyReminder": "Synthetic profile data only",
+                "generatedFromTemplateId": "profile-template-0",
+                "createdAt": "2026-01-01T00:00:00.000Z",
+                "items": items
+            })
+        })
+        .collect::<Vec<_>>();
+    let notes = (0..120)
+        .map(|index| {
+            json!({
+                "id": format!("profile-note-{index}"),
+                "title": format!("Profile note {index}"),
+                "text": "Synthetic startup profile note content",
+                "html": "Synthetic startup profile note content",
+                "createdAt": "2026-01-01T00:00:00.000Z",
+                "updatedAt": "2026-01-01T00:00:00.000Z"
+            })
+        })
+        .collect::<Vec<_>>();
+
+    json!({
+        "schemaVersion": 1,
+        "deviceId": "android-startup-profile",
+        "localSequence": 0,
+        "historyRevision": 0,
+        "activePlanDate": "2026-01-01",
+        "templates": templates,
+        "plans": plans,
+        "goals": [],
+        "goalCompletions": [],
+        "listTemplates": [],
+        "lists": [],
+        "metrics": [],
+        "metricEntries": [],
+        "notes": notes,
+        "operations": []
+    })
+}
+
+#[cfg(all(target_os = "android", debug_assertions))]
+fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String> {
+    const ITERATIONS: usize = 7;
+    let database_path = scratch_dir.join("balance-android-startup-profile.sqlite3");
+    let _ = fs::remove_file(&database_path);
+    let recovery_key = "synthetic-android-startup-profile-key";
+
+    let result = (|| {
+        let mut connection = open_database_at(&database_path, recovery_key)?;
+        replace_app_state(&mut connection, &android_startup_profile_state())?;
+        let expected_state = read_app_state_from_database(&connection)?
+            .ok_or_else(|| "Android startup profile fixture has no app state".to_string())?;
+        drop(connection);
+
+        let mut separate_connections_ms = Vec::with_capacity(ITERATIONS);
+        let mut shared_connection_ms = Vec::with_capacity(ITERATIONS);
+        let mut state_read_ms = Vec::with_capacity(ITERATIONS);
+        let mut current_launch_sequence_ms = Vec::with_capacity(ITERATIONS);
+        let mut shared_launch_sequence_ms = Vec::with_capacity(ITERATIONS);
+
+        for iteration in 0..ITERATIONS {
+            let measure_separate = || -> Result<u64, String> {
+                let started = std::time::Instant::now();
+                let connection = open_database_at(&database_path, recovery_key)?;
+                let status = recovery_key_status(&connection, &database_path, None)?;
+                if status.database_path != database_path.display().to_string() {
+                    return Err(
+                        "Android profile recovery status returned the wrong path".to_string()
+                    );
+                }
+                drop(connection);
+                let connection = open_database_at(&database_path, recovery_key)?;
+                let state = read_app_state_from_database(&connection)?
+                    .ok_or_else(|| "Android profile database lost its app state".to_string())?;
+                if state != expected_state {
+                    return Err("Separate startup connections changed profile state".to_string());
+                }
+                Ok(started.elapsed().as_millis() as u64)
+            };
+            let measure_shared = || -> Result<u64, String> {
+                let started = std::time::Instant::now();
+                let connection = open_database_at(&database_path, recovery_key)?;
+                let status = recovery_key_status(&connection, &database_path, None)?;
+                if status.database_path != database_path.display().to_string() {
+                    return Err(
+                        "Android profile recovery status returned the wrong path".to_string()
+                    );
+                }
+                let state = read_app_state_from_database(&connection)?
+                    .ok_or_else(|| "Android profile database lost its app state".to_string())?;
+                if state != expected_state {
+                    return Err("Shared startup connection changed profile state".to_string());
+                }
+                Ok(started.elapsed().as_millis() as u64)
+            };
+
+            if iteration % 2 == 0 {
+                separate_connections_ms.push(measure_separate()?);
+                shared_connection_ms.push(measure_shared()?);
+            } else {
+                shared_connection_ms.push(measure_shared()?);
+                separate_connections_ms.push(measure_separate()?);
+            }
+
+            let measure_launch_sequence = |shared: bool| -> Result<u64, String> {
+                let started = std::time::Instant::now();
+                let connection = open_database_at(&database_path, recovery_key)?;
+                let _ = recovery_key_status(&connection, &database_path, None)?;
+                let state = read_app_state_from_database(&connection)?
+                    .ok_or_else(|| "Android profile database lost its app state".to_string())?;
+                if state != expected_state {
+                    return Err("Launch sequence changed profile state".to_string());
+                }
+                let read_settings = |connection: &Connection| -> Result<(), String> {
+                    let _ = metadata_value(connection, EXPORT_DIRECTORY)?;
+                    let _ = sync_settings_from_database(connection)?;
+                    let _ = sync::is_sync_enabled(connection).map_err(sync::Error::into_string)?;
+                    Ok(())
+                };
+                if shared {
+                    read_settings(&connection)?;
+                } else {
+                    drop(connection);
+                    let connection = open_database_at(&database_path, recovery_key)?;
+                    let _ = metadata_value(&connection, EXPORT_DIRECTORY)?;
+                    drop(connection);
+                    let connection = open_database_at(&database_path, recovery_key)?;
+                    let _ = sync_settings_from_database(&connection)?;
+                    drop(connection);
+                    let connection = open_database_at(&database_path, recovery_key)?;
+                    let _ = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
+                }
+                Ok(started.elapsed().as_millis() as u64)
+            };
+            if iteration % 2 == 0 {
+                current_launch_sequence_ms.push(measure_launch_sequence(false)?);
+                shared_launch_sequence_ms.push(measure_launch_sequence(true)?);
+            } else {
+                shared_launch_sequence_ms.push(measure_launch_sequence(true)?);
+                current_launch_sequence_ms.push(measure_launch_sequence(false)?);
+            }
+
+            let connection = open_database_at(&database_path, recovery_key)?;
+            let read_started = std::time::Instant::now();
+            let state = read_app_state_from_database(&connection)?
+                .ok_or_else(|| "Android profile database lost its app state".to_string())?;
+            state_read_ms.push(read_started.elapsed().as_millis() as u64);
+            if state != expected_state {
+                return Err("Profile state-only read changed profile state".to_string());
+            }
+        }
+
+        let median = |values: &mut Vec<u64>| {
+            values.sort_unstable();
+            values[values.len() / 2]
+        };
+        let separate_median = median(&mut separate_connections_ms);
+        let shared_median = median(&mut shared_connection_ms);
+        let current_launch_median = median(&mut current_launch_sequence_ms);
+        let shared_launch_median = median(&mut shared_launch_sequence_ms);
+        Ok(json!({
+            "fixture": {
+                "plans": 45,
+                "planItems": 1080,
+                "templates": 8,
+                "templateItems": 96,
+                "notes": 120
+            },
+            "iterations": ITERATIONS,
+            "samplesMs": {
+                "currentSeparateConnections": separate_connections_ms,
+                "candidateSharedConnection": shared_connection_ms,
+                "stateReadOnly": state_read_ms
+                ,"candidate1LaunchSequence": current_launch_sequence_ms
+                ,"candidate2SharedLaunchSequence": shared_launch_sequence_ms
+            },
+            "medianMs": {
+                "currentSeparateConnections": separate_median,
+                "candidateSharedConnection": shared_median,
+                "stateReadOnly": median(&mut state_read_ms)
+                ,"candidate1LaunchSequence": current_launch_median
+                ,"candidate2SharedLaunchSequence": shared_launch_median
+            },
+            "sharedConnectionImprovementPercent": if separate_median == 0 {
+                0.0
+            } else {
+                100.0 * (separate_median.saturating_sub(shared_median)) as f64
+                    / separate_median as f64
+            },
+            "sharedLaunchSequenceImprovementPercent": if current_launch_median == 0 {
+                0.0
+            } else {
+                100.0 * (current_launch_median.saturating_sub(shared_launch_median)) as f64
+                    / current_launch_median as f64
+            }
+        })
+        .to_string())
+    })();
+
+    let _ = fs::remove_file(&database_path);
+    result
 }
 
 #[derive(Serialize)]
@@ -276,8 +551,13 @@ struct DatabaseMaintenanceStatus {
 #[tauri::command]
 async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String> {
     run_database_task(move || {
-        let connection = open_database(&app)?;
-        read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
+        let startup = take_startup_database_connection(&app, StartupDatabaseRead::AppState)?;
+        let result = read_app_state_from_database(&startup.connection)
+            .map(|state| state.map(|value| value.to_string()));
+        if result.is_ok() {
+            finish_startup_database_read(startup, StartupDatabaseRead::AppState, None);
+        }
+        result
     })
     .await
 }
@@ -436,12 +716,16 @@ async fn restore_recovery_entry(
 #[tauri::command]
 async fn get_recovery_key_status(app: tauri::AppHandle) -> Result<RecoveryKeyStatus, String> {
     run_database_task(move || {
-        let (database_path, recovery_key) = database_path_and_recovery_key(&app)?;
-        let connection = open_database_at(&database_path, &recovery_key)?;
-        #[cfg(target_os = "android")]
-        let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key.clone());
-
-        recovery_key_status(&connection, &database_path, Some(recovery_key))
+        let startup = take_startup_database_connection(&app, StartupDatabaseRead::RecoveryStatus)?;
+        let result = recovery_key_status(
+            &startup.connection,
+            &startup.database_path,
+            Some(startup.recovery_key.clone()),
+        );
+        if result.is_ok() {
+            finish_startup_database_read(startup, StartupDatabaseRead::RecoveryStatus, None);
+        }
+        result
     })
     .await
 }
@@ -657,8 +941,12 @@ async fn check_for_update(app: tauri::AppHandle) -> Result<Option<AvailableUpdat
 #[tauri::command]
 async fn get_export_settings(app: tauri::AppHandle) -> Result<ExportSettings, String> {
     run_database_task(move || {
-        let connection = open_database(&app)?;
-        export_settings(&app, &connection)
+        let startup = take_startup_database_connection(&app, StartupDatabaseRead::ExportSettings)?;
+        let result = export_settings(&app, &startup.connection);
+        if result.is_ok() {
+            finish_startup_database_read(startup, StartupDatabaseRead::ExportSettings, None);
+        }
+        result
     })
     .await
 }
@@ -1664,6 +1952,77 @@ fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
     #[cfg(target_os = "android")]
     let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key);
     Ok(connection)
+}
+
+fn take_startup_database_connection(
+    app: &tauri::AppHandle,
+    read: StartupDatabaseRead,
+) -> Result<StartupDatabaseConnection, String> {
+    let database_path = app_database_path(app)?;
+    let mut cached = STARTUP_DATABASE_CONNECTION
+        .lock()
+        .map_err(|_| "Startup database connection is poisoned".to_string())?;
+    if let Some(startup) = cached.take() {
+        let already_read = match read {
+            StartupDatabaseRead::RecoveryStatus => startup.recovery_status_read,
+            StartupDatabaseRead::AppState => startup.app_state_read,
+            StartupDatabaseRead::ExportSettings => startup.export_settings_read,
+            StartupDatabaseRead::SyncSettings => startup.sync_settings_read,
+            StartupDatabaseRead::RelaySync => startup.relay_sync_finished,
+        };
+        if startup.database_path == database_path && !already_read {
+            return Ok(startup);
+        }
+        *cached = Some(startup);
+    }
+    drop(cached);
+
+    let (database_path, recovery_key) = database_path_and_recovery_key(app)?;
+    let connection = open_database_at(&database_path, &recovery_key)?;
+    // Cache only after SQLCipher has proved this key opens the live DB.
+    #[cfg(target_os = "android")]
+    let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key.clone());
+    Ok(StartupDatabaseConnection {
+        database_path,
+        recovery_key,
+        connection,
+        recovery_status_read: false,
+        app_state_read: false,
+        export_settings_read: false,
+        sync_settings_read: false,
+        relay_sync_required: None,
+        relay_sync_finished: false,
+    })
+}
+
+fn finish_startup_database_read(
+    mut startup: StartupDatabaseConnection,
+    read: StartupDatabaseRead,
+    relay_sync_required: Option<bool>,
+) {
+    match read {
+        StartupDatabaseRead::RecoveryStatus => startup.recovery_status_read = true,
+        StartupDatabaseRead::AppState => startup.app_state_read = true,
+        StartupDatabaseRead::ExportSettings => startup.export_settings_read = true,
+        StartupDatabaseRead::SyncSettings => {
+            startup.sync_settings_read = true;
+            startup.relay_sync_required = relay_sync_required;
+        }
+        StartupDatabaseRead::RelaySync => startup.relay_sync_finished = true,
+    }
+    let relay_finished =
+        matches!(startup.relay_sync_required, Some(false)) || startup.relay_sync_finished;
+    if startup.recovery_status_read
+        && startup.app_state_read
+        && startup.export_settings_read
+        && startup.sync_settings_read
+        && relay_finished
+    {
+        return;
+    }
+    if let Ok(mut cached) = STARTUP_DATABASE_CONNECTION.lock() {
+        *cached = Some(startup);
+    }
 }
 
 fn database_path_and_recovery_key(app: &tauri::AppHandle) -> Result<(PathBuf, String), String> {
@@ -8354,8 +8713,19 @@ fn sync_settings_from_database(connection: &Connection) -> Result<SyncSettings, 
 #[tauri::command]
 async fn get_sync_settings(app: tauri::AppHandle) -> Result<SyncSettings, String> {
     run_database_task(move || {
-        let connection = open_database(&app)?;
-        sync_settings_from_database(&connection)
+        let startup = take_startup_database_connection(&app, StartupDatabaseRead::SyncSettings)?;
+        let result = sync_settings_from_database(&startup.connection);
+        if let Ok(settings) = &result {
+            let relay_required = settings.enabled
+                && settings.pairing_code.is_some()
+                && !settings.relay_url.is_empty();
+            finish_startup_database_read(
+                startup,
+                StartupDatabaseRead::SyncSettings,
+                Some(relay_required),
+            );
+        }
+        result
     })
     .await
 }
@@ -8544,29 +8914,34 @@ async fn sync_relay_once(
 ) -> Result<sync::relay_client::SyncPassResult, String> {
     let _ = reason;
     run_database_task(move || {
-        let connection = open_database(&app)?;
-        if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
-            return Err("Sync is not enabled on this device.".to_string());
-        }
-        let relay_url = metadata_value(&connection, SYNC_RELAY_URL)?
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| "Set a relay server URL first.".to_string())?;
-        let pairing_code = sync::read_pairing_code(&connection)
-            .map_err(sync::Error::into_string)?
-            .ok_or_else(|| "This device's sync key is missing.".to_string())?;
-        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
-            .map_err(sync::Error::into_string)?;
-        let checkpoint_coordinator = database_checkpoint_coordinator(&connection)?;
-        if checkpoint_coordinator {
-            maybe_checkpoint_operation_log(&connection)?;
-        }
-        sync::relay_client::sync_once(
-            &connection,
-            &relay_url,
-            &key,
-            sync::relay_client::SyncOptions::foreground(checkpoint_coordinator),
-        )
-        .map_err(sync::Error::into_string)
+        let startup = take_startup_database_connection(&app, StartupDatabaseRead::RelaySync)?;
+        let result = (|| {
+            let connection = &startup.connection;
+            if !sync::is_sync_enabled(connection).map_err(sync::Error::into_string)? {
+                return Err("Sync is not enabled on this device.".to_string());
+            }
+            let relay_url = metadata_value(connection, SYNC_RELAY_URL)?
+                .filter(|value| !value.is_empty())
+                .ok_or_else(|| "Set a relay server URL first.".to_string())?;
+            let pairing_code = sync::read_pairing_code(connection)
+                .map_err(sync::Error::into_string)?
+                .ok_or_else(|| "This device's sync key is missing.".to_string())?;
+            let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+                .map_err(sync::Error::into_string)?;
+            let checkpoint_coordinator = database_checkpoint_coordinator(connection)?;
+            if checkpoint_coordinator {
+                maybe_checkpoint_operation_log(connection)?;
+            }
+            sync::relay_client::sync_once(
+                connection,
+                &relay_url,
+                &key,
+                sync::relay_client::SyncOptions::foreground(checkpoint_coordinator),
+            )
+            .map_err(sync::Error::into_string)
+        })();
+        finish_startup_database_read(startup, StartupDatabaseRead::RelaySync, None);
+        result
     })
     .await
 }
@@ -8684,6 +9059,32 @@ pub fn run() {
                         Err(e) => {
                             log::error!("BALANCE_SYNC_E2E: FAIL {e}");
                             eprintln!("BALANCE_SYNC_E2E: FAIL {e}");
+                        }
+                    }
+
+                    let profile = (|| -> Result<Option<String>, String> {
+                        let scratch = app_database_path(handle)?
+                            .parent()
+                            .ok_or("no data dir")?
+                            .to_path_buf();
+                        let profile_marker = scratch.join("android-startup-profile-complete");
+                        if profile_marker.exists() {
+                            return Ok(None);
+                        }
+                        let profile = profile_android_database_startup(&scratch)?;
+                        fs::write(&profile_marker, profile.as_bytes())
+                            .map_err(|error| error.to_string())?;
+                        Ok(Some(profile))
+                    })();
+                    match profile {
+                        Ok(Some(profile)) => {
+                            log::info!("BALANCE_ANDROID_STARTUP_PROFILE: {profile}");
+                            eprintln!("BALANCE_ANDROID_STARTUP_PROFILE: {profile}");
+                        }
+                        Ok(None) => {}
+                        Err(error) => {
+                            log::error!("BALANCE_ANDROID_STARTUP_PROFILE_FAIL: {error}");
+                            eprintln!("BALANCE_ANDROID_STARTUP_PROFILE_FAIL: {error}");
                         }
                     }
                 }
@@ -8909,6 +9310,36 @@ mod tests {
             saved["templates"][0]["items"][0]["options"][0]["text"],
             "Wake up"
         );
+    }
+
+    #[test]
+    fn startup_connection_is_dropped_after_launch_reads_finish() {
+        let database = TestDatabase::new("startup-connection-lifetime");
+        let recovery_key = generate_recovery_key();
+        let connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let startup = StartupDatabaseConnection {
+            database_path: database.path.clone(),
+            recovery_key,
+            connection,
+            recovery_status_read: false,
+            app_state_read: false,
+            export_settings_read: false,
+            sync_settings_read: false,
+            relay_sync_required: None,
+            relay_sync_finished: false,
+        };
+
+        finish_startup_database_read(startup, StartupDatabaseRead::AppState, None);
+        let startup = STARTUP_DATABASE_CONNECTION.lock().unwrap().take().unwrap();
+        assert!(startup.app_state_read);
+        assert!(!startup.recovery_status_read);
+
+        finish_startup_database_read(startup, StartupDatabaseRead::RecoveryStatus, None);
+        let startup = STARTUP_DATABASE_CONNECTION.lock().unwrap().take().unwrap();
+        finish_startup_database_read(startup, StartupDatabaseRead::ExportSettings, None);
+        let startup = STARTUP_DATABASE_CONNECTION.lock().unwrap().take().unwrap();
+        finish_startup_database_read(startup, StartupDatabaseRead::SyncSettings, Some(false));
+        assert!(STARTUP_DATABASE_CONNECTION.lock().unwrap().is_none());
     }
 
     fn generated_rotation_database(name: &str) -> (TestDatabaseAt, String, Value) {
