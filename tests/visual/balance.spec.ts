@@ -3190,6 +3190,68 @@ test('list template items support rich text formatting shortcuts while over the 
   }
 })
 
+test('list template item appearance probability grandfathers saved values below 30 percent', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    localStorage.clear()
+    const now = new Date().toISOString()
+    const item = (id: string, text: string, probability: number) => ({
+      id,
+      text,
+      html: text,
+      probability,
+      children: [],
+    })
+    localStorage.setItem(
+      'balance.appState.v1',
+      JSON.stringify({
+        schemaVersion: 1,
+        deviceId: 'test-device',
+        localSequence: 0,
+        historyRevision: 0,
+        activePlanDate: now.slice(0, 10),
+        templates: [],
+        plans: [],
+        listTemplates: [{
+          id: 'list_template_probabilities',
+          name: 'Probabilities',
+          maxExpectedWords: 0,
+          items: [item('low', 'Low item', 10), item('normal', 'Normal item', 100)],
+          createdAt: now,
+          updatedAt: now,
+        }],
+        lists: [],
+        metrics: [],
+        metricEntries: [],
+        goals: [],
+        goalCompletions: [],
+        operations: [],
+      }),
+    )
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+
+  const probabilities = page.getByLabel('Appearance probability')
+  await expect(probabilities).toHaveCount(2)
+  const lowProbability = probabilities.nth(0)
+  const normalProbability = probabilities.nth(1)
+  await expect(lowProbability).toHaveAttribute('min', '10')
+  await expect(lowProbability).toHaveValue('10')
+  await expect(normalProbability).toHaveAttribute('min', '30')
+
+  await normalProbability.press('Home')
+  await expect(normalProbability).toHaveValue('30')
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        return state.listTemplates?.[0]?.items?.map((item: { probability: number }) => item.probability)
+      }),
+    )
+    .toEqual([10, 30])
+})
+
 test('nested list items include ancestor probabilities in expected words and cap checks', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {

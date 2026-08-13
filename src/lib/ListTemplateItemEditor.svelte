@@ -13,6 +13,11 @@
     mergeWindowMs?: number
   }
 
+  // The data layer keeps accepting 10% so previously saved low-probability
+  // items survive unchanged. Only those grandfathered items expose that lower
+  // range; every item currently at 30% or above uses the normal UI minimum.
+  const NORMAL_MIN_LIST_ITEM_PROBABILITY = 30
+
   export let item: ListTemplateItem
   export let allItems: ListTemplateItem[]
   export let depth = 0
@@ -56,6 +61,7 @@
   // Bumped to force the contenteditable to revert when a keystroke would push the
   // template's expected word count past the cap.
   let revertNonce = 0
+  let allowsLowProbability = item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY
   $: revision = historyRevision + revertNonce
   $: selected = selectedItemIds.has(item.id)
 
@@ -299,7 +305,7 @@
       />
       <ProbabilitySlider
         value={item.probability}
-        min={MIN_LIST_ITEM_PROBABILITY}
+        min={allowsLowProbability ? MIN_LIST_ITEM_PROBABILITY : NORMAL_MIN_LIST_ITEM_PROBABILITY}
         step={10}
         ariaLabel="Appearance probability"
         generousHitbox
