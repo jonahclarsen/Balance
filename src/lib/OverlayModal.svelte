@@ -5,6 +5,7 @@
   export let title = ''
   export let ariaLabel = title || 'Dialog'
   export let z = 60
+  let backdrop: HTMLDivElement
   let mobileViewportTop = 0
 
   function updateMobileViewportTop() {
@@ -25,8 +26,22 @@
     return () => observer?.disconnect()
   })
 
-  function handleBackdropKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
+  function isTopmostOverlay() {
+    if (!backdrop) return false
+
+    const overlays = Array.from(document.querySelectorAll<HTMLElement>('.overlay-backdrop'))
+    const topmost = overlays.reduce<HTMLElement | null>((current, candidate) => {
+      if (!current) return candidate
+      const currentZ = Number.parseInt(window.getComputedStyle(current).zIndex, 10) || 0
+      const candidateZ = Number.parseInt(window.getComputedStyle(candidate).zIndex, 10) || 0
+      return candidateZ >= currentZ ? candidate : current
+    }, null)
+
+    return topmost === backdrop
+  }
+
+  function handleEscape(event: KeyboardEvent) {
+    if (event.key === 'Escape' && isTopmostOverlay()) {
       event.stopPropagation()
       onClose()
     }
@@ -34,7 +49,7 @@
 </script>
 
 <svelte:window
-  on:keydown={(event) => event.key === 'Escape' && onClose()}
+  on:keydown={handleEscape}
   on:scroll={updateMobileViewportTop}
   on:resize={updateMobileViewportTop}
 />
@@ -42,11 +57,12 @@
 <!-- Absolute layer inside .content-shell so it covers the main area + goal rhythm
      while leaving the sidebar visible. -->
 <div
+  bind:this={backdrop}
   class="overlay-backdrop"
   role="presentation"
   style={`z-index: ${z}; --mobile-overlay-top: ${mobileViewportTop}px`}
   on:click|self={onClose}
-  on:keydown={handleBackdropKeydown}
+  on:keydown={handleEscape}
 >
   <div class="overlay-card" role="dialog" aria-modal="true" aria-label={ariaLabel}>
     <header class="overlay-header">

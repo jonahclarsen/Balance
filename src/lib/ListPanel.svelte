@@ -176,6 +176,17 @@
     return Boolean(selectedItemId)
   }
 
+  export function openSelectedMetric(): boolean {
+    if (!selectedItemId) return false
+    const item = findPlanItem(instance.items, selectedItemId)
+    if (!item) return false
+    const metricLink = itemMetricLink(item.text, listTemplates, metrics)
+    if (!metricLink) return false
+
+    onOpenLink(metricLink, item.id)
+    return true
+  }
+
   export function editSelectedTemplateItem() {
     if (selectedItemId) onEditTemplate(selectedItemId)
   }
@@ -195,6 +206,12 @@
     if (!event.shiftKey && !event.altKey && !primaryModifier && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
       event.preventDefault()
       moveSelection(event.key === 'ArrowUp' ? -1 : 1)
+      return
+    }
+
+    if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyF' && openSelectedMetric()) {
+      event.preventDefault()
+      event.stopPropagation()
       return
     }
 

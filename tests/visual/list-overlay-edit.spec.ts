@@ -112,6 +112,76 @@ async function openThreeItemGroceriesOverlay(page: import('@playwright/test').Pa
   return dialog
 }
 
+test('Alt+F opens a task linked list from either its caret or item selection', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  await page.locator('[data-list-template-text-input]').first().fill('Milk')
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const taskInput = page.locator('[data-plan-text-input]').first()
+  await taskInput.fill('Groceries')
+
+  await page.keyboard.press('Alt+f')
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close' }).click()
+
+  const taskRow = page.getByRole('listitem', { name: 'Plan item: Groceries' })
+  await taskRow.getByRole('button', { name: 'Select item' }).click()
+  await page.keyboard.press('Alt+f')
+  await expect(dialog).toBeVisible()
+
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await page.keyboard.press('Alt+/')
+  await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' }))
+    .toContainText('Open linked list / metric')
+})
+
+test('Alt+F opens the metric linked by the selected list item', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Metrics', exact: true }).click()
+  await page.getByRole('button', { name: '+ New metric' }).first().click()
+  await page.getByLabel('Metric name').fill('Mood')
+  await page.getByLabel('Question prompt').first().fill('Score')
+  await page.getByLabel('Question type').selectOption('boolean')
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  await page.locator('[data-list-template-text-input]').first().fill('Record Mood')
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const taskInput = page.locator('[data-plan-text-input]').first()
+  await taskInput.fill('Groceries')
+  await taskInput.blur()
+  await page.getByTitle('Open Groceries').first().click()
+
+  const listDialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(listDialog.locator('.plan-row.selected')).toContainText('Record Mood')
+  await page.keyboard.press('Alt+f')
+
+  const metricDialog = page.getByRole('dialog', { name: 'Mood' })
+  await expect(metricDialog).toBeVisible()
+  await expect(metricDialog.getByRole('button', { name: /Yes/ })).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(metricDialog).toBeHidden()
+  await expect(listDialog).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(listDialog).toBeHidden()
+})
+
 test('list overlay header progress fills as items are checked off', async ({ page }) => {
   const dialog = await openTwoItemGroceriesOverlay(page)
   const progress = dialog.getByRole('progressbar', { name: 'List completion' })

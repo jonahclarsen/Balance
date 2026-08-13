@@ -46,7 +46,7 @@
   import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
-  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, MAX_TIMELINE_MINUTES, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
 
@@ -630,6 +630,23 @@ return rows`
     } else {
       metricOverlay = { metricId: link.metricId, date, opener }
     }
+  }
+
+  function openLinkedListForActiveTask(): boolean {
+    if (activeItemSurface() !== 'plan' || !focusedPlan) return false
+
+    const itemId = selectedItemIds.length > 0
+      ? (selectionFocusId ?? selectedItemIds.at(-1) ?? null)
+      : activeFocusedItemId()
+    const item = itemId ? findPlanItem(focusedPlan.items, itemId) : null
+    if (!item || !itemId) return false
+
+    const listLink = linkifyItemText(item.text, listTemplates, metrics, notes)
+      .find((segment) => segment.link?.kind === 'list')?.link
+    if (!listLink || listLink.kind !== 'list') return false
+
+    openLink(listLink, { container: 'plan', containerId: focusedPlan.id, itemId })
+    return true
   }
 
   async function confirmDeleteNote(noteId: Id) {
@@ -1941,6 +1958,23 @@ return rows`
         event.preventDefault()
         view = 'today'
         toggleCompareDay()
+        return
+      }
+    }
+
+    if (
+      event.altKey &&
+      !primaryModifier &&
+      !event.shiftKey &&
+      event.code === 'KeyF' &&
+      !metricOverlay
+    ) {
+      const openedLink = listOverlayVisible && overlayListPanel
+        ? overlayListPanel.openSelectedMetric()
+        : openLinkedListForActiveTask()
+      if (openedLink) {
+        event.preventDefault()
+        event.stopPropagation()
         return
       }
     }

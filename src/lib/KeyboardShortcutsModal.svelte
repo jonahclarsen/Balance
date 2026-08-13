@@ -72,6 +72,7 @@
       title: 'Editing items',
       shortcuts: [
         { keys: ['mod', 'D'], label: 'Toggle done' },
+        { keys: ['alt', 'F'], label: 'Open linked list / metric' },
         { keys: ['E'], label: 'Edit selected list item (overlay)' },
         { keys: ['T'], label: 'Add / remove time from selected items' },
         { keys: ['['], label: 'Move selected start earlier / later', alt: [']'] },
