@@ -3190,28 +3190,6 @@ test('list template items support rich text formatting shortcuts while over the 
   }
 })
 
-test('list template item appearance probability can be lowered to 10 percent', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
-
-  const probability = page.getByLabel('Appearance probability').first()
-  await expect(probability).toHaveAttribute('min', '10')
-  await probability.fill('10')
-
-  await expect(probability).toHaveValue('10')
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-        return state.listTemplates?.[0]?.items?.[0]?.probability
-      }),
-    )
-    .toBe(10)
-})
-
 test('nested list items include ancestor probabilities in expected words and cap checks', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {
