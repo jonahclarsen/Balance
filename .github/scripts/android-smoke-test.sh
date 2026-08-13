@@ -103,10 +103,10 @@ if [ "$WIDGET_OK" != 1 ]; then
 fi
 echo "[widgets] home + keyguard providers loaded encrypted data and inflated successfully."
 
-# The frontend schedules both WorkManager's 15-minute periodic pass and an
-# immediate network-constrained pass on launch. Confirm Android registered the
-# generated worker service; the job itself safely no-ops until relay sync is
-# configured.
+# Native startup registers WorkManager's 15-minute periodic pass. Foreground
+# startup sync stays in the frontend so loading cannot race a redundant worker.
+# Confirm Android registered the generated worker service; the job itself safely
+# no-ops until relay sync is configured.
 BACKGROUND_JOB_OK=0
 for _ in $(seq 1 10); do
   adb shell dumpsys jobscheduler > jobscheduler.txt

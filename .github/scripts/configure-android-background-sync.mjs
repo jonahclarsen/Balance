@@ -30,9 +30,7 @@ const source = `package app.balance.local
 import android.content.Context
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.Worker
 import androidx.work.WorkerParameters
@@ -49,7 +47,6 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
 
     companion object {
         private const val PERIODIC_NAME = "balance-relay-sync-periodic"
-        private const val ONCE_NAME = "balance-relay-sync-once"
 
         init { System.loadLibrary("balance_lib") }
 
@@ -68,10 +65,6 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
                 ExistingPeriodicWorkPolicy.KEEP,
                 periodic,
             )
-            val once = OneTimeWorkRequestBuilder<BalanceSyncWorker>()
-                .setConstraints(constraints)
-                .build()
-            manager.enqueueUniqueWork(ONCE_NAME, ExistingWorkPolicy.KEEP, once)
         }
     }
 }
@@ -80,9 +73,8 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
 await mkdir(dirname(sourcePath), { recursive: true })
 await writeFile(sourcePath, source)
 
-// Register from native startup as well as from the frontend command. Startup is
-// deterministic and does not depend on the webview finishing initialization;
-// the unique-work policies make subsequent calls harmless.
+// Register periodic background sync from native startup. Foreground startup is
+// handled by the frontend so it does not race a redundant one-time worker.
 let activity = await readFile(activityPath, 'utf8')
 if (!activity.includes('BalanceSyncWorker.schedule(this)')) {
   if (!activity.includes('import android.os.Bundle')) {
