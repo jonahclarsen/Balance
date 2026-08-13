@@ -265,7 +265,7 @@ return rows`
     approved: PasteReviewNode[]
     rejected: number[]
     targetId: Id | null
-    placement: 'after' | 'replace'
+    placement: 'before' | 'after' | 'replace'
     planId: Id
     cut: boolean
   } | null = null
@@ -2817,10 +2817,13 @@ return rows`
   }
 
   async function pasteSystemClipboard() {
+    // Read this before the asynchronous clipboard request: native pasteboard access can
+    // briefly disturb the DOM selection even though the user has not moved the caret.
+    const pasteBeforeItemId = planItemIdWithCaretAtStart()
     const clipboard = await readSystemClipboard()
     const structured = parsePlanItemClipboard(clipboard.structuredPayload)
     if (structured) {
-      pastePlanItemClipboard(structured)
+      pastePlanItemClipboard(structured, pasteBeforeItemId)
       return
     }
 
@@ -2840,11 +2843,15 @@ return rows`
     }))
   }
 
-  function pastePlanItemClipboard(planItemClipboard: PlanItemClipboard) {
+  function pastePlanItemClipboard(planItemClipboard: PlanItemClipboard, pasteBeforeItemId: Id | null) {
     if (!focusedPlan) return
 
     const targetId = pasteTargetPlanItemId()
-    const placement = shouldReplaceFocusedPlanItemOnPaste(targetId) ? 'replace' : 'after'
+    const placement = shouldReplaceFocusedPlanItemOnPaste(targetId)
+      ? 'replace'
+      : targetId === pasteBeforeItemId
+        ? 'before'
+        : 'after'
 
     const nodes = flattenPlanItemsForReview(planItemClipboard.items)
     if (nodes.length >= PASTE_REVIEW_THRESHOLD && planItemClipboard.sourceDate !== focusedPlan.date) {
@@ -2939,7 +2946,7 @@ return rows`
   function insertPastedPlanItems(
     items: PlanItem[],
     targetId: Id | null,
-    placement: 'after' | 'replace',
+    placement: 'before' | 'after' | 'replace',
     cut: boolean,
   ) {
     if (!focusedPlan) return
@@ -3292,6 +3299,22 @@ return rows`
     return Boolean(
       item && item.text.trim() === '' && item.html.trim() === '' && item.children.length === 0,
     )
+  }
+
+  function planItemIdWithCaretAtStart(): Id | null {
+    const editor = document.activeElement
+    if (!(editor instanceof HTMLElement) || !editor.matches('[data-plan-text-input]')) return null
+
+    const selection = document.getSelection()
+    if (!selection || !selection.isCollapsed || selection.rangeCount === 0) return null
+
+    const caret = selection.getRangeAt(0)
+    if (!editor.contains(caret.startContainer)) return null
+
+    const beforeCaret = document.createRange()
+    beforeCaret.selectNodeContents(editor)
+    beforeCaret.setEnd(caret.startContainer, caret.startOffset)
+    return beforeCaret.toString().length === 0 ? editor.dataset.planTextInputId ?? null : null
   }
 
   function pasteTargetPlanItemId() {

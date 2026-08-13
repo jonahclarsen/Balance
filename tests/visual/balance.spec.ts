@@ -2297,6 +2297,28 @@ test('pasting plan items into an empty focused item replaces it', async ({ page 
   await expect.poll(async () => topLevelTexts(page)).toEqual([...before.slice(0, 2), ...before.slice(0, 2), ...before.slice(2)])
 })
 
+test('pasting a plan item at caret offset zero inserts it above the focused item', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  await focusInputByValue(page, before[0])
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Meta+C')
+
+  await focusInputByValue(page, before[1])
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Meta+V')
+
+  await expect.poll(async () => topLevelTexts(page)).toEqual([
+    before[0],
+    before[0],
+    ...before.slice(1),
+  ])
+})
+
 test('clicking a paste target immediately after whole-item copy honors the clicked task', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
