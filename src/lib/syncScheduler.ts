@@ -21,7 +21,6 @@ export type AutomaticSyncStatus = {
   pending: boolean
   configured: boolean | null
   initialSyncComplete: boolean
-  phase: 'idle' | 'reading-settings' | 'waiting-database' | 'syncing'
 }
 
 export const automaticSyncStatus = writable<AutomaticSyncStatus>({
@@ -31,7 +30,6 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
   pending: false,
   configured: null,
   initialSyncComplete: false,
-  phase: 'idle',
 })
 
 let running: Promise<SyncPassResult | null> | null = null
@@ -42,7 +40,6 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null
 let retryMs = 5_000
 let lastChangeAt = 0
 let automaticSyncStarted = false
-const SETTINGS_WAIT_NOTICE_MS = 750
 
 function pollDelay(): number {
   if (document.visibilityState !== 'visible') return BACKGROUND_POLL_MS
@@ -99,25 +96,19 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
     return running
   }
   running = (async () => {
+    // initialSyncComplete is a launch latch. Routine polls, resumes, and edits
+    // must not reset it and make unrelated foreground UI look uninitialized.
     automaticSyncStatus.update((status) => ({
       ...status,
       running: false,
       pending: false,
       configured: null,
-      initialSyncComplete: false,
-      phase: 'reading-settings',
     }))
-    const waitingNotice = window.setTimeout(() => {
-      automaticSyncStatus.update((status) =>
-        status.phase === 'reading-settings' ? { ...status, phase: 'waiting-database' } : status,
-      )
-    }, SETTINGS_WAIT_NOTICE_MS)
 
     let syncConfigured: boolean
     try {
       syncConfigured = await configured()
     } catch (error) {
-      window.clearTimeout(waitingNotice)
       if (reason === 'launch') {
         try {
           await plannerStore.reloadFromBackend()
@@ -131,13 +122,10 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         running: false,
         lastError: message,
         configured: null,
-        initialSyncComplete: false,
-        phase: 'idle',
       }))
       scheduleRetry()
       return null
     }
-    window.clearTimeout(waitingNotice)
 
     if (!syncConfigured) {
       automaticSyncStatus.set({
@@ -147,7 +135,6 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         pending: false,
         configured: false,
         initialSyncComplete: true,
-        phase: 'idle',
       })
       return null
     }
@@ -156,7 +143,6 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       ...status,
       running: true,
       configured: true,
-      phase: 'syncing',
     }))
     try {
       const result = await syncRelayOnce(reason)
@@ -178,7 +164,6 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         pending: false,
         configured: true,
         initialSyncComplete: true,
-        phase: 'idle',
       })
       return result
     } catch (error) {
@@ -195,8 +180,6 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         running: false,
         lastError: message,
         configured: true,
-        initialSyncComplete: false,
-        phase: 'idle',
       }))
       scheduleRetry()
       return null
@@ -221,7 +204,6 @@ export function startAutomaticSync(): () => void {
     ...status,
     configured: null,
     initialSyncComplete: false,
-    phase: 'idle',
   }))
   schedulePoll()
 

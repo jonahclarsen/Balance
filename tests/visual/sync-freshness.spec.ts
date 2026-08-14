@@ -1,4 +1,26 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+type SyncStatusSnapshot = {
+  running: boolean
+  initialSyncComplete: boolean
+}
+
+async function readSyncStatus(page: Page): Promise<SyncStatusSnapshot> {
+  return page.evaluate(async () => {
+    const schedulerPath = '/src/lib/syncScheduler.ts'
+    const scheduler = await import(/* @vite-ignore */ schedulerPath)
+    let snapshot: SyncStatusSnapshot | undefined
+    const unsubscribe = scheduler.automaticSyncStatus.subscribe((status: SyncStatusSnapshot) => {
+      snapshot = {
+        running: status.running,
+        initialSyncComplete: status.initialSyncComplete,
+      }
+    })
+    unsubscribe()
+    if (!snapshot) throw new Error('Automatic sync status was unavailable')
+    return snapshot
+  })
+}
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -87,6 +109,17 @@ test.beforeEach(async ({ page }) => {
             }
           case 'sync_relay_once':
             runtime.__syncAttemptCount += 1
+            if (new URLSearchParams(location.search).has('launch-then-hold')) {
+              if (runtime.__syncAttemptCount > 1) return new Promise(() => undefined)
+              return {
+                pulledOperations: 0,
+                pushedOperations: 0,
+                stateChanged: false,
+                checkpointCommitted: false,
+                epoch: 'synthetic',
+                latestSequence: 1,
+              }
+            }
             if (new URLSearchParams(location.search).has('background-updated')) {
               storedState = syncedState
               return {
@@ -129,13 +162,12 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('the app identifies a slow settings read as waiting for database access', async ({ page }) => {
+test('a slow settings read does not cover the app with sync progress', async ({ page }) => {
   await page.goto('/?hold-settings=1')
 
-  const loading = page.getByRole('status')
-  await expect(loading.getByText('Waiting for database access…')).toBeVisible()
-  await expect(loading.getByText('Another database task is finishing before automatic sync can start.')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await expect(page.getByText('Reading sync settings…')).toHaveCount(0)
+  await expect(page.getByText('Waiting for database access…')).toHaveCount(0)
 
   await page.evaluate(() => {
     window.dispatchEvent(new Event('focus'))
@@ -148,13 +180,11 @@ test('the app identifies a slow settings read as waiting for database access', a
   })).toBe(1)
 })
 
-test('the app identifies local state while its launch sync is still running', async ({ page }) => {
+test('a slow launch sync leaves local state visible without a progress banner', async ({ page }) => {
   await page.goto('/?hold-sync=1')
 
-  const checking = page.getByRole('status')
-  await expect(checking.getByText('Checking for changes…')).toBeVisible()
-  await expect(checking.getByText('The data shown is this device’s saved copy until sync completes.')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await expect(page.getByText('Checking for changes…')).toHaveCount(0)
 })
 
 test('an unsuccessful launch sync marks the visible local state as potentially stale', async ({ page }, testInfo) => {
@@ -188,4 +218,27 @@ test('launch reloads visible state even when a background pass already consumed 
   await expect(page.getByText('Synced version')).toBeVisible()
   await expect(page.getByText('Local version')).toHaveCount(0)
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
+})
+
+test('routine sync checks stay quiet without resetting launch completion', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+
+  await expect.poll(() => readSyncStatus(page)).toEqual({
+    running: false,
+    initialSyncComplete: true,
+  })
+
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __syncAttemptCount: number }
+    return runtime.__syncAttemptCount
+  })).toBe(2)
+  await expect.poll(() => readSyncStatus(page)).toEqual({
+    running: true,
+    initialSyncComplete: true,
+  })
+
+  await expect(page.getByText('Checking for changes…')).toHaveCount(0)
+  await expect(page.getByText('Reading sync settings…')).toHaveCount(0)
+  await expect(page.getByText('Waiting for database access…')).toHaveCount(0)
 })

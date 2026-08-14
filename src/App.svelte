@@ -3677,40 +3677,21 @@ return rows`
   </div>
 {/if}
 
-{#if isTauri() && !$persistenceError && !$databaseLoadPending && !$databaseLoadError && $automaticSyncStatus.configured !== false && (!$automaticSyncStatus.initialSyncComplete || Boolean($automaticSyncStatus.lastError))}
-  <div
-    class="app-error-banner sync-freshness-banner"
-    class:sync-error={Boolean($automaticSyncStatus.lastError)}
-    role={$automaticSyncStatus.lastError ? 'alert' : 'status'}
-    aria-live="polite"
-    aria-busy={$automaticSyncStatus.running || $automaticSyncStatus.configured === null}
-  >
-    <span class="app-error-banner-icon" aria-hidden="true">{$automaticSyncStatus.lastError ? '!' : '↻'}</span>
+{#if isTauri() && !$persistenceError && !$databaseLoadPending && !$databaseLoadError && $automaticSyncStatus.lastError}
+  <div class="app-error-banner sync-freshness-banner sync-error" role="alert" aria-live="polite">
+    <span class="app-error-banner-icon" aria-hidden="true">!</span>
     <div class="app-error-banner-text">
-      {#if $automaticSyncStatus.lastError}
-        <strong>Balance may be out of date</strong>
-        <span>Sync hasn’t completed. {$automaticSyncStatus.lastError}</span>
-      {:else if $automaticSyncStatus.configured === null && $automaticSyncStatus.phase === 'waiting-database'}
-        <strong>Waiting for database access…</strong>
-        <span>Another database task is finishing before automatic sync can start.</span>
-      {:else if $automaticSyncStatus.configured === null}
-        <strong>Reading sync settings…</strong>
-        <span>Checking this device’s saved automatic-sync configuration.</span>
-      {:else}
-        <strong>Checking for changes…</strong>
-        <span>The data shown is this device’s saved copy until sync completes.</span>
-      {/if}
+      <strong>Balance may be out of date</strong>
+      <span>Sync hasn’t completed. {$automaticSyncStatus.lastError}</span>
     </div>
-    {#if $automaticSyncStatus.lastError}
-      <div class="app-error-banner-actions">
-        <button
-          type="button"
-          class="primary"
-          disabled={$automaticSyncStatus.running}
-          on:click={() => { void requestSync('warning-retry') }}
-        >{$automaticSyncStatus.running ? 'Retrying…' : 'Retry now'}</button>
-      </div>
-    {/if}
+    <div class="app-error-banner-actions">
+      <button
+        type="button"
+        class="primary"
+        disabled={$automaticSyncStatus.running}
+        on:click={() => { void requestSync('warning-retry') }}
+      >{$automaticSyncStatus.running ? 'Retrying…' : 'Retry now'}</button>
+    </div>
   </div>
 {/if}
 
