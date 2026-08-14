@@ -3798,7 +3798,7 @@ return rows`
   <aside class="sidebar" class:sidebar-hidden={sidebarHidden}>
     <div>
       <h1>Balance</h1>
-      <p class="muted">Local-first daily planning</p>
+      <p class="muted">Focus on what matters today</p>
     </div>
 
     <nav class="primary-nav" aria-label="Primary">
