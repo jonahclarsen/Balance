@@ -523,20 +523,31 @@ if (!activity.includes('BalanceWidgets.scheduleSelfTest(this)')) {
   )
 }
 if (!activity.includes('BalanceWidgets.refreshAllAsync(this)')) {
-  const closingClass = /\n}\s*$/
-  if (!closingClass.test(activity)) {
-    throw new Error(`Could not find MainActivity's closing brace in ${activityPath}`)
-  }
-  activity = activity.replace(
-    closingClass,
-    `
+  if (/override fun onStop\s*\(/.test(activity)) {
+    const superCall = /^(\s*)super\.onStop\(\)$/m
+    if (!superCall.test(activity)) {
+      throw new Error(`Could not find MainActivity's super.onStop call in ${activityPath}`)
+    }
+    activity = activity.replace(
+      superCall,
+      (_line, indent) => `${indent}super.onStop()\n${indent}BalanceWidgets.refreshAllAsync(this)`,
+    )
+  } else {
+    const closingClass = /\n}\s*$/
+    if (!closingClass.test(activity)) {
+      throw new Error(`Could not find MainActivity's closing brace in ${activityPath}`)
+    }
+    activity = activity.replace(
+      closingClass,
+      `
 
   override fun onStop() {
     super.onStop()
     BalanceWidgets.refreshAllAsync(this)
   }
 }`,
-  )
+    )
+  }
 }
 await writeFile(activityPath, activity)
 

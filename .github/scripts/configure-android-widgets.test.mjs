@@ -38,7 +38,16 @@ import android.os.Bundle
 class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    BalanceSyncWorker.schedule(this)
+  }
+
+  override fun onStart() {
+    super.onStart()
+    BalanceSyncWorker.enterForeground(this)
+  }
+
+  override fun onStop() {
+    super.onStop()
+    BalanceSyncWorker.enterBackground(this)
   }
 }
 `,
@@ -76,6 +85,8 @@ class BalanceSyncWorker {
       (configuredActivity.match(/BalanceWidgets\.refreshAllAsync\(this\)/g) ?? []).length,
       1,
     )
+    assert.equal((configuredActivity.match(/override fun onStop/g) ?? []).length, 1)
+    assert.match(configuredActivity, /BalanceSyncWorker\.enterBackground\(this\)/)
 
     const configuredWorker = await readFile(worker, 'utf8')
     assert.equal(

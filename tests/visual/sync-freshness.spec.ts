@@ -5,6 +5,7 @@ test.beforeEach(async ({ page }) => {
     type TestRuntime = typeof globalThis & {
       isTauri: boolean
       __syncAttemptCount: number
+      __syncSettingsCount: number
       __TAURI_INTERNALS__: {
         invoke: (command: string) => Promise<unknown>
         transformCallback: () => number
@@ -15,14 +16,28 @@ test.beforeEach(async ({ page }) => {
     }
     const runtime = globalThis as TestRuntime
     const date = new Date().toISOString().slice(0, 10)
-    const storedState = JSON.stringify({
+    const stateWithItem = (text: string) => JSON.stringify({
       schemaVersion: 1,
       deviceId: 'stale-state-test',
       localSequence: 0,
       historyRevision: 0,
       activePlanDate: date,
       templates: [],
-      plans: [{ id: 'local-plan', date, dailyReminder: '', items: [] }],
+      plans: [{
+        id: 'local-plan',
+        date,
+        dailyReminder: '',
+        items: [{
+          id: 'visible-item',
+          text,
+          html: text,
+          done: false,
+          startMinutes: 540,
+          endMinutes: 570,
+          timeHidden: false,
+          children: [],
+        }],
+      }],
       goals: [],
       goalCompletions: [],
       listTemplates: [],
@@ -32,9 +47,12 @@ test.beforeEach(async ({ page }) => {
       notes: [],
       operations: [],
     })
+    let storedState = stateWithItem('Local version')
+    const syncedState = stateWithItem('Synced version')
 
     runtime.isTauri = true
     runtime.__syncAttemptCount = 0
+    runtime.__syncSettingsCount = 0
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
       transformCallback: () => 1,
@@ -58,6 +76,7 @@ test.beforeEach(async ({ page }) => {
               autoJsonExportErrorAckAt: null,
             }
           case 'get_sync_settings':
+            runtime.__syncSettingsCount += 1
             if (new URLSearchParams(location.search).has('hold-settings')) {
               return new Promise(() => undefined)
             }
@@ -68,6 +87,17 @@ test.beforeEach(async ({ page }) => {
             }
           case 'sync_relay_once':
             runtime.__syncAttemptCount += 1
+            if (new URLSearchParams(location.search).has('background-updated')) {
+              storedState = syncedState
+              return {
+                pulledOperations: 0,
+                pushedOperations: 0,
+                stateChanged: false,
+                checkpointCommitted: false,
+                epoch: 'synthetic',
+                latestSequence: 1,
+              }
+            }
             if (new URLSearchParams(location.search).has('hold-sync')) {
               return new Promise(() => undefined)
             }
@@ -99,13 +129,23 @@ test.beforeEach(async ({ page }) => {
   })
 })
 
-test('the app identifies when it is still loading sync settings', async ({ page }) => {
+test('the app identifies a slow settings read as waiting for database access', async ({ page }) => {
   await page.goto('/?hold-settings=1')
 
   const loading = page.getByRole('status')
-  await expect(loading.getByText('Loading sync settings…')).toBeVisible()
-  await expect(loading.getByText('Preparing automatic sync using this device’s saved settings.')).toBeVisible()
+  await expect(loading.getByText('Waiting for database access…')).toBeVisible()
+  await expect(loading.getByText('Another database task is finishing before automatic sync can start.')).toBeVisible()
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'))
+    window.dispatchEvent(new Event('online'))
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __syncSettingsCount: number }
+    return runtime.__syncSettingsCount
+  })).toBe(1)
 })
 
 test('the app identifies local state while its launch sync is still running', async ({ page }) => {
@@ -140,4 +180,12 @@ test('an unsuccessful launch sync marks the visible local state as potentially s
     path: `artifacts/visual-smoke/${testInfo.project.name}-sync-may-be-out-of-date.png`,
     fullPage: false,
   })
+})
+
+test('launch reloads visible state even when a background pass already consumed the changes', async ({ page }) => {
+  await page.goto('/?background-updated=1')
+
+  await expect(page.getByText('Synced version')).toBeVisible()
+  await expect(page.getByText('Local version')).toHaveCount(0)
+  await expect(page.getByText('Checking for changes…')).toHaveCount(0)
 })

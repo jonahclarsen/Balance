@@ -28,6 +28,7 @@ if (!gradle.includes(dependency)) {
 const source = `package app.balance.local
 
 import android.content.Context
+import android.util.Log
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -38,33 +39,54 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
-    override fun doWork(): Result = try {
-        if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) Result.success()
-        else Result.retry()
-    } catch (_: Throwable) {
-        Result.retry()
+    override fun doWork(): Result {
+        if (appForeground) {
+            Log.i(LOG_TAG, "Skipping periodic relay sync while Balance is foregrounded")
+            return Result.success()
+        }
+        return try {
+            if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) Result.success()
+            else Result.retry()
+        } catch (_: Throwable) {
+            Result.retry()
+        }
     }
 
     companion object {
         private const val PERIODIC_NAME = "balance-relay-sync-periodic"
+        private const val LOG_TAG = "BalanceBackgroundSync"
+        @Volatile private var appForeground = false
 
         init { System.loadLibrary("balance_lib") }
 
         @JvmStatic external fun runNativeSync(appDataPath: String): Int
 
-        @JvmStatic fun schedule(context: Context) {
+        @JvmStatic fun enterForeground(context: Context) {
+            appForeground = true
+            WorkManager.getInstance(context.applicationContext).cancelUniqueWork(PERIODIC_NAME)
+            Log.i(LOG_TAG, "Deferred periodic relay sync while Balance is foregrounded")
+        }
+
+        @JvmStatic fun enterBackground(context: Context) {
+            appForeground = false
+            schedule(context)
+        }
+
+        private fun schedule(context: Context) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
             val manager = WorkManager.getInstance(context.applicationContext)
             val periodic = PeriodicWorkRequestBuilder<BalanceSyncWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(constraints)
+                .setInitialDelay(15, TimeUnit.MINUTES)
                 .build()
             manager.enqueueUniquePeriodicWork(
                 PERIODIC_NAME,
                 ExistingPeriodicWorkPolicy.KEEP,
                 periodic,
             )
+            Log.i(LOG_TAG, "Scheduled periodic relay sync for background execution")
         }
     }
 }
@@ -73,37 +95,49 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
 await mkdir(dirname(sourcePath), { recursive: true })
 await writeFile(sourcePath, source)
 
-// Register periodic background sync from native startup. Foreground startup is
-// handled by the frontend so it does not race a redundant one-time worker.
+// Cancel any overdue periodic pass before the WebView starts. Re-register it
+// only when the activity stops, with a fresh 15-minute delay, so WorkManager
+// cannot take the database lock from foreground startup.
 let activity = await readFile(activityPath, 'utf8')
-if (!activity.includes('BalanceSyncWorker.schedule(this)')) {
+activity = activity.replace(/^\s*BalanceSyncWorker\.schedule\(this\)\s*$/m, '')
+if (!/class MainActivity\s*:\s*TauriActivity\(\)\s*\{/.test(activity)) {
   if (!activity.includes('import android.os.Bundle')) {
     activity = activity.replace(/^(package [^\n]+\n)/m, '$1\nimport android.os.Bundle\n')
   }
-
-  if (/override fun onCreate\s*\(/.test(activity)) {
-    const superCall = /^(\s*)super\.onCreate\(savedInstanceState\)$/m
-    if (!superCall.test(activity)) {
-      throw new Error(`Could not find MainActivity's super.onCreate call in ${activityPath}`)
-    }
-    activity = activity.replace(
-      superCall,
-      (_match, indent) => `${indent}super.onCreate(savedInstanceState)\n${indent}BalanceSyncWorker.schedule(this)`,
-    )
-  } else {
-    const body = `class MainActivity : TauriActivity() {
+  const body = `class MainActivity : TauriActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    BalanceSyncWorker.schedule(this)
   }
 }`
-    const emptyActivity = /class MainActivity\s*:\s*TauriActivity\(\)\s*(?:\{\s*\})?/
-    if (!emptyActivity.test(activity)) {
-      throw new Error(`Could not find the generated MainActivity in ${activityPath}`)
-    }
-    activity = activity.replace(emptyActivity, body)
+  const emptyActivity = /class MainActivity\s*:\s*TauriActivity\(\)\s*(?:\{\s*\})?/
+  if (!emptyActivity.test(activity)) {
+    throw new Error(`Could not find the generated MainActivity in ${activityPath}`)
   }
-  await writeFile(activityPath, activity)
+  activity = activity.replace(emptyActivity, body)
 }
+
+function addLifecycleCall(source, method, call) {
+  if (source.includes(call)) return source
+  const methodMarker = new RegExp(`override fun ${method}\\s*\\(`)
+  if (methodMarker.test(source)) {
+    const superCall = new RegExp(`^(\\s*)super\\.${method}\\(\\)$`, 'm')
+    if (!superCall.test(source)) {
+      throw new Error(`Could not find MainActivity's super.${method} call in ${activityPath}`)
+    }
+    return source.replace(superCall, (_match, indent) => `${indent}super.${method}()\n${indent}${call}`)
+  }
+  const closingClass = /\n}\s*$/
+  if (!closingClass.test(source)) {
+    throw new Error(`Could not find MainActivity's closing brace in ${activityPath}`)
+  }
+  return source.replace(
+    closingClass,
+    `\n\n  override fun ${method}() {\n    super.${method}()\n    ${call}\n  }\n}`,
+  )
+}
+
+activity = addLifecycleCall(activity, 'onStart', 'BalanceSyncWorker.enterForeground(this)')
+activity = addLifecycleCall(activity, 'onStop', 'BalanceSyncWorker.enterBackground(this)')
+await writeFile(activityPath, activity)
 
 console.log(`Configured Android WorkManager relay sync in ${sourcePath} and ${activityPath}`)

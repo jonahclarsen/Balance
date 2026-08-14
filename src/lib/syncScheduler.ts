@@ -21,6 +21,7 @@ export type AutomaticSyncStatus = {
   pending: boolean
   configured: boolean | null
   initialSyncComplete: boolean
+  phase: 'idle' | 'reading-settings' | 'waiting-database' | 'syncing'
 }
 
 export const automaticSyncStatus = writable<AutomaticSyncStatus>({
@@ -30,6 +31,7 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
   pending: false,
   configured: null,
   initialSyncComplete: false,
+  phase: 'idle',
 })
 
 let running: Promise<SyncPassResult | null> | null = null
@@ -40,6 +42,7 @@ let retryTimer: ReturnType<typeof setTimeout> | null = null
 let retryMs = 5_000
 let lastChangeAt = 0
 let automaticSyncStarted = false
+const SETTINGS_WAIT_NOTICE_MS = 750
 
 function pollDelay(): number {
   if (document.visibilityState !== 'visible') return BACKGROUND_POLL_MS
@@ -71,6 +74,14 @@ async function configured(): Promise<boolean> {
   return settings.enabled && Boolean(settings.pairingCode && settings.relayUrl)
 }
 
+function requiresFollowup(reason: string): boolean {
+  return ['edit', 'manual', 'warning-retry', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
+}
+
+async function reloadVisibleStateAfterLaunch(reason: string, stateChanged: boolean): Promise<void> {
+  if (reason === 'launch' || stateChanged) await plannerStore.reloadFromBackend()
+}
+
 function scheduleRetry(): void {
   if (retryTimer) return
   const jitter = Math.floor(Math.random() * Math.max(1_000, retryMs / 4))
@@ -83,47 +94,76 @@ function scheduleRetry(): void {
 
 export async function requestSync(reason: string): Promise<SyncPassResult | null> {
   if (running) {
-    queuedReason = reason
-    automaticSyncStatus.update((status) => ({ ...status, pending: true }))
+    if (requiresFollowup(reason)) queuedReason = reason
+    automaticSyncStatus.update((status) => ({ ...status, pending: Boolean(queuedReason) }))
     return running
   }
-  let syncConfigured: boolean
-  try {
-    syncConfigured = await configured()
-  } catch (error) {
-    const message = syncErrorMessage(error)
-    automaticSyncStatus.update((status) => ({
-      ...status,
-      running: false,
-      lastError: message,
-      configured: null,
-      initialSyncComplete: false,
-    }))
-    scheduleRetry()
-    return null
-  }
-  if (!syncConfigured) {
-    automaticSyncStatus.set({
-      running: false,
-      lastSuccessAt: null,
-      lastError: '',
-      pending: false,
-      configured: false,
-      initialSyncComplete: true,
-    })
-    return null
-  }
-
   running = (async () => {
     automaticSyncStatus.update((status) => ({
       ...status,
-      running: true,
+      running: false,
       pending: false,
+      configured: null,
+      initialSyncComplete: false,
+      phase: 'reading-settings',
+    }))
+    const waitingNotice = window.setTimeout(() => {
+      automaticSyncStatus.update((status) =>
+        status.phase === 'reading-settings' ? { ...status, phase: 'waiting-database' } : status,
+      )
+    }, SETTINGS_WAIT_NOTICE_MS)
+
+    let syncConfigured: boolean
+    try {
+      syncConfigured = await configured()
+    } catch (error) {
+      window.clearTimeout(waitingNotice)
+      if (reason === 'launch') {
+        try {
+          await plannerStore.reloadFromBackend()
+        } catch (reloadError) {
+          console.error('Could not refresh visible state after launch settings failed', reloadError)
+        }
+      }
+      const message = syncErrorMessage(error)
+      automaticSyncStatus.update((status) => ({
+        ...status,
+        running: false,
+        lastError: message,
+        configured: null,
+        initialSyncComplete: false,
+        phase: 'idle',
+      }))
+      scheduleRetry()
+      return null
+    }
+    window.clearTimeout(waitingNotice)
+
+    if (!syncConfigured) {
+      automaticSyncStatus.set({
+        running: false,
+        lastSuccessAt: null,
+        lastError: '',
+        pending: false,
+        configured: false,
+        initialSyncComplete: true,
+        phase: 'idle',
+      })
+      return null
+    }
+
+    automaticSyncStatus.update((status) => ({
+      ...status,
+      running: true,
       configured: true,
+      phase: 'syncing',
     }))
     try {
       const result = await syncRelayOnce(reason)
-      if (result.stateChanged) await plannerStore.reloadFromBackend()
+      // A due WorkManager pass may have updated the database immediately before
+      // this foreground pass. Reload on launch even when this pass sees no new
+      // operations so the WebView cannot keep showing the pre-sync snapshot.
+      await reloadVisibleStateAfterLaunch(reason, result.stateChanged)
       if (hasActualChanges(result)) {
         lastChangeAt = Date.now()
         schedulePoll()
@@ -138,9 +178,17 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         pending: false,
         configured: true,
         initialSyncComplete: true,
+        phase: 'idle',
       })
       return result
     } catch (error) {
+      if (reason === 'launch') {
+        try {
+          await plannerStore.reloadFromBackend()
+        } catch (reloadError) {
+          console.error('Could not refresh visible state after launch sync failed', reloadError)
+        }
+      }
       const message = syncErrorMessage(error)
       automaticSyncStatus.update((status) => ({
         ...status,
@@ -148,17 +196,22 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         lastError: message,
         configured: true,
         initialSyncComplete: false,
+        phase: 'idle',
       }))
       scheduleRetry()
       return null
-    } finally {
-      running = null
-      const followup = queuedReason
-      queuedReason = null
-      if (followup) void requestSync(followup)
     }
   })()
-  return running
+  const current = running
+  const finish = () => {
+    if (running !== current) return
+    running = null
+    const followup = queuedReason
+    queuedReason = null
+    if (followup) void requestSync(followup)
+  }
+  void current.then(finish, finish)
+  return current
 }
 
 export function startAutomaticSync(): () => void {
@@ -168,6 +221,7 @@ export function startAutomaticSync(): () => void {
     ...status,
     configured: null,
     initialSyncComplete: false,
+    phase: 'idle',
   }))
   schedulePoll()
 

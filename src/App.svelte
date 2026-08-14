@@ -3690,9 +3690,12 @@ return rows`
       {#if $automaticSyncStatus.lastError}
         <strong>Balance may be out of date</strong>
         <span>Sync hasn’t completed. {$automaticSyncStatus.lastError}</span>
+      {:else if $automaticSyncStatus.configured === null && $automaticSyncStatus.phase === 'waiting-database'}
+        <strong>Waiting for database access…</strong>
+        <span>Another database task is finishing before automatic sync can start.</span>
       {:else if $automaticSyncStatus.configured === null}
-        <strong>Loading sync settings…</strong>
-        <span>Preparing automatic sync using this device’s saved settings.</span>
+        <strong>Reading sync settings…</strong>
+        <span>Checking this device’s saved automatic-sync configuration.</span>
       {:else}
         <strong>Checking for changes…</strong>
         <span>The data shown is this device’s saved copy until sync completes.</span>
