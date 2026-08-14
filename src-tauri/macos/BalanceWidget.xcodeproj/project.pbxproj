@@ -1,0 +1,194 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		BA1000000000000000000001 /* BalanceWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA1000000000000000000011 /* BalanceWidget.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		BA1000000000000000000011 /* BalanceWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BalanceWidget.swift; sourceTree = "<group>"; };
+		BA1000000000000000000012 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		BA1000000000000000000013 /* BalanceWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BalanceWidget.entitlements; sourceTree = "<group>"; };
+		BA1000000000000000000014 /* BalanceWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BalanceWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BA1000000000000000000021 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		BA1000000000000000000031 = {
+			isa = PBXGroup;
+			children = (
+				BA1000000000000000000032 /* BalanceWidget */,
+				BA1000000000000000000033 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BA1000000000000000000032 /* BalanceWidget */ = {
+			isa = PBXGroup;
+			children = (
+				BA1000000000000000000011 /* BalanceWidget.swift */,
+				BA1000000000000000000012 /* Info.plist */,
+				BA1000000000000000000013 /* BalanceWidget.entitlements */,
+			);
+			path = BalanceWidget;
+			sourceTree = "<group>";
+		};
+		BA1000000000000000000033 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BA1000000000000000000014 /* BalanceWidget.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BA1000000000000000000041 /* BalanceWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BA1000000000000000000082 /* Build configuration list for PBXNativeTarget "BalanceWidget" */;
+			buildPhases = (
+				BA1000000000000000000022 /* Sources */,
+				BA1000000000000000000021 /* Frameworks */,
+				BA1000000000000000000023 /* Resources */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = BalanceWidget;
+			productName = BalanceWidget;
+			productReference = BA1000000000000000000014 /* BalanceWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BA1000000000000000000051 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2640;
+				LastUpgradeCheck = 2640;
+				TargetAttributes = {
+					BA1000000000000000000041 = { CreatedOnToolsVersion = 26.4; };
+				};
+			};
+			buildConfigurationList = BA1000000000000000000081 /* Build configuration list for PBXProject "BalanceWidget" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = BA1000000000000000000031;
+			productRefGroup = BA1000000000000000000033 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (BA1000000000000000000041 /* BalanceWidget */);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BA1000000000000000000023 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BA1000000000000000000022 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (BA1000000000000000000001 /* BalanceWidget.swift in Sources */);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		BA1000000000000000000061 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BA1000000000000000000062 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_MODULES = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		BA1000000000000000000071 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = BalanceWidget/BalanceWidget.entitlements;
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BalanceWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks");
+				MARKETING_VERSION = 0.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.balance.local.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		BA1000000000000000000072 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = BalanceWidget/BalanceWidget.entitlements;
+				CODE_SIGNING_ALLOWED = NO;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = BalanceWidget/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks", "@executable_path/../../../../Frameworks");
+				MARKETING_VERSION = 0.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = app.balance.local.widget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BA1000000000000000000081 /* Build configuration list for PBXProject "BalanceWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (BA1000000000000000000061 /* Debug */, BA1000000000000000000062 /* Release */);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BA1000000000000000000082 /* Build configuration list for PBXNativeTarget "BalanceWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (BA1000000000000000000071 /* Debug */, BA1000000000000000000072 /* Release */);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = BA1000000000000000000051 /* Project object */;
+}

@@ -2,6 +2,7 @@ use std::path::Path;
 
 use jni::objects::{JClass, JString};
 use jni::JNIEnv;
+use zeroize::Zeroizing;
 
 use crate::widget::{snapshot_from_plan, WidgetSnapshot};
 
@@ -12,8 +13,11 @@ fn load_snapshot(app_data_path: &Path, date: &str) -> Result<WidgetSnapshot, Str
     }
 
     let _guard = super::database_access_guard()?;
-    let recovery_key = super::database_recovery_key(&database_path)?;
-    let connection = super::open_database_at(&database_path, &recovery_key)?;
+    // Android widgets do not persist a second plaintext snapshot. The database
+    // key is unwrapped by Android Keystore only for this read, and this local
+    // copy is wiped as soon as SQLCipher has opened the connection.
+    let recovery_key = Zeroizing::new(super::database_recovery_key(&database_path)?);
+    let connection = super::open_database_at(&database_path, recovery_key.as_str())?;
     let plan = super::read_plan_by_date(&connection, date)?;
     Ok(snapshot_from_plan(date, plan.as_ref()))
 }

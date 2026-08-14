@@ -1,5 +1,12 @@
 {
   "bundle": {
-    "resources": []
+    "resources": [],
+    "macOS": {
+      "files": {
+        "PlugIns/BalanceWidget.appex": "target/macos-widget/BalanceWidget.appex"
+      },
+      "minimumSystemVersion": "13.0",
+      "signingIdentity": "-"
+    }
   }
 }

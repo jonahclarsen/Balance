@@ -22,8 +22,10 @@ use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "android")]
 mod android_widget;
+#[cfg(target_os = "macos")]
+mod macos_widget;
 mod sync;
-#[cfg(any(test, target_os = "android"))]
+#[cfg(any(test, target_os = "android", target_os = "macos"))]
 mod widget;
 
 const APP_DATABASE_FILE: &str = "balance.sqlite3";
@@ -555,6 +557,10 @@ async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String>
         let result = read_app_state_from_database(&startup.connection)
             .map(|state| state.map(|value| value.to_string()));
         if result.is_ok() {
+            #[cfg(target_os = "macos")]
+            if let Err(error) = macos_widget::publish_snapshot(&startup.connection) {
+                eprintln!("Could not refresh the macOS widget: {error}");
+            }
             finish_startup_database_read(startup, StartupDatabaseRead::AppState, None);
         }
         result
@@ -567,7 +573,12 @@ async fn initialize_app_state(app: tauri::AppHandle, state_json: String) -> Resu
     run_database_task(move || {
         with_database(&app, |connection| {
             let state = parse_json(&state_json)?;
-            replace_app_state(connection, &state)
+            replace_app_state(connection, &state)?;
+            #[cfg(target_os = "macos")]
+            if let Err(error) = macos_widget::publish_snapshot(connection) {
+                eprintln!("Could not refresh the macOS widget: {error}");
+            }
+            Ok(())
         })
     })
     .await
@@ -1399,6 +1410,10 @@ fn finish_meaningful_database_write(
         current_timestamp_ms(),
     ) {
         eprintln!("Daily database backup failed; it will be retried: {error}");
+    }
+    #[cfg(target_os = "macos")]
+    if let Err(error) = macos_widget::publish_snapshot(connection) {
+        eprintln!("Could not refresh the macOS widget: {error}");
     }
 }
 
@@ -8899,6 +8914,10 @@ async fn sync_apply_sealed(
         }
         sync::merge_and_rematerialize(&connection, ops).map_err(sync::Error::into_string)?;
         maybe_checkpoint_operation_log(&connection)?;
+        #[cfg(target_os = "macos")]
+        if let Err(error) = macos_widget::publish_snapshot(&connection) {
+            eprintln!("Could not refresh the macOS widget: {error}");
+        }
         read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
     })
     .await
@@ -8940,6 +8959,12 @@ async fn sync_relay_once(
             )
             .map_err(sync::Error::into_string)
         })();
+        #[cfg(target_os = "macos")]
+        if result.is_ok() {
+            if let Err(error) = macos_widget::publish_snapshot(&startup.connection) {
+                eprintln!("Could not refresh the macOS widget: {error}");
+            }
+        }
         finish_startup_database_read(startup, StartupDatabaseRead::RelaySync, None);
         result
     })
@@ -9003,6 +9028,10 @@ async fn sync_p2p_sync(app: tauri::AppHandle, address: String) -> Result<Option<
         let _guard = database_access_guard()?;
         let connection = open_database(&app)?;
         maybe_checkpoint_operation_log(&connection)?;
+        #[cfg(target_os = "macos")]
+        if let Err(error) = macos_widget::publish_snapshot(&connection) {
+            eprintln!("Could not refresh the macOS widget: {error}");
+        }
         read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
     })
     .await

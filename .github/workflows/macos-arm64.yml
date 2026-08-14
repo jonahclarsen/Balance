@@ -63,6 +63,17 @@ jobs:
           PLIST="$APP_PATH/Contents/Info.plist"
 
           test -d "$APP_PATH"
+          WIDGET_PATH="$APP_PATH/Contents/PlugIns/BalanceWidget.appex"
+          WIDGET_EXECUTABLE="$WIDGET_PATH/Contents/MacOS/BalanceWidget"
+          WIDGET_PLIST="$WIDGET_PATH/Contents/Info.plist"
+          test -d "$WIDGET_PATH"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$WIDGET_PLIST")" = "com.apple.widgetkit-extension"
+          test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$WIDGET_PLIST")" = "$APP_VERSION"
+          file "$WIDGET_EXECUTABLE" | tee widget-architecture.txt
+          file "$WIDGET_EXECUTABLE" | grep -q "arm64"
+          nm "$WIDGET_EXECUTABLE" | grep -q "U _NSExtensionMain"
+          codesign --verify --strict "$WIDGET_PATH"
+          codesign --verify --deep --strict "$APP_PATH"
           file "$APP_EXECUTABLE" | tee executable-architecture.txt
           file "$APP_EXECUTABLE" | grep -q "arm64"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")" = "$APP_VERSION"
@@ -75,4 +86,5 @@ jobs:
           path: |
             Balance-macos-arm64.app.zip
             executable-architecture.txt
+            widget-architecture.txt
           if-no-files-found: error

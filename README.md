@@ -14,6 +14,7 @@ Current slice:
 - Define recurring goals that complete automatically from checked plan-item text.
 - Review goal completions in an always-available, scrollable cadence history panel.
 - Export the app state as JSON or readable plan history as HTML.
+- See today’s progress and next tasks in small, medium, or large native macOS widgets. Widget snapshots are encrypted with an extension-owned Keychain key; the database key is never shared with the widget.
 - Record local mutations in an operation log for future sync work.
 
 ## Development

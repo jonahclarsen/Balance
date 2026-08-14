@@ -49,6 +49,7 @@ semver = "1"
 keyring = { version = "3.6.3", features = ["apple-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+chrono = "0.4.44"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["NSPasteboard"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSString", "NSUserDefaults"] }
 
@@ -56,6 +57,7 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["N
 # key over JNI (see android_keystore in lib.rs).
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
+zeroize = "1.8"
 
 # Camera QR-code scanning for sync pairing is mobile-only (Android/iOS); the
 # plugin uses the native camera, so it isn't compiled into desktop builds.

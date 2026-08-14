@@ -73,6 +73,7 @@ class BalanceSyncWorker {
     const manifest = await readFile(join(root, 'AndroidManifest.xml'), 'utf8')
     assert.equal((manifest.match(/BalanceHomeWidgetProvider/g) ?? []).length, 1)
     assert.equal((manifest.match(/BalanceLockWidgetProvider/g) ?? []).length, 1)
+    assert.equal((manifest.match(/android:exported="false"/g) ?? []).length, 2)
     assert.match(manifest, /@xml\/balance_home_widget_info/)
     assert.match(manifest, /@xml\/balance_lock_widget_info/)
 
@@ -100,6 +101,7 @@ class BalanceSyncWorker {
       'utf8',
     )
     assert.match(kotlin, /external fun nativeSnapshot/)
+    assert.doesNotMatch(kotlin, /SharedPreferences|openFileOutput|writeText/)
     assert.match(kotlin, /getReceiverInfo/)
     assert.match(kotlin, /getAttributeIntValue/)
     assert.match(kotlin, /initialKeyguardLayout/)
