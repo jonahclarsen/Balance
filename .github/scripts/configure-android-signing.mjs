@@ -17,6 +17,8 @@ for (const name of requiredEnvironmentVariables) {
 
 let gradle = await readFile(gradlePath, "utf8");
 
+const minifyRelease = process.env.BALANCE_ANDROID_MINIFY_RELEASE !== "false";
+
 const buildTypesMarker = "    buildTypes {";
 const releaseMarker = `        getByName("release") {
             isMinifyEnabled = true`;
@@ -44,8 +46,10 @@ gradle = gradle.replace(
   releaseMarker,
   `        getByName("release") {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = true`,
+            isMinifyEnabled = ${minifyRelease}`,
 );
 
 await writeFile(gradlePath, gradle);
-console.log(`Configured release signing in ${gradlePath}`);
+console.log(
+  `Configured release signing in ${gradlePath} (minification: ${minifyRelease ? "enabled" : "disabled"})`,
+);

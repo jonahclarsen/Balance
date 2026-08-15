@@ -6,6 +6,11 @@ on:
       - "v*.*.*"
   workflow_dispatch:
     inputs:
+      build_release:
+        description: Also build a signed arm64 APK (release tags always do)
+        required: false
+        default: false
+        type: boolean
       run_ui_pairing:
         description: Run the slower camera and UI Automator pairing journey
         required: false
@@ -14,17 +19,71 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
-  build:
-    name: Build debug + signed release
+  build-debug:
+    name: Build x86_64 debug APK
+    if: github.ref_name != 'codex/android-arm-emulator-ci'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     env:
-      # The vendored OpenSSL that SQLCipher links against is cross-compiled with
-      # the Android NDK. openssl-src locates the toolchain through these.
-      NDK_VERSION: "27.2.12479018"
+      # setup-gradle persists this local build cache between generated projects.
+      GRADLE_OPTS: -Dorg.gradle.caching=true
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Android debug project
+        uses: ./.github/actions/setup-android-build
+        with:
+          variant: debug-x86_64
+          rust-target: x86_64-linux-android
+          generate-sync-fixture: "true"
+
+      - name: Build x86_64 debug APK for the emulator
+        run: pnpm tauri android build --apk --debug --target x86_64
+
+      - name: Locate and verify APK
+        id: apk
+        run: |
+          APK_PATH="$(find src-tauri/gen/android -name '*.apk' -path '*debug*' | head -n 1)"
+          test -n "$APK_PATH"
+          echo "Found APK at $APK_PATH"
+          file "$APK_PATH"
+          # This APK only runs in CI's x86_64 emulator. The separately signed
+          # release APK below targets the arm64 Samsung device.
+          unzip -l "$APK_PATH" | tee apk-contents.txt
+          grep -q "lib/x86_64/libbalance_lib.so" apk-contents.txt
+          if grep -q "lib/arm64-v8a/" apk-contents.txt; then
+            echo "::error::The emulator APK unexpectedly contains arm64 libraries"
+            exit 1
+          fi
+          cp "$APK_PATH" balance-debug.apk
+          echo "path=balance-debug.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: Balance-android-debug
+          path: |
+            balance-debug.apk
+            sync-e2e-pairing.png
+            sync-e2e-pairing-code.txt
+          if-no-files-found: error
+
+  build-release:
+    name: Build signed arm64 release APK
+    if: >-
+      github.ref_name != 'codex/android-arm-emulator-ci' &&
+      (github.ref_type == 'tag' || inputs.build_release)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      GRADLE_OPTS: -Dorg.gradle.caching=true
 
     steps:
       - name: Check out repository
@@ -70,134 +129,20 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "ANDROID_RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
+      - name: Set up Android release project
+        uses: ./.github/actions/setup-android-build
         with:
-          run_install: false
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24
-          cache: pnpm
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android NDK
-        run: |
-          sdkmanager "ndk;${NDK_VERSION}" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
-          NDK="${ANDROID_SDK_ROOT}/ndk/${NDK_VERSION}"
-          echo "ANDROID_NDK_ROOT=${NDK}" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=${NDK}" >> "$GITHUB_ENV"
-          echo "NDK_HOME=${NDK}" >> "$GITHUB_ENV"
-
-      - name: Expose NDK toolchain with legacy tool names
-        run: |
-          # NDK r23+ ships only llvm-prefixed binutils (llvm-ar, llvm-ranlib, ...).
-          # The vendored OpenSSL build still calls the GCC-era names such as
-          # aarch64-linux-android-ranlib, so add the toolchain to PATH and create
-          # the legacy-named symlinks it expects, for every ABI we cross-compile.
-          TOOLCHAIN="${ANDROID_NDK_ROOT}/toolchains/llvm/prebuilt/linux-x86_64/bin"
-          echo "${TOOLCHAIN}" >> "$GITHUB_PATH"
-          for prefix in aarch64-linux-android x86_64-linux-android; do
-            for tool in ar ranlib nm strip; do
-              ln -sf "${TOOLCHAIN}/llvm-${tool}" "${TOOLCHAIN}/${prefix}-${tool}"
-            done
-          done
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-linux-android,x86_64-linux-android
-
-      - name: Cache Cargo build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            src-tauri/target
-          key: ${{ runner.os }}-android-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-android-cargo-
-
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Generate Android camera QR fixture
-        run: node .github/scripts/generate-android-sync-qr.mjs
-
-      - name: Initialize Android project
-        run: pnpm tauri android init
-
-      - name: Allow active direct sync to survive screen-off sleep
-        # The Rust sync command holds CPU + Wi-Fi locks only for the lifetime of
-        # an in-flight direct sync, then releases them immediately.
-        run: node .github/scripts/configure-android-sync-wake-lock.mjs
-
-      - name: Configure automatic background relay sync
-        run: node .github/scripts/configure-android-background-sync.mjs
-
-      - name: Configure home-screen widget
-        # Generated Android sources are CI-only. This adds the provider,
-        # its RemoteViews/resources, and the native encrypted-DB bridge.
-        run: node .github/scripts/configure-android-widgets.mjs
-
-      - name: Bundle the offline Android barcode model
-        # The upstream plugin uses the dynamically downloaded Play Services
-        # model. Bundle ML Kit instead so scanning works immediately, including
-        # on Android devices and CI images without Google Play Services.
-        run: node .github/scripts/configure-android-barcode-scanner.mjs
-
-      - name: Apply app launcher icons
-        # `tauri android init` scaffolds gen/android with placeholder launcher
-        # icons. Overlay the committed mipmaps (generated from app-icon.png with
-        # `tauri icon`) so the APK uses the real app icon.
-        run: cp -R src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
-
-      - name: Build x86_64 debug APK for the emulator
-        run: pnpm tauri android build --apk --debug --target x86_64
-
-      - name: Locate and verify APK
-        id: apk
-        run: |
-          APK_PATH="$(find src-tauri/gen/android -name '*.apk' -path '*debug*' | head -n 1)"
-          test -n "$APK_PATH"
-          echo "Found APK at $APK_PATH"
-          file "$APK_PATH"
-          # This APK only runs in CI's x86_64 emulator. The separately signed
-          # release APK below targets the arm64 Samsung device.
-          unzip -l "$APK_PATH" | tee apk-contents.txt
-          grep -q "lib/x86_64/libbalance_lib.so" apk-contents.txt
-          if grep -q "lib/arm64-v8a/" apk-contents.txt; then
-            echo "::error::The emulator APK unexpectedly contains arm64 libraries"
-            exit 1
-          fi
-          cp "$APK_PATH" balance-debug.apk
-          echo "path=balance-debug.apk" >> "$GITHUB_OUTPUT"
-
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: Balance-android-debug
-          path: |
-            balance-debug.apk
-            sync-e2e-pairing.png
-            sync-e2e-pairing-code.txt
-          if-no-files-found: error
+          variant: release-arm64
+          rust-target: aarch64-linux-android
 
       - name: Set up Android release signing
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          # R8 is expensive and only useful for production artifacts. Tags keep
+          # it enabled; manually requested development releases skip it.
+          BALANCE_ANDROID_MINIFY_RELEASE: ${{ github.ref_type == 'tag' && 'true' || 'false' }}
         run: |
           for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS; do
             if [[ -z "${!name}" ]]; then
@@ -258,7 +203,7 @@ jobs:
 
   smoke-test:
     name: Android pairing + sync E2E
-    needs: build
+    needs: build-debug
     runs-on: ubuntu-latest
     # Successful runs take about five minutes. Keep a little headroom for a
     # cold emulator, but never let an ADB/emulator wedge consume hours.
@@ -276,7 +221,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
@@ -324,4 +269,52 @@ jobs:
             startup-profile-log.txt
             sync-e2e-*.xml
             sync-e2e-*.png
+          if-no-files-found: ignore
+
+  arm-release-emulator-experiment:
+    name: ARM64 release on Apple-silicon emulator
+    if: github.ref_name == 'codex/android-arm-emulator-ci'
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Inspect Apple-silicon virtualization
+        run: |
+          uname -m
+          test "$(uname -m)" = "arm64"
+
+      - name: Download arm64 release APK from ARM experiment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run download 31898121847 --name Balance-android-arm64
+
+      - name: Launch and relaunch release APK on Apple-silicon emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: arm64-v8a
+          target: default
+          force-avd-creation: false
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          script: bash .github/scripts/android-arm-release-smoke-test.sh
+
+      - name: Upload cross-ABI diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: arm-release-on-apple-silicon-diagnostics
+          path: |
+            arm-release-smoke-timing.txt
+            arm-release-logcat*.txt
           if-no-files-found: ignore
