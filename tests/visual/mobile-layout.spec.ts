@@ -79,8 +79,6 @@ test('task rows stay readable on mobile without changing the desktop arrangement
   })
   const text = row.locator('[data-plan-text-input]')
   const time = row.getByLabel('Time range')
-  const undo = page.getByRole('button', { name: 'Undo' })
-
   const geometry = await row.evaluate((element) => {
     const textElement = element.querySelector<HTMLElement>('[data-plan-text-input]')
     const timeElement = element.querySelector<HTMLElement>('.time-range')
@@ -99,14 +97,18 @@ test('task rows stay readable on mobile without changing the desktop arrangement
   if (isMobileProject(testInfo.project.name)) {
     expect(geometry.textWidth).toBeGreaterThanOrEqual(190)
     expect(geometry.timeTop).toBeLessThan(geometry.textTop)
-    await expect(undo).toBeVisible()
 
     const checkbox = page
       .getByRole('listitem', { name: 'Plan item: Parent task with a scheduled time' })
       .getByRole('checkbox')
     await checkbox.check()
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    const drawer = page.getByRole('complementary', { name: 'Primary navigation drawer' })
+    const undo = drawer.getByRole('button', { name: 'Undo' })
+    await expect(undo).toBeVisible()
     await undo.click()
     await expect(checkbox).not.toBeChecked()
+    await drawer.getByRole('button', { name: 'Close navigation' }).click()
 
     await dragAcross(
       page,
@@ -116,6 +118,7 @@ test('task rows stay readable on mobile without changing the desktop arrangement
     await expect(page.locator('.plan-row.selected')).toHaveCount(0)
   } else {
     expect(geometry.timeRight).toBeLessThanOrEqual(geometry.textLeft)
+    const undo = page.getByRole('button', { name: 'Undo' })
     await expect(undo).toBeHidden()
   }
 

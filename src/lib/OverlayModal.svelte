@@ -1,30 +1,10 @@
 <script lang="ts">
-  import { onMount } from 'svelte'
-
   export let onClose: () => void
   export let title = ''
   export let ariaLabel = title || 'Dialog'
   export let z = 60
   let backdrop: HTMLDivElement
   let mobileViewportTop = 0
-
-  function updateMobileViewportTop() {
-    if (!window.matchMedia('(max-width: 760px)').matches) {
-      mobileViewportTop = 0
-      return
-    }
-
-    const sidebar = document.querySelector<HTMLElement>('.sidebar')
-    mobileViewportTop = Math.max(0, Math.min(window.innerHeight, sidebar?.getBoundingClientRect().bottom ?? 0))
-  }
-
-  onMount(() => {
-    updateMobileViewportTop()
-    const sidebar = document.querySelector<HTMLElement>('.sidebar')
-    const observer = sidebar ? new ResizeObserver(updateMobileViewportTop) : null
-    if (sidebar) observer?.observe(sidebar)
-    return () => observer?.disconnect()
-  })
 
   function isTopmostOverlay() {
     if (!backdrop) return false
@@ -50,8 +30,6 @@
 
 <svelte:window
   on:keydown={handleEscape}
-  on:scroll={updateMobileViewportTop}
-  on:resize={updateMobileViewportTop}
 />
 
 <!-- Absolute layer inside .content-shell so it covers the main area + goal rhythm

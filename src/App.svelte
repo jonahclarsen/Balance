@@ -123,6 +123,19 @@
 
   let view: View = 'today'
   let sidebarHidden = false
+  let mobileDrawerOpen = false
+  let mobileDrawerDragging = false
+  let mobileDrawerEl: HTMLElement | null = null
+  let mobileDrawerBackdropEl: HTMLButtonElement | null = null
+  let mobileDrawerAnimationFrame: number | null = null
+  let mobileDrawerPendingOffset = 0
+  let mobileDrawerGesture: {
+    pointerId: number
+    startX: number
+    startY: number
+    axis: 'horizontal' | 'vertical' | null
+    offset: number
+  } | null = null
   // List History is a contextual child of Lists. Once opened, keep its sidebar
   // entry available while visiting other pages; returning to Lists dismisses it.
   let listHistoryNavigationVisible = false
@@ -476,6 +489,103 @@ return rows`
   function openListHistory() {
     view = 'lists'
     listHistoryNavigationVisible = true
+  }
+
+  function mobileDrawerWidth() {
+    return Math.min(window.innerWidth * 0.86, 320)
+  }
+
+  function closeMobileDrawer() {
+    mobileDrawerOpen = false
+    finishMobileDrawerGesture()
+  }
+
+  function openMobileDrawerView(nextView: View) {
+    closeMobileDrawer()
+    if (nextView === 'listTemplates') {
+      openLists()
+    } else if (nextView === 'lists') {
+      openListHistory()
+    } else if (nextView === 'goals') {
+      void openGoals()
+    } else {
+      view = nextView
+    }
+  }
+
+  function openMobileDrawerSearch() {
+    closeMobileDrawer()
+    documentFindOpen = false
+    searchOpen = true
+  }
+
+  function beginMobileDrawerGesture(event: PointerEvent) {
+    if (!usesMobileLayout() || !mobileDrawerOpen || event.button !== 0 || mobileDrawerGesture) return
+    if (event.clientX > mobileDrawerWidth()) return
+
+    mobileDrawerGesture = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      axis: null,
+      offset: 0,
+    }
+  }
+
+  function renderMobileDrawerOffset(offset: number) {
+    mobileDrawerPendingOffset = offset
+    if (mobileDrawerAnimationFrame != null) return
+    mobileDrawerAnimationFrame = requestAnimationFrame(() => {
+      mobileDrawerAnimationFrame = null
+      const width = mobileDrawerWidth()
+      mobileDrawerEl?.style.setProperty('transform', `translate3d(${mobileDrawerPendingOffset}px, 0, 0)`)
+      mobileDrawerBackdropEl?.style.setProperty('opacity', String(1 - Math.abs(mobileDrawerPendingOffset) / width))
+    })
+  }
+
+  function finishMobileDrawerGesture() {
+    if (mobileDrawerAnimationFrame != null) {
+      cancelAnimationFrame(mobileDrawerAnimationFrame)
+      mobileDrawerAnimationFrame = null
+    }
+    mobileDrawerGesture = null
+    mobileDrawerDragging = false
+    void tick().then(() => {
+      mobileDrawerEl?.style.removeProperty('transform')
+      mobileDrawerBackdropEl?.style.removeProperty('opacity')
+    })
+  }
+
+  function moveMobileDrawerGesture(event: PointerEvent) {
+    const gesture = mobileDrawerGesture
+    if (!gesture || event.pointerId !== gesture.pointerId) return
+    const deltaX = event.clientX - gesture.startX
+    const deltaY = event.clientY - gesture.startY
+
+    if (!gesture.axis && Math.max(Math.abs(deltaX), Math.abs(deltaY)) >= 8) {
+      gesture.axis = Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical'
+      if (gesture.axis === 'vertical') {
+        finishMobileDrawerGesture()
+        return
+      }
+      mobileDrawerDragging = true
+    }
+    if (gesture.axis !== 'horizontal') return
+
+    event.preventDefault()
+    const width = mobileDrawerWidth()
+    gesture.offset = Math.max(-width, Math.min(0, deltaX))
+    renderMobileDrawerOffset(gesture.offset)
+  }
+
+  function endMobileDrawerGesture(event?: PointerEvent) {
+    const gesture = mobileDrawerGesture
+    if (!gesture || (event && event.pointerId !== gesture.pointerId)) return
+    const width = mobileDrawerWidth()
+    if (gesture.axis === 'horizontal') {
+      mobileDrawerOpen = gesture.offset > -width * 0.35
+    }
+    finishMobileDrawerGesture()
   }
 
   function observeActivePlanCompletion(
@@ -1898,6 +2008,12 @@ return rows`
     // shortcut mutate it while SQLCipher is still opening the real database.
     if ($databaseLoadPending || $databaseLoadError) return
 
+    if (mobileDrawerOpen && event.key === 'Escape') {
+      event.preventDefault()
+      closeMobileDrawer()
+      return
+    }
+
     const key = event.key.toLowerCase()
     const primaryModifier = event.metaKey || event.ctrlKey
 
@@ -2621,6 +2737,7 @@ return rows`
   }
 
   function handleSelectionPointerMove(event: PointerEvent) {
+    moveMobileDrawerGesture(event)
     if (usesMobileLayout()) {
       itemTextDragOrigin = null
       return
@@ -2640,13 +2757,15 @@ return rows`
     if (itemId) extendItemSelection(itemId)
   }
 
-  function endItemSelection() {
+  function endItemSelection(event?: PointerEvent) {
+    endMobileDrawerGesture(event)
     if (selectingItems && selectedItemIds.length > 0) preserveSelectionFocusUntil = Date.now() + 250
     selectingItems = false
     itemTextDragOrigin = null
   }
 
   function handleGlobalPointerDown(event: PointerEvent) {
+    beginMobileDrawerGesture(event)
     if (event.button !== 0 || !activeItemSurface()) {
       itemTextDragOrigin = null
       return
@@ -3779,6 +3898,7 @@ return rows`
   on:pointerdown|capture={handleGlobalPointerDown}
   on:pointermove={handleSelectionPointerMove}
   on:pointerup={endItemSelection}
+  on:pointercancel={endItemSelection}
 />
 
 {#if documentFindOpen}
@@ -3911,15 +4031,51 @@ return rows`
   class="app-shell"
   class:android={isAndroid}
   class:sidebar-hidden={sidebarHidden}
+  class:mobile-drawer-open={mobileDrawerOpen}
+  class:mobile-drawer-dragging={mobileDrawerDragging}
   style={appShellStyle}
   inert={$databaseLoadPending || Boolean($databaseLoadError)}
   aria-hidden={$databaseLoadPending || $databaseLoadError ? 'true' : undefined}
 >
-  <aside class="sidebar" class:sidebar-hidden={sidebarHidden}>
+  <header class="mobile-app-header" aria-label="Mobile app header">
+    <button
+      class="mobile-menu-button"
+      type="button"
+      title="Open navigation"
+      aria-label="Open navigation"
+      aria-expanded={mobileDrawerOpen}
+      aria-controls="primary-sidebar"
+      on:click={() => (mobileDrawerOpen = true)}
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+    </button>
+    <strong>Balance</strong>
+    <button class="mobile-search-button" type="button" title="Search" aria-label="Search" on:click={openMobileDrawerSearch}>
+      <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
+    </button>
+  </header>
+
+  <aside
+    id="primary-sidebar"
+    class="sidebar"
+    class:sidebar-hidden={sidebarHidden}
+    aria-label="Primary navigation drawer"
+    bind:this={mobileDrawerEl}
+  >
     <div>
       <h1>Balance</h1>
       <p class="muted">Focus on what matters today</p>
     </div>
+
+    <button
+      class="mobile-drawer-close-button"
+      type="button"
+      title="Close navigation"
+      aria-label="Close navigation"
+      on:click={closeMobileDrawer}
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>
+    </button>
 
     <nav class="primary-nav" aria-label="Primary">
       <button
@@ -3928,18 +4084,18 @@ return rows`
         title="Search (Alt+C or Cmd/Ctrl+K)"
         aria-label="Search"
         aria-keyshortcuts="Alt+C"
-        on:click={() => (searchOpen = true)}
+        on:click={openMobileDrawerSearch}
       ><span>⌕ Search</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd></button>
-      <button class:active={view === 'today'} type="button" title="Today (Alt+T)" aria-keyshortcuts="Alt+T" on:click={() => (view = 'today')}><span>Today</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('T')}</kbd></button>
-      <button class:active={view === 'templates'} type="button" title="Day Templates (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => (view = 'templates')}><span>Day Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
-      <button class:active={view === 'listTemplates'} type="button" title="Lists (Alt+E)" aria-keyshortcuts="Alt+E" on:click={openLists}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
+      <button class:active={view === 'today'} type="button" title="Today (Alt+T)" aria-keyshortcuts="Alt+T" on:click={() => openMobileDrawerView('today')}><span>Today</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('T')}</kbd></button>
+      <button class:active={view === 'templates'} type="button" title="Day Templates (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => openMobileDrawerView('templates')}><span>Day Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
+      <button class:active={view === 'listTemplates'} type="button" title="Lists (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => openMobileDrawerView('listTemplates')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
       {#if listHistoryNavigationVisible}
-        <button class="nav-child" class:active={view === 'lists'} type="button" title="List History (Alt+R)" aria-keyshortcuts="Alt+R" on:click={openListHistory}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
+        <button class="nav-child" class:active={view === 'lists'} type="button" title="List History (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => openMobileDrawerView('lists')}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       {/if}
-      <button class:active={view === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => (view = 'notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
-      <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => (view = 'metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
-      <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => { void openGoals() }}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
-      <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => (view = 'settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
+      <button class:active={view === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => openMobileDrawerView('notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
+      <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
+      <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => openMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
+      <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => openMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
       <button
         class="mobile-undo-button"
         type="button"
@@ -4022,6 +4178,16 @@ return rows`
       <p class="tiny">{$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
     </div>
   </aside>
+
+  <button
+    class="mobile-drawer-backdrop"
+    class:open={mobileDrawerOpen || mobileDrawerDragging}
+    type="button"
+    aria-label="Close navigation"
+    tabindex={mobileDrawerOpen ? 0 : -1}
+    on:click={closeMobileDrawer}
+    bind:this={mobileDrawerBackdropEl}
+  ></button>
 
   <div class="content-shell" style={contentShellStyle}>
     <section
