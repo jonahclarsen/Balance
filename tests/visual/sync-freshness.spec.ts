@@ -28,6 +28,8 @@ test.beforeEach(async ({ page }) => {
       isTauri: boolean
       __syncAttemptCount: number
       __syncSettingsCount: number
+      __cleanupFinalizeCount: number
+      __cleanupFinalized: boolean
       __TAURI_INTERNALS__: {
         invoke: (command: string) => Promise<unknown>
         transformCallback: () => number
@@ -75,6 +77,8 @@ test.beforeEach(async ({ page }) => {
     runtime.isTauri = true
     runtime.__syncAttemptCount = 0
     runtime.__syncSettingsCount = 0
+    runtime.__cleanupFinalizeCount = 0
+    runtime.__cleanupFinalized = false
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
       transformCallback: () => 1,
@@ -115,6 +119,16 @@ test.beforeEach(async ({ page }) => {
             }
           case 'sync_relay_once':
             runtime.__syncAttemptCount += 1
+            if (new URLSearchParams(location.search).has('cleanup-staged')) {
+              return {
+                pulledOperations: 0,
+                pushedOperations: 0,
+                stateChanged: false,
+                checkpointCommitted: false,
+                epoch: 'synthetic-cleanup',
+                latestSequence: 0,
+              }
+            }
             if (new URLSearchParams(location.search).has('launch-then-hold')) {
               if (runtime.__syncAttemptCount > 1) return new Promise(() => undefined)
               return {
@@ -141,6 +155,44 @@ test.beforeEach(async ({ page }) => {
               return new Promise(() => undefined)
             }
             throw 'codec: the pending sync is large and will finish next time Balance is open'
+          case 'audit_legacy_migration_readiness':
+            if (!new URLSearchParams(location.search).has('cleanup-staged')) return null
+            return {
+              readyOnThisInstallation: runtime.__cleanupFinalized,
+              checks: [
+                {
+                  id: 'local-cleanup-guard',
+                  label: 'No temporary cleanup guard remains',
+                  passed: runtime.__cleanupFinalized,
+                  detail: runtime.__cleanupFinalized
+                    ? 'The temporary rejection guard was removed after verified relay finalization.'
+                    : '839 retired id(s) remain safely guarded while the other installations stage cleanup.',
+                },
+                {
+                  id: 'relay-rollback-generation',
+                  label: 'Relay rollback cannot restore legacy data',
+                  passed: runtime.__cleanupFinalized,
+                  detail: runtime.__cleanupFinalized
+                    ? 'Explicit finalization replaced the legacy rollback generation with a verified current-format checkpoint.'
+                    : 'A prior relay generation still needs to be replaced during explicit finalization.',
+                },
+                {
+                  id: 'relay-checkpoints',
+                  label: 'Relay checkpoints use current frontiers',
+                  passed: true,
+                  detail: 'Checked 1 relayed operation record(s); 0 still require legacy checkpoint fields.',
+                },
+              ],
+            }
+          case 'finalize_legacy_sync_cleanup':
+            runtime.__cleanupFinalizeCount += 1
+            runtime.__cleanupFinalized = true
+            return {
+              guardedIdsRemoved: 839,
+              relayCheckpointPromoted: true,
+              message:
+                'Finalized this installation immediately. Replaced the old rollback generation with a verified current-format checkpoint and removed 839 guarded retired id(s).',
+            }
           case 'build_info':
             return { version: 'test', commit: 'test' }
           case 'complete_database_maintenance_startup':
@@ -211,6 +263,26 @@ test('settings stay available while a launch sync is still running', async ({ pa
   await expect.poll(() => page.evaluate(() => {
     const runtime = globalThis as typeof globalThis & { __syncSettingsCount: number }
     return runtime.__syncSettingsCount
+  })).toBe(1)
+})
+
+test('staged migration cleanup can be explicitly finalized without waiting', async ({ page }) => {
+  await page.goto('/?cleanup-staged=1')
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await page.getByRole('button', { name: /Settings/ }).click()
+  await page.getByRole('button', { name: 'Run removal audit' }).click()
+
+  const finalize = page.getByRole('button', { name: 'Finalize cleanup now' })
+  await expect(finalize).toBeVisible()
+  page.once('dialog', (dialog) => dialog.accept())
+  await finalize.click()
+
+  await expect(page.getByText(/Finalized this installation immediately/)).toBeVisible()
+  await expect(page.getByText(/Ready on this installation and relay/)).toBeVisible()
+  await expect(finalize).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __cleanupFinalizeCount: number }
+    return runtime.__cleanupFinalizeCount
   })).toBe(1)
 })
 

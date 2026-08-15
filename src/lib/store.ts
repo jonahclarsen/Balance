@@ -2249,6 +2249,19 @@ export type LegacyMigrationAuditResult = {
   checks: LegacyMigrationAuditCheck[]
 }
 
+export type LegacyCleanupStageResponse = {
+  guardedIds: number
+  checkpointRecordsCleaned: number
+  relayPromoted: boolean
+  message: string
+}
+
+export type LegacyCleanupFinalizeResponse = {
+  guardedIdsRemoved: number
+  relayCheckpointPromoted: boolean
+  message: string
+}
+
 let cachedSyncSettings: SyncSettings | null = null
 let pendingSyncSettings: Promise<SyncSettings> | null = null
 
@@ -2281,6 +2294,16 @@ export async function setSyncRelayUrl(relayUrl: string): Promise<SyncSettings> {
 export async function auditLegacyMigrationReadiness(): Promise<LegacyMigrationAuditResult | null> {
   if (!isTauri()) return null
   return invoke<LegacyMigrationAuditResult>('audit_legacy_migration_readiness')
+}
+
+export async function stageLegacySyncCleanup(): Promise<LegacyCleanupStageResponse | null> {
+  if (!isTauri()) return null
+  return invoke<LegacyCleanupStageResponse>('stage_legacy_sync_cleanup')
+}
+
+export async function finalizeLegacySyncCleanup(): Promise<LegacyCleanupFinalizeResponse | null> {
+  if (!isTauri()) return null
+  return invoke<LegacyCleanupFinalizeResponse>('finalize_legacy_sync_cleanup')
 }
 
 /** Generate a fresh account sync key and return its QR/pairing code. */

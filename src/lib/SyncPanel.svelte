@@ -18,6 +18,8 @@
     syncP2pPeers,
     syncP2pSync,
     auditLegacyMigrationReadiness,
+    stageLegacySyncCleanup,
+    finalizeLegacySyncCleanup,
     plannerStore,
     type LegacyMigrationAuditResult,
     type SyncPeer,
@@ -44,6 +46,8 @@
   let auditBusy = false
   let auditResult: LegacyMigrationAuditResult | null = null
   let auditError = ''
+  let cleanupBusy = false
+  let cleanupMessage = ''
 
   let localAddress = ''
   let peers: SyncPeer[] = []
@@ -307,6 +311,60 @@
       auditBusy = false
     }
   }
+
+  function auditCheckPassed(id: string) {
+    return auditResult?.checks.find((check) => check.id === id)?.passed ?? false
+  }
+
+  function canFinalizeMigrationCleanup() {
+    if (!auditResult || auditCheckPassed('local-cleanup-guard')) return false
+    return auditResult.checks.every(
+      (check) =>
+        check.passed ||
+        check.id === 'local-cleanup-guard' ||
+        check.id === 'relay-rollback-generation',
+    )
+  }
+
+  async function stageMigrationCleanup() {
+    cleanupBusy = true
+    cleanupMessage = ''
+    auditError = ''
+    try {
+      const result = await stageLegacySyncCleanup()
+      if (!result) throw new Error('The cleanup is available only in the Balance app.')
+      cleanupMessage = result.message
+      auditResult = await auditLegacyMigrationReadiness()
+    } catch (err) {
+      auditError = `Cleanup failed safely: ${err}`
+    } finally {
+      cleanupBusy = false
+    }
+  }
+
+  async function finalizeMigrationCleanup() {
+    const guardedIds = auditResult?.checks
+      .find((check) => check.id === 'local-cleanup-guard')
+      ?.detail.match(/\d+/)?.[0] ?? 'the'
+    const confirmed = window.confirm(
+      `Finalize migration cleanup now?\n\nContinue only if every active Balance installation says it is safely staged. This immediately replaces the old relay rollback generation and permanently removes ${guardedIds} guarded retired IDs from this installation. A forgotten offline installation could reintroduce retired data.`,
+    )
+    if (!confirmed) return
+
+    cleanupBusy = true
+    cleanupMessage = ''
+    auditError = ''
+    try {
+      const result = await finalizeLegacySyncCleanup()
+      if (!result) throw new Error('Finalization is available only in the Balance app.')
+      cleanupMessage = result.message
+      auditResult = await auditLegacyMigrationReadiness()
+    } catch (err) {
+      auditError = `Finalization failed safely: ${err}`
+    } finally {
+      cleanupBusy = false
+    }
+  }
 </script>
 
 <section class="settings-section sync-panel">
@@ -465,7 +523,7 @@
           ciphertext is decrypted only in memory; no data is exported or changed.
         </p>
       </div>
-      <button type="button" on:click={runMigrationAudit} disabled={busy || auditBusy}>
+      <button type="button" on:click={runMigrationAudit} disabled={busy || auditBusy || cleanupBusy}>
         {auditBusy ? 'Auditing…' : 'Run removal audit'}
       </button>
 
@@ -481,10 +539,45 @@
           {#if auditResult.readyOnThisInstallation}
             Ready on this installation and relay. Run this audit on every active Balance
             installation; when all of them pass, the legacy compatibility code can be removed.
+          {:else if !auditCheckPassed('local-cleanup-guard')}
+            This installation is safely staged. Once every active installation is staged, you can
+            finalize immediately without waiting for the rollback window.
           {:else}
             Not ready yet. Resolve the failed checks below, then run the audit again.
           {/if}
         </p>
+        {#if auditCheckPassed('local-cleanup-guard') && (!auditCheckPassed('local-checkpoints') || !auditCheckPassed('local-tombstones'))}
+          <div class="cleanup-action">
+            <p>
+              Clean this installation and promote a current-format relay checkpoint. Retired
+              operation ids remain in a temporary safety guard, so an installation cleaned later
+              cannot resurrect them.
+            </p>
+            <button type="button" on:click={stageMigrationCleanup} disabled={busy || auditBusy || cleanupBusy}>
+              {cleanupBusy ? 'Cleaning safely…' : 'Clean this installation'}
+            </button>
+          </div>
+        {/if}
+        {#if !auditCheckPassed('local-cleanup-guard') && !auditCheckPassed('relay-checkpoints')}
+          <button type="button" on:click={stageMigrationCleanup} disabled={busy || auditBusy || cleanupBusy}>
+            {cleanupBusy ? 'Retrying safely…' : 'Retry relay cleanup'}
+          </button>
+        {/if}
+        {#if canFinalizeMigrationCleanup()}
+          <div class="cleanup-action">
+            <p>
+              If every active Balance installation is safely staged, replace the old rollback
+              generation with another verified current-format checkpoint and remove this
+              installation's temporary guard now.
+            </p>
+            <button type="button" on:click={finalizeMigrationCleanup} disabled={busy || auditBusy || cleanupBusy}>
+              {cleanupBusy ? 'Finalizing safely…' : 'Finalize cleanup now'}
+            </button>
+          </div>
+        {/if}
+        {#if cleanupMessage}
+          <p class="audit-summary ready" role="status">{cleanupMessage}</p>
+        {/if}
         <ul class="audit-checks">
           {#each auditResult.checks as check (check.id)}
             <li class:passed={check.passed} class:failed={!check.passed}>
@@ -625,6 +718,17 @@
   }
   .audit-summary.error {
     color: #c0392b;
+  }
+  .cleanup-action {
+    width: 100%;
+    padding: 0.65rem;
+    border-left: 3px solid #b7791f;
+    background: rgba(183, 121, 31, 0.09);
+    border-radius: 4px;
+  }
+  .cleanup-action p {
+    margin: 0 0 0.55rem;
+    font-size: 0.82rem;
   }
   .audit-checks {
     width: 100%;

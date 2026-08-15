@@ -436,7 +436,8 @@ pub fn audit_legacy_compatibility(
          FROM operations AS operation
          LEFT JOIN sync_relay_known_ops AS known ON known.op_id = operation.id
          LEFT JOIN sync_tombstones AS tombstone ON tombstone.id = operation.id
-         WHERE known.op_id IS NULL AND tombstone.id IS NULL",
+         LEFT JOIN sync_legacy_cleanup_guard AS cleanup_guard ON cleanup_guard.id = operation.id
+         WHERE known.op_id IS NULL AND tombstone.id IS NULL AND cleanup_guard.id IS NULL",
         [],
         |row| row.get(0),
     )?;
@@ -500,7 +501,9 @@ fn quarantine(conn: &Connection, id: &str, error: &Error) -> Result<()> {
 
 fn checkpoint_safe(conn: &Connection) -> Result<bool> {
     Ok(conn.query_row(
-        "SELECT count(*) = 0 FROM sync_relay_quarantine",
+        "SELECT
+           (SELECT count(*) FROM sync_relay_quarantine) = 0
+           AND (SELECT count(*) FROM sync_legacy_cleanup_guard) = 0",
         [],
         |row| row.get(0),
     )?)
@@ -544,7 +547,7 @@ fn apply_ciphertext(
     epoch: &str,
     ciphertext: &[u8],
 ) -> Result<(usize, bool)> {
-    let envelope: RelayEnvelope = open(key, &ciphertext)?;
+    let envelope: RelayEnvelope = open(key, ciphertext)?;
     if (envelope.v != 3 && envelope.v != PROTOCOL_VERSION) || envelope.epoch != epoch {
         return Err(Error::Codec(
             "relay blob has incompatible protocol metadata".into(),
@@ -782,6 +785,17 @@ fn commit_checkpoint(
     latest_sequence: i64,
 ) -> Result<bool> {
     checkpoint_operation_log_preserving_history(conn)?;
+    upload_current_checkpoint(conn, client, base, key, epoch, latest_sequence)
+}
+
+fn upload_current_checkpoint(
+    conn: &Connection,
+    client: &Client,
+    base: &str,
+    key: &SyncKey,
+    epoch: &str,
+    latest_sequence: i64,
+) -> Result<bool> {
     let new_epoch = random_token();
     let upload_id = random_token();
     let ciphertext = seal(
@@ -845,6 +859,40 @@ fn commit_checkpoint(
     set_relay_state(conn, &new_epoch, 0)?;
     mark_known(conn, &all_ops(conn)?)?;
     Ok(true)
+}
+
+/// Promote the explicitly staged, current-format local checkpoint. Normal
+/// automatic promotion remains blocked while the temporary rejection guard is
+/// present; only this user-requested cleanup path may cross that boundary.
+pub fn promote_staged_legacy_cleanup(
+    conn: &Connection,
+    relay_url: &str,
+    key: &SyncKey,
+) -> Result<bool> {
+    ensure_relay_tables(conn)?;
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|error| Error::Codec(error.to_string()))?;
+    let base = relay_url.trim_end_matches('/');
+    let (epoch, cursor) = relay_state(conn)?;
+    if epoch.is_empty() {
+        return Err(Error::Codec(
+            "complete a foreground relay sync before cleanup".into(),
+        ));
+    }
+    let current = manifest(&client, base, &epoch, cursor)?;
+    if current.epoch != epoch
+        || current.latest_sequence != cursor
+        || current.checkpoint.is_some()
+        || !current.batches.is_empty()
+    {
+        return Err(Error::Codec(
+            "relay changed before cleanup; sync and try again".into(),
+        ));
+    }
+    super::prepare_staged_cleanup_checkpoint(conn)?;
+    upload_current_checkpoint(conn, &client, base, key, &epoch, cursor)
 }
 
 pub fn sync_once(
