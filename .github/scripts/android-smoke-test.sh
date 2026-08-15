@@ -187,9 +187,10 @@ if [ "$SYNC_OK" != 1 ]; then
 fi
 echo "[sync] paired Android databases exchanged E2EE data over TCP and converged."
 
-# Profile only synthetic, app-generated data. The native harness compares the
-# current two-connection blocking startup path with the same work performed on
-# one SQLCipher connection, alternating order across seven iterations.
+# Profile only synthetic, app-generated data. The native harness alternates the
+# current launch path with instrumented, raw-key, schema-gated, and combined
+# candidates on the same emulator. It also times a synthetic Keystore unwrap
+# and verifies that raw-key migration rejects the old passphrase.
 STARTUP_PROFILE_OK=0
 for _ in $(seq 1 20); do
   adb logcat -d > startup-profile-log.txt 2>/dev/null || true
@@ -198,12 +199,30 @@ for _ in $(seq 1 20); do
     grep "BALANCE_ANDROID_STARTUP_PROFILE_FAIL" startup-profile-log.txt | tail -5
     exit 1
   fi
-  if grep -q "BALANCE_ANDROID_STARTUP_PROFILE:" startup-profile-log.txt; then
-    grep "BALANCE_ANDROID_STARTUP_PROFILE:" startup-profile-log.txt \
-      | tail -1 \
-      | sed 's/^.*BALANCE_ANDROID_STARTUP_PROFILE: //' \
-      > android-startup-profile.json
+  PROFILE_FILE="$(adb shell run-as "$PKG" find . -name 'android-startup-profile-complete' 2>/dev/null | tr -d '\r' || true)"
+  if [ -n "$PROFILE_FILE" ]; then
+    # The detailed sample matrix exceeds logcat's per-line limit. The native
+    # debug profiler writes the same synthetic-only JSON to this private marker
+    # before logging completion, so read the authoritative file.
+    adb shell run-as "$PKG" cat "$PROFILE_FILE" > android-startup-profile.json
     python3 -m json.tool android-startup-profile.json >/dev/null
+    python3 - <<'PY'
+import json
+
+with open('android-startup-profile.json', encoding='utf-8') as profile_file:
+    profile = json.load(profile_file)
+
+assert profile['iterations'] >= 7
+assert profile['rawKeyMigration']['stalePassphraseRejected'] is True
+assert profile['keystore']['unwrapMedianUs'] >= 0
+for candidate in (
+    'instrumented',
+    'rawKeyOnly',
+    'schemaGateOnly',
+    'rawKeyAndSchemaGate',
+):
+    assert profile['medianUs'][candidate]['totalUs'] > 0
+PY
     STARTUP_PROFILE_OK=1
     break
   fi

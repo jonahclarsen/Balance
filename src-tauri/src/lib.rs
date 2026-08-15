@@ -282,125 +282,291 @@ fn android_startup_profile_state() -> Value {
 }
 
 #[cfg(all(target_os = "android", debug_assertions))]
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AndroidStartupTiming {
+    connection_open_us: u64,
+    key_pragma_us: u64,
+    cipher_probe_us: u64,
+    key_validation_us: u64,
+    schema_us: u64,
+    recovery_status_us: u64,
+    state_read_us: u64,
+    serialization_us: u64,
+    settings_us: u64,
+    total_us: u64,
+}
+
+#[cfg(all(target_os = "android", debug_assertions))]
+fn elapsed_us(started: std::time::Instant) -> u64 {
+    started.elapsed().as_micros() as u64
+}
+
+#[cfg(any(test, all(target_os = "android", debug_assertions)))]
+fn profile_raw_sqlcipher_key(recovery_key: &str) -> String {
+    let digest = Sha256::digest(recovery_key.as_bytes());
+    let hex = digest
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    format!("x'{hex}'")
+}
+
+#[cfg(all(target_os = "android", debug_assertions))]
+fn profile_launch_sequence(
+    database_path: &Path,
+    sqlcipher_key: &str,
+    expected_state: &Value,
+    schema_gate: bool,
+) -> Result<AndroidStartupTiming, String> {
+    const PROFILE_SCHEMA_VERSION: i64 = 1;
+
+    let total_started = std::time::Instant::now();
+    let stage_started = std::time::Instant::now();
+    let connection = Connection::open(database_path).map_err(|error| error.to_string())?;
+    let connection_open_us = elapsed_us(stage_started);
+
+    let stage_started = std::time::Instant::now();
+    connection
+        .pragma_update(None, "key", sqlcipher_key)
+        .map_err(|error| error.to_string())?;
+    let key_pragma_us = elapsed_us(stage_started);
+
+    let stage_started = std::time::Instant::now();
+    connection
+        .query_row("pragma cipher_version", [], |row| row.get::<_, String>(0))
+        .map_err(|error| format!("SQLCipher is not available: {error}"))?;
+    let cipher_probe_us = elapsed_us(stage_started);
+
+    // The key PRAGMA is lazy. This first encrypted-page read isolates the KDF
+    // and page verification from schema checks and application-state queries.
+    let stage_started = std::time::Instant::now();
+    connection
+        .query_row("select count(*) from sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(|error| format!("Could not validate the profiled SQLCipher key: {error}"))?;
+    let key_validation_us = elapsed_us(stage_started);
+
+    let stage_started = std::time::Instant::now();
+    if schema_gate {
+        connection
+            .execute_batch("pragma foreign_keys = on;")
+            .map_err(|error| error.to_string())?;
+        let version = connection
+            .query_row("pragma user_version", [], |row| row.get::<_, i64>(0))
+            .map_err(|error| error.to_string())?;
+        if version != PROFILE_SCHEMA_VERSION {
+            return Err(format!(
+                "Profile schema gate expected version {PROFILE_SCHEMA_VERSION}, found {version}"
+            ));
+        }
+    } else {
+        initialize_database(&connection)?;
+    }
+    let schema_us = elapsed_us(stage_started);
+
+    let stage_started = std::time::Instant::now();
+    let status = recovery_key_status(&connection, database_path, None)?;
+    if status.database_path != database_path.display().to_string() {
+        return Err("Android profile recovery status returned the wrong path".to_string());
+    }
+    let recovery_status_us = elapsed_us(stage_started);
+
+    let stage_started = std::time::Instant::now();
+    let state = read_app_state_from_database(&connection)?
+        .ok_or_else(|| "Android profile database lost its app state".to_string())?;
+    let state_read_us = elapsed_us(stage_started);
+    if &state != expected_state {
+        return Err("Profile launch sequence changed app state".to_string());
+    }
+
+    let stage_started = std::time::Instant::now();
+    let serialized = state.to_string();
+    let serialization_us = elapsed_us(stage_started);
+    if serialized.is_empty() {
+        return Err("Profile launch sequence serialized an empty state".to_string());
+    }
+
+    let stage_started = std::time::Instant::now();
+    let _ = metadata_value(&connection, EXPORT_DIRECTORY)?;
+    let _ = sync_settings_from_database(&connection)?;
+    let _ = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
+    let settings_us = elapsed_us(stage_started);
+
+    Ok(AndroidStartupTiming {
+        connection_open_us,
+        key_pragma_us,
+        cipher_probe_us,
+        key_validation_us,
+        schema_us,
+        recovery_status_us,
+        state_read_us,
+        serialization_us,
+        settings_us,
+        total_us: elapsed_us(total_started),
+    })
+}
+
+#[cfg(all(target_os = "android", debug_assertions))]
+fn median_android_startup_timing(samples: &[AndroidStartupTiming]) -> Value {
+    let median = |read: fn(&AndroidStartupTiming) -> u64| {
+        let mut values = samples.iter().map(read).collect::<Vec<_>>();
+        values.sort_unstable();
+        values[values.len() / 2]
+    };
+    json!({
+        "connectionOpenUs": median(|sample| sample.connection_open_us),
+        "keyPragmaUs": median(|sample| sample.key_pragma_us),
+        "cipherProbeUs": median(|sample| sample.cipher_probe_us),
+        "keyValidationUs": median(|sample| sample.key_validation_us),
+        "schemaUs": median(|sample| sample.schema_us),
+        "recoveryStatusUs": median(|sample| sample.recovery_status_us),
+        "stateReadUs": median(|sample| sample.state_read_us),
+        "serializationUs": median(|sample| sample.serialization_us),
+        "settingsUs": median(|sample| sample.settings_us),
+        "totalUs": median(|sample| sample.total_us),
+    })
+}
+
+#[cfg(all(target_os = "android", debug_assertions))]
 fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String> {
-    const ITERATIONS: usize = 7;
-    let database_path = scratch_dir.join("balance-android-startup-profile.sqlite3");
-    let _ = fs::remove_file(&database_path);
+    const ITERATIONS: usize = 9;
+    const PROFILE_SCHEMA_VERSION: i64 = 1;
+    let passphrase_path = scratch_dir.join("balance-android-startup-passphrase.sqlite3");
+    let raw_key_path = scratch_dir.join("balance-android-startup-raw.sqlite3");
+    let _ = fs::remove_file(&passphrase_path);
+    let _ = fs::remove_file(&raw_key_path);
     let recovery_key = "synthetic-android-startup-profile-key";
+    let raw_key = profile_raw_sqlcipher_key(recovery_key);
 
     let result = (|| {
-        let mut connection = open_database_at(&database_path, recovery_key)?;
+        let mut connection = open_database_at(&passphrase_path, recovery_key)?;
         replace_app_state(&mut connection, &android_startup_profile_state())?;
+        connection
+            .pragma_update(None, "user_version", PROFILE_SCHEMA_VERSION)
+            .map_err(|error| error.to_string())?;
         let expected_state = read_app_state_from_database(&connection)?
             .ok_or_else(|| "Android startup profile fixture has no app state".to_string())?;
         drop(connection);
 
-        let mut separate_connections_ms = Vec::with_capacity(ITERATIONS);
-        let mut shared_connection_ms = Vec::with_capacity(ITERATIONS);
-        let mut state_read_ms = Vec::with_capacity(ITERATIONS);
-        let mut current_launch_sequence_ms = Vec::with_capacity(ITERATIONS);
-        let mut shared_launch_sequence_ms = Vec::with_capacity(ITERATIONS);
+        fs::copy(&passphrase_path, &raw_key_path).map_err(|error| error.to_string())?;
+        let connection = open_database_at(&raw_key_path, recovery_key)?;
+        let migration_started = std::time::Instant::now();
+        connection
+            .pragma_update(None, "rekey", &raw_key)
+            .map_err(|error| format!("Could not migrate profile database to a raw key: {error}"))?;
+        let raw_key_migration_us = elapsed_us(migration_started);
+        drop(connection);
 
-        for iteration in 0..ITERATIONS {
-            let measure_separate = || -> Result<u64, String> {
-                let started = std::time::Instant::now();
-                let connection = open_database_at(&database_path, recovery_key)?;
-                let status = recovery_key_status(&connection, &database_path, None)?;
-                if status.database_path != database_path.display().to_string() {
-                    return Err(
-                        "Android profile recovery status returned the wrong path".to_string()
-                    );
-                }
-                drop(connection);
-                let connection = open_database_at(&database_path, recovery_key)?;
-                let state = read_app_state_from_database(&connection)?
-                    .ok_or_else(|| "Android profile database lost its app state".to_string())?;
-                if state != expected_state {
-                    return Err("Separate startup connections changed profile state".to_string());
-                }
-                Ok(started.elapsed().as_millis() as u64)
-            };
-            let measure_shared = || -> Result<u64, String> {
-                let started = std::time::Instant::now();
-                let connection = open_database_at(&database_path, recovery_key)?;
-                let status = recovery_key_status(&connection, &database_path, None)?;
-                if status.database_path != database_path.display().to_string() {
-                    return Err(
-                        "Android profile recovery status returned the wrong path".to_string()
-                    );
-                }
-                let state = read_app_state_from_database(&connection)?
-                    .ok_or_else(|| "Android profile database lost its app state".to_string())?;
-                if state != expected_state {
-                    return Err("Shared startup connection changed profile state".to_string());
-                }
-                Ok(started.elapsed().as_millis() as u64)
-            };
+        let stale_key_rejected = {
+            let connection = Connection::open(&raw_key_path).map_err(|error| error.to_string())?;
+            connection
+                .pragma_update(None, "key", recovery_key)
+                .map_err(|error| error.to_string())?;
+            connection
+                .query_row("select count(*) from sqlite_master", [], |row| {
+                    row.get::<_, i64>(0)
+                })
+                .is_err()
+        };
+        if !stale_key_rejected {
+            return Err("Raw-key migration still accepted the previous passphrase".to_string());
+        }
+        let migrated = profile_launch_sequence(&raw_key_path, &raw_key, &expected_state, true)?;
 
-            if iteration % 2 == 0 {
-                separate_connections_ms.push(measure_separate()?);
-                shared_connection_ms.push(measure_shared()?);
-            } else {
-                shared_connection_ms.push(measure_shared()?);
-                separate_connections_ms.push(measure_separate()?);
-            }
-
-            let measure_launch_sequence = |shared: bool| -> Result<u64, String> {
-                let started = std::time::Instant::now();
-                let connection = open_database_at(&database_path, recovery_key)?;
-                let _ = recovery_key_status(&connection, &database_path, None)?;
-                let state = read_app_state_from_database(&connection)?
-                    .ok_or_else(|| "Android profile database lost its app state".to_string())?;
-                if state != expected_state {
-                    return Err("Launch sequence changed profile state".to_string());
-                }
-                let read_settings = |connection: &Connection| -> Result<(), String> {
-                    let _ = metadata_value(connection, EXPORT_DIRECTORY)?;
-                    let _ = sync_settings_from_database(connection)?;
-                    let _ = sync::is_sync_enabled(connection).map_err(sync::Error::into_string)?;
-                    Ok(())
-                };
-                if shared {
-                    read_settings(&connection)?;
-                } else {
-                    drop(connection);
-                    let connection = open_database_at(&database_path, recovery_key)?;
-                    let _ = metadata_value(&connection, EXPORT_DIRECTORY)?;
-                    drop(connection);
-                    let connection = open_database_at(&database_path, recovery_key)?;
-                    let _ = sync_settings_from_database(&connection)?;
-                    drop(connection);
-                    let connection = open_database_at(&database_path, recovery_key)?;
-                    let _ = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
-                }
-                Ok(started.elapsed().as_millis() as u64)
-            };
-            if iteration % 2 == 0 {
-                current_launch_sequence_ms.push(measure_launch_sequence(false)?);
-                shared_launch_sequence_ms.push(measure_launch_sequence(true)?);
-            } else {
-                shared_launch_sequence_ms.push(measure_launch_sequence(true)?);
-                current_launch_sequence_ms.push(measure_launch_sequence(false)?);
-            }
-
-            let connection = open_database_at(&database_path, recovery_key)?;
-            let read_started = std::time::Instant::now();
-            let state = read_app_state_from_database(&connection)?
-                .ok_or_else(|| "Android profile database lost its app state".to_string())?;
-            state_read_ms.push(read_started.elapsed().as_millis() as u64);
-            if state != expected_state {
-                return Err("Profile state-only read changed profile state".to_string());
+        let synthetic_keystore_key = b"balance-android-startup-profile-keystore-key";
+        let keystore_wrap_started = std::time::Instant::now();
+        let wrapped = android_keystore::wrap_key(synthetic_keystore_key)?;
+        let keystore_wrap_us = elapsed_us(keystore_wrap_started);
+        let mut keystore_unwrap_us = Vec::with_capacity(ITERATIONS);
+        for _ in 0..ITERATIONS {
+            let started = std::time::Instant::now();
+            let unwrapped = android_keystore::unwrap_key(&wrapped)?;
+            keystore_unwrap_us.push(elapsed_us(started));
+            if unwrapped.as_slice() != synthetic_keystore_key {
+                return Err("Android Keystore profile returned the wrong synthetic key".to_string());
             }
         }
 
-        let median = |values: &mut Vec<u64>| {
-            values.sort_unstable();
-            values[values.len() / 2]
+        let mut current_uninstrumented_us = Vec::with_capacity(ITERATIONS);
+        let mut instrumented = Vec::with_capacity(ITERATIONS);
+        let mut raw_key_only = Vec::with_capacity(ITERATIONS);
+        let mut schema_gate_only = Vec::with_capacity(ITERATIONS);
+        let mut raw_key_and_schema_gate = Vec::with_capacity(ITERATIONS);
+
+        let current_sequence = || -> Result<u64, String> {
+            let started = std::time::Instant::now();
+            let connection = open_database_at(&passphrase_path, recovery_key)?;
+            let _ = recovery_key_status(&connection, &passphrase_path, None)?;
+            let state = read_app_state_from_database(&connection)?
+                .ok_or_else(|| "Android profile database lost its app state".to_string())?;
+            if state != expected_state {
+                return Err("Current launch sequence changed profile state".to_string());
+            }
+            let serialized = state.to_string();
+            if serialized.is_empty() {
+                return Err("Current launch sequence serialized an empty state".to_string());
+            }
+            let _ = metadata_value(&connection, EXPORT_DIRECTORY)?;
+            let _ = sync_settings_from_database(&connection)?;
+            let _ = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
+            Ok(elapsed_us(started))
         };
-        let separate_median = median(&mut separate_connections_ms);
-        let shared_median = median(&mut shared_connection_ms);
-        let current_launch_median = median(&mut current_launch_sequence_ms);
-        let shared_launch_median = median(&mut shared_launch_sequence_ms);
+
+        // Rotate the first candidate each iteration to distribute emulator CPU
+        // scaling, page cache, and thermal effects across all variants.
+        for iteration in 0..ITERATIONS {
+            for candidate in 0..5 {
+                match (iteration + candidate) % 5 {
+                    0 => current_uninstrumented_us.push(current_sequence()?),
+                    1 => instrumented.push(profile_launch_sequence(
+                        &passphrase_path,
+                        recovery_key,
+                        &expected_state,
+                        false,
+                    )?),
+                    2 => raw_key_only.push(profile_launch_sequence(
+                        &raw_key_path,
+                        &raw_key,
+                        &expected_state,
+                        false,
+                    )?),
+                    3 => schema_gate_only.push(profile_launch_sequence(
+                        &passphrase_path,
+                        recovery_key,
+                        &expected_state,
+                        true,
+                    )?),
+                    4 => raw_key_and_schema_gate.push(profile_launch_sequence(
+                        &raw_key_path,
+                        &raw_key,
+                        &expected_state,
+                        true,
+                    )?),
+                    _ => unreachable!(),
+                }
+            }
+        }
+
+        let median = |values: &[u64]| {
+            let mut sorted = values.to_vec();
+            sorted.sort_unstable();
+            sorted[sorted.len() / 2]
+        };
+        let instrumented_median = median_android_startup_timing(&instrumented);
+        let raw_key_median = median_android_startup_timing(&raw_key_only);
+        let schema_gate_median = median_android_startup_timing(&schema_gate_only);
+        let combined_median = median_android_startup_timing(&raw_key_and_schema_gate);
+        let instrumented_total = instrumented_median["totalUs"].as_u64().unwrap_or(0);
+        let improvement = |candidate: u64| {
+            if instrumented_total == 0 {
+                0.0
+            } else {
+                100.0 * (instrumented_total as f64 - candidate as f64) / instrumented_total as f64
+            }
+        };
+
         Ok(json!({
             "fixture": {
                 "plans": 45,
@@ -410,37 +576,48 @@ fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String
                 "notes": 120
             },
             "iterations": ITERATIONS,
-            "samplesMs": {
-                "currentSeparateConnections": separate_connections_ms,
-                "candidateSharedConnection": shared_connection_ms,
-                "stateReadOnly": state_read_ms
-                ,"candidate1LaunchSequence": current_launch_sequence_ms
-                ,"candidate2SharedLaunchSequence": shared_launch_sequence_ms
+            "keystore": {
+                "wrapUs": keystore_wrap_us,
+                "unwrapSamplesUs": keystore_unwrap_us,
+                "unwrapMedianUs": median(&keystore_unwrap_us),
             },
-            "medianMs": {
-                "currentSeparateConnections": separate_median,
-                "candidateSharedConnection": shared_median,
-                "stateReadOnly": median(&mut state_read_ms)
-                ,"candidate1LaunchSequence": current_launch_median
-                ,"candidate2SharedLaunchSequence": shared_launch_median
+            "rawKeyMigration": {
+                "durationUs": raw_key_migration_us,
+                "stalePassphraseRejected": stale_key_rejected,
+                "migratedLaunchUs": migrated.total_us,
             },
-            "sharedConnectionImprovementPercent": if separate_median == 0 {
+            "samplesUs": {
+                "currentUninstrumented": current_uninstrumented_us,
+                "instrumented": instrumented,
+                "rawKeyOnly": raw_key_only,
+                "schemaGateOnly": schema_gate_only,
+                "rawKeyAndSchemaGate": raw_key_and_schema_gate,
+            },
+            "medianUs": {
+                "currentUninstrumentedTotal": median(&current_uninstrumented_us),
+                "instrumented": instrumented_median,
+                "rawKeyOnly": raw_key_median,
+                "schemaGateOnly": schema_gate_median,
+                "rawKeyAndSchemaGate": combined_median,
+            },
+            "instrumentationOverheadPercent": if median(&current_uninstrumented_us) == 0 {
                 0.0
             } else {
-                100.0 * (separate_median.saturating_sub(shared_median)) as f64
-                    / separate_median as f64
+                100.0 * (instrumented_total as f64
+                    - median(&current_uninstrumented_us) as f64)
+                    / median(&current_uninstrumented_us) as f64
             },
-            "sharedLaunchSequenceImprovementPercent": if current_launch_median == 0 {
-                0.0
-            } else {
-                100.0 * (current_launch_median.saturating_sub(shared_launch_median)) as f64
-                    / current_launch_median as f64
+            "improvementPercentVsInstrumentedBaseline": {
+                "rawKeyOnly": improvement(raw_key_median["totalUs"].as_u64().unwrap_or(0)),
+                "schemaGateOnly": improvement(schema_gate_median["totalUs"].as_u64().unwrap_or(0)),
+                "rawKeyAndSchemaGate": improvement(combined_median["totalUs"].as_u64().unwrap_or(0)),
             }
         })
         .to_string())
     })();
 
-    let _ = fs::remove_file(&database_path);
+    let _ = fs::remove_file(&passphrase_path);
+    let _ = fs::remove_file(&raw_key_path);
     result
 }
 
@@ -9360,6 +9537,38 @@ mod tests {
             saved["templates"][0]["items"][0]["options"][0]["text"],
             "Wake up"
         );
+    }
+
+    #[test]
+    fn random_recovery_key_can_migrate_to_raw_sqlcipher_key() {
+        let database = TestDatabase::new("raw-key-migration");
+        let recovery_key = generate_recovery_key();
+        let raw_key = profile_raw_sqlcipher_key(&recovery_key);
+        let state = test_state("Raw-key migration");
+
+        {
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            replace_app_state(&mut connection, &state).unwrap();
+            connection.pragma_update(None, "rekey", &raw_key).unwrap();
+        }
+
+        let stale = Connection::open(&database.path).unwrap();
+        stale.pragma_update(None, "key", &recovery_key).unwrap();
+        assert!(stale
+            .query_row("select count(*) from sqlite_master", [], |row| row
+                .get::<_, i64>(0))
+            .is_err());
+        drop(stale);
+
+        let raw = Connection::open(&database.path).unwrap();
+        raw.pragma_update(None, "key", &raw_key).unwrap();
+        raw.query_row("select count(*) from sqlite_master", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .unwrap();
+        initialize_database(&raw).unwrap();
+        let saved = read_app_state_from_database(&raw).unwrap().unwrap();
+        assert_eq!(saved["plans"][0]["title"], "Raw-key migration");
     }
 
     #[test]
