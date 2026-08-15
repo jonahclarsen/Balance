@@ -308,6 +308,15 @@ fi
 assert_running "database-recovery" logcat3.txt
 echo "[database-recovery] original key and database reopened after the simulated failure."
 
+# Optional diagnostic for an intermittent resume stall. It uses only this
+# emulator's generated database and test key, then overlaps a real WorkManager
+# relay pass with warm and process-reclaimed app resumes. The DevTools probe
+# measures the WebView's actual native-command/loading latency without relying
+# on UI Automator's comparatively slow and flaky WebView accessibility bridge.
+if [ "${BALANCE_RUN_RESUME_STRESS:-0}" = 1 ]; then
+  node .github/scripts/android-resume-stress.mjs
+fi
+
 # The checks above are the deterministic release gate: a real APK booted twice,
 # exercised SQLCipher + Android Keystore recovery, registered background sync,
 # loaded both widget providers, and reconciled two encrypted databases over TCP.
