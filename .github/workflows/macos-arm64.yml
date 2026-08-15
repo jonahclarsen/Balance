@@ -3,7 +3,8 @@ name: Build macOS arm64 app
 on:
   push:
     tags:
-      - "v*.*.*"
+      # Desktop release builds are opt-in: append `-all` to the version tag.
+      - "v*.*.*-all"
   workflow_dispatch:
 
 permissions:
