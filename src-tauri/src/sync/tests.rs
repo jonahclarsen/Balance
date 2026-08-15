@@ -112,6 +112,41 @@ fn state(device_id: &str, goals: Value) -> Value {
     })
 }
 
+fn large_workspace_state(device_id: &str) -> Value {
+    const FIXTURE_PLANS: usize = 365;
+    const ITEMS_PER_PLAN: usize = 20;
+    let plans = (0..FIXTURE_PLANS)
+        .map(|plan_index| {
+            let items = (0..ITEMS_PER_PLAN)
+                .map(|item_index| {
+                    json!({
+                        "id": format!("relay-fixture-item-{plan_index}-{item_index}"),
+                        "text": format!("Synthetic existing task {plan_index}-{item_index}"),
+                        "html": format!("Synthetic existing task {plan_index}-{item_index}"),
+                        "done": item_index % 3 == 0,
+                        "startMinutes": Value::Null,
+                        "endMinutes": Value::Null,
+                        "children": [],
+                    })
+                })
+                .collect::<Vec<_>>();
+            let year = 2025 + plan_index / (12 * 28);
+            let day_of_year = plan_index % (12 * 28);
+            json!({
+                "id": format!("relay-fixture-plan-{plan_index}"),
+                "date": format!("{year}-{:02}-{:02}", day_of_year / 28 + 1, day_of_year % 28 + 1),
+                "title": format!("Synthetic day {plan_index}"),
+                "dailyReminder": "Synthetic fixture",
+                "createdAt": "2025-01-01T00:00:00.000Z",
+                "items": items,
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut fixture = state(device_id, json!([]));
+    fixture["plans"] = Value::Array(plans);
+    fixture
+}
+
 /// Open a real encrypted DB seeded with `initial`.
 fn open_seeded(path: &std::path::Path, key: &str, initial: &Value) -> Connection {
     let key = test_database_key(key);
@@ -336,6 +371,148 @@ fn the_v3_http_client_bootstraps_then_sends_only_incremental_operations() {
     .unwrap();
     assert_eq!(redundant.pulled_operations, 0);
     assert_eq!(redundant.pushed_operations, 0);
+}
+
+#[test]
+#[ignore = "large synthetic relay performance profile run explicitly in CI"]
+fn a_large_workspace_receives_two_long_duration_tasks_over_the_relay() {
+    let relay = ReferenceRelay::start();
+    let desktop_scratch = Scratch::new("large-relay-desktop");
+    let android_scratch = Scratch::new("large-relay-android");
+    let total_started = std::time::Instant::now();
+    let desktop = open_seeded(
+        &desktop_scratch.path,
+        "large-relay-desktop-key",
+        &large_workspace_state("desktop-device"),
+    );
+    let mut android = open_seeded(
+        &android_scratch.path,
+        "large-relay-android-key",
+        &state("android-device", json!([])),
+    );
+    enable_primary(&desktop).unwrap();
+    enable_joiner(&android).unwrap();
+    let seeded_ms = total_started.elapsed().as_millis();
+    let key = SyncKey::generate();
+
+    let bootstrap_started = std::time::Instant::now();
+    let desktop_bootstrap = relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert!(desktop_bootstrap.checkpoint_committed);
+    let android_bootstrap = relay_client::sync_once(
+        &android,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert!(android_bootstrap.state_changed);
+    let bootstrap_ms = bootstrap_started.elapsed().as_millis();
+
+    for (sequence, (id, text, start_minutes, end_minutes)) in [
+        (
+            "relay-long-task-1",
+            "Synthetic twelve-hour task",
+            0,
+            12 * 60,
+        ),
+        (
+            "relay-long-task-2",
+            "Synthetic almost-all-day task",
+            12 * 60,
+            36 * 60 - 1,
+        ),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        persist_operation_to_database(
+            &mut android,
+            &json!({
+                "id": format!("relay-long-task-op-{sequence}"),
+                "deviceId": "android-device",
+                "sequence": sequence + 1,
+                "timestamp": format!("2026-08-15T12:00:0{sequence}.000Z"),
+                "type": "add_plan_item",
+                "payload": {
+                    "planId": "relay-fixture-plan-0",
+                    "parentId": Value::Null,
+                    "item": {
+                        "id": id,
+                        "text": text,
+                        "html": text,
+                        "done": false,
+                        "startMinutes": start_minutes,
+                        "endMinutes": end_minutes,
+                        "children": [],
+                    }
+                }
+            }),
+        )
+        .unwrap();
+    }
+
+    let push_started = std::time::Instant::now();
+    let pushed = relay_client::sync_once(
+        &android,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    let android_push_ms = push_started.elapsed().as_millis();
+    assert_eq!(pushed.pushed_operations, 2);
+
+    let pull_started = std::time::Instant::now();
+    let pulled = relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    let desktop_pull_ms = pull_started.elapsed().as_millis();
+    assert_eq!(pulled.pulled_operations, 2);
+    assert!(pulled.state_changed);
+
+    let desktop_state = read_app_state_from_database(&desktop).unwrap().unwrap();
+    let target_items = desktop_state["plans"]
+        .as_array()
+        .and_then(|plans| {
+            plans
+                .iter()
+                .find(|plan| plan["id"] == "relay-fixture-plan-0")
+        })
+        .and_then(|plan| plan["items"].as_array())
+        .unwrap();
+    assert!(target_items
+        .iter()
+        .any(|item| item["id"] == "relay-long-task-1"));
+    assert!(target_items
+        .iter()
+        .any(|item| item["id"] == "relay-long-task-2"));
+    assert!(
+        desktop_pull_ms.saturating_mul(10) < bootstrap_ms,
+        "two appended relay tasks took {desktop_pull_ms} ms after a {bootstrap_ms} ms full bootstrap"
+    );
+
+    eprintln!(
+        "BALANCE_RELAY_LARGE_TASK_PROFILE: {}",
+        json!({
+            "fixturePlans": 365,
+            "fixturePlanItems": 7300,
+            "seedAndCheckpointMs": seeded_ms,
+            "bootstrapMs": bootstrap_ms,
+            "androidPushMs": android_push_ms,
+            "desktopPullMs": desktop_pull_ms,
+            "totalMs": total_started.elapsed().as_millis(),
+        })
+    );
 }
 
 #[test]
@@ -1377,7 +1554,8 @@ fn a_malformed_incoming_batch_rolls_back_both_log_and_materialized_state() {
 #[test]
 fn selftest_round_trips_two_real_databases() {
     // The same routine the Android debug build runs on-device.
-    selftest(&std::env::temp_dir()).expect("sync self-test must converge");
+    let profile = selftest(&std::env::temp_dir()).expect("sync self-test must converge");
+    eprintln!("large-workspace long-task sync profile: {profile:?}");
 }
 
 #[test]

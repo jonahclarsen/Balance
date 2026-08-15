@@ -19,12 +19,13 @@
 //! existing connection lifecycle rather than owning their own.
 #![allow(dead_code)]
 
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use rand::RngCore;
 use rusqlite::types::Value;
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
@@ -356,11 +357,11 @@ pub fn merge_ops(conn: &Connection, ops: &[Op]) -> Result<usize> {
     let tx = conn.unchecked_transaction()?;
     let inserted = merge_ops_uncommitted(&tx, ops)?;
     tx.commit()?;
-    Ok(inserted)
+    Ok(inserted.len())
 }
 
-fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<usize> {
-    let mut inserted = 0usize;
+fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<Vec<Op>> {
+    let mut inserted = Vec::new();
     {
         let mut existing: HashSet<String> = {
             let mut stmt = conn.prepare("SELECT id FROM operations")?;
@@ -435,7 +436,7 @@ fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<usize> {
                 checkpoint.payload_json,
             ])?;
             existing.insert(checkpoint.id.clone());
-            inserted += 1;
+            inserted.push(checkpoint.clone());
 
             for replaced in replaced_ids(checkpoint) {
                 if replaced != checkpoint.id {
@@ -472,7 +473,7 @@ fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<usize> {
                 op.payload_json,
             ])?;
             existing.insert(op.id.clone());
-            inserted += 1;
+            inserted.push(op.clone());
         }
         for (device_id, sequence) in &frontiers {
             // Undo/recovery rows are device-local, but they can otherwise
@@ -494,12 +495,58 @@ fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<usize> {
 pub fn merge_and_rematerialize(conn: &Connection, ops: Vec<Op>) -> Result<usize> {
     ensure_tombstones_table(conn)?;
     let tx = conn.unchecked_transaction()?;
-    let inserted = merge_ops_uncommitted(&tx, &ops)?;
-    if inserted > 0 {
+    let last_existing = last_operation_canonical(&tx)?;
+    let mut inserted = merge_ops_uncommitted(&tx, &ops)?;
+    let inserted_count = inserted.len();
+    if inserted_count > 0
+        && inserted.iter().all(|op| op.op_type != "replace_full_state")
+        && last_existing.as_ref().map_or(true, |last| {
+            inserted
+                .iter()
+                .all(|op| compare_canonical(op, last) == Ordering::Greater)
+        })
+    {
+        // Ordinary operations created after everything already materialized can
+        // be applied directly in canonical order. Rebuilding a large checkpoint
+        // for every tiny relay batch made two remote task edits repeatedly erase
+        // and reinsert the entire workspace. Checkpoints and out-of-order history
+        // still take the full replay path below.
+        inserted.sort_by(compare_canonical);
+        for op in &inserted {
+            let operation = op_value(op)?;
+            crate::apply_operation(&tx, &operation).map_err(|error| {
+                Error::Codec(format!(
+                    "could not apply appended synced operation {} ({}, {}): {error}",
+                    op.sequence, op.op_type, op.id
+                ))
+            })?;
+        }
+    } else if inserted_count > 0 {
         rematerialize_uncommitted(&tx)?;
     }
     tx.commit()?;
-    Ok(inserted)
+    Ok(inserted_count)
+}
+
+fn compare_canonical(left: &Op, right: &Op) -> Ordering {
+    left.timestamp
+        .cmp(&right.timestamp)
+        .then_with(|| left.device_id.cmp(&right.device_id))
+        .then_with(|| left.sequence.cmp(&right.sequence))
+        .then_with(|| left.id.cmp(&right.id))
+}
+
+fn last_operation_canonical(conn: &Connection) -> Result<Option<Op>> {
+    conn.query_row(
+        "SELECT id, device_id, sequence, type, timestamp, payload_json
+         FROM operations
+         ORDER BY timestamp DESC, device_id DESC, sequence DESC, id DESC
+         LIMIT 1",
+        [],
+        row_to_op,
+    )
+    .optional()
+    .map_err(Error::from)
 }
 
 fn escape(identifier: &str) -> String {
@@ -828,18 +875,22 @@ fn read_operations_canonical(conn: &Connection) -> Result<Vec<JsonValue>> {
         .collect::<std::result::Result<Vec<_>, _>>()?;
     let mut ops = Vec::with_capacity(rows.len());
     for op in rows {
-        let payload: JsonValue =
-            serde_json::from_str(&op.payload_json).map_err(|e| Error::Codec(e.to_string()))?;
-        ops.push(json!({
-            "id": op.id,
-            "deviceId": op.device_id,
-            "sequence": op.sequence,
-            "type": op.op_type,
-            "timestamp": op.timestamp,
-            "payload": payload,
-        }));
+        ops.push(op_value(&op)?);
     }
     Ok(ops)
+}
+
+fn op_value(op: &Op) -> Result<JsonValue> {
+    let payload: JsonValue =
+        serde_json::from_str(&op.payload_json).map_err(|e| Error::Codec(e.to_string()))?;
+    Ok(json!({
+        "id": op.id,
+        "deviceId": op.device_id,
+        "sequence": op.sequence,
+        "type": op.op_type,
+        "timestamp": op.timestamp,
+        "payload": payload,
+    }))
 }
 
 /// Rebuild the materialized domain tables by replaying every operation in
@@ -961,7 +1012,18 @@ pub fn hex(bytes: &[u8]) -> String {
 /// appears on the joining device. CI runs this inside the Android APK so
 /// SQLCipher, pairing, transport, and the bootstrap path are covered together.
 /// Cleans up after itself.
-pub fn selftest(scratch_dir: &Path) -> Result<()> {
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSelftestProfile {
+    fixture_plans: usize,
+    fixture_plan_items: usize,
+    seed_and_checkpoint_ms: u128,
+    bootstrap_ms: u128,
+    long_task_persist_ms: u128,
+    long_task_incremental_sync_ms: u128,
+}
+
+pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
     // The self-test may run before the main database has created this directory.
     std::fs::create_dir_all(scratch_dir).map_err(|e| Error::Codec(e.to_string()))?;
     let a_path = scratch_dir.join("balance-sync-selftest-a.sqlite3");
@@ -969,8 +1031,39 @@ pub fn selftest(scratch_dir: &Path) -> Result<()> {
     let _ = std::fs::remove_file(&a_path);
     let _ = std::fs::remove_file(&b_path);
 
-    let result = (|| -> Result<()> {
-        let app_state = |device_id: &str, goals: JsonValue| {
+    let result = (|| -> Result<SyncSelftestProfile> {
+        const FIXTURE_PLANS: usize = 365;
+        const ITEMS_PER_PLAN: usize = 20;
+        let fixture_plan_items = FIXTURE_PLANS * ITEMS_PER_PLAN;
+        let plans = (0..FIXTURE_PLANS)
+            .map(|plan_index| {
+                let items = (0..ITEMS_PER_PLAN)
+                    .map(|item_index| {
+                        json!({
+                            "id": format!("fixture-item-{plan_index}-{item_index}"),
+                            "text": format!("Synthetic existing task {plan_index}-{item_index}"),
+                            "html": format!("Synthetic existing task {plan_index}-{item_index}"),
+                            "done": item_index % 3 == 0,
+                            "startMinutes": JsonValue::Null,
+                            "endMinutes": JsonValue::Null,
+                            "children": [],
+                        })
+            })
+            .collect::<Vec<_>>();
+                let year = 2025 + plan_index / (12 * 28);
+                let day_of_year = plan_index % (12 * 28);
+                json!({
+                    "id": format!("fixture-plan-{plan_index}"),
+                    "date": format!("{year}-{:02}-{:02}", day_of_year / 28 + 1, day_of_year % 28 + 1),
+                    "title": format!("Synthetic day {plan_index}"),
+                    "dailyReminder": "Synthetic fixture",
+                    "createdAt": "2025-01-01T00:00:00.000Z",
+                    "items": items,
+                })
+            })
+            .collect::<Vec<_>>();
+        let target_plan_id = "fixture-plan-0";
+        let app_state = |device_id: &str, goals: JsonValue, plans: JsonValue| {
             json!({
                 "schemaVersion": 1,
                 "deviceId": device_id,
@@ -978,26 +1071,31 @@ pub fn selftest(scratch_dir: &Path) -> Result<()> {
                 "historyRevision": 0,
                 "activePlanDate": "2026-07-14",
                 "templates": [],
-                "plans": [],
+                "plans": plans,
                 "goals": goals,
                 "goalCompletions": [],
                 "listTemplates": [],
                 "lists": [],
                 "metrics": [],
                 "metricEntries": [],
+                "notes": [],
                 "operations": [],
             })
         };
 
-        let primary_key = crate::generate_recovery_key();
-        let joiner_key = crate::generate_recovery_key();
-        let mut primary = crate::open_database_at(&a_path, &primary_key).map_err(Error::Codec)?;
-        let mut joiner = crate::open_database_at(&b_path, &joiner_key).map_err(Error::Codec)?;
+        let seed_started = std::time::Instant::now();
+        let primary_recovery_key = crate::generate_recovery_key();
+        let joiner_recovery_key = crate::generate_recovery_key();
+        let mut primary =
+            crate::open_database_at(&a_path, &primary_recovery_key).map_err(Error::Codec)?;
+        let mut joiner =
+            crate::open_database_at(&b_path, &joiner_recovery_key).map_err(Error::Codec)?;
         crate::replace_app_state(
             &mut primary,
             &app_state(
                 "selftest-primary",
                 json!([{ "id": "ci-sync-goal", "name": "Android E2E sync reached the joiner" }]),
+                JsonValue::Array(plans),
             ),
         )
         .map_err(Error::Codec)?;
@@ -1006,15 +1104,16 @@ pub fn selftest(scratch_dir: &Path) -> Result<()> {
             &app_state(
                 "selftest-joiner",
                 json!([{ "id": "joiner-only", "name": "Must be replaced" }]),
+                json!([]),
             ),
         )
         .map_err(Error::Codec)?;
 
         let generated_key = crypto::SyncKey::generate();
         let pairing_code = generated_key.to_pairing_code();
-        let primary_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
-        let joiner_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
-        if primary_key.as_bytes() != joiner_key.as_bytes() {
+        let primary_sync_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
+        let joiner_sync_key = crypto::SyncKey::from_pairing_code(&pairing_code)?;
+        if primary_sync_key.as_bytes() != joiner_sync_key.as_bytes() {
             return Err(Error::Crypto("pairing code produced different keys".into()));
         }
 
@@ -1022,6 +1121,7 @@ pub fn selftest(scratch_dir: &Path) -> Result<()> {
         store_pairing_code(&primary, &pairing_code)?;
         enable_joiner(&joiner)?;
         store_pairing_code(&joiner, &pairing_code)?;
+        let seed_and_checkpoint_ms = seed_started.elapsed().as_millis();
 
         let cleared = crate::read_app_state_from_database(&joiner)
             .map_err(Error::Codec)?
@@ -1034,6 +1134,7 @@ pub fn selftest(scratch_dir: &Path) -> Result<()> {
 
         // Mirror the app's manual-address flow: the primary listens and the
         // joining device initiates a bidirectional, E2EE P2P sync.
+        let bootstrap_started = std::time::Instant::now();
         let listener =
             std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
         let address = listener
@@ -1041,13 +1142,14 @@ pub fn selftest(scratch_dir: &Path) -> Result<()> {
             .map_err(|e| Error::Codec(e.to_string()))?
             .to_string();
         let primary_thread = std::thread::spawn(move || -> Result<()> {
-            transport::sync_accept(&listener, &primary_key, &ConnectionStore(&primary))
+            transport::sync_accept(&listener, &primary_sync_key, &ConnectionStore(&primary))
         });
 
-        transport::sync_connect(&address, &joiner_key, &ConnectionStore(&joiner))?;
+        transport::sync_connect(&address, &joiner_sync_key, &ConnectionStore(&joiner))?;
         primary_thread
             .join()
             .map_err(|_| Error::Codec("primary sync thread panicked".into()))??;
+        let bootstrap_ms = bootstrap_started.elapsed().as_millis();
 
         let joined_state = crate::read_app_state_from_database(&joiner)
             .map_err(Error::Codec)?
@@ -1069,7 +1171,101 @@ pub fn selftest(scratch_dir: &Path) -> Result<()> {
                 "joiner did not persist its pairing key".into(),
             ));
         }
-        Ok(())
+
+        // Reproduce the reported direction after bootstrap: the joining
+        // (Android-like) database adds two long-duration tasks, then the
+        // existing primary (desktop-like) database receives them while already
+        // holding a realistically large workspace checkpoint.
+        let persist_started = std::time::Instant::now();
+        for (sequence, (id, text, start_minutes, end_minutes)) in [
+            ("ci-long-task-1", "Synthetic twelve-hour task", 0, 12 * 60),
+            (
+                "ci-long-task-2",
+                "Synthetic almost-all-day task",
+                12 * 60,
+                36 * 60 - 1,
+            ),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            crate::persist_operation_to_database(
+                &mut joiner,
+                &json!({
+                    "id": format!("ci-long-task-op-{sequence}"),
+                    "deviceId": "selftest-joiner",
+                    "sequence": sequence + 1,
+                    "timestamp": format!("2026-07-14T12:00:0{sequence}.000Z"),
+                    "type": "add_plan_item",
+                    "payload": {
+                        "planId": target_plan_id,
+                        "parentId": JsonValue::Null,
+                        "item": {
+                            "id": id,
+                            "text": text,
+                            "html": text,
+                            "done": false,
+                            "startMinutes": start_minutes,
+                            "endMinutes": end_minutes,
+                            "children": [],
+                        }
+                    }
+                }),
+            )
+            .map_err(Error::Codec)?;
+        }
+        let long_task_persist_ms = persist_started.elapsed().as_millis();
+
+        let incremental_started = std::time::Instant::now();
+        let primary =
+            crate::open_database_at(&a_path, &primary_recovery_key).map_err(Error::Codec)?;
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
+        let address = listener
+            .local_addr()
+            .map_err(|e| Error::Codec(e.to_string()))?
+            .to_string();
+        let incremental_sync_key = joiner_sync_key.clone();
+        let primary_thread = std::thread::spawn(move || -> Result<()> {
+            transport::sync_accept(&listener, &incremental_sync_key, &ConnectionStore(&primary))
+        });
+        transport::sync_connect(&address, &joiner_sync_key, &ConnectionStore(&joiner))?;
+        primary_thread
+            .join()
+            .map_err(|_| Error::Codec("primary incremental sync thread panicked".into()))??;
+        let long_task_incremental_sync_ms = incremental_started.elapsed().as_millis();
+
+        let primary =
+            crate::open_database_at(&a_path, &primary_recovery_key).map_err(Error::Codec)?;
+        let primary_state = crate::read_app_state_from_database(&primary)
+            .map_err(Error::Codec)?
+            .ok_or_else(|| Error::Codec("primary state missing after incremental sync".into()))?;
+        let synced_items = primary_state["plans"]
+            .as_array()
+            .and_then(|plans| plans.iter().find(|plan| plan["id"] == target_plan_id))
+            .and_then(|plan| plan["items"].as_array())
+            .ok_or_else(|| Error::Codec("target plan missing after incremental sync".into()))?;
+        for id in ["ci-long-task-1", "ci-long-task-2"] {
+            if !synced_items.iter().any(|item| item["id"] == id) {
+                return Err(Error::Codec(format!(
+                    "primary did not receive long-duration task {id}"
+                )));
+            }
+        }
+        if long_task_incremental_sync_ms.saturating_mul(10) >= seed_and_checkpoint_ms {
+            return Err(Error::Codec(format!(
+                "two appended tasks took {long_task_incremental_sync_ms} ms to sync after a {seed_and_checkpoint_ms} ms fixture setup; the incremental path rebuilt too much state"
+            )));
+        }
+
+        Ok(SyncSelftestProfile {
+            fixture_plans: FIXTURE_PLANS,
+            fixture_plan_items,
+            seed_and_checkpoint_ms,
+            bootstrap_ms,
+            long_task_persist_ms,
+            long_task_incremental_sync_ms,
+        })
     })();
 
     let _ = std::fs::remove_file(&a_path);
