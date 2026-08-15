@@ -94,6 +94,25 @@
     )
   }
 
+  function handleProbabilityChange(optionIndex: number, probability: number) {
+    const targetIds = selected ? selectedItemIds : new Set([item.id])
+
+    for (const targetId of targetIds) {
+      const targetOption = findTemplateItem(allItems, targetId)?.options[optionIndex]
+      if (!targetOption) continue
+      patchOption(templateId, targetId, targetOption.id, { probability })
+    }
+  }
+
+  function findTemplateItem(items: TemplateItem[], itemId: Id): TemplateItem | null {
+    for (const candidate of items) {
+      if (candidate.id === itemId) return candidate
+      const descendant = findTemplateItem(candidate.children, itemId)
+      if (descendant) return descendant
+    }
+    return null
+  }
+
   async function handleTextSplit(
     optionId: Id,
     before: { html: string; text: string },
@@ -364,7 +383,7 @@
             min={0}
             step={5}
             editable
-            onChange={(probability) => patchOption(templateId, item.id, option.id, { probability })}
+            onChange={(probability) => handleProbabilityChange(index, probability)}
           />
           <button
             class="icon-button danger"

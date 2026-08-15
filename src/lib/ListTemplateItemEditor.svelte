@@ -17,6 +17,7 @@
   // items survive unchanged. Only those grandfathered items expose that lower
   // range; every item currently at 30% or above uses the normal UI minimum.
   const NORMAL_MIN_LIST_ITEM_PROBABILITY = 30
+  const PROBABILITY_DRAG_MERGE_WINDOW_MS = 1500
 
   export let item: ListTemplateItem
   export let allItems: ListTemplateItem[]
@@ -64,6 +65,7 @@
   let allowsLowProbability = item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY
   $: revision = historyRevision + revertNonce
   $: selected = selectedItemIds.has(item.id)
+  $: if (item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY) allowsLowProbability = true
 
   // Expected words contributed by everything except this item's own text, so we can
   // check whether new text would breach the cap without rebuilding the whole tree.
@@ -91,6 +93,20 @@
       return
     }
     patchItem(templateId, item.id, { html, text }, options)
+  }
+
+  function handleProbabilityChange(probability: number) {
+    const targetIds = selected ? selectedItemIds : new Set([item.id])
+    const mergeKey = `list-template-item-probability:${templateId}:${Array.from(targetIds).sort().join(',')}`
+
+    for (const targetId of targetIds) {
+      patchItem(
+        templateId,
+        targetId,
+        { probability },
+        { mergeKey, mergeWindowMs: PROBABILITY_DRAG_MERGE_WINDOW_MS },
+      )
+    }
   }
 
   async function handleTextSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
@@ -309,7 +325,7 @@
         step={10}
         ariaLabel="Appearance probability"
         generousHitbox
-        onChange={(probability) => patchItem(templateId, item.id, { probability })}
+        onChange={handleProbabilityChange}
       />
     </div>
   </div>

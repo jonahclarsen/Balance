@@ -2766,6 +2766,27 @@ test('day template probabilities snap to five-percent increments', async ({ page
     .toBe(75)
 })
 
+test('dragging a selected day-template probability applies it to every selected row', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+
+  const original = await topLevelTemplateOptionTexts(page)
+  await focusTemplateOptionByValue(page, original[0])
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Shift+ArrowDown')
+
+  const selectedRows = page.locator('[data-template-item-id].selected')
+  await expect(selectedRows).toHaveCount(2)
+  const probabilities = selectedRows.locator('.option-stack > .option-row:first-child input[type="range"]')
+  await expect(probabilities).toHaveCount(2)
+
+  await dragRangeToRatio(page, probabilities.first(), 0.25)
+  await expect.poll(async () => inputValues(probabilities)).toEqual(['25', '25'])
+  await expect(selectedRows).toHaveCount(2)
+})
+
 test('generating from a future date uses the selected date and latest template edits', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -3355,6 +3376,35 @@ test('list template appearance slider uses the full visible track for pointer dr
   await page.mouse.move(sliderBox.x + sliderBox.width - 10, y)
   await page.mouse.up()
   await expect(probability).toHaveValue('90')
+})
+
+test('dragging a selected list-template probability applies it to every selected row', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Add list item' }).click()
+
+  const inputs = page.locator('[data-list-template-text-input]')
+  await inputs.nth(1).fill('Second item')
+  await inputs.first().focus()
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Shift+ArrowDown')
+
+  const selectedRows = page.locator('[data-list-template-item-id].selected')
+  await expect(selectedRows).toHaveCount(2)
+  const probabilities = selectedRows.getByLabel('Appearance probability')
+  await expect(probabilities).toHaveCount(2)
+  const originalProbabilities = await inputValues(probabilities)
+
+  // The list-template range is 30–100 in 10-point steps; 3/7 lands on 60.
+  await dragRangeToRatio(page, probabilities.first(), 3 / 7)
+  await expect.poll(async () => inputValues(probabilities)).toEqual(['60', '60'])
+  await expect(selectedRows).toHaveCount(2)
+
+  await page.keyboard.press('Meta+Z')
+  await expect.poll(async () => inputValues(probabilities)).toEqual(originalProbabilities)
 })
 
 test('nested list items include ancestor probabilities in expected words and cap checks', async ({ page }) => {
@@ -4111,6 +4161,24 @@ async function firstPlanItemHTML(page: import('@playwright/test').Page) {
 
 async function selectedText(page: import('@playwright/test').Page) {
   return page.evaluate(() => document.getSelection()?.toString() ?? '')
+}
+
+async function inputValues(inputs: import('@playwright/test').Locator) {
+  return inputs.evaluateAll((elements) => elements.map((element) => (element as HTMLInputElement).value))
+}
+
+async function dragRangeToRatio(
+  page: import('@playwright/test').Page,
+  slider: import('@playwright/test').Locator,
+  ratio: number,
+) {
+  const bounds = await slider.boundingBox()
+  if (!bounds) throw new Error('Missing slider geometry')
+  const y = bounds.y + bounds.height / 2
+  await page.mouse.move(bounds.x, y)
+  await page.mouse.down()
+  await page.mouse.move(bounds.x + bounds.width * ratio, y)
+  await page.mouse.up()
 }
 
 async function caretOffsetInFocusedEditor(page: import('@playwright/test').Page) {

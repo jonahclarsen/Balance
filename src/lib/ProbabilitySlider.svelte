@@ -88,7 +88,7 @@
   }
 </script>
 
-<div class="probability-slider">
+<div class="probability-slider" data-item-probability-control="">
   <div class="track-wrap" class:generous-hitbox={generousHitbox}>
     <div class="track"></div>
     <div class="fill" style={`width: ${pct}%`}></div>

@@ -2601,6 +2601,10 @@ return rows`
     const target = event.target instanceof Element ? event.target : null
     if (!target?.closest('input, textarea, [contenteditable="true"]')) return
 
+    const probabilityRow = target.closest('[data-item-probability-control]')?.closest<HTMLElement>(itemRowSelector())
+    const probabilityItemId = probabilityRow ? rowItemId(probabilityRow) : null
+    if (probabilityItemId && selectedItemIds.includes(probabilityItemId)) return
+
     if (selectedItemIds.length > 0 && (selectingItems || Date.now() < preserveSelectionFocusUntil)) {
       releaseTextEditingFocus()
       return
