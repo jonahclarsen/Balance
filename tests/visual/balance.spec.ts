@@ -1768,6 +1768,96 @@ test('shift vertical arrows select multiline plan text until the caret reaches a
   await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(2)
 })
 
+test('holding command-shift keeps extending whole-item selection in either direction', async ({ page }) => {
+  const texts = ['First', 'Second', 'Third', 'Fourth']
+  await seedPlanItems(page, texts)
+
+  await focusInputByValue(page, texts[0])
+  await page.keyboard.down('Meta')
+  await page.keyboard.down('Shift')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.up('Shift')
+  await page.keyboard.up('Meta')
+  await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(4)
+
+  await page.keyboard.press('Escape')
+  await focusInputByValue(page, texts[3])
+  await page.keyboard.down('Meta')
+  await page.keyboard.down('Shift')
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.up('Shift')
+  await page.keyboard.up('Meta')
+  await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(4)
+})
+
+test('shift down extends a selection from the penultimate soft-wrapped line to the item end', async ({ page }) => {
+  const text = Array.from({ length: 34 }, (_, index) => `word${index + 1}`).join(' ')
+  await seedPlanItems(page, ['Previous', text, 'Next'])
+  await focusInputByValue(page, text)
+
+  const layout = await page.evaluate(() => {
+    const editor = document.activeElement
+    const textNode = editor?.firstChild
+    if (!(editor instanceof HTMLDivElement) || !(textNode instanceof Text)) {
+      throw new Error('Expected a focused plain-text plan item editor')
+    }
+
+    editor.style.width = '220px'
+    editor.style.flex = '0 0 220px'
+
+    const lines = new Map<number, { offsets: number[]; left: number; right: number }>()
+    for (let offset = 0; offset < textNode.length; offset += 1) {
+      const probe = document.createRange()
+      probe.setStart(textNode, offset)
+      probe.setEnd(textNode, offset + 1)
+      const rect = probe.getBoundingClientRect()
+      const top = Math.round(rect.top)
+      const line = lines.get(top) ?? { offsets: [], left: rect.left, right: rect.right }
+      line.offsets.push(offset)
+      line.left = Math.min(line.left, rect.left)
+      line.right = Math.max(line.right, rect.right)
+      lines.set(top, line)
+    }
+
+    const visualLines = Array.from(lines.values())
+    if (visualLines.length < 5) throw new Error(`Expected at least five visual lines, got ${visualLines.length}`)
+    const penultimate = visualLines[visualLines.length - 2]
+    const last = visualLines[visualLines.length - 1]
+    const caretOffset = penultimate.offsets[Math.floor(penultimate.offsets.length / 2)]
+
+    const caret = document.createRange()
+    caret.setStart(textNode, caretOffset)
+    caret.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(caret)
+
+    return {
+      caretOffset,
+      lineCount: visualLines.length,
+      penultimateWidth: penultimate.right - penultimate.left,
+      lastWidth: last.right - last.left,
+    }
+  })
+
+  expect(layout.lineCount).toBeGreaterThanOrEqual(5)
+  expect(layout.penultimateWidth).toBeGreaterThan(layout.lastWidth)
+
+  await page.keyboard.press('Meta+Shift+ArrowRight')
+  const lineSelection = await selectedText(page)
+  expect(lineSelection.length).toBeGreaterThan(0)
+  expect(lineSelection.length).toBeLessThan(text.length - layout.caretOffset)
+
+  await page.keyboard.press('Shift+ArrowDown')
+
+  await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(0)
+  await expect.poll(async () => selectedText(page)).toBe(text.slice(layout.caretOffset))
+})
+
 test('template item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

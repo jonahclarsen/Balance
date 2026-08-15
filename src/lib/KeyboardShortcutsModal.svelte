@@ -65,6 +65,7 @@
         { keys: ['up'], label: 'Edit selection from start', alt: ['left'] },
         { keys: ['down'], label: 'Edit selection from end', alt: ['right'] },
         { keys: ['shift', 'up'], label: 'Extend selection', alt: ['shift', 'down'] },
+        { keys: ['mod', 'shift', 'up'], label: 'Directly select / extend items', alt: ['mod', 'shift', 'down'] },
         { keys: ['esc'], label: 'Clear selection' },
       ],
     },

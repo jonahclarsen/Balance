@@ -241,10 +241,37 @@
     const selection = document.getSelection()
     if (!selection?.focusNode || !activeEditor.contains(selection.focusNode)) return false
 
+    // A non-collapsed selection carries visual affinity that a bare DOM point
+    // does not. At a soft-wrap boundary, the same text offset represents both
+    // the end of the preceding visual line and the start of the next one.
+    // Collapsing a forward selection at that offset makes the browser report
+    // the next line, even though the visible selection ends on the preceding
+    // line. Use the first/last painted selection rect while both endpoints are
+    // in this editor so boundary navigation follows the endpoint the user sees.
+    if (
+      !selection.isCollapsed &&
+      selection.rangeCount > 0 &&
+      selection.anchorNode &&
+      activeEditor.contains(selection.anchorNode)
+    ) {
+      const focusRect = visualSelectionFocusRect(selection)
+      if (focusRect) return isRectOnBoundaryLine(activeEditor, focusRect, direction)
+    }
+
     const focusRange = document.createRange()
     focusRange.setStart(selection.focusNode, selection.focusOffset)
     focusRange.collapse(true)
     return isRangeOnBoundaryLine(activeEditor, focusRange, direction)
+  }
+
+  function visualSelectionFocusRect(selection: Selection): DOMRect | null {
+    const range = selection.getRangeAt(0)
+    const rects = Array.from(range.getClientRects()).filter((rect) => rect.height > 0 && rect.width > 0)
+    if (rects.length === 0) return null
+
+    const focusIsRangeStart =
+      range.startContainer === selection.focusNode && range.startOffset === selection.focusOffset
+    return focusIsRangeStart ? rects[0] : rects[rects.length - 1]
   }
 
   function isCaretOnBoundaryLine(activeEditor: HTMLDivElement, direction: MoveDirection) {
@@ -258,15 +285,19 @@
   }
 
   function isRangeOnBoundaryLine(activeEditor: HTMLDivElement, caretRange: Range, direction: MoveDirection) {
-    const contentRange = document.createRange()
-    contentRange.selectNodeContents(activeEditor)
-    const contentRects = Array.from(contentRange.getClientRects()).filter((rect) => rect.height > 0)
-    if (contentRects.length === 0) return true
-
     const caretRect = caretLineRect(caretRange)
     // If the caret position can't be measured at all, treat it as being on the
     // boundary line so navigation isn't silently swallowed.
     if (!caretRect) return true
+
+    return isRectOnBoundaryLine(activeEditor, caretRect, direction)
+  }
+
+  function isRectOnBoundaryLine(activeEditor: HTMLDivElement, caretRect: DOMRect, direction: MoveDirection) {
+    const contentRange = document.createRange()
+    contentRange.selectNodeContents(activeEditor)
+    const contentRects = Array.from(contentRange.getClientRects()).filter((rect) => rect.height > 0)
+    if (contentRects.length === 0) return true
 
     const lineHeight = Number.parseFloat(getComputedStyle(activeEditor).lineHeight) || 20
     const tolerance = lineHeight * 0.4

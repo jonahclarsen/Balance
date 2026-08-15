@@ -2153,7 +2153,6 @@ return rows`
       selectedItemIds.length > 0 &&
       event.shiftKey &&
       !event.altKey &&
-      !primaryModifier &&
       (event.key === 'ArrowUp' || event.key === 'ArrowDown')
     ) {
       event.preventDefault()
