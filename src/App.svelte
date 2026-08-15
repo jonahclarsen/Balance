@@ -49,6 +49,7 @@
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
+  import { DEFAULT_THEME_ID, normalizeThemeId, THEME_PRESETS, THEME_STORAGE_KEY, type ThemeId } from './lib/themes'
 
   // Pasting four or more items onto a different day routes through a review queue
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
@@ -85,10 +86,6 @@
   const WORKSPACE_VIEW_STATE_KEY = 'balance:workspaceViewState'
   const COMPARE_DAY_KEY = 'balance:compareDay'
   const SIDEBAR_HIDDEN_KEY = 'balance:sidebarHidden'
-  // Matches the light-theme --done-tint base in app.css; shown as the picker
-  // value when the user hasn't chosen a custom color yet.
-  const DEFAULT_DONE_TINT = '#3f9d54'
-  const DEFAULT_CHECKBOX_COLOR = '#4392d5'
   const isMobile = /android|iphone|ipad|ipod/i.test(
     (typeof navigator !== 'undefined' && navigator.userAgent) || '',
   )
@@ -136,9 +133,10 @@
   let goalHistoryHeight: number | null = null
   let goalRhythmVisible = true
   let goalRhythmAutoShowTimer: number | null = null
-  // Empty means "use the built-in green default"; a hex value overrides it.
+  // Empty means "use the active theme color"; a hex value overrides it.
   let doneTintColor = ''
   let checkboxColor = ''
+  let themeId: ThemeId = DEFAULT_THEME_ID
   let completionTrackingReady = false
   let planCompletionById = new Map<Id, boolean>()
   let listCompletionById = new Map<Id, boolean>()
@@ -390,21 +388,28 @@ return rows`
   $: sortedGoals = sortGoalsByUrgency($plannerStore.goals, $plannerStore.goalCompletions, todayISO())
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
-  $: doneTintHex = doneTintColor || DEFAULT_DONE_TINT
-  $: checkboxColorHex = checkboxColor || DEFAULT_CHECKBOX_COLOR
+  $: activeTheme = THEME_PRESETS.find((theme) => theme.id === themeId) ?? THEME_PRESETS[0]
+  $: doneTintHex = doneTintColor || activeTheme.doneColor
+  $: checkboxColorHex = checkboxColor || activeTheme.checkboxColor
   $: doneTintPickerColor = hexToPickerColor(doneTintHex)
   $: checkboxPickerColor = hexToPickerColor(checkboxColorHex)
   // Blend the chosen color in lightly so the row reads as a tint, not a fill.
   $: doneTintValue = `color-mix(in srgb, ${doneTintHex} 14%, transparent)`
+  $: appShellStyle = [
+    doneTintColor ? `--done-tint: ${doneTintValue}` : '',
+    checkboxColor ? `--checkbox-checked: ${checkboxColorHex}` : '',
+    checkboxColor
+      ? `--checkbox-checked-hover: color-mix(in srgb, ${checkboxColorHex} 88%, black)`
+      : '',
+  ]
+    .filter(Boolean)
+    .join('; ')
   $: contentShellStyle = [
     !goalRhythmVisible
       ? '--goal-history-height: 0px'
       : goalHistoryHeight != null
         ? `--goal-history-height: ${goalHistoryHeight}px`
         : '',
-    doneTintColor ? `--done-tint: ${doneTintValue}` : '',
-    `--checkbox-checked: ${checkboxColorHex}`,
-    `--checkbox-checked-hover: color-mix(in srgb, ${checkboxColorHex} 88%, black)`,
   ]
     .filter(Boolean)
     .join('; ')
@@ -982,6 +987,9 @@ return rows`
     const storedCheckboxColor = normalizeHexColor(localStorage.getItem(CHECKBOX_COLOR_KEY) ?? '')
     if (storedCheckboxColor) checkboxColor = storedCheckboxColor
 
+    themeId = normalizeThemeId(localStorage.getItem(THEME_STORAGE_KEY))
+    document.documentElement.dataset.theme = themeId
+
     async function initialize() {
       if (isTauri()) {
         try {
@@ -1170,6 +1178,26 @@ return rows`
 
   function updateCheckboxColorFromPicker(color: PickerColor) {
     updateCheckboxColor(pickerColorToHex(color))
+  }
+
+  function updateTheme(nextThemeId: ThemeId) {
+    themeId = nextThemeId
+    document.documentElement.dataset.theme = nextThemeId
+    localStorage.setItem(THEME_STORAGE_KEY, nextThemeId)
+
+    // A preset should look cohesive immediately. Fine-tuned completion colors
+    // remain available below and become overrides only after the preset is set.
+    doneTintColor = ''
+    checkboxColor = ''
+    localStorage.removeItem(DONE_TINT_KEY)
+    localStorage.removeItem(CHECKBOX_COLOR_KEY)
+  }
+
+  function resetCompletedItemColors() {
+    doneTintColor = ''
+    checkboxColor = ''
+    localStorage.removeItem(DONE_TINT_KEY)
+    localStorage.removeItem(CHECKBOX_COLOR_KEY)
   }
 
   function clearGoalRhythmAutoShowTimer() {
@@ -3802,6 +3830,7 @@ return rows`
   class="app-shell"
   class:android={isAndroid}
   class:sidebar-hidden={sidebarHidden}
+  style={appShellStyle}
   inert={$databaseLoadPending || Boolean($databaseLoadError)}
   aria-hidden={$databaseLoadPending || $databaseLoadError ? 'true' : undefined}
 >
@@ -4746,6 +4775,36 @@ return rows`
       <div class="settings-panel">
         <section class="settings-section">
           <div>
+            <h3>Color theme</h3>
+            <p>Change Balance’s colors everywhere with one choice. Each theme adapts automatically to light and dark mode.</p>
+          </div>
+
+          <div class="theme-grid" role="group" aria-label="Color theme">
+            {#each THEME_PRESETS as theme (theme.id)}
+              <button
+                type="button"
+                class="theme-option"
+                class:active={themeId === theme.id}
+                aria-pressed={themeId === theme.id}
+                on:click={() => updateTheme(theme.id)}
+              >
+                <span class="theme-swatches" aria-hidden="true">
+                  {#each theme.swatches as swatch}
+                    <span style={`--theme-swatch: ${swatch}`}></span>
+                  {/each}
+                </span>
+                <span class="theme-option-copy">
+                  <strong>{theme.name}</strong>
+                  <small>{theme.description}</small>
+                </span>
+                <span class="theme-selected-mark" aria-hidden="true">✓</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div>
             <h3>Opening messages</h3>
             <p>
               Add or remove messages, one per line. Balance picks a different one every 10 seconds while your database
@@ -4773,7 +4832,7 @@ return rows`
         <section class="settings-section">
           <div>
             <h3>Completed item colors</h3>
-            <p>Choose the checkbox color and the light tint applied to checked plan items.</p>
+            <p>Fine-tune the checkbox and checked-row colors, or keep them matched to your theme.</p>
           </div>
 
           <div class="done-tint-row">
@@ -4821,7 +4880,10 @@ return rows`
               <input class="check" type="checkbox" checked disabled aria-label="Example checked checkbox" />
               <span class="item-text done">Dress up in a porcupine suit</span>
             </div>
+          </div>
 
+          <div class="settings-actions">
+            <button type="button" disabled={!doneTintColor && !checkboxColor} on:click={resetCompletedItemColors}>Match theme</button>
           </div>
         </section>
 

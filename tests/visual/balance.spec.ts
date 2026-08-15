@@ -626,7 +626,7 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
         const style = getComputedStyle(checkbox)
         return (
           style.appearance === 'none' &&
-          style.backgroundColor === 'rgb(67, 146, 213)' &&
+          style.backgroundColor === 'rgb(47, 111, 104)' &&
           style.backgroundImage !== 'none'
         )
       }),
@@ -744,6 +744,39 @@ test('checkbox color can be changed in settings and persists', async ({ page }) 
   await page.reload()
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(page.getByLabel('Checked checkbox hex code')).toHaveValue(selectedColor!)
+})
+
+test('color themes update the whole palette, persist, and adapt to dark mode', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  const oceanTheme = page.getByRole('button', { name: 'Ocean Blue and cool mist' })
+  await expect(oceanTheme).toHaveAttribute('aria-pressed', 'false')
+  await oceanTheme.click()
+
+  await expect(oceanTheme).toHaveAttribute('aria-pressed', 'true')
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('balance:colorTheme')))
+    .toBe('ocean')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'ocean')
+  await expect(page.getByRole('complementary')).toHaveCSS('background-color', 'rgb(231, 240, 246)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(53, 127, 181)',
+  )
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(oceanTheme).toHaveAttribute('aria-pressed', 'true')
+
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await expect(page.getByRole('complementary')).toHaveCSS('background-color', 'rgb(20, 28, 36)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(115, 183, 230)',
+  )
 })
 
 test('database opening messages can be customized and restored', async ({ page }) => {
