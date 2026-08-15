@@ -1656,12 +1656,17 @@ nav button.active {
 .recovery-dialog {
   display: grid;
   width: min(560px, 100%);
+  max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   gap: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--paper);
   box-shadow: 0 24px 80px rgba(20, 24, 26, 0.22);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 24px;
+  -webkit-overflow-scrolling: touch;
 }
 
 .database-maintenance-spinner {
@@ -2987,6 +2992,12 @@ nav button.active {
   .recovery-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .recovery-key-confirmation {
+    width: 100%;
+    min-width: 0;
+    flex: 0 0 auto;
   }
 
   .goal-card-fields,

@@ -3514,6 +3514,8 @@ return rows`
   }
 
   async function finishRecoveryKeySetup() {
+    if (!recoveryKeyConfirmation.trim()) return
+
     recoveryKeyConfirmationError = ''
     try {
       await confirmRecoveryKey(recoveryKeyConfirmation)
@@ -5195,7 +5197,7 @@ return rows`
 
       <div class="recovery-key" aria-label="Recovery key">{recoveryKeyStatus.recoveryKey}</div>
 
-      <div class="recovery-actions">
+      <form class="recovery-actions" on:submit|preventDefault={finishRecoveryKeySetup}>
         <button type="button" on:click={copyRecoveryKey}>{recoveryKeyCopied ? 'Copied' : 'Copy key'}</button>
         <label class="confirm-line" for="recovery-key-confirmation">
           <span>Re-enter the complete key to prove your saved copy works.</span>
@@ -5205,16 +5207,17 @@ return rows`
           class="recovery-key-confirmation"
           type="text"
           autocomplete="off"
+          enterkeyhint="done"
           spellcheck="false"
           bind:value={recoveryKeyConfirmation}
         />
         {#if recoveryKeyConfirmationError}
           <p class="database-load-error">{recoveryKeyConfirmationError}</p>
         {/if}
-        <button class="primary" type="button" disabled={!recoveryKeyConfirmation.trim()} on:click={finishRecoveryKeySetup}>
+        <button class="primary" type="submit" disabled={!recoveryKeyConfirmation.trim()}>
           Continue
         </button>
-      </div>
+      </form>
 
       <p class="database-path">Database: {recoveryKeyStatus.databasePath}</p>
     </div>
