@@ -152,6 +152,7 @@
   let goalItemDoneById = new Map<Id, boolean>()
   let goalRhythmScrollRequest: { goalId: string; nonce: number } | null = null
   let selectedTemplateId = ''
+  let emptyDayTemplateSelections: Record<string, Id> = {}
   // Lists + Metrics feature state
   let selectedListTemplateId = ''
   let listViewTemplateId = ''
@@ -1681,8 +1682,14 @@ return rows`
 
   // `forDate` lets the comparison pane fill its own empty day instead of the
   // active one; without it this generates the active day, as before.
-  async function generateSelectedDay(forDate?: string) {
-    if (!selectedTemplate) return
+  function selectEmptyDayTemplate(date: string, templateId: Id) {
+    emptyDayTemplateSelections = { ...emptyDayTemplateSelections, [date]: templateId }
+    selectDayTemplate(templateId)
+  }
+
+  async function generateDayFromTemplate(templateId: Id, forDate?: string) {
+    const template = templates.find((candidate) => candidate.id === templateId)
+    if (!template) return
 
     const date = forDate || $plannerStore.activePlanDate || todayISO()
     const exists = $plannerStore.plans.some((plan) => plan.date === date)
@@ -1694,8 +1701,15 @@ return rows`
       return
     }
 
-    plannerStore.generatePlan(selectedTemplate.id, date, replaceExisting, forDate ? $plannerStore.activePlanDate : date)
+    plannerStore.generatePlan(template.id, date, replaceExisting, forDate ? $plannerStore.activePlanDate : date)
+    const { [date]: _generatedDate, ...remainingSelections } = emptyDayTemplateSelections
+    emptyDayTemplateSelections = remainingSelections
     view = 'today'
+  }
+
+  async function generateSelectedDay(forDate?: string) {
+    if (!selectedTemplate) return
+    await generateDayFromTemplate(selectedTemplate.id, forDate)
   }
 
   async function saveTauriExportFile(filename: string, content: string): Promise<string> {
@@ -3815,7 +3829,7 @@ return rows`
     </nav>
 
     <div class="sidebar-footer">
-      {#if selectedTemplate && view !== 'templates'}
+      {#if view === 'today' || view === 'templates'}
         <section class="time-shortcut-legend" aria-labelledby="time-shortcut-legend-title">
           <h2 id="time-shortcut-legend-title">Task time shortcuts</h2>
           <table>
@@ -3853,9 +3867,9 @@ return rows`
       {/if}
       <div
         class="sidebar-toggle-anchor"
-        class:has-template={Boolean(selectedTemplate && view !== 'templates')}
+        class:has-template={Boolean(selectedTemplate && view === 'today')}
       >
-        {#if selectedTemplate && view !== 'templates'}
+        {#if selectedTemplate && view === 'today'}
           <label class="generation-template-field">
             <span>Template for new days</span>
             <select
@@ -3881,8 +3895,10 @@ return rows`
           </svg>
         </button>
       </div>
-      <button class="primary" type="button" on:click={() => { void generateSelectedDay() }}>{generateButtonLabel}</button>
-      <p class="tiny">{templates.length} template{templates.length === 1 ? '' : 's'} · {$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
+      {#if view === 'today'}
+        <button class="primary" type="button" on:click={() => { void generateSelectedDay() }}>{generateButtonLabel}</button>
+      {/if}
+      <p class="tiny">{$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
     </div>
   </aside>
 
@@ -4073,22 +4089,37 @@ return rows`
               <div class="empty-state">
                 <h3>No plan for this date</h3>
                 <p>Choose a template to generate this day, or pick another date.</p>
-                {#if selectedTemplate}
-                  <label class="generation-template-field workspace-generation-template-field">
-                    <span>Day template</span>
-                    <select
-                      value={selectedTemplate.id}
-                      on:change={(event) => selectDayTemplate(event.currentTarget.value)}
-                    >
+                {#if templates.length > 0}
+                  <fieldset class="day-template-picker">
+                    <legend>Day template</legend>
+                    <div class="day-template-options">
                       {#each templates as template (template.id)}
-                        <option value={template.id}>{template.name || 'Untitled day'}</option>
+                        <label
+                          class="day-template-option"
+                          class:selected={emptyDayTemplateSelections[pane.date] === template.id}
+                        >
+                          <input
+                            type="radio"
+                            name={`day-template-${pane.key}-${pane.date}`}
+                            value={template.id}
+                            checked={emptyDayTemplateSelections[pane.date] === template.id}
+                            on:change={() => selectEmptyDayTemplate(pane.date, template.id)}
+                          />
+                          <span>{template.name || 'Untitled day'}</span>
+                        </label>
                       {/each}
-                    </select>
-                  </label>
+                    </div>
+                  </fieldset>
                   <button
                     class="primary"
                     type="button"
-                    on:click={() => { void generateSelectedDay(pane.key === 'compare' ? pane.date : undefined) }}
+                    disabled={!templates.some((template) => template.id === emptyDayTemplateSelections[pane.date])}
+                    on:click={() => {
+                      void generateDayFromTemplate(
+                        emptyDayTemplateSelections[pane.date],
+                        pane.key === 'compare' ? pane.date : undefined,
+                      )
+                    }}
                   >
                     {pane.key === 'compare' ? 'Generate this day' : generateButtonLabel}
                   </button>

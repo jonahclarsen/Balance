@@ -450,7 +450,7 @@ test('recovery-key failure surfaces even if state hydration remains blocked', as
   await expect(page.getByText(/recovery key is unavailable/i)).toBeVisible()
 })
 
-test('new days use and remember the last selected day template', async ({ page }) => {
+test('empty days show every template and require an explicit selection', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -481,19 +481,25 @@ test('new days use and remember the last selected day template', async ({ page }
 
   await page.getByRole('button', { name: 'Today', exact: true }).click()
   const firstDay = await page.locator('.date-input').inputValue()
-  const firstDayTemplate = page.locator('.empty-state').getByLabel('Day template')
-  await expect(firstDayTemplate).toHaveValue(selectedTemplateId)
-  await expect(firstDayTemplate.locator('option:checked')).toHaveText('Weekend')
-  await page.locator('.empty-state').getByRole('button', { name: 'Generate today' }).click()
+  const emptyState = page.locator('.empty-state')
+  await expect(emptyState.getByRole('group', { name: 'Day template' })).toBeVisible()
+  await expect(emptyState.getByRole('radio')).toHaveCount(2)
+  await expect(emptyState.getByRole('radio', { checked: true })).toHaveCount(0)
+  await expect(emptyState.getByRole('button', { name: 'Generate today' })).toBeDisabled()
+  await emptyState.getByRole('radio', { name: 'Weekend' }).check()
+  await expect(emptyState.getByRole('button', { name: 'Generate today' })).toBeEnabled()
+  await emptyState.getByRole('button', { name: 'Generate today' }).click()
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Next day' }).click()
   await expect(page.locator('.date-input')).toHaveValue(addDays(firstDay, 1))
-  await expect(page.locator('.empty-state').getByLabel('Day template')).toHaveValue(selectedTemplateId)
+  await expect(page.locator('.empty-state').getByRole('radio', { checked: true })).toHaveCount(0)
+  await expect(page.locator('.empty-state').getByRole('button', { name: 'Generate selected day' })).toBeDisabled()
 
   await page.reload()
-  await expect(page.locator('.empty-state').getByLabel('Day template')).toHaveValue(selectedTemplateId)
-  await expect(page.locator('.empty-state').getByLabel('Day template').locator('option:checked')).toHaveText('Weekend')
+  await expect(page.locator('.empty-state').getByRole('radio')).toHaveCount(2)
+  await expect(page.locator('.empty-state').getByRole('radio', { checked: true })).toHaveCount(0)
+  await page.locator('.empty-state').getByRole('radio', { name: 'Weekend' }).check()
   await page.locator('.empty-state').getByRole('button', { name: 'Generate selected day' }).click()
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 })

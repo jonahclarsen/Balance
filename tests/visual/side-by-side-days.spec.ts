@@ -34,6 +34,7 @@ async function openTwoGeneratedDays(page: Page) {
 
   const comparePane = paneFor(page, 'Compared day')
   await expect(comparePane).toBeVisible()
+  await comparePane.getByRole('radio', { name: 'Default day' }).check()
   await comparePane.getByRole('button', { name: 'Generate this day' }).click()
   await expect(comparePane.locator('[data-plan-text-input]').first()).toBeVisible()
 }
