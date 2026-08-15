@@ -7,7 +7,10 @@ make the complete change there. The main checkout is often running Balance in
 development mode for normal use, so incomplete edits there cause disruptive
 rebuilds and visible UI churn. Test and finish the work in the worktree first;
 only then bring the completed change onto `main`, resolve any integration issues,
-and push it. Do not use the main checkout as a live editing workspace.
+and push it. Once the change is integrated and pushed, completely remove the
+dedicated worktree and delete its temporary branch so no worktree directory or
+stale Git worktree metadata is left behind. Do not use the main checkout as a
+live editing workspace.
 
 ## This is a public repo — never commit secrets
 
