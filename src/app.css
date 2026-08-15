@@ -529,6 +529,12 @@ h3 {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.mobile-app-header,
+.mobile-bottom-nav,
+.mobile-more-layer {
+  display: none;
+}
+
 .sidebar {
   position: sticky;
   top: 0;
@@ -3329,26 +3335,87 @@ nav button.active {
 }
 
 @media (max-width: 760px) {
+  body {
+    padding-top: 0;
+    overflow-x: hidden;
+  }
+
   .app-shell {
+    --mobile-top-inset: env(safe-area-inset-top);
+    --mobile-header-height: calc(52px + var(--mobile-top-inset));
     grid-template-columns: 1fr;
     height: auto;
+    min-height: calc(100dvh - env(safe-area-inset-bottom));
     overflow: visible;
   }
 
-  .sidebar {
-    position: static;
-    height: auto;
-    gap: 8px;
-    border-right: 0;
+  .app-shell.android {
+    /* Older Android WebViews can report a zero CSS safe-area even though the
+       edge-to-edge status bar overlaps the page. Keep one status-bar row as a
+       fallback while still honoring taller cutouts when the inset is present. */
+    --mobile-top-inset: max(24px, env(safe-area-inset-top));
+  }
+
+  .mobile-app-header {
+    position: sticky;
+    z-index: 55;
+    top: 0;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    min-height: var(--mobile-header-height);
+    padding: var(--mobile-top-inset) 8px 4px 14px;
     border-bottom: 1px solid var(--line);
-    padding: 12px 10px 8px;
+    background: color-mix(in srgb, var(--sidebar) 94%, transparent);
+    box-shadow: 0 2px 10px color-mix(in srgb, var(--ink) 8%, transparent);
+    backdrop-filter: blur(14px);
+  }
+
+  .mobile-app-header strong {
+    align-self: center;
+    padding-bottom: 1px;
+    color: var(--accent-strong);
+    font-size: 16px;
+    letter-spacing: 0.02em;
+  }
+
+  .mobile-header-actions {
+    display: flex;
+    gap: 2px;
+  }
+
+  .mobile-header-actions button {
+    display: grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border-color: transparent;
+    background: transparent;
+    color: var(--ink);
+  }
+
+  .mobile-header-actions button:hover {
+    border-color: var(--line);
+    background: var(--paper-strong);
+  }
+
+  .mobile-header-actions svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .sidebar {
+    display: none;
   }
 
   .sidebar.sidebar-hidden {
-    display: flex;
-    position: static;
-    width: auto;
-    visibility: visible;
+    display: none;
   }
 
   .sidebar-toggle {
@@ -3462,7 +3529,7 @@ nav button.active {
 
   .current-day-scroll-indicator {
     position: fixed;
-    top: calc(env(safe-area-inset-top) + 8px);
+    top: calc(var(--mobile-header-height) + 8px);
     right: 12px;
     left: 12px;
   }
@@ -3523,6 +3590,7 @@ nav button.active {
     display: block;
     height: auto;
     min-width: 0;
+    padding-bottom: calc(68px + env(safe-area-inset-bottom));
   }
 
   .page-header,
@@ -3615,6 +3683,140 @@ nav button.active {
     padding-inline: 7px;
     font-size: 12px;
     white-space: nowrap;
+  }
+
+  .mobile-bottom-nav {
+    position: fixed;
+    z-index: 80;
+    right: auto;
+    bottom: 0;
+    left: 0;
+    width: 100vw;
+    display: flex;
+    align-items: stretch;
+    justify-content: space-around;
+    flex-wrap: nowrap;
+    gap: 0;
+    min-height: calc(64px + env(safe-area-inset-bottom));
+    padding: 4px max(4px, env(safe-area-inset-right)) env(safe-area-inset-bottom)
+      max(4px, env(safe-area-inset-left));
+    border-top: 1px solid var(--line);
+    background: color-mix(in srgb, var(--sidebar) 96%, transparent);
+    box-shadow: 0 -4px 18px color-mix(in srgb, var(--ink) 10%, transparent);
+    backdrop-filter: blur(16px);
+  }
+
+  .mobile-bottom-nav button {
+    position: relative;
+    z-index: 1;
+    flex: 1 1 20%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    min-height: 56px;
+    padding: 4px 2px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 650;
+    text-align: center;
+  }
+
+  .mobile-bottom-nav button.active {
+    border-color: transparent;
+    background: transparent;
+    color: var(--accent-strong);
+  }
+
+  .mobile-bottom-nav button.active svg {
+    border-radius: 999px;
+    background: var(--active-nav);
+    box-shadow: 0 0 0 5px var(--active-nav);
+  }
+
+  .mobile-bottom-nav svg {
+    width: 21px;
+    height: 21px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .mobile-more-layer {
+    position: fixed;
+    z-index: 75;
+    inset: 0 0 calc(64px + env(safe-area-inset-bottom));
+    display: block;
+  }
+
+  .mobile-more-backdrop {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: rgb(0 0 0 / 0.34);
+  }
+
+  .mobile-more-sheet {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    padding: 8px 14px max(18px, env(safe-area-inset-bottom));
+    border: 1px solid var(--line);
+    border-bottom: 0;
+    border-radius: 18px 18px 0 0;
+    background: var(--sidebar);
+    box-shadow: 0 -12px 36px rgb(0 0 0 / 0.2);
+  }
+
+  .mobile-more-handle {
+    width: 38px;
+    height: 4px;
+    margin: 0 auto 12px;
+    border-radius: 999px;
+    background: var(--line-strong);
+  }
+
+  .mobile-more-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mobile-more-grid button {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    min-height: 48px;
+    padding: 8px 12px;
+    text-align: left;
+  }
+
+  .mobile-more-grid button.active {
+    border-color: var(--accent);
+    background: var(--active-nav);
+    color: var(--accent-strong);
+  }
+
+  .mobile-more-icon {
+    display: inline-grid;
+    flex: 0 0 28px;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    color: var(--accent-strong);
+    font-size: 20px;
   }
 }
 

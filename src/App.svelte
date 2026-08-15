@@ -123,6 +123,7 @@
 
   let view: View = 'today'
   let sidebarHidden = false
+  let mobileMoreOpen = false
   // List History is a contextual child of Lists. Once opened, keep its sidebar
   // entry available while visiting other pages; returning to Lists dismisses it.
   let listHistoryNavigationVisible = false
@@ -476,6 +477,25 @@ return rows`
   function openListHistory() {
     view = 'lists'
     listHistoryNavigationVisible = true
+  }
+
+  function openMobileView(nextView: View) {
+    mobileMoreOpen = false
+    if (nextView === 'listTemplates') {
+      openLists()
+    } else if (nextView === 'lists') {
+      openListHistory()
+    } else if (nextView === 'goals') {
+      void openGoals()
+    } else {
+      view = nextView
+    }
+  }
+
+  function openMobileSearch() {
+    mobileMoreOpen = false
+    documentFindOpen = false
+    searchOpen = true
   }
 
   function observeActivePlanCompletion(
@@ -1919,6 +1939,12 @@ return rows`
         event.preventDefault()
         shortcutsHelpOpen = false
       }
+      return
+    }
+
+    if (mobileMoreOpen && event.key === 'Escape') {
+      event.preventDefault()
+      mobileMoreOpen = false
       return
     }
 
@@ -3915,6 +3941,23 @@ return rows`
   inert={$databaseLoadPending || Boolean($databaseLoadError)}
   aria-hidden={$databaseLoadPending || $databaseLoadError ? 'true' : undefined}
 >
+  <header class="mobile-app-header" aria-label="Mobile app header">
+    <strong>Balance</strong>
+    <div class="mobile-header-actions">
+      <button
+        type="button"
+        title="Undo"
+        aria-label="Undo"
+        on:click={() => { void plannerStore.undo() }}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M5 12h8a6 6 0 0 1 6 6" /></svg>
+      </button>
+      <button type="button" title="Search" aria-label="Search" on:click={openMobileSearch}>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
+      </button>
+    </div>
+  </header>
+
   <aside class="sidebar" class:sidebar-hidden={sidebarHidden}>
     <div>
       <h1>Balance</h1>
@@ -5254,6 +5297,47 @@ return rows`
       <KeyboardShortcutsModal onClose={() => (shortcutsHelpOpen = false)} />
     {/if}
   </div>
+
+  <nav class="mobile-bottom-nav" aria-label="Mobile primary navigation">
+    <button class:active={view === 'today'} type="button" aria-current={view === 'today' ? 'page' : undefined} on:click={() => openMobileView('today')}>
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m4 11 8-7 8 7v9h-6v-6h-4v6H4Z" /></svg>
+      <span>Today</span>
+    </button>
+    <button class:active={view === 'listTemplates' || view === 'lists'} type="button" aria-current={view === 'listTemplates' || view === 'lists' ? 'page' : undefined} on:click={() => openMobileView('listTemplates')}>
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M7 6h13M7 12h13M7 18h13" /><circle cx="4" cy="6" r="1" /><circle cx="4" cy="12" r="1" /><circle cx="4" cy="18" r="1" /></svg>
+      <span>Lists</span>
+    </button>
+    <button class:active={view === 'notes'} type="button" aria-current={view === 'notes' ? 'page' : undefined} on:click={() => openMobileView('notes')}>
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h9l4 4v14H6Z" /><path d="M15 3v5h4M9 12h7M9 16h7" /></svg>
+      <span>Notes</span>
+    </button>
+    <button class:active={view === 'goals'} type="button" aria-current={view === 'goals' ? 'page' : undefined} on:click={() => openMobileView('goals')}>
+      <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" /><circle cx="12" cy="12" r="4" /><path d="m12 12 7-7" /></svg>
+      <span>Goals</span>
+    </button>
+    <button class:active={mobileMoreOpen || view === 'templates' || view === 'metrics' || view === 'settings'} type="button" aria-expanded={mobileMoreOpen} aria-controls="mobile-more-menu" on:click={() => (mobileMoreOpen = !mobileMoreOpen)}>
+      <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.5" /><circle cx="12" cy="12" r="1.5" /><circle cx="19" cy="12" r="1.5" /></svg>
+      <span>More</span>
+    </button>
+  </nav>
+
+  {#if mobileMoreOpen}
+    <div class="mobile-more-layer">
+      <button class="mobile-more-backdrop" type="button" aria-label="Close navigation menu" on:click={() => (mobileMoreOpen = false)}></button>
+      <div id="mobile-more-menu" class="mobile-more-sheet" role="dialog" aria-modal="true" aria-label="More navigation">
+        <div class="mobile-more-handle" aria-hidden="true"></div>
+        <div class="mobile-more-grid">
+          <button type="button" on:click={openMobileSearch}><span class="mobile-more-icon" aria-hidden="true">⌕</span><span>Search</span></button>
+          <button class:active={view === 'templates'} type="button" on:click={() => openMobileView('templates')}><span class="mobile-more-icon" aria-hidden="true">▦</span><span>Day Templates</span></button>
+          {#if listHistoryNavigationVisible}
+            <button class:active={view === 'lists'} type="button" on:click={() => openMobileView('lists')}><span class="mobile-more-icon" aria-hidden="true">↺</span><span>List History</span></button>
+          {/if}
+          <button class:active={view === 'metrics'} type="button" on:click={() => openMobileView('metrics')}><span class="mobile-more-icon" aria-hidden="true">⌁</span><span>Metrics</span></button>
+          <button class:active={view === 'settings'} type="button" on:click={() => openMobileView('settings')}><span class="mobile-more-icon" aria-hidden="true">⚙</span><span>Settings</span></button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </main>
 
 <Celebration bind:this={celebration} />
