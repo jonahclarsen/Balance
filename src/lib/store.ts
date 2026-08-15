@@ -2218,6 +2218,8 @@ export async function rotateDatabaseRecoveryKey(): Promise<RecoveryKeyRotationRe
 export async function recoverDatabaseWithKey(recoveryKey: string): Promise<void> {
   if (!isTauri()) return
   await invoke('recover_database_with_key', { recoveryKey })
+  cachedSyncSettings = null
+  pendingSyncSettings = null
 }
 
 export async function listRecoveryEntries(): Promise<RecoveryEntry[]> {
@@ -2235,16 +2237,32 @@ export type SyncSettings = {
   relayUrl: string
 }
 
+let cachedSyncSettings: SyncSettings | null = null
+let pendingSyncSettings: Promise<SyncSettings> | null = null
+
+function rememberSyncSettings(settings: SyncSettings): SyncSettings {
+  cachedSyncSettings = settings
+  return settings
+}
+
 /** Device-local sync configuration from encrypted, non-replicated DB metadata. */
 export async function getSyncSettings(): Promise<SyncSettings> {
   if (!isTauri()) return { enabled: false, pairingCode: null, relayUrl: '' }
-  return invoke<SyncSettings>('get_sync_settings')
+  if (cachedSyncSettings) return cachedSyncSettings
+  if (!pendingSyncSettings) {
+    pendingSyncSettings = invoke<SyncSettings>('get_sync_settings')
+      .then(rememberSyncSettings)
+      .finally(() => {
+        pendingSyncSettings = null
+      })
+  }
+  return pendingSyncSettings
 }
 
 /** Persist this device's relay endpoint outside origin-scoped webview storage. */
 export async function setSyncRelayUrl(relayUrl: string): Promise<SyncSettings> {
   if (!isTauri()) return { enabled: false, pairingCode: null, relayUrl: relayUrl.trim() }
-  return invoke<SyncSettings>('set_sync_relay_url', { relayUrl })
+  return invoke<SyncSettings>('set_sync_relay_url', { relayUrl }).then(rememberSyncSettings)
 }
 
 /** One-time upgrade path from the old dev/prod-specific localStorage values. */
@@ -2253,7 +2271,7 @@ export async function migrateLegacySyncSettings(
   relayUrl: string | null,
 ): Promise<SyncSettings> {
   if (!isTauri()) return { enabled: false, pairingCode, relayUrl: relayUrl ?? '' }
-  return invoke<SyncSettings>('migrate_legacy_sync_settings', { pairingCode, relayUrl })
+  return invoke<SyncSettings>('migrate_legacy_sync_settings', { pairingCode, relayUrl }).then(rememberSyncSettings)
 }
 
 /** Generate a fresh account sync key and return its QR/pairing code. */
@@ -2267,6 +2285,7 @@ export async function syncEnablePrimary(pairingCode: string): Promise<void> {
   if (!isTauri()) return
   await flushOperations()
   await invoke('sync_enable_primary', { pairingCode })
+  if (cachedSyncSettings) cachedSyncSettings = { ...cachedSyncSettings, enabled: true, pairingCode }
 }
 
 /** Enable sync as a joining device — adopt the primary's data (local is backed up). */
@@ -2274,6 +2293,7 @@ export async function syncEnableJoiner(pairingCode: string): Promise<void> {
   if (!isTauri()) return
   await flushOperations()
   await invoke('sync_enable_joiner', { pairingCode })
+  if (cachedSyncSettings) cachedSyncSettings = { ...cachedSyncSettings, enabled: true, pairingCode }
 }
 
 export type SyncPeer = { name: string; address: string }

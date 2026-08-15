@@ -8971,7 +8971,12 @@ async fn sync_relay_once(
                 connection,
                 &relay_url,
                 &key,
-                sync::relay_client::SyncOptions::foreground(checkpoint_coordinator),
+                // Relay checkpoint commits use the generation epoch/sequence as
+                // a compare-and-swap guard, so any foreground device that has
+                // pulled the complete manifest can compact safely. Keeping this
+                // restricted to the original database coordinator allowed an
+                // offline Mac to strand active phones at the generation limit.
+                sync::relay_client::SyncOptions::foreground(true),
             )
             .map_err(sync::Error::into_string)
         })();

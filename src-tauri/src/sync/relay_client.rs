@@ -23,12 +23,13 @@ const MAX_BATCH_CIPHERTEXT: usize = 512 * 1024;
 const TARGET_BATCH_PLAINTEXT: usize = 256 * 1024;
 const CHECKPOINT_CHUNK_BYTES: usize = 96 * 1024;
 const BACKGROUND_MAX_DOWNLOAD_CHUNKS: usize = 64;
+const PARALLEL_BATCH_DOWNLOADS: usize = 8;
 
 #[derive(Debug, Clone, Copy)]
 pub struct SyncOptions {
     /// Foreground passes may finish large downloads while the app is open.
     pub foreground: bool,
-    /// Only the designated coordinator may replace relay history with a checkpoint.
+    /// This pass may replace relay history with a compare-and-swap checkpoint.
     pub allow_checkpoint: bool,
 }
 
@@ -407,6 +408,15 @@ fn apply_descriptor(
     chunks: usize,
 ) -> Result<(usize, bool)> {
     let ciphertext = fetch_blob(client, base, id, chunks)?;
+    apply_ciphertext(conn, key, epoch, &ciphertext)
+}
+
+fn apply_ciphertext(
+    conn: &Connection,
+    key: &SyncKey,
+    epoch: &str,
+    ciphertext: &[u8],
+) -> Result<(usize, bool)> {
     let envelope: RelayEnvelope = open(key, &ciphertext)?;
     if (envelope.v != 3 && envelope.v != PROTOCOL_VERSION) || envelope.epoch != epoch {
         return Err(Error::Codec(
@@ -459,39 +469,51 @@ fn apply_manifest(
         0
     };
 
-    for batch in &manifest.batches {
-        if batch.sequence <= cursor {
-            continue;
-        }
-        match apply_descriptor(
-            conn,
-            client,
-            base,
-            key,
-            &manifest.epoch,
-            &batch.id,
-            batch.chunks,
-        ) {
-            Ok((count, did_change)) => {
-                pulled += count;
-                changed |= did_change;
-                conn.execute(
-                    "DELETE FROM sync_relay_quarantine WHERE blob_id = ?1",
-                    params![batch.id],
-                )?;
+    let pending_batches = manifest
+        .batches
+        .iter()
+        .filter(|batch| batch.sequence > cursor)
+        .collect::<Vec<_>>();
+    for group in pending_batches.chunks(PARALLEL_BATCH_DOWNLOADS) {
+        let downloads = std::thread::scope(|scope| {
+            group
+                .iter()
+                .map(|batch| scope.spawn(move || fetch_blob(client, base, &batch.id, batch.chunks)))
+                .collect::<Vec<_>>()
+                .into_iter()
+                .map(|download| {
+                    download.join().unwrap_or_else(|_| {
+                        Err(Error::Codec("relay download worker panicked".into()))
+                    })
+                })
+                .collect::<Vec<_>>()
+        });
+
+        for (batch, download) in group.iter().zip(downloads) {
+            let applied = download
+                .and_then(|ciphertext| apply_ciphertext(conn, key, &manifest.epoch, &ciphertext));
+            match applied {
+                Ok((count, did_change)) => {
+                    pulled += count;
+                    changed |= did_change;
+                    conn.execute(
+                        "DELETE FROM sync_relay_quarantine WHERE blob_id = ?1",
+                        params![batch.id],
+                    )?;
+                }
+                Err(error) => {
+                    quarantine(conn, &batch.id, &error)?;
+                    // Never acknowledge past a missing or unreadable batch. Doing
+                    // so permanently skipped its operations while later batches
+                    // continued to apply, leaving apparently random holes in a
+                    // delayed device's state. The next pass must retry this exact
+                    // sequence before its cursor can move forward.
+                    return Err(error);
+                }
             }
-            Err(error) => {
-                quarantine(conn, &batch.id, &error)?;
-                // Never acknowledge past a missing or unreadable batch. Doing
-                // so permanently skipped its operations while later batches
-                // continued to apply, leaving apparently random holes in a
-                // delayed device's state. The next pass must retry this exact
-                // sequence before its cursor can move forward.
-                return Err(error);
-            }
+            cursor = batch.sequence;
+            set_relay_state(conn, &manifest.epoch, cursor)?;
         }
-        cursor = batch.sequence;
-        set_relay_state(conn, &manifest.epoch, cursor)?;
     }
     Ok((pulled, changed))
 }
