@@ -547,6 +547,22 @@ struct SyncSettings {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct LegacyMigrationAuditCheck {
+    id: &'static str,
+    label: &'static str,
+    passed: bool,
+    detail: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct LegacyMigrationAuditResult {
+    ready_on_this_installation: bool,
+    checks: Vec<LegacyMigrationAuditCheck>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DatabaseCompactionResult {
     before_bytes: u64,
     after_bytes: u64,
@@ -8697,6 +8713,220 @@ async fn set_sync_relay_url(
     .await
 }
 
+fn legacy_audit_check(
+    id: &'static str,
+    label: &'static str,
+    passed: bool,
+    detail: impl Into<String>,
+) -> LegacyMigrationAuditCheck {
+    LegacyMigrationAuditCheck {
+        id,
+        label,
+        passed,
+        detail: detail.into(),
+    }
+}
+
+/// Read-only fleet-readiness evidence for deleting legacy sync compatibility.
+/// Relay ciphertext is downloaded and decrypted only in memory; no operation,
+/// history row, relay cursor, or remote object is changed by this command.
+#[tauri::command]
+async fn audit_legacy_migration_readiness(
+    app: tauri::AppHandle,
+) -> Result<LegacyMigrationAuditResult, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        let enabled = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
+        let mut checks = vec![legacy_audit_check(
+            "sync-enabled",
+            "Current sync engine enabled",
+            enabled,
+            if enabled {
+                "This installation has current sync state to audit."
+            } else {
+                "Enable sync before using this audit to approve compatibility removal."
+            },
+        )];
+
+        let coordinator_marker = metadata_value(&connection, SYNC_COMPACTION_COORDINATOR)?;
+        let valid_coordinator_marker = matches!(coordinator_marker.as_deref(), Some("true" | "false"));
+        checks.push(legacy_audit_check(
+            "coordinator-marker",
+            "Device role marker present",
+            valid_coordinator_marker,
+            if valid_coordinator_marker {
+                "No older-build role inference is needed on this installation."
+            } else {
+                "Run a foreground relay sync, then audit again."
+            },
+        ));
+
+        let local = sync::audit_local_legacy_compatibility(&connection)
+            .map_err(sync::Error::into_string)?;
+        checks.push(legacy_audit_check(
+            "local-checkpoints",
+            "Local checkpoints use current frontiers",
+            local.operations.legacy_checkpoint_records == 0,
+            format!(
+                "Checked {} local operation record(s); {} still require legacy checkpoint fields.",
+                local.operations.records_checked, local.operations.legacy_checkpoint_records
+            ),
+        ));
+        checks.push(legacy_audit_check(
+            "local-operation-payloads",
+            "Local operations use entity deltas",
+            local.operations.legacy_entity_snapshot_records == 0,
+            format!(
+                "{} local operation record(s) still contain legacy full entity snapshots.",
+                local.operations.legacy_entity_snapshot_records
+            ),
+        ));
+        checks.push(legacy_audit_check(
+            "local-history-payloads",
+            "Undo history uses current payloads",
+            local.legacy_history_entries == 0,
+            format!(
+                "Checked {} history row(s); {} still contain legacy payloads.",
+                local.history_entries_checked, local.legacy_history_entries
+            ),
+        ));
+        checks.push(legacy_audit_check(
+            "local-tombstones",
+            "No local v2 tombstones remain",
+            local.tombstone_count == 0,
+            format!("{} legacy tombstone id(s) remain locally.", local.tombstone_count),
+        ));
+
+        let relay_url = metadata_value(&connection, SYNC_RELAY_URL)?.unwrap_or_default();
+        let pairing_code = sync::read_pairing_code(&connection).map_err(sync::Error::into_string)?;
+        match (relay_url.is_empty(), pairing_code) {
+            (false, Some(pairing_code)) => {
+                let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+                    .map_err(sync::Error::into_string)?;
+                match sync::relay_client::audit_legacy_compatibility(
+                    &connection,
+                    &relay_url,
+                    &key,
+                ) {
+                    Ok(relay) => {
+                        checks.push(legacy_audit_check(
+                            "relay-contract",
+                            "Relay uses the current v3 storage contract",
+                            relay.relay_protocol == 3,
+                            format!("Relay reported storage protocol {}.", relay.relay_protocol),
+                        ));
+                        checks.push(legacy_audit_check(
+                            "relay-generation-stable",
+                            "Relay generation stayed stable during audit",
+                            relay.generation_stable,
+                            if relay.generation_stable {
+                                "The same complete generation was checked from start to finish."
+                            } else {
+                                "The relay changed during the audit; sync and run it again."
+                            },
+                        ));
+                        checks.push(legacy_audit_check(
+                            "relay-local-cursor",
+                            "This device is caught up with the relay",
+                            relay.local_epoch_initialized && relay.local_cursor_caught_up,
+                            if relay.local_epoch_initialized && relay.local_cursor_caught_up {
+                                "The local v3 epoch and cursor match the audited relay generation."
+                            } else {
+                                "Use Sync now, wait for it to finish, then audit again."
+                            },
+                        ));
+                        let uploads_clear = relay.pending_outbox_batches == 0
+                            && relay.unpublished_local_operations == 0;
+                        checks.push(legacy_audit_check(
+                            "relay-local-uploads",
+                            "No local relay uploads are pending",
+                            uploads_clear,
+                            format!(
+                                "{} queued batch(es) and {} unpublished operation(s) remain.",
+                                relay.pending_outbox_batches, relay.unpublished_local_operations
+                            ),
+                        ));
+                        checks.push(legacy_audit_check(
+                            "relay-quarantine",
+                            "No quarantined relay blobs remain",
+                            relay.quarantined_blobs == 0,
+                            format!(
+                                "{} unreadable or damaged relay blob(s) remain quarantined.",
+                                relay.quarantined_blobs
+                            ),
+                        ));
+                        checks.push(legacy_audit_check(
+                            "relay-rollback-generation",
+                            "Relay rollback generation has expired",
+                            !relay.previous_generation_present,
+                            if relay.previous_generation_present {
+                                "A prior generation is still retained for rollback; wait 24 hours without another checkpoint."
+                            } else {
+                                "No prior relay generation remains."
+                            },
+                        ));
+                        checks.push(legacy_audit_check(
+                            "relay-legacy-buffer",
+                            "Legacy relay buffer is empty",
+                            relay.legacy_envelope_count == 0,
+                            format!(
+                                "The relay returned {} legacy envelope(s).",
+                                relay.legacy_envelope_count
+                            ),
+                        ));
+                        checks.push(legacy_audit_check(
+                            "relay-envelope-protocol",
+                            "Relay ciphertext uses protocol v4",
+                            relay.legacy_protocol_envelopes == 0,
+                            format!(
+                                "Checked {} encrypted blob(s); {} use an older envelope protocol.",
+                                relay.encrypted_blobs_checked, relay.legacy_protocol_envelopes
+                            ),
+                        ));
+                        checks.push(legacy_audit_check(
+                            "relay-checkpoints",
+                            "Relay checkpoints use current frontiers",
+                            relay.operations.legacy_checkpoint_records == 0,
+                            format!(
+                                "Checked {} relayed operation record(s); {} still require legacy checkpoint fields.",
+                                relay.operations.records_checked,
+                                relay.operations.legacy_checkpoint_records
+                            ),
+                        ));
+                        checks.push(legacy_audit_check(
+                            "relay-operation-payloads",
+                            "Relay operations use entity deltas",
+                            relay.operations.legacy_entity_snapshot_records == 0,
+                            format!(
+                                "{} relayed operation record(s) still contain legacy full entity snapshots.",
+                                relay.operations.legacy_entity_snapshot_records
+                            ),
+                        ));
+                    }
+                    Err(error) => checks.push(legacy_audit_check(
+                        "relay-readable",
+                        "Relay contents could be audited",
+                        false,
+                        format!("Relay audit failed: {error}"),
+                    )),
+                }
+            }
+            _ => checks.push(legacy_audit_check(
+                "relay-configured",
+                "Relay and sync key configured",
+                false,
+                "Configure this installation's relay and complete a foreground sync first.",
+            )),
+        }
+
+        Ok(LegacyMigrationAuditResult {
+            ready_on_this_installation: checks.iter().all(|check| check.passed),
+            checks,
+        })
+    })
+    .await
+}
+
 /// Generate a fresh account sync key and return its QR/pairing code. The new
 /// device scans this; both devices then share the same end-to-end key.
 #[tauri::command]
@@ -9059,6 +9289,7 @@ pub fn run() {
             read_balance_clipboard,
             get_sync_settings,
             set_sync_relay_url,
+            audit_legacy_migration_readiness,
             sync_new_pairing_code,
             sync_enable_primary,
             sync_enable_joiner,

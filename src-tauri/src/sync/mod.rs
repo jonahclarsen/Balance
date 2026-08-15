@@ -81,6 +81,21 @@ pub struct Op {
     pub payload_json: String,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LegacyOperationAudit {
+    pub records_checked: usize,
+    pub legacy_checkpoint_records: usize,
+    pub legacy_entity_snapshot_records: usize,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LocalLegacyAudit {
+    pub operations: LegacyOperationAudit,
+    pub history_entries_checked: usize,
+    pub legacy_history_entries: usize,
+    pub tombstone_count: usize,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InventoryItem {
     pub id: String,
@@ -209,6 +224,97 @@ pub fn all_ops(conn: &Connection) -> Result<Vec<Op>> {
         .into_iter()
         .filter(|op| !tombstones.contains(&op.id))
         .collect())
+}
+
+fn uses_legacy_entity_snapshot(value: &JsonValue) -> bool {
+    match value {
+        JsonValue::Object(object) => {
+            object.contains_key("goalData")
+                || object.contains_key("listsMetricsData")
+                || object
+                    .get("type")
+                    .and_then(JsonValue::as_str)
+                    .is_some_and(|kind| {
+                        kind == "replace_goal_data" || kind == "replace_lists_metrics_data"
+                    })
+                || object.values().any(uses_legacy_entity_snapshot)
+        }
+        JsonValue::Array(values) => values.iter().any(uses_legacy_entity_snapshot),
+        _ => false,
+    }
+}
+
+fn checkpoint_requires_legacy_compatibility(op: &Op, payload: &JsonValue) -> bool {
+    if op.op_type != "replace_full_state" {
+        return false;
+    }
+    let current_generation = payload
+        .get("generation")
+        .and_then(JsonValue::as_i64)
+        .is_some_and(|generation| generation >= 1);
+    let has_frontiers = payload.get("frontiers").is_some_and(JsonValue::is_object);
+    let has_v2_replaces = payload.get("replaces").is_some();
+    let has_legacy_ids = match payload.get("legacyReplaces") {
+        None => false,
+        Some(JsonValue::Array(ids)) => !ids.is_empty(),
+        Some(_) => true,
+    };
+    !current_generation || !has_frontiers || has_v2_replaces || has_legacy_ids
+}
+
+pub(crate) fn audit_operations_for_legacy_compatibility(
+    operations: &[Op],
+) -> Result<LegacyOperationAudit> {
+    let mut audit = LegacyOperationAudit {
+        records_checked: operations.len(),
+        ..Default::default()
+    };
+    for operation in operations {
+        let payload: JsonValue = serde_json::from_str(&operation.payload_json)
+            .map_err(|error| Error::Codec(format!("invalid operation payload: {error}")))?;
+        if checkpoint_requires_legacy_compatibility(operation, &payload) {
+            audit.legacy_checkpoint_records += 1;
+        }
+        if uses_legacy_entity_snapshot(&payload) {
+            audit.legacy_entity_snapshot_records += 1;
+        }
+    }
+    Ok(audit)
+}
+
+pub fn audit_local_legacy_compatibility(conn: &Connection) -> Result<LocalLegacyAudit> {
+    let mut operation_statement = conn.prepare(SELECT_OPS)?;
+    let operations = operation_statement
+        .query_map([], row_to_op)?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let operation_audit = audit_operations_for_legacy_compatibility(&operations)?;
+    let mut history_statement = conn.prepare(
+        "SELECT undo_operation_json, redo_operation_json FROM history_entries ORDER BY id",
+    )?;
+    let histories = history_statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let mut legacy_history_entries = 0;
+    for (undo, redo) in &histories {
+        let undo: JsonValue = serde_json::from_str(undo)
+            .map_err(|error| Error::Codec(format!("invalid undo history payload: {error}")))?;
+        let redo: JsonValue = serde_json::from_str(redo)
+            .map_err(|error| Error::Codec(format!("invalid redo history payload: {error}")))?;
+        if uses_legacy_entity_snapshot(&undo) || uses_legacy_entity_snapshot(&redo) {
+            legacy_history_entries += 1;
+        }
+    }
+    let tombstone_count = conn.query_row("SELECT count(*) FROM sync_tombstones", [], |row| {
+        row.get::<_, usize>(0)
+    })?;
+    Ok(LocalLegacyAudit {
+        operations: operation_audit,
+        history_entries_checked: histories.len(),
+        legacy_history_entries,
+        tombstone_count,
+    })
 }
 
 pub fn sync_inventory(conn: &Connection) -> Result<SyncInventory> {

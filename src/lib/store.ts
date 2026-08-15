@@ -2237,6 +2237,18 @@ export type SyncSettings = {
   relayUrl: string
 }
 
+export type LegacyMigrationAuditCheck = {
+  id: string
+  label: string
+  passed: boolean
+  detail: string
+}
+
+export type LegacyMigrationAuditResult = {
+  readyOnThisInstallation: boolean
+  checks: LegacyMigrationAuditCheck[]
+}
+
 let cachedSyncSettings: SyncSettings | null = null
 let pendingSyncSettings: Promise<SyncSettings> | null = null
 
@@ -2263,6 +2275,12 @@ export async function getSyncSettings(): Promise<SyncSettings> {
 export async function setSyncRelayUrl(relayUrl: string): Promise<SyncSettings> {
   if (!isTauri()) return { enabled: false, pairingCode: null, relayUrl: relayUrl.trim() }
   return invoke<SyncSettings>('set_sync_relay_url', { relayUrl }).then(rememberSyncSettings)
+}
+
+/** Read-only proof that this installation and its relay no longer need legacy sync compatibility. */
+export async function auditLegacyMigrationReadiness(): Promise<LegacyMigrationAuditResult | null> {
+  if (!isTauri()) return null
+  return invoke<LegacyMigrationAuditResult>('audit_legacy_migration_readiness')
 }
 
 /** Generate a fresh account sync key and return its QR/pairing code. */

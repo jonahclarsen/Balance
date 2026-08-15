@@ -1580,6 +1580,112 @@ fn pairing_code_round_trips_and_rejects_corruption() {
 }
 
 #[test]
+fn removal_audit_accepts_current_checkpoint_and_entity_delta_records() {
+    let scratch = Scratch::new("legacy-audit-current");
+    let connection = open_seeded(
+        &scratch.path,
+        "legacy-audit-current",
+        &state("device-current", json!([])),
+    );
+    checkpoint_operation_log(&connection).unwrap();
+
+    let audit = audit_local_legacy_compatibility(&connection).unwrap();
+    assert_eq!(audit.operations.records_checked, 1);
+    assert_eq!(audit.operations.legacy_checkpoint_records, 0);
+    assert_eq!(audit.operations.legacy_entity_snapshot_records, 0);
+    assert_eq!(audit.legacy_history_entries, 0);
+    assert_eq!(audit.tombstone_count, 0);
+}
+
+#[test]
+fn removal_audit_reports_every_retained_legacy_record_class() {
+    let scratch = Scratch::new("legacy-audit-retained");
+    let connection = open_seeded(
+        &scratch.path,
+        "legacy-audit-retained",
+        &state("device-legacy", json!([])),
+    );
+    connection
+        .execute(
+            "INSERT INTO operations (id, device_id, sequence, type, timestamp, payload_json)
+             VALUES ('legacy-checkpoint', 'device-legacy', 0, 'replace_full_state',
+                     '0000-00-00T00:00:00.000Z', ?1),
+                    ('legacy-entity', 'device-legacy', 1, 'replace_goal_data',
+                     '2026-08-15T00:00:00.000Z', ?2)",
+            params![
+                json!({ "state": state("device-legacy", json!([])), "replaces": ["old-op"] })
+                    .to_string(),
+                json!({ "goalData": { "goals": [], "goalCompletions": [] } }).to_string(),
+            ],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO history_entries
+             (id, operation_id, device_id, sequence, undo_operation_json, redo_operation_json,
+              undone, created_at_ms, updated_at_ms)
+             VALUES ('legacy-history', 'legacy-entity', 'device-legacy', 1, ?1, ?2, 0, 1, 1)",
+            params![
+                json!({
+                    "type": "replace_lists_metrics_data",
+                    "payload": { "listsMetricsData": {} }
+                })
+                .to_string(),
+                json!({ "type": "noop", "payload": {} }).to_string(),
+            ],
+        )
+        .unwrap();
+    connection
+        .execute("INSERT INTO sync_tombstones (id) VALUES ('old-op')", [])
+        .unwrap();
+
+    let audit = audit_local_legacy_compatibility(&connection).unwrap();
+    assert_eq!(audit.operations.legacy_checkpoint_records, 1);
+    assert_eq!(audit.operations.legacy_entity_snapshot_records, 1);
+    assert_eq!(audit.history_entries_checked, 1);
+    assert_eq!(audit.legacy_history_entries, 1);
+    assert_eq!(audit.tombstone_count, 1);
+}
+
+#[test]
+fn removal_audit_reads_current_relay_ciphertext_without_applying_or_exporting_it() {
+    let relay = ReferenceRelay::start();
+    let scratch = Scratch::new("legacy-audit-relay");
+    let connection = open_seeded(
+        &scratch.path,
+        "legacy-audit-relay",
+        &state("device-relay-audit", json!([])),
+    );
+    enable_primary(&connection).unwrap();
+    let key = SyncKey::generate();
+    relay_client::sync_once(
+        &connection,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(false),
+    )
+    .unwrap();
+    let operation_ids_before = local_op_ids(&connection).unwrap();
+
+    let audit = relay_client::audit_legacy_compatibility(&connection, &relay.url, &key).unwrap();
+
+    assert_eq!(audit.relay_protocol, 3);
+    assert!(!audit.previous_generation_present);
+    assert_eq!(audit.legacy_envelope_count, 0);
+    assert!(audit.encrypted_blobs_checked > 0);
+    assert_eq!(audit.legacy_protocol_envelopes, 0);
+    assert_eq!(audit.operations.legacy_checkpoint_records, 0);
+    assert_eq!(audit.operations.legacy_entity_snapshot_records, 0);
+    assert!(audit.local_epoch_initialized);
+    assert!(audit.local_cursor_caught_up);
+    assert_eq!(audit.pending_outbox_batches, 0);
+    assert_eq!(audit.unpublished_local_operations, 0);
+    assert_eq!(audit.quarantined_blobs, 0);
+    assert!(audit.generation_stable);
+    assert_eq!(local_op_ids(&connection).unwrap(), operation_ids_before);
+}
+
+#[test]
 fn a_relay_only_ever_holds_ciphertext_and_never_echoes_a_device_its_own_push() {
     let key = SyncKey::generate();
     let relay = relay::Relay::new();

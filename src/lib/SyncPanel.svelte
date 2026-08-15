@@ -17,7 +17,9 @@
     syncP2pServe,
     syncP2pPeers,
     syncP2pSync,
+    auditLegacyMigrationReadiness,
     plannerStore,
+    type LegacyMigrationAuditResult,
     type SyncPeer,
   } from './store'
   import { automaticSyncStatus, requestSync } from './syncScheduler'
@@ -39,6 +41,9 @@
   let scanning = false
   let copyLabel = 'Copy code'
   let copyTimer: ReturnType<typeof setTimeout> | undefined
+  let auditBusy = false
+  let auditResult: LegacyMigrationAuditResult | null = null
+  let auditError = ''
 
   let localAddress = ''
   let peers: SyncPeer[] = []
@@ -288,6 +293,20 @@
       busy = false
     }
   }
+
+  async function runMigrationAudit() {
+    auditBusy = true
+    auditResult = null
+    auditError = ''
+    try {
+      auditResult = await auditLegacyMigrationReadiness()
+      if (!auditResult) auditError = 'The audit is available only in the Balance app.'
+    } catch (err) {
+      auditError = `Audit failed: ${err}`
+    } finally {
+      auditBusy = false
+    }
+  }
 </script>
 
 <section class="settings-section sync-panel">
@@ -437,6 +456,48 @@
     {#if status}
       <p class="sync-status" class:error={isError} aria-live="polite">{status}</p>
     {/if}
+
+    <div class="migration-audit">
+      <div>
+        <h4>Temporary migration cleanup audit</h4>
+        <p>
+          Checks this encrypted database and the current relay generation in place. Relay
+          ciphertext is decrypted only in memory; no data is exported or changed.
+        </p>
+      </div>
+      <button type="button" on:click={runMigrationAudit} disabled={busy || auditBusy}>
+        {auditBusy ? 'Auditing…' : 'Run removal audit'}
+      </button>
+
+      {#if auditError}
+        <p class="audit-summary error" role="alert">{auditError}</p>
+      {:else if auditResult}
+        <p
+          class="audit-summary"
+          class:ready={auditResult.readyOnThisInstallation}
+          class:error={!auditResult.readyOnThisInstallation}
+          aria-live="polite"
+        >
+          {#if auditResult.readyOnThisInstallation}
+            Ready on this installation and relay. Run this audit on every active Balance
+            installation; when all of them pass, the legacy compatibility code can be removed.
+          {:else}
+            Not ready yet. Resolve the failed checks below, then run the audit again.
+          {/if}
+        </p>
+        <ul class="audit-checks">
+          {#each auditResult.checks as check (check.id)}
+            <li class:passed={check.passed} class:failed={!check.passed}>
+              <span class="audit-icon" aria-hidden="true">{check.passed ? '✓' : '!'}</span>
+              <span>
+                <strong>{check.label}</strong>
+                <small>{check.detail}</small>
+              </span>
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </div>
   </div>
 </section>
 
@@ -534,6 +595,76 @@
   .sync-state {
     font-size: 0.8rem;
     opacity: 0.7;
+  }
+  .migration-audit {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.65rem;
+    margin-top: 0.5rem;
+    padding: 0.85rem;
+    border: 1px solid rgba(127, 127, 127, 0.25);
+    border-radius: 8px;
+  }
+  .migration-audit h4,
+  .migration-audit p {
+    margin: 0;
+  }
+  .migration-audit h4 {
+    margin-bottom: 0.25rem;
+  }
+  .migration-audit > div > p {
+    font-size: 0.82rem;
+    opacity: 0.75;
+  }
+  .audit-summary {
+    font-size: 0.85rem;
+  }
+  .audit-summary.ready {
+    color: #26834a;
+  }
+  .audit-summary.error {
+    color: #c0392b;
+  }
+  .audit-checks {
+    width: 100%;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin: 0;
+    padding: 0;
+  }
+  .audit-checks li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.55rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: 6px;
+    background: rgba(127, 127, 127, 0.08);
+  }
+  .audit-checks li.passed .audit-icon {
+    color: #26834a;
+  }
+  .audit-checks li.failed .audit-icon {
+    color: #c0392b;
+  }
+  .audit-icon {
+    width: 1rem;
+    flex: 0 0 1rem;
+    font-weight: 700;
+  }
+  .audit-checks strong,
+  .audit-checks small {
+    display: block;
+  }
+  .audit-checks strong {
+    font-size: 0.83rem;
+  }
+  .audit-checks small {
+    margin-top: 0.1rem;
+    font-size: 0.76rem;
+    opacity: 0.72;
   }
 
   /* While the native camera scans, it renders *behind* the webview. Hide the

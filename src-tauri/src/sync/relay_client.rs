@@ -15,8 +15,9 @@ use sha2::{Digest, Sha256};
 
 use super::crypto::SyncKey;
 use super::{
-    all_ops, checkpoint_operation_log_preserving_history, merge_and_rematerialize, Error, Op,
-    Result, PROTOCOL_VERSION,
+    all_ops, audit_operations_for_legacy_compatibility,
+    checkpoint_operation_log_preserving_history, merge_and_rematerialize, Error,
+    LegacyOperationAudit, Op, Result, PROTOCOL_VERSION,
 };
 
 const MAX_BATCH_CIPHERTEXT: usize = 512 * 1024;
@@ -64,6 +65,29 @@ pub struct SyncPassResult {
     pub checkpoint_committed: bool,
     pub epoch: String,
     pub latest_sequence: i64,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RelayLegacyAudit {
+    pub relay_protocol: u32,
+    pub previous_generation_present: bool,
+    pub legacy_envelope_count: usize,
+    pub encrypted_blobs_checked: usize,
+    pub legacy_protocol_envelopes: usize,
+    pub operations: LegacyOperationAudit,
+    pub local_epoch_initialized: bool,
+    pub local_cursor_caught_up: bool,
+    pub pending_outbox_batches: usize,
+    pub unpublished_local_operations: usize,
+    pub quarantined_blobs: usize,
+    pub generation_stable: bool,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RelayHealth {
+    protocol: u32,
+    previous_expires_at: Option<i64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -329,6 +353,109 @@ fn fetch_blob(client: &Client, base: &str, id: &str, chunks: usize) -> Result<Ve
         );
     }
     Ok(bytes)
+}
+
+fn legacy_envelope_count(client: &Client, base: &str) -> Result<usize> {
+    let response = client
+        .get(format!("{base}/pull"))
+        .send()
+        .map_err(|error| Error::Codec(format!("legacy relay audit: {error}")))?;
+    if response.status() == StatusCode::NOT_FOUND || response.status() == StatusCode::GONE {
+        return Ok(0);
+    }
+    if !response.status().is_success() {
+        return Err(response_error(response));
+    }
+    let envelopes: Vec<Vec<u8>> = response
+        .json()
+        .map_err(|error| Error::Codec(format!("legacy relay audit response: {error}")))?;
+    Ok(envelopes.len())
+}
+
+/// Inspect current relay ciphertext in memory without applying it or changing
+/// local/remote state. Only aggregate compatibility counts leave this module.
+pub fn audit_legacy_compatibility(
+    conn: &Connection,
+    relay_url: &str,
+    key: &SyncKey,
+) -> Result<RelayLegacyAudit> {
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|error| Error::Codec(error.to_string()))?;
+    let base = relay_url.trim_end_matches('/');
+    let first_health: RelayHealth = get_json(&client, &format!("{base}/health"))?;
+    let first_legacy_count = legacy_envelope_count(&client, base)?;
+    let first = manifest(&client, base, "", 0)?;
+    let mut audit = RelayLegacyAudit {
+        relay_protocol: first_health.protocol,
+        previous_generation_present: first_health.previous_expires_at.is_some(),
+        legacy_envelope_count: first_legacy_count,
+        ..Default::default()
+    };
+
+    let mut inspect = |descriptor: &BlobDescriptor| -> Result<()> {
+        let ciphertext = fetch_blob(&client, base, &descriptor.id, descriptor.chunks)?;
+        let envelope: RelayEnvelope = open(key, &ciphertext)?;
+        if envelope.epoch != first.epoch {
+            return Err(Error::Codec(
+                "relay blob belongs to an unexpected generation".into(),
+            ));
+        }
+        audit.encrypted_blobs_checked += 1;
+        if envelope.v != PROTOCOL_VERSION {
+            audit.legacy_protocol_envelopes += 1;
+        }
+        let operations = audit_operations_for_legacy_compatibility(&envelope.ops)?;
+        audit.operations.records_checked += operations.records_checked;
+        audit.operations.legacy_checkpoint_records += operations.legacy_checkpoint_records;
+        audit.operations.legacy_entity_snapshot_records +=
+            operations.legacy_entity_snapshot_records;
+        Ok(())
+    };
+    if let Some(checkpoint) = &first.checkpoint {
+        inspect(checkpoint)?;
+    }
+    for batch in &first.batches {
+        inspect(&BlobDescriptor {
+            id: batch.id.clone(),
+            chunks: batch.chunks,
+        })?;
+    }
+
+    let (local_epoch, local_cursor) = relay_state(conn)?;
+    audit.local_epoch_initialized = !local_epoch.is_empty();
+    audit.local_cursor_caught_up =
+        local_epoch == first.epoch && local_cursor == first.latest_sequence;
+    audit.pending_outbox_batches =
+        conn.query_row("SELECT count(*) FROM sync_relay_outbox", [], |row| {
+            row.get(0)
+        })?;
+    audit.unpublished_local_operations = conn.query_row(
+        "SELECT count(*)
+         FROM operations AS operation
+         LEFT JOIN sync_relay_known_ops AS known ON known.op_id = operation.id
+         LEFT JOIN sync_tombstones AS tombstone ON tombstone.id = operation.id
+         WHERE known.op_id IS NULL AND tombstone.id IS NULL",
+        [],
+        |row| row.get(0),
+    )?;
+    audit.quarantined_blobs =
+        conn.query_row("SELECT count(*) FROM sync_relay_quarantine", [], |row| {
+            row.get(0)
+        })?;
+
+    let final_manifest = manifest(&client, base, &first.epoch, first.latest_sequence)?;
+    let final_health: RelayHealth = get_json(&client, &format!("{base}/health"))?;
+    let final_legacy_count = legacy_envelope_count(&client, base)?;
+    audit.previous_generation_present |= final_health.previous_expires_at.is_some();
+    audit.legacy_envelope_count = audit.legacy_envelope_count.max(final_legacy_count);
+    audit.generation_stable = final_manifest.epoch == first.epoch
+        && final_manifest.latest_sequence == first.latest_sequence
+        && final_manifest.checkpoint.is_none()
+        && final_manifest.batches.is_empty()
+        && final_health.protocol == first_health.protocol;
+    Ok(audit)
 }
 
 fn relay_state(conn: &Connection) -> Result<(String, i64)> {
