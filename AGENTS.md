@@ -1,6 +1,6 @@
 # Balance — agent guidance
 
-## Always work in an isolated worktree
+## Work in an isolated worktree except for one-edit changes
 
 Before changing any code or project files, create a dedicated Git worktree and
 make the complete change there. The main checkout is often running Balance in
@@ -11,6 +11,11 @@ and push it. Once the change is integrated and pushed, completely remove the
 dedicated worktree and delete its temporary branch so no worktree directory or
 stale Git worktree metadata is left behind. Do not use the main checkout as a
 live editing workspace.
+
+Exception: if a change is genuinely trivial and can be completed with a single
+edit tool call, make it directly on `main` instead of creating a worktree. If it
+requires a second edit or expands in scope, move the work to a dedicated
+worktree before continuing.
 
 ## This is a public repo — never commit secrets
 
