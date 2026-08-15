@@ -81,11 +81,11 @@ assert_running "first-launch" logcat.txt
 
 # The debug app runs an on-device widget self-test after the encrypted database
 # opens. It loads today's native snapshot through SQLCipher + Android Keystore,
-# verifies both providers' home/keyguard metadata, and inflates both RemoteViews.
+# verifies the home-screen provider metadata and inflates its RemoteViews.
 WIDGET_OK=0
 for _ in $(seq 1 10); do
   adb logcat -d > widget-log.txt 2>/dev/null || true
-  if grep -q "BALANCE_WIDGET_E2E: OK home+keyguard native-snapshot" widget-log.txt; then
+  if grep -q "BALANCE_WIDGET_E2E: OK home native-snapshot" widget-log.txt; then
     WIDGET_OK=1
     break
   fi
@@ -101,7 +101,7 @@ if [ "$WIDGET_OK" != 1 ]; then
   grep -iE "BalanceWidgets|AppWidget|nativeSnapshot|UnsatisfiedLink" widget-log.txt | head -40 || true
   exit 1
 fi
-echo "[widgets] home + keyguard providers loaded encrypted data and inflated successfully."
+echo "[widgets] home-screen provider loaded encrypted data and inflated successfully."
 
 # WorkManager is registered only after the activity leaves the foreground, with
 # a fresh 15-minute delay. This prevents an overdue periodic pass from taking the
@@ -319,7 +319,7 @@ fi
 
 # The checks above are the deterministic release gate: a real APK booted twice,
 # exercised SQLCipher + Android Keystore recovery, registered background sync,
-# loaded both widget providers, and reconciled two encrypted databases over TCP.
+# loaded the home-screen widget provider, and reconciled two encrypted databases over TCP.
 # The remaining camera/WebView journey depends on Android's external
 # accessibility dumper, which can wedge even while the app and emulator remain
 # healthy. Keep it available for deliberate CI debugging without charging every
