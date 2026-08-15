@@ -145,9 +145,9 @@ jobs:
       - name: Configure automatic background relay sync
         run: node .github/scripts/configure-android-background-sync.mjs
 
-      - name: Configure home and lock-screen widgets
-        # Generated Android sources are CI-only. This adds both providers,
-        # their RemoteViews/resources, and the native encrypted-DB bridge.
+      - name: Configure home-screen widget
+        # Generated Android sources are CI-only. This adds the provider,
+        # its RemoteViews/resources, and the native encrypted-DB bridge.
         run: node .github/scripts/configure-android-widgets.mjs
 
       - name: Bundle the offline Android barcode model

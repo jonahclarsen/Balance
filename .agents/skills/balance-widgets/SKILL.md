@@ -22,8 +22,7 @@ make a valid-looking widget disappear from the system gallery.
 - Keep the macOS widget-private key inside the widget's Keychain access group and
   device. Do not share it with the host app, store it in preferences, or replace
   it with the database key.
-- Keep Android lock-screen widgets aggregate-only. Task and reminder text belong
-  only on the home-screen widget.
+- Keep Android widget task and reminder text confined to the home screen.
 - Do not build, initialize, link, emulate, or install Android locally. Test the
   generator locally, then use `.github/workflows/android.yml` in CI.
 - Use `pnpm`, not `npm`.
@@ -48,7 +47,7 @@ Read only the files relevant to the requested change:
   `Contents/PlugIns` directory.
 - `src-tauri/src/android_widget.rs`: JNI entry point that reads SQLCipher directly
   and returns the shared snapshot without persisting a second copy.
-- `.github/scripts/configure-android-widgets.mjs`: generates providers, layouts,
+- `.github/scripts/configure-android-widgets.mjs`: generates the provider, layouts,
   manifest entries, activity hooks, and worker hooks in CI.
 - `.github/scripts/configure-android-widgets.test.mjs`: idempotence and security
   assertions for the Android generator.
@@ -225,11 +224,10 @@ the Rust JNI function, which:
    returns it in memory;
 5. persists no task snapshot or database key.
 
-Keep both widget receivers non-exported. Keep the lock-screen widget limited to
-aggregate progress even after adding new snapshot fields. Changes to providers,
-RemoteViews, layouts, the manifest, activity refresh hooks, or background-worker
-refresh hooks belong in `.github/scripts/configure-android-widgets.mjs`, not in
-a locally generated Android tree.
+Keep the widget receiver non-exported. Changes to the provider, RemoteViews,
+layouts, the manifest, activity refresh hooks, or background-worker refresh
+hooks belong in `.github/scripts/configure-android-widgets.mjs`, not in a locally
+generated Android tree.
 
 Run only the generator test locally:
 
@@ -266,5 +264,5 @@ Before committing:
 - confirm no legacy plaintext cache was reintroduced;
 - confirm new snapshot fields degrade safely with older payloads;
 - confirm macOS private content remains privacy-sensitive;
-- confirm Android lock-screen content remains aggregate-only;
+- confirm Android widget content remains home-screen-only;
 - follow the repository's amend-versus-new-commit and push rules.

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 
 const root = process.argv[2] ?? 'src-tauri/gen/android/app/src/main'
@@ -18,8 +18,6 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -31,7 +29,6 @@ import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
 import org.json.JSONObject
-import org.xmlpull.v1.XmlPullParser
 
 data class BalanceWidgetSnapshot(
     val date: String,
@@ -61,13 +58,6 @@ object BalanceWidgets {
             context,
             manager,
             manager.getAppWidgetIds(ComponentName(context, BalanceHomeWidgetProvider::class.java)),
-            false,
-        )
-        update(
-            context,
-            manager,
-            manager.getAppWidgetIds(ComponentName(context, BalanceLockWidgetProvider::class.java)),
-            true,
         )
     }
 
@@ -88,13 +78,11 @@ object BalanceWidgets {
         context: Context,
         manager: AppWidgetManager,
         ids: IntArray,
-        lockScreen: Boolean,
     ) {
         if (ids.isEmpty()) return
         val snapshot = loadSnapshot(context)
         for (id in ids) {
-            val views = if (lockScreen) renderLock(context, snapshot) else renderHome(context, snapshot)
-            manager.updateAppWidget(id, views)
+            manager.updateAppWidget(id, renderHome(context, snapshot))
         }
     }
 
@@ -165,15 +153,6 @@ object BalanceWidgets {
         return views
     }
 
-    private fun renderLock(context: Context, snapshot: BalanceWidgetSnapshot): RemoteViews {
-        val views = RemoteViews(context.packageName, R.layout.balance_lock_widget)
-        // Intentionally omit plan and task text: lock-screen hosts can expose the
-        // widget before authentication, so only aggregate progress belongs here.
-        views.setTextViewText(R.id.lock_widget_progress, status(snapshot))
-        views.setOnClickPendingIntent(R.id.lock_widget_root, openAppIntent(context))
-        return views
-    }
-
     private fun status(snapshot: BalanceWidgetSnapshot): String = when {
         snapshot.unavailable -> "Unlock and open Balance to refresh"
         !snapshot.hasPlan -> "Open Balance to make today's plan"
@@ -231,17 +210,12 @@ object BalanceWidgets {
                 } ?: error("home provider is not installed")
                 check(home.widgetCategory.and(1) != 0) { "home provider category is missing" }
                 check(home.initialLayout != 0) { "home initial layout is missing" }
-                val lockMetadata = providerMetadata(context, BalanceLockWidgetProvider::class.java)
-                check(lockMetadata.first.and(2) != 0) { "keyguard provider category is missing" }
-                check(lockMetadata.second != 0) { "keyguard initial layout is missing" }
-
                 Handler(Looper.getMainLooper()).post {
                     try {
                         check(renderHome(context, snapshot).apply(context, null) != null)
-                        check(renderLock(context, snapshot).apply(context, null) != null)
                         Log.i(
                             "BalanceWidgets",
-                            "BALANCE_WIDGET_E2E: OK home+keyguard native-snapshot",
+                            "BALANCE_WIDGET_E2E: OK home native-snapshot",
                         )
                     } catch (error: Throwable) {
                         Log.e("BalanceWidgets", "BALANCE_WIDGET_E2E: FAIL", error)
@@ -253,39 +227,11 @@ object BalanceWidgets {
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun providerMetadata(context: Context, provider: Class<*>): Pair<Int, Int> {
-        val receiver = context.packageManager.getReceiverInfo(
-            ComponentName(context, provider),
-            PackageManager.GET_META_DATA,
-        )
-        val resource = receiver.metaData
-            ?.getInt(AppWidgetManager.META_DATA_APPWIDGET_PROVIDER)
-            ?: error("widget provider metadata is missing")
-        check(resource != 0) { "widget provider metadata resource is missing" }
-
-        val parser = context.resources.getXml(resource)
-        try {
-            while (parser.eventType != XmlPullParser.END_DOCUMENT) {
-                if (parser.eventType == XmlPullParser.START_TAG && parser.name == "appwidget-provider") {
-                    val namespace = "http://schemas.android.com/apk/res/android"
-                    return Pair(
-                        parser.getAttributeIntValue(namespace, "widgetCategory", 0),
-                        parser.getAttributeResourceValue(namespace, "initialKeyguardLayout", 0),
-                    )
-                }
-                parser.next()
-            }
-        } finally {
-            parser.close()
-        }
-        error("appwidget-provider metadata tag is missing")
-    }
 }
 
 class BalanceHomeWidgetProvider : AppWidgetProvider() {
     override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        BalanceWidgets.update(context, manager, ids, false)
+        BalanceWidgets.update(context, manager, ids)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -295,12 +241,6 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
         } else {
             super.onReceive(context, intent)
         }
-    }
-}
-
-class BalanceLockWidgetProvider : AppWidgetProvider() {
-    override fun onUpdate(context: Context, manager: AppWidgetManager, ids: IntArray) {
-        BalanceWidgets.update(context, manager, ids, true)
     }
 }
 `
@@ -380,39 +320,6 @@ const homeLayout = `<?xml version="1.0" encoding="utf-8"?>
 </LinearLayout>
 `
 
-const lockLayout = `<?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:id="@+id/lock_widget_root"
-    android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/balance_widget_background"
-    android:clickable="true"
-    android:gravity="center_vertical"
-    android:orientation="horizontal"
-    android:paddingHorizontal="16dp"
-    android:paddingVertical="10dp">
-    <TextView
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Balance"
-        android:textColor="#24211D"
-        android:textSize="16sp"
-        android:textStyle="bold" />
-    <TextView
-        android:id="@+id/lock_widget_progress"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="12dp"
-        android:layout_weight="1"
-        android:ellipsize="end"
-        android:gravity="end"
-        android:maxLines="1"
-        android:text="Open Balance"
-        android:textColor="#746A5E"
-        android:textSize="13sp" />
-</LinearLayout>
-`
-
 const styles = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="BalanceWidgetItem">
@@ -439,8 +346,6 @@ const strings = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="balance_home_widget_name">Balance Today</string>
     <string name="balance_home_widget_description">Today’s plan and next tasks</string>
-    <string name="balance_lock_widget_name">Balance Progress</string>
-    <string name="balance_lock_widget_description">Private task progress for the lock screen</string>
 </resources>
 `
 
@@ -460,32 +365,13 @@ const homeInfo = `<?xml version="1.0" encoding="utf-8"?>
     android:widgetCategory="home_screen" />
 `
 
-const lockInfo = `<?xml version="1.0" encoding="utf-8"?>
-<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
-    android:description="@string/balance_lock_widget_description"
-    android:initialKeyguardLayout="@layout/balance_lock_widget"
-    android:initialLayout="@layout/balance_lock_widget"
-    android:minHeight="50dp"
-    android:minResizeHeight="50dp"
-    android:minResizeWidth="180dp"
-    android:minWidth="180dp"
-    android:previewLayout="@layout/balance_lock_widget"
-    android:resizeMode="horizontal"
-    android:targetCellHeight="1"
-    android:targetCellWidth="3"
-    android:updatePeriodMillis="1800000"
-    android:widgetCategory="keyguard" />
-`
-
 const files = new Map([
   [sourcePath, source],
   [join(resPath, 'layout/balance_home_widget.xml'), homeLayout],
-  [join(resPath, 'layout/balance_lock_widget.xml'), lockLayout],
   [join(resPath, 'values/balance_widget_styles.xml'), styles],
   [join(resPath, 'values/balance_widget_strings.xml'), strings],
   [join(resPath, 'drawable/balance_widget_background.xml'), background],
   [join(resPath, 'xml/balance_home_widget_info.xml'), homeInfo],
-  [join(resPath, 'xml/balance_lock_widget_info.xml'), lockInfo],
 ])
 
 for (const [path, content] of files) {
@@ -493,7 +379,18 @@ for (const [path, content] of files) {
   await writeFile(path, content)
 }
 
+for (const path of [
+  join(resPath, 'layout/balance_lock_widget.xml'),
+  join(resPath, 'xml/balance_lock_widget_info.xml'),
+]) {
+  await rm(path, { force: true })
+}
+
 let manifest = await readFile(manifestPath, 'utf8')
+manifest = manifest.replace(
+  /\n[ \t]*<receiver\b(?=[^>]*android:name="\.BalanceLockWidgetProvider")[\s\S]*?<\/receiver>/g,
+  '',
+)
 if (!manifest.includes('BalanceHomeWidgetProvider')) {
   const closingApplication = /^(\s*)<\/application>/m
   const match = manifest.match(closingApplication)
@@ -509,21 +406,10 @@ ${indent}        </intent-filter>
 ${indent}        <meta-data
 ${indent}            android:name="android.appwidget.provider"
 ${indent}            android:resource="@xml/balance_home_widget_info" />
-${indent}    </receiver>
-${indent}    <receiver
-${indent}        android:name=".BalanceLockWidgetProvider"
-${indent}        android:exported="false"
-${indent}        android:label="@string/balance_lock_widget_name">
-${indent}        <intent-filter>
-${indent}            <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-${indent}        </intent-filter>
-${indent}        <meta-data
-${indent}            android:name="android.appwidget.provider"
-${indent}            android:resource="@xml/balance_lock_widget_info" />
 ${indent}    </receiver>`
   manifest = manifest.replace(closingApplication, `${receivers}\n$&`)
-  await writeFile(manifestPath, manifest)
 }
+await writeFile(manifestPath, manifest)
 
 let activity = await readFile(activityPath, 'utf8')
 if (!activity.includes('BalanceWidgets.scheduleSelfTest(this)')) {
@@ -587,4 +473,4 @@ try {
   if (error.code !== 'ENOENT') throw error
 }
 
-console.log(`Configured Android home and lock-screen widgets in ${root}`)
+console.log(`Configured Android home-screen widget in ${root}`)

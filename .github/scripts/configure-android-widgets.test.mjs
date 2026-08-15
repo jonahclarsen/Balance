@@ -14,7 +14,7 @@ async function write(path, content) {
   await writeFile(path, content)
 }
 
-test('configures both Android widget providers idempotently', async () => {
+test('configures the Android home-screen widget idempotently', async () => {
   const fixture = await mkdtemp(join(tmpdir(), 'balance-widgets-'))
   const root = join(fixture, 'app/src/main')
   const activity = join(root, 'java/app/balance/local/MainActivity.kt')
@@ -25,6 +25,14 @@ test('configures both Android widget providers idempotently', async () => {
       join(root, 'AndroidManifest.xml'),
       `<manifest xmlns:android="http://schemas.android.com/apk/res/android">
   <application android:label="Balance">
+    <receiver
+        android:name=".BalanceLockWidgetProvider"
+        android:exported="false"
+        android:label="@string/balance_lock_widget_name">
+      <meta-data
+          android:name="android.appwidget.provider"
+          android:resource="@xml/balance_lock_widget_info" />
+    </receiver>
   </application>
 </manifest>
 `,
@@ -66,16 +74,17 @@ class BalanceSyncWorker {
 }
 `,
     )
+    await write(join(root, 'res/layout/balance_lock_widget.xml'), '<stale-lock-layout />')
+    await write(join(root, 'res/xml/balance_lock_widget_info.xml'), '<stale-lock-info />')
 
     await execute(process.execPath, [script, root, activity, worker])
     await execute(process.execPath, [script, root, activity, worker])
 
     const manifest = await readFile(join(root, 'AndroidManifest.xml'), 'utf8')
     assert.equal((manifest.match(/BalanceHomeWidgetProvider/g) ?? []).length, 1)
-    assert.equal((manifest.match(/BalanceLockWidgetProvider/g) ?? []).length, 1)
-    assert.equal((manifest.match(/android:exported="false"/g) ?? []).length, 2)
+    assert.doesNotMatch(manifest, /BalanceLockWidgetProvider|balance_lock_widget/)
+    assert.equal((manifest.match(/android:exported="false"/g) ?? []).length, 1)
     assert.match(manifest, /@xml\/balance_home_widget_info/)
-    assert.match(manifest, /@xml\/balance_lock_widget_info/)
 
     const configuredActivity = await readFile(activity, 'utf8')
     assert.equal(
@@ -102,10 +111,8 @@ class BalanceSyncWorker {
     )
     assert.match(kotlin, /external fun nativeSnapshot/)
     assert.doesNotMatch(kotlin, /SharedPreferences|openFileOutput|writeText/)
-    assert.match(kotlin, /getReceiverInfo/)
-    assert.match(kotlin, /getAttributeIntValue/)
-    assert.match(kotlin, /initialKeyguardLayout/)
-    assert.match(kotlin, /BALANCE_WIDGET_E2E: OK home\+keyguard native-snapshot/)
+    assert.doesNotMatch(kotlin, /BalanceLockWidgetProvider|renderLock|balance_lock_widget/)
+    assert.match(kotlin, /BALANCE_WIDGET_E2E: OK home native-snapshot/)
     assert.match(kotlin, /R\.id\.widget_item_10/)
     assert.match(kotlin, /val itemDepths: List<Int>/)
     assert.match(kotlin, /val itemTimes: List<String>/)
@@ -123,13 +130,15 @@ class BalanceSyncWorker {
       join(root, 'res/xml/balance_home_widget_info.xml'),
       'utf8',
     )
-    const lockInfo = await readFile(
-      join(root, 'res/xml/balance_lock_widget_info.xml'),
-      'utf8',
-    )
     assert.match(homeInfo, /widgetCategory="home_screen"/)
-    assert.match(lockInfo, /widgetCategory="keyguard"/)
-    assert.match(lockInfo, /initialKeyguardLayout="@layout\/balance_lock_widget"/)
+    await assert.rejects(
+      readFile(join(root, 'res/layout/balance_lock_widget.xml'), 'utf8'),
+      { code: 'ENOENT' },
+    )
+    await assert.rejects(
+      readFile(join(root, 'res/xml/balance_lock_widget_info.xml'), 'utf8'),
+      { code: 'ENOENT' },
+    )
   } finally {
     await rm(fixture, { recursive: true, force: true })
   }
