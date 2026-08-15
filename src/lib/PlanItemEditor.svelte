@@ -502,7 +502,7 @@
         revision={historyRevision}
         onChange={(html, text, options) => patchItem(planId, item.id, { html, text }, options)}
         onArrowKey={handleTextArrowKey}
-        interceptShiftArrow
+        interceptShiftArrowAtBoundary
         onSplit={handleTextSplit}
         onBackspaceEmpty={handleBackspaceEmpty}
         onBackspaceStart={handleBackspaceStart}

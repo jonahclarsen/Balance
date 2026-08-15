@@ -293,7 +293,7 @@
         {revision}
         onChange={handleTextChange}
         onArrowKey={(direction, editor, event) => handleTextArrowKey(direction, editor, event)}
-        interceptShiftArrow
+        interceptShiftArrowAtBoundary
         onSplit={(before, after) => handleTextSplit(before, after)}
         onTabKey={handleTextTab}
         onBackspaceEmpty={handleBackspaceEmpty}

@@ -1736,6 +1736,38 @@ test('ArrowUp stays within a multi-line plan item when the caret is on a blank l
   expect(await activeInputValue(page)).toBe('Previous')
 })
 
+test('shift vertical arrows select multiline plan text until the caret reaches an edge line', async ({ page }) => {
+  await seedPlanItems(page, ['Previous', 'TopMiddleBottom', 'Next'])
+
+  await focusInputByValue(page, 'TopMiddleBottom')
+  await page.evaluate(() => {
+    const editor = document.activeElement
+    if (!(editor instanceof HTMLDivElement)) throw new Error('Expected a focused plan item editor')
+    editor.innerHTML = 'Top<br>Middle<br>Bottom'
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+  })
+
+  // Shift+Up/Down on the middle line retain native contenteditable selection.
+  for (const key of ['Shift+ArrowUp', 'Shift+ArrowDown']) {
+    await setCaretOffsetInFocusedEditor(page, 6)
+    await page.keyboard.press(key)
+    await expect.poll(async () => selectedText(page)).toMatch(/\S/)
+    await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(0)
+  }
+
+  // Once the caret is on the last/first visual line, the same shortcuts retain
+  // their whole-task selection behavior.
+  await setCaretOffsetInFocusedEditor(page, 11)
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(2)
+
+  await page.keyboard.press('Escape')
+  await focusInputByValue(page, 'TopMiddleBottom')
+  await setCaretOffsetInFocusedEditor(page, 2)
+  await page.keyboard.press('Shift+ArrowUp')
+  await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(2)
+})
+
 test('template item text fields support arrow focus and option-arrow sibling moves', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -3144,6 +3176,32 @@ test('list template items support horizontal boundary navigation and backspace m
 
   await page.keyboard.press('Meta+Z')
   await expect.poll(async () => listTemplateTopLevelTexts(page)).toEqual(['First item', 'Second item'])
+})
+
+test('shift vertical arrows select multiline list-template text until the caret reaches an edge line', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Add list item' }).click()
+
+  const inputs = page.locator('[data-list-template-text-input]')
+  await inputs.nth(1).fill('Second item')
+  await inputs.first().focus()
+  await inputs.first().evaluate((editor) => {
+    editor.innerHTML = 'Top<br>Middle<br>Bottom'
+    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+  })
+
+  await setCaretOffsetInFocusedEditor(page, 6)
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect.poll(async () => selectedText(page)).toMatch(/\S/)
+  await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(0)
+
+  await setCaretOffsetInFocusedEditor(page, 11)
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(2)
 })
 
 test('list template indent and outdent preserve the caret position', async ({ page }) => {
