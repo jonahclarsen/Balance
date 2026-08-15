@@ -186,6 +186,22 @@ if [ "$SYNC_OK" != 1 ]; then
   exit 1
 fi
 echo "[sync] paired Android databases exchanged E2EE data over TCP and converged."
+SYNC_PROFILE_OK=0
+if grep -q "BALANCE_SYNC_E2E_PROFILE:" sync-log.txt; then
+  grep "BALANCE_SYNC_E2E_PROFILE:" sync-log.txt \
+    | tail -1 \
+    | sed 's/^.*BALANCE_SYNC_E2E_PROFILE: //' \
+    > sync-e2e-large-task-profile.json
+  python3 -m json.tool sync-e2e-large-task-profile.json
+  python3 -c 'import json; p=json.load(open("sync-e2e-large-task-profile.json")); assert p["fixturePlans"] == 365; assert p["fixturePlanItems"] == 7300'
+  SYNC_PROFILE_OK=1
+fi
+if [ "$SYNC_PROFILE_OK" != 1 ]; then
+  echo "[sync-profile] long-task profile marker never appeared."
+  grep "BALANCE_SYNC_E2E" sync-log.txt | tail -20 || true
+  exit 1
+fi
+echo "[sync-profile] synthetic large-workspace / long-duration-task timings captured."
 
 # Profile only synthetic, app-generated data. The native harness compares the
 # current two-connection blocking startup path with the same work performed on

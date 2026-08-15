@@ -11,6 +11,8 @@ on:
       - "relay-worker/**"
       - "scripts/profile-empty-relay-poll.mjs"
       - "src/lib/syncScheduler.ts"
+      - "src-tauri/src/lib.rs"
+      - "src-tauri/src/sync/**"
   pull_request:
     paths:
       - ".github/workflows/sync-profile.yml"
@@ -18,6 +20,8 @@ on:
       - "relay-worker/**"
       - "scripts/profile-empty-relay-poll.mjs"
       - "src/lib/syncScheduler.ts"
+      - "src-tauri/src/lib.rs"
+      - "src-tauri/src/sync/**"
   workflow_dispatch:
 
 permissions:
@@ -60,3 +64,50 @@ jobs:
           path: |
             empty-poll-profile.json
             empty-poll-profile.txt
+
+  large-task-sync:
+    name: Large workspace + two long tasks
+    runs-on: macos-15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-large-task-sync-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-large-task-sync-
+
+      - name: Profile two-task incremental relay sync
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml \
+            sync::tests::a_large_workspace_receives_two_long_duration_tasks_over_the_relay \
+            -- --exact --ignored --nocapture 2>&1 | tee large-task-sync-profile.txt
+          {
+            echo '## Large workspace + two long tasks'
+            echo
+            echo '```text'
+            grep 'BALANCE_RELAY_LARGE_TASK_PROFILE:' large-task-sync-profile.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload profile results
+        uses: actions/upload-artifact@v7
+        with:
+          name: large-task-sync-profile
+          path: large-task-sync-profile.txt

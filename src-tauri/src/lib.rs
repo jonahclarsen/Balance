@@ -8969,18 +8969,30 @@ pub fn run() {
             {
                 if is_android_owner_user() {
                     let handle = app.handle();
-                    let outcome = (|| -> Result<(), String> {
+                    let outcome = (|| -> Result<Option<sync::SyncSelftestProfile>, String> {
                         let scratch = app_database_path(handle)?
                             .parent()
                             .ok_or("no data dir")?
                             .to_path_buf();
-                        sync::selftest(&scratch).map_err(sync::Error::into_string)
+                        let profile_marker = scratch.join("large-sync-profile-complete");
+                        if profile_marker.exists() {
+                            return Ok(None);
+                        }
+                        let profile = sync::selftest(&scratch).map_err(sync::Error::into_string)?;
+                        fs::write(&profile_marker, b"complete")
+                            .map_err(|error| error.to_string())?;
+                        Ok(Some(profile))
                     })();
                     match outcome {
-                        Ok(()) => {
+                        Ok(Some(profile)) => {
+                            let profile = serde_json::to_string(&profile)
+                                .unwrap_or_else(|error| format!("{{\"error\":\"{error}\"}}"));
+                            log::info!("BALANCE_SYNC_E2E_PROFILE: {profile}");
+                            eprintln!("BALANCE_SYNC_E2E_PROFILE: {profile}");
                             log::info!("BALANCE_SYNC_E2E: OK");
                             eprintln!("BALANCE_SYNC_E2E: OK");
                         }
+                        Ok(None) => {}
                         Err(e) => {
                             log::error!("BALANCE_SYNC_E2E: FAIL {e}");
                             eprintln!("BALANCE_SYNC_E2E: FAIL {e}");
