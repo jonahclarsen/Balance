@@ -1,0 +1,4 @@
+interface:
+  display_name: "Balance Widgets"
+  short_description: "Build and debug Balance widgets safely"
+  default_prompt: "Use $balance-widgets to implement or debug a Balance macOS or Android widget change safely."
