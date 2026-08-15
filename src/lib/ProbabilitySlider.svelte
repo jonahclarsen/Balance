@@ -26,6 +26,51 @@
     onChange(Number.isFinite(next) ? clampToStep(next) : min)
   }
 
+  let activePointerId: number | null = null
+
+  // Native range controls keep their thumb center inset from both ends. That
+  // makes their effective drag track narrower than our edge-to-edge custom
+  // track, so the visual thumb reaches min/max before the pointer reaches the
+  // corresponding end. Map pointer gestures against the visible bounds while
+  // retaining the native input for keyboard and accessibility support.
+  function updateFromPointer(input: HTMLInputElement, clientX: number) {
+    const bounds = input.getBoundingClientRect()
+    if (bounds.width <= 0) return
+
+    const ratio = Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width))
+    onChange(clampToStep(min + ratio * (max - min)))
+  }
+
+  function handlePointerDown(event: PointerEvent) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+
+    const input = event.currentTarget as HTMLInputElement
+    event.preventDefault()
+    input.focus({ preventScroll: true })
+    activePointerId = event.pointerId
+    input.setPointerCapture(event.pointerId)
+    updateFromPointer(input, event.clientX)
+  }
+
+  function handlePointerMove(event: PointerEvent) {
+    if (event.pointerId !== activePointerId) return
+    event.preventDefault()
+    updateFromPointer(event.currentTarget as HTMLInputElement, event.clientX)
+  }
+
+  function finishPointer(event: PointerEvent) {
+    if (event.pointerId !== activePointerId) return
+
+    const input = event.currentTarget as HTMLInputElement
+    updateFromPointer(input, event.clientX)
+    activePointerId = null
+    if (input.hasPointerCapture(event.pointerId)) input.releasePointerCapture(event.pointerId)
+  }
+
+  function cancelPointer(event: PointerEvent) {
+    if (event.pointerId === activePointerId) activePointerId = null
+  }
+
   // Commit the typed value on change/blur so intermediate keystrokes aren't
   // clamped mid-entry; revert the box if the field is left empty/invalid.
   function handleNumberChange(event: Event) {
@@ -57,6 +102,10 @@
       value={value}
       aria-label={ariaLabel}
       on:input={handleInput}
+      on:pointerdown={handlePointerDown}
+      on:pointermove={handlePointerMove}
+      on:pointerup={finishPointer}
+      on:pointercancel={cancelPointer}
     />
   </div>
   {#if editable}

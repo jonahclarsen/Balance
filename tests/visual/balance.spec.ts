@@ -3274,6 +3274,31 @@ test('list template item appearance probability grandfathers saved values below 
     .toEqual([10, 30])
 })
 
+test('list template appearance slider uses the full visible track for pointer dragging', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'New list template' }).click()
+
+  const probability = page.getByLabel('Appearance probability')
+  const sliderBox = await probability.boundingBox()
+  if (!sliderBox) throw new Error('Missing appearance slider geometry')
+
+  const y = sliderBox.y + sliderBox.height / 2
+  await page.mouse.move(sliderBox.x + sliderBox.width / 2, y)
+  await page.mouse.down()
+  await page.mouse.move(sliderBox.x + 10, y)
+  await page.mouse.up()
+  await expect(probability).toHaveValue('40')
+
+  await page.mouse.move(sliderBox.x + 10, y)
+  await page.mouse.down()
+  await page.mouse.move(sliderBox.x + sliderBox.width - 10, y)
+  await page.mouse.up()
+  await expect(probability).toHaveValue('90')
+})
+
 test('nested list items include ancestor probabilities in expected words and cap checks', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {
