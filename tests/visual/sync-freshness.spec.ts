@@ -102,6 +102,12 @@ test.beforeEach(async ({ page }) => {
             if (new URLSearchParams(location.search).has('hold-settings')) {
               return new Promise(() => undefined)
             }
+            if (
+              new URLSearchParams(location.search).has('hold-second-settings') &&
+              runtime.__syncSettingsCount > 1
+            ) {
+              return new Promise(() => undefined)
+            }
             return {
               enabled: true,
               pairingCode: 'BALSYNC1:synthetic-test-code',
@@ -151,6 +157,10 @@ test.beforeEach(async ({ page }) => {
               operationBytes: 128,
               checkpointRecommended: false,
             }
+          case 'sync_p2p_serve':
+            return null
+          case 'sync_p2p_peers':
+            return []
           case 'plugin:event|listen':
           case 'plugin:event|unlisten':
             return 1
@@ -185,6 +195,23 @@ test('a slow launch sync leaves local state visible without a progress banner', 
 
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
+})
+
+test('settings stay available while a launch sync is still running', async ({ page }) => {
+  await page.goto('/?hold-sync=1&hold-second-settings=1')
+
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __syncAttemptCount: number }
+    return runtime.__syncAttemptCount
+  })).toBe(1)
+  await page.getByRole('button', { name: /Settings/ }).click()
+
+  await expect(page.getByText('Loading sync settings…')).toHaveCount(0)
+  await expect(page.getByText('BALSYNC1:synthetic-test-code')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __syncSettingsCount: number }
+    return runtime.__syncSettingsCount
+  })).toBe(1)
 })
 
 test('an unsuccessful launch sync marks the visible local state as potentially stale', async ({ page }, testInfo) => {

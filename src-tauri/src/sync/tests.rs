@@ -381,19 +381,149 @@ fn a_large_relay_bootstrap_finishes_for_a_foreground_joiner() {
         .to_string()
         .contains("the pending sync is large and will finish next time Balance is open"));
 
-    // Joiners cannot promote checkpoints, but foreground status—not coordinator
-    // authority—is what permits this download to finish.
+    // Foreground status permits both large downloads and safe compare-and-swap
+    // relay compaction, regardless of which device originally created the room.
     let joined = relay_client::sync_once(
         &b,
         &relay.url,
         &key,
-        relay_client::SyncOptions::foreground(false),
+        relay_client::SyncOptions::foreground(true),
     )
     .unwrap();
     assert!(joined.state_changed);
     assert_eq!(
         domain(&read_app_state_from_database(&a).unwrap().unwrap()),
         domain(&read_app_state_from_database(&b).unwrap().unwrap())
+    );
+}
+
+#[test]
+fn a_foreground_joiner_can_promote_one_oversized_operation() {
+    let relay = ReferenceRelay::start();
+    let sa = Scratch::new("large-joiner-a");
+    let sb = Scratch::new("large-joiner-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let mut b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let key = SyncKey::generate();
+
+    relay_client::sync_once(
+        &a,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    relay_client::sync_once(
+        &b,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+
+    let mut random = vec![0_u8; 800 * 1024];
+    rand::rngs::OsRng.fill_bytes(&mut random);
+    let large_value = hex(&random);
+    persist_operation_to_database(
+        &mut b,
+        &set_active_plan_date_op(
+            "large-joiner-operation",
+            "device-B",
+            1,
+            "2026-08-14T12:00:00Z",
+            &large_value,
+        ),
+    )
+    .unwrap();
+
+    let compacted = relay_client::sync_once(
+        &b,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert!(compacted.checkpoint_committed);
+
+    let received = relay_client::sync_once(
+        &a,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert!(received.state_changed);
+    assert_eq!(
+        read_app_state_from_database(&a).unwrap().unwrap()["activePlanDate"],
+        large_value,
+    );
+}
+
+#[test]
+fn a_foreground_joiner_compacts_an_accumulated_generation() {
+    let relay = ReferenceRelay::start();
+    let sa = Scratch::new("generation-uploader");
+    let sb = Scratch::new("generation-compactor");
+    let mut a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let key = SyncKey::generate();
+
+    relay_client::sync_once(
+        &a,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    relay_client::sync_once(
+        &b,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+
+    // Model the original coordinator being unavailable for compaction while
+    // another device steadily fills the relay generation with valid deltas.
+    // The relay begins recommending compaction at 128 batches.
+    for sequence in 1..=128 {
+        let date = format!("generation-value-{sequence}");
+        persist_operation_to_database(
+            &mut a,
+            &set_active_plan_date_op(
+                &format!("generation-op-{sequence}"),
+                "device-A",
+                sequence,
+                "2026-08-14T12:00:00Z",
+                &date,
+            ),
+        )
+        .unwrap();
+        relay_client::sync_once(
+            &a,
+            &relay.url,
+            &key,
+            relay_client::SyncOptions::foreground(false),
+        )
+        .unwrap();
+    }
+
+    let compacted = relay_client::sync_once(
+        &b,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert!(compacted.checkpoint_committed);
+    assert_eq!(compacted.pulled_operations, 128);
+    assert_eq!(
+        read_app_state_from_database(&b).unwrap().unwrap()["activePlanDate"],
+        "generation-value-128",
     );
 }
 
