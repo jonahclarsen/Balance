@@ -2870,10 +2870,13 @@ return rows`
       return
     }
 
-    const targetId = activeFocusedItemId() ?? selectedRootIds().at(-1) ?? null
+    const explicitTargetId = activeFocusedItemId() ?? selectedRootIds().at(-1) ?? null
+    const emptyPlaceholderId = explicitTargetId ? null : soleEmptyTemplateItemId(structured.kind)
+    const targetId = explicitTargetId ?? emptyPlaceholderId
+    const placement = targetId && isEmptyTemplateLeaf(structured.kind, targetId) ? 'replace' : 'after'
     const pastedIds = structured.kind === 'day-template'
-      ? plannerStore.pasteTemplateItems(containerId, structured.items, targetId, 'after')
-      : plannerStore.pasteListTemplateItems(containerId, structured.items, targetId, 'after')
+      ? plannerStore.pasteTemplateItems(containerId, structured.items, targetId, placement)
+      : plannerStore.pasteListTemplateItems(containerId, structured.items, targetId, placement)
     if (pastedIds.length === 0) return
 
     selectedItemIds = pastedIds
@@ -3367,6 +3370,38 @@ return rows`
     return Boolean(
       item && item.text.trim() === '' && item.html.trim() === '' && item.children.length === 0,
     )
+  }
+
+  function soleEmptyTemplateItemId(kind: TemplateItemClipboard['kind']): Id | null {
+    const items = kind === 'day-template' ? selectedTemplate?.items : selectedListTemplate?.items
+    const item = items?.length === 1 ? items[0] : null
+    return item && isEmptyTemplateLeaf(kind, item.id) ? item.id : null
+  }
+
+  function isEmptyTemplateLeaf(kind: TemplateItemClipboard['kind'], itemId: Id): boolean {
+    if (kind === 'day-template') {
+      const item = findTreeItem(selectedTemplate?.items ?? [], itemId)
+      return Boolean(
+        item &&
+        item.children.length === 0 &&
+        item.options.every((option) => option.text.trim() === '' && option.html.trim() === ''),
+      )
+    }
+
+    const item = findTreeItem(selectedListTemplate?.items ?? [], itemId)
+    return Boolean(
+      item && item.children.length === 0 && item.text.trim() === '' && item.html.trim() === '',
+    )
+  }
+
+  function findTreeItem<T extends { id: Id; children: T[] }>(items: T[], itemId: Id): T | null {
+    for (const item of items) {
+      if (item.id === itemId) return item
+      const child = findTreeItem(item.children, itemId)
+      if (child) return child
+    }
+
+    return null
   }
 
   function planItemIdWithCaretAtStart(): Id | null {

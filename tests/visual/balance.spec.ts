@@ -3293,6 +3293,43 @@ test('day template rows support multi-select copy, cut, paste, and keyboard dele
   await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual(original.slice(0, -1))
 })
 
+test('pasting a day-template item replaces the sole empty placeholder', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+
+  const sourceText = 'Wake up'
+  const sourceInput = page.locator('[data-template-option-text-input]').filter({ hasText: sourceText })
+  await sourceInput.locator('xpath=ancestor::*[@data-template-item-id][1]').getByRole('button', { name: 'Select item' }).click()
+  await page.keyboard.press('Meta+C')
+  await page.locator('[aria-label="Select day template"] .dashed-edge').click()
+  await page.keyboard.press('Meta+V')
+
+  await expect(page.locator('[data-template-item-id]')).toHaveCount(1)
+  await expect(page.locator('[data-template-option-text-input]')).toHaveText(sourceText)
+})
+
+test('pasting a list-template item replaces the sole empty placeholder', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'New list template' }).click()
+
+  const sourceText = 'First item'
+  const sourceInput = page.locator('[data-list-template-text-input]').filter({ hasText: sourceText })
+  await sourceInput.locator('xpath=ancestor::*[@data-list-template-item-id][1]').getByRole('button', { name: 'Select item' }).click()
+  await page.keyboard.press('Meta+C')
+  await page.locator('[aria-label="Select list template"] .dashed-edge').click()
+  await page.locator('[data-list-template-text-input]').fill('')
+  await page.locator('[data-list-template-tab-id][aria-current="true"]').click()
+  await page.keyboard.press('Meta+V')
+
+  await expect(page.locator('[data-list-template-item-id]')).toHaveCount(1)
+  await expect(page.locator('[data-list-template-text-input]')).toHaveText(sourceText)
+})
+
 test('day template items support horizontal boundary navigation and backspace merging', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
