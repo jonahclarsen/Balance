@@ -6,16 +6,13 @@ use zeroize::{Zeroize, Zeroizing};
 
 pub const RAW_KEY_FORMAT: &str = "raw-hkdf-sha256-v1";
 const RAW_KEY_CONTEXT: &[u8] = b"app.balance.local/sqlcipher/raw-key/v1";
-const LEGACY_RECOVERY_KEY_BYTES: usize = 20;
 const CURRENT_RECOVERY_KEY_BYTES: usize = 32;
 
 /// Secret recovery material accepted by Balance.
 ///
-/// TODO(raw-key-migration-removal): after the sole pre-raw installation is
-/// confirmed migrated, remove the 20-byte legacy allowance and `is_legacy`.
 /// Raw SQLCipher keys are safe only because this parser accepts CSPRNG output
 /// of an exact supported length; never relax it to accept passwords or
-/// arbitrary text. HKDF expands bytes but cannot add entropy to a legacy key.
+/// arbitrary text.
 pub struct RecoveryKey {
     canonical: Zeroizing<String>,
     bytes: Zeroizing<Vec<u8>>,
@@ -31,8 +28,8 @@ impl RecoveryKey {
         let bytes = BASE32_NOPAD
             .decode(compact.as_bytes())
             .map_err(|_| "Recovery key is not valid Base32.".to_string())?;
-        if bytes.len() != LEGACY_RECOVERY_KEY_BYTES && bytes.len() != CURRENT_RECOVERY_KEY_BYTES {
-            return Err("Recovery key must contain exactly 160 or 256 random bits.".to_string());
+        if bytes.len() != CURRENT_RECOVERY_KEY_BYTES {
+            return Err("Recovery key must contain exactly 256 random bits.".to_string());
         }
         let canonical = compact
             .as_bytes()
@@ -68,18 +65,11 @@ impl RecoveryKey {
         self.canonical.as_str()
     }
 
-    pub fn is_legacy(&self) -> bool {
-        self.bytes.len() == LEGACY_RECOVERY_KEY_BYTES
-    }
-
     /// Return SQLCipher's exact 32-byte raw-key literal.
     ///
     /// RAW_KEY_CONTEXT is permanent on-disk format data. Editing it would make
     /// every raw-v1 database unreadable; introduce a new format variant instead.
     pub fn raw_sqlcipher_key(&self) -> Result<Zeroizing<String>, String> {
-        if self.bytes.len() != CURRENT_RECOVERY_KEY_BYTES {
-            return Err("Only a 256-bit recovery key may create a raw database.".to_string());
-        }
         let hkdf = Hkdf::<Sha256>::new(None, self.bytes.as_slice());
         let mut output = [0_u8; 32];
         hkdf.expand(RAW_KEY_CONTEXT, &mut output)
@@ -109,16 +99,12 @@ mod tests {
     }
 
     #[test]
-    fn parser_normalizes_supported_keys_and_rejects_passwords() {
+    fn parser_normalizes_current_keys_and_rejects_other_lengths() {
         let generated = RecoveryKey::generate();
         let normalized = RecoveryKey::parse(&generated.canonical().to_ascii_lowercase()).unwrap();
         assert_eq!(normalized.canonical(), generated.canonical());
         assert!(RecoveryKey::parse("correct horse battery staple").is_err());
-
-        let legacy = BASE32_NOPAD.encode(&[7_u8; 20]);
-        let legacy = RecoveryKey::parse(&legacy).unwrap();
-        assert!(legacy.is_legacy());
-        assert!(legacy.raw_sqlcipher_key().is_err());
+        assert!(RecoveryKey::parse(&BASE32_NOPAD.encode(&[7_u8; 20])).is_err());
     }
 
     #[test]
