@@ -1,0 +1,142 @@
+name: Set up Balance Android build
+description: Prepare the shared toolchain and generated Android project for one ABI.
+
+inputs:
+  variant:
+    description: Cache namespace for this build variant.
+    required: true
+  rust-target:
+    description: Rust Android target triple required by this build.
+    required: true
+  generate-sync-fixture:
+    description: Whether to generate the QR fixture consumed by the emulator job.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v6
+      with:
+        run_install: false
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v6
+      with:
+        node-version: 24
+        cache: pnpm
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: "17"
+
+    - name: Set up Gradle cache
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        # Tag caches are useful for reruns of a failed or benchmarked release.
+        cache-read-only: false
+
+    - name: Select the installed Android SDK and NDK
+      shell: bash
+      run: |
+        SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
+        if [[ -z "$SDK_ROOT" || ! -d "$SDK_ROOT" ]]; then
+          echo "::error::The hosted runner did not provide an Android SDK"
+          exit 1
+        fi
+
+        SDK_MANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' | LC_ALL=C sort | tail -n 1)"
+        if [[ -z "$SDK_MANAGER" || ! -x "$SDK_MANAGER" ]]; then
+          echo "::error::Could not find sdkmanager under $SDK_ROOT"
+          exit 1
+        fi
+
+        packages=()
+        [[ -x "$SDK_ROOT/platform-tools/adb" ]] || packages+=("platform-tools")
+        [[ -d "$SDK_ROOT/platforms/android-34" ]] || packages+=("platforms;android-34")
+        [[ -x "$SDK_ROOT/build-tools/34.0.0/apksigner" ]] || packages+=("build-tools;34.0.0")
+        if [[ ! -d "$SDK_ROOT/ndk" ]] || ! find "$SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d -print -quit | grep -q .; then
+          packages+=("ndk;29.0.14206865")
+        fi
+
+        if (( ${#packages[@]} > 0 )); then
+          echo "Installing missing Android packages: ${packages[*]}"
+          "$SDK_MANAGER" "${packages[@]}"
+        fi
+
+        # Tauri 2.11 selects the lexicographically newest installed NDK. Select
+        # that same directory here so openssl-src and Tauri never mix toolchains.
+        NDK="$(find "$SDK_ROOT/ndk" -mindepth 1 -maxdepth 1 -type d | LC_ALL=C sort | tail -n 1)"
+        if [[ -z "$NDK" || ! -d "$NDK" ]]; then
+          echo "::error::Could not find an installed Android NDK"
+          exit 1
+        fi
+
+        echo "Using Android SDK $SDK_ROOT"
+        echo "Using Android NDK $NDK"
+        echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+        echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+        echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+        echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+        echo "NDK_HOME=$NDK" >> "$GITHUB_ENV"
+
+        # openssl-src still invokes the GCC-era binutil names. Modern NDKs only
+        # ship llvm-prefixed binaries, so expose compatible names in the exact
+        # NDK Tauri selected above.
+        TOOLCHAIN="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        test -d "$TOOLCHAIN"
+        echo "$TOOLCHAIN" >> "$GITHUB_PATH"
+        for prefix in aarch64-linux-android x86_64-linux-android; do
+          for tool in ar ranlib nm strip; do
+            ln -sf "$TOOLCHAIN/llvm-$tool" "$TOOLCHAIN/$prefix-$tool"
+          done
+        done
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: ${{ inputs.rust-target }}
+
+    - name: Restore pruned Cargo dependency cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: "./src-tauri -> target"
+        shared-key: android-${{ inputs.variant }}
+        cache-bin: false
+        cache-on-failure: true
+
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Generate Android camera QR fixture
+      if: inputs.generate-sync-fixture == 'true'
+      shell: bash
+      run: node .github/scripts/generate-android-sync-qr.mjs
+
+    - name: Initialize Android project
+      shell: bash
+      run: pnpm tauri android init
+
+    - name: Allow active direct sync to survive screen-off sleep
+      shell: bash
+      run: node .github/scripts/configure-android-sync-wake-lock.mjs
+
+    - name: Configure automatic background relay sync
+      shell: bash
+      run: node .github/scripts/configure-android-background-sync.mjs
+
+    - name: Configure home-screen widget
+      shell: bash
+      run: node .github/scripts/configure-android-widgets.mjs
+
+    - name: Bundle the offline Android barcode model
+      shell: bash
+      run: node .github/scripts/configure-android-barcode-scanner.mjs
+
+    - name: Apply app launcher icons
+      shell: bash
+      run: cp -R src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
