@@ -626,7 +626,7 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
         const style = getComputedStyle(checkbox)
         return (
           style.appearance === 'none' &&
-          style.backgroundColor === 'rgb(67, 146, 213)' &&
+          style.backgroundColor === 'rgb(47, 111, 104)' &&
           style.backgroundImage !== 'none'
         )
       }),
@@ -744,6 +744,92 @@ test('checkbox color can be changed in settings and persists', async ({ page }) 
   await page.reload()
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(page.getByLabel('Checked checkbox hex code')).toHaveValue(selectedColor!)
+})
+
+test('color themes update the whole palette, persist, and adapt to dark mode', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  const themeGroup = page.getByRole('group', { name: 'Color theme' })
+  const themeButtons = themeGroup.getByRole('button')
+  await expect(themeButtons).toHaveCount(8)
+  await expect(themeButtons.first()).toContainText('Violet')
+  const violetTheme = themeGroup.getByRole('button', { name: 'Violet Purple and soft lilac' })
+  await expect(violetTheme).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'violet')
+  const pinkTheme = themeGroup.getByRole('button', { name: 'Pink Bright pink and petal white' })
+  await expect(pinkTheme).toHaveAttribute('aria-pressed', 'false')
+  await pinkTheme.click()
+
+  await expect(pinkTheme).toHaveAttribute('aria-pressed', 'true')
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('balance:colorTheme')))
+    .toBe('pink')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'pink')
+  await expect(page.getByRole('complementary')).toHaveCSS('background-color', 'rgb(245, 224, 234)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(211, 79, 137)',
+  )
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(pinkTheme).toHaveAttribute('aria-pressed', 'true')
+
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await expect(page.getByRole('complementary')).toHaveCSS('background-color', 'rgb(33, 23, 28)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(240, 141, 184)',
+  )
+})
+
+test('interface font previews apply live to tasks and persist', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  const interfaceFonts = page.getByRole('group', { name: 'Interface font' })
+  const interfaceFontButtons = interfaceFonts.getByRole('button')
+  await expect(interfaceFontButtons).toHaveCount(7)
+  await expect(interfaceFontButtons.first()).toContainText('Rounded')
+  await expect(interfaceFonts.getByRole('button', { name: 'Humanist: Open and readable' })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: 'Tasks and notes font' })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: 'Technical text font' })).toHaveCount(0)
+
+  const roundedInterface = interfaceFonts.getByRole('button', { name: 'Rounded: Soft and approachable' })
+  await expect(roundedInterface).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCSS(
+    'font-family',
+    /ui-rounded|SF Pro Rounded|Arial Rounded MT Bold/,
+  )
+
+  const bookishInterface = interfaceFonts.getByRole('button', { name: 'Bookish: Elegant and literary' })
+  await expect(bookishInterface.locator('.font-option-preview')).toHaveCSS(
+    'font-family',
+    /Palatino|Palatino Linotype|Book Antiqua/,
+  )
+  await bookishInterface.click()
+  await expect(page.locator('html')).toHaveAttribute('data-interface-font', 'bookish')
+  await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCSS(
+    'font-family',
+    /Palatino|Palatino Linotype|Book Antiqua/,
+  )
+  await expect(page.locator('.done-tint-preview .item-text')).toHaveCSS(
+    'font-family',
+    /Palatino|Palatino Linotype|Book Antiqua/,
+  )
+  await expect(page.getByLabel('Checked checkbox hex code')).toHaveCSS(
+    'font-family',
+    /Cascadia Mono|Roboto Mono|SFMono-Regular|Menlo/,
+  )
+
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(bookishInterface).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('database opening messages can be customized and restored', async ({ page }) => {

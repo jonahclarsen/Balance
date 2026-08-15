@@ -473,7 +473,7 @@
     flex: 1;
   }
   .sync-code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 0.78rem;
     word-break: break-all;
     padding: 0.5rem 0.6rem;
@@ -489,7 +489,7 @@
   }
   .sync-self code,
   .sync-peer-addr code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-family: var(--font-mono);
     font-size: 0.8rem;
   }
   .sync-peers {
