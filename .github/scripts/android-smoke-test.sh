@@ -149,7 +149,10 @@ echo "[background-sync] Foreground entry cancels and defers periodic relay sync.
 echo "===== app-private files ====="
 adb shell run-as "$PKG" find . -type f 2>/dev/null | tr -d '\r' | grep -iE "balance" || true
 DB_FILE="$(adb shell run-as "$PKG" find . -name 'balance.sqlite3' 2>/dev/null | tr -d '\r')"
-KEY_FILE="$(adb shell run-as "$PKG" find . -name 'balance-recovery.key.enc' 2>/dev/null | tr -d '\r')"
+KEY_FILE="$(adb shell run-as "$PKG" find . -name 'balance-recovery-raw-v1.key.enc' 2>/dev/null | tr -d '\r')"
+if [ -z "$KEY_FILE" ]; then
+  KEY_FILE="$(adb shell run-as "$PKG" find . -name 'balance-recovery.key.enc' 2>/dev/null | tr -d '\r')"
+fi
 echo "database file: '$DB_FILE'"
 echo "wrapped key file: '$KEY_FILE'"
 if [ -z "$DB_FILE" ]; then
@@ -216,6 +219,8 @@ if [ "$STARTUP_PROFILE_OK" != 1 ]; then
 fi
 echo "[startup-profile] synthetic Android startup profile:"
 python3 -m json.tool android-startup-profile.json
+python3 -c 'import json; p=json.load(open("android-startup-profile.json")); assert p["rawKeyMigration"]["verified"] is True'
+echo "[startup-profile] synthetic PBKDF-to-raw-key migration preserved data and rejected the old key."
 
 # Second launch: the key file and database already exist, so the app must unwrap
 # the recovery key via the Keystore again and reopen the database. A failed

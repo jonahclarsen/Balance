@@ -502,54 +502,6 @@ pub fn merge_and_rematerialize(conn: &Connection, ops: Vec<Op>) -> Result<usize>
     Ok(inserted)
 }
 
-// ---------------------------------------------------------------------------
-// Migration off cr-sqlite
-// ---------------------------------------------------------------------------
-
-/// Earlier builds promoted `operations` to a cr-sqlite CRR, which installs
-/// triggers that call `crsql_*` SQL functions plus a set of bookkeeping tables.
-/// Now that the extension is never loaded, those triggers would make *every*
-/// insert into `operations` fail with "no such function", so any database that
-/// was ever synced has to be healed before it is written to.
-///
-/// Plain DDL, no extension required. Idempotent, and guarded by a single
-/// `sqlite_master` query so the common (clean) case costs nothing.
-pub fn strip_crsqlite_artifacts(conn: &Connection) -> Result<()> {
-    let objects: Vec<(String, String)> = {
-        let mut stmt = conn.prepare(
-            "SELECT type, name FROM sqlite_master \
-             WHERE name LIKE '%crsql%' OR name LIKE '%\\_\\_crsql\\_%' ESCAPE '\\'",
-        )?;
-        let rows = stmt
-            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
-            .collect::<std::result::Result<_, _>>()?;
-        rows
-    };
-    if objects.is_empty() {
-        return Ok(());
-    }
-
-    // Triggers first: dropping a table whose trigger still references a missing
-    // function is fine, but dropping the triggers first keeps the DB writable
-    // even if a later statement fails.
-    for (kind, name) in objects.iter().filter(|(kind, _)| kind == "trigger") {
-        let _ = kind;
-        conn.execute_batch(&format!("DROP TRIGGER IF EXISTS \"{}\"", escape(name)))?;
-    }
-    for (kind, name) in objects.iter().filter(|(kind, _)| kind == "view") {
-        let _ = kind;
-        conn.execute_batch(&format!("DROP VIEW IF EXISTS \"{}\"", escape(name)))?;
-    }
-    for (kind, name) in objects.iter().filter(|(kind, _)| kind == "table") {
-        let _ = kind;
-        if name.starts_with("sqlite_") {
-            continue; // internal (autoindex/sequence) objects go with their table
-        }
-        conn.execute_batch(&format!("DROP TABLE IF EXISTS \"{}\"", escape(name)))?;
-    }
-    Ok(())
-}
-
 fn escape(identifier: &str) -> String {
     identifier.replace('"', "\"\"")
 }
@@ -1037,10 +989,10 @@ pub fn selftest(scratch_dir: &Path) -> Result<()> {
             })
         };
 
-        let mut primary =
-            crate::open_database_at(&a_path, "selftest-key-a").map_err(Error::Codec)?;
-        let mut joiner =
-            crate::open_database_at(&b_path, "selftest-key-b").map_err(Error::Codec)?;
+        let primary_key = crate::generate_recovery_key();
+        let joiner_key = crate::generate_recovery_key();
+        let mut primary = crate::open_database_at(&a_path, &primary_key).map_err(Error::Codec)?;
+        let mut joiner = crate::open_database_at(&b_path, &joiner_key).map_err(Error::Codec)?;
         crate::replace_app_state(
             &mut primary,
             &app_state(

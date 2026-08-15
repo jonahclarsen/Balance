@@ -7,7 +7,6 @@ use std::process::Command;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use data_encoding::BASE32_NOPAD;
 #[cfg(not(target_os = "android"))]
 use keyring::{Entry, Error as KeyringError};
 use rand::{rngs::OsRng, RngCore};
@@ -22,6 +21,7 @@ use tauri_plugin_opener::OpenerExt;
 
 #[cfg(target_os = "android")]
 mod android_widget;
+mod database_keys;
 #[cfg(target_os = "macos")]
 mod macos_widget;
 mod sync;
@@ -35,10 +35,16 @@ const KEYCHAIN_SERVICE: &str = "app.balance.local";
 #[cfg(not(target_os = "android"))]
 const KEYCHAIN_ACCOUNT: &str = "database-recovery-key";
 #[cfg(not(target_os = "android"))]
-const KEYCHAIN_PENDING_ACCOUNT: &str = "database-recovery-key-pending-rotation";
+const KEYCHAIN_RAW_ACCOUNT: &str = "database-recovery-key-raw-v1";
+#[cfg(not(target_os = "android"))]
+const KEYCHAIN_RAW_MIGRATION_PENDING_ACCOUNT: &str =
+    "database-recovery-key-raw-v1-migration-pending";
+#[cfg(not(target_os = "android"))]
+const KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT: &str = "database-recovery-key-raw-v1-rotation-pending";
 #[cfg(not(target_os = "android"))]
 const KEYCHAIN_ARCHIVED_ACCOUNT_PREFIX: &str = "database-recovery-key-archived";
 const RECOVERY_KEY_CONFIRMED: &str = "recovery_key_confirmed";
+const DATABASE_KEY_FORMAT: &str = "database_key_format";
 const EXPORT_DIRECTORY: &str = "export_directory";
 const SYNC_PAIRING_CODE: &str = "sync_pairing_code";
 const SYNC_RELAY_URL: &str = "sync_relay_url";
@@ -60,8 +66,6 @@ const SYNC_CHECKPOINT_MAX_AGE_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
 const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const GOAL_DATA: &str = "goal_data";
 const LISTS_METRICS_DATA: &str = "lists_metrics_data";
-const STATE_ENTITIES_SCHEMA_VERSION: &str = "state_entities_schema_version";
-const STATE_ENTITIES_VERSION: &str = "1";
 const ENTITY_COLLECTIONS: [&str; 7] = [
     "goals",
     "goalCompletions",
@@ -116,7 +120,13 @@ pub fn redirect_to_development_app() -> bool {
 }
 static STARTUP_DATABASE_CONNECTION: Mutex<Option<StartupDatabaseConnection>> = Mutex::new(None);
 #[cfg(target_os = "android")]
-static ANDROID_DATABASE_RECOVERY_KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+static ANDROID_DATABASE_RECOVERY_KEY: Mutex<Option<String>> = Mutex::new(None);
+#[cfg(target_os = "android")]
+fn cache_android_recovery_key(recovery_key: String) {
+    if let Ok(mut cached) = ANDROID_DATABASE_RECOVERY_KEY.lock() {
+        *cached = Some(recovery_key);
+    }
+}
 #[cfg(target_os = "macos")]
 const BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE: &str = "com.balance.plan-items+json";
 #[cfg(target_os = "macos")]
@@ -192,7 +202,7 @@ fn is_android_owner_user() -> bool {
         .is_some_and(|uid| uid < 100_000)
 }
 
-#[cfg(all(target_os = "android", debug_assertions))]
+#[cfg(any(test, all(target_os = "android", debug_assertions)))]
 fn android_startup_profile_state() -> Value {
     let templates = (0..8)
         .map(|template_index| {
@@ -281,15 +291,166 @@ fn android_startup_profile_state() -> Value {
     })
 }
 
+/// Exercise the exact SQLCipher format transition without reading any installed
+/// database or platform credential. CI runs this inside the Android APK so both
+/// cipher modes are covered by the same native library shipped to users.
+#[cfg(any(test, all(target_os = "android", debug_assertions)))]
+fn verify_synthetic_raw_key_migration(scratch_dir: &Path) -> Result<Value, String> {
+    let fixture_dir = scratch_dir.join("balance-raw-key-migration-selftest");
+    if fixture_dir.exists() {
+        fs::remove_dir_all(&fixture_dir).map_err(|error| error.to_string())?;
+    }
+    fs::create_dir_all(&fixture_dir).map_err(|error| error.to_string())?;
+    let legacy_path = fixture_dir.join("legacy.sqlite3");
+    let candidate_path = fixture_dir.join("candidate.sqlite3");
+    let live_path = fixture_dir.join("live.sqlite3");
+    let preserved_path = fixture_dir.join("preserved-legacy.sqlite3");
+    let legacy_encoded = data_encoding::BASE32_NOPAD.encode(&[0x5a_u8; 20]);
+    let legacy_key = database_keys::RecoveryKey::parse(&legacy_encoded)?
+        .canonical()
+        .to_string();
+    let raw_key = generate_recovery_key();
+    let started = std::time::Instant::now();
+
+    let result = (|| {
+        let mut legacy = open_database_at_with_format(
+            &legacy_path,
+            &legacy_key,
+            DatabaseKeyFormat::LegacyPassphrase160,
+            true,
+        )?;
+        replace_app_state(&mut legacy, &android_startup_profile_state())?;
+        set_metadata(&legacy, "raw-migration-selftest", "preserve-me")?;
+        validate_database_before_raw_key_migration(&legacy)?;
+        let expected_state = read_app_state_from_database(&legacy)?
+            .ok_or_else(|| "Synthetic legacy fixture contains no app state".to_string())?;
+        let expected_digest = database_logical_digest(&legacy)?;
+
+        copy_database_snapshot_with_format(
+            &legacy,
+            &candidate_path,
+            &raw_key,
+            DatabaseKeyFormat::RawHkdfSha256V1,
+        )?;
+        let candidate = open_database_at_with_format(
+            &candidate_path,
+            &raw_key,
+            DatabaseKeyFormat::RawHkdfSha256V1,
+            true,
+        )?;
+        delete_metadata(&candidate, DATABASE_KEY_FORMAT)?;
+        if database_logical_digest(&candidate)? != expected_digest {
+            return Err("Synthetic raw migration changed stored data or schema".to_string());
+        }
+        verify_database_state(&candidate, &expected_state)?;
+        set_metadata(
+            &candidate,
+            DATABASE_KEY_FORMAT,
+            database_keys::RAW_KEY_FORMAT,
+        )?;
+        set_metadata(&candidate, RECOVERY_KEY_CONFIRMED, "false")?;
+        let installed_digest = database_logical_digest(&candidate)?;
+        drop(candidate);
+        drop(legacy);
+
+        fs::rename(&legacy_path, &preserved_path).map_err(|error| error.to_string())?;
+        fs::rename(&candidate_path, &live_path).map_err(|error| error.to_string())?;
+
+        let installed = open_database_at_with_format(
+            &live_path,
+            &raw_key,
+            DatabaseKeyFormat::RawHkdfSha256V1,
+            true,
+        )?;
+        verify_database_state(&installed, &expected_state)?;
+        if database_logical_digest(&installed)? != installed_digest {
+            return Err("Synthetic installed raw database failed its digest check".to_string());
+        }
+        if metadata_value(&installed, DATABASE_KEY_FORMAT)?.as_deref()
+            != Some(database_keys::RAW_KEY_FORMAT)
+        {
+            return Err("Synthetic raw database has no format marker".to_string());
+        }
+        drop(installed);
+        if database_key_matches_format(
+            &live_path,
+            &legacy_key,
+            DatabaseKeyFormat::LegacyPassphrase160,
+        ) {
+            return Err("The legacy key unlocked the synthetic raw database".to_string());
+        }
+
+        let preserved = open_database_at_with_format(
+            &preserved_path,
+            &legacy_key,
+            DatabaseKeyFormat::LegacyPassphrase160,
+            true,
+        )?;
+        verify_database_state(&preserved, &expected_state)?;
+        if metadata_value(&preserved, "raw-migration-selftest")?.as_deref() != Some("preserve-me") {
+            return Err("The preserved synthetic database lost metadata".to_string());
+        }
+        drop(preserved);
+
+        let mut legacy_open_ms = Vec::with_capacity(5);
+        let mut raw_open_ms = Vec::with_capacity(5);
+        for iteration in 0..5 {
+            let measure_legacy = || -> Result<u64, String> {
+                let started = std::time::Instant::now();
+                drop(open_database_at_with_format(
+                    &preserved_path,
+                    &legacy_key,
+                    DatabaseKeyFormat::LegacyPassphrase160,
+                    false,
+                )?);
+                Ok(started.elapsed().as_millis() as u64)
+            };
+            let measure_raw = || -> Result<u64, String> {
+                let started = std::time::Instant::now();
+                drop(open_database_at_with_format(
+                    &live_path,
+                    &raw_key,
+                    DatabaseKeyFormat::RawHkdfSha256V1,
+                    false,
+                )?);
+                Ok(started.elapsed().as_millis() as u64)
+            };
+            if iteration % 2 == 0 {
+                legacy_open_ms.push(measure_legacy()?);
+                raw_open_ms.push(measure_raw()?);
+            } else {
+                raw_open_ms.push(measure_raw()?);
+                legacy_open_ms.push(measure_legacy()?);
+            }
+        }
+        legacy_open_ms.sort_unstable();
+        raw_open_ms.sort_unstable();
+
+        Ok(json!({
+            "verified": true,
+            "durationMs": started.elapsed().as_millis() as u64,
+            "medianOpenMs": {
+                "legacyPbkdf": legacy_open_ms[legacy_open_ms.len() / 2],
+                "rawHkdf": raw_open_ms[raw_open_ms.len() / 2]
+            }
+        }))
+    })();
+    if result.is_ok() {
+        fs::remove_dir_all(&fixture_dir).map_err(|error| error.to_string())?;
+    }
+    result
+}
+
 #[cfg(all(target_os = "android", debug_assertions))]
 fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String> {
     const ITERATIONS: usize = 7;
     let database_path = scratch_dir.join("balance-android-startup-profile.sqlite3");
     let _ = fs::remove_file(&database_path);
-    let recovery_key = "synthetic-android-startup-profile-key";
+    let recovery_key = generate_recovery_key();
 
     let result = (|| {
-        let mut connection = open_database_at(&database_path, recovery_key)?;
+        let raw_key_migration = verify_synthetic_raw_key_migration(scratch_dir)?;
+        let mut connection = open_database_at(&database_path, &recovery_key)?;
         replace_app_state(&mut connection, &android_startup_profile_state())?;
         let expected_state = read_app_state_from_database(&connection)?
             .ok_or_else(|| "Android startup profile fixture has no app state".to_string())?;
@@ -304,7 +465,7 @@ fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String
         for iteration in 0..ITERATIONS {
             let measure_separate = || -> Result<u64, String> {
                 let started = std::time::Instant::now();
-                let connection = open_database_at(&database_path, recovery_key)?;
+                let connection = open_database_at(&database_path, &recovery_key)?;
                 let status = recovery_key_status(&connection, &database_path, None)?;
                 if status.database_path != database_path.display().to_string() {
                     return Err(
@@ -312,7 +473,7 @@ fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String
                     );
                 }
                 drop(connection);
-                let connection = open_database_at(&database_path, recovery_key)?;
+                let connection = open_database_at(&database_path, &recovery_key)?;
                 let state = read_app_state_from_database(&connection)?
                     .ok_or_else(|| "Android profile database lost its app state".to_string())?;
                 if state != expected_state {
@@ -322,7 +483,7 @@ fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String
             };
             let measure_shared = || -> Result<u64, String> {
                 let started = std::time::Instant::now();
-                let connection = open_database_at(&database_path, recovery_key)?;
+                let connection = open_database_at(&database_path, &recovery_key)?;
                 let status = recovery_key_status(&connection, &database_path, None)?;
                 if status.database_path != database_path.display().to_string() {
                     return Err(
@@ -347,7 +508,7 @@ fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String
 
             let measure_launch_sequence = |shared: bool| -> Result<u64, String> {
                 let started = std::time::Instant::now();
-                let connection = open_database_at(&database_path, recovery_key)?;
+                let connection = open_database_at(&database_path, &recovery_key)?;
                 let _ = recovery_key_status(&connection, &database_path, None)?;
                 let state = read_app_state_from_database(&connection)?
                     .ok_or_else(|| "Android profile database lost its app state".to_string())?;
@@ -364,13 +525,13 @@ fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String
                     read_settings(&connection)?;
                 } else {
                     drop(connection);
-                    let connection = open_database_at(&database_path, recovery_key)?;
+                    let connection = open_database_at(&database_path, &recovery_key)?;
                     let _ = metadata_value(&connection, EXPORT_DIRECTORY)?;
                     drop(connection);
-                    let connection = open_database_at(&database_path, recovery_key)?;
+                    let connection = open_database_at(&database_path, &recovery_key)?;
                     let _ = sync_settings_from_database(&connection)?;
                     drop(connection);
-                    let connection = open_database_at(&database_path, recovery_key)?;
+                    let connection = open_database_at(&database_path, &recovery_key)?;
                     let _ = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
                 }
                 Ok(started.elapsed().as_millis() as u64)
@@ -383,7 +544,7 @@ fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String
                 current_launch_sequence_ms.push(measure_launch_sequence(false)?);
             }
 
-            let connection = open_database_at(&database_path, recovery_key)?;
+            let connection = open_database_at(&database_path, &recovery_key)?;
             let read_started = std::time::Instant::now();
             let state = read_app_state_from_database(&connection)?
                 .ok_or_else(|| "Android profile database lost its app state".to_string())?;
@@ -402,6 +563,7 @@ fn profile_android_database_startup(scratch_dir: &Path) -> Result<String, String
         let current_launch_median = median(&mut current_launch_sequence_ms);
         let shared_launch_median = median(&mut shared_launch_sequence_ms);
         Ok(json!({
+            "rawKeyMigration": raw_key_migration,
             "fixture": {
                 "plans": 45,
                 "planItems": 1080,
@@ -758,9 +920,25 @@ async fn get_recovery_key_status(app: tauri::AppHandle) -> Result<RecoveryKeySta
 }
 
 #[tauri::command]
-async fn confirm_recovery_key(app: tauri::AppHandle) -> Result<(), String> {
+async fn confirm_recovery_key(app: tauri::AppHandle, recovery_key: String) -> Result<(), String> {
     run_database_task(move || {
-        let connection = open_database(&app)?;
+        let database_path = app_database_path(&app)?;
+        let recovery_key = zeroize::Zeroizing::new(recovery_key);
+        let parsed = database_keys::RecoveryKey::parse(&recovery_key)
+            .map_err(|_| "Re-enter the complete 256-bit recovery key.".to_string())?;
+        if parsed.is_legacy() {
+            return Err("Re-enter the new thirteen-group recovery key.".to_string());
+        }
+        let connection = open_database_at_with_format(
+            &database_path,
+            parsed.canonical(),
+            DatabaseKeyFormat::RawHkdfSha256V1,
+            true,
+        )
+        .map_err(|_| "That key does not unlock the live encrypted database.".to_string())?;
+        if read_app_state_from_database(&connection)?.is_none() {
+            return Err("The database opened but contains no Balance app state.".to_string());
+        }
         confirm_recovery_key_in_database(&connection)
     })
     .await
@@ -783,7 +961,7 @@ async fn rotate_database_recovery_key(
             return Err("The encrypted Balance database does not exist yet.".to_string());
         }
 
-        let old_key = database_recovery_key(&database_path)?;
+        let old_key = prepare_database_recovery_key(&database_path)?;
         let mut new_key = generate_recovery_key();
         while new_key == old_key {
             new_key = generate_recovery_key();
@@ -834,10 +1012,10 @@ async fn recover_database_with_key(
                 "The encrypted Balance database is missing from this installation.".to_string(),
             );
         }
-        let recovery_key = recovery_key.trim().to_string();
-        if recovery_key.is_empty() {
-            return Err("Enter the recovery key you saved when Balance was set up.".to_string());
-        }
+        let recovery_key = zeroize::Zeroizing::new(recovery_key);
+        let recovery_key = database_keys::RecoveryKey::parse(&recovery_key)
+            .map_err(|_| "That recovery key is not in a supported Balance format.".to_string())?;
+        let recovery_key = recovery_key.canonical().to_string();
 
         let connection = open_database_at(&database_path, &recovery_key)
             .map_err(|_| "That recovery key does not unlock this database.".to_string())?;
@@ -846,20 +1024,18 @@ async fn recover_database_with_key(
         }
         drop(connection);
 
-        let wrapped = android_keystore::wrap_key(recovery_key.as_bytes())?;
-        let verified = android_keystore::unwrap_key(&wrapped)?;
-        if verified != recovery_key.as_bytes() {
-            return Err("Android Keystore could not verify the replacement wrapper.".to_string());
-        }
-
-        let key_path = recovery_key_path(&database_path);
+        let key_path = if database_keys::RecoveryKey::parse(&recovery_key)?.is_legacy() {
+            recovery_key_path(&database_path)
+        } else {
+            raw_recovery_key_path(&database_path)
+        };
         let backup_path = key_path.with_extension("enc.previous");
         if key_path.exists() {
             fs::copy(&key_path, &backup_path)
                 .map_err(|error| format!("Could not preserve the previous wrapped key: {error}"))?;
         }
-        write_android_recovery_key(&key_path, &wrapped)?;
-        let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key);
+        write_wrapped_android_recovery_key(&key_path, &recovery_key)?;
+        cache_android_recovery_key(recovery_key);
         Ok(())
     })
     .await
@@ -1043,6 +1219,20 @@ fn copy_database_snapshot(
     destination_path: &Path,
     recovery_key: &str,
 ) -> Result<(), String> {
+    let format = if database_keys::RecoveryKey::parse(recovery_key)?.is_legacy() {
+        DatabaseKeyFormat::LegacyPassphrase160
+    } else {
+        DatabaseKeyFormat::RawHkdfSha256V1
+    };
+    copy_database_snapshot_with_format(source, destination_path, recovery_key, format)
+}
+
+fn copy_database_snapshot_with_format(
+    source: &Connection,
+    destination_path: &Path,
+    recovery_key: &str,
+    format: DatabaseKeyFormat,
+) -> Result<(), String> {
     if destination_path.exists() {
         fs::remove_file(destination_path).map_err(|error| {
             format!(
@@ -1052,10 +1242,19 @@ fn copy_database_snapshot(
         })?;
     }
 
+    let parsed = database_keys::RecoveryKey::parse(recovery_key)?;
     let mut destination = Connection::open(destination_path).map_err(|error| error.to_string())?;
-    destination
-        .pragma_update(None, "key", recovery_key)
-        .map_err(|error| error.to_string())?;
+    match format {
+        DatabaseKeyFormat::LegacyPassphrase160 => destination
+            .pragma_update(None, "key", parsed.canonical())
+            .map_err(|error| error.to_string())?,
+        DatabaseKeyFormat::RawHkdfSha256V1 => {
+            let raw_key = parsed.raw_sqlcipher_key()?;
+            destination
+                .pragma_update(None, "key", raw_key.as_str())
+                .map_err(|error| error.to_string())?;
+        }
+    }
     destination
         .query_row("pragma cipher_version", [], |row| row.get::<_, String>(0))
         .map_err(|error| format!("SQLCipher is not available for compaction: {error}"))?;
@@ -1065,6 +1264,13 @@ fn copy_database_snapshot(
         .run_to_completion(256, Duration::from_millis(10), None)
         .map_err(|error| error.to_string())?;
     drop(backup);
+    if format == DatabaseKeyFormat::RawHkdfSha256V1 {
+        set_metadata(
+            &destination,
+            DATABASE_KEY_FORMAT,
+            database_keys::RAW_KEY_FORMAT,
+        )?;
+    }
     drop(destination);
     Ok(())
 }
@@ -1173,21 +1379,527 @@ fn database_logical_digest(connection: &Connection) -> Result<[u8; 32], String> 
     Ok(hasher.finalize().into())
 }
 
-fn database_key_matches(database_path: &Path, recovery_key: &str) -> bool {
-    if !database_path.exists() {
-        return false;
+fn validate_database_before_raw_key_migration(connection: &Connection) -> Result<(), String> {
+    let integrity: String = connection
+        .query_row("pragma integrity_check", [], |row| row.get(0))
+        .map_err(|error| format!("Could not check the PBKDF database integrity: {error}"))?;
+    if integrity != "ok" {
+        return Err(format!(
+            "The PBKDF database failed SQLite integrity checking ({integrity}). No migration was attempted."
+        ));
     }
-    let Ok(connection) = Connection::open(database_path) else {
-        return false;
-    };
-    if connection.pragma_update(None, "key", recovery_key).is_err() {
-        return false;
-    }
-    connection
-        .query_row("select count(*) from sqlite_schema", [], |row| {
-            row.get::<_, i64>(0)
+    let foreign_key_errors: i64 = connection
+        .query_row("select count(*) from pragma_foreign_key_check", [], |row| {
+            row.get(0)
         })
-        .is_ok()
+        .map_err(|error| format!("Could not check database relationships: {error}"))?;
+    if foreign_key_errors != 0 {
+        return Err(
+            "The PBKDF database has invalid relationships. No migration was attempted.".to_string(),
+        );
+    }
+
+    // These were the last columns added by now-retired migrations. Requiring
+    // the final schema here makes removal safe: an unexpectedly old database
+    // fails closed before credentials, backups, or live paths are changed.
+    for (table, required_columns) in [
+        (
+            "template_items",
+            &["start_minutes", "end_minutes", "time_hidden"][..],
+        ),
+        ("template_options", &["html"][..]),
+        ("plan_items", &["time_hidden"][..]),
+        ("plans", &["daily_reminder"][..]),
+        (
+            "state_entities",
+            &["collection", "entity_key", "position", "value_json"][..],
+        ),
+    ] {
+        let columns = connection
+            .prepare(&format!("pragma table_info({table})"))
+            .and_then(|mut statement| {
+                statement
+                    .query_map([], |row| row.get::<_, String>(1))?
+                    .collect::<Result<Vec<_>, _>>()
+            })
+            .map_err(|error| format!("Could not inspect the {table} schema: {error}"))?;
+        if let Some(missing) = required_columns
+            .iter()
+            .find(|column| !columns.iter().any(|candidate| candidate == **column))
+        {
+            return Err(format!(
+                "This database predates the final pre-raw schema (missing {table}.{missing}). Update and open the last PBKDF release first."
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn database_key_matches(database_path: &Path, recovery_key: &str) -> bool {
+    database_path.exists() && open_database_at(database_path, recovery_key).is_ok()
+}
+
+fn database_key_matches_format(
+    database_path: &Path,
+    recovery_key: &str,
+    format: DatabaseKeyFormat,
+) -> bool {
+    database_path.exists()
+        && open_database_at_with_format(database_path, recovery_key, format, false).is_ok()
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RawKeyMigrationJournal {
+    preserved_database: String,
+}
+
+fn raw_key_migration_paths(database_path: &Path) -> Result<(PathBuf, PathBuf, PathBuf), String> {
+    let parent = database_path
+        .parent()
+        .ok_or_else(|| "Could not resolve database directory".to_string())?;
+    Ok((
+        parent.join(".balance-raw-key-migration.sqlite3"),
+        parent.join(".balance-raw-key-migration.json"),
+        parent.join("backups").join("pre-raw-key"),
+    ))
+}
+
+fn unique_preserved_database_path(archive_dir: &Path) -> PathBuf {
+    let mut nonce = [0_u8; 4];
+    OsRng.fill_bytes(&mut nonce);
+    archive_dir.join(format!(
+        "balance-before-raw-key-v1-{}-{}.sqlite3",
+        current_timestamp_ms(),
+        nonce
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>()
+    ))
+}
+
+fn validated_preserved_database_path(
+    archive_dir: &Path,
+    journal_path: &str,
+) -> Result<PathBuf, String> {
+    let preserved = PathBuf::from(journal_path);
+    if preserved.parent() != Some(archive_dir)
+        || preserved.file_name().is_none()
+        || preserved.extension().and_then(|value| value.to_str()) != Some("sqlite3")
+        || !preserved
+            .file_name()
+            .and_then(|value| value.to_str())
+            .is_some_and(|value| value.starts_with("balance-before-raw-key-v1-"))
+    {
+        return Err(
+            "The raw-key migration journal contains an unsafe preserved database path. No files were changed."
+                .to_string(),
+        );
+    }
+    Ok(preserved)
+}
+
+/// Move pre-raw database copies outside the ordinary seven-copy retention
+/// directory. Nothing here is deleted or rewritten. Manual copies elsewhere
+/// are deliberately outside Balance's scope.
+fn preserve_existing_database_copies(
+    database_path: &Path,
+    archive_dir: &Path,
+) -> Result<(), String> {
+    let backup_dir = database_path
+        .parent()
+        .ok_or_else(|| "Could not resolve database directory".to_string())?
+        .join("backups");
+    if !backup_dir.exists() {
+        return Ok(());
+    }
+    fs::create_dir_all(archive_dir).map_err(|error| error.to_string())?;
+    for entry in fs::read_dir(&backup_dir).map_err(|error| error.to_string())? {
+        let path = entry.map_err(|error| error.to_string())?.path();
+        if path.parent() != Some(backup_dir.as_path())
+            || path.extension().and_then(|value| value.to_str()) != Some("sqlite3")
+        {
+            continue;
+        }
+        let Some(filename) = path.file_name() else {
+            continue;
+        };
+        let mut destination = archive_dir.join(filename);
+        if destination.exists() {
+            destination = archive_dir.join(format!(
+                "{}-{}",
+                current_timestamp_ms(),
+                filename.to_string_lossy()
+            ));
+        }
+        fs::rename(&path, &destination).map_err(|error| {
+            format!(
+                "Could not preserve database copy {}: {error}",
+                path.display()
+            )
+        })?;
+    }
+    sync_parent_directory(archive_dir)
+}
+
+fn install_raw_key_candidate(
+    database_path: &Path,
+    candidate_path: &Path,
+    preserved_path: &Path,
+) -> Result<(), String> {
+    fs::rename(database_path, preserved_path)
+        .map_err(|error| format!("Could not preserve the PBKDF database: {error}"))?;
+    let install = (|| {
+        sync_parent_directory(preserved_path)?;
+        fs::rename(candidate_path, database_path)
+            .map_err(|error| format!("Could not install the raw-key database: {error}"))?;
+        sync_parent_directory(database_path)
+    })();
+    if let Err(error) = install {
+        // A normal I/O failure is recoverable immediately. Process death at
+        // either rename is handled from the durable journal on next launch.
+        if database_path.exists() {
+            let _ = fs::rename(database_path, candidate_path);
+        }
+        if !database_path.exists() && preserved_path.exists() {
+            fs::rename(preserved_path, database_path).map_err(|restore_error| {
+                format!(
+                    "{error} The preserved PBKDF database could not be restored: {restore_error}"
+                )
+            })?;
+            sync_parent_directory(database_path)?;
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "android"))]
+fn optional_raw_recovery_key(_database_path: &Path) -> Result<Option<String>, String> {
+    optional_keychain_password(KEYCHAIN_RAW_ACCOUNT)
+}
+
+#[cfg(not(target_os = "android"))]
+fn legacy_database_recovery_key(_database_path: &Path) -> Result<Option<String>, String> {
+    optional_keychain_password(KEYCHAIN_ACCOUNT)
+}
+
+#[cfg(not(target_os = "android"))]
+fn optional_pending_raw_recovery_key(_database_path: &Path) -> Result<Option<String>, String> {
+    optional_keychain_password(KEYCHAIN_RAW_MIGRATION_PENDING_ACCOUNT)
+}
+
+#[cfg(not(target_os = "android"))]
+fn stage_raw_recovery_key(_database_path: &Path, recovery_key: &str) -> Result<(), String> {
+    set_verified_keychain_password(KEYCHAIN_RAW_MIGRATION_PENDING_ACCOUNT, recovery_key)
+}
+
+#[cfg(not(target_os = "android"))]
+fn promote_pending_raw_recovery_key(
+    _database_path: &Path,
+    recovery_key: &str,
+) -> Result<(), String> {
+    set_verified_keychain_password(KEYCHAIN_RAW_ACCOUNT, recovery_key)?;
+    delete_keychain_password_if_present(KEYCHAIN_RAW_MIGRATION_PENDING_ACCOUNT)
+}
+
+#[cfg(not(target_os = "android"))]
+fn discard_pending_raw_recovery_key(_database_path: &Path) {
+    let _ = delete_keychain_password_if_present(KEYCHAIN_RAW_MIGRATION_PENDING_ACCOUNT);
+}
+
+#[cfg(not(target_os = "android"))]
+fn discard_raw_recovery_key_if_matches(_database_path: &Path, recovery_key: &str) {
+    if optional_keychain_password(KEYCHAIN_RAW_ACCOUNT)
+        .ok()
+        .flatten()
+        .as_deref()
+        == Some(recovery_key)
+    {
+        let _ = delete_keychain_password_if_present(KEYCHAIN_RAW_ACCOUNT);
+    }
+}
+
+#[cfg(target_os = "android")]
+fn optional_raw_recovery_key(database_path: &Path) -> Result<Option<String>, String> {
+    let path = raw_recovery_key_path(&database_path.to_path_buf());
+    if path.exists() {
+        read_android_recovery_key(&path).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+#[cfg(target_os = "android")]
+fn legacy_database_recovery_key(database_path: &Path) -> Result<Option<String>, String> {
+    let path = recovery_key_path(&database_path.to_path_buf());
+    if path.exists() {
+        read_android_recovery_key(&path).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+#[cfg(target_os = "android")]
+fn optional_pending_raw_recovery_key(database_path: &Path) -> Result<Option<String>, String> {
+    let path = pending_raw_migration_recovery_key_path(&database_path.to_path_buf());
+    if path.exists() {
+        read_android_recovery_key(&path).map(Some)
+    } else {
+        Ok(None)
+    }
+}
+
+#[cfg(target_os = "android")]
+fn stage_raw_recovery_key(database_path: &Path, recovery_key: &str) -> Result<(), String> {
+    write_wrapped_android_recovery_key(
+        &pending_raw_migration_recovery_key_path(&database_path.to_path_buf()),
+        recovery_key,
+    )
+}
+
+#[cfg(target_os = "android")]
+fn promote_pending_raw_recovery_key(
+    database_path: &Path,
+    recovery_key: &str,
+) -> Result<(), String> {
+    let pending = pending_raw_migration_recovery_key_path(&database_path.to_path_buf());
+    if read_android_recovery_key(&pending)? != recovery_key {
+        return Err("The pending Android recovery credential changed unexpectedly.".to_string());
+    }
+    let active = raw_recovery_key_path(&database_path.to_path_buf());
+    fs::rename(&pending, &active).map_err(|error| error.to_string())?;
+    sync_parent_directory(&active)?;
+    cache_android_recovery_key(recovery_key.to_string());
+    Ok(())
+}
+
+#[cfg(target_os = "android")]
+fn discard_pending_raw_recovery_key(database_path: &Path) {
+    let path = pending_raw_migration_recovery_key_path(&database_path.to_path_buf());
+    if path.exists() {
+        let _ = fs::remove_file(path);
+    }
+}
+
+#[cfg(target_os = "android")]
+fn discard_raw_recovery_key_if_matches(database_path: &Path, recovery_key: &str) {
+    let path = raw_recovery_key_path(&database_path.to_path_buf());
+    if read_android_recovery_key(&path).ok().as_deref() == Some(recovery_key) {
+        let _ = fs::remove_file(path);
+        if let Ok(mut cached) = ANDROID_DATABASE_RECOVERY_KEY.lock() {
+            if cached.as_deref() == Some(recovery_key) {
+                *cached = None;
+            }
+        }
+    }
+}
+
+/// TODO(raw-key-migration-removal): remove this complete state machine once all
+/// installations report raw-v1 with a confirmed 256-bit recovery key. It is
+/// the only automatic startup path that can open a PBKDF database; explicit
+/// recovery/backup helpers remain format-aware so preserved copies stay usable.
+fn prepare_database_recovery_key(database_path: &Path) -> Result<String, String> {
+    let (candidate_path, journal_path, archive_dir) = raw_key_migration_paths(database_path)?;
+    let pending = optional_pending_raw_recovery_key(database_path)?;
+    if journal_path.exists() {
+        let journal: RawKeyMigrationJournal =
+            serde_json::from_slice(&fs::read(&journal_path).map_err(|error| error.to_string())?)
+                .map_err(|error| {
+                    format!("Could not read the raw-key migration journal: {error}")
+                })?;
+        // The journal is local state, not authority to move an arbitrary path.
+        // Keep every recovery operation confined to Balance's preservation dir.
+        let preserved =
+            validated_preserved_database_path(&archive_dir, &journal.preserved_database)?;
+        if let Some(raw_key) = optional_raw_recovery_key(database_path)? {
+            if database_key_matches_format(
+                database_path,
+                &raw_key,
+                DatabaseKeyFormat::RawHkdfSha256V1,
+            ) {
+                discard_pending_raw_recovery_key(database_path);
+                let _ = fs::remove_file(&candidate_path);
+                fs::remove_file(&journal_path).map_err(|error| error.to_string())?;
+                return Ok(raw_key);
+            }
+        }
+        if let Some(pending_key) = pending.as_deref() {
+            if database_key_matches_format(
+                database_path,
+                pending_key,
+                DatabaseKeyFormat::RawHkdfSha256V1,
+            ) {
+                promote_pending_raw_recovery_key(database_path, pending_key)?;
+                let _ = fs::remove_file(&candidate_path);
+                fs::remove_file(&journal_path).map_err(|error| error.to_string())?;
+                return Ok(pending_key.to_string());
+            }
+        }
+        if !database_path.exists() && preserved.exists() {
+            fs::rename(&preserved, database_path).map_err(|error| {
+                format!("Could not restore the preserved PBKDF database: {error}")
+            })?;
+            sync_parent_directory(database_path)?;
+        }
+        if database_path.exists() {
+            if let Some(legacy_key) = legacy_database_recovery_key(database_path)? {
+                if database_key_matches_format(
+                    database_path,
+                    &legacy_key,
+                    DatabaseKeyFormat::LegacyPassphrase160,
+                ) {
+                    discard_pending_raw_recovery_key(database_path);
+                    let _ = fs::remove_file(&candidate_path);
+                    fs::remove_file(&journal_path).map_err(|error| error.to_string())?;
+                } else {
+                    return Err("The interrupted raw-key migration does not match either retained credential. No files were removed.".to_string());
+                }
+            }
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
+        let (working_path, rollback_path) = key_rotation_paths(database_path)?;
+        if working_path.exists()
+            || rollback_path.exists()
+            || optional_keychain_password(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)?.is_some()
+        {
+            return database_recovery_key(&database_path.to_path_buf());
+        }
+    }
+    if let Some(raw_key) = optional_raw_recovery_key(database_path)? {
+        // The caller immediately proves this key while opening the live DB.
+        // Avoid a redundant SQLCipher connection on every normal startup.
+        return Ok(raw_key);
+    }
+    if !database_path.exists() {
+        return database_recovery_key(&database_path.to_path_buf());
+    }
+    let legacy_key =
+        legacy_database_recovery_key(database_path)?.ok_or_else(missing_recovery_key_error)?;
+    if !database_key_matches_format(
+        database_path,
+        &legacy_key,
+        DatabaseKeyFormat::LegacyPassphrase160,
+    ) {
+        return Err(
+            "The retained recovery key does not unlock this encrypted database.".to_string(),
+        );
+    }
+
+    fs::create_dir_all(&archive_dir).map_err(|error| error.to_string())?;
+    if candidate_path.exists() {
+        fs::remove_file(&candidate_path).map_err(|error| error.to_string())?;
+    }
+    let new_key = generate_recovery_key();
+    stage_raw_recovery_key(database_path, &new_key)?;
+    let preserved_path = unique_preserved_database_path(&archive_dir);
+    let mut installed = false;
+    let result = (|| {
+        let source = open_database_at_with_format(
+            database_path,
+            &legacy_key,
+            DatabaseKeyFormat::LegacyPassphrase160,
+            true,
+        )?;
+        // Closing a WAL connection normally checkpoints, but the preserved
+        // database must not depend on sidecar files retaining their old name.
+        source
+            .execute_batch("pragma wal_checkpoint(truncate)")
+            .map_err(|error| format!("Could not checkpoint the PBKDF database: {error}"))?;
+        validate_database_before_raw_key_migration(&source)?;
+        let expected_state = read_app_state_from_database(&source)?
+            .ok_or_else(|| "The legacy database contains no Balance state.".to_string())?;
+        let expected_digest = database_logical_digest(&source)?;
+        copy_database_snapshot_with_format(
+            &source,
+            &candidate_path,
+            &new_key,
+            DatabaseKeyFormat::RawHkdfSha256V1,
+        )?;
+        let candidate = open_database_at_with_format(
+            &candidate_path,
+            &new_key,
+            DatabaseKeyFormat::RawHkdfSha256V1,
+            true,
+        )?;
+        delete_metadata(&candidate, DATABASE_KEY_FORMAT)?;
+        if database_logical_digest(&candidate)? != expected_digest {
+            return Err("Raw-key migration changed stored data or schema.".to_string());
+        }
+        verify_database_state(&candidate, &expected_state)?;
+        set_metadata(
+            &candidate,
+            DATABASE_KEY_FORMAT,
+            database_keys::RAW_KEY_FORMAT,
+        )?;
+        set_metadata(&candidate, RECOVERY_KEY_CONFIRMED, "false")?;
+        delete_metadata(&candidate, DATABASE_DAILY_BACKUP_LAST_DAY)?;
+        delete_metadata(&candidate, DATABASE_DAILY_BACKUP_LATEST)?;
+        delete_metadata(&candidate, DATABASE_MAINTENANCE_LATEST_BACKUP)?;
+        delete_metadata(&candidate, DATABASE_MAINTENANCE_PREVIOUS_BACKUP)?;
+        let installed_digest = database_logical_digest(&candidate)?;
+        drop(candidate);
+        sync_file(&candidate_path)?;
+
+        let journal = serde_json::to_vec(&RawKeyMigrationJournal {
+            preserved_database: preserved_path.display().to_string(),
+        })
+        .map_err(|error| error.to_string())?;
+        fs::write(&journal_path, journal).map_err(|error| error.to_string())?;
+        sync_file(&journal_path)?;
+
+        preserve_existing_database_copies(database_path, &archive_dir)?;
+        drop(source);
+        install_raw_key_candidate(database_path, &candidate_path, &preserved_path)?;
+        installed = true;
+
+        let installed_connection = open_database_at_with_format(
+            database_path,
+            &new_key,
+            DatabaseKeyFormat::RawHkdfSha256V1,
+            true,
+        )?;
+        verify_database_state(&installed_connection, &expected_state)?;
+        if database_logical_digest(&installed_connection)? != installed_digest {
+            return Err("The installed raw-key database failed final verification.".to_string());
+        }
+        drop(installed_connection);
+        if database_key_matches_format(
+            database_path,
+            &legacy_key,
+            DatabaseKeyFormat::LegacyPassphrase160,
+        ) {
+            return Err("The old recovery key still unlocks the migrated database.".to_string());
+        }
+        promote_pending_raw_recovery_key(database_path, &new_key)?;
+        fs::remove_file(&journal_path).map_err(|error| error.to_string())?;
+        Ok(new_key.clone())
+    })();
+
+    if let Err(error) = result {
+        if installed && preserved_path.exists() {
+            let rejected = archive_dir.join(format!(
+                "rejected-raw-key-migration-{}.sqlite3",
+                current_timestamp_ms()
+            ));
+            if database_path.exists() {
+                let _ = fs::rename(database_path, rejected);
+            }
+            fs::rename(&preserved_path, database_path).map_err(|restore_error| {
+                format!("{error} The original database could not be restored: {restore_error}")
+            })?;
+            sync_parent_directory(database_path)?;
+        }
+        discard_pending_raw_recovery_key(database_path);
+        discard_raw_recovery_key_if_matches(database_path, &new_key);
+        let _ = fs::remove_file(&candidate_path);
+        let _ = fs::remove_file(&journal_path);
+        return Err(error);
+    }
+    result
 }
 
 fn key_rotation_paths(database_path: &Path) -> Result<(PathBuf, PathBuf), String> {
@@ -1976,12 +2688,17 @@ fn confirm_recovery_key_in_database(connection: &Connection) -> Result<(), Strin
 }
 
 fn open_database(app: &tauri::AppHandle) -> Result<Connection, String> {
-    let (database_path, recovery_key) = database_path_and_recovery_key(app)?;
+    let database_path = app_database_path(app)?;
+    let parent = database_path
+        .parent()
+        .ok_or_else(|| "Could not resolve app data directory".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let recovery_key = prepare_database_recovery_key(&database_path)?;
     let connection = open_database_at(&database_path, &recovery_key)?;
     // Only cache a key after SQLCipher has proved that it opens the live DB.
     // This keeps Android recovery usable if a wrapped key is stale or corrupt.
     #[cfg(target_os = "android")]
-    let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key);
+    cache_android_recovery_key(recovery_key);
     Ok(connection)
 }
 
@@ -2008,11 +2725,15 @@ fn take_startup_database_connection(
     }
     drop(cached);
 
-    let (database_path, recovery_key) = database_path_and_recovery_key(app)?;
+    let parent = database_path
+        .parent()
+        .ok_or_else(|| "Could not resolve app data directory".to_string())?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    let recovery_key = prepare_database_recovery_key(&database_path)?;
     let connection = open_database_at(&database_path, &recovery_key)?;
     // Cache only after SQLCipher has proved this key opens the live DB.
     #[cfg(target_os = "android")]
-    let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key.clone());
+    cache_android_recovery_key(recovery_key.clone());
     Ok(StartupDatabaseConnection {
         database_path,
         recovery_key,
@@ -2056,31 +2777,106 @@ fn finish_startup_database_read(
     }
 }
 
-fn database_path_and_recovery_key(app: &tauri::AppHandle) -> Result<(PathBuf, String), String> {
-    let database_path = app_database_path(app)?;
-    let parent = database_path
-        .parent()
-        .ok_or_else(|| "Could not resolve app data directory".to_string())?;
-
-    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-
-    let recovery_key = database_recovery_key(&database_path)?;
-    Ok((database_path, recovery_key))
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DatabaseKeyFormat {
+    /// TODO(raw-key-migration-removal): retained only for the sole pre-raw
+    /// installation and its preserved database copies. Never create one.
+    LegacyPassphrase160,
+    RawHkdfSha256V1,
 }
 
-fn open_database_at(database_path: &Path, recovery_key: &str) -> Result<Connection, String> {
+fn open_database_at_with_format(
+    database_path: &Path,
+    recovery_key: &str,
+    format: DatabaseKeyFormat,
+    initialize: bool,
+) -> Result<Connection, String> {
+    let parsed = database_keys::RecoveryKey::parse(recovery_key)?;
+    if format == DatabaseKeyFormat::LegacyPassphrase160 && !parsed.is_legacy() {
+        return Err("The legacy database requires a 160-bit recovery key.".to_string());
+    }
     let connection = Connection::open(database_path).map_err(|error| error.to_string())?;
-    connection
-        .pragma_update(None, "key", recovery_key)
-        .map_err(|error| error.to_string())?;
+    match format {
+        DatabaseKeyFormat::LegacyPassphrase160 => connection
+            .pragma_update(None, "key", parsed.canonical())
+            .map_err(|error| error.to_string())?,
+        DatabaseKeyFormat::RawHkdfSha256V1 => {
+            let raw_key = parsed.raw_sqlcipher_key()?;
+            connection
+                .pragma_update(None, "key", raw_key.as_str())
+                .map_err(|error| error.to_string())?;
+        }
+    }
     connection
         .query_row("pragma cipher_version", [], |row| row.get::<_, String>(0))
         .map_err(|error| format!("SQLCipher is not available: {error}"))?;
 
-    initialize_database(&connection)?;
+    // PRAGMA key is lazy. This encrypted-page read must happen before schema
+    // initialization so a wrong key can never turn an existing database into
+    // an apparently empty workspace.
+    connection
+        .query_row("select count(*) from sqlite_schema", [], |row| {
+            row.get::<_, i64>(0)
+        })
+        .map_err(|error| {
+            format!("The recovery key did not unlock the encrypted database: {error}")
+        })?;
+    if initialize {
+        initialize_database(&connection)?;
+        if format == DatabaseKeyFormat::RawHkdfSha256V1 {
+            set_metadata(
+                &connection,
+                DATABASE_KEY_FORMAT,
+                database_keys::RAW_KEY_FORMAT,
+            )?;
+        }
+    }
     Ok(connection)
 }
 
+fn open_database_at(database_path: &Path, recovery_key: &str) -> Result<Connection, String> {
+    let existed = database_path.exists();
+    let parsed = database_keys::RecoveryKey::parse(recovery_key)?;
+    if !existed {
+        if parsed.is_legacy() {
+            #[cfg(not(test))]
+            return Err("New databases require a 256-bit recovery key.".to_string());
+            #[cfg(test)]
+            return open_database_at_with_format(
+                database_path,
+                parsed.canonical(),
+                DatabaseKeyFormat::LegacyPassphrase160,
+                true,
+            );
+        }
+        return open_database_at_with_format(
+            database_path,
+            parsed.canonical(),
+            DatabaseKeyFormat::RawHkdfSha256V1,
+            true,
+        );
+    }
+
+    if !parsed.is_legacy() {
+        return open_database_at_with_format(
+            database_path,
+            parsed.canonical(),
+            DatabaseKeyFormat::RawHkdfSha256V1,
+            true,
+        );
+    }
+    open_database_at_with_format(
+        database_path,
+        parsed.canonical(),
+        DatabaseKeyFormat::LegacyPassphrase160,
+        true,
+    )
+}
+
+/// Create the canonical schema for a new database and ensure current tables
+/// exist. This intentionally contains no historical ALTER/backfill routines.
+/// Future schema changes need a separately named, fail-closed migration plus a
+/// documented fleet-readiness condition for deleting that migration again.
 fn initialize_database(connection: &Connection) -> Result<(), String> {
     connection
         .execute_batch(
@@ -2191,36 +2987,7 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
 
-    add_missing_column(
-        connection,
-        "template_options",
-        "html",
-        "text not null default ''",
-    )?;
-    add_missing_column(connection, "template_items", "start_minutes", "integer")?;
-    add_missing_column(connection, "template_items", "end_minutes", "integer")?;
-    add_missing_column(connection, "template_items", "time_hidden", "integer")?;
-    add_missing_column(connection, "plan_items", "time_hidden", "integer")?;
-    add_missing_column(
-        connection,
-        "plans",
-        "daily_reminder",
-        "text not null default 'This shouldn''t be aspirational'",
-    )?;
-    connection
-        .execute(
-            "update template_options set html = text where html = ''",
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-
-    // Databases synced by an older build still carry cr-sqlite's triggers and
-    // bookkeeping tables. The extension is never loaded now, so those triggers
-    // would make every `operations` write fail with "no such function" — heal
-    // the file on every open, before anything can write to it.
-    sync::strip_crsqlite_artifacts(connection).map_err(sync::Error::into_string)?;
     sync::relay_client::ensure_relay_tables(connection).map_err(sync::Error::into_string)?;
-    migrate_state_entities(connection)?;
 
     Ok(())
 }
@@ -2234,26 +3001,6 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
         )
         .optional()
         .map_err(|error| error.to_string())
-}
-
-fn legacy_metadata_object(connection: &Connection, key: &str) -> Result<Value, String> {
-    match metadata_value(connection, key)? {
-        Some(raw) => serde_json::from_str::<Value>(&raw)
-            .map_err(|error| format!("Could not migrate legacy {key}: {error}")),
-        None => Ok(json!({})),
-    }
-}
-
-fn legacy_goal_data(connection: &Connection) -> Result<Value, String> {
-    let parsed = legacy_metadata_object(connection, GOAL_DATA)?;
-    Ok(json!({
-        "goals": parsed.get("goals").and_then(Value::as_array).cloned().unwrap_or_default(),
-        "goalCompletions": parsed
-            .get("goalCompletions")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default(),
-    }))
 }
 
 fn goal_data_from_state(state: &Value) -> Value {
@@ -2274,20 +3021,6 @@ const LISTS_METRICS_KEYS: [&str; 5] = [
     "metricEntries",
     "notes",
 ];
-
-fn legacy_lists_metrics_data(connection: &Connection) -> Result<Value, String> {
-    let parsed = legacy_metadata_object(connection, LISTS_METRICS_DATA)?;
-    let mut result = serde_json::Map::new();
-    for key in LISTS_METRICS_KEYS {
-        let value = parsed
-            .get(key)
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        result.insert(key.to_string(), Value::Array(value));
-    }
-    Ok(Value::Object(result))
-}
 
 fn lists_metrics_data_from_state(state: &Value) -> Value {
     let mut result = serde_json::Map::new();
@@ -2404,40 +3137,6 @@ fn replace_state_entities_from_state(connection: &Connection, state: &Value) -> 
         replace_entity_collection(connection, collection, &values)?;
     }
     Ok(())
-}
-
-fn migrate_state_entities(connection: &Connection) -> Result<(), String> {
-    if metadata_value(connection, STATE_ENTITIES_SCHEMA_VERSION)?.as_deref()
-        == Some(STATE_ENTITIES_VERSION)
-    {
-        return Ok(());
-    }
-
-    let goal_data = legacy_goal_data(connection)?;
-    let lists_metrics_data = legacy_lists_metrics_data(connection)?;
-    let tx = connection
-        .unchecked_transaction()
-        .map_err(|error| error.to_string())?;
-    tx.execute("delete from state_entities", [])
-        .map_err(|error| error.to_string())?;
-    for collection in ENTITY_COLLECTIONS {
-        let source = if collection == "goals" || collection == "goalCompletions" {
-            &goal_data
-        } else {
-            &lists_metrics_data
-        };
-        let expected = source
-            .get(collection)
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        replace_entity_collection(&tx, collection, &expected)?;
-        if read_entity_collection(&tx, collection)? != Value::Array(expected) {
-            return Err(format!("Migration verification failed for {collection}"));
-        }
-    }
-    set_metadata(&tx, STATE_ENTITIES_SCHEMA_VERSION, STATE_ENTITIES_VERSION)?;
-    tx.commit().map_err(|error| error.to_string())
 }
 
 fn read_goal_data(connection: &Connection) -> Result<Value, String> {
@@ -2662,34 +3361,6 @@ fn validate_external_url(url: &str) -> Result<&str, String> {
     }
 
     Err("Only http and https links can be opened".to_string())
-}
-
-fn add_missing_column(
-    connection: &Connection,
-    table: &str,
-    column: &str,
-    column_definition: &str,
-) -> Result<(), String> {
-    let mut statement = connection
-        .prepare(&format!("pragma table_info({table})"))
-        .map_err(|error| error.to_string())?;
-    let columns = statement
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|error| error.to_string())?
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-
-    if columns.iter().any(|candidate| candidate == column) {
-        return Ok(());
-    }
-
-    connection
-        .execute(
-            &format!("alter table {table} add column {column} {column_definition}"),
-            [],
-        )
-        .map_err(|error| error.to_string())?;
-    Ok(())
 }
 
 fn replace_app_state(connection: &mut Connection, state: &Value) -> Result<(), String> {
@@ -7911,7 +8582,9 @@ struct KeychainRecoveryKeyRotationStore;
 impl RecoveryKeyRotationStore for KeychainRecoveryKeyRotationStore {
     fn stage(&mut self, old_key: &str, new_key: &str, archive_account: &str) -> Result<(), String> {
         set_verified_keychain_password(archive_account, old_key)?;
-        if let Err(error) = set_verified_keychain_password(KEYCHAIN_PENDING_ACCOUNT, new_key) {
+        if let Err(error) =
+            set_verified_keychain_password(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT, new_key)
+        {
             let _ = delete_keychain_password_if_present(archive_account);
             return Err(format!(
                 "Could not stage the replacement recovery key: {error}"
@@ -7921,17 +8594,17 @@ impl RecoveryKeyRotationStore for KeychainRecoveryKeyRotationStore {
     }
 
     fn commit(&mut self, new_key: &str) -> Result<(), String> {
-        set_verified_keychain_password(KEYCHAIN_ACCOUNT, new_key)
+        set_verified_keychain_password(KEYCHAIN_RAW_ACCOUNT, new_key)
             .map_err(|error| format!("Could not activate the replacement recovery key: {error}"))
     }
 
     fn finish(&mut self) -> Result<(), String> {
-        delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)
+        delete_keychain_password_if_present(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)
     }
 
     fn abort(&mut self, old_key: &str, archive_account: &str) -> Result<(), String> {
-        set_verified_keychain_password(KEYCHAIN_ACCOUNT, old_key)?;
-        delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+        set_verified_keychain_password(KEYCHAIN_RAW_ACCOUNT, old_key)?;
+        delete_keychain_password_if_present(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)?;
         delete_keychain_password_if_present(archive_account)
     }
 }
@@ -7997,7 +8670,7 @@ fn recover_interrupted_key_rotation(
     database_path: &Path,
     active_key: Option<String>,
 ) -> Result<Option<String>, String> {
-    let pending_key = optional_keychain_password(KEYCHAIN_PENDING_ACCOUNT)?;
+    let pending_key = optional_keychain_password(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)?;
     let (working_path, rollback_path) = key_rotation_paths(database_path)?;
     let action = interrupted_key_rotation_action(
         database_path,
@@ -8011,28 +8684,28 @@ fn recover_interrupted_key_rotation(
         InterruptedKeyRotationAction::NoDatabaseOrRotation => return Ok(None),
         InterruptedKeyRotationAction::KeepActive => {
             if pending_key.is_some() {
-                delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+                delete_keychain_password_if_present(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)?;
             }
             active_key
         }
         InterruptedKeyRotationAction::ActivatePending => {
             let pending_key = pending_key.expect("action requires pending key");
-            set_verified_keychain_password(KEYCHAIN_ACCOUNT, &pending_key)?;
-            delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+            set_verified_keychain_password(KEYCHAIN_RAW_ACCOUNT, &pending_key)?;
+            delete_keychain_password_if_present(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)?;
             Some(pending_key)
         }
         InterruptedKeyRotationAction::RestoreActiveRollback => {
             restore_database_after_failed_rotation(&rollback_path, database_path)?;
             if pending_key.is_some() {
-                delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+                delete_keychain_password_if_present(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)?;
             }
             active_key
         }
         InterruptedKeyRotationAction::InstallPendingWorking => {
             install_rotated_database(&working_path, database_path)?;
             let pending_key = pending_key.expect("action requires pending key");
-            set_verified_keychain_password(KEYCHAIN_ACCOUNT, &pending_key)?;
-            delete_keychain_password_if_present(KEYCHAIN_PENDING_ACCOUNT)?;
+            set_verified_keychain_password(KEYCHAIN_RAW_ACCOUNT, &pending_key)?;
+            delete_keychain_password_if_present(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)?;
             Some(pending_key)
         }
     };
@@ -8048,14 +8721,30 @@ fn recover_interrupted_key_rotation(
 
 #[cfg(not(target_os = "android"))]
 fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
-    let active_key = optional_keychain_password(KEYCHAIN_ACCOUNT)?;
-    if let Some(recovery_key) = recover_interrupted_key_rotation(database_path, active_key)? {
-        return Ok(recovery_key);
+    let active_key = optional_keychain_password(KEYCHAIN_RAW_ACCOUNT)?;
+    let (working_path, rollback_path) = key_rotation_paths(database_path)?;
+    let has_raw_rotation_state = optional_keychain_password(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)?
+        .is_some()
+        || working_path.exists()
+        || rollback_path.exists();
+    if has_raw_rotation_state {
+        return recover_interrupted_key_rotation(database_path, active_key)?.ok_or_else(|| {
+            "Raw-key rotation state exists without a recoverable credential.".to_string()
+        });
+    }
+    if let Some(active_key) = active_key {
+        return Ok(active_key);
+    }
+
+    // TODO(raw-key-migration-removal): this legacy account lookup is only for
+    // the sole pre-raw installation. New and rotated keys use the raw account.
+    if let Some(legacy_key) = optional_keychain_password(KEYCHAIN_ACCOUNT)? {
+        return Ok(legacy_key);
     }
 
     if !database_path.exists() {
         let recovery_key = generate_recovery_key();
-        set_verified_keychain_password(KEYCHAIN_ACCOUNT, &recovery_key)?;
+        set_verified_keychain_password(KEYCHAIN_RAW_ACCOUNT, &recovery_key)?;
         Ok(recovery_key)
     } else {
         Err(missing_recovery_key_error())
@@ -8073,13 +8762,32 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
     // is finishing an unlock or restarting its provider. Once it has unlocked
     // this process's database, reuse the plaintext key in memory instead of
     // making every serialized database command repeat that hardware-backed IPC.
-    if let Some(recovery_key) = ANDROID_DATABASE_RECOVERY_KEY.get() {
-        return Ok(recovery_key.clone());
+    if let Ok(cached) = ANDROID_DATABASE_RECOVERY_KEY.lock() {
+        if let Some(recovery_key) = cached.as_ref() {
+            return Ok(recovery_key.clone());
+        }
     }
 
-    let key_path = recovery_key_path(database_path);
+    let raw_path = raw_recovery_key_path(database_path);
+    if raw_path.exists() {
+        return read_android_recovery_key(&raw_path);
+    }
+    let legacy_path = recovery_key_path(database_path);
+    if legacy_path.exists() {
+        return read_android_recovery_key(&legacy_path);
+    }
+    if database_path.exists() {
+        return Err(missing_recovery_key_error());
+    }
 
-    match fs::read(&key_path) {
+    let recovery_key = generate_recovery_key();
+    write_wrapped_android_recovery_key(&raw_path, &recovery_key)?;
+    Ok(recovery_key)
+}
+
+#[cfg(target_os = "android")]
+fn read_android_recovery_key(key_path: &Path) -> Result<String, String> {
+    match fs::read(key_path) {
         Ok(blob) => {
             // Android Keystore can briefly be unavailable while the device is
             // finishing an unlock or the provider process is restarting. A
@@ -8114,20 +8822,24 @@ fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
                 Ok(recovery_key)
             }
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound && !database_path.exists() => {
-            let recovery_key = generate_recovery_key();
-            let blob = android_keystore::wrap_key(recovery_key.as_bytes())?;
-            if let Some(parent) = key_path.parent() {
-                fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-            }
-            write_android_recovery_key(&key_path, &blob)?;
-            Ok(recovery_key)
-        }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             Err(missing_recovery_key_error())
         }
         Err(error) => Err(error.to_string()),
     }
+}
+
+#[cfg(target_os = "android")]
+fn write_wrapped_android_recovery_key(key_path: &Path, recovery_key: &str) -> Result<(), String> {
+    let blob = android_keystore::wrap_key(recovery_key.as_bytes())?;
+    let verified = android_keystore::unwrap_key(&blob)?;
+    if verified != recovery_key.as_bytes() {
+        return Err("Android Keystore could not verify the wrapped recovery key.".to_string());
+    }
+    if let Some(parent) = key_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    write_android_recovery_key(key_path, &blob)
 }
 
 #[cfg(target_os = "android")]
@@ -8164,6 +8876,16 @@ fn write_android_recovery_key(key_path: &Path, blob: &[u8]) -> Result<(), String
 #[cfg(target_os = "android")]
 fn recovery_key_path(database_path: &PathBuf) -> PathBuf {
     database_path.with_file_name("balance-recovery.key.enc")
+}
+
+#[cfg(target_os = "android")]
+fn raw_recovery_key_path(database_path: &PathBuf) -> PathBuf {
+    database_path.with_file_name("balance-recovery-raw-v1.key.enc")
+}
+
+#[cfg(target_os = "android")]
+fn pending_raw_migration_recovery_key_path(database_path: &PathBuf) -> PathBuf {
+    database_path.with_file_name("balance-recovery-raw-v1-migration-pending.key.enc")
 }
 
 // Wraps/unwraps a secret with a hardware-backed AES-256-GCM key stored in the
@@ -8636,7 +9358,7 @@ fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
     }
     let recovery_key = database_recovery_key(&database_path)?;
     let connection = open_database_at(&database_path, &recovery_key)?;
-    let _ = ANDROID_DATABASE_RECOVERY_KEY.set(recovery_key.clone());
+    cache_android_recovery_key(recovery_key.clone());
     if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
         return Ok(());
     }
@@ -8670,16 +9392,9 @@ fn missing_recovery_key_error() -> String {
 }
 
 fn generate_recovery_key() -> String {
-    let mut bytes = [0_u8; 20];
-    OsRng.fill_bytes(&mut bytes);
-
-    BASE32_NOPAD
-        .encode(&bytes)
-        .as_bytes()
-        .chunks(4)
-        .map(|chunk| std::str::from_utf8(chunk).expect("base32 output is utf-8"))
-        .collect::<Vec<_>>()
-        .join("-")
+    database_keys::RecoveryKey::generate()
+        .canonical()
+        .to_string()
 }
 
 fn app_database_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
@@ -8774,49 +9489,6 @@ async fn set_sync_relay_url(
         } else {
             set_metadata(&connection, SYNC_RELAY_URL, &relay_url)?;
         }
-        sync_settings_from_database(&connection)
-    })
-    .await
-}
-
-/// Move settings written by older builds from origin-scoped webview storage
-/// into encrypted device-local metadata. Existing database values always win.
-#[tauri::command]
-async fn migrate_legacy_sync_settings(
-    app: tauri::AppHandle,
-    pairing_code: Option<String>,
-    relay_url: Option<String>,
-) -> Result<SyncSettings, String> {
-    run_database_task(move || {
-        let connection = open_database(&app)?;
-        let enabled = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
-
-        if enabled
-            && sync::read_pairing_code(&connection)
-                .map_err(sync::Error::into_string)?
-                .is_none()
-        {
-            if let Some(pairing_code) = pairing_code.filter(|value| !value.trim().is_empty()) {
-                sync::crypto::SyncKey::from_pairing_code(pairing_code.trim())
-                    .map_err(sync::Error::into_string)?;
-                sync::store_pairing_code(&connection, pairing_code.trim())
-                    .map_err(sync::Error::into_string)?;
-            }
-        }
-
-        if metadata_value(&connection, SYNC_RELAY_URL)?
-            .filter(|value| !value.is_empty())
-            .is_none()
-        {
-            if let Some(relay_url) = relay_url.filter(|value| !value.trim().is_empty()) {
-                // Old builds accepted arbitrary text here. Invalid legacy values
-                // are safer to drop than to make pairing-key migration fail.
-                if let Ok(relay_url) = normalize_sync_relay_url(&relay_url) {
-                    set_metadata(&connection, SYNC_RELAY_URL, &relay_url)?;
-                }
-            }
-        }
-
         sync_settings_from_database(&connection)
     })
     .await
@@ -9172,7 +9844,6 @@ pub fn run() {
             read_balance_clipboard,
             get_sync_settings,
             set_sync_relay_url,
-            migrate_legacy_sync_settings,
             sync_new_pairing_code,
             sync_enable_primary,
             sync_enable_joiner,
@@ -9761,183 +10432,6 @@ mod tests {
             ]
         );
         assert!(reported.windows(2).all(|pair| pair[0].0 < pair[1].0));
-    }
-
-    #[test]
-    fn generated_encrypted_legacy_database_migrates_every_user_field_losslessly_and_idempotently() {
-        let database = TestDatabase::new("legacy-entity-migration");
-        let recovery_key = generate_recovery_key();
-        let mut state = test_state("Migration day");
-        state["activePlanDate"] = json!("2026-08-12");
-        state["goals"] = json!([{
-            "id": "goal-migrate",
-            "name": "Read 🦀",
-            "nameHtml": "<strong>Read 🦀</strong>",
-            "cadenceDays": 3,
-            "matchTerms": ["book", "paper"],
-            "matchTermsHtml": "book, paper",
-            "hue": 217,
-            "lightness": 61,
-            "activityPeriods": [{ "startDate": "2026-01-01", "endDate": null }],
-            "createdAt": "2026-01-01T00:00:00Z",
-            "updatedAt": "2026-08-12T00:00:00Z"
-        }]);
-        state["goalCompletions"] = json!([
-            { "goalId": "goal-migrate", "date": "2026-08-11", "itemIds": ["a"], "matchedTerms": ["book"], "computedAt": "one" },
-            { "goalId": "goal-migrate", "date": "2026-08-11", "itemIds": ["b"], "matchedTerms": ["paper"], "computedAt": "two" }
-        ]);
-        state["listTemplates"] = json!([{
-            "id": "list-template-migrate", "name": "Groceries", "maxExpectedWords": 42,
-            "items": [{ "id": "lt-item", "text": "Tea", "html": "<em>Tea</em>", "probability": 73,
-                "children": [{ "id": "lt-child", "text": "Green", "html": "Green", "probability": 100, "children": [] }] }],
-            "createdAt": "created", "updatedAt": "updated"
-        }]);
-        state["lists"] = json!([{
-            "id": "list-migrate", "date": "2026-08-12", "listTemplateId": "list-template-migrate", "createdAt": "created",
-            "items": [{ "id": "list-item", "text": "Tea", "html": "Tea", "done": true,
-                "startMinutes": 10, "endMinutes": 20, "children": [] }]
-        }]);
-        state["metrics"] = json!([{
-            "id": "metric-migrate", "name": "Mood", "createdAt": "created", "updatedAt": "updated",
-            "questions": [{ "id": "question-migrate", "prompt": "Good?", "html": "<b>Good?</b>", "type": "boolean" }]
-        }]);
-        state["metricEntries"] = json!([{
-            "id": "metric-entry-migrate", "metricId": "metric-migrate", "date": "2026-08-12",
-            "answers": [{ "questionId": "question-migrate", "value": "y" }], "createdAt": "created", "updatedAt": "updated"
-        }]);
-        state["notes"] = json!([{
-            "id": "note-migrate", "title": "Exact note", "createdAt": "created", "updatedAt": "updated",
-            "items": [{ "id": "note-item", "text": "Nested", "html": "<u>Nested</u>", "done": false,
-                "startMinutes": null, "endMinutes": null, "kind": "heading",
-                "children": [{ "id": "note-child", "text": "Child", "html": "Child", "done": true,
-                    "startMinutes": null, "endMinutes": null, "kind": "checklist", "children": [] }] }]
-        }]);
-
-        let (expected_state, expected_operation, expected_history, legacy_goal, legacy_other) = {
-            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
-            replace_app_state(&mut connection, &state).unwrap();
-            set_metadata(&connection, "sync_enabled", "true").unwrap();
-            set_metadata(&connection, SYNC_PAIRING_CODE, "secret-preserved").unwrap();
-            set_metadata(
-                &connection,
-                SYNC_RELAY_URL,
-                "https://relay.example.com/room",
-            )
-            .unwrap();
-            set_metadata(&connection, EXPORT_DIRECTORY, "/tmp/exact-export").unwrap();
-            persist_operation_to_database(
-                &mut connection,
-                &json!({
-                    "id": "migration-history-op", "deviceId": "device_test", "sequence": 2,
-                    "type": "patch_plan_daily_reminder", "timestamp": "2026-08-12T12:00:00Z",
-                    "payload": { "planId": "plan_today", "dailyReminder": "Preserved reminder" }
-                }),
-            )
-            .unwrap();
-            let expected_state = read_app_state_from_database(&connection).unwrap().unwrap();
-            let expected_operation: String = connection
-                .query_row(
-                    "select payload_json from operations where id = 'migration-history-op'",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap();
-            let expected_history: (String, String) = connection
-                .query_row("select undo_operation_json, redo_operation_json from history_entries where operation_id = 'migration-history-op'", [], |row| Ok((row.get(0)?, row.get(1)?)))
-                .unwrap();
-            let legacy_goal = metadata_value(&connection, GOAL_DATA).unwrap().unwrap();
-            let legacy_other = metadata_value(&connection, LISTS_METRICS_DATA)
-                .unwrap()
-                .unwrap();
-            delete_metadata(&connection, STATE_ENTITIES_SCHEMA_VERSION).unwrap();
-            connection
-                .execute("delete from state_entities", [])
-                .unwrap();
-            (
-                expected_state,
-                expected_operation,
-                expected_history,
-                legacy_goal,
-                legacy_other,
-            )
-        };
-
-        for _ in 0..2 {
-            let connection = open_database_at(&database.path, &recovery_key).unwrap();
-            assert_eq!(
-                read_app_state_from_database(&connection).unwrap().unwrap(),
-                expected_state
-            );
-            assert_eq!(
-                metadata_value(&connection, GOAL_DATA).unwrap().as_deref(),
-                Some(legacy_goal.as_str())
-            );
-            assert_eq!(
-                metadata_value(&connection, LISTS_METRICS_DATA)
-                    .unwrap()
-                    .as_deref(),
-                Some(legacy_other.as_str())
-            );
-            assert_eq!(
-                metadata_value(&connection, SYNC_PAIRING_CODE)
-                    .unwrap()
-                    .as_deref(),
-                Some("secret-preserved")
-            );
-            assert_eq!(
-                metadata_value(&connection, SYNC_RELAY_URL)
-                    .unwrap()
-                    .as_deref(),
-                Some("https://relay.example.com/room")
-            );
-            assert_eq!(
-                metadata_value(&connection, EXPORT_DIRECTORY)
-                    .unwrap()
-                    .as_deref(),
-                Some("/tmp/exact-export")
-            );
-            let actual_operation: String = connection
-                .query_row(
-                    "select payload_json from operations where id = 'migration-history-op'",
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap();
-            let actual_history: (String, String) = connection.query_row("select undo_operation_json, redo_operation_json from history_entries where operation_id = 'migration-history-op'", [], |row| Ok((row.get(0)?, row.get(1)?))).unwrap();
-            assert_eq!(actual_operation, expected_operation);
-            assert_eq!(actual_history, expected_history);
-        }
-    }
-
-    #[test]
-    fn malformed_legacy_blob_never_marks_or_partially_commits_migration() {
-        let database = TestDatabase::new("legacy-migration-rollback");
-        let recovery_key = generate_recovery_key();
-        {
-            let connection = open_database_at(&database.path, &recovery_key).unwrap();
-            delete_metadata(&connection, STATE_ENTITIES_SCHEMA_VERSION).unwrap();
-            connection
-                .execute("delete from state_entities", [])
-                .unwrap();
-            set_metadata(&connection, GOAL_DATA, "{not-json").unwrap();
-        }
-        assert!(open_database_at(&database.path, &recovery_key).is_err());
-
-        let raw = Connection::open(&database.path).unwrap();
-        raw.pragma_update(None, "key", &recovery_key).unwrap();
-        let entity_count: i64 = raw
-            .query_row("select count(*) from state_entities", [], |row| row.get(0))
-            .unwrap();
-        let marker: Option<String> = raw
-            .query_row(
-                "select value from metadata where key = ?1",
-                params![STATE_ENTITIES_SCHEMA_VERSION],
-                |row| row.get(0),
-            )
-            .optional()
-            .unwrap();
-        assert_eq!(entity_count, 0);
-        assert_eq!(marker, None);
     }
 
     #[test]
@@ -13251,11 +13745,105 @@ mod tests {
         let recovery_key = generate_recovery_key();
         let groups = recovery_key.split('-').collect::<Vec<_>>();
 
-        assert_eq!(groups.len(), 8);
+        assert_eq!(groups.len(), 13);
         assert!(groups.iter().all(|group| group.len() == 4));
         assert!(recovery_key
             .chars()
             .all(|character| character == '-' || matches!(character, 'A'..='Z' | '2'..='7')));
+    }
+
+    #[test]
+    fn synthetic_pbkdf_database_migrates_losslessly_to_raw_key() {
+        let database = TestDatabaseAt::new("synthetic-raw-key-migration");
+        let result = verify_synthetic_raw_key_migration(&database.directory).unwrap();
+        assert_eq!(result["verified"], true);
+        assert!(!database
+            .directory
+            .join("balance-raw-key-migration-selftest")
+            .exists());
+    }
+
+    #[test]
+    fn raw_key_migration_journal_cannot_escape_the_archive_directory() {
+        let database = TestDatabaseAt::new("raw-key-journal-path");
+        let archive = database.directory.join("backups").join("pre-raw-key");
+        let valid = archive.join("balance-before-raw-key-v1-1-aabbccdd.sqlite3");
+        assert_eq!(
+            validated_preserved_database_path(&archive, valid.to_str().unwrap()).unwrap(),
+            valid
+        );
+        for unsafe_path in [
+            database.directory.join("unrelated.sqlite3"),
+            archive.join("../unrelated.sqlite3"),
+            archive.join("other.sqlite3"),
+            archive.join("balance-before-raw-key-v1-1-aabbccdd.txt"),
+        ] {
+            assert!(
+                validated_preserved_database_path(&archive, unsafe_path.to_str().unwrap()).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn pre_raw_backups_move_out_of_retention_without_deletion() {
+        let database = TestDatabaseAt::new("preserve-pre-raw-backups");
+        let backup_dir = database.directory.join("backups");
+        let archive_dir = backup_dir.join("pre-raw-key");
+        fs::create_dir_all(&archive_dir).unwrap();
+        fs::write(backup_dir.join("daily-one.sqlite3"), b"synthetic one").unwrap();
+        fs::write(backup_dir.join("daily-two.sqlite3"), b"synthetic two").unwrap();
+        fs::write(backup_dir.join("diagnostics.txt"), b"leave in place").unwrap();
+        fs::write(archive_dir.join("already-preserved.sqlite3"), b"existing").unwrap();
+
+        preserve_existing_database_copies(&database.path, &archive_dir).unwrap();
+
+        assert!(!backup_dir.join("daily-one.sqlite3").exists());
+        assert!(!backup_dir.join("daily-two.sqlite3").exists());
+        assert_eq!(
+            fs::read(archive_dir.join("daily-one.sqlite3")).unwrap(),
+            b"synthetic one"
+        );
+        assert_eq!(
+            fs::read(archive_dir.join("daily-two.sqlite3")).unwrap(),
+            b"synthetic two"
+        );
+        assert_eq!(
+            fs::read(archive_dir.join("already-preserved.sqlite3")).unwrap(),
+            b"existing"
+        );
+        assert!(backup_dir.join("diagnostics.txt").exists());
+    }
+
+    #[test]
+    fn failed_raw_candidate_install_restores_the_live_pbkdf_path() {
+        let database = TestDatabaseAt::new("raw-key-install-rollback");
+        let preserved = database.directory.join("preserved.sqlite3");
+        let missing_candidate = database.directory.join("missing-candidate.sqlite3");
+        fs::write(&database.path, b"synthetic encrypted source").unwrap();
+
+        assert!(install_raw_key_candidate(&database.path, &missing_candidate, &preserved).is_err());
+        assert_eq!(
+            fs::read(&database.path).unwrap(),
+            b"synthetic encrypted source"
+        );
+        assert!(!preserved.exists());
+    }
+
+    #[test]
+    fn raw_migration_refuses_an_outdated_schema_before_copying() {
+        let database = TestDatabaseAt::new("raw-key-schema-readiness");
+        let recovery_key = generate_recovery_key();
+        let connection = open_database_at(&database.path, &recovery_key).unwrap();
+        connection
+            .execute_batch("alter table plans drop column daily_reminder")
+            .unwrap();
+
+        let error = validate_database_before_raw_key_migration(&connection).unwrap_err();
+        assert!(error.contains("missing plans.daily_reminder"), "{error}");
+        assert!(!database
+            .directory
+            .join(".balance-raw-key-migration.sqlite3")
+            .exists());
     }
 
     #[test]

@@ -1920,6 +1920,13 @@ nav button.active {
   flex: 0 0 auto;
 }
 
+.recovery-key-confirmation {
+  min-width: min(100%, 430px);
+  flex: 1 1 430px;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  letter-spacing: 0.03em;
+}
+
 .database-path {
   overflow-wrap: anywhere;
   font-size: 12px;

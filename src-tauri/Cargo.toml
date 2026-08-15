@@ -32,6 +32,8 @@ rusqlite = { version = "0.32.1", features = ["backup", "bundled-sqlcipher-vendor
 chacha20poly1305 = "0.10"
 sha2 = "0.10"
 hmac = "0.12"
+hkdf = "0.12"
+zeroize = "1.8"
 zstd = "0.13"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 # LAN peer discovery for P2P sync (advertise + browse for other Balance devices).
@@ -57,7 +59,6 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = ["N
 # key over JNI (see android_keystore in lib.rs).
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21"
-zeroize = "1.8"
 
 # Camera QR-code scanning for sync pairing is mobile-only (Android/iOS); the
 # plugin uses the native camera, so it isn't compiled into desktop builds.

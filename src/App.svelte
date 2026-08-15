@@ -188,7 +188,8 @@ return rows`
   let importError = ''
   let importPreview: { date: string; answers: { questionId: Id; value: string }[] }[] | null = null
   let recoveryKeyStatus: RecoveryKeyStatus | null = null
-  let recoveryKeySaved = false
+  let recoveryKeyConfirmation = ''
+  let recoveryKeyConfirmationError = ''
   let recoveryKeyCopied = false
   let recoveryKeyRotationArchivedAccount = ''
   let recoveryKeyRotationBusy = false
@@ -3513,14 +3514,19 @@ return rows`
   }
 
   async function finishRecoveryKeySetup() {
-    await confirmRecoveryKey()
-    recoveryKeyStatus = await getRecoveryKeyStatus()
-    recoveryKeySaved = false
-    if (recoveryKeyRotationArchivedAccount) {
-      recoveryKeyRotationStatus = `Database key rotated. The previous key remains in Keychain as “${recoveryKeyRotationArchivedAccount}” for older backups.`
-      recoveryKeyRotationArchivedAccount = ''
+    recoveryKeyConfirmationError = ''
+    try {
+      await confirmRecoveryKey(recoveryKeyConfirmation)
+      recoveryKeyConfirmation = ''
+      recoveryKeyStatus = await getRecoveryKeyStatus()
+      if (recoveryKeyRotationArchivedAccount) {
+        recoveryKeyRotationStatus = `Database key rotated. The previous key remains in Keychain as “${recoveryKeyRotationArchivedAccount}” for older backups.`
+        recoveryKeyRotationArchivedAccount = ''
+      }
+      await runLaunchDatabaseMaintenance()
+    } catch (error) {
+      recoveryKeyConfirmationError = error instanceof Error ? error.message : String(error)
     }
-    await runLaunchDatabaseMaintenance()
   }
 
   async function rotateRecoveryKey() {
@@ -3541,7 +3547,8 @@ return rows`
       if (!result) throw new Error('Database-key rotation is available only in the installed app.')
       recoveryKeyStatus = result.recoveryKeyStatus
       recoveryKeyRotationArchivedAccount = result.archivedKeyAccount
-      recoveryKeySaved = false
+      recoveryKeyConfirmation = ''
+      recoveryKeyConfirmationError = ''
       recoveryKeyCopied = false
       recoveryKeyRotationStatus = 'Rotation verified. Save the new recovery key to finish.'
       await plannerStore.reloadFromBackend()
@@ -5190,11 +5197,21 @@ return rows`
 
       <div class="recovery-actions">
         <button type="button" on:click={copyRecoveryKey}>{recoveryKeyCopied ? 'Copied' : 'Copy key'}</button>
-        <label class="confirm-line">
-          <input type="checkbox" bind:checked={recoveryKeySaved} />
-          <span>I saved this recovery key somewhere safe.</span>
+        <label class="confirm-line" for="recovery-key-confirmation">
+          <span>Re-enter the complete key to prove your saved copy works.</span>
         </label>
-        <button class="primary" type="button" disabled={!recoveryKeySaved} on:click={finishRecoveryKeySetup}>
+        <input
+          id="recovery-key-confirmation"
+          class="recovery-key-confirmation"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          bind:value={recoveryKeyConfirmation}
+        />
+        {#if recoveryKeyConfirmationError}
+          <p class="database-load-error">{recoveryKeyConfirmationError}</p>
+        {/if}
+        <button class="primary" type="button" disabled={!recoveryKeyConfirmation.trim()} on:click={finishRecoveryKeySetup}>
           Continue
         </button>
       </div>

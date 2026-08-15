@@ -114,9 +114,19 @@ fn state(device_id: &str, goals: Value) -> Value {
 
 /// Open a real encrypted DB seeded with `initial`.
 fn open_seeded(path: &std::path::Path, key: &str, initial: &Value) -> Connection {
-    let mut conn = open_database_at(path, key).expect("open encrypted real schema");
+    let key = test_database_key(key);
+    let mut conn = open_database_at(path, &key).expect("open encrypted real schema");
     replace_app_state(&mut conn, initial).expect("seed state");
     conn
+}
+
+fn test_database_key(label: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let encoded = data_encoding::BASE32_NOPAD.encode(&Sha256::digest(label.as_bytes()));
+    crate::database_keys::RecoveryKey::parse(&encoded)
+        .unwrap()
+        .canonical()
+        .to_string()
 }
 
 /// Just the user-visible domain (excludes device-local fields like deviceId).
@@ -608,7 +618,7 @@ fn v4_entity_delta_converges_without_replicating_unrelated_entities() {
     let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
     enable_primary(&a).unwrap();
     enable_joiner(&b).unwrap();
-    let mut operation_connection = open_database_at(&sa.path, "key-a").unwrap();
+    let mut operation_connection = open_database_at(&sa.path, &test_database_key("key-a")).unwrap();
     persist_operation_to_database(
         &mut operation_connection,
         &json!({
@@ -638,7 +648,7 @@ fn v4_entity_delta_converges_without_replicating_unrelated_entities() {
     assert!(!payload.contains("UNRELATED-SYNC-SENTINEL"));
     drop(operation_connection);
 
-    let a = TestStore::new(open_database_at(&sa.path, "key-a").unwrap());
+    let a = TestStore::new(open_database_at(&sa.path, &test_database_key("key-a")).unwrap());
     let b = TestStore::new(b);
     exchange(&b, &a, &SyncKey::generate());
     assert_eq!(domain(&a.state()), domain(&b.state()));
@@ -1060,96 +1070,6 @@ fn two_devices_syncing_at_each_other_at_once_converge_without_deadlock() {
     assert_eq!(a.operation_ids(), b.operation_ids());
     assert_eq!(domain(&a.state()), domain(&b.state()));
     assert_eq!(a.state()["activePlanDate"], "2028-02-02");
-}
-
-// ---------------------------------------------------------------------------
-// 8. Migration off cr-sqlite
-// ---------------------------------------------------------------------------
-
-/// Simulates (without the real extension) what earlier builds left behind: a
-/// promoted `operations` table whose triggers call `crsql_*` SQL functions.
-/// Those functions no longer exist, so every op write fails until the artifacts
-/// are stripped.
-#[test]
-fn stripping_crsqlite_artifacts_makes_a_promoted_database_writable_again() {
-    let scratch = Scratch::new("crsql-migration");
-    let mut conn = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
-    conn.execute_batch(
-        "CREATE TABLE operations__crsql_clock (id TEXT PRIMARY KEY, db_version INTEGER);
-         CREATE TABLE crsql_site_id (site_id BLOB);
-         CREATE INDEX operations__crsql_clock_dbv ON operations__crsql_clock (db_version);
-         CREATE TRIGGER operations__crsql_itrig AFTER INSERT ON operations
-         BEGIN
-           SELECT crsql_internal_sync_bit();
-         END;",
-    )
-    .unwrap();
-
-    let op = set_active_plan_date_op(
-        "op-after-migration",
-        "device-A",
-        1,
-        "2026-06-23T12:00:00.000Z",
-        "2027-01-01",
-    );
-    let blocked = persist_operation_to_database(&mut conn, &op).unwrap_err();
-    assert!(
-        blocked.contains("crsql_internal_sync_bit"),
-        "expected the stale CRR trigger to break writes, got: {blocked}"
-    );
-
-    strip_crsqlite_artifacts(&conn).unwrap();
-
-    let leftovers: i64 = conn
-        .query_row(
-            "SELECT count(*) FROM sqlite_master WHERE name LIKE '%crsql%'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(leftovers, 0, "triggers, tables and their indexes are gone");
-
-    persist_operation_to_database(&mut conn, &op).expect("writes work after migration");
-    assert_eq!(
-        read_app_state_from_database(&conn).unwrap().unwrap()["activePlanDate"],
-        "2027-01-01"
-    );
-
-    // Idempotent: running it again on a now-clean database changes nothing.
-    strip_crsqlite_artifacts(&conn).unwrap();
-    assert_eq!(local_op_ids(&conn).unwrap(), ["op-after-migration"]);
-}
-
-#[test]
-fn stripping_crsqlite_artifacts_is_a_no_op_on_a_clean_database() {
-    let scratch = Scratch::new("crsql-clean");
-    let conn = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
-    let before: Vec<String> = {
-        let mut stmt = conn
-            .prepare("SELECT name FROM sqlite_master ORDER BY name")
-            .unwrap();
-        let names = stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .unwrap()
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .unwrap();
-        names
-    };
-
-    strip_crsqlite_artifacts(&conn).unwrap();
-
-    let after: Vec<String> = {
-        let mut stmt = conn
-            .prepare("SELECT name FROM sqlite_master ORDER BY name")
-            .unwrap();
-        let names = stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .unwrap()
-            .collect::<std::result::Result<Vec<_>, _>>()
-            .unwrap();
-        names
-    };
-    assert_eq!(before, after);
 }
 
 // ---------------------------------------------------------------------------

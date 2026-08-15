@@ -2205,9 +2205,9 @@ export async function getRecoveryKeyStatus(): Promise<RecoveryKeyStatus | null> 
   return invoke<RecoveryKeyStatus>('get_recovery_key_status')
 }
 
-export async function confirmRecoveryKey(): Promise<void> {
+export async function confirmRecoveryKey(recoveryKey: string): Promise<void> {
   if (!isTauri()) return
-  await invoke('confirm_recovery_key')
+  await invoke('confirm_recovery_key', { recoveryKey })
 }
 
 export async function rotateDatabaseRecoveryKey(): Promise<RecoveryKeyRotationResult | null> {
@@ -2263,15 +2263,6 @@ export async function getSyncSettings(): Promise<SyncSettings> {
 export async function setSyncRelayUrl(relayUrl: string): Promise<SyncSettings> {
   if (!isTauri()) return { enabled: false, pairingCode: null, relayUrl: relayUrl.trim() }
   return invoke<SyncSettings>('set_sync_relay_url', { relayUrl }).then(rememberSyncSettings)
-}
-
-/** One-time upgrade path from the old dev/prod-specific localStorage values. */
-export async function migrateLegacySyncSettings(
-  pairingCode: string | null,
-  relayUrl: string | null,
-): Promise<SyncSettings> {
-  if (!isTauri()) return { enabled: false, pairingCode, relayUrl: relayUrl ?? '' }
-  return invoke<SyncSettings>('migrate_legacy_sync_settings', { pairingCode, relayUrl }).then(rememberSyncSettings)
 }
 
 /** Generate a fresh account sync key and return its QR/pairing code. */

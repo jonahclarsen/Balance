@@ -11,7 +11,6 @@
   import {
     getSyncSettings,
     setSyncRelayUrl,
-    migrateLegacySyncSettings,
     syncNewPairingCode,
     syncEnablePrimary,
     syncEnableJoiner,
@@ -22,12 +21,6 @@
     type SyncPeer,
   } from './store'
   import { automaticSyncStatus, requestSync } from './syncScheduler'
-
-  // Older versions used origin-scoped localStorage, which split these values
-  // between dev and production. They are read only for one-time migration into
-  // encrypted, non-replicated database metadata.
-  const LEGACY_STORAGE_KEY = 'balance.sync.pairingCode'
-  const LEGACY_RELAY_KEY = 'balance.sync.relayUrl'
 
   // Camera QR scanning is mobile-only (native plugin); on desktop you paste.
   const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent)
@@ -53,20 +46,8 @@
   let peerPoll: ReturnType<typeof setInterval> | undefined
 
   onMount(async () => {
-    const legacyPairingCode = localStorage.getItem(LEGACY_STORAGE_KEY)
-    const legacyRelayUrl = localStorage.getItem(LEGACY_RELAY_KEY)
     try {
-      let settings = await getSyncSettings()
-      if (legacyPairingCode !== null || legacyRelayUrl !== null) {
-        try {
-          settings = await migrateLegacySyncSettings(legacyPairingCode, legacyRelayUrl)
-          localStorage.removeItem(LEGACY_STORAGE_KEY)
-          localStorage.removeItem(LEGACY_RELAY_KEY)
-        } catch (err) {
-          setStatus(`Could not migrate old sync settings: ${err}`, true)
-        }
-      }
-
+      const settings = await getSyncSettings()
       migrated = settings.enabled
       pairingCode = settings.pairingCode ?? ''
       relayUrl = settings.relayUrl
