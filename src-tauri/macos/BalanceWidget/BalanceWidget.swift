@@ -86,6 +86,8 @@ private struct BalanceSnapshot: Codable {
     let done: Int
     let total: Int
     let items: [String]
+    let itemDepths: [Int]?
+    let itemTimes: [String]?
 
     static let placeholder = BalanceSnapshot(
         date: Self.today,
@@ -95,7 +97,9 @@ private struct BalanceSnapshot: Codable {
         reminder: "This shouldn't be aspirational",
         done: 2,
         total: 6,
-        items: ["Plan the day", "Focus on the next thing", "Take a proper break"]
+        items: ["Plan the day", "Focus on the next thing", "Take a proper break"],
+        itemDepths: [0, 1, 0],
+        itemTimes: ["8:30am–9am", "", "2pm–2:30pm"]
     )
 
     static var today: String {
@@ -240,15 +244,27 @@ private struct BalanceWidgetView: View {
                     Spacer(minLength: 0)
                 } else {
                     VStack(alignment: .leading, spacing: family == .systemSmall ? 5 : 7) {
-                        ForEach(Array(snapshot.items.prefix(itemLimit).enumerated()), id: \.offset) { _, item in
+                        ForEach(Array(snapshot.items.prefix(itemLimit).enumerated()), id: \.offset) { offset, item in
                             HStack(alignment: .firstTextBaseline, spacing: 7) {
                                 Circle()
                                     .fill(accentColor.opacity(0.8))
                                     .frame(width: 5, height: 5)
+                                if let time = snapshot.itemTimes?[safe: offset], !time.isEmpty {
+                                    Text(time)
+                                        .font(.caption2.monospacedDigit())
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                }
                                 Text(item)
                                     .font(family == .systemSmall ? .caption : .subheadline)
                                     .lineLimit(1)
                             }
+                            .padding(
+                                .leading,
+                                CGFloat(min(snapshot.itemDepths?[safe: offset] ?? 0, 4))
+                                    * (family == .systemSmall ? 8 : 12)
+                            )
                         }
                     }
                     .privacySensitive()
@@ -277,6 +293,12 @@ private struct BalanceWidgetView: View {
             Spacer(minLength: 0)
         }
         .padding()
+    }
+}
+
+private extension Collection {
+    subscript(safe index: Index) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 

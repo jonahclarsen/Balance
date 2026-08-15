@@ -98,6 +98,22 @@ struct StartupDatabaseConnection {
 }
 
 static DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
+
+#[cfg(all(target_os = "macos", not(debug_assertions)))]
+pub fn redirect_to_development_app() -> bool {
+    unsafe extern "C" {
+        fn balance_activate_running_development_app() -> i32;
+    }
+
+    // This runs before Tauri or database initialization. The installed app is
+    // only a Launch Services handoff when a raw `tauri dev` process is present.
+    unsafe { balance_activate_running_development_app() == 1 }
+}
+
+#[cfg(not(all(target_os = "macos", not(debug_assertions))))]
+pub fn redirect_to_development_app() -> bool {
+    false
+}
 static STARTUP_DATABASE_CONNECTION: Mutex<Option<StartupDatabaseConnection>> = Mutex::new(None);
 #[cfg(target_os = "android")]
 static ANDROID_DATABASE_RECOVERY_KEY: std::sync::OnceLock<String> = std::sync::OnceLock::new();

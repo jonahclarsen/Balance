@@ -14,6 +14,8 @@ pub(crate) struct WidgetSnapshot {
     pub(crate) done: usize,
     pub(crate) total: usize,
     pub(crate) items: Vec<String>,
+    pub(crate) item_depths: Vec<usize>,
+    pub(crate) item_times: Vec<String>,
 }
 
 impl WidgetSnapshot {
@@ -27,6 +29,8 @@ impl WidgetSnapshot {
             done: 0,
             total: 0,
             items: Vec::new(),
+            item_depths: Vec::new(),
+            item_times: Vec::new(),
         }
     }
 
@@ -46,16 +50,19 @@ pub(crate) fn snapshot_from_plan(date: &str, plan: Option<&Value>) -> WidgetSnap
 
     let mut all_items = Vec::new();
     if let Some(items) = plan.get("items").and_then(Value::as_array) {
-        flatten_items(items, &mut all_items);
+        flatten_items(items, 0, &mut all_items);
     }
 
     let total = all_items.len();
-    let done = all_items.iter().filter(|(_, done)| *done).count();
-    let items = all_items
+    let done = all_items.iter().filter(|(_, done, _, _)| *done).count();
+    let pending = all_items
         .into_iter()
-        .filter_map(|(text, done)| (!done).then_some(text))
+        .filter(|(_, done, _, _)| !done)
         .take(MAX_VISIBLE_ITEMS)
-        .collect();
+        .collect::<Vec<_>>();
+    let items = pending.iter().map(|(text, _, _, _)| text.clone()).collect();
+    let item_depths = pending.iter().map(|(_, _, depth, _)| *depth).collect();
+    let item_times = pending.into_iter().map(|(_, _, _, time)| time).collect();
 
     WidgetSnapshot {
         date: date.to_string(),
@@ -77,10 +84,12 @@ pub(crate) fn snapshot_from_plan(date: &str, plan: Option<&Value>) -> WidgetSnap
         done,
         total,
         items,
+        item_depths,
+        item_times,
     }
 }
 
-fn flatten_items(items: &[Value], output: &mut Vec<(String, bool)>) {
+fn flatten_items(items: &[Value], depth: usize, output: &mut Vec<(String, bool, usize, String)>) {
     for item in items {
         let text = item
             .get("text")
@@ -91,11 +100,47 @@ fn flatten_items(items: &[Value], output: &mut Vec<(String, bool)>) {
             output.push((
                 text.to_string(),
                 item.get("done").and_then(Value::as_bool).unwrap_or(false),
+                depth,
+                item_time_label(item),
             ));
         }
         if let Some(children) = item.get("children").and_then(Value::as_array) {
-            flatten_items(children, output);
+            flatten_items(children, depth + 1, output);
         }
+    }
+}
+
+fn item_time_label(item: &Value) -> String {
+    if item
+        .get("timeHidden")
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+    {
+        return String::new();
+    }
+
+    let Some(start) = item.get("startMinutes").and_then(Value::as_i64) else {
+        return String::new();
+    };
+    let Some(end) = item.get("endMinutes").and_then(Value::as_i64) else {
+        return String::new();
+    };
+    format!("{}–{}", format_minutes(start), format_minutes(end))
+}
+
+fn format_minutes(minutes: i64) -> String {
+    let normalized = minutes.rem_euclid(24 * 60);
+    let hours = normalized / 60;
+    let minutes = normalized % 60;
+    let suffix = if hours >= 12 { "pm" } else { "am" };
+    let hour = match hours % 12 {
+        0 => 12,
+        hour => hour,
+    };
+    if minutes == 0 {
+        format!("{hour}{suffix}")
+    } else {
+        format!("{hour}:{minutes:02}{suffix}")
     }
 }
 
@@ -115,10 +160,23 @@ mod tests {
                     "text": "Done first",
                     "done": true,
                     "children": [
-                        { "text": "Nested pending", "done": false, "children": [] }
+                        {
+                            "text": "Nested pending",
+                            "done": false,
+                            "startMinutes": 540,
+                            "endMinutes": 615,
+                            "children": []
+                        }
                     ]
                 },
-                { "text": "Second", "done": false, "children": [] },
+                {
+                    "text": "Second",
+                    "done": false,
+                    "startMinutes": 660,
+                    "endMinutes": 720,
+                    "timeHidden": true,
+                    "children": []
+                },
                 { "text": "", "done": false, "children": [] },
                 { "text": "Third", "done": false, "children": [] },
                 { "text": "Fourth", "done": false, "children": [] },
@@ -154,6 +212,11 @@ mod tests {
                 "Tenth",
             ]
         );
+        assert_eq!(snapshot.item_depths, [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(
+            snapshot.item_times,
+            ["9am–10:15am", "", "", "", "", "", "", "", "", ""]
+        );
     }
 
     #[test]
@@ -164,5 +227,7 @@ mod tests {
         assert!(!snapshot.unavailable);
         assert_eq!(snapshot.title, "Today");
         assert!(snapshot.items.is_empty());
+        assert!(snapshot.item_depths.is_empty());
+        assert!(snapshot.item_times.is_empty());
     }
 }

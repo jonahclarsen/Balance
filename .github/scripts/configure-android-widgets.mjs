@@ -42,6 +42,8 @@ data class BalanceWidgetSnapshot(
     val done: Int,
     val total: Int,
     val items: List<String>,
+    val itemDepths: List<Int>,
+    val itemTimes: List<String>,
 )
 
 object BalanceWidgets {
@@ -100,8 +102,16 @@ object BalanceWidgets {
         val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
         val json = JSONObject(nativeSnapshot(context.applicationInfo.dataDir, date))
         val itemValues = json.getJSONArray("items")
+        val depthValues = json.optJSONArray("itemDepths")
+        val timeValues = json.optJSONArray("itemTimes")
         val items = ArrayList<String>(itemValues.length())
+        val itemDepths = ArrayList<Int>(itemValues.length())
+        val itemTimes = ArrayList<String>(itemValues.length())
         for (index in 0 until itemValues.length()) items.add(itemValues.getString(index))
+        for (index in 0 until itemValues.length()) {
+            itemDepths.add(depthValues?.optInt(index, 0) ?: 0)
+            itemTimes.add(timeValues?.optString(index, "") ?: "")
+        }
         return BalanceWidgetSnapshot(
             json.getString("date"),
             json.getBoolean("hasPlan"),
@@ -111,6 +121,8 @@ object BalanceWidgets {
             json.getInt("done"),
             json.getInt("total"),
             items,
+            itemDepths,
+            itemTimes,
         )
     }
 
@@ -142,7 +154,11 @@ object BalanceWidgets {
         )
         for (index in rows.indices) {
             val text = snapshot.items.getOrNull(index)
-            views.setTextViewText(rows[index], if (text == null) "" else "• $text")
+            val depth = snapshot.itemDepths.getOrNull(index)?.coerceIn(0, 4) ?: 0
+            val indent = "\\u00a0\\u00a0".repeat(depth)
+            val time = snapshot.itemTimes.getOrNull(index).orEmpty()
+            val timePrefix = if (time.isEmpty()) "" else "$time "
+            views.setTextViewText(rows[index], if (text == null) "" else "\${indent}• $timePrefix$text")
             views.setViewVisibility(rows[index], if (text == null) View.GONE else View.VISIBLE)
         }
         attachActions(context, views)

@@ -32,7 +32,6 @@ fn build_macos_widget_bridge() {
         .args([
             "swiftc",
             "-parse-as-library",
-            "-application-extension",
             "-emit-object",
             "-O",
             "-target",
@@ -50,6 +49,7 @@ fn build_macos_widget_bridge() {
 
     println!("cargo:rerun-if-changed={}", source.display());
     println!("cargo:rustc-link-arg={}", output.display());
+    println!("cargo:rustc-link-lib=framework=AppKit");
     println!("cargo:rustc-link-lib=framework=Security");
     println!("cargo:rustc-link-lib=framework=WidgetKit");
 }

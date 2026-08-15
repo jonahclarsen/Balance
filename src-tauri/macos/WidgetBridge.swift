@@ -1,25 +1,57 @@
+import AppKit
 import Foundation
 import Security
 import WidgetKit
 
 private let encryptedSnapshotKey = "balance.widget.encrypted-snapshot.v2"
 private let legacyPlaintextSnapshotKey = "balance.widget.snapshot.v1"
+private let snapshotPreferenceDomain = "app.balance.local"
 private let widgetPreferenceDomain = "app.balance.local.widget"
+
+private var snapshotDefaults: UserDefaults {
+    UserDefaults(suiteName: snapshotPreferenceDomain) ?? .standard
+}
+
+private func widgetPublicKeyString() -> String? {
+    // Sandboxed extension preferences live in the extension's container. A
+    // suite lookup from the unsandboxed Tauri host targets the global domain
+    // instead, so read the extension's flushed plist directly. This value is
+    // public key material; the corresponding private key never leaves Keychain.
+    let preferences = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Containers", isDirectory: true)
+        .appendingPathComponent(widgetPreferenceDomain, isDirectory: true)
+        .appendingPathComponent("Data/Library/Preferences", isDirectory: true)
+        .appendingPathComponent("\(widgetPreferenceDomain).plist")
+    guard
+        let data = try? Data(contentsOf: preferences),
+        let propertyList = try? PropertyListSerialization.propertyList(
+            from: data,
+            options: [],
+            format: nil
+        ),
+        let values = propertyList as? [String: Any]
+    else {
+        return nil
+    }
+    return values[WidgetSnapshotKey.publicPreferenceKey] as? String
+}
 
 @_cdecl("balance_publish_encrypted_widget_snapshot")
 public func balancePublishEncryptedWidgetSnapshot(_ snapshot: UnsafePointer<CChar>?) -> Bool {
     // Always erase the old plaintext cache, including when the extension has not
     // generated its private widget-cache key yet.
-    UserDefaults.standard.removeObject(forKey: legacyPlaintextSnapshotKey)
+    snapshotDefaults.removeObject(forKey: legacyPlaintextSnapshotKey)
+    // Clean up ciphertext written to a process-named domain by the earlier dev
+    // build, where the raw Tauri executable had no application bundle domain.
+    UserDefaults.standard.removeObject(forKey: encryptedSnapshotKey)
 
     guard
         let snapshot,
-        let widgetDefaults = UserDefaults(suiteName: widgetPreferenceDomain),
-        let publicKeyString = widgetDefaults.string(forKey: WidgetSnapshotKey.publicPreferenceKey),
+        let publicKeyString = widgetPublicKeyString(),
         let publicKeyData = Data(base64Encoded: publicKeyString)
     else {
-        UserDefaults.standard.removeObject(forKey: encryptedSnapshotKey)
-        _ = UserDefaults.standard.synchronize()
+        snapshotDefaults.removeObject(forKey: encryptedSnapshotKey)
+        _ = snapshotDefaults.synchronize()
         WidgetCenter.shared.reloadAllTimelines()
         return false
     }
@@ -40,14 +72,14 @@ public func balancePublishEncryptedWidgetSnapshot(_ snapshot: UnsafePointer<CCha
             nil
         ) as Data?
     else {
-        UserDefaults.standard.removeObject(forKey: encryptedSnapshotKey)
-        _ = UserDefaults.standard.synchronize()
+        snapshotDefaults.removeObject(forKey: encryptedSnapshotKey)
+        _ = snapshotDefaults.synchronize()
         WidgetCenter.shared.reloadAllTimelines()
         return false
     }
 
-    UserDefaults.standard.set(ciphertext.base64EncodedString(), forKey: encryptedSnapshotKey)
-    let saved = UserDefaults.standard.synchronize()
+    snapshotDefaults.set(ciphertext.base64EncodedString(), forKey: encryptedSnapshotKey)
+    let saved = snapshotDefaults.synchronize()
     WidgetCenter.shared.reloadAllTimelines()
     return saved
 }
@@ -55,6 +87,28 @@ public func balancePublishEncryptedWidgetSnapshot(_ snapshot: UnsafePointer<CCha
 private enum WidgetSnapshotKey {
     static let publicPreferenceKey = "balance.widget.public-key.v2"
     static let algorithm: SecKeyAlgorithm = .eciesEncryptionCofactorX963SHA256AESGCM
+}
+
+@_cdecl("balance_activate_running_development_app")
+public func balanceActivateRunningDevelopmentApp() -> Int32 {
+    let currentProcess = ProcessInfo.processInfo.processIdentifier
+    guard let developmentApp = NSWorkspace.shared.runningApplications.first(where: { app in
+        guard
+            app.processIdentifier != currentProcess,
+            let executablePath = app.executableURL?.path
+        else {
+            return false
+        }
+        return executablePath.hasSuffix("/src-tauri/target/debug/Balance")
+    }) else {
+        return 0
+    }
+
+    _ = developmentApp.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+    // `activate` can report false when the process is already frontmost. Finding
+    // the development process is sufficient reason for the installed app to
+    // exit instead of continuing into normal startup.
+    return 1
 }
 
 @_cdecl("balance_reload_widget_timelines")
