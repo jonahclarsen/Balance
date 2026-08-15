@@ -1,5 +1,14 @@
 # Balance — agent guidance
 
+## Always work in an isolated worktree
+
+Before changing any code or project files, create a dedicated Git worktree and
+make the complete change there. The main checkout is often running Balance in
+development mode for normal use, so incomplete edits there cause disruptive
+rebuilds and visible UI churn. Test and finish the work in the worktree first;
+only then bring the completed change onto `main`, resolve any integration issues,
+and push it. Do not use the main checkout as a live editing workspace.
+
 ## This is a public repo — never commit secrets
 
 Balance is open source and the remote is public. Never commit API keys, tokens,
