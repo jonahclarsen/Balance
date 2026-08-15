@@ -563,6 +563,15 @@ struct LegacyMigrationAuditResult {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+struct LegacyCleanupStageResponse {
+    guarded_ids: usize,
+    checkpoint_records_cleaned: usize,
+    relay_promoted: bool,
+    message: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct DatabaseCompactionResult {
     before_bytes: u64,
     after_bytes: u64,
@@ -2211,6 +2220,12 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           id text primary key
         );
 
+        -- Temporary rejection guard used while installations stage removal of
+        -- the legacy checkpoint id set at different times.
+        create table if not exists sync_legacy_cleanup_guard (
+          id text primary key
+        );
+
         create table if not exists sync_frontiers (
           device_id text primary key,
           sequence integer not null
@@ -2738,6 +2753,12 @@ fn operation_log_stats(connection: &Connection) -> Result<(i64, i64), String> {
 
 fn maybe_checkpoint_operation_log(connection: &Connection) -> Result<bool, String> {
     if !database_checkpoint_coordinator(connection)? {
+        return Ok(false);
+    }
+    // A staged legacy cleanup keeps retired ids in a temporary rejection
+    // guard until every installation is ready. Creating or promoting another
+    // checkpoint during that window would publish an unprotected baseline.
+    if sync::legacy_cleanup_guard_count(connection).map_err(sync::Error::into_string)? > 0 {
         return Ok(false);
     }
     let (operation_count, payload_bytes) = operation_log_stats(connection)?;
@@ -8796,6 +8817,19 @@ async fn audit_legacy_migration_readiness(
             local.tombstone_count == 0,
             format!("{} legacy tombstone id(s) remain locally.", local.tombstone_count),
         ));
+        checks.push(legacy_audit_check(
+            "local-cleanup-guard",
+            "No temporary cleanup guard remains",
+            local.cleanup_guard_count == 0,
+            if local.cleanup_guard_count == 0 {
+                "This installation is not retaining staged legacy rejection ids.".to_string()
+            } else {
+                format!(
+                    "{} retired id(s) remain safely guarded while the other installations stage cleanup. This is expected after cleaning this installation.",
+                    local.cleanup_guard_count
+                )
+            },
+        ));
 
         let relay_url = metadata_value(&connection, SYNC_RELAY_URL)?.unwrap_or_default();
         let pairing_code = sync::read_pairing_code(&connection).map_err(sync::Error::into_string)?;
@@ -8922,6 +8956,123 @@ async fn audit_legacy_migration_readiness(
         Ok(LegacyMigrationAuditResult {
             ready_on_this_installation: checks.iter().all(|check| check.passed),
             checks,
+        })
+    })
+    .await
+}
+
+/// Stage the local cleanup and promote a verified current-format relay
+/// checkpoint. Retired ids remain enforced by a temporary guard, so an
+/// installation staged later cannot resurrect old operations here.
+#[tauri::command]
+async fn stage_legacy_sync_cleanup(
+    app: tauri::AppHandle,
+) -> Result<LegacyCleanupStageResponse, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
+            return Err("Sync must be enabled before cleanup.".to_string());
+        }
+        if !matches!(
+            metadata_value(&connection, SYNC_COMPACTION_COORDINATOR)?.as_deref(),
+            Some("true" | "false")
+        ) {
+            return Err("Run a foreground relay sync before cleanup.".to_string());
+        }
+        let local = sync::audit_local_legacy_compatibility(&connection)
+            .map_err(sync::Error::into_string)?;
+        if local.operations.legacy_entity_snapshot_records != 0
+            || local.legacy_history_entries != 0
+        {
+            return Err(
+                "Current operations or undo history still use legacy entity snapshots. Sync and audit again before cleanup."
+                    .to_string(),
+            );
+        }
+
+        let relay_url = metadata_value(&connection, SYNC_RELAY_URL)?
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "Set a relay server URL before cleanup.".to_string())?;
+        let pairing_code = sync::read_pairing_code(&connection)
+            .map_err(sync::Error::into_string)?
+            .ok_or_else(|| "This installation's sync key is missing.".to_string())?;
+        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+            .map_err(sync::Error::into_string)?;
+        let relay = sync::relay_client::audit_legacy_compatibility(
+            &connection,
+            &relay_url,
+            &key,
+        )
+        .map_err(sync::Error::into_string)?;
+        let safe = relay.relay_protocol == 3
+            && relay.generation_stable
+            && relay.local_epoch_initialized
+            && relay.local_cursor_caught_up
+            && relay.pending_outbox_batches == 0
+            && relay.unpublished_local_operations == 0
+            && relay.quarantined_blobs == 0
+            && relay.legacy_envelope_count == 0
+            && relay.legacy_protocol_envelopes == 0
+            && relay.operations.legacy_entity_snapshot_records == 0;
+        if !safe {
+            return Err(
+                "The relay changed, is not fully caught up, or still has unsafe pending/legacy records. Run Sync now and repeat the audit first."
+                    .to_string(),
+            );
+        }
+
+        let staged = if local.cleanup_staged {
+            sync::LegacyCleanupStageResult {
+                guarded_ids: local.cleanup_guard_count,
+                checkpoint_records_cleaned: 0,
+            }
+        } else {
+            sync::stage_legacy_cleanup(&connection).map_err(sync::Error::into_string)?
+        };
+        if relay.operations.legacy_checkpoint_records == 0 {
+            return Ok(LegacyCleanupStageResponse {
+                guarded_ids: staged.guarded_ids,
+                checkpoint_records_cleaned: staged.checkpoint_records_cleaned,
+                relay_promoted: false,
+                message: format!(
+                    "This installation is staged safely with {} guarded retired id(s); the relay checkpoint is already current-format.",
+                    staged.guarded_ids
+                ),
+            });
+        }
+        let promotion = sync::relay_client::promote_staged_legacy_cleanup(
+            &connection,
+            &relay_url,
+            &key,
+        );
+        let (relay_promoted, message) = match promotion {
+            Ok(true) => (
+                true,
+                format!(
+                    "Cleaned this installation and promoted a current-format relay checkpoint. {} retired id(s) remain in the temporary safety guard until every installation is staged and the rollback window expires.",
+                    staged.guarded_ids
+                ),
+            ),
+            Ok(false) => (
+                false,
+                format!(
+                    "Cleaned this installation and safely guarded {} retired id(s), but the relay changed before promotion. Run Sync now, audit, and retry cleanup.",
+                    staged.guarded_ids
+                ),
+            ),
+            Err(error) => (
+                false,
+                format!(
+                    "Cleaned this installation and safely guarded {} retired id(s). Relay promotion did not finish ({error}); your app data is unchanged, and cleanup can be retried.",
+                    staged.guarded_ids
+                ),
+            ),
+        };
+        Ok(LegacyCleanupStageResponse {
+            guarded_ids: staged.guarded_ids,
+            checkpoint_records_cleaned: staged.checkpoint_records_cleaned,
+            relay_promoted,
+            message,
         })
     })
     .await
@@ -9290,6 +9441,7 @@ pub fn run() {
             get_sync_settings,
             set_sync_relay_url,
             audit_legacy_migration_readiness,
+            stage_legacy_sync_cleanup,
             sync_new_pairing_code,
             sync_enable_primary,
             sync_enable_joiner,

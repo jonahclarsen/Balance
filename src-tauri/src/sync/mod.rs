@@ -94,7 +94,17 @@ pub struct LocalLegacyAudit {
     pub history_entries_checked: usize,
     pub legacy_history_entries: usize,
     pub tombstone_count: usize,
+    pub cleanup_guard_count: usize,
+    pub cleanup_staged: bool,
 }
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct LegacyCleanupStageResult {
+    pub guarded_ids: usize,
+    pub checkpoint_records_cleaned: usize,
+}
+
+const LEGACY_CLEANUP_STAGED: &str = "legacy_sync_cleanup_staged";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InventoryItem {
@@ -157,6 +167,7 @@ impl SyncStore for ConnectionStore<'_> {
 pub fn ensure_tombstones_table(conn: &Connection) -> Result<()> {
     conn.execute_batch(
         "create table if not exists sync_tombstones (id text primary key);
+         create table if not exists sync_legacy_cleanup_guard (id text primary key);
          create table if not exists sync_frontiers (
            device_id text primary key,
            sequence integer not null
@@ -184,6 +195,41 @@ fn tombstone_ids(conn: &Connection) -> Result<HashSet<String>> {
     Ok(ids)
 }
 
+fn cleanup_guard_ids(conn: &Connection) -> Result<HashSet<String>> {
+    let mut stmt = conn.prepare("SELECT id FROM sync_legacy_cleanup_guard")?;
+    let ids = stmt
+        .query_map([], |r| r.get::<_, String>(0))?
+        .collect::<std::result::Result<HashSet<_>, _>>()?;
+    Ok(ids)
+}
+
+pub fn legacy_cleanup_guard_count(conn: &Connection) -> Result<usize> {
+    ensure_tombstones_table(conn)?;
+    Ok(conn.query_row(
+        "SELECT count(*) FROM sync_legacy_cleanup_guard",
+        [],
+        |row| row.get(0),
+    )?)
+}
+
+pub fn legacy_cleanup_is_staged(conn: &Connection) -> Result<bool> {
+    ensure_tombstones_table(conn)?;
+    let marker = conn
+        .query_row(
+            "SELECT value FROM metadata WHERE key = ?1",
+            params![LEGACY_CLEANUP_STAGED],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()?;
+    Ok(marker.as_deref() == Some("true"))
+}
+
+fn retired_ids(conn: &Connection) -> Result<HashSet<String>> {
+    let mut ids = tombstone_ids(conn)?;
+    ids.extend(cleanup_guard_ids(conn)?);
+    Ok(ids)
+}
+
 fn row_to_op(row: &rusqlite::Row<'_>) -> rusqlite::Result<Op> {
     Ok(Op {
         id: row.get(0)?,
@@ -203,7 +249,9 @@ const SELECT_OPS: &str = "SELECT id, device_id, sequence, type, timestamp, paylo
 pub fn local_op_ids(conn: &Connection) -> Result<Vec<String>> {
     ensure_tombstones_table(conn)?;
     let mut stmt = conn.prepare(
-        "SELECT id FROM operations WHERE id NOT IN (SELECT id FROM sync_tombstones) \
+        "SELECT id FROM operations
+         WHERE id NOT IN (SELECT id FROM sync_tombstones)
+           AND id NOT IN (SELECT id FROM sync_legacy_cleanup_guard) \
          ORDER BY timestamp, device_id, sequence, id",
     )?;
     let ids = stmt
@@ -215,14 +263,14 @@ pub fn local_op_ids(conn: &Connection) -> Result<Vec<String>> {
 /// Every op held locally, in canonical order.
 pub fn all_ops(conn: &Connection) -> Result<Vec<Op>> {
     ensure_tombstones_table(conn)?;
-    let tombstones = tombstone_ids(conn)?;
+    let retired = retired_ids(conn)?;
     let mut stmt = conn.prepare(SELECT_OPS)?;
     let ops = stmt
         .query_map([], row_to_op)?
         .collect::<std::result::Result<Vec<_>, _>>()?;
     Ok(ops
         .into_iter()
-        .filter(|op| !tombstones.contains(&op.id))
+        .filter(|op| !retired.contains(&op.id))
         .collect())
 }
 
@@ -309,12 +357,185 @@ pub fn audit_local_legacy_compatibility(conn: &Connection) -> Result<LocalLegacy
     let tombstone_count = conn.query_row("SELECT count(*) FROM sync_tombstones", [], |row| {
         row.get::<_, usize>(0)
     })?;
+    let cleanup_guard_count = legacy_cleanup_guard_count(conn)?;
     Ok(LocalLegacyAudit {
         operations: operation_audit,
         history_entries_checked: histories.len(),
         legacy_history_entries,
         tombstone_count,
+        cleanup_guard_count,
+        cleanup_staged: legacy_cleanup_is_staged(conn)?,
     })
+}
+
+/// Stage this installation for removal of legacy sync compatibility without
+/// weakening its rejection of operations retired by an older checkpoint.
+/// The legacy ids move into a temporary guard table while checkpoint payloads
+/// become current-format. Relay promotion remains blocked until every active
+/// installation has completed this same step.
+pub fn stage_legacy_cleanup(conn: &Connection) -> Result<LegacyCleanupStageResult> {
+    ensure_tombstones_table(conn)?;
+    let state_before = crate::read_app_state_from_database(conn)
+        .map_err(Error::Codec)?
+        .ok_or_else(|| Error::Codec("database has no app state to verify".into()))?;
+    let history_before = {
+        let mut statement = conn.prepare(
+            "SELECT id, operation_id, device_id, sequence, undo_operation_json,
+                    redo_operation_json, undone, created_at_ms, updated_at_ms
+             FROM history_entries ORDER BY id",
+        )?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, i64>(8)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        rows
+    };
+    let operations = all_ops(conn)?;
+    let operation_audit = audit_operations_for_legacy_compatibility(&operations)?;
+    if operation_audit.legacy_entity_snapshot_records != 0 {
+        return Err(Error::Codec(
+            "legacy entity snapshots must be compacted before cleanup".into(),
+        ));
+    }
+
+    let mut checkpoint_updates = Vec::new();
+    let mut guarded = tombstone_ids(conn)?;
+    for operation in operations
+        .iter()
+        .filter(|operation| operation.op_type == "replace_full_state")
+    {
+        let mut payload: JsonValue = serde_json::from_str(&operation.payload_json)
+            .map_err(|error| Error::Codec(format!("invalid checkpoint payload: {error}")))?;
+        if payload
+            .get("generation")
+            .and_then(JsonValue::as_i64)
+            .is_none_or(|generation| generation < 1)
+            || !payload.get("frontiers").is_some_and(JsonValue::is_object)
+            || payload.get("replaces").is_some()
+        {
+            return Err(Error::Codec(
+                "a pre-frontier checkpoint must be migrated by normal sync before cleanup".into(),
+            ));
+        }
+        guarded.extend(replaced_ids(operation));
+        let object = payload
+            .as_object_mut()
+            .ok_or_else(|| Error::Codec("checkpoint payload is not an object".into()))?;
+        object.remove("legacyReplaces");
+        checkpoint_updates.push((operation.id.clone(), payload.to_string()));
+    }
+    if checkpoint_updates.is_empty() {
+        return Err(Error::Codec(
+            "no current checkpoint is available to clean".into(),
+        ));
+    }
+
+    let tx = conn.unchecked_transaction()?;
+    {
+        let mut insert_guard =
+            tx.prepare("INSERT OR IGNORE INTO sync_legacy_cleanup_guard (id) VALUES (?1)")?;
+        for id in &guarded {
+            insert_guard.execute(params![id])?;
+        }
+        let mut update_checkpoint =
+            tx.prepare("UPDATE operations SET payload_json = ?2 WHERE id = ?1")?;
+        for (id, payload) in &checkpoint_updates {
+            if update_checkpoint.execute(params![id, payload])? != 1 {
+                return Err(Error::Codec(
+                    "checkpoint changed while cleanup was being staged".into(),
+                ));
+            }
+        }
+    }
+    tx.execute("DELETE FROM sync_tombstones", [])?;
+    tx.execute(
+        "INSERT INTO metadata (key, value) VALUES (?1, 'true')
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        params![LEGACY_CLEANUP_STAGED],
+    )?;
+
+    let state_after = crate::read_app_state_from_database(&tx)
+        .map_err(Error::Codec)?
+        .ok_or_else(|| Error::Codec("cleanup verification found no app state".into()))?;
+    if state_after != state_before {
+        return Err(Error::Codec(
+            "cleanup changed application state; every change was rolled back".into(),
+        ));
+    }
+    let history_after = {
+        let mut statement = tx.prepare(
+            "SELECT id, operation_id, device_id, sequence, undo_operation_json,
+                    redo_operation_json, undone, created_at_ms, updated_at_ms
+             FROM history_entries ORDER BY id",
+        )?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, i64>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, i64>(8)?,
+                ))
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        rows
+    };
+    if history_after != history_before {
+        return Err(Error::Codec(
+            "cleanup changed undo history; every change was rolled back".into(),
+        ));
+    }
+    tx.commit()?;
+    Ok(LegacyCleanupStageResult {
+        guarded_ids: guarded.len(),
+        checkpoint_records_cleaned: checkpoint_updates.len(),
+    })
+}
+
+/// Replace the staged local log with one verified current-format checkpoint.
+/// The temporary guard intentionally remains in force until every installation
+/// has staged and the relay rollback generation has expired.
+pub(crate) fn prepare_staged_cleanup_checkpoint(conn: &Connection) -> Result<CheckpointStats> {
+    if !legacy_cleanup_is_staged(conn)? || legacy_cleanup_guard_count(conn)? == 0 {
+        return Err(Error::Codec(
+            "this installation has not staged legacy cleanup".into(),
+        ));
+    }
+    let state = crate::read_app_state_from_database(conn)
+        .map_err(Error::Codec)?
+        .ok_or_else(|| Error::Codec("database has no app state to checkpoint".into()))?;
+    let mut snapshot = snapshot_state_op(conn, &state)?;
+    let payload = snapshot
+        .get_mut("payload")
+        .and_then(JsonValue::as_object_mut)
+        .ok_or_else(|| Error::Codec("generated checkpoint payload is invalid".into()))?;
+    let uncovered = payload
+        .get("legacyReplaces")
+        .and_then(JsonValue::as_array)
+        .map_or(0, Vec::len);
+    if uncovered != 0 {
+        return Err(Error::Codec(format!(
+            "{uncovered} live operation(s) are not covered by current frontiers; sync again before relay cleanup"
+        )));
+    }
+    payload.remove("legacyReplaces");
+    install_checkpoint_with_history_policy(conn, &state, &snapshot, false)
 }
 
 pub fn sync_inventory(conn: &Connection) -> Result<SyncInventory> {
@@ -476,13 +697,7 @@ fn merge_ops_uncommitted(conn: &Connection, ops: &[Op]) -> Result<Vec<Op>> {
                 .collect::<std::result::Result<_, _>>()?;
             ids
         };
-        let tombstones: HashSet<String> = {
-            let mut stmt = conn.prepare("SELECT id FROM sync_tombstones")?;
-            let ids = stmt
-                .query_map([], |r| r.get::<_, String>(0))?
-                .collect::<std::result::Result<_, _>>()?;
-            ids
-        };
+        let tombstones = retired_ids(conn)?;
         let mut frontiers: std::collections::HashMap<String, i64> = {
             let mut stmt = conn.prepare("SELECT device_id, sequence FROM sync_frontiers")?;
             let rows = stmt
@@ -714,6 +929,11 @@ pub fn enable_primary(conn: &Connection) -> Result<()> {
     // A fresh pairing starts a fresh replication history: nothing from before is
     // reachable, so old tombstones would only bloat future checkpoints.
     conn.execute("DELETE FROM sync_tombstones", [])?;
+    conn.execute("DELETE FROM sync_legacy_cleanup_guard", [])?;
+    conn.execute(
+        "DELETE FROM metadata WHERE key = ?1",
+        params![LEGACY_CLEANUP_STAGED],
+    )?;
     conn.execute("DELETE FROM sync_frontiers", [])?;
     checkpoint_operation_log_preserving_history(conn)?;
     mark_enabled(conn)?;
@@ -730,11 +950,16 @@ pub fn enable_joiner(conn: &Connection) -> Result<()> {
         tx.execute_batch(
             "DELETE FROM operations; DELETE FROM history_entries;
              DELETE FROM sync_tombstones;
+             DELETE FROM sync_legacy_cleanup_guard;
              DELETE FROM sync_frontiers;
              DELETE FROM plan_items; DELETE FROM plans;
              DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
              DELETE FROM state_entities;
              DELETE FROM metadata WHERE key IN ('goal_data','lists_metrics_data');",
+        )?;
+        tx.execute(
+            "DELETE FROM metadata WHERE key = ?1",
+            params![LEGACY_CLEANUP_STAGED],
         )?;
         tx.commit()?;
     }

@@ -1595,6 +1595,457 @@ fn removal_audit_accepts_current_checkpoint_and_entity_delta_records() {
     assert_eq!(audit.operations.legacy_entity_snapshot_records, 0);
     assert_eq!(audit.legacy_history_entries, 0);
     assert_eq!(audit.tombstone_count, 0);
+    assert_eq!(audit.cleanup_guard_count, 0);
+    assert!(!audit.cleanup_staged);
+}
+
+#[test]
+fn staged_cleanup_preserves_state_and_history_while_guarding_retired_operations() {
+    let scratch = Scratch::new("legacy-cleanup-stage");
+    let mut connection = open_seeded(
+        &scratch.path,
+        "legacy-cleanup-stage",
+        &state("device-cleanup", json!([])),
+    );
+    enable_primary(&connection).unwrap();
+    persist_operation_to_database(
+        &mut connection,
+        &json!({
+            "id": "current-edit",
+            "deviceId": "device-cleanup",
+            "sequence": 1,
+            "timestamp": "2026-08-16T00:00:00.000Z",
+            "type": "set_active_plan_date",
+            "payload": { "date": "2026-08-16" }
+        }),
+    )
+    .unwrap();
+    let checkpoint_id: String = connection
+        .query_row(
+            "SELECT id FROM operations WHERE type = 'replace_full_state'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let raw: String = connection
+        .query_row(
+            "SELECT payload_json FROM operations WHERE id = ?1",
+            params![checkpoint_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let mut payload: Value = serde_json::from_str(&raw).unwrap();
+    payload["legacyReplaces"] = json!(["retired-one", "retired-two"]);
+    connection
+        .execute(
+            "UPDATE operations SET payload_json = ?2 WHERE id = ?1",
+            params![checkpoint_id, payload.to_string()],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO sync_tombstones (id) VALUES ('retired-one'), ('retired-two')",
+            [],
+        )
+        .unwrap();
+    let state_before = read_app_state_from_database(&connection).unwrap().unwrap();
+    let history_before: Vec<(String, String)> = connection
+        .prepare("SELECT undo_operation_json, redo_operation_json FROM history_entries ORDER BY id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<std::result::Result<_, _>>()
+        .unwrap();
+
+    let result = stage_legacy_cleanup(&connection).unwrap();
+
+    assert_eq!(result.guarded_ids, 2);
+    assert_eq!(result.checkpoint_records_cleaned, 1);
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        state_before
+    );
+    let history_after: Vec<(String, String)> = connection
+        .prepare("SELECT undo_operation_json, redo_operation_json FROM history_entries ORDER BY id")
+        .unwrap()
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap()
+        .collect::<std::result::Result<_, _>>()
+        .unwrap();
+    assert_eq!(history_after, history_before);
+
+    let audit = audit_local_legacy_compatibility(&connection).unwrap();
+    assert_eq!(audit.operations.legacy_checkpoint_records, 0);
+    assert_eq!(audit.tombstone_count, 0);
+    assert_eq!(audit.cleanup_guard_count, 2);
+    assert!(audit.cleanup_staged);
+
+    let retired = Op {
+        id: "retired-one".into(),
+        device_id: "offline-device".into(),
+        sequence: 99,
+        op_type: "set_active_plan_date".into(),
+        timestamp: "2026-08-16T01:00:00.000Z".into(),
+        payload_json: json!({ "date": "1999-01-01" }).to_string(),
+    };
+    assert_eq!(
+        merge_and_rematerialize(&connection, vec![retired]).unwrap(),
+        0
+    );
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        state_before
+    );
+}
+
+#[test]
+fn staged_cleanup_rejects_pre_frontier_checkpoints_without_changing_anything() {
+    let scratch = Scratch::new("legacy-cleanup-reject-v2");
+    let connection = open_seeded(
+        &scratch.path,
+        "legacy-cleanup-reject-v2",
+        &state("device-v2", json!([])),
+    );
+    connection
+        .execute(
+            "INSERT INTO operations (id, device_id, sequence, type, timestamp, payload_json)
+             VALUES ('v2-checkpoint', 'device-v2', 0, 'replace_full_state',
+                     '0000-00-00T00:00:00.000Z', ?1)",
+            params![json!({
+                "state": state("device-v2", json!([])),
+                "replaces": ["retired-v2"]
+            })
+            .to_string()],
+        )
+        .unwrap();
+    connection
+        .execute("INSERT INTO sync_tombstones (id) VALUES ('retired-v2')", [])
+        .unwrap();
+    let state_before = read_app_state_from_database(&connection).unwrap().unwrap();
+
+    assert!(stage_legacy_cleanup(&connection).is_err());
+
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        state_before
+    );
+    assert_eq!(
+        tombstone_ids(&connection).unwrap(),
+        HashSet::from(["retired-v2".to_string()])
+    );
+    assert_eq!(legacy_cleanup_guard_count(&connection).unwrap(), 0);
+    assert!(!legacy_cleanup_is_staged(&connection).unwrap());
+}
+
+#[test]
+fn staged_cleanup_keeps_the_relay_protected_and_blocks_automatic_promotion() {
+    let relay = ReferenceRelay::start();
+    let scratch = Scratch::new("legacy-cleanup-relay-stage");
+    let connection = open_seeded(
+        &scratch.path,
+        "legacy-cleanup-relay-stage",
+        &state("device-relay-stage", json!([])),
+    );
+    enable_primary(&connection).unwrap();
+    let checkpoint_id: String = connection
+        .query_row(
+            "SELECT id FROM operations WHERE type = 'replace_full_state'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let raw: String = connection
+        .query_row(
+            "SELECT payload_json FROM operations WHERE id = ?1",
+            params![checkpoint_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let mut payload: Value = serde_json::from_str(&raw).unwrap();
+    payload["legacyReplaces"] = json!(["retired-relay-op"]);
+    connection
+        .execute(
+            "UPDATE operations SET payload_json = ?2 WHERE id = ?1",
+            params![checkpoint_id, payload.to_string()],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO sync_tombstones (id) VALUES ('retired-relay-op')",
+            [],
+        )
+        .unwrap();
+    let key = SyncKey::generate();
+    relay_client::sync_once(
+        &connection,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    let relay_before =
+        relay_client::audit_legacy_compatibility(&connection, &relay.url, &key).unwrap();
+    assert_eq!(relay_before.operations.legacy_checkpoint_records, 1);
+
+    stage_legacy_cleanup(&connection).unwrap();
+    let pass = relay_client::sync_once(
+        &connection,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+
+    assert!(!pass.checkpoint_committed);
+    let local = audit_local_legacy_compatibility(&connection).unwrap();
+    assert_eq!(local.operations.legacy_checkpoint_records, 0);
+    assert_eq!(local.tombstone_count, 0);
+    assert_eq!(local.cleanup_guard_count, 1);
+    let relay_after =
+        relay_client::audit_legacy_compatibility(&connection, &relay.url, &key).unwrap();
+    assert_eq!(relay_after.operations.legacy_checkpoint_records, 1);
+    assert_eq!(
+        relay_after.operations.records_checked,
+        relay_before.operations.records_checked
+    );
+}
+
+#[test]
+fn staged_cleanup_handles_the_reported_839_retired_ids_atomically() {
+    let scratch = Scratch::new("legacy-cleanup-839");
+    let connection = open_seeded(
+        &scratch.path,
+        "legacy-cleanup-839",
+        &state("device-cleanup-839", json!([])),
+    );
+    enable_primary(&connection).unwrap();
+    let checkpoint_id: String = connection
+        .query_row(
+            "SELECT id FROM operations WHERE type = 'replace_full_state'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let raw: String = connection
+        .query_row(
+            "SELECT payload_json FROM operations WHERE id = ?1",
+            params![checkpoint_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let retired = (0..839)
+        .map(|index| format!("retired-{index:04}"))
+        .collect::<Vec<_>>();
+    let mut payload: Value = serde_json::from_str(&raw).unwrap();
+    payload["legacyReplaces"] = json!(retired);
+    connection
+        .execute(
+            "UPDATE operations SET payload_json = ?2 WHERE id = ?1",
+            params![checkpoint_id, payload.to_string()],
+        )
+        .unwrap();
+    {
+        let tx = connection.unchecked_transaction().unwrap();
+        {
+            let mut insert = tx
+                .prepare("INSERT INTO sync_tombstones (id) VALUES (?1)")
+                .unwrap();
+            for id in &retired {
+                insert.execute(params![id]).unwrap();
+            }
+        }
+        tx.commit().unwrap();
+    }
+    let state_before = read_app_state_from_database(&connection).unwrap().unwrap();
+
+    let result = stage_legacy_cleanup(&connection).unwrap();
+
+    assert_eq!(result.guarded_ids, 839);
+    assert_eq!(result.checkpoint_records_cleaned, 1);
+    assert_eq!(legacy_cleanup_guard_count(&connection).unwrap(), 839);
+    assert!(tombstone_ids(&connection).unwrap().is_empty());
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        state_before
+    );
+}
+
+#[test]
+fn explicit_staged_cleanup_promotes_a_clean_relay_checkpoint_and_keeps_the_guard() {
+    let relay = ReferenceRelay::start();
+    let scratch = Scratch::new("legacy-cleanup-promote");
+    let connection = open_seeded(
+        &scratch.path,
+        "legacy-cleanup-promote",
+        &state("device-cleanup-promote", json!([])),
+    );
+    enable_primary(&connection).unwrap();
+    let checkpoint_id: String = connection
+        .query_row(
+            "SELECT id FROM operations WHERE type = 'replace_full_state'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let raw: String = connection
+        .query_row(
+            "SELECT payload_json FROM operations WHERE id = ?1",
+            params![checkpoint_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let mut payload: Value = serde_json::from_str(&raw).unwrap();
+    payload["legacyReplaces"] = json!(["retired-promoted-op"]);
+    connection
+        .execute(
+            "UPDATE operations SET payload_json = ?2 WHERE id = ?1",
+            params![checkpoint_id, payload.to_string()],
+        )
+        .unwrap();
+    connection
+        .execute(
+            "INSERT INTO sync_tombstones (id) VALUES ('retired-promoted-op')",
+            [],
+        )
+        .unwrap();
+    let key = SyncKey::generate();
+    relay_client::sync_once(
+        &connection,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    let state_before = read_app_state_from_database(&connection).unwrap().unwrap();
+
+    stage_legacy_cleanup(&connection).unwrap();
+    assert!(relay_client::promote_staged_legacy_cleanup(&connection, &relay.url, &key).unwrap());
+
+    let local = audit_local_legacy_compatibility(&connection).unwrap();
+    assert_eq!(local.operations.records_checked, 1);
+    assert_eq!(local.operations.legacy_checkpoint_records, 0);
+    assert_eq!(local.tombstone_count, 0);
+    assert_eq!(local.cleanup_guard_count, 1);
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        state_before
+    );
+    let relay_audit =
+        relay_client::audit_legacy_compatibility(&connection, &relay.url, &key).unwrap();
+    assert_eq!(relay_audit.operations.legacy_checkpoint_records, 0);
+    assert_eq!(relay_audit.operations.records_checked, 1);
+    assert!(relay_audit.previous_generation_present);
+
+    let retired = Op {
+        id: "retired-promoted-op".into(),
+        device_id: "offline-device".into(),
+        sequence: 77,
+        op_type: "set_active_plan_date".into(),
+        timestamp: "2026-08-16T02:00:00.000Z".into(),
+        payload_json: json!({ "date": "1998-01-01" }).to_string(),
+    };
+    assert_eq!(
+        merge_and_rematerialize(&connection, vec![retired]).unwrap(),
+        0
+    );
+    assert_eq!(
+        read_app_state_from_database(&connection).unwrap().unwrap(),
+        state_before
+    );
+}
+
+#[test]
+fn mac_first_android_later_cleanup_sequence_preserves_both_synthetic_databases() {
+    let relay = ReferenceRelay::start();
+    let mac_scratch = Scratch::new("legacy-cleanup-mac-first");
+    let android_scratch = Scratch::new("legacy-cleanup-android-later");
+    let mac = open_seeded(
+        &mac_scratch.path,
+        "legacy-cleanup-mac-first",
+        &state("mac-device", json!([])),
+    );
+    enable_primary(&mac).unwrap();
+    let checkpoint_id: String = mac
+        .query_row(
+            "SELECT id FROM operations WHERE type = 'replace_full_state'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let raw: String = mac
+        .query_row(
+            "SELECT payload_json FROM operations WHERE id = ?1",
+            params![checkpoint_id],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let mut payload: Value = serde_json::from_str(&raw).unwrap();
+    payload["legacyReplaces"] = json!(["retired-fleet-op"]);
+    mac.execute(
+        "UPDATE operations SET payload_json = ?2 WHERE id = ?1",
+        params![checkpoint_id, payload.to_string()],
+    )
+    .unwrap();
+    mac.execute(
+        "INSERT INTO sync_tombstones (id) VALUES ('retired-fleet-op')",
+        [],
+    )
+    .unwrap();
+    let key = SyncKey::generate();
+    relay_client::sync_once(
+        &mac,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+
+    let android = open_seeded(
+        &android_scratch.path,
+        "legacy-cleanup-android-later",
+        &state("android-device", json!([])),
+    );
+    enable_joiner(&android).unwrap();
+    relay_client::sync_once(
+        &android,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(false),
+    )
+    .unwrap();
+    let expected_mac_state = read_app_state_from_database(&mac).unwrap().unwrap();
+    let expected_android_state = read_app_state_from_database(&android).unwrap().unwrap();
+    assert_eq!(domain(&expected_android_state), domain(&expected_mac_state));
+    assert_eq!(tombstone_ids(&android).unwrap().len(), 1);
+
+    stage_legacy_cleanup(&mac).unwrap();
+    assert!(relay_client::promote_staged_legacy_cleanup(&mac, &relay.url, &key).unwrap());
+    relay_client::sync_once(
+        &android,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(false),
+    )
+    .unwrap();
+    assert_eq!(
+        read_app_state_from_database(&mac).unwrap().unwrap(),
+        expected_mac_state
+    );
+    assert_eq!(
+        read_app_state_from_database(&android).unwrap().unwrap(),
+        expected_android_state
+    );
+
+    let android_stage = stage_legacy_cleanup(&android).unwrap();
+    assert_eq!(android_stage.guarded_ids, 1);
+    let android_audit = audit_local_legacy_compatibility(&android).unwrap();
+    assert_eq!(android_audit.operations.legacy_checkpoint_records, 0);
+    assert_eq!(android_audit.tombstone_count, 0);
+    assert_eq!(android_audit.cleanup_guard_count, 1);
+    assert_eq!(
+        read_app_state_from_database(&android).unwrap().unwrap(),
+        expected_android_state
+    );
 }
 
 #[test]
