@@ -11,9 +11,9 @@
   const groups: { kind: SearchResult['kind']; label: string }[] = [
     { kind: 'note', label: 'Notes' },
     { kind: 'day', label: 'Saved days' },
-    { kind: 'list', label: 'List instances' },
+    { kind: 'list', label: 'List History' },
     { kind: 'day-template', label: 'Day templates' },
-    { kind: 'list-template', label: 'List templates' },
+    { kind: 'list-template', label: 'Lists' },
   ]
 
   let searchInput: HTMLInputElement | null = null
@@ -88,7 +88,7 @@
         bind:this={searchInput}
         type="search"
         value={query}
-        placeholder="Search notes, days, lists, and templates"
+        placeholder="Search notes, days, lists, and history"
         aria-label="Search everything"
         on:input={(event) => updateQuery(event.currentTarget.value)}
         on:keydown={handleKeydown}
@@ -99,7 +99,7 @@
     {#if !query.trim()}
       <div class="search-empty">
         <strong>Search everything in Balance.</strong>
-        <span>Notes, saved days, generated lists, and templates are all included.</span>
+        <span>Notes, saved days, lists, and list history are all included.</span>
       </div>
     {:else if !pending && results.length === 0}
       <div class="search-empty" role="status">

@@ -647,6 +647,15 @@ nav button.active {
   color: inherit;
 }
 
+.primary-nav .nav-child {
+  width: calc(100% - 18px);
+  margin-left: 18px;
+  padding-left: 18px;
+  border-left: 3px solid color-mix(in srgb, var(--accent) 48%, var(--line));
+  border-radius: 0 6px 6px 0;
+  font-size: 0.92em;
+}
+
 .primary-nav .mobile-undo-button {
   display: none;
 }
@@ -855,6 +864,16 @@ nav button.active {
   background: var(--accent-strong);
 }
 
+.primary.outlined {
+  background: transparent;
+  color: var(--accent);
+}
+
+.primary.outlined:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--accent-strong);
+}
+
 .workspace {
   min-height: 0;
   overflow-y: auto;
@@ -919,6 +938,28 @@ nav button.active {
   font-size: 18px;
   font-weight: 700;
   line-height: 1;
+}
+
+.list-history-heading {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.list-history-back {
+  min-height: 42px;
+  border-color: var(--accent);
+  background: var(--active-nav);
+  color: var(--accent-strong);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.list-history-date {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .list-panel,
@@ -3386,6 +3427,12 @@ nav button.active {
     font-size: 11px;
   }
 
+  .primary-nav .nav-child {
+    width: auto;
+    margin-left: 24px;
+    padding-left: 10px;
+  }
+
   .workspace {
     padding: 12px;
   }
@@ -3486,6 +3533,15 @@ nav button.active {
   .page-header {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .list-history-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .list-history-back {
+    align-self: flex-start;
   }
 
   .date-controls {

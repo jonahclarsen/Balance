@@ -45,10 +45,10 @@
       shortcuts: [
         { keys: ['alt', 'C'], label: 'Search' },
         { keys: ['alt', 'T'], label: 'Open Today / jump to today' },
-        { keys: ['alt', 'R'], label: 'Open Lists' },
+        { keys: ['alt', 'R'], label: 'Open List History' },
         { keys: ['alt', 'N'], label: 'Open Notes' },
         { keys: ['alt', 'D'], label: 'Open Day Templates' },
-        { keys: ['alt', 'E'], label: 'Open List Templates' },
+        { keys: ['alt', 'E'], label: 'Open Lists' },
         { keys: ['alt', 'V'], label: 'Open Metrics' },
         { keys: ['alt', 'G'], label: 'Open Goals' },
         { keys: ['alt', 'S'], label: 'Open Settings' },

@@ -8,8 +8,8 @@ async function openGroceriesOverlay(page: import('@playwright/test').Page) {
   await page.reload()
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  await page.getByRole('button', { name: '+ New list template' }).click()
-  await expect(page.getByRole('heading', { name: 'List template' })).toBeVisible()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await expect(page.getByRole('heading', { name: 'Lists' })).toBeVisible()
   await page.getByLabel('List name').fill('Groceries')
 
   const listItems = page.locator('[data-list-template-text-input]')
@@ -35,7 +35,7 @@ async function openLongGroceriesOverlay(page: import('@playwright/test').Page) {
   await page.reload()
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
 
   const listItems = page.locator('[data-list-template-text-input]')
@@ -63,7 +63,7 @@ async function openTwoItemGroceriesOverlay(page: import('@playwright/test').Page
   await page.reload()
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
 
   const listItems = page.locator('[data-list-template-text-input]')
@@ -91,7 +91,7 @@ async function openThreeItemGroceriesOverlay(page: import('@playwright/test').Pa
   await page.reload()
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
 
   const listItems = page.locator('[data-list-template-text-input]')
@@ -118,7 +118,7 @@ test('Alt+F opens a task linked list from either its caret or item selection', a
   await page.reload()
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
   await page.locator('[data-list-template-text-input]').first().fill('Milk')
 
@@ -155,7 +155,7 @@ test('Alt+F opens the metric linked by the selected list item', async ({ page })
   await page.getByLabel('Question type').selectOption('boolean')
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
   await page.locator('[data-list-template-text-input]').first().fill('Record Mood')
 
@@ -256,15 +256,15 @@ test('ArrowDown checks the final list item when it cannot navigate farther', asy
 test('list overlay item shows an edit pencil that jumps to the template and reopens on return', async ({ page }) => {
   const dialog = await openGroceriesOverlay(page)
 
-  // Each generated item exposes an edit-in-template button.
-  const editButton = dialog.getByRole('button', { name: 'Edit this item in the list template' })
+  // Each generated item exposes a button that jumps back to its source in Lists.
+  const editButton = dialog.getByRole('button', { name: 'Edit this item in Lists' })
   await expect(editButton).toBeVisible()
   await expect(editButton.locator('xpath=..').getByText('E', { exact: true })).toBeVisible()
   await editButton.click()
 
-  // The toast hides while we land on the list-templates editor with the source item focused.
+  // The toast hides while we land on Lists with the source item focused.
   await expect(dialog).toBeHidden()
-  await expect(page.getByRole('heading', { name: 'List template' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Lists' })).toBeVisible()
   await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-list-template-text-input-id') ?? null)).not.toBeNull()
   await expect(page.locator('[data-list-template-text-input]').first()).toContainText('Milk')
 
@@ -280,7 +280,7 @@ test('E edits the selected item in a list overlay', async ({ page }) => {
   await page.keyboard.press('e')
 
   await expect(dialog).toBeHidden()
-  await expect(page.getByRole('heading', { name: 'List template' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Lists' })).toBeVisible()
   await expect
     .poll(() => page.evaluate(() => document.activeElement?.textContent ?? ''))
     .toBe('Eggs')

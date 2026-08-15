@@ -123,6 +123,9 @@
 
   let view: View = 'today'
   let sidebarHidden = false
+  // List History is a contextual child of Lists. Once opened, keep its sidebar
+  // entry available while visiting other pages; returning to Lists dismisses it.
+  let listHistoryNavigationVisible = false
   let searchOpen = false
   let documentFindOpen = false
   let documentFindBar: DocumentFindBar | null = null
@@ -354,6 +357,7 @@ return rows`
 
   // ---- Lists ----
   $: listTemplates = $plannerStore.listTemplates
+  $: if (view === 'lists') listHistoryNavigationVisible = true
   $: selectedListTemplate = listTemplates.find((template) => template.id === selectedListTemplateId) ?? listTemplates[0]
   $: if (!selectedListTemplateId && listTemplates[0]) selectedListTemplateId = listTemplates[0].id
   $: if (listTemplatesViewStateReady && !listTemplates.some((template) => template.id === selectedListTemplateId)) {
@@ -462,6 +466,16 @@ return rows`
   function allPlanItemsDone(items: PlanItem[]): boolean {
     if (items.length === 0) return false
     return items.every((item) => item.done && (item.children.length === 0 || allPlanItemsDone(item.children)))
+  }
+
+  function openLists() {
+    view = 'listTemplates'
+    listHistoryNavigationVisible = false
+  }
+
+  function openListHistory() {
+    view = 'lists'
+    listHistoryNavigationVisible = true
   }
 
   function observeActivePlanCompletion(
@@ -686,7 +700,7 @@ return rows`
     const template = $plannerStore.listTemplates.find((candidate) => candidate.id === instance.listTemplateId)
     const templateItem = template ? findListTemplateItemByContent(template.items, listItem) : null
 
-    view = 'listTemplates'
+    openLists()
     selectedListTemplateId = instance.listTemplateId
 
     if (templateItem) void focusListTemplateItem(templateItem.id)
@@ -867,7 +881,7 @@ return rows`
   function createListTemplateAndSelect() {
     const id = plannerStore.addListTemplate()
     selectedListTemplateId = id
-    view = 'listTemplates'
+    openLists()
   }
 
   function selectDayTemplate(templateId: Id) {
@@ -933,7 +947,7 @@ return rows`
       : ''
     const message = `Delete “${templateName || 'Untitled list'}”?${savedListMessage}`
     const confirmed = isTauri()
-      ? await confirmDialog(message, { title: 'Delete list template?', kind: 'warning' })
+      ? await confirmDialog(message, { title: 'Delete list?', kind: 'warning' })
       : window.confirm(message)
     if (!confirmed) return
 
@@ -1991,9 +2005,7 @@ return rows`
 
     if (event.altKey && !primaryModifier && !event.shiftKey) {
       const sidebarViewByCode: Partial<Record<string, View>> = {
-        KeyR: 'lists',
         KeyD: 'templates',
-        KeyE: 'listTemplates',
         KeyN: 'notes',
         KeyV: 'metrics',
         KeyS: 'settings',
@@ -2003,6 +2015,18 @@ return rows`
       if (sidebarView) {
         event.preventDefault()
         view = sidebarView
+        return
+      }
+
+      if (event.code === 'KeyE') {
+        event.preventDefault()
+        openLists()
+        return
+      }
+
+      if (event.code === 'KeyR') {
+        event.preventDefault()
+        openListHistory()
         return
       }
 
@@ -3701,13 +3725,13 @@ return rows`
     } else if (result.kind === 'list') {
       plannerStore.setActivePlanDate(result.date)
       listViewTemplateId = result.listTemplateId
-      view = 'lists'
+      openListHistory()
     } else if (result.kind === 'day-template') {
       selectedTemplateId = result.templateId
       view = 'templates'
     } else if (result.kind === 'list-template') {
       selectedListTemplateId = result.templateId
-      view = 'listTemplates'
+      openLists()
     }
 
     if (!result.itemId) return
@@ -3908,8 +3932,10 @@ return rows`
       ><span>⌕ Search</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd></button>
       <button class:active={view === 'today'} type="button" title="Today (Alt+T)" aria-keyshortcuts="Alt+T" on:click={() => (view = 'today')}><span>Today</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('T')}</kbd></button>
       <button class:active={view === 'templates'} type="button" title="Day Templates (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => (view = 'templates')}><span>Day Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
-      <button class:active={view === 'listTemplates'} type="button" title="List Templates (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => (view = 'listTemplates')}><span>List Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
-      <button class:active={view === 'lists'} type="button" title="Lists (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => (view = 'lists')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
+      <button class:active={view === 'listTemplates'} type="button" title="Lists (Alt+E)" aria-keyshortcuts="Alt+E" on:click={openLists}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
+      {#if listHistoryNavigationVisible}
+        <button class="nav-child" class:active={view === 'lists'} type="button" title="List History (Alt+R)" aria-keyshortcuts="Alt+R" on:click={openListHistory}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
+      {/if}
       <button class:active={view === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => (view = 'notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
       <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => (view = 'metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => { void openGoals() }}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
@@ -4319,13 +4345,14 @@ return rows`
     {#if view === 'listTemplates'}
       <header class="page-header">
         <div>
-          <p class="eyebrow">Generator</p>
-          <h2>List template</h2>
+          <p class="eyebrow">Templates</p>
+          <h2>Lists</h2>
         </div>
+        <button class="primary outlined" type="button" on:click={openListHistory}>View List History →</button>
       </header>
 
       {#if listTemplates.length > 0}
-        <nav class="template-rail list-template-rail" aria-label="Select list template">
+        <nav class="template-rail list-template-rail" aria-label="Select list">
           <TemplateTabs
             templates={listTemplates}
             selectedId={selectedListTemplate?.id ?? ''}
@@ -4431,24 +4458,28 @@ return rows`
               type="button"
               on:click={() => { void confirmDeleteListTemplate(selectedListTemplate.id, selectedListTemplate.name) }}
             >
-              Delete list template
+              Delete list
             </button>
           </div>
         </div>
       {:else}
         <div class="empty-state">
-          <h3>No list templates yet</h3>
+          <h3>No lists yet</h3>
           <p>Create one to start building checklists.</p>
-          <button class="primary" type="button" on:click={createListTemplateAndSelect}>+ New list template</button>
+          <button class="primary" type="button" on:click={createListTemplateAndSelect}>+ New list</button>
         </div>
       {/if}
     {/if}
 
     {#if view === 'lists'}
-      <header class="page-header">
-        <div>
-          <p class="eyebrow">Checklists</p>
-          <h2>{formatPlanTitle($plannerStore.activePlanDate)}</h2>
+      <header class="page-header list-history-header">
+        <div class="list-history-heading">
+          <button class="list-history-back" type="button" on:click={openLists}>← Back to Lists</button>
+          <div>
+            <p class="eyebrow">Lists</p>
+            <h2>List History</h2>
+            <p class="list-history-date">{formatPlanTitle($plannerStore.activePlanDate)}</p>
+          </div>
         </div>
         <div class="date-controls" aria-label="Day navigation">
           <button class="date-nav-button" type="button" aria-label="Previous day" on:click={() => shiftActivePlanDate(-1)}>&lt;</button>
@@ -4481,8 +4512,8 @@ return rows`
       {#if listTemplates.length === 0}
         <div class="empty-state">
           <h3>No lists yet</h3>
-          <p>Create a list template first (List Templates).</p>
-          <button class="primary" type="button" on:click={createListTemplateAndSelect}>+ New list template</button>
+          <p>Create a list first.</p>
+          <button class="primary" type="button" on:click={createListTemplateAndSelect}>+ New list</button>
         </div>
       {:else if listViewInstance}
         {@const instance = listViewInstance}

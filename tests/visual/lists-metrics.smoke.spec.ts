@@ -103,7 +103,7 @@ test('list template word cap blocks typing past the max', async ({ page }) => {
   await page.reload()
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  await page.getByRole('button', { name: '+ New list template' }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
 
   // Unlock and set a small cap of 2 expected words.
   await page.getByRole('button', { name: 'Unlock to edit max word count' }).click()

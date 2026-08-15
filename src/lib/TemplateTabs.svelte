@@ -113,7 +113,7 @@
       data-template-tab-id={template.id}
       data-day-template-tab-id={kind === 'day' ? template.id : undefined}
       data-list-template-tab-id={kind === 'list' ? template.id : undefined}
-      title={`Drag to reorder ${kind} templates`}
+      title={`Drag to reorder ${kind === 'list' ? 'lists' : 'day templates'}`}
       on:click={() => select(template.id)}
       on:pointerdown={(event) => startDrag(template.id, event)}
       on:pointermove={continueDrag}

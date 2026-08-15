@@ -550,8 +550,8 @@
         <button
           class="icon-button"
           type="button"
-          title="Edit this item in the list template"
-          aria-label="Edit this item in the list template"
+          title="Edit this item in Lists"
+          aria-label="Edit this item in Lists"
           aria-keyshortcuts={showEditShortcutHint ? 'E' : undefined}
           on:click|stopPropagation={() => edit(item.id)}
         >✎</button>

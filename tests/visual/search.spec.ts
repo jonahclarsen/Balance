@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('search finds saved days, list instances, and both template types without Enter', async ({ page }) => {
+test('search finds saved days, list history, and editable lists without Enter', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -74,8 +74,8 @@ test('search finds saved days, list instances, and both template types without E
 
   await page.getByRole('button', { name: /Search/ }).click()
   await page.getByRole('searchbox', { name: 'Search everything' }).fill('saffron')
-  await expect(page.getByRole('heading', { name: /List instances/ })).toBeVisible()
-  await expect(page.getByRole('heading', { name: /List templates/ })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /List History/ })).toBeVisible()
+  await expect(page.locator('#search-group-list-template')).toContainText('Lists')
 
   await page.getByRole('searchbox', { name: 'Search everything' }).fill('wake up')
   await expect(page.getByRole('heading', { name: /Day templates/ })).toBeVisible()

@@ -512,8 +512,7 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
   const shortcuts = [
     { key: 't', label: 'Today' },
     { key: 'd', label: 'Day Templates' },
-    { key: 'e', label: 'List Templates' },
-    { key: 'r', label: 'Lists' },
+    { key: 'e', label: 'Lists' },
     { key: 'n', label: 'Notes' },
     { key: 'v', label: 'Metrics' },
     { key: 'g', label: 'Goals' },
@@ -533,11 +532,56 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
     await expect(menuItem).toHaveClass(/active/)
   }
 
+  await expect(page.getByRole('button', { name: 'List History', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Alt+r')
+  const listHistory = page.getByRole('navigation', { name: 'Primary' })
+    .getByRole('button', { name: 'List History', exact: true })
+  await expect(listHistory).toBeVisible()
+  await expect(listHistory).toHaveAttribute('aria-keyshortcuts', 'Alt+R')
+  await expect(listHistory.locator('.nav-shortcut')).toHaveText(/^(?:⌥|Alt\+)R$/)
+  await expect(listHistory).toHaveClass(/active/)
+
   const search = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Search', exact: true })
   await expect(search).toHaveAttribute('aria-keyshortcuts', 'Alt+C')
   await expect(search.locator('.nav-shortcut')).toHaveText(/^(?:⌥|Alt\+)C$/)
   await page.keyboard.press('Alt+c')
   await expect(page.getByRole('dialog', { name: 'Search Balance' })).toBeVisible()
+})
+
+test('List History is an obvious contextual child of Lists', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const primaryNav = page.getByRole('navigation', { name: 'Primary' })
+  const lists = primaryNav.getByRole('button', { name: 'Lists', exact: true })
+  const listHistory = primaryNav.getByRole('button', { name: 'List History', exact: true })
+
+  await expect(listHistory).toHaveCount(0)
+  await lists.click()
+  await expect(page.getByRole('heading', { name: 'Lists', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'View List History' }).click()
+
+  await expect(page.getByRole('heading', { name: 'List History', exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Back to Lists' })).toBeVisible()
+  await expect(listHistory).toBeVisible()
+  await expect(listHistory).toHaveClass(/nav-child/)
+  await expect(listHistory).toHaveClass(/active/)
+
+  await primaryNav.getByRole('button', { name: 'Notes', exact: true }).click()
+  await expect(listHistory).toBeVisible()
+  await expect(listHistory).not.toHaveClass(/active/)
+
+  await listHistory.click()
+  await expect(page.getByRole('heading', { name: 'List History', exact: true })).toBeVisible()
+  await lists.click()
+  await expect(page.getByRole('heading', { name: 'Lists', exact: true })).toBeVisible()
+  await expect(listHistory).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'View List History' }).click()
+  await page.getByRole('button', { name: 'Back to Lists' }).click()
+  await expect(page.getByRole('heading', { name: 'Lists', exact: true })).toBeVisible()
+  await expect(listHistory).toHaveCount(0)
 })
 
 test('Cmd or Ctrl+F searches the current document instead of opening overall search', async ({ page }) => {
@@ -648,6 +692,7 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
 test('checking the final list item celebrates the completed list', async ({ page }) => {
   await seedListItems(page, ['First errand', 'Final errand'])
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: 'View List History' }).click()
 
   const first = page.getByRole('listitem', { name: 'Plan item: First errand' }).getByRole('checkbox')
   const final = page.getByRole('listitem', { name: 'Plan item: Final errand' }).getByRole('checkbox')
@@ -3314,14 +3359,14 @@ test('pasting a list-template item replaces the sole empty placeholder', async (
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
 
   const sourceText = 'First item'
   const sourceInput = page.locator('[data-list-template-text-input]').filter({ hasText: sourceText })
   await sourceInput.locator('xpath=ancestor::*[@data-list-template-item-id][1]').getByRole('button', { name: 'Select item' }).click()
   await page.keyboard.press('Meta+C')
-  await page.locator('[aria-label="Select list template"] .dashed-edge').click()
+  await page.locator('[aria-label="Select list"] .dashed-edge').click()
   await page.locator('[data-list-template-text-input]').fill('')
   await page.locator('[data-list-template-tab-id][aria-current="true"]').click()
   await page.keyboard.press('Meta+V')
@@ -3379,8 +3424,8 @@ test('list template items support horizontal boundary navigation and backspace m
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
   await page.getByRole('button', { name: 'Add list item' }).click()
 
   const inputs = page.locator('[data-list-template-text-input]')
@@ -3422,8 +3467,8 @@ test('shift vertical arrows select multiline list-template text until the caret 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
   await page.getByRole('button', { name: 'Add list item' }).click()
 
   const inputs = page.locator('[data-list-template-text-input]')
@@ -3448,8 +3493,8 @@ test('list template indent and outdent preserve the caret position', async ({ pa
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
   await page.getByRole('button', { name: 'Add list item' }).click()
 
   const second = page.locator('[data-list-template-text-input]').nth(1)
@@ -3481,8 +3526,8 @@ test('list template items support rich text formatting shortcuts while over the 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
   await page.getByRole('button', { name: 'Unlock to edit max word count' }).click()
   await page.getByRole('spinbutton', { name: 'max' }).fill('1')
 
@@ -3550,7 +3595,7 @@ test('list template item appearance probability grandfathers saved values below 
     )
   })
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
 
   const probabilities = page.getByLabel('Appearance probability')
   await expect(probabilities).toHaveCount(2)
@@ -3576,8 +3621,8 @@ test('list template appearance slider uses the full visible track for pointer dr
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
 
   const probability = page.getByLabel('Appearance probability')
   const sliderBox = await probability.boundingBox()
@@ -3601,8 +3646,8 @@ test('dragging a selected list-template probability applies it to every selected
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
   await page.getByRole('button', { name: 'Add list item' }).click()
 
   const inputs = page.locator('[data-list-template-text-input]')
@@ -3681,7 +3726,7 @@ test('nested list items include ancestor probabilities in expected words and cap
     )
   })
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
 
   await expect(page.locator('.word-cap-count')).toContainText('4 / 5 expected words')
 
@@ -3699,8 +3744,8 @@ test('list template rows share multi-select clipboard behavior and hide mouse-on
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
   await page.getByRole('button', { name: 'Add list item' }).click()
 
   const listInputs = page.locator('[data-list-template-text-input]')
@@ -3802,7 +3847,7 @@ test('list template tabs stay pinned and selection and scroll positions survive 
     )
   })
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
 
   const currentScrollTop = () =>
     page.evaluate(() => {
@@ -3819,7 +3864,7 @@ test('list template tabs stay pinned and selection and scroll positions survive 
   await setScrollTop(620)
   await expect.poll(currentScrollTop).toBe(620)
 
-  const templateRail = page.getByRole('navigation', { name: 'Select list template' })
+  const templateRail = page.getByRole('navigation', { name: 'Select list' })
   const wordCapBar = page.locator('.word-cap-bar')
   await expect(templateRail).toBeVisible()
   await expect(wordCapBar).toBeVisible()
@@ -3888,7 +3933,7 @@ test('list template tabs stay pinned and selection and scroll positions survive 
     })
 
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
   await expect(page.getByRole('button', { name: 'Beta', exact: true })).toHaveAttribute('aria-current', 'true')
   await expect.poll(currentScrollTop).toBe(340)
 })
@@ -3925,7 +3970,7 @@ test('list template tabs can be dragged to persist a new order without changing 
     )
   })
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
 
   const alphaTab = page.getByRole('button', { name: 'Alpha', exact: true })
   const betaTab = page.getByRole('button', { name: 'Beta', exact: true })
@@ -3947,8 +3992,8 @@ test('deleting a list template requires confirmation', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'List Templates' }).click()
-  await page.getByRole('button', { name: 'New list template' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
   await page.getByLabel('List name').fill('Errands')
 
   page.once('dialog', async (dialog) => {
@@ -3956,14 +4001,14 @@ test('deleting a list template requires confirmation', async ({ page }) => {
     expect(dialog.message()).toContain('Delete “Errands”?')
     await dialog.dismiss()
   })
-  await page.getByRole('button', { name: 'Delete list template' }).click()
+  await page.getByRole('button', { name: 'Delete list' }).click()
   await expect(page.getByLabel('List name')).toHaveValue('Errands')
 
   page.once('dialog', async (dialog) => {
     await dialog.accept()
   })
-  await page.getByRole('button', { name: 'Delete list template' }).click()
-  await expect(page.getByRole('heading', { name: 'No list templates yet' })).toBeVisible()
+  await page.getByRole('button', { name: 'Delete list' }).click()
+  await expect(page.getByRole('heading', { name: 'No lists yet' })).toBeVisible()
 })
 
 async function seedPlanItems(page: import('@playwright/test').Page, texts: string[]) {
