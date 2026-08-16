@@ -4,6 +4,9 @@
   import type { ItemLink } from './planner'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind } from './types'
 
+  type InlineFormatCommand = 'bold' | 'italic' | 'underline'
+  type InlineFormatState = Record<InlineFormatCommand, boolean>
+
   export let notes: Note[]
   export let selectedNoteId: Id
   export let listTemplates: ListTemplate[] = []
@@ -30,10 +33,12 @@
   let activeItemId: Id | null = null
   let activeNoteId: Id | null = null
   let toolbarSelection: Range | null = null
+  let inlineFormats: InlineFormatState = { bold: false, italic: false, underline: false }
   $: selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null
   $: if (selectedNoteId !== activeNoteId) {
     activeNoteId = selectedNoteId
     activeItemId = selectedNote?.items[0]?.id ?? null
+    inlineFormats = { bold: false, italic: false, underline: false }
   }
   $: activeItem = selectedNote && activeItemId ? findItem(selectedNote.items, activeItemId) : null
   $: filteredNotes = [...notes]
@@ -105,7 +110,7 @@
     focusActiveEditor()
   }
 
-  function applyInlineFormat(command: 'bold' | 'italic' | 'underline') {
+  function applyInlineFormat(command: InlineFormatCommand) {
     const editor = activeEditor()
     if (!editor) return
     const selection = document.getSelection()
@@ -116,17 +121,9 @@
       selection.removeAllRanges()
       selection.addRange(savedRange)
     }
-    if (savedRange && !savedRange.collapsed) {
-      const wrapper = document.createElement(command === 'bold' ? 'strong' : command === 'italic' ? 'em' : 'u')
-      wrapper.append(savedRange.extractContents())
-      savedRange.insertNode(wrapper)
-      selection?.selectAllChildren(wrapper)
-    } else {
-      document.execCommand(command)
-    }
+    editor.dispatchEvent(new CustomEvent('balanceformat', { detail: { command } }))
     toolbarSelection = null
-    const inputType = command === 'bold' ? 'formatBold' : command === 'italic' ? 'formatItalic' : 'formatUnderline'
-    editor.dispatchEvent(new InputEvent('input', { bubbles: true, inputType }))
+    updateInlineFormatState()
   }
 
   function rememberToolbarSelection() {
@@ -134,6 +131,22 @@
     const selection = document.getSelection()
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null
     toolbarSelection = editor && range && editor.contains(range.commonAncestorContainer) ? range.cloneRange() : null
+  }
+
+  function updateInlineFormatState() {
+    const editor = activeEditor()
+    const selection = document.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    if (!editor || !range || !editor.contains(range.startContainer) || !editor.contains(range.endContainer)) {
+      inlineFormats = { bold: false, italic: false, underline: false }
+      return
+    }
+
+    inlineFormats = {
+      bold: document.queryCommandState('bold'),
+      italic: document.queryCommandState('italic'),
+      underline: document.queryCommandState('underline'),
+    }
   }
 
   function activeEditor() {
@@ -155,6 +168,8 @@
     selection?.addRange(range)
   }
 </script>
+
+<svelte:document on:selectionchange={updateInlineFormatState} on:keyup={updateInlineFormatState} />
 
 <div class="notes-workspace">
   <aside class="notes-sidebar" aria-label="Notes">
@@ -196,9 +211,9 @@
           <button type="button" class:active={activeItem?.kind === 'checklist'} aria-label="Checklist" title="Checklist ([] then Space)" on:click={() => applyBlockKind('checklist')}>✓</button>
         </div>
         <div class="note-format-group" aria-label="Inline formatting">
-          <button type="button" aria-label="Bold" title="Bold (⌘B)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('bold')}><strong>B</strong></button>
-          <button type="button" aria-label="Italic" title="Italic (⌘I)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('italic')}><em>I</em></button>
-          <button type="button" aria-label="Underline" title="Underline (⌘U)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('underline')}><u>U</u></button>
+          <button type="button" class:active={inlineFormats.bold} aria-label="Bold" aria-pressed={inlineFormats.bold ? 'true' : 'false'} title="Bold (⌘B)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('bold')}><strong>B</strong></button>
+          <button type="button" class:active={inlineFormats.italic} aria-label="Italic" aria-pressed={inlineFormats.italic ? 'true' : 'false'} title="Italic (⌘I)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('italic')}><em>I</em></button>
+          <button type="button" class:active={inlineFormats.underline} aria-label="Underline" aria-pressed={inlineFormats.underline ? 'true' : 'false'} title="Underline (⌘U)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('underline')}><u>U</u></button>
         </div>
         <span class="note-format-hint">Type <kbd>/</kbd> for more</span>
       </div>

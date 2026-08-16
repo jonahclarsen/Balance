@@ -16,6 +16,7 @@
   import type { Id, MoveDirection } from './types'
 
   type HorizontalBoundaryDirection = 'left' | 'right'
+  type InlineFormatCommand = 'bold' | 'italic' | 'underline'
   type SavedSelection = {
     start: number
     end: number
@@ -53,7 +54,7 @@
     | ((direction: 'in' | 'out', editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
   export let onFocusChange: ((focused: boolean) => void) | null = null
-  export let onKeyDown: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
+  export let onKeyDown: ((editor: HTMLDivElement, event: KeyboardEvent) => void) | null = null
   export let internalLinkSegments: ItemTextSegment[] = []
   export let onInternalLinkClick: ((link: ItemLink, event: MouseEvent) => void | Promise<void>) | null = null
 
@@ -70,9 +71,14 @@
   let pendingPasteInput = false
 
   onMount(() => {
-    const listener = (event: Event) => handleProgrammaticPaste(event as CustomEvent<{ plainText: string | null; html: string | null }>)
-    editor.addEventListener('balancepaste', listener)
-    return () => editor.removeEventListener('balancepaste', listener)
+    const pasteListener = (event: Event) => handleProgrammaticPaste(event as CustomEvent<{ plainText: string | null; html: string | null }>)
+    const formatListener = (event: Event) => handleProgrammaticFormat(event as CustomEvent<{ command: InlineFormatCommand }>)
+    editor.addEventListener('balancepaste', pasteListener)
+    editor.addEventListener('balanceformat', formatListener)
+    return () => {
+      editor.removeEventListener('balancepaste', pasteListener)
+      editor.removeEventListener('balanceformat', formatListener)
+    }
   })
 
   $: {
@@ -103,7 +109,7 @@
     const activeEditor = event.currentTarget as HTMLDivElement
 
     if (onKeyDown) {
-      await onKeyDown(activeEditor, event)
+      onKeyDown(activeEditor, event)
       if (event.defaultPrevented) return
     }
 
@@ -181,22 +187,19 @@
 
     if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'b') {
       event.preventDefault()
-      document.execCommand('bold')
-      persistEditor(event.currentTarget as HTMLDivElement, false)
+      toggleInlineFormat(activeEditor, 'bold')
       return
     }
 
     if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'i') {
       event.preventDefault()
-      document.execCommand('italic')
-      persistEditor(event.currentTarget as HTMLDivElement, false)
+      toggleInlineFormat(activeEditor, 'italic')
       return
     }
 
     if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === 'u') {
       event.preventDefault()
-      document.execCommand('underline')
-      persistEditor(event.currentTarget as HTMLDivElement, false)
+      toggleInlineFormat(activeEditor, 'underline')
       return
     }
 
@@ -505,6 +508,16 @@
   function handleProgrammaticPaste(event: CustomEvent<{ plainText: string | null; html: string | null }>) {
     if (!editor) return
     insertClipboardContents(editor, event.detail.plainText ?? '', event.detail.html ?? '')
+  }
+
+  function handleProgrammaticFormat(event: CustomEvent<{ command: InlineFormatCommand }>) {
+    if (!editor || !['bold', 'italic', 'underline'].includes(event.detail.command)) return
+    toggleInlineFormat(editor, event.detail.command)
+  }
+
+  function toggleInlineFormat(activeEditor: HTMLDivElement, command: InlineFormatCommand) {
+    document.execCommand(command)
+    persistEditor(activeEditor, false)
   }
 
   function insertClipboardContents(activeEditor: HTMLDivElement, clipboardText: string, clipboardHTML: string) {

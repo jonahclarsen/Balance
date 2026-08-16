@@ -102,7 +102,7 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   await bodyBlock.press('Meta+A')
   await expect.poll(() => page.evaluate(() => document.getSelection()?.toString() ?? '')).toContain('Formatted ideas')
   await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Bold' }).click()
-  await expect(bodyBlock.locator('strong')).toContainText('Formatted ideas')
+  await expect(bodyBlock.locator('b, strong')).toContainText('Formatted ideas')
 
   await placeCaretAtEnd(bodyBlock)
   await bodyBlock.press('Enter')
@@ -163,6 +163,44 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   await expect(searchDialog.getByRole('heading', { name: /Notes/ })).toBeVisible()
   await searchDialog.getByRole('button', { name: /Project Brain/ }).click()
   await expect(page.getByLabel('Note title')).toHaveValue('Project Brain')
+})
+
+test('note inline formatting shortcuts and toolbar buttons are true toggles', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const editor = page.locator('[data-note-text-input]').first()
+  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  const bold = toolbar.getByRole('button', { name: 'Bold' })
+  const italic = toolbar.getByRole('button', { name: 'Italic' })
+  const underline = toolbar.getByRole('button', { name: 'Underline' })
+  await editor.fill('Toggle this text')
+  await editor.press('Meta+A')
+
+  await editor.press('Meta+I')
+  await expect(editor.locator('i, em')).toHaveText('Toggle this text')
+  await expect(italic).toHaveAttribute('aria-pressed', 'true')
+  await editor.press('Meta+I')
+  await expect(editor.locator('i, em')).toHaveCount(0)
+  await expect(italic).toHaveAttribute('aria-pressed', 'false')
+
+  await bold.click()
+  await expect(editor.locator('b, strong')).toHaveText('Toggle this text')
+  await expect(bold).toHaveAttribute('aria-pressed', 'true')
+  await bold.click()
+  await expect(editor.locator('b, strong')).toHaveCount(0)
+  await expect(bold).toHaveAttribute('aria-pressed', 'false')
+  await bold.click()
+  await expect(editor.locator('b, strong')).toHaveCount(1)
+  await expect(editor.locator('b b, b strong, strong b, strong strong')).toHaveCount(0)
+  await expect(bold).toHaveAttribute('aria-pressed', 'true')
+
+  await underline.click()
+  await expect(editor.locator('u')).toHaveText('Toggle this text')
+  await expect(underline).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
