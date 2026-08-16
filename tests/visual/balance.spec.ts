@@ -820,15 +820,22 @@ test('checkbox color can be changed in settings and persists', async ({ page }) 
   await expect(page.getByLabel('Checked checkbox hex code')).toHaveValue(selectedColor!)
 })
 
-test('color themes update the whole palette, persist, and adapt to dark mode', async ({ page }) => {
+test('color themes update the whole palette, persist, and adapt to dark mode', async ({ page }, testInfo) => {
+  const openSettings = async () => {
+    const openNavigation = page.getByRole('button', { name: 'Open navigation' })
+    if (await openNavigation.isVisible()) await openNavigation.click()
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  }
+
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await openSettings()
 
   const themeGroup = page.getByRole('group', { name: 'Color theme' })
   const themeButtons = themeGroup.getByRole('button')
-  await expect(themeButtons).toHaveCount(8)
+  const sidebar = page.locator('.sidebar')
+  await expect(themeButtons).toHaveCount(10)
   await expect(themeButtons.first()).toContainText('Violet')
   const violetTheme = themeGroup.getByRole('button', { name: 'Violet Purple and soft lilac' })
   await expect(violetTheme).toHaveAttribute('aria-pressed', 'true')
@@ -839,25 +846,79 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
 
   await expect(pinkTheme).toHaveAttribute('aria-pressed', 'true')
   await expect
-    .poll(() => page.evaluate(() => localStorage.getItem('balance:colorTheme')))
+    .poll(() => page.evaluate(() => {
+      const storedState = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+      return storedState?.preferences?.themeId ?? null
+    }))
     .toBe('pink')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'pink')
-  await expect(page.getByRole('complementary')).toHaveCSS('background-color', 'rgb(245, 224, 234)')
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(245, 224, 234)')
   await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
     'background-color',
     'rgb(211, 79, 137)',
   )
 
   await page.reload()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await openSettings()
   await expect(pinkTheme).toHaveAttribute('aria-pressed', 'true')
 
   await page.emulateMedia({ colorScheme: 'dark' })
-  await expect(page.getByRole('complementary')).toHaveCSS('background-color', 'rgb(33, 23, 28)')
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(33, 23, 28)')
   await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
     'background-color',
     'rgb(240, 141, 184)',
   )
+
+  await page.emulateMedia({ colorScheme: 'light' })
+  const graphiteTheme = themeGroup.getByRole('button', { name: 'Graphite Charcoal, silver, and clean gray' })
+  await graphiteTheme.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(228, 228, 225)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(48, 48, 47)',
+  )
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-theme-graphite.png`,
+    fullPage: false,
+  })
+
+  const iridescentTheme = themeGroup.getByRole('button', {
+    name: 'Iridescent Prismatic pink, violet, aqua, and gold',
+  })
+  await iridescentTheme.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
+  await expect(sidebar).toHaveCSS('background-image', /linear-gradient/)
+  await expect(page.locator('html')).toHaveCSS('background-image', /radial-gradient/)
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(123, 91, 214)',
+  )
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-theme-iridescent.png`,
+    fullPage: false,
+  })
+
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(183, 154, 242)',
+  )
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-theme-iridescent-dark.png`,
+    fullPage: false,
+  })
+
+  await graphiteTheme.click()
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(17, 17, 18)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(194, 194, 190)',
+  )
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-theme-graphite-dark.png`,
+    fullPage: false,
+  })
 })
 
 test('interface font previews apply live to tasks and persist', async ({ page }) => {
