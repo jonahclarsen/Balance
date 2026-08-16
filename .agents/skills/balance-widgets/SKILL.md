@@ -198,13 +198,11 @@ that build.
 This user normally runs Balance through `tauri dev`. After installing a new
 extension, also force one production-host refresh before handoff:
 
-1. Leave the exact `src-tauri/target/debug/Balance` process running. Never stop,
-   kill, or restart the user's dev app for this refresh.
-2. Launch `/Applications/Balance.app` once as a registration and handoff nudge.
+1. Launch `/Applications/Balance.app` once as a registration and handoff nudge.
    Its release-to-dev preflight should activate the running dev app and make the
    installed production host exit automatically. If the exact production process
    remains, quit only `/Applications/Balance.app/Contents/MacOS/Balance`.
-3. Confirm that the active dev host publishes the encrypted snapshot and requests
+2. Confirm that the active dev host publishes the encrypted snapshot and requests
    a WidgetKit timeline reload through lifecycle events or preference-file
    modification time, without printing snapshot contents.
 
