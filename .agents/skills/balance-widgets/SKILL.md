@@ -195,6 +195,27 @@ restart the extension, and compare the installed widget executable hash with the
 new signed build. A successful build does not prove that WidgetKit is running
 that build.
 
+This user normally runs Balance through `tauri dev`. After installing a new
+extension, also force one production-host refresh before handoff:
+
+1. Leave the exact `src-tauri/target/debug/Balance` process running. Never stop,
+   kill, or restart the user's dev app for this refresh.
+2. Launch `/Applications/Balance.app` once as a registration and handoff nudge.
+   Its release-to-dev preflight should activate the running dev app and make the
+   installed production host exit automatically. If the exact production process
+   remains, quit only `/Applications/Balance.app/Contents/MacOS/Balance`.
+3. Confirm that the active dev host publishes the encrypted snapshot and requests
+   a WidgetKit timeline reload through lifecycle events or preference-file
+   modification time, without printing snapshot contents.
+
+After the installed extension is registered, refreshed, and hash-verified,
+delete regenerable production build outputs to save disk space: `dist/`,
+`src-tauri/target/release/`, `src-tauri/target/macos-widget/`, and
+`src-tauri/target/macos-widget-xcode/`. Never delete all of `src-tauri/target/`,
+because the user relies on its debug build and cache for dev mode. Do not delete
+`/Applications/Balance.app`: macOS needs that installed container to keep the
+widget extension registered even though the host app is normally run in dev.
+
 ## Preserve dev-mode widget clicks
 
 The widget uses `balance://today`. Launch Services resolves this URL to the
