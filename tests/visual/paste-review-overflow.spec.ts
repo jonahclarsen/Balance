@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test'
 const LONG_ITEMS = [
   'Supercalifragilisticexpialidocious-pneumonoultramicroscopicsilicovolcanoconiosis-antidisestablishmentarianism',
   'Remember to follow up with the whole cross-functional team about the quarterly planning retrospective and the long list of action items we agreed to revisit before the next review cycle',
-  'Short one',
+  'First line\nSecond line',
   'Another routine task that is also fairly wordy so that it spans more than a single line inside the narrow review card column',
 ]
 
@@ -14,15 +14,21 @@ async function openReviewWithLongItems(page: import('@playwright/test').Page) {
   await page.evaluate((itemTexts) => {
     const today = new Date().toISOString().slice(0, 10)
     const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
-    const makeItem = (text: string, index: number) => ({
-      id: `item_${index}`,
-      text,
-      html: text,
-      done: false,
-      startMinutes: null,
-      endMinutes: null,
-      children: [],
-    })
+    const makeItem = (sourceText: string, index: number) => {
+      const html = sourceText.replace(/\n/g, '<br>')
+      // RichTextEditor stores line breaks in HTML; its searchable plain-text
+      // companion deliberately contains no separator for a <br>.
+      const text = sourceText.replace(/\n/g, '')
+      return {
+        id: `item_${index}`,
+        text,
+        html,
+        done: false,
+        startMinutes: null,
+        endMinutes: null,
+        children: [],
+      }
+    }
     const state = {
       schemaVersion: 1,
       deviceId: 'test-device',
@@ -42,12 +48,23 @@ async function openReviewWithLongItems(page: import('@playwright/test').Page) {
   }, LONG_ITEMS)
   await page.reload()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
+  await expect(page.locator('[data-plan-text-input]').nth(2).locator('br')).toHaveCount(1)
 
   // Select all four seeded items and copy them to the internal structured clipboard.
-  await page.locator('[data-plan-text-input]').first().focus()
-  await page.keyboard.press('Shift+ArrowDown')
-  await page.keyboard.press('Shift+ArrowDown')
-  await page.keyboard.press('Shift+ArrowDown')
+  const firstItemMenu = page.getByRole('button', { name: `Task options for ${LONG_ITEMS[0]}` })
+  if (await firstItemMenu.isVisible()) {
+    await firstItemMenu.click()
+    await page.getByRole('menuitem', { name: 'Select tasks' }).click()
+    for (const sourceText of LONG_ITEMS.slice(1)) {
+      await page.getByRole('button', { name: `Select ${sourceText.replace(/\n/g, '')}` }).click()
+    }
+  } else {
+    await page.locator('[data-plan-text-input]').first().focus()
+    await page.keyboard.press('Meta+Shift+ArrowDown')
+    await page.keyboard.press('Meta+Shift+ArrowDown')
+    await page.keyboard.press('Meta+Shift+ArrowDown')
+  }
+  await expect(page.locator('.plan-row.selected')).toHaveCount(4)
   await page.keyboard.press('Meta+C')
 
   // Move to the next (pre-seeded) day and paste — 4+ items onto a different day
@@ -116,4 +133,21 @@ test('long pasted items stay inside their review cards', async ({ page }, testIn
   expect(selectedAlignment?.growsRight).toBe(true)
   expect(selectedAlignment?.glowFitsLeft).toBe(true)
   expect(selectedAlignment?.glowFitsRight).toBe(true)
+})
+
+test('pasted item previews preserve saved line breaks', async ({ page }) => {
+  await openReviewWithLongItems(page)
+
+  const multilinePreview = page.locator('.paste-review-text').nth(2)
+  await expect(multilinePreview).toHaveText('First lineSecond line')
+  await expect(multilinePreview.locator('br')).toHaveCount(1)
+
+  const metrics = await multilinePreview.evaluate((preview) => {
+    const style = getComputedStyle(preview)
+    return {
+      height: preview.getBoundingClientRect().height,
+      lineHeight: Number.parseFloat(style.lineHeight),
+    }
+  })
+  expect(metrics.height).toBeGreaterThan(metrics.lineHeight * 1.5)
 })

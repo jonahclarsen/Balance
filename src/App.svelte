@@ -46,7 +46,7 @@
   import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
-  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { DEFAULT_DATABASE_LOADING_MESSAGES } from './lib/preferences'
@@ -5477,13 +5477,13 @@ return rows`
                 {:else}
                   <span class="paste-review-status" aria-hidden="true">{wasKept ? '✓' : nodeIndex + 1}</span>
                 {/if}
-                <!-- Same read-only text treatment as a real (locked) list item:
-                     .item-text + .item-text-display wraps and grows with content. -->
+                <!-- Render the saved rich text just like a real task so formatting
+                     such as explicit line breaks survives in the review preview. -->
                 <div
                   class="paste-review-text item-text item-text-display"
                   class:done={node.item.done}
                   class:empty={!node.item.text?.trim()}
-                >{node.item.text?.trim() || '(empty item)'}</div>
+                >{@html node.item.text?.trim() ? renderItemDisplayHTML(node.item.html, node.item.text, []) : '(empty item)'}</div>
               </div>
             {/if}
             {#if node.depth}
