@@ -4239,6 +4239,7 @@ return rows`
 <main
   class="app-shell"
   class:android={isAndroid}
+  class:macos-titlebar-overlay={isMac && !isMobile}
   class:sidebar-hidden={sidebarHidden}
   class:today-maximized={todayMaximized}
   class:mobile-drawer-open={mobileDrawerOpen}
@@ -4247,6 +4248,10 @@ return rows`
   inert={$databaseLoadPending || Boolean($databaseLoadError)}
   aria-hidden={$databaseLoadPending || $databaseLoadError ? 'true' : undefined}
 >
+  {#if isMac && !isMobile}
+    <div class="macos-titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
+  {/if}
+
   <header class="mobile-app-header" aria-label="Mobile app header">
     <button
       class="mobile-menu-button"

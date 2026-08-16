@@ -712,6 +712,25 @@ h3 {
   background: var(--sidebar);
 }
 
+/* The macOS title bar overlays the webview, so reserve the first row of the
+   sidebar for the native traffic lights instead of showing a separate header. */
+.app-shell.macos-titlebar-overlay .sidebar {
+  padding-top: 56px;
+}
+
+.macos-titlebar-drag-region {
+  position: absolute;
+  z-index: 30;
+  top: 0;
+  left: 84px;
+  width: 146px;
+  height: 40px;
+}
+
+.app-shell.macos-titlebar-overlay.sidebar-hidden .workspace {
+  padding-top: 56px;
+}
+
 .sidebar.sidebar-hidden {
   position: absolute;
   z-index: 20;
@@ -4900,6 +4919,22 @@ nav button.active {
 }
 
 @media (max-width: 760px) {
+  .app-shell.macos-titlebar-overlay .sidebar {
+    padding-top: calc(var(--mobile-top-inset) + 56px);
+  }
+
+  .app-shell.macos-titlebar-overlay .mobile-app-header {
+    padding-left: 84px;
+  }
+
+  .app-shell.macos-titlebar-overlay .mobile-drawer-close-button {
+    left: 84px;
+  }
+
+  .app-shell.macos-titlebar-overlay .sidebar > div:first-child {
+    padding-left: 128px;
+  }
+
   body {
     padding-top: 0;
     overflow-x: hidden;

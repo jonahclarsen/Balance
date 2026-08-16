@@ -12,7 +12,14 @@
         "maximized": false,
         "visible": false,
         "zoomHotkeysEnabled": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 18,
+          "y": 16
+        }
       }
     ]
   },
