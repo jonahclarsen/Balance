@@ -19,7 +19,12 @@ fn load_snapshot(app_data_path: &Path, date: &str) -> Result<WidgetSnapshot, Str
     let recovery_key = Zeroizing::new(super::database_recovery_key(&database_path)?);
     let connection = super::open_database_at(&database_path, recovery_key.as_str())?;
     let plan = super::read_plan_by_date(&connection, date)?;
-    Ok(snapshot_from_plan(date, plan.as_ref()))
+    let preferences = super::read_replicated_preferences(&connection)?;
+    let theme_id = preferences
+        .get("themeId")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("violet");
+    Ok(snapshot_from_plan(date, plan.as_ref(), theme_id))
 }
 
 #[no_mangle]
@@ -47,7 +52,7 @@ pub extern "system" fn Java_app_balance_local_BalanceWidgets_nativeSnapshot(
 
     let json = serde_json::to_string(&snapshot).unwrap_or_else(|_| {
         format!(
-            r#"{{"date":"{}","hasPlan":false,"unavailable":true,"title":"Today","reminder":"","done":0,"total":0,"items":[]}}"#,
+            r#"{{"date":"{}","hasPlan":false,"unavailable":true,"title":"Today","reminder":"","done":0,"total":0,"items":[],"themeId":"violet"}}"#,
             requested_date
         )
     });

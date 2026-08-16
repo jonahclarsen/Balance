@@ -2,6 +2,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 const MAX_VISIBLE_ITEMS: usize = 10;
+const DEFAULT_THEME_ID: &str = "violet";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,10 +17,16 @@ pub(crate) struct WidgetSnapshot {
     pub(crate) items: Vec<String>,
     pub(crate) item_depths: Vec<usize>,
     pub(crate) item_times: Vec<String>,
+    pub(crate) theme_id: String,
 }
 
 impl WidgetSnapshot {
+    #[cfg(target_os = "android")]
     pub(crate) fn empty(date: &str) -> Self {
+        Self::empty_for_theme(date, DEFAULT_THEME_ID)
+    }
+
+    fn empty_for_theme(date: &str, theme_id: &str) -> Self {
         Self {
             date: date.to_string(),
             has_plan: false,
@@ -31,6 +38,7 @@ impl WidgetSnapshot {
             items: Vec::new(),
             item_depths: Vec::new(),
             item_times: Vec::new(),
+            theme_id: normalize_theme_id(theme_id).to_string(),
         }
     }
 
@@ -43,9 +51,13 @@ impl WidgetSnapshot {
     }
 }
 
-pub(crate) fn snapshot_from_plan(date: &str, plan: Option<&Value>) -> WidgetSnapshot {
+pub(crate) fn snapshot_from_plan(
+    date: &str,
+    plan: Option<&Value>,
+    theme_id: &str,
+) -> WidgetSnapshot {
     let Some(plan) = plan else {
-        return WidgetSnapshot::empty(date);
+        return WidgetSnapshot::empty_for_theme(date, theme_id);
     };
 
     let mut all_items = Vec::new();
@@ -86,6 +98,16 @@ pub(crate) fn snapshot_from_plan(date: &str, plan: Option<&Value>) -> WidgetSnap
         items,
         item_depths,
         item_times,
+        theme_id: normalize_theme_id(theme_id).to_string(),
+    }
+}
+
+fn normalize_theme_id(theme_id: &str) -> &str {
+    match theme_id {
+        "forest" | "ocean" | "violet" | "sunset" | "berry" | "pink" | "mint" | "midnight" => {
+            theme_id
+        }
+        _ => DEFAULT_THEME_ID,
     }
 }
 
@@ -190,7 +212,7 @@ mod tests {
             ]
         });
 
-        let snapshot = snapshot_from_plan("2026-08-01", Some(&plan));
+        let snapshot = snapshot_from_plan("2026-08-01", Some(&plan), "ocean");
 
         assert!(snapshot.has_plan);
         assert_eq!(snapshot.title, "Launch day");
@@ -213,6 +235,8 @@ mod tests {
             ]
         );
         assert_eq!(snapshot.item_depths, [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        assert_eq!(snapshot.theme_id, "ocean");
+        assert_eq!(serde_json::to_value(&snapshot).unwrap()["themeId"], "ocean");
         assert_eq!(
             snapshot.item_times,
             ["9am–10:15am", "", "", "", "", "", "", "", "", ""]
@@ -221,7 +245,7 @@ mod tests {
 
     #[test]
     fn widget_snapshot_handles_a_missing_plan() {
-        let snapshot = snapshot_from_plan("2026-08-01", None);
+        let snapshot = snapshot_from_plan("2026-08-01", None, "unknown");
 
         assert!(!snapshot.has_plan);
         assert!(!snapshot.unavailable);
@@ -229,5 +253,6 @@ mod tests {
         assert!(snapshot.items.is_empty());
         assert!(snapshot.item_depths.is_empty());
         assert!(snapshot.item_times.is_empty());
+        assert_eq!(snapshot.theme_id, "violet");
     }
 }

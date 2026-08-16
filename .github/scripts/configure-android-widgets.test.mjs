@@ -116,21 +116,61 @@ class BalanceSyncWorker {
     assert.match(kotlin, /R\.id\.widget_item_10/)
     assert.match(kotlin, /val itemDepths: List<Int>/)
     assert.match(kotlin, /val itemTimes: List<String>/)
+    assert.match(kotlin, /val themeId: String/)
     assert.match(kotlin, /depthValues\?\.optInt/)
     assert.match(kotlin, /timeValues\?\.optString/)
-    assert.match(kotlin, /repeat\(depth\)/)
+    assert.match(kotlin, /json\.optString\("themeId", "violet"\)/)
+    assert.match(kotlin, /R\.layout\.balance_home_widget_ocean/)
+    assert.match(kotlin, /else -> R\.layout\.balance_home_widget_violet/)
+    assert.match(kotlin, /setViewPadding/)
+    assert.match(kotlin, /depth \* 12 \* density/)
+    assert.match(kotlin, /setProgressBar/)
 
-    const homeLayout = await readFile(
-      join(root, 'res/layout/balance_home_widget.xml'),
+    const violetLayout = await readFile(
+      join(root, 'res/layout/balance_home_widget_violet.xml'),
       'utf8',
     )
-    assert.match(homeLayout, /@\+id\/widget_item_10/)
+    assert.match(violetLayout, /@\+id\/widget_item_10/)
+    assert.match(violetLayout, /@\+id\/widget_progress_bar/)
+    assert.match(violetLayout, /#7355A2/)
+    assert.match(violetLayout, /@drawable\/balance_widget_violet_task_circle/)
+
+    const oceanLayout = await readFile(
+      join(root, 'res/layout/balance_home_widget_ocean.xml'),
+      'utf8',
+    )
+    assert.match(oceanLayout, /#276A9F/)
+    assert.match(oceanLayout, /#172733/)
+
+    for (const theme of ['forest', 'ocean', 'violet', 'sunset', 'berry', 'pink', 'mint', 'midnight']) {
+      await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
+      await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
+      await readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8')
+    }
+
+    const widgetStyles = await readFile(
+      join(root, 'res/values/balance_widget_styles.xml'),
+      'utf8',
+    )
+    assert.match(widgetStyles, /android:maxLines">3</)
+    assert.doesNotMatch(widgetStyles, /balance_widget_task_circle/)
+
+    const widgetReminder = await readFile(
+      join(root, 'res/drawable/balance_widget_mint_reminder_background.xml'),
+      'utf8',
+    )
+    assert.match(widgetReminder, /#E7F5EF/)
 
     const homeInfo = await readFile(
       join(root, 'res/xml/balance_home_widget_info.xml'),
       'utf8',
     )
     assert.match(homeInfo, /widgetCategory="home_screen"/)
+    assert.match(homeInfo, /@layout\/balance_home_widget_violet/)
+    await assert.rejects(
+      readFile(join(root, 'res/layout/balance_home_widget.xml'), 'utf8'),
+      { code: 'ENOENT' },
+    )
     await assert.rejects(
       readFile(join(root, 'res/layout/balance_lock_widget.xml'), 'utf8'),
       { code: 'ENOENT' },

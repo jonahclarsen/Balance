@@ -59,7 +59,8 @@ The serialized snapshot currently contains:
 - `date`, `hasPlan`, `unavailable`, `title`, `reminder`, `done`, and `total`;
 - `items`: up to ten incomplete, non-empty tasks in preorder;
 - `itemDepths`: an index-aligned depth for each item;
-- `itemTimes`: an index-aligned visible time-range label for each item.
+- `itemTimes`: an index-aligned visible time-range label for each item;
+- `themeId`: the active replicated color preset, with `violet` as the fallback.
 
 Keep `items`, `itemDepths`, and `itemTimes` exactly aligned after filtering and
 truncation. Progress counts cover every non-empty task, including completed
@@ -79,6 +80,12 @@ Swift fields optional and use safe index access. In generated Kotlin, use
 `optJSONArray`, `optString`, `optInt`, or equivalent defaults rather than making
 an older payload fatal. If a field becomes required by the Android reader,
 update the JNI error fallback JSON too.
+
+Keep widget palette definitions aligned with the light and dark CSS variables in
+`src/app.css`. macOS follows both `themeId` and the system color scheme. Android
+uses generated preset-specific RemoteViews resources because older RemoteViews
+APIs cannot reliably tint every rounded drawable at runtime. Unknown and legacy
+theme values must render with the `violet` preset.
 
 For macOS task rows, preserve `.privacySensitive()`. Clamp visual indentation so
 deep trees do not consume the full widget. For Android, use non-breaking spaces
@@ -181,6 +188,12 @@ random because macOS may use the stale copy.
 Extension Swift changes require a signed rebuild, reinstall, re-registration,
 and WidgetKit process restart. Rust host changes can rebuild during `tauri dev`,
 but the installed extension itself is not hot-reloaded.
+
+Never ask the user to evaluate a macOS widget change after only compiling the
+extension or app. Before handoff, replace the installed app, re-register and
+restart the extension, and compare the installed widget executable hash with the
+new signed build. A successful build does not prove that WidgetKit is running
+that build.
 
 ## Preserve dev-mode widget clicks
 

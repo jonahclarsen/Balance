@@ -28,6 +28,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.Executors
+import kotlin.math.roundToInt
 import org.json.JSONObject
 
 data class BalanceWidgetSnapshot(
@@ -41,6 +42,7 @@ data class BalanceWidgetSnapshot(
     val items: List<String>,
     val itemDepths: List<Int>,
     val itemTimes: List<String>,
+    val themeId: String,
 )
 
 object BalanceWidgets {
@@ -111,17 +113,33 @@ object BalanceWidgets {
             items,
             itemDepths,
             itemTimes,
+            json.optString("themeId", "violet"),
         )
     }
 
     private fun renderHome(context: Context, snapshot: BalanceWidgetSnapshot): RemoteViews {
-        val views = RemoteViews(context.packageName, R.layout.balance_home_widget)
-        views.setTextViewText(R.id.widget_title, snapshot.title)
+        val views = RemoteViews(context.packageName, themeLayout(snapshot.themeId))
+        views.setTextViewText(
+            R.id.widget_title,
+            snapshot.title.ifBlank { "Today’s plan" },
+        )
         views.setTextViewText(
             R.id.widget_date,
-            SimpleDateFormat("EEE, MMM d", Locale.getDefault()).format(Date()),
+            SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date()).uppercase(),
         )
-        views.setTextViewText(R.id.widget_progress, status(snapshot))
+        views.setTextViewText(R.id.widget_progress, compactStatus(snapshot))
+        views.setContentDescription(R.id.widget_progress, status(snapshot))
+        val showProgress = snapshot.hasPlan && !snapshot.unavailable && snapshot.total > 0
+        views.setProgressBar(
+            R.id.widget_progress_bar,
+            snapshot.total.coerceAtLeast(1),
+            snapshot.done.coerceIn(0, snapshot.total.coerceAtLeast(1)),
+            false,
+        )
+        views.setViewVisibility(
+            R.id.widget_progress_bar,
+            if (showProgress) View.VISIBLE else View.GONE,
+        )
         views.setTextViewText(R.id.widget_reminder, snapshot.reminder)
         views.setViewVisibility(
             R.id.widget_reminder,
@@ -140,17 +158,36 @@ object BalanceWidgets {
             R.id.widget_item_9,
             R.id.widget_item_10,
         )
+        val density = context.resources.displayMetrics.density
+        val verticalPadding = (5 * density).roundToInt()
         for (index in rows.indices) {
             val text = snapshot.items.getOrNull(index)
             val depth = snapshot.itemDepths.getOrNull(index)?.coerceIn(0, 4) ?: 0
-            val indent = "\\u00a0\\u00a0".repeat(depth)
             val time = snapshot.itemTimes.getOrNull(index).orEmpty()
-            val timePrefix = if (time.isEmpty()) "" else "$time "
-            views.setTextViewText(rows[index], if (text == null) "" else "\${indent}• $timePrefix$text")
+            val timePrefix = if (time.isEmpty()) "" else "$time  "
+            views.setTextViewText(rows[index], if (text == null) "" else "$timePrefix$text")
+            views.setViewPadding(
+                rows[index],
+                (depth * 12 * density).roundToInt(),
+                verticalPadding,
+                0,
+                verticalPadding,
+            )
             views.setViewVisibility(rows[index], if (text == null) View.GONE else View.VISIBLE)
         }
         attachActions(context, views)
         return views
+    }
+
+    private fun themeLayout(themeId: String): Int = when (themeId) {
+        "forest" -> R.layout.balance_home_widget_forest
+        "ocean" -> R.layout.balance_home_widget_ocean
+        "sunset" -> R.layout.balance_home_widget_sunset
+        "berry" -> R.layout.balance_home_widget_berry
+        "pink" -> R.layout.balance_home_widget_pink
+        "mint" -> R.layout.balance_home_widget_mint
+        "midnight" -> R.layout.balance_home_widget_midnight
+        else -> R.layout.balance_home_widget_violet
     }
 
     private fun status(snapshot: BalanceWidgetSnapshot): String = when {
@@ -159,6 +196,14 @@ object BalanceWidgets {
         snapshot.total == 0 -> "No tasks yet"
         snapshot.done == snapshot.total -> "All \${snapshot.total} tasks complete"
         else -> "\${snapshot.done} of \${snapshot.total} complete"
+    }
+
+    private fun compactStatus(snapshot: BalanceWidgetSnapshot): String = when {
+        snapshot.unavailable -> "Open Balance"
+        !snapshot.hasPlan -> "Start today"
+        snapshot.total == 0 -> "No tasks"
+        snapshot.done == snapshot.total -> "Done"
+        else -> "\${snapshot.done}/\${snapshot.total}"
     }
 
     private fun attachActions(context: Context, views: RemoteViews) {
@@ -245,102 +290,226 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 }
 `
 
-const homeLayout = `<?xml version="1.0" encoding="utf-8"?>
+const widgetThemes = [
+  { id: 'forest', paper: '#FFFDF8', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68', accentStrong: '#245A54', soft: '#DFECE7', reminder: '#EEF7F3' },
+  { id: 'ocean', paper: '#F9FCFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F', accentStrong: '#1F527C', soft: '#D7E9F5', reminder: '#EAF5FB' },
+  { id: 'violet', paper: '#FCFAFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2', accentStrong: '#593D83', soft: '#E4D9F2', reminder: '#F3EDF9' },
+  { id: 'sunset', paper: '#FFFAF5', ink: '#33241F', muted: '#7B6B63', line: '#E2D3C7', accent: '#B9563F', accentStrong: '#8F3F2E', soft: '#F4D8CD', reminder: '#FBECE3' },
+  { id: 'berry', paper: '#FFFAFD', ink: '#30242A', muted: '#786B72', line: '#DFD2D9', accent: '#9B496B', accentStrong: '#793650', soft: '#F2DBE6', reminder: '#F9EAF1' },
+  { id: 'pink', paper: '#FFF9FC', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', accent: '#C33F7A', accentStrong: '#932956', soft: '#F8D5E5', reminder: '#FBE7F0' },
+  { id: 'mint', paper: '#F9FDFA', ink: '#1E2D29', muted: '#657771', line: '#CCDDD7', accent: '#287968', accentStrong: '#1C5C4F', soft: '#D0EAE0', reminder: '#E7F5EF' },
+  { id: 'midnight', paper: '#FAFBFE', ink: '#202738', muted: '#687083', line: '#D1D6E2', accent: '#425B9B', accentStrong: '#304477', soft: '#D9E0F1', reminder: '#EAF0FA' },
+]
+
+const alphaColor = (hex, alpha) => `#${alpha}${hex.slice(1)}`
+
+function taskRows(theme) {
+  const preview = [
+    'Plan the day around what matters most',
+    '9am–10am  Focus on the next thing',
+    'Take a proper break',
+  ]
+  return Array.from({ length: 10 }, (_, index) => {
+    const text = preview[index] ? `\n        android:text="${preview[index]}"` : ''
+    return `    <TextView
+        android:id="@+id/widget_item_${index + 1}"
+        style="@style/BalanceWidgetItem"
+        android:drawableStart="@drawable/balance_widget_${theme.id}_task_circle"
+        android:textColor="${theme.ink}"${text} />`
+  }).join('\n')
+}
+
+function homeLayout(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/balance_widget_background"
+    android:background="@drawable/balance_widget_${theme.id}_background"
     android:clickable="true"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="18dp">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="center_vertical"
+        android:gravity="top"
         android:orientation="horizontal">
-        <TextView
-            android:id="@+id/widget_title"
+
+        <LinearLayout
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:ellipsize="end"
+            android:orientation="vertical">
+            <TextView
+                android:id="@+id/widget_date"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-medium"
+                android:letterSpacing="0.08"
+                android:text="SATURDAY, AUG 1"
+                android:textColor="${theme.accent}"
+                android:textSize="10sp" />
+            <TextView
+                android:id="@+id/widget_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="2"
+                android:text="Today’s plan"
+                android:textColor="${theme.ink}"
+                android:textSize="18sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/widget_progress"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:layout_marginTop="1dp"
+            android:background="@drawable/balance_widget_${theme.id}_pill"
+            android:fontFamily="sans-serif-medium"
+            android:gravity="center"
             android:maxLines="1"
-            android:text="Today"
-            android:textColor="#24211D"
-            android:textSize="18sp"
-            android:textStyle="bold" />
+            android:paddingBottom="5dp"
+            android:paddingEnd="9dp"
+            android:paddingStart="9dp"
+            android:paddingTop="5dp"
+            android:text="2/6"
+            android:textColor="${theme.accentStrong}"
+            android:textSize="11sp" />
+
         <TextView
             android:id="@+id/widget_refresh"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="6dp"
+            android:background="@drawable/balance_widget_${theme.id}_refresh_background"
+            android:contentDescription="Refresh Balance widget"
             android:gravity="center"
             android:text="↻"
-            android:textColor="#5F574D"
-            android:textSize="22sp" />
+            android:textColor="${theme.accent}"
+            android:textSize="18sp" />
     </LinearLayout>
 
-    <TextView
-        android:id="@+id/widget_date"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Sat, Aug 1"
-        android:textColor="#746A5E"
-        android:textSize="12sp" />
-    <TextView
-        android:id="@+id/widget_progress"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:text="Open Balance to make today's plan"
-        android:textColor="#9B5B43"
-        android:textSize="13sp"
-        android:textStyle="bold" />
+    <ProgressBar
+        android:id="@+id/widget_progress_bar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:layout_marginTop="8dp"
+        android:indeterminate="false"
+        android:progress="33"
+        android:progressDrawable="@drawable/balance_widget_${theme.id}_progress" />
+
     <TextView
         android:id="@+id/widget_reminder"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:layout_marginTop="9dp"
+        android:background="@drawable/balance_widget_${theme.id}_reminder_background"
         android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="#746A5E"
+        android:maxLines="2"
+        android:paddingBottom="7dp"
+        android:paddingEnd="9dp"
+        android:paddingStart="9dp"
+        android:paddingTop="7dp"
+        android:textColor="${theme.muted}"
         android:textSize="12sp"
         android:textStyle="italic" />
-    <TextView android:id="@+id/widget_item_1" style="@style/BalanceWidgetItem" />
-    <TextView android:id="@+id/widget_item_2" style="@style/BalanceWidgetItem" />
-    <TextView android:id="@+id/widget_item_3" style="@style/BalanceWidgetItem" />
-    <TextView android:id="@+id/widget_item_4" style="@style/BalanceWidgetItem" />
-    <TextView android:id="@+id/widget_item_5" style="@style/BalanceWidgetItem" />
-    <TextView android:id="@+id/widget_item_6" style="@style/BalanceWidgetItem" />
-    <TextView android:id="@+id/widget_item_7" style="@style/BalanceWidgetItem" />
-    <TextView android:id="@+id/widget_item_8" style="@style/BalanceWidgetItem" />
-    <TextView android:id="@+id/widget_item_9" style="@style/BalanceWidgetItem" />
-    <TextView android:id="@+id/widget_item_10" style="@style/BalanceWidgetItem" />
+
+${taskRows(theme)}
 </LinearLayout>
 `
+}
 
 const styles = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="BalanceWidgetItem">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
-        <item name="android:layout_marginTop">4dp</item>
+        <item name="android:breakStrategy">high_quality</item>
+        <item name="android:drawablePadding">8dp</item>
         <item name="android:ellipsize">end</item>
-        <item name="android:maxLines">1</item>
-        <item name="android:textColor">#3D3831</item>
-        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:gravity">top</item>
+        <item name="android:lineSpacingExtra">1dp</item>
+        <item name="android:maxLines">3</item>
+        <item name="android:textSize">13sp</item>
     </style>
 </resources>
 `
 
-const background = `<?xml version="1.0" encoding="utf-8"?>
+function background(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="#F7F3EA" />
+    <solid android:color="${theme.paper}" />
     <corners android:radius="24dp" />
-    <stroke android:width="1dp" android:color="#1A6F665C" />
+    <stroke android:width="1dp" android:color="${theme.line}" />
 </shape>
 `
+}
+
+function pill(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="${theme.soft}" />
+    <corners android:radius="999dp" />
+    <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '4D')}" />
+</shape>
+`
+}
+
+function refreshBackground(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <solid android:color="${theme.soft}" />
+    <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '33')}" />
+</shape>
+`
+}
+
+function reminderBackground(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="${theme.reminder}" />
+    <corners android:radius="8dp" />
+    <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '26')}" />
+</shape>
+`
+}
+
+function taskCircle(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
+    <size android:width="11dp" android:height="11dp" />
+    <solid android:color="@android:color/transparent" />
+    <stroke android:width="1.5dp" android:color="${alphaColor(theme.accent, 'B3')}" />
+</shape>
+`
+}
+
+function progress(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@android:id/background">
+        <shape android:shape="rectangle">
+            <corners android:radius="4dp" />
+            <solid android:color="${theme.line}" />
+        </shape>
+    </item>
+    <item android:id="@android:id/progress">
+        <clip>
+            <shape android:shape="rectangle">
+                <corners android:radius="4dp" />
+                <solid android:color="${theme.accent}" />
+            </shape>
+        </clip>
+    </item>
+</layer-list>
+`
+}
 
 const strings = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
@@ -352,12 +521,12 @@ const strings = `<?xml version="1.0" encoding="utf-8"?>
 const homeInfo = `<?xml version="1.0" encoding="utf-8"?>
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/balance_home_widget_description"
-    android:initialLayout="@layout/balance_home_widget"
+    android:initialLayout="@layout/balance_home_widget_violet"
     android:minHeight="180dp"
     android:minResizeHeight="120dp"
     android:minResizeWidth="180dp"
     android:minWidth="250dp"
-    android:previewLayout="@layout/balance_home_widget"
+    android:previewLayout="@layout/balance_home_widget_violet"
     android:resizeMode="horizontal|vertical"
     android:targetCellHeight="3"
     android:targetCellWidth="4"
@@ -367,12 +536,26 @@ const homeInfo = `<?xml version="1.0" encoding="utf-8"?>
 
 const files = new Map([
   [sourcePath, source],
-  [join(resPath, 'layout/balance_home_widget.xml'), homeLayout],
   [join(resPath, 'values/balance_widget_styles.xml'), styles],
   [join(resPath, 'values/balance_widget_strings.xml'), strings],
-  [join(resPath, 'drawable/balance_widget_background.xml'), background],
   [join(resPath, 'xml/balance_home_widget_info.xml'), homeInfo],
 ])
+
+for (const theme of widgetThemes) {
+  files.set(join(resPath, `layout/balance_home_widget_${theme.id}.xml`), homeLayout(theme))
+  files.set(join(resPath, `drawable/balance_widget_${theme.id}_background.xml`), background(theme))
+  files.set(join(resPath, `drawable/balance_widget_${theme.id}_pill.xml`), pill(theme))
+  files.set(
+    join(resPath, `drawable/balance_widget_${theme.id}_refresh_background.xml`),
+    refreshBackground(theme),
+  )
+  files.set(
+    join(resPath, `drawable/balance_widget_${theme.id}_reminder_background.xml`),
+    reminderBackground(theme),
+  )
+  files.set(join(resPath, `drawable/balance_widget_${theme.id}_task_circle.xml`), taskCircle(theme))
+  files.set(join(resPath, `drawable/balance_widget_${theme.id}_progress.xml`), progress(theme))
+}
 
 for (const [path, content] of files) {
   await mkdir(dirname(path), { recursive: true })
@@ -382,6 +565,13 @@ for (const [path, content] of files) {
 for (const path of [
   join(resPath, 'layout/balance_lock_widget.xml'),
   join(resPath, 'xml/balance_lock_widget_info.xml'),
+  join(resPath, 'layout/balance_home_widget.xml'),
+  join(resPath, 'drawable/balance_widget_background.xml'),
+  join(resPath, 'drawable/balance_widget_pill.xml'),
+  join(resPath, 'drawable/balance_widget_refresh_background.xml'),
+  join(resPath, 'drawable/balance_widget_reminder_background.xml'),
+  join(resPath, 'drawable/balance_widget_task_circle.xml'),
+  join(resPath, 'drawable/balance_widget_progress.xml'),
 ]) {
   await rm(path, { force: true })
 }
