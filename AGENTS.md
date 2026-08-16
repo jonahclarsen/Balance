@@ -44,18 +44,6 @@ user can verify themselves without exposing their key or database contents.
 After completing a code change, always commit it and push to the remote — don't
 leave work uncommitted. Use a clear commit message describing the change.
 
-When the change is a follow-up to the most recent commit (fixing, tweaking, or
-extending what it did), don't make a new commit — amend the most recent commit
-and force-push with lease (`git commit --amend` then `git push --force-with-lease`).
-
-Before any force-push with lease, fetch the target branch and compare its remote
-tip with the commit you intend to replace. Assume the user or another agent may
-have pushed parallel work since the task began. If the remote moved or contains
-commits not present locally, preserve and integrate those commits first; never
-force-push over intervening work. When practical, use an explicit lease tied to
-the remote commit you just verified (for example,
-`--force-with-lease=refs/heads/main:<verified-remote-oid>`).
-
 ## Keep the keyboard-shortcuts reference in sync
 
 Keyboard shortcuts live in `handleGlobalKeydown` in `src/App.svelte`, and the
