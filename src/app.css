@@ -1790,6 +1790,7 @@ nav button.active {
   width: 48px;
   height: auto;
   color: var(--accent-strong);
+  transform: translateX(0.5px);
 }
 
 .template-list {
