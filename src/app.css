@@ -18,6 +18,7 @@
   --line-strong: #c3bdb0;
   --accent: #2f6f68;
   --accent-strong: #245a54;
+  --theme-hue: 173.4;
   --theme-checkbox: #2f6f68;
   --theme-done: #3f9d54;
   --checkbox-checked: var(--theme-checkbox);
@@ -75,6 +76,7 @@
   --line-strong: #afc1cc;
   --accent: #276a9f;
   --accent-strong: #1f527c;
+  --theme-hue: 206.5;
   --theme-checkbox: #357fb5;
   --theme-done: #278b9f;
   --danger: #b34a42;
@@ -97,6 +99,7 @@
   --line-strong: #c1b4ce;
   --accent: #7355a2;
   --accent-strong: #593d83;
+  --theme-hue: 263.4;
   --theme-checkbox: #7c5aaa;
   --theme-done: #8a63b8;
   --danger: #b44d59;
@@ -119,6 +122,7 @@
   --line-strong: #cbb6a6;
   --accent: #b9563f;
   --accent-strong: #8f3f2e;
+  --theme-hue: 11.3;
   --theme-checkbox: #c25d43;
   --theme-done: #c77832;
   --danger: #ae3f3b;
@@ -141,6 +145,7 @@
   --line-strong: #c8b4bf;
   --accent: #9b496b;
   --accent-strong: #793650;
+  --theme-hue: 335.1;
   --theme-checkbox: #a75070;
   --theme-done: #b45672;
   --danger: #b44149;
@@ -163,6 +168,7 @@
   --line-strong: #cfaebe;
   --accent: #c33f7a;
   --accent-strong: #932956;
+  --theme-hue: 333.2;
   --theme-checkbox: #d34f89;
   --theme-done: #e16491;
   --danger: #b53e4c;
@@ -185,6 +191,7 @@
   --line-strong: #adc7be;
   --accent: #287968;
   --accent-strong: #1c5c4f;
+  --theme-hue: 167.4;
   --theme-checkbox: #348b74;
   --theme-done: #42a878;
   --danger: #b24a43;
@@ -207,6 +214,7 @@
   --line-strong: #b3bbcc;
   --accent: #425b9b;
   --accent-strong: #304477;
+  --theme-hue: 223.1;
   --theme-checkbox: #526bb0;
   --theme-done: #596fbb;
   --danger: #b3454c;
@@ -2363,21 +2371,21 @@ nav button.active {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.12) 43%, rgba(255, 255, 255, 0.44)),
     linear-gradient(120deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0) 22% 48%, rgba(255, 255, 255, 0.34) 68%, rgba(255, 255, 255, 0) 86%),
-    /* Twilight → dawn: a curated sweep that warms as the list fills up. */
+    /* Preserve the sweep's tones while matching the selected theme's hue. */
     linear-gradient(
       90deg,
-      #4257c9 0%,
-      #6a54d1 14%,
-      #9455c9 28%,
-      #c85fb0 43%,
-      #ec6a8f 57%,
-      #f7856a 71%,
-      #f9a94f 85%,
-      #f6cf68 100%
+      hsl(var(--theme-hue) 56% 52%) 0%,
+      hsl(var(--theme-hue) 58% 57%) 14%,
+      hsl(var(--theme-hue) 52% 56%) 28%,
+      hsl(var(--theme-hue) 49% 58%) 43%,
+      hsl(var(--theme-hue) 77% 67%) 57%,
+      hsl(var(--theme-hue) 90% 69%) 71%,
+      hsl(var(--theme-hue) 93% 64%) 85%,
+      hsl(var(--theme-hue) 89% 69%) 100%
     );
   box-shadow:
-    0 0 12px color-mix(in srgb, #c85fb0 30%, transparent),
-    0 0 18px color-mix(in srgb, #f7856a 18%, transparent),
+    0 0 12px color-mix(in srgb, hsl(var(--theme-hue) 49% 58%) 30%, transparent),
+    0 0 18px color-mix(in srgb, hsl(var(--theme-hue) 90% 69%) 18%, transparent),
     inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 
