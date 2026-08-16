@@ -97,40 +97,6 @@ struct StartupDatabaseConnection {
 
 static DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
 
-#[cfg(any(test, all(target_os = "macos", not(debug_assertions))))]
-const MACOS_WIDGET_REFRESH_ARGUMENT: &str = "--balance-widget-refresh";
-
-#[cfg(any(test, all(target_os = "macos", not(debug_assertions))))]
-fn is_macos_widget_refresh_request<I, S>(arguments: I) -> bool
-where
-    I: IntoIterator<Item = S>,
-    S: AsRef<std::ffi::OsStr>,
-{
-    arguments
-        .into_iter()
-        .any(|argument| argument.as_ref() == MACOS_WIDGET_REFRESH_ARGUMENT)
-}
-
-#[cfg(all(target_os = "macos", not(debug_assertions)))]
-pub fn handle_macos_widget_refresh_request() -> bool {
-    if !is_macos_widget_refresh_request(std::env::args_os()) {
-        return false;
-    }
-
-    unsafe extern "C" {
-        fn balance_reload_widget_timelines();
-    }
-    // This special installed-host mode exits before Tauri setup and therefore
-    // never opens the user's database.
-    unsafe { balance_reload_widget_timelines() };
-    true
-}
-
-#[cfg(not(all(target_os = "macos", not(debug_assertions))))]
-pub fn handle_macos_widget_refresh_request() -> bool {
-    false
-}
-
 #[cfg(all(target_os = "macos", not(debug_assertions)))]
 pub fn redirect_to_development_app() -> bool {
     unsafe extern "C" {
@@ -138,7 +104,7 @@ pub fn redirect_to_development_app() -> bool {
     }
 
     // This runs before Tauri or database initialization. The installed app is
-    // only a Launch Services handoff when a raw `tauri dev` process is present.
+    // only a Launch Services handoff when a `tauri dev` process is present.
     unsafe { balance_activate_running_development_app() == 1 }
 }
 
@@ -9276,19 +9242,6 @@ mod tests {
         let mut invalid = customized;
         invalid["iridescentDitherStrength"] = json!(101);
         assert!(validate_replicated_preferences(&invalid).is_err());
-    }
-
-    #[test]
-    fn macos_widget_refresh_request_requires_the_exact_private_argument() {
-        assert!(is_macos_widget_refresh_request([
-            "Balance",
-            MACOS_WIDGET_REFRESH_ARGUMENT,
-        ]));
-        assert!(!is_macos_widget_refresh_request(["Balance"]));
-        assert!(!is_macos_widget_refresh_request([
-            "Balance",
-            "--balance-widget-refresh-extra",
-        ]));
     }
 
     #[derive(Default)]

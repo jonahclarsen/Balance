@@ -7,8 +7,8 @@ private let encryptedSnapshotKey = "balance.widget.encrypted-snapshot.v2"
 private let legacyPlaintextSnapshotKey = "balance.widget.snapshot.v1"
 private let snapshotPreferenceDomain = "app.balance.local"
 private let widgetPreferenceDomain = "app.balance.local.widget"
-private let widgetRefreshArgument = "--balance-widget-refresh"
-private let developmentExecutableSuffix = "/src-tauri/target/debug/Balance"
+private let rawDevelopmentExecutableSuffix = "/src-tauri/target/debug/Balance"
+private let developmentAppExecutableSuffix = "/BalanceDev.app/Contents/MacOS/Balance"
 
 private var snapshotDefaults: UserDefaults {
     UserDefaults(suiteName: snapshotPreferenceDomain) ?? .standard
@@ -40,36 +40,14 @@ private func widgetPublicKeyString() -> String? {
 
 private func requestWidgetReload() {
     WidgetCenter.shared.reloadTimelines(ofKind: "BalanceToday")
+}
 
-    // WidgetCenter only reloads widgets belonging to the calling app. Tauri dev
-    // runs a raw executable rather than the installed app that contains
-    // BalanceWidget.appex, so relay only the reload through a hidden installed
-    // host instance. Its argument is handled before Tauri or the database opens.
-    guard Bundle.main.executableURL?.path.hasSuffix(developmentExecutableSuffix) == true else {
-        return
+private func isDevelopmentExecutable(_ executablePath: String) -> Bool {
+    if executablePath.hasSuffix(rawDevelopmentExecutableSuffix) {
+        return true
     }
-
-    DispatchQueue.main.async {
-        guard let installedApp = NSWorkspace.shared.urlForApplication(
-            withBundleIdentifier: snapshotPreferenceDomain
-        ) else {
-            return
-        }
-
-        let configuration = NSWorkspace.OpenConfiguration()
-        configuration.arguments = [widgetRefreshArgument]
-        configuration.activates = false
-        configuration.addsToRecentItems = false
-        configuration.allowsRunningApplicationSubstitution = false
-        configuration.createsNewApplicationInstance = true
-        configuration.hides = true
-        configuration.promptsUserIfNeeded = false
-        NSWorkspace.shared.openApplication(
-            at: installedApp,
-            configuration: configuration,
-            completionHandler: nil
-        )
-    }
+    return executablePath.contains("/src-tauri/target/")
+        && executablePath.hasSuffix(developmentAppExecutableSuffix)
 }
 
 @_cdecl("balance_publish_encrypted_widget_snapshot")
@@ -131,7 +109,7 @@ public func balanceActivateRunningDevelopmentApp() -> Int32 {
         else {
             return false
         }
-        return executablePath.hasSuffix(developmentExecutableSuffix)
+        return isDevelopmentExecutable(executablePath)
     }) else {
         return 0
     }
@@ -141,9 +119,4 @@ public func balanceActivateRunningDevelopmentApp() -> Int32 {
     // the development process is sufficient reason for the installed app to
     // exit instead of continuing into normal startup.
     return 1
-}
-
-@_cdecl("balance_reload_widget_timelines")
-public func balanceReloadWidgetTimelines() {
-    WidgetCenter.shared.reloadTimelines(ofKind: "BalanceToday")
 }

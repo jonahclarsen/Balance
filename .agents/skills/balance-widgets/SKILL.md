@@ -26,6 +26,11 @@ make a valid-looking widget disappear from the system gallery.
 - Do not build, initialize, link, emulate, or install Android locally. Test the
   generator locally, then use `.github/workflows/android.yml` in CI.
 - Use `pnpm`, not `npm`.
+- Whenever widget work produces durable, verified knowledge about architecture,
+  security, lifecycle, signing, registration, build behavior, performance, or
+  testing, update this skill in the same change. Treat that update as part of
+  finishing the widget work. Record reusable evidence, not unverified guesses or
+  one-off machine state.
 
 ## Know the architecture
 
@@ -43,8 +48,13 @@ Read only the files relevant to the requested change:
   decryption, backward-compatible decoding, privacy marking, and rendering.
 - `src-tauri/macos/BalanceWidget.xcodeproj`: the real WidgetKit extension target.
 - `scripts/build-macos-widget.mjs`: universal Xcode build and extension signing.
-- `src-tauri/tauri.macos.conf.json`: copies the built `.appex` into the app's
-  `Contents/PlugIns` directory.
+- `scripts/macos-tauri-cargo.sh`: macOS Cargo pass-through that injects the dev
+  app runner only for `cargo run`.
+- `scripts/run-macos-dev-app.sh` and
+  `src-tauri/macos/BalanceDevInfo.plist`: create the minimal app-shaped dev host
+  and execute the current debug binary from it.
+- `src-tauri/tauri.macos.conf.json`: selects the macOS dev runner and copies the
+  built `.appex` into production apps at `Contents/PlugIns`.
 - `src-tauri/src/android_widget.rs`: JNI entry point that reads SQLCipher directly
   and returns the shared snapshot without persisting a second copy.
 - `.github/scripts/configure-android-widgets.mjs`: generates the provider, layouts,
@@ -152,6 +162,48 @@ codesign -dv --verbose=2 src-tauri/target/release/bundle/macos/Balance.app/Conte
 `BALANCE_SKIP_MACOS_WIDGET=1` only for a workflow that intentionally does not
 need the extension.
 
+## Run the macOS dev host from an app shell
+
+WidgetKit associates `WidgetCenter` calls with the calling executable's
+containing app. The raw `src-tauri/target/debug/Balance` executable returns
+`ChronoCoreErrorDomain` code 27 when it asks for current widget configurations,
+even while the installed Balance widget is configured. The same executable,
+physically located under a minimal `.app` with `CFBundleIdentifier` set to
+`app.balance.local`, can see the installed `BalanceToday` configurations and can
+reload them directly. The dev shell does not need to contain the extension.
+
+Normal `pnpm tauri dev` uses the macOS-only runner from
+`src-tauri/tauri.macos.conf.json`. The Cargo wrapper passes builds through
+unchanged and injects `scripts/run-macos-dev-app.sh` only for `cargo run`. On
+each Rust rebuild that runner:
+
+1. creates `target/.../debug/BalanceDev.app` from the minimal committed plist;
+2. replaces `Contents/MacOS/Balance` with a hard link to the just-built binary;
+3. uses `exec` so Cargo still directly owns the real app process.
+
+Do not replace the hard link with a symlink: a symlink was tested and WidgetKit
+still treated the process as the raw executable. A physical hard link worked.
+The compiled debug binary already has an ad-hoc Mach-O signature; the outer dev
+shell can remain unsigned, so this workflow must not add a `codesign` step.
+
+Measured on the approximately 57.2 MB Balance debug binary, creating the hard
+link took about 3.2 ms. For comparison, an APFS clone copy took 2.6–5.1 ms,
+ad-hoc signing a complete shell took 164–172 ms, and Developer ID signing took
+244–274 ms. These timings are machine-specific, but they establish that the
+chosen path adds neither a full copy nor a signing pass and should remain far
+below a 500 ms rebuild budget. The finished runner, including shell startup,
+plist copy, hard-link replacement, `exec`, and a synthetic Rust process launch,
+measured 36–69 ms across 30 runs (47 ms median). Re-profile if the runner changes
+materially.
+
+Never embed `BalanceWidget.appex` in `BalanceDev.app`, open the dev shell through
+Launch Services, or register anything under `target`. `/Applications/Balance.app`
+must remain the sole installed container, widget-extension registration, and
+`balance://` URL handler. A safe identity probe checks only configuration count
+and kind; never print widget payloads. After runner changes, also verify that
+`pluginkit` reports exactly one installed extension and that Launch Services
+still resolves `app.balance.local` to `/Applications/Balance.app`.
+
 ## Install and register macOS correctly
 
 `tauri dev` does not install a WidgetKit extension. Opening
@@ -217,14 +269,17 @@ widget extension registered even though the host app is normally run in dev.
 ## Preserve dev-mode widget clicks
 
 The widget uses `balance://today`. Launch Services resolves this URL to the
-installed app even when `tauri dev` is running as the raw
-`target/debug/Balance` executable.
+installed app even while `tauri dev` is running from
+`target/debug/BalanceDev.app`. The dev shell deliberately declares no URL
+scheme and is never registered.
 
 The installed release binary therefore performs a preflight before Tauri or
 database initialization:
 
-1. Find another running application whose executable ends with
-   `/src-tauri/target/debug/Balance`.
+1. Find another running application under `src-tauri/target` whose executable
+   ends with `/BalanceDev.app/Contents/MacOS/Balance`. Keep the legacy raw
+   `/src-tauri/target/debug/Balance` match so an older dev session still hands
+   off safely during upgrades.
 2. Ask AppKit to activate all of that process's windows.
 3. Exit the installed release immediately.
 4. Start the installed app normally only when no matching dev process exists.
@@ -234,7 +289,7 @@ condition. It can return false when the dev app is already frontmost even though
 the correct process was found. Detection is sufficient reason to exit.
 
 Before probing the installed executable, independently confirm that AppKit sees
-the expected raw dev process. Otherwise a failed probe would continue into
+the expected dev process. Otherwise a failed probe would continue into
 normal startup and touch the user's database. After a safe probe or an actual
 `open 'balance://today'`, verify that only the debug process remains. If an
 installed release was already running before dev mode started, stop that exact
@@ -281,6 +336,7 @@ cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 cargo test --manifest-path src-tauri/Cargo.toml widget::tests
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm check
+sh -n scripts/macos-tauri-cargo.sh scripts/run-macos-dev-app.sh
 node --test .github/scripts/configure-android-widgets.test.mjs
 ```
 
