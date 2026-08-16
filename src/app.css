@@ -19,6 +19,14 @@
   --accent: #2f6f68;
   --accent-strong: #245a54;
   --theme-hue: 173.4;
+  --list-progress-stop-1: hsl(var(--theme-hue) 56% 52%);
+  --list-progress-stop-2: hsl(var(--theme-hue) 58% 57%);
+  --list-progress-stop-3: hsl(var(--theme-hue) 52% 56%);
+  --list-progress-stop-4: hsl(var(--theme-hue) 49% 58%);
+  --list-progress-stop-5: hsl(var(--theme-hue) 77% 67%);
+  --list-progress-stop-6: hsl(var(--theme-hue) 90% 69%);
+  --list-progress-stop-7: hsl(var(--theme-hue) 93% 64%);
+  --list-progress-stop-8: hsl(var(--theme-hue) 89% 69%);
   --theme-checkbox: #2f6f68;
   --theme-done: #3f9d54;
   --checkbox-checked: var(--theme-checkbox);
@@ -215,6 +223,14 @@
   --accent: #425b9b;
   --accent-strong: #304477;
   --theme-hue: 223.1;
+  --list-progress-stop-1: #4257c9;
+  --list-progress-stop-2: #6a54d1;
+  --list-progress-stop-3: #9455c9;
+  --list-progress-stop-4: #c85fb0;
+  --list-progress-stop-5: #ec6a8f;
+  --list-progress-stop-6: #f7856a;
+  --list-progress-stop-7: #f9a94f;
+  --list-progress-stop-8: #f6cf68;
   --theme-checkbox: #526bb0;
   --theme-done: #596fbb;
   --danger: #b3454c;
@@ -2374,18 +2390,18 @@ nav button.active {
     /* Preserve the sweep's tones while matching the selected theme's hue. */
     linear-gradient(
       90deg,
-      hsl(var(--theme-hue) 56% 52%) 0%,
-      hsl(var(--theme-hue) 58% 57%) 14%,
-      hsl(var(--theme-hue) 52% 56%) 28%,
-      hsl(var(--theme-hue) 49% 58%) 43%,
-      hsl(var(--theme-hue) 77% 67%) 57%,
-      hsl(var(--theme-hue) 90% 69%) 71%,
-      hsl(var(--theme-hue) 93% 64%) 85%,
-      hsl(var(--theme-hue) 89% 69%) 100%
+      var(--list-progress-stop-1) 0%,
+      var(--list-progress-stop-2) 14%,
+      var(--list-progress-stop-3) 28%,
+      var(--list-progress-stop-4) 43%,
+      var(--list-progress-stop-5) 57%,
+      var(--list-progress-stop-6) 71%,
+      var(--list-progress-stop-7) 85%,
+      var(--list-progress-stop-8) 100%
     );
   box-shadow:
-    0 0 12px color-mix(in srgb, hsl(var(--theme-hue) 49% 58%) 30%, transparent),
-    0 0 18px color-mix(in srgb, hsl(var(--theme-hue) 90% 69%) 18%, transparent),
+    0 0 12px color-mix(in srgb, var(--list-progress-stop-4) 30%, transparent),
+    0 0 18px color-mix(in srgb, var(--list-progress-stop-6) 18%, transparent),
     inset 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 
