@@ -76,6 +76,10 @@ class BalanceSyncWorker {
     )
     await write(join(root, 'res/layout/balance_lock_widget.xml'), '<stale-lock-layout />')
     await write(join(root, 'res/xml/balance_lock_widget_info.xml'), '<stale-lock-info />')
+    await write(
+      join(root, 'res/drawable/balance_widget_violet_reminder_background.xml'),
+      '<stale-reminder-background />',
+    )
 
     await execute(process.execPath, [script, root, activity, worker])
     await execute(process.execPath, [script, root, activity, worker])
@@ -125,6 +129,10 @@ class BalanceSyncWorker {
     assert.match(kotlin, /setViewPadding/)
     assert.match(kotlin, /depth \* 12 \* density/)
     assert.match(kotlin, /setProgressBar/)
+    assert.match(kotlin, /R\.id\.widget_task_surface/)
+    assert.match(kotlin, /R\.id\.widget_all_done/)
+    assert.match(kotlin, /R\.id\.widget_item_time_10/)
+    assert.match(kotlin, /snapshot\.items\.isEmpty\(\)/)
 
     const violetLayout = await readFile(
       join(root, 'res/layout/balance_home_widget_violet.xml'),
@@ -134,6 +142,19 @@ class BalanceSyncWorker {
     assert.match(violetLayout, /@\+id\/widget_progress_bar/)
     assert.match(violetLayout, /#7355A2/)
     assert.match(violetLayout, /@drawable\/balance_widget_violet_task_circle/)
+    assert.match(violetLayout, /@drawable\/balance_widget_violet_task_surface/)
+    assert.match(violetLayout, /@drawable\/balance_widget_violet_time_pill/)
+    assert.match(violetLayout, /@\+id\/widget_all_done/)
+    assert.match(violetLayout, /android:text="TODAY"/)
+    assert.ok(
+      violetLayout.indexOf('@+id/widget_reminder') <
+        violetLayout.indexOf('@+id/widget_progress_bar'),
+    )
+    const reminder = violetLayout.match(
+      /<TextView\s+android:id="@\+id\/widget_reminder"[\s\S]*?\/>/,
+    )?.[0]
+    assert.ok(reminder)
+    assert.doesNotMatch(reminder, /android:background|android:textStyle/)
 
     const oceanLayout = await readFile(
       join(root, 'res/layout/balance_home_widget_ocean.xml'),
@@ -146,20 +167,37 @@ class BalanceSyncWorker {
       await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8')
+      await readFile(join(root, `res/drawable/balance_widget_${theme}_task_surface.xml`), 'utf8')
+      await readFile(join(root, `res/drawable/balance_widget_${theme}_time_pill.xml`), 'utf8')
+      await readFile(join(root, `res/layout-night/balance_home_widget_${theme}.xml`), 'utf8')
+      await readFile(join(root, `res/drawable-night/balance_widget_${theme}_progress.xml`), 'utf8')
     }
+
+    const darkVioletLayout = await readFile(
+      join(root, 'res/layout-night/balance_home_widget_violet.xml'),
+      'utf8',
+    )
+    assert.match(darkVioletLayout, /#201C25/)
+    assert.match(darkVioletLayout, /#EEE9F2/)
 
     const widgetStyles = await readFile(
       join(root, 'res/values/balance_widget_styles.xml'),
       'utf8',
     )
-    assert.match(widgetStyles, /android:maxLines">3</)
+    assert.match(widgetStyles, /android:maxLines">2</)
     assert.doesNotMatch(widgetStyles, /balance_widget_task_circle/)
 
-    const widgetReminder = await readFile(
-      join(root, 'res/drawable/balance_widget_mint_reminder_background.xml'),
+    const widgetTaskSurface = await readFile(
+      join(root, 'res/drawable/balance_widget_mint_task_surface.xml'),
       'utf8',
     )
-    assert.match(widgetReminder, /#E7F5EF/)
+    assert.match(widgetTaskSurface, /#FFFFFF/)
+
+    const darkWidgetTaskSurface = await readFile(
+      join(root, 'res/drawable-night/balance_widget_mint_task_surface.xml'),
+      'utf8',
+    )
+    assert.match(darkWidgetTaskSurface, /#202E29/)
 
     const homeInfo = await readFile(
       join(root, 'res/xml/balance_home_widget_info.xml'),
@@ -177,6 +215,10 @@ class BalanceSyncWorker {
     )
     await assert.rejects(
       readFile(join(root, 'res/xml/balance_lock_widget_info.xml'), 'utf8'),
+      { code: 'ENOENT' },
+    )
+    await assert.rejects(
+      readFile(join(root, 'res/drawable/balance_widget_violet_reminder_background.xml'), 'utf8'),
       { code: 'ENOENT' },
     )
   } finally {

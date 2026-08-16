@@ -123,10 +123,7 @@ object BalanceWidgets {
             R.id.widget_title,
             snapshot.title.ifBlank { "Today’s plan" },
         )
-        views.setTextViewText(
-            R.id.widget_date,
-            SimpleDateFormat("EEEE, MMM d", Locale.getDefault()).format(Date()).uppercase(),
-        )
+        views.setTextViewText(R.id.widget_date, "TODAY")
         views.setTextViewText(R.id.widget_progress, compactStatus(snapshot))
         views.setContentDescription(R.id.widget_progress, status(snapshot))
         val showProgress = snapshot.hasPlan && !snapshot.unavailable && snapshot.total > 0
@@ -143,10 +140,26 @@ object BalanceWidgets {
         views.setTextViewText(R.id.widget_reminder, snapshot.reminder)
         views.setViewVisibility(
             R.id.widget_reminder,
-            if (snapshot.reminder.isBlank() || !snapshot.hasPlan) View.GONE else View.VISIBLE,
+            if (snapshot.reminder.isBlank() || !snapshot.hasPlan || snapshot.unavailable) {
+                View.GONE
+            } else {
+                View.VISIBLE
+            },
         )
 
         val rows = intArrayOf(
+            R.id.widget_item_row_1,
+            R.id.widget_item_row_2,
+            R.id.widget_item_row_3,
+            R.id.widget_item_row_4,
+            R.id.widget_item_row_5,
+            R.id.widget_item_row_6,
+            R.id.widget_item_row_7,
+            R.id.widget_item_row_8,
+            R.id.widget_item_row_9,
+            R.id.widget_item_row_10,
+        )
+        val taskViews = intArrayOf(
             R.id.widget_item_1,
             R.id.widget_item_2,
             R.id.widget_item_3,
@@ -158,14 +171,42 @@ object BalanceWidgets {
             R.id.widget_item_9,
             R.id.widget_item_10,
         )
+        val timeViews = intArrayOf(
+            R.id.widget_item_time_1,
+            R.id.widget_item_time_2,
+            R.id.widget_item_time_3,
+            R.id.widget_item_time_4,
+            R.id.widget_item_time_5,
+            R.id.widget_item_time_6,
+            R.id.widget_item_time_7,
+            R.id.widget_item_time_8,
+            R.id.widget_item_time_9,
+            R.id.widget_item_time_10,
+        )
+        val dividers = intArrayOf(
+            R.id.widget_item_divider_1,
+            R.id.widget_item_divider_2,
+            R.id.widget_item_divider_3,
+            R.id.widget_item_divider_4,
+            R.id.widget_item_divider_5,
+            R.id.widget_item_divider_6,
+            R.id.widget_item_divider_7,
+            R.id.widget_item_divider_8,
+            R.id.widget_item_divider_9,
+            R.id.widget_item_divider_10,
+        )
         val density = context.resources.displayMetrics.density
         val verticalPadding = (5 * density).roundToInt()
         for (index in rows.indices) {
             val text = snapshot.items.getOrNull(index)
             val depth = snapshot.itemDepths.getOrNull(index)?.coerceIn(0, 4) ?: 0
             val time = snapshot.itemTimes.getOrNull(index).orEmpty()
-            val timePrefix = if (time.isEmpty()) "" else "$time  "
-            views.setTextViewText(rows[index], if (text == null) "" else "$timePrefix$text")
+            views.setTextViewText(taskViews[index], text.orEmpty())
+            views.setTextViewText(timeViews[index], time)
+            views.setViewVisibility(
+                timeViews[index],
+                if (text != null && time.isNotEmpty()) View.VISIBLE else View.GONE,
+            )
             views.setViewPadding(
                 rows[index],
                 (depth * 12 * density).roundToInt(),
@@ -174,7 +215,15 @@ object BalanceWidgets {
                 verticalPadding,
             )
             views.setViewVisibility(rows[index], if (text == null) View.GONE else View.VISIBLE)
+            views.setViewVisibility(
+                dividers[index],
+                if (index > 0 && text != null) View.VISIBLE else View.GONE,
+            )
         }
+        val showTasks = snapshot.hasPlan && !snapshot.unavailable && snapshot.items.isNotEmpty()
+        val showAllDone = snapshot.hasPlan && !snapshot.unavailable && snapshot.items.isEmpty()
+        views.setViewVisibility(R.id.widget_task_surface, if (showTasks) View.VISIBLE else View.GONE)
+        views.setViewVisibility(R.id.widget_all_done, if (showAllDone) View.VISIBLE else View.GONE)
         attachActions(context, views)
         return views
     }
@@ -291,14 +340,25 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 `
 
 const widgetThemes = [
-  { id: 'forest', paper: '#FFFDF8', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68', accentStrong: '#245A54', soft: '#DFECE7', reminder: '#EEF7F3' },
-  { id: 'ocean', paper: '#F9FCFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F', accentStrong: '#1F527C', soft: '#D7E9F5', reminder: '#EAF5FB' },
-  { id: 'violet', paper: '#FCFAFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2', accentStrong: '#593D83', soft: '#E4D9F2', reminder: '#F3EDF9' },
-  { id: 'sunset', paper: '#FFFAF5', ink: '#33241F', muted: '#7B6B63', line: '#E2D3C7', accent: '#B9563F', accentStrong: '#8F3F2E', soft: '#F4D8CD', reminder: '#FBECE3' },
-  { id: 'berry', paper: '#FFFAFD', ink: '#30242A', muted: '#786B72', line: '#DFD2D9', accent: '#9B496B', accentStrong: '#793650', soft: '#F2DBE6', reminder: '#F9EAF1' },
-  { id: 'pink', paper: '#FFF9FC', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', accent: '#C33F7A', accentStrong: '#932956', soft: '#F8D5E5', reminder: '#FBE7F0' },
-  { id: 'mint', paper: '#F9FDFA', ink: '#1E2D29', muted: '#657771', line: '#CCDDD7', accent: '#287968', accentStrong: '#1C5C4F', soft: '#D0EAE0', reminder: '#E7F5EF' },
-  { id: 'midnight', paper: '#FAFBFE', ink: '#202738', muted: '#687083', line: '#D1D6E2', accent: '#425B9B', accentStrong: '#304477', soft: '#D9E0F1', reminder: '#EAF0FA' },
+  { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },
+  { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F' },
+  { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
+  { id: 'sunset', paper: '#FFFAF5', surface: '#FFFFFF', ink: '#33241F', muted: '#7B6B63', line: '#E2D3C7', accent: '#B9563F' },
+  { id: 'berry', paper: '#FFFAFD', surface: '#FFFFFF', ink: '#30242A', muted: '#786B72', line: '#DFD2D9', accent: '#9B496B' },
+  { id: 'pink', paper: '#FFF9FC', surface: '#FFFFFF', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', accent: '#C33F7A' },
+  { id: 'mint', paper: '#F9FDFA', surface: '#FFFFFF', ink: '#1E2D29', muted: '#657771', line: '#CCDDD7', accent: '#287968' },
+  { id: 'midnight', paper: '#FAFBFE', surface: '#FFFFFF', ink: '#202738', muted: '#687083', line: '#D1D6E2', accent: '#425B9B' },
+]
+
+const darkWidgetThemes = [
+  { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
+  { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
+  { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
+  { id: 'sunset', paper: '#241C18', surface: '#2E241F', ink: '#F1E9E4', muted: '#B8A69B', line: '#493A32', accent: '#E5947F' },
+  { id: 'berry', paper: '#241B20', surface: '#2E2329', ink: '#F1E8ED', muted: '#B5A3AD', line: '#493741', accent: '#DB8BAA' },
+  { id: 'pink', paper: '#261A20', surface: '#312229', ink: '#F4E8EE', muted: '#BAA3AF', line: '#4D3541', accent: '#F08DB8' },
+  { id: 'mint', paper: '#18231F', surface: '#202E29', ink: '#E7F1ED', muted: '#9DB2AA', line: '#30453E', accent: '#77C8B1' },
+  { id: 'midnight', paper: '#181C29', surface: '#212638', ink: '#E9ECF5', muted: '#A1A9BD', line: '#343B52', accent: '#91A7E4' },
 ]
 
 const alphaColor = (hex, alpha) => `#${alpha}${hex.slice(1)}`
@@ -310,12 +370,56 @@ function taskRows(theme) {
     'Take a proper break',
   ]
   return Array.from({ length: 10 }, (_, index) => {
-    const text = preview[index] ? `\n        android:text="${preview[index]}"` : ''
+    const item = index + 1
+    const previewText = preview[index]?.replace(/^9am–10am  /, '')
+    const text = previewText ? `\n            android:text="${previewText}"` : ''
+    const visibility = preview[index] ? '' : '\n        android:visibility="gone"'
+    const dividerVisibility = index > 0 && preview[index] ? '' : '\n        android:visibility="gone"'
+    const time = index === 1 ? '\n            android:text="9am–10am"' : '\n            android:visibility="gone"'
     return `    <TextView
-        android:id="@+id/widget_item_${index + 1}"
-        style="@style/BalanceWidgetItem"
-        android:drawableStart="@drawable/balance_widget_${theme.id}_task_circle"
-        android:textColor="${theme.ink}"${text} />`
+        android:id="@+id/widget_item_divider_${item}"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="${alphaColor(theme.line, 'BF')}"${dividerVisibility} />
+
+    <LinearLayout
+        android:id="@+id/widget_item_row_${item}"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="top"
+        android:orientation="horizontal"
+        android:paddingBottom="5dp"
+        android:paddingTop="5dp"${visibility}>
+
+        <ImageView
+            android:layout_width="11dp"
+            android:layout_height="11dp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginTop="3dp"
+            android:contentDescription="@null"
+            android:importantForAccessibility="no"
+            android:src="@drawable/balance_widget_${theme.id}_task_circle" />
+
+        <TextView
+            android:id="@+id/widget_item_time_${item}"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="6dp"
+            android:background="@drawable/balance_widget_${theme.id}_time_pill"
+            android:fontFamily="sans-serif-medium"
+            android:maxLines="1"
+            android:paddingBottom="2dp"
+            android:paddingEnd="6dp"
+            android:paddingStart="6dp"
+            android:paddingTop="2dp"
+            android:textColor="${theme.paper}"
+            android:textSize="10sp"${time} />
+
+        <TextView
+            android:id="@+id/widget_item_${item}"
+            style="@style/BalanceWidgetItem"
+            android:textColor="${theme.ink}"${text} />
+    </LinearLayout>`
   }).join('\n')
 }
 
@@ -347,7 +451,7 @@ function homeLayout(theme) {
                 android:layout_height="wrap_content"
                 android:fontFamily="sans-serif-medium"
                 android:letterSpacing="0.08"
-                android:text="SATURDAY, AUG 1"
+                android:text="TODAY"
                 android:textColor="${theme.accent}"
                 android:textSize="10sp" />
             <TextView
@@ -377,7 +481,7 @@ function homeLayout(theme) {
             android:paddingStart="9dp"
             android:paddingTop="5dp"
             android:text="2/6"
-            android:textColor="${theme.accentStrong}"
+            android:textColor="${theme.accent}"
             android:textSize="11sp" />
 
         <TextView
@@ -393,6 +497,17 @@ function homeLayout(theme) {
             android:textSize="18sp" />
     </LinearLayout>
 
+    <TextView
+        android:id="@+id/widget_reminder"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:text="This shouldn’t be aspirational"
+        android:textColor="${theme.muted}"
+        android:textSize="12sp" />
+
     <ProgressBar
         android:id="@+id/widget_progress_bar"
         style="?android:attr/progressBarStyleHorizontal"
@@ -404,22 +519,28 @@ function homeLayout(theme) {
         android:progressDrawable="@drawable/balance_widget_${theme.id}_progress" />
 
     <TextView
-        android:id="@+id/widget_reminder"
+        android:id="@+id/widget_all_done"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="9dp"
-        android:background="@drawable/balance_widget_${theme.id}_reminder_background"
-        android:ellipsize="end"
-        android:maxLines="2"
-        android:paddingBottom="7dp"
-        android:paddingEnd="9dp"
-        android:paddingStart="9dp"
-        android:paddingTop="7dp"
-        android:textColor="${theme.muted}"
-        android:textSize="12sp"
-        android:textStyle="italic" />
+        android:fontFamily="sans-serif-medium"
+        android:text="✓  All done"
+        android:textColor="${theme.accent}"
+        android:textSize="14sp"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/widget_task_surface"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="9dp"
+        android:background="@drawable/balance_widget_${theme.id}_task_surface"
+        android:orientation="vertical"
+        android:paddingEnd="10dp"
+        android:paddingStart="10dp">
 
 ${taskRows(theme)}
+    </LinearLayout>
 </LinearLayout>
 `
 }
@@ -427,15 +548,15 @@ ${taskRows(theme)}
 const styles = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="BalanceWidgetItem">
-        <item name="android:layout_width">match_parent</item>
+        <item name="android:layout_width">0dp</item>
         <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
         <item name="android:breakStrategy">high_quality</item>
-        <item name="android:drawablePadding">8dp</item>
         <item name="android:ellipsize">end</item>
         <item name="android:fontFamily">sans-serif</item>
         <item name="android:gravity">top</item>
         <item name="android:lineSpacingExtra">1dp</item>
-        <item name="android:maxLines">3</item>
+        <item name="android:maxLines">2</item>
         <item name="android:textSize">13sp</item>
     </style>
 </resources>
@@ -454,9 +575,9 @@ function background(theme) {
 function pill(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="${theme.soft}" />
+    <solid android:color="${alphaColor(theme.accent, '1F')}" />
     <corners android:radius="999dp" />
-    <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '4D')}" />
+    <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '33')}" />
 </shape>
 `
 }
@@ -464,18 +585,27 @@ function pill(theme) {
 function refreshBackground(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-    <solid android:color="${theme.soft}" />
+    <solid android:color="${alphaColor(theme.accent, '1F')}" />
     <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '33')}" />
 </shape>
 `
 }
 
-function reminderBackground(theme) {
+function taskSurface(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="${theme.reminder}" />
-    <corners android:radius="8dp" />
-    <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '26')}" />
+    <solid android:color="${theme.surface}" />
+    <corners android:radius="10dp" />
+    <stroke android:width="1dp" android:color="${alphaColor(theme.line, 'CC')}" />
+</shape>
+`
+}
+
+function timePill(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="${theme.accent}" />
+    <corners android:radius="999dp" />
 </shape>
 `
 }
@@ -541,20 +671,37 @@ const files = new Map([
   [join(resPath, 'xml/balance_home_widget_info.xml'), homeInfo],
 ])
 
-for (const theme of widgetThemes) {
-  files.set(join(resPath, `layout/balance_home_widget_${theme.id}.xml`), homeLayout(theme))
-  files.set(join(resPath, `drawable/balance_widget_${theme.id}_background.xml`), background(theme))
-  files.set(join(resPath, `drawable/balance_widget_${theme.id}_pill.xml`), pill(theme))
+function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
+  files.set(join(resPath, `${layoutDirectory}/balance_home_widget_${theme.id}.xml`), homeLayout(theme))
+  files.set(join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_background.xml`), background(theme))
+  files.set(join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_pill.xml`), pill(theme))
   files.set(
-    join(resPath, `drawable/balance_widget_${theme.id}_refresh_background.xml`),
+    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_refresh_background.xml`),
     refreshBackground(theme),
   )
   files.set(
-    join(resPath, `drawable/balance_widget_${theme.id}_reminder_background.xml`),
-    reminderBackground(theme),
+    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_task_surface.xml`),
+    taskSurface(theme),
   )
-  files.set(join(resPath, `drawable/balance_widget_${theme.id}_task_circle.xml`), taskCircle(theme))
-  files.set(join(resPath, `drawable/balance_widget_${theme.id}_progress.xml`), progress(theme))
+  files.set(
+    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_time_pill.xml`),
+    timePill(theme),
+  )
+  files.set(
+    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_task_circle.xml`),
+    taskCircle(theme),
+  )
+  files.set(
+    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_progress.xml`),
+    progress(theme),
+  )
+}
+
+for (const theme of widgetThemes) {
+  addThemeFiles(theme, 'layout', 'drawable')
+}
+for (const theme of darkWidgetThemes) {
+  addThemeFiles(theme, 'layout-night', 'drawable-night')
 }
 
 for (const [path, content] of files) {
@@ -572,6 +719,9 @@ for (const path of [
   join(resPath, 'drawable/balance_widget_reminder_background.xml'),
   join(resPath, 'drawable/balance_widget_task_circle.xml'),
   join(resPath, 'drawable/balance_widget_progress.xml'),
+  ...widgetThemes.map((theme) =>
+    join(resPath, `drawable/balance_widget_${theme.id}_reminder_background.xml`),
+  ),
 ]) {
   await rm(path, { force: true })
 }

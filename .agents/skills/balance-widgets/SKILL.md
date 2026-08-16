@@ -97,6 +97,23 @@ uses generated preset-specific RemoteViews resources because older RemoteViews
 APIs cannot reliably tint every rounded drawable at runtime. Unknown and legacy
 theme values must render with the `violet` preset.
 
+Treat the macOS widget as the reference design and preserve visual parity in the
+Android home widget wherever both platforms can express the same design. When a
+shared element changes on either platform, compare its content order, typography,
+spacing, palette, task-row treatment, progress presentation, and empty state on
+the other platform in the same change. Keep intentional platform controls, such
+as Android's manual refresh action, when parity would remove useful native
+behavior. Android's generated `layout-night` and `drawable-night` resources must
+stay aligned with the macOS dark palettes as well as the default resources with
+the light palettes.
+
+The populated Android widget mirrors macOS by placing the plain muted daily
+quote above the progress bar, rendering task rows inside a rounded bordered
+surface with dividers, showing visible time ranges in accent capsules, and using
+an explicit accent-colored `All done` state when no incomplete tasks remain.
+Keep generator tests for these structural relationships so a preview-only layout
+change cannot silently make the platforms drift.
+
 For macOS task rows, preserve `.privacySensitive()`. Clamp visual indentation so
 deep trees do not consume the full widget. For Android, use non-breaking spaces
 or another RemoteViews-compatible technique because leading ordinary spaces may
