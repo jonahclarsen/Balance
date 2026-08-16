@@ -7,6 +7,8 @@ private let encryptedSnapshotKey = "balance.widget.encrypted-snapshot.v2"
 private let legacyPlaintextSnapshotKey = "balance.widget.snapshot.v1"
 private let snapshotPreferenceDomain = "app.balance.local"
 private let widgetPreferenceDomain = "app.balance.local.widget"
+private let widgetRefreshArgument = "--balance-widget-refresh"
+private let developmentExecutableSuffix = "/src-tauri/target/debug/Balance"
 
 private var snapshotDefaults: UserDefaults {
     UserDefaults(suiteName: snapshotPreferenceDomain) ?? .standard
@@ -36,6 +38,40 @@ private func widgetPublicKeyString() -> String? {
     return values[WidgetSnapshotKey.publicPreferenceKey] as? String
 }
 
+private func requestWidgetReload() {
+    WidgetCenter.shared.reloadTimelines(ofKind: "BalanceToday")
+
+    // WidgetCenter only reloads widgets belonging to the calling app. Tauri dev
+    // runs a raw executable rather than the installed app that contains
+    // BalanceWidget.appex, so relay only the reload through a hidden installed
+    // host instance. Its argument is handled before Tauri or the database opens.
+    guard Bundle.main.executableURL?.path.hasSuffix(developmentExecutableSuffix) == true else {
+        return
+    }
+
+    DispatchQueue.main.async {
+        guard let installedApp = NSWorkspace.shared.urlForApplication(
+            withBundleIdentifier: snapshotPreferenceDomain
+        ) else {
+            return
+        }
+
+        let configuration = NSWorkspace.OpenConfiguration()
+        configuration.arguments = [widgetRefreshArgument]
+        configuration.activates = false
+        configuration.addsToRecentItems = false
+        configuration.allowsRunningApplicationSubstitution = false
+        configuration.createsNewApplicationInstance = true
+        configuration.hides = true
+        configuration.promptsUserIfNeeded = false
+        NSWorkspace.shared.openApplication(
+            at: installedApp,
+            configuration: configuration,
+            completionHandler: nil
+        )
+    }
+}
+
 @_cdecl("balance_publish_encrypted_widget_snapshot")
 public func balancePublishEncryptedWidgetSnapshot(_ snapshot: UnsafePointer<CChar>?) -> Bool {
     // Always erase the old plaintext cache, including when the extension has not
@@ -48,7 +84,7 @@ public func balancePublishEncryptedWidgetSnapshot(_ snapshot: UnsafePointer<CCha
     else {
         snapshotDefaults.removeObject(forKey: encryptedSnapshotKey)
         _ = snapshotDefaults.synchronize()
-        WidgetCenter.shared.reloadAllTimelines()
+        requestWidgetReload()
         return false
     }
 
@@ -70,13 +106,13 @@ public func balancePublishEncryptedWidgetSnapshot(_ snapshot: UnsafePointer<CCha
     else {
         snapshotDefaults.removeObject(forKey: encryptedSnapshotKey)
         _ = snapshotDefaults.synchronize()
-        WidgetCenter.shared.reloadAllTimelines()
+        requestWidgetReload()
         return false
     }
 
     snapshotDefaults.set(ciphertext.base64EncodedString(), forKey: encryptedSnapshotKey)
     let saved = snapshotDefaults.synchronize()
-    WidgetCenter.shared.reloadAllTimelines()
+    requestWidgetReload()
     return saved
 }
 
@@ -95,7 +131,7 @@ public func balanceActivateRunningDevelopmentApp() -> Int32 {
         else {
             return false
         }
-        return executablePath.hasSuffix("/src-tauri/target/debug/Balance")
+        return executablePath.hasSuffix(developmentExecutableSuffix)
     }) else {
         return 0
     }
