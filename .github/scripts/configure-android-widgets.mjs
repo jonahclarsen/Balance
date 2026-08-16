@@ -413,19 +413,10 @@ function taskRows(theme) {
         android:id="@+id/widget_item_row_${item}"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:gravity="top"
+        android:gravity="center_vertical"
         android:orientation="horizontal"
         android:paddingBottom="5dp"
         android:paddingTop="5dp"${visibility}>
-
-        <ImageView
-            android:layout_width="11dp"
-            android:layout_height="11dp"
-            android:layout_marginEnd="8dp"
-            android:layout_marginTop="3dp"
-            android:contentDescription="@null"
-            android:importantForAccessibility="no"
-            android:src="@drawable/balance_widget_${theme.id}_task_circle" />
 
         <TextView
             android:id="@+id/widget_item_time_${item}"
@@ -643,16 +634,6 @@ function timePill(theme) {
 `
 }
 
-function taskCircle(theme) {
-  return `<?xml version="1.0" encoding="utf-8"?>
-<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-    <size android:width="11dp" android:height="11dp" />
-    <solid android:color="@android:color/transparent" />
-    <stroke android:width="1.5dp" android:color="${alphaColor(theme.accent, 'B3')}" />
-</shape>
-`
-}
-
 function progress(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
@@ -804,10 +785,6 @@ function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
     timePill(theme),
   )
   files.set(
-    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_task_circle.xml`),
-    taskCircle(theme),
-  )
-  files.set(
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_progress.xml`),
     progress(theme),
   )
@@ -839,6 +816,12 @@ for (const path of [
   join(resPath, 'drawable/balance_widget_reminder_background.xml'),
   join(resPath, 'drawable/balance_widget_task_circle.xml'),
   join(resPath, 'drawable/balance_widget_progress.xml'),
+  ...widgetThemes.map((theme) =>
+    join(resPath, `drawable/balance_widget_${theme.id}_task_circle.xml`),
+  ),
+  ...darkWidgetThemes.map((theme) =>
+    join(resPath, `drawable-night/balance_widget_${theme.id}_task_circle.xml`),
+  ),
   ...widgetThemes.map((theme) =>
     join(resPath, `drawable/balance_widget_${theme.id}_reminder_background.xml`),
   ),

@@ -82,6 +82,14 @@ class BalanceSyncWorker {
       join(root, 'res/drawable/balance_widget_violet_reminder_background.xml'),
       '<stale-reminder-background />',
     )
+    await write(
+      join(root, 'res/drawable/balance_widget_violet_task_circle.xml'),
+      '<stale-task-circle />',
+    )
+    await write(
+      join(root, 'res/drawable-night/balance_widget_violet_task_circle.xml'),
+      '<stale-dark-task-circle />',
+    )
 
     await execute(process.execPath, [script, root, activity, worker])
     await execute(process.execPath, [script, root, activity, worker])
@@ -150,7 +158,11 @@ class BalanceSyncWorker {
     assert.match(violetLayout, /@\+id\/widget_item_10/)
     assert.match(violetLayout, /@\+id\/widget_progress_bar/)
     assert.match(violetLayout, /#7355A2/)
-    assert.match(violetLayout, /@drawable\/balance_widget_violet_task_circle/)
+    assert.doesNotMatch(violetLayout, /task_circle/)
+    assert.match(
+      violetLayout,
+      /android:id="@\+id\/widget_item_row_1"[\s\S]*?android:gravity="center_vertical"/,
+    )
     assert.match(violetLayout, /@drawable\/balance_widget_violet_task_surface/)
     assert.match(violetLayout, /@drawable\/balance_widget_violet_time_pill/)
     assert.match(violetLayout, /@\+id\/widget_all_done/)
@@ -189,7 +201,6 @@ class BalanceSyncWorker {
       await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress_fill.xml`), 'utf8')
-      await readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_task_surface.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_time_pill.xml`), 'utf8')
       await readFile(join(root, `res/layout-night/balance_home_widget_${theme}.xml`), 'utf8')
@@ -197,6 +208,14 @@ class BalanceSyncWorker {
       await readFile(
         join(root, `res/drawable-night/balance_widget_${theme}_progress_fill.xml`),
         'utf8',
+      )
+      await assert.rejects(
+        readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8'),
+        { code: 'ENOENT' },
+      )
+      await assert.rejects(
+        readFile(join(root, `res/drawable-night/balance_widget_${theme}_task_circle.xml`), 'utf8'),
+        { code: 'ENOENT' },
       )
     }
 
