@@ -1112,6 +1112,22 @@ return rows`
     if (!importMetricId) importMetricId = id
   }
 
+  async function selectAdjacentMetric(direction: -1 | 1) {
+    if (metrics.length < 2 || !selectedMetric) return
+
+    const currentIndex = metrics.findIndex((metric) => metric.id === selectedMetric.id)
+    if (currentIndex === -1) return
+
+    const nextIndex = (currentIndex + direction + metrics.length) % metrics.length
+    selectedMetricId = metrics[nextIndex].id
+
+    await tick()
+    const selectedTab = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('[data-metric-tab-id]'),
+    ).find((tab) => tab.dataset.metricTabId === selectedMetricId)
+    selectedTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+
   function openImportModal() {
     if (selectedMetricId) importMetricId = selectedMetricId
     importError = ''
@@ -2444,7 +2460,7 @@ return rows`
     }
 
     if (
-      (view === 'today' || view === 'templates' || view === 'lists' || view === 'listTemplates') &&
+      (view === 'today' || view === 'templates' || view === 'lists' || view === 'listTemplates' || view === 'metrics') &&
       event.altKey &&
       !primaryModifier &&
       !event.shiftKey
@@ -2453,6 +2469,7 @@ return rows`
         event.preventDefault()
         if (view === 'templates') void selectAdjacentDayTemplate(-1)
         else if (view === 'listTemplates') void selectAdjacentListTemplate(-1)
+        else if (view === 'metrics') void selectAdjacentMetric(-1)
         else if (view === 'today') shiftFocusedPaneDate(-1)
         else if (view === 'lists') shiftActivePlanDate(-1)
         return
@@ -2462,6 +2479,7 @@ return rows`
         event.preventDefault()
         if (view === 'templates') void selectAdjacentDayTemplate(1)
         else if (view === 'listTemplates') void selectAdjacentListTemplate(1)
+        else if (view === 'metrics') void selectAdjacentMetric(1)
         else if (view === 'today') shiftFocusedPaneDate(1)
         else if (view === 'lists') shiftActivePlanDate(1)
         return
@@ -4954,6 +4972,7 @@ return rows`
               class="rail-chip"
               class:active={selectedMetric?.id === metric.id}
               aria-current={selectedMetric?.id === metric.id}
+              data-metric-tab-id={metric.id}
               on:click={() => (selectedMetricId = metric.id)}
             >
               {metric.name || 'Untitled metric'}

@@ -162,6 +162,27 @@ test('metric quiz records answers and bulk import backfills', async ({ page }) =
   await expect(page.locator('.metric-graph').first()).toBeVisible()
 })
 
+test('Alt+Q and Alt+W select adjacent metrics', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openMetrics(page)
+  await page.getByRole('button', { name: '+ New metric' }).click()
+  await page.getByLabel('Metric name').fill('Alpha')
+  await page.getByRole('button', { name: 'New metric', exact: true }).click()
+  await page.getByLabel('Metric name').fill('Beta')
+
+  const alphaTab = page.getByRole('button', { name: 'Alpha', exact: true })
+  const betaTab = page.getByRole('button', { name: 'Beta', exact: true })
+  await expect(betaTab).toHaveAttribute('aria-current', 'true')
+
+  await page.keyboard.press('Alt+Q')
+  await expect(alphaTab).toHaveAttribute('aria-current', 'true')
+  await page.keyboard.press('Alt+W')
+  await expect(betaTab).toHaveAttribute('aria-current', 'true')
+})
+
 test('metric graph uses elapsed dates for point spacing and labels its x-axis', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
