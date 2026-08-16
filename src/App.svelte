@@ -76,6 +76,8 @@
   type AvailableUpdate = { version: string; url: string }
 
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
+  const GOAL_HISTORY_UPDATE_DEBOUNCE_MS = 1_000
+  const GOAL_HISTORY_EDIT_UPDATE_DEBOUNCE_MS = 5_000
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
@@ -328,7 +330,28 @@ return rows`
   let highlightedGoalCardId: Id | null = null
   let lockedGoalOrder: Id[] | null = null
 
-  $: templates = $plannerStore.templates
+  // Svelte's legacy prop/store equality treats arrays as changed even when the
+  // reference is identical. Keep stable collection references so editing one
+  // plan item does not invalidate unrelated, expensive trees (most notably the
+  // goal-history grid) on every keystroke.
+  let templates = $plannerStore.templates
+  let listTemplates = $plannerStore.listTemplates
+  let lists = $plannerStore.lists
+  let metrics = $plannerStore.metrics
+  let notes = $plannerStore.notes
+  let goals = $plannerStore.goals
+  let goalCompletions = $plannerStore.goalCompletions
+  let goalHistoryGoals = goals
+  let goalHistoryUpdateTimer: number | null = null
+  let goalNameEditing = false
+  $: if (templates !== $plannerStore.templates) templates = $plannerStore.templates
+  $: if (listTemplates !== $plannerStore.listTemplates) listTemplates = $plannerStore.listTemplates
+  $: if (lists !== $plannerStore.lists) lists = $plannerStore.lists
+  $: if (metrics !== $plannerStore.metrics) metrics = $plannerStore.metrics
+  $: if (notes !== $plannerStore.notes) notes = $plannerStore.notes
+  $: if (goals !== $plannerStore.goals) goals = $plannerStore.goals
+  $: if (goalCompletions !== $plannerStore.goalCompletions) goalCompletions = $plannerStore.goalCompletions
+  $: if (goals !== goalHistoryGoals) scheduleGoalHistoryUpdate()
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
   $: activePlanTimeWarnings = buildItemTimeWarnings(activePlan?.items ?? [])
   $: comparePlan = compareDayOpen ? $plannerStore.plans.find((plan) => plan.date === compareDayDate) : undefined
@@ -380,7 +403,6 @@ return rows`
   }
 
   // ---- Lists ----
-  $: listTemplates = $plannerStore.listTemplates
   $: if (view === 'lists') listHistoryNavigationVisible = true
   $: selectedListTemplate = listTemplates.find((template) => template.id === selectedListTemplateId) ?? listTemplates[0]
   $: if (!selectedListTemplateId && listTemplates[0]) selectedListTemplateId = listTemplates[0].id
@@ -391,23 +413,21 @@ return rows`
   $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = listTemplates[0].id
   $: selectedListWordCount = selectedListTemplate ? Math.round(expectedWordCount(selectedListTemplate.items)) : 0
   $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items) : 0
-  $: listViewInstance = $plannerStore.lists.find(
+  $: listViewInstance = lists.find(
     (list) => list.listTemplateId === listViewTemplateId && list.date === $plannerStore.activePlanDate,
   )
   // ---- Metrics ----
-  $: metrics = $plannerStore.metrics
   $: selectedMetric = metrics.find((metric) => metric.id === selectedMetricId) ?? metrics[0]
   $: if (!selectedMetricId && metrics[0]) selectedMetricId = metrics[0].id
   $: if (!importMetricId && metrics[0]) importMetricId = metrics[0].id
   // ---- Notes ----
-  $: notes = $plannerStore.notes
   $: if (!selectedNoteId && notes[0]) selectedNoteId = notes[0].id
   $: if (selectedNoteId && !notes.some((note) => note.id === selectedNoteId)) selectedNoteId = notes[0]?.id ?? ''
 
   // ---- Overlays: auto-close a list toast once every box is checked ----
   // Only auto-close when the list *transitions* to complete while open, so
   // reopening an already-finished list lets you review it instead of slamming shut.
-  $: listOverlayInstance = listOverlay ? $plannerStore.lists.find((list) => list.id === listOverlay?.listId) : null
+  $: listOverlayInstance = listOverlay ? lists.find((list) => list.id === listOverlay?.listId) : null
   $: if (listOverlay && listOverlayInstance) {
     if (!allPlanItemsDone(listOverlayInstance.items)) {
       listOverlayArmed = true
@@ -420,8 +440,8 @@ return rows`
     metricOverlay && metricOverlayMetric ? answersForEntry(metricOverlay.metricId, metricOverlay.date) : {}
   $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
   $: selectedItemIdSet = new Set(selectedItemIds)
-  $: activeGoalCount = $plannerStore.goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
-  $: sortedGoals = sortGoalsByUrgency($plannerStore.goals, $plannerStore.goalCompletions, todayISO())
+  $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
+  $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, todayISO())
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
   $: themeId = normalizeThemeId($plannerStore.preferences.themeId)
@@ -492,7 +512,7 @@ return rows`
   $: observeGoalItemCompletions(activePlan, view, completionTrackingReady)
   $: observeGoalItemCompletions(comparePlan, view, completionTrackingReady)
   $: observeListCompletions(
-    $plannerStore.lists,
+    lists,
     view === 'lists' ? (listViewInstance?.id ?? null) : null,
     listOverlayVisible ? (listOverlayInstance?.id ?? null) : null,
     completionTrackingReady,
@@ -1246,6 +1266,7 @@ return rows`
       stopAutomaticSync?.()
       stopPasteMatchStyleListener?.()
       window.clearInterval(databaseLoadingMessageTimer)
+      if (goalHistoryUpdateTimer !== null) window.clearTimeout(goalHistoryUpdateTimer)
       clearGoalRhythmAutoShowTimer()
       dismissCelebration()
     }
@@ -1337,6 +1358,19 @@ return rows`
     if (goalRhythmAutoShowTimer === null) return
     window.clearTimeout(goalRhythmAutoShowTimer)
     goalRhythmAutoShowTimer = null
+  }
+
+  function scheduleGoalHistoryUpdate() {
+    if (goalHistoryUpdateTimer !== null) window.clearTimeout(goalHistoryUpdateTimer)
+    goalHistoryUpdateTimer = window.setTimeout(() => {
+      goalHistoryUpdateTimer = null
+      goalHistoryGoals = goals
+    }, goalNameEditing ? GOAL_HISTORY_EDIT_UPDATE_DEBOUNCE_MS : GOAL_HISTORY_UPDATE_DEBOUNCE_MS)
+  }
+
+  function setGoalNameEditing(focused: boolean) {
+    goalNameEditing = focused
+    if (goals !== goalHistoryGoals) scheduleGoalHistoryUpdate()
   }
 
   function leaveTodayMaximized() {
@@ -4521,8 +4555,8 @@ return rows`
                     onMobileSelectionStart={startMobileItemSelection}
                     onMobileSelectionToggle={toggleMobileItemSelection}
                     onTextShiftArrow={selectItemWithAdjacent}
-                    goals={$plannerStore.goals}
-                    goalCompletions={$plannerStore.goalCompletions}
+                    {goals}
+                    {goalCompletions}
                     planDate={plan.date}
                     onGoalBadgeClick={focusGoalInRhythm}
                     {listTemplates}
@@ -5072,7 +5106,7 @@ return rows`
       <div class="goal-list">
         {#each filteredGoals as goal (goal.id)}
           {@const active = isGoalActiveOnDate(goal, todayISO())}
-          {@const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goal.id).length}
+          {@const completionCount = goalCompletions.filter((completion) => completion.goalId === goal.id).length}
           {@const firstPeriod = goal.activityPeriods[0]}
           <article
             class="goal-card"
@@ -5093,6 +5127,7 @@ return rows`
                   ariaLabel={`Goal name: ${goal.name}`}
                   revision={$plannerStore.historyRevision}
                   singleLine
+                  onFocusChange={setGoalNameEditing}
                   onChange={(html, text) => plannerStore.patchGoal(goal.id, { name: text, nameHtml: html })}
                 />
                 <span class:active class="goal-state">{active ? 'Active' : 'Archived'}</span>
@@ -5489,8 +5524,8 @@ return rows`
 
     {#if goalRhythmVisible}
       <GoalHistoryPanel
-        goals={$plannerStore.goals}
-        completions={$plannerStore.goalCompletions}
+        goals={goalHistoryGoals}
+        completions={goalCompletions}
         viewedDate={$plannerStore.activePlanDate || todayISO()}
         onOpenGoals={openGoals}
         onOpenDate={openDateInToday}

@@ -258,6 +258,16 @@ test('goal names preserve rich text and turn a pasted URL into a link', async ({
   await expect(page.getByRole('textbox', { name: 'Goal name: Exercise daily' }).getByRole('link', { name: 'Exercise' })).toBeVisible()
 })
 
+test('goal rhythm catches up after live goal-name editing pauses', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Desktop goal-form navigation is covered here')
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+
+  await page.getByRole('textbox', { name: 'Goal name: Exercise' }).fill('Daily exercise')
+
+  const rhythm = page.getByRole('region', { name: 'Goal history' })
+  await expect(rhythm.locator('.goal-history-name', { hasText: 'Daily exercise' })).toBeVisible({ timeout: 8_000 })
+})
+
 test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 60 seconds', async ({ page }) => {
   await page.clock.install()
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })

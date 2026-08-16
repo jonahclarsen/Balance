@@ -262,6 +262,7 @@ jobs:
           path: |
             logcat*.txt
             android-startup-profile.json
+            sync-e2e-large-task-profile.json
             startup-profile-log.txt
             sync-e2e-*.xml
             sync-e2e-*.png

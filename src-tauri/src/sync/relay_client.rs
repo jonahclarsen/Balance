@@ -4,6 +4,7 @@
 
 use std::collections::HashSet;
 use std::io::Cursor;
+use std::time::Duration;
 
 use hmac::{Hmac, Mac};
 use rand::RngCore;
@@ -24,6 +25,9 @@ const TARGET_BATCH_PLAINTEXT: usize = 256 * 1024;
 const CHECKPOINT_CHUNK_BYTES: usize = 96 * 1024;
 const BACKGROUND_MAX_DOWNLOAD_CHUNKS: usize = 64;
 const PARALLEL_BATCH_DOWNLOADS: usize = 8;
+const RELAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const FOREGROUND_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
+const BACKGROUND_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone, Copy)]
 pub struct SyncOptions {
@@ -47,6 +51,26 @@ impl SyncOptions {
             allow_checkpoint,
         }
     }
+}
+
+fn relay_http_client(options: SyncOptions) -> Result<Client> {
+    let request_timeout = if options.foreground {
+        FOREGROUND_REQUEST_TIMEOUT
+    } else {
+        BACKGROUND_REQUEST_TIMEOUT
+    };
+    relay_http_client_with_timeouts(RELAY_CONNECT_TIMEOUT, request_timeout)
+}
+
+fn relay_http_client_with_timeouts(
+    connect_timeout: Duration,
+    request_timeout: Duration,
+) -> Result<Client> {
+    Client::builder()
+        .connect_timeout(connect_timeout)
+        .timeout(request_timeout)
+        .build()
+        .map_err(|error| Error::Codec(error.to_string()))
 }
 
 fn random_token() -> String {
@@ -688,10 +712,7 @@ fn sync_once_inner(
     options: SyncOptions,
 ) -> Result<SyncPassResult> {
     ensure_relay_tables(conn)?;
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|error| Error::Codec(error.to_string()))?;
+    let client = relay_http_client(options)?;
     let base = relay_url.trim_end_matches('/');
     let device_id = crate::metadata_value(conn, "device_id")
         .map_err(Error::Codec)?
@@ -889,6 +910,35 @@ mod tests {
         let foreground_joiner = SyncOptions::foreground(false);
         assert!(!foreground_joiner.allow_checkpoint);
         enforce_background_budget(&manifest, foreground_joiner.foreground).unwrap();
+    }
+
+    #[test]
+    fn foreground_relay_requests_time_out_without_waiting_for_a_stalled_server() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0_u8; 2048];
+            let _ = stream.read(&mut request).unwrap();
+            std::thread::sleep(Duration::from_millis(250));
+        });
+        let timeout = Duration::from_millis(40);
+        let client = relay_http_client_with_timeouts(timeout, timeout).unwrap();
+        let started = std::time::Instant::now();
+
+        let error = client
+            .get(format!("http://{address}/stalled"))
+            .send()
+            .unwrap_err();
+        let elapsed = started.elapsed();
+        server.join().unwrap();
+
+        assert!(error.is_timeout(), "expected a timeout, got {error}");
+        assert!(
+            elapsed < Duration::from_millis(200),
+            "stalled request exceeded its timeout budget: {elapsed:?}"
+        );
+        assert!(FOREGROUND_REQUEST_TIMEOUT < BACKGROUND_REQUEST_TIMEOUT);
     }
 
     #[test]

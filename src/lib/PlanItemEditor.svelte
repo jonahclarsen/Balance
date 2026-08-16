@@ -83,19 +83,36 @@
   export let locked = false
 
   $: selected = selectedItemIds.has(item.id)
-  $: matchedGoals = goalMatchesForItem(goals, goalCompletions, planDate, item.id)
+  let matchedGoals: Goal[] = []
+  let matchedGoalItemId: Id | null = null
+  let matchedGoalDate: string | null = null
+  let matchedGoalSource: Goal[] | null = null
+  let matchedCompletionSource: GoalCompletion[] | null = null
+  $: if (
+    item.id !== matchedGoalItemId ||
+    planDate !== matchedGoalDate ||
+    goals !== matchedGoalSource ||
+    goalCompletions !== matchedCompletionSource
+  ) {
+    matchedGoalItemId = item.id
+    matchedGoalDate = planDate
+    matchedGoalSource = goals
+    matchedCompletionSource = goalCompletions
+    matchedGoals = goalMatchesForItem(goals, goalCompletions, planDate, item.id)
+  }
   // Only rescan the item text when it or the available goals actually change:
   // in legacy mode the `item` and `goals` props invalidate on every
   // parent render, so a plain reactive call would rescan on each keystroke
   // anywhere in the plan.
   let matchingGoals: Goal[] = []
-  let goalScanKey: string | null = null
-  $: {
-    const scanKey = `${planDate}|${item.text}|${goals.map((goal) => `${goal.id}:${goal.updatedAt}`).join(',')}`
-    if (scanKey !== goalScanKey) {
-      goalScanKey = scanKey
-      matchingGoals = goalsMatchingItemText(item, goals, planDate)
-    }
+  let goalScanText: string | null = null
+  let goalScanDate: string | null = null
+  let goalScanSource: Goal[] | null = null
+  $: if (item.text !== goalScanText || planDate !== goalScanDate || goals !== goalScanSource) {
+    goalScanText = item.text
+    goalScanDate = planDate
+    goalScanSource = goals
+    matchingGoals = goalsMatchingItemText(item, goals, planDate)
   }
   $: matchedGoalIds = new Set(matchedGoals.map((goal) => goal.id))
   $: previewGoals = item.done ? [] : matchingGoals.filter((goal) => !matchedGoalIds.has(goal.id))
@@ -108,15 +125,21 @@
   // Recompute link segments only when the text or the available targets change,
   // so unrelated edits elsewhere in the tree don't trigger a rescan per keystroke.
   let linkSegments: ItemTextSegment[] = [{ text: item.text, link: null }]
-  let linkScanKey: string | null = null
-  $: {
-    const scanKey = `${item.text}|${listTemplates.map((template) => `${template.id}:${template.name}`).join(',')}|${metrics
-      .map((metric) => `${metric.id}:${metric.name}`)
-      .join(',')}|${notes.map((note) => `${note.id}:${note.title}`).join(',')}`
-    if (scanKey !== linkScanKey) {
-      linkScanKey = scanKey
-      linkSegments = linkifyItemText(item.text, listTemplates, metrics, notes)
-    }
+  let linkScanText: string | null = null
+  let linkTemplateSource: ListTemplate[] | null = null
+  let linkMetricSource: Metric[] | null = null
+  let linkNoteSource: Note[] | null = null
+  $: if (
+    item.text !== linkScanText ||
+    listTemplates !== linkTemplateSource ||
+    metrics !== linkMetricSource ||
+    notes !== linkNoteSource
+  ) {
+    linkScanText = item.text
+    linkTemplateSource = listTemplates
+    linkMetricSource = metrics
+    linkNoteSource = notes
+    linkSegments = linkifyItemText(item.text, listTemplates, metrics, notes)
   }
 
   // An item whose text references a metric can only be checked off by finishing

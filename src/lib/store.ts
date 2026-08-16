@@ -373,7 +373,11 @@ function entityChangesBetween(before: AppState, after: AppState): EntityChanges 
     afterValues.forEach((value, position) => {
       const key = afterKeys[position]
       const previous = beforeByKey.get(key)
-      if (!previous || previous.position !== position || JSON.stringify(previous.value) !== JSON.stringify(value)) {
+      if (
+        !previous ||
+        previous.position !== position ||
+        (previous.value !== value && JSON.stringify(previous.value) !== JSON.stringify(value))
+      ) {
         upserts.push({ collection, key, position, value })
       }
     })
@@ -921,7 +925,14 @@ function createPlannerStore() {
 
           return changed ? { ...state, goals } : state
         },
-        { mergeKey: `goal:${goalId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
+        {
+          mergeKey: `goal:${goalId}`,
+          mergeWindowMs: TEXT_MERGE_WINDOW_MS,
+          // Names and colors do not affect which checked plan items satisfy a
+          // goal. Avoid rescanning every saved plan on each character/color
+          // input; matching-term edits still reconcile immediately.
+          reconcileGoals: 'matchTerms' in patch,
+        },
       )
     },
 
