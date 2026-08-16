@@ -8,10 +8,15 @@ export const DEFAULT_DATABASE_LOADING_MESSAGES = [
   'Fun fact: this message has no fun fact.',
 ]
 
+export const DEFAULT_IRIDESCENT_DITHER_STRENGTH = 45
+export const DEFAULT_IRIDESCENT_DITHER_SCALE = 100
+
 export function createDefaultReplicatedPreferences(): ReplicatedPreferences {
   return {
     themeId: DEFAULT_THEME_ID,
     interfaceFontId: DEFAULT_INTERFACE_FONT_ID,
+    iridescentDitherStrength: DEFAULT_IRIDESCENT_DITHER_STRENGTH,
+    iridescentDitherScale: DEFAULT_IRIDESCENT_DITHER_SCALE,
     doneTintColor: '',
     checkboxColor: '',
     databaseLoadingMessages: [...DEFAULT_DATABASE_LOADING_MESSAGES],
@@ -22,6 +27,11 @@ function normalizeColorOverride(value: unknown): string {
   if (typeof value !== 'string') return ''
   const hex = value.trim().replace(/^#/, '')
   return /^[0-9a-fA-F]{6}$/.test(hex) ? `#${hex.toLowerCase()}` : ''
+}
+
+function normalizeNumberPreference(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback
+  return Math.max(min, Math.min(max, Math.round(value)))
 }
 
 export function normalizeReplicatedPreferences(value: unknown): ReplicatedPreferences {
@@ -40,6 +50,18 @@ export function normalizeReplicatedPreferences(value: unknown): ReplicatedPrefer
     themeId: normalizeThemeId(typeof preferences.themeId === 'string' ? preferences.themeId : null),
     interfaceFontId: normalizeInterfaceFontId(
       typeof preferences.interfaceFontId === 'string' ? preferences.interfaceFontId : null,
+    ),
+    iridescentDitherStrength: normalizeNumberPreference(
+      preferences.iridescentDitherStrength,
+      defaults.iridescentDitherStrength,
+      0,
+      100,
+    ),
+    iridescentDitherScale: normalizeNumberPreference(
+      preferences.iridescentDitherScale,
+      defaults.iridescentDitherScale,
+      50,
+      200,
     ),
     doneTintColor: normalizeColorOverride(preferences.doneTintColor),
     checkboxColor: normalizeColorOverride(preferences.checkboxColor),

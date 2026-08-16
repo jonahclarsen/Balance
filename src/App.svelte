@@ -49,7 +49,11 @@
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
-  import { DEFAULT_DATABASE_LOADING_MESSAGES } from './lib/preferences'
+  import {
+    DEFAULT_DATABASE_LOADING_MESSAGES,
+    DEFAULT_IRIDESCENT_DITHER_SCALE,
+    DEFAULT_IRIDESCENT_DITHER_STRENGTH,
+  } from './lib/preferences'
   import { DEFAULT_THEME_ID, normalizeThemeId, THEME_PRESETS, type ThemeId } from './lib/themes'
   import {
     DEFAULT_INTERFACE_FONT_ID,
@@ -158,6 +162,8 @@
   let checkboxColor = ''
   let themeId: ThemeId = DEFAULT_THEME_ID
   let interfaceFontId: InterfaceFontId = DEFAULT_INTERFACE_FONT_ID
+  let iridescentDitherStrength = DEFAULT_IRIDESCENT_DITHER_STRENGTH
+  let iridescentDitherScale = DEFAULT_IRIDESCENT_DITHER_SCALE
   let completionTrackingReady = false
   let planCompletionById = new Map<Id, boolean>()
   let listCompletionById = new Map<Id, boolean>()
@@ -446,10 +452,20 @@ return rows`
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
   $: themeId = normalizeThemeId($plannerStore.preferences.themeId)
   $: interfaceFontId = normalizeInterfaceFontId($plannerStore.preferences.interfaceFontId)
+  $: iridescentDitherStrength = $plannerStore.preferences.iridescentDitherStrength
+  $: iridescentDitherScale = $plannerStore.preferences.iridescentDitherScale
   $: doneTintColor = $plannerStore.preferences.doneTintColor
   $: checkboxColor = $plannerStore.preferences.checkboxColor
   $: document.documentElement.dataset.theme = themeId
   $: document.documentElement.dataset.interfaceFont = interfaceFontId
+  $: document.documentElement.style.setProperty(
+    '--iridescent-dither',
+    buildIridescentDitherTexture(iridescentDitherStrength),
+  )
+  $: document.documentElement.style.setProperty(
+    '--iridescent-dither-size',
+    `${Math.round(96 * iridescentDitherScale / 100)}px`,
+  )
   $: if ($plannerStore.preferences.databaseLoadingMessages !== previousDatabaseLoadingMessages) {
     previousDatabaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
     databaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
@@ -1360,6 +1376,28 @@ return rows`
 
   function resetCompletedItemColors() {
     plannerStore.patchPreferences({ doneTintColor: '', checkboxColor: '' })
+  }
+
+  function buildIridescentDitherTexture(strength: number): string {
+    if (strength <= 0) return 'none'
+    const opacity = (strength * 0.0004).toFixed(4)
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96"><filter id="noise"><feTurbulence type="fractalNoise" baseFrequency=".8" numOctaves="3" seed="8" stitchTiles="stitch"/><feColorMatrix values=".2126 .7152 .0722 0 0 .2126 .7152 .0722 0 0 .2126 .7152 .0722 0 0 0 0 0 ${opacity} 0"/></filter><rect width="100%" height="100%" filter="url(#noise)"/></svg>`
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`
+  }
+
+  function updateIridescentDitherStrength(value: number) {
+    plannerStore.patchPreferences({ iridescentDitherStrength: value })
+  }
+
+  function updateIridescentDitherScale(value: number) {
+    plannerStore.patchPreferences({ iridescentDitherScale: value })
+  }
+
+  function resetIridescentDither() {
+    plannerStore.patchPreferences({
+      iridescentDitherStrength: DEFAULT_IRIDESCENT_DITHER_STRENGTH,
+      iridescentDitherScale: DEFAULT_IRIDESCENT_DITHER_SCALE,
+    })
   }
 
   function updateInterfaceFont(nextFontId: InterfaceFontId) {
@@ -5275,6 +5313,53 @@ return rows`
               </button>
             {/each}
           </div>
+
+          {#if themeId === 'iridescent'}
+            <div class="iridescent-dither-settings" aria-label="Iridescent dither settings">
+              <div class="iridescent-dither-heading">
+                <div>
+                  <strong>Dither texture</strong>
+                  <span>Break up gradient bands with fine monochrome grain. Set strength to zero to turn it off.</span>
+                </div>
+                <button
+                  type="button"
+                  disabled={iridescentDitherStrength === DEFAULT_IRIDESCENT_DITHER_STRENGTH
+                    && iridescentDitherScale === DEFAULT_IRIDESCENT_DITHER_SCALE}
+                  on:click={resetIridescentDither}
+                >Restore defaults</button>
+              </div>
+
+              <div class="iridescent-dither-controls">
+                <label class="iridescent-dither-control">
+                  <span><strong>Strength</strong><output>{iridescentDitherStrength}%</output></span>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={iridescentDitherStrength}
+                    aria-label="Iridescent dither strength"
+                    on:input={(event) => updateIridescentDitherStrength(event.currentTarget.valueAsNumber)}
+                  />
+                  <small><span>Off</span><span>Strong</span></small>
+                </label>
+
+                <label class="iridescent-dither-control">
+                  <span><strong>Grain size</strong><output>{iridescentDitherScale}%</output></span>
+                  <input
+                    type="range"
+                    min="50"
+                    max="200"
+                    step="5"
+                    value={iridescentDitherScale}
+                    aria-label="Iridescent dither grain size"
+                    on:input={(event) => updateIridescentDitherScale(event.currentTarget.valueAsNumber)}
+                  />
+                  <small><span>Fine</span><span>Coarse</span></small>
+                </label>
+              </div>
+            </div>
+          {/if}
         </section>
 
         <section class="settings-section typography-settings">

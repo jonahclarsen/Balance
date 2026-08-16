@@ -946,6 +946,64 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   })
 })
 
+test('iridescent dither controls preview live, persist, and restore defaults', async ({ page }, testInfo) => {
+  const openSettings = async () => {
+    const openNavigation = page.getByRole('button', { name: 'Open navigation' })
+    if (await openNavigation.isVisible()) await openNavigation.click()
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  }
+
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openSettings()
+
+  const ditherSettings = page.getByLabel('Iridescent dither settings')
+  await expect(ditherSettings).toHaveCount(0)
+  await page.getByRole('button', {
+    name: 'Iridescent Prismatic pink, violet, aqua, and gold',
+  }).click()
+  await expect(ditherSettings).toBeVisible()
+
+  const strength = page.getByLabel('Iridescent dither strength')
+  const grainSize = page.getByLabel('Iridescent dither grain size')
+  const restoreDefaults = ditherSettings.getByRole('button', { name: 'Restore defaults' })
+  await expect(strength).toHaveValue('45')
+  await expect(grainSize).toHaveValue('100')
+  await expect(restoreDefaults).toBeDisabled()
+
+  const defaultTexture = await page.locator('html').evaluate((element) =>
+    getComputedStyle(element).getPropertyValue('--iridescent-dither'),
+  )
+  await strength.fill('75')
+  await grainSize.fill('150')
+  await expect(strength).toHaveValue('75')
+  await expect(grainSize).toHaveValue('150')
+  await expect(restoreDefaults).toBeEnabled()
+  await expect(page.locator('html')).toHaveCSS('--iridescent-dither-size', '144px')
+  await expect.poll(() => page.locator('html').evaluate((element) =>
+    getComputedStyle(element).getPropertyValue('--iridescent-dither'),
+  )).not.toBe(defaultTexture)
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    return [state?.preferences?.iridescentDitherStrength, state?.preferences?.iridescentDitherScale]
+  })).toEqual([75, 150])
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-iridescent-dither-settings.png`,
+    fullPage: false,
+  })
+
+  await page.reload()
+  await openSettings()
+  await expect(strength).toHaveValue('75')
+  await expect(grainSize).toHaveValue('150')
+
+  await restoreDefaults.click()
+  await expect(strength).toHaveValue('45')
+  await expect(grainSize).toHaveValue('100')
+  await expect(restoreDefaults).toBeDisabled()
+})
+
 test('interface font previews apply live to tasks and persist', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

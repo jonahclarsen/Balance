@@ -2413,6 +2413,8 @@ fn default_replicated_preferences() -> Value {
     json!({
         "themeId": "violet",
         "interfaceFontId": "rounded",
+        "iridescentDitherStrength": 45,
+        "iridescentDitherScale": 100,
         "doneTintColor": "",
         "checkboxColor": "",
         "databaseLoadingMessages": [
@@ -2421,6 +2423,25 @@ fn default_replicated_preferences() -> Value {
             "Fun fact: this message has no fun fact."
         ]
     })
+}
+
+fn replicated_preference_integer(
+    value: &Value,
+    key: &str,
+    default: u64,
+    min: u64,
+    max: u64,
+) -> Result<u64, String> {
+    let Some(value) = value.get(key) else {
+        return Ok(default);
+    };
+    let value = value
+        .as_u64()
+        .ok_or_else(|| format!("{key} must be an integer"))?;
+    if !(min..=max).contains(&value) {
+        return Err(format!("{key} must be between {min} and {max}"));
+    }
+    Ok(value)
 }
 
 fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
@@ -2432,6 +2453,8 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
             key.as_str(),
             "themeId"
                 | "interfaceFontId"
+                | "iridescentDitherStrength"
+                | "iridescentDitherScale"
                 | "doneTintColor"
                 | "checkboxColor"
                 | "databaseLoadingMessages"
@@ -2442,6 +2465,10 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
 
     let theme_id = required_string(value, "themeId")?;
     let interface_font_id = required_string(value, "interfaceFontId")?;
+    let iridescent_dither_strength =
+        replicated_preference_integer(value, "iridescentDitherStrength", 45, 0, 100)?;
+    let iridescent_dither_scale =
+        replicated_preference_integer(value, "iridescentDitherScale", 100, 50, 200)?;
     let done_tint_color = required_string(value, "doneTintColor")?;
     let checkbox_color = required_string(value, "checkboxColor")?;
     for (name, color) in [
@@ -2464,6 +2491,8 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
     Ok(json!({
         "themeId": theme_id,
         "interfaceFontId": interface_font_id,
+        "iridescentDitherStrength": iridescent_dither_strength,
+        "iridescentDitherScale": iridescent_dither_scale,
         "doneTintColor": done_tint_color,
         "checkboxColor": checkbox_color,
         "databaseLoadingMessages": messages,
@@ -9223,6 +9252,31 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn replicated_preferences_migrate_and_validate_iridescent_dither_controls() {
+        let legacy = json!({
+            "themeId": "iridescent",
+            "interfaceFontId": "rounded",
+            "doneTintColor": "",
+            "checkboxColor": "",
+            "databaseLoadingMessages": []
+        });
+        let migrated = validate_replicated_preferences(&legacy).unwrap();
+        assert_eq!(migrated["iridescentDitherStrength"], 45);
+        assert_eq!(migrated["iridescentDitherScale"], 100);
+
+        let mut customized = migrated;
+        customized["iridescentDitherStrength"] = json!(75);
+        customized["iridescentDitherScale"] = json!(150);
+        let customized = validate_replicated_preferences(&customized).unwrap();
+        assert_eq!(customized["iridescentDitherStrength"], 75);
+        assert_eq!(customized["iridescentDitherScale"], 150);
+
+        let mut invalid = customized;
+        invalid["iridescentDitherStrength"] = json!(101);
+        assert!(validate_replicated_preferences(&invalid).is_err());
+    }
 
     #[test]
     fn macos_widget_refresh_request_requires_the_exact_private_argument() {
