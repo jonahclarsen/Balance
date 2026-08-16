@@ -835,6 +835,7 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   const themeGroup = page.getByRole('group', { name: 'Color theme' })
   const themeButtons = themeGroup.getByRole('button')
   const sidebar = page.locator('.sidebar')
+  const activeSidebarButton = sidebar.locator('nav button.active')
   await expect(themeButtons).toHaveCount(10)
   await expect(themeButtons.first()).toContainText('Violet')
   const violetTheme = themeGroup.getByRole('button', { name: 'Violet Purple and soft lilac' })
@@ -891,7 +892,11 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await expect(sidebar).toHaveCSS('background-image', /linear-gradient/)
   await expect(page.locator('html')).toHaveCSS('background-image', /radial-gradient/)
   await expect(page.locator('html')).toHaveCSS('animation-name', 'iridescent-background-breathe')
+  await expect(page.locator('html')).toHaveCSS('animation-duration', '18s')
   await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
+  await expect(sidebar).toHaveCSS('animation-duration', '22s')
+  await expect(activeSidebarButton).toHaveCSS('animation-name', 'iridescent-active-nav-breathe')
+  await expect(activeSidebarButton).toHaveCSS('animation-duration', '12s')
   await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
     'background-color',
     'rgb(123, 91, 214)',
@@ -912,8 +917,19 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   })
 
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
-  await expect(page.locator('html')).toHaveCSS('animation-name', 'none')
-  await expect(sidebar).toHaveCSS('animation-name', 'none')
+  await expect(page.locator('html')).toHaveCSS('animation-name', 'iridescent-background-breathe')
+  await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
+  await expect(activeSidebarButton).toHaveCSS('animation-name', 'iridescent-active-nav-breathe')
+  const animatedGradientPositions = () => page.evaluate(() => [
+    getComputedStyle(document.documentElement).backgroundPosition,
+    getComputedStyle(document.querySelector<HTMLElement>('.sidebar')!).backgroundPosition,
+    getComputedStyle(document.querySelector<HTMLElement>('.sidebar nav button.active')!).backgroundPosition,
+  ])
+  const initialGradientPositions = await animatedGradientPositions()
+  await expect.poll(async () => {
+    const currentGradientPositions = await animatedGradientPositions()
+    return currentGradientPositions.every((position, index) => position !== initialGradientPositions[index])
+  }).toBe(true)
 
   await graphiteTheme.click()
   await expect(sidebar).toHaveCSS('background-color', 'rgb(17, 17, 18)')

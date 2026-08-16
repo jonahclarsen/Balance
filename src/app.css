@@ -539,36 +539,42 @@
 
 :root[data-theme='iridescent'] .sidebar {
   background: var(--iridescent-sidebar-background);
-  background-position: 50% 0%;
-  background-size: 115% 115%;
-  animation: iridescent-sidebar-breathe 84s ease-in-out infinite alternate;
+  background-position: 0% 0%;
+  background-size: 145% 145%;
+  animation: iridescent-sidebar-breathe 22s ease-in-out infinite alternate;
 }
 
 :root[data-theme='iridescent'] {
-  background-position: 0% 0%, 100% 0%, 78% 100%, 0% 0%;
+  background-position: 0% 0%, 100% 0%, 75% 100%, 0% 0%;
   background-repeat: no-repeat;
-  background-size: 112% 112%, 114% 114%, 112% 112%, 108% 108%;
-  animation: iridescent-background-breathe 72s ease-in-out infinite alternate;
+  background-size: 125% 125%, 128% 128%, 125% 125%, 112% 112%;
+  animation: iridescent-background-breathe 18s ease-in-out infinite alternate;
+}
+
+:root[data-theme='iridescent'] .sidebar nav button.active {
+  background-position: 0% 50%;
+  background-size: 180% 180%;
+  animation: iridescent-active-nav-breathe 12s ease-in-out infinite alternate;
 }
 
 @keyframes iridescent-background-breathe {
   to {
-    background-position: 7% 8%, 93% 10%, 70% 92%, 100% 100%;
-    background-size: 120% 120%, 122% 122%, 120% 120%, 114% 114%;
+    background-position: 55% 65%, 42% 58%, 32% 38%, 100% 100%;
+    background-size: 138% 138%, 140% 140%, 137% 137%, 124% 124%;
   }
 }
 
 @keyframes iridescent-sidebar-breathe {
   to {
-    background-position: 50% 100%;
-    background-size: 135% 135%;
+    background-position: 100% 100%;
+    background-size: 175% 175%;
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  :root[data-theme='iridescent'],
-  :root[data-theme='iridescent'] .sidebar {
-    animation: none;
+@keyframes iridescent-active-nav-breathe {
+  to {
+    background-position: 100% 50%;
+    background-size: 220% 220%;
   }
 }
 
