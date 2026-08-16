@@ -1787,15 +1787,9 @@ nav button.active {
 
 .imax-logo {
   display: block;
+  width: 48px;
+  height: auto;
   color: var(--accent-strong);
-  font-family: Impact, "Arial Black", sans-serif;
-  font-size: 15px;
-  font-style: italic;
-  font-weight: 900;
-  letter-spacing: -0.08em;
-  line-height: 1;
-  transform: scaleX(1.12);
-  transform-origin: center;
 }
 
 .template-list {
