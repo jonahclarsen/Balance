@@ -97,6 +97,16 @@ async function activePlanTextTarget(page: import('@playwright/test').Page) {
   })
 }
 
+async function openMetrics(page: import('@playwright/test').Page) {
+  const mobileMenu = page.getByRole('button', { name: 'Open navigation' })
+  if (await mobileMenu.isVisible()) {
+    await mobileMenu.click()
+    await page.getByRole('complementary', { name: 'Primary navigation drawer' }).getByRole('button', { name: 'Metrics', exact: true }).click()
+  } else {
+    await page.getByRole('button', { name: 'Metrics', exact: true }).click()
+  }
+}
+
 test('list template word cap blocks typing past the max', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -123,7 +133,7 @@ test('metric quiz records answers and bulk import backfills', async ({ page }) =
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Metrics', exact: true }).click()
+  await openMetrics(page)
   await page.getByRole('button', { name: '+ New metric' }).first().click()
   await page.getByLabel('Metric name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Score')
@@ -148,6 +158,41 @@ test('metric quiz records answers and bulk import backfills', async ({ page }) =
   await expect(dialog).toBeHidden()
 
   // The numeric graph shows up in the Metrics view.
-  await page.getByRole('button', { name: 'Metrics', exact: true }).click()
+  await openMetrics(page)
   await expect(page.locator('.metric-graph').first()).toBeVisible()
+})
+
+test('metric graph uses elapsed dates for point spacing and labels its x-axis', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openMetrics(page)
+  await page.getByRole('button', { name: '+ New metric' }).first().click()
+  await page.getByLabel('Metric name').fill('Irregular history')
+  await page.getByLabel('Question prompt').first().fill('Score')
+
+  await page.evaluate(() => {
+    const key = 'balance.appState.v1'
+    const state = JSON.parse(localStorage.getItem(key) || '{}')
+    const metric = state.metrics[0]
+    const question = metric.questions[0]
+    state.metricEntries = [
+      { id: 'entry_1', metricId: metric.id, date: '2026-01-01', answers: [{ questionId: question.id, value: '2' }] },
+      { id: 'entry_2', metricId: metric.id, date: '2026-01-02', answers: [{ questionId: question.id, value: '4' }] },
+      { id: 'entry_3', metricId: metric.id, date: '2026-04-01', answers: [{ questionId: question.id, value: '8' }] },
+    ]
+    localStorage.setItem(key, JSON.stringify(state))
+  })
+  await page.reload()
+  await openMetrics(page)
+
+  const graph = page.locator('.metric-graph').first()
+  await expect(graph).toBeVisible()
+  await expect(graph.locator('.date-label')).toContainText(['Jan 1', 'Apr 1'])
+
+  const pointXs = await graph.locator('circle.dot').evaluateAll((dots) => dots.map((dot) => Number(dot.getAttribute('cx'))))
+  expect(pointXs).toHaveLength(3)
+  expect(pointXs[1] - pointXs[0]).toBeLessThan(10)
+  expect(pointXs[2] - pointXs[1]).toBeGreaterThan(400)
 })
