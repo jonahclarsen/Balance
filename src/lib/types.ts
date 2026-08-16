@@ -173,8 +173,6 @@ export type Operation = {
 export type ReplicatedPreferences = {
   themeId: string
   interfaceFontId: string
-  iridescentDitherStrength: number
-  iridescentDitherScale: number
   doneTintColor: string
   checkboxColor: string
   databaseLoadingMessages: string[]

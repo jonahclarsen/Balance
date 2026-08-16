@@ -949,7 +949,8 @@ fn replicated_preferences_converge_and_survive_a_checkpoint() {
                     "interfaceFontId": "bookish",
                     "doneTintColor": "#123456",
                     "checkboxColor": "#abcdef",
-                    "databaseLoadingMessages": ["One", "Two"]
+                    "databaseLoadingMessages": ["One", "Two"],
+                    "futurePreference": { "enabled": true }
                 }),
             ),
         )
@@ -962,7 +963,8 @@ fn replicated_preferences_converge_and_survive_a_checkpoint() {
         "interfaceFontId": "bookish",
         "doneTintColor": "#123456",
         "checkboxColor": "#abcdef",
-        "databaseLoadingMessages": ["One", "Two"]
+        "databaseLoadingMessages": ["One", "Two"],
+        "futurePreference": { "enabled": true }
     });
     assert_eq!(a.state()["preferences"], expected);
     assert_eq!(b.state()["preferences"], expected);

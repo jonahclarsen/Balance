@@ -2379,8 +2379,6 @@ fn default_replicated_preferences() -> Value {
     json!({
         "themeId": "violet",
         "interfaceFontId": "rounded",
-        "iridescentDitherStrength": 45,
-        "iridescentDitherScale": 100,
         "doneTintColor": "",
         "checkboxColor": "",
         "databaseLoadingMessages": [
@@ -2391,50 +2389,14 @@ fn default_replicated_preferences() -> Value {
     })
 }
 
-fn replicated_preference_integer(
-    value: &Value,
-    key: &str,
-    default: u64,
-    min: u64,
-    max: u64,
-) -> Result<u64, String> {
-    let Some(value) = value.get(key) else {
-        return Ok(default);
-    };
-    let value = value
-        .as_u64()
-        .ok_or_else(|| format!("{key} must be an integer"))?;
-    if !(min..=max).contains(&value) {
-        return Err(format!("{key} must be between {min} and {max}"));
-    }
-    Ok(value)
-}
-
 fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
-    let object = value
+    let mut preferences = value
         .as_object()
+        .cloned()
         .ok_or_else(|| "Replicated preferences must be an object".to_string())?;
-    for key in object.keys() {
-        if !matches!(
-            key.as_str(),
-            "themeId"
-                | "interfaceFontId"
-                | "iridescentDitherStrength"
-                | "iridescentDitherScale"
-                | "doneTintColor"
-                | "checkboxColor"
-                | "databaseLoadingMessages"
-        ) {
-            return Err(format!("Unsupported replicated preference: {key}"));
-        }
-    }
 
     let theme_id = required_string(value, "themeId")?;
     let interface_font_id = required_string(value, "interfaceFontId")?;
-    let iridescent_dither_strength =
-        replicated_preference_integer(value, "iridescentDitherStrength", 45, 0, 100)?;
-    let iridescent_dither_scale =
-        replicated_preference_integer(value, "iridescentDitherScale", 100, 50, 200)?;
     let done_tint_color = required_string(value, "doneTintColor")?;
     let checkbox_color = required_string(value, "checkboxColor")?;
     for (name, color) in [
@@ -2454,15 +2416,12 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
         return Err("databaseLoadingMessages must contain only strings".to_string());
     }
 
-    Ok(json!({
-        "themeId": theme_id,
-        "interfaceFontId": interface_font_id,
-        "iridescentDitherStrength": iridescent_dither_strength,
-        "iridescentDitherScale": iridescent_dither_scale,
-        "doneTintColor": done_tint_color,
-        "checkboxColor": checkbox_color,
-        "databaseLoadingMessages": messages,
-    }))
+    preferences.insert("themeId".into(), json!(theme_id));
+    preferences.insert("interfaceFontId".into(), json!(interface_font_id));
+    preferences.insert("doneTintColor".into(), json!(done_tint_color));
+    preferences.insert("checkboxColor".into(), json!(checkbox_color));
+    preferences.insert("databaseLoadingMessages".into(), json!(messages));
+    Ok(Value::Object(preferences))
 }
 
 fn replicated_preferences_from_state(state: &Value) -> Result<Value, String> {
@@ -2490,9 +2449,6 @@ fn patch_replicated_preferences(connection: &Connection, patch: &Value) -> Resul
         .as_object_mut()
         .ok_or_else(|| "Replicated preferences must be an object".to_string())?;
     for (key, value) in patch {
-        if !object.contains_key(key) {
-            return Err(format!("Unsupported replicated preference: {key}"));
-        }
         object.insert(key.clone(), value.clone());
     }
     let preferences = validate_replicated_preferences(&preferences)?;
@@ -9218,31 +9174,6 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn replicated_preferences_migrate_and_validate_iridescent_dither_controls() {
-        let legacy = json!({
-            "themeId": "iridescent",
-            "interfaceFontId": "rounded",
-            "doneTintColor": "",
-            "checkboxColor": "",
-            "databaseLoadingMessages": []
-        });
-        let migrated = validate_replicated_preferences(&legacy).unwrap();
-        assert_eq!(migrated["iridescentDitherStrength"], 45);
-        assert_eq!(migrated["iridescentDitherScale"], 100);
-
-        let mut customized = migrated;
-        customized["iridescentDitherStrength"] = json!(75);
-        customized["iridescentDitherScale"] = json!(150);
-        let customized = validate_replicated_preferences(&customized).unwrap();
-        assert_eq!(customized["iridescentDitherStrength"], 75);
-        assert_eq!(customized["iridescentDitherScale"], 150);
-
-        let mut invalid = customized;
-        invalid["iridescentDitherStrength"] = json!(101);
-        assert!(validate_replicated_preferences(&invalid).is_err());
-    }
 
     #[derive(Default)]
     struct TestRecoveryKeyStore {

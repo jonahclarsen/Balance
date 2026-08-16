@@ -890,16 +890,16 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await iridescentTheme.click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
   await expect(sidebar).toHaveCSS('background-image', /linear-gradient/)
-  await expect(sidebar).toHaveCSS('background-image', /data:image\/svg\+xml/)
   await expect(page.locator('html')).toHaveCSS('background-image', /radial-gradient/)
-  await expect(page.locator('html')).toHaveCSS('background-image', /data:image\/svg\+xml/)
+  await expect(sidebar).not.toHaveCSS('background-image', /data:image/)
+  await expect(page.locator('html')).not.toHaveCSS('background-image', /data:image/)
   await expect(page.locator('html')).toHaveCSS('animation-name', 'iridescent-background-breathe')
   await expect(page.locator('html')).toHaveCSS('animation-duration', '18s')
   await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
   await expect(sidebar).toHaveCSS('animation-duration', '22s')
   await expect(activeSidebarButton).toHaveCSS('animation-name', 'iridescent-active-nav-breathe')
   await expect(activeSidebarButton).toHaveCSS('animation-duration', '12s')
-  await expect(activeSidebarButton).toHaveCSS('background-image', /data:image\/svg\+xml/)
+  await expect(activeSidebarButton).not.toHaveCSS('background-image', /data:image/)
   await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
     'background-color',
     'rgb(123, 91, 214)',
@@ -944,64 +944,6 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
     path: `artifacts/visual-smoke/${testInfo.project.name}-theme-graphite-dark.png`,
     fullPage: false,
   })
-})
-
-test('iridescent dither controls preview live, persist, and restore defaults', async ({ page }, testInfo) => {
-  const openSettings = async () => {
-    const openNavigation = page.getByRole('button', { name: 'Open navigation' })
-    if (await openNavigation.isVisible()) await openNavigation.click()
-    await page.getByRole('button', { name: 'Settings', exact: true }).click()
-  }
-
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await openSettings()
-
-  const ditherSettings = page.getByLabel('Iridescent dither settings')
-  await expect(ditherSettings).toHaveCount(0)
-  await page.getByRole('button', {
-    name: 'Iridescent Prismatic pink, violet, aqua, and gold',
-  }).click()
-  await expect(ditherSettings).toBeVisible()
-
-  const strength = page.getByLabel('Iridescent dither strength')
-  const grainSize = page.getByLabel('Iridescent dither grain size')
-  const restoreDefaults = ditherSettings.getByRole('button', { name: 'Restore defaults' })
-  await expect(strength).toHaveValue('45')
-  await expect(grainSize).toHaveValue('100')
-  await expect(restoreDefaults).toBeDisabled()
-
-  const defaultTexture = await page.locator('html').evaluate((element) =>
-    getComputedStyle(element).getPropertyValue('--iridescent-dither'),
-  )
-  await strength.fill('75')
-  await grainSize.fill('150')
-  await expect(strength).toHaveValue('75')
-  await expect(grainSize).toHaveValue('150')
-  await expect(restoreDefaults).toBeEnabled()
-  await expect(page.locator('html')).toHaveCSS('--iridescent-dither-size', '144px')
-  await expect.poll(() => page.locator('html').evaluate((element) =>
-    getComputedStyle(element).getPropertyValue('--iridescent-dither'),
-  )).not.toBe(defaultTexture)
-  await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    return [state?.preferences?.iridescentDitherStrength, state?.preferences?.iridescentDitherScale]
-  })).toEqual([75, 150])
-  await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-iridescent-dither-settings.png`,
-    fullPage: false,
-  })
-
-  await page.reload()
-  await openSettings()
-  await expect(strength).toHaveValue('75')
-  await expect(grainSize).toHaveValue('150')
-
-  await restoreDefaults.click()
-  await expect(strength).toHaveValue('45')
-  await expect(grainSize).toHaveValue('100')
-  await expect(restoreDefaults).toBeDisabled()
 })
 
 test('interface font previews apply live to tasks and persist', async ({ page }) => {

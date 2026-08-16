@@ -259,10 +259,7 @@
 }
 
 :root[data-theme='iridescent'] {
-  --iridescent-dither: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='96'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='3' seed='8' stitchTiles='stitch'/%3E%3CfeColorMatrix values='.2126%20.7152%20.0722%200%200%20.2126%20.7152%20.0722%200%200%20.2126%20.7152%20.0722%200%200%200%200%200%20.018%200'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
-  --iridescent-dither-size: 96px;
   --app-background:
-    var(--iridescent-dither),
     radial-gradient(circle at 12% 18%, rgb(242 76 159 / 0.13), transparent 34%),
     radial-gradient(circle at 88% 16%, rgb(57 197 214 / 0.14), transparent 32%),
     radial-gradient(circle at 76% 88%, rgb(240 162 62 / 0.13), transparent 36%),
@@ -513,7 +510,6 @@
 
   :root[data-theme='iridescent'] {
     --app-background:
-      var(--iridescent-dither),
       radial-gradient(circle at 12% 18%, rgb(240 71 164 / 0.15), transparent 34%),
       radial-gradient(circle at 88% 16%, rgb(51 198 218 / 0.14), transparent 32%),
       radial-gradient(circle at 76% 88%, rgb(246 170 66 / 0.11), transparent 36%),
@@ -542,46 +538,43 @@
 }
 
 :root[data-theme='iridescent'] .sidebar {
-  background: var(--iridescent-dither), var(--iridescent-sidebar-background);
-  background-position: 0% 0%, 0% 0%;
-  background-repeat: repeat, no-repeat;
-  background-size: var(--iridescent-dither-size) var(--iridescent-dither-size), 145% 145%;
+  background: var(--iridescent-sidebar-background);
+  background-position: 0% 0%;
+  background-size: 145% 145%;
   animation: iridescent-sidebar-breathe 22s ease-in-out infinite alternate;
 }
 
 :root[data-theme='iridescent'] {
-  background-position: 0% 0%, 0% 0%, 100% 0%, 75% 100%, 0% 0%;
-  background-repeat: repeat, no-repeat, no-repeat, no-repeat, no-repeat;
-  background-size: var(--iridescent-dither-size) var(--iridescent-dither-size), 125% 125%, 128% 128%, 125% 125%, 112% 112%;
+  background-position: 0% 0%, 100% 0%, 75% 100%, 0% 0%;
+  background-repeat: no-repeat;
+  background-size: 125% 125%, 128% 128%, 125% 125%, 112% 112%;
   animation: iridescent-background-breathe 18s ease-in-out infinite alternate;
 }
 
 :root[data-theme='iridescent'] .sidebar nav button.active {
-  background-image: var(--iridescent-dither), var(--active-nav);
-  background-position: 0% 0%, 0% 50%;
-  background-repeat: repeat, no-repeat;
-  background-size: var(--iridescent-dither-size) var(--iridescent-dither-size), 180% 180%;
+  background-position: 0% 50%;
+  background-size: 180% 180%;
   animation: iridescent-active-nav-breathe 12s ease-in-out infinite alternate;
 }
 
 @keyframes iridescent-background-breathe {
   to {
-    background-position: 0% 0%, 55% 65%, 42% 58%, 32% 38%, 100% 100%;
-    background-size: var(--iridescent-dither-size) var(--iridescent-dither-size), 138% 138%, 140% 140%, 137% 137%, 124% 124%;
+    background-position: 55% 65%, 42% 58%, 32% 38%, 100% 100%;
+    background-size: 138% 138%, 140% 140%, 137% 137%, 124% 124%;
   }
 }
 
 @keyframes iridescent-sidebar-breathe {
   to {
-    background-position: 0% 0%, 100% 100%;
-    background-size: var(--iridescent-dither-size) var(--iridescent-dither-size), 175% 175%;
+    background-position: 100% 100%;
+    background-size: 175% 175%;
   }
 }
 
 @keyframes iridescent-active-nav-breathe {
   to {
-    background-position: 0% 0%, 100% 50%;
-    background-size: var(--iridescent-dither-size) var(--iridescent-dither-size), 220% 220%;
+    background-position: 100% 50%;
+    background-size: 220% 220%;
   }
 }
 
@@ -2070,84 +2063,6 @@ nav button.active {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
-}
-
-.iridescent-dither-settings {
-  display: grid;
-  gap: 14px;
-  padding: 14px;
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--paper-strong) 91%, var(--accent));
-}
-
-.iridescent-dither-heading {
-  display: flex;
-  align-items: start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.iridescent-dither-heading > div {
-  display: grid;
-  gap: 3px;
-}
-
-.iridescent-dither-heading strong {
-  font-size: 13px;
-}
-
-.iridescent-dither-heading span {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.4;
-}
-
-.iridescent-dither-heading button {
-  flex: 0 0 auto;
-  padding: 6px 9px;
-  font-size: 11px;
-}
-
-.iridescent-dither-controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
-  gap: 16px;
-}
-
-.iridescent-dither-control {
-  display: grid;
-  gap: 6px;
-}
-
-.iridescent-dither-control > span,
-.iridescent-dither-control > small {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.iridescent-dither-control > span {
-  font-size: 12px;
-}
-
-.iridescent-dither-control output {
-  color: var(--accent-strong);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.iridescent-dither-control input[type='range'] {
-  width: 100%;
-  margin: 0;
-  accent-color: var(--accent);
-}
-
-.iridescent-dither-control > small {
-  color: var(--muted);
-  font-size: 10px;
 }
 
 .loading-messages-control {
