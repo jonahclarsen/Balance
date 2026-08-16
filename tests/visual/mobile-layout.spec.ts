@@ -125,8 +125,10 @@ test('task rows stay readable on mobile without changing the desktop arrangement
       textWidth: textRect.width,
       textTop: textRect.top,
       timeTop: timeRect.top,
+      timeLeft: timeRect.left,
       timeRight: timeRect.right,
       textLeft: textRect.left,
+      taskTextLeft: firstTextRect?.left ?? null,
       timeSpaceAbove: mainRect ? timeRect.top - mainRect.top : null,
       timeSpaceBelow: firstTextRect ? firstTextRect.top - timeRect.bottom : null,
     }
@@ -135,6 +137,7 @@ test('task rows stay readable on mobile without changing the desktop arrangement
   if (isMobileProject(testInfo.project.name)) {
     expect(geometry.textWidth).toBeGreaterThanOrEqual(190)
     expect(geometry.timeTop).toBeLessThan(geometry.textTop)
+    expect(Math.abs((geometry.taskTextLeft ?? 0) - geometry.timeLeft)).toBeLessThanOrEqual(1)
     expect(Math.abs((geometry.timeSpaceAbove ?? 0) - (geometry.timeSpaceBelow ?? 0))).toBeLessThanOrEqual(4)
     await expect(row.locator('.select-handle')).toHaveCount(0)
     await expect(row.getByRole('button', { name: 'Task options for Deeply nested task text should still have enough room to be comfortably readable' })).toBeVisible()
