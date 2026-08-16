@@ -128,7 +128,57 @@ const PASTE_MATCH_STYLE_MENU_ID: &str = "balance-paste-match-style";
 #[cfg(target_os = "macos")]
 const PASTE_MATCH_STYLE_EVENT: &str = "balance-paste-match-style";
 #[cfg(target_os = "macos")]
-const MAIN_WINDOW_FRAME_AUTOSAVE_NAME: &str = "BalanceMainWindow";
+const MAIN_WINDOW_FRAME_DEFAULTS_KEY: &str = "BalanceMainWindowFrameV1";
+#[cfg(target_os = "macos")]
+static MAIN_WINDOW_FRAME_RESTORED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+#[cfg(target_os = "macos")]
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MacosWindowPlacement {
+    frame: MacosRect,
+    screen: MacosRect,
+    screen_name: String,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Copy, Deserialize, Serialize)]
+struct MacosRect {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
+
+#[cfg(target_os = "macos")]
+impl MacosRect {
+    fn from_ns_rect(rect: objc2_foundation::NSRect) -> Self {
+        Self {
+            x: rect.origin.x,
+            y: rect.origin.y,
+            width: rect.size.width,
+            height: rect.size.height,
+        }
+    }
+
+    fn is_valid(self) -> bool {
+        self.x.is_finite()
+            && self.y.is_finite()
+            && self.width.is_finite()
+            && self.height.is_finite()
+            && self.width > 0.0
+            && self.height > 0.0
+    }
+
+    fn approximately_matches(self, other: objc2_foundation::NSRect) -> bool {
+        const TOLERANCE: f64 = 1.0;
+        (self.x - other.origin.x).abs() <= TOLERANCE
+            && (self.y - other.origin.y).abs() <= TOLERANCE
+            && (self.width - other.size.width).abs() <= TOLERANCE
+            && (self.height - other.size.height).abs() <= TOLERANCE
+    }
+}
 
 #[cfg(target_os = "macos")]
 fn disable_automatic_text_replacement() {
@@ -148,32 +198,80 @@ fn disable_automatic_text_replacement() {}
 
 #[cfg(target_os = "macos")]
 fn restore_macos_main_window_frame(app: &tauri::App) -> tauri::Result<()> {
-    use objc2_app_kit::NSWindow;
-    use objc2_foundation::NSString;
+    use objc2::MainThreadOnly;
+    use objc2_app_kit::{NSScreen, NSWindow};
+    use objc2_foundation::{NSPoint, NSRect, NSSize, NSString, NSUserDefaults};
 
     let window = app
         .get_webview_window("main")
         .ok_or(tauri::Error::WebviewNotFound)?;
     let ns_window = window.ns_window()?.cast::<NSWindow>();
 
-    // AppKit owns persistence and display-aware restoration for a named frame.
-    // The window starts hidden so its configured fallback frame is never shown
-    // before AppKit has had the opportunity to apply the saved frame.
+    // Tauri can emit creation-time move/resize events before this setup hook,
+    // so keep them from replacing the previous session's placement. AppKit's
+    // frame-descriptor restore remaps secondary-display frames onto the main
+    // screen; apply the stored native coordinates to the matching NSScreen
+    // directly instead.
     unsafe {
-        let ns_window = &*ns_window;
-        let frame_name = NSString::from_str(MAIN_WINDOW_FRAME_AUTOSAVE_NAME);
-        ns_window.setFrameUsingName(&frame_name);
-        ns_window.setFrameAutosaveName(&frame_name);
+        let defaults_key = NSString::from_str(MAIN_WINDOW_FRAME_DEFAULTS_KEY);
+        let saved = NSUserDefaults::standardUserDefaults()
+            .stringForKey(&defaults_key)
+            .and_then(|value| serde_json::from_str::<MacosWindowPlacement>(&value.to_string()).ok())
+            .filter(|placement| placement.frame.is_valid() && placement.screen.is_valid());
+        if let Some(saved) = saved {
+            let ns_window = &*ns_window;
+            let screens = NSScreen::screens(ns_window.mtm());
+            let target_screen = screens
+                .iter()
+                .find(|screen| {
+                    screen.localizedName().to_string() == saved.screen_name
+                        && saved.screen.approximately_matches(screen.frame())
+                })
+                .or_else(|| {
+                    screens
+                        .iter()
+                        .find(|screen| screen.localizedName().to_string() == saved.screen_name)
+                })
+                .or_else(|| {
+                    screens
+                        .iter()
+                        .find(|screen| saved.screen.approximately_matches(screen.frame()))
+                });
+
+            if let Some(screen) = target_screen {
+                let screen_frame = screen.frame();
+                let visible_frame = screen.visibleFrame();
+                let width = saved.frame.width.min(visible_frame.size.width);
+                let height = saved.frame.height.min(visible_frame.size.height);
+                let relative_x = saved.frame.x - saved.screen.x;
+                let relative_y = saved.frame.y - saved.screen.y;
+                let x = (screen_frame.origin.x + relative_x).clamp(
+                    visible_frame.origin.x,
+                    visible_frame.origin.x + visible_frame.size.width - width,
+                );
+                let y = (screen_frame.origin.y + relative_y).clamp(
+                    visible_frame.origin.y,
+                    visible_frame.origin.y + visible_frame.size.height - height,
+                );
+                ns_window.setFrame_display(
+                    NSRect::new(NSPoint::new(x, y), NSSize::new(width, height)),
+                    false,
+                );
+            }
+        }
     }
+    MAIN_WINDOW_FRAME_RESTORED.store(true, std::sync::atomic::Ordering::Release);
     window.show()
 }
 
 #[cfg(target_os = "macos")]
 fn save_macos_main_window_frame(window: &tauri::Window) {
     use objc2_app_kit::NSWindow;
-    use objc2_foundation::NSString;
+    use objc2_foundation::{NSString, NSUserDefaults};
 
-    if window.label() != "main" {
+    if window.label() != "main"
+        || !MAIN_WINDOW_FRAME_RESTORED.load(std::sync::atomic::Ordering::Acquire)
+    {
         return;
     }
     let Ok(ns_window) = window.ns_window() else {
@@ -181,8 +279,22 @@ fn save_macos_main_window_frame(window: &tauri::Window) {
     };
 
     unsafe {
-        (&*ns_window.cast::<NSWindow>())
-            .saveFrameUsingName(&NSString::from_str(MAIN_WINDOW_FRAME_AUTOSAVE_NAME));
+        let ns_window = &*ns_window.cast::<NSWindow>();
+        let Some(screen) = ns_window.screen() else {
+            return;
+        };
+        let placement = MacosWindowPlacement {
+            frame: MacosRect::from_ns_rect(ns_window.frame()),
+            screen: MacosRect::from_ns_rect(screen.frame()),
+            screen_name: screen.localizedName().to_string(),
+        };
+        let Ok(placement) = serde_json::to_string(&placement) else {
+            return;
+        };
+        let placement = NSString::from_str(&placement);
+        let defaults_key = NSString::from_str(MAIN_WINDOW_FRAME_DEFAULTS_KEY);
+        NSUserDefaults::standardUserDefaults()
+            .setObject_forKey(Some(placement.as_ref()), &defaults_key);
     }
 }
 
