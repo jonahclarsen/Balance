@@ -46,17 +46,12 @@ async function body(response) {
   return parsed
 }
 
-test('Durable Object contract chunks values and imports deployed v2 storage', async () => {
+test('Durable Object contract chunks values and rolls back generations', async () => {
   const storage = new MemoryStorage()
-  await storage.put({
-    sequences: [1],
-    nextSequence: 2,
-    'e:1:chunks': 1,
-    'e:1:0': '[1,2,3]',
-  })
   const room = new RelayRoom({ storage })
 
-  assert.deepEqual(await (await room.fetch(new Request('https://relay/pull'))).json(), [[1, 2, 3]])
+  assert.equal((await room.fetch(new Request('https://relay/pull'))).status, 404)
+  assert.equal((await room.fetch(new Request('https://relay/push', { method: 'POST' }))).status, 404)
   const initial = await body(await room.fetch(new Request('https://relay/v3/manifest?epoch=&after=0')))
   const batch = new Uint8Array(CHUNK_BYTES * 2 + 5).fill(7)
   const accepted = await body(await room.fetch(new Request('https://relay/v3/batches', {
@@ -92,12 +87,6 @@ test('Durable Object contract chunks values and imports deployed v2 storage', as
   await body(await room.fetch(new Request('https://relay/v3/checkpoints/commit', {
     method: 'POST', body: JSON.stringify(metadata), headers: { 'content-type': 'application/json' },
   })))
-
-  assert.equal((await room.fetch(new Request('https://relay/push', { method: 'POST', body: '[4]' }))).status, 426)
-  assert.deepEqual(await (await room.fetch(new Request('https://relay/pull'))).json(), [[1, 2, 3]])
-  await storage.put('v3:legacyExpiresAt', Date.now() - 1)
-  await body(await room.fetch(new Request('https://relay/health')))
-  assert.equal(await storage.get('sequences'), undefined)
 
   const rollback = await body(await room.fetch(new Request('https://relay/v3/rollback', { method: 'POST' })))
   assert.equal(rollback.epoch, initial.epoch)

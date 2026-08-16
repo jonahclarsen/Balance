@@ -1,7 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import QRCode from 'qrcode'
-  import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog'
   import {
     scan,
     cancel,
@@ -18,11 +17,7 @@
     syncP2pServe,
     syncP2pPeers,
     syncP2pSync,
-    auditLegacyMigrationReadiness,
-    stageLegacySyncCleanup,
-    finalizeLegacySyncCleanup,
     plannerStore,
-    type LegacyMigrationAuditResult,
     type SyncPeer,
   } from './store'
   import { automaticSyncStatus, requestSync } from './syncScheduler'
@@ -30,7 +25,7 @@
   // Camera QR scanning is mobile-only (native plugin); on desktop you paste.
   const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent)
 
-  let migrated = false
+  let syncEnabled = false
   let pairingCode = ''
   let relayUrl = ''
   let qrDataUrl = ''
@@ -44,11 +39,6 @@
   let scanning = false
   let copyLabel = 'Copy code'
   let copyTimer: ReturnType<typeof setTimeout> | undefined
-  let auditBusy = false
-  let auditResult: LegacyMigrationAuditResult | null = null
-  let auditError = ''
-  let cleanupBusy = false
-  let cleanupMessage = ''
 
   let localAddress = ''
   let peers: SyncPeer[] = []
@@ -58,18 +48,18 @@
   onMount(async () => {
     try {
       const settings = await getSyncSettings()
-      migrated = settings.enabled
+      syncEnabled = settings.enabled
       pairingCode = settings.pairingCode ?? ''
       relayUrl = settings.relayUrl
     } catch (err) {
-      migrated = false
+      syncEnabled = false
       settingsLoadFailed = true
       setStatus(`Could not load sync settings: ${err}`, true)
     } finally {
       settingsLoading = false
     }
     if (pairingCode) await renderQr()
-    if (migrated) await startP2p()
+    if (syncEnabled) await startP2p()
   })
 
   onDestroy(() => {
@@ -172,7 +162,7 @@
     try {
       await syncP2pSync(addr)
       await plannerStore.reloadFromBackend()
-      migrated = true
+      syncEnabled = true
       setStatus(`Synced directly with ${addr}.`)
     } catch (err) {
       setStatus(`Direct sync failed: ${err}`, true)
@@ -202,7 +192,7 @@
       // the synced log (and backed up first).
       await syncEnablePrimary(newPairingCode)
       pairingCode = newPairingCode
-      migrated = true
+      syncEnabled = true
       await renderQr()
       await startP2p()
       if (relayUrl) await requestSync('sync-enabled')
@@ -229,7 +219,7 @@
       await syncEnableJoiner(code)
       pairingCode = code
       joinInput = ''
-      migrated = true
+      syncEnabled = true
       await renderQr()
       await startP2p()
       if (relayUrl) await requestSync('paired')
@@ -287,7 +277,7 @@
     try {
       const result = await requestSync('manual')
       if (!result) throw new Error('The relay sync did not complete; it will retry automatically.')
-      migrated = true
+      syncEnabled = true
       const checkpoint = result.checkpointCommitted ? ' Relay storage was compacted.' : ''
       setStatus(
         `Synced ${result.pushedOperations} outgoing and ${result.pulledOperations} incoming operation(s).${checkpoint}`,
@@ -299,79 +289,6 @@
     }
   }
 
-  async function runMigrationAudit() {
-    auditBusy = true
-    auditResult = null
-    auditError = ''
-    try {
-      auditResult = await auditLegacyMigrationReadiness()
-      if (!auditResult) auditError = 'The audit is available only in the Balance app.'
-    } catch (err) {
-      auditError = `Audit failed: ${err}`
-    } finally {
-      auditBusy = false
-    }
-  }
-
-  function auditCheckPassed(id: string) {
-    return auditResult?.checks.find((check) => check.id === id)?.passed ?? false
-  }
-
-  function canFinalizeMigrationCleanup() {
-    if (!auditResult || auditCheckPassed('local-cleanup-guard')) return false
-    return auditResult.checks.every(
-      (check) =>
-        check.passed ||
-        check.id === 'local-cleanup-guard' ||
-        check.id === 'relay-rollback-generation',
-    )
-  }
-
-  async function stageMigrationCleanup() {
-    cleanupBusy = true
-    cleanupMessage = ''
-    auditError = ''
-    try {
-      const result = await stageLegacySyncCleanup()
-      if (!result) throw new Error('The cleanup is available only in the Balance app.')
-      cleanupMessage = result.message
-      auditResult = await auditLegacyMigrationReadiness()
-    } catch (err) {
-      auditError = `Cleanup failed safely: ${err}`
-    } finally {
-      cleanupBusy = false
-    }
-  }
-
-  async function finalizeMigrationCleanup() {
-    const guardedIds = auditResult?.checks
-      .find((check) => check.id === 'local-cleanup-guard')
-      ?.detail.match(/\d+/)?.[0] ?? 'the'
-    const confirmed = await confirmDialog(
-      `Continue only if every active Balance installation says it is safely staged. This immediately replaces the old relay rollback generation and permanently removes ${guardedIds} guarded retired IDs from this installation. A forgotten offline installation could reintroduce retired data.`,
-      {
-        title: 'Finalize migration cleanup?',
-        kind: 'warning',
-        okLabel: 'Finalize now',
-        cancelLabel: 'Cancel',
-      },
-    )
-    if (!confirmed) return
-
-    cleanupBusy = true
-    cleanupMessage = ''
-    auditError = ''
-    try {
-      const result = await finalizeLegacySyncCleanup()
-      if (!result) throw new Error('Finalization is available only in the Balance app.')
-      cleanupMessage = result.message
-      auditResult = await auditLegacyMigrationReadiness()
-    } catch (err) {
-      auditError = `Finalization failed safely: ${err}`
-    } finally {
-      cleanupBusy = false
-    }
-  }
 </script>
 
 <section class="settings-section sync-panel">
@@ -436,7 +353,7 @@
       </form>
     </div>
 
-    {#if migrated}
+    {#if syncEnabled}
       <div class="sync-p2p">
         <label for="sync-peer-input">Direct device-to-device (same Wi-Fi)</label>
         <p>
@@ -513,7 +430,7 @@
         {:else if $automaticSyncStatus.lastSuccessAt}
           Last automatically synced at {new Date($automaticSyncStatus.lastSuccessAt).toLocaleTimeString()}.
         {:else}
-          {migrated ? 'Automatic sync is ready on this device.' : 'Not yet synced.'}
+          {syncEnabled ? 'Automatic sync is ready on this device.' : 'Not yet synced.'}
         {/if}
       </span>
     </div>
@@ -522,82 +439,6 @@
       <p class="sync-status" class:error={isError} aria-live="polite">{status}</p>
     {/if}
 
-    <div class="migration-audit">
-      <div>
-        <h4>Temporary migration cleanup audit</h4>
-        <p>
-          Checks this encrypted database and the current relay generation in place. Relay
-          ciphertext is decrypted only in memory; no data is exported or changed.
-        </p>
-      </div>
-      <button type="button" on:click={runMigrationAudit} disabled={busy || auditBusy || cleanupBusy}>
-        {auditBusy ? 'Auditing…' : 'Run removal audit'}
-      </button>
-
-      {#if auditError}
-        <p class="audit-summary error" role="alert">{auditError}</p>
-      {:else if auditResult}
-        <p
-          class="audit-summary"
-          class:ready={auditResult.readyOnThisInstallation}
-          class:error={!auditResult.readyOnThisInstallation}
-          aria-live="polite"
-        >
-          {#if auditResult.readyOnThisInstallation}
-            Ready on this installation and relay. Run this audit on every active Balance
-            installation; when all of them pass, the legacy compatibility code can be removed.
-          {:else if !auditCheckPassed('local-cleanup-guard')}
-            This installation is safely staged. Once every active installation is staged, you can
-            finalize immediately without waiting for the rollback window.
-          {:else}
-            Not ready yet. Resolve the failed checks below, then run the audit again.
-          {/if}
-        </p>
-        {#if auditCheckPassed('local-cleanup-guard') && (!auditCheckPassed('local-checkpoints') || !auditCheckPassed('local-tombstones'))}
-          <div class="cleanup-action">
-            <p>
-              Clean this installation and promote a current-format relay checkpoint. Retired
-              operation ids remain in a temporary safety guard, so an installation cleaned later
-              cannot resurrect them.
-            </p>
-            <button type="button" on:click={stageMigrationCleanup} disabled={busy || auditBusy || cleanupBusy}>
-              {cleanupBusy ? 'Cleaning safely…' : 'Clean this installation'}
-            </button>
-          </div>
-        {/if}
-        {#if !auditCheckPassed('local-cleanup-guard') && !auditCheckPassed('relay-checkpoints')}
-          <button type="button" on:click={stageMigrationCleanup} disabled={busy || auditBusy || cleanupBusy}>
-            {cleanupBusy ? 'Retrying safely…' : 'Retry relay cleanup'}
-          </button>
-        {/if}
-        {#if canFinalizeMigrationCleanup()}
-          <div class="cleanup-action">
-            <p>
-              If every active Balance installation is safely staged, replace the old rollback
-              generation with another verified current-format checkpoint and remove this
-              installation's temporary guard now.
-            </p>
-            <button type="button" on:click={finalizeMigrationCleanup} disabled={busy || auditBusy || cleanupBusy}>
-              {cleanupBusy ? 'Finalizing safely…' : 'Finalize cleanup now'}
-            </button>
-          </div>
-        {/if}
-        {#if cleanupMessage}
-          <p class="audit-summary ready" role="status">{cleanupMessage}</p>
-        {/if}
-        <ul class="audit-checks">
-          {#each auditResult.checks as check (check.id)}
-            <li class:passed={check.passed} class:failed={!check.passed}>
-              <span class="audit-icon" aria-hidden="true">{check.passed ? '✓' : '!'}</span>
-              <span>
-                <strong>{check.label}</strong>
-                <small>{check.detail}</small>
-              </span>
-            </li>
-          {/each}
-        </ul>
-      {/if}
-    </div>
   </div>
 </section>
 
@@ -695,87 +536,6 @@
   .sync-state {
     font-size: 0.8rem;
     opacity: 0.7;
-  }
-  .migration-audit {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 0.65rem;
-    margin-top: 0.5rem;
-    padding: 0.85rem;
-    border: 1px solid rgba(127, 127, 127, 0.25);
-    border-radius: 8px;
-  }
-  .migration-audit h4,
-  .migration-audit p {
-    margin: 0;
-  }
-  .migration-audit h4 {
-    margin-bottom: 0.25rem;
-  }
-  .migration-audit > div > p {
-    font-size: 0.82rem;
-    opacity: 0.75;
-  }
-  .audit-summary {
-    font-size: 0.85rem;
-  }
-  .audit-summary.ready {
-    color: #26834a;
-  }
-  .audit-summary.error {
-    color: #c0392b;
-  }
-  .cleanup-action {
-    width: 100%;
-    padding: 0.65rem;
-    border-left: 3px solid #b7791f;
-    background: rgba(183, 121, 31, 0.09);
-    border-radius: 4px;
-  }
-  .cleanup-action p {
-    margin: 0 0 0.55rem;
-    font-size: 0.82rem;
-  }
-  .audit-checks {
-    width: 100%;
-    list-style: none;
-    display: flex;
-    flex-direction: column;
-    gap: 0.4rem;
-    margin: 0;
-    padding: 0;
-  }
-  .audit-checks li {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.55rem;
-    padding: 0.5rem 0.6rem;
-    border-radius: 6px;
-    background: rgba(127, 127, 127, 0.08);
-  }
-  .audit-checks li.passed .audit-icon {
-    color: #26834a;
-  }
-  .audit-checks li.failed .audit-icon {
-    color: #c0392b;
-  }
-  .audit-icon {
-    width: 1rem;
-    flex: 0 0 1rem;
-    font-weight: 700;
-  }
-  .audit-checks strong,
-  .audit-checks small {
-    display: block;
-  }
-  .audit-checks strong {
-    font-size: 0.83rem;
-  }
-  .audit-checks small {
-    margin-top: 0.1rem;
-    font-size: 0.76rem;
-    opacity: 0.72;
   }
 
   /* While the native camera scans, it renders *behind* the webview. Hide the

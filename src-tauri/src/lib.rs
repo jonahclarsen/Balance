@@ -59,8 +59,6 @@ const SYNC_CHECKPOINT_OPERATION_LIMIT: i64 = 1_000;
 const SYNC_CHECKPOINT_PAYLOAD_BYTES: i64 = 8 * 1024 * 1024;
 const SYNC_CHECKPOINT_MAX_AGE_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
 const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
-const GOAL_DATA: &str = "goal_data";
-const LISTS_METRICS_DATA: &str = "lists_metrics_data";
 const ENTITY_COLLECTIONS: [&str; 7] = [
     "goals",
     "goalCompletions",
@@ -543,39 +541,6 @@ struct SyncSettings {
     enabled: bool,
     pairing_code: Option<String>,
     relay_url: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LegacyMigrationAuditCheck {
-    id: &'static str,
-    label: &'static str,
-    passed: bool,
-    detail: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LegacyMigrationAuditResult {
-    ready_on_this_installation: bool,
-    checks: Vec<LegacyMigrationAuditCheck>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LegacyCleanupStageResponse {
-    guarded_ids: usize,
-    checkpoint_records_cleaned: usize,
-    relay_promoted: bool,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LegacyCleanupFinalizeResponse {
-    guarded_ids_removed: usize,
-    relay_checkpoint_promoted: bool,
-    message: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -2222,18 +2187,6 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
           primary key (collection, entity_key)
         );
 
-        -- Ids of operations a sync checkpoint permanently replaced. Kept so a
-        -- peer that still holds the compacted history cannot resurrect it.
-        create table if not exists sync_tombstones (
-          id text primary key
-        );
-
-        -- Temporary rejection guard used while installations stage removal of
-        -- the legacy checkpoint id set at different times.
-        create table if not exists sync_legacy_cleanup_guard (
-          id text primary key
-        );
-
         create table if not exists sync_frontiers (
           device_id text primary key,
           sequence integer not null
@@ -2265,17 +2218,6 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
         .map_err(|error| error.to_string())
 }
 
-fn goal_data_from_state(state: &Value) -> Value {
-    json!({
-        "goals": state.get("goals").and_then(Value::as_array).cloned().unwrap_or_default(),
-        "goalCompletions": state
-            .get("goalCompletions")
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default(),
-    })
-}
-
 const LISTS_METRICS_KEYS: [&str; 5] = [
     "listTemplates",
     "lists",
@@ -2283,19 +2225,6 @@ const LISTS_METRICS_KEYS: [&str; 5] = [
     "metricEntries",
     "notes",
 ];
-
-fn lists_metrics_data_from_state(state: &Value) -> Value {
-    let mut result = serde_json::Map::new();
-    for key in LISTS_METRICS_KEYS {
-        let value = state
-            .get(key)
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        result.insert(key.to_string(), Value::Array(value));
-    }
-    Value::Object(result)
-}
 
 fn entity_key(collection: &str, value: &Value, index: usize, occurrence: usize) -> String {
     if collection == "goalCompletions" {
@@ -2467,22 +2396,6 @@ fn apply_entity_changes(connection: &Connection, changes: &Value) -> Result<(), 
         delete
             .execute(params![collection, required_string(item, "key")?])
             .map_err(|error| error.to_string())?;
-    }
-    Ok(())
-}
-
-fn replace_entity_collections_from_object(
-    connection: &Connection,
-    object: &Value,
-    collections: &[&str],
-) -> Result<(), String> {
-    for collection in collections {
-        let values = object
-            .get(collection)
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default();
-        replace_entity_collection(connection, collection, &values)?;
     }
     Ok(())
 }
@@ -2676,17 +2589,6 @@ fn replace_domain_state(connection: &Connection, state: &Value) -> Result<(), St
         insert_plan(connection, plan)?;
     }
 
-    set_metadata(
-        connection,
-        GOAL_DATA,
-        &goal_data_from_state(state).to_string(),
-    )?;
-
-    set_metadata(
-        connection,
-        LISTS_METRICS_DATA,
-        &lists_metrics_data_from_state(state).to_string(),
-    )?;
     replace_state_entities_from_state(connection, state)?;
 
     if let Some(active_plan_date) = optional_string(state, "activePlanDate")? {
@@ -2761,12 +2663,6 @@ fn operation_log_stats(connection: &Connection) -> Result<(i64, i64), String> {
 
 fn maybe_checkpoint_operation_log(connection: &Connection) -> Result<bool, String> {
     if !database_checkpoint_coordinator(connection)? {
-        return Ok(false);
-    }
-    // A staged legacy cleanup keeps retired ids in a temporary rejection
-    // guard until every installation is ready. Creating or promoting another
-    // checkpoint during that window would publish an unprotected baseline.
-    if sync::legacy_cleanup_guard_count(connection).map_err(sync::Error::into_string)? > 0 {
         return Ok(false);
     }
     let (operation_count, payload_bytes) = operation_log_stats(connection)?;
@@ -3468,22 +3364,11 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             })
         }
         "apply_entity_changes" => Ok(()),
-        // V4 entity deltas below materialize these operation types. Legacy V3
-        // operations are still materialized from their embedded snapshots.
-        "replace_lists_metrics_data" => Ok(()),
         other if is_lists_metrics_operation(other) => Ok(()),
         other => Err(format!("Unsupported operation type: {other}")),
     };
 
     result?;
-    if let Some(goal_data) = payload.get("goalData") {
-        set_metadata(tx, GOAL_DATA, &goal_data.to_string())?;
-        replace_entity_collections_from_object(tx, goal_data, &["goals", "goalCompletions"])?;
-    }
-    if let Some(lists_metrics_data) = payload.get("listsMetricsData") {
-        set_metadata(tx, LISTS_METRICS_DATA, &lists_metrics_data.to_string())?;
-        replace_entity_collections_from_object(tx, lists_metrics_data, &LISTS_METRICS_KEYS)?;
-    }
     if let Some(changes) = payload.get("entityChanges") {
         apply_entity_changes(tx, changes)?;
     }
@@ -3590,43 +3475,22 @@ fn build_undo_operation(
     let domain_undo = build_domain_undo_operation(connection, operation)?;
     let payload = required_value(operation, "payload")?;
 
-    // V4 operations capture only the changed entities. Legacy V3 operations
-    // retain their full-snapshot inverse so existing logs remain undoable.
-    let mut snapshot_undos: Vec<Value> = Vec::new();
-    if let Some(changes) = payload.get("entityChanges") {
-        snapshot_undos.push(storage_operation(
-            "apply_entity_changes",
-            json!({ "entityChanges": inverse_entity_changes(connection, changes)? }),
-        ));
-    }
-    if payload.get("goalData").is_some() {
-        snapshot_undos.push(storage_operation(
-            "replace_goal_data",
-            json!({ "goalData": read_goal_data(connection)? }),
-        ));
-    }
-    if payload.get("listsMetricsData").is_some() {
-        snapshot_undos.push(storage_operation(
-            "replace_lists_metrics_data",
-            json!({ "listsMetricsData": read_lists_metrics_data(connection)? }),
-        ));
-    }
-
-    if snapshot_undos.is_empty() {
+    let Some(changes) = payload.get("entityChanges") else {
         return Ok(domain_undo);
-    }
+    };
+    let entity_undo = storage_operation(
+        "apply_entity_changes",
+        json!({ "entityChanges": inverse_entity_changes(connection, changes)? }),
+    );
 
-    let mut operations: Vec<Value> = Vec::new();
     if let Some(operation) = domain_undo {
-        operations.push(operation);
-    }
-    operations.extend(snapshot_undos);
-
-    Ok(Some(if operations.len() == 1 {
-        operations.into_iter().next().expect("one operation")
+        Ok(Some(storage_operation(
+            "batch",
+            json!({ "operations": [operation, entity_undo] }),
+        )))
     } else {
-        storage_operation("batch", json!({ "operations": operations }))
-    }))
+        Ok(Some(entity_undo))
+    }
 }
 
 fn build_domain_undo_operation(
@@ -8742,486 +8606,6 @@ async fn set_sync_relay_url(
     .await
 }
 
-fn legacy_audit_check(
-    id: &'static str,
-    label: &'static str,
-    passed: bool,
-    detail: impl Into<String>,
-) -> LegacyMigrationAuditCheck {
-    LegacyMigrationAuditCheck {
-        id,
-        label,
-        passed,
-        detail: detail.into(),
-    }
-}
-
-/// Read-only fleet-readiness evidence for deleting legacy sync compatibility.
-/// Relay ciphertext is downloaded and decrypted only in memory; no operation,
-/// history row, relay cursor, or remote object is changed by this command.
-#[tauri::command]
-async fn audit_legacy_migration_readiness(
-    app: tauri::AppHandle,
-) -> Result<LegacyMigrationAuditResult, String> {
-    run_database_task(move || {
-        let connection = open_database(&app)?;
-        let enabled = sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)?;
-        let mut checks = vec![legacy_audit_check(
-            "sync-enabled",
-            "Current sync engine enabled",
-            enabled,
-            if enabled {
-                "This installation has current sync state to audit."
-            } else {
-                "Enable sync before using this audit to approve compatibility removal."
-            },
-        )];
-
-        let coordinator_marker = metadata_value(&connection, SYNC_COMPACTION_COORDINATOR)?;
-        let valid_coordinator_marker = matches!(coordinator_marker.as_deref(), Some("true" | "false"));
-        checks.push(legacy_audit_check(
-            "coordinator-marker",
-            "Device role marker present",
-            valid_coordinator_marker,
-            if valid_coordinator_marker {
-                "No older-build role inference is needed on this installation."
-            } else {
-                "Run a foreground relay sync, then audit again."
-            },
-        ));
-
-        let local = sync::audit_local_legacy_compatibility(&connection)
-            .map_err(sync::Error::into_string)?;
-        checks.push(legacy_audit_check(
-            "local-checkpoints",
-            "Local checkpoints use current frontiers",
-            local.operations.legacy_checkpoint_records == 0,
-            format!(
-                "Checked {} local operation record(s); {} still require legacy checkpoint fields.",
-                local.operations.records_checked, local.operations.legacy_checkpoint_records
-            ),
-        ));
-        checks.push(legacy_audit_check(
-            "local-operation-payloads",
-            "Local operations use entity deltas",
-            local.operations.legacy_entity_snapshot_records == 0,
-            format!(
-                "{} local operation record(s) still contain legacy full entity snapshots.",
-                local.operations.legacy_entity_snapshot_records
-            ),
-        ));
-        checks.push(legacy_audit_check(
-            "local-history-payloads",
-            "Undo history uses current payloads",
-            local.legacy_history_entries == 0,
-            format!(
-                "Checked {} history row(s); {} still contain legacy payloads.",
-                local.history_entries_checked, local.legacy_history_entries
-            ),
-        ));
-        checks.push(legacy_audit_check(
-            "local-tombstones",
-            "No local v2 tombstones remain",
-            local.tombstone_count == 0,
-            format!("{} legacy tombstone id(s) remain locally.", local.tombstone_count),
-        ));
-        checks.push(legacy_audit_check(
-            "local-cleanup-guard",
-            "No temporary cleanup guard remains",
-            local.cleanup_guard_count == 0,
-            if local.cleanup_guard_count == 0 {
-                if local.cleanup_finalized {
-                    "The temporary rejection guard was removed after verified relay finalization."
-                        .to_string()
-                } else {
-                    "This installation is not retaining staged legacy rejection ids.".to_string()
-                }
-            } else {
-                format!(
-                    "{} retired id(s) remain safely guarded while the other installations stage cleanup. This is expected after cleaning this installation.",
-                    local.cleanup_guard_count
-                )
-            },
-        ));
-
-        let relay_url = metadata_value(&connection, SYNC_RELAY_URL)?.unwrap_or_default();
-        let pairing_code = sync::read_pairing_code(&connection).map_err(sync::Error::into_string)?;
-        match (relay_url.is_empty(), pairing_code) {
-            (false, Some(pairing_code)) => {
-                let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
-                    .map_err(sync::Error::into_string)?;
-                match sync::relay_client::audit_legacy_compatibility(
-                    &connection,
-                    &relay_url,
-                    &key,
-                ) {
-                    Ok(relay) => {
-                        checks.push(legacy_audit_check(
-                            "relay-contract",
-                            "Relay uses the current v3 storage contract",
-                            relay.relay_protocol == 3,
-                            format!("Relay reported storage protocol {}.", relay.relay_protocol),
-                        ));
-                        checks.push(legacy_audit_check(
-                            "relay-generation-stable",
-                            "Relay generation stayed stable during audit",
-                            relay.generation_stable,
-                            if relay.generation_stable {
-                                "The same complete generation was checked from start to finish."
-                            } else {
-                                "The relay changed during the audit; sync and run it again."
-                            },
-                        ));
-                        checks.push(legacy_audit_check(
-                            "relay-local-cursor",
-                            "This device is caught up with the relay",
-                            relay.local_epoch_initialized && relay.local_cursor_caught_up,
-                            if relay.local_epoch_initialized && relay.local_cursor_caught_up {
-                                "The local v3 epoch and cursor match the audited relay generation."
-                            } else {
-                                "Use Sync now, wait for it to finish, then audit again."
-                            },
-                        ));
-                        let uploads_clear = relay.pending_outbox_batches == 0
-                            && relay.unpublished_local_operations == 0;
-                        checks.push(legacy_audit_check(
-                            "relay-local-uploads",
-                            "No local relay uploads are pending",
-                            uploads_clear,
-                            format!(
-                                "{} queued batch(es) and {} unpublished operation(s) remain.",
-                                relay.pending_outbox_batches, relay.unpublished_local_operations
-                            ),
-                        ));
-                        checks.push(legacy_audit_check(
-                            "relay-quarantine",
-                            "No quarantined relay blobs remain",
-                            relay.quarantined_blobs == 0,
-                            format!(
-                                "{} unreadable or damaged relay blob(s) remain quarantined.",
-                                relay.quarantined_blobs
-                            ),
-                        ));
-                        checks.push(legacy_audit_check(
-                            "relay-rollback-generation",
-                            "Relay rollback cannot restore legacy data",
-                            !relay.previous_generation_present || local.cleanup_finalized,
-                            if local.cleanup_finalized {
-                                "Explicit finalization replaced the legacy rollback generation with a verified current-format checkpoint."
-                            } else if relay.previous_generation_present {
-                                "A prior relay generation still needs to be replaced during explicit finalization."
-                            } else {
-                                "No prior relay generation remains."
-                            },
-                        ));
-                        checks.push(legacy_audit_check(
-                            "relay-legacy-buffer",
-                            "Legacy relay buffer is empty",
-                            relay.legacy_envelope_count == 0,
-                            format!(
-                                "The relay returned {} legacy envelope(s).",
-                                relay.legacy_envelope_count
-                            ),
-                        ));
-                        checks.push(legacy_audit_check(
-                            "relay-envelope-protocol",
-                            "Relay ciphertext uses protocol v4",
-                            relay.legacy_protocol_envelopes == 0,
-                            format!(
-                                "Checked {} encrypted blob(s); {} use an older envelope protocol.",
-                                relay.encrypted_blobs_checked, relay.legacy_protocol_envelopes
-                            ),
-                        ));
-                        checks.push(legacy_audit_check(
-                            "relay-checkpoints",
-                            "Relay checkpoints use current frontiers",
-                            relay.operations.legacy_checkpoint_records == 0,
-                            format!(
-                                "Checked {} relayed operation record(s); {} still require legacy checkpoint fields.",
-                                relay.operations.records_checked,
-                                relay.operations.legacy_checkpoint_records
-                            ),
-                        ));
-                        checks.push(legacy_audit_check(
-                            "relay-operation-payloads",
-                            "Relay operations use entity deltas",
-                            relay.operations.legacy_entity_snapshot_records == 0,
-                            format!(
-                                "{} relayed operation record(s) still contain legacy full entity snapshots.",
-                                relay.operations.legacy_entity_snapshot_records
-                            ),
-                        ));
-                    }
-                    Err(error) => checks.push(legacy_audit_check(
-                        "relay-readable",
-                        "Relay contents could be audited",
-                        false,
-                        format!("Relay audit failed: {error}"),
-                    )),
-                }
-            }
-            _ => checks.push(legacy_audit_check(
-                "relay-configured",
-                "Relay and sync key configured",
-                false,
-                "Configure this installation's relay and complete a foreground sync first.",
-            )),
-        }
-
-        Ok(LegacyMigrationAuditResult {
-            ready_on_this_installation: checks.iter().all(|check| check.passed),
-            checks,
-        })
-    })
-    .await
-}
-
-/// Stage the local cleanup and promote a verified current-format relay
-/// checkpoint. Retired ids remain enforced by a temporary guard, so an
-/// installation staged later cannot resurrect old operations here.
-#[tauri::command]
-async fn stage_legacy_sync_cleanup(
-    app: tauri::AppHandle,
-) -> Result<LegacyCleanupStageResponse, String> {
-    run_database_task(move || {
-        let connection = open_database(&app)?;
-        if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
-            return Err("Sync must be enabled before cleanup.".to_string());
-        }
-        if !matches!(
-            metadata_value(&connection, SYNC_COMPACTION_COORDINATOR)?.as_deref(),
-            Some("true" | "false")
-        ) {
-            return Err("Run a foreground relay sync before cleanup.".to_string());
-        }
-        let local = sync::audit_local_legacy_compatibility(&connection)
-            .map_err(sync::Error::into_string)?;
-        if local.operations.legacy_entity_snapshot_records != 0
-            || local.legacy_history_entries != 0
-        {
-            return Err(
-                "Current operations or undo history still use legacy entity snapshots. Sync and audit again before cleanup."
-                    .to_string(),
-            );
-        }
-
-        let relay_url = metadata_value(&connection, SYNC_RELAY_URL)?
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| "Set a relay server URL before cleanup.".to_string())?;
-        let pairing_code = sync::read_pairing_code(&connection)
-            .map_err(sync::Error::into_string)?
-            .ok_or_else(|| "This installation's sync key is missing.".to_string())?;
-        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
-            .map_err(sync::Error::into_string)?;
-        let relay = sync::relay_client::audit_legacy_compatibility(
-            &connection,
-            &relay_url,
-            &key,
-        )
-        .map_err(sync::Error::into_string)?;
-        let safe = relay.relay_protocol == 3
-            && relay.generation_stable
-            && relay.local_epoch_initialized
-            && relay.local_cursor_caught_up
-            && relay.pending_outbox_batches == 0
-            && relay.unpublished_local_operations == 0
-            && relay.quarantined_blobs == 0
-            && relay.legacy_envelope_count == 0
-            && relay.legacy_protocol_envelopes == 0
-            && relay.operations.legacy_entity_snapshot_records == 0;
-        if !safe {
-            return Err(
-                "The relay changed, is not fully caught up, or still has unsafe pending/legacy records. Run Sync now and repeat the audit first."
-                    .to_string(),
-            );
-        }
-
-        let staged = if local.cleanup_staged {
-            sync::LegacyCleanupStageResult {
-                guarded_ids: local.cleanup_guard_count,
-                checkpoint_records_cleaned: 0,
-            }
-        } else {
-            sync::stage_legacy_cleanup(&connection).map_err(sync::Error::into_string)?
-        };
-        if relay.operations.legacy_checkpoint_records == 0 {
-            return Ok(LegacyCleanupStageResponse {
-                guarded_ids: staged.guarded_ids,
-                checkpoint_records_cleaned: staged.checkpoint_records_cleaned,
-                relay_promoted: false,
-                message: format!(
-                    "This installation is staged safely with {} guarded retired id(s); the relay checkpoint is already current-format.",
-                    staged.guarded_ids
-                ),
-            });
-        }
-        let promotion = sync::relay_client::promote_staged_legacy_cleanup(
-            &connection,
-            &relay_url,
-            &key,
-        );
-        let (relay_promoted, message) = match promotion {
-            Ok(true) => (
-                true,
-                format!(
-                    "Cleaned this installation and promoted a current-format relay checkpoint. {} retired id(s) remain in the temporary safety guard until every active installation is staged; then you can finalize immediately.",
-                    staged.guarded_ids
-                ),
-            ),
-            Ok(false) => (
-                false,
-                format!(
-                    "Cleaned this installation and safely guarded {} retired id(s), but the relay changed before promotion. Run Sync now, audit, and retry cleanup.",
-                    staged.guarded_ids
-                ),
-            ),
-            Err(error) => (
-                false,
-                format!(
-                    "Cleaned this installation and safely guarded {} retired id(s). Relay promotion did not finish ({error}); your app data is unchanged, and cleanup can be retried.",
-                    staged.guarded_ids
-                ),
-            ),
-        };
-        Ok(LegacyCleanupStageResponse {
-            guarded_ids: staged.guarded_ids,
-            checkpoint_records_cleaned: staged.checkpoint_records_cleaned,
-            relay_promoted,
-            message,
-        })
-    })
-    .await
-}
-
-/// Immediately retire the old relay rollback path and then remove this
-/// installation's temporary rejection guard. The UI requires an explicit fleet
-/// confirmation because only the user can know whether every active offline
-/// installation has already staged cleanup.
-#[tauri::command]
-async fn finalize_legacy_sync_cleanup(
-    app: tauri::AppHandle,
-) -> Result<LegacyCleanupFinalizeResponse, String> {
-    run_database_task(move || {
-        let connection = open_database(&app)?;
-        let local = sync::audit_local_legacy_compatibility(&connection)
-            .map_err(sync::Error::into_string)?;
-        if local.cleanup_finalized && local.cleanup_guard_count == 0 {
-            return Ok(LegacyCleanupFinalizeResponse {
-                guarded_ids_removed: 0,
-                relay_checkpoint_promoted: false,
-                message: "This installation has already finalized migration cleanup."
-                    .to_string(),
-            });
-        }
-        if !local.cleanup_staged || local.cleanup_guard_count == 0 {
-            return Err("Clean this installation before finalizing migration cleanup.".to_string());
-        }
-        if local.tombstone_count != 0
-            || local.operations.legacy_checkpoint_records != 0
-            || local.operations.legacy_entity_snapshot_records != 0
-            || local.legacy_history_entries != 0
-        {
-            return Err(
-                "This installation still contains legacy records. Run the cleanup audit again before finalizing."
-                    .to_string(),
-            );
-        }
-
-        let relay_url = metadata_value(&connection, SYNC_RELAY_URL)?
-            .filter(|value| !value.is_empty())
-            .ok_or_else(|| "Set a relay server URL before finalizing.".to_string())?;
-        let pairing_code = sync::read_pairing_code(&connection)
-            .map_err(sync::Error::into_string)?
-            .ok_or_else(|| "This installation's sync key is missing.".to_string())?;
-        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
-            .map_err(sync::Error::into_string)?;
-        let relay = sync::relay_client::audit_legacy_compatibility(
-            &connection,
-            &relay_url,
-            &key,
-        )
-        .map_err(sync::Error::into_string)?;
-        let safe = relay.relay_protocol == 3
-            && relay.generation_stable
-            && relay.local_epoch_initialized
-            && relay.local_cursor_caught_up
-            && relay.pending_outbox_batches == 0
-            && relay.unpublished_local_operations == 0
-            && relay.quarantined_blobs == 0
-            && relay.legacy_envelope_count == 0
-            && relay.legacy_protocol_envelopes == 0
-            && relay.operations.legacy_checkpoint_records == 0
-            && relay.operations.legacy_entity_snapshot_records == 0;
-        if !safe {
-            return Err(
-                "The current relay generation is not fully caught up and current-format. Run Sync now and repeat the audit before finalizing."
-                    .to_string(),
-            );
-        }
-
-        match sync::relay_client::promote_staged_legacy_cleanup(
-            &connection,
-            &relay_url,
-            &key,
-        ) {
-            Ok(true) => {}
-            Ok(false) => {
-                return Err(
-                    "The relay changed during finalization. The temporary guard remains; run Sync now and try again."
-                        .to_string(),
-                )
-            }
-            Err(error) => {
-                return Err(format!(
-                    "Could not replace the relay rollback generation ({error}). The temporary guard remains."
-                ))
-            }
-        }
-
-        // Re-read and decrypt the generation that was just committed before
-        // weakening local rejection. A failed verification leaves the guard in
-        // place and makes the entire action safely retryable.
-        let verified = sync::relay_client::audit_legacy_compatibility(
-            &connection,
-            &relay_url,
-            &key,
-        )
-        .map_err(|error| {
-            format!(
-                "The new relay checkpoint could not be verified ({error}). The temporary guard remains."
-            )
-        })?;
-        let verified_safe = verified.relay_protocol == 3
-            && verified.generation_stable
-            && verified.local_epoch_initialized
-            && verified.local_cursor_caught_up
-            && verified.pending_outbox_batches == 0
-            && verified.unpublished_local_operations == 0
-            && verified.quarantined_blobs == 0
-            && verified.legacy_envelope_count == 0
-            && verified.legacy_protocol_envelopes == 0
-            && verified.operations.legacy_checkpoint_records == 0
-            && verified.operations.legacy_entity_snapshot_records == 0;
-        if !verified_safe {
-            return Err(
-                "The replacement relay checkpoint did not pass verification. The temporary guard remains."
-                    .to_string(),
-            );
-        }
-
-        let guarded_ids_removed = sync::finalize_legacy_cleanup(&connection)
-            .map_err(sync::Error::into_string)?;
-        Ok(LegacyCleanupFinalizeResponse {
-            guarded_ids_removed,
-            relay_checkpoint_promoted: true,
-            message: format!(
-                "Finalized this installation immediately. Replaced the old rollback generation with a verified current-format checkpoint and removed {guarded_ids_removed} guarded retired id(s)."
-            ),
-        })
-    })
-    .await
-}
-
 /// Generate a fresh account sync key and return its QR/pairing code. The new
 /// device scans this; both devices then share the same end-to-end key.
 #[tauri::command]
@@ -9229,7 +8613,7 @@ async fn sync_new_pairing_code() -> Result<String, String> {
     Ok(sync::crypto::SyncKey::generate().to_pairing_code())
 }
 
-/// Trim and fully validate a pairing code before any sync migration touches the
+/// Trim and fully validate a pairing code before sync setup touches the
 /// database. Checking only the prefix is unsafe: enabling a joiner clears its
 /// local materialized state in preparation for bootstrap, so a malformed key
 /// must be rejected before that work begins.
@@ -9266,75 +8650,6 @@ async fn sync_enable_joiner(app: tauri::AppHandle, pairing_code: String) -> Resu
         sync::enable_joiner(&connection).map_err(sync::Error::into_string)?;
         sync::store_pairing_code(&connection, &pairing_code).map_err(sync::Error::into_string)?;
         set_metadata(&connection, SYNC_COMPACTION_COORDINATOR, "false")
-    })
-    .await
-}
-
-/// This device's whole operation log, sealed with the pairing key, ready to hand
-/// to any transport (relay server or a manual export).
-///
-/// `since` is accepted and ignored: reconciliation is now by op *id*, not by a
-/// version cursor, and the receiver already skips ids it holds or has tombstoned
-/// (see `sync::merge_ops`). Sending everything is what makes the relay path
-/// stateless and self-healing. The parameter stays so the existing frontend
-/// command signature is unchanged.
-#[tauri::command]
-async fn sync_pull_sealed(app: tauri::AppHandle, since: i64) -> Result<Vec<u8>, String> {
-    let _ = since;
-    run_database_task(move || {
-        let key = stored_sync_key(&app)?
-            .ok_or_else(|| "This device's sync key is missing.".to_string())?;
-        let connection = open_database(&app)?;
-        if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
-            return Err("Sync is not enabled on this device.".to_string());
-        }
-        let ops = sync::all_ops(&connection).map_err(sync::Error::into_string)?;
-        let envelope = serde_json::json!({ "v": sync::PROTOCOL_VERSION, "ops": ops });
-        let plaintext = serde_json::to_vec(&envelope).map_err(|error| error.to_string())?;
-        key.seal(&plaintext).map_err(sync::Error::into_string)
-    })
-    .await
-}
-
-/// Merge a peer's sealed operation log, rebuild materialized state if anything
-/// was new, and return the state JSON so the UI can refresh.
-#[tauri::command]
-async fn sync_apply_sealed(
-    app: tauri::AppHandle,
-    envelope: Vec<u8>,
-) -> Result<Option<String>, String> {
-    run_database_task(move || {
-        let key = stored_sync_key(&app)?
-            .ok_or_else(|| "This device's sync key is missing.".to_string())?;
-        let plaintext = key.open(&envelope).map_err(sync::Error::into_string)?;
-        let payload: Value = serde_json::from_slice(&plaintext)
-            .map_err(|error| format!("Could not read the synced payload: {error}"))?;
-        let version = payload.get("v").and_then(Value::as_u64).unwrap_or_default();
-        if version != u64::from(sync::PROTOCOL_VERSION) {
-            return Err(
-                "The other device is running an incompatible Balance version — update both devices."
-                    .to_string(),
-            );
-        }
-        let ops: Vec<sync::Op> = serde_json::from_value(
-            payload
-                .get("ops")
-                .cloned()
-                .unwrap_or_else(|| Value::Array(Vec::new())),
-        )
-        .map_err(|error| format!("Could not read the synced operations: {error}"))?;
-
-        let connection = open_database(&app)?;
-        if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
-            return Err("Sync is not enabled on this device.".to_string());
-        }
-        sync::merge_and_rematerialize(&connection, ops).map_err(sync::Error::into_string)?;
-        maybe_checkpoint_operation_log(&connection)?;
-        #[cfg(target_os = "macos")]
-        if let Err(error) = macos_widget::publish_snapshot(&connection) {
-            eprintln!("Could not refresh the macOS widget: {error}");
-        }
-        read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
     })
     .await
 }
@@ -9584,14 +8899,9 @@ pub fn run() {
             read_balance_clipboard,
             get_sync_settings,
             set_sync_relay_url,
-            audit_legacy_migration_readiness,
-            stage_legacy_sync_cleanup,
-            finalize_legacy_sync_cleanup,
             sync_new_pairing_code,
             sync_enable_primary,
             sync_enable_joiner,
-            sync_pull_sealed,
-            sync_apply_sealed,
             sync_relay_once,
             sync_p2p_serve,
             sync_p2p_peers,
@@ -9774,6 +9084,83 @@ mod tests {
             saved["templates"][0]["items"][0]["options"][0]["text"],
             "Wake up"
         );
+    }
+
+    #[test]
+    fn finalized_sync_artifacts_are_inert_after_upgrade() {
+        let database = TestDatabase::new("finalized-sync-upgrade");
+        let recovery_key = generate_recovery_key();
+        let initial = test_state("Finalized sync upgrade");
+        let expected = {
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            replace_app_state(&mut connection, &initial).unwrap();
+            sync::enable_primary(&connection).unwrap();
+            let expected = read_app_state_from_database(&connection).unwrap().unwrap();
+            connection
+                .execute_batch(
+                    "create table sync_tombstones (id text primary key);
+                     create table sync_legacy_cleanup_guard (id text primary key);
+                     insert into metadata (key, value)
+                     values ('legacy_sync_cleanup_finalized', 'true');",
+                )
+                .unwrap();
+            expected
+        };
+
+        let connection = open_database_at(&database.path, &recovery_key).unwrap();
+        assert_eq!(
+            read_app_state_from_database(&connection).unwrap().unwrap(),
+            expected
+        );
+        sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
+        assert_eq!(sync::local_op_ids(&connection).unwrap().len(), 1);
+        assert_eq!(
+            connection
+                .query_row("select count(*) from sync_tombstones", [], |row| row
+                    .get::<_, i64>(0),)
+                .unwrap(),
+            0
+        );
+        assert_eq!(
+            connection
+                .query_row(
+                    "select count(*) from sync_legacy_cleanup_guard",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap(),
+            0
+        );
+    }
+
+    #[test]
+    fn new_databases_do_not_create_retired_sync_storage() {
+        let database = TestDatabase::new("current-sync-schema");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Current schema")).unwrap();
+        sync::enable_primary(&connection).unwrap();
+
+        let retired_tables: i64 = connection
+            .query_row(
+                "select count(*) from sqlite_master
+                 where type = 'table'
+                   and name in ('sync_tombstones', 'sync_legacy_cleanup_guard')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let retired_metadata: i64 = connection
+            .query_row(
+                "select count(*) from metadata
+                 where key in ('goal_data', 'lists_metrics_data',
+                               'legacy_sync_cleanup_staged', 'legacy_sync_cleanup_finalized')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(retired_tables, 0);
+        assert_eq!(retired_metadata, 0);
     }
 
     #[test]
@@ -10311,18 +9698,11 @@ mod tests {
                     "id": format!("op_compact_{sequence}"),
                     "deviceId": "device_test",
                     "sequence": sequence,
-                    "type": "patch_list_item",
+                    "type": "set_active_plan_date",
                     "timestamp": format!("2026-07-29T10:{:02}:00Z", sequence - 2),
                     "payload": {
-                        "listId": "list-1",
-                        "itemId": "item-1",
-                        "patch": { "done": sequence % 2 == 0 },
-                        "listsMetricsData": {
-                            "listTemplates": [],
-                            "lists": [{ "id": "list-1", "content": format!("{large_text}{sequence}") }],
-                            "metrics": [],
-                            "metricEntries": []
-                        }
+                        "date": "2026-07-30",
+                        "padding": format!("{large_text}{sequence}")
                     }
                 }),
             )
@@ -10407,7 +9787,6 @@ mod tests {
             let state = read_app_state_from_database(&connection).unwrap().unwrap();
             let ids = sync::local_op_ids(&connection).unwrap();
             assert_eq!(ids.len(), 2);
-            assert!(read_sync_tombstones(&connection).is_empty());
             state
         };
 
@@ -10450,8 +9829,8 @@ mod tests {
         let checkpoint = sync::ops_by_id(&compacted, &checkpoint_ids).unwrap()[0].clone();
         let payload: Value = serde_json::from_str(&checkpoint.payload_json).unwrap();
         assert_eq!(payload["frontiers"]["device_test"], 1_000);
-        assert_eq!(payload["legacyReplaces"], json!([]));
-        assert!(read_sync_tombstones(&compacted).is_empty());
+        assert!(payload.get("legacyReplaces").is_none());
+        assert!(payload.get("replaces").is_none());
         assert_eq!(
             compacted
                 .query_row("select count(*) from history_entries", [], |row| row
@@ -10959,147 +10338,6 @@ mod tests {
             redone_ids,
             ["template_weekday", "template_weekend", "template_default"]
         );
-    }
-
-    #[test]
-    fn goal_data_persists_and_undoes_with_operations() {
-        let database = TestDatabase::new("goal-data");
-        let recovery_key = generate_recovery_key();
-        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
-        let mut state = test_state("Goal test");
-        state["goals"] = json!([{
-            "id": "goal_exercise",
-            "name": "Exercise",
-            "cadenceDays": 1,
-            "matchTerms": ["lift"],
-            "hue": 165,
-            "activityPeriods": [{ "startDate": "2026-05-21", "endDate": null }],
-            "createdAt": "2026-05-21T00:00:00Z",
-            "updatedAt": "2026-05-21T00:00:00Z"
-        }]);
-        state["goalCompletions"] = json!([]);
-        replace_app_state(&mut connection, &state).unwrap();
-
-        persist_operation_to_database(
-            &mut connection,
-            &json!({
-                "id": "op_device_test_2",
-                "deviceId": "device_test",
-                "sequence": 2,
-                "type": "replace_goal_data",
-                "timestamp": "2026-05-21T00:01:00Z",
-                "payload": {
-                    "action": "complete_goal",
-                    "goalData": {
-                        "goals": state["goals"].clone(),
-                        "goalCompletions": [{
-                            "goalId": "goal_exercise",
-                            "date": "2026-05-21",
-                            "itemIds": ["plan_item_wake"],
-                            "matchedTerms": ["lift"],
-                            "computedAt": "2026-05-21T00:01:00Z"
-                        }]
-                    }
-                }
-            }),
-        )
-        .unwrap();
-
-        let completed = read_app_state_from_database(&connection).unwrap().unwrap();
-        assert_eq!(completed["goals"][0]["name"], "Exercise");
-        assert_eq!(completed["goalCompletions"][0]["goalId"], "goal_exercise");
-
-        let undone = undo_last_operation_in_database(&mut connection)
-            .unwrap()
-            .unwrap();
-        assert_eq!(undone["goals"][0]["name"], "Exercise");
-        assert_eq!(undone["goalCompletions"], json!([]));
-    }
-
-    #[test]
-    fn lists_metrics_notes_data_persists_and_undoes_with_operations() {
-        let database = TestDatabase::new("lists-metrics-data");
-        let recovery_key = generate_recovery_key();
-        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
-        let state = test_state("Lists test");
-        replace_app_state(&mut connection, &state).unwrap();
-
-        let initial = read_app_state_from_database(&connection).unwrap().unwrap();
-        assert_eq!(initial["listTemplates"], json!([]));
-        assert_eq!(initial["metrics"], json!([]));
-        assert_eq!(initial["notes"], json!([]));
-
-        // A previously unsupported operation type must now persist via the blob.
-        persist_operation_to_database(
-            &mut connection,
-            &json!({
-                "id": "op_device_test_2",
-                "deviceId": "device_test",
-                "sequence": 2,
-                "type": "add_list_template",
-                "timestamp": "2026-05-21T00:01:00Z",
-                "payload": {
-                    "templateId": "list_template_1",
-                    "listsMetricsData": {
-                        "listTemplates": [{
-                            "id": "list_template_1",
-                            "name": "Groceries",
-                            "maxExpectedWords": 0,
-                            "items": [],
-                            "createdAt": "2026-05-21T00:01:00Z",
-                            "updatedAt": "2026-05-21T00:01:00Z"
-                        }],
-                        "lists": [],
-                        "metrics": [],
-                        "metricEntries": [],
-                        "notes": []
-                    }
-                }
-            }),
-        )
-        .unwrap();
-
-        let after = read_app_state_from_database(&connection).unwrap().unwrap();
-        assert_eq!(after["listTemplates"][0]["name"], "Groceries");
-
-        let undone = undo_last_operation_in_database(&mut connection)
-            .unwrap()
-            .unwrap();
-        assert_eq!(undone["listTemplates"], json!([]));
-
-        persist_operation_to_database(
-            &mut connection,
-            &json!({
-                "id": "op_device_test_3",
-                "deviceId": "device_test",
-                "sequence": 3,
-                "type": "add_note",
-                "timestamp": "2026-05-21T00:02:00Z",
-                "payload": {
-                    "noteId": "note_1",
-                    "listsMetricsData": {
-                        "listTemplates": [],
-                        "lists": [],
-                        "metrics": [],
-                        "metricEntries": [],
-                        "notes": [{
-                            "id": "note_1",
-                            "title": "Reference",
-                            "items": [],
-                            "createdAt": "2026-05-21T00:02:00Z",
-                            "updatedAt": "2026-05-21T00:02:00Z"
-                        }]
-                    }
-                }
-            }),
-        )
-        .unwrap();
-        let with_note = read_app_state_from_database(&connection).unwrap().unwrap();
-        assert_eq!(with_note["notes"][0]["title"], "Reference");
-        let note_undone = undo_last_operation_in_database(&mut connection)
-            .unwrap()
-            .unwrap();
-        assert_eq!(note_undone["notes"], json!([]));
     }
 
     #[test]
@@ -13546,7 +12784,7 @@ mod tests {
     }
 
     #[test]
-    fn pairing_code_is_fully_validated_before_sync_migration() {
+    fn pairing_code_is_fully_validated_before_sync_setup() {
         let code = sync::crypto::SyncKey::generate().to_pairing_code();
         assert_eq!(
             normalize_sync_pairing_code(&format!("  {code}\n")).unwrap(),
@@ -14025,19 +13263,6 @@ mod tests {
         assert!(!loaded_json.contains("cycle_b"));
     }
 
-    /// Ids a checkpoint has permanently replaced on this database, sorted.
-    fn read_sync_tombstones(connection: &Connection) -> Vec<String> {
-        let mut statement = connection
-            .prepare("select id from sync_tombstones order by id")
-            .unwrap();
-        let ids = statement
-            .query_map([], |row| row.get::<_, String>(0))
-            .unwrap()
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        ids
-    }
-
     /// A test database that owns its whole directory, for tests that need to
     /// manipulate the sibling `backups/` path without affecting other tests.
     struct TestDatabaseAt {
@@ -14128,12 +13353,9 @@ mod tests {
                 );
             });
 
-        let mut changed_goal_data = json!({
-            "goals": loaded["goals"].clone(),
-            "goalCompletions": loaded["goalCompletions"].clone(),
-        });
-        changed_goal_data["goals"][0]["name"] = json!("Linked goal");
-        changed_goal_data["goals"][0]["nameHtml"] = json!(
+        let mut changed_goal = loaded["goals"][0].clone();
+        changed_goal["name"] = json!("Linked goal");
+        changed_goal["nameHtml"] = json!(
             "<a href=\"https://example.com\" target=\"_blank\" rel=\"noreferrer\">Linked goal</a>"
         );
         let goal_operation = json!({
@@ -14145,7 +13367,16 @@ mod tests {
             "payload": {
                 "action": "patch_goal",
                 "goalId": "goal_0",
-                "goalData": changed_goal_data
+                "entityChanges": {
+                    "version": 1,
+                    "upserts": [{
+                        "collection": "goals",
+                        "key": "goal_0",
+                        "position": 0,
+                        "value": changed_goal
+                    }],
+                    "deletes": []
+                }
             }
         });
         let goal_profile =

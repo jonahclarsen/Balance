@@ -12,9 +12,6 @@ const COMPACT_AFTER_MS = 7 * 24 * 60 * 60 * 1000
 const PREVIOUS_TTL_MS = 24 * 60 * 60 * 1000
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000
 const MAX_KEYS_PER_DELETE = 128
-const LEGACY_CHUNK_CHARS = 96 * 1024
-const MAX_LEGACY_ENVELOPE_TEXT = 24 * 1024 * 1024
-const MAX_LEGACY_STORED = 6
 
 const CORS = {
   'access-control-allow-origin': '*',
@@ -34,13 +31,6 @@ function binary(status, body) {
   return new Response(body, {
     status,
     headers: { 'content-type': 'application/octet-stream', ...CORS },
-  })
-}
-
-function rawJson(status, body) {
-  return new Response(body, {
-    status,
-    headers: { 'content-type': 'application/json', ...CORS },
   })
 }
 
@@ -102,8 +92,6 @@ export class RelayRoom {
       else retained.push(id)
     }
     if (retained.length !== uploads.length) await this.storage.put('v3:uploads', retained)
-    const legacyExpiresAt = await this.storage.get('v3:legacyExpiresAt')
-    if (legacyExpiresAt && legacyExpiresAt <= now) await this.deleteLegacy()
   }
 
   async fetch(request) {
@@ -120,10 +108,6 @@ export class RelayRoom {
     if (request.method === 'GET' && path === '/health') return this.health()
     if (request.method === 'POST' && path === '/reset') return this.reset()
 
-    // Temporary v2 compatibility. These routes retain raw JSON envelopes until
-    // the first v3 checkpoint commit, then reject writes to prevent split-brain.
-    if (request.method === 'POST' && path === '/push') return this.legacyPush(request)
-    if (request.method === 'GET' && path === '/pull') return this.legacyPull()
     return json(404, { error: 'not found' })
   }
 
@@ -279,8 +263,6 @@ export class RelayRoom {
         'v3:previous': previous,
         'v3:current': next,
         'v3:uploads': uploads,
-        'v3:activated': true,
-        'v3:legacyExpiresAt': Date.now() + PREVIOUS_TTL_MS,
       })
       return json(200, { ok: true, epoch: newEpoch })
     })
@@ -323,63 +305,6 @@ export class RelayRoom {
       await this.storage.put({ 'v3:current': previous, 'v3:previous': { ...current, expiresAt: Date.now() + PREVIOUS_TTL_MS } })
       return json(200, { ok: true, epoch: previous.epoch })
     })
-  }
-
-  async legacyPush(request) {
-    if (await this.storage.get('v3:activated')) return json(426, { error: 'update Balance to use sync v3' })
-    const raw = (await request.text()).trim()
-    if (raw.length > MAX_LEGACY_ENVELOPE_TEXT || !raw.startsWith('[') || !raw.endsWith(']')) {
-      return json(400, { error: 'invalid legacy envelope' })
-    }
-    return this.serialize(async () => {
-      const sequences = (await this.storage.get('sequences')) ?? []
-      const next = (await this.storage.get('nextSequence')) ?? 1
-      let entries = {}
-      let chunks = 0
-      for (let offset = 0; offset < raw.length; offset += LEGACY_CHUNK_CHARS) {
-        entries[`e:${next}:${chunks}`] = raw.slice(offset, offset + LEGACY_CHUNK_CHARS)
-        chunks += 1
-        if (Object.keys(entries).length === MAX_KEYS_PER_DELETE) {
-          await this.storage.put(entries)
-          entries = {}
-        }
-      }
-      entries[`e:${next}:chunks`] = chunks
-      await this.storage.put(entries)
-
-      const retained = [...sequences, next]
-      const evicted = retained.splice(0, Math.max(0, retained.length - MAX_LEGACY_STORED))
-      await this.storage.put({ sequences: retained, nextSequence: next + 1 })
-      for (const sequence of evicted) await this.deleteLegacyEnvelope(sequence)
-      return json(200, { ok: true, stored: retained.length })
-    })
-  }
-
-  async legacyPull() {
-    const sequences = (await this.storage.get('sequences')) ?? []
-    const envelopes = []
-    for (const sequence of sequences) {
-      const chunks = (await this.storage.get(`e:${sequence}:chunks`)) ?? 0
-      let envelope = ''
-      for (let index = 0; index < chunks; index += 1) {
-        envelope += (await this.storage.get(`e:${sequence}:${index}`)) ?? ''
-      }
-      if (envelope) envelopes.push(envelope)
-    }
-    return rawJson(200, `[${envelopes.join(',')}]`)
-  }
-
-  async deleteLegacyEnvelope(sequence) {
-    const chunks = (await this.storage.get(`e:${sequence}:chunks`)) ?? 0
-    const keys = [`e:${sequence}:chunks`]
-    for (let index = 0; index < chunks; index += 1) keys.push(`e:${sequence}:${index}`)
-    await this.deleteKeys(keys)
-  }
-
-  async deleteLegacy() {
-    const sequences = (await this.storage.get('sequences')) ?? []
-    for (const sequence of sequences) await this.deleteLegacyEnvelope(sequence)
-    await this.storage.delete(['sequences', 'nextSequence', 'v3:legacyExpiresAt'])
   }
 
   async health() {

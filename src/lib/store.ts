@@ -2237,31 +2237,6 @@ export type SyncSettings = {
   relayUrl: string
 }
 
-export type LegacyMigrationAuditCheck = {
-  id: string
-  label: string
-  passed: boolean
-  detail: string
-}
-
-export type LegacyMigrationAuditResult = {
-  readyOnThisInstallation: boolean
-  checks: LegacyMigrationAuditCheck[]
-}
-
-export type LegacyCleanupStageResponse = {
-  guardedIds: number
-  checkpointRecordsCleaned: number
-  relayPromoted: boolean
-  message: string
-}
-
-export type LegacyCleanupFinalizeResponse = {
-  guardedIdsRemoved: number
-  relayCheckpointPromoted: boolean
-  message: string
-}
-
 let cachedSyncSettings: SyncSettings | null = null
 let pendingSyncSettings: Promise<SyncSettings> | null = null
 
@@ -2288,22 +2263,6 @@ export async function getSyncSettings(): Promise<SyncSettings> {
 export async function setSyncRelayUrl(relayUrl: string): Promise<SyncSettings> {
   if (!isTauri()) return { enabled: false, pairingCode: null, relayUrl: relayUrl.trim() }
   return invoke<SyncSettings>('set_sync_relay_url', { relayUrl }).then(rememberSyncSettings)
-}
-
-/** Read-only proof that this installation and its relay no longer need legacy sync compatibility. */
-export async function auditLegacyMigrationReadiness(): Promise<LegacyMigrationAuditResult | null> {
-  if (!isTauri()) return null
-  return invoke<LegacyMigrationAuditResult>('audit_legacy_migration_readiness')
-}
-
-export async function stageLegacySyncCleanup(): Promise<LegacyCleanupStageResponse | null> {
-  if (!isTauri()) return null
-  return invoke<LegacyCleanupStageResponse>('stage_legacy_sync_cleanup')
-}
-
-export async function finalizeLegacySyncCleanup(): Promise<LegacyCleanupFinalizeResponse | null> {
-  if (!isTauri()) return null
-  return invoke<LegacyCleanupFinalizeResponse>('finalize_legacy_sync_cleanup')
 }
 
 /** Generate a fresh account sync key and return its QR/pairing code. */
@@ -2347,20 +2306,6 @@ export async function syncP2pSync(address: string): Promise<string | null> {
   if (!isTauri()) return null
   await flushOperations()
   return invoke<string | null>('sync_p2p_sync', { address })
-}
-
-/** Pull local changes since `since`, sealed with the device's stored E2EE key. */
-export async function syncPullSealed(since: number): Promise<Uint8Array> {
-  if (!isTauri()) return new Uint8Array()
-  await flushOperations()
-  const bytes = await invoke<number[]>('sync_pull_sealed', { since })
-  return Uint8Array.from(bytes)
-}
-
-/** Apply a peer's sealed changeset. Returns the new app-state JSON (or null). */
-export async function syncApplySealed(envelope: Uint8Array): Promise<string | null> {
-  if (!isTauri()) return null
-  return invoke<string | null>('sync_apply_sealed', { envelope: Array.from(envelope) })
 }
 
 export type SyncPassResult = {

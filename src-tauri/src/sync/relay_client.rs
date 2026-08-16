@@ -11,13 +11,12 @@ use reqwest::blocking::{Client, Response};
 use reqwest::StatusCode;
 use rusqlite::{params, Connection};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use sha2::{Digest, Sha256};
+use sha2::Sha256;
 
 use super::crypto::SyncKey;
 use super::{
-    all_ops, audit_operations_for_legacy_compatibility,
-    checkpoint_operation_log_preserving_history, merge_and_rematerialize, Error,
-    LegacyOperationAudit, Op, Result, PROTOCOL_VERSION,
+    all_ops, checkpoint_operation_log_preserving_history, merge_and_rematerialize, Error, Op,
+    Result, PROTOCOL_VERSION,
 };
 
 const MAX_BATCH_CIPHERTEXT: usize = 512 * 1024;
@@ -67,29 +66,6 @@ pub struct SyncPassResult {
     pub latest_sequence: i64,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RelayLegacyAudit {
-    pub relay_protocol: u32,
-    pub previous_generation_present: bool,
-    pub legacy_envelope_count: usize,
-    pub encrypted_blobs_checked: usize,
-    pub legacy_protocol_envelopes: usize,
-    pub operations: LegacyOperationAudit,
-    pub local_epoch_initialized: bool,
-    pub local_cursor_caught_up: bool,
-    pub pending_outbox_batches: usize,
-    pub unpublished_local_operations: usize,
-    pub quarantined_blobs: usize,
-    pub generation_stable: bool,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct RelayHealth {
-    protocol: u32,
-    previous_expires_at: Option<i64>,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Manifest {
@@ -119,12 +95,6 @@ struct BatchDescriptor {
 struct RelayEnvelope {
     v: u32,
     epoch: String,
-    ops: Vec<Op>,
-}
-
-#[derive(Debug, Deserialize)]
-struct LegacyEnvelope {
-    v: u32,
     ops: Vec<Op>,
 }
 
@@ -293,49 +263,6 @@ fn enforce_background_budget(manifest: &Manifest, foreground: bool) -> Result<()
     Ok(())
 }
 
-fn import_legacy(
-    conn: &Connection,
-    client: &Client,
-    base: &str,
-    key: &SyncKey,
-) -> Result<(usize, bool)> {
-    let response = client
-        .get(format!("{base}/pull"))
-        .send()
-        .map_err(|error| Error::Codec(format!("legacy relay import: {error}")))?;
-    if response.status() == StatusCode::NOT_FOUND || response.status() == StatusCode::GONE {
-        return Ok((0, false));
-    }
-    if !response.status().is_success() {
-        return Err(response_error(response));
-    }
-    let envelopes: Vec<Vec<u8>> = response
-        .json()
-        .map_err(|error| Error::Codec(format!("legacy relay response: {error}")))?;
-    let mut inserted = 0;
-    for ciphertext in envelopes {
-        let imported = (|| {
-            let plaintext = key.open(&ciphertext)?;
-            let envelope: LegacyEnvelope = serde_json::from_slice(&plaintext)
-                .map_err(|error| Error::Codec(format!("legacy relay envelope: {error}")))?;
-            if envelope.v != 2 && envelope.v != 3 && envelope.v != PROTOCOL_VERSION {
-                return Err(Error::Codec(
-                    "legacy relay contains an incompatible envelope".into(),
-                ));
-            }
-            merge_and_rematerialize(conn, envelope.ops)
-        })();
-        match imported {
-            Ok(count) => inserted += count,
-            Err(error) => {
-                let id = format!("legacy-{}", super::hex(&Sha256::digest(&ciphertext)[..12]));
-                quarantine(conn, &id, &error)?;
-            }
-        }
-    }
-    Ok((inserted, inserted > 0))
-}
-
 fn fetch_blob(client: &Client, base: &str, id: &str, chunks: usize) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     for index in 0..chunks {
@@ -353,110 +280,6 @@ fn fetch_blob(client: &Client, base: &str, id: &str, chunks: usize) -> Result<Ve
         );
     }
     Ok(bytes)
-}
-
-fn legacy_envelope_count(client: &Client, base: &str) -> Result<usize> {
-    let response = client
-        .get(format!("{base}/pull"))
-        .send()
-        .map_err(|error| Error::Codec(format!("legacy relay audit: {error}")))?;
-    if response.status() == StatusCode::NOT_FOUND || response.status() == StatusCode::GONE {
-        return Ok(0);
-    }
-    if !response.status().is_success() {
-        return Err(response_error(response));
-    }
-    let envelopes: Vec<Vec<u8>> = response
-        .json()
-        .map_err(|error| Error::Codec(format!("legacy relay audit response: {error}")))?;
-    Ok(envelopes.len())
-}
-
-/// Inspect current relay ciphertext in memory without applying it or changing
-/// local/remote state. Only aggregate compatibility counts leave this module.
-pub fn audit_legacy_compatibility(
-    conn: &Connection,
-    relay_url: &str,
-    key: &SyncKey,
-) -> Result<RelayLegacyAudit> {
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|error| Error::Codec(error.to_string()))?;
-    let base = relay_url.trim_end_matches('/');
-    let first_health: RelayHealth = get_json(&client, &format!("{base}/health"))?;
-    let first_legacy_count = legacy_envelope_count(&client, base)?;
-    let first = manifest(&client, base, "", 0)?;
-    let mut audit = RelayLegacyAudit {
-        relay_protocol: first_health.protocol,
-        previous_generation_present: first_health.previous_expires_at.is_some(),
-        legacy_envelope_count: first_legacy_count,
-        ..Default::default()
-    };
-
-    let mut inspect = |descriptor: &BlobDescriptor| -> Result<()> {
-        let ciphertext = fetch_blob(&client, base, &descriptor.id, descriptor.chunks)?;
-        let envelope: RelayEnvelope = open(key, &ciphertext)?;
-        if envelope.epoch != first.epoch {
-            return Err(Error::Codec(
-                "relay blob belongs to an unexpected generation".into(),
-            ));
-        }
-        audit.encrypted_blobs_checked += 1;
-        if envelope.v != PROTOCOL_VERSION {
-            audit.legacy_protocol_envelopes += 1;
-        }
-        let operations = audit_operations_for_legacy_compatibility(&envelope.ops)?;
-        audit.operations.records_checked += operations.records_checked;
-        audit.operations.legacy_checkpoint_records += operations.legacy_checkpoint_records;
-        audit.operations.legacy_entity_snapshot_records +=
-            operations.legacy_entity_snapshot_records;
-        Ok(())
-    };
-    if let Some(checkpoint) = &first.checkpoint {
-        inspect(checkpoint)?;
-    }
-    for batch in &first.batches {
-        inspect(&BlobDescriptor {
-            id: batch.id.clone(),
-            chunks: batch.chunks,
-        })?;
-    }
-
-    let (local_epoch, local_cursor) = relay_state(conn)?;
-    audit.local_epoch_initialized = !local_epoch.is_empty();
-    audit.local_cursor_caught_up =
-        local_epoch == first.epoch && local_cursor == first.latest_sequence;
-    audit.pending_outbox_batches =
-        conn.query_row("SELECT count(*) FROM sync_relay_outbox", [], |row| {
-            row.get(0)
-        })?;
-    audit.unpublished_local_operations = conn.query_row(
-        "SELECT count(*)
-         FROM operations AS operation
-         LEFT JOIN sync_relay_known_ops AS known ON known.op_id = operation.id
-         LEFT JOIN sync_tombstones AS tombstone ON tombstone.id = operation.id
-         LEFT JOIN sync_legacy_cleanup_guard AS cleanup_guard ON cleanup_guard.id = operation.id
-         WHERE known.op_id IS NULL AND tombstone.id IS NULL AND cleanup_guard.id IS NULL",
-        [],
-        |row| row.get(0),
-    )?;
-    audit.quarantined_blobs =
-        conn.query_row("SELECT count(*) FROM sync_relay_quarantine", [], |row| {
-            row.get(0)
-        })?;
-
-    let final_manifest = manifest(&client, base, &first.epoch, first.latest_sequence)?;
-    let final_health: RelayHealth = get_json(&client, &format!("{base}/health"))?;
-    let final_legacy_count = legacy_envelope_count(&client, base)?;
-    audit.previous_generation_present |= final_health.previous_expires_at.is_some();
-    audit.legacy_envelope_count = audit.legacy_envelope_count.max(final_legacy_count);
-    audit.generation_stable = final_manifest.epoch == first.epoch
-        && final_manifest.latest_sequence == first.latest_sequence
-        && final_manifest.checkpoint.is_none()
-        && final_manifest.batches.is_empty()
-        && final_health.protocol == first_health.protocol;
-    Ok(audit)
 }
 
 fn relay_state(conn: &Connection) -> Result<(String, i64)> {
@@ -501,31 +324,10 @@ fn quarantine(conn: &Connection, id: &str, error: &Error) -> Result<()> {
 
 fn checkpoint_safe(conn: &Connection) -> Result<bool> {
     Ok(conn.query_row(
-        "SELECT
-           (SELECT count(*) FROM sync_relay_quarantine) = 0
-           AND (SELECT count(*) FROM sync_legacy_cleanup_guard) = 0",
+        "SELECT count(*) = 0 FROM sync_relay_quarantine",
         [],
         |row| row.get(0),
     )?)
-}
-
-fn rewind_cursor_for_quarantined_batches(conn: &Connection) -> Result<()> {
-    let has_quarantine = conn.query_row(
-        "SELECT count(*) > 0 FROM sync_relay_quarantine",
-        [],
-        |row| row.get::<_, bool>(0),
-    )?;
-    if has_quarantine {
-        // Builds before the cursor-safety fix advanced past failed batches.
-        // Replaying the current generation from its start is idempotent because
-        // operation ids are immutable, and lets an affected device recover the
-        // skipped operations it still has recorded in quarantine.
-        conn.execute(
-            "UPDATE sync_relay_state SET cursor = 0 WHERE singleton = 1",
-            [],
-        )?;
-    }
-    Ok(())
 }
 
 fn apply_descriptor(
@@ -548,7 +350,7 @@ fn apply_ciphertext(
     ciphertext: &[u8],
 ) -> Result<(usize, bool)> {
     let envelope: RelayEnvelope = open(key, ciphertext)?;
-    if (envelope.v != 3 && envelope.v != PROTOCOL_VERSION) || envelope.epoch != epoch {
+    if envelope.v != PROTOCOL_VERSION || envelope.epoch != epoch {
         return Err(Error::Codec(
             "relay blob has incompatible protocol metadata".into(),
         ));
@@ -861,40 +663,6 @@ fn upload_current_checkpoint(
     Ok(true)
 }
 
-/// Promote the explicitly staged, current-format local checkpoint. Normal
-/// automatic promotion remains blocked while the temporary rejection guard is
-/// present; only this user-requested cleanup path may cross that boundary.
-pub fn promote_staged_legacy_cleanup(
-    conn: &Connection,
-    relay_url: &str,
-    key: &SyncKey,
-) -> Result<bool> {
-    ensure_relay_tables(conn)?;
-    let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|error| Error::Codec(error.to_string()))?;
-    let base = relay_url.trim_end_matches('/');
-    let (epoch, cursor) = relay_state(conn)?;
-    if epoch.is_empty() {
-        return Err(Error::Codec(
-            "complete a foreground relay sync before cleanup".into(),
-        ));
-    }
-    let current = manifest(&client, base, &epoch, cursor)?;
-    if current.epoch != epoch
-        || current.latest_sequence != cursor
-        || current.checkpoint.is_some()
-        || !current.batches.is_empty()
-    {
-        return Err(Error::Codec(
-            "relay changed before cleanup; sync and try again".into(),
-        ));
-    }
-    super::prepare_staged_cleanup_checkpoint(conn)?;
-    upload_current_checkpoint(conn, &client, base, key, &epoch, cursor)
-}
-
 pub fn sync_once(
     conn: &Connection,
     relay_url: &str,
@@ -920,7 +688,6 @@ fn sync_once_inner(
     options: SyncOptions,
 ) -> Result<SyncPassResult> {
     ensure_relay_tables(conn)?;
-    rewind_cursor_for_quarantined_batches(conn)?;
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(60))
         .build()
@@ -931,17 +698,12 @@ fn sync_once_inner(
         .unwrap_or_default();
     let device = device_token(key, &device_id);
     let (local_epoch, cursor) = relay_state(conn)?;
-    let (legacy_pulled, legacy_changed) = if local_epoch.is_empty() {
-        import_legacy(conn, &client, base, key)?
-    } else {
-        (0, false)
-    };
     let first = manifest(&client, base, &local_epoch, cursor)?;
     enforce_background_budget(&first, options.foreground)?;
     let (first_pulled, first_changed) =
         apply_manifest(conn, &client, base, key, &first, &local_epoch)?;
-    let mut pulled = legacy_pulled + first_pulled;
-    let mut changed = legacy_changed || first_changed;
+    let mut pulled = first_pulled;
+    let mut changed = first_changed;
 
     // A hard generation limit can reject further deltas. Compact immediately
     // after pulling when the manifest asks, before attempting an upload; the
@@ -1086,6 +848,24 @@ mod tests {
                 params![id, payload],
             )
             .unwrap();
+    }
+
+    #[test]
+    fn relay_rejects_retired_envelope_protocols() {
+        let connection = relay_database();
+        let key = SyncKey::generate();
+        let ciphertext = seal(
+            &key,
+            &RelayEnvelope {
+                v: PROTOCOL_VERSION - 1,
+                epoch: "epoch-1".into(),
+                ops: Vec::new(),
+            },
+        )
+        .unwrap();
+
+        let error = apply_ciphertext(&connection, &key, "epoch-1", &ciphertext).unwrap_err();
+        assert!(error.to_string().contains("incompatible protocol metadata"));
     }
 
     #[test]
@@ -1277,32 +1057,6 @@ mod tests {
                 .unwrap(),
             0,
             "a successful retry clears its quarantine record"
-        );
-    }
-
-    #[test]
-    fn a_cursor_advanced_by_an_older_build_rewinds_when_quarantine_exists() {
-        let connection = relay_database();
-        connection
-            .execute(
-                "UPDATE sync_relay_state SET epoch = 'epoch-1', cursor = 9 WHERE singleton = 1",
-                [],
-            )
-            .unwrap();
-        connection
-            .execute(
-                "INSERT INTO sync_relay_quarantine (blob_id, error, recorded_at_ms)
-                 VALUES ('batch-4', 'old transient failure', 1)",
-                [],
-            )
-            .unwrap();
-
-        rewind_cursor_for_quarantined_batches(&connection).unwrap();
-
-        assert_eq!(
-            relay_state(&connection).unwrap(),
-            ("epoch-1".into(), 0),
-            "the next manifest request must include every potentially skipped batch"
         );
     }
 

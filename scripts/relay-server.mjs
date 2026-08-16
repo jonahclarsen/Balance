@@ -32,12 +32,9 @@ const freshGeneration = () => ({
 })
 let current = freshGeneration()
 let previous = null
-let activated = false
-let legacyExpiresAt = null
 const blobs = new Map()
 const dedup = new Map()
 const uploads = new Map()
-const legacyEnvelopes = []
 
 const cors = {
   'access-control-allow-origin': '*',
@@ -108,10 +105,6 @@ function cleanup() {
   }
   for (const [id, upload] of uploads) {
     if (!upload.committed && upload.createdAt + PREVIOUS_TTL_MS <= Date.now()) uploads.delete(id)
-  }
-  if (legacyExpiresAt && legacyExpiresAt <= Date.now()) {
-    legacyEnvelopes.length = 0
-    legacyExpiresAt = null
   }
 }
 
@@ -220,8 +213,6 @@ async function route(req, res, url) {
       checkpoint: { id: `u-${body.uploadId}`, chunks: upload.chunks, bytes: upload.byteLength }, batches: [],
     }
     upload.committed = true
-    activated = true
-    legacyExpiresAt = Date.now() + PREVIOUS_TTL_MS
     return sendJson(res, 200, { ok: true, epoch: current.epoch })
   }
 
@@ -235,26 +226,14 @@ async function route(req, res, url) {
     return sendJson(res, 200, { ok: true, epoch: current.epoch })
   }
 
-  if (req.method === 'POST' && path === '/push') {
-    if (activated) return sendJson(res, 426, { error: 'update Balance to use sync v3' })
-    const raw = (await readBody(req, 24 * 1024 * 1024)).toString('utf8').trim()
-    if (!raw.startsWith('[') || !raw.endsWith(']')) return sendJson(res, 400, { error: 'invalid legacy envelope' })
-    legacyEnvelopes.push(raw)
-    while (legacyEnvelopes.length > 6) legacyEnvelopes.shift()
-    return sendJson(res, 200, { ok: true, stored: legacyEnvelopes.length })
-  }
-  if (req.method === 'GET' && path === '/pull') {
-    res.writeHead(200, { 'content-type': 'application/json', ...cors })
-    return res.end(`[${legacyEnvelopes.join(',')}]`)
-  }
   if (req.method === 'GET' && path === '/health') return sendJson(res, 200, {
     ok: true, protocol: 3, epoch: current.epoch, batches: current.batches.length,
     deltaBytes: current.deltaBytes, checkpointBytes: current.checkpoint?.bytes ?? 0,
     previousExpiresAt: previous?.expiresAt ?? null,
   })
   if (req.method === 'POST' && path === '/reset') {
-    current = freshGeneration(); previous = null; activated = false; legacyExpiresAt = null
-    blobs.clear(); dedup.clear(); uploads.clear(); legacyEnvelopes.length = 0
+    current = freshGeneration(); previous = null
+    blobs.clear(); dedup.clear(); uploads.clear()
     return sendJson(res, 200, { ok: true, cleared: true })
   }
   return sendJson(res, 404, { error: 'not found' })

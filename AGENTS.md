@@ -79,8 +79,8 @@ with the frontend in `src/lib/SyncPanel.svelte` and automatic foreground
 scheduling in `src/lib/syncScheduler.ts`. Devices pair via QR codes and exchange
 compressed E2EE envelopes (XChaCha20-Poly1305). Relay sync uploads only durable
 incremental operation batches; direct TCP sync uses an id-set inventory plus
-compact per-device checkpoint frontiers. Legacy v2 id tombstones remain only for
-migration. No SQLite extension is loaded on any platform.
+compact per-device checkpoint frontiers. No SQLite extension is loaded on any
+platform.
 
 Run the reference relay with
 `BALANCE_RELAY_SECRET=<24+ url-safe chars> node scripts/relay-server.mjs`; it

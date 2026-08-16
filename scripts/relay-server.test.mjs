@@ -47,8 +47,8 @@ test('relay v3 incrementally promotes and rolls back bounded generations', async
   const base = await startRelay(t)
   assert.equal((await fetch(`${base}x/health`)).status, 404)
 
-  await json(await fetch(`${base}/push`, { method: 'POST', body: '[1,2,3]' }))
-  assert.deepEqual(await (await fetch(`${base}/pull`)).json(), [[1, 2, 3]])
+  assert.equal((await fetch(`${base}/push`, { method: 'POST' })).status, 404)
+  assert.equal((await fetch(`${base}/pull`)).status, 404)
 
   const initial = await json(await fetch(`${base}/v3/manifest?epoch=&after=0`))
   const batch = Buffer.alloc(CHUNK_BYTES * 2 + 7, 42)
@@ -109,9 +109,6 @@ test('relay v3 incrementally promotes and rolls back bounded generations', async
   assert.equal(promoted.epoch, newEpoch)
   assert.deepEqual(promoted.checkpoint, { id: `u-${uploadId}`, chunks: 2 })
   assert.deepEqual(promoted.batches, [])
-  assert.equal((await fetch(`${base}/push`, { method: 'POST', body: '[4]' })).status, 426)
-  assert.deepEqual(await (await fetch(`${base}/pull`)).json(), [[1, 2, 3]])
-
   const rolledBack = await json(await fetch(`${base}/v3/rollback`, { method: 'POST' }))
   assert.equal(rolledBack.epoch, initial.epoch)
   const restored = await json(await fetch(`${base}/v3/manifest?epoch=${newEpoch}&after=0`))

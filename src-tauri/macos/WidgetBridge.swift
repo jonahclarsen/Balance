@@ -41,10 +41,6 @@ public func balancePublishEncryptedWidgetSnapshot(_ snapshot: UnsafePointer<CCha
     // Always erase the old plaintext cache, including when the extension has not
     // generated its private widget-cache key yet.
     snapshotDefaults.removeObject(forKey: legacyPlaintextSnapshotKey)
-    // Clean up ciphertext written to a process-named domain by the earlier dev
-    // build, where the raw Tauri executable had no application bundle domain.
-    UserDefaults.standard.removeObject(forKey: encryptedSnapshotKey)
-
     guard
         let snapshot,
         let publicKeyString = widgetPublicKeyString(),
