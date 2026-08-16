@@ -145,6 +145,25 @@ fn disable_automatic_text_replacement() {
 fn disable_automatic_text_replacement() {}
 
 #[cfg(target_os = "macos")]
+fn restore_macos_main_window_frame(app: &tauri::App) -> tauri::Result<()> {
+    use objc2_app_kit::NSWindow;
+    use objc2_foundation::NSString;
+
+    let window = app
+        .get_webview_window("main")
+        .ok_or(tauri::Error::WebviewNotFound)?;
+    let ns_window = window.ns_window()?.cast::<NSWindow>();
+
+    // AppKit owns persistence and display-aware restoration for a named frame.
+    // The window starts hidden so its configured fallback frame is never shown
+    // before AppKit has had the opportunity to apply the saved frame.
+    unsafe {
+        (&*ns_window).setFrameAutosaveName(&NSString::from_str("BalanceMainWindow"));
+    }
+    window.show()
+}
+
+#[cfg(target_os = "macos")]
 fn install_paste_and_match_style_menu(app: &tauri::App) -> tauri::Result<()> {
     use tauri::menu::MenuItem;
 
@@ -8885,7 +8904,10 @@ pub fn run() {
     tauri::Builder::default()
         .setup(|app| {
             #[cfg(target_os = "macos")]
-            install_paste_and_match_style_menu(app)?;
+            {
+                restore_macos_main_window_frame(app)?;
+                install_paste_and_match_style_menu(app)?;
+            }
 
             if cfg!(debug_assertions) {
                 app.handle().plugin(
