@@ -105,9 +105,11 @@ import type {
   MoveDirection,
   MovePlacement,
   PlanItem,
+  ReplicatedPreferences,
   TemplateItem,
   TemplateOption,
 } from './types'
+import { normalizeReplicatedPreferences } from './preferences'
 
 const STORAGE_KEY = 'balance.appState.v1'
 const TEXT_MERGE_WINDOW_MS = 1200
@@ -574,6 +576,15 @@ function createPlannerStore() {
         ...state,
         activePlanDate: date,
       }))
+    },
+
+    patchPreferences(patch: Partial<ReplicatedPreferences>) {
+      commit('patch_preferences', { patch }, (state) => {
+        const preferences = normalizeReplicatedPreferences({ ...state.preferences, ...patch })
+        return JSON.stringify(preferences) === JSON.stringify(state.preferences)
+          ? state
+          : { ...state, preferences }
+      }, { undoable: false, reconcileGoals: false })
     },
 
     // Generating normally moves the app onto the generated day. The side-by-side
@@ -2347,6 +2358,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       localSequence: 0,
       historyRevision: 0,
       activePlanDate: '',
+      preferences: normalizeReplicatedPreferences(null),
       templates: [],
       plans: parsed.plans ?? [],
       listTemplates: [],
@@ -2386,6 +2398,7 @@ export async function completeDatabaseMaintenanceStartup(): Promise<void> {
 function normalizeState(state: AppState): AppState {
   return {
     ...state,
+    preferences: normalizeReplicatedPreferences(state.preferences),
     goals: (state.goals ?? []).map(normalizeGoal),
     goalCompletions: (state.goalCompletions ?? []).map(normalizeGoalCompletion),
     templates: state.templates.map((template) => ({

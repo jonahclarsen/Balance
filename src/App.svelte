@@ -49,11 +49,11 @@
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
-  import { DEFAULT_THEME_ID, normalizeThemeId, THEME_PRESETS, THEME_STORAGE_KEY, type ThemeId } from './lib/themes'
+  import { DEFAULT_DATABASE_LOADING_MESSAGES } from './lib/preferences'
+  import { DEFAULT_THEME_ID, normalizeThemeId, THEME_PRESETS, type ThemeId } from './lib/themes'
   import {
     DEFAULT_INTERFACE_FONT_ID,
     INTERFACE_FONT_PRESETS,
-    INTERFACE_FONT_STORAGE_KEY,
     normalizeInterfaceFontId,
     type InterfaceFontId,
   } from './lib/fonts'
@@ -77,16 +77,8 @@
 
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
-  const DONE_TINT_KEY = 'balance:doneTintColor'
-  const CHECKBOX_COLOR_KEY = 'balance:checkboxColor'
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
-  const DATABASE_LOADING_MESSAGES_KEY = 'balance:databaseLoadingMessages'
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
-  const DEFAULT_DATABASE_LOADING_MESSAGES = [
-    'Good things come to those who briefly wait.',
-    'Pretend this is an intentional mindfulness exercise.',
-    'Fun fact: this message has no fun fact.',
-  ]
   const isAndroid = /android/i.test(navigator.userAgent)
   const DAY_TEMPLATE_SELECTION_KEY = 'balance:selectedDayTemplateId'
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
@@ -245,9 +237,11 @@ return rows`
   let databaseSearch = ''
   let databaseExpandedId: string | null = null
   let databaseCopyStatus = ''
-  let databaseLoadingMessages = readDatabaseLoadingMessages()
+  let databaseLoadingMessages = [...DEFAULT_DATABASE_LOADING_MESSAGES]
   let databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
   let databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
+  let editingDatabaseLoadingMessages = false
+  let previousDatabaseLoadingMessages = databaseLoadingMessages
   // Holds the id of the plan whose reminder is being edited, so either day in the
   // side-by-side comparison can be edited without the other pane's input opening.
   let editingReminderPlanId: Id | null = null
@@ -413,6 +407,18 @@ return rows`
   $: sortedGoals = sortGoalsByUrgency($plannerStore.goals, $plannerStore.goalCompletions, todayISO())
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
+  $: themeId = normalizeThemeId($plannerStore.preferences.themeId)
+  $: interfaceFontId = normalizeInterfaceFontId($plannerStore.preferences.interfaceFontId)
+  $: doneTintColor = $plannerStore.preferences.doneTintColor
+  $: checkboxColor = $plannerStore.preferences.checkboxColor
+  $: document.documentElement.dataset.theme = themeId
+  $: document.documentElement.dataset.interfaceFont = interfaceFontId
+  $: if ($plannerStore.preferences.databaseLoadingMessages !== previousDatabaseLoadingMessages) {
+    previousDatabaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
+    databaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
+    databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
+    if (!editingDatabaseLoadingMessages) databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
+  }
   $: activeTheme = THEME_PRESETS.find((theme) => theme.id === themeId) ?? THEME_PRESETS[0]
   $: doneTintHex = doneTintColor || activeTheme.doneColor
   $: checkboxColorHex = checkboxColor || activeTheme.checkboxColor
@@ -1113,17 +1119,6 @@ return rows`
 
     restoreCompareDayState()
 
-    const storedDoneTint = normalizeHexColor(localStorage.getItem(DONE_TINT_KEY) ?? '')
-    if (storedDoneTint) doneTintColor = storedDoneTint
-
-    const storedCheckboxColor = normalizeHexColor(localStorage.getItem(CHECKBOX_COLOR_KEY) ?? '')
-    if (storedCheckboxColor) checkboxColor = storedCheckboxColor
-
-    themeId = normalizeThemeId(localStorage.getItem(THEME_STORAGE_KEY))
-    document.documentElement.dataset.theme = themeId
-    interfaceFontId = normalizeInterfaceFontId(localStorage.getItem(INTERFACE_FONT_STORAGE_KEY))
-    document.documentElement.dataset.interfaceFont = interfaceFontId
-
     async function initialize() {
       if (isTauri()) {
         try {
@@ -1247,21 +1242,6 @@ return rows`
       .filter(Boolean)
   }
 
-  function readDatabaseLoadingMessages(): string[] {
-    const stored = localStorage.getItem(DATABASE_LOADING_MESSAGES_KEY)
-    if (stored === null) return [...DEFAULT_DATABASE_LOADING_MESSAGES]
-
-    try {
-      const parsed: unknown = JSON.parse(stored)
-      if (!Array.isArray(parsed) || !parsed.every((message) => typeof message === 'string')) {
-        return [...DEFAULT_DATABASE_LOADING_MESSAGES]
-      }
-      return parsed.map((message) => message.trim()).filter(Boolean)
-    } catch {
-      return [...DEFAULT_DATABASE_LOADING_MESSAGES]
-    }
-  }
-
   function randomDatabaseLoadingMessageIndex(messages: string[], currentIndex = -1): number {
     if (messages.length < 2) return 0
     const nextOffset = 1 + Math.floor(Math.random() * (messages.length - 1))
@@ -1269,17 +1249,24 @@ return rows`
   }
 
   function updateDatabaseLoadingMessages(value: string) {
+    editingDatabaseLoadingMessages = true
     databaseLoadingMessagesDraft = value
     databaseLoadingMessages = normalizeDatabaseLoadingMessages(value)
     databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
-    localStorage.setItem(DATABASE_LOADING_MESSAGES_KEY, JSON.stringify(databaseLoadingMessages))
+    plannerStore.patchPreferences({ databaseLoadingMessages })
+  }
+
+  function finishEditingDatabaseLoadingMessages() {
+    editingDatabaseLoadingMessages = false
+    databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
   }
 
   function resetDatabaseLoadingMessages() {
+    editingDatabaseLoadingMessages = false
     databaseLoadingMessages = [...DEFAULT_DATABASE_LOADING_MESSAGES]
     databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
     databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
-    localStorage.removeItem(DATABASE_LOADING_MESSAGES_KEY)
+    plannerStore.patchPreferences({ databaseLoadingMessages })
   }
 
   function clampGoalHistoryHeight(value: number): number {
@@ -1295,15 +1282,13 @@ return rows`
   function updateDoneTint(value: string) {
     const normalized = normalizeHexColor(value)
     if (!normalized) return
-    doneTintColor = normalized
-    localStorage.setItem(DONE_TINT_KEY, normalized)
+    plannerStore.patchPreferences({ doneTintColor: normalized })
   }
 
   function updateCheckboxColor(value: string) {
     const normalized = normalizeHexColor(value)
     if (!normalized) return
-    checkboxColor = normalized
-    localStorage.setItem(CHECKBOX_COLOR_KEY, normalized)
+    plannerStore.patchPreferences({ checkboxColor: normalized })
   }
 
   function updateDoneTintFromPicker(color: PickerColor) {
@@ -1315,35 +1300,21 @@ return rows`
   }
 
   function updateTheme(nextThemeId: ThemeId) {
-    themeId = nextThemeId
-    document.documentElement.dataset.theme = nextThemeId
-    localStorage.setItem(THEME_STORAGE_KEY, nextThemeId)
-
     // A preset should look cohesive immediately. Fine-tuned completion colors
     // remain available below and become overrides only after the preset is set.
-    doneTintColor = ''
-    checkboxColor = ''
-    localStorage.removeItem(DONE_TINT_KEY)
-    localStorage.removeItem(CHECKBOX_COLOR_KEY)
+    plannerStore.patchPreferences({ themeId: nextThemeId, doneTintColor: '', checkboxColor: '' })
   }
 
   function resetCompletedItemColors() {
-    doneTintColor = ''
-    checkboxColor = ''
-    localStorage.removeItem(DONE_TINT_KEY)
-    localStorage.removeItem(CHECKBOX_COLOR_KEY)
+    plannerStore.patchPreferences({ doneTintColor: '', checkboxColor: '' })
   }
 
   function updateInterfaceFont(nextFontId: InterfaceFontId) {
-    interfaceFontId = nextFontId
-    document.documentElement.dataset.interfaceFont = nextFontId
-    localStorage.setItem(INTERFACE_FONT_STORAGE_KEY, nextFontId)
+    plannerStore.patchPreferences({ interfaceFontId: nextFontId })
   }
 
   function resetFonts() {
-    interfaceFontId = DEFAULT_INTERFACE_FONT_ID
-    document.documentElement.dataset.interfaceFont = interfaceFontId
-    localStorage.removeItem(INTERFACE_FONT_STORAGE_KEY)
+    plannerStore.patchPreferences({ interfaceFontId: DEFAULT_INTERFACE_FONT_ID })
   }
 
   function clearGoalRhythmAutoShowTimer() {
@@ -5135,6 +5106,7 @@ return rows`
               rows="5"
               value={databaseLoadingMessagesDraft}
               on:input={(event) => updateDatabaseLoadingMessages(event.currentTarget.value)}
+              on:blur={finishEditingDatabaseLoadingMessages}
             ></textarea>
           </label>
 

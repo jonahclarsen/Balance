@@ -170,12 +170,21 @@ export type Operation = {
   payload: unknown
 }
 
+export type ReplicatedPreferences = {
+  themeId: string
+  interfaceFontId: string
+  doneTintColor: string
+  checkboxColor: string
+  databaseLoadingMessages: string[]
+}
+
 export type AppState = {
   schemaVersion: 1
   deviceId: Id
   localSequence: number
   historyRevision: number
   activePlanDate: string
+  preferences: ReplicatedPreferences
   templates: DailyTemplate[]
   plans: DailyPlan[]
   listTemplates: ListTemplate[]

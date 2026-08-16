@@ -54,8 +54,6 @@ export type InterfaceFontId = (typeof INTERFACE_FONT_PRESETS)[number]['id']
 
 export const DEFAULT_INTERFACE_FONT_ID: InterfaceFontId = 'rounded'
 
-export const INTERFACE_FONT_STORAGE_KEY = 'balance:interfaceFont'
-
 function normalizePresetId<TId extends string>(
   value: string | null | undefined,
   presets: readonly { id: TId }[],

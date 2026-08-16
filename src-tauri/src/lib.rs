@@ -59,6 +59,7 @@ const SYNC_CHECKPOINT_OPERATION_LIMIT: i64 = 1_000;
 const SYNC_CHECKPOINT_PAYLOAD_BYTES: i64 = 8 * 1024 * 1024;
 const SYNC_CHECKPOINT_MAX_AGE_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
 const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
+const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const ENTITY_COLLECTIONS: [&str; 7] = [
     "goals",
     "goalCompletions",
@@ -1914,6 +1915,7 @@ fn read_app_state_from_database_with_progress(
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0);
     let active_plan_date = metadata_value(connection, "active_plan_date")?.unwrap_or_default();
+    let preferences = read_replicated_preferences(connection)?;
 
     progress(35, "Loading goals");
     let goal_data = read_goal_data(connection)?;
@@ -1935,6 +1937,7 @@ fn read_app_state_from_database_with_progress(
         "localSequence": local_sequence,
         "historyRevision": 0,
         "activePlanDate": active_plan_date,
+        "preferences": preferences,
         "templates": templates,
         "plans": plans,
         "listTemplates": lists_metrics_data["listTemplates"].clone(),
@@ -2218,6 +2221,100 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
         .map_err(|error| error.to_string())
 }
 
+fn default_replicated_preferences() -> Value {
+    json!({
+        "themeId": "violet",
+        "interfaceFontId": "rounded",
+        "doneTintColor": "",
+        "checkboxColor": "",
+        "databaseLoadingMessages": [
+            "Good things come to those who briefly wait.",
+            "Pretend this is an intentional mindfulness exercise.",
+            "Fun fact: this message has no fun fact."
+        ]
+    })
+}
+
+fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
+    let object = value
+        .as_object()
+        .ok_or_else(|| "Replicated preferences must be an object".to_string())?;
+    for key in object.keys() {
+        if !matches!(
+            key.as_str(),
+            "themeId"
+                | "interfaceFontId"
+                | "doneTintColor"
+                | "checkboxColor"
+                | "databaseLoadingMessages"
+        ) {
+            return Err(format!("Unsupported replicated preference: {key}"));
+        }
+    }
+
+    let theme_id = required_string(value, "themeId")?;
+    let interface_font_id = required_string(value, "interfaceFontId")?;
+    let done_tint_color = required_string(value, "doneTintColor")?;
+    let checkbox_color = required_string(value, "checkboxColor")?;
+    for (name, color) in [
+        ("doneTintColor", done_tint_color),
+        ("checkboxColor", checkbox_color),
+    ] {
+        if !color.is_empty()
+            && !(color.len() == 7
+                && color.starts_with('#')
+                && color[1..].bytes().all(|byte| byte.is_ascii_hexdigit()))
+        {
+            return Err(format!("{name} must be empty or a six-digit hex color"));
+        }
+    }
+    let messages = required_array(value, "databaseLoadingMessages")?;
+    if !messages.iter().all(Value::is_string) {
+        return Err("databaseLoadingMessages must contain only strings".to_string());
+    }
+
+    Ok(json!({
+        "themeId": theme_id,
+        "interfaceFontId": interface_font_id,
+        "doneTintColor": done_tint_color,
+        "checkboxColor": checkbox_color,
+        "databaseLoadingMessages": messages,
+    }))
+}
+
+fn replicated_preferences_from_state(state: &Value) -> Result<Value, String> {
+    match state.get("preferences") {
+        Some(preferences) => validate_replicated_preferences(preferences),
+        None => Ok(default_replicated_preferences()),
+    }
+}
+
+fn read_replicated_preferences(connection: &Connection) -> Result<Value, String> {
+    let Some(raw) = metadata_value(connection, REPLICATED_PREFERENCES)? else {
+        return Ok(default_replicated_preferences());
+    };
+    let preferences = serde_json::from_str::<Value>(&raw)
+        .map_err(|error| format!("Could not parse replicated preferences: {error}"))?;
+    validate_replicated_preferences(&preferences)
+}
+
+fn patch_replicated_preferences(connection: &Connection, patch: &Value) -> Result<(), String> {
+    let patch = patch
+        .as_object()
+        .ok_or_else(|| "Replicated preference patch must be an object".to_string())?;
+    let mut preferences = read_replicated_preferences(connection)?;
+    let object = preferences
+        .as_object_mut()
+        .ok_or_else(|| "Replicated preferences must be an object".to_string())?;
+    for (key, value) in patch {
+        if !object.contains_key(key) {
+            return Err(format!("Unsupported replicated preference: {key}"));
+        }
+        object.insert(key.clone(), value.clone());
+    }
+    let preferences = validate_replicated_preferences(&preferences)?;
+    set_metadata(connection, REPLICATED_PREFERENCES, &preferences.to_string())
+}
 const LISTS_METRICS_KEYS: [&str; 5] = [
     "listTemplates",
     "lists",
@@ -2589,6 +2686,11 @@ fn replace_domain_state(connection: &Connection, state: &Value) -> Result<(), St
         insert_plan(connection, plan)?;
     }
 
+    set_metadata(
+        connection,
+        REPLICATED_PREFERENCES,
+        &replicated_preferences_from_state(state)?.to_string(),
+    )?;
     replace_state_entities_from_state(connection, state)?;
 
     if let Some(active_plan_date) = optional_string(state, "activePlanDate")? {
@@ -3044,6 +3146,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         "set_active_plan_date" => {
             set_metadata(tx, "active_plan_date", required_string(payload, "date")?)
         }
+        "patch_preferences" => patch_replicated_preferences(tx, required_value(payload, "patch")?),
         "insert_plan" => insert_plan(tx, required_value(payload, "plan")?),
         "delete_plan" => {
             tx.execute(
@@ -3501,6 +3604,7 @@ fn build_domain_undo_operation(
     let payload = required_value(operation, "payload")?;
 
     match operation_type {
+        "patch_preferences" => Ok(None),
         "set_active_plan_date" => Ok(Some(storage_operation(
             "set_active_plan_date",
             json!({ "date": metadata_value(connection, "active_plan_date")?.unwrap_or_default() }),

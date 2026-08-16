@@ -68,7 +68,6 @@ export const THEME_PRESETS = [
 export type ThemeId = (typeof THEME_PRESETS)[number]['id']
 
 export const DEFAULT_THEME_ID: ThemeId = 'violet'
-export const THEME_STORAGE_KEY = 'balance:colorTheme'
 
 export function normalizeThemeId(value: string | null | undefined): ThemeId {
   return THEME_PRESETS.some((theme) => theme.id === value) ? (value as ThemeId) : DEFAULT_THEME_ID

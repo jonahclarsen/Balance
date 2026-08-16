@@ -605,7 +605,8 @@ pub fn enable_joiner(conn: &Connection) -> Result<()> {
              DELETE FROM sync_frontiers;
              DELETE FROM plan_items; DELETE FROM plans;
              DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
-             DELETE FROM state_entities;",
+             DELETE FROM state_entities;
+             DELETE FROM metadata WHERE key = 'replicated_preferences';",
         )?;
         tx.commit()?;
     }
@@ -847,7 +848,8 @@ fn rematerialize_uncommitted(tx: &rusqlite::Transaction<'_>) -> Result<()> {
     tx.execute_batch(
         "DELETE FROM plan_items; DELETE FROM plans;
          DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
-         DELETE FROM state_entities;",
+         DELETE FROM state_entities;
+         DELETE FROM metadata WHERE key = 'replicated_preferences';",
     )?;
     for (index, op) in ops.iter().enumerate() {
         crate::apply_operation(tx, op).map_err(|error| {

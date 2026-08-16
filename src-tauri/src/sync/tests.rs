@@ -167,6 +167,7 @@ fn test_database_key(label: &str) -> String {
 /// Just the user-visible domain (excludes device-local fields like deviceId).
 fn domain(state: &Value) -> Value {
     json!({
+        "preferences": state["preferences"],
         "templates": state["templates"],
         "plans": state["plans"],
         "goals": state["goals"],
@@ -280,6 +281,17 @@ fn set_active_plan_date_op(
         "timestamp": at,
         "type": "set_active_plan_date",
         "payload": { "date": date },
+    })
+}
+
+fn patch_preferences_op(id: &str, device_id: &str, sequence: i64, at: &str, patch: Value) -> Value {
+    json!({
+        "id": id,
+        "deviceId": device_id,
+        "sequence": sequence,
+        "type": "patch_preferences",
+        "timestamp": at,
+        "payload": { "patch": patch },
     })
 }
 
@@ -909,6 +921,55 @@ fn operations_created_on_both_devices_between_syncs_all_propagate() {
     b.reset_merged();
     exchange(&b, &a, &key);
     assert_eq!((a.merged(), b.merged()), (0, 0));
+}
+
+#[test]
+fn replicated_preferences_converge_and_survive_a_checkpoint() {
+    let sa = Scratch::new("preferences-a");
+    let sb = Scratch::new("preferences-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let key = SyncKey::generate();
+
+    exchange(&b, &a, &key);
+    a.write(|connection| {
+        persist_operation_to_database(
+            connection,
+            &patch_preferences_op(
+                "preferences-a-1",
+                "device-A",
+                1,
+                "2026-08-15T12:00:00.000Z",
+                json!({
+                    "themeId": "midnight",
+                    "interfaceFontId": "bookish",
+                    "doneTintColor": "#123456",
+                    "checkboxColor": "#abcdef",
+                    "databaseLoadingMessages": ["One", "Two"]
+                }),
+            ),
+        )
+        .unwrap()
+    });
+    exchange(&b, &a, &key);
+
+    let expected = json!({
+        "themeId": "midnight",
+        "interfaceFontId": "bookish",
+        "doneTintColor": "#123456",
+        "checkboxColor": "#abcdef",
+        "databaseLoadingMessages": ["One", "Two"]
+    });
+    assert_eq!(a.state()["preferences"], expected);
+    assert_eq!(b.state()["preferences"], expected);
+
+    a.read(|connection| checkpoint_operation_log(connection).unwrap());
+    exchange(&b, &a, &key);
+    assert_eq!(b.state()["preferences"], expected);
 }
 
 // ---------------------------------------------------------------------------

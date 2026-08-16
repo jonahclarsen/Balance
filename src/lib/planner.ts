@@ -19,6 +19,7 @@ import type {
   TemplateOption,
 } from './types'
 import { goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
+import { createDefaultReplicatedPreferences } from './preferences'
 
 export const DEFAULT_DAILY_REMINDER = "This shouldn't be aspirational"
 
@@ -137,6 +138,7 @@ export function createInitialState(): AppState {
     localSequence: 0,
     historyRevision: 0,
     activePlanDate: todayISO(),
+    preferences: createDefaultReplicatedPreferences(),
     templates: [createDefaultTemplate()],
     plans: [],
     listTemplates: [],
