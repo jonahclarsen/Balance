@@ -79,9 +79,7 @@
     patchItem(
       templateId,
       item.id,
-      item.timeHidden === true && item.startMinutes !== null && item.endMinutes !== null
-        ? { timeHidden: null }
-        : { ...defaultTemplateItemTimeRange(allItems, item.id), timeHidden: null },
+      { ...defaultTemplateItemTimeRange(allItems, item.id), timeHidden: null },
     )
   }
 

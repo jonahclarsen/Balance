@@ -1484,6 +1484,31 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
   await expect(shortcuts.getByText('Shift task time earlier / later', { exact: true })).toBeVisible()
 })
 
+test('clicking add time generates a fresh range instead of restoring the keyboard-hidden range', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'The desktop alarm button is replaced by the mobile task menu')
+
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Pick the first useful task')
+  await page.keyboard.press('Alt+Shift+t')
+  await page.keyboard.press('Alt+Shift+]')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([555, 615])
+
+  await page.keyboard.press('Alt+Shift+t')
+  await page.keyboard.press('Alt+Shift+t')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([555, 615])
+
+  await page.keyboard.press('Alt+Shift+t')
+  await page
+    .getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
+    .getByRole('button', { name: 'Add time range' })
+    .click()
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+})
+
 test('keyboard time shortcuts also work while editing day-template items', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

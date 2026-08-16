@@ -161,9 +161,7 @@
     patchItem(
       planId,
       item.id,
-      item.timeHidden === true && item.startMinutes !== null && item.endMinutes !== null
-        ? { timeHidden: null }
-        : { ...defaultPlanItemTimeRange(allItems, item.id), timeHidden: null },
+      { ...defaultPlanItemTimeRange(allItems, item.id), timeHidden: null },
     )
   }
 
