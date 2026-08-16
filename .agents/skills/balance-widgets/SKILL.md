@@ -26,11 +26,12 @@ make a valid-looking widget disappear from the system gallery.
 - Do not build, initialize, link, emulate, or install Android locally. Test the
   generator locally, then use `.github/workflows/android.yml` in CI.
 - Use `pnpm`, not `npm`.
-- Whenever widget work produces durable, verified knowledge about architecture,
-  security, lifecycle, signing, registration, build behavior, performance, or
-  testing, update this skill in the same change. Treat that update as part of
-  finishing the widget work. Record reusable evidence, not unverified guesses or
-  one-off machine state.
+- Update this skill only when widget work produces durable, verified knowledge
+  that is not obvious from reading the code or from general engineering
+  knowledge, and whose absence could plausibly cause a future agent to make a
+  mistake. Treat that update as part of finishing the widget work. Do not record
+  implementation details that a future agent can easily recover from the code,
+  unverified guesses, or one-off machine state.
 
 ## Know the architecture
 
@@ -114,13 +115,6 @@ surface with dividers, showing visible time ranges in accent capsules, and using
 an explicit accent-colored `All done` state when no incomplete tasks remain.
 Keep generator tests for these structural relationships so a preview-only layout
 change cannot silently make the platforms drift.
-
-The widget progress bars mirror `.list-progress` in `src/app.css`: they are 8
-points/dp tall, use the theme's eight full-width HSL gradient stops with the fill
-clipped to completion, and retain the layered white sheen, rounded track, and
-`line`/`line-strong` track treatment. The gradient colors do not change between
-light and dark mode; only the theme track colors do. Android emits separate
-vector fill drawables so RemoteViews can preserve all eight stops.
 
 For macOS task rows, preserve `.privacySensitive()`. Clamp visual indentation so
 deep trees do not consume the full widget. For Android, use non-breaking spaces
