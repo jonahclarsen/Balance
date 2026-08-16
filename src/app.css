@@ -590,6 +590,10 @@ h3 {
   transform: translateX(28px);
 }
 
+.app-shell.today-maximized .sidebar-show-button {
+  visibility: hidden;
+}
+
 .muted,
 .empty,
 .empty-state p,
@@ -926,6 +930,12 @@ nav button.active {
 .date-input {
   width: 158px;
   min-height: 38px;
+}
+
+.today-date-input {
+  width: 126px;
+  padding-inline: 6px;
+  font-size: 13px;
 }
 
 .date-nav-button {
@@ -1760,6 +1770,32 @@ nav button.active {
   background: var(--paper-strong);
   font-size: 20px;
   font-weight: 700;
+}
+
+.imax-button {
+  width: 64px;
+  overflow: hidden;
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: var(--paper-strong);
+}
+
+.imax-button:hover,
+.imax-button.active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--paper-strong));
+}
+
+.imax-logo {
+  display: block;
+  color: var(--accent-strong);
+  font-family: Impact, "Arial Black", sans-serif;
+  font-size: 15px;
+  font-style: italic;
+  font-weight: 900;
+  letter-spacing: -0.08em;
+  line-height: 1;
+  transform: scaleX(1.12);
+  transform-origin: center;
 }
 
 .template-list {
@@ -3791,6 +3827,12 @@ nav button.active {
   .date-input {
     flex: 1;
     width: auto;
+  }
+
+  .today-date-input {
+    width: 126px;
+    min-width: 0;
+    flex: 0 1 126px;
   }
 
   .recovery-actions {

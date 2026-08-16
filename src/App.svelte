@@ -148,6 +148,9 @@
   let goalHistoryHeight: number | null = null
   let goalRhythmVisible = true
   let goalRhythmAutoShowTimer: number | null = null
+  let todayMaximized = false
+  let sidebarHiddenBeforeTodayMaximize = false
+  let goalRhythmVisibleBeforeTodayMaximize = true
   // Empty means "use the active theme color"; a hex value overrides it.
   let doneTintColor = ''
   let checkboxColor = ''
@@ -444,6 +447,7 @@ return rows`
   ]
     .filter(Boolean)
     .join('; ')
+  $: if (todayMaximized && view !== 'today') leaveTodayMaximized()
   // Derived rather than computed on demand so that switching surfaces — including
   // switching between the two side-by-side days — retriggers the guard below.
   $: activeItemContext =
@@ -1323,8 +1327,30 @@ return rows`
     goalRhythmAutoShowTimer = null
   }
 
+  function leaveTodayMaximized() {
+    if (!todayMaximized) return
+    todayMaximized = false
+    sidebarHidden = sidebarHiddenBeforeTodayMaximize
+    goalRhythmVisible = goalRhythmVisibleBeforeTodayMaximize
+  }
+
+  function toggleTodayMaximized() {
+    if (todayMaximized) {
+      leaveTodayMaximized()
+      return
+    }
+
+    sidebarHiddenBeforeTodayMaximize = sidebarHidden
+    goalRhythmVisibleBeforeTodayMaximize = goalRhythmVisible
+    todayMaximized = true
+    sidebarHidden = true
+    goalRhythmVisible = false
+    clearGoalRhythmAutoShowTimer()
+  }
+
   function showGoalRhythm() {
     clearGoalRhythmAutoShowTimer()
+    leaveTodayMaximized()
     goalRhythmVisible = true
   }
 
@@ -4025,6 +4051,7 @@ return rows`
   class="app-shell"
   class:android={isAndroid}
   class:sidebar-hidden={sidebarHidden}
+  class:today-maximized={todayMaximized}
   class:mobile-drawer-open={mobileDrawerOpen}
   class:mobile-drawer-dragging={mobileDrawerDragging}
   style={appShellStyle}
@@ -4254,26 +4281,21 @@ return rows`
                 </h2>
               </div>
               <div class="date-controls" aria-label="Day navigation">
-                <button
-                  class="date-nav-button"
-                  type="button"
-                  aria-label="Previous day"
-                  title="Previous day (Option+Q)"
-                  on:click={() => (pane.key === 'compare' ? shiftCompareDayDate(-1) : shiftActivePlanDate(-1))}
-                >
-                  &lt;
-                </button>
-                <button
-                  class="date-nav-button"
-                  type="button"
-                  aria-label="Next day"
-                  title="Next day (Option+W)"
-                  on:click={() => (pane.key === 'compare' ? shiftCompareDayDate(1) : shiftActivePlanDate(1))}
-                >
-                  &gt;
-                </button>
+                {#if pane.key === 'primary'}
+                  <button
+                    class="date-nav-button imax-button"
+                    class:active={todayMaximized}
+                    type="button"
+                    aria-label={todayMaximized ? 'Exit IMAX mode' : 'Enter IMAX mode'}
+                    aria-pressed={todayMaximized}
+                    title={todayMaximized ? 'Show sidebar and Goal Rhythm' : 'Hide sidebar and Goal Rhythm'}
+                    on:click={toggleTodayMaximized}
+                  >
+                    <span class="imax-logo" aria-hidden="true">IMAX</span>
+                  </button>
+                {/if}
                 <input
-                  class="date-input"
+                  class="date-input today-date-input"
                   type="date"
                   aria-label={pane.key === 'compare' ? 'Compared day date' : 'Day date'}
                   value={pane.date}

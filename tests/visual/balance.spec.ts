@@ -31,7 +31,7 @@ test('today indicator stays visible after the page header scrolls away', async (
     )
   }
 
-  await primaryPane.getByRole('button', { name: 'Next day' }).click()
+  await primaryPane.locator('.date-input').fill(addDays(todayDate, 1))
   await expect(page.locator('.current-day-scroll-indicator')).toHaveCount(0)
 
   await comparePane.locator('.date-input').fill(todayDate)
@@ -115,6 +115,41 @@ test('desktop sidebar hides, returns, and remembers its state', async ({ page },
   await expect(hideSidebar).toBeVisible()
 })
 
+test('IMAX mode maximizes Today and restores its surrounding panels', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const primaryPane = page.getByRole('region', { name: 'Daily plan' })
+  const imaxButton = primaryPane.getByRole('button', { name: 'Enter IMAX mode' })
+  const dateInput = primaryPane.locator('.date-input')
+  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
+
+  await expect(imaxButton).toBeVisible()
+  await expect(primaryPane.getByRole('button', { name: 'Previous day' })).toHaveCount(0)
+  await expect(primaryPane.getByRole('button', { name: 'Next day' })).toHaveCount(0)
+  const imaxBox = await imaxButton.boundingBox()
+  const dateBox = await dateInput.boundingBox()
+  expect(imaxBox).not.toBeNull()
+  expect(dateBox).not.toBeNull()
+  expect(imaxBox?.x ?? Number.MAX_SAFE_INTEGER).toBeLessThan(dateBox?.x ?? 0)
+  expect(dateBox?.width ?? Number.MAX_SAFE_INTEGER).toBeLessThanOrEqual(130)
+  await expect(goalRhythm).toBeVisible()
+
+  await imaxButton.click()
+  await expect(primaryPane.getByRole('button', { name: 'Exit IMAX mode' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(goalRhythm).toHaveCount(0)
+  if (testInfo.project.name === 'desktop') {
+    await expect(page.getByRole('complementary')).toBeHidden()
+    await expect(page.getByRole('button', { name: 'Show sidebar' })).toBeHidden()
+  }
+
+  await primaryPane.getByRole('button', { name: 'Exit IMAX mode' }).click()
+  await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
+  await expect(goalRhythm).toBeVisible()
+  if (testInfo.project.name === 'desktop') await expect(page.getByRole('complementary')).toBeVisible()
+})
+
 test('sidebar shows the task time shortcut legend above the template selector', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -165,12 +200,6 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   await generateButton.click()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
   const renderedDate = await page.locator('.date-input').inputValue()
-  await page.getByRole('button', { name: 'Next day' }).click()
-  await expect(page.locator('.date-input')).toHaveValue(addDays(renderedDate, 1))
-  await expect(page.locator('.current-day-indicator')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Previous day' }).click()
-  await expect(page.locator('.date-input')).toHaveValue(renderedDate)
-  await expect(page.locator('.current-day-indicator')).toHaveText('Today')
   await page.keyboard.press('Alt+W')
   await expect(page.locator('.date-input')).toHaveValue(addDays(renderedDate, 1))
   await page.keyboard.press('Alt+Q')
