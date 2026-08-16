@@ -324,6 +324,15 @@ fi
 assert_running "database-recovery" logcat3.txt
 echo "[database-recovery] original key and database reopened after the simulated failure."
 
+# Optional diagnostic for intermittent startup stalls. It uses only this
+# emulator's generated database and test key, then overlaps a deliberately slow
+# native relay pass with the same native state read that gates the loading
+# screen. DevTools measures command latency without UI Automator's comparatively
+# slow and flaky WebView accessibility bridge.
+if [ "${BALANCE_RUN_RESUME_STRESS:-0}" = 1 ]; then
+  node .github/scripts/android-resume-stress.mjs
+fi
+
 # The checks above are the deterministic release gate: a real APK booted twice,
 # exercised SQLCipher + Android Keystore recovery, registered background sync,
 # loaded the home-screen widget provider, and reconciled two encrypted databases over TCP.

@@ -4,6 +4,8 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+#[cfg(any(test, target_os = "android"))]
+use std::sync::TryLockError;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -96,6 +98,7 @@ struct StartupDatabaseConnection {
 }
 
 static DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
+static STARTUP_DATABASE_ACCESS_LOCK: Mutex<()> = Mutex::new(());
 
 #[cfg(all(target_os = "macos", not(debug_assertions)))]
 pub fn redirect_to_development_app() -> bool {
@@ -726,7 +729,7 @@ struct DatabaseMaintenanceStatus {
 
 #[tauri::command]
 async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    run_database_task(move || {
+    run_startup_database_task(move || {
         let startup = take_startup_database_connection(&app, StartupDatabaseRead::AppState)?;
         let result = read_app_state_from_database(&startup.connection)
             .map(|state| state.map(|value| value.to_string()));
@@ -900,7 +903,7 @@ async fn restore_recovery_entry(
 
 #[tauri::command]
 async fn get_recovery_key_status(app: tauri::AppHandle) -> Result<RecoveryKeyStatus, String> {
-    run_database_task(move || {
+    run_startup_database_task(move || {
         let startup = take_startup_database_connection(&app, StartupDatabaseRead::RecoveryStatus)?;
         let result = recovery_key_status(
             &startup.connection,
@@ -1190,6 +1193,43 @@ where
     })
     .await
     .map_err(|error| error.to_string())?
+}
+
+/// Android can start an overdue WorkManager relay pass before its activity.
+/// That pass holds the ordinary database mutex across network I/O, but SQLite
+/// itself still permits the launch path's read-only connection while the relay
+/// is waiting. Let only the two startup-gating reads bypass a busy in-process
+/// mutex so a slow or unreachable relay cannot strand the loading screen.
+async fn run_startup_database_task<T, F>(task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(move || {
+        // Recovery status and state hydration begin from separate frontend
+        // entry points. They may bypass a background relay owner on Android,
+        // but must still remain ordered relative to each other so they can
+        // safely hand off the cached startup connection.
+        let _startup_guard = STARTUP_DATABASE_ACCESS_LOCK
+            .lock()
+            .map_err(|_| "Startup database access lock is poisoned".to_string())?;
+        #[cfg(target_os = "android")]
+        let _guard = optional_database_access_guard(&DATABASE_ACCESS_LOCK)?;
+        #[cfg(not(target_os = "android"))]
+        let _guard = Some(database_access_guard()?);
+        task()
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+#[cfg(any(test, target_os = "android"))]
+fn optional_database_access_guard(lock: &Mutex<()>) -> Result<Option<MutexGuard<'_, ()>>, String> {
+    match lock.try_lock() {
+        Ok(guard) => Ok(Some(guard)),
+        Err(TryLockError::WouldBlock) => Ok(None),
+        Err(TryLockError::Poisoned(_)) => Err("Database access lock is poisoned".to_string()),
+    }
 }
 
 fn database_access_guard() -> Result<MutexGuard<'static, ()>, String> {
@@ -9421,6 +9461,15 @@ mod tests {
             .unwrap();
         assert_eq!(retired_tables, 0);
         assert_eq!(retired_metadata, 0);
+    }
+
+    #[test]
+    fn optional_database_guard_yields_to_an_active_owner() {
+        let lock = Mutex::new(());
+        let active = lock.lock().unwrap();
+        assert!(optional_database_access_guard(&lock).unwrap().is_none());
+        drop(active);
+        assert!(optional_database_access_guard(&lock).unwrap().is_some());
     }
 
     #[test]

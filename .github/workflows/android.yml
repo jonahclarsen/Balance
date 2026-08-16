@@ -16,6 +16,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_resume_stress:
+        description: Stress Android background-job overlap while reopening the app
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -234,6 +239,7 @@ jobs:
           # accessibility journey is available deliberately for UI debugging,
           # but is too flaky and expensive to remain a release gate.
           BALANCE_RUN_UI_PAIRING_E2E: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_pairing && '1' || '0' }}
+          BALANCE_RUN_RESUME_STRESS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_resume_stress && '1' || '0' }}
         with:
           api-level: 34
           arch: x86_64
@@ -263,6 +269,8 @@ jobs:
             logcat*.txt
             android-startup-profile.json
             sync-e2e-large-task-profile.json
+            android-resume-stress.json
+            android-resume-relay.log
             startup-profile-log.txt
             sync-e2e-*.xml
             sync-e2e-*.png
