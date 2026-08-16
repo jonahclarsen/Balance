@@ -44,6 +44,9 @@ user can verify themselves without exposing their key or database contents.
 After completing a code change, always commit it and push to the remote — don't
 leave work uncommitted. Use a clear commit message describing the change.
 
+Watch out for changes and commits happening while you are working, be sure to
+keep commits separate.
+
 ## Keep the keyboard-shortcuts reference in sync
 
 Keyboard shortcuts live in `handleGlobalKeydown` in `src/App.svelte`, and the
