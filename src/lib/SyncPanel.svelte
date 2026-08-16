@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte'
   import QRCode from 'qrcode'
+  import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog'
   import {
     scan,
     cancel,
@@ -346,8 +347,14 @@
     const guardedIds = auditResult?.checks
       .find((check) => check.id === 'local-cleanup-guard')
       ?.detail.match(/\d+/)?.[0] ?? 'the'
-    const confirmed = window.confirm(
-      `Finalize migration cleanup now?\n\nContinue only if every active Balance installation says it is safely staged. This immediately replaces the old relay rollback generation and permanently removes ${guardedIds} guarded retired IDs from this installation. A forgotten offline installation could reintroduce retired data.`,
+    const confirmed = await confirmDialog(
+      `Continue only if every active Balance installation says it is safely staged. This immediately replaces the old relay rollback generation and permanently removes ${guardedIds} guarded retired IDs from this installation. A forgotten offline installation could reintroduce retired data.`,
+      {
+        title: 'Finalize migration cleanup?',
+        kind: 'warning',
+        okLabel: 'Finalize now',
+        cancelLabel: 'Cancel',
+      },
     )
     if (!confirmed) return
 

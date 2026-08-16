@@ -22,6 +22,12 @@ async function readSyncStatus(page: Page): Promise<SyncStatusSnapshot> {
   })
 }
 
+async function openSettings(page: Page) {
+  const openNavigation = page.getByRole('button', { name: 'Open navigation' })
+  if (await openNavigation.isVisible()) await openNavigation.click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+}
+
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     type TestRuntime = typeof globalThis & {
@@ -30,6 +36,7 @@ test.beforeEach(async ({ page }) => {
       __syncSettingsCount: number
       __cleanupFinalizeCount: number
       __cleanupFinalized: boolean
+      __cleanupDialogCount: number
       __TAURI_INTERNALS__: {
         invoke: (command: string) => Promise<unknown>
         transformCallback: () => number
@@ -79,6 +86,7 @@ test.beforeEach(async ({ page }) => {
     runtime.__syncSettingsCount = 0
     runtime.__cleanupFinalizeCount = 0
     runtime.__cleanupFinalized = false
+    runtime.__cleanupDialogCount = 0
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
       transformCallback: () => 1,
@@ -193,6 +201,11 @@ test.beforeEach(async ({ page }) => {
               message:
                 'Finalized this installation immediately. Replaced the old rollback generation with a verified current-format checkpoint and removed 839 guarded retired id(s).',
             }
+          case 'plugin:dialog|message':
+            runtime.__cleanupDialogCount += 1
+            return new URLSearchParams(location.search).has('cancel-cleanup')
+              ? 'Cancel'
+              : 'Finalize now'
           case 'build_info':
             return { version: 'test', commit: 'test' }
           case 'complete_database_maintenance_startup':
@@ -256,7 +269,7 @@ test('settings stay available while a launch sync is still running', async ({ pa
     const runtime = globalThis as typeof globalThis & { __syncAttemptCount: number }
     return runtime.__syncAttemptCount
   })).toBe(1)
-  await page.getByRole('button', { name: /Settings/ }).click()
+  await openSettings(page)
 
   await expect(page.getByText('Loading sync settings…')).toHaveCount(0)
   await expect(page.getByText('BALSYNC1:synthetic-test-code')).toBeVisible()
@@ -269,21 +282,44 @@ test('settings stay available while a launch sync is still running', async ({ pa
 test('staged migration cleanup can be explicitly finalized without waiting', async ({ page }) => {
   await page.goto('/?cleanup-staged=1')
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
-  await page.getByRole('button', { name: /Settings/ }).click()
+  await openSettings(page)
   await page.getByRole('button', { name: 'Run removal audit' }).click()
 
   const finalize = page.getByRole('button', { name: 'Finalize cleanup now' })
   await expect(finalize).toBeVisible()
-  page.once('dialog', (dialog) => dialog.accept())
   await finalize.click()
 
   await expect(page.getByText(/Finalized this installation immediately/)).toBeVisible()
   await expect(page.getByText(/Ready on this installation and relay/)).toBeVisible()
   await expect(finalize).toHaveCount(0)
   await expect.poll(() => page.evaluate(() => {
-    const runtime = globalThis as typeof globalThis & { __cleanupFinalizeCount: number }
-    return runtime.__cleanupFinalizeCount
-  })).toBe(1)
+    const runtime = globalThis as typeof globalThis & {
+      __cleanupDialogCount: number
+      __cleanupFinalizeCount: number
+    }
+    return [runtime.__cleanupDialogCount, runtime.__cleanupFinalizeCount]
+  })).toEqual([1, 1])
+})
+
+test('cancelling native migration finalization keeps the temporary guard', async ({ page }) => {
+  await page.goto('/?cleanup-staged=1&cancel-cleanup=1')
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await openSettings(page)
+  await page.getByRole('button', { name: 'Run removal audit' }).click()
+
+  const finalize = page.getByRole('button', { name: 'Finalize cleanup now' })
+  await expect(finalize).toBeVisible()
+  await finalize.click()
+
+  await expect(finalize).toBeVisible()
+  await expect(page.getByText(/This installation is safely staged/)).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & {
+      __cleanupDialogCount: number
+      __cleanupFinalizeCount: number
+    }
+    return [runtime.__cleanupDialogCount, runtime.__cleanupFinalizeCount]
+  })).toEqual([1, 0])
 })
 
 test('an unsuccessful launch sync marks the visible local state as potentially stale', async ({ page }, testInfo) => {
