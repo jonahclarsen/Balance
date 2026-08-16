@@ -127,6 +127,8 @@ const BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE: &str = "com.balance.plan-items+json";
 const PASTE_MATCH_STYLE_MENU_ID: &str = "balance-paste-match-style";
 #[cfg(target_os = "macos")]
 const PASTE_MATCH_STYLE_EVENT: &str = "balance-paste-match-style";
+#[cfg(target_os = "macos")]
+const MAIN_WINDOW_FRAME_AUTOSAVE_NAME: &str = "BalanceMainWindow";
 
 #[cfg(target_os = "macos")]
 fn disable_automatic_text_replacement() {
@@ -159,11 +161,29 @@ fn restore_macos_main_window_frame(app: &tauri::App) -> tauri::Result<()> {
     // before AppKit has had the opportunity to apply the saved frame.
     unsafe {
         let ns_window = &*ns_window;
-        let frame_name = NSString::from_str("BalanceMainWindow");
+        let frame_name = NSString::from_str(MAIN_WINDOW_FRAME_AUTOSAVE_NAME);
         ns_window.setFrameUsingName(&frame_name);
         ns_window.setFrameAutosaveName(&frame_name);
     }
     window.show()
+}
+
+#[cfg(target_os = "macos")]
+fn save_macos_main_window_frame(window: &tauri::Window) {
+    use objc2_app_kit::NSWindow;
+    use objc2_foundation::NSString;
+
+    if window.label() != "main" {
+        return;
+    }
+    let Ok(ns_window) = window.ns_window() else {
+        return;
+    };
+
+    unsafe {
+        (&*ns_window.cast::<NSWindow>())
+            .saveFrameUsingName(&NSString::from_str(MAIN_WINDOW_FRAME_AUTOSAVE_NAME));
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -8997,6 +9017,20 @@ pub fn run() {
             }
 
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            #[cfg(target_os = "macos")]
+            if matches!(
+                event,
+                tauri::WindowEvent::Moved(_)
+                    | tauri::WindowEvent::Resized(_)
+                    | tauri::WindowEvent::ScaleFactorChanged { .. }
+            ) {
+                save_macos_main_window_frame(window);
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            let _ = (window, event);
         })
         .invoke_handler(tauri::generate_handler![
             read_app_state,
