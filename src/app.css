@@ -4732,6 +4732,10 @@ nav button.active {
     overflow-x: hidden;
   }
 
+  .imax-button {
+    display: none;
+  }
+
   .app-shell,
   .app-shell.sidebar-hidden {
     --mobile-top-inset: env(safe-area-inset-top);
