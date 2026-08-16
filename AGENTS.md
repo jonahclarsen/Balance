@@ -34,6 +34,9 @@ database recovery key, including through the OS keychain or Android Keystore.
 Never open or decrypt the user's installed database, a backup of it, or a copy
 of it, and never use personal application data as a migration or test fixture.
 
+Never take screenshots of the app running with the user's real data, or access
+it in any other way.
+
 All database, migration, recovery, backup, and sync tests must use databases
 generated specifically for testing with synthetic data and test-only keys. If a
 problem cannot be reproduced with generated fixtures, stop and explain what the
