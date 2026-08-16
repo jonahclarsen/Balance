@@ -876,6 +876,7 @@ nav button.active {
 
 .workspace {
   min-height: 0;
+  min-width: 0;
   overflow-y: auto;
   padding: 28px;
 }
@@ -1607,6 +1608,7 @@ nav button.active {
 
 .template-list {
   display: grid;
+  min-width: 0;
 }
 
 .option-stack {
@@ -3535,6 +3537,84 @@ nav button.active {
     flex-direction: column;
   }
 
+  .goal-search-input {
+    width: 100%;
+    min-height: 38px;
+    flex: 0 0 auto;
+  }
+
+  .template-panel,
+  .template-item,
+  .template-main,
+  .option-row {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  /* Template rows have more fixed controls than normal plan rows. Put those
+     controls on compact grid lines so neither the day-template time range nor
+     the list probability slider can widen the document on a phone. */
+  .template-main {
+    display: grid;
+    grid-template-columns: 8px 28px minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .template-main > .select-handle {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .template-main > .drag-handle {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .template-main > .time-range,
+  .template-main > .add-time {
+    grid-column: 3 / -1;
+    grid-row: 1;
+    justify-self: start;
+  }
+
+  .template-main > .option-stack {
+    grid-column: 3 / -1;
+    grid-row: 2;
+    width: 100%;
+  }
+
+  .template-main[data-list-template-item-id] > .option-stack {
+    grid-row: 1;
+  }
+
+  .template-main > .template-actions {
+    grid-column: 3 / -1;
+    grid-row: 3;
+    justify-self: end;
+  }
+
+  .template-main .option-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .template-main .option-row > .template-text {
+    grid-column: 1 / -1;
+    grid-row: 1;
+    width: 100%;
+  }
+
+  .template-main .option-row > .probability-slider {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: end;
+  }
+
+  .template-main .option-row > .icon-button {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
   .list-history-heading {
     align-items: stretch;
     flex-direction: column;
@@ -3856,11 +3936,17 @@ nav button.active {
 
 @media (max-width: 760px) {
   .list-template-rail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
     gap: 6px;
+    margin-inline: -12px;
+    padding-inline: 12px;
   }
 
   .list-template-tabs {
-    flex-basis: 56px;
+    width: 100%;
+    flex-basis: auto;
     gap: 4px;
   }
 
@@ -3871,7 +3957,10 @@ nav button.active {
   }
 
   .word-cap-bar {
+    width: 100%;
     gap: 4px;
+    justify-content: space-between;
+    margin-left: 0;
     font-size: 10px;
   }
 

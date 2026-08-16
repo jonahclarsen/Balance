@@ -36,7 +36,36 @@ test.beforeEach(async ({ page }) => {
         localSequence: 0,
         historyRevision: 0,
         activePlanDate: date,
-        templates: [],
+        templates: [
+          {
+            id: 'day_template_mobile',
+            name: 'Mobile day',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            items: [
+              {
+                id: 'day_template_item',
+                startMinutes: 600,
+                endMinutes: 660,
+                options: [
+                  {
+                    id: 'day_option_one',
+                    text: 'A comfortably long first option',
+                    html: 'A comfortably long first option',
+                    probability: 50,
+                  },
+                  {
+                    id: 'day_option_two',
+                    text: 'Another possible activity',
+                    html: 'Another possible activity',
+                    probability: 50,
+                  },
+                ],
+                children: [],
+              },
+            ],
+          },
+        ],
         plans: [
           {
             id: 'plan_mobile',
@@ -175,6 +204,28 @@ test('deeply indented task text remains usable at the minimum supported width', 
   })
 })
 
+test('day templates and lists fit an S10e-width viewport', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The regression is mobile-only')
+  await page.setViewportSize({ width: 360, height: 760 })
+
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  const drawer = page.getByRole('complementary', { name: 'Primary navigation drawer' })
+  await drawer.getByRole('button', { name: 'Day Templates', exact: true }).click()
+  await expect(drawer).toBeHidden()
+  await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await expectPageToFitViewport(page)
+  await expectControlToFitViewport(page, page.getByRole('button', { name: 'Mobile day', exact: true }))
+  await page.screenshot({ path: 'artifacts/visual-smoke/mobile-s10e-day-templates.png', fullPage: false })
+
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await drawer.getByRole('button', { name: 'Lists', exact: true }).click()
+  await expect(drawer).toBeHidden()
+  await expect(page.getByRole('heading', { name: 'Lists', exact: true })).toBeVisible()
+  await expectPageToFitViewport(page)
+  await expectControlToFitViewport(page, page.getByRole('button', { name: 'Groceries', exact: true }))
+  await page.screenshot({ path: 'artifacts/visual-smoke/mobile-s10e-lists.png', fullPage: false })
+})
+
 async function dragAcross(
   page: import('@playwright/test').Page,
   source: import('@playwright/test').Locator,
@@ -188,4 +239,37 @@ async function dragAcross(
   await page.mouse.down()
   await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 8 })
   await page.mouse.up()
+}
+
+async function expectPageToFitViewport(page: import('@playwright/test').Page) {
+  const result = await page.evaluate(() => ({
+    body: document.body.scrollWidth - document.documentElement.clientWidth,
+    shell: (document.querySelector<HTMLElement>('.app-shell')?.scrollWidth ?? 0) - window.innerWidth,
+    workspace: (() => {
+      const workspace = document.querySelector<HTMLElement>('.workspace')
+      return workspace ? workspace.scrollWidth - workspace.clientWidth : -1
+    })(),
+    offenders: Array.from(document.querySelectorAll<HTMLElement>('body *'))
+      .map((element) => {
+        const rect = element.getBoundingClientRect()
+        return { tag: element.tagName, className: element.className, left: rect.left, right: rect.right, width: rect.width }
+      })
+      .filter(({ left, right }) => left < 0 || right > window.innerWidth)
+      .slice(0, 8),
+  }))
+  expect(
+    { body: result.body, shell: result.shell, workspace: result.workspace },
+    `Elements outside the viewport: ${JSON.stringify(result.offenders)}`,
+  ).toEqual({ body: 0, shell: 0, workspace: 0 })
+}
+
+async function expectControlToFitViewport(
+  page: import('@playwright/test').Page,
+  control: import('@playwright/test').Locator,
+) {
+  const box = await control.boundingBox()
+  expect(box).not.toBeNull()
+  expect(box!.width).toBeGreaterThanOrEqual(50)
+  expect(box!.x).toBeGreaterThanOrEqual(0)
+  expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
 }

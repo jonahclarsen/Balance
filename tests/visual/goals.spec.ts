@@ -11,7 +11,10 @@ test.beforeEach(async ({ page }) => {
 test('goal colors use a two-dimensional hue and lightness picker', async ({ page }, testInfo) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 
-  const picker = page.getByRole('button', { name: 'Color for Exercise' })
+  const mobile = testInfo.project.name === 'mobile'
+  const originalColor = await savedGoalColor(page)
+  if (mobile) await page.getByRole('button', { name: 'Color for Exercise', exact: true }).click()
+  const picker = page.getByRole('button', { name: mobile ? 'Color for Exercise picker' : 'Color for Exercise' })
   const bounds = await picker.boundingBox()
   expect(bounds).not.toBeNull()
   await picker.click({
@@ -20,6 +23,11 @@ test('goal colors use a two-dimensional hue and lightness picker', async ({ page
       y: bounds!.height * 0.25,
     },
   })
+
+  if (mobile) {
+    await expect.poll(() => savedGoalColor(page)).toEqual(originalColor)
+    await page.getByRole('button', { name: 'Save color' }).click()
+  }
 
   await expect
     .poll(() =>
@@ -36,8 +44,14 @@ test('goal colors use a two-dimensional hue and lightness picker', async ({ page
     return { hue: state.goals[0].hue, lightness: state.goals[0].lightness }
   })
 
-  await picker.press('ArrowUp')
-  await picker.press('Shift+ArrowLeft')
+  if (mobile) await page.getByRole('button', { name: 'Color for Exercise', exact: true }).click()
+  const keyboardPicker = page.getByRole('button', { name: mobile ? 'Color for Exercise picker' : 'Color for Exercise' })
+  await keyboardPicker.press('ArrowUp')
+  await keyboardPicker.press('Shift+ArrowLeft')
+  if (mobile) {
+    await expect.poll(() => savedGoalColor(page)).toEqual(clickedColor)
+    await page.getByRole('button', { name: 'Save color' }).click()
+  }
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -52,6 +66,28 @@ test('goal colors use a two-dimensional hue and lightness picker', async ({ page
     path: `artifacts/visual-smoke/${testInfo.project.name}-goal-color-grid.png`,
     fullPage: true,
   })
+})
+
+test('the mobile goal search and color controls are compact and deliberate', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'Mobile-only interaction')
+  await page.setViewportSize({ width: 360, height: 760 })
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+
+  const search = page.locator('.goal-search-input')
+  expect((await search.boundingBox())?.height).toBeLessThanOrEqual(44)
+
+  const trigger = page.getByRole('button', { name: 'Color for Exercise', exact: true })
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await trigger.click()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+  const picker = page.getByRole('button', { name: 'Color for Exercise picker' })
+  const before = await savedGoalColor(page)
+  await picker.click({ position: { x: 30, y: 12 } })
+  await expect.poll(() => savedGoalColor(page)).toEqual(before)
+  await page.getByRole('button', { name: 'Cancel' }).click()
+  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
+  await expect.poll(() => savedGoalColor(page)).toEqual(before)
 })
 
 test('goal matching terms preserve rich text and turn a pasted URL into a link', async ({ page }) => {
@@ -1267,12 +1303,21 @@ test('goal cards show their saved completion count without frozen-history text',
 })
 
 async function createGoal(page: import('@playwright/test').Page, name: string, cadenceDays: number, terms: string) {
-  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  if (!(await page.getByLabel('New goal name').isVisible())) {
+    await page.getByRole('button', { name: 'Manage goals' }).click()
+  }
   await page.getByLabel('New goal name').fill(name)
   await page.getByLabel('New goal cadence days').fill(String(cadenceDays))
   await page.getByLabel('New goal matching terms').fill(terms)
   await page.getByRole('button', { name: 'Add goal', exact: true }).click()
   await expect(page.getByLabel(`Goal name: ${name}`)).toBeVisible()
+}
+
+async function savedGoalColor(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return { hue: state.goals?.[0]?.hue, lightness: state.goals?.[0]?.lightness }
+  })
 }
 
 function todayISO() {

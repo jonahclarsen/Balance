@@ -3,7 +3,7 @@
   import { listen } from '@tauri-apps/api/event'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
-  import ColorPicker from './lib/ColorPicker.svelte'
+  import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
@@ -4888,10 +4888,11 @@ return rows`
         </label>
         <div class="goal-color-field">
           <span>Color</span>
-          <ColorPicker
+          <GoalColorPicker
             hue={newGoalHue}
             lightness={newGoalLightness}
             ariaLabel="New goal color"
+            mobile={isMobile}
             onChange={(color) => {
               newGoalHue = color.hue
               newGoalLightness = color.lightness
@@ -4982,10 +4983,11 @@ return rows`
                 </label>
                 <div class="goal-color-field">
                   <span>Color</span>
-                  <ColorPicker
+                  <GoalColorPicker
                     hue={goal.hue}
                     lightness={goal.lightness}
                     ariaLabel={`Color for ${goal.name}`}
+                    mobile={isMobile}
                     onChange={(color) => plannerStore.patchGoal(goal.id, color)}
                   />
                 </div>
@@ -5126,10 +5128,11 @@ return rows`
             <div class="completed-color-controls">
               <div class="done-tint-control">
                 <span class="color-control-label">Checkbox</span>
-                <ColorPicker
+                <GoalColorPicker
                   hue={checkboxPickerColor.hue}
                   lightness={checkboxPickerColor.lightness}
                   ariaLabel="Checked checkbox color"
+                  mobile={isMobile}
                   onChange={updateCheckboxColorFromPicker}
                 />
                 <input
@@ -5145,10 +5148,11 @@ return rows`
 
               <div class="done-tint-control">
                 <span class="color-control-label">Row tint</span>
-                <ColorPicker
+                <GoalColorPicker
                   hue={doneTintPickerColor.hue}
                   lightness={doneTintPickerColor.lightness}
                   ariaLabel="Completed item tint color"
+                  mobile={isMobile}
                   onChange={updateDoneTintFromPicker}
                 />
                 <input
