@@ -1,0 +1,4 @@
+interface:
+  display_name: "Balance Sync"
+  short_description: "Build and debug Balance multi-device sync"
+  default_prompt: "Use $balance-sync to implement or debug a Balance multi-device sync change safely."
