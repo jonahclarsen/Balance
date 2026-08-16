@@ -115,6 +115,13 @@ an explicit accent-colored `All done` state when no incomplete tasks remain.
 Keep generator tests for these structural relationships so a preview-only layout
 change cannot silently make the platforms drift.
 
+The widget progress bars mirror `.list-progress` in `src/app.css`: they are 8
+points/dp tall, use the theme's eight full-width HSL gradient stops with the fill
+clipped to completion, and retain the layered white sheen, rounded track, and
+`line`/`line-strong` track treatment. The gradient colors do not change between
+light and dark mode; only the theme track colors do. Android emits separate
+vector fill drawables so RemoteViews can preserve all eight stops.
+
 For macOS task rows, preserve `.privacySensitive()`. Clamp visual indentation so
 deep trees do not consume the full widget. For Android, use non-breaking spaces
 or another RemoteViews-compatible technique because leading ordinary spaces may

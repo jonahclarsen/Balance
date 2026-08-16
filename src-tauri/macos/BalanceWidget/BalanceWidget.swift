@@ -269,15 +269,7 @@ private struct BalanceWidgetView: View {
                 }
 
                 if family == .systemLarge && snapshot.total > 0 {
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(palette.line.opacity(0.7))
-                            Capsule()
-                                .fill(accentColor)
-                                .frame(width: geometry.size.width * progress(snapshot))
-                        }
-                    }
-                    .frame(height: 4)
+                    WidgetProgressBar(value: progress(snapshot), palette: palette)
                     .accessibilityHidden(true)
                 }
 
@@ -373,6 +365,86 @@ private struct BalanceWidgetView: View {
     }
 }
 
+private struct WidgetProgressBar: View {
+    let value: CGFloat
+    let palette: WidgetPalette
+
+    private let stopLocations = [0.0, 0.14, 0.28, 0.43, 0.57, 0.71, 0.85, 1.0]
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(palette.line.opacity(0.54))
+                    .overlay(
+                        Capsule().fill(
+                            LinearGradient(
+                                colors: [.white.opacity(0.38), .clear],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                    )
+
+                progressFill(width: geometry.size.width, height: geometry.size.height)
+                    .frame(
+                        width: geometry.size.width * min(max(value, 0), 1),
+                        alignment: .leading
+                    )
+                    .clipped()
+            }
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(palette.lineStrong.opacity(0.72), lineWidth: 1)
+            )
+        }
+        .frame(height: 8)
+    }
+
+    private func progressFill(width: CGFloat, height: CGFloat) -> some View {
+        ZStack {
+            Capsule().fill(
+                LinearGradient(
+                    stops: zip(palette.progressStops, stopLocations).map {
+                        Gradient.Stop(color: $0.0, location: $0.1)
+                    },
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+            Capsule().fill(
+                LinearGradient(
+                    stops: [
+                        Gradient.Stop(color: .white.opacity(0.68), location: 0),
+                        Gradient.Stop(color: .white.opacity(0.12), location: 0.43),
+                        Gradient.Stop(color: .white.opacity(0.44), location: 1),
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            Capsule().fill(
+                LinearGradient(
+                    stops: [
+                        Gradient.Stop(color: .white.opacity(0.48), location: 0),
+                        Gradient.Stop(color: .clear, location: 0.22),
+                        Gradient.Stop(color: .clear, location: 0.48),
+                        Gradient.Stop(color: .white.opacity(0.34), location: 0.68),
+                        Gradient.Stop(color: .clear, location: 0.86),
+                    ],
+                    startPoint: UnitPoint(x: 0.067, y: 0.75),
+                    endPoint: UnitPoint(x: 0.933, y: 0.25)
+                )
+            )
+            Capsule().stroke(.white.opacity(0.22), lineWidth: 1)
+        }
+        .shadow(color: palette.progressStops[3].opacity(0.30), radius: 6)
+        .shadow(color: palette.progressStops[5].opacity(0.18), radius: 9)
+        .frame(width: width, height: height)
+    }
+}
+
 private extension Collection {
     subscript(safe index: Index) -> Element? {
         indices.contains(index) ? self[index] : nil
@@ -385,7 +457,9 @@ private struct WidgetPalette {
     let ink: Color
     let muted: Color
     let line: Color
+    let lineStrong: Color
     let accent: Color
+    let progressStops: [Color]
 
     private init(
         paper: UInt32,
@@ -393,55 +467,68 @@ private struct WidgetPalette {
         ink: UInt32,
         muted: UInt32,
         line: UInt32,
-        accent: UInt32
+        lineStrong: UInt32,
+        accent: UInt32,
+        progressHue: Double
     ) {
         self.paper = Color(rgb: paper)
         self.surface = Color(rgb: surface)
         self.ink = Color(rgb: ink)
         self.muted = Color(rgb: muted)
         self.line = Color(rgb: line)
+        self.lineStrong = Color(rgb: lineStrong)
         self.accent = Color(rgb: accent)
+        self.progressStops = [
+            Color(hslHue: progressHue, saturation: 0.56, lightness: 0.52),
+            Color(hslHue: progressHue, saturation: 0.58, lightness: 0.57),
+            Color(hslHue: progressHue, saturation: 0.52, lightness: 0.56),
+            Color(hslHue: progressHue, saturation: 0.49, lightness: 0.58),
+            Color(hslHue: progressHue, saturation: 0.77, lightness: 0.67),
+            Color(hslHue: progressHue, saturation: 0.90, lightness: 0.69),
+            Color(hslHue: progressHue, saturation: 0.93, lightness: 0.64),
+            Color(hslHue: progressHue, saturation: 0.89, lightness: 0.69),
+        ]
     }
 
     static func resolve(themeId: String?, colorScheme: ColorScheme) -> WidgetPalette {
         if colorScheme == .dark {
             switch themeId {
             case "forest":
-                return WidgetPalette(paper: 0x1B201F, surface: 0x232A28, ink: 0xE7ECE8, muted: 0x9BA8A3, line: 0x34403C, accent: 0x79B9AE)
+                return WidgetPalette(paper: 0x1B201F, surface: 0x232A28, ink: 0xE7ECE8, muted: 0x9BA8A3, line: 0x34403C, lineStrong: 0x4A5A55, accent: 0x79B9AE, progressHue: 173.4)
             case "ocean":
-                return WidgetPalette(paper: 0x18222B, surface: 0x202D38, ink: 0xE8F0F6, muted: 0x9FB0BD, line: 0x30414E, accent: 0x73B7E6)
+                return WidgetPalette(paper: 0x18222B, surface: 0x202D38, ink: 0xE8F0F6, muted: 0x9FB0BD, line: 0x30414E, lineStrong: 0x465C6C, accent: 0x73B7E6, progressHue: 206.5)
             case "sunset":
-                return WidgetPalette(paper: 0x241C18, surface: 0x2E241F, ink: 0xF1E9E4, muted: 0xB8A69B, line: 0x493A32, accent: 0xE5947F)
+                return WidgetPalette(paper: 0x241C18, surface: 0x2E241F, ink: 0xF1E9E4, muted: 0xB8A69B, line: 0x493A32, lineStrong: 0x655044, accent: 0xE5947F, progressHue: 11.3)
             case "berry":
-                return WidgetPalette(paper: 0x241B20, surface: 0x2E2329, ink: 0xF1E8ED, muted: 0xB5A3AD, line: 0x493741, accent: 0xDB8BAA)
+                return WidgetPalette(paper: 0x241B20, surface: 0x2E2329, ink: 0xF1E8ED, muted: 0xB5A3AD, line: 0x493741, lineStrong: 0x634B58, accent: 0xDB8BAA, progressHue: 335.1)
             case "pink":
-                return WidgetPalette(paper: 0x261A20, surface: 0x312229, ink: 0xF4E8EE, muted: 0xBAA3AF, line: 0x4D3541, accent: 0xF08DB8)
+                return WidgetPalette(paper: 0x261A20, surface: 0x312229, ink: 0xF4E8EE, muted: 0xBAA3AF, line: 0x4D3541, lineStrong: 0x684857, accent: 0xF08DB8, progressHue: 333.2)
             case "mint":
-                return WidgetPalette(paper: 0x18231F, surface: 0x202E29, ink: 0xE7F1ED, muted: 0x9DB2AA, line: 0x30453E, accent: 0x77C8B1)
+                return WidgetPalette(paper: 0x18231F, surface: 0x202E29, ink: 0xE7F1ED, muted: 0x9DB2AA, line: 0x30453E, lineStrong: 0x456057, accent: 0x77C8B1, progressHue: 167.4)
             case "midnight":
-                return WidgetPalette(paper: 0x181C29, surface: 0x212638, ink: 0xE9ECF5, muted: 0xA1A9BD, line: 0x343B52, accent: 0x91A7E4)
+                return WidgetPalette(paper: 0x181C29, surface: 0x212638, ink: 0xE9ECF5, muted: 0xA1A9BD, line: 0x343B52, lineStrong: 0x4B5572, accent: 0x91A7E4, progressHue: 223.1)
             default:
-                return WidgetPalette(paper: 0x201C25, surface: 0x29232F, ink: 0xEEE9F2, muted: 0xAFA3B8, line: 0x42384B, accent: 0xB69ADB)
+                return WidgetPalette(paper: 0x201C25, surface: 0x29232F, ink: 0xEEE9F2, muted: 0xAFA3B8, line: 0x42384B, lineStrong: 0x5C4C68, accent: 0xB69ADB, progressHue: 263.4)
             }
         }
 
         switch themeId {
         case "forest":
-            return WidgetPalette(paper: 0xFFFDF8, surface: 0xFFFFFF, ink: 0x1D2428, muted: 0x687276, line: 0xD8D4CA, accent: 0x2F6F68)
+            return WidgetPalette(paper: 0xFFFDF8, surface: 0xFFFFFF, ink: 0x1D2428, muted: 0x687276, line: 0xD8D4CA, lineStrong: 0xC3BDB0, accent: 0x2F6F68, progressHue: 173.4)
         case "ocean":
-            return WidgetPalette(paper: 0xF9FCFF, surface: 0xFFFFFF, ink: 0x172733, muted: 0x637581, line: 0xCCD9E1, accent: 0x276A9F)
+            return WidgetPalette(paper: 0xF9FCFF, surface: 0xFFFFFF, ink: 0x172733, muted: 0x637581, line: 0xCCD9E1, lineStrong: 0xAFC1CC, accent: 0x276A9F, progressHue: 206.5)
         case "sunset":
-            return WidgetPalette(paper: 0xFFFAF5, surface: 0xFFFFFF, ink: 0x33241F, muted: 0x7B6B63, line: 0xE2D3C7, accent: 0xB9563F)
+            return WidgetPalette(paper: 0xFFFAF5, surface: 0xFFFFFF, ink: 0x33241F, muted: 0x7B6B63, line: 0xE2D3C7, lineStrong: 0xCBB6A6, accent: 0xB9563F, progressHue: 11.3)
         case "berry":
-            return WidgetPalette(paper: 0xFFFAFD, surface: 0xFFFFFF, ink: 0x30242A, muted: 0x786B72, line: 0xDFD2D9, accent: 0x9B496B)
+            return WidgetPalette(paper: 0xFFFAFD, surface: 0xFFFFFF, ink: 0x30242A, muted: 0x786B72, line: 0xDFD2D9, lineStrong: 0xC8B4BF, accent: 0x9B496B, progressHue: 335.1)
         case "pink":
-            return WidgetPalette(paper: 0xFFF9FC, surface: 0xFFFFFF, ink: 0x31232B, muted: 0x7D6A74, line: 0xE6D0DC, accent: 0xC33F7A)
+            return WidgetPalette(paper: 0xFFF9FC, surface: 0xFFFFFF, ink: 0x31232B, muted: 0x7D6A74, line: 0xE6D0DC, lineStrong: 0xCFAEBE, accent: 0xC33F7A, progressHue: 333.2)
         case "mint":
-            return WidgetPalette(paper: 0xF9FDFA, surface: 0xFFFFFF, ink: 0x1E2D29, muted: 0x657771, line: 0xCCDDD7, accent: 0x287968)
+            return WidgetPalette(paper: 0xF9FDFA, surface: 0xFFFFFF, ink: 0x1E2D29, muted: 0x657771, line: 0xCCDDD7, lineStrong: 0xADC7BE, accent: 0x287968, progressHue: 167.4)
         case "midnight":
-            return WidgetPalette(paper: 0xFAFBFE, surface: 0xFFFFFF, ink: 0x202738, muted: 0x687083, line: 0xD1D6E2, accent: 0x425B9B)
+            return WidgetPalette(paper: 0xFAFBFE, surface: 0xFFFFFF, ink: 0x202738, muted: 0x687083, line: 0xD1D6E2, lineStrong: 0xB3BBCC, accent: 0x425B9B, progressHue: 223.1)
         default:
-            return WidgetPalette(paper: 0xFCFAFF, surface: 0xFFFFFF, ink: 0x292332, muted: 0x756C7F, line: 0xDAD2E2, accent: 0x7355A2)
+            return WidgetPalette(paper: 0xFCFAFF, surface: 0xFFFFFF, ink: 0x292332, muted: 0x756C7F, line: 0xDAD2E2, lineStrong: 0xC1B4CE, accent: 0x7355A2, progressHue: 263.4)
         }
     }
 }
@@ -453,6 +540,24 @@ private extension Color {
             green: Double((rgb >> 8) & 0xff) / 255,
             blue: Double(rgb & 0xff) / 255
         )
+    }
+
+    init(hslHue: Double, saturation: Double, lightness: Double) {
+        let chroma = (1 - abs((2 * lightness) - 1)) * saturation
+        let hue = hslHue / 60
+        let secondary = chroma * (1 - abs(hue.truncatingRemainder(dividingBy: 2) - 1))
+        let offset = lightness - chroma / 2
+        let rgb: (Double, Double, Double)
+
+        switch hue {
+        case 0..<1: rgb = (chroma, secondary, 0)
+        case 1..<2: rgb = (secondary, chroma, 0)
+        case 2..<3: rgb = (0, chroma, secondary)
+        case 3..<4: rgb = (0, secondary, chroma)
+        case 4..<5: rgb = (secondary, 0, chroma)
+        default: rgb = (chroma, 0, secondary)
+        }
+        self.init(red: rgb.0 + offset, green: rgb.1 + offset, blue: rgb.2 + offset)
     }
 }
 

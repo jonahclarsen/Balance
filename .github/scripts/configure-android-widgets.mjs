@@ -339,28 +339,56 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 `
 
 const widgetThemes = [
-  { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },
-  { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F' },
-  { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
-  { id: 'sunset', paper: '#FFFAF5', surface: '#FFFFFF', ink: '#33241F', muted: '#7B6B63', line: '#E2D3C7', accent: '#B9563F' },
-  { id: 'berry', paper: '#FFFAFD', surface: '#FFFFFF', ink: '#30242A', muted: '#786B72', line: '#DFD2D9', accent: '#9B496B' },
-  { id: 'pink', paper: '#FFF9FC', surface: '#FFFFFF', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', accent: '#C33F7A' },
-  { id: 'mint', paper: '#F9FDFA', surface: '#FFFFFF', ink: '#1E2D29', muted: '#657771', line: '#CCDDD7', accent: '#287968' },
-  { id: 'midnight', paper: '#FAFBFE', surface: '#FFFFFF', ink: '#202738', muted: '#687083', line: '#D1D6E2', accent: '#425B9B' },
+  { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', lineStrong: '#C3BDB0', accent: '#2F6F68', progressHue: 173.4 },
+  { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', lineStrong: '#AFC1CC', accent: '#276A9F', progressHue: 206.5 },
+  { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', lineStrong: '#C1B4CE', accent: '#7355A2', progressHue: 263.4 },
+  { id: 'sunset', paper: '#FFFAF5', surface: '#FFFFFF', ink: '#33241F', muted: '#7B6B63', line: '#E2D3C7', lineStrong: '#CBB6A6', accent: '#B9563F', progressHue: 11.3 },
+  { id: 'berry', paper: '#FFFAFD', surface: '#FFFFFF', ink: '#30242A', muted: '#786B72', line: '#DFD2D9', lineStrong: '#C8B4BF', accent: '#9B496B', progressHue: 335.1 },
+  { id: 'pink', paper: '#FFF9FC', surface: '#FFFFFF', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', lineStrong: '#CFAEBE', accent: '#C33F7A', progressHue: 333.2 },
+  { id: 'mint', paper: '#F9FDFA', surface: '#FFFFFF', ink: '#1E2D29', muted: '#657771', line: '#CCDDD7', lineStrong: '#ADC7BE', accent: '#287968', progressHue: 167.4 },
+  { id: 'midnight', paper: '#FAFBFE', surface: '#FFFFFF', ink: '#202738', muted: '#687083', line: '#D1D6E2', lineStrong: '#B3BBCC', accent: '#425B9B', progressHue: 223.1 },
 ]
 
 const darkWidgetThemes = [
-  { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
-  { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
-  { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
-  { id: 'sunset', paper: '#241C18', surface: '#2E241F', ink: '#F1E9E4', muted: '#B8A69B', line: '#493A32', accent: '#E5947F' },
-  { id: 'berry', paper: '#241B20', surface: '#2E2329', ink: '#F1E8ED', muted: '#B5A3AD', line: '#493741', accent: '#DB8BAA' },
-  { id: 'pink', paper: '#261A20', surface: '#312229', ink: '#F4E8EE', muted: '#BAA3AF', line: '#4D3541', accent: '#F08DB8' },
-  { id: 'mint', paper: '#18231F', surface: '#202E29', ink: '#E7F1ED', muted: '#9DB2AA', line: '#30453E', accent: '#77C8B1' },
-  { id: 'midnight', paper: '#181C29', surface: '#212638', ink: '#E9ECF5', muted: '#A1A9BD', line: '#343B52', accent: '#91A7E4' },
+  { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', lineStrong: '#4A5A55', accent: '#79B9AE', progressHue: 173.4 },
+  { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', lineStrong: '#465C6C', accent: '#73B7E6', progressHue: 206.5 },
+  { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', lineStrong: '#5C4C68', accent: '#B69ADB', progressHue: 263.4 },
+  { id: 'sunset', paper: '#241C18', surface: '#2E241F', ink: '#F1E9E4', muted: '#B8A69B', line: '#493A32', lineStrong: '#655044', accent: '#E5947F', progressHue: 11.3 },
+  { id: 'berry', paper: '#241B20', surface: '#2E2329', ink: '#F1E8ED', muted: '#B5A3AD', line: '#493741', lineStrong: '#634B58', accent: '#DB8BAA', progressHue: 335.1 },
+  { id: 'pink', paper: '#261A20', surface: '#312229', ink: '#F4E8EE', muted: '#BAA3AF', line: '#4D3541', lineStrong: '#684857', accent: '#F08DB8', progressHue: 333.2 },
+  { id: 'mint', paper: '#18231F', surface: '#202E29', ink: '#E7F1ED', muted: '#9DB2AA', line: '#30453E', lineStrong: '#456057', accent: '#77C8B1', progressHue: 167.4 },
+  { id: 'midnight', paper: '#181C29', surface: '#212638', ink: '#E9ECF5', muted: '#A1A9BD', line: '#343B52', lineStrong: '#4B5572', accent: '#91A7E4', progressHue: 223.1 },
 ]
 
 const alphaColor = (hex, alpha) => `#${alpha}${hex.slice(1)}`
+
+const progressStopSpecs = [
+  [0.00, 0.56, 0.52],
+  [0.14, 0.58, 0.57],
+  [0.28, 0.52, 0.56],
+  [0.43, 0.49, 0.58],
+  [0.57, 0.77, 0.67],
+  [0.71, 0.90, 0.69],
+  [0.85, 0.93, 0.64],
+  [1.00, 0.89, 0.69],
+]
+
+function hslColor(hueDegrees, saturation, lightness) {
+  const chroma = (1 - Math.abs(2 * lightness - 1)) * saturation
+  const hue = hueDegrees / 60
+  const secondary = chroma * (1 - Math.abs((hue % 2) - 1))
+  const offset = lightness - chroma / 2
+  let rgb
+  if (hue < 1) rgb = [chroma, secondary, 0]
+  else if (hue < 2) rgb = [secondary, chroma, 0]
+  else if (hue < 3) rgb = [0, chroma, secondary]
+  else if (hue < 4) rgb = [0, secondary, chroma]
+  else if (hue < 5) rgb = [secondary, 0, chroma]
+  else rgb = [chroma, 0, secondary]
+  return `#${rgb
+    .map((channel) => Math.round((channel + offset) * 255).toString(16).padStart(2, '0'))
+    .join('')}`.toUpperCase()
+}
 
 function taskRows(theme) {
   const preview = [
@@ -517,7 +545,7 @@ function homeLayout(theme) {
         android:id="@+id/widget_progress_bar"
         style="?android:attr/progressBarStyleHorizontal"
         android:layout_width="match_parent"
-        android:layout_height="4dp"
+        android:layout_height="8dp"
         android:layout_marginTop="8dp"
         android:indeterminate="false"
         android:progress="33"
@@ -629,20 +657,103 @@ function progress(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@android:id/background">
-        <shape android:shape="rectangle">
-            <corners android:radius="4dp" />
-            <solid android:color="${theme.line}" />
-        </shape>
+        <layer-list>
+            <item>
+                <shape android:shape="rectangle">
+                    <corners android:radius="999dp" />
+                    <solid android:color="${alphaColor(theme.line, '8A')}" />
+                </shape>
+            </item>
+            <item>
+                <shape android:shape="rectangle">
+                    <corners android:radius="999dp" />
+                    <gradient
+                        android:angle="270"
+                        android:endColor="#00FFFFFF"
+                        android:startColor="#61FFFFFF" />
+                </shape>
+            </item>
+            <item>
+                <shape android:shape="rectangle">
+                    <corners android:radius="999dp" />
+                    <solid android:color="@android:color/transparent" />
+                    <stroke android:width="1dp" android:color="${alphaColor(theme.lineStrong, 'B8')}" />
+                </shape>
+            </item>
+        </layer-list>
     </item>
     <item android:id="@android:id/progress">
-        <clip>
-            <shape android:shape="rectangle">
-                <corners android:radius="4dp" />
-                <solid android:color="${theme.accent}" />
-            </shape>
-        </clip>
+        <clip
+            android:clipOrientation="horizontal"
+            android:drawable="@drawable/balance_widget_${theme.id}_progress_fill"
+            android:gravity="left" />
     </item>
 </layer-list>
+`
+}
+
+function progressFill(theme) {
+  const colorStops = progressStopSpecs
+    .map(
+      ([offset, saturation, lightness]) =>
+        `                <item android:color="${hslColor(theme.progressHue, saturation, lightness)}" android:offset="${offset.toFixed(2)}" />`,
+    )
+    .join('\n')
+  return `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="100dp"
+    android:height="8dp"
+    android:viewportWidth="100"
+    android:viewportHeight="8">
+    <path android:pathData="M4,0 H96 A4,4 0,0 1,100 4 A4,4 0,0 1,96 8 H4 A4,4 0,0 1,0 4 A4,4 0,0 1,4 0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="100"
+                android:endY="4"
+                android:startX="0"
+                android:startY="4"
+                android:type="linear">
+${colorStops}
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M4,0 H96 A4,4 0,0 1,100 4 A4,4 0,0 1,96 8 H4 A4,4 0,0 1,0 4 A4,4 0,0 1,4 0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="0"
+                android:endY="8"
+                android:startX="0"
+                android:startY="0"
+                android:type="linear">
+                <item android:color="#ADFFFFFF" android:offset="0" />
+                <item android:color="#1FFFFFFF" android:offset="0.43" />
+                <item android:color="#70FFFFFF" android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path android:pathData="M4,0 H96 A4,4 0,0 1,100 4 A4,4 0,0 1,96 8 H4 A4,4 0,0 1,0 4 A4,4 0,0 1,4 0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="88.3"
+                android:endY="-7.75"
+                android:startX="11.7"
+                android:startY="15.75"
+                android:type="linear">
+                <item android:color="#7AFFFFFF" android:offset="0" />
+                <item android:color="#00FFFFFF" android:offset="0.22" />
+                <item android:color="#00FFFFFF" android:offset="0.48" />
+                <item android:color="#57FFFFFF" android:offset="0.68" />
+                <item android:color="#00FFFFFF" android:offset="0.86" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <path
+        android:fillColor="@android:color/transparent"
+        android:pathData="M4,0.5 H96 A3.5,3.5 0,0 1,99.5 4 A3.5,3.5 0,0 1,96 7.5 H4 A3.5,3.5 0,0 1,0.5 4 A3.5,3.5 0,0 1,4 0.5 Z"
+        android:strokeColor="#38FFFFFF"
+        android:strokeWidth="1" />
+</vector>
 `
 }
 
@@ -699,6 +810,10 @@ function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
   files.set(
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_progress.xml`),
     progress(theme),
+  )
+  files.set(
+    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_progress_fill.xml`),
+    progressFill(theme),
   )
 }
 
