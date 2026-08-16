@@ -60,6 +60,12 @@ user-facing reference is a hand-maintained list in
 Whenever you add, remove, or change a shortcut in `handleGlobalKeydown`, update
 `KeyboardShortcutsModal.svelte` in the same change so the modal stays accurate.
 
+## Keep the app code clean
+This app currently only has one user, but it might have thousands in the future.
+If there's a part of the code that's no longer used, there's no need to hold
+onto regression tests or migration code for it forever, that just bloats the
+codebase for no reason.
+
 ## Android: CI only — never build locally
 
 Do **not** build, link, or run anything Android locally (no `tauri android build`,
