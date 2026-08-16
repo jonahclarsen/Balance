@@ -869,7 +869,7 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
     'rgb(240, 141, 184)',
   )
 
-  await page.emulateMedia({ colorScheme: 'light' })
+  await page.emulateMedia({ colorScheme: 'light', reducedMotion: 'no-preference' })
   const graphiteTheme = themeGroup.getByRole('button', { name: 'Graphite Charcoal, silver, and clean gray' })
   await graphiteTheme.click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
@@ -890,6 +890,8 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
   await expect(sidebar).toHaveCSS('background-image', /linear-gradient/)
   await expect(page.locator('html')).toHaveCSS('background-image', /radial-gradient/)
+  await expect(page.locator('html')).toHaveCSS('animation-name', 'iridescent-background-breathe')
+  await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
   await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
     'background-color',
     'rgb(123, 91, 214)',
@@ -908,6 +910,10 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
     path: `artifacts/visual-smoke/${testInfo.project.name}-theme-iridescent-dark.png`,
     fullPage: false,
   })
+
+  await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
+  await expect(page.locator('html')).toHaveCSS('animation-name', 'none')
+  await expect(sidebar).toHaveCSS('animation-name', 'none')
 
   await graphiteTheme.click()
   await expect(sidebar).toHaveCSS('background-color', 'rgb(17, 17, 18)')

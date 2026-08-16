@@ -539,6 +539,37 @@
 
 :root[data-theme='iridescent'] .sidebar {
   background: var(--iridescent-sidebar-background);
+  background-position: 50% 0%;
+  background-size: 115% 115%;
+  animation: iridescent-sidebar-breathe 84s ease-in-out infinite alternate;
+}
+
+:root[data-theme='iridescent'] {
+  background-position: 0% 0%, 100% 0%, 78% 100%, 0% 0%;
+  background-repeat: no-repeat;
+  background-size: 112% 112%, 114% 114%, 112% 112%, 108% 108%;
+  animation: iridescent-background-breathe 72s ease-in-out infinite alternate;
+}
+
+@keyframes iridescent-background-breathe {
+  to {
+    background-position: 7% 8%, 93% 10%, 70% 92%, 100% 100%;
+    background-size: 120% 120%, 122% 122%, 120% 120%, 114% 114%;
+  }
+}
+
+@keyframes iridescent-sidebar-breathe {
+  to {
+    background-position: 50% 100%;
+    background-size: 135% 135%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme='iridescent'],
+  :root[data-theme='iridescent'] .sidebar {
+    animation: none;
+  }
 }
 
 * {
