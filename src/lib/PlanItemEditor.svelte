@@ -2,7 +2,7 @@
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
-  import { defaultPlanItemTimeRange, hasActiveTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
+  import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
@@ -55,9 +55,13 @@
   export let planDate = ''
   export let selectedItemIds: Set<Id> = new Set()
   export let selectionDragging = false
+  export let mobile = false
+  export let mobileSelectionMode = false
   export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
   export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
   export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
+  export let onMobileSelectionStart: (itemId: Id) => void = () => {}
+  export let onMobileSelectionToggle: (itemId: Id) => void = () => {}
   export let onTextShiftArrow: (itemId: Id, direction: MoveDirection) => void = () => {}
   export let onGoalBadgeClick: (goalId: Id) => void = () => {}
   // Internal links: a plan/list item whose text matches a list template name or
@@ -97,6 +101,10 @@
   $: previewGoals = item.done ? [] : matchingGoals.filter((goal) => !matchedGoalIds.has(goal.id))
   $: timeWarning = timeWarnings.get(item.id)
 
+  let mobileMenuOpen = false
+  let mobileTimeEditorOpen = false
+  let mobileTaskActions: HTMLDivElement | null = null
+
   // Recompute link segments only when the text or the available targets change,
   // so unrelated edits elsewhere in the tree don't trigger a rescan per keystroke.
   let linkSegments: ItemTextSegment[] = [{ text: item.text, link: null }]
@@ -134,6 +142,41 @@
         ? { timeHidden: null }
         : { ...defaultPlanItemTimeRange(allItems, item.id), timeHidden: null },
     )
+  }
+
+  function addTimeAndOpenEditor() {
+    addTime()
+    mobileMenuOpen = false
+    mobileTimeEditorOpen = true
+  }
+
+  function openMobileTimeEditor() {
+    mobileMenuOpen = false
+    mobileTimeEditorOpen = true
+  }
+
+  function removeTime() {
+    mobileMenuOpen = false
+    patchItem(planId, item.id, { timeHidden: true })
+  }
+
+  function startMobileSelection() {
+    mobileMenuOpen = false
+    onMobileSelectionStart(item.id)
+  }
+
+  function handleWindowPointerDown(event: PointerEvent) {
+    if (!mobileMenuOpen || mobileTaskActions?.contains(event.target as Node)) return
+    mobileMenuOpen = false
+  }
+
+  function handleWindowKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Escape') return
+    if (mobileTimeEditorOpen) {
+      mobileTimeEditorOpen = false
+      return
+    }
+    mobileMenuOpen = false
   }
 
   function patchTimeRange(startMinutes: number, endMinutes: number) {
@@ -423,6 +466,8 @@
   }
 </script>
 
+<svelte:window on:pointerdown={handleWindowPointerDown} on:keydown={handleWindowKeydown} />
+
 <TreeItemRow
   kind="plan"
   itemId={item.id}
@@ -433,6 +478,7 @@
   done={item.done}
   {selectionDragging}
   interactive={!locked}
+  showSelectionHandle={!mobile}
   {moveItem}
   {moveItemAcrossContainers}
   {onSelectionPointerDown}
@@ -452,6 +498,15 @@
 
   <div class="plan-item-main" class:timed={hasActiveTimeRange(item)}>
     {#if hasActiveTimeRange(item)}
+      {#if mobile}
+        <button
+          class="mobile-time-summary"
+          class:warning={Boolean(timeWarning?.overlapsPrevious || timeWarning?.overlapsNext || timeWarning?.precedesAncestor || timeWarning?.exceedsAncestor)}
+          type="button"
+          aria-label={`Edit time ${formatMinutes(item.startMinutes)} to ${formatMinutes(item.endMinutes)}`}
+          on:click|stopPropagation={openMobileTimeEditor}
+        >{formatMinutes(item.startMinutes)}–{formatMinutes(item.endMinutes)}</button>
+      {:else}
         <TimeRange
           startMinutes={item.startMinutes}
           endMinutes={item.endMinutes}
@@ -464,7 +519,8 @@
           onShift={shiftSelectedTimeRanges}
           onRemove={() => patchItem(planId, item.id, { timeHidden: true })}
         />
-      {:else if !locked}
+      {/if}
+    {:else if !locked && !mobile}
         <button
           class="icon-button quiet add-time"
           type="button"
@@ -541,6 +597,42 @@
       </div>
   {/if}
 
+  {#if mobile && !locked}
+    <div class="mobile-task-actions" bind:this={mobileTaskActions}>
+      {#if mobileSelectionMode}
+        <button
+          class="mobile-selection-toggle"
+          class:selected
+          type="button"
+          aria-label={selected ? `Deselect ${item.text || 'task'}` : `Select ${item.text || 'task'}`}
+          aria-pressed={selected}
+          on:click|stopPropagation={() => onMobileSelectionToggle(item.id)}
+        >{selected ? '✓' : ''}</button>
+      {:else}
+        <button
+          class="mobile-task-menu-button"
+          type="button"
+          title="Task options"
+          aria-label={`Task options for ${item.text || 'untitled task'}`}
+          aria-haspopup="menu"
+          aria-expanded={mobileMenuOpen}
+          on:click|stopPropagation={() => (mobileMenuOpen = !mobileMenuOpen)}
+        >⋮</button>
+        {#if mobileMenuOpen}
+          <div class="mobile-task-menu" role="menu" aria-label={`Options for ${item.text || 'untitled task'}`}>
+            {#if hasActiveTimeRange(item)}
+              <button type="button" role="menuitem" on:click|stopPropagation={openMobileTimeEditor}>Edit time</button>
+              <button type="button" role="menuitem" on:click|stopPropagation={removeTime}>Remove time</button>
+            {:else}
+              <button type="button" role="menuitem" on:click|stopPropagation={addTimeAndOpenEditor}>Add time</button>
+            {/if}
+            <button type="button" role="menuitem" on:click|stopPropagation={startMobileSelection}>Select tasks</button>
+          </div>
+        {/if}
+      {/if}
+    </div>
+  {/if}
+
   <!-- Editable rows carry no per-row buttons: add-child is Tab and delete is
        Backspace / Del on a selection, and the width they cost is what makes
        deeply indented text unreadable. -->
@@ -587,9 +679,13 @@
             {planDate}
             {selectedItemIds}
             {selectionDragging}
+            {mobile}
+            {mobileSelectionMode}
             {onSelectionPointerDown}
             {onSelectionPointerMove}
             {onSelectionPointerEnter}
+            {onMobileSelectionStart}
+            {onMobileSelectionToggle}
             {onTextShiftArrow}
             {onGoalBadgeClick}
             {listTemplates}
@@ -606,3 +702,37 @@
     {/if}
   </svelte:fragment>
 </TreeItemRow>
+
+{#if mobile && mobileTimeEditorOpen && hasActiveTimeRange(item)}
+  <!-- Changes persist during the drag, so tapping the backdrop only dismisses
+       the editor; there is no separate save or cancel state to reconcile. -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div
+    class="mobile-time-editor-backdrop"
+    role="presentation"
+    on:click|self={() => (mobileTimeEditorOpen = false)}
+  >
+    <div
+      class="mobile-time-editor"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Edit time for ${item.text || 'task'}`}
+      tabindex="-1"
+    >
+      <TimeRange
+        startMinutes={item.startMinutes}
+        endMinutes={item.endMinutes}
+        overlapsPrevious={timeWarning?.overlapsPrevious}
+        overlapsNext={timeWarning?.overlapsNext}
+        precedesAncestor={timeWarning?.precedesAncestor}
+        exceedsAncestor={timeWarning?.exceedsAncestor}
+        onChange={patchTimeRange}
+        onRemove={() => {}}
+        expanded
+        hapticSteps
+        showRemove={false}
+      />
+      <p>Drag either time up or down in 15-minute steps. Tap outside to close.</p>
+    </div>
+  </div>
+{/if}

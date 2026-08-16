@@ -1480,13 +1480,20 @@ nav button.active {
     justify-self: start;
   }
 
+  .plan-item-main .mobile-time-summary {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    justify-self: start;
+  }
+
   /* On Android the schedule reads first when a narrow row has to stack. Keep
      the desktop order unchanged for narrow comparison panes. */
   .app-shell.android .plan-item-main.timed .item-text {
     grid-row: 2;
   }
 
-  .app-shell.android .plan-item-main .time-range {
+  .app-shell.android .plan-item-main .time-range,
+  .app-shell.android .plan-item-main .mobile-time-summary {
     grid-row: 1;
   }
 }
@@ -1564,6 +1571,149 @@ nav button.active {
 
 .time-part.warning {
   color: var(--time-warn-ink);
+}
+
+.mobile-time-summary {
+  flex: 0 0 auto;
+  border: 1px solid var(--time-border);
+  border-radius: 6px;
+  background: var(--time-bg);
+  padding: 5px 7px;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.mobile-time-summary.warning {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--time-border));
+  background: var(--time-warn-bg);
+  color: var(--time-warn-ink);
+}
+
+.mobile-task-actions {
+  position: relative;
+  z-index: 21;
+  display: flex;
+  flex: 0 0 auto;
+  order: 2;
+  align-items: center;
+  align-self: center;
+  margin-right: 2px;
+}
+
+.mobile-task-menu-button,
+.mobile-selection-toggle {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 36px;
+  border-color: transparent;
+  background: transparent;
+  padding: 0;
+  color: var(--muted);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.mobile-selection-toggle {
+  width: 28px;
+  height: 28px;
+  border-color: var(--line-strong);
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.mobile-selection-toggle.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+.mobile-task-menu {
+  position: absolute;
+  z-index: 90;
+  top: calc(100% - 2px);
+  right: 0;
+  display: grid;
+  min-width: 156px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-strong);
+  padding: 5px;
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 22%, transparent);
+}
+
+.mobile-task-menu button {
+  min-height: 42px;
+  border-color: transparent;
+  background: transparent;
+  padding: 8px 11px;
+  text-align: left;
+}
+
+.mobile-task-menu button:hover,
+.mobile-task-menu button:focus-visible {
+  background: var(--active-nav);
+}
+
+.mobile-time-editor-backdrop {
+  position: fixed;
+  z-index: 120;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--ink) 42%, transparent);
+  padding: 16px;
+}
+
+.mobile-time-editor {
+  display: grid;
+  gap: 14px;
+  width: min(560px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--paper-strong);
+  padding: 24px;
+  box-shadow: 0 20px 60px color-mix(in srgb, var(--ink) 28%, transparent);
+}
+
+.mobile-time-editor p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.time-range.expanded {
+  width: 100%;
+  min-height: 76px;
+  border-radius: 12px;
+  font-size: clamp(18px, 5vw, 24px);
+}
+
+.time-range.expanded .time-side {
+  flex: 1 1 0;
+}
+
+.time-range.expanded .time-start-side {
+  border-radius: 11px 0 0 11px;
+  padding-left: 0;
+}
+
+.time-range.expanded .time-end-side {
+  border-radius: 0 11px 11px 0;
+}
+
+.time-range.expanded .time-part {
+  width: 100%;
+  min-height: 74px;
+  padding: 12px;
+}
+
+.time-range.expanded .dash {
+  padding-inline: 5px;
 }
 
 .dash {
@@ -3495,11 +3645,15 @@ nav button.active {
   }
 
   .plan-row {
-    --row-chrome-width: 78px;
+    --row-chrome-width: 66px;
   }
 
   .select-handle {
     width: 8px;
+  }
+
+  .plan-row > .plan-goal-badges {
+    order: 3;
   }
 
   .row-actions {

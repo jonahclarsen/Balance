@@ -19,6 +19,9 @@
   export let exceedsAncestor = false
   export let getShiftTargets: (() => TimeShiftTarget[] | null) | null = null
   export let onShift: ((targets: TimeShiftTarget[], delta: number) => void) | null = null
+  export let expanded = false
+  export let hapticSteps = false
+  export let showRemove = true
 
   $: warningReasons = [
     overlapsPrevious ? 'starts before the previous timed item ends' : null,
@@ -36,6 +39,7 @@
         originStart: number
         originEnd: number
         shiftTargets: TimeShiftTarget[] | null
+        lastSteps: number
       }
     | null = null
 
@@ -50,6 +54,7 @@
       originStart: startMinutes,
       originEnd: endMinutes,
       shiftTargets: adjustStartOnly ? null : getShiftTargets?.() ?? null,
+      lastSteps: 0,
     }
   }
 
@@ -58,6 +63,11 @@
 
     const steps = Math.round((dragState.originY - event.clientY) / 10)
     const delta = steps * 15
+
+    if (hapticSteps && steps !== dragState.lastSteps) {
+      dragState.lastSteps = steps
+      navigator.vibrate?.(8)
+    }
 
     if (dragState.shiftTargets) {
       onShift?.(dragState.shiftTargets, delta)
@@ -98,6 +108,7 @@
 
 <span
   class="time-range"
+  class:expanded
   class:warning-start={overlapsPrevious || precedesAncestor}
   class:warning-end={overlapsNext || exceedsAncestor}
   aria-label="Time range"
@@ -108,6 +119,7 @@
       class="time-part"
       class:warning={overlapsPrevious || precedesAncestor}
       type="button"
+      aria-label={`Start time ${formatMinutes(startMinutes)}. Drag up or down to move the scheduled block.`}
       title="Drag up or down to move the whole time range. Hold Alt to change only the start time."
       on:pointerdown={(event) => beginDrag('start', event)}
       on:pointermove={continueDrag}
@@ -123,6 +135,7 @@
       class="time-part"
       class:warning={overlapsNext || exceedsAncestor}
       type="button"
+      aria-label={`End time ${formatMinutes(endMinutes)}. Drag up or down to change the end time.`}
       title="Drag up or down to change only the end time"
       on:pointerdown={(event) => beginDrag('end', event)}
       on:pointermove={continueDrag}
@@ -131,6 +144,8 @@
     >
       {formatMinutes(endMinutes)}
     </button>
-    <button class="icon-button quiet" type="button" title="Remove time" on:click={onRemove}>×</button>
+    {#if showRemove}
+      <button class="icon-button quiet" type="button" title="Remove time" on:click={onRemove}>×</button>
+    {/if}
   </span>
 </span>

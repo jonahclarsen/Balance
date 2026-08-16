@@ -13,6 +13,7 @@
   export let done = false
   export let selectionDragging = false
   export let interactive = true
+  export let showSelectionHandle = true
   export let moveItem: (containerId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   // Set only where dropping into a *different* container is meaningful (the
   // side-by-side day comparison). Left null everywhere else, so a drag that
@@ -155,7 +156,7 @@
       if (selectionDragging) onSelectionPointerEnter(itemId)
     }}
   >
-    {#if interactive}
+    {#if interactive && showSelectionHandle}
       <button
         class="select-handle"
         class:selected
@@ -166,7 +167,9 @@
         on:pointerdown={(event) => onSelectionPointerDown(itemId, event)}
         on:pointermove={onSelectionPointerMove}
       ></button>
+    {/if}
 
+    {#if interactive}
       <button
         class="drag-handle"
         class:dragging

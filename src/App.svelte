@@ -2709,6 +2709,29 @@ return rows`
     releaseTextEditingFocus()
   }
 
+  function startMobileItemSelection(itemId: Id) {
+    selectSingleItem(itemId)
+  }
+
+  function toggleMobileItemSelection(itemId: Id) {
+    if (!activeItemSurface()) return
+
+    const nextIds = selectedItemIds.includes(itemId)
+      ? selectedItemIds.filter((selectedId) => selectedId !== itemId)
+      : [...selectedItemIds, itemId]
+
+    if (nextIds.length === 0) {
+      clearItemSelection()
+      return
+    }
+
+    selectedItemIds = nextIds
+    selectedItemContext = activeItemContextKey()
+    selectionAnchorId = nextIds[0]
+    selectionFocusId = itemId
+    releaseTextEditingFocus()
+  }
+
   function selectItemRange(fromId: Id, toId: Id, additive: boolean) {
     const itemIds = flattenItemIds(activeItemTree())
     const fromIndex = itemIds.indexOf(fromId)
@@ -4353,9 +4376,13 @@ return rows`
                     historyRevision={$plannerStore.historyRevision}
                     selectedItemIds={selectedItemIdSet}
                     selectionDragging={selectingItems}
+                    mobile={isMobile}
+                    mobileSelectionMode={isMobile && selectedItemIds.length > 0}
                     onSelectionPointerDown={beginItemSelection}
                     onSelectionPointerMove={handleSelectionPointerMove}
                     onSelectionPointerEnter={extendItemSelection}
+                    onMobileSelectionStart={startMobileItemSelection}
+                    onMobileSelectionToggle={toggleMobileItemSelection}
                     onTextShiftArrow={selectItemWithAdjacent}
                     goals={$plannerStore.goals}
                     goalCompletions={$plannerStore.goalCompletions}

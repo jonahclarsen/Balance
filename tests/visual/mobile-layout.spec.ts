@@ -107,10 +107,12 @@ test('task rows stay readable on mobile without changing the desktop arrangement
     name: 'Plan item: Deeply nested task text should still have enough room to be comfortably readable',
   })
   const text = row.locator('[data-plan-text-input]')
-  const time = row.getByLabel('Time range')
+  const time = isMobileProject(testInfo.project.name)
+    ? row.getByRole('button', { name: 'Edit time 11:30am to 12:30pm' })
+    : row.getByLabel('Time range')
   const geometry = await row.evaluate((element) => {
     const textElement = element.querySelector<HTMLElement>('[data-plan-text-input]')
-    const timeElement = element.querySelector<HTMLElement>('.time-range')
+    const timeElement = element.querySelector<HTMLElement>('.time-range, .mobile-time-summary')
     if (!textElement || !timeElement) throw new Error('Missing task row content')
     const textRect = textElement.getBoundingClientRect()
     const timeRect = timeElement.getBoundingClientRect()
@@ -126,6 +128,8 @@ test('task rows stay readable on mobile without changing the desktop arrangement
   if (isMobileProject(testInfo.project.name)) {
     expect(geometry.textWidth).toBeGreaterThanOrEqual(190)
     expect(geometry.timeTop).toBeLessThan(geometry.textTop)
+    await expect(row.locator('.select-handle')).toHaveCount(0)
+    await expect(row.getByRole('button', { name: 'Task options for Deeply nested task text should still have enough room to be comfortably readable' })).toBeVisible()
 
     const checkbox = page
       .getByRole('listitem', { name: 'Plan item: Parent task with a scheduled time' })
@@ -147,6 +151,8 @@ test('task rows stay readable on mobile without changing the desktop arrangement
     await expect(page.locator('.plan-row.selected')).toHaveCount(0)
   } else {
     expect(geometry.timeRight).toBeLessThanOrEqual(geometry.textLeft)
+    await expect(row.locator('.select-handle')).toBeVisible()
+    await expect(row.getByRole('button', { name: 'Task options for Deeply nested task text should still have enough room to be comfortably readable' })).toHaveCount(0)
     const undo = page.getByRole('button', { name: 'Undo' })
     await expect(undo).toBeHidden()
   }
@@ -155,6 +161,98 @@ test('task rows stay readable on mobile without changing the desktop arrangement
   await expect(time).toBeVisible()
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-task-layout.png`,
+    fullPage: false,
+  })
+})
+
+test('mobile task options gate selection and open the large auto-saving time editor', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The task overflow interactions are mobile-only')
+
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'vibrate', {
+      configurable: true,
+      value: (duration: number) => {
+        const testWindow = window as typeof window & { balanceTestVibrations?: number[] }
+        testWindow.balanceTestVibrations = [...(testWindow.balanceTestVibrations ?? []), duration]
+        return true
+      },
+    })
+  })
+
+  const untimedRow = page.getByRole('listitem', {
+    name: 'Plan item: Another task used to verify mobile drag selection',
+  })
+  await expect(untimedRow.getByRole('button', { name: 'Add time range' })).toHaveCount(0)
+
+  await untimedRow.getByRole('button', {
+    name: 'Task options for Another task used to verify mobile drag selection',
+  }).click()
+  const menu = page.getByRole('menu', {
+    name: 'Options for Another task used to verify mobile drag selection',
+  })
+  await expect(menu).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Add time' })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Select tasks' })).toBeVisible()
+
+  await menu.getByRole('menuitem', { name: 'Add time' }).click()
+  const dialog = page.getByRole('dialog', {
+    name: 'Edit time for Another task used to verify mobile drag selection',
+  })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Save' })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveCount(0)
+
+  const editorWidth = await dialog.locator('.time-range.expanded').evaluate(
+    (element) => element.getBoundingClientRect().width,
+  )
+  expect(editorWidth).toBeGreaterThan(300)
+  await page.screenshot({
+    path: 'artifacts/visual-smoke/mobile-time-editor.png',
+    fullPage: false,
+  })
+
+  const start = dialog.getByRole('button', { name: /Start time/ })
+  const originalStart = await start.innerText()
+  await dragVertically(page, start, -14)
+  await expect(start).not.toHaveText(originalStart)
+  const vibrationCount = await page.evaluate(
+    () => (window as typeof window & { balanceTestVibrations?: number[] }).balanceTestVibrations?.length ?? 0,
+  )
+  expect(vibrationCount).toBeGreaterThan(0)
+
+  await page.locator('.mobile-time-editor-backdrop').click({ position: { x: 4, y: 4 } })
+  await expect(dialog).toBeHidden()
+  await expect(untimedRow.locator('.mobile-time-summary')).toBeVisible()
+
+  await untimedRow.getByRole('button', {
+    name: 'Task options for Another task used to verify mobile drag selection',
+  }).click()
+  await page.getByRole('menu', {
+    name: 'Options for Another task used to verify mobile drag selection',
+  }).getByRole('menuitem', { name: 'Select tasks' }).click()
+
+  await expect(untimedRow.getByRole('button', {
+    name: 'Deselect Another task used to verify mobile drag selection',
+  })).toBeVisible()
+  const parentRow = page.getByRole('listitem', { name: 'Plan item: Parent task with a scheduled time' })
+  await parentRow.getByRole('button', { name: 'Select Parent task with a scheduled time' }).click()
+  await expect(page.locator('.plan-row.selected')).toHaveCount(2)
+  await page.screenshot({
+    path: 'artifacts/visual-smoke/mobile-task-selection.png',
+    fullPage: false,
+  })
+
+  await untimedRow.getByRole('button', {
+    name: 'Deselect Another task used to verify mobile drag selection',
+  }).click()
+  await parentRow.getByRole('button', { name: 'Deselect Parent task with a scheduled time' }).click()
+  await expect(page.locator('.plan-row.selected')).toHaveCount(0)
+  await expect(parentRow.getByRole('button', {
+    name: 'Task options for Parent task with a scheduled time',
+  })).toBeVisible()
+
+  await page.screenshot({
+    path: 'artifacts/visual-smoke/mobile-task-options.png',
     fullPage: false,
   })
 })
@@ -238,6 +336,22 @@ async function dragAcross(
   await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2)
   await page.mouse.down()
   await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 8 })
+  await page.mouse.up()
+}
+
+async function dragVertically(
+  page: import('@playwright/test').Page,
+  source: import('@playwright/test').Locator,
+  deltaY: number,
+) {
+  const box = await source.boundingBox()
+  if (!box) throw new Error('Missing vertical drag geometry')
+
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  await page.mouse.move(x, y)
+  await page.mouse.down()
+  await page.mouse.move(x, y + deltaY, { steps: 4 })
   await page.mouse.up()
 }
 
