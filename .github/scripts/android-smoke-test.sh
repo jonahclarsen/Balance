@@ -104,7 +104,7 @@ fi
 echo "[widgets] home-screen provider loaded encrypted data and inflated successfully."
 
 # WorkManager is registered only after the activity leaves the foreground, with
-# a fresh 15-minute delay. This prevents an overdue periodic pass from taking the
+# a fresh five-minute delay. This prevents an overdue background pass from taking the
 # database lock while the WebView is loading sync settings.
 adb shell input keyevent KEYCODE_HOME
 BACKGROUND_JOB_OK=0
@@ -112,7 +112,7 @@ for _ in $(seq 1 10); do
   adb shell dumpsys jobscheduler > jobscheduler.txt
   adb logcat -d > background-sync-log.txt 2>/dev/null || true
   if grep -Fq "$PKG/androidx.work.impl.background.systemjob.SystemJobService" jobscheduler.txt \
-    && grep -q "Scheduled periodic relay sync for background execution" background-sync-log.txt; then
+    && grep -q "Scheduled background relay sync in five minutes" background-sync-log.txt; then
     BACKGROUND_JOB_OK=1
     break
   fi
@@ -123,25 +123,25 @@ if [ "$BACKGROUND_JOB_OK" != 1 ]; then
   grep -iE "$PKG|workmanager|systemjobservice" jobscheduler.txt | head -40 || true
   exit 1
 fi
-echo "[background-sync] WorkManager periodic relay sync is registered only after backgrounding."
+echo "[background-sync] WorkManager relay sync is registered only after backgrounding."
 
 adb shell monkey -p "$PKG" -c android.intent.category.LAUNCHER 1 >/dev/null
 assert_running "foreground-after-background-registration" logcat.txt
 FOREGROUND_DEFERRED=0
 for _ in $(seq 1 10); do
   adb logcat -d > background-sync-log.txt 2>/dev/null || true
-  if grep -q "Deferred periodic relay sync while Balance is foregrounded" background-sync-log.txt; then
+  if grep -q "Deferred background relay sync while Balance is foregrounded" background-sync-log.txt; then
     FOREGROUND_DEFERRED=1
     break
   fi
   sleep 1
 done
 if [ "$FOREGROUND_DEFERRED" != 1 ]; then
-  echo "Android did not cancel/defer periodic relay sync on foreground entry."
+  echo "Android did not cancel/defer background relay sync on foreground entry."
   grep -i "BalanceBackgroundSync" background-sync-log.txt | tail -20 || true
   exit 1
 fi
-echo "[background-sync] Foreground entry cancels and defers periodic relay sync."
+echo "[background-sync] Foreground entry cancels and defers background relay sync."
 
 # The debug build is debuggable, so we can inspect its private storage. Both the
 # encrypted database and the Keystore-wrapped key file must now exist - that only

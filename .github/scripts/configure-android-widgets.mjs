@@ -260,7 +260,7 @@ object BalanceWidgets {
         val refresh = Intent(context, BalanceHomeWidgetProvider::class.java).setAction(ACTION_REFRESH)
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         views.setOnClickPendingIntent(
-            R.id.widget_refresh,
+            R.id.widget_refresh_touch_target,
             PendingIntent.getBroadcast(context, 42, refresh, flags),
         )
     }
@@ -330,8 +330,7 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == BalanceWidgets.ACTION_REFRESH) {
-            val pending = goAsync()
-            BalanceWidgets.refreshAllAsync(context) { pending.finish() }
+            BalanceSyncWorker.refreshNow(context)
         } else {
             super.onReceive(context, intent)
         }
@@ -484,17 +483,23 @@ function homeLayout(theme) {
             android:textColor="${theme.accent}"
             android:textSize="11sp" />
 
-        <TextView
-            android:id="@+id/widget_refresh"
-            android:layout_width="32dp"
-            android:layout_height="32dp"
-            android:layout_marginStart="6dp"
-            android:background="@drawable/balance_widget_${theme.id}_refresh_background"
-            android:contentDescription="Refresh Balance widget"
-            android:gravity="center"
-            android:text="↻"
-            android:textColor="${theme.accent}"
-            android:textSize="18sp" />
+        <FrameLayout
+            android:id="@+id/widget_refresh_touch_target"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="2dp"
+            android:contentDescription="Sync and refresh Balance widget">
+            <TextView
+                android:id="@+id/widget_refresh"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="center"
+                android:background="@drawable/balance_widget_${theme.id}_refresh_background"
+                android:gravity="center"
+                android:text="↻"
+                android:textColor="${theme.accent}"
+                android:textSize="18sp" />
+        </FrameLayout>
     </LinearLayout>
 
     <TextView
@@ -796,16 +801,18 @@ await writeFile(activityPath, activity)
 try {
   let worker = await readFile(workerPath, 'utf8')
   if (!worker.includes('BalanceWidgets.refreshAllAsync(applicationContext)')) {
-    const success = 'if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) Result.success()'
-    if (!worker.includes(success)) {
+    const success = /if \(runNativeSync\(applicationContext\.applicationInfo\.dataDir\) == 0\) \{\n(\s*)scheduleNext\(applicationContext\)\n\1Result\.success\(\)\n(\s*)\}/
+    if (!success.test(worker)) {
       throw new Error(`Could not find the background sync success path in ${workerPath}`)
     }
     worker = worker.replace(
       success,
-      `if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) {
-            BalanceWidgets.refreshAllAsync(applicationContext)
-            Result.success()
-        }`,
+      (_match, bodyIndent, closingIndent) =>
+        `if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) {
+${bodyIndent}BalanceWidgets.refreshAllAsync(applicationContext)
+${bodyIndent}scheduleNext(applicationContext)
+${bodyIndent}Result.success()
+${closingIndent}}`,
     )
     await writeFile(workerPath, worker)
   }

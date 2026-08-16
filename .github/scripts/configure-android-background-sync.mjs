@@ -30,9 +30,9 @@ const source = `package app.balance.local
 import android.content.Context
 import android.util.Log
 import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.Worker
 import androidx.work.WorkerParameters
 import androidx.work.WorkManager
@@ -41,20 +41,23 @@ import java.util.concurrent.TimeUnit
 class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
     override fun doWork(): Result {
         if (appForeground) {
-            Log.i(LOG_TAG, "Skipping periodic relay sync while Balance is foregrounded")
+            Log.i(LOG_TAG, "Skipping background relay sync while Balance is foregrounded")
             return Result.success()
         }
         return try {
-            if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) Result.success()
-            else Result.retry()
+            if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) {
+                scheduleNext(applicationContext)
+                Result.success()
+            } else Result.retry()
         } catch (_: Throwable) {
             Result.retry()
         }
     }
 
     companion object {
-        private const val PERIODIC_NAME = "balance-relay-sync-periodic"
+        private const val SYNC_NAME = "balance-relay-sync-background"
         private const val LOG_TAG = "BalanceBackgroundSync"
+        private const val SYNC_DELAY_MINUTES = 5L
         @Volatile private var appForeground = false
 
         init { System.loadLibrary("balance_lib") }
@@ -63,30 +66,35 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
 
         @JvmStatic fun enterForeground(context: Context) {
             appForeground = true
-            WorkManager.getInstance(context.applicationContext).cancelUniqueWork(PERIODIC_NAME)
-            Log.i(LOG_TAG, "Deferred periodic relay sync while Balance is foregrounded")
+            WorkManager.getInstance(context.applicationContext).cancelUniqueWork(SYNC_NAME)
+            Log.i(LOG_TAG, "Deferred background relay sync while Balance is foregrounded")
         }
 
         @JvmStatic fun enterBackground(context: Context) {
             appForeground = false
-            schedule(context)
+            enqueue(context, SYNC_DELAY_MINUTES, ExistingWorkPolicy.REPLACE)
+            Log.i(LOG_TAG, "Scheduled background relay sync in five minutes")
         }
 
-        private fun schedule(context: Context) {
+        @JvmStatic fun refreshNow(context: Context) {
+            enqueue(context, 0, ExistingWorkPolicy.REPLACE)
+            Log.i(LOG_TAG, "Scheduled immediate relay sync from widget refresh")
+        }
+
+        private fun scheduleNext(context: Context) {
+            enqueue(context, SYNC_DELAY_MINUTES, ExistingWorkPolicy.APPEND_OR_REPLACE)
+        }
+
+        private fun enqueue(context: Context, delayMinutes: Long, policy: ExistingWorkPolicy) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
                 .build()
             val manager = WorkManager.getInstance(context.applicationContext)
-            val periodic = PeriodicWorkRequestBuilder<BalanceSyncWorker>(15, TimeUnit.MINUTES)
+            val request = OneTimeWorkRequestBuilder<BalanceSyncWorker>()
                 .setConstraints(constraints)
-                .setInitialDelay(15, TimeUnit.MINUTES)
+                .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
                 .build()
-            manager.enqueueUniquePeriodicWork(
-                PERIODIC_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
-                periodic,
-            )
-            Log.i(LOG_TAG, "Scheduled periodic relay sync for background execution")
+            manager.enqueueUniqueWork(SYNC_NAME, policy, request)
         }
     }
 }
@@ -95,8 +103,8 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
 await mkdir(dirname(sourcePath), { recursive: true })
 await writeFile(sourcePath, source)
 
-// Cancel any overdue periodic pass before the WebView starts. Re-register it
-// only when the activity stops, with a fresh 15-minute delay, so WorkManager
+// Cancel any overdue background pass before the WebView starts. Re-register it
+// only when the activity stops, with a fresh five-minute delay, so WorkManager
 // cannot take the database lock from foreground startup.
 let activity = await readFile(activityPath, 'utf8')
 activity = activity.replace(/^\s*BalanceSyncWorker\.schedule\(this\)\s*$/m, '')

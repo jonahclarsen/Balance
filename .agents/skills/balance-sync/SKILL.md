@@ -40,8 +40,9 @@ cross-compiles the vendored OpenSSL linked by SQLCipher.
 
 The app syncs after persisted edits with a two-second debounce, at launch,
 resume, and online events, and on a five-minute foreground safety interval.
-Android additionally schedules a network-constrained WorkManager pass at the
-platform minimum 15-minute period. The CI-only generator is
+Android additionally chains network-constrained one-time WorkManager passes at
+a best-effort five-minute cadence, because periodic WorkManager requests have a
+15-minute minimum. The CI-only generator is
 `.github/scripts/configure-android-background-sync.mjs`; never generate or build
 that Android project locally.
 

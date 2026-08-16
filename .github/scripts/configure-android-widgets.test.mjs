@@ -66,8 +66,10 @@ class MainActivity : TauriActivity() {
 
 class BalanceSyncWorker {
     fun doWork(): Result = try {
-        if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) Result.success()
-        else Result.retry()
+        if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) {
+            scheduleNext(applicationContext)
+            Result.success()
+        } else Result.retry()
     } catch (_: Throwable) {
         Result.retry()
     }
@@ -108,12 +110,19 @@ class BalanceSyncWorker {
         .length,
       1,
     )
+    assert.match(
+      configuredWorker,
+      /BalanceWidgets\.refreshAllAsync\(applicationContext\)[\s\S]*scheduleNext\(applicationContext\)/,
+    )
 
     const kotlin = await readFile(
       join(root, 'java/app/balance/local/BalanceWidgets.kt'),
       'utf8',
     )
     assert.match(kotlin, /external fun nativeSnapshot/)
+    assert.match(kotlin, /BalanceSyncWorker\.refreshNow\(context\)/)
+    assert.match(kotlin, /R\.id\.widget_refresh_touch_target/)
+    assert.doesNotMatch(kotlin, /BalanceWidgets\.refreshAllAsync\(context\) \{ pending\.finish\(\) \}/)
     assert.doesNotMatch(kotlin, /SharedPreferences|openFileOutput|writeText/)
     assert.doesNotMatch(kotlin, /BalanceLockWidgetProvider|renderLock|balance_lock_widget/)
     assert.match(kotlin, /BALANCE_WIDGET_E2E: OK home native-snapshot/)
@@ -146,6 +155,15 @@ class BalanceSyncWorker {
     assert.match(violetLayout, /@drawable\/balance_widget_violet_time_pill/)
     assert.match(violetLayout, /@\+id\/widget_all_done/)
     assert.match(violetLayout, /android:text="TODAY"/)
+    assert.match(violetLayout, /@\+id\/widget_refresh_touch_target/)
+    assert.match(
+      violetLayout,
+      /android:id="@\+id\/widget_refresh_touch_target"[\s\S]*?android:layout_width="48dp"[\s\S]*?android:layout_height="48dp"/,
+    )
+    assert.match(
+      violetLayout,
+      /android:id="@\+id\/widget_refresh"[\s\S]*?android:layout_width="32dp"[\s\S]*?android:layout_height="32dp"/,
+    )
     assert.ok(
       violetLayout.indexOf('@+id/widget_reminder') <
         violetLayout.indexOf('@+id/widget_progress_bar'),

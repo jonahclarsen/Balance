@@ -333,6 +333,11 @@ layouts, the manifest, activity refresh hooks, or background-worker refresh
 hooks belong in `.github/scripts/configure-android-widgets.mjs`, not in a locally
 generated Android tree.
 
+Keep the Android manual refresh action connected to the relay sync worker, which
+redraws the widget after a successful pass. A local snapshot redraw alone cannot
+retrieve changes made on another device. Preserve a minimum 48dp touch target
+around the refresh control even when its visible treatment is smaller.
+
 Run only the generator test locally:
 
 ```sh

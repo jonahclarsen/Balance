@@ -14,7 +14,7 @@ async function write(path, content) {
   await writeFile(path, content)
 }
 
-test('defers periodic relay sync while the Android activity is foregrounded', async () => {
+test('schedules five-minute and immediate relay sync while the activity is backgrounded', async () => {
   const fixture = await mkdtemp(join(tmpdir(), 'balance-background-sync-'))
   const gradle = join(fixture, 'app/build.gradle.kts')
   const worker = join(fixture, 'app/src/main/java/app/balance/local/BalanceSyncWorker.kt')
@@ -32,9 +32,14 @@ test('defers periodic relay sync while the Android activity is foregrounded', as
 
     const configuredWorker = await readFile(worker, 'utf8')
     assert.match(configuredWorker, /if \(appForeground\)/)
-    assert.match(configuredWorker, /cancelUniqueWork\(PERIODIC_NAME\)/)
-    assert.match(configuredWorker, /setInitialDelay\(15, TimeUnit\.MINUTES\)/)
-    assert.match(configuredWorker, /ExistingPeriodicWorkPolicy\.KEEP/)
+    assert.match(configuredWorker, /cancelUniqueWork\(SYNC_NAME\)/)
+    assert.match(configuredWorker, /SYNC_DELAY_MINUTES = 5L/)
+    assert.match(configuredWorker, /OneTimeWorkRequestBuilder<BalanceSyncWorker>/)
+    assert.match(configuredWorker, /setInitialDelay\(delayMinutes, TimeUnit\.MINUTES\)/)
+    assert.match(configuredWorker, /ExistingWorkPolicy\.APPEND_OR_REPLACE/)
+    assert.match(configuredWorker, /fun refreshNow\(context: Context\)/)
+    assert.match(configuredWorker, /enqueue\(context, 0, ExistingWorkPolicy\.REPLACE\)/)
+    assert.doesNotMatch(configuredWorker, /PeriodicWorkRequestBuilder|15, TimeUnit\.MINUTES/)
 
     const configuredActivity = await readFile(activity, 'utf8')
     assert.equal((configuredActivity.match(/override fun onStart/g) ?? []).length, 1)
