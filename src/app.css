@@ -223,14 +223,6 @@
   --accent: #425b9b;
   --accent-strong: #304477;
   --theme-hue: 223.1;
-  --list-progress-stop-1: #4257c9;
-  --list-progress-stop-2: #6a54d1;
-  --list-progress-stop-3: #9455c9;
-  --list-progress-stop-4: #c85fb0;
-  --list-progress-stop-5: #ec6a8f;
-  --list-progress-stop-6: #f7856a;
-  --list-progress-stop-7: #f9a94f;
-  --list-progress-stop-8: #f6cf68;
   --theme-checkbox: #526bb0;
   --theme-done: #596fbb;
   --danger: #b3454c;
@@ -292,6 +284,18 @@
   --time-border: #b8cfe1;
   --time-bg: #e7f3f6;
   --focus-ring: rgb(161 60 145 / 0.26);
+}
+
+:root[data-theme='graphite'],
+:root[data-theme='iridescent'] {
+  --list-progress-stop-1: #4257c9;
+  --list-progress-stop-2: #6a54d1;
+  --list-progress-stop-3: #9455c9;
+  --list-progress-stop-4: #c85fb0;
+  --list-progress-stop-5: #ec6a8f;
+  --list-progress-stop-6: #f7856a;
+  --list-progress-stop-7: #f9a94f;
+  --list-progress-stop-8: #f6cf68;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -2493,7 +2497,7 @@ nav button.active {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.68), rgba(255, 255, 255, 0.12) 43%, rgba(255, 255, 255, 0.44)),
     linear-gradient(120deg, rgba(255, 255, 255, 0.48), rgba(255, 255, 255, 0) 22% 48%, rgba(255, 255, 255, 0.34) 68%, rgba(255, 255, 255, 0) 86%),
-    /* Preserve the sweep's tones while matching the selected theme's hue. */
+    /* Themes can use a single hue or opt into the original multicolor sweep. */
     linear-gradient(
       90deg,
       var(--list-progress-stop-1) 0%,
