@@ -158,7 +158,10 @@ fn restore_macos_main_window_frame(app: &tauri::App) -> tauri::Result<()> {
     // The window starts hidden so its configured fallback frame is never shown
     // before AppKit has had the opportunity to apply the saved frame.
     unsafe {
-        (&*ns_window).setFrameAutosaveName(&NSString::from_str("BalanceMainWindow"));
+        let ns_window = &*ns_window;
+        let frame_name = NSString::from_str("BalanceMainWindow");
+        ns_window.setFrameUsingName(&frame_name);
+        ns_window.setFrameAutosaveName(&frame_name);
     }
     window.show()
 }
