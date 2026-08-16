@@ -2518,6 +2518,55 @@ test('cmd shift a selects the focused plan item instead of its text', async ({ p
   await expect.poll(async () => page.evaluate(() => document.activeElement?.matches('[data-plan-text-input]'))).toBe(false)
 })
 
+test('a page restores its selected task after visiting another page', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+  }
+
+  await focusInputByValue(page, 'Wake up')
+  await page.keyboard.press('Meta+Shift+A')
+  const row = page.getByRole('listitem', { name: /Plan item: Wake up/ })
+  await expect(row).toHaveClass(/selected/)
+
+  await openSidebarPage(page, 'Day Templates', testInfo.project.name === 'mobile')
+  await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await openSidebarPage(page, 'Today', testInfo.project.name === 'mobile')
+
+  await expect(row).toHaveClass(/selected/)
+  await expect.poll(async () => page.evaluate(() => document.activeElement?.matches('[data-plan-text-input]'))).toBe(false)
+})
+
+test('a page restores its task caret after visiting another page', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+  }
+
+  await focusInputByValue(page, 'Wake up')
+  await setCaretOffsetInFocusedEditor(page, 4)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
+
+  await openSidebarPage(page, 'Day Templates', testInfo.project.name === 'mobile')
+  await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await openSidebarPage(page, 'Today', testInfo.project.name === 'mobile')
+
+  await expect
+    .poll(async () => ({
+      activeText: await activeInputValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: 'Wake up', caretOffset: 4 })
+})
+
 test('arrow keys enter a selected plan item at the matching text boundary', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -4190,6 +4239,11 @@ async function focusInputByValue(page: import('@playwright/test').Page, value: s
     )
     input?.focus()
   }, value)
+}
+
+async function openSidebarPage(page: import('@playwright/test').Page, name: string, mobile: boolean) {
+  if (mobile) await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('complementary').getByRole('button', { name, exact: true }).click()
 }
 
 async function activeInputValue(page: import('@playwright/test').Page) {

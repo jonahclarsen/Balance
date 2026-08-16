@@ -261,10 +261,24 @@ return rows`
   let focusedPlanId: Id | null = null
   type ItemSurface = 'plan' | 'day-template' | 'list-template'
   type TreeNode = { id: Id; children: TreeNode[] }
+  type ItemSelectionState = {
+    selectedItemIds: Id[]
+    selectionAnchorId: Id | null
+    selectionFocusId: Id | null
+  }
+  type ItemCaretState = {
+    inputId: Id
+    start: number
+    end: number
+  }
   let selectedItemIds: Id[] = []
   let selectionAnchorId: Id | null = null
   let selectionFocusId: Id | null = null
   let selectedItemContext = ''
+  let itemStateContext = ''
+  let itemContextRestoreNonce = 0
+  const itemSelectionsByContext: Record<string, ItemSelectionState> = {}
+  const itemCaretsByContext: Record<string, ItemCaretState> = {}
   let selectingItems = false
   type PlanItemClipboard = { items: PlanItem[]; cut: boolean; sourceDate: string }
   type TemplateItemClipboard =
@@ -458,9 +472,7 @@ return rows`
         : view === 'listTemplates' && selectedListTemplate
           ? `list-template:${selectedListTemplate.id}`
           : ''
-  $: if (selectedItemIds.length > 0 && activeItemContext !== selectedItemContext) {
-    clearItemSelection()
-  }
+  $: if (activeItemContext !== itemStateContext) void switchItemContext(activeItemContext)
   // The list overlay toast belongs to the page it was opened over: leaving that
   // page hides it, returning shows it again (its state + selection persist).
   $: listOverlayVisible = Boolean(listOverlay && listOverlayInstance && view === listOverlayView)
@@ -2649,6 +2661,127 @@ return rows`
     return activeItemContext
   }
 
+  async function switchItemContext(nextContext: string) {
+    const previousContext = itemStateContext
+    if (previousContext) {
+      if (selectedItemContext === previousContext && selectedItemIds.length > 0) {
+        itemSelectionsByContext[previousContext] = {
+          selectedItemIds: [...selectedItemIds],
+          selectionAnchorId,
+          selectionFocusId,
+        }
+        delete itemCaretsByContext[previousContext]
+      } else {
+        delete itemSelectionsByContext[previousContext]
+      }
+    }
+
+    itemStateContext = nextContext
+    const restoreNonce = ++itemContextRestoreNonce
+    const validItemIds = new Set(flattenItemIds(activeItemTree()))
+    const savedSelection = nextContext ? itemSelectionsByContext[nextContext] : undefined
+    const restoredItemIds = savedSelection?.selectedItemIds.filter((itemId) => validItemIds.has(itemId)) ?? []
+
+    if (nextContext && restoredItemIds.length > 0) {
+      selectedItemIds = restoredItemIds
+      selectedItemContext = nextContext
+      selectionAnchorId = savedSelection && validItemIds.has(savedSelection.selectionAnchorId ?? '')
+        ? savedSelection.selectionAnchorId
+        : restoredItemIds[0]
+      selectionFocusId = savedSelection && validItemIds.has(savedSelection.selectionFocusId ?? '')
+        ? savedSelection.selectionFocusId
+        : restoredItemIds.at(-1) ?? null
+      return
+    }
+
+    selectedItemIds = []
+    selectedItemContext = ''
+    selectionAnchorId = null
+    selectionFocusId = null
+    selectingItems = false
+
+    const savedCaret = nextContext ? itemCaretsByContext[nextContext] : undefined
+    if (!savedCaret) return
+
+    await tick()
+    if (restoreNonce !== itemContextRestoreNonce || activeItemContext !== nextContext) return
+
+    const editor = workspaceEl?.querySelector<HTMLDivElement>(
+      `[data-rich-text-input-id="${CSS.escape(savedCaret.inputId)}"]`,
+    )
+    if (!editor || !editorMatchesActiveItemSurface(editor)) {
+      delete itemCaretsByContext[nextContext]
+      return
+    }
+
+    editor.focus()
+    const range = document.createRange()
+    const start = domPositionForTextOffset(editor, savedCaret.start)
+    const end = domPositionForTextOffset(editor, savedCaret.end)
+    range.setStart(start.node, start.offset)
+    range.setEnd(end.node, end.offset)
+
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
+
+  function rememberActiveItemCaret() {
+    if (!itemStateContext || itemStateContext !== activeItemContext || selectedItemIds.length > 0) return
+
+    const active = document.activeElement
+    const editor = active instanceof HTMLElement
+      ? active.closest<HTMLDivElement>('[data-rich-text-input]')
+      : null
+    const selection = document.getSelection()
+    if (!editor || !editorMatchesActiveItemSurface(editor) || !selection || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return
+
+    const inputId = editor.dataset.richTextInputId
+    if (!inputId) return
+
+    itemCaretsByContext[itemStateContext] = {
+      inputId,
+      start: textOffsetForRangeBoundary(editor, range.startContainer, range.startOffset),
+      end: textOffsetForRangeBoundary(editor, range.endContainer, range.endOffset),
+    }
+    delete itemSelectionsByContext[itemStateContext]
+  }
+
+  function editorMatchesActiveItemSurface(editor: HTMLElement) {
+    const kind = editor.dataset.richTextKind
+    const surface = activeItemSurface()
+    return (
+      (surface === 'plan' && kind === 'plan') ||
+      (surface === 'day-template' && kind === 'template-option') ||
+      (surface === 'list-template' && kind === 'list-template-item')
+    )
+  }
+
+  function textOffsetForRangeBoundary(editor: HTMLElement, boundaryNode: Node, boundaryOffset: number) {
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.setEnd(boundaryNode, boundaryOffset)
+    return range.toString().length
+  }
+
+  function domPositionForTextOffset(editor: HTMLElement, offset: number) {
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+    let remaining = offset
+    let node = walker.nextNode()
+
+    while (node) {
+      const length = node.textContent?.length ?? 0
+      if (remaining <= length) return { node, offset: remaining }
+      remaining -= length
+      node = walker.nextNode()
+    }
+
+    return { node: editor as Node, offset: editor.childNodes.length }
+  }
+
   function itemRowSelector() {
     const surface = activeItemSurface()
     if (surface === 'plan') return '[data-plan-item-id]'
@@ -3725,6 +3858,9 @@ return rows`
   }
 
   function releaseTextEditingFocus() {
+    if (itemStateContext && selectedItemIds.length > 0) {
+      delete itemCaretsByContext[itemStateContext]
+    }
     document.getSelection()?.removeAllRanges()
 
     if (document.activeElement instanceof HTMLElement && document.activeElement.closest('input, textarea, [contenteditable="true"]')) {
@@ -3920,6 +4056,7 @@ return rows`
   on:pointerup={endItemSelection}
   on:pointercancel={endItemSelection}
 />
+<svelte:document on:selectionchange={rememberActiveItemCaret} />
 
 {#if documentFindOpen}
   <DocumentFindBar bind:this={documentFindBar} onClose={() => (documentFindOpen = false)} />
