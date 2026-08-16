@@ -4300,7 +4300,9 @@ nav button.active {
   min-height: min(720px, calc(100vh - 190px));
   border: 1px solid var(--line);
   border-radius: 12px;
-  overflow: hidden;
+  /* Preserve rounded-edge clipping without trapping the sticky toolbar in a
+     non-scrolling overflow container. The workspace is the actual scroller. */
+  overflow: clip;
   background: var(--paper);
   box-shadow: var(--shadow);
 }
@@ -4395,7 +4397,8 @@ nav button.active {
 .note-document {
   min-width: 0;
   padding: clamp(18px, 4vw, 48px) clamp(18px, 6vw, 80px);
-  overflow-x: hidden;
+  /* `hidden` would make this the toolbar's sticky scroll container. */
+  overflow-x: clip;
 }
 
 .note-document-head {
@@ -4563,6 +4566,7 @@ nav button.active {
   padding: 3px 2px;
   outline: none;
   font-size: 15px;
+  font-synthesis: style;
   line-height: 1.6;
   white-space: pre-wrap;
 }

@@ -129,7 +129,7 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   await expect(page.locator('[data-note-text-input]').nth(1)).toContainText('Formatted ideas')
 
   await page.getByRole('button', { name: 'Copy note link' }).click()
-  await expect(page.getByText('Note link copied')).toBeVisible()
+  await expect(page.getByText('Link copied!')).toBeVisible()
   const noteLink = await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return `balance://note/${state.notes[0].id}`
@@ -181,7 +181,12 @@ test('note inline formatting shortcuts and toolbar buttons are true toggles', as
   await editor.press('Meta+A')
 
   await editor.press('Meta+I')
-  await expect(editor.locator('i, em')).toHaveText('Toggle this text')
+  const italicText = editor.locator('i, em')
+  await expect(italicText).toHaveText('Toggle this text')
+  await expect.poll(() => italicText.evaluate((element) => ({
+    fontStyle: getComputedStyle(element).fontStyle,
+    fontSynthesis: getComputedStyle(element).fontSynthesis,
+  }))).toEqual({ fontStyle: 'italic', fontSynthesis: 'style' })
   await expect(italic).toHaveAttribute('aria-pressed', 'true')
   await editor.press('Meta+I')
   await expect(editor.locator('i, em')).toHaveCount(0)
@@ -201,6 +206,31 @@ test('note inline formatting shortcuts and toolbar buttons are true toggles', as
   await underline.click()
   await expect(editor.locator('u')).toHaveText('Toggle this text')
   await expect(underline).toHaveAttribute('aria-pressed', 'true')
+})
+
+test('note formatting toolbar stays visible while scrolling a long note', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const editor = page.locator('[data-note-text-input]').first()
+  const workspace = page.locator('.workspace')
+  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
+  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+
+  await expect.poll(async () => {
+    const workspaceBox = await workspace.boundingBox()
+    const toolbarBox = await toolbar.boundingBox()
+    if (!workspaceBox || !toolbarBox) return false
+    const top = toolbarBox.y - workspaceBox.y
+    return toolbarBox.y + toolbarBox.height > workspaceBox.y
+      && toolbarBox.y < workspaceBox.y + workspaceBox.height
+      && top >= 8
+      && top <= 48
+  }).toBe(true)
 })
 
 test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
