@@ -145,10 +145,17 @@ type TextChangeOptions = {
 }
 
 type HistoryEntry = {
+  operationId: string
   before: AppState
   after: AppState
   mergeKey: string | null
   updatedAt: number
+}
+
+type BackendHistoryResult = {
+  operationId: string
+  localSequence: number
+  state: AppState | null
 }
 
 export type RecoveryKeyStatus = {
@@ -561,8 +568,8 @@ function createPlannerStore() {
       lastOperationMergeKey = options.mergeKey ?? null
       lastOperationMergeUpdatedAt = now
 
-      if (!isTauri() && options.undoable !== false) {
-        recordHistory(state, committed, options)
+      if (options.undoable !== false) {
+        recordHistory(state, committed, operation.id, options)
       }
 
       return committed
@@ -1920,13 +1927,31 @@ function createPlannerStore() {
     async undo() {
       if (isTauri()) {
         await flushOperations()
-        const stateJson = await invoke<string | null>('undo_last_operation')
-        const parsed = parseStoredState(stateJson)
-        if (parsed) {
-          lastOperationMergeKey = null
-          store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
-          notifyPersistedOperation()
+        const expected = undoStack.at(-1)
+        const resultJson = await invoke<string | null>('undo_last_operation', {
+          expectedOperationId: expected?.operationId ?? null,
+        })
+        const result = parseBackendHistoryResult(resultJson)
+        if (!result) {
+          undoStack = []
+          redoStack = []
+          return
         }
+
+        lastOperationMergeKey = null
+        if (expected && result.operationId === expected.operationId && result.state === null) {
+          undoStack.pop()
+          redoStack.push(expected)
+          store.update((current) => stateFromNativeHistoryEntry(current, expected.before, result.localSequence))
+        } else if (result.state) {
+          const parsed = parseStoredState(JSON.stringify(result.state))
+          if (parsed) {
+            undoStack = []
+            redoStack = []
+            store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+          }
+        }
+        notifyPersistedOperation()
         return
       }
 
@@ -1949,13 +1974,31 @@ function createPlannerStore() {
     async redo() {
       if (isTauri()) {
         await flushOperations()
-        const stateJson = await invoke<string | null>('redo_last_operation')
-        const parsed = parseStoredState(stateJson)
-        if (parsed) {
-          lastOperationMergeKey = null
-          store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
-          notifyPersistedOperation()
+        const expected = redoStack.at(-1)
+        const resultJson = await invoke<string | null>('redo_last_operation', {
+          expectedOperationId: expected?.operationId ?? null,
+        })
+        const result = parseBackendHistoryResult(resultJson)
+        if (!result) {
+          undoStack = []
+          redoStack = []
+          return
         }
+
+        lastOperationMergeKey = null
+        if (expected && result.operationId === expected.operationId && result.state === null) {
+          redoStack.pop()
+          undoStack.push(expected)
+          store.update((current) => stateFromNativeHistoryEntry(current, expected.after, result.localSequence))
+        } else if (result.state) {
+          const parsed = parseStoredState(JSON.stringify(result.state))
+          if (parsed) {
+            undoStack = []
+            redoStack = []
+            store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+          }
+        }
+        notifyPersistedOperation()
         return
       }
 
@@ -1984,6 +2027,8 @@ function createPlannerStore() {
       if (!parsed) return false
 
       lastOperationMergeKey = null
+      undoStack = []
+      redoStack = []
       store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
       notifyPersistedOperation()
       return true
@@ -1998,8 +2043,41 @@ function createPlannerStore() {
       if (!parsed) return
 
       lastOperationMergeKey = null
+      undoStack = []
+      redoStack = []
       store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
     },
+  }
+}
+
+function parseBackendHistoryResult(raw: string | null): BackendHistoryResult | null {
+  if (!raw) return null
+  try {
+    const result = JSON.parse(raw) as Partial<BackendHistoryResult>
+    if (
+      typeof result.operationId !== 'string' ||
+      typeof result.localSequence !== 'number' ||
+      !Number.isSafeInteger(result.localSequence) ||
+      (result.state !== null && (typeof result.state !== 'object' || result.state === undefined))
+    ) {
+      return null
+    }
+    return result as BackendHistoryResult
+  } catch {
+    return null
+  }
+}
+
+function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, localSequence: number): AppState {
+  return {
+    ...snapshot,
+    deviceId: current.deviceId,
+    localSequence,
+    // Preferences are intentionally not undoable and may have changed after
+    // this history entry was recorded. Native undo never rewinds them.
+    preferences: current.preferences,
+    operations: [],
+    historyRevision: current.historyRevision + 1,
   }
 }
 
@@ -2033,17 +2111,23 @@ function applyHistorySnapshot(current: AppState, snapshot: AppState, type: strin
   }
 }
 
-function recordHistory(before: AppState, after: AppState, options: CommitOptions): void {
+function recordHistory(before: AppState, after: AppState, operationId: string, options: CommitOptions): void {
   const now = Date.now()
   const mergeKey = options.mergeKey ?? null
   const mergeWindowMs = options.mergeWindowMs ?? 0
   const last = undoStack.at(-1)
+  // Native history operations are already durable in SQLite. Keeping their
+  // ever-growing in-memory operation arrays would turn the snapshot cache into
+  // quadratic memory use during a long session.
+  const historyBefore = isTauri() ? { ...before, operations: [] } : before
+  const historyAfter = isTauri() ? { ...after, operations: [] } : after
 
   if (last && mergeKey && last.mergeKey === mergeKey && now - last.updatedAt <= mergeWindowMs) {
-    last.after = after
+    last.after = historyAfter
+    last.operationId = operationId
     last.updatedAt = now
   } else {
-    undoStack.push({ before, after, mergeKey, updatedAt: now })
+    undoStack.push({ operationId, before: historyBefore, after: historyAfter, mergeKey, updatedAt: now })
     if (undoStack.length > MAX_HISTORY_ENTRIES) undoStack = undoStack.slice(-MAX_HISTORY_ENTRIES)
   }
 

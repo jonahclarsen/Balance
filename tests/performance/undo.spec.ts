@@ -135,3 +135,162 @@ test('profiles pasted-link undo through the frontend store and renderer', async 
 
   await expect(editor).toHaveText('Goal 0')
 })
+
+test('native undo uses a matching in-memory snapshot and preserves redo', async ({ page }) => {
+  await page.addInitScript(() => {
+    type Runtime = typeof globalThis & {
+      isTauri: boolean
+      __historyCalls: Array<{ command: string; expectedOperationId: unknown }>
+      __TAURI_INTERNALS__: {
+        invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
+        transformCallback: () => number
+      }
+      __TAURI_EVENT_PLUGIN_INTERNALS__: { unregisterListener: () => void }
+    }
+    const runtime = globalThis as Runtime
+    const state = {
+      schemaVersion: 1,
+      deviceId: 'device_native_test',
+      localSequence: 1,
+      historyRevision: 0,
+      activePlanDate: '2026-08-16',
+      templates: [],
+      plans: [{
+        id: 'plan_today',
+        date: '2026-08-16',
+        title: 'Today',
+        dailyReminder: '',
+        generatedFromTemplateId: null,
+        createdAt: '2026-08-16T00:00:00Z',
+        items: [{
+          id: 'plan_item_native',
+          text: 'Original text',
+          html: 'Original text',
+          done: false,
+          startMinutes: null,
+          endMinutes: null,
+          children: [],
+        }],
+      }],
+      listTemplates: [],
+      lists: [],
+      metrics: [],
+      metricEntries: [],
+      notes: [],
+      goals: [],
+      goalCompletions: [],
+      operations: [],
+    }
+    let persistedOperation: { id: string; sequence: number } | null = null
+    runtime.isTauri = true
+    runtime.__historyCalls = []
+    runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
+    runtime.__TAURI_INTERNALS__ = {
+      transformCallback: () => 1,
+      invoke: async (command, args) => {
+        switch (command) {
+          case 'read_app_state':
+            return JSON.stringify(state)
+          case 'persist_operation':
+            persistedOperation = JSON.parse(String(args?.operationJson)) as { id: string; sequence: number }
+            return null
+          case 'undo_last_operation':
+          case 'redo_last_operation': {
+            const operation = persistedOperation as { id: string; sequence: number } | null
+            if (!operation) throw new Error('History command ran before persistence')
+            runtime.__historyCalls.push({ command, expectedOperationId: args?.expectedOperationId })
+            return JSON.stringify({
+              operationId: operation.id,
+              localSequence: operation.sequence + runtime.__historyCalls.length,
+              state: null,
+            })
+          }
+          case 'get_recovery_key_status':
+            return { confirmed: true, recoveryKey: null, databasePath: '/tmp/synthetic-native.sqlite3' }
+          case 'get_export_settings':
+            return {
+              exportDirectory: '/tmp',
+              defaultExportDirectory: '/tmp',
+              usesDefaultExportDirectory: true,
+              autoJsonExportEnabled: false,
+              autoJsonExportTime: '23:55',
+              lastAutoJsonExportDate: null,
+              lastAutoJsonExportPath: null,
+              lastAutoJsonExportError: null,
+              lastAutoJsonExportErrorAt: null,
+              autoJsonExportErrorAckAt: null,
+            }
+          case 'get_sync_settings':
+            return { enabled: false, pairingCode: null, relayUrl: '' }
+          case 'get_database_maintenance_status':
+            return {
+              due: false,
+              lastCompletedAt: null,
+              checkpointCoordinator: true,
+              databaseBytes: 0,
+              reclaimableBytes: 0,
+              reclaimablePercent: 0,
+              operationCount: 0,
+              operationBytes: 0,
+              checkpointRecommended: false,
+            }
+          case 'build_info':
+            return { version: 'test', commit: 'test' }
+          default:
+            return null
+        }
+      },
+    }
+  })
+
+  await page.goto('/')
+  const editor = page.locator('[data-plan-text-input]').first()
+  await expect(editor).toHaveText('Original text')
+  await editor.evaluate((element) => {
+    ;(element as HTMLElement).focus()
+    element.textContent = 'Changed text'
+    element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: 'Changed text' }))
+  })
+  await expect(editor).toHaveText('Changed text')
+
+  await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'z',
+    code: 'KeyZ',
+    metaKey: true,
+    bubbles: true,
+    cancelable: true,
+  })))
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & {
+      __historyCalls: Array<{ command: string; expectedOperationId: unknown }>
+    }
+    return runtime.__historyCalls
+  })).toHaveLength(1)
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & {
+      __historyCalls: Array<{ command: string; expectedOperationId: unknown }>
+    }
+    return runtime.__historyCalls[0]?.expectedOperationId
+  })).toBe('op_device_native_test_2')
+  await expect(editor).toHaveText('Original text')
+  await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'z',
+    code: 'KeyZ',
+    metaKey: true,
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  })))
+  await expect(editor).toHaveText('Changed text')
+
+  const calls = await page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & {
+      __historyCalls: Array<{ command: string; expectedOperationId: unknown }>
+    }
+    return runtime.__historyCalls
+  })
+  expect(calls).toHaveLength(2)
+  expect(calls[0].command).toBe('undo_last_operation')
+  expect(calls[0].expectedOperationId).toMatch(/^op_device_native_test_2$/)
+  expect(calls[1]).toEqual({ command: 'redo_last_operation', expectedOperationId: calls[0].expectedOperationId })
+})

@@ -776,31 +776,37 @@ async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Res
 }
 
 #[tauri::command]
-async fn undo_last_operation(app: tauri::AppHandle) -> Result<Option<String>, String> {
+async fn undo_last_operation(
+    app: tauri::AppHandle,
+    expected_operation_id: Option<String>,
+) -> Result<Option<String>, String> {
     run_database_task(move || {
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
-        let state = undo_last_operation_in_database(&mut connection)?;
-        if state.is_some() {
+        let result = undo_last_operation_for_ui(&mut connection, expected_operation_id.as_deref())?;
+        if result.is_some() {
             finish_meaningful_database_write(&connection, &database_path, &recovery_key);
         }
-        Ok(state.map(|value| value.to_string()))
+        Ok(result.map(|value| value.to_string()))
     })
     .await
 }
 
 #[tauri::command]
-async fn redo_last_operation(app: tauri::AppHandle) -> Result<Option<String>, String> {
+async fn redo_last_operation(
+    app: tauri::AppHandle,
+    expected_operation_id: Option<String>,
+) -> Result<Option<String>, String> {
     run_database_task(move || {
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
-        let state = redo_last_operation_in_database(&mut connection)?;
-        if state.is_some() {
+        let result = redo_last_operation_for_ui(&mut connection, expected_operation_id.as_deref())?;
+        if result.is_some() {
             finish_meaningful_database_write(&connection, &database_path, &recovery_key);
         }
-        Ok(state.map(|value| value.to_string()))
+        Ok(result.map(|value| value.to_string()))
     })
     .await
 }
@@ -2969,50 +2975,92 @@ fn maybe_checkpoint_operation_log(connection: &Connection) -> Result<bool, Strin
     Ok(true)
 }
 
+#[cfg(test)]
 fn undo_last_operation_in_database(connection: &mut Connection) -> Result<Option<Value>, String> {
-    let changed = {
-        let tx = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        let Some(history) = latest_undoable_history_entry(&tx)? else {
-            return Ok(None);
-        };
-
-        append_history_action_operation(&tx, "history_undo", &history.id, &history.undo_operation)?;
-        apply_operation(&tx, &history.undo_operation)?;
-        set_history_undone(&tx, &history.id, true)?;
-        tx.commit().map_err(|error| error.to_string())?;
-        true
+    let Some(_) = apply_latest_history_entry(connection, HistoryDirection::Undo)? else {
+        return Ok(None);
     };
-
-    if changed {
-        read_app_state_from_database(connection)
-    } else {
-        Ok(None)
-    }
+    read_app_state_from_database(connection)
 }
 
+#[cfg(test)]
 fn redo_last_operation_in_database(connection: &mut Connection) -> Result<Option<Value>, String> {
-    let changed = {
-        let tx = connection
-            .transaction()
-            .map_err(|error| error.to_string())?;
-        let Some(history) = latest_redoable_history_entry(&tx)? else {
-            return Ok(None);
-        };
+    let Some(_) = apply_latest_history_entry(connection, HistoryDirection::Redo)? else {
+        return Ok(None);
+    };
+    read_app_state_from_database(connection)
+}
 
-        append_history_action_operation(&tx, "history_redo", &history.id, &history.redo_operation)?;
-        apply_operation(&tx, &history.redo_operation)?;
-        set_history_undone(&tx, &history.id, false)?;
-        tx.commit().map_err(|error| error.to_string())?;
-        true
+#[derive(Clone, Copy)]
+enum HistoryDirection {
+    Undo,
+    Redo,
+}
+
+fn apply_latest_history_entry(
+    connection: &mut Connection,
+    direction: HistoryDirection,
+) -> Result<Option<HistoryEntry>, String> {
+    let tx = connection
+        .transaction()
+        .map_err(|error| error.to_string())?;
+    let history = match direction {
+        HistoryDirection::Undo => latest_undoable_history_entry(&tx)?,
+        HistoryDirection::Redo => latest_redoable_history_entry(&tx)?,
+    };
+    let Some(history) = history else {
+        return Ok(None);
+    };
+    let (operation_type, operation, undone) = match direction {
+        HistoryDirection::Undo => ("history_undo", &history.undo_operation, true),
+        HistoryDirection::Redo => ("history_redo", &history.redo_operation, false),
     };
 
-    if changed {
-        read_app_state_from_database(connection)
+    append_history_action_operation(&tx, operation_type, &history.id, operation)?;
+    apply_operation(&tx, operation)?;
+    set_history_undone(&tx, &history.id, undone)?;
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(Some(history))
+}
+
+fn history_result_for_ui(
+    connection: &Connection,
+    history: &HistoryEntry,
+    expected_operation_id: Option<&str>,
+) -> Result<Value, String> {
+    let state = if expected_operation_id == Some(history.operation_id.as_str()) {
+        Value::Null
     } else {
-        Ok(None)
-    }
+        read_app_state_from_database(connection)?.unwrap_or(Value::Null)
+    };
+    let local_sequence = metadata_value(connection, "local_sequence")?
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(0);
+    Ok(json!({
+        "operationId": history.operation_id,
+        "localSequence": local_sequence,
+        "state": state,
+    }))
+}
+
+fn undo_last_operation_for_ui(
+    connection: &mut Connection,
+    expected_operation_id: Option<&str>,
+) -> Result<Option<Value>, String> {
+    let Some(history) = apply_latest_history_entry(connection, HistoryDirection::Undo)? else {
+        return Ok(None);
+    };
+    history_result_for_ui(connection, &history, expected_operation_id).map(Some)
+}
+
+fn redo_last_operation_for_ui(
+    connection: &mut Connection,
+    expected_operation_id: Option<&str>,
+) -> Result<Option<Value>, String> {
+    let Some(history) = apply_latest_history_entry(connection, HistoryDirection::Redo)? else {
+        return Ok(None);
+    };
+    history_result_for_ui(connection, &history, expected_operation_id).map(Some)
 }
 
 /// Reverses a specific history entry by id (not just the most recent one), so the
@@ -3029,7 +3077,7 @@ fn restore_recovery_entry_in_database(
         let Some(history) = read_history_entry(
             &tx,
             "
-              select id, undo_operation_json, redo_operation_json
+              select id, operation_id, undo_operation_json, redo_operation_json
               from history_entries
               where id = ?1
             ",
@@ -3660,6 +3708,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
 #[derive(Clone)]
 struct HistoryEntry {
     id: String,
+    operation_id: String,
     undo_operation: Value,
     redo_operation: Value,
 }
@@ -4999,7 +5048,7 @@ fn history_entry_for_operation(
     read_history_entry(
         connection,
         "
-          select id, undo_operation_json, redo_operation_json
+          select id, operation_id, undo_operation_json, redo_operation_json
           from history_entries
           where operation_id = ?1
         ",
@@ -5011,7 +5060,7 @@ fn latest_undoable_history_entry(connection: &Connection) -> Result<Option<Histo
     read_history_entry(
         connection,
         "
-          select id, undo_operation_json, redo_operation_json
+          select id, operation_id, undo_operation_json, redo_operation_json
           from history_entries
           where undone = 0
           order by sequence desc, updated_at_ms desc, id desc
@@ -5025,7 +5074,7 @@ fn latest_redoable_history_entry(connection: &Connection) -> Result<Option<Histo
     read_history_entry(
         connection,
         "
-          select id, undo_operation_json, redo_operation_json
+          select id, operation_id, undo_operation_json, redo_operation_json
           from history_entries
           where undone != 0
           order by updated_at_ms desc, sequence desc, id desc
@@ -5042,18 +5091,18 @@ fn read_history_entry<P: rusqlite::Params>(
 ) -> Result<Option<HistoryEntry>, String> {
     connection
         .query_row(sql, params, |row| {
-            let undo_json: String = row.get(1)?;
-            let redo_json: String = row.get(2)?;
+            let undo_json: String = row.get(2)?;
+            let redo_json: String = row.get(3)?;
             let undo_operation = serde_json::from_str::<Value>(&undo_json).map_err(|error| {
                 rusqlite::Error::FromSqlConversionFailure(
-                    1,
+                    2,
                     rusqlite::types::Type::Text,
                     Box::new(error),
                 )
             })?;
             let redo_operation = serde_json::from_str::<Value>(&redo_json).map_err(|error| {
                 rusqlite::Error::FromSqlConversionFailure(
-                    2,
+                    3,
                     rusqlite::types::Type::Text,
                     Box::new(error),
                 )
@@ -5061,6 +5110,7 @@ fn read_history_entry<P: rusqlite::Params>(
 
             Ok(HistoryEntry {
                 id: row.get(0)?,
+                operation_id: row.get(1)?,
                 undo_operation,
                 redo_operation,
             })
@@ -11587,6 +11637,94 @@ mod tests {
     }
 
     #[test]
+    fn native_history_snapshots_match_existing_encrypted_database_state() {
+        let database = TestDatabase::new("native-history-snapshot");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Snapshot history")).unwrap();
+
+        let first_operation = json!({
+            "id": "op_device_test_2",
+            "deviceId": "device_test",
+            "sequence": 2,
+            "type": "patch_plan_item",
+            "timestamp": "2026-05-21T00:01:00Z",
+            "payload": {
+                "planId": "plan_today",
+                "itemId": "plan_item_wake",
+                "patch": { "text": "Changed once", "html": "Changed once" }
+            }
+        });
+        persist_operation_to_database(&mut connection, &first_operation).unwrap();
+
+        let undo = undo_last_operation_for_ui(&mut connection, Some("op_device_test_2"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(undo["operationId"], "op_device_test_2");
+        assert_eq!(undo["localSequence"], 3);
+        assert!(undo["state"].is_null());
+        let stored = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(stored["plans"][0]["items"][0]["text"], "Wake up");
+
+        let redo = redo_last_operation_for_ui(&mut connection, Some("op_device_test_2"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(redo["operationId"], "op_device_test_2");
+        assert_eq!(redo["localSequence"], 4);
+        assert!(redo["state"].is_null());
+        let stored = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(stored["plans"][0]["items"][0]["text"], "Changed once");
+
+        let second_operation = json!({
+            "id": "op_device_test_5",
+            "deviceId": "device_test",
+            "sequence": 5,
+            "type": "patch_plan_item",
+            "timestamp": "2026-05-21T00:02:00Z",
+            "payload": {
+                "planId": "plan_today",
+                "itemId": "plan_item_wake",
+                "patch": { "text": "Changed twice", "html": "Changed twice" }
+            }
+        });
+        persist_operation_to_database(&mut connection, &second_operation).unwrap();
+
+        // A stale in-memory entry must never be trusted. The database still
+        // performs the correct undo and returns its complete authoritative state.
+        let fallback = undo_last_operation_for_ui(&mut connection, Some("stale-operation"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(fallback["operationId"], "op_device_test_5");
+        assert_eq!(fallback["localSequence"], 6);
+        assert_eq!(
+            fallback["state"]["plans"][0]["items"][0]["text"],
+            "Changed once"
+        );
+
+        let integrity: String = connection
+            .query_row("pragma integrity_check", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(integrity, "ok");
+        let mut foreign_key_check = connection.prepare("pragma foreign_key_check").unwrap();
+        let foreign_key_errors = foreign_key_check
+            .query_map([], |_| Ok(()))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+            .len();
+        drop(foreign_key_check);
+        assert_eq!(foreign_key_errors, 0);
+        assert_eq!(history_entry_count(&connection), 2);
+        drop(connection);
+
+        let reopened = open_database_at(&database.path, &recovery_key).unwrap();
+        let reopened_state = read_app_state_from_database(&reopened).unwrap().unwrap();
+        assert_eq!(reopened_state, fallback["state"]);
+        assert_eq!(history_entry_count(&reopened), 2);
+        assert_eq!(read_operations(&reopened).unwrap().len(), 6);
+    }
+
+    #[test]
     fn undo_and_redo_restore_item_movement_positions() {
         let database = TestDatabase::new("movement-history");
         let recovery_key = generate_recovery_key();
@@ -13661,6 +13799,20 @@ mod tests {
                     original_target_text
                 );
             });
+        let mut plan_snapshot_operation = plan_operation.clone();
+        plan_snapshot_operation["id"] = json!("op_device_perf_4");
+        plan_snapshot_operation["sequence"] = json!(4);
+        let plan_snapshot_profile = profile_native_snapshot_undo(
+            &database.path,
+            &recovery_key,
+            &plan_snapshot_operation,
+            |undone| {
+                assert_eq!(
+                    undone["plans"][0]["items"][target_item_index]["text"],
+                    original_target_text
+                );
+            },
+        );
 
         let mut changed_goal = loaded["goals"][0].clone();
         changed_goal["name"] = json!("Linked goal");
@@ -13668,9 +13820,9 @@ mod tests {
             "<a href=\"https://example.com\" target=\"_blank\" rel=\"noreferrer\">Linked goal</a>"
         );
         let goal_operation = json!({
-            "id": "op_device_perf_4",
+            "id": "op_device_perf_6",
             "deviceId": "device_perf",
-            "sequence": 4,
+            "sequence": 6,
             "type": "replace_goal_data",
             "timestamp": "2026-07-30T12:01:00Z",
             "payload": {
@@ -13692,6 +13844,17 @@ mod tests {
             profile_native_undo(&database.path, &recovery_key, &goal_operation, |undone| {
                 assert_eq!(undone["goals"][0]["name"], "Goal 0");
             });
+        let mut goal_snapshot_operation = goal_operation.clone();
+        goal_snapshot_operation["id"] = json!("op_device_perf_8");
+        goal_snapshot_operation["sequence"] = json!(8);
+        let goal_snapshot_profile = profile_native_snapshot_undo(
+            &database.path,
+            &recovery_key,
+            &goal_snapshot_operation,
+            |undone| {
+                assert_eq!(undone["goals"][0]["name"], "Goal 0");
+            },
+        );
 
         let database_bytes = fs::metadata(&database.path).unwrap().len();
         eprintln!(
@@ -13706,7 +13869,9 @@ mod tests {
                 "baselineOpenMs": read_open_ms,
                 "baselineFullStateReadMs": read_ms,
                 "planText": plan_profile,
+                "planTextSnapshot": plan_snapshot_profile,
                 "goalTitle": goal_profile,
+                "goalTitleSnapshot": goal_snapshot_profile,
             })
         );
     }
@@ -13748,6 +13913,49 @@ mod tests {
             "persistMs": persist_ms,
             "undoOpenMs": undo_open_ms,
             "undoAndFullStateReadMs": undo_ms,
+        })
+    }
+
+    fn profile_native_snapshot_undo(
+        database_path: &Path,
+        recovery_key: &str,
+        operation: &Value,
+        assert_undone: impl FnOnce(&Value),
+    ) -> Value {
+        let persist_open_started = std::time::Instant::now();
+        let mut persist_connection = open_database_at(database_path, recovery_key).unwrap();
+        let persist_open_ms = persist_open_started.elapsed().as_secs_f64() * 1_000.0;
+        let persist_started = std::time::Instant::now();
+        persist_operation_to_database(&mut persist_connection, operation).unwrap();
+        let persist_ms = persist_started.elapsed().as_secs_f64() * 1_000.0;
+        drop(persist_connection);
+
+        let undo_open_started = std::time::Instant::now();
+        let mut undo_connection = open_database_at(database_path, recovery_key).unwrap();
+        let undo_open_ms = undo_open_started.elapsed().as_secs_f64() * 1_000.0;
+        let undo_started = std::time::Instant::now();
+        let result = undo_last_operation_for_ui(&mut undo_connection, operation["id"].as_str())
+            .unwrap()
+            .unwrap();
+        let undo_ms = undo_started.elapsed().as_secs_f64() * 1_000.0;
+        assert!(result["state"].is_null());
+        assert_eq!(result["operationId"], operation["id"]);
+        let result_bytes = result.to_string().len();
+
+        // The response deliberately omits the full workspace, but the encrypted
+        // database remains authoritative. Verify the complete materialized state
+        // after timing so a fast response cannot hide an incorrect undo.
+        let undone = read_app_state_from_database(&undo_connection)
+            .unwrap()
+            .unwrap();
+        assert_undone(&undone);
+
+        json!({
+            "persistOpenMs": persist_open_ms,
+            "persistMs": persist_ms,
+            "undoOpenMs": undo_open_ms,
+            "undoSnapshotResponseMs": undo_ms,
+            "responseBytes": result_bytes,
         })
     }
 

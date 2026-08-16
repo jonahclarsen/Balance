@@ -1,0 +1,109 @@
+name: Profile encrypted undo
+
+on:
+  push:
+    branches:
+      - main
+      - "codex/**"
+    paths:
+      - ".github/workflows/undo-profile.yml"
+      - "package.json"
+      - "playwright.undo-performance.config.ts"
+      - "src/lib/store.ts"
+      - "src-tauri/src/lib.rs"
+      - "tests/performance/undo.spec.ts"
+  workflow_dispatch:
+
+concurrency:
+  group: undo-profile-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  encrypted-undo:
+    name: 90,000-item workspace under CPU contention
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      # Hosted macOS runners are substantially faster than the reported M2
+      # development machine. Scale the same historical-workspace shape until
+      # the baseline reaches the reported multi-second latency in CI.
+      BALANCE_UNDO_PERF_PLANS: 1500
+      BALANCE_UNDO_PERF_ITEMS_PER_PLAN: 60
+      BALANCE_UNDO_PERF_GOALS: 100
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-undo-profile-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-undo-profile-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Compile encrypted backend profile
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml \
+            tests::undo_performance_profile --no-run
+
+      - name: Profile native undo under background CPU load
+        run: |
+          set -euo pipefail
+          load_pids=()
+          for worker in 1 2 3 4; do
+            yes > /dev/null &
+            load_pids+=("$!")
+          done
+          cleanup_load() {
+            kill "${load_pids[@]}" 2>/dev/null || true
+          }
+          trap cleanup_load EXIT INT TERM
+
+          cargo test --manifest-path src-tauri/Cargo.toml \
+            tests::undo_performance_profile \
+            -- --exact --ignored --nocapture 2>&1 | tee undo-profile.txt
+
+          grep 'UNDO_PERF backend' undo-profile.txt | sed 's/^.*UNDO_PERF backend //' > undo-profile.json
+          {
+            echo '## Encrypted undo under CPU contention'
+            echo
+            echo 'Synthetic test-only SQLCipher database; 1,500 plans and 90,000 plan items.'
+            echo
+            echo '```json'
+            cat undo-profile.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload profile
+        uses: actions/upload-artifact@v7
+        with:
+          name: encrypted-undo-profile
+          path: |
+            undo-profile.json
+            undo-profile.txt
+          if-no-files-found: error
