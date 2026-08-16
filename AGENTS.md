@@ -12,6 +12,8 @@ dedicated worktree and delete its temporary branch so no worktree directory or
 stale Git worktree metadata is left behind. Do not use the main checkout as a
 live editing workspace.
 
+After creating a worktree, run pnpm install --frozen-lockfile --offline.
+
 Exception: if a change is genuinely trivial and can be completed with a single
 edit tool call, make it directly on `main` instead of creating a worktree. If it
 requires a second edit or expands in scope, move the work to a dedicated
