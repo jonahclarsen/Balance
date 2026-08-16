@@ -258,6 +258,16 @@ private struct BalanceWidgetView: View {
                         .accessibilityLabel("\(snapshot.done) of \(snapshot.total) tasks complete")
                 }
 
+                if family != .systemSmall && !snapshot.reminder.isEmpty {
+                    Text(snapshot.reminder)
+                        .font(.caption)
+                        .foregroundStyle(palette.muted)
+                        .lineLimit(family == .systemLarge ? 2 : 1)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .privacySensitive()
+                }
+
                 if family == .systemLarge && snapshot.total > 0 {
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
@@ -269,23 +279,6 @@ private struct BalanceWidgetView: View {
                     }
                     .frame(height: 4)
                     .accessibilityHidden(true)
-                }
-
-                if family != .systemSmall && !snapshot.reminder.isEmpty {
-                    Text(snapshot.reminder)
-                        .font(.caption)
-                        .foregroundStyle(palette.muted)
-                        .lineLimit(family == .systemLarge ? 2 : 1)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, family == .systemLarge ? 6 : 4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(accentColor.opacity(0.07), in: RoundedRectangle(cornerRadius: 8))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(accentColor.opacity(0.13), lineWidth: 1)
-                        )
-                        .privacySensitive()
                 }
 
                 if snapshot.items.isEmpty {
