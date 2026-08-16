@@ -116,18 +116,26 @@ test('task rows stay readable on mobile without changing the desktop arrangement
     if (!textElement || !timeElement) throw new Error('Missing task row content')
     const textRect = textElement.getBoundingClientRect()
     const timeRect = timeElement.getBoundingClientRect()
+    const mainElement = element.querySelector<HTMLElement>('.plan-item-main')
+    const textRange = document.createRange()
+    textRange.selectNodeContents(textElement)
+    const firstTextRect = textRange.getClientRects()[0]
+    const mainRect = mainElement?.getBoundingClientRect()
     return {
       textWidth: textRect.width,
       textTop: textRect.top,
       timeTop: timeRect.top,
       timeRight: timeRect.right,
       textLeft: textRect.left,
+      timeSpaceAbove: mainRect ? timeRect.top - mainRect.top : null,
+      timeSpaceBelow: firstTextRect ? firstTextRect.top - timeRect.bottom : null,
     }
   })
 
   if (isMobileProject(testInfo.project.name)) {
     expect(geometry.textWidth).toBeGreaterThanOrEqual(190)
     expect(geometry.timeTop).toBeLessThan(geometry.textTop)
+    expect(Math.abs((geometry.timeSpaceAbove ?? 0) - (geometry.timeSpaceBelow ?? 0))).toBeLessThanOrEqual(4)
     await expect(row.locator('.select-handle')).toHaveCount(0)
     await expect(row.getByRole('button', { name: 'Task options for Deeply nested task text should still have enough room to be comfortably readable' })).toBeVisible()
 
@@ -171,9 +179,12 @@ test('mobile task options gate selection and open the large auto-saving time edi
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'vibrate', {
       configurable: true,
-      value: (duration: number) => {
-        const testWindow = window as typeof window & { balanceTestVibrations?: number[] }
-        testWindow.balanceTestVibrations = [...(testWindow.balanceTestVibrations ?? []), duration]
+      value: (pattern: number | number[]) => {
+        const testWindow = window as typeof window & { balanceTestVibrations?: Array<number | number[]> }
+        testWindow.balanceTestVibrations = [
+          ...(testWindow.balanceTestVibrations ?? []),
+          Array.isArray(pattern) ? [...pattern] : pattern,
+        ]
         return true
       },
     })
@@ -213,12 +224,12 @@ test('mobile task options gate selection and open the large auto-saving time edi
 
   const start = dialog.getByRole('button', { name: /Start time/ })
   const originalStart = await start.innerText()
-  await dragVertically(page, start, -14)
+  await dragVertically(page, start, -34, 1)
   await expect(start).not.toHaveText(originalStart)
-  const vibrationCount = await page.evaluate(
-    () => (window as typeof window & { balanceTestVibrations?: number[] }).balanceTestVibrations?.length ?? 0,
+  const vibrationPatterns = await page.evaluate(
+    () => (window as typeof window & { balanceTestVibrations?: Array<number | number[]> }).balanceTestVibrations ?? [],
   )
-  expect(vibrationCount).toBeGreaterThan(0)
+  expect(vibrationPatterns).toContainEqual([16, 24, 16, 24, 16])
 
   await page.locator('.mobile-time-editor-backdrop').click({ position: { x: 4, y: 4 } })
   await expect(dialog).toBeHidden()
@@ -343,6 +354,7 @@ async function dragVertically(
   page: import('@playwright/test').Page,
   source: import('@playwright/test').Locator,
   deltaY: number,
+  steps = 4,
 ) {
   const box = await source.boundingBox()
   if (!box) throw new Error('Missing vertical drag geometry')
@@ -351,7 +363,7 @@ async function dragVertically(
   const y = box.y + box.height / 2
   await page.mouse.move(x, y)
   await page.mouse.down()
-  await page.mouse.move(x, y + deltaY, { steps: 4 })
+  await page.mouse.move(x, y + deltaY, { steps })
   await page.mouse.up()
 }
 

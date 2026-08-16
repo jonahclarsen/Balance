@@ -125,7 +125,7 @@ runs:
       shell: bash
       run: pnpm tauri android init
 
-    - name: Allow active direct sync to survive screen-off sleep
+    - name: Configure wake-lock and vibration permissions
       shell: bash
       run: node .github/scripts/configure-android-sync-wake-lock.mjs
 

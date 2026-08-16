@@ -9,6 +9,9 @@
 <script lang="ts">
   import { clampMinutes, formatMinutes, MAX_TIMELINE_MINUTES } from './planner'
 
+  const STEP_HAPTIC_MS = 16
+  const STEP_HAPTIC_PAUSE_MS = 24
+
   export let startMinutes: number
   export let endMinutes: number
   export let onChange: (startMinutes: number, endMinutes: number) => void
@@ -65,8 +68,9 @@
     const delta = steps * 15
 
     if (hapticSteps && steps !== dragState.lastSteps) {
+      const crossedSteps = Math.abs(steps - dragState.lastSteps)
       dragState.lastSteps = steps
-      navigator.vibrate?.(8)
+      vibrateCrossedSteps(crossedSteps)
     }
 
     if (dragState.shiftTargets) {
@@ -103,6 +107,19 @@
 
   function endDrag() {
     dragState = null
+  }
+
+  function vibrateCrossedSteps(count: number) {
+    if (typeof navigator.vibrate !== 'function' || count < 1) return
+
+    // Pointer events can skip several 15-minute boundaries during a quick
+    // swipe. A single vibration call with a pulse pattern preserves one tactile
+    // tick per crossed boundary instead of collapsing them into one buzz.
+    const pattern = Array.from(
+      { length: count * 2 - 1 },
+      (_, index) => (index % 2 === 0 ? STEP_HAPTIC_MS : STEP_HAPTIC_PAUSE_MS),
+    )
+    navigator.vibrate(pattern)
   }
 </script>
 
