@@ -890,13 +890,16 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await iridescentTheme.click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
   await expect(sidebar).toHaveCSS('background-image', /linear-gradient/)
+  await expect(sidebar).toHaveCSS('background-image', /data:image\/svg\+xml/)
   await expect(page.locator('html')).toHaveCSS('background-image', /radial-gradient/)
+  await expect(page.locator('html')).toHaveCSS('background-image', /data:image\/svg\+xml/)
   await expect(page.locator('html')).toHaveCSS('animation-name', 'iridescent-background-breathe')
   await expect(page.locator('html')).toHaveCSS('animation-duration', '18s')
   await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
   await expect(sidebar).toHaveCSS('animation-duration', '22s')
   await expect(activeSidebarButton).toHaveCSS('animation-name', 'iridescent-active-nav-breathe')
   await expect(activeSidebarButton).toHaveCSS('animation-duration', '12s')
+  await expect(activeSidebarButton).toHaveCSS('background-image', /data:image\/svg\+xml/)
   await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
     'background-color',
     'rgb(123, 91, 214)',
