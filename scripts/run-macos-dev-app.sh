@@ -16,18 +16,42 @@ fi
 
 script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 build_directory=$(CDPATH= cd -- "$(dirname -- "$source_executable")" && pwd)
-app_bundle="$build_directory/BalanceDev.app"
-app_executable="$app_bundle/Contents/MacOS/Balance"
+bridge_source="$script_directory/../src-tauri/macos/BalanceWidgetDevBridge.swift"
+bridge_info="$script_directory/../src-tauri/macos/BalanceWidgetDevBridgeInfo.plist"
+bridge_app="$build_directory/BalanceWidgetDevBridge.app"
+bridge_executable="$bridge_app/Contents/MacOS/BalanceWidgetDevBridge"
+ready_file="$build_directory/.balance-widget-dev-bridge-ready-$$"
 
-mkdir -p "$app_bundle/Contents/MacOS"
-cp "$script_directory/../src-tauri/macos/BalanceDevInfo.plist" \
-  "$app_bundle/Contents/Info.plist"
+# The full Tauri process is rejected by WidgetKit even from an app-shaped path.
+# Keep one tiny valid app process alive for this dev process and send it only
+# zero-payload reload notifications after the encrypted snapshot is persisted.
+if [ ! -x "$bridge_executable" ] || [ "$bridge_source" -nt "$bridge_executable" ] || [ "$bridge_info" -nt "$bridge_executable" ]; then
+  architecture=$(uname -m)
+  mkdir -p "$bridge_app/Contents/MacOS"
+  cp "$bridge_info" "$bridge_app/Contents/Info.plist"
+  xcrun swiftc -O -target "$architecture-apple-macosx13.0" -framework WidgetKit \
+    "$bridge_source" -o "$bridge_executable"
+fi
 
-# WidgetKit associates WidgetCenter calls with the caller's containing app.
-# A symlink still resolves as the raw Cargo binary, so use a physical hard link.
-# Replacing this link is only a few milliseconds on APFS and preserves the
-# compiled binary's existing ad-hoc signature without signing the outer shell.
-rm -f "$app_executable"
-ln "$source_executable" "$app_executable"
+rm -f "$ready_file"
+"$bridge_executable" "$$" "$ready_file" &
+bridge_process_identifier=$!
 
-exec "$app_executable" "$@"
+attempt=0
+while [ ! -f "$ready_file" ] && [ "$attempt" -lt 100 ]; do
+  if ! kill -0 "$bridge_process_identifier" 2>/dev/null; then
+    echo "macOS dev app runner: widget bridge exited before becoming ready" >&2
+    exit 70
+  fi
+  attempt=$((attempt + 1))
+  sleep 0.01
+done
+
+if [ ! -f "$ready_file" ]; then
+  kill "$bridge_process_identifier" 2>/dev/null || true
+  echo "macOS dev app runner: timed out waiting for widget bridge" >&2
+  exit 70
+fi
+
+rm -f "$ready_file"
+exec "$source_executable" "$@"

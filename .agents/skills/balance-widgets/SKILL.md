@@ -49,10 +49,11 @@ Read only the files relevant to the requested change:
 - `src-tauri/macos/BalanceWidget.xcodeproj`: the real WidgetKit extension target.
 - `scripts/build-macos-widget.mjs`: universal Xcode build and extension signing.
 - `scripts/macos-tauri-cargo.sh`: macOS Cargo pass-through that injects the dev
-  app runner only for `cargo run`.
-- `scripts/run-macos-dev-app.sh` and
-  `src-tauri/macos/BalanceDevInfo.plist`: create the minimal app-shaped dev host
-  and execute the current debug binary from it.
+  process runner only for `cargo run`.
+- `scripts/run-macos-dev-app.sh`,
+  `src-tauri/macos/BalanceWidgetDevBridge.swift`, and
+  `src-tauri/macos/BalanceWidgetDevBridgeInfo.plist`: compile and supervise the
+  persistent, zero-payload WidgetKit reload bridge used by the raw dev host.
 - `src-tauri/tauri.macos.conf.json`: selects the macOS dev runner and copies the
   built `.appex` into production apps at `Contents/PlugIns`.
 - `src-tauri/src/android_widget.rs`: JNI entry point that reads SQLCipher directly
@@ -179,47 +180,48 @@ codesign -dv --verbose=2 src-tauri/target/release/bundle/macos/Balance.app/Conte
 `BALANCE_SKIP_MACOS_WIDGET=1` only for a workflow that intentionally does not
 need the extension.
 
-## Run the macOS dev host from an app shell
+## Use the persistent macOS dev reload bridge
 
-WidgetKit associates `WidgetCenter` calls with the calling executable's
-containing app. The raw `src-tauri/target/debug/Balance` executable returns
-`ChronoCoreErrorDomain` code 27 when it asks for current widget configurations,
-even while the installed Balance widget is configured. The same executable,
-physically located under a minimal `.app` with `CFBundleIdentifier` set to
-`app.balance.local`, can see the installed `BalanceToday` configurations and can
-reload them directly. The dev shell does not need to contain the extension.
+The raw Tauri dev host cannot reliably call `WidgetCenter` itself. A synthetic
+minimal app shell can enumerate configured `BalanceToday` widgets and reload
+them, but that result does not transfer to the real Balance binary. Unified logs
+show the actual Tauri process returning `ChronoCoreErrorDomain` code 27 for every
+reload request even when all of the following are tested:
 
-Normal `pnpm tauri dev` uses the macOS-only runner from
-`src-tauri/tauri.macos.conf.json`. The Cargo wrapper passes builds through
-unchanged and injects `scripts/run-macos-dev-app.sh` only for `cargo run`. On
-each Rust rebuild that runner:
+- a hard link or APFS clone inside a correctly identified `.app`;
+- an unsigned, ad-hoc-signed, or Developer-ID-signed outer app;
+- no extension, a symlink to the installed extension, or a physical signed copy
+  of the extension inside the shell.
 
-1. creates `target/.../debug/BalanceDev.app` from the minimal committed plist;
-2. replaces `Contents/MacOS/Balance` with a hard link to the just-built binary;
-3. uses `exec` so Cargo still directly owns the real app process.
+Do not use configuration enumeration as proof that the real host can invalidate
+a timeline, and do not return to the dev app-shell design. The working boundary
+is a tiny Swift executable that is the declared main executable of its own
+`BalanceWidgetDevBridge.app`. It has the production container bundle identifier
+but no URL schemes and no embedded extension. It listens only for the
+zero-payload distributed notification `app.balance.local.widget.reload` and
+calls `reloadTimelines(ofKind: "BalanceToday")`.
 
-Do not replace the hard link with a symlink: a symlink was tested and WidgetKit
-still treated the process as the raw executable. A physical hard link worked.
-The compiled debug binary already has an ad-hoc Mach-O signature; the outer dev
-shell can remain unsigned, so this workflow must not add a `codesign` step.
+Normal `pnpm tauri dev` uses the macOS-only Cargo runner. On each Rust process
+start, `scripts/run-macos-dev-app.sh`:
 
-Measured on the approximately 57.2 MB Balance debug binary, creating the hard
-link took about 3.2 ms. For comparison, an APFS clone copy took 2.6–5.1 ms,
-ad-hoc signing a complete shell took 164–172 ms, and Developer ID signing took
-244–274 ms. These timings are machine-specific, but they establish that the
-chosen path adds neither a full copy nor a signing pass and should remain far
-below a 500 ms rebuild budget. The finished runner, including shell startup,
-plist copy, hard-link replacement, `exec`, and a synthetic Rust process launch,
-measured 36–69 ms across 30 runs (47 ms median). Re-profile if the runner changes
-materially.
+1. compiles the bridge only when its ignored target binary is absent or stale;
+2. launches it with the soon-to-be dev process PID and waits for its ready file;
+3. `exec`s the raw `target/debug/Balance` process;
+4. relies on the bridge's parent-PID monitor to exit after that dev process dies.
 
-Never embed `BalanceWidget.appex` in `BalanceDev.app`, open the dev shell through
-Launch Services, or register anything under `target`. `/Applications/Balance.app`
-must remain the sole installed container, widget-extension registration, and
-`balance://` URL handler. A safe identity probe checks only configuration count
-and kind; never print widget payloads. After runner changes, also verify that
-`pluginkit` reports exactly one installed extension and that Launch Services
-still resolves `app.balance.local` to `/Applications/Balance.app`.
+The host publishes encrypted ciphertext first, then posts the notification. No
+task data, key material, or ciphertext crosses that notification, and no process
+is launched per task change. Measured on this machine, the first bridge compile
+and launch took about 680 ms; subsequent cached Rust-process starts took about
+30 ms. A task change only posts the notification. Re-profile if the bridge or
+runner changes materially.
+
+Keep `/Applications/Balance.app` as the sole installed extension container and
+`balance://` handler. The dev bridge intentionally declares neither an extension
+nor a URL scheme. After bridge changes, verify a successful reload in unified
+logs, exactly one `pluginkit` result rooted under `/Applications/Balance.app`,
+and Launch Services URL resolution to `/Applications/Balance.app`. Never print
+widget payloads during those checks.
 
 ## Install and register macOS correctly
 
@@ -286,17 +288,15 @@ widget extension registered even though the host app is normally run in dev.
 ## Preserve dev-mode widget clicks
 
 The widget uses `balance://today`. Launch Services resolves this URL to the
-installed app even while `tauri dev` is running from
-`target/debug/BalanceDev.app`. The dev shell deliberately declares no URL
-scheme and is never registered.
+installed app even while `tauri dev` runs the raw `target/debug/Balance`
+executable. The persistent bridge declares no URL scheme.
 
 The installed release binary therefore performs a preflight before Tauri or
 database initialization:
 
-1. Find another running application under `src-tauri/target` whose executable
-   ends with `/BalanceDev.app/Contents/MacOS/Balance`. Keep the legacy raw
-   `/src-tauri/target/debug/Balance` match so an older dev session still hands
-   off safely during upgrades.
+1. Find another running application whose executable ends with
+   `/src-tauri/target/debug/Balance`. The matcher may retain the retired
+   `/BalanceDev.app/Contents/MacOS/Balance` form only for upgrade compatibility.
 2. Ask AppKit to activate all of that process's windows.
 3. Exit the installed release immediately.
 4. Start the installed app normally only when no matching dev process exists.
@@ -354,6 +354,7 @@ cargo test --manifest-path src-tauri/Cargo.toml widget::tests
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm check
 sh -n scripts/macos-tauri-cargo.sh scripts/run-macos-dev-app.sh
+swiftc -typecheck src-tauri/macos/BalanceWidgetDevBridge.swift
 node --test .github/scripts/configure-android-widgets.test.mjs
 ```
 

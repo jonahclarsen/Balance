@@ -7,6 +7,7 @@ private let encryptedSnapshotKey = "balance.widget.encrypted-snapshot.v2"
 private let legacyPlaintextSnapshotKey = "balance.widget.snapshot.v1"
 private let snapshotPreferenceDomain = "app.balance.local"
 private let widgetPreferenceDomain = "app.balance.local.widget"
+private let widgetReloadNotification = Notification.Name("app.balance.local.widget.reload")
 private let rawDevelopmentExecutableSuffix = "/src-tauri/target/debug/Balance"
 private let developmentAppExecutableSuffix = "/BalanceDev.app/Contents/MacOS/Balance"
 
@@ -39,6 +40,15 @@ private func widgetPublicKeyString() -> String? {
 }
 
 private func requestWidgetReload() {
+    if Bundle.main.executableURL?.path.hasSuffix(rawDevelopmentExecutableSuffix) == true {
+        DistributedNotificationCenter.default().postNotificationName(
+            widgetReloadNotification,
+            object: nil,
+            userInfo: nil,
+            deliverImmediately: true
+        )
+        return
+    }
     WidgetCenter.shared.reloadTimelines(ofKind: "BalanceToday")
 }
 
