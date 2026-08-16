@@ -7,6 +7,7 @@
         "height": 900,
         "resizable": true,
         "maximized": true,
+        "zoomHotkeysEnabled": true,
         "fullscreen": false
       }
     ]
