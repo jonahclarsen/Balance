@@ -4590,6 +4590,24 @@ return rows`
                 </h2>
               </div>
               <div class="date-controls" aria-label="Day navigation">
+                {#if isMobile}
+                  <button
+                    class="date-nav-button"
+                    type="button"
+                    aria-label="Previous day"
+                    on:click={() => (pane.key === 'compare' ? shiftCompareDayDate(-1) : shiftActivePlanDate(-1))}
+                  >
+                    &lt;
+                  </button>
+                  <button
+                    class="date-nav-button"
+                    type="button"
+                    aria-label="Next day"
+                    on:click={() => (pane.key === 'compare' ? shiftCompareDayDate(1) : shiftActivePlanDate(1))}
+                  >
+                    &gt;
+                  </button>
+                {/if}
                 {#if pane.key === 'primary'}
                   <button
                     class="date-nav-button imax-button"

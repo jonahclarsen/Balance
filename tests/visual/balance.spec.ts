@@ -83,6 +83,30 @@ test('today rolls over at 3am while the app stays open', async ({ page }) => {
   await expect(page.locator('.sidebar-footer button.primary')).toHaveText('Generate selected day')
 })
 
+test('day navigation buttons are available only on mobile', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const primaryPane = page.getByRole('region', { name: 'Daily plan' })
+  const previousDayButton = primaryPane.getByRole('button', { name: 'Previous day' })
+  const nextDayButton = primaryPane.getByRole('button', { name: 'Next day' })
+
+  if (testInfo.project.name === 'desktop') {
+    await expect(previousDayButton).toHaveCount(0)
+    await expect(nextDayButton).toHaveCount(0)
+    return
+  }
+
+  const initialDate = await primaryPane.locator('.date-input').inputValue()
+  await expect(previousDayButton).toBeVisible()
+  await expect(nextDayButton).toBeVisible()
+  await nextDayButton.click()
+  await expect(primaryPane.locator('.date-input')).toHaveValue(addDays(initialDate, 1))
+  await previousDayButton.click()
+  await expect(primaryPane.locator('.date-input')).toHaveValue(initialDate)
+})
+
 test('sidebar has no standalone hide control', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
