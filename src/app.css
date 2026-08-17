@@ -5137,6 +5137,7 @@ nav button.active {
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
+    touch-action: none;
     transition: opacity 180ms ease, visibility 0s linear 180ms;
     will-change: opacity;
   }

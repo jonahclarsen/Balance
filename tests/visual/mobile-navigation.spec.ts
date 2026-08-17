@@ -75,12 +75,16 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
   })
   await expect.poll(() => drawer.evaluate((element) => element.getBoundingClientRect().left)).toBe(0)
 
-  // The whole drawer is a generous close-gesture target. While the pointer is
-  // down, the drawer and backdrop track it instead of waiting for pointerup.
+  // The backdrop is part of the close-gesture target too. Start near the far
+  // right edge and keep the entire short drag outside the drawer to prove it
+  // tracks the touch before snapping back open.
   const drawerBox = await drawer.boundingBox()
   if (!drawerBox) throw new Error('Drawer has no draggable bounds')
-  const dragStartX = drawerBox.x + drawerBox.width - 48
+  const viewport = page.viewportSize()
+  if (!viewport) throw new Error('Missing mobile viewport')
+  const dragStartX = viewport.width - 24
   const dragY = drawerBox.y + drawerBox.height * 0.45
+  expect(dragStartX - 50).toBeGreaterThan(drawerBox.x + drawerBox.width)
   const cdp = await page.context().newCDPSession(page)
   await cdp.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
@@ -116,10 +120,18 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
   expect(appShellStyleMutations).toBe(0)
   await expect(drawer).toBeVisible()
 
-  await page.mouse.move(220, 340)
-  await page.mouse.down()
-  await page.mouse.move(16, 340, { steps: 12 })
-  await page.mouse.up()
+  await expect.poll(() => drawer.evaluate((element) => element.getBoundingClientRect().left)).toBe(0)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: dragStartX, y: dragY }],
+  })
+  for (let step = 1; step <= 12; step += 1) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: dragStartX - step * 15, y: dragY }],
+    })
+  }
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
   await expect(drawer).toBeHidden()
 
   await menuButton.click()

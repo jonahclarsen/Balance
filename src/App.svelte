@@ -572,7 +572,6 @@ return rows`
 
   function beginMobileDrawerGesture(event: PointerEvent) {
     if (!usesMobileLayout() || !mobileDrawerOpen || event.button !== 0 || mobileDrawerGesture) return
-    if (event.clientX > mobileDrawerWidth()) return
 
     mobileDrawerGesture = {
       pointerId: event.pointerId,
