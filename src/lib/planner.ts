@@ -68,30 +68,21 @@ export function createId(prefix = 'id'): Id {
   return `${prefix}_${Math.random().toString(36).slice(2)}_${Date.now().toString(36)}`
 }
 
-export function todayISO(): string {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = String(now.getMonth() + 1).padStart(2, '0')
-  const day = String(now.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-export function nowISO(): string {
-  return new Date().toISOString()
-}
-
 /**
- * The calendar day a user currently considers "today". The day only rolls over
- * at 4am, so late-night activity (midnight–4am) still counts as the previous
- * day rather than jumping ahead the moment the clock passes midnight.
+ * The calendar day Balance considers "today". Match the widgets by keeping
+ * midnight–3am attached to the previous day's plan.
  */
-export function currentDayISO(now = new Date()): string {
+export function todayISO(now = new Date()): string {
   const day = new Date(now)
-  if (day.getHours() < 4) day.setDate(day.getDate() - 1)
+  if (day.getHours() < 3) day.setDate(day.getDate() - 1)
   const year = day.getFullYear()
   const month = String(day.getMonth() + 1).padStart(2, '0')
   const date = String(day.getDate()).padStart(2, '0')
   return `${year}-${month}-${date}`
+}
+
+export function nowISO(): string {
+  return new Date().toISOString()
 }
 
 export function createDefaultTemplate(): DailyTemplate {

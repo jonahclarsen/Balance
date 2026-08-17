@@ -11,7 +11,7 @@
     shiftISODate,
     sortGoalsByUrgency,
   } from './goals'
-  import { currentDayISO, todayISO } from './planner'
+  import { todayISO } from './planner'
   import type { Goal, GoalCompletion } from './types'
 
   export let goals: Goal[]
@@ -110,12 +110,9 @@
     }, 1600)
   }
 
-  // Track the wall-clock day reactively so the grid keeps a column for the
-  // current day after the date rolls over while the app stays open.
-  // `today` is the calendar day (drives the grid); `currentDay` rolls over at
-  // 4am and is only used to bold the active day on the date row.
+  // Track Balance's 3am day boundary reactively so the grid keeps the current
+  // day highlighted after the date rolls over while the app stays open.
   let today = todayISO()
-  let currentDay = currentDayISO()
 
   $: firstGoalDate = goals.reduce<string | null>((earliest, goal) => {
     for (const period of goal.activityPeriods) {
@@ -176,10 +173,8 @@
   }
 
   function refreshDay() {
-    const calendarDay = todayISO()
-    if (calendarDay !== today) today = calendarDay
-    const activeDay = currentDayISO()
-    if (activeDay !== currentDay) currentDay = activeDay
+    const activeDay = todayISO()
+    if (activeDay !== today) today = activeDay
   }
 
   onMount(() => {
@@ -325,7 +320,7 @@
           <button
             type="button"
             class:viewed={date === viewedDate}
-            class:today={date === currentDay}
+            class:today={date === today}
             class:future={date > today}
             class="goal-date-head"
             data-goal-date={date}

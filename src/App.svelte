@@ -112,6 +112,7 @@
   }
 
   let view: View = 'today'
+  let currentDay = todayISO()
   let mobileDrawerOpen = false
   let mobileDrawerDragging = false
   let mobileDrawerEl: HTMLElement | null = null
@@ -440,10 +441,10 @@ return rows`
   $: metricOverlayMetric = metricOverlay ? metrics.find((metric) => metric.id === metricOverlay?.metricId) : null
   $: metricOverlayAnswers =
     metricOverlay && metricOverlayMetric ? answersForEntry(metricOverlay.metricId, metricOverlay.date) : {}
-  $: generateButtonLabel = $plannerStore.activePlanDate === todayISO() ? 'Generate today' : 'Generate selected day'
+  $: generateButtonLabel = $plannerStore.activePlanDate === currentDay ? 'Generate today' : 'Generate selected day'
   $: selectedItemIdSet = new Set(selectedItemIds)
-  $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, todayISO())).length
-  $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, todayISO())
+  $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
+  $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
   $: themeId = normalizeThemeId($plannerStore.preferences.themeId)
@@ -1153,6 +1154,9 @@ return rows`
         databaseLoadingMessageIndex,
       )
     }, DATABASE_LOADING_MESSAGE_INTERVAL_MS)
+    const currentDayTimer = window.setInterval(refreshCurrentDay, 60_000)
+    window.addEventListener('focus', refreshCurrentDay)
+    document.addEventListener('visibilitychange', refreshCurrentDay)
     const storedWorkspaceViewState = readWorkspaceViewState()
 
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
@@ -1289,11 +1293,19 @@ return rows`
       stopAutomaticSync?.()
       stopPasteMatchStyleListener?.()
       window.clearInterval(databaseLoadingMessageTimer)
+      window.clearInterval(currentDayTimer)
+      window.removeEventListener('focus', refreshCurrentDay)
+      document.removeEventListener('visibilitychange', refreshCurrentDay)
       if (goalHistoryUpdateTimer !== null) window.clearTimeout(goalHistoryUpdateTimer)
       clearGoalRhythmAutoShowTimer()
       dismissCelebration()
     }
   })
+
+  function refreshCurrentDay() {
+    const nextDay = todayISO()
+    if (nextDay !== currentDay) currentDay = nextDay
+  }
 
   function normalizeDatabaseLoadingMessages(value: string): string[] {
     return value
@@ -4526,7 +4538,9 @@ return rows`
       class="workspace"
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
       class:comparing-days={view === 'today' && compareDayOpen}
-      class:current-day-workspace={view === 'today' && !compareDayOpen && $plannerStore.activePlanDate === todayISO()}
+      class:before-current-day-workspace={view === 'today' && !compareDayOpen && $plannerStore.activePlanDate < currentDay}
+      class:current-day-workspace={view === 'today' && !compareDayOpen && $plannerStore.activePlanDate === currentDay}
+      class:after-current-day-workspace={view === 'today' && !compareDayOpen && $plannerStore.activePlanDate > currentDay}
       bind:this={workspaceEl}
       on:scroll={handleWorkspaceScroll}
     >
@@ -4537,10 +4551,12 @@ return rows`
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
           <section
             class="day-pane"
-            class:current-day-pane={pane.date === todayISO()}
+            class:before-current-day-pane={pane.date < currentDay}
+            class:current-day-pane={pane.date === currentDay}
+            class:after-current-day-pane={pane.date > currentDay}
             class:focused-pane={compareDayOpen && focusedPlan?.id === plan?.id}
             aria-label={pane.key === 'compare' ? 'Compared day' : 'Daily plan'}
-            aria-current={pane.date === todayISO() ? 'date' : undefined}
+            aria-current={pane.date === currentDay ? 'date' : undefined}
             on:pointerdown|capture={() => focusPane(plan?.id)}
             on:focusin={() => focusPane(plan?.id)}
           >
@@ -5231,7 +5247,7 @@ return rows`
 
       <div class="goal-list">
         {#each filteredGoals as goal (goal.id)}
-          {@const active = isGoalActiveOnDate(goal, todayISO())}
+          {@const active = isGoalActiveOnDate(goal, currentDay)}
           {@const completionCount = goalCompletions.filter((completion) => completion.goalId === goal.id).length}
           {@const firstPeriod = goal.activityPeriods[0]}
           <article
