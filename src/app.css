@@ -3803,7 +3803,18 @@ nav button.active {
   }
 
   .workspace {
-    padding: 12px 6px;
+    border-inline: 0;
+    padding: 12px;
+    box-shadow: none;
+    transition: box-shadow 180ms ease;
+  }
+
+  .workspace.before-current-day-workspace {
+    box-shadow: inset -6px 0 0 var(--accent);
+  }
+
+  .workspace.after-current-day-workspace {
+    box-shadow: inset 6px 0 0 var(--accent);
   }
 
   .workspace.comparing-days {
@@ -3819,9 +3830,20 @@ nav button.active {
   }
 
   .day-panes.comparing .day-pane {
+    border-inline: 0;
     overflow-y: visible;
-    padding-inline: 5px;
+    padding-inline: 11px;
+    box-shadow: none;
     scrollbar-gutter: auto;
+    transition: box-shadow 180ms ease;
+  }
+
+  .day-panes.comparing .day-pane.before-current-day-pane {
+    box-shadow: inset -6px 0 0 var(--accent);
+  }
+
+  .day-panes.comparing .day-pane.after-current-day-pane {
+    box-shadow: inset 6px 0 0 var(--accent);
   }
 
   .list-panel,

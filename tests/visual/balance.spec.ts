@@ -1,6 +1,29 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Locator } from '@playwright/test'
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
+const transparent = 'rgba(0, 0, 0, 0)'
+const accent = 'rgb(115, 85, 162)'
+
+async function expectDayRail(
+  locator: Locator,
+  direction: 'before' | 'current' | 'after',
+  mobile: boolean,
+) {
+  if (mobile) {
+    await expect(locator).toHaveCSS('border-right-width', '0px')
+    await expect(locator).toHaveCSS('border-left-width', '0px')
+    const shadow = direction === 'before'
+      ? `${accent} -6px 0px 0px 0px inset`
+      : direction === 'after'
+        ? `${accent} 6px 0px 0px 0px inset`
+        : 'none'
+    await expect(locator).toHaveCSS('box-shadow', shadow)
+    return
+  }
+
+  await expect(locator).toHaveCSS('border-right-color', direction === 'before' ? accent : transparent)
+  await expect(locator).toHaveCSS('border-left-color', direction === 'after' ? accent : transparent)
+}
 
 test('day rail points toward today and disappears on today', async ({ page }, testInfo) => {
   await page.goto('/')
@@ -13,22 +36,20 @@ test('day rail points toward today and disappears on today', async ({ page }, te
   }
   const primaryPane = page.getByRole('region', { name: 'Daily plan' })
   const todayDate = await primaryPane.locator('.date-input').inputValue()
+  const mobile = testInfo.project.name === 'mobile'
   await expect(page.locator('.workspace')).toHaveClass(/current-day-workspace/)
-  await expect(page.locator('.workspace')).toHaveCSS('border-right-color', 'rgba(0, 0, 0, 0)')
-  await expect(page.locator('.workspace')).toHaveCSS('border-left-color', 'rgba(0, 0, 0, 0)')
+  await expectDayRail(page.locator('.workspace'), 'current', mobile)
   await expect(primaryPane).toHaveClass(/current-day-pane/)
   await expect(primaryPane).toHaveAttribute('aria-current', 'date')
   await expect(page.locator('.current-day-indicator')).toHaveCount(0)
 
   await primaryPane.locator('.date-input').fill(addDays(todayDate, -1))
   await expect(page.locator('.workspace')).toHaveClass(/before-current-day-workspace/)
-  await expect(page.locator('.workspace')).toHaveCSS('border-right-color', 'rgb(115, 85, 162)')
-  await expect(page.locator('.workspace')).toHaveCSS('border-left-color', 'rgba(0, 0, 0, 0)')
+  await expectDayRail(page.locator('.workspace'), 'before', mobile)
 
   await primaryPane.locator('.date-input').fill(addDays(todayDate, 1))
   await expect(page.locator('.workspace')).toHaveClass(/after-current-day-workspace/)
-  await expect(page.locator('.workspace')).toHaveCSS('border-right-color', 'rgba(0, 0, 0, 0)')
-  await expect(page.locator('.workspace')).toHaveCSS('border-left-color', 'rgb(115, 85, 162)')
+  await expectDayRail(page.locator('.workspace'), 'after', mobile)
 
   await primaryPane.locator('.date-input').fill(todayDate)
   await primaryPane.getByRole('button', { name: 'Compare with another day' }).click()
@@ -37,27 +58,24 @@ test('day rail points toward today and disappears on today', async ({ page }, te
   if (testInfo.project.name === 'desktop') await page.setViewportSize({ width: 1000, height: 450 })
 
   await expect(page.locator('.workspace')).not.toHaveClass(/current-day-workspace/)
-  await expect(page.locator('.workspace')).toHaveCSS('border-right-color', 'rgba(0, 0, 0, 0)')
-  await expect(page.locator('.workspace')).toHaveCSS('border-left-color', 'rgba(0, 0, 0, 0)')
+  await expectDayRail(page.locator('.workspace'), 'current', mobile)
   await expect(primaryPane).toHaveClass(/current-day-pane/)
-  await expect(primaryPane).toHaveCSS('border-right-color', 'rgba(0, 0, 0, 0)')
-  await expect(primaryPane).toHaveCSS('border-left-color', 'rgba(0, 0, 0, 0)')
+  await expectDayRail(primaryPane, 'current', mobile)
   await expect(comparePane).toHaveClass(/after-current-day-pane/)
-  await expect(comparePane).toHaveCSS('border-left-color', 'rgb(115, 85, 162)')
+  await expectDayRail(comparePane, 'after', mobile)
   if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
   else await primaryPane.evaluate((pane) => pane.scrollTo(0, 200))
   await expect(primaryPane).toHaveClass(/current-day-pane/)
 
   await primaryPane.locator('.date-input').fill(addDays(todayDate, -1))
   await expect(primaryPane).toHaveClass(/before-current-day-pane/)
-  await expect(primaryPane).toHaveCSS('border-right-color', 'rgb(115, 85, 162)')
-  await expect(primaryPane).toHaveCSS('border-left-color', 'rgba(0, 0, 0, 0)')
+  await expectDayRail(primaryPane, 'before', mobile)
   await expect(primaryPane).not.toHaveAttribute('aria-current', 'date')
 
   if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
   else await comparePane.evaluate((pane) => pane.scrollTo(0, 200))
   await expect(comparePane).toHaveClass(/after-current-day-pane/)
-  await expect(comparePane).toHaveCSS('border-left-color', 'rgb(115, 85, 162)')
+  await expectDayRail(comparePane, 'after', mobile)
   await expect(comparePane).not.toHaveAttribute('aria-current', 'date')
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-directional-day-rails.png`,
@@ -65,7 +83,7 @@ test('day rail points toward today and disappears on today', async ({ page }, te
   })
 })
 
-test('today rolls over at 3am while the app stays open', async ({ page }) => {
+test('today rolls over at 3am while the app stays open', async ({ page }, testInfo) => {
   await page.clock.install({ time: new Date('2026-08-18T02:59:00') })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -79,7 +97,7 @@ test('today rolls over at 3am while the app stays open', async ({ page }) => {
   await page.clock.runFor(60_001)
 
   await expect(workspace).toHaveClass(/before-current-day-workspace/)
-  await expect(workspace).toHaveCSS('border-right-color', 'rgb(115, 85, 162)')
+  await expectDayRail(workspace, 'before', testInfo.project.name === 'mobile')
   await expect(page.locator('.sidebar-footer button.primary')).toHaveText('Generate selected day')
 })
 
