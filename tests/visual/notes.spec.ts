@@ -48,6 +48,25 @@ async function noteSelectionEndpoints(page: Page) {
   })
 }
 
+async function copyNoteSelection(page: Page) {
+  return page.evaluate(() => {
+    const target = document.activeElement
+    if (!(target instanceof HTMLElement)) return null
+
+    const clipboardData = new DataTransfer()
+    const copied = target.dispatchEvent(new ClipboardEvent('copy', {
+      bubbles: true,
+      cancelable: true,
+      clipboardData,
+    }))
+    return {
+      handled: !copied,
+      plainText: clipboardData.getData('text/plain'),
+      html: clipboardData.getData('text/html'),
+    }
+  })
+}
+
 test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'IMAX is desktop-only')
   await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
@@ -102,6 +121,75 @@ test('shift arrow keys extend note selection to the matching position on an adja
   await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
     anchor: { text: 'First line', offset: 4 },
     focus: { text: 'Second line', offset: 4 },
+  })
+})
+
+test('notes select all blocks and copy plain text plus semantic HTML lists', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop keyboard and rich clipboard behavior is covered here')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  await toolbar.getByRole('button', { name: 'Bulleted list' }).click()
+
+  const first = page.locator('[data-note-text-input]').first()
+  await first.fill('Alpha')
+  await first.press('Meta+A')
+  await first.press('Meta+B')
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+
+  const second = page.locator('[data-note-text-input]').nth(1)
+  await second.fill('Beta')
+  await placeCaretAtEnd(second)
+  await second.press('Enter')
+
+  const third = page.locator('[data-note-text-input]').nth(2)
+  await third.fill('Gamma')
+  await third.press('Meta+A')
+  await third.press('Meta+A')
+
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString() ?? '')).toContain('Alpha')
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString() ?? '')).toContain('Beta')
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString() ?? '')).toContain('Gamma')
+  await expect.poll(() => copyNoteSelection(page)).toEqual({
+    handled: true,
+    plainText: '- Alpha\n- Beta\n- Gamma',
+    html: '<ul><li><strong>Alpha</strong></li><li>Beta</li><li>Gamma</li></ul>',
+  })
+})
+
+test('dragging can extend a note selection across list items', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'touch selection is owned by the platform')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Bulleted list' }).click()
+
+  const first = page.locator('[data-note-text-input]').first()
+  await first.fill('First line')
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+  const second = page.locator('[data-note-text-input]').nth(1)
+  await second.fill('Second line')
+
+  const firstBox = await first.boundingBox()
+  const secondBox = await second.boundingBox()
+  expect(firstBox).not.toBeNull()
+  expect(secondBox).not.toBeNull()
+  await page.mouse.move(firstBox!.x + 3, firstBox!.y + firstBox!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(secondBox!.x + secondBox!.width - 3, secondBox!.y + secondBox!.height / 2, { steps: 8 })
+  await page.mouse.up()
+
+  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+    anchor: { text: 'First line', offset: 0 },
+    focus: { text: 'Second line', offset: 11 },
   })
 })
 

@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import NoteItemEditor from './NoteItemEditor.svelte'
-  import type { ItemLink } from './planner'
+  import { htmlToPlainText, sanitizeInlineHTML, type ItemLink } from './planner'
+  import { noteClipboardHTML, noteClipboardPlainText, type NoteClipboardBlock } from './noteClipboard'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind } from './types'
 
   type InlineFormatCommand = 'bold' | 'italic' | 'underline'
@@ -36,6 +37,8 @@
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
   let toolbarSelection: Range | null = null
+  let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement } | null = null
+  let pointerSelectionFocus: { node: Node; offset: number; editor: HTMLDivElement } | null = null
   let inlineFormats: InlineFormatState = { bold: false, italic: false, underline: false }
   $: selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null
   $: if (selectedNoteId !== activeNoteId) {
@@ -201,6 +204,126 @@
     if (['Enter', 'Backspace', 'Delete', 'Tab'].includes(event.key)) void followNoteBottomAfterEdit(event)
   }
 
+  function noteInputs() {
+    return Array.from(noteBlocksElement?.querySelectorAll<HTMLDivElement>('[data-note-text-input]') ?? [])
+  }
+
+  function handleNoteCopy(event: ClipboardEvent) {
+    if (!selectedNote || !event.clipboardData) return
+    const selection = document.getSelection()
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    const inputs = noteInputs()
+    const selectedInputs = inputs.filter((input) => range.intersectsNode(input))
+    if (selectedInputs.length < 2) return
+
+    const blocks = selectedInputs.flatMap((input) => {
+      const fragmentRange = document.createRange()
+      fragmentRange.selectNodeContents(input)
+      if (input.contains(range.startContainer)) fragmentRange.setStart(range.startContainer, range.startOffset)
+      if (input.contains(range.endContainer)) fragmentRange.setEnd(range.endContainer, range.endOffset)
+
+      const container = document.createElement('div')
+      container.append(fragmentRange.cloneContents())
+      const html = sanitizeInlineHTML(container.innerHTML)
+      const text = htmlToPlainText(html)
+      if (!html && !text) return []
+
+      const itemId = input.dataset.noteTextInputId
+      const item = itemId ? findItem(selectedNote.items, itemId) : null
+      const row = input.closest<HTMLElement>('[data-note-item-id]')
+      if (!item || !row) return []
+
+      return [{
+        kind: item.kind,
+        depth: Number(row.dataset.noteItemDepth ?? 0),
+        html,
+        text,
+        done: item.done,
+        number: numberedMarker(row),
+      } satisfies NoteClipboardBlock]
+    })
+    if (blocks.length < 2) return
+
+    event.preventDefault()
+    event.clipboardData.setData('text/plain', noteClipboardPlainText(blocks))
+    event.clipboardData.setData('text/html', noteClipboardHTML(blocks))
+  }
+
+  function numberedMarker(row: HTMLElement) {
+    const value = Number.parseInt(row.dataset.noteItemNumber ?? '1', 10)
+    return Number.isFinite(value) ? value : 1
+  }
+
+  function handleNotePointerDown(event: PointerEvent) {
+    if (event.button !== 0 || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) return
+    const target = event.target instanceof Element ? event.target : null
+    const editor = target?.closest<HTMLDivElement>('[data-note-text-input]') ?? null
+    const point = editor ? caretPointFromCoordinates(editor, event.clientX, event.clientY) : null
+    pointerSelectionAnchor = editor && point ? { ...point, editor } : null
+    pointerSelectionFocus = null
+  }
+
+  function handleNotePointerMove(event: PointerEvent) {
+    if (
+      !pointerSelectionAnchor ||
+      !(event.buttons & 1) ||
+      (event.pointerType !== 'mouse' && event.pointerType !== 'pen')
+    ) return
+
+    const target = event.target instanceof Element ? event.target : null
+    const row = target?.closest<HTMLElement>('[data-note-item-id]') ?? null
+    const editor = target?.closest<HTMLDivElement>('[data-note-text-input]')
+      ?? row?.querySelector<HTMLDivElement>('[data-note-text-input]')
+      ?? null
+    if (!editor || editor === pointerSelectionAnchor.editor) return
+
+    const point = caretPointFromCoordinates(editor, event.clientX, event.clientY)
+    if (!point) return
+    pointerSelectionFocus = { ...point, editor }
+    event.preventDefault()
+    applyPointerSelection(pointerSelectionAnchor, pointerSelectionFocus)
+  }
+
+  function caretPointFromCoordinates(editor: HTMLDivElement, clientX: number, clientY: number) {
+    const rect = editor.getBoundingClientRect()
+    const x = Math.min(Math.max(clientX, rect.left + 1), rect.right - 1)
+    const y = Math.min(Math.max(clientY, rect.top + 1), rect.bottom - 1)
+    const documentWithCaretAPI = document as Document & {
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+      caretRangeFromPoint?: (x: number, y: number) => Range | null
+    }
+    const position = documentWithCaretAPI.caretPositionFromPoint?.(x, y)
+    const point = position
+      ? { node: position.offsetNode, offset: position.offset }
+      : (() => {
+          const range = documentWithCaretAPI.caretRangeFromPoint?.(x, y)
+          return range ? { node: range.startContainer, offset: range.startOffset } : null
+        })()
+    return point && editor.contains(point.node) ? point : null
+  }
+
+  function finishNotePointerSelection(event: PointerEvent) {
+    const anchor = pointerSelectionAnchor
+    const focus = pointerSelectionFocus
+    pointerSelectionAnchor = null
+    pointerSelectionFocus = null
+    if (!anchor || !focus) return
+
+    event.preventDefault()
+    applyPointerSelection(anchor, focus)
+    window.requestAnimationFrame(() => applyPointerSelection(anchor, focus))
+  }
+
+  function applyPointerSelection(
+    anchor: { node: Node; offset: number },
+    focus: { node: Node; offset: number },
+  ) {
+    if (!anchor.node.isConnected || !focus.node.isConnected) return
+    document.getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
+  }
+
   onDestroy(() => {
     bottomFollowRequest += 1
     if (bottomFollowFrame !== null) window.cancelAnimationFrame(bottomFollowFrame)
@@ -212,6 +335,10 @@
   on:keyup={updateInlineFormatState}
   on:beforeinput|capture={followNoteBottomAfterEdit}
   on:keydown|capture={handleEditorKeydownCapture}
+  on:pointerdown|capture={handleNotePointerDown}
+  on:pointermove|capture={handleNotePointerMove}
+  on:pointerup|capture={finishNotePointerSelection}
+  on:pointercancel|capture={finishNotePointerSelection}
 />
 
 <div class="notes-workspace">
@@ -261,7 +388,7 @@
         <span class="note-format-hint">Type <kbd>/</kbd> for more</span>
       </div>
 
-      <div class="note-blocks" bind:this={noteBlocksElement}>
+      <div class="note-blocks" bind:this={noteBlocksElement} on:copy={handleNoteCopy}>
         {#if selectedNote.items.length === 0}
           <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
         {:else}

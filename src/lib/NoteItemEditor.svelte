@@ -309,6 +309,43 @@
   }
 
   function handleEditorKeyDown(_editor: HTMLDivElement, event: KeyboardEvent) {
+    if (
+      event.key.toLocaleLowerCase() === 'a' &&
+      (event.metaKey || event.ctrlKey) &&
+      !event.altKey &&
+      !event.shiftKey
+    ) {
+      const inputs = noteInputs()
+      if (inputs.length > 1) {
+        const selection = document.getSelection()
+        const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+        const editorIsFullySelected = Boolean(
+          range &&
+          _editor.contains(range.startContainer) &&
+          _editor.contains(range.endContainer) &&
+          textOffsetAtPoint(_editor, range.startContainer, range.startOffset) === 0 &&
+          textOffsetAtPoint(_editor, range.endContainer, range.endOffset) === (_editor.textContent?.length ?? 0),
+        )
+        if (!editorIsFullySelected) return
+
+        event.preventDefault()
+        const firstRow = inputs[0].closest<HTMLElement>('[data-note-item-id]')
+        const lastRow = inputs[inputs.length - 1].closest<HTMLElement>('[data-note-item-id]')
+        if (!firstRow || !lastRow) return
+        const selectNote = () => {
+          if (!firstRow.isConnected || !lastRow.isConnected) return
+          const range = document.createRange()
+          range.setStartBefore(firstRow)
+          range.setEndAfter(lastRow)
+          selection?.removeAllRanges()
+          selection?.addRange(range)
+        }
+        selectNote()
+        window.requestAnimationFrame(selectNote)
+      }
+      return
+    }
+
     if (slashQuery === null || slashCommands.length === 0) return
     if (event.key === 'ArrowDown') {
       event.preventDefault()
@@ -331,13 +368,14 @@
   class:note-heading={item.kind === 'heading'}
   class:note-done={item.kind === 'checklist' && item.done}
   class:note-list-item={item.kind === 'bullet' || item.kind === 'numbered' || item.kind === 'checklist'}
+  class:note-bullet={item.kind === 'bullet'}
+  class:note-numbered={item.kind === 'numbered'}
   data-note-item-id={item.id}
   data-note-item-depth={depth}
+  data-note-item-number={item.kind === 'numbered' ? itemNumber : undefined}
   aria-label={`Note block: ${item.text || 'Empty'}`}
 >
-  <div class="note-block">
-    {#if item.kind === 'bullet'}<span class="note-marker" aria-hidden="true">•</span>{/if}
-    {#if item.kind === 'numbered'}<span class="note-marker numbered" aria-hidden="true">{itemNumber}.</span>{/if}
+  <div class="note-block" data-note-item-number={item.kind === 'numbered' ? itemNumber : undefined}>
     {#if item.kind === 'checklist'}
       <input
         class="check note-check"

@@ -4723,16 +4723,23 @@ nav button.active {
   min-width: 0;
 }
 
-.note-marker {
+.note-bullet > .note-block::before,
+.note-numbered > .note-block::before {
   flex: 0 0 20px;
   padding-top: 5px;
   color: var(--ink);
   font-size: 17px;
   font-weight: 600;
   text-align: center;
+  user-select: none;
 }
 
-.note-marker.numbered {
+.note-bullet > .note-block::before {
+  content: '•';
+}
+
+.note-numbered > .note-block::before {
+  content: attr(data-note-item-number) '.';
   flex-basis: 24px;
   color: var(--muted);
   font-size: 14px;
@@ -4743,6 +4750,7 @@ nav button.active {
 .note-check {
   flex: 0 0 auto;
   margin: 6px 3px 0 2px;
+  user-select: none;
 }
 
 .note-text {
