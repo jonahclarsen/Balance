@@ -105,12 +105,17 @@ private struct BalanceSnapshot: Codable {
     )
 
     static var today: String {
+        let calendar = Calendar.autoupdatingCurrent
+        let now = Date()
+        let currentDay = calendar.component(.hour, from: now) < 3
+            ? calendar.date(byAdding: .day, value: -1, to: now) ?? now
+            : now
         let formatter = DateFormatter()
-        formatter.calendar = .autoupdatingCurrent
+        formatter.calendar = calendar
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = .autoupdatingCurrent
         formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
+        return formatter.string(from: currentDay)
     }
 
     static func load() -> BalanceSnapshot? {
@@ -157,12 +162,12 @@ private struct BalanceProvider: TimelineProvider {
         let now = Date()
         let regularRefresh = Calendar.autoupdatingCurrent.date(byAdding: .minute, value: 15, to: now)
             ?? now.addingTimeInterval(15 * 60)
-        let midnight = Calendar.autoupdatingCurrent.nextDate(
+        let dayBoundary = Calendar.autoupdatingCurrent.nextDate(
             after: now,
-            matching: DateComponents(hour: 0, minute: 0),
+            matching: DateComponents(hour: 3, minute: 0),
             matchingPolicy: .nextTime
         ) ?? regularRefresh
-        let refresh = min(regularRefresh, midnight)
+        let refresh = min(regularRefresh, dayBoundary)
         completion(Timeline(
             entries: [BalanceEntry(date: now, snapshot: BalanceSnapshot.load())],
             policy: .after(refresh)

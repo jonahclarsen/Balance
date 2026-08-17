@@ -1,4 +1,4 @@
-use chrono::Local;
+use chrono::{Local, Timelike};
 use rusqlite::Connection;
 use std::ffi::CString;
 
@@ -9,7 +9,12 @@ extern "C" {
 }
 
 pub(crate) fn publish_snapshot(connection: &Connection) -> Result<(), String> {
-    let date = Local::now().format("%Y-%m-%d").to_string();
+    let now = Local::now();
+    let mut current_day = now.date_naive();
+    if now.hour() < 3 {
+        current_day = current_day.pred_opt().unwrap_or(current_day);
+    }
+    let date = current_day.format("%Y-%m-%d").to_string();
     let plan = super::read_plan_by_date(connection, &date)?;
     let preferences = super::read_replicated_preferences(connection)?;
     let theme_id = preferences

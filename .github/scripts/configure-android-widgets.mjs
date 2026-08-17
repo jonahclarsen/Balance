@@ -25,7 +25,7 @@ import android.view.View
 import android.widget.RemoteViews
 import java.io.File
 import java.text.SimpleDateFormat
-import java.util.Date
+import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.roundToInt
@@ -89,7 +89,11 @@ object BalanceWidgets {
     }
 
     private fun loadSnapshot(context: Context): BalanceWidgetSnapshot {
-        val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val currentDay = Calendar.getInstance()
+        if (currentDay.get(Calendar.HOUR_OF_DAY) < 3) {
+            currentDay.add(Calendar.DAY_OF_MONTH, -1)
+        }
+        val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(currentDay.time)
         val json = JSONObject(nativeSnapshot(context.applicationInfo.dataDir, date))
         val itemValues = json.getJSONArray("items")
         val depthValues = json.optJSONArray("itemDepths")
