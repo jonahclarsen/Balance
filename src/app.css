@@ -1706,21 +1706,61 @@ nav button.active {
 }
 
 .mobile-time-summary {
+  --time-start-bg: var(--time-bg);
+  --time-end-bg: var(--time-bg);
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: stretch;
   border: 1px solid var(--time-border);
   border-radius: 6px;
   background: var(--time-bg);
-  padding: 5px 7px;
+  padding: 0;
   color: var(--accent-strong);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
-.mobile-time-summary.warning {
-  border-color: color-mix(in srgb, var(--danger) 50%, var(--time-border));
-  background: var(--time-warn-bg);
+.mobile-time-summary.warning-start {
+  --time-start-bg: var(--time-warn-bg);
+}
+
+.mobile-time-summary.warning-end {
+  --time-end-bg: var(--time-warn-bg);
+}
+
+.mobile-time-side,
+.mobile-time-dash {
+  display: inline-flex;
+  align-items: center;
+  padding-block: 5px;
+}
+
+.mobile-time-side {
+  background: var(--time-bg);
+}
+
+.mobile-time-start-side {
+  border-radius: 5px 0 0 5px;
+  background: var(--time-start-bg);
+  padding-left: 7px;
+}
+
+.mobile-time-end-side {
+  border-radius: 0 5px 5px 0;
+  background: var(--time-end-bg);
+  padding-right: 7px;
+}
+
+.mobile-time-summary.warning-start .mobile-time-start-side,
+.mobile-time-summary.warning-end .mobile-time-end-side {
   color: var(--time-warn-ink);
+}
+
+.mobile-time-dash {
+  background: linear-gradient(to right, var(--time-start-bg) 0 50%, var(--time-end-bg) 50% 100%);
+  padding-inline: 1px;
+  color: var(--muted);
 }
 
 .mobile-task-actions {

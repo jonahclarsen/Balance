@@ -522,11 +522,16 @@
       {#if mobile}
         <button
           class="mobile-time-summary"
-          class:warning={Boolean(timeWarning?.overlapsPrevious || timeWarning?.overlapsNext || timeWarning?.precedesAncestor || timeWarning?.exceedsAncestor)}
+          class:warning-start={Boolean(timeWarning?.overlapsPrevious || timeWarning?.precedesAncestor)}
+          class:warning-end={Boolean(timeWarning?.overlapsNext || timeWarning?.exceedsAncestor)}
           type="button"
           aria-label={`Edit time ${formatMinutes(item.startMinutes)} to ${formatMinutes(item.endMinutes)}`}
           on:click|stopPropagation={openMobileTimeEditor}
-        >{formatMinutes(item.startMinutes)}–{formatMinutes(item.endMinutes)}</button>
+        >
+          <span class="mobile-time-side mobile-time-start-side">{formatMinutes(item.startMinutes)}</span>
+          <span class="mobile-time-dash">–</span>
+          <span class="mobile-time-side mobile-time-end-side">{formatMinutes(item.endMinutes)}</span>
+        </button>
       {:else}
         <TimeRange
           startMinutes={item.startMinutes}

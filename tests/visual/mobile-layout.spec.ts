@@ -139,6 +139,25 @@ test('task rows stay readable on mobile without changing the desktop arrangement
     expect(geometry.timeTop).toBeLessThan(geometry.textTop)
     expect(Math.abs((geometry.taskTextLeft ?? 0) - geometry.timeLeft)).toBeLessThanOrEqual(1)
     expect(Math.abs((geometry.timeSpaceAbove ?? 0) - (geometry.timeSpaceBelow ?? 0))).toBeLessThanOrEqual(4)
+    await expect(time).toHaveClass(/warning-end/)
+    await expect(time).not.toHaveClass(/warning-start/)
+    const timeColors = await time.evaluate((element) => {
+      const probe = document.createElement('span')
+      element.appendChild(probe)
+      probe.style.backgroundColor = 'var(--time-bg)'
+      const normal = getComputedStyle(probe).backgroundColor
+      probe.style.backgroundColor = 'var(--time-warn-bg)'
+      const warning = getComputedStyle(probe).backgroundColor
+      probe.remove()
+      return {
+        normal,
+        warning,
+        start: getComputedStyle(element.querySelector('.mobile-time-start-side')!).backgroundColor,
+        end: getComputedStyle(element.querySelector('.mobile-time-end-side')!).backgroundColor,
+      }
+    })
+    expect(timeColors.start).toBe(timeColors.normal)
+    expect(timeColors.end).toBe(timeColors.warning)
     await expect(row.locator('.select-handle')).toHaveCount(0)
     await expect(row.getByRole('button', { name: 'Task options for Deeply nested task text should still have enough room to be comfortably readable' })).toBeVisible()
 
