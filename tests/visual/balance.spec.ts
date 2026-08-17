@@ -2,52 +2,45 @@ import { expect, test } from '@playwright/test'
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
 
-test('today indicator stays visible after the page header scrolls away', async ({ page }, testInfo) => {
+test('today tint follows the current calendar day', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+  }
   const primaryPane = page.getByRole('region', { name: 'Daily plan' })
   const todayDate = await primaryPane.locator('.date-input').inputValue()
+  await expect(page.locator('.workspace')).toHaveClass(/current-day-workspace/)
+  await expect(primaryPane).toHaveClass(/current-day-pane/)
+  await expect(primaryPane).toHaveAttribute('aria-current', 'date')
+  await expect(page.locator('.current-day-indicator')).toHaveCount(0)
+
   await primaryPane.getByRole('button', { name: 'Compare with another day' }).click()
   const comparePane = page.getByRole('region', { name: 'Compared day' })
   await expect(comparePane).toBeVisible()
   if (testInfo.project.name === 'desktop') await page.setViewportSize({ width: 1000, height: 450 })
 
-  await expect(page.locator('.current-day-scroll-indicator')).toHaveCount(0)
+  await expect(page.locator('.workspace')).not.toHaveClass(/current-day-workspace/)
+  await expect(primaryPane).toHaveClass(/current-day-pane/)
+  await expect(comparePane).not.toHaveClass(/current-day-pane/)
   if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
   else await primaryPane.evaluate((pane) => pane.scrollTo(0, 200))
-
-  const pinnedToday = page.locator('.current-day-scroll-indicator .current-day-indicator')
-  await expect(pinnedToday).toBeVisible()
-  const markerBox = await pinnedToday.boundingBox()
-  expect(markerBox).not.toBeNull()
-  expect(markerBox?.y ?? Number.MAX_SAFE_INTEGER).toBeLessThan(testInfo.project.name === 'mobile' ? 20 : 40)
-  if (testInfo.project.name === 'desktop') {
-    const primaryBox = await primaryPane.boundingBox()
-    expect(markerBox?.x ?? 0).toBeGreaterThan(primaryBox?.x ?? Number.MAX_SAFE_INTEGER)
-    expect((markerBox?.x ?? Number.MAX_SAFE_INTEGER) + (markerBox?.width ?? 0)).toBeLessThanOrEqual(
-      (primaryBox?.x ?? 0) + (primaryBox?.width ?? 0),
-    )
-  }
+  await expect(primaryPane).toHaveClass(/current-day-pane/)
 
   await primaryPane.locator('.date-input').fill(addDays(todayDate, 1))
-  await expect(page.locator('.current-day-scroll-indicator')).toHaveCount(0)
+  await expect(primaryPane).not.toHaveClass(/current-day-pane/)
+  await expect(primaryPane).not.toHaveAttribute('aria-current', 'date')
 
   await comparePane.locator('.date-input').fill(todayDate)
   if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
   else await comparePane.evaluate((pane) => pane.scrollTo(0, 200))
-  await expect(pinnedToday).toBeVisible()
-  if (testInfo.project.name === 'desktop') {
-    const compareBox = await comparePane.boundingBox()
-    const comparedMarkerBox = await pinnedToday.boundingBox()
-    expect(comparedMarkerBox?.x ?? 0).toBeGreaterThan(compareBox?.x ?? Number.MAX_SAFE_INTEGER)
-    expect((comparedMarkerBox?.x ?? Number.MAX_SAFE_INTEGER) + (comparedMarkerBox?.width ?? 0)).toBeLessThanOrEqual(
-      (compareBox?.x ?? 0) + (compareBox?.width ?? 0),
-    )
-  }
+  await expect(comparePane).toHaveClass(/current-day-pane/)
+  await expect(comparePane).toHaveAttribute('aria-current', 'date')
   await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-today-indicator-scrolled-split.png`,
+    path: `artifacts/visual-smoke/${testInfo.project.name}-today-tint-scrolled-split.png`,
     fullPage: false,
   })
 })
@@ -185,7 +178,7 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   await expect(page.getByRole('heading', { name: 'Balance' })).toBeVisible()
   const generateButton = page.getByRole('complementary').getByRole('button', { name: 'Generate today' })
   await expect(generateButton).toBeVisible()
-  await expect(page.locator('.current-day-indicator')).toHaveText('Today')
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toHaveClass(/current-day-pane/)
 
   await generateButton.click()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()

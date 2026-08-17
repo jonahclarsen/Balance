@@ -1038,10 +1038,16 @@ nav button.active {
   min-width: 0;
   overflow-y: auto;
   padding: 28px;
+  transition: background-color 180ms ease;
 }
 
 .workspace.comparing-days {
   overflow: hidden;
+}
+
+.workspace.current-day-workspace,
+.day-pane.current-day-pane {
+  background-color: color-mix(in srgb, var(--accent) 4%, var(--app-background));
 }
 
 .content-shell {
@@ -1238,6 +1244,7 @@ nav button.active {
 
 .day-pane {
   min-width: 0;
+  transition: background-color 180ms ease;
 }
 
 .day-panes.comparing .day-pane {
@@ -1255,64 +1262,6 @@ nav button.active {
   display: flex;
   align-items: center;
   gap: 7px;
-}
-
-.current-day-indicator {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 2px 7px 2px 6px;
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-  font-size: 10px;
-  line-height: 1.25;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-}
-
-.current-day-indicator::before {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-  content: '';
-}
-
-.current-day-scroll-indicator {
-  position: sticky;
-  top: 8px;
-  z-index: 20;
-  display: grid;
-  gap: 24px;
-  grid-template-columns: minmax(0, 1fr);
-  height: 0;
-  pointer-events: none;
-}
-
-.current-day-scroll-indicator.comparing {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.current-day-scroll-slot {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.pane-scroll-indicator {
-  display: flex;
-  justify-content: flex-end;
-}
-
-.current-day-scroll-indicator .current-day-indicator {
-  padding: 6px 9px 6px 8px;
-  background: color-mix(in srgb, var(--paper-strong) 92%, var(--accent));
-  box-shadow: 0 3px 12px color-mix(in srgb, var(--ink) 14%, transparent);
-  color: var(--accent-strong);
-  font-size: 11px;
-  font-weight: 750;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
 }
 
 .day-panes.comparing .page-header {
@@ -3816,22 +3765,6 @@ nav button.active {
     scrollbar-gutter: auto;
   }
 
-  .current-day-scroll-indicator.comparing {
-    display: flex;
-    justify-content: flex-end;
-  }
-
-  .current-day-scroll-indicator {
-    position: fixed;
-    top: calc(env(safe-area-inset-top) + 8px);
-    right: 12px;
-    left: 12px;
-  }
-
-  .current-day-scroll-indicator.comparing .current-day-scroll-slot:empty {
-    display: none;
-  }
-
   .list-panel,
   .template-panel {
     padding: 8px;
@@ -5160,7 +5093,4 @@ nav button.active {
     transition: none;
   }
 
-  .current-day-scroll-indicator {
-    top: calc(var(--mobile-header-height) + 8px);
-  }
 }
