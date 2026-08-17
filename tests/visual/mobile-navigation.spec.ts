@@ -71,13 +71,42 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
       return styleMutations
     }
   })
+  await expect.poll(() => drawer.evaluate((element) => element.getBoundingClientRect().left)).toBe(0)
 
-  // A short drag snaps open and updates only the two composited drawer layers,
-  // never the app-shell style that owns the rest of the Svelte application.
-  await page.mouse.move(240, 340)
-  await page.mouse.down()
-  await page.mouse.move(190, 340, { steps: 16 })
-  await page.mouse.up()
+  // The whole drawer is a generous close-gesture target. While the pointer is
+  // down, the drawer and backdrop track it instead of waiting for pointerup.
+  const drawerBox = await drawer.boundingBox()
+  if (!drawerBox) throw new Error('Drawer has no draggable bounds')
+  const dragStartX = drawerBox.x + drawerBox.width - 48
+  const dragY = drawerBox.y + drawerBox.height * 0.45
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: dragStartX, y: dragY }],
+  })
+  for (let step = 1; step <= 5; step += 1) {
+    await cdp.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x: dragStartX - step * 10, y: dragY }],
+    })
+  }
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())))
+  const trackingState = await page.evaluate(() => {
+    const shell = document.querySelector<HTMLElement>('.app-shell')
+    const sidebar = document.querySelector<HTMLElement>('.sidebar')
+    const backdrop = document.querySelector<HTMLElement>('.mobile-drawer-backdrop')
+    if (!shell || !sidebar || !backdrop) throw new Error('Missing drawer layers')
+    return {
+      dragging: shell.classList.contains('mobile-drawer-dragging'),
+      left: sidebar.getBoundingClientRect().left,
+      opacity: Number.parseFloat(getComputedStyle(backdrop).opacity),
+    }
+  })
+  expect(trackingState.dragging).toBe(true)
+  expect(trackingState.left).toBeLessThan(-40)
+  expect(trackingState.left).toBeGreaterThan(-60)
+  expect(trackingState.opacity).toBeLessThan(1)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
   const appShellStyleMutations = await page.evaluate(() => {
     const testWindow = window as typeof window & { stopDrawerMutationWatch?: () => number }
     return testWindow.stopDrawerMutationWatch?.() ?? -1
