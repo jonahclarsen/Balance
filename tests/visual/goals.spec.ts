@@ -1003,6 +1003,34 @@ test('goal rhythm bolds the current day and keeps it bold when another day is se
   await expect(todayHead.locator('strong')).toHaveCSS('font-weight', '700')
 })
 
+test('goal rhythm leaves space between adjacent two-digit August date labels', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Goal Rhythm is desktop-only')
+  await page.clock.install({ time: new Date('2026-08-10T12:00:00') })
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  const augustTenth = page.locator('.goal-date-head[data-goal-date="2026-08-10"] strong')
+  const augustEleventh = page.locator('.goal-date-head[data-goal-date="2026-08-11"] strong')
+  await expect(augustTenth).toHaveText('Aug 10')
+  await expect(augustEleventh).toHaveText('Aug 11')
+
+  const labelGap = await augustTenth.evaluate((label, nextSelector) => {
+    const nextLabel = document.querySelector<HTMLElement>(nextSelector)
+    if (!nextLabel) throw new Error(`Missing adjacent date label: ${nextSelector}`)
+    const textBounds = (element: Element) => {
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      return range.getBoundingClientRect()
+    }
+    return textBounds(nextLabel).left - textBounds(label).right
+  }, '.goal-date-head[data-goal-date="2026-08-11"] strong')
+
+  expect(labelGap).toBeGreaterThanOrEqual(2.5)
+})
+
 test('goal rhythm grows a column for the new day after the clock rolls over', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-06-16T12:00:00') })
   await page.goto('/')
