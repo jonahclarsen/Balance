@@ -3286,6 +3286,10 @@ nav button.active {
   box-shadow: 0 -8px 24px rgba(38, 35, 27, 0.06);
 }
 
+.goal-history-panel[hidden] {
+  visibility: hidden;
+}
+
 .goal-history-resize-handle {
   position: absolute;
   top: 0;

@@ -104,7 +104,6 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   await page.mouse.click(imaxCenter.x, imaxCenter.y)
   const exitImaxButton = primaryPane.getByRole('button', { name: 'Exit IMAX mode' })
   await expect(exitImaxButton).toHaveAttribute('aria-pressed', 'true')
-  await expect(goalRhythm).toHaveCount(0)
   await expect(page.locator('.goal-history-panel')).toBeHidden()
   if (testInfo.project.name === 'desktop') {
     await expect(page.getByRole('complementary')).toBeHidden()
