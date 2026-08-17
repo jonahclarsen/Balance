@@ -130,6 +130,10 @@ object BalanceWidgets {
         views.setTextViewText(R.id.widget_date, "TODAY")
         views.setTextViewText(R.id.widget_progress, compactStatus(snapshot))
         views.setContentDescription(R.id.widget_progress, status(snapshot))
+        views.setViewVisibility(
+            R.id.widget_progress,
+            if (snapshot.hasPlan || snapshot.unavailable) View.VISIBLE else View.GONE,
+        )
         val showProgress = snapshot.hasPlan && !snapshot.unavailable && snapshot.total > 0
         views.setProgressBar(
             R.id.widget_progress_bar,
@@ -253,7 +257,6 @@ object BalanceWidgets {
 
     private fun compactStatus(snapshot: BalanceWidgetSnapshot): String = when {
         snapshot.unavailable -> "Open Balance"
-        !snapshot.hasPlan -> "Start today"
         snapshot.total == 0 -> "No tasks"
         snapshot.done == snapshot.total -> "Done"
         else -> "\${snapshot.done}/\${snapshot.total}"

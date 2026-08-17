@@ -154,6 +154,11 @@ class BalanceSyncWorker {
     assert.match(kotlin, /setViewPadding/)
     assert.match(kotlin, /depth \* 12 \* density/)
     assert.match(kotlin, /setProgressBar/)
+    assert.match(
+      kotlin,
+      /R\.id\.widget_progress,[\s\S]*?if \(snapshot\.hasPlan \|\| snapshot\.unavailable\) View\.VISIBLE else View\.GONE/,
+    )
+    assert.doesNotMatch(kotlin, /Start today/)
     assert.match(kotlin, /R\.id\.widget_task_surface/)
     assert.match(kotlin, /R\.id\.widget_all_done/)
     assert.match(kotlin, /R\.id\.widget_item_time_10/)
