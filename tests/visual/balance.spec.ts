@@ -137,17 +137,38 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   await expect(goalRhythm).toBeVisible()
 
   await imaxButton.click()
-  await expect(primaryPane.getByRole('button', { name: 'Exit IMAX mode' })).toHaveAttribute('aria-pressed', 'true')
+  const exitImaxButton = primaryPane.getByRole('button', { name: 'Exit IMAX mode' })
+  await expect(exitImaxButton).toHaveAttribute('aria-pressed', 'true')
   await expect(goalRhythm).toHaveCount(0)
   if (testInfo.project.name === 'desktop') {
     await expect(page.getByRole('complementary')).toBeHidden()
     await expect(page.getByRole('button', { name: 'Show sidebar' })).toBeHidden()
+    const maximizedImaxBox = await exitImaxButton.boundingBox()
+    expect(maximizedImaxBox).not.toBeNull()
+    expect(Math.abs((maximizedImaxBox?.x ?? 0) - (imaxBox?.x ?? 0))).toBeLessThan(1)
+    expect(Math.abs((maximizedImaxBox?.y ?? 0) - (imaxBox?.y ?? 0))).toBeLessThan(1)
   }
 
-  await primaryPane.getByRole('button', { name: 'Exit IMAX mode' }).click()
+  await exitImaxButton.click()
   await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
   await expect(goalRhythm).toBeVisible()
-  if (testInfo.project.name === 'desktop') await expect(page.getByRole('complementary')).toBeVisible()
+  if (testInfo.project.name === 'desktop') {
+    await expect(page.getByRole('complementary')).toBeVisible()
+
+    await page.getByRole('button', { name: 'Hide sidebar' }).click()
+    const hiddenSidebarImaxBox = await imaxButton.boundingBox()
+    await imaxButton.click()
+    const hiddenSidebarExitButton = primaryPane.getByRole('button', { name: 'Exit IMAX mode' })
+    const hiddenSidebarMaximizedBox = await hiddenSidebarExitButton.boundingBox()
+    expect(hiddenSidebarImaxBox).not.toBeNull()
+    expect(hiddenSidebarMaximizedBox).not.toBeNull()
+    expect(Math.abs((hiddenSidebarMaximizedBox?.x ?? 0) - (hiddenSidebarImaxBox?.x ?? 0))).toBeLessThan(1)
+    expect(Math.abs((hiddenSidebarMaximizedBox?.y ?? 0) - (hiddenSidebarImaxBox?.y ?? 0))).toBeLessThan(1)
+
+    await hiddenSidebarExitButton.click()
+    await expect(page.getByRole('complementary')).toBeHidden()
+    await expect(goalRhythm).toBeVisible()
+  }
 })
 
 test('sidebar shows the task time shortcut legend above the template selector', async ({ page }, testInfo) => {

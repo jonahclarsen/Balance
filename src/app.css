@@ -1971,6 +1971,13 @@ nav button.active {
   background: var(--paper-strong);
 }
 
+/* Hiding the macOS sidebar adds 28px of title-bar clearance to the workspace.
+   Keep the IMAX toggle under the pointer so a second click can immediately
+   restore the surrounding UI. */
+.app-shell.macos-titlebar-overlay.today-maximized-from-visible-sidebar .imax-button {
+  transform: translateY(-28px);
+}
+
 .imax-button:hover,
 .imax-button.active {
   border-color: var(--accent);

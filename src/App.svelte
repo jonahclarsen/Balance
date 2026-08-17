@@ -4242,6 +4242,7 @@ return rows`
   class:macos-titlebar-overlay={isMac && !isMobile}
   class:sidebar-hidden={sidebarHidden}
   class:today-maximized={todayMaximized}
+  class:today-maximized-from-visible-sidebar={todayMaximized && !sidebarHiddenBeforeTodayMaximize}
   class:mobile-drawer-open={mobileDrawerOpen}
   class:mobile-drawer-dragging={mobileDrawerDragging}
   style={appShellStyle}
