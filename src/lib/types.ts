@@ -176,6 +176,23 @@ export type ReplicatedPreferences = {
   doneTintColor: string
   checkboxColor: string
   databaseLoadingMessages: string[]
+  iridescentGradient: IridescentGradientPreferences
+}
+
+export type IridescentGradientColor = {
+  hue: number
+  saturation: number
+  lightness: number
+  strength: number
+}
+
+export type IridescentGradientPreferences = {
+  contrast: number
+  backgroundSaturation: number
+  backgroundLightness: number
+  angle: number
+  reach: number
+  colors: [IridescentGradientColor, IridescentGradientColor, IridescentGradientColor]
 }
 
 export type AppState = {

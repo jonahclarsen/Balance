@@ -260,10 +260,10 @@
 
 :root[data-theme='iridescent'] {
   --app-background:
-    radial-gradient(circle at 12% 18%, rgb(242 76 159 / 0.13), transparent 34%),
-    radial-gradient(circle at 88% 16%, rgb(57 197 214 / 0.14), transparent 32%),
-    radial-gradient(circle at 76% 88%, rgb(240 162 62 / 0.13), transparent 36%),
-    linear-gradient(145deg, #f8f3fb, #f2f8fa 52%, #faf6ef);
+    radial-gradient(circle at 12% 18%, var(--iridescent-pink, rgb(242 76 159 / 0.13)), transparent var(--iridescent-pink-reach, 34%)),
+    radial-gradient(circle at 88% 16%, var(--iridescent-aqua, rgb(57 197 214 / 0.14)), transparent var(--iridescent-aqua-reach, 32%)),
+    radial-gradient(circle at 76% 88%, var(--iridescent-gold, rgb(240 162 62 / 0.13)), transparent var(--iridescent-gold-reach, 36%)),
+    linear-gradient(var(--iridescent-angle, 145deg), var(--iridescent-base-light-1, #f8f3fb), var(--iridescent-base-light-2, #f2f8fa) 52%, var(--iridescent-base-light-3, #faf6ef));
   --paper: rgb(255 253 255 / 0.92);
   --paper-strong: #ffffff;
   --ink: #282134;
@@ -510,10 +510,10 @@
 
   :root[data-theme='iridescent'] {
     --app-background:
-      radial-gradient(circle at 12% 18%, rgb(240 71 164 / 0.15), transparent 34%),
-      radial-gradient(circle at 88% 16%, rgb(51 198 218 / 0.14), transparent 32%),
-      radial-gradient(circle at 76% 88%, rgb(246 170 66 / 0.11), transparent 36%),
-      linear-gradient(145deg, #15101b, #10191e 52%, #1c1710);
+      radial-gradient(circle at 12% 18%, var(--iridescent-pink-dark, rgb(240 71 164 / 0.15)), transparent var(--iridescent-pink-reach, 34%)),
+      radial-gradient(circle at 88% 16%, var(--iridescent-aqua-dark, rgb(51 198 218 / 0.14)), transparent var(--iridescent-aqua-reach, 32%)),
+      radial-gradient(circle at 76% 88%, var(--iridescent-gold-dark, rgb(246 170 66 / 0.11)), transparent var(--iridescent-gold-reach, 36%)),
+      linear-gradient(var(--iridescent-angle, 145deg), var(--iridescent-base-dark-1, #15101b), var(--iridescent-base-dark-2, #10191e) 52%, var(--iridescent-base-dark-3, #1c1710));
     --paper: rgb(31 25 38 / 0.94);
     --paper-strong: #2a2232;
     --ink: #f4edf6;

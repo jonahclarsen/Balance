@@ -4,6 +4,7 @@
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
+  import IridescentGradientSettings from './lib/IridescentGradientSettings.svelte'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
@@ -43,13 +44,13 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { DailyPlan, Goal, Id, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
+  import type { DailyPlan, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
-  import { DEFAULT_DATABASE_LOADING_MESSAGES } from './lib/preferences'
+  import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient } from './lib/preferences'
   import { DEFAULT_THEME_ID, normalizeThemeId, THEME_PRESETS, type ThemeId } from './lib/themes'
   import {
     DEFAULT_INTERFACE_FONT_ID,
@@ -78,6 +79,7 @@
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
   const GOAL_HISTORY_UPDATE_DEBOUNCE_MS = 1_000
   const GOAL_HISTORY_EDIT_UPDATE_DEBOUNCE_MS = 5_000
+  const defaultIridescentGradient = createDefaultIridescentGradient()
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
@@ -166,6 +168,8 @@
   let checkboxColor = ''
   let themeId: ThemeId = DEFAULT_THEME_ID
   let interfaceFontId: InterfaceFontId = DEFAULT_INTERFACE_FONT_ID
+  let iridescentGradient = createDefaultIridescentGradient()
+  let previousPersistedIridescentGradient: IridescentGradientPreferences | null = null
   let completionTrackingReady = false
   let planCompletionById = new Map<Id, boolean>()
   let listCompletionById = new Map<Id, boolean>()
@@ -456,8 +460,14 @@ return rows`
   $: interfaceFontId = normalizeInterfaceFontId($plannerStore.preferences.interfaceFontId)
   $: doneTintColor = $plannerStore.preferences.doneTintColor
   $: checkboxColor = $plannerStore.preferences.checkboxColor
+  $: persistedIridescentGradient = $plannerStore.preferences.iridescentGradient
+  $: if (persistedIridescentGradient !== previousPersistedIridescentGradient) {
+    previousPersistedIridescentGradient = persistedIridescentGradient
+    iridescentGradient = persistedIridescentGradient
+  }
   $: document.documentElement.dataset.theme = themeId
   $: document.documentElement.dataset.interfaceFont = interfaceFontId
+  $: applyIridescentGradient(iridescentGradient)
   $: if ($plannerStore.preferences.databaseLoadingMessages !== previousDatabaseLoadingMessages) {
     previousDatabaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
     databaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
@@ -1364,6 +1374,74 @@ return rows`
     // A preset should look cohesive immediately. Fine-tuned completion colors
     // remain available below and become overrides only after the preset is set.
     plannerStore.patchPreferences({ themeId: nextThemeId, doneTintColor: '', checkboxColor: '' })
+  }
+
+  function adjustedIridescentBaseColor(
+    hue: number,
+    saturation: number,
+    lightness: number,
+    preferences: IridescentGradientPreferences,
+  ): string {
+    const adjustedSaturation = Math.max(0, Math.min(100, saturation * preferences.backgroundSaturation / 100))
+    const adjustedLightness = Math.max(0, Math.min(100, lightness + preferences.backgroundLightness))
+    return `hsl(${hue} ${adjustedSaturation.toFixed(1)}% ${adjustedLightness.toFixed(1)}%)`
+  }
+
+  function applyIridescentGradient(preferences: IridescentGradientPreferences) {
+    const root = document.documentElement
+    const colorNames = ['pink', 'aqua', 'gold']
+    const isDefault = JSON.stringify(preferences) === JSON.stringify(defaultIridescentGradient)
+    const defaultLightColors = ['rgb(242 76 159 / 0.13)', 'rgb(57 197 214 / 0.14)', 'rgb(240 162 62 / 0.13)']
+    const defaultDarkColors = ['rgb(240 71 164 / 0.15)', 'rgb(51 198 218 / 0.14)', 'rgb(246 170 66 / 0.11)']
+    const darkAdjustments = [
+      { hue: -3, saturation: 0, lightness: -1, strength: 15 / 13 },
+      { hue: 0, saturation: 4, lightness: 0, strength: 1 },
+      { hue: 1, saturation: 5, lightness: 2, strength: 11 / 13 },
+    ]
+    preferences.colors.forEach((color, index) => {
+      const alpha = Math.max(0, Math.min(1, color.strength / 100 * preferences.contrast / 100))
+      const dark = darkAdjustments[index]
+      const darkAlpha = Math.max(0, Math.min(1, alpha * dark.strength))
+      root.style.setProperty(
+        `--iridescent-${colorNames[index]}`,
+        isDefault ? defaultLightColors[index] : `hsl(${color.hue} ${color.saturation}% ${color.lightness}% / ${alpha})`,
+      )
+      root.style.setProperty(
+        `--iridescent-${colorNames[index]}-dark`,
+        isDefault
+          ? defaultDarkColors[index]
+          : `hsl(${(color.hue + dark.hue + 360) % 360} ${Math.max(0, Math.min(100, color.saturation + dark.saturation))}% ${Math.max(0, Math.min(100, color.lightness + dark.lightness))}% / ${darkAlpha})`,
+      )
+    })
+    root.style.setProperty('--iridescent-angle', `${preferences.angle}deg`)
+    root.style.setProperty('--iridescent-pink-reach', `${preferences.reach}%`)
+    root.style.setProperty('--iridescent-aqua-reach', `${Math.max(16, preferences.reach - 2)}%`)
+    root.style.setProperty('--iridescent-gold-reach', `${Math.min(70, preferences.reach + 2)}%`)
+
+    const lightBases = [[280, 50, 96.9, '#f8f3fb'], [195, 44.4, 96.5, '#f2f8fa'], [38, 52.4, 95.9, '#faf6ef']] as const
+    const darkBases = [[273, 25.5, 8.4, '#15101b'], [201, 30.4, 9, '#10191e'], [35, 27.3, 8.6, '#1c1710']] as const
+    lightBases.forEach(([hue, saturation, lightness, original], index) => {
+      root.style.setProperty(
+        `--iridescent-base-light-${index + 1}`,
+        isDefault ? original : adjustedIridescentBaseColor(hue, saturation, lightness, preferences),
+      )
+    })
+    darkBases.forEach(([hue, saturation, lightness, original], index) => {
+      root.style.setProperty(
+        `--iridescent-base-dark-${index + 1}`,
+        isDefault ? original : adjustedIridescentBaseColor(hue, saturation, lightness, preferences),
+      )
+    })
+  }
+
+  function previewIridescentGradient(value: IridescentGradientPreferences) {
+    iridescentGradient = normalizeIridescentGradient(value)
+  }
+
+  function commitIridescentGradient(value: IridescentGradientPreferences) {
+    const normalized = normalizeIridescentGradient(value)
+    iridescentGradient = normalized
+    plannerStore.patchPreferences({ iridescentGradient: normalized })
   }
 
   function resetCompletedItemColors() {
@@ -5323,6 +5401,15 @@ return rows`
               </button>
             {/each}
           </div>
+
+          {#if themeId === 'iridescent'}
+            <IridescentGradientSettings
+              value={iridescentGradient}
+              defaults={defaultIridescentGradient}
+              onPreview={previewIridescentGradient}
+              onCommit={commitIridescentGradient}
+            />
+          {/if}
         </section>
 
         <section class="settings-section typography-settings">

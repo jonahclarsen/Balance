@@ -993,6 +993,93 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   })
 })
 
+test('iridescent gradient controls preview live, persist, and restore the original palette', async ({ page }, testInfo) => {
+  const openSettings = async () => {
+    const openNavigation = page.getByRole('button', { name: 'Open navigation' })
+    if (await openNavigation.isVisible()) await openNavigation.click()
+    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  }
+
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openSettings()
+
+  const controls = page.getByLabel('Iridescent background controls')
+  await expect(controls).toHaveCount(0)
+  await page.getByRole('button', {
+    name: 'Iridescent Prismatic pink, violet, aqua, and gold',
+  }).click()
+  await expect(controls).toBeVisible()
+
+  const contrast = page.getByLabel('Iridescent contrast')
+  const backdropSaturation = page.getByLabel('Iridescent backdrop saturation')
+  const backdropLightness = page.getByLabel('Iridescent backdrop lightness')
+  const direction = page.getByLabel('Iridescent gradient direction')
+  const reach = page.getByLabel('Iridescent color reach')
+  const magentaHue = page.getByLabel('Magenta hue')
+  const magentaSaturation = page.getByLabel('Magenta saturation')
+  const magentaLightness = page.getByLabel('Magenta lightness')
+  const magentaStrength = page.getByLabel('Magenta strength')
+  const restore = controls.getByRole('button', { name: 'Restore original gradient' })
+
+  await expect(contrast).toHaveValue('100')
+  await expect(backdropSaturation).toHaveValue('100')
+  await expect(backdropLightness).toHaveValue('0')
+  await expect(direction).toHaveValue('145')
+  await expect(reach).toHaveValue('34')
+  await expect(magentaHue).toHaveValue('330')
+  await expect(magentaSaturation).toHaveValue('85')
+  await expect(magentaLightness).toHaveValue('62')
+  await expect(magentaStrength).toHaveValue('13')
+  await expect(restore).toBeDisabled()
+
+  await contrast.fill('180')
+  await backdropSaturation.fill('135')
+  await backdropLightness.fill('-4')
+  await direction.fill('225')
+  await reach.fill('52')
+  await magentaHue.fill('282')
+  await magentaSaturation.fill('96')
+  await magentaLightness.fill('48')
+  await magentaStrength.fill('26')
+
+  await expect(page.locator('html')).toHaveCSS('--iridescent-angle', '225deg')
+  await expect(page.locator('html')).toHaveCSS('--iridescent-pink-reach', '52%')
+  await expect.poll(() => page.locator('html').evaluate((element) =>
+    getComputedStyle(element).getPropertyValue('--iridescent-pink'),
+  )).toContain('282')
+  await expect(restore).toBeEnabled()
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    const gradient = state?.preferences?.iridescentGradient
+    return gradient ? { ...gradient, colors: gradient.colors?.slice(0, 1) } : null
+  })).toMatchObject({
+    contrast: 180,
+    backgroundSaturation: 135,
+    backgroundLightness: -4,
+    angle: 225,
+    reach: 52,
+    colors: [{ hue: 282, saturation: 96, lightness: 48, strength: 26 }],
+  })
+
+  await controls.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-iridescent-gradient-controls.png`,
+    fullPage: false,
+  })
+
+  await page.reload()
+  await openSettings()
+  await expect(contrast).toHaveValue('180')
+  await expect(magentaHue).toHaveValue('282')
+
+  await restore.click()
+  await expect(contrast).toHaveValue('100')
+  await expect(magentaHue).toHaveValue('330')
+  await expect(restore).toBeDisabled()
+})
+
 test('interface font previews apply live to tasks and persist', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
