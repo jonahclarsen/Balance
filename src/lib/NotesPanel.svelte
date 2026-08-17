@@ -288,7 +288,6 @@
           {/each}
         {/if}
       </div>
-      <div class="note-scroll-space" aria-hidden="true"></div>
 
     {:else}
       <div class="empty-state note-empty">
@@ -299,3 +298,4 @@
     {/if}
   </section>
 </div>
+{#if selectedNote}<div class="note-scroll-space" aria-hidden="true"></div>{/if}

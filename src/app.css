@@ -4478,7 +4478,6 @@ nav button.active {
 .notes-workspace {
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
-  min-height: min(720px, calc(100vh - 190px));
   border: 1px solid var(--line);
   border-radius: 12px;
   /* Preserve rounded-edge clipping without trapping the sticky toolbar in a

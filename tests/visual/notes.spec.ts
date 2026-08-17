@@ -275,10 +275,16 @@ test('notes leave breathing room below the editor and follow edits only from the
 
   const writingSpace = await page.locator('.note-scroll-space').evaluate((element) => {
     const spacer = element.getBoundingClientRect()
-    const blocks = element.previousElementSibling?.getBoundingClientRect()
-    return { height: spacer.height, startsAfterEditor: blocks ? spacer.top >= blocks.bottom : false }
+    const notesWorkspace = element.previousElementSibling
+    const workspaceBounds = notesWorkspace?.getBoundingClientRect()
+    return {
+      height: spacer.height,
+      outsideNotesWorkspace: notesWorkspace?.classList.contains('notes-workspace') && !notesWorkspace.contains(element),
+      startsAfterNotesWorkspace: workspaceBounds ? spacer.top >= workspaceBounds.bottom : false,
+    }
   })
-  expect(writingSpace.startsAfterEditor).toBe(true)
+  expect(writingSpace.outsideNotesWorkspace).toBe(true)
+  expect(writingSpace.startsAfterNotesWorkspace).toBe(true)
   expect(writingSpace.height).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.35)
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
@@ -296,7 +302,7 @@ test('notes leave breathing room below the editor and follow edits only from the
     return element.scrollTop
   })
   await secondEditor.evaluate((element) => {
-    element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+    element.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: 'x', bubbles: true, cancelable: true }))
   })
   await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBeCloseTo(scrolledUpPosition, 0)
 })
