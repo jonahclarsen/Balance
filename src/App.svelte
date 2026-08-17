@@ -153,6 +153,14 @@
   let todayMaximized = false
   let sidebarHiddenBeforeTodayMaximize = false
   let goalRhythmVisibleBeforeTodayMaximize = true
+  let todayMaximizeClickHandoff: {
+    left: number
+    top: number
+    width: number
+    height: number
+    pointerX: number
+    pointerY: number
+  } | null = null
   // Empty means "use the active theme color"; a hex value overrides it.
   let doneTintColor = ''
   let checkboxColor = ''
@@ -1390,18 +1398,33 @@ return rows`
   }
 
   function leaveTodayMaximized() {
+    todayMaximizeClickHandoff = null
     if (!todayMaximized) return
     todayMaximized = false
     sidebarHidden = sidebarHiddenBeforeTodayMaximize
     goalRhythmVisible = goalRhythmVisibleBeforeTodayMaximize
   }
 
-  function toggleTodayMaximized() {
+  function toggleTodayMaximized(event?: MouseEvent) {
     if (todayMaximized) {
       leaveTodayMaximized()
       return
     }
 
+    const button = event?.currentTarget instanceof HTMLElement && event.detail > 0
+      ? event.currentTarget
+      : null
+    const buttonRect = button?.getBoundingClientRect()
+    todayMaximizeClickHandoff = isMac && !isMobile && !sidebarHidden && buttonRect && event
+      ? {
+          left: buttonRect.left,
+          top: buttonRect.top,
+          width: buttonRect.width,
+          height: buttonRect.height,
+          pointerX: event.clientX,
+          pointerY: event.clientY,
+        }
+      : null
     sidebarHiddenBeforeTodayMaximize = sidebarHidden
     goalRhythmVisibleBeforeTodayMaximize = goalRhythmVisible
     todayMaximized = true
@@ -2942,6 +2965,15 @@ return rows`
   }
 
   function handleSelectionPointerMove(event: PointerEvent) {
+    if (
+      todayMaximizeClickHandoff
+      && Math.hypot(
+        event.clientX - todayMaximizeClickHandoff.pointerX,
+        event.clientY - todayMaximizeClickHandoff.pointerY,
+      ) > 2
+    ) {
+      todayMaximizeClickHandoff = null
+    }
     moveMobileDrawerGesture(event)
     if (usesMobileLayout()) {
       itemTextDragOrigin = null
@@ -4242,7 +4274,6 @@ return rows`
   class:macos-titlebar-overlay={isMac && !isMobile}
   class:sidebar-hidden={sidebarHidden}
   class:today-maximized={todayMaximized}
-  class:today-maximized-from-visible-sidebar={todayMaximized && !sidebarHiddenBeforeTodayMaximize}
   class:mobile-drawer-open={mobileDrawerOpen}
   class:mobile-drawer-dragging={mobileDrawerDragging}
   style={appShellStyle}
@@ -4251,6 +4282,17 @@ return rows`
 >
   {#if isMac && !isMobile}
     <div class="macos-titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
+  {/if}
+
+  {#if todayMaximizeClickHandoff}
+    <button
+      class="imax-click-handoff"
+      type="button"
+      tabindex="-1"
+      aria-hidden="true"
+      style={`left: ${todayMaximizeClickHandoff.left}px; top: ${todayMaximizeClickHandoff.top}px; width: ${todayMaximizeClickHandoff.width}px; height: ${todayMaximizeClickHandoff.height}px`}
+      on:click={leaveTodayMaximized}
+    ></button>
   {/if}
 
   <header class="mobile-app-header" aria-label="Mobile app header">

@@ -116,6 +116,9 @@ test('desktop sidebar hides, returns, and remembers its state', async ({ page },
 })
 
 test('IMAX mode maximizes Today and restores its surrounding panels', async ({ page }, testInfo) => {
+  if (testInfo.project.name === 'desktop') {
+    await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
+  }
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -136,7 +139,12 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   expect(dateBox?.width ?? Number.MAX_SAFE_INTEGER).toBeLessThanOrEqual(130)
   await expect(goalRhythm).toBeVisible()
 
-  await imaxButton.click()
+  const imaxCenter = {
+    x: (imaxBox?.x ?? 0) + (imaxBox?.width ?? 0) / 2,
+    y: (imaxBox?.y ?? 0) + (imaxBox?.height ?? 0) / 2,
+  }
+  await page.mouse.move(imaxCenter.x, imaxCenter.y)
+  await page.mouse.click(imaxCenter.x, imaxCenter.y)
   const exitImaxButton = primaryPane.getByRole('button', { name: 'Exit IMAX mode' })
   await expect(exitImaxButton).toHaveAttribute('aria-pressed', 'true')
   await expect(goalRhythm).toHaveCount(0)
@@ -144,16 +152,33 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
     await expect(page.getByRole('complementary')).toBeHidden()
     await expect(page.getByRole('button', { name: 'Show sidebar' })).toBeHidden()
     const maximizedImaxBox = await exitImaxButton.boundingBox()
+    const maximizedDateBox = await dateInput.boundingBox()
+    const clickHandoffBox = await page.locator('.imax-click-handoff').boundingBox()
     expect(maximizedImaxBox).not.toBeNull()
+    expect(maximizedDateBox).not.toBeNull()
+    expect(clickHandoffBox).not.toBeNull()
     expect(Math.abs((maximizedImaxBox?.x ?? 0) - (imaxBox?.x ?? 0))).toBeLessThan(1)
-    expect(Math.abs((maximizedImaxBox?.y ?? 0) - (imaxBox?.y ?? 0))).toBeLessThan(1)
+    expect(Math.abs((maximizedImaxBox?.y ?? 0) - (imaxBox?.y ?? 0) - 28)).toBeLessThan(1)
+    expect(Math.abs((maximizedImaxBox?.y ?? 0) - (maximizedDateBox?.y ?? 0))).toBeLessThan(1)
+    expect(Math.abs((clickHandoffBox?.x ?? 0) - (imaxBox?.x ?? 0))).toBeLessThan(1)
+    expect(Math.abs((clickHandoffBox?.y ?? 0) - (imaxBox?.y ?? 0))).toBeLessThan(1)
+
+    await page.mouse.down()
+    await page.mouse.up()
+  } else {
+    await exitImaxButton.click()
   }
 
-  await exitImaxButton.click()
   await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
   await expect(goalRhythm).toBeVisible()
   if (testInfo.project.name === 'desktop') {
     await expect(page.getByRole('complementary')).toBeVisible()
+
+    await imaxButton.click()
+    await expect(page.locator('.imax-click-handoff')).toHaveCount(1)
+    await page.mouse.move(imaxCenter.x + 4, imaxCenter.y)
+    await expect(page.locator('.imax-click-handoff')).toHaveCount(0)
+    await primaryPane.getByRole('button', { name: 'Exit IMAX mode' }).click()
 
     await page.getByRole('button', { name: 'Hide sidebar' }).click()
     const hiddenSidebarImaxBox = await imaxButton.boundingBox()
@@ -162,6 +187,7 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
     const hiddenSidebarMaximizedBox = await hiddenSidebarExitButton.boundingBox()
     expect(hiddenSidebarImaxBox).not.toBeNull()
     expect(hiddenSidebarMaximizedBox).not.toBeNull()
+    await expect(page.locator('.imax-click-handoff')).toHaveCount(0)
     expect(Math.abs((hiddenSidebarMaximizedBox?.x ?? 0) - (hiddenSidebarImaxBox?.x ?? 0))).toBeLessThan(1)
     expect(Math.abs((hiddenSidebarMaximizedBox?.y ?? 0) - (hiddenSidebarImaxBox?.y ?? 0))).toBeLessThan(1)
 
