@@ -184,14 +184,6 @@ private struct BalanceWidgetView: View {
         entry.snapshot?.date == BalanceSnapshot.today
     }
 
-    private var itemLimit: Int {
-        switch family {
-        case .systemSmall: return 2
-        case .systemMedium: return 2
-        default: return 6
-        }
-    }
-
     private var contentPadding: CGFloat {
         family == .systemLarge ? 14 : 10
     }
@@ -237,93 +229,117 @@ private struct BalanceWidgetView: View {
         } else if !snapshot.hasPlan {
             emptyView(title: "Today", message: "No plan yet. Open Balance to make one.")
         } else {
-            VStack(alignment: .leading, spacing: contentSpacing) {
-                HStack(alignment: .top, spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("TODAY")
-                            .font(.caption2.weight(.bold))
-                            .tracking(0.8)
-                            .foregroundStyle(accentColor)
-                        Text(snapshot.title.isEmpty ? "Today’s plan" : snapshot.title)
-                            .font(.headline)
-                            .fontDesign(.rounded)
-                            .foregroundStyle(palette.ink)
-                            .lineLimit(family == .systemSmall ? 1 : 2)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 4)
-                    Text(progressLabel(snapshot))
-                        .font(.caption.weight(.bold))
-                        .fontDesign(.rounded)
-                        .foregroundStyle(accentColor)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(accentColor.opacity(0.12), in: Capsule())
-                        .overlay(Capsule().stroke(accentColor.opacity(0.2), lineWidth: 1))
-                        .accessibilityLabel("\(snapshot.done) of \(snapshot.total) tasks complete")
+            GeometryReader { geometry in
+                ViewThatFits(in: .vertical) {
+                    // Keep these as direct children. Wrapping the candidates in
+                    // ForEach makes ViewThatFits measure them as one combined view.
+                    snapshotContent(snapshot, itemLimit: 10)
+                    snapshotContent(snapshot, itemLimit: 9)
+                    snapshotContent(snapshot, itemLimit: 8)
+                    snapshotContent(snapshot, itemLimit: 7)
+                    snapshotContent(snapshot, itemLimit: 6)
+                    snapshotContent(snapshot, itemLimit: 5)
+                    snapshotContent(snapshot, itemLimit: 4)
+                    snapshotContent(snapshot, itemLimit: 3)
+                    snapshotContent(snapshot, itemLimit: 2)
+                    snapshotContent(snapshot, itemLimit: 1)
                 }
-
-                if family != .systemSmall && !snapshot.reminder.isEmpty {
-                    Text(snapshot.reminder)
-                        .font(.caption)
-                        .foregroundStyle(palette.muted)
-                        .lineLimit(family == .systemLarge ? 2 : 1)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .privacySensitive()
-                }
-
-                if family == .systemLarge && snapshot.total > 0 {
-                    GeometryReader { geometry in
-                        ZStack(alignment: .leading) {
-                            Capsule().fill(palette.line.opacity(0.7))
-                            Capsule()
-                                .fill(accentColor)
-                                .frame(width: geometry.size.width * progress(snapshot))
-                        }
-                    }
-                    .frame(height: 4)
-                    .accessibilityHidden(true)
-                }
-
-                if snapshot.items.isEmpty {
-                    Label("All done", systemImage: "checkmark.circle.fill")
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(accentColor)
-                } else {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(snapshot.items.prefix(itemLimit).enumerated()), id: \.offset) { offset, item in
-                            if offset > 0 {
-                                Divider()
-                                    .overlay(palette.line.opacity(0.75))
-                            }
-                            HStack(alignment: .center, spacing: 8) {
-                                Circle()
-                                    .strokeBorder(accentColor.opacity(0.72), lineWidth: 1.5)
-                                    .frame(width: 11, height: 11)
-                                taskLabel(item, time: snapshot.itemTimes?[safe: offset])
-                                    .fixedSize(horizontal: false, vertical: true)
-                            }
-                            .padding(.vertical, rowVerticalPadding)
-                            .padding(
-                                .leading,
-                                CGFloat(min(snapshot.itemDepths?[safe: offset] ?? 0, 4))
-                                    * (family == .systemSmall ? 7 : 11)
-                            )
-                        }
-                    }
-                    .padding(.horizontal, family == .systemLarge ? 10 : 7)
-                    .background(palette.surface, in: RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(palette.line.opacity(0.8), lineWidth: 1)
-                    )
-                    .privacySensitive()
-                }
+                .frame(
+                    width: geometry.size.width,
+                    height: geometry.size.height,
+                    alignment: .center
+                )
             }
             .padding(contentPadding)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+    }
+
+    private func snapshotContent(_ snapshot: BalanceSnapshot, itemLimit: Int) -> some View {
+        VStack(alignment: .leading, spacing: contentSpacing) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("TODAY")
+                        .font(.caption2.weight(.bold))
+                        .tracking(0.8)
+                        .foregroundStyle(accentColor)
+                    Text(snapshot.title.isEmpty ? "Today’s plan" : snapshot.title)
+                        .font(.headline)
+                        .fontDesign(.rounded)
+                        .foregroundStyle(palette.ink)
+                        .lineLimit(family == .systemSmall ? 1 : 2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 4)
+                Text(progressLabel(snapshot))
+                    .font(.caption.weight(.bold))
+                    .fontDesign(.rounded)
+                    .foregroundStyle(accentColor)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(accentColor.opacity(0.12), in: Capsule())
+                    .overlay(Capsule().stroke(accentColor.opacity(0.2), lineWidth: 1))
+                    .accessibilityLabel("\(snapshot.done) of \(snapshot.total) tasks complete")
+            }
+
+            if family != .systemSmall && !snapshot.reminder.isEmpty {
+                Text(snapshot.reminder)
+                    .font(.caption)
+                    .foregroundStyle(palette.muted)
+                    .lineLimit(family == .systemLarge ? 2 : 1)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .privacySensitive()
+            }
+
+            if family == .systemLarge && snapshot.total > 0 {
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(palette.line.opacity(0.7))
+                        Capsule()
+                            .fill(accentColor)
+                            .frame(width: geometry.size.width * progress(snapshot))
+                    }
+                }
+                .frame(height: 4)
+                .accessibilityHidden(true)
+            }
+
+            if snapshot.items.isEmpty {
+                Label("All done", systemImage: "checkmark.circle.fill")
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(accentColor)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(snapshot.items.prefix(itemLimit).enumerated()), id: \.offset) { offset, item in
+                        if offset > 0 {
+                            Divider()
+                                .overlay(palette.line.opacity(0.75))
+                        }
+                        HStack(alignment: .center, spacing: 8) {
+                            Circle()
+                                .strokeBorder(accentColor.opacity(0.72), lineWidth: 1.5)
+                                .frame(width: 11, height: 11)
+                            taskLabel(item, time: snapshot.itemTimes?[safe: offset])
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(.vertical, rowVerticalPadding)
+                        .padding(
+                            .leading,
+                            CGFloat(min(snapshot.itemDepths?[safe: offset] ?? 0, 4))
+                                * (family == .systemSmall ? 7 : 11)
+                        )
+                    }
+                }
+                .padding(.horizontal, family == .systemLarge ? 10 : 7)
+                .background(palette.surface, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(palette.line.opacity(0.8), lineWidth: 1)
+                )
+                .privacySensitive()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func progress(_ snapshot: BalanceSnapshot) -> CGFloat {
