@@ -17,6 +17,7 @@
   export let goals: Goal[]
   export let completions: GoalCompletion[]
   export let viewedDate: string = todayISO()
+  export let visible = true
   export let onOpenGoals: (goalId?: string) => void
   export let onOpenDate: (date: string) => void
   export let onResizeStart: ((event: PointerEvent) => void) | undefined = undefined
@@ -34,8 +35,34 @@
   let copyResetTimer: ReturnType<typeof setTimeout> | undefined
   let highlightResetTimer: ReturnType<typeof setTimeout> | undefined
   let lastHandledScrollNonce = -1
+  let wasVisible = visible
 
-  $: if (scrollRequest && scrollRequest.nonce !== lastHandledScrollNonce) {
+  $: if (visible !== wasVisible) {
+    wasVisible = visible
+    if (visible) {
+      refreshDay()
+    } else {
+      // IMAX keeps the expensive history grid mounted while it is hidden. Reset
+      // the same transient state that destroying the component used to clear so
+      // toggling IMAX does not change the panel's user-visible behavior.
+      search = ''
+      highlightedGoalId = null
+      copiedGoalId = null
+      lastCenteredStartDate = null
+      lastHandledScrollNonce = -1
+      if (copyResetTimer) clearTimeout(copyResetTimer)
+      if (highlightResetTimer) clearTimeout(highlightResetTimer)
+      copyResetTimer = undefined
+      highlightResetTimer = undefined
+      if (scrollEl) {
+        scrollEl.scrollLeft = 0
+        scrollEl.scrollTop = 0
+      }
+      if (nameScrollEl) nameScrollEl.scrollTop = 0
+    }
+  }
+
+  $: if (visible && scrollRequest && scrollRequest.nonce !== lastHandledScrollNonce) {
     lastHandledScrollNonce = scrollRequest.nonce
     revealGoal(scrollRequest.goalId, scrollRequest.nonce)
   }
@@ -117,7 +144,7 @@
     search,
   )
 
-  $: if (mounted && historyStartDate !== lastCenteredStartDate) {
+  $: if (mounted && visible && historyStartDate !== lastCenteredStartDate) {
     lastCenteredStartDate = historyStartDate
     centerCurrentDay()
   }
@@ -209,7 +236,7 @@
   }
 </script>
 
-<section class="goal-history-panel" aria-label="Goal history">
+<section class="goal-history-panel" aria-label="Goal history" hidden={!visible}>
   {#if onResizeStart}
     <div
       class="goal-history-resize-handle"

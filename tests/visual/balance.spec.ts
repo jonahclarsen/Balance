@@ -105,6 +105,7 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   const exitImaxButton = primaryPane.getByRole('button', { name: 'Exit IMAX mode' })
   await expect(exitImaxButton).toHaveAttribute('aria-pressed', 'true')
   await expect(goalRhythm).toHaveCount(0)
+  await expect(page.locator('.goal-history-panel')).toBeHidden()
   if (testInfo.project.name === 'desktop') {
     await expect(page.getByRole('complementary')).toBeHidden()
     const maximizedImaxBox = await exitImaxButton.boundingBox()
@@ -130,11 +131,13 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   if (testInfo.project.name === 'desktop') {
     await expect(page.getByRole('complementary')).toBeVisible()
 
+    await goalRhythm.getByRole('searchbox', { name: 'Search goals' }).fill('no matching goal')
     await imaxButton.click()
     await expect(page.locator('.imax-click-handoff')).toHaveCount(1)
     await page.mouse.move(imaxCenter.x + 4, imaxCenter.y)
     await expect(page.locator('.imax-click-handoff')).toHaveCount(0)
     await primaryPane.getByRole('button', { name: 'Exit IMAX mode' }).click()
+    await expect(goalRhythm.getByRole('searchbox', { name: 'Search goals' })).toHaveValue('')
   }
 })
 

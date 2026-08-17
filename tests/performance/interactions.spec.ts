@@ -176,6 +176,32 @@ async function profileEdits(page: Page, selector: string, direction: 'type' | 'b
   )
 }
 
+async function profileImaxToggles(page: Page, toggleCount = 10) {
+  return page.getByRole('button', { name: 'Enter IMAX mode' }).evaluate(
+    async (element, toggleCount) => {
+      const button = element as HTMLButtonElement
+      const entering: Sample[] = []
+      const exiting: Sample[] = []
+
+      for (let index = 0; index < toggleCount; index += 1) {
+        for (const [pressed, samples] of [[true, entering], [false, exiting]] as const) {
+          const started = performance.now()
+          button.click()
+          const dispatched = performance.now()
+          await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+          if (button.getAttribute('aria-pressed') !== String(pressed)) {
+            throw new Error(`Expected IMAX aria-pressed=${pressed}`)
+          }
+          samples.push({ dispatchMs: dispatched - started, paintMs: performance.now() - started })
+        }
+      }
+
+      return { entering, exiting }
+    },
+    toggleCount,
+  )
+}
+
 test.beforeEach(async ({ page }, testInfo) => {
   await installSyntheticWorkspace(page)
   if (testInfo.project.name.includes('android-like')) {
@@ -239,4 +265,23 @@ test('profiles goal-name edits that legitimately change the goal collection', as
   const paintP95BudgetMs = testInfo.project.name.includes('android-like') ? 1_200 : 250
   expect(profile.typing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
   expect(profile.backspacing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
+})
+
+test('profiles entering and exiting IMAX mode', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('android-like'), 'IMAX is desktop-only')
+
+  const samples = await profileImaxToggles(page)
+  const profile = {
+    project: testInfo.project.name,
+    goals: GOAL_COUNT,
+    entering: summarize(samples.entering),
+    exiting: summarize(samples.exiting),
+  }
+
+  console.log(`IMAX_INTERACTION_PERF ${JSON.stringify(profile)}`)
+  await testInfo.attach(`imax-interaction-performance-${testInfo.project.name}.json`, {
+    body: JSON.stringify(profile, null, 2),
+    contentType: 'application/json',
+  })
+  expect(profile.exiting.paint.medianMs).toBeLessThan(250)
 })

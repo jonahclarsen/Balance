@@ -5672,11 +5672,12 @@ return rows`
     {/if}
     </section>
 
-    {#if goalRhythmVisible}
+    {#if goalRhythmVisible || todayMaximized}
       <GoalHistoryPanel
         goals={goalHistoryGoals}
         completions={goalCompletions}
         viewedDate={$plannerStore.activePlanDate || todayISO()}
+        visible={goalRhythmVisible}
         onOpenGoals={openGoals}
         onOpenDate={openDateInToday}
         onResizeStart={startGoalHistoryResize}
