@@ -166,13 +166,17 @@ class BalanceSyncWorker {
     assert.match(violetLayout, /@\+id\/widget_item_10/)
     assert.match(violetLayout, /@\+id\/widget_progress_bar/)
     assert.match(violetLayout, /#7355A2/)
-    assert.doesNotMatch(violetLayout, /task_circle/)
+    assert.match(violetLayout, /@drawable\/balance_widget_violet_task_circle/)
     assert.match(
       violetLayout,
       /android:id="@\+id\/widget_item_row_1"[\s\S]*?android:gravity="center_vertical"/,
     )
     assert.match(violetLayout, /@drawable\/balance_widget_violet_task_surface/)
     assert.match(violetLayout, /@drawable\/balance_widget_violet_time_pill/)
+    assert.match(
+      violetLayout,
+      /android:id="@\+id\/widget_item_time_1"[\s\S]*?android:fontFamily="sans-serif"[\s\S]*?android:textSize="9sp"/,
+    )
     assert.match(violetLayout, /@\+id\/widget_all_done/)
     assert.match(violetLayout, /android:text="TODAY"/)
     assert.match(violetLayout, /@\+id\/widget_refresh_touch_target/)
@@ -208,6 +212,7 @@ class BalanceSyncWorker {
     for (const theme of ['forest', 'ocean', 'violet', 'sunset', 'berry', 'pink', 'mint', 'midnight']) {
       await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
+      await readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_task_surface.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_time_pill.xml`), 'utf8')
       await readFile(join(root, `res/layout-night/balance_home_widget_${theme}.xml`), 'utf8')
@@ -223,13 +228,9 @@ class BalanceSyncWorker {
         ),
         { code: 'ENOENT' },
       )
-      await assert.rejects(
-        readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8'),
-        { code: 'ENOENT' },
-      )
-      await assert.rejects(
-        readFile(join(root, `res/drawable-night/balance_widget_${theme}_task_circle.xml`), 'utf8'),
-        { code: 'ENOENT' },
+      await readFile(
+        join(root, `res/drawable-night/balance_widget_${theme}_task_circle.xml`),
+        'utf8',
       )
     }
 

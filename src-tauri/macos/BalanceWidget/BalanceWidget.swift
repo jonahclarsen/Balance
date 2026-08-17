@@ -292,14 +292,19 @@ private struct BalanceWidgetView: View {
                                 Divider()
                                     .overlay(palette.line.opacity(0.75))
                             }
-                            taskLabel(item, time: snapshot.itemTimes?[safe: offset])
-                                .fixedSize(horizontal: false, vertical: true)
-                                .padding(.vertical, rowVerticalPadding)
-                                .padding(
-                                    .leading,
-                                    CGFloat(min(snapshot.itemDepths?[safe: offset] ?? 0, 4))
-                                        * (family == .systemSmall ? 7 : 11)
-                                )
+                            HStack(alignment: .center, spacing: 8) {
+                                Circle()
+                                    .strokeBorder(accentColor.opacity(0.72), lineWidth: 1.5)
+                                    .frame(width: 11, height: 11)
+                                taskLabel(item, time: snapshot.itemTimes?[safe: offset])
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(.vertical, rowVerticalPadding)
+                            .padding(
+                                .leading,
+                                CGFloat(min(snapshot.itemDepths?[safe: offset] ?? 0, 4))
+                                    * (family == .systemSmall ? 7 : 11)
+                            )
                         }
                     }
                     .padding(.horizontal, family == .systemLarge ? 10 : 7)
@@ -330,7 +335,7 @@ private struct BalanceWidgetView: View {
         HStack(alignment: .center, spacing: 6) {
             if let time, !time.isEmpty {
                 Text(time)
-                    .font(.caption2.monospacedDigit().weight(.bold))
+                    .font(.system(size: 9, weight: .regular, design: .rounded).monospacedDigit())
                     .foregroundStyle(palette.paper)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
