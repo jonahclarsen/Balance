@@ -12,6 +12,7 @@
   import ListTemplateItemEditor from './lib/ListTemplateItemEditor.svelte'
   import ListPanel from './lib/ListPanel.svelte'
   import NotesPanel from './lib/NotesPanel.svelte'
+  import ImaxButton from './lib/ImaxButton.svelte'
   import OverlayModal from './lib/OverlayModal.svelte'
   import SyncPanel from './lib/SyncPanel.svelte'
   import MetricQuiz from './lib/MetricQuiz.svelte'
@@ -144,9 +145,9 @@
   let goalHistoryHeight: number | null = null
   let goalRhythmVisible = true
   let goalRhythmAutoShowTimer: number | null = null
-  let todayMaximized = false
-  let goalRhythmVisibleBeforeTodayMaximize = true
-  let todayMaximizeClickHandoff: {
+  let maximizedView: View | null = null
+  let goalRhythmVisibleBeforeMaximize = true
+  let maximizeClickHandoff: {
     left: number
     top: number
     width: number
@@ -490,7 +491,8 @@ return rows`
   ]
     .filter(Boolean)
     .join('; ')
-  $: if (todayMaximized && view !== 'today') leaveTodayMaximized()
+  $: viewMaximized = maximizedView === view
+  $: if (maximizedView && view !== maximizedView) leaveViewMaximized()
   // Derived rather than computed on demand so that switching surfaces — including
   // switching between the two side-by-side days — retriggers the guard below.
   $: activeItemContext =
@@ -1475,16 +1477,16 @@ return rows`
     if (goals !== goalHistoryGoals) scheduleGoalHistoryUpdate()
   }
 
-  function leaveTodayMaximized() {
-    todayMaximizeClickHandoff = null
-    if (!todayMaximized) return
-    todayMaximized = false
-    goalRhythmVisible = goalRhythmVisibleBeforeTodayMaximize
+  function leaveViewMaximized() {
+    maximizeClickHandoff = null
+    if (!maximizedView) return
+    maximizedView = null
+    goalRhythmVisible = goalRhythmVisibleBeforeMaximize
   }
 
-  function toggleTodayMaximized(event?: MouseEvent) {
-    if (todayMaximized) {
-      leaveTodayMaximized()
+  function toggleViewMaximized(targetView: View, event?: MouseEvent) {
+    if (maximizedView === targetView) {
+      leaveViewMaximized()
       return
     }
 
@@ -1492,7 +1494,7 @@ return rows`
       ? event.currentTarget
       : null
     const buttonRect = button?.getBoundingClientRect()
-    todayMaximizeClickHandoff = isMac && !isMobile && buttonRect && event
+    maximizeClickHandoff = isMac && !isMobile && buttonRect && event
       ? {
           left: buttonRect.left,
           top: buttonRect.top,
@@ -1502,15 +1504,15 @@ return rows`
           pointerY: event.clientY,
         }
       : null
-    goalRhythmVisibleBeforeTodayMaximize = goalRhythmVisible
-    todayMaximized = true
+    goalRhythmVisibleBeforeMaximize = goalRhythmVisible
+    maximizedView = targetView
     goalRhythmVisible = false
     clearGoalRhythmAutoShowTimer()
   }
 
   function showGoalRhythm() {
     clearGoalRhythmAutoShowTimer()
-    leaveTodayMaximized()
+    leaveViewMaximized()
     goalRhythmVisible = true
   }
 
@@ -3027,13 +3029,13 @@ return rows`
 
   function handleSelectionPointerMove(event: PointerEvent) {
     if (
-      todayMaximizeClickHandoff
+      maximizeClickHandoff
       && Math.hypot(
-        event.clientX - todayMaximizeClickHandoff.pointerX,
-        event.clientY - todayMaximizeClickHandoff.pointerY,
+        event.clientX - maximizeClickHandoff.pointerX,
+        event.clientY - maximizeClickHandoff.pointerY,
       ) > 2
     ) {
-      todayMaximizeClickHandoff = null
+      maximizeClickHandoff = null
     }
     moveMobileDrawerGesture(event)
     if (usesMobileLayout()) {
@@ -4349,8 +4351,8 @@ return rows`
   class="app-shell"
   class:android={isAndroid}
   class:macos-titlebar-overlay={isMac && !isMobile}
-  class:sidebar-hidden={todayMaximized}
-  class:today-maximized={todayMaximized}
+  class:sidebar-hidden={viewMaximized}
+  class:page-maximized={viewMaximized}
   class:mobile-drawer-open={mobileDrawerOpen}
   class:mobile-drawer-dragging={mobileDrawerDragging}
   style={appShellStyle}
@@ -4361,14 +4363,14 @@ return rows`
     <div class="macos-titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
   {/if}
 
-  {#if todayMaximizeClickHandoff}
+  {#if maximizeClickHandoff}
     <button
       class="imax-click-handoff"
       type="button"
       tabindex="-1"
       aria-hidden="true"
-      style={`left: ${todayMaximizeClickHandoff.left}px; top: ${todayMaximizeClickHandoff.top}px; width: ${todayMaximizeClickHandoff.width}px; height: ${todayMaximizeClickHandoff.height}px`}
-      on:click={leaveTodayMaximized}
+      style={`left: ${maximizeClickHandoff.left}px; top: ${maximizeClickHandoff.top}px; width: ${maximizeClickHandoff.width}px; height: ${maximizeClickHandoff.height}px`}
+      on:click={leaveViewMaximized}
     ></button>
   {/if}
 
@@ -4408,7 +4410,7 @@ return rows`
   <aside
     id="primary-sidebar"
     class="sidebar"
-    class:sidebar-hidden={todayMaximized}
+    class:sidebar-hidden={viewMaximized}
     aria-label="Primary navigation drawer"
     bind:this={mobileDrawerEl}
   >
@@ -4609,24 +4611,7 @@ return rows`
                   </button>
                 {/if}
                 {#if pane.key === 'primary'}
-                  <button
-                    class="date-nav-button imax-button"
-                    class:active={todayMaximized}
-                    type="button"
-                    aria-label={todayMaximized ? 'Exit IMAX mode' : 'Enter IMAX mode'}
-                    aria-pressed={todayMaximized}
-                    title={todayMaximized ? 'Show sidebar and Goal Rhythm' : 'Hide sidebar and Goal Rhythm'}
-                    on:click={toggleTodayMaximized}
-                  >
-                    <svg class="imax-logo" aria-hidden="true" viewBox="0 0 489.215 94.727">
-                      <g transform="scale(.5)" fill="currentColor" fill-rule="evenodd">
-                        <polygon points="277.01 189.29 343.84 52.836 354.71 52.836 354.7 189.45 408.06 189.45 408.06 0.573 311.94 0.573 254.98 113.51 197.48 0.723 101.79 1.021 101.65 189.45 154.9 189.45 154.97 52.836 165.65 52.836 232.45 189.29" />
-                        <polygon points="0 189.44 59.759 189.44 59.759 0.573 0 0.573" />
-                        <path d="m514.56 0.573-95.994 188.88h63.844l16.703-32.123h119.29l16.273 32.123h63.998l-96.046-188.88h-88.069zm47.089 42.935h-5.876l-36.339 71.533h78.149z" />
-                        <polygon points="779.99 189.45 840.14 121.2 899.62 189.45 978.43 189.45 889.55 89.133 963.98 0.573 891.13 0.573 839.64 61.938 789.63 0.573 715.46 0.573 790.32 89.218 700.93 189.45" />
-                      </g>
-                    </svg>
-                  </button>
+                  <ImaxButton active={viewMaximized} onToggle={(event) => toggleViewMaximized('today', event)} />
                 {/if}
                 <input
                   class="date-input today-date-input"
@@ -5069,6 +5054,7 @@ return rows`
           <p class="eyebrow">Reference</p>
           <h2>Notes</h2>
         </div>
+        <ImaxButton active={viewMaximized} onToggle={(event) => toggleViewMaximized('notes', event)} />
       </header>
       <NotesPanel
         {notes}
@@ -5690,7 +5676,7 @@ return rows`
     {/if}
     </section>
 
-    {#if goalRhythmVisible || todayMaximized}
+    {#if goalRhythmVisible || viewMaximized}
       <GoalHistoryPanel
         goals={goalHistoryGoals}
         completions={goalCompletions}

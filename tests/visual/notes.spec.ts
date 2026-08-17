@@ -48,6 +48,34 @@ async function noteSelectionEndpoints(page: Page) {
   })
 }
 
+test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'IMAX is desktop-only')
+  await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  const imaxButton = page.getByRole('button', { name: 'Enter IMAX mode' })
+  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
+  const sidebar = page.getByRole('complementary', { name: 'Primary navigation drawer' })
+
+  await expect(imaxButton).toBeVisible()
+  await expect(goalRhythm).toBeVisible()
+  await expect(sidebar).toBeVisible()
+  await imaxButton.click()
+
+  const exitImaxButton = page.getByRole('button', { name: 'Exit IMAX mode' })
+  await expect(exitImaxButton).toHaveAttribute('aria-pressed', 'true')
+  await expect(goalRhythm).toBeHidden()
+  await expect(sidebar).toBeHidden()
+
+  await exitImaxButton.click()
+  await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
+  await expect(goalRhythm).toBeVisible()
+  await expect(sidebar).toBeVisible()
+})
+
 test('shift arrow keys extend note selection to the matching position on an adjacent block', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
