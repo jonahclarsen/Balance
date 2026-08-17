@@ -146,13 +146,10 @@ test('task rows stay readable on mobile without changing the desktop arrangement
       .getByRole('listitem', { name: 'Plan item: Parent task with a scheduled time' })
       .getByRole('checkbox')
     await checkbox.check()
-    await page.getByRole('button', { name: 'Open navigation' }).click()
-    const drawer = page.getByRole('complementary', { name: 'Primary navigation drawer' })
-    const undo = drawer.getByRole('button', { name: 'Undo' })
+    const undo = page.locator('.mobile-app-header').getByRole('button', { name: 'Undo' })
     await expect(undo).toBeVisible()
     await undo.click()
     await expect(checkbox).not.toBeChecked()
-    await drawer.getByRole('button', { name: 'Close navigation' }).click()
 
     await dragAcross(
       page,
@@ -308,8 +305,20 @@ test('deeply indented task text remains usable at the minimum supported width', 
   const textWidth = await row.locator('[data-plan-text-input]').evaluate(
     (element) => element.getBoundingClientRect().width,
   )
+  const indentation = await page.evaluate(() => {
+    const parent = document.querySelector<HTMLElement>('[data-plan-item-id="parent"]')
+    const nested = document.querySelector<HTMLElement>('[data-plan-item-id="nested"]')
+    const deepest = document.querySelector<HTMLElement>('[data-plan-item-id="deepest"]')
+    if (!parent || !nested || !deepest) throw new Error('Missing nested task rows')
+    return {
+      firstLevel: nested.getBoundingClientRect().left - parent.getBoundingClientRect().left,
+      secondLevel: deepest.getBoundingClientRect().left - nested.getBoundingClientRect().left,
+    }
+  })
 
   expect(textWidth).toBeGreaterThanOrEqual(170)
+  expect(indentation.firstLevel).toBeGreaterThanOrEqual(8)
+  expect(indentation.secondLevel).toBeGreaterThanOrEqual(8)
   await page.screenshot({
     path: 'artifacts/visual-smoke/mobile-320-task-layout.png',
     fullPage: false,

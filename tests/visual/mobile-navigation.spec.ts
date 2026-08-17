@@ -13,6 +13,7 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
   const closeButton = drawer.getByRole('button', { name: 'Close navigation' })
   await expect(header).toBeVisible()
   await expect(menuButton).toBeVisible()
+  await expect(header.getByRole('button', { name: 'Undo' })).toBeVisible()
   await expect(drawer).toBeHidden()
 
   const headerGeometry = await header.evaluate((element) => {
@@ -26,6 +27,7 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
   if (!menuButtonBox) throw new Error('Menu button has no tappable bounds')
   await menuButton.click()
   await expect(drawer).toBeVisible()
+  await expect(drawer.getByRole('button', { name: 'Undo' })).toHaveCount(0)
   await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
   await page.waitForTimeout(250)
 

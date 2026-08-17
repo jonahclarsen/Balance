@@ -4385,10 +4385,25 @@ return rows`
     >
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
     </button>
-    <strong>Balance</strong>
-    <button class="mobile-search-button" type="button" title="Search" aria-label="Search" on:click={openMobileDrawerSearch}>
-      <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
-    </button>
+    <div class="mobile-app-title">
+      <strong>Balance</strong>
+      {#if isTauri() && !$databaseLoadPending && !$databaseLoadError && !$automaticSyncStatus.initialSyncComplete && !$automaticSyncStatus.lastError}
+        <span class="initial-sync-indicator" role="status" aria-label="Syncing latest changes">
+          <span class="initial-sync-dot" aria-hidden="true"></span>
+          <span>Syncing</span>
+        </span>
+      {/if}
+    </div>
+    <div class="mobile-header-actions">
+      {#if isAndroid}
+        <button class="mobile-header-undo-button" type="button" title="Undo" aria-label="Undo" on:click={() => { void plannerStore.undo() }}>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7-4 4 4 4" /><path d="M5 11h8a6 6 0 1 1-4.2 10.3" /></svg>
+        </button>
+      {/if}
+      <button class="mobile-search-button" type="button" title="Search" aria-label="Search" on:click={openMobileDrawerSearch}>
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
+      </button>
+    </div>
   </header>
 
   <aside
@@ -4399,7 +4414,15 @@ return rows`
     bind:this={mobileDrawerEl}
   >
     <div>
-      <h1>Balance</h1>
+      <div class="sidebar-brand-heading">
+        <h1>Balance</h1>
+        {#if isTauri() && !$databaseLoadPending && !$databaseLoadError && !$automaticSyncStatus.initialSyncComplete && !$automaticSyncStatus.lastError}
+          <span class="initial-sync-indicator" role="status" aria-label="Syncing latest changes">
+            <span class="initial-sync-dot" aria-hidden="true"></span>
+            <span>Syncing</span>
+          </span>
+        {/if}
+      </div>
       <p class="muted">Focus on what matters today</p>
     </div>
 
@@ -4432,13 +4455,15 @@ return rows`
       <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => openMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => openMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
-      <button
-        class="mobile-undo-button"
-        type="button"
-        title="Undo"
-        aria-label="Undo"
-        on:click={() => { void plannerStore.undo() }}
-      >↶ Undo</button>
+      {#if !isAndroid}
+        <button
+          class="mobile-undo-button"
+          type="button"
+          title="Undo"
+          aria-label="Undo"
+          on:click={() => { void plannerStore.undo() }}
+        >↶ Undo</button>
+      {/if}
     </nav>
 
     <div class="sidebar-footer">

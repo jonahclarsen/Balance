@@ -196,11 +196,16 @@ test('a slow settings read does not cover the app with sync progress', async ({ 
   })).toBe(1)
 })
 
-test('a slow launch sync leaves local state visible without a progress banner', async ({ page }) => {
+test('a slow launch sync leaves local state visible with a subtle status cue', async ({ page }, testInfo) => {
   await page.goto('/?hold-sync=1')
 
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Syncing latest changes' })).toBeVisible()
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-initial-sync-status.png`,
+    fullPage: false,
+  })
 })
 
 test('settings stay available while a launch sync is still running', async ({ page }) => {
@@ -261,6 +266,7 @@ test('launch reloads visible state even when a background pass already consumed 
 
   await expect(page.getByText('Synced version')).toBeVisible()
   await expect(page.getByText('Local version')).toHaveCount(0)
+  await expect(page.getByRole('status', { name: 'Syncing latest changes' })).toHaveCount(0)
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
 })
 
