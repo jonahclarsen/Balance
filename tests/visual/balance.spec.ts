@@ -52,67 +52,24 @@ test('today indicator stays visible after the page header scrolls away', async (
   })
 })
 
-test('desktop sidebar hides, returns, and remembers its state', async ({ page }, testInfo) => {
+test('sidebar has no standalone hide control', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
   const sidebar = page.getByRole('complementary')
-  const hideSidebar = page.getByRole('button', { name: 'Hide sidebar' })
-  const showSidebar = page.getByRole('button', { name: 'Show sidebar' })
+  await expect(page.getByRole('button', { name: 'Hide sidebar', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Show sidebar', exact: true })).toHaveCount(0)
 
-  if (testInfo.project.name === 'mobile') {
-    await expect(sidebar).toBeVisible()
-    await expect(hideSidebar).toBeHidden()
-    await page.evaluate(() => localStorage.setItem('balance:sidebarHidden', 'true'))
-    await page.reload()
-    await expect(sidebar).toBeVisible()
-    await expect(showSidebar).toBeHidden()
-    return
-  }
+  if (testInfo.project.name === 'mobile') return
 
   await expect(sidebar).toBeVisible()
-  const openToggleBox = await hideSidebar.boundingBox()
   const templateSelectBox = await sidebar.getByRole('combobox').boundingBox()
   const generateButtonBox = await sidebar.getByRole('button', { name: 'Generate today' }).boundingBox()
-  const toggleIconBox = await hideSidebar.locator('svg').boundingBox()
-  expect(openToggleBox).not.toBeNull()
   expect(templateSelectBox).not.toBeNull()
   expect(generateButtonBox).not.toBeNull()
-  expect(toggleIconBox).not.toBeNull()
   expect(Math.abs((templateSelectBox?.x ?? 0) - (generateButtonBox?.x ?? 0))).toBeLessThan(1)
   expect(Math.abs((templateSelectBox?.width ?? 0) - (generateButtonBox?.width ?? 0))).toBeLessThan(1)
-  expect((openToggleBox?.y ?? 0) + (openToggleBox?.height ?? 0) / 2).toBeGreaterThan(
-    (templateSelectBox?.y ?? 0) + (templateSelectBox?.height ?? 0),
-  )
-  expect((openToggleBox?.y ?? 0) + (openToggleBox?.height ?? 0) / 2).toBeLessThan(generateButtonBox?.y ?? 0)
-  expect(
-    Math.abs(
-      (openToggleBox?.x ?? 0) + (openToggleBox?.width ?? 0) / 2
-        - ((toggleIconBox?.x ?? 0) + (toggleIconBox?.width ?? 0) / 2),
-    ),
-  ).toBeLessThan(1)
-  expect(
-    Math.abs(
-      (openToggleBox?.y ?? 0) + (openToggleBox?.height ?? 0) / 2
-        - ((toggleIconBox?.y ?? 0) + (toggleIconBox?.height ?? 0) / 2),
-    ),
-  ).toBeLessThan(1)
-  await hideSidebar.click()
-  await expect(sidebar).toBeHidden()
-  await expect(showSidebar).toBeVisible()
-  const closedToggleBox = await showSidebar.boundingBox()
-  expect(closedToggleBox).not.toBeNull()
-  expect(Math.abs((openToggleBox?.y ?? 0) - (closedToggleBox?.y ?? 0))).toBeLessThan(1)
-  expect(closedToggleBox?.height).toBe(openToggleBox?.height)
-
-  await page.reload()
-  await expect(sidebar).toBeHidden()
-  await expect(showSidebar).toBeVisible()
-
-  await showSidebar.click()
-  await expect(sidebar).toBeVisible()
-  await expect(hideSidebar).toBeVisible()
 })
 
 test('IMAX mode maximizes Today and restores its surrounding panels', async ({ page }, testInfo) => {
@@ -150,7 +107,6 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   await expect(goalRhythm).toHaveCount(0)
   if (testInfo.project.name === 'desktop') {
     await expect(page.getByRole('complementary')).toBeHidden()
-    await expect(page.getByRole('button', { name: 'Show sidebar' })).toBeHidden()
     const maximizedImaxBox = await exitImaxButton.boundingBox()
     const maximizedDateBox = await dateInput.boundingBox()
     const clickHandoffBox = await page.locator('.imax-click-handoff').boundingBox()
@@ -179,21 +135,6 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
     await page.mouse.move(imaxCenter.x + 4, imaxCenter.y)
     await expect(page.locator('.imax-click-handoff')).toHaveCount(0)
     await primaryPane.getByRole('button', { name: 'Exit IMAX mode' }).click()
-
-    await page.getByRole('button', { name: 'Hide sidebar' }).click()
-    const hiddenSidebarImaxBox = await imaxButton.boundingBox()
-    await imaxButton.click()
-    const hiddenSidebarExitButton = primaryPane.getByRole('button', { name: 'Exit IMAX mode' })
-    const hiddenSidebarMaximizedBox = await hiddenSidebarExitButton.boundingBox()
-    expect(hiddenSidebarImaxBox).not.toBeNull()
-    expect(hiddenSidebarMaximizedBox).not.toBeNull()
-    await expect(page.locator('.imax-click-handoff')).toHaveCount(0)
-    expect(Math.abs((hiddenSidebarMaximizedBox?.x ?? 0) - (hiddenSidebarImaxBox?.x ?? 0))).toBeLessThan(1)
-    expect(Math.abs((hiddenSidebarMaximizedBox?.y ?? 0) - (hiddenSidebarImaxBox?.y ?? 0))).toBeLessThan(1)
-
-    await hiddenSidebarExitButton.click()
-    await expect(page.getByRole('complementary')).toBeHidden()
-    await expect(goalRhythm).toBeVisible()
   }
 })
 

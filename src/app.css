@@ -739,51 +739,6 @@ h3 {
   visibility: hidden;
 }
 
-.sidebar-toggle {
-  display: grid;
-  place-items: center;
-  width: 22px;
-  height: 22px;
-  padding: 0;
-  border-color: transparent;
-  background: transparent;
-  color: var(--muted);
-  font-size: 21px;
-  line-height: 1;
-}
-
-.sidebar-toggle svg {
-  display: block;
-  width: 12px;
-  height: 12px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.75;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.sidebar-toggle:hover {
-  border-color: var(--line);
-  background: color-mix(in srgb, var(--paper-strong) 72%, transparent);
-  color: var(--accent-strong);
-}
-
-.sidebar-show-button {
-  position: relative;
-  z-index: 1;
-  visibility: visible;
-  border-left: 0;
-  border-radius: 0 6px 6px 0;
-  background: color-mix(in srgb, var(--sidebar) 88%, transparent);
-  box-shadow: 2px 2px 8px color-mix(in srgb, var(--ink) 10%, transparent);
-  transform: translateX(28px);
-}
-
-.app-shell.today-maximized .sidebar-show-button {
-  visibility: hidden;
-}
-
 .muted,
 .empty,
 .empty-state p,
@@ -978,35 +933,6 @@ nav button.active {
   font-size: 8px;
   font-weight: 600;
   line-height: 1.25;
-}
-
-.sidebar-toggle-anchor {
-  position: relative;
-  pointer-events: none;
-}
-
-.sidebar-toggle-anchor > * {
-  pointer-events: auto;
-}
-
-.sidebar-toggle-anchor:not(.has-template) {
-  position: absolute;
-  inset: 0 0 auto;
-  height: 34px;
-}
-
-.sidebar-toggle-anchor .sidebar-toggle {
-  position: absolute;
-  right: -12px;
-}
-
-.sidebar-toggle-anchor.has-template .sidebar-toggle {
-  bottom: -16px;
-}
-
-.sidebar-toggle-anchor:not(.has-template) .sidebar-toggle {
-  top: 50%;
-  translate: 0 -50%;
 }
 
 .generation-template-field {
@@ -3786,10 +3712,6 @@ nav button.active {
     visibility: visible;
   }
 
-  .sidebar-toggle {
-    display: none;
-  }
-
   .sidebar > div:first-child {
     display: block;
     position: relative;
@@ -5201,7 +5123,6 @@ nav button.active {
     grid-template-columns: 1fr;
   }
 
-  .sidebar .sidebar-toggle,
   .sidebar .time-shortcut-legend {
     display: none;
   }

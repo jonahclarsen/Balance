@@ -88,7 +88,6 @@
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
   const WORKSPACE_VIEW_STATE_KEY = 'balance:workspaceViewState'
   const COMPARE_DAY_KEY = 'balance:compareDay'
-  const SIDEBAR_HIDDEN_KEY = 'balance:sidebarHidden'
   const isMobile = /android|iphone|ipad|ipod/i.test(
     (typeof navigator !== 'undefined' && navigator.userAgent) || '',
   )
@@ -112,13 +111,7 @@
     return `${isMac ? '⌥⇧' : 'Alt+Shift+'}${key}`
   }
 
-  function setSidebarHidden(hidden: boolean) {
-    sidebarHidden = hidden
-    localStorage.setItem(SIDEBAR_HIDDEN_KEY, String(hidden))
-  }
-
   let view: View = 'today'
-  let sidebarHidden = false
   let mobileDrawerOpen = false
   let mobileDrawerDragging = false
   let mobileDrawerEl: HTMLElement | null = null
@@ -153,7 +146,6 @@
   let goalRhythmVisible = true
   let goalRhythmAutoShowTimer: number | null = null
   let todayMaximized = false
-  let sidebarHiddenBeforeTodayMaximize = false
   let goalRhythmVisibleBeforeTodayMaximize = true
   let todayMaximizeClickHandoff: {
     left: number
@@ -1165,7 +1157,6 @@ return rows`
     }, DATABASE_LOADING_MESSAGE_INTERVAL_MS)
     const storedWorkspaceViewState = readWorkspaceViewState()
 
-    sidebarHidden = localStorage.getItem(SIDEBAR_HIDDEN_KEY) === 'true'
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
 
     const storedListTemplatesViewState = readListTemplatesViewState()
@@ -1479,7 +1470,6 @@ return rows`
     todayMaximizeClickHandoff = null
     if (!todayMaximized) return
     todayMaximized = false
-    sidebarHidden = sidebarHiddenBeforeTodayMaximize
     goalRhythmVisible = goalRhythmVisibleBeforeTodayMaximize
   }
 
@@ -1493,7 +1483,7 @@ return rows`
       ? event.currentTarget
       : null
     const buttonRect = button?.getBoundingClientRect()
-    todayMaximizeClickHandoff = isMac && !isMobile && !sidebarHidden && buttonRect && event
+    todayMaximizeClickHandoff = isMac && !isMobile && buttonRect && event
       ? {
           left: buttonRect.left,
           top: buttonRect.top,
@@ -1503,10 +1493,8 @@ return rows`
           pointerY: event.clientY,
         }
       : null
-    sidebarHiddenBeforeTodayMaximize = sidebarHidden
     goalRhythmVisibleBeforeTodayMaximize = goalRhythmVisible
     todayMaximized = true
-    sidebarHidden = true
     goalRhythmVisible = false
     clearGoalRhythmAutoShowTimer()
   }
@@ -4350,7 +4338,7 @@ return rows`
   class="app-shell"
   class:android={isAndroid}
   class:macos-titlebar-overlay={isMac && !isMobile}
-  class:sidebar-hidden={sidebarHidden}
+  class:sidebar-hidden={todayMaximized}
   class:today-maximized={todayMaximized}
   class:mobile-drawer-open={mobileDrawerOpen}
   class:mobile-drawer-dragging={mobileDrawerDragging}
@@ -4409,7 +4397,7 @@ return rows`
   <aside
     id="primary-sidebar"
     class="sidebar"
-    class:sidebar-hidden={sidebarHidden}
+    class:sidebar-hidden={todayMaximized}
     aria-label="Primary navigation drawer"
     bind:this={mobileDrawerEl}
   >
@@ -4503,36 +4491,19 @@ return rows`
           </table>
         </section>
       {/if}
-      <div
-        class="sidebar-toggle-anchor"
-        class:has-template={Boolean(selectedTemplate && view === 'today')}
-      >
-        {#if selectedTemplate && view === 'today'}
-          <label class="generation-template-field">
-            <span>Template for new days</span>
-            <select
-              value={selectedTemplate.id}
-              on:change={(event) => selectDayTemplate(event.currentTarget.value)}
-            >
-              {#each templates as template (template.id)}
-                <option value={template.id}>{template.name || 'Untitled day'}</option>
-              {/each}
-            </select>
-          </label>
-        {/if}
-        <button
-          class="sidebar-toggle"
-          class:sidebar-show-button={sidebarHidden}
-          type="button"
-          title={sidebarHidden ? 'Psst… bring the sidebar back' : 'Hide sidebar (shoo!)'}
-          aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
-          on:click={() => setSidebarHidden(!sidebarHidden)}
-        >
-          <svg aria-hidden="true" viewBox="0 0 16 16">
-            <path d={sidebarHidden ? 'M6 3l5 5-5 5' : 'M10 3 5 8l5 5'} />
-          </svg>
-        </button>
-      </div>
+      {#if selectedTemplate && view === 'today'}
+        <label class="generation-template-field">
+          <span>Template for new days</span>
+          <select
+            value={selectedTemplate.id}
+            on:change={(event) => selectDayTemplate(event.currentTarget.value)}
+          >
+            {#each templates as template (template.id)}
+              <option value={template.id}>{template.name || 'Untitled day'}</option>
+            {/each}
+          </select>
+        </label>
+      {/if}
       {#if view === 'today'}
         <button class="primary" type="button" on:click={() => { void generateSelectedDay() }}>{generateButtonLabel}</button>
       {/if}
