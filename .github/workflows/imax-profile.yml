@@ -1,0 +1,146 @@
+name: Profile IMAX toggle
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Git ref immediately before the IMAX optimization
+        required: true
+        default: "302649a"
+        type: string
+      candidate_ref:
+        description: Git ref containing the IMAX optimization
+        required: true
+        default: "main"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Before/after on one macOS runner
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      BALANCE_IMAX_PERF_PROFILE_ONLY: "1"
+      BALANCE_IMAX_PERF_TOGGLES: "20"
+
+    steps:
+      - name: Check out benchmark harness
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+
+      - name: Prepare matched revisions
+        env:
+          BASELINE_DIR: ${{ runner.temp }}/balance-imax-baseline
+          CANDIDATE_DIR: ${{ runner.temp }}/balance-imax-candidate
+        run: |
+          set -euo pipefail
+          baseline_sha="$(git rev-parse --verify "${BASELINE_REF}^{commit}")"
+          candidate_sha="$(git rev-parse --verify "${CANDIDATE_REF}^{commit}")"
+          echo "BASELINE_SHA=$baseline_sha" >> "$GITHUB_ENV"
+          echo "CANDIDATE_SHA=$candidate_sha" >> "$GITHUB_ENV"
+          echo "BASELINE_DIR=$BASELINE_DIR" >> "$GITHUB_ENV"
+          echo "CANDIDATE_DIR=$CANDIDATE_DIR" >> "$GITHUB_ENV"
+
+          git worktree add --detach "$BASELINE_DIR" "$baseline_sha"
+          git worktree add --detach "$CANDIDATE_DIR" "$candidate_sha"
+          cp tests/performance/interactions.spec.ts "$BASELINE_DIR/tests/performance/interactions.spec.ts"
+          cp tests/performance/interactions.spec.ts "$CANDIDATE_DIR/tests/performance/interactions.spec.ts"
+          (cd "$BASELINE_DIR" && pnpm install --force --frozen-lockfile --offline)
+          (cd "$CANDIDATE_DIR" && pnpm install --force --frozen-lockfile --offline)
+
+      - name: Alternate five measured runs per revision
+        run: |
+          set -euo pipefail
+          results="$RUNNER_TEMP/imax-performance.jsonl"
+          logs="$RUNNER_TEMP/imax-performance.log"
+          : > "$results"
+          : > "$logs"
+
+          run_profile() {
+            variant="$1"
+            round="$2"
+            directory="$3"
+            echo "Running $variant round $round" | tee -a "$logs"
+            output="$({
+              cd "$directory"
+              pnpm exec playwright test \
+                --config playwright.interaction-performance.config.ts \
+                --project mac-desktop \
+                --grep "entering and exiting IMAX"
+            } 2>&1)"
+            printf '%s\n' "$output" | tee -a "$logs"
+            payload="$(printf '%s\n' "$output" | sed -n 's/^IMAX_INTERACTION_PERF //p')"
+            test -n "$payload"
+            jq -cn \
+              --arg variant "$variant" \
+              --argjson round "$round" \
+              --argjson profile "$payload" \
+              '{variant: $variant, round: $round, profile: $profile}' >> "$results"
+          }
+
+          for round in 1 2 3 4 5; do
+            if (( round % 2 == 1 )); then
+              run_profile baseline "$round" "$BASELINE_DIR"
+              run_profile candidate "$round" "$CANDIDATE_DIR"
+            else
+              run_profile candidate "$round" "$CANDIDATE_DIR"
+              run_profile baseline "$round" "$BASELINE_DIR"
+            fi
+          done
+
+          summary="$(jq -s '
+            def median: sort | .[length / 2 | floor];
+            group_by(.variant)
+            | map({
+                variant: .[0].variant,
+                runs: length,
+                entering_median_ms: ([.[].profile.entering.paint.medianMs] | median),
+                exiting_median_ms: ([.[].profile.exiting.paint.medianMs] | median),
+                entering_run_medians_ms: [.[].profile.entering.paint.medianMs],
+                exiting_run_medians_ms: [.[].profile.exiting.paint.medianMs]
+              })
+          ' "$results")"
+          printf '%s\n' "$summary" > "$RUNNER_TEMP/imax-performance-summary.json"
+          {
+            echo '## IMAX before/after profile'
+            echo
+            echo "Baseline: \`$BASELINE_SHA\` · Candidate: \`$CANDIDATE_SHA\`"
+            echo
+            echo 'Five alternating runs per revision, with 20 enter/exit samples per run.'
+            echo
+            echo '```json'
+            printf '%s\n' "$summary"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v7
+        with:
+          name: imax-before-after-profile
+          path: |
+            ${{ runner.temp }}/imax-performance.jsonl
+            ${{ runner.temp }}/imax-performance-summary.json
+            ${{ runner.temp }}/imax-performance.log
+          if-no-files-found: error

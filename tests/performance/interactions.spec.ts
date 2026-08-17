@@ -8,6 +8,7 @@ const GOAL_COUNT = performanceSize('BALANCE_INTERACTION_PERF_GOALS', 80)
 const EXISTING_OPERATION_COUNT = performanceSize('BALANCE_INTERACTION_PERF_OPERATIONS', 5_000)
 const EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_EDITS', 24)
 const GOAL_EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_GOAL_EDITS', 8)
+const IMAX_TOGGLE_COUNT = performanceSize('BALANCE_IMAX_PERF_TOGGLES', 10)
 const ACTIVE_DATE = '2026-08-16'
 const EDITOR_SELECTOR = `[data-plan-text-input-id="plan_${PLAN_COUNT - 1}_item_1"]`
 
@@ -270,7 +271,7 @@ test('profiles goal-name edits that legitimately change the goal collection', as
 test('profiles entering and exiting IMAX mode', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name.includes('android-like'), 'IMAX is desktop-only')
 
-  const samples = await profileImaxToggles(page)
+  const samples = await profileImaxToggles(page, IMAX_TOGGLE_COUNT)
   const profile = {
     project: testInfo.project.name,
     goals: GOAL_COUNT,
@@ -283,5 +284,7 @@ test('profiles entering and exiting IMAX mode', async ({ page }, testInfo) => {
     body: JSON.stringify(profile, null, 2),
     contentType: 'application/json',
   })
-  expect(profile.exiting.paint.medianMs).toBeLessThan(250)
+  if (!process.env.BALANCE_IMAX_PERF_PROFILE_ONLY) {
+    expect(profile.exiting.paint.medianMs).toBeLessThan(250)
+  }
 })
