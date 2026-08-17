@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test'
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
 
-test('today tint follows the current calendar day', async ({ page }, testInfo) => {
+test('today accent rail follows the current calendar day', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -14,6 +14,7 @@ test('today tint follows the current calendar day', async ({ page }, testInfo) =
   const primaryPane = page.getByRole('region', { name: 'Daily plan' })
   const todayDate = await primaryPane.locator('.date-input').inputValue()
   await expect(page.locator('.workspace')).toHaveClass(/current-day-workspace/)
+  await expect(page.locator('.workspace')).toHaveCSS('border-left-color', 'rgb(115, 85, 162)')
   await expect(primaryPane).toHaveClass(/current-day-pane/)
   await expect(primaryPane).toHaveAttribute('aria-current', 'date')
   await expect(page.locator('.current-day-indicator')).toHaveCount(0)
@@ -24,7 +25,9 @@ test('today tint follows the current calendar day', async ({ page }, testInfo) =
   if (testInfo.project.name === 'desktop') await page.setViewportSize({ width: 1000, height: 450 })
 
   await expect(page.locator('.workspace')).not.toHaveClass(/current-day-workspace/)
+  await expect(page.locator('.workspace')).toHaveCSS('border-left-color', 'rgba(0, 0, 0, 0)')
   await expect(primaryPane).toHaveClass(/current-day-pane/)
+  await expect(primaryPane).toHaveCSS('border-left-color', 'rgb(115, 85, 162)')
   await expect(comparePane).not.toHaveClass(/current-day-pane/)
   if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
   else await primaryPane.evaluate((pane) => pane.scrollTo(0, 200))
@@ -32,15 +35,17 @@ test('today tint follows the current calendar day', async ({ page }, testInfo) =
 
   await primaryPane.locator('.date-input').fill(addDays(todayDate, 1))
   await expect(primaryPane).not.toHaveClass(/current-day-pane/)
+  await expect(primaryPane).toHaveCSS('border-left-color', 'rgba(0, 0, 0, 0)')
   await expect(primaryPane).not.toHaveAttribute('aria-current', 'date')
 
   await comparePane.locator('.date-input').fill(todayDate)
   if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
   else await comparePane.evaluate((pane) => pane.scrollTo(0, 200))
   await expect(comparePane).toHaveClass(/current-day-pane/)
+  await expect(comparePane).toHaveCSS('border-left-color', 'rgb(115, 85, 162)')
   await expect(comparePane).toHaveAttribute('aria-current', 'date')
   await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-today-tint-scrolled-split.png`,
+    path: `artifacts/visual-smoke/${testInfo.project.name}-today-accent-rail-scrolled-split.png`,
     fullPage: false,
   })
 })
