@@ -62,6 +62,8 @@
   export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
   export let onMobileSelectionStart: (itemId: Id) => void = () => {}
   export let onMobileSelectionToggle: (itemId: Id) => void = () => {}
+  export let onCopyItem: (planId: Id, itemId: Id) => void = () => {}
+  export let onCutItem: (planId: Id, itemId: Id) => void = () => {}
   export let onTextShiftArrow: (itemId: Id, direction: MoveDirection) => void = () => {}
   export let onGoalBadgeClick: (goalId: Id) => void = () => {}
   // Internal links: a plan/list item whose text matches a list template name or
@@ -184,6 +186,21 @@
   function startMobileSelection() {
     mobileMenuOpen = false
     onMobileSelectionStart(item.id)
+  }
+
+  function copyTask() {
+    mobileMenuOpen = false
+    onCopyItem(planId, item.id)
+  }
+
+  function cutTask() {
+    mobileMenuOpen = false
+    onCutItem(planId, item.id)
+  }
+
+  function removeTask() {
+    mobileMenuOpen = false
+    deleteItem(planId, item.id)
   }
 
   function handleWindowPointerDown(event: PointerEvent) {
@@ -652,6 +669,9 @@
             {:else}
               <button type="button" role="menuitem" on:click|stopPropagation={addTimeAndOpenEditor}>Add time</button>
             {/if}
+            <button type="button" role="menuitem" on:click|stopPropagation={copyTask}>Copy</button>
+            <button type="button" role="menuitem" on:click|stopPropagation={cutTask}>Cut</button>
+            <button type="button" role="menuitem" on:click|stopPropagation={removeTask}>Remove</button>
             <button type="button" role="menuitem" on:click|stopPropagation={startMobileSelection}>Select tasks</button>
           </div>
         {/if}
@@ -712,6 +732,8 @@
             {onSelectionPointerEnter}
             {onMobileSelectionStart}
             {onMobileSelectionToggle}
+            {onCopyItem}
+            {onCutItem}
             {onTextShiftArrow}
             {onGoalBadgeClick}
             {listTemplates}

@@ -3209,6 +3209,22 @@ return rows`
     }
   }
 
+  function copyPlanItemFromMenu(planId: Id, itemId: Id) {
+    const plan = $plannerStore.plans.find((candidate) => candidate.id === planId)
+    if (!plan) return
+
+    const items = plannerStore.copyPlanItems(planId, [itemId])
+    if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: plan.date })
+  }
+
+  function cutPlanItemFromMenu(planId: Id, itemId: Id) {
+    const plan = $plannerStore.plans.find((candidate) => candidate.id === planId)
+    if (!plan) return
+
+    const items = plannerStore.cutPlanItems(planId, [itemId])
+    if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: true, sourceDate: plan.date })
+  }
+
   async function cutSelectedItems() {
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
@@ -4661,6 +4677,8 @@ return rows`
                     onSelectionPointerEnter={extendItemSelection}
                     onMobileSelectionStart={startMobileItemSelection}
                     onMobileSelectionToggle={toggleMobileItemSelection}
+                    onCopyItem={copyPlanItemFromMenu}
+                    onCutItem={cutPlanItemFromMenu}
                     onTextShiftArrow={selectItemWithAdjacent}
                     {goals}
                     {goalCompletions}

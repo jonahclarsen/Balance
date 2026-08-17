@@ -222,6 +222,9 @@ test('mobile task options gate selection and open the large auto-saving time edi
   })
   await expect(menu).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Add time' })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Copy' })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Cut' })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Remove' })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Select tasks' })).toBeVisible()
 
   await menu.getByRole('menuitem', { name: 'Add time' }).click()
@@ -285,6 +288,42 @@ test('mobile task options gate selection and open the large auto-saving time edi
     path: 'artifacts/visual-smoke/mobile-task-options.png',
     fullPage: false,
   })
+})
+
+test('mobile task options copy and cut whole task trees and remove tasks', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The task overflow interactions are mobile-only')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin })
+
+  const parentText = 'Parent task with a scheduled time'
+  const parentRow = page.getByRole('listitem', { name: `Plan item: ${parentText}` })
+  await parentRow.getByRole('button', { name: `Task options for ${parentText}` }).click()
+  await parentRow.getByRole('menuitem', { name: 'Copy' }).click()
+
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe([
+    parentText,
+    '  Nested task without a time',
+    '    Deeply nested task text should still have enough room to be comfortably readable',
+  ].join('\n'))
+
+  const target = page.locator('[data-plan-text-input-id="trailing"]')
+  await target.focus()
+  await page.keyboard.press('Meta+V')
+  await expect(page.getByRole('listitem', { name: `Plan item: ${parentText}` })).toHaveCount(2)
+  await expect(page.getByRole('listitem', { name: 'Plan item: Nested task without a time' })).toHaveCount(2)
+  await page.keyboard.press('Escape')
+
+  const trailingText = 'Another task used to verify mobile drag selection'
+  const trailingRow = page.getByRole('listitem', { name: `Plan item: ${trailingText}` })
+  await trailingRow.getByRole('button', { name: `Task options for ${trailingText}` }).click()
+  await trailingRow.getByRole('menuitem', { name: 'Cut' }).click()
+  await expect(trailingRow).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(trailingText)
+
+  const removableText = 'Filler task 1'
+  const removableRow = page.getByRole('listitem', { name: `Plan item: ${removableText}`, exact: true })
+  await removableRow.getByRole('button', { name: `Task options for ${removableText}`, exact: true }).click()
+  await removableRow.getByRole('menuitem', { name: 'Remove' }).click()
+  await expect(removableRow).toHaveCount(0)
 })
 
 test('the list modal stays centered in the mobile viewport on a long day', async ({ page }, testInfo) => {

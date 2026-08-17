@@ -126,6 +126,12 @@ fn cache_android_recovery_key(recovery_key: String) {
 }
 #[cfg(target_os = "macos")]
 const BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE: &str = "com.balance.plan-items+json";
+#[cfg(target_os = "android")]
+const BALANCE_PLAN_ITEMS_CLIPBOARD_ACTION: &str = "app.balance.local.PLAN_ITEMS";
+#[cfg(target_os = "android")]
+const BALANCE_PLAN_ITEMS_CLIPBOARD_EXTRA: &str = "app.balance.local.PLAN_ITEMS_JSON";
+#[cfg(target_os = "android")]
+const BALANCE_PLAN_ITEMS_CLIPBOARD_MIME: &str = "application/vnd.app.balance.plan-items+json";
 #[cfg(target_os = "macos")]
 const PASTE_MATCH_STYLE_MENU_ID: &str = "balance-paste-match-style";
 #[cfg(target_os = "macos")]
@@ -633,7 +639,17 @@ fn write_balance_clipboard(plain_text: String, structured_payload: String) -> Re
     Ok(())
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn write_balance_clipboard(
+    app: tauri::AppHandle,
+    plain_text: String,
+    structured_payload: String,
+) -> Result<(), String> {
+    android_clipboard::write(&app, plain_text, structured_payload)
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "android")))]
 #[tauri::command]
 fn write_balance_clipboard(_plain_text: String, _structured_payload: String) -> Result<(), String> {
     Err("Structured system clipboard is currently supported on macOS".to_string())
@@ -660,13 +676,290 @@ fn read_balance_clipboard() -> ClipboardContents {
     }
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "android")]
+#[tauri::command]
+fn read_balance_clipboard(app: tauri::AppHandle) -> ClipboardContents {
+    android_clipboard::read(&app).unwrap_or_else(|error| {
+        log::warn!("Could not read the Android clipboard: {error}");
+        ClipboardContents {
+            structured_payload: None,
+            plain_text: None,
+            html: None,
+        }
+    })
+}
+
+#[cfg(all(not(target_os = "macos"), not(target_os = "android")))]
 #[tauri::command]
 fn read_balance_clipboard() -> ClipboardContents {
     ClipboardContents {
         structured_payload: None,
         plain_text: None,
         html: None,
+    }
+}
+
+#[cfg(target_os = "android")]
+mod android_clipboard {
+    use std::sync::mpsc;
+
+    use jni::objects::{JObject, JString};
+    use jni::JNIEnv;
+    use tauri::Manager;
+
+    use super::{
+        ClipboardContents, BALANCE_PLAN_ITEMS_CLIPBOARD_ACTION, BALANCE_PLAN_ITEMS_CLIPBOARD_EXTRA,
+        BALANCE_PLAN_ITEMS_CLIPBOARD_MIME,
+    };
+
+    const CLIPBOARD_SERVICE: &str = "clipboard";
+    const TEXT_PLAIN_MIME: &str = "text/plain";
+
+    pub fn write(
+        app: &tauri::AppHandle,
+        plain_text: String,
+        structured_payload: String,
+    ) -> Result<(), String> {
+        with_activity(app, move |env, activity| {
+            let clipboard = clipboard_manager(env, activity)?;
+            let label = env.new_string("Balance task").map_err(jni_error)?;
+            let text = env.new_string(plain_text).map_err(jni_error)?;
+            let intent = env
+                .new_object("android/content/Intent", "()V", &[])
+                .map_err(jni_error)?;
+            let action = env
+                .new_string(BALANCE_PLAN_ITEMS_CLIPBOARD_ACTION)
+                .map_err(jni_error)?;
+            env.call_method(
+                &intent,
+                "setAction",
+                "(Ljava/lang/String;)Landroid/content/Intent;",
+                &[(&action).into()],
+            )
+            .map_err(jni_error)?;
+            let balance_mime = env
+                .new_string(BALANCE_PLAN_ITEMS_CLIPBOARD_MIME)
+                .map_err(jni_error)?;
+            env.call_method(
+                &intent,
+                "setType",
+                "(Ljava/lang/String;)Landroid/content/Intent;",
+                &[(&balance_mime).into()],
+            )
+            .map_err(jni_error)?;
+
+            let payload_key = env
+                .new_string(BALANCE_PLAN_ITEMS_CLIPBOARD_EXTRA)
+                .map_err(jni_error)?;
+            let payload = env.new_string(structured_payload).map_err(jni_error)?;
+            env.call_method(
+                &intent,
+                "putExtra",
+                "(Ljava/lang/String;Ljava/lang/String;)Landroid/content/Intent;",
+                &[(&payload_key).into(), (&payload).into()],
+            )
+            .map_err(jni_error)?;
+
+            // Android ClipData.Item supports alternate representations on one item.
+            // Other apps see normal text, while Balance can recover the full tree
+            // from the Intent without exposing JSON as a second pasted item.
+            let item = env
+                .new_object(
+                    "android/content/ClipData$Item",
+                    "(Ljava/lang/CharSequence;Landroid/content/Intent;Landroid/net/Uri;)V",
+                    &[(&text).into(), (&intent).into(), (&JObject::null()).into()],
+                )
+                .map_err(jni_error)?;
+            let empty_mime = env.new_string("").map_err(jni_error)?;
+            let mime_types = env
+                .new_object_array(2, "java/lang/String", &empty_mime)
+                .map_err(jni_error)?;
+            let plain_mime = env.new_string(TEXT_PLAIN_MIME).map_err(jni_error)?;
+            env.set_object_array_element(&mime_types, 0, &plain_mime)
+                .map_err(jni_error)?;
+            env.set_object_array_element(&mime_types, 1, &balance_mime)
+                .map_err(jni_error)?;
+
+            let clip = env
+                .new_object(
+                    "android/content/ClipData",
+                    "(Ljava/lang/CharSequence;[Ljava/lang/String;Landroid/content/ClipData$Item;)V",
+                    &[(&label).into(), (&mime_types).into(), (&item).into()],
+                )
+                .map_err(jni_error)?;
+            env.call_method(
+                &clipboard,
+                "setPrimaryClip",
+                "(Landroid/content/ClipData;)V",
+                &[(&clip).into()],
+            )
+            .map_err(jni_error)?;
+            Ok(())
+        })
+    }
+
+    pub fn read(app: &tauri::AppHandle) -> Result<ClipboardContents, String> {
+        with_activity(app, |env, activity| {
+            let clipboard = clipboard_manager(env, activity)?;
+            let clip = env
+                .call_method(
+                    &clipboard,
+                    "getPrimaryClip",
+                    "()Landroid/content/ClipData;",
+                    &[],
+                )
+                .and_then(|value| value.l())
+                .map_err(jni_error)?;
+            if clip.is_null() {
+                return Ok(empty_contents());
+            }
+
+            let count = env
+                .call_method(&clip, "getItemCount", "()I", &[])
+                .and_then(|value| value.i())
+                .map_err(jni_error)?;
+            if count == 0 {
+                return Ok(empty_contents());
+            }
+
+            let item = env
+                .call_method(
+                    &clip,
+                    "getItemAt",
+                    "(I)Landroid/content/ClipData$Item;",
+                    &[0.into()],
+                )
+                .and_then(|value| value.l())
+                .map_err(jni_error)?;
+            let plain_text = env
+                .call_method(&item, "getText", "()Ljava/lang/CharSequence;", &[])
+                .and_then(|value| value.l())
+                .map_err(jni_error)
+                .and_then(|value| object_to_string(env, value))?;
+            let html = env
+                .call_method(&item, "getHtmlText", "()Ljava/lang/String;", &[])
+                .and_then(|value| value.l())
+                .map_err(jni_error)
+                .and_then(|value| java_string(env, value))?;
+            let structured_payload = structured_payload(env, &item)?;
+
+            Ok(ClipboardContents {
+                structured_payload,
+                plain_text,
+                html,
+            })
+        })
+    }
+
+    fn structured_payload(env: &mut JNIEnv, item: &JObject) -> Result<Option<String>, String> {
+        let intent = env
+            .call_method(item, "getIntent", "()Landroid/content/Intent;", &[])
+            .and_then(|value| value.l())
+            .map_err(jni_error)?;
+        if intent.is_null() {
+            return Ok(None);
+        }
+
+        let action = env
+            .call_method(&intent, "getAction", "()Ljava/lang/String;", &[])
+            .and_then(|value| value.l())
+            .map_err(jni_error)
+            .and_then(|value| java_string(env, value))?;
+        if action.as_deref() != Some(BALANCE_PLAN_ITEMS_CLIPBOARD_ACTION) {
+            return Ok(None);
+        }
+
+        let payload_key = env
+            .new_string(BALANCE_PLAN_ITEMS_CLIPBOARD_EXTRA)
+            .map_err(jni_error)?;
+        let payload = env
+            .call_method(
+                &intent,
+                "getStringExtra",
+                "(Ljava/lang/String;)Ljava/lang/String;",
+                &[(&payload_key).into()],
+            )
+            .and_then(|value| value.l())
+            .map_err(jni_error)?;
+        java_string(env, payload)
+    }
+
+    fn clipboard_manager<'local>(
+        env: &mut JNIEnv<'local>,
+        activity: &JObject,
+    ) -> Result<JObject<'local>, String> {
+        let service = env.new_string(CLIPBOARD_SERVICE).map_err(jni_error)?;
+        env.call_method(
+            activity,
+            "getSystemService",
+            "(Ljava/lang/String;)Ljava/lang/Object;",
+            &[(&service).into()],
+        )
+        .and_then(|value| value.l())
+        .map_err(jni_error)
+    }
+
+    fn java_string(env: &mut JNIEnv, value: JObject) -> Result<Option<String>, String> {
+        if value.is_null() {
+            return Ok(None);
+        }
+        env.get_string(&JString::from(value))
+            .map(|value| Some(value.into()))
+            .map_err(jni_error)
+    }
+
+    fn object_to_string(env: &mut JNIEnv, value: JObject) -> Result<Option<String>, String> {
+        if value.is_null() {
+            return Ok(None);
+        }
+        let text = env
+            .call_method(&value, "toString", "()Ljava/lang/String;", &[])
+            .and_then(|value| value.l())
+            .map_err(jni_error)?;
+        java_string(env, text)
+    }
+
+    fn empty_contents() -> ClipboardContents {
+        ClipboardContents {
+            structured_payload: None,
+            plain_text: None,
+            html: None,
+        }
+    }
+
+    fn with_activity<T: Send + 'static>(
+        app: &tauri::AppHandle,
+        operation: impl FnOnce(&mut JNIEnv, &JObject) -> Result<T, String> + Send + 'static,
+    ) -> Result<T, String> {
+        let webview = app
+            .get_webview_window("main")
+            .ok_or_else(|| "The main Android webview is unavailable.".to_string())?;
+        let (sender, receiver) = mpsc::sync_channel(1);
+
+        webview
+            .with_webview(move |webview| {
+                webview.jni_handle().exec(move |env, activity, _webview| {
+                    let mut result = operation(env, activity);
+                    if env.exception_check().unwrap_or(false) {
+                        let _ = env.exception_describe();
+                        let _ = env.exception_clear();
+                        if result.is_ok() {
+                            result =
+                                Err("Android clipboard access raised an exception.".to_string());
+                        }
+                    }
+                    let _ = sender.send(result);
+                });
+            })
+            .map_err(|error| format!("Could not access the Android activity: {error}"))?;
+
+        receiver
+            .recv()
+            .map_err(|_| "Android clipboard access was interrupted.".to_string())?
+    }
+
+    fn jni_error(error: jni::errors::Error) -> String {
+        error.to_string()
     }
 }
 
