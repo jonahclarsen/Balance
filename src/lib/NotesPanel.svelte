@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { onDestroy, tick } from 'svelte'
   import NoteItemEditor from './NoteItemEditor.svelte'
   import type { ItemLink } from './planner'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind } from './types'
@@ -32,6 +32,9 @@
   let copyButtonResetTimer: number | undefined
   let activeItemId: Id | null = null
   let activeNoteId: Id | null = null
+  let noteBlocksElement: HTMLDivElement
+  let bottomFollowFrame: number | null = null
+  let bottomFollowRequest = 0
   let toolbarSelection: Range | null = null
   let inlineFormats: InlineFormatState = { bold: false, italic: false, underline: false }
   $: selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null
@@ -167,9 +170,49 @@
     selection?.removeAllRanges()
     selection?.addRange(range)
   }
+
+  function noteScrollContainer() {
+    return noteBlocksElement?.closest<HTMLElement>('.workspace') ?? null
+  }
+
+  function isAtNoteBottom(scroller: HTMLElement) {
+    return scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 4
+  }
+
+  async function followNoteBottomAfterEdit(event: Event) {
+    const target = event.target
+    if (!(target instanceof HTMLElement) || !target.closest('[data-note-text-input]')) return
+
+    const scroller = noteScrollContainer()
+    if (!scroller || !isAtNoteBottom(scroller)) return
+
+    const request = ++bottomFollowRequest
+    await tick()
+    if (request !== bottomFollowRequest || !scroller.isConnected) return
+
+    if (bottomFollowFrame !== null) window.cancelAnimationFrame(bottomFollowFrame)
+    bottomFollowFrame = window.requestAnimationFrame(() => {
+      bottomFollowFrame = null
+      scroller.scrollTop = scroller.scrollHeight
+    })
+  }
+
+  function handleEditorKeydownCapture(event: KeyboardEvent) {
+    if (['Enter', 'Backspace', 'Delete', 'Tab'].includes(event.key)) void followNoteBottomAfterEdit(event)
+  }
+
+  onDestroy(() => {
+    bottomFollowRequest += 1
+    if (bottomFollowFrame !== null) window.cancelAnimationFrame(bottomFollowFrame)
+  })
 </script>
 
-<svelte:document on:selectionchange={updateInlineFormatState} on:keyup={updateInlineFormatState} />
+<svelte:document
+  on:selectionchange={updateInlineFormatState}
+  on:keyup={updateInlineFormatState}
+  on:beforeinput|capture={followNoteBottomAfterEdit}
+  on:keydown|capture={handleEditorKeydownCapture}
+/>
 
 <div class="notes-workspace">
   <aside class="notes-sidebar" aria-label="Notes">
@@ -218,7 +261,7 @@
         <span class="note-format-hint">Type <kbd>/</kbd> for more</span>
       </div>
 
-      <div class="note-blocks">
+      <div class="note-blocks" bind:this={noteBlocksElement}>
         {#if selectedNote.items.length === 0}
           <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
         {:else}
@@ -245,6 +288,7 @@
           {/each}
         {/if}
       </div>
+      <div class="note-scroll-space" aria-hidden="true"></div>
 
     {:else}
       <div class="empty-state note-empty">

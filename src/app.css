@@ -4679,6 +4679,12 @@ nav button.active {
   padding: 2px 0 20px;
 }
 
+.note-scroll-space {
+  height: 42vh;
+  height: 42dvh;
+  pointer-events: none;
+}
+
 .note-empty-editor {
   display: flex;
   width: 100%;

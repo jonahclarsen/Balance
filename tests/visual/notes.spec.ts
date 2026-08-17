@@ -261,6 +261,46 @@ test('note formatting toolbar stays visible while scrolling a long note', async 
   }).toBe(true)
 })
 
+test('notes leave breathing room below the editor and follow edits only from the bottom', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop scroll behavior is covered here')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const editor = page.locator('[data-note-text-input]').first()
+  const workspace = page.locator('.workspace')
+  await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
+
+  const writingSpace = await page.locator('.note-scroll-space').evaluate((element) => {
+    const spacer = element.getBoundingClientRect()
+    const blocks = element.previousElementSibling?.getBoundingClientRect()
+    return { height: spacer.height, startsAfterEditor: blocks ? spacer.top >= blocks.bottom : false }
+  })
+  expect(writingSpace.startsAfterEditor).toBe(true)
+  expect(writingSpace.height).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.35)
+
+  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await placeCaretAtEnd(editor)
+  await editor.press('Enter')
+  await expect(page.locator('[data-note-text-input]')).toHaveCount(2)
+  await expect.poll(() => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(4)
+
+  const secondEditor = page.locator('[data-note-text-input]').nth(1)
+  await secondEditor.type('Still following the bottom')
+  await expect.poll(() => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(4)
+
+  const scrolledUpPosition = await workspace.evaluate((element) => {
+    element.scrollTop = Math.max(0, element.scrollTop - 160)
+    return element.scrollTop
+  })
+  await secondEditor.evaluate((element) => {
+    element.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }))
+  })
+  await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBeCloseTo(scrolledUpPosition, 0)
+})
+
 test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile')
   await page.goto('/')
