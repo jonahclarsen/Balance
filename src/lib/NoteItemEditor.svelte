@@ -280,7 +280,7 @@
     const shortcuts: { expression: RegExp; kind: NoteItemKind }[] = [
       { expression: /^#\s(.*)$/s, kind: 'heading' },
       { expression: /^(?:-|\*)\s(.*)$/s, kind: 'bullet' },
-      { expression: /^1\.\s(.*)$/s, kind: 'numbered' },
+      { expression: /^[1-9]\d*\.\s(.*)$/s, kind: 'numbered' },
       { expression: /^\[\s?\]\s(.*)$/s, kind: 'checklist' },
     ]
     for (const shortcut of shortcuts) {

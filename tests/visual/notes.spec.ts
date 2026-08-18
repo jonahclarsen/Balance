@@ -203,6 +203,39 @@ test('shift arrow keys select adjacent bullet items without relying on a cross-e
   await expect(page.locator('.note-multi-selected')).toHaveCount(0)
 })
 
+test('typing the next number resumes a numbered list after outdenting a bulleted child', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop list keyboard behavior is covered here')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Numbered list' }).click()
+
+  const editors = page.locator('[data-note-text-input]')
+  const first = editors.first()
+  await first.fill('First item')
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+
+  const child = editors.nth(1)
+  await child.press('Tab')
+  await child.type('- ')
+  await child.type('Bulleted child')
+  await placeCaretAtEnd(child)
+  await child.press('Enter')
+
+  const continuation = editors.nth(2)
+  await continuation.press('Shift+Tab')
+  await continuation.type('2. ')
+
+  const continuationRow = continuation.locator('xpath=ancestor::*[@data-note-item-id]')
+  await expect(continuationRow).toHaveAttribute('data-note-item-depth', '0')
+  await expect(continuationRow).toHaveClass(/note-numbered/)
+  await expect(continuationRow).toHaveAttribute('data-note-item-number', '2')
+  await expect(continuation).toHaveText('')
+})
+
 test('notes select all blocks and copy plain text plus semantic HTML lists', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop keyboard and rich clipboard behavior is covered here')
   await page.goto('/')
