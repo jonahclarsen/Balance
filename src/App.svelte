@@ -256,6 +256,7 @@ return rows`
   let editingReminderPlanId: Id | null = null
   let dailyReminderDraft = ''
   let dailyReminderInput: HTMLInputElement | null = null
+  let dailyReminderHistoryRevision = 0
   // ---- Side-by-side days ----
   // The comparison day is view state, not app state: it lives next to the active
   // plan date rather than in the store, and only survives via localStorage.
@@ -396,6 +397,13 @@ return rows`
   $: if (workspaceViewStateReady) restoreScrollForPage(scrollPageKey)
   $: activeDailyReminder = activePlan?.dailyReminder ?? DEFAULT_DAILY_REMINDER
   $: if (!editingReminderPlanId) dailyReminderDraft = activeDailyReminder
+  $: if ($plannerStore.historyRevision !== dailyReminderHistoryRevision) {
+    dailyReminderHistoryRevision = $plannerStore.historyRevision
+    if (editingReminderPlanId) {
+      const editedPlan = $plannerStore.plans.find((plan) => plan.id === editingReminderPlanId)
+      if (editedPlan) dailyReminderDraft = editedPlan.dailyReminder
+    }
+  }
   $: selectedTemplate = templates.find((template) => template.id === selectedTemplateId) ?? templates[0]
   $: selectedTemplateTimeWarnings = buildItemTimeWarnings(selectedTemplate?.items ?? [])
   $: if (!selectedTemplateId && templates[0]) selectedTemplateId = templates[0].id
