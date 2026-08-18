@@ -1396,6 +1396,11 @@ export function isURL(value: string): boolean {
   }
 }
 
+export function noteIdFromURL(value: string): Id | null {
+  const match = value.trim().match(/^balance:\/\/note\/([a-zA-Z0-9_-]+)$/)
+  return match?.[1] ?? null
+}
+
 function sanitizeNode(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return escapeHTML(node.textContent ?? '')
   if (node.nodeType !== Node.ELEMENT_NODE) return ''
@@ -1412,6 +1417,7 @@ function sanitizeNode(node: Node): string {
 
   if (tag === 'a') {
     const href = element.getAttribute('href') ?? ''
+    if (noteIdFromURL(href)) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
     if (!isURL(href)) return children
     return `<a href="${escapeHTML(href.trim())}" target="_blank" rel="noreferrer">${children}</a>`
   }
@@ -2115,5 +2121,7 @@ export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
   if (kind === 'list' && id) return { kind, listTemplateId: id, label }
   if (kind === 'metric' && id) return { kind, metricId: id, label }
   if (kind === 'note' && id) return { kind, noteId: id, label }
+  const noteId = noteIdFromURL(anchor.getAttribute('href') ?? '')
+  if (noteId) return { kind: 'note', noteId, label }
   return null
 }

@@ -8,6 +8,7 @@
     isURL,
     itemLinkFromAnchor,
     linkifyExternalURLs,
+    noteIdFromURL,
     renderItemDisplayHTML,
     sanitizeInlineHTML,
     type ItemLink,
@@ -522,7 +523,7 @@
 
   function insertClipboardContents(activeEditor: HTMLDivElement, clipboardText: string, clipboardHTML: string) {
 
-    if (clipboardText && isURL(clipboardText) && hasNonCollapsedSelectionInside(activeEditor)) {
+    if (clipboardText && (isURL(clipboardText) || noteIdFromURL(clipboardText)) && hasNonCollapsedSelectionInside(activeEditor)) {
       pendingPasteInput = true
       document.execCommand('createLink', false, clipboardText.trim())
       persistPasteIfInputDidNotFire(activeEditor)
