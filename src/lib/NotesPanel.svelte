@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import NoteItemEditor from './NoteItemEditor.svelte'
   import { htmlToPlainText, sanitizeInlineHTML, type ItemLink } from './planner'
   import { noteClipboardHTML, noteClipboardPlainText, type NoteClipboardBlock } from './noteClipboard'
@@ -7,6 +7,11 @@
 
   type InlineFormatCommand = 'bold' | 'italic' | 'underline'
   type InlineFormatState = Record<InlineFormatCommand, boolean>
+
+  const NOTE_SCROLL_SPACE_KEY = 'balance:noteScrollSpaceVh'
+  const DEFAULT_NOTE_SCROLL_SPACE_VH = 32
+  const MIN_NOTE_SCROLL_SPACE_VH = 10
+  const MAX_NOTE_SCROLL_SPACE_VH = 48
 
   export let notes: Note[]
   export let selectedNoteId: Id
@@ -36,6 +41,7 @@
   let noteBlocksElement: HTMLDivElement
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
+  let noteScrollSpaceVh = DEFAULT_NOTE_SCROLL_SPACE_VH
   let toolbarSelection: Range | null = null
   let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
   let pointerSelectionFocus: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
@@ -190,13 +196,7 @@
     return scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 4
   }
 
-  async function followNoteBottomAfterEdit(event: Event) {
-    const target = event.target
-    if (!(target instanceof HTMLElement) || !target.closest('[data-note-text-input]')) return
-
-    const scroller = noteScrollContainer()
-    if (!scroller || !isAtNoteBottom(scroller)) return
-
+  async function scrollNoteToBottomAfterLayout(scroller: HTMLElement) {
     const request = ++bottomFollowRequest
     await tick()
     if (request !== bottomFollowRequest || !scroller.isConnected) return
@@ -206,6 +206,30 @@
       bottomFollowFrame = null
       scroller.scrollTop = scroller.scrollHeight
     })
+  }
+
+  function followNoteBottomAfterEdit(event: Event) {
+    const target = event.target
+    if (!(target instanceof HTMLElement) || !target.closest('[data-note-text-input]')) return
+
+    const scroller = noteScrollContainer()
+    if (scroller && isAtNoteBottom(scroller)) void scrollNoteToBottomAfterLayout(scroller)
+  }
+
+  function normalizeNoteScrollSpace(value: number) {
+    return Number.isFinite(value)
+      ? Math.max(MIN_NOTE_SCROLL_SPACE_VH, Math.min(MAX_NOTE_SCROLL_SPACE_VH, Math.round(value)))
+      : DEFAULT_NOTE_SCROLL_SPACE_VH
+  }
+
+  function updateNoteScrollSpace(event: Event) {
+    const input = event.currentTarget as HTMLInputElement
+    const scroller = noteScrollContainer()
+    const keepFollowingBottom = Boolean(scroller && isAtNoteBottom(scroller))
+    noteScrollSpaceVh = normalizeNoteScrollSpace(input.valueAsNumber)
+    localStorage.setItem(NOTE_SCROLL_SPACE_KEY, String(noteScrollSpaceVh))
+
+    if (scroller && keepFollowingBottom) void scrollNoteToBottomAfterLayout(scroller)
   }
 
   function handleEditorKeydownCapture(event: KeyboardEvent) {
@@ -441,6 +465,13 @@
     document.getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
   }
 
+  onMount(() => {
+    const storedSpacing = localStorage.getItem(NOTE_SCROLL_SPACE_KEY)
+    noteScrollSpaceVh = normalizeNoteScrollSpace(
+      storedSpacing === null ? DEFAULT_NOTE_SCROLL_SPACE_VH : Number(storedSpacing),
+    )
+  })
+
   onDestroy(() => {
     bottomFollowRequest += 1
     if (bottomFollowFrame !== null) window.cancelAnimationFrame(bottomFollowFrame)
@@ -546,4 +577,23 @@
     {/if}
   </section>
 </div>
-{#if selectedNote}<div class="note-scroll-space" aria-hidden="true"></div>{/if}
+{#if selectedNote}
+  <div
+    class="note-scroll-space"
+    style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh`}
+  >
+    <label class="note-scroll-space-control">
+      <span>Bottom space</span>
+      <input
+        type="range"
+        min={MIN_NOTE_SCROLL_SPACE_VH}
+        max={MAX_NOTE_SCROLL_SPACE_VH}
+        step="1"
+        value={noteScrollSpaceVh}
+        aria-label="Bottom writing space"
+        on:input={updateNoteScrollSpace}
+      />
+      <output>{noteScrollSpaceVh}%</output>
+    </label>
+  </div>
+{/if}

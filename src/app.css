@@ -4679,9 +4679,43 @@ nav button.active {
 }
 
 .note-scroll-space {
-  height: 42vh;
-  height: 42dvh;
-  pointer-events: none;
+  height: max(56px, var(--note-scroll-space-height, 32vh));
+  height: max(56px, var(--note-scroll-space-dynamic-height, 32dvh));
+  padding-top: 8px;
+}
+
+.note-scroll-space-control {
+  display: flex;
+  width: min(320px, calc(100% - 24px));
+  min-height: 36px;
+  align-items: center;
+  gap: 9px;
+  margin: 0 auto;
+  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--paper) 74%, transparent);
+  padding: 5px 11px;
+  color: var(--muted);
+  font-size: 11px;
+  backdrop-filter: blur(8px);
+}
+
+.note-scroll-space-control span {
+  flex: 0 0 auto;
+}
+
+.note-scroll-space-control input[type='range'] {
+  min-width: 80px;
+  flex: 1 1 auto;
+  accent-color: var(--accent);
+}
+
+.note-scroll-space-control output {
+  min-width: 30px;
+  color: var(--accent-strong);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-align: right;
 }
 
 .note-empty-editor {

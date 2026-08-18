@@ -400,7 +400,7 @@ test('note formatting toolbar stays visible while scrolling a long note', async 
   }).toBe(true)
 })
 
-test('notes leave breathing room below the editor and follow edits only from the bottom', async ({ page }, testInfo) => {
+test('notes save adjustable breathing room and follow edits only from the bottom', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop scroll behavior is covered here')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -410,7 +410,12 @@ test('notes leave breathing room below the editor and follow edits only from the
 
   const editor = page.locator('[data-note-text-input]').first()
   const workspace = page.locator('.workspace')
+  const spacingSlider = page.getByLabel('Bottom writing space')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
+
+  await expect(spacingSlider).toHaveAttribute('min', '10')
+  await expect(spacingSlider).toHaveAttribute('max', '48')
+  await expect(spacingSlider).toHaveValue('32')
 
   const writingSpace = await page.locator('.note-scroll-space').evaluate((element) => {
     const spacer = element.getBoundingClientRect()
@@ -424,7 +429,31 @@ test('notes leave breathing room below the editor and follow edits only from the
   })
   expect(writingSpace.outsideNotesWorkspace).toBe(true)
   expect(writingSpace.startsAfterNotesWorkspace).toBe(true)
-  expect(writingSpace.height).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.35)
+  expect(writingSpace.height).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.3)
+  expect(writingSpace.height).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.34)
+
+  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await spacingSlider.fill('10')
+  const minimumSpace = await page.locator('.note-scroll-space').evaluate((element) => ({
+    spacerHeight: element.getBoundingClientRect().height,
+    controlHeight: element.querySelector('label')?.getBoundingClientRect().height ?? Number.POSITIVE_INFINITY,
+  }))
+  expect(minimumSpace.spacerHeight).toBeGreaterThanOrEqual(minimumSpace.controlHeight + 8)
+
+  await spacingSlider.fill('48')
+  await expect.poll(() => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(4)
+  const visibleNoteHeight = await page.evaluate(() => {
+    const scroller = document.querySelector('.workspace')?.getBoundingClientRect()
+    const notesWorkspace = document.querySelector('.notes-workspace')?.getBoundingClientRect()
+    return scroller && notesWorkspace ? notesWorkspace.bottom - scroller.top : 0
+  })
+  expect(visibleNoteHeight).toBeGreaterThan(96)
+
+  await spacingSlider.fill('24')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:noteScrollSpaceVh'))).toBe('24')
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await expect(page.getByLabel('Bottom writing space')).toHaveValue('24')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   await placeCaretAtEnd(editor)
