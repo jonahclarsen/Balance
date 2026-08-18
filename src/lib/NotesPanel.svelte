@@ -322,6 +322,7 @@
     if (isListEditor(pointerSelectionAnchor.editor) || isListEditor(editor)) {
       pointerUsesItemSelection = true
       selectItemRange(pointerSelectionAnchor.itemId, itemId)
+      clearNativeSelection()
       return
     }
     applyPointerSelection(pointerSelectionAnchor, pointerSelectionFocus)
@@ -355,9 +356,17 @@
     if (!anchor || !focus) return
 
     event.preventDefault()
-    if (usedItemSelection) return
+    if (usedItemSelection) {
+      clearNativeSelection()
+      window.requestAnimationFrame(clearNativeSelection)
+      return
+    }
     applyPointerSelection(anchor, focus)
     window.requestAnimationFrame(() => applyPointerSelection(anchor, focus))
+  }
+
+  function clearNativeSelection() {
+    document.getSelection()?.removeAllRanges()
   }
 
   function extendItemSelection(itemId: Id, direction: 'up' | 'down') {

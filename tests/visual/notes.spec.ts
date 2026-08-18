@@ -236,6 +236,7 @@ test('dragging can extend a note selection across list items', async ({ page }, 
   await page.mouse.up()
 
   await expect(page.locator('.note-multi-selected')).toHaveCount(2)
+  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString() ?? '')).toBe('')
   await expect.poll(() => copyNoteSelection(page)).toEqual({
     handled: true,
     plainText: '- First line\n- Second line',
