@@ -583,6 +583,99 @@ fn a_large_relay_bootstrap_finishes_for_a_foreground_joiner() {
 }
 
 #[test]
+fn background_sync_advances_through_more_than_one_pass_of_small_batches() {
+    let relay = ReferenceRelay::start();
+    let primary_scratch = Scratch::new("background-prefix-primary");
+    let joiner_scratch = Scratch::new("background-prefix-joiner");
+    let mut primary = open_seeded(
+        &primary_scratch.path,
+        "background-prefix-primary-key",
+        &state("device-A", json!([])),
+    );
+    let mut joiner = open_seeded(
+        &joiner_scratch.path,
+        "background-prefix-joiner-key",
+        &state("device-B", json!([])),
+    );
+    enable_primary(&primary).unwrap();
+    enable_joiner(&joiner).unwrap();
+    let key = SyncKey::generate();
+
+    relay_client::sync_once(
+        &primary,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    for sequence in 1..=70 {
+        persist_operation_to_database(
+            &mut primary,
+            &set_active_plan_date_op(
+                &format!("background-prefix-op-{sequence}"),
+                "device-A",
+                sequence,
+                &format!("2026-08-17T01:{:02}:00.000Z", sequence % 60),
+                &format!("2026-09-{:02}", sequence % 28 + 1),
+            ),
+        )
+        .unwrap();
+        relay_client::sync_once(
+            &primary,
+            &relay.url,
+            &key,
+            relay_client::SyncOptions::foreground(true),
+        )
+        .unwrap();
+    }
+
+    // A newer local edit makes every delayed remote batch out of order. The
+    // background path must merge its bounded prefix together rather than
+    // rebuilding the database once per batch.
+    persist_operation_to_database(
+        &mut joiner,
+        &set_active_plan_date_op(
+            "background-prefix-joiner-op",
+            "device-B",
+            1,
+            "2026-12-31T23:59:00.000Z",
+            "2026-12-31",
+        ),
+    )
+    .unwrap();
+
+    let first = relay_client::sync_once(
+        &joiner,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::background(),
+    )
+    .unwrap();
+    assert_eq!(first.pulled_operations, 64);
+
+    let second = relay_client::sync_once(
+        &joiner,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::background(),
+    )
+    .unwrap();
+    assert_eq!(second.pulled_operations, 7);
+
+    relay_client::sync_once(
+        &primary,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert_eq!(
+        domain(&read_app_state_from_database(&primary).unwrap().unwrap()),
+        domain(&read_app_state_from_database(&joiner).unwrap().unwrap())
+    );
+}
+
+#[test]
 fn a_foreground_joiner_can_promote_one_oversized_operation() {
     let relay = ReferenceRelay::start();
     let sa = Scratch::new("large-joiner-a");

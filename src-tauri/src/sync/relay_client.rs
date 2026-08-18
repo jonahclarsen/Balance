@@ -269,22 +269,28 @@ fn manifest(client: &Client, base: &str, epoch: &str, after: i64) -> Result<Mani
     )
 }
 
-fn enforce_background_budget(manifest: &Manifest, foreground: bool) -> Result<()> {
-    if foreground {
-        return Ok(());
+#[derive(Debug)]
+struct DownloadBudget {
+    remaining_chunks: Option<usize>,
+}
+
+impl DownloadBudget {
+    fn for_options(options: SyncOptions) -> Self {
+        Self {
+            remaining_chunks: (!options.foreground).then_some(BACKGROUND_MAX_DOWNLOAD_CHUNKS),
+        }
     }
-    let chunks = manifest.checkpoint.as_ref().map_or(0, |blob| blob.chunks)
-        + manifest
-            .batches
-            .iter()
-            .map(|batch| batch.chunks)
-            .sum::<usize>();
-    if chunks > BACKGROUND_MAX_DOWNLOAD_CHUNKS {
-        return Err(Error::Codec(
-            "the pending sync is large and will finish next time Balance is open".into(),
-        ));
+
+    fn reserve(&mut self, chunks: usize) -> bool {
+        let Some(remaining) = self.remaining_chunks.as_mut() else {
+            return true;
+        };
+        if chunks > *remaining {
+            return false;
+        }
+        *remaining -= chunks;
+        true
     }
-    Ok(())
 }
 
 fn fetch_blob(client: &Client, base: &str, id: &str, chunks: usize) -> Result<Vec<u8>> {
@@ -373,16 +379,47 @@ fn apply_ciphertext(
     epoch: &str,
     ciphertext: &[u8],
 ) -> Result<(usize, bool)> {
+    let ops = decode_ciphertext(key, epoch, ciphertext)?;
+    apply_decoded_ops(conn, ops)
+}
+
+fn decode_ciphertext(key: &SyncKey, epoch: &str, ciphertext: &[u8]) -> Result<Vec<Op>> {
     let envelope: RelayEnvelope = open(key, ciphertext)?;
     if envelope.v != PROTOCOL_VERSION || envelope.epoch != epoch {
         return Err(Error::Codec(
             "relay blob has incompatible protocol metadata".into(),
         ));
     }
-    let ops = envelope.ops;
+    Ok(envelope.ops)
+}
+
+fn apply_decoded_ops(conn: &Connection, ops: Vec<Op>) -> Result<(usize, bool)> {
     let inserted = merge_and_rematerialize(conn, ops.clone())?;
     mark_known(conn, &ops)?;
     Ok((inserted, inserted > 0))
+}
+
+fn apply_decoded_batches(
+    conn: &Connection,
+    ops: Vec<Op>,
+    batches: &[&BatchDescriptor],
+    epoch: &str,
+) -> Result<(usize, bool)> {
+    let applied = if ops.is_empty() {
+        (0, false)
+    } else {
+        apply_decoded_ops(conn, ops)?
+    };
+    for batch in batches {
+        conn.execute(
+            "DELETE FROM sync_relay_quarantine WHERE blob_id = ?1",
+            params![batch.id],
+        )?;
+    }
+    if let Some(batch) = batches.last() {
+        set_relay_state(conn, epoch, batch.sequence)?;
+    }
+    Ok(applied)
 }
 
 fn apply_manifest(
@@ -393,11 +430,33 @@ fn apply_manifest(
     manifest: &Manifest,
     local_epoch: &str,
 ) -> Result<(usize, bool)> {
+    let mut budget = DownloadBudget {
+        remaining_chunks: None,
+    };
+    apply_manifest_with_budget(conn, client, base, key, manifest, local_epoch, &mut budget)
+}
+
+fn apply_manifest_with_budget(
+    conn: &Connection,
+    client: &Client,
+    base: &str,
+    key: &SyncKey,
+    manifest: &Manifest,
+    local_epoch: &str,
+    budget: &mut DownloadBudget,
+) -> Result<(usize, bool)> {
     let mut pulled = 0;
     let mut changed = false;
-    let mut cursor = if local_epoch == manifest.epoch {
+    let cursor = if local_epoch == manifest.epoch {
         relay_state(conn)?.1
     } else {
+        if let Some(checkpoint) = &manifest.checkpoint {
+            if !budget.reserve(checkpoint.chunks) {
+                return Err(Error::Codec(
+                    "the pending sync is large and will finish next time Balance is open".into(),
+                ));
+            }
+        }
         conn.execute("DELETE FROM sync_relay_known_ops", [])?;
         conn.execute("DELETE FROM sync_relay_outbox", [])?;
         if let Some(checkpoint) = &manifest.checkpoint {
@@ -429,7 +488,10 @@ fn apply_manifest(
         .batches
         .iter()
         .filter(|batch| batch.sequence > cursor)
+        .take_while(|batch| budget.reserve(batch.chunks))
         .collect::<Vec<_>>();
+    let mut decoded_ops = Vec::new();
+    let mut decoded_batches = Vec::new();
     for group in pending_batches.chunks(PARALLEL_BATCH_DOWNLOADS) {
         let downloads = std::thread::scope(|scope| {
             group
@@ -446,18 +508,22 @@ fn apply_manifest(
         });
 
         for (batch, download) in group.iter().zip(downloads) {
-            let applied = download
-                .and_then(|ciphertext| apply_ciphertext(conn, key, &manifest.epoch, &ciphertext));
-            match applied {
-                Ok((count, did_change)) => {
-                    pulled += count;
-                    changed |= did_change;
-                    conn.execute(
-                        "DELETE FROM sync_relay_quarantine WHERE blob_id = ?1",
-                        params![batch.id],
-                    )?;
+            match download
+                .and_then(|ciphertext| decode_ciphertext(key, &manifest.epoch, &ciphertext))
+            {
+                Ok(ops) => {
+                    decoded_ops.extend(ops);
+                    decoded_batches.push(*batch);
                 }
                 Err(error) => {
+                    if !decoded_batches.is_empty() {
+                        apply_decoded_batches(
+                            conn,
+                            std::mem::take(&mut decoded_ops),
+                            &decoded_batches,
+                            &manifest.epoch,
+                        )?;
+                    }
                     quarantine(conn, &batch.id, &error)?;
                     // Never acknowledge past a missing or unreadable batch. Doing
                     // so permanently skipped its operations while later batches
@@ -467,9 +533,13 @@ fn apply_manifest(
                     return Err(error);
                 }
             }
-            cursor = batch.sequence;
-            set_relay_state(conn, &manifest.epoch, cursor)?;
         }
+    }
+    if !decoded_batches.is_empty() {
+        let (count, did_change) =
+            apply_decoded_batches(conn, decoded_ops, &decoded_batches, &manifest.epoch)?;
+        pulled += count;
+        changed |= did_change;
     }
     Ok((pulled, changed))
 }
@@ -719,10 +789,17 @@ fn sync_once_inner(
         .unwrap_or_default();
     let device = device_token(key, &device_id);
     let (local_epoch, cursor) = relay_state(conn)?;
+    let mut download_budget = DownloadBudget::for_options(options);
     let first = manifest(&client, base, &local_epoch, cursor)?;
-    enforce_background_budget(&first, options.foreground)?;
-    let (first_pulled, first_changed) =
-        apply_manifest(conn, &client, base, key, &first, &local_epoch)?;
+    let (first_pulled, first_changed) = apply_manifest_with_budget(
+        conn,
+        &client,
+        base,
+        key,
+        &first,
+        &local_epoch,
+        &mut download_budget,
+    )?;
     let mut pulled = first_pulled;
     let mut changed = first_changed;
 
@@ -793,9 +870,15 @@ fn sync_once_inner(
 
     let cursor = relay_state(conn)?.1;
     let second = manifest(&client, base, &active_epoch, cursor)?;
-    enforce_background_budget(&second, options.foreground)?;
-    let (second_pulled, second_changed) =
-        apply_manifest(conn, &client, base, key, &second, &active_epoch)?;
+    let (second_pulled, second_changed) = apply_manifest_with_budget(
+        conn,
+        &client,
+        base,
+        key,
+        &second,
+        &active_epoch,
+        &mut download_budget,
+    )?;
     pulled += second_pulled;
     changed |= second_changed;
 
@@ -890,26 +973,52 @@ mod tests {
     }
 
     #[test]
-    fn foreground_joiner_can_download_a_large_pending_sync() {
+    fn foreground_joiner_has_an_unlimited_download_budget() {
+        let foreground_joiner = SyncOptions::foreground(false);
+        let mut budget = DownloadBudget::for_options(foreground_joiner);
+
+        assert!(!foreground_joiner.allow_checkpoint);
+        assert!(budget.reserve(BACKGROUND_MAX_DOWNLOAD_CHUNKS + 1));
+    }
+
+    #[test]
+    fn background_poll_does_not_budget_an_already_applied_checkpoint() {
+        let connection = relay_database();
+        connection
+            .execute(
+                "UPDATE sync_relay_state SET epoch = 'epoch-1', cursor = 4 WHERE singleton = 1",
+                [],
+            )
+            .unwrap();
         let manifest = Manifest {
             epoch: "epoch-1".into(),
-            latest_sequence: 1,
+            latest_sequence: 4,
             checkpoint: Some(BlobDescriptor {
-                id: "large-checkpoint".into(),
+                id: "already-applied-large-checkpoint".into(),
                 chunks: BACKGROUND_MAX_DOWNLOAD_CHUNKS + 1,
             }),
             batches: Vec::new(),
             compact_recommended: false,
         };
+        let mut budget = DownloadBudget::for_options(SyncOptions::background());
 
-        let background = SyncOptions::background();
-        assert!(enforce_background_budget(&manifest, background.foreground).is_err());
-
-        // A joining device is not the checkpoint coordinator, but opening the
-        // app must still lift the background download budget.
-        let foreground_joiner = SyncOptions::foreground(false);
-        assert!(!foreground_joiner.allow_checkpoint);
-        enforce_background_budget(&manifest, foreground_joiner.foreground).unwrap();
+        assert_eq!(
+            apply_manifest_with_budget(
+                &connection,
+                &Client::new(),
+                "http://127.0.0.1:1",
+                &SyncKey::generate(),
+                &manifest,
+                "epoch-1",
+                &mut budget,
+            )
+            .unwrap(),
+            (0, false)
+        );
+        assert_eq!(
+            budget.remaining_chunks,
+            Some(BACKGROUND_MAX_DOWNLOAD_CHUNKS)
+        );
     }
 
     #[test]
