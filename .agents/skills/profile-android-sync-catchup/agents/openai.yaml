@@ -1,0 +1,4 @@
+interface:
+  display_name: "Profile Android Sync Catch-up"
+  short_description: "Run and diagnose Android sync catch-up CI"
+  default_prompt: "Use $profile-android-sync-catchup to run and interpret the Android background sync catch-up profile."
