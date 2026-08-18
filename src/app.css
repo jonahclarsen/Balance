@@ -4765,7 +4765,7 @@ nav button.active {
   border: 0;
   background: transparent;
   padding: 0;
-  cursor: ew-resize;
+  cursor: default;
   opacity: 0;
 }
 
