@@ -67,6 +67,26 @@ async function copyNoteSelection(page: Page) {
   })
 }
 
+async function watchNextNoteCopy(page: Page) {
+  await page.evaluate(() => {
+    const browserWindow = window as Window & { capturedNoteCopy?: { handled: boolean; plainText: string; html: string } }
+    browserWindow.capturedNoteCopy = undefined
+    document.addEventListener('copy', (event) => {
+      browserWindow.capturedNoteCopy = {
+        handled: event.defaultPrevented,
+        plainText: event.clipboardData?.getData('text/plain') ?? '',
+        html: event.clipboardData?.getData('text/html') ?? '',
+      }
+    }, { once: true })
+  })
+}
+
+async function capturedNoteCopy(page: Page) {
+  return page.evaluate(() => (
+    window as Window & { capturedNoteCopy?: { handled: boolean; plainText: string; html: string } }
+  ).capturedNoteCopy ?? null)
+}
+
 test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'IMAX is desktop-only')
   await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
@@ -124,6 +144,36 @@ test('shift arrow keys extend note selection to the matching position on an adja
   })
 })
 
+test('shift arrow keys select adjacent bullet items without relying on a cross-editor DOM range', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Bulleted list' }).click()
+
+  const first = page.locator('[data-note-text-input]').first()
+  await first.fill('First bullet')
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+  const second = page.locator('[data-note-text-input]').nth(1)
+  await second.fill('Second bullet')
+
+  await placeCaretAtOffset(first, 4)
+  await first.press('Shift+ArrowDown')
+  await expect(page.locator('.note-multi-selected')).toHaveCount(2)
+  await watchNextNoteCopy(page)
+  await second.press('Meta+C')
+  await expect.poll(() => capturedNoteCopy(page)).toEqual({
+    handled: true,
+    plainText: '- First bullet\n- Second bullet',
+    html: '<ul><li>First bullet</li><li>Second bullet</li></ul>',
+  })
+
+  await second.press('Shift+ArrowUp')
+  await expect(page.locator('.note-multi-selected')).toHaveCount(0)
+})
+
 test('notes select all blocks and copy plain text plus semantic HTML lists', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop keyboard and rich clipboard behavior is covered here')
   await page.goto('/')
@@ -152,9 +202,7 @@ test('notes select all blocks and copy plain text plus semantic HTML lists', asy
   await third.press('Meta+A')
   await third.press('Meta+A')
 
-  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString() ?? '')).toContain('Alpha')
-  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString() ?? '')).toContain('Beta')
-  await expect.poll(() => page.evaluate(() => document.getSelection()?.toString() ?? '')).toContain('Gamma')
+  await expect(page.locator('.note-multi-selected')).toHaveCount(3)
   await expect.poll(() => copyNoteSelection(page)).toEqual({
     handled: true,
     plainText: '- Alpha\n- Beta\n- Gamma',
@@ -187,9 +235,11 @@ test('dragging can extend a note selection across list items', async ({ page }, 
   await page.mouse.move(secondBox!.x + secondBox!.width - 3, secondBox!.y + secondBox!.height / 2, { steps: 8 })
   await page.mouse.up()
 
-  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
-    anchor: { text: 'First line', offset: 0 },
-    focus: { text: 'Second line', offset: 11 },
+  await expect(page.locator('.note-multi-selected')).toHaveCount(2)
+  await expect.poll(() => copyNoteSelection(page)).toEqual({
+    handled: true,
+    plainText: '- First line\n- Second line',
+    html: '<ul><li>First line</li><li>Second line</li></ul>',
   })
 })
 

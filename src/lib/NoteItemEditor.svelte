@@ -25,6 +25,9 @@
   export let notes: Note[] = []
   export let onOpenLink: (link: ItemLink) => void = () => {}
   export let onFocusItem: (itemId: Id) => void = () => {}
+  export let selectedItemIds: Id[] = []
+  export let onExtendItemSelection: (itemId: Id, direction: MoveDirection) => boolean = () => false
+  export let onSelectAllItems: () => void = () => {}
 
   let linkSegments: ItemTextSegment[] = [{ text: item.text, link: null }]
   let slashQuery: string | null = null
@@ -63,6 +66,7 @@
       return
     }
     if (event.shiftKey) {
+      if (onExtendItemSelection(item.id, direction)) return
       extendSelectionToAdjacentLine(current, direction)
       return
     }
@@ -329,19 +333,7 @@
         if (!editorIsFullySelected) return
 
         event.preventDefault()
-        const firstRow = inputs[0].closest<HTMLElement>('[data-note-item-id]')
-        const lastRow = inputs[inputs.length - 1].closest<HTMLElement>('[data-note-item-id]')
-        if (!firstRow || !lastRow) return
-        const selectNote = () => {
-          if (!firstRow.isConnected || !lastRow.isConnected) return
-          const range = document.createRange()
-          range.setStartBefore(firstRow)
-          range.setEndAfter(lastRow)
-          selection?.removeAllRanges()
-          selection?.addRange(range)
-        }
-        selectNote()
-        window.requestAnimationFrame(selectNote)
+        onSelectAllItems()
       }
       return
     }
@@ -370,6 +362,7 @@
   class:note-list-item={item.kind === 'bullet' || item.kind === 'numbered' || item.kind === 'checklist'}
   class:note-bullet={item.kind === 'bullet'}
   class:note-numbered={item.kind === 'numbered'}
+  class:note-multi-selected={selectedItemIds.includes(item.id)}
   data-note-item-id={item.id}
   data-note-item-depth={depth}
   data-note-item-number={item.kind === 'numbered' ? itemNumber : undefined}
@@ -454,6 +447,9 @@
           {notes}
           {onOpenLink}
           {onFocusItem}
+          {selectedItemIds}
+          {onExtendItemSelection}
+          {onSelectAllItems}
         />
       {/each}
     </div>

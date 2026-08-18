@@ -37,13 +37,21 @@
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
   let toolbarSelection: Range | null = null
-  let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement } | null = null
-  let pointerSelectionFocus: { node: Node; offset: number; editor: HTMLDivElement } | null = null
+  let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
+  let pointerSelectionFocus: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
+  // WKWebView clamps a DOM Selection at contenteditable boundaries when list
+  // decoration sits between the editors. Keep a real row selection for lists;
+  // it drives both the visible highlight and the clipboard independently.
+  let selectedItemIds: Id[] = []
+  let selectionAnchorItemId: Id | null = null
+  let selectionFocusItemId: Id | null = null
+  let pointerUsesItemSelection = false
   let inlineFormats: InlineFormatState = { bold: false, italic: false, underline: false }
   $: selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null
   $: if (selectedNoteId !== activeNoteId) {
     activeNoteId = selectedNoteId
     activeItemId = selectedNote?.items[0]?.id ?? null
+    clearItemSelection()
     inlineFormats = { bold: false, italic: false, underline: false }
   }
   $: activeItem = selectedNote && activeItemId ? findItem(selectedNote.items, activeItemId) : null
@@ -201,6 +209,22 @@
   }
 
   function handleEditorKeydownCapture(event: KeyboardEvent) {
+    const primaryModifier = event.metaKey || event.ctrlKey
+    if (selectedItemIds.length > 0) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        clearItemSelection()
+        return
+      }
+      const modifierOnly = ['Alt', 'Control', 'Meta', 'Shift'].includes(event.key)
+      if (
+        !modifierOnly &&
+        !event.shiftKey &&
+        !(primaryModifier && ['a', 'c'].includes(event.key.toLocaleLowerCase()))
+      ) {
+        clearItemSelection()
+      }
+    }
     if (['Enter', 'Backspace', 'Delete', 'Tab'].includes(event.key)) void followNoteBottomAfterEdit(event)
   }
 
@@ -210,19 +234,27 @@
 
   function handleNoteCopy(event: ClipboardEvent) {
     if (!selectedNote || !event.clipboardData) return
-    const selection = document.getSelection()
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
-
-    const range = selection.getRangeAt(0)
     const inputs = noteInputs()
-    const selectedInputs = inputs.filter((input) => range.intersectsNode(input))
+    const explicitlySelected = new Set(selectedItemIds)
+    const usingItemSelection = explicitlySelected.size > 1
+    let range: Range | null = null
+    let selectedInputs = usingItemSelection
+      ? inputs.filter((input) => explicitlySelected.has(input.dataset.noteTextInputId ?? ''))
+      : []
+
+    if (!usingItemSelection) {
+      const selection = document.getSelection()
+      if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
+      range = selection.getRangeAt(0)
+      selectedInputs = inputs.filter((input) => range?.intersectsNode(input))
+    }
     if (selectedInputs.length < 2) return
 
     const blocks = selectedInputs.flatMap((input) => {
       const fragmentRange = document.createRange()
       fragmentRange.selectNodeContents(input)
-      if (input.contains(range.startContainer)) fragmentRange.setStart(range.startContainer, range.startOffset)
-      if (input.contains(range.endContainer)) fragmentRange.setEnd(range.endContainer, range.endOffset)
+      if (range && input.contains(range.startContainer)) fragmentRange.setStart(range.startContainer, range.startOffset)
+      if (range && input.contains(range.endContainer)) fragmentRange.setEnd(range.endContainer, range.endOffset)
 
       const container = document.createElement('div')
       container.append(fragmentRange.cloneContents())
@@ -258,11 +290,14 @@
 
   function handleNotePointerDown(event: PointerEvent) {
     if (event.button !== 0 || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) return
+    clearItemSelection()
     const target = event.target instanceof Element ? event.target : null
     const editor = target?.closest<HTMLDivElement>('[data-note-text-input]') ?? null
     const point = editor ? caretPointFromCoordinates(editor, event.clientX, event.clientY) : null
-    pointerSelectionAnchor = editor && point ? { ...point, editor } : null
+    const itemId = editor?.dataset.noteTextInputId
+    pointerSelectionAnchor = editor && point && itemId ? { ...point, editor, itemId } : null
     pointerSelectionFocus = null
+    pointerUsesItemSelection = false
   }
 
   function handleNotePointerMove(event: PointerEvent) {
@@ -280,9 +315,15 @@
     if (!editor || editor === pointerSelectionAnchor.editor) return
 
     const point = caretPointFromCoordinates(editor, event.clientX, event.clientY)
-    if (!point) return
-    pointerSelectionFocus = { ...point, editor }
+    const itemId = editor.dataset.noteTextInputId
+    if (!point || !itemId) return
+    pointerSelectionFocus = { ...point, editor, itemId }
     event.preventDefault()
+    if (isListEditor(pointerSelectionAnchor.editor) || isListEditor(editor)) {
+      pointerUsesItemSelection = true
+      selectItemRange(pointerSelectionAnchor.itemId, itemId)
+      return
+    }
     applyPointerSelection(pointerSelectionAnchor, pointerSelectionFocus)
   }
 
@@ -307,13 +348,80 @@
   function finishNotePointerSelection(event: PointerEvent) {
     const anchor = pointerSelectionAnchor
     const focus = pointerSelectionFocus
+    const usedItemSelection = pointerUsesItemSelection
     pointerSelectionAnchor = null
     pointerSelectionFocus = null
+    pointerUsesItemSelection = false
     if (!anchor || !focus) return
 
     event.preventDefault()
+    if (usedItemSelection) return
     applyPointerSelection(anchor, focus)
     window.requestAnimationFrame(() => applyPointerSelection(anchor, focus))
+  }
+
+  function extendItemSelection(itemId: Id, direction: 'up' | 'down') {
+    const inputs = noteInputs()
+    const focusId = selectionFocusItemId ?? itemId
+    const focusIndex = inputs.findIndex((input) => input.dataset.noteTextInputId === focusId)
+    if (focusIndex < 0) return false
+
+    const adjacentIndex = direction === 'up' ? focusIndex - 1 : focusIndex + 1
+    const adjacent = inputs[adjacentIndex]
+    const current = inputs[focusIndex]
+    if (!adjacent || (!isListEditor(current) && !isListEditor(adjacent))) return false
+
+    const adjacentId = adjacent.dataset.noteTextInputId
+    if (!adjacentId) return false
+    const anchorId = selectionAnchorItemId ?? itemId
+    selectItemRange(anchorId, adjacentId)
+    focusItemSelectionEndpoint(adjacent, direction)
+    return true
+  }
+
+  function selectAllItems() {
+    const inputs = noteInputs()
+    const firstId = inputs[0]?.dataset.noteTextInputId
+    const lastId = inputs.at(-1)?.dataset.noteTextInputId
+    if (!firstId || !lastId) return
+    selectItemRange(firstId, lastId)
+  }
+
+  function selectItemRange(anchorId: Id, focusId: Id) {
+    const inputs = noteInputs()
+    const anchorIndex = inputs.findIndex((input) => input.dataset.noteTextInputId === anchorId)
+    const focusIndex = inputs.findIndex((input) => input.dataset.noteTextInputId === focusId)
+    if (anchorIndex < 0 || focusIndex < 0) return
+
+    selectionAnchorItemId = anchorId
+    selectionFocusItemId = focusId
+    if (anchorIndex === focusIndex) {
+      selectedItemIds = []
+      return
+    }
+    const start = Math.min(anchorIndex, focusIndex)
+    const end = Math.max(anchorIndex, focusIndex)
+    selectedItemIds = inputs.slice(start, end + 1).flatMap((input) => input.dataset.noteTextInputId ?? [])
+  }
+
+  function clearItemSelection() {
+    selectedItemIds = []
+    selectionAnchorItemId = null
+    selectionFocusItemId = null
+  }
+
+  function isListEditor(editor: HTMLDivElement) {
+    return Boolean(editor.closest('.note-list-item'))
+  }
+
+  function focusItemSelectionEndpoint(editor: HTMLDivElement, direction: 'up' | 'down') {
+    editor.focus()
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.collapse(direction === 'up')
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
   }
 
   function applyPointerSelection(
@@ -335,6 +443,7 @@
   on:keyup={updateInlineFormatState}
   on:beforeinput|capture={followNoteBottomAfterEdit}
   on:keydown|capture={handleEditorKeydownCapture}
+  on:copy={handleNoteCopy}
   on:pointerdown|capture={handleNotePointerDown}
   on:pointermove|capture={handleNotePointerMove}
   on:pointerup|capture={finishNotePointerSelection}
@@ -388,7 +497,7 @@
         <span class="note-format-hint">Type <kbd>/</kbd> for more</span>
       </div>
 
-      <div class="note-blocks" bind:this={noteBlocksElement} on:copy={handleNoteCopy}>
+      <div class="note-blocks" bind:this={noteBlocksElement}>
         {#if selectedNote.items.length === 0}
           <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
         {:else}
@@ -410,6 +519,9 @@
               {metrics}
               {notes}
               {onOpenLink}
+              {selectedItemIds}
+              onExtendItemSelection={extendItemSelection}
+              onSelectAllItems={selectAllItems}
               onFocusItem={(itemId) => (activeItemId = itemId)}
             />
           {/each}

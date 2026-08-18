@@ -4796,6 +4796,11 @@ nav button.active {
   text-decoration: line-through;
 }
 
+.note-item.note-multi-selected > .note-block {
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
 .note-text a {
   color: var(--accent-strong);
   text-decoration: underline;
