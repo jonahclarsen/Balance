@@ -413,9 +413,9 @@ test('notes save adjustable breathing room and follow edits only from the bottom
   const spacingSlider = page.getByLabel('Bottom writing space')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
 
-  await expect(spacingSlider).toHaveAttribute('min', '10')
-  await expect(spacingSlider).toHaveAttribute('max', '48')
-  await expect(spacingSlider).toHaveValue('32')
+  await expect(spacingSlider).toHaveAttribute('min', '0')
+  await expect(spacingSlider).toHaveAttribute('max', '100')
+  await expect(spacingSlider).toHaveValue('60')
 
   const writingSpace = await page.locator('.note-scroll-space').evaluate((element) => {
     const spacer = element.getBoundingClientRect()
@@ -430,18 +430,53 @@ test('notes save adjustable breathing room and follow edits only from the bottom
   expect(writingSpace.outsideNotesWorkspace).toBe(true)
   expect(writingSpace.startsAfterNotesWorkspace).toBe(true)
   expect(writingSpace.height).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.3)
-  expect(writingSpace.height).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.34)
+  expect(writingSpace.height).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.32)
+
+  await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
+  const controlIsHiddenBeforeBottom = await page.locator('.note-scroll-space-control').evaluate((element) => {
+    const control = element.getBoundingClientRect()
+    const scroller = element.closest('.workspace')?.getBoundingClientRect()
+    return scroller ? control.top >= scroller.bottom : false
+  })
+  expect(controlIsHiddenBeforeBottom).toBe(true)
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
-  await spacingSlider.fill('10')
+  await spacingSlider.fill('0')
   const minimumSpace = await page.locator('.note-scroll-space').evaluate((element) => ({
     spacerHeight: element.getBoundingClientRect().height,
     controlHeight: element.querySelector('label')?.getBoundingClientRect().height ?? Number.POSITIVE_INFINITY,
   }))
   expect(minimumSpace.spacerHeight).toBeGreaterThanOrEqual(minimumSpace.controlHeight + 8)
 
-  await spacingSlider.fill('48')
+  const startGeometry = await page.evaluate(() => {
+    const track = document.querySelector('.note-scroll-space-track')?.getBoundingClientRect()
+    const fill = document.querySelector('.note-scroll-space-fill')?.getBoundingClientRect()
+    const thumb = document.querySelector('.note-scroll-space-thumb')?.getBoundingClientRect()
+    return track && fill && thumb
+      ? { trackLeft: track.left, thumbCenter: thumb.left + thumb.width / 2, fillLeft: fill.left, fillWidth: fill.width }
+      : null
+  })
+  expect(startGeometry).not.toBeNull()
+  expect(startGeometry?.thumbCenter).toBeCloseTo(startGeometry?.trackLeft ?? 0, 0)
+  expect(startGeometry?.fillLeft).toBeCloseTo(startGeometry?.trackLeft ?? 0, 0)
+  expect(startGeometry?.fillWidth).toBeCloseTo(0, 0)
+
+  const fixedControlBottom = await page.locator('.note-scroll-space-control').evaluate((element) => element.getBoundingClientRect().bottom)
+  await spacingSlider.fill('100')
   await expect.poll(() => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(4)
+  await expect.poll(() => page.locator('.note-scroll-space-control').evaluate((element) => element.getBoundingClientRect().bottom)).toBeCloseTo(fixedControlBottom, 0)
+  const endGeometry = await page.evaluate(() => {
+    const track = document.querySelector('.note-scroll-space-track')?.getBoundingClientRect()
+    const fill = document.querySelector('.note-scroll-space-fill')?.getBoundingClientRect()
+    const thumb = document.querySelector('.note-scroll-space-thumb')?.getBoundingClientRect()
+    return track && fill && thumb
+      ? { trackRight: track.right, trackWidth: track.width, thumbCenter: thumb.left + thumb.width / 2, fillWidth: fill.width }
+      : null
+  })
+  expect(endGeometry).not.toBeNull()
+  expect(endGeometry?.thumbCenter).toBeCloseTo(endGeometry?.trackRight ?? 0, 0)
+  expect(endGeometry?.fillWidth).toBeCloseTo(endGeometry?.trackWidth ?? 0, 0)
+  await page.screenshot({ path: testInfo.outputPath('note-spacing-slider-at-bottom.png'), fullPage: false })
   const visibleNoteHeight = await page.evaluate(() => {
     const scroller = document.querySelector('.workspace')?.getBoundingClientRect()
     const notesWorkspace = document.querySelector('.notes-workspace')?.getBoundingClientRect()
@@ -449,11 +484,11 @@ test('notes save adjustable breathing room and follow edits only from the bottom
   })
   expect(visibleNoteHeight).toBeGreaterThan(96)
 
-  await spacingSlider.fill('24')
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:noteScrollSpaceVh'))).toBe('24')
+  await spacingSlider.fill('40')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:noteScrollSpacePercent'))).toBe('40')
   await page.reload()
   await page.getByRole('button', { name: 'Notes', exact: true }).click()
-  await expect(page.getByLabel('Bottom writing space')).toHaveValue('24')
+  await expect(page.getByLabel('Bottom writing space')).toHaveValue('40')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   await placeCaretAtEnd(editor)

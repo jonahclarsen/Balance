@@ -4476,6 +4476,8 @@ nav button.active {
 }
 
 .notes-workspace {
+  position: relative;
+  z-index: 1;
   display: grid;
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   border: 1px solid var(--line);
@@ -4679,12 +4681,18 @@ nav button.active {
 }
 
 .note-scroll-space {
+  display: flex;
+  flex-direction: column;
   height: max(56px, var(--note-scroll-space-height, 32vh));
   height: max(56px, var(--note-scroll-space-dynamic-height, 32dvh));
-  padding-top: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  padding-bottom: 8px;
 }
 
 .note-scroll-space-control {
+  position: sticky;
+  bottom: 8px;
   display: flex;
   width: min(320px, calc(100% - 24px));
   min-height: 36px;
@@ -4700,14 +4708,69 @@ nav button.active {
   backdrop-filter: blur(8px);
 }
 
-.note-scroll-space-control span {
+.note-scroll-space-label {
   flex: 0 0 auto;
 }
 
-.note-scroll-space-control input[type='range'] {
+.note-scroll-space-slider {
+  position: relative;
+  height: 22px;
   min-width: 80px;
   flex: 1 1 auto;
-  accent-color: var(--accent);
+}
+
+.note-scroll-space-track,
+.note-scroll-space-fill {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 4px;
+  border-radius: 999px;
+  pointer-events: none;
+  transform: translateY(-50%);
+}
+
+.note-scroll-space-track {
+  right: 0;
+  background: var(--line);
+}
+
+.note-scroll-space-fill {
+  width: var(--note-scroll-space-progress, 60%);
+  background: var(--accent);
+}
+
+.note-scroll-space-thumb {
+  position: absolute;
+  top: 50%;
+  left: var(--note-scroll-space-progress, 60%);
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--paper-strong);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2), 0 0 0 1px color-mix(in srgb, var(--accent) 52%, transparent);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.note-scroll-space-native-slider {
+  position: absolute;
+  z-index: 1;
+  inset: 0 -7px;
+  width: calc(100% + 14px);
+  height: 22px;
+  margin: 0;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: ew-resize;
+  opacity: 0;
+}
+
+.note-scroll-space-native-slider:focus-visible ~ .note-scroll-space-track {
+  box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
 .note-scroll-space-control output {

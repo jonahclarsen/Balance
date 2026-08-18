@@ -8,9 +8,10 @@
   type InlineFormatCommand = 'bold' | 'italic' | 'underline'
   type InlineFormatState = Record<InlineFormatCommand, boolean>
 
-  const NOTE_SCROLL_SPACE_KEY = 'balance:noteScrollSpaceVh'
-  const DEFAULT_NOTE_SCROLL_SPACE_VH = 32
-  const MIN_NOTE_SCROLL_SPACE_VH = 10
+  const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
+  const LEGACY_NOTE_SCROLL_SPACE_VH_KEY = 'balance:noteScrollSpaceVh'
+  const DEFAULT_NOTE_SCROLL_SPACE_PERCENT = 60
+  const MIN_NOTE_SCROLL_SPACE_VH = 6
   const MAX_NOTE_SCROLL_SPACE_VH = 48
 
   export let notes: Note[]
@@ -41,7 +42,8 @@
   let noteBlocksElement: HTMLDivElement
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
-  let noteScrollSpaceVh = DEFAULT_NOTE_SCROLL_SPACE_VH
+  let noteScrollSpacePercent = DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+  $: noteScrollSpaceVh = noteScrollSpaceVhForPercent(noteScrollSpacePercent)
   let toolbarSelection: Range | null = null
   let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
   let pointerSelectionFocus: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
@@ -216,18 +218,30 @@
     if (scroller && isAtNoteBottom(scroller)) void scrollNoteToBottomAfterLayout(scroller)
   }
 
-  function normalizeNoteScrollSpace(value: number) {
+  function normalizeNoteScrollSpacePercent(value: number) {
     return Number.isFinite(value)
-      ? Math.max(MIN_NOTE_SCROLL_SPACE_VH, Math.min(MAX_NOTE_SCROLL_SPACE_VH, Math.round(value)))
-      : DEFAULT_NOTE_SCROLL_SPACE_VH
+      ? Math.max(0, Math.min(100, Math.round(value)))
+      : DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+  }
+
+  function noteScrollSpaceVhForPercent(percent: number) {
+    return MIN_NOTE_SCROLL_SPACE_VH + (MAX_NOTE_SCROLL_SPACE_VH - MIN_NOTE_SCROLL_SPACE_VH) * percent / 100
+  }
+
+  function noteScrollSpacePercentForVh(value: number) {
+    if (!Number.isFinite(value)) return DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+    const clamped = Math.max(MIN_NOTE_SCROLL_SPACE_VH, Math.min(MAX_NOTE_SCROLL_SPACE_VH, value))
+    return normalizeNoteScrollSpacePercent(
+      (clamped - MIN_NOTE_SCROLL_SPACE_VH) / (MAX_NOTE_SCROLL_SPACE_VH - MIN_NOTE_SCROLL_SPACE_VH) * 100,
+    )
   }
 
   function updateNoteScrollSpace(event: Event) {
     const input = event.currentTarget as HTMLInputElement
     const scroller = noteScrollContainer()
     const keepFollowingBottom = Boolean(scroller && isAtNoteBottom(scroller))
-    noteScrollSpaceVh = normalizeNoteScrollSpace(input.valueAsNumber)
-    localStorage.setItem(NOTE_SCROLL_SPACE_KEY, String(noteScrollSpaceVh))
+    noteScrollSpacePercent = normalizeNoteScrollSpacePercent(input.valueAsNumber)
+    localStorage.setItem(NOTE_SCROLL_SPACE_PERCENT_KEY, String(noteScrollSpacePercent))
 
     if (scroller && keepFollowingBottom) void scrollNoteToBottomAfterLayout(scroller)
   }
@@ -466,10 +480,15 @@
   }
 
   onMount(() => {
-    const storedSpacing = localStorage.getItem(NOTE_SCROLL_SPACE_KEY)
-    noteScrollSpaceVh = normalizeNoteScrollSpace(
-      storedSpacing === null ? DEFAULT_NOTE_SCROLL_SPACE_VH : Number(storedSpacing),
-    )
+    const storedPercent = localStorage.getItem(NOTE_SCROLL_SPACE_PERCENT_KEY)
+    const legacyVh = localStorage.getItem(LEGACY_NOTE_SCROLL_SPACE_VH_KEY)
+    noteScrollSpacePercent = storedPercent === null
+      ? legacyVh === null
+        ? DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+        : noteScrollSpacePercentForVh(Number(legacyVh))
+      : normalizeNoteScrollSpacePercent(Number(storedPercent))
+    localStorage.setItem(NOTE_SCROLL_SPACE_PERCENT_KEY, String(noteScrollSpacePercent))
+    localStorage.removeItem(LEGACY_NOTE_SCROLL_SPACE_VH_KEY)
   })
 
   onDestroy(() => {
@@ -580,20 +599,26 @@
 {#if selectedNote}
   <div
     class="note-scroll-space"
-    style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh`}
+    style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh; --note-scroll-space-progress: ${noteScrollSpacePercent}%`}
   >
     <label class="note-scroll-space-control">
-      <span>Bottom space</span>
-      <input
-        type="range"
-        min={MIN_NOTE_SCROLL_SPACE_VH}
-        max={MAX_NOTE_SCROLL_SPACE_VH}
-        step="1"
-        value={noteScrollSpaceVh}
-        aria-label="Bottom writing space"
-        on:input={updateNoteScrollSpace}
-      />
-      <output>{noteScrollSpaceVh}%</output>
+      <span class="note-scroll-space-label">Bottom space</span>
+      <span class="note-scroll-space-slider">
+        <input
+          class="note-scroll-space-native-slider"
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={noteScrollSpacePercent}
+          aria-label="Bottom writing space"
+          on:input={updateNoteScrollSpace}
+        />
+        <span class="note-scroll-space-track" aria-hidden="true"></span>
+        <span class="note-scroll-space-fill" aria-hidden="true"></span>
+        <span class="note-scroll-space-thumb" aria-hidden="true"></span>
+      </span>
+      <output>{noteScrollSpacePercent}%</output>
     </label>
   </div>
 {/if}
