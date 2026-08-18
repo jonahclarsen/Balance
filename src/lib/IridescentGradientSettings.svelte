@@ -9,8 +9,10 @@
 
   const colorNames = ['Magenta', 'Aqua', 'Gold'] as const
   let commitTimer: number | null = null
+  let gradientBeforeRestore: IridescentGradientPreferences | null = null
 
   $: isDefault = JSON.stringify(value) === JSON.stringify(defaults)
+  $: canRestorePreviousGradient = isDefault && gradientBeforeRestore !== null
   $: previewStyle = value.colors.map((color, index) => {
     const alpha = Math.min(1, color.strength / 100 * value.contrast / 100)
     return `--preview-color-${index + 1}: hsl(${color.hue} ${color.saturation}% ${color.lightness}% / ${alpha})`
@@ -103,13 +105,21 @@
     publish(next, commit)
   }
 
-  function restoreDefaults() {
-    const next = {
-      ...defaults,
-      colors: defaults.colors.map((color) => ({ ...color })) as IridescentGradientPreferences['colors'],
+  function cloneGradient(gradient: IridescentGradientPreferences): IridescentGradientPreferences {
+    return {
+      ...gradient,
+      colors: gradient.colors.map((color) => ({ ...color })) as IridescentGradientPreferences['colors'],
     }
-    onPreview(next)
-    onCommit(next)
+  }
+
+  function toggleOriginalGradient() {
+    if (canRestorePreviousGradient && gradientBeforeRestore) {
+      publish(cloneGradient(gradientBeforeRestore), true)
+      return
+    }
+
+    gradientBeforeRestore = cloneGradient(value)
+    publish(cloneGradient(defaults), true)
   }
 </script>
 
@@ -296,7 +306,11 @@
 
   <div class="iridescent-gradient-actions">
     <p>Adjustments are saved automatically and follow this theme between devices.</p>
-    <button type="button" disabled={isDefault} on:click={restoreDefaults}>Restore original gradient</button>
+    <button
+      type="button"
+      disabled={isDefault && !canRestorePreviousGradient}
+      on:click={toggleOriginalGradient}
+    >{canRestorePreviousGradient ? 'Return to your gradient' : 'Restore original gradient'}</button>
   </div>
 </div>
 

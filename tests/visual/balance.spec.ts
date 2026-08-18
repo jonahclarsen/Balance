@@ -1009,7 +1009,7 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   })
 })
 
-test('iridescent gradient controls preview live, persist, and restore the original palette', async ({ page }, testInfo) => {
+test('iridescent gradient controls preview live, persist, and toggle with the original palette', async ({ page }, testInfo) => {
   const openSettings = async () => {
     const openNavigation = page.getByRole('button', { name: 'Open navigation' })
     if (await openNavigation.isVisible()) await openNavigation.click()
@@ -1022,10 +1022,6 @@ test('iridescent gradient controls preview live, persist, and restore the origin
   await openSettings()
 
   const controls = page.getByLabel('Iridescent background controls')
-  await expect(controls).toHaveCount(0)
-  await page.getByRole('button', {
-    name: 'Iridescent Prismatic pink, violet, aqua, and gold',
-  }).click()
   await expect(controls).toBeVisible()
 
   const contrast = page.getByLabel('Iridescent contrast')
@@ -1037,7 +1033,7 @@ test('iridescent gradient controls preview live, persist, and restore the origin
   const magentaSaturation = page.getByLabel('Magenta saturation')
   const magentaLightness = page.getByLabel('Magenta lightness')
   const magentaStrength = page.getByLabel('Magenta strength')
-  const restore = controls.getByRole('button', { name: 'Restore original gradient' })
+  const gradientToggle = controls.locator('.iridescent-gradient-actions button')
 
   await expect(contrast).toHaveValue('100')
   await expect(backdropSaturation).toHaveValue('100')
@@ -1048,7 +1044,8 @@ test('iridescent gradient controls preview live, persist, and restore the origin
   await expect(magentaSaturation).toHaveValue('85')
   await expect(magentaLightness).toHaveValue('62')
   await expect(magentaStrength).toHaveValue('13')
-  await expect(restore).toBeDisabled()
+  await expect(gradientToggle).toHaveText('Restore original gradient')
+  await expect(gradientToggle).toBeDisabled()
 
   await contrast.fill('180')
   await backdropSaturation.fill('135')
@@ -1065,7 +1062,7 @@ test('iridescent gradient controls preview live, persist, and restore the origin
   await expect.poll(() => page.locator('html').evaluate((element) =>
     getComputedStyle(element).getPropertyValue('--iridescent-pink'),
   )).toContain('282')
-  await expect(restore).toBeEnabled()
+  await expect(gradientToggle).toBeEnabled()
   await expect.poll(() => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
     const gradient = state?.preferences?.iridescentGradient
@@ -1090,10 +1087,28 @@ test('iridescent gradient controls preview live, persist, and restore the origin
   await expect(contrast).toHaveValue('180')
   await expect(magentaHue).toHaveValue('282')
 
-  await restore.click()
+  await gradientToggle.click()
   await expect(contrast).toHaveValue('100')
   await expect(magentaHue).toHaveValue('330')
-  await expect(restore).toBeDisabled()
+  await expect(gradientToggle).toHaveText('Return to your gradient')
+  await expect(gradientToggle).toBeEnabled()
+
+  await gradientToggle.click()
+  await expect(contrast).toHaveValue('180')
+  await expect(backdropSaturation).toHaveValue('135')
+  await expect(backdropLightness).toHaveValue('-4')
+  await expect(direction).toHaveValue('225')
+  await expect(reach).toHaveValue('52')
+  await expect(magentaHue).toHaveValue('282')
+  await expect(magentaSaturation).toHaveValue('96')
+  await expect(magentaLightness).toHaveValue('48')
+  await expect(magentaStrength).toHaveValue('26')
+  await expect(gradientToggle).toHaveText('Restore original gradient')
+
+  await gradientToggle.click()
+  await expect(contrast).toHaveValue('100')
+  await expect(magentaHue).toHaveValue('330')
+  await expect(gradientToggle).toHaveText('Return to your gradient')
 })
 
 test('interface font previews apply live to tasks and persist', async ({ page }) => {
