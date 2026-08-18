@@ -4742,10 +4742,9 @@ nav button.active {
   left: var(--note-scroll-space-progress, 60%);
   width: 14px;
   height: 14px;
-  border: 2px solid var(--paper-strong);
   border-radius: 50%;
   background: var(--accent);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2), 0 0 0 1px color-mix(in srgb, var(--accent) 52%, transparent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
   pointer-events: none;
   transform: translate(-50%, -50%);
 }
