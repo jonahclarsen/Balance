@@ -4708,10 +4708,6 @@ nav button.active {
   backdrop-filter: blur(8px);
 }
 
-.note-scroll-space-label {
-  flex: 0 0 auto;
-}
-
 .note-scroll-space-slider {
   position: relative;
   height: 22px;
@@ -4771,14 +4767,6 @@ nav button.active {
 
 .note-scroll-space-native-slider:focus-visible ~ .note-scroll-space-track {
   box-shadow: 0 0 0 3px var(--focus-ring);
-}
-
-.note-scroll-space-control output {
-  min-width: 30px;
-  color: var(--accent-strong);
-  font-family: var(--font-mono);
-  font-weight: 700;
-  text-align: right;
 }
 
 .note-empty-editor {

@@ -602,7 +602,6 @@
     style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh; --note-scroll-space-progress: ${noteScrollSpacePercent}%`}
   >
     <label class="note-scroll-space-control">
-      <span class="note-scroll-space-label">Bottom space</span>
       <span class="note-scroll-space-slider">
         <input
           class="note-scroll-space-native-slider"
@@ -618,7 +617,6 @@
         <span class="note-scroll-space-fill" aria-hidden="true"></span>
         <span class="note-scroll-space-thumb" aria-hidden="true"></span>
       </span>
-      <output>{noteScrollSpacePercent}%</output>
     </label>
   </div>
 {/if}
