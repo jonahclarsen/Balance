@@ -1,5 +1,25 @@
 export const THEME_PRESETS = [
   {
+    id: 'iridescent',
+    name: 'Iridescent',
+    description: 'Prismatic pink, violet, aqua, and gold',
+    swatches: [
+      'linear-gradient(135deg, #f24c9f, #9b62dd 48%, #39c5d6)',
+      'linear-gradient(135deg, #39c5d6, #46b887)',
+      'linear-gradient(135deg, #46b887, #f0a23e)',
+    ],
+    checkboxColor: '#7b5bd6',
+    doneColor: '#28a987',
+  },
+  {
+    id: 'graphite',
+    name: 'Graphite',
+    description: 'Charcoal, silver, and clean gray',
+    swatches: ['#252525', '#dededb', '#777774'],
+    checkboxColor: '#303030',
+    doneColor: '#777774',
+  },
+  {
     id: 'violet',
     name: 'Violet',
     description: 'Purple and soft lilac',
@@ -63,31 +83,11 @@ export const THEME_PRESETS = [
     checkboxColor: '#526bb0',
     doneColor: '#596fbb',
   },
-  {
-    id: 'graphite',
-    name: 'Graphite',
-    description: 'Charcoal, silver, and clean gray',
-    swatches: ['#252525', '#dededb', '#777774'],
-    checkboxColor: '#303030',
-    doneColor: '#777774',
-  },
-  {
-    id: 'iridescent',
-    name: 'Iridescent',
-    description: 'Prismatic pink, violet, aqua, and gold',
-    swatches: [
-      'linear-gradient(135deg, #f24c9f, #9b62dd 48%, #39c5d6)',
-      'linear-gradient(135deg, #39c5d6, #46b887)',
-      'linear-gradient(135deg, #46b887, #f0a23e)',
-    ],
-    checkboxColor: '#7b5bd6',
-    doneColor: '#28a987',
-  },
 ] as const
 
 export type ThemeId = (typeof THEME_PRESETS)[number]['id']
 
-export const DEFAULT_THEME_ID: ThemeId = 'violet'
+export const DEFAULT_THEME_ID: ThemeId = 'iridescent'
 
 export function normalizeThemeId(value: string | null | undefined): ThemeId {
   return THEME_PRESETS.some((theme) => theme.id === value) ? (value as ThemeId) : DEFAULT_THEME_ID
