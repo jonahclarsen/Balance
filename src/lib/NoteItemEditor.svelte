@@ -70,7 +70,7 @@
       extendSelectionToAdjacentLine(current, direction)
       return
     }
-    focusAdjacent(current, direction)
+    focusAdjacentAtOffset(current, direction)
   }
 
   function extendSelectionToAdjacentLine(current: HTMLDivElement, direction: MoveDirection) {
@@ -208,6 +208,14 @@
     const index = inputs.indexOf(current)
     const target = inputs[direction === 'up' ? index - 1 : index + 1]
     if (target) focusElement(target, position)
+  }
+
+  function focusAdjacentAtOffset(current: HTMLDivElement, direction: MoveDirection) {
+    const inputs = noteInputs()
+    const index = inputs.indexOf(current)
+    const target = inputs[direction === 'up' ? index - 1 : index + 1]
+    const targetId = target?.dataset.noteTextInputId
+    if (targetId) focusInputAtOffset(targetId, caretOffset(current))
   }
 
   function focusInput(itemId: Id, position: 'start' | 'end' = 'end') {

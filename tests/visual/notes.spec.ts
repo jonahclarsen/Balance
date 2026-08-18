@@ -144,6 +144,35 @@ test('shift arrow keys extend note selection to the matching position on an adja
   })
 })
 
+test('arrow keys keep the caret position when moving between numbered note items', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Numbered list' }).click()
+
+  const first = page.locator('[data-note-text-input]').first()
+  await first.fill('First numbered item')
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+  const second = page.locator('[data-note-text-input]').nth(1)
+  await second.fill('Second numbered item')
+
+  await placeCaretAtOffset(second, 6)
+  await second.press('ArrowUp')
+  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+    anchor: { text: 'First numbered item', offset: 6 },
+    focus: { text: 'First numbered item', offset: 6 },
+  })
+
+  await first.press('ArrowDown')
+  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+    anchor: { text: 'Second numbered item', offset: 6 },
+    focus: { text: 'Second numbered item', offset: 6 },
+  })
+})
+
 test('shift arrow keys select adjacent bullet items without relying on a cross-editor DOM range', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
