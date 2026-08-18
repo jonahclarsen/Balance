@@ -48,6 +48,32 @@ async function noteSelectionEndpoints(page: Page) {
   })
 }
 
+async function noteCaretVisualPosition(page: Page) {
+  return page.evaluate(() => {
+    const selection = document.getSelection()
+    if (!selection?.isCollapsed || selection.rangeCount === 0) return null
+    const caret = selection.getRangeAt(0)
+    const element = caret.startContainer instanceof Element ? caret.startContainer : caret.startContainer.parentElement
+    const input = element?.closest<HTMLElement>('[data-note-text-input]')
+    if (!input) return null
+
+    const caretRect = caret.getBoundingClientRect()
+    const content = document.createRange()
+    content.selectNodeContents(input)
+    const lineTops = Array.from(content.getClientRects())
+      .filter((rect) => rect.height > 0 && rect.width > 0)
+      .map((rect) => rect.top)
+    return {
+      inputIndex: Array.from(document.querySelectorAll('[data-note-text-input]')).indexOf(input),
+      caretLeft: caretRect.left,
+      caretTop: caretRect.top,
+      firstLineTop: Math.min(...lineTops),
+      lastLineTop: Math.max(...lineTops),
+      lineCount: new Set(lineTops.map((top) => Math.round(top))).size,
+    }
+  })
+}
+
 async function copyNoteSelection(page: Page) {
   return page.evaluate(() => {
     const target = document.activeElement
@@ -144,7 +170,7 @@ test('shift arrow keys extend note selection to the matching position on an adja
   })
 })
 
-test('arrow keys keep the caret position when moving between numbered note items', async ({ page }) => {
+test('arrow keys keep the visual caret column when moving between numbered note items', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -160,17 +186,50 @@ test('arrow keys keep the caret position when moving between numbered note items
   await second.fill('Second numbered item')
 
   await placeCaretAtOffset(second, 6)
+  const source = await noteCaretVisualPosition(page)
+  expect(source).not.toBeNull()
   await second.press('ArrowUp')
-  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
-    anchor: { text: 'First numbered item', offset: 6 },
-    focus: { text: 'First numbered item', offset: 6 },
-  })
+  const movedUp = await noteCaretVisualPosition(page)
+  expect(movedUp?.inputIndex).toBe(0)
+  expect(Math.abs((movedUp?.caretLeft ?? 0) - (source?.caretLeft ?? 0))).toBeLessThan(6)
 
   await first.press('ArrowDown')
-  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
-    anchor: { text: 'Second numbered item', offset: 6 },
-    focus: { text: 'Second numbered item', offset: 6 },
-  })
+  const movedDown = await noteCaretVisualPosition(page)
+  expect(movedDown?.inputIndex).toBe(1)
+  expect(Math.abs((movedDown?.caretLeft ?? 0) - (source?.caretLeft ?? 0))).toBeLessThan(6)
+})
+
+test('arrow keys enter the boundary line of a wrapped numbered note item', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Numbered list' }).click()
+  await page.locator('.note-blocks').evaluate((element) => (element.style.width = '520px'))
+
+  const first = page.locator('[data-note-text-input]').first()
+  await first.fill('This first numbered item is deliberately long enough to wrap while leaving plenty of text on its final visual line')
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+  const second = page.locator('[data-note-text-input]').nth(1)
+  await second.fill('Second numbered item')
+
+  await placeCaretAtOffset(second, 6)
+  const source = await noteCaretVisualPosition(page)
+  expect(source?.lineCount).toBe(1)
+  await second.press('ArrowUp')
+  const movedUp = await noteCaretVisualPosition(page)
+  expect(movedUp?.inputIndex).toBe(0)
+  expect(movedUp?.lineCount).toBeGreaterThan(1)
+  expect(movedUp?.caretTop).toBeCloseTo(movedUp?.lastLineTop ?? -1, 0)
+  expect(Math.abs((movedUp?.caretLeft ?? 0) - (source?.caretLeft ?? 0))).toBeLessThan(6)
+
+  await first.press('ArrowDown')
+  const movedDown = await noteCaretVisualPosition(page)
+  expect(movedDown?.inputIndex).toBe(1)
+  expect(movedDown?.caretTop).toBeCloseTo(movedDown?.firstLineTop ?? -1, 0)
+  expect(Math.abs((movedDown?.caretLeft ?? 0) - (source?.caretLeft ?? 0))).toBeLessThan(6)
 })
 
 test('shift arrow keys select adjacent bullet items without relying on a cross-editor DOM range', async ({ page }) => {

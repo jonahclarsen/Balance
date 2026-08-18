@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
+  import { caretPointFromCoordinates } from './caretGeometry'
   import NoteItemEditor from './NoteItemEditor.svelte'
   import { htmlToPlainText, sanitizeInlineHTML, type ItemLink } from './planner'
   import { noteClipboardHTML, noteClipboardPlainText, type NoteClipboardBlock } from './noteClipboard'
@@ -364,24 +365,6 @@
       return
     }
     applyPointerSelection(pointerSelectionAnchor, pointerSelectionFocus)
-  }
-
-  function caretPointFromCoordinates(editor: HTMLDivElement, clientX: number, clientY: number) {
-    const rect = editor.getBoundingClientRect()
-    const x = Math.min(Math.max(clientX, rect.left + 1), rect.right - 1)
-    const y = Math.min(Math.max(clientY, rect.top + 1), rect.bottom - 1)
-    const documentWithCaretAPI = document as Document & {
-      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
-      caretRangeFromPoint?: (x: number, y: number) => Range | null
-    }
-    const position = documentWithCaretAPI.caretPositionFromPoint?.(x, y)
-    const point = position
-      ? { node: position.offsetNode, offset: position.offset }
-      : (() => {
-          const range = documentWithCaretAPI.caretRangeFromPoint?.(x, y)
-          return range ? { node: range.startContainer, offset: range.startOffset } : null
-        })()
-    return point && editor.contains(point.node) ? point : null
   }
 
   function finishNotePointerSelection(event: PointerEvent) {

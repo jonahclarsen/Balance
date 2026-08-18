@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
+  import { caretPointFromCoordinates, collapsedCaretClientX } from './caretGeometry'
   import { escapeHTML, linkifyItemText, type ItemLink, type ItemTextSegment } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, NoteItem, NoteItemKind } from './types'
@@ -70,7 +71,7 @@
       extendSelectionToAdjacentLine(current, direction)
       return
     }
-    focusAdjacentAtOffset(current, direction)
+    focusAdjacentVisually(current, direction)
   }
 
   function extendSelectionToAdjacentLine(current: HTMLDivElement, direction: MoveDirection) {
@@ -210,12 +211,41 @@
     if (target) focusElement(target, position)
   }
 
-  function focusAdjacentAtOffset(current: HTMLDivElement, direction: MoveDirection) {
+  function focusAdjacentVisually(current: HTMLDivElement, direction: MoveDirection) {
     const inputs = noteInputs()
     const index = inputs.indexOf(current)
     const target = inputs[direction === 'up' ? index - 1 : index + 1]
+    if (!target) return
+
+    const sourceX = collapsedCaretClientX(current)
     const targetId = target?.dataset.noteTextInputId
-    if (targetId) focusInputAtOffset(targetId, caretOffset(current))
+    const sourceOffset = caretOffset(current)
+    if (sourceX === null) {
+      if (targetId) focusInputAtOffset(targetId, sourceOffset)
+      return
+    }
+
+    target.focus()
+    const rect = target.getBoundingClientRect()
+    const style = getComputedStyle(target)
+    const lineHeight = Number.parseFloat(style.lineHeight) || 20
+    const paddingTop = Number.parseFloat(style.paddingTop) || 0
+    const paddingBottom = Number.parseFloat(style.paddingBottom) || 0
+    const targetY = direction === 'up'
+      ? rect.bottom - paddingBottom - lineHeight / 2
+      : rect.top + paddingTop + lineHeight / 2
+    const point = caretPointFromCoordinates(target, sourceX, targetY)
+    if (!point) {
+      if (targetId) focusInputAtOffset(targetId, sourceOffset)
+      return
+    }
+
+    const range = document.createRange()
+    range.setStart(point.node, point.offset)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
   }
 
   function focusInput(itemId: Id, position: 'start' | 'end' = 'end') {
