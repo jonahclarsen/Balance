@@ -4765,7 +4765,7 @@ nav button.active {
   border: 0;
   background: transparent;
   padding: 0;
-  cursor: default;
+  cursor: pointer;
   opacity: 0;
 }
 
