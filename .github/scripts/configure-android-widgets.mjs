@@ -491,20 +491,20 @@ function homeLayout(theme) {
 
         <FrameLayout
             android:id="@+id/widget_refresh_touch_target"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:layout_marginStart="2dp"
             android:contentDescription="Sync and refresh Balance widget">
-            <TextView
+            <ImageView
                 android:id="@+id/widget_refresh"
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:layout_gravity="center"
                 android:background="@drawable/balance_widget_${theme.id}_refresh_background"
-                android:gravity="center"
-                android:text="↻"
-                android:textColor="${theme.accent}"
-                android:textSize="18sp" />
+                android:contentDescription="@null"
+                android:importantForAccessibility="no"
+                android:padding="7dp"
+                android:src="@drawable/balance_widget_${theme.id}_refresh_arrow" />
         </FrameLayout>
     </LinearLayout>
 
@@ -602,6 +602,20 @@ function refreshBackground(theme) {
 `
 }
 
+function refreshArrow(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="${theme.accent}"
+        android:pathData="M12,4V1L8,5l4,4V6c3.31,0 6,2.69 6,6 0,1.01 -0.25,1.97 -0.69,2.8l1.46,1.46C19.54,15.03 20,13.57 20,12c0,-4.42 -3.58,-8 -8,-8zM12,18c-3.31,0 -6,-2.69 -6,-6 0,-1.01 0.25,-1.97 0.69,-2.8L5.23,7.74C4.46,8.97 4,10.43 4,12c0,4.42 3.58,8 8,8v3l4,-4 -4,-4v3z" />
+</vector>
+`
+}
+
 function taskSurface(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
@@ -689,6 +703,10 @@ function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
   files.set(
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_refresh_background.xml`),
     refreshBackground(theme),
+  )
+  files.set(
+    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_refresh_arrow.xml`),
+    refreshArrow(theme),
   )
   files.set(
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_task_surface.xml`),

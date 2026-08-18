@@ -187,12 +187,19 @@ class BalanceSyncWorker {
     assert.match(violetLayout, /@\+id\/widget_refresh_touch_target/)
     assert.match(
       violetLayout,
-      /android:id="@\+id\/widget_refresh_touch_target"[\s\S]*?android:layout_width="48dp"[\s\S]*?android:layout_height="48dp"/,
+      /android:id="@\+id\/widget_refresh_touch_target"[\s\S]*?android:layout_width="56dp"[\s\S]*?android:layout_height="56dp"/,
     )
     assert.match(
       violetLayout,
-      /android:id="@\+id\/widget_refresh"[\s\S]*?android:layout_width="32dp"[\s\S]*?android:layout_height="32dp"/,
+      /<ImageView[\s\S]*?android:id="@\+id\/widget_refresh"[\s\S]*?android:layout_width="32dp"[\s\S]*?android:layout_height="32dp"[\s\S]*?android:layout_gravity="center"[\s\S]*?android:src="@drawable\/balance_widget_violet_refresh_arrow"/,
     )
+    assert.doesNotMatch(violetLayout, /android:text="↻"/)
+    const refreshArrow = await readFile(
+      join(root, 'res/drawable/balance_widget_violet_refresh_arrow.xml'),
+      'utf8',
+    )
+    assert.match(refreshArrow, /<vector/)
+    assert.match(refreshArrow, /android:fillColor="#7355A2"/)
     assert.match(
       violetLayout,
       /android:id="@\+id\/widget_progress_bar"[\s\S]*?android:layout_height="4dp"/,
