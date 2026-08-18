@@ -2347,6 +2347,59 @@ test('cmd d toggles the focused plan item completion state', async ({ page }) =>
     .toBe(false)
 })
 
+test('checking the final child completes each satisfied parent task', async ({ page }) => {
+  await seedPlanTree(page, [
+    {
+      id: 'parent',
+      text: 'Parent task',
+      children: [
+        {
+          id: 'child-group',
+          text: 'Child group',
+          children: [
+            { id: 'first-child', text: 'First child', children: [] },
+            { id: 'final-child', text: 'Final child', children: [] },
+          ],
+        },
+        { id: 'direct-child', text: 'Direct child', children: [] },
+      ],
+    },
+    { id: 'remaining-task', text: 'Remaining task', children: [] },
+  ])
+
+  const checkbox = (text: string) =>
+    page
+      .getByRole('listitem', { name: `Plan item: ${text}`, exact: true })
+      .getByRole('checkbox', { name: 'Complete item' })
+      .first()
+  const parent = checkbox('Parent task')
+  const childGroup = checkbox('Child group')
+  const finalChild = checkbox('Final child')
+
+  await checkbox('First child').check()
+  await checkbox('Direct child').check()
+  await expect(childGroup).not.toBeChecked()
+  await expect(parent).not.toBeChecked()
+
+  await finalChild.check()
+  await expect(childGroup).toBeChecked()
+  await expect(parent).toBeChecked()
+  await expect.poll(async () =>
+    page.evaluate(() => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      const parentTask = state.plans?.[0]?.items?.find((item: { id: string }) => item.id === 'parent')
+      return {
+        parent: parentTask?.done,
+        childGroup: parentTask?.children?.find((item: { id: string }) => item.id === 'child-group')?.done,
+      }
+    }),
+  ).toEqual({ parent: true, childGroup: true })
+
+  await finalChild.uncheck()
+  await expect(childGroup).toBeChecked()
+  await expect(parent).toBeChecked()
+})
+
 test('enter splits plan items and shift-enter inserts a line break', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

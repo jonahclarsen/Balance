@@ -40,6 +40,7 @@ import {
   outdentPlanItems as outdentPlanItemsInTree,
   outdentTemplateItem as outdentTemplateItemInTree,
   clonePlanItemsForPaste,
+  completePlanItemAncestors,
   copyPlanItems as copyPlanItemsFromTree,
   pastePlanItems as pastePlanItemsIntoTree,
   sanitizeInlineHTML,
@@ -648,18 +649,35 @@ function createPlannerStore() {
     ) {
       const isTextPatch = 'text' in patch || 'html' in patch
       let goalMatchesChanged = false
+      const completedParentIds: Id[] = []
       const mergeOptions =
         options.mergeKey && options.mergeHistory !== false
           ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
           : isTextPatch && options.mergeHistory !== false
             ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
             : {}
-      commit('patch_plan_item', { planId, itemId, patch }, (state) => updatePlan(state, planId, (plan) => {
-        const items = updatePlanItem(plan.items, itemId, (item) => {
+      commit('patch_plan_item', { planId, itemId, patch, completedParentIds }, (state) => updatePlan(state, planId, (plan) => {
+        let items = updatePlanItem(plan.items, itemId, (item) => {
           const nextItem = applyPatch(item, patch)
           goalMatchesChanged = planItemGoalMatchesChanged(state.goals, plan.date, item, nextItem, { force: true })
           return nextItem
         })
+        if (patch.done === true) {
+          const completed = completePlanItemAncestors(items, [itemId])
+          items = completed.items
+          completedParentIds.push(...completed.completedParentIds)
+          for (const parentId of completed.completedParentIds) {
+            const previousParent = findPlanItem(plan.items, parentId)
+            const completedParent = findPlanItem(items, parentId)
+            if (
+              previousParent &&
+              completedParent &&
+              planItemGoalMatchesChanged(state.goals, plan.date, previousParent, completedParent, { force: true })
+            ) {
+              goalMatchesChanged = true
+            }
+          }
+        }
         return items === plan.items ? plan : { ...plan, items }
       }), {
         ...mergeOptions,
@@ -675,8 +693,9 @@ function createPlannerStore() {
       if (itemIds.length === 0) return
 
       let goalMatchesChanged = false
+      const completedParentIds: Id[] = []
 
-      commit('patch_plan_items_done', { planId, itemIds, done }, (state) => updatePlan(state, planId, (plan) => {
+      commit('patch_plan_items_done', { planId, itemIds, done, completedParentIds }, (state) => updatePlan(state, planId, (plan) => {
         let items = plan.items
 
         for (const itemId of itemIds) {
@@ -687,6 +706,23 @@ function createPlannerStore() {
             }
             return nextItem
           })
+        }
+
+        if (done) {
+          const completed = completePlanItemAncestors(items, itemIds)
+          items = completed.items
+          completedParentIds.push(...completed.completedParentIds)
+          for (const parentId of completed.completedParentIds) {
+            const previousParent = findPlanItem(plan.items, parentId)
+            const completedParent = findPlanItem(items, parentId)
+            if (
+              previousParent &&
+              completedParent &&
+              planItemGoalMatchesChanged(state.goals, plan.date, previousParent, completedParent, { force: true })
+            ) {
+              goalMatchesChanged = true
+            }
+          }
         }
 
         return items === plan.items ? plan : { ...plan, items }

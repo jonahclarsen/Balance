@@ -357,6 +357,43 @@ export function updatePlanItem(items: PlanItem[], itemId: Id, updater: (item: Pl
   return changed ? nextItems : items
 }
 
+export function completePlanItemAncestors(
+  items: PlanItem[],
+  changedItemIds: Iterable<Id>,
+): { items: PlanItem[]; completedParentIds: Id[] } {
+  const changedIds = new Set(changedItemIds)
+  const completedParentIds: Id[] = []
+
+  function completeAncestors(nodes: PlanItem[]): { nodes: PlanItem[]; containsChange: boolean } {
+    let changed = false
+    let containsChange = false
+    const nextNodes = nodes.map((item) => {
+      const childResult = completeAncestors(item.children)
+      const itemContainsChange = changedIds.has(item.id) || childResult.containsChange
+      containsChange ||= itemContainsChange
+
+      let nextItem = childResult.nodes === item.children ? item : { ...item, children: childResult.nodes }
+      if (
+        childResult.containsChange &&
+        !nextItem.done &&
+        nextItem.children.length > 0 &&
+        nextItem.children.every((child) => child.done)
+      ) {
+        nextItem = { ...nextItem, done: true }
+        completedParentIds.push(nextItem.id)
+      }
+
+      if (nextItem !== item) changed = true
+      return nextItem
+    })
+
+    return { nodes: changed ? nextNodes : nodes, containsChange }
+  }
+
+  const result = completeAncestors(items)
+  return { items: result.nodes, completedParentIds }
+}
+
 export function addPlanItem(items: PlanItem[], parentId: Id | null, item = createPlanItem()): PlanItem[] {
   if (!parentId) return [...items, item]
 

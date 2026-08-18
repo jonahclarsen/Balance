@@ -3720,7 +3720,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
                 )
                 .map_err(|error| error.to_string())?;
             }
-            Ok(())
+            complete_plan_item_parents(tx, payload)
         }
         "patch_plan_daily_reminder" => {
             tx.execute(
@@ -4556,25 +4556,66 @@ fn build_plan_item_patch_undo(
         inverse_patch.insert("timeHidden".into(), json!(time_hidden));
     }
 
-    if inverse_patch.is_empty() {
-        return Ok(None);
+    let mut operations = Vec::new();
+    if !inverse_patch.is_empty() {
+        operations.push(storage_operation(
+            "patch_plan_item",
+            json!({
+                "planId": required_string(payload, "planId")?,
+                "itemId": item_id,
+                "patch": Value::Object(inverse_patch),
+            }),
+        ));
     }
 
-    Ok(Some(storage_operation(
-        "patch_plan_item",
-        json!({
-            "planId": required_string(payload, "planId")?,
-            "itemId": item_id,
-            "patch": Value::Object(inverse_patch),
-        }),
-    )))
+    if let Some(parent_ids) = payload.get("completedParentIds") {
+        for parent_id in parent_ids
+            .as_array()
+            .ok_or_else(|| "Expected completedParentIds array".to_string())?
+        {
+            let parent_id = parent_id
+                .as_str()
+                .ok_or_else(|| "Expected completed parent item id".to_string())?;
+            let Some((_, _, done, _, _, _)) = read_plan_item_fields(connection, parent_id)? else {
+                continue;
+            };
+            operations.push(storage_operation(
+                "patch_plan_item",
+                json!({
+                    "planId": required_string(payload, "planId")?,
+                    "itemId": parent_id,
+                    "patch": { "done": done },
+                }),
+            ));
+        }
+    }
+
+    match operations.len() {
+        0 => Ok(None),
+        1 => Ok(operations.pop()),
+        _ => Ok(Some(storage_operation(
+            "batch",
+            json!({ "operations": operations }),
+        ))),
+    }
 }
 
 fn build_patch_plan_items_done_undo(
     connection: &Connection,
     payload: &Value,
 ) -> Result<Option<Value>, String> {
-    let operations = required_array(payload, "itemIds")?
+    let mut item_ids = required_array(payload, "itemIds")?.to_vec();
+    if let Some(parent_ids) = payload.get("completedParentIds") {
+        item_ids.extend(
+            parent_ids
+                .as_array()
+                .ok_or_else(|| "Expected completedParentIds array".to_string())?
+                .iter()
+                .cloned(),
+        );
+    }
+
+    let operations = item_ids
         .iter()
         .filter_map(|item_id| item_id.as_str())
         .map(|item_id| {
@@ -5970,6 +6011,28 @@ fn patch_plan_item(connection: &Connection, payload: &Value) -> Result<(), Strin
                     optional_bool(patch, "timeHidden")?.map(|value| if value { 1 } else { 0 }),
                     item_id
                 ],
+            )
+            .map_err(|error| error.to_string())?;
+    }
+
+    complete_plan_item_parents(connection, payload)
+}
+
+fn complete_plan_item_parents(connection: &Connection, payload: &Value) -> Result<(), String> {
+    let Some(parent_ids) = payload.get("completedParentIds") else {
+        return Ok(());
+    };
+
+    for parent_id in parent_ids
+        .as_array()
+        .ok_or_else(|| "Expected completedParentIds array".to_string())?
+    {
+        connection
+            .execute(
+                "update plan_items set done = 1 where id = ?1",
+                params![parent_id
+                    .as_str()
+                    .ok_or_else(|| "Expected completed parent item id".to_string())?],
             )
             .map_err(|error| error.to_string())?;
     }
@@ -11065,6 +11128,91 @@ mod tests {
         assert_eq!(read_operations(&connection).unwrap().len(), 2);
         assert_eq!(history_entry_count(&connection), 1);
         assert_eq!(saved["localSequence"], 2);
+    }
+
+    #[test]
+    fn completing_a_child_persists_and_undoes_completed_parents() {
+        let database = TestDatabase::new("complete-plan-item-parents");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Parent completion test");
+        state["plans"][0]["items"] = json!([{
+            "id": "grandparent",
+            "text": "Grandparent",
+            "html": "Grandparent",
+            "done": false,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": [{
+                "id": "parent",
+                "text": "Parent",
+                "html": "Parent",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": [
+                    {
+                        "id": "finished_child",
+                        "text": "Finished child",
+                        "html": "Finished child",
+                        "done": true,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    },
+                    {
+                        "id": "final_child",
+                        "text": "Final child",
+                        "html": "Final child",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }
+                ]
+            }]
+        }]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "patch_plan_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemId": "final_child",
+                    "patch": { "done": true },
+                    "completedParentIds": ["parent", "grandparent"]
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        let grandparent = &saved["plans"][0]["items"][0];
+        assert_eq!(grandparent["done"], true);
+        assert_eq!(grandparent["children"][0]["done"], true);
+        assert_eq!(grandparent["children"][0]["children"][1]["done"], true);
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        let grandparent = &undone["plans"][0]["items"][0];
+        assert_eq!(grandparent["done"], false);
+        assert_eq!(grandparent["children"][0]["done"], false);
+        assert_eq!(grandparent["children"][0]["children"][1]["done"], false);
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        let grandparent = &redone["plans"][0]["items"][0];
+        assert_eq!(grandparent["done"], true);
+        assert_eq!(grandparent["children"][0]["done"], true);
+        assert_eq!(grandparent["children"][0]["children"][1]["done"], true);
     }
 
     #[test]
