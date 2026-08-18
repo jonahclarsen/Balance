@@ -613,6 +613,37 @@ fn stage_outbox(conn: &Connection, key: &SyncKey, epoch: &str) -> Result<bool> {
     Ok(false)
 }
 
+/// Give the Android debug profile one ordinary encrypted relay batch per
+/// synthetic operation without changing production batching thresholds.
+#[cfg(all(target_os = "android", debug_assertions))]
+pub(crate) fn stage_android_ci_outbox_batches(
+    conn: &Connection,
+    key: &SyncKey,
+    ops: &[Op],
+) -> Result<()> {
+    ensure_relay_tables(conn)?;
+    let epoch = relay_state(conn)?.0;
+    for op in ops {
+        let batch_id = random_token();
+        let ciphertext = seal(
+            key,
+            &RelayEnvelope {
+                v: PROTOCOL_VERSION,
+                epoch: epoch.clone(),
+                ops: vec![op.clone()],
+            },
+        )?;
+        let ids =
+            serde_json::to_string(&[&op.id]).map_err(|error| Error::Codec(error.to_string()))?;
+        conn.execute(
+            "INSERT INTO sync_relay_outbox (batch_id, epoch, ciphertext, op_ids_json)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![batch_id, epoch, ciphertext, ids],
+        )?;
+    }
+    Ok(())
+}
+
 fn upload_outbox(
     conn: &Connection,
     client: &Client,

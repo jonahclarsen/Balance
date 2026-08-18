@@ -1068,6 +1068,51 @@ async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Res
     .await
 }
 
+/// CI-only bulk fixture setup for the Android emulator profile. Production
+/// builds reject the command, and the profile supplies only generated data.
+#[tauri::command]
+async fn persist_operations_for_android_ci(
+    app: tauri::AppHandle,
+    operations_json: String,
+) -> Result<(), String> {
+    if !cfg!(all(target_os = "android", debug_assertions)) {
+        return Err("Android CI fixture setup is unavailable in this build.".to_string());
+    }
+    run_database_task(move || {
+        let database_path = app_database_path(&app)?;
+        let recovery_key = database_recovery_key(&database_path)?;
+        let mut connection = open_database_at(&database_path, &recovery_key)?;
+        let operations = parse_json(&operations_json)?;
+        let operations = operations
+            .as_array()
+            .ok_or_else(|| "Android CI operations must be an array.".to_string())?;
+        // Keep fixture preparation independent from ordinary local checkpoint
+        // maintenance until the profile has uploaded its separate batches.
+        set_metadata(&connection, SYNC_COMPACTION_COORDINATOR, "false")?;
+        operations
+            .iter()
+            .try_for_each(|operation| persist_operation_to_database(&mut connection, operation))?;
+        #[cfg(all(target_os = "android", debug_assertions))]
+        {
+            let operation_ids = operations
+                .iter()
+                .map(|operation| required_string(operation, "id").map(str::to_string))
+                .collect::<Result<Vec<_>, _>>()?;
+            let pairing_code = sync::read_pairing_code(&connection)
+                .map_err(sync::Error::into_string)?
+                .ok_or_else(|| "Android CI sync key is missing.".to_string())?;
+            let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+                .map_err(sync::Error::into_string)?;
+            let operations =
+                sync::ops_by_id(&connection, &operation_ids).map_err(sync::Error::into_string)?;
+            sync::relay_client::stage_android_ci_outbox_batches(&connection, &key, &operations)
+                .map_err(sync::Error::into_string)?;
+        }
+        Ok(())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn undo_last_operation(
     app: tauri::AppHandle,
@@ -9579,6 +9624,7 @@ pub fn run() {
             read_app_state,
             initialize_app_state,
             persist_operation,
+            persist_operations_for_android_ci,
             undo_last_operation,
             redo_last_operation,
             list_recovery_entries,

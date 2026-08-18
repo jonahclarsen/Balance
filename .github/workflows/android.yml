@@ -21,6 +21,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_sync_catchup_profile:
+        description: Profile a synthetic multi-batch Android background catch-up
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -240,6 +245,7 @@ jobs:
           # but is too flaky and expensive to remain a release gate.
           BALANCE_RUN_UI_PAIRING_E2E: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_pairing && '1' || '0' }}
           BALANCE_RUN_RESUME_STRESS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_resume_stress && '1' || '0' }}
+          BALANCE_RUN_SYNC_CATCHUP_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_sync_catchup_profile && '1' || '0' }}
         with:
           api-level: 34
           arch: x86_64
@@ -271,6 +277,10 @@ jobs:
             sync-e2e-large-task-profile.json
             android-resume-stress.json
             android-resume-relay.log
+            android-sync-catchup-profile.json
+            android-sync-catchup-relay.log
+            android-sync-catchup-logcat.txt
+            android-sync-catchup-jobscheduler.txt
             startup-profile-log.txt
             sync-e2e-*.xml
             sync-e2e-*.png

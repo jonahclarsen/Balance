@@ -333,6 +333,14 @@ if [ "${BALANCE_RUN_RESUME_STRESS:-0}" = 1 ]; then
   node .github/scripts/android-resume-stress.mjs
 fi
 
+# Optional synthetic profile for delayed Android devices. It creates an
+# isolated relay and app database, queues more batches than one background pass
+# is allowed to download, forces the real WorkManager job, then measures the
+# foreground catch-up. No installed or personal data is read.
+if [ "${BALANCE_RUN_SYNC_CATCHUP_PROFILE:-0}" = 1 ]; then
+  node .github/scripts/android-sync-catchup-profile.mjs
+fi
+
 # The checks above are the deterministic release gate: a real APK booted twice,
 # exercised SQLCipher + Android Keystore recovery, registered background sync,
 # loaded the home-screen widget provider, and reconciled two encrypted databases over TCP.
