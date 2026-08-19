@@ -659,10 +659,6 @@
         <button class="primary note-new" type="button" on:click={createAndSelect}>+ New</button>
       {/if}
     </div>
-    <div class="notes-shelves" role="group" aria-label="Note location">
-      <button type="button" class:active={!trashOpen} aria-pressed={!trashOpen} on:click={showNotes}>Notes <span>{activeNotes.length}</span></button>
-      <button type="button" class:active={trashOpen} aria-pressed={trashOpen} on:click={showTrash}>Trash <span>{trashedNotes.length}</span></button>
-    </div>
     <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Trash' : 'Filter notes'} aria-label={trashOpen ? 'Filter Trash' : 'Filter notes'} />
     <div class="notes-list">
       {#each filteredNotes as note (note.id)}
@@ -674,6 +670,14 @@
       {/each}
       {#if visibleNotes.length > 0 && filteredNotes.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
     </div>
+    {#if trashOpen}
+      <button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>
+    {:else}
+      <button class="notes-trash-link" type="button" on:click={showTrash}>
+        <span>Trash</span>
+        {#if trashedNotes.length > 0}<span class="notes-trash-count">{trashedNotes.length}</span>{/if}
+      </button>
+    {/if}
   </aside>
 
   <section class="note-document">
@@ -769,7 +773,6 @@
           <div class="note-empty-trash-icon" aria-hidden="true">✓</div>
           <h3>Trash is empty</h3>
           <p>Deleted notes stay here for {NOTE_TRASH_RETENTION_DAYS} days before they are permanently deleted.</p>
-          <button type="button" on:click={showNotes}>Back to Notes</button>
         {:else}
           <h3>{activeNotes.length === 0 ? 'Your notes live here' : 'Choose a note'}</h3>
           <p>Keep reference material, lists, and ideas separate from any particular day.</p>

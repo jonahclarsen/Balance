@@ -922,7 +922,7 @@ test('Trash keeps notes read-only, restores them, and supports immediate deletio
 
   await page.getByRole('button', { name: 'Restore' }).click()
   await expect(page.getByLabel('Note title')).toHaveValue('Recoverable thought')
-  await expect(page.getByRole('button', { name: 'Trash 0' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Trash', exact: true })).toBeVisible()
 
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Move to Trash' }).click()
@@ -930,7 +930,7 @@ test('Trash keeps notes read-only, restores them, and supports immediate deletio
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Delete now' }).click()
   await expect(page.getByRole('heading', { name: 'Trash is empty' })).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Trash 0' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Back to Notes' })).toBeVisible()
 
   await page.keyboard.press('Meta+Z')
   await expect(page.getByRole('heading', { name: 'Recoverable thought' })).toBeVisible()
@@ -959,7 +959,7 @@ test('notes expire from Trash after 30 days', async ({ page }) => {
   await page.reload()
   await openNotesView(page)
 
-  await expect(page.getByRole('button', { name: 'Trash 0' })).toBeVisible()
-  await page.getByRole('button', { name: 'Trash 0' }).click()
+  await expect(page.getByRole('button', { name: 'Trash', exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Trash', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Trash is empty' })).toBeVisible()
 })
