@@ -248,12 +248,13 @@ test('mobile task options gate selection and open the large auto-saving time edi
 
   const start = dialog.getByRole('button', { name: /Start time/ })
   const originalStart = await start.innerText()
-  await dragVertically(page, start, -34, 1)
+  await dragVertically(page, start, -28, 1)
   await expect(start).not.toHaveText(originalStart)
+  await expect(start).toHaveText('1pm')
   const vibrationPatterns = await page.evaluate(
     () => (window as typeof window & { balanceTestVibrations?: Array<number | number[]> }).balanceTestVibrations ?? [],
   )
-  expect(vibrationPatterns).toContainEqual([16, 24, 16, 24, 16])
+  expect(vibrationPatterns).toContainEqual([16, 24, 16])
 
   await page.evaluate(() => {
     const testWindow = window as typeof window & {

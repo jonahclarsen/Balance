@@ -26,6 +26,7 @@
   export let onShift: ((targets: TimeShiftTarget[], delta: number) => void) | null = null
   export let expanded = false
   export let hapticSteps = false
+  export let dragPixelsPerStep = 10
   export let showRemove = true
 
   $: warningReasons = [
@@ -66,7 +67,7 @@
   function continueDrag(event: PointerEvent) {
     if (!dragState) return
 
-    const steps = Math.round((dragState.originY - event.clientY) / 10)
+    const steps = Math.round((dragState.originY - event.clientY) / dragPixelsPerStep)
     const delta = steps * 15
 
     if (hapticSteps && steps !== dragState.lastSteps) {
