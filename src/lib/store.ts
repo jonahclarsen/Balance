@@ -1409,7 +1409,11 @@ function createPlannerStore() {
     splitNoteItem(noteId: Id, itemId: Id, before: { html: string; text: string }, after: { html: string; text: string }) {
       const note = get(store).notes.find((candidate) => candidate.id === noteId)
       const source = note ? findPlanItem(note.items, itemId) as NoteItem | null : null
-      const placement = splitPlacementForBeforeText(before)
+      const emptyListItem =
+        (source?.kind === 'bullet' || source?.kind === 'numbered') &&
+        !before.text.trim() &&
+        !after.text.trim()
+      const placement = emptyListItem ? 'after' : splitPlacementForBeforeText(before)
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
       const nextKind = source?.kind === 'heading' && placement === 'after' ? 'paragraph' : (source?.kind ?? 'paragraph')

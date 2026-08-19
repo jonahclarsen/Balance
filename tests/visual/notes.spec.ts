@@ -426,13 +426,17 @@ test('empty bulleted and numbered note items remain list items on Enter', async 
   await expect(page.locator('.note-item')).toHaveCount(2)
   const second = page.locator('.note-item').nth(1)
   await expect(second).toHaveClass(/note-bullet/)
+  const secondId = await second.getAttribute('data-note-item-id')
+  expect(secondId).not.toBeNull()
   await second.locator('[data-note-text-input]').press('Enter')
 
   await expect(page.locator('.note-item')).toHaveCount(3)
-  await expect(second).toHaveClass(/note-bullet/)
-  await expect(page.locator('.note-item').nth(2)).toHaveClass(/note-bullet/)
+  await expect(page.locator('.note-item').nth(1)).toHaveAttribute('data-note-item-id', secondId!)
+  const newBullet = page.locator('.note-item').nth(2)
+  await expect(newBullet).toHaveClass(/note-bullet/)
+  await expect(newBullet.locator('[data-note-text-input]')).toBeFocused()
 
-  const third = page.locator('.note-item').nth(2)
+  const third = newBullet
   await third.locator('[data-note-text-input]').fill('1. ')
   await expect(third).toHaveClass(/note-numbered/)
   await third.locator('[data-note-text-input]').fill('Numbered')
@@ -442,11 +446,15 @@ test('empty bulleted and numbered note items remain list items on Enter', async 
   await expect(page.locator('.note-item')).toHaveCount(4)
   const fourth = page.locator('.note-item').nth(3)
   await expect(fourth).toHaveClass(/note-numbered/)
+  const fourthId = await fourth.getAttribute('data-note-item-id')
+  expect(fourthId).not.toBeNull()
   await fourth.locator('[data-note-text-input]').press('Enter')
 
   await expect(page.locator('.note-item')).toHaveCount(5)
-  await expect(fourth).toHaveClass(/note-numbered/)
-  await expect(page.locator('.note-item').nth(4)).toHaveClass(/note-numbered/)
+  await expect(page.locator('.note-item').nth(3)).toHaveAttribute('data-note-item-id', fourthId!)
+  const newNumbered = page.locator('.note-item').nth(4)
+  await expect(newNumbered).toHaveClass(/note-numbered/)
+  await expect(newNumbered.locator('[data-note-text-input]')).toBeFocused()
 })
 
 test('notes support a seamless editor, natural formatting, persistence, search, and app links', async ({ page }, testInfo) => {
