@@ -975,14 +975,9 @@ return rows`
     return true
   }
 
-  async function confirmTrashNote(noteId: Id): Promise<boolean> {
+  function binNote(noteId: Id): boolean {
     const note = $plannerStore.notes.find((candidate) => candidate.id === noteId)
-    if (!note) return false
-    const message = `Move “${note.title.trim() || 'Untitled note'}” to Trash? You can restore it for 30 days.`
-    const confirmed = isTauri()
-      ? await confirmDialog(message, { title: 'Move note to Trash?', kind: 'warning' })
-      : window.confirm(message)
-    if (!confirmed) return false
+    if (!note || note.deletedAt) return false
     plannerStore.trashNote(noteId)
     return true
   }
@@ -1004,7 +999,7 @@ return rows`
     if (count === 0) return false
     const message = `Delete ${count} note${count === 1 ? '' : 's'} now instead of waiting 30 days? You can still undo this action.`
     const confirmed = isTauri()
-      ? await confirmDialog(message, { title: 'Empty Trash?', kind: 'warning' })
+      ? await confirmDialog(message, { title: 'Empty Bin?', kind: 'warning' })
       : window.confirm(message)
     if (!confirmed) return false
     plannerStore.emptyNoteTrash()
@@ -5279,7 +5274,7 @@ return rows`
           <h2>Notes</h2>
         </div>
         <div class="notes-page-actions">
-          <button class="notes-trash-header-button" type="button" title="Open Notes Trash" on:click={() => notesPanel?.openTrash()}>Trash</button>
+          <button class="notes-trash-header-button" type="button" title="Open Notes Bin" on:click={() => notesPanel?.openTrash()}>Bin</button>
           <ImaxButton active={viewMaximized} onToggle={(event) => toggleViewMaximized('notes', event)} />
         </div>
       </header>
@@ -5292,7 +5287,7 @@ return rows`
         historyRevision={$plannerStore.historyRevision}
         onSelect={(noteId) => (selectedNoteId = noteId)}
         onCreate={plannerStore.addNote}
-        onTrash={confirmTrashNote}
+        onTrash={binNote}
         onRestore={plannerStore.restoreNote}
         onPermanentlyDelete={confirmPermanentlyDeleteNote}
         onEmptyTrash={confirmEmptyNoteTrash}

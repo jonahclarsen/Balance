@@ -652,14 +652,14 @@
 <div class="notes-workspace">
   <aside class="notes-sidebar" aria-label="Notes">
     <div class="notes-sidebar-head">
-      <h3>{trashOpen ? 'Trash' : 'Notes'}</h3>
+      <h3>{trashOpen ? 'Bin' : 'Notes'}</h3>
       {#if trashOpen}
-        {#if trashedNotes.length > 0}<button class="ghost danger note-empty-trash" type="button" aria-label="Empty Trash" on:click={emptyTrash}>Empty</button>{/if}
+        {#if trashedNotes.length > 0}<button class="ghost danger note-empty-trash" type="button" aria-label="Empty Bin" on:click={emptyTrash}>Empty</button>{/if}
       {:else}
         <button class="primary note-new" type="button" on:click={createAndSelect}>+ New</button>
       {/if}
     </div>
-    <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Trash' : 'Filter notes'} aria-label={trashOpen ? 'Filter Trash' : 'Filter notes'} />
+    <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
     <div class="notes-list">
       {#each filteredNotes as note (note.id)}
         <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => onSelect(note.id)}>
@@ -687,7 +687,7 @@
             <button class="ghost danger" type="button" on:click={() => permanentlyDelete(selectedNote!.id)}>Delete now</button>
           {:else}
             <button type="button" title="Copy an app link to this note" aria-live="polite" on:click={copyLink}>{copyButtonText}</button>
-            <button class="ghost danger" type="button" on:click={() => moveToTrash(selectedNote!.id)}>Delete</button>
+            <button class="ghost danger" type="button" on:click={() => moveToTrash(selectedNote!.id)}>Bin</button>
           {/if}
         </div>
       </header>
@@ -697,7 +697,7 @@
           <span aria-hidden="true">⌛</span>
           <div>
             <strong>{deletionCountdown(selectedNote)}</strong>
-            <small>Notes stay in Trash for {NOTE_TRASH_RETENTION_DAYS} days. Restore this note to edit it again.</small>
+            <small>Notes stay in Bin for {NOTE_TRASH_RETENTION_DAYS} days. Restore this note to edit it again.</small>
           </div>
         </div>
         <div class="note-blocks note-readonly-blocks">
@@ -764,8 +764,8 @@
       <div class="empty-state note-empty">
         {#if trashOpen}
           <div class="note-empty-trash-icon" aria-hidden="true">✓</div>
-          <h3>Trash is empty</h3>
-          <p>Deleted notes stay here for {NOTE_TRASH_RETENTION_DAYS} days before they are permanently deleted.</p>
+          <h3>Bin is empty</h3>
+          <p>Binned notes stay here for {NOTE_TRASH_RETENTION_DAYS} days before they are permanently deleted.</p>
         {:else}
           <h3>{activeNotes.length === 0 ? 'Your notes live here' : 'Choose a note'}</h3>
           <p>Keep reference material, lists, and ideas separate from any particular day.</p>
