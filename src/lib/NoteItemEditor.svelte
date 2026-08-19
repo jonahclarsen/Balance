@@ -48,7 +48,7 @@
   $: if (slashIndex >= slashCommands.length) slashIndex = 0
 
   async function handleSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
-    if (item.kind !== 'paragraph' && !before.text.trim() && !after.text.trim()) {
+    if ((item.kind === 'heading' || item.kind === 'checklist') && !before.text.trim() && !after.text.trim()) {
       patchItem(noteId, item.id, { kind: 'paragraph', done: false })
       await tick()
       focusInput(item.id, 'start')

@@ -408,6 +408,47 @@ test('shift-clicking extends a note selection across list items', async ({ page 
   })
 })
 
+test('empty bulleted and numbered note items remain list items on Enter', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  await toolbar.getByRole('button', { name: 'Bulleted list' }).click()
+  const first = page.locator('.note-item').first()
+  await expect(first).toHaveClass(/note-bullet/)
+  await first.locator('[data-note-text-input]').fill('Bullet')
+  await placeCaretAtEnd(first.locator('[data-note-text-input]'))
+  await first.locator('[data-note-text-input]').press('Enter')
+
+  await expect(page.locator('.note-item')).toHaveCount(2)
+  const second = page.locator('.note-item').nth(1)
+  await expect(second).toHaveClass(/note-bullet/)
+  await second.locator('[data-note-text-input]').press('Enter')
+
+  await expect(page.locator('.note-item')).toHaveCount(3)
+  await expect(second).toHaveClass(/note-bullet/)
+  await expect(page.locator('.note-item').nth(2)).toHaveClass(/note-bullet/)
+
+  const third = page.locator('.note-item').nth(2)
+  await third.locator('[data-note-text-input]').fill('1. ')
+  await expect(third).toHaveClass(/note-numbered/)
+  await third.locator('[data-note-text-input]').fill('Numbered')
+  await placeCaretAtEnd(third.locator('[data-note-text-input]'))
+  await third.locator('[data-note-text-input]').press('Enter')
+
+  await expect(page.locator('.note-item')).toHaveCount(4)
+  const fourth = page.locator('.note-item').nth(3)
+  await expect(fourth).toHaveClass(/note-numbered/)
+  await fourth.locator('[data-note-text-input]').press('Enter')
+
+  await expect(page.locator('.note-item')).toHaveCount(5)
+  await expect(fourth).toHaveClass(/note-numbered/)
+  await expect(page.locator('.note-item').nth(4)).toHaveClass(/note-numbered/)
+})
+
 test('notes support a seamless editor, natural formatting, persistence, search, and app links', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
