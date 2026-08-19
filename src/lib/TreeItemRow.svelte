@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte'
   import type { Id, MovePlacement } from './types'
 
   type TreeItemRowKind = 'plan' | 'day-template' | 'list-template' | 'note'
@@ -12,6 +13,7 @@
   export let selected = false
   export let done = false
   export let selectionDragging = false
+  export let wholeRowSelection = false
   export let interactive = true
   export let showSelectionHandle = true
   export let moveItem: (containerId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
@@ -25,12 +27,20 @@
   export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
   export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
   export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
+  export let onWholeRowSelectionToggle: (itemId: Id) => void = () => {}
   export let onRowClick: (event: MouseEvent) => void = () => {}
 
   type DropTarget = { element: HTMLElement; containerId: Id; targetId: Id | null; placement: MovePlacement }
 
   let dragging = false
+  let dragPointerId: number | null = null
   let activeDropTarget: DropTarget | null = null
+  let dragPointer: { x: number; y: number } | null = null
+  let dragScrollContainer: HTMLElement | null = null
+  let autoScrollFrame: number | null = null
+
+  const AUTO_SCROLL_EDGE = 88
+  const AUTO_SCROLL_MAX_SPEED = 18
 
   $: rowSelector =
     kind === 'plan'
@@ -96,12 +106,24 @@
     event.preventDefault()
     event.stopPropagation()
     dragging = true
+    dragPointerId = event.pointerId
+    dragPointer = { x: event.clientX, y: event.clientY }
+    dragScrollContainer = nearestScrollContainer(event.currentTarget as HTMLElement)
     ;(event.currentTarget as HTMLElement).setPointerCapture(event.pointerId)
+    window.addEventListener('pointermove', continuePointerDrag)
+    window.addEventListener('pointerup', endPointerDrag)
+    window.addEventListener('pointercancel', cancelPointerDrag)
   }
 
   function continuePointerDrag(event: PointerEvent) {
-    if (!dragging) return
-    const target = dropTargetAt(event.clientX, event.clientY)
+    if (!dragging || event.pointerId !== dragPointerId) return
+    dragPointer = { x: event.clientX, y: event.clientY }
+    scheduleAutoScroll()
+    updateDropTarget(event.clientX, event.clientY)
+  }
+
+  function updateDropTarget(clientX: number, clientY: number) {
+    const target = dropTargetAt(clientX, clientY)
     if (!target || (target.containerId !== containerId && !moveItemAcrossContainers)) {
       clearDropMarker()
       return
@@ -109,13 +131,84 @@
     markDropTarget(target)
   }
 
+  function scheduleAutoScroll() {
+    if (!usesMobileLayout() || autoScrollFrame !== null) return
+    autoScrollFrame = requestAnimationFrame(autoScroll)
+  }
+
+  function autoScroll() {
+    autoScrollFrame = null
+    if (!dragging || !dragPointer) return
+
+    const scrollContainer = dragScrollContainer
+    if (!scrollContainer) return
+
+    const bounds = scrollBounds(scrollContainer)
+    const delta = autoScrollDelta(dragPointer.y, bounds.top, bounds.bottom)
+    if (delta === 0) return
+
+    const previousScrollTop = scrollContainer.scrollTop
+    scrollContainer.scrollBy({ top: delta, left: 0, behavior: 'instant' })
+    if (scrollContainer.scrollTop !== previousScrollTop) updateDropTarget(dragPointer.x, dragPointer.y)
+    scheduleAutoScroll()
+  }
+
+  function autoScrollDelta(clientY: number, top: number, bottom: number) {
+    if (clientY < top + AUTO_SCROLL_EDGE) {
+      return -Math.ceil(
+        AUTO_SCROLL_MAX_SPEED * (1 - Math.max(0, clientY - top) / AUTO_SCROLL_EDGE),
+      )
+    }
+    if (clientY > bottom - AUTO_SCROLL_EDGE) {
+      return Math.ceil(
+        AUTO_SCROLL_MAX_SPEED * (1 - Math.max(0, bottom - clientY) / AUTO_SCROLL_EDGE),
+      )
+    }
+    return 0
+  }
+
+  function nearestScrollContainer(start: HTMLElement) {
+    let candidate = start.parentElement
+    while (candidate) {
+      const overflowY = getComputedStyle(candidate).overflowY
+      if (/(auto|scroll|overlay)/.test(overflowY) && candidate.scrollHeight > candidate.clientHeight) return candidate
+      candidate = candidate.parentElement
+    }
+    return document.scrollingElement as HTMLElement | null
+  }
+
+  function scrollBounds(scrollContainer: HTMLElement) {
+    if (scrollContainer === document.scrollingElement) {
+      return { top: 0, bottom: window.visualViewport?.height ?? window.innerHeight }
+    }
+    const rect = scrollContainer.getBoundingClientRect()
+    return {
+      top: Math.max(0, rect.top),
+      bottom: Math.min(window.visualViewport?.height ?? window.innerHeight, rect.bottom),
+    }
+  }
+
+  function usesMobileLayout() {
+    return window.matchMedia('(max-width: 760px)').matches
+  }
+
+  function stopAutoScroll() {
+    dragPointer = null
+    dragScrollContainer = null
+    if (autoScrollFrame === null) return
+    cancelAnimationFrame(autoScrollFrame)
+    autoScrollFrame = null
+  }
+
   function endPointerDrag(event: PointerEvent) {
-    if (!dragging) return
+    if (!dragging || event.pointerId !== dragPointerId) return
     // Re-resolve at the drop point: the pointer may have moved within the last
     // hovered row, which changes before/inside/after.
     const target = dropTargetAt(event.clientX, event.clientY) ?? activeDropTarget
     clearDropMarker()
     dragging = false
+    removeDragListeners()
+    stopAutoScroll()
     if (!target) return
 
     if (target.containerId !== containerId) {
@@ -127,6 +220,28 @@
       moveItem(containerId, itemId, target.targetId, target.placement)
     }
   }
+
+  function cancelPointerDrag(event: PointerEvent) {
+    if (event.pointerId !== dragPointerId) return
+    dragging = false
+    clearDropMarker()
+    removeDragListeners()
+    stopAutoScroll()
+  }
+
+  function removeDragListeners() {
+    dragPointerId = null
+    window.removeEventListener('pointermove', continuePointerDrag)
+    window.removeEventListener('pointerup', endPointerDrag)
+    window.removeEventListener('pointercancel', cancelPointerDrag)
+  }
+
+  onDestroy(() => {
+    removeDragListeners()
+    stopAutoScroll()
+    clearDropMarker()
+  })
+
 </script>
 
 <div
@@ -138,6 +253,7 @@
   <div
     class:plan-row={kind === 'plan'}
     class:template-main={kind !== 'plan'}
+    class:whole-row-selection={wholeRowSelection}
     class:done
     class:selected
     data-item-container-id={containerId}
@@ -156,6 +272,19 @@
       if (selectionDragging) onSelectionPointerEnter(itemId)
     }}
   >
+    {#if wholeRowSelection}
+      <!-- The visible selection toggle remains the accessible control. This
+           layer makes the rest of the row one large mobile tap target without
+           letting its editor, checkbox, or time button take focus first. -->
+      <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+      <div
+        class="whole-row-selection-target"
+        aria-hidden="true"
+        on:pointerdown|preventDefault|stopPropagation
+        on:click|preventDefault|stopPropagation={() => onWholeRowSelectionToggle(itemId)}
+      ></div>
+    {/if}
+
     {#if interactive && showSelectionHandle}
       <button
         class="select-handle"
@@ -177,12 +306,6 @@
         title={dragLabel}
         aria-label={dragLabel}
         on:pointerdown={startPointerDrag}
-        on:pointermove={continuePointerDrag}
-        on:pointerup={endPointerDrag}
-        on:pointercancel={() => {
-          dragging = false
-          clearDropMarker()
-        }}
       >
         <span class="handle-dots" aria-hidden="true"></span>
       </button>

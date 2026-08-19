@@ -4391,6 +4391,17 @@ return rows`
     </div>
     <div class="mobile-header-actions">
       {#if isAndroid}
+        {#if selectedItemIds.length > 0}
+          <button
+            class="mobile-header-copy-button"
+            type="button"
+            title="Copy selected tasks"
+            aria-label="Copy selected tasks"
+            on:click={copySelectedItems}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
+          </button>
+        {/if}
         <button class="mobile-header-undo-button" type="button" title="Undo" aria-label="Undo" on:click={() => { void plannerStore.undo() }}>
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7-4 4 4 4" /><path d="M5 11h8a6 6 0 1 1-4.2 10.3" /></svg>
         </button>

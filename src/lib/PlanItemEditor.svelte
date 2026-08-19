@@ -515,6 +515,7 @@
   {selected}
   done={item.done}
   {selectionDragging}
+  wholeRowSelection={mobileSelectionMode}
   interactive={!locked}
   showSelectionHandle={!mobile}
   {moveItem}
@@ -522,6 +523,7 @@
   {onSelectionPointerDown}
   {onSelectionPointerMove}
   {onSelectionPointerEnter}
+  onWholeRowSelectionToggle={onMobileSelectionToggle}
   onRowClick={handleLockedRowClick}
 >
   <label class="check-target" title="Complete item">

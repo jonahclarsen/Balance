@@ -194,6 +194,7 @@ test('task rows stay readable on mobile without changing the desktop arrangement
 
 test('mobile task options gate selection and open the large auto-saving time editor', async ({ page }, testInfo) => {
   test.skip(!isMobileProject(testInfo.project.name), 'The task overflow interactions are mobile-only')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin })
 
   await page.evaluate(() => {
     Object.defineProperty(navigator, 'vibrate', {
@@ -268,18 +269,32 @@ test('mobile task options gate selection and open the large auto-saving time edi
     name: 'Deselect Another task used to verify mobile drag selection',
   })).toBeVisible()
   const parentRow = page.getByRole('listitem', { name: 'Plan item: Parent task with a scheduled time' })
-  await parentRow.getByRole('button', { name: 'Select Parent task with a scheduled time' }).click()
+  await tapAtCenter(page, parentRow.locator('[data-plan-text-input]'))
   await expect(page.locator('.plan-row.selected')).toHaveCount(2)
+
+  const mobileHeader = page.locator('.mobile-app-header')
+  const copySelected = mobileHeader.getByRole('button', { name: 'Copy selected tasks' })
+  const undo = mobileHeader.getByRole('button', { name: 'Undo' })
+  await expect(copySelected).toBeVisible()
+  const [copyBox, undoBox] = await Promise.all([copySelected.boundingBox(), undo.boundingBox()])
+  if (!copyBox || !undoBox) throw new Error('Missing mobile header action geometry')
+  expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(undoBox.x)
+  await copySelected.click()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe([
+    'Parent task with a scheduled time',
+    '  Nested task without a time',
+    '    Deeply nested task text should still have enough room to be comfortably readable',
+    'Another task used to verify mobile drag selection',
+  ].join('\n'))
   await page.screenshot({
     path: 'artifacts/visual-smoke/mobile-task-selection.png',
     fullPage: false,
   })
 
-  await untimedRow.getByRole('button', {
-    name: 'Deselect Another task used to verify mobile drag selection',
-  }).click()
-  await parentRow.getByRole('button', { name: 'Deselect Parent task with a scheduled time' }).click()
+  await tapAtCenter(page, untimedRow.locator('[data-plan-text-input]'))
+  await tapAtCenter(page, parentRow.locator('[data-plan-text-input]'))
   await expect(page.locator('.plan-row.selected')).toHaveCount(0)
+  await expect(copySelected).toHaveCount(0)
   await expect(parentRow.getByRole('button', {
     name: 'Task options for Parent task with a scheduled time',
   })).toBeVisible()
@@ -288,6 +303,54 @@ test('mobile task options gate selection and open the large auto-saving time edi
     path: 'artifacts/visual-smoke/mobile-task-options.png',
     fullPage: false,
   })
+})
+
+test('mobile task dragging auto-scrolls near both viewport edges', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The drag auto-scroll behavior is mobile-only')
+
+  const viewport = page.viewportSize()
+  if (!viewport) throw new Error('Missing mobile viewport')
+
+  const firstHandle = page
+    .getByRole('listitem', { name: 'Plan item: Parent task with a scheduled time' })
+    .getByRole('button', { name: 'Drag to move item' })
+  const firstHandleBox = await firstHandle.boundingBox()
+  if (!firstHandleBox) throw new Error('Missing first drag handle geometry')
+
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: firstHandleBox.x + firstHandleBox.width / 2, y: firstHandleBox.y + firstHandleBox.height / 2 }],
+  })
+  await expect(firstHandle).toHaveClass(/dragging/)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: firstHandleBox.x + firstHandleBox.width / 2, y: viewport.height - 4 }],
+  })
+  await expect(firstHandle).toHaveClass(/dragging/)
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+
+  const lowerHandle = page
+    .getByRole('listitem', { name: 'Plan item: Filler task 12', exact: true })
+    .getByRole('button', { name: 'Drag to move item' })
+  await page.evaluate(() => window.scrollTo(0, 700))
+  await lowerHandle.scrollIntoViewIfNeeded()
+  const lowerHandleBox = await lowerHandle.boundingBox()
+  if (!lowerHandleBox) throw new Error('Missing lower drag handle geometry')
+  const startingScrollY = await page.evaluate(() => window.scrollY)
+  expect(startingScrollY).toBeGreaterThan(100)
+
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: lowerHandleBox.x + lowerHandleBox.width / 2, y: lowerHandleBox.y + lowerHandleBox.height / 2 }],
+  })
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: lowerHandleBox.x + lowerHandleBox.width / 2, y: 4 }],
+  })
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeLessThan(startingScrollY - 80)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 })
 
 test('mobile task options copy and cut whole task trees and remove tasks', async ({ page }, testInfo) => {
@@ -418,6 +481,15 @@ async function dragAcross(
   await page.mouse.down()
   await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 8 })
   await page.mouse.up()
+}
+
+async function tapAtCenter(
+  page: import('@playwright/test').Page,
+  target: import('@playwright/test').Locator,
+) {
+  const box = await target.boundingBox()
+  if (!box) throw new Error('Missing tap target geometry')
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2)
 }
 
 async function dragVertically(
