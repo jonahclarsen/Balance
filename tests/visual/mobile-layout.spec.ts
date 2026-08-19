@@ -224,6 +224,7 @@ test('mobile task options gate selection and open the large auto-saving time edi
   await expect(menu).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Add time' })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Copy' })).toBeVisible()
+  await expect(menu.getByRole('menuitem', { name: 'Paste' })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Cut' })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Remove' })).toBeVisible()
   await expect(menu.getByRole('menuitem', { name: 'Select tasks' })).toBeVisible()
@@ -317,6 +318,10 @@ test('mobile task options gate selection and open the large auto-saving time edi
   const [copyBox, undoBox] = await Promise.all([copySelected.boundingBox(), undo.boundingBox()])
   if (!copyBox || !undoBox) throw new Error('Missing mobile header action geometry')
   expect(copyBox.x + copyBox.width).toBeLessThanOrEqual(undoBox.x)
+  await page.screenshot({
+    path: 'artifacts/visual-smoke/mobile-task-selection.png',
+    fullPage: false,
+  })
   await copySelected.click()
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe([
     'Parent task with a scheduled time',
@@ -324,18 +329,75 @@ test('mobile task options gate selection and open the large auto-saving time edi
     '    Deeply nested task text should still have enough room to be comfortably readable',
     'Another task used to verify mobile drag selection',
   ].join('\n'))
-  await page.screenshot({
-    path: 'artifacts/visual-smoke/mobile-task-selection.png',
-    fullPage: false,
-  })
-
-  await tapAtCenter(page, untimedRow.locator('[data-plan-text-input]'))
-  await tapAtCenter(page, parentRow.locator('[data-plan-text-input]'))
   await expect(page.locator('.plan-row.selected')).toHaveCount(0)
   await expect(copySelected).toHaveCount(0)
   await expect(parentRow.getByRole('button', {
     name: 'Task options for Parent task with a scheduled time',
   })).toBeVisible()
+
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      isTauri?: boolean
+      balanceBackChannelId?: number
+      balanceBackCallbacks?: Map<number, (payload: unknown) => void>
+      __TAURI_INTERNALS__?: {
+        transformCallback: (callback: (payload: unknown) => void) => number
+        unregisterCallback: (id: number) => void
+        invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
+      }
+    }
+    let nextCallbackId = 1
+    const callbacks = new Map<number, (payload: unknown) => void>()
+    testWindow.isTauri = true
+    testWindow.balanceBackCallbacks = callbacks
+    testWindow.__TAURI_INTERNALS__ = {
+      transformCallback(callback) {
+        const id = nextCallbackId++
+        callbacks.set(id, callback)
+        return id
+      },
+      unregisterCallback(id) {
+        callbacks.delete(id)
+      },
+      async invoke(command, args) {
+        if (command === 'plugin:app|register_listener') {
+          testWindow.balanceBackChannelId = (args?.handler as { id?: number } | undefined)?.id
+        }
+        return null
+      },
+    }
+  })
+  await parentRow.getByRole('button', {
+    name: 'Task options for Parent task with a scheduled time',
+  }).click()
+  await parentRow.getByRole('menuitem', { name: 'Select tasks' }).click()
+  await expect(page.locator('.plan-row.selected')).toHaveCount(1)
+  await expect.poll(() => page.evaluate(
+    () => (window as typeof window & { balanceBackChannelId?: number }).balanceBackChannelId ?? null,
+  )).not.toBeNull()
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      balanceBackChannelId?: number
+      balanceBackCallbacks?: Map<number, (payload: unknown) => void>
+    }
+    const channelId = testWindow.balanceBackChannelId
+    if (channelId === undefined) throw new Error('Missing Android back-button channel')
+    testWindow.balanceBackCallbacks?.get(channelId)?.({ index: 0, message: { canGoBack: false } })
+  })
+  await expect(page.locator('.plan-row.selected')).toHaveCount(0)
+  await expect(copySelected).toHaveCount(0)
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      isTauri?: boolean
+      balanceBackChannelId?: number
+      balanceBackCallbacks?: Map<number, (payload: unknown) => void>
+      __TAURI_INTERNALS__?: unknown
+    }
+    testWindow.isTauri = false
+    delete testWindow.balanceBackChannelId
+    delete testWindow.balanceBackCallbacks
+    delete testWindow.__TAURI_INTERNALS__
+  })
 
   await page.screenshot({
     path: 'artifacts/visual-smoke/mobile-task-options.png',
@@ -363,10 +425,19 @@ test('mobile task dragging auto-scrolls near both viewport edges', async ({ page
   await expect(firstHandle).toHaveClass(/dragging/)
   await cdp.send('Input.dispatchTouchEvent', {
     type: 'touchMove',
-    touchPoints: [{ x: firstHandleBox.x + firstHandleBox.width / 2, y: viewport.height - 4 }],
+    touchPoints: [{ x: firstHandleBox.x + firstHandleBox.width / 2, y: viewport.height - 60 }],
   })
   await expect(firstHandle).toHaveClass(/dragging/)
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100)
+  await page.waitForTimeout(250)
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: firstHandleBox.x + firstHandleBox.width / 2, y: viewport.height - 4 }],
+  })
+  await page.waitForTimeout(250)
+  const downwardScrollY = await page.evaluate(() => window.scrollY)
+  expect(downwardScrollY).toBeGreaterThan(20)
+  expect(downwardScrollY).toBeLessThan(160)
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 
   const lowerHandle = page
@@ -406,15 +477,14 @@ test('mobile task options copy and cut whole task trees and remove tasks', async
     '    Deeply nested task text should still have enough room to be comfortably readable',
   ].join('\n'))
 
-  const target = page.locator('[data-plan-text-input-id="trailing"]')
-  await target.focus()
-  await page.keyboard.press('Meta+V')
+  const trailingText = 'Another task used to verify mobile drag selection'
+  const trailingRow = page.getByRole('listitem', { name: `Plan item: ${trailingText}` })
+  await trailingRow.getByRole('button', { name: `Task options for ${trailingText}` }).click()
+  await trailingRow.getByRole('menuitem', { name: 'Paste' }).click()
   await expect(page.getByRole('listitem', { name: `Plan item: ${parentText}` })).toHaveCount(2)
   await expect(page.getByRole('listitem', { name: 'Plan item: Nested task without a time' })).toHaveCount(2)
   await page.keyboard.press('Escape')
 
-  const trailingText = 'Another task used to verify mobile drag selection'
-  const trailingRow = page.getByRole('listitem', { name: `Plan item: ${trailingText}` })
   await trailingRow.getByRole('button', { name: `Task options for ${trailingText}` }).click()
   await trailingRow.getByRole('menuitem', { name: 'Cut' }).click()
   await expect(trailingRow).toHaveCount(0)

@@ -39,8 +39,8 @@
   let dragScrollContainer: HTMLElement | null = null
   let autoScrollFrame: number | null = null
 
-  const AUTO_SCROLL_EDGE = 88
-  const AUTO_SCROLL_MAX_SPEED = 18
+  const AUTO_SCROLL_EDGE = 44
+  const AUTO_SCROLL_MAX_SPEED = 2
 
   $: rowSelector =
     kind === 'plan'

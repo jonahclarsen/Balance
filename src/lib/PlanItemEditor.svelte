@@ -63,6 +63,7 @@
   export let onMobileSelectionStart: (itemId: Id) => void = () => {}
   export let onMobileSelectionToggle: (itemId: Id) => void = () => {}
   export let onCopyItem: (planId: Id, itemId: Id) => void = () => {}
+  export let onPasteItem: (planId: Id, itemId: Id) => void | Promise<void> = () => {}
   export let onCutItem: (planId: Id, itemId: Id) => void = () => {}
   export let onTextShiftArrow: (itemId: Id, direction: MoveDirection) => void = () => {}
   export let onGoalBadgeClick: (goalId: Id) => void = () => {}
@@ -191,6 +192,11 @@
   function copyTask() {
     mobileMenuOpen = false
     onCopyItem(planId, item.id)
+  }
+
+  function pasteTask() {
+    mobileMenuOpen = false
+    void onPasteItem(planId, item.id)
   }
 
   function cutTask() {
@@ -672,6 +678,7 @@
               <button type="button" role="menuitem" on:click|stopPropagation={addTimeAndOpenEditor}>Add time</button>
             {/if}
             <button type="button" role="menuitem" on:click|stopPropagation={copyTask}>Copy</button>
+            <button type="button" role="menuitem" on:click|stopPropagation={pasteTask}>Paste</button>
             <button type="button" role="menuitem" on:click|stopPropagation={cutTask}>Cut</button>
             <button type="button" role="menuitem" on:click|stopPropagation={removeTask}>Remove</button>
             <button type="button" role="menuitem" on:click|stopPropagation={startMobileSelection}>Select tasks</button>
@@ -735,6 +742,7 @@
             {onMobileSelectionStart}
             {onMobileSelectionToggle}
             {onCopyItem}
+            {onPasteItem}
             {onCutItem}
             {onTextShiftArrow}
             {onGoalBadgeClick}

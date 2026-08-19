@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onBackButtonPress } from '@tauri-apps/api/app'
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
@@ -299,6 +300,10 @@ return rows`
   // not exist. It is accepted only while its plain text still matches the real clipboard.
   let browserItemClipboard: ItemClipboard | null = null
   let clipboardWritePending: Promise<unknown> | null = null
+  type AndroidBackListener = Awaited<ReturnType<typeof onBackButtonPress>>
+  let androidSelectionBackListener: AndroidBackListener | null = null
+  let androidSelectionBackRegistration: Promise<AndroidBackListener> | null = null
+  let androidSelectionBackWanted = false
   // Each pasted node — parent or child — is reviewed on its own, so the queue is a
   // flat list annotated with the node's original depth. Kept nodes are re-nested from
   // those depths once the queue empties.
@@ -325,6 +330,7 @@ return rows`
   let pasteReviewCooldownFrame: number | null = null
   let itemTextDragOrigin: { itemId: Id; input: HTMLElement } | null = null
   let preserveSelectionFocusUntil = 0
+  $: syncAndroidSelectionBackListener(isAndroid && isTauri() && selectedItemIds.length > 0)
   let newGoalName = ''
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
@@ -1337,6 +1343,7 @@ return rows`
       mounted = false
       stopAutomaticSync?.()
       stopPasteMatchStyleListener?.()
+      stopAndroidSelectionBackListener()
       window.clearInterval(databaseLoadingMessageTimer)
       window.clearInterval(currentDayTimer)
       if (noteTrashCleanupTimer !== null) window.clearInterval(noteTrashCleanupTimer)
@@ -3213,6 +3220,37 @@ return rows`
     selectingItems = false
   }
 
+  function syncAndroidSelectionBackListener(wanted: boolean) {
+    androidSelectionBackWanted = wanted
+    if (!wanted) {
+      const listener = androidSelectionBackListener
+      androidSelectionBackListener = null
+      if (listener) void listener.unregister()
+      return
+    }
+    if (androidSelectionBackListener || androidSelectionBackRegistration) return
+
+    const registration = onBackButtonPress(() => {
+      if (selectedItemIds.length > 0) clearItemSelection()
+    })
+    androidSelectionBackRegistration = registration
+    void registration.then((listener) => {
+      if (androidSelectionBackRegistration === registration) androidSelectionBackRegistration = null
+      if (androidSelectionBackWanted) androidSelectionBackListener = listener
+      else void listener.unregister()
+    }).catch((error) => {
+      if (androidSelectionBackRegistration === registration) androidSelectionBackRegistration = null
+      console.error('Could not listen for the Android back button', error)
+    })
+  }
+
+  function stopAndroidSelectionBackListener() {
+    androidSelectionBackWanted = false
+    const listener = androidSelectionBackListener
+    androidSelectionBackListener = null
+    if (listener) void listener.unregister()
+  }
+
   function pointerLeftElement(event: PointerEvent, element: HTMLElement) {
     const rect = element.getBoundingClientRect()
     const threshold = 3
@@ -3273,12 +3311,25 @@ return rows`
     }
   }
 
+  function copyAndClearSelectedItems() {
+    copySelectedItems()
+    clearItemSelection()
+  }
+
   function copyPlanItemFromMenu(planId: Id, itemId: Id) {
     const plan = $plannerStore.plans.find((candidate) => candidate.id === planId)
     if (!plan) return
 
     const items = plannerStore.copyPlanItems(planId, [itemId])
     if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: plan.date })
+  }
+
+  async function pastePlanItemFromMenu(planId: Id, itemId: Id) {
+    focusPane(planId)
+    const clipboard = await readSystemClipboard()
+    const structured = parsePlanItemClipboard(clipboard.structuredPayload)
+    if (!structured) return
+    pastePlanItemClipboard(structured, null, { planId, targetId: itemId, placement: 'after' })
   }
 
   function cutPlanItemFromMenu(planId: Id, itemId: Id) {
@@ -3424,18 +3475,27 @@ return rows`
     }))
   }
 
-  function pastePlanItemClipboard(planItemClipboard: PlanItemClipboard, pasteBeforeItemId: Id | null) {
-    if (!focusedPlan) return
+  function pastePlanItemClipboard(
+    planItemClipboard: PlanItemClipboard,
+    pasteBeforeItemId: Id | null,
+    destination?: { planId: Id; targetId: Id; placement: 'after' },
+  ) {
+    const destinationPlan = destination
+      ? $plannerStore.plans.find((plan) => plan.id === destination.planId)
+      : focusedPlan
+    if (!destinationPlan) return
 
-    const targetId = pasteTargetPlanItemId()
-    const placement = shouldReplaceFocusedPlanItemOnPaste(targetId)
-      ? 'replace'
-      : targetId === pasteBeforeItemId
-        ? 'before'
-        : 'after'
+    const targetId = destination?.targetId ?? pasteTargetPlanItemId()
+    const placement = destination?.placement ?? (
+      shouldReplaceFocusedPlanItemOnPaste(targetId)
+        ? 'replace'
+        : targetId === pasteBeforeItemId
+          ? 'before'
+          : 'after'
+    )
 
     const nodes = flattenPlanItemsForReview(planItemClipboard.items)
-    if (nodes.length >= PASTE_REVIEW_THRESHOLD && planItemClipboard.sourceDate !== focusedPlan.date) {
+    if (nodes.length >= PASTE_REVIEW_THRESHOLD && planItemClipboard.sourceDate !== destinationPlan.date) {
       pasteReview = {
         nodes,
         index: 0,
@@ -3443,7 +3503,7 @@ return rows`
         rejected: [],
         targetId,
         placement,
-        planId: focusedPlan.id,
+        planId: destinationPlan.id,
         cut: planItemClipboard.cut,
       }
       pasteReviewEditing = false
@@ -3452,7 +3512,7 @@ return rows`
       return
     }
 
-    insertPastedPlanItems(planItemClipboard.items, targetId, placement, planItemClipboard.cut)
+    insertPastedPlanItems(destinationPlan.id, planItemClipboard.items, targetId, placement, planItemClipboard.cut)
   }
 
   // Walk the pasted forest depth-first into a flat queue, stripping children off each
@@ -3525,14 +3585,16 @@ return rows`
   }
 
   function insertPastedPlanItems(
+    planId: Id,
     items: PlanItem[],
     targetId: Id | null,
     placement: 'before' | 'after' | 'replace',
     cut: boolean,
   ) {
-    if (!focusedPlan) return
+    const plan = $plannerStore.plans.find((candidate) => candidate.id === planId)
+    if (!plan) return
 
-    const pastedRootIds = plannerStore.pastePlanItems(focusedPlan.id, items, targetId, placement)
+    const pastedRootIds = plannerStore.pastePlanItems(plan.id, items, targetId, placement)
     if (pastedRootIds.length === 0) return
 
     selectedItemIds = pastedRootIds
@@ -3544,7 +3606,7 @@ return rows`
     // clipboard alive makes subsequent pastes create more task rows instead of falling
     // through to the browser's plain-text clipboard handling.
     if (cut) {
-      writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: focusedPlan.date })
+      writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: plan.date })
     }
   }
 
@@ -3569,10 +3631,10 @@ return rows`
     pasteReviewEditing = false
 
     if (next >= pasteReview.nodes.length) {
-      const { targetId, placement, cut } = pasteReview
+      const { planId, targetId, placement, cut } = pasteReview
       cancelPasteReviewCooldown()
       pasteReview = null
-      if (approved.length > 0) insertPastedPlanItems(buildReviewedForest(approved), targetId, placement, cut)
+      if (approved.length > 0) insertPastedPlanItems(planId, buildReviewedForest(approved), targetId, placement, cut)
       return
     }
 
@@ -4433,7 +4495,7 @@ return rows`
             type="button"
             title="Copy selected tasks"
             aria-label="Copy selected tasks"
-            on:click={copySelectedItems}
+            on:click={copyAndClearSelectedItems}
           >
             <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
           </button>
@@ -4734,6 +4796,7 @@ return rows`
                     onMobileSelectionStart={startMobileItemSelection}
                     onMobileSelectionToggle={toggleMobileItemSelection}
                     onCopyItem={copyPlanItemFromMenu}
+                    onPasteItem={pastePlanItemFromMenu}
                     onCutItem={cutPlanItemFromMenu}
                     onTextShiftArrow={selectItemWithAdjacent}
                     {goals}
