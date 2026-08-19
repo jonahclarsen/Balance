@@ -2,7 +2,7 @@
   import { onDestroy, onMount, tick } from 'svelte'
   import { caretPointFromCoordinates } from './caretGeometry'
   import NoteItemEditor from './NoteItemEditor.svelte'
-  import { htmlToPlainText, sanitizeInlineHTML, type ItemLink } from './planner'
+  import { htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
   import { noteClipboardHTML, noteClipboardPlainText, type NoteClipboardBlock } from './noteClipboard'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind } from './types'
 
@@ -337,7 +337,7 @@
       const container = document.createElement('div')
       container.append(fragmentRange.cloneContents())
       const html = sanitizeInlineHTML(container.innerHTML)
-      const text = htmlToPlainText(html)
+      const text = htmlToPlainTextWithBreaks(html)
       if (!html && !text) return []
 
       const itemId = input.dataset.noteTextInputId
