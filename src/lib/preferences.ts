@@ -1,4 +1,3 @@
-import { DEFAULT_INTERFACE_FONT_ID, normalizeInterfaceFontId } from './fonts'
 import { DEFAULT_THEME_ID, normalizeThemeId } from './themes'
 import type { IridescentGradientColor, IridescentGradientPreferences, ReplicatedPreferences } from './types'
 
@@ -31,7 +30,6 @@ export function createDefaultIridescentGradient(): IridescentGradientPreferences
 export function createDefaultReplicatedPreferences(): ReplicatedPreferences {
   return {
     themeId: DEFAULT_THEME_ID,
-    interfaceFontId: DEFAULT_INTERFACE_FONT_ID,
     doneTintColor: '',
     checkboxColor: '',
     databaseLoadingMessages: [...DEFAULT_DATABASE_LOADING_MESSAGES],
@@ -94,9 +92,6 @@ export function normalizeReplicatedPreferences(value: unknown): ReplicatedPrefer
 
   return {
     themeId: normalizeThemeId(typeof preferences.themeId === 'string' ? preferences.themeId : null),
-    interfaceFontId: normalizeInterfaceFontId(
-      typeof preferences.interfaceFontId === 'string' ? preferences.interfaceFontId : null,
-    ),
     doneTintColor: normalizeColorOverride(preferences.doneTintColor),
     checkboxColor: normalizeColorOverride(preferences.checkboxColor),
     databaseLoadingMessages,

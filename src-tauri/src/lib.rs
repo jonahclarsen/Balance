@@ -2827,7 +2827,6 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
 fn default_replicated_preferences() -> Value {
     json!({
         "themeId": "violet",
-        "interfaceFontId": "rounded",
         "doneTintColor": "",
         "checkboxColor": "",
         "databaseLoadingMessages": [
@@ -2845,7 +2844,6 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
         .ok_or_else(|| "Replicated preferences must be an object".to_string())?;
 
     let theme_id = required_string(value, "themeId")?;
-    let interface_font_id = required_string(value, "interfaceFontId")?;
     let done_tint_color = required_string(value, "doneTintColor")?;
     let checkbox_color = required_string(value, "checkboxColor")?;
     for (name, color) in [
@@ -2866,7 +2864,6 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
     }
 
     preferences.insert("themeId".into(), json!(theme_id));
-    preferences.insert("interfaceFontId".into(), json!(interface_font_id));
     preferences.insert("doneTintColor".into(), json!(done_tint_color));
     preferences.insert("checkboxColor".into(), json!(checkbox_color));
     preferences.insert("databaseLoadingMessages".into(), json!(messages));

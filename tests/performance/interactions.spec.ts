@@ -108,7 +108,6 @@ async function installSyntheticWorkspace(page: Page) {
         activePlanDate: activeDate,
         preferences: {
           themeId: 'balance',
-          interfaceFontId: 'system',
           doneTintColor: '',
           checkboxColor: '',
           databaseLoadingMessages: [],

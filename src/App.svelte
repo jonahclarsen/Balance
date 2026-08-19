@@ -55,12 +55,6 @@
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient } from './lib/preferences'
   import { DEFAULT_THEME_ID, normalizeThemeId, THEME_PRESETS, type ThemeId } from './lib/themes'
-  import {
-    DEFAULT_INTERFACE_FONT_ID,
-    INTERFACE_FONT_PRESETS,
-    normalizeInterfaceFontId,
-    type InterfaceFontId,
-  } from './lib/fonts'
   import { isNoteTrashed } from './lib/noteTrash'
 
   // Pasting four or more items onto a different day routes through a review queue
@@ -162,7 +156,6 @@
   let doneTintColor = ''
   let checkboxColor = ''
   let themeId: ThemeId = DEFAULT_THEME_ID
-  let interfaceFontId: InterfaceFontId = DEFAULT_INTERFACE_FONT_ID
   let iridescentGradient = createDefaultIridescentGradient()
   let previousPersistedIridescentGradient: IridescentGradientPreferences | null = null
   let completionTrackingReady = false
@@ -469,7 +462,6 @@ return rows`
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
   $: themeId = normalizeThemeId($plannerStore.preferences.themeId)
-  $: interfaceFontId = normalizeInterfaceFontId($plannerStore.preferences.interfaceFontId)
   $: doneTintColor = $plannerStore.preferences.doneTintColor
   $: checkboxColor = $plannerStore.preferences.checkboxColor
   $: persistedIridescentGradient = $plannerStore.preferences.iridescentGradient
@@ -478,7 +470,6 @@ return rows`
     iridescentGradient = persistedIridescentGradient
   }
   $: document.documentElement.dataset.theme = themeId
-  $: document.documentElement.dataset.interfaceFont = interfaceFontId
   $: applyIridescentGradient(iridescentGradient)
   $: if ($plannerStore.preferences.databaseLoadingMessages !== previousDatabaseLoadingMessages) {
     previousDatabaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
@@ -1500,14 +1491,6 @@ return rows`
 
   function resetCompletedItemColors() {
     plannerStore.patchPreferences({ doneTintColor: '', checkboxColor: '' })
-  }
-
-  function updateInterfaceFont(nextFontId: InterfaceFontId) {
-    plannerStore.patchPreferences({ interfaceFontId: nextFontId })
-  }
-
-  function resetFonts() {
-    plannerStore.patchPreferences({ interfaceFontId: DEFAULT_INTERFACE_FONT_ID })
   }
 
   function clearGoalRhythmAutoShowTimer() {
@@ -5514,39 +5497,6 @@ return rows`
               onCommit={commitIridescentGradient}
             />
           {/if}
-        </section>
-
-        <section class="settings-section typography-settings">
-          <div>
-            <h3>Typography</h3>
-            <p>Choose the font used throughout Balance. Tasks and notes always match the interface, while technical text stays in Modern Mono. Every option is previewed before you select it, and changes appear immediately.</p>
-          </div>
-
-          <div class="font-option-grid" role="group" aria-label="Interface font">
-            {#each INTERFACE_FONT_PRESETS as font (font.id)}
-              <button
-                type="button"
-                class="font-option"
-                class:active={interfaceFontId === font.id}
-                style={`--font-preview: ${font.cssStack}`}
-                aria-label={`${font.name}: ${font.description}`}
-                aria-pressed={interfaceFontId === font.id}
-                on:click={() => updateInterfaceFont(font.id)}
-              >
-                <span class="font-option-meta"><strong>{font.name}</strong><small>{font.description}</small></span>
-                <span class="font-option-preview">{font.preview}</span>
-                <span class="font-selected-mark" aria-hidden="true">✓</span>
-              </button>
-            {/each}
-          </div>
-
-          <div class="settings-actions">
-            <button
-              type="button"
-              disabled={interfaceFontId === DEFAULT_INTERFACE_FONT_ID}
-              on:click={resetFonts}
-            >Restore default font</button>
-          </div>
         </section>
 
         <section class="settings-section">

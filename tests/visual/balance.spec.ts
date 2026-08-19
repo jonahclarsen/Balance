@@ -1118,50 +1118,30 @@ test('iridescent gradient controls preview live, persist, and toggle with the or
   await expect(gradientToggle).toHaveText('Return to your gradient')
 })
 
-test('interface font previews apply live to tasks and persist', async ({ page }) => {
+test('the interface uses Rounded with no font chooser', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Settings', exact: true }).click()
 
-  const interfaceFonts = page.getByRole('group', { name: 'Interface font' })
-  const interfaceFontButtons = interfaceFonts.getByRole('button')
-  await expect(interfaceFontButtons).toHaveCount(7)
-  await expect(interfaceFontButtons.first()).toContainText('Rounded')
-  await expect(interfaceFonts.getByRole('button', { name: 'Humanist: Open and readable' })).toHaveCount(0)
+  await expect(page.getByRole('group', { name: 'Interface font' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Typography' })).toHaveCount(0)
   await expect(page.getByRole('group', { name: 'Tasks and notes font' })).toHaveCount(0)
   await expect(page.getByRole('group', { name: 'Technical text font' })).toHaveCount(0)
-
-  const roundedInterface = interfaceFonts.getByRole('button', { name: 'Rounded: Soft and approachable' })
-  await expect(roundedInterface).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('html')).not.toHaveAttribute('data-interface-font')
   await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCSS(
     'font-family',
     /ui-rounded|SF Pro Rounded|Arial Rounded MT Bold/,
   )
-
-  const bookishInterface = interfaceFonts.getByRole('button', { name: 'Bookish: Elegant and literary' })
-  await expect(bookishInterface.locator('.font-option-preview')).toHaveCSS(
-    'font-family',
-    /Palatino|Palatino Linotype|Book Antiqua/,
-  )
-  await bookishInterface.click()
-  await expect(page.locator('html')).toHaveAttribute('data-interface-font', 'bookish')
-  await expect(page.getByRole('heading', { name: 'Settings' })).toHaveCSS(
-    'font-family',
-    /Palatino|Palatino Linotype|Book Antiqua/,
-  )
   await expect(page.locator('.done-tint-preview .item-text')).toHaveCSS(
     'font-family',
-    /Palatino|Palatino Linotype|Book Antiqua/,
+    /ui-rounded|SF Pro Rounded|Arial Rounded MT Bold/,
   )
   await expect(page.getByLabel('Checked checkbox hex code')).toHaveCSS(
     'font-family',
     /Cascadia Mono|Roboto Mono|SFMono-Regular|Menlo/,
   )
-
-  await page.reload()
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
-  await expect(bookishInterface).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('database opening messages can be customized and restored', async ({ page }) => {
