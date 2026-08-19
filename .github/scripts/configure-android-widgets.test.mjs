@@ -229,6 +229,7 @@ class BalanceSyncWorker {
     )
     assert.match(iridescentLayout, /#A13C91/)
     assert.match(iridescentLayout, /#282134/)
+    assert.match(iridescentLayout, /#28A987/)
     assert.match(iridescentLayout, /android:textColor="#FFFFFF"/)
     const iridescentBackground = await readFile(
       join(root, 'res/drawable/balance_widget_iridescent_background.xml'),
@@ -243,9 +244,21 @@ class BalanceSyncWorker {
       join(root, 'res/drawable/balance_widget_iridescent_time_pill.xml'),
       'utf8',
     )
-    assert.match(iridescentTimePill, /android:startColor="#A13C91"/)
-    assert.match(iridescentTimePill, /android:centerColor="#7150B0"/)
-    assert.match(iridescentTimePill, /android:endColor="#267985"/)
+    assert.match(iridescentTimePill, /<solid android:color="#71328B"/)
+    assert.doesNotMatch(iridescentTimePill, /<gradient/)
+
+    const iridescentTaskCircle = await readFile(
+      join(root, 'res/drawable/balance_widget_iridescent_task_circle.xml'),
+      'utf8',
+    )
+    assert.match(iridescentTaskCircle, /#B37B5BD6/)
+
+    const iridescentProgress = await readFile(
+      join(root, 'res/drawable/balance_widget_iridescent_progress.xml'),
+      'utf8',
+    )
+    assert.match(iridescentProgress, /<solid android:color="#7B5BD6"/)
+    assert.doesNotMatch(iridescentProgress, /<gradient/)
 
     const graphiteLayout = await readFile(
       join(root, 'res/layout/balance_home_widget_graphite.xml'),
@@ -307,9 +320,23 @@ class BalanceSyncWorker {
       join(root, 'res/drawable-night/balance_widget_iridescent_progress.xml'),
       'utf8',
     )
-    assert.match(darkIridescentProgress, /android:startColor="#E777C0"/)
-    assert.match(darkIridescentProgress, /android:centerColor="#B79AF2"/)
-    assert.match(darkIridescentProgress, /android:endColor="#5AC6C4"/)
+    assert.match(darkIridescentProgress, /<solid android:color="#B79AF2"/)
+    assert.doesNotMatch(darkIridescentProgress, /<gradient/)
+
+    const darkIridescentLayout = await readFile(
+      join(root, 'res/layout-night/balance_home_widget_iridescent.xml'),
+      'utf8',
+    )
+    assert.match(darkIridescentLayout, /#F5B8E3/)
+    assert.match(darkIridescentLayout, /#65CFAA/)
+    assert.match(darkIridescentLayout, /android:textColor="#FFFFFF"/)
+
+    const darkIridescentTimePill = await readFile(
+      join(root, 'res/drawable-night/balance_widget_iridescent_time_pill.xml'),
+      'utf8',
+    )
+    assert.match(darkIridescentTimePill, /<solid android:color="#9B3F86"/)
+    assert.doesNotMatch(darkIridescentTimePill, /<gradient/)
 
     const darkGraphiteLayout = await readFile(
       join(root, 'res/layout-night/balance_home_widget_graphite.xml'),

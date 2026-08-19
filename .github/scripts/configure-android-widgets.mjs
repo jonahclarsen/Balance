@@ -348,7 +348,7 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 `
 
 const widgetThemes = [
-  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', accentColors: ['#A13C91', '#7150B0', '#267985'], timePillColors: ['#A13C91', '#7150B0', '#267985'], timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
+  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', taskAccent: '#7B5BD6', doneAccent: '#28A987', progressAccent: '#7B5BD6', timePill: '#71328B', timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
   { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },
   { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F' },
   { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
@@ -361,7 +361,7 @@ const widgetThemes = [
 ]
 
 const darkWidgetThemes = [
-  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#E777C0', accentColors: ['#E777C0', '#B79AF2', '#5AC6C4'], timePillColors: ['#A13C91', '#7150B0', '#267985'], timePillInk: '#FFFFFF', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
+  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#F5B8E3', taskAccent: '#B79AF2', doneAccent: '#65CFAA', progressAccent: '#B79AF2', timePill: '#9B3F86', timePillInk: '#FFFFFF', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
   { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
   { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
   { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
@@ -542,7 +542,7 @@ function homeLayout(theme) {
         android:layout_marginTop="9dp"
         android:fontFamily="sans-serif-medium"
         android:text="✓  All done"
-        android:textColor="${theme.accent}"
+        android:textColor="${theme.doneAccent ?? theme.accent}"
         android:textSize="14sp"
         android:visibility="gone" />
 
@@ -596,21 +596,10 @@ function background(theme) {
 `
 }
 
-function gradientFill(colors, fallback, alpha = null) {
-  const color = (value) => alpha ? alphaColor(value, alpha) : value
-  return colors
-    ? `<gradient
-        android:angle="0"
-        android:centerColor="${color(colors[1])}"
-        android:endColor="${color(colors[2])}"
-        android:startColor="${color(colors[0])}" />`
-    : `<solid android:color="${color(fallback)}" />`
-}
-
 function pill(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    ${gradientFill(theme.accentColors, theme.accent, '1F')}
+    <solid android:color="${alphaColor(theme.accent, '1F')}" />
     <corners android:radius="999dp" />
     <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '33')}" />
 </shape>
@@ -620,7 +609,7 @@ function pill(theme) {
 function refreshBackground(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-    ${gradientFill(theme.accentColors, theme.accent, '1F')}
+    <solid android:color="${alphaColor(theme.accent, '1F')}" />
     <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '33')}" />
 </shape>
 `
@@ -653,7 +642,7 @@ function taskSurface(theme) {
 function timePill(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    ${gradientFill(theme.timePillColors, theme.accent)}
+    <solid android:color="${theme.timePill ?? theme.accent}" />
     <corners android:radius="999dp" />
 </shape>
 `
@@ -664,7 +653,7 @@ function taskCircle(theme) {
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
     <size android:width="11dp" android:height="11dp" />
     <solid android:color="@android:color/transparent" />
-    <stroke android:width="1.5dp" android:color="${alphaColor(theme.accentColors?.[1] ?? theme.accent, 'B3')}" />
+    <stroke android:width="1.5dp" android:color="${alphaColor(theme.taskAccent ?? theme.accent, 'B3')}" />
 </shape>
 `
 }
@@ -682,7 +671,7 @@ function progress(theme) {
         <clip>
             <shape android:shape="rectangle">
                 <corners android:radius="4dp" />
-                ${gradientFill(theme.accentColors, theme.accent)}
+                <solid android:color="${theme.progressAccent ?? theme.accent}" />
             </shape>
         </clip>
     </item>

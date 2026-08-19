@@ -257,7 +257,7 @@ private struct BalanceWidgetView: View {
                     Text("TODAY")
                         .font(.caption2.weight(.bold))
                         .tracking(0.8)
-                        .foregroundStyle(palette.accentGradient())
+                        .foregroundStyle(palette.accent)
                     Text(snapshot.title.isEmpty ? "Today’s plan" : snapshot.title)
                         .font(.headline)
                         .fontDesign(.rounded)
@@ -269,13 +269,13 @@ private struct BalanceWidgetView: View {
                 Text(progressLabel(snapshot))
                     .font(.caption.weight(.bold))
                     .fontDesign(.rounded)
-                    .foregroundStyle(palette.accentGradient())
+                    .foregroundStyle(palette.accent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(palette.accentGradient(opacity: 0.12), in: Capsule())
+                    .background(palette.accent.opacity(0.12), in: Capsule())
                     .overlay(
                         Capsule().stroke(
-                            palette.accentGradient(opacity: 0.2),
+                            palette.accent.opacity(0.2),
                             lineWidth: 1
                         )
                     )
@@ -297,7 +297,7 @@ private struct BalanceWidgetView: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(palette.line.opacity(0.7))
                         Capsule()
-                            .fill(palette.accentGradient())
+                            .fill(palette.progressAccent)
                             .frame(width: geometry.size.width * progress(snapshot))
                     }
                 }
@@ -308,7 +308,7 @@ private struct BalanceWidgetView: View {
             if snapshot.items.isEmpty {
                 Label("All done", systemImage: "checkmark.circle.fill")
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(palette.accentGradient())
+                    .foregroundStyle(palette.doneAccent)
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(snapshot.items.prefix(itemLimit).enumerated()), id: \.offset) { offset, item in
@@ -319,7 +319,7 @@ private struct BalanceWidgetView: View {
                         HStack(alignment: .center, spacing: 8) {
                             Circle()
                                 .strokeBorder(
-                                    palette.accentGradient(opacity: 0.72),
+                                    palette.taskAccent.opacity(0.72),
                                     lineWidth: 1.5
                                 )
                                 .frame(width: 11, height: 11)
@@ -364,7 +364,7 @@ private struct BalanceWidgetView: View {
                     .foregroundStyle(palette.timePillInk)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(palette.timePillGradient(), in: Capsule())
+                    .background(palette.timePill, in: Capsule())
                     .fixedSize(horizontal: true, vertical: false)
             }
             Text(item)
@@ -384,7 +384,7 @@ private struct BalanceWidgetView: View {
                     .foregroundStyle(palette.ink)
                 Spacer()
                 Image(systemName: "circle.lefthalf.filled")
-                    .foregroundStyle(palette.accentGradient())
+                    .foregroundStyle(palette.accent)
                     .accessibilityHidden(true)
             }
             Text(message)
@@ -409,8 +409,11 @@ private struct WidgetPalette {
     let ink: Color
     let muted: Color
     let line: Color
-    let accentColors: [Color]
-    let timePillColors: [Color]
+    let accent: Color
+    let taskAccent: Color
+    let doneAccent: Color
+    let progressAccent: Color
+    let timePill: Color
     let timePillInk: Color
     let backgroundColors: [Color]?
 
@@ -421,8 +424,10 @@ private struct WidgetPalette {
         muted: UInt32,
         line: UInt32,
         accent: UInt32,
-        accentColors: [UInt32]? = nil,
-        timePillColors: [UInt32]? = nil,
+        taskAccent: UInt32? = nil,
+        doneAccent: UInt32? = nil,
+        progressAccent: UInt32? = nil,
+        timePill: UInt32? = nil,
         timePillInk: UInt32? = nil,
         backgroundColors: [UInt32]? = nil
     ) {
@@ -431,26 +436,13 @@ private struct WidgetPalette {
         self.ink = Color(rgb: ink)
         self.muted = Color(rgb: muted)
         self.line = Color(rgb: line)
-        self.accentColors = (accentColors ?? [accent]).map(Color.init(rgb:))
-        self.timePillColors = (timePillColors ?? [accent]).map(Color.init(rgb:))
+        self.accent = Color(rgb: accent)
+        self.taskAccent = Color(rgb: taskAccent ?? accent)
+        self.doneAccent = Color(rgb: doneAccent ?? accent)
+        self.progressAccent = Color(rgb: progressAccent ?? accent)
+        self.timePill = Color(rgb: timePill ?? accent)
         self.timePillInk = Color(rgb: timePillInk ?? paper)
         self.backgroundColors = backgroundColors?.map(Color.init(rgb:))
-    }
-
-    func accentGradient(opacity: Double = 1) -> LinearGradient {
-        LinearGradient(
-            colors: accentColors.map { $0.opacity(opacity) },
-            startPoint: .leading,
-            endPoint: .trailing
-        )
-    }
-
-    func timePillGradient() -> LinearGradient {
-        LinearGradient(
-            colors: timePillColors,
-            startPoint: .leading,
-            endPoint: .trailing
-        )
     }
 
     @ViewBuilder
@@ -476,9 +468,11 @@ private struct WidgetPalette {
                     ink: 0xF4EDF6,
                     muted: 0xB5A6BD,
                     line: 0x493B54,
-                    accent: 0x9B3F86,
-                    accentColors: [0xE777C0, 0xB79AF2, 0x5AC6C4, 0xE0A34E],
-                    timePillColors: [0xA13C91, 0x7150B0, 0x267985, 0x98611A],
+                    accent: 0xF5B8E3,
+                    taskAccent: 0xB79AF2,
+                    doneAccent: 0x65CFAA,
+                    progressAccent: 0xB79AF2,
+                    timePill: 0x9B3F86,
                     timePillInk: 0xFFFFFF,
                     backgroundColors: [0x15101B, 0x10191E, 0x1C1710]
                 )
@@ -512,8 +506,10 @@ private struct WidgetPalette {
                 muted: 0x736B80,
                 line: 0xDDD3E6,
                 accent: 0xA13C91,
-                accentColors: [0xA13C91, 0x7150B0, 0x267985, 0x98611A],
-                timePillColors: [0xA13C91, 0x7150B0, 0x267985, 0x98611A],
+                taskAccent: 0x7B5BD6,
+                doneAccent: 0x28A987,
+                progressAccent: 0x7B5BD6,
+                timePill: 0x71328B,
                 timePillInk: 0xFFFFFF,
                 backgroundColors: [0xF8F3FB, 0xF2F8FA, 0xFAF6EF]
             )
