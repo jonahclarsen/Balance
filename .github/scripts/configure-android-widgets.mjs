@@ -348,7 +348,7 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 `
 
 const widgetThemes = [
-  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', statusAccent: '#7B5BD6', taskAccent: '#7B5BD6', doneAccent: '#28A987', progressAccent: '#7B5BD6', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#52798A', timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
+  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', statusAccent: '#7B5BD6', taskAccent: '#7B5BD6', doneAccent: '#28A987', progressAccent: '#7B5BD6', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#52798A', timePillGradients: [['#4257A8', '#6655A7'], ['#6B4F92', '#87527F'], ['#34726F', '#466C91'], ['#825A4B', '#7E526C']], timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
   { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },
   { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F' },
   { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
@@ -361,7 +361,7 @@ const widgetThemes = [
 ]
 
 const darkWidgetThemes = [
-  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#F5B8E3', statusAccent: '#B79AF2', taskAccent: '#B79AF2', doneAccent: '#65CFAA', progressAccent: '#B79AF2', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#4C6877', timePillInk: '#FFFFFF', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
+  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#F5B8E3', statusAccent: '#B79AF2', taskAccent: '#B79AF2', doneAccent: '#65CFAA', progressAccent: '#B79AF2', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#4C6877', timePillGradients: [['#4A5E91', '#645586'], ['#654F80', '#80536F'], ['#3F706B', '#4B6684'], ['#7B594C', '#78526A']], timePillInk: '#FFFFFF', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
   { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
   { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
   { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
@@ -388,6 +388,9 @@ function taskRows(theme) {
     const visibility = preview[index] ? '' : '\n        android:visibility="gone"'
     const dividerVisibility = index > 0 && preview[index] ? '' : '\n        android:visibility="gone"'
     const time = index === 1 ? '\n            android:text="9am–10am"' : '\n            android:visibility="gone"'
+    const timePillVariant = theme.timePillGradients
+      ? `_${(index % theme.timePillGradients.length) + 1}`
+      : ''
     return `    <TextView
         android:id="@+id/widget_item_divider_${item}"
         android:layout_width="match_parent"
@@ -416,7 +419,7 @@ function taskRows(theme) {
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginEnd="6dp"
-            android:background="@drawable/balance_widget_${theme.id}_time_pill"
+            android:background="@drawable/balance_widget_${theme.id}_time_pill${timePillVariant}"
             android:fontFamily="sans-serif"
             android:maxLines="1"
             android:paddingBottom="2dp"
@@ -640,10 +643,13 @@ function taskSurface(theme) {
 `
 }
 
-function timePill(theme) {
+function timePill(theme, colors) {
+  const fill = colors
+    ? `<gradient android:angle="0" android:startColor="${colors[0]}" android:endColor="${colors[1]}" />`
+    : `<solid android:color="${theme.timePill ?? theme.accent}" />`
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="${theme.timePill ?? theme.accent}" />
+    ${fill}
     <corners android:radius="999dp" />
 </shape>
 `
@@ -733,6 +739,12 @@ function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_time_pill.xml`),
     timePill(theme),
   )
+  theme.timePillGradients?.forEach((colors, index) => {
+    files.set(
+      join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_time_pill_${index + 1}.xml`),
+      timePill(theme, colors),
+    )
+  })
   files.set(
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_task_circle.xml`),
     taskCircle(theme),

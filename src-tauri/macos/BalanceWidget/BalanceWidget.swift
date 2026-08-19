@@ -323,7 +323,11 @@ private struct BalanceWidgetView: View {
                                     lineWidth: 1.5
                                 )
                                 .frame(width: 11, height: 11)
-                            taskLabel(item, time: snapshot.itemTimes?[safe: offset])
+                            taskLabel(
+                                item,
+                                time: snapshot.itemTimes?[safe: offset],
+                                rowIndex: offset
+                            )
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         .padding(.vertical, rowVerticalPadding)
@@ -356,7 +360,7 @@ private struct BalanceWidgetView: View {
         return snapshot.done == snapshot.total ? "Done" : "\(snapshot.done)/\(snapshot.total)"
     }
 
-    private func taskLabel(_ item: String, time: String?) -> some View {
+    private func taskLabel(_ item: String, time: String?, rowIndex: Int) -> some View {
         HStack(alignment: .center, spacing: 6) {
             if let time, !time.isEmpty {
                 Text(time)
@@ -364,7 +368,7 @@ private struct BalanceWidgetView: View {
                     .foregroundStyle(palette.timePillInk)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(palette.timePill, in: Capsule())
+                    .background(palette.timePillStyle(at: rowIndex), in: Capsule())
                     .fixedSize(horizontal: true, vertical: false)
             }
             Text(item)
@@ -416,6 +420,7 @@ private struct WidgetPalette {
     let progressAccent: Color
     let progressColors: [Color]?
     let timePill: Color
+    let timePillGradients: [[Color]]?
     let timePillInk: Color
     let backgroundColors: [Color]?
 
@@ -432,6 +437,7 @@ private struct WidgetPalette {
         progressAccent: UInt32? = nil,
         progressColors: [UInt32]? = nil,
         timePill: UInt32? = nil,
+        timePillGradients: [[UInt32]]? = nil,
         timePillInk: UInt32? = nil,
         backgroundColors: [UInt32]? = nil
     ) {
@@ -447,6 +453,7 @@ private struct WidgetPalette {
         self.progressAccent = Color(rgb: progressAccent ?? accent)
         self.progressColors = progressColors?.map(Color.init(rgb:))
         self.timePill = Color(rgb: timePill ?? accent)
+        self.timePillGradients = timePillGradients?.map { $0.map(Color.init(rgb:)) }
         self.timePillInk = Color(rgb: timePillInk ?? paper)
         self.backgroundColors = backgroundColors?.map(Color.init(rgb:))
     }
@@ -462,6 +469,19 @@ private struct WidgetPalette {
             )
         }
         return AnyShapeStyle(progressAccent)
+    }
+
+    func timePillStyle(at index: Int) -> AnyShapeStyle {
+        if let gradients = timePillGradients, !gradients.isEmpty {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: gradients[index % gradients.count],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+        }
+        return AnyShapeStyle(timePill)
     }
 
     @ViewBuilder
@@ -494,6 +514,12 @@ private struct WidgetPalette {
                     progressAccent: 0xB79AF2,
                     progressColors: [0x4257C9, 0x6A54D1, 0x9455C9, 0xC85FB0, 0xEC6A8F, 0xF7856A, 0xF9A94F, 0xF6CF68],
                     timePill: 0x4C6877,
+                    timePillGradients: [
+                        [0x4A5E91, 0x645586],
+                        [0x654F80, 0x80536F],
+                        [0x3F706B, 0x4B6684],
+                        [0x7B594C, 0x78526A]
+                    ],
                     timePillInk: 0xFFFFFF,
                     backgroundColors: [0x15101B, 0x10191E, 0x1C1710]
                 )
@@ -533,6 +559,12 @@ private struct WidgetPalette {
                 progressAccent: 0x7B5BD6,
                 progressColors: [0x4257C9, 0x6A54D1, 0x9455C9, 0xC85FB0, 0xEC6A8F, 0xF7856A, 0xF9A94F, 0xF6CF68],
                 timePill: 0x52798A,
+                timePillGradients: [
+                    [0x4257A8, 0x6655A7],
+                    [0x6B4F92, 0x87527F],
+                    [0x34726F, 0x466C91],
+                    [0x825A4B, 0x7E526C]
+                ],
                 timePillInk: 0xFFFFFF,
                 backgroundColors: [0xF8F3FB, 0xF2F8FA, 0xFAF6EF]
             )
