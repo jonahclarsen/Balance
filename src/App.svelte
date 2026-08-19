@@ -15,6 +15,7 @@
   import ImaxButton from './lib/ImaxButton.svelte'
   import OverlayModal from './lib/OverlayModal.svelte'
   import SyncPanel from './lib/SyncPanel.svelte'
+  import SyncStatusIndicator from './lib/SyncStatusIndicator.svelte'
   import MetricQuiz from './lib/MetricQuiz.svelte'
   import MetricGraph from './lib/MetricGraph.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
@@ -4266,24 +4267,6 @@ return rows`
   </div>
 {/if}
 
-{#if isTauri() && !$persistenceError && !$databaseLoadPending && !$databaseLoadError && $automaticSyncStatus.lastError}
-  <div class="app-error-banner sync-freshness-banner sync-error" role="alert" aria-live="polite">
-    <span class="app-error-banner-icon" aria-hidden="true">!</span>
-    <div class="app-error-banner-text">
-      <strong>Balance may be out of date</strong>
-      <span>Sync hasn’t completed. {$automaticSyncStatus.lastError}</span>
-    </div>
-    <div class="app-error-banner-actions">
-      <button
-        type="button"
-        class="primary"
-        disabled={$automaticSyncStatus.running}
-        on:click={() => { void requestSync('warning-retry') }}
-      >{$automaticSyncStatus.running ? 'Retrying…' : 'Retry now'}</button>
-    </div>
-  </div>
-{/if}
-
 {#if $databaseLoadPending && !$databaseLoadError}
   <div class="database-loading-backdrop" role="status" aria-live="polite" aria-busy="true">
     <div class="database-loading-card">
@@ -4402,11 +4385,8 @@ return rows`
     </button>
     <div class="mobile-app-title">
       <strong>Balance</strong>
-      {#if isTauri() && !$databaseLoadPending && !$databaseLoadError && !$automaticSyncStatus.initialSyncComplete && !$automaticSyncStatus.lastError}
-        <span class="initial-sync-indicator" role="status" aria-label="Syncing latest changes">
-          <span class="initial-sync-dot" aria-hidden="true"></span>
-          <span>Syncing</span>
-        </span>
+      {#if isTauri() && !$databaseLoadPending && !$databaseLoadError}
+        <SyncStatusIndicator />
       {/if}
     </div>
     <div class="mobile-header-actions">
@@ -4431,11 +4411,8 @@ return rows`
     <div>
       <div class="sidebar-brand-heading">
         <h1>Balance</h1>
-        {#if isTauri() && !$databaseLoadPending && !$databaseLoadError && !$automaticSyncStatus.initialSyncComplete && !$automaticSyncStatus.lastError}
-          <span class="initial-sync-indicator" role="status" aria-label="Syncing latest changes">
-            <span class="initial-sync-dot" aria-hidden="true"></span>
-            <span>Syncing</span>
-          </span>
+        {#if isTauri() && !$databaseLoadPending && !$databaseLoadError}
+          <SyncStatusIndicator />
         {/if}
       </div>
       <p class="muted">Focus on what matters today</p>

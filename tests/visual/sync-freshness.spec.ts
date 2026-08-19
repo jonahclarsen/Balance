@@ -200,7 +200,7 @@ test('a slow launch sync leaves local state visible with a subtle status cue', a
   await page.goto('/?hold-sync=1')
 
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
-  await expect(page.getByRole('status', { name: 'Syncing latest changes' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-initial-sync-status.png`,
@@ -236,12 +236,12 @@ test('settings no longer expose retired migration cleanup controls', async ({ pa
   await expect(page.getByRole('button', { name: 'Finalize cleanup now' })).toHaveCount(0)
 })
 
-test('an unsuccessful launch sync marks the visible local state as potentially stale', async ({ page }, testInfo) => {
+test('an unsuccessful launch sync retries with a subtle status cue', async ({ page }, testInfo) => {
   await page.goto('/')
 
-  const warning = page.getByRole('alert')
-  await expect(warning.getByText('Balance may be out of date')).toBeVisible()
-  await expect(warning.getByText(/Sync hasn.t completed/)).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Sync status: Retrying' })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Retry now' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
 
   await expect.poll(() => page.evaluate(() => {
@@ -249,16 +249,21 @@ test('an unsuccessful launch sync marks the visible local state as potentially s
     return runtime.__syncAttemptCount
   })).toBe(1)
 
-  await warning.getByRole('button', { name: 'Retry now' }).click()
-  await expect.poll(() => page.evaluate(() => {
-    const runtime = globalThis as typeof globalThis & { __syncAttemptCount: number }
-    return runtime.__syncAttemptCount
-  })).toBe(2)
-
   await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-sync-may-be-out-of-date.png`,
+    path: `artifacts/visual-smoke/${testInfo.project.name}-sync-retrying-status.png`,
     fullPage: false,
   })
+})
+
+test('an offline device shows a quiet offline status', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    window.dispatchEvent(new Event('offline'))
+  })
+
+  await expect(page.getByRole('status', { name: 'Sync status: Offline' })).toBeVisible()
+  await expect(page.getByRole('alert')).toHaveCount(0)
 })
 
 test('launch reloads visible state even when a background pass already consumed the changes', async ({ page }) => {
@@ -266,11 +271,11 @@ test('launch reloads visible state even when a background pass already consumed 
 
   await expect(page.getByText('Synced version')).toBeVisible()
   await expect(page.getByText('Local version')).toHaveCount(0)
-  await expect(page.getByRole('status', { name: 'Syncing latest changes' })).toHaveCount(0)
+  await expect(page.getByRole('status', { name: /^Sync status:/ })).toHaveCount(0)
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
 })
 
-test('routine sync checks stay quiet without resetting launch completion', async ({ page }) => {
+test('routine sync checks use the subtle status without resetting launch completion', async ({ page }) => {
   await page.goto('/?launch-then-hold=1')
 
   await expect.poll(() => readSyncStatus(page)).toEqual({
@@ -288,6 +293,7 @@ test('routine sync checks stay quiet without resetting launch completion', async
     initialSyncComplete: true,
   })
 
+  await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
   await expect(page.getByText('Reading sync settings…')).toHaveCount(0)
   await expect(page.getByText('Waiting for database access…')).toHaveCount(0)

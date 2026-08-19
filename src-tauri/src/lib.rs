@@ -1539,6 +1539,46 @@ where
     .map_err(|error| error.to_string())?
 }
 
+struct ForegroundRelayDatabaseGate {
+    guard: Option<MutexGuard<'static, ()>>,
+}
+
+impl ForegroundRelayDatabaseGate {
+    fn acquire() -> Result<Self, String> {
+        Ok(Self {
+            guard: Some(database_access_guard()?),
+        })
+    }
+}
+
+impl sync::relay_client::NetworkDatabaseGate for ForegroundRelayDatabaseGate {
+    fn without_database_lock<T>(
+        &mut self,
+        task: impl FnOnce() -> sync::Result<T>,
+    ) -> sync::Result<T> {
+        drop(self.guard.take());
+        let result = task();
+        self.guard = Some(database_access_guard().map_err(sync::Error::Codec)?);
+        result
+    }
+}
+
+/// Relay HTTP can spend its entire timeout waiting for an offline network.
+/// Keep one database connection for the pass, but cooperatively release the
+/// process mutex around transport-only work so saves and undo/redo stay local.
+async fn run_foreground_relay_task<T, F>(task: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(&mut ForegroundRelayDatabaseGate) -> Result<T, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut gate = ForegroundRelayDatabaseGate::acquire()?;
+        task(&mut gate)
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 /// Android can start an overdue WorkManager relay pass before its activity.
 /// That pass holds the ordinary database mutex across network I/O, but SQLite
 /// itself still permits the launch path's read-only connection while the relay
@@ -9397,7 +9437,7 @@ async fn sync_relay_once(
     reason: String,
 ) -> Result<sync::relay_client::SyncPassResult, String> {
     let _ = reason;
-    run_database_task(move || {
+    run_foreground_relay_task(move |gate| {
         let startup = take_startup_database_connection(&app, StartupDatabaseRead::RelaySync)?;
         let result = (|| {
             let connection = &startup.connection;
@@ -9416,7 +9456,7 @@ async fn sync_relay_once(
             if checkpoint_coordinator {
                 maybe_checkpoint_operation_log(connection)?;
             }
-            sync::relay_client::sync_once(
+            sync::relay_client::sync_once_with_network_gate(
                 connection,
                 &relay_url,
                 &key,
@@ -9426,6 +9466,7 @@ async fn sync_relay_once(
                 // restricted to the original database coordinator allowed an
                 // offline Mac to strand active phones at the generation limit.
                 sync::relay_client::SyncOptions::foreground(true),
+                gate,
             )
             .map_err(sync::Error::into_string)
         })();
@@ -13699,6 +13740,29 @@ mod tests {
             .recv_timeout(Duration::from_secs(1))
             .expect("waiting database task should continue after maintenance");
         waiter.join().unwrap();
+    }
+
+    #[test]
+    fn foreground_relay_network_wait_yields_database_access() {
+        let mut relay_gate = ForegroundRelayDatabaseGate::acquire().unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            let _guard = database_access_guard().unwrap();
+            sender.send(()).unwrap();
+        });
+
+        <ForegroundRelayDatabaseGate as sync::relay_client::NetworkDatabaseGate>::without_database_lock(
+            &mut relay_gate,
+            || {
+                receiver
+                    .recv_timeout(Duration::from_secs(1))
+                    .expect("local database work should continue during relay network waits");
+                Ok(())
+            },
+        )
+        .unwrap();
+        waiter.join().unwrap();
+        assert!(relay_gate.guard.is_some());
     }
 
     #[test]

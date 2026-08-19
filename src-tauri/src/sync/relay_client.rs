@@ -29,6 +29,22 @@ const RELAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const FOREGROUND_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const BACKGROUND_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
+/// Foreground app sync temporarily gives up the process-wide database mutex
+/// while it waits on HTTP. Database work on the relay connection remains
+/// serialized before and after each wait, so local edits and history commands
+/// are never parked behind an unreachable relay.
+pub(crate) trait NetworkDatabaseGate {
+    fn without_database_lock<T>(&mut self, task: impl FnOnce() -> Result<T>) -> Result<T>;
+}
+
+struct ContinuousDatabaseAccess;
+
+impl NetworkDatabaseGate for ContinuousDatabaseAccess {
+    fn without_database_lock<T>(&mut self, task: impl FnOnce() -> Result<T>) -> Result<T> {
+        task()
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct SyncOptions {
     /// Foreground passes may finish large downloads while the app is open.
@@ -249,23 +265,36 @@ fn response_error(response: Response) -> Error {
     Error::Codec(format!("relay {status}: {body}"))
 }
 
-fn get_json<T: DeserializeOwned>(client: &Client, url: &str) -> Result<T> {
-    let response = client
-        .get(url)
-        .send()
-        .map_err(|error| Error::Codec(format!("relay request: {error}")))?;
-    if !response.status().is_success() {
-        return Err(response_error(response));
-    }
-    response
-        .json()
-        .map_err(|error| Error::Codec(format!("relay response: {error}")))
+fn get_json<T: DeserializeOwned>(
+    client: &Client,
+    url: &str,
+    gate: &mut impl NetworkDatabaseGate,
+) -> Result<T> {
+    gate.without_database_lock(|| {
+        let response = client
+            .get(url)
+            .send()
+            .map_err(|error| Error::Codec(format!("relay request: {error}")))?;
+        if !response.status().is_success() {
+            return Err(response_error(response));
+        }
+        response
+            .json()
+            .map_err(|error| Error::Codec(format!("relay response: {error}")))
+    })
 }
 
-fn manifest(client: &Client, base: &str, epoch: &str, after: i64) -> Result<Manifest> {
+fn manifest(
+    client: &Client,
+    base: &str,
+    epoch: &str,
+    after: i64,
+    gate: &mut impl NetworkDatabaseGate,
+) -> Result<Manifest> {
     get_json(
         client,
         &format!("{base}/v3/manifest?epoch={epoch}&after={after}"),
+        gate,
     )
 }
 
@@ -360,7 +389,7 @@ fn checkpoint_safe(conn: &Connection) -> Result<bool> {
     )?)
 }
 
-fn apply_descriptor(
+fn apply_descriptor_with_gate(
     conn: &Connection,
     client: &Client,
     base: &str,
@@ -368,8 +397,9 @@ fn apply_descriptor(
     epoch: &str,
     id: &str,
     chunks: usize,
+    gate: &mut impl NetworkDatabaseGate,
 ) -> Result<(usize, bool)> {
-    let ciphertext = fetch_blob(client, base, id, chunks)?;
+    let ciphertext = gate.without_database_lock(|| fetch_blob(client, base, id, chunks))?;
     apply_ciphertext(conn, key, epoch, &ciphertext)
 }
 
@@ -433,7 +463,17 @@ fn apply_manifest(
     let mut budget = DownloadBudget {
         remaining_chunks: None,
     };
-    apply_manifest_with_budget(conn, client, base, key, manifest, local_epoch, &mut budget)
+    let mut gate = ContinuousDatabaseAccess;
+    apply_manifest_with_budget_and_gate(
+        conn,
+        client,
+        base,
+        key,
+        manifest,
+        local_epoch,
+        &mut budget,
+        &mut gate,
+    )
 }
 
 fn apply_manifest_with_budget(
@@ -444,6 +484,29 @@ fn apply_manifest_with_budget(
     manifest: &Manifest,
     local_epoch: &str,
     budget: &mut DownloadBudget,
+) -> Result<(usize, bool)> {
+    let mut gate = ContinuousDatabaseAccess;
+    apply_manifest_with_budget_and_gate(
+        conn,
+        client,
+        base,
+        key,
+        manifest,
+        local_epoch,
+        budget,
+        &mut gate,
+    )
+}
+
+fn apply_manifest_with_budget_and_gate(
+    conn: &Connection,
+    client: &Client,
+    base: &str,
+    key: &SyncKey,
+    manifest: &Manifest,
+    local_epoch: &str,
+    budget: &mut DownloadBudget,
+    gate: &mut impl NetworkDatabaseGate,
 ) -> Result<(usize, bool)> {
     let mut pulled = 0;
     let mut changed = false;
@@ -460,7 +523,7 @@ fn apply_manifest_with_budget(
         conn.execute("DELETE FROM sync_relay_known_ops", [])?;
         conn.execute("DELETE FROM sync_relay_outbox", [])?;
         if let Some(checkpoint) = &manifest.checkpoint {
-            match apply_descriptor(
+            match apply_descriptor_with_gate(
                 conn,
                 client,
                 base,
@@ -468,6 +531,7 @@ fn apply_manifest_with_budget(
                 &manifest.epoch,
                 &checkpoint.id,
                 checkpoint.chunks,
+                gate,
             ) {
                 Ok((count, did_change)) => {
                     pulled += count;
@@ -493,19 +557,23 @@ fn apply_manifest_with_budget(
     let mut decoded_ops = Vec::new();
     let mut decoded_batches = Vec::new();
     for group in pending_batches.chunks(PARALLEL_BATCH_DOWNLOADS) {
-        let downloads = std::thread::scope(|scope| {
-            group
-                .iter()
-                .map(|batch| scope.spawn(move || fetch_blob(client, base, &batch.id, batch.chunks)))
-                .collect::<Vec<_>>()
-                .into_iter()
-                .map(|download| {
-                    download.join().unwrap_or_else(|_| {
-                        Err(Error::Codec("relay download worker panicked".into()))
+        let downloads = gate.without_database_lock(|| {
+            Ok(std::thread::scope(|scope| {
+                group
+                    .iter()
+                    .map(|batch| {
+                        scope.spawn(move || fetch_blob(client, base, &batch.id, batch.chunks))
                     })
-                })
-                .collect::<Vec<_>>()
-        });
+                    .collect::<Vec<_>>()
+                    .into_iter()
+                    .map(|download| {
+                        download.join().unwrap_or_else(|_| {
+                            Err(Error::Codec("relay download worker panicked".into()))
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            }))
+        })?;
 
         for (batch, download) in group.iter().zip(downloads) {
             match download
@@ -650,6 +718,7 @@ fn upload_outbox(
     base: &str,
     device: &str,
     epoch: &str,
+    gate: &mut impl NetworkDatabaseGate,
 ) -> Result<usize> {
     let rows = {
         let mut stmt = conn.prepare(
@@ -668,21 +737,24 @@ fn upload_outbox(
     };
     let mut pushed = 0;
     for (batch_id, ciphertext, ids_json) in rows {
-        let response = client
-            .post(format!("{base}/v3/batches"))
-            .header("content-type", "application/octet-stream")
-            .header("x-balance-epoch", epoch)
-            .header("x-balance-device", device)
-            .header("x-balance-batch", &batch_id)
-            .body(ciphertext)
-            .send()
-            .map_err(|error| Error::Codec(format!("relay upload: {error}")))?;
-        if response.status() == StatusCode::CONFLICT {
-            return Err(Error::Codec("relay epoch changed during upload".into()));
-        }
-        if !response.status().is_success() {
-            return Err(response_error(response));
-        }
+        gate.without_database_lock(|| {
+            let response = client
+                .post(format!("{base}/v3/batches"))
+                .header("content-type", "application/octet-stream")
+                .header("x-balance-epoch", epoch)
+                .header("x-balance-device", device)
+                .header("x-balance-batch", &batch_id)
+                .body(ciphertext)
+                .send()
+                .map_err(|error| Error::Codec(format!("relay upload: {error}")))?;
+            if response.status() == StatusCode::CONFLICT {
+                return Err(Error::Codec("relay epoch changed during upload".into()));
+            }
+            if !response.status().is_success() {
+                return Err(response_error(response));
+            }
+            Ok(())
+        })?;
         let ids: Vec<String> =
             serde_json::from_str(&ids_json).map_err(|error| Error::Codec(error.to_string()))?;
         let tx = conn.unchecked_transaction()?;
@@ -710,9 +782,10 @@ fn commit_checkpoint(
     key: &SyncKey,
     epoch: &str,
     latest_sequence: i64,
+    gate: &mut impl NetworkDatabaseGate,
 ) -> Result<bool> {
     checkpoint_operation_log_preserving_history(conn)?;
-    upload_current_checkpoint(conn, client, base, key, epoch, latest_sequence)
+    upload_current_checkpoint(conn, client, base, key, epoch, latest_sequence, gate)
 }
 
 fn upload_current_checkpoint(
@@ -722,15 +795,17 @@ fn upload_current_checkpoint(
     key: &SyncKey,
     epoch: &str,
     latest_sequence: i64,
+    gate: &mut impl NetworkDatabaseGate,
 ) -> Result<bool> {
     let new_epoch = random_token();
     let upload_id = random_token();
+    let checkpoint_ops = all_ops(conn)?;
     let ciphertext = seal(
         key,
         &RelayEnvelope {
             v: PROTOCOL_VERSION,
             epoch: new_epoch.clone(),
-            ops: all_ops(conn)?,
+            ops: checkpoint_ops.clone(),
         },
     )?;
     let chunks = ciphertext.len().div_ceil(CHECKPOINT_CHUNK_BYTES);
@@ -742,27 +817,36 @@ fn upload_current_checkpoint(
         chunks,
         byte_length: ciphertext.len(),
     };
-    let response = client
-        .post(format!("{base}/v3/checkpoints/start"))
-        .json(&start)
-        .send()
-        .map_err(|error| Error::Codec(format!("checkpoint start: {error}")))?;
-    if response.status() == StatusCode::CONFLICT {
-        return Ok(false);
-    }
-    if !response.status().is_success() {
-        return Err(response_error(response));
-    }
-    for (index, chunk) in ciphertext.chunks(CHECKPOINT_CHUNK_BYTES).enumerate() {
+    let started = gate.without_database_lock(|| {
         let response = client
-            .put(format!("{base}/v3/checkpoints/{upload_id}/{index}"))
-            .header("content-type", "application/octet-stream")
-            .body(chunk.to_vec())
+            .post(format!("{base}/v3/checkpoints/start"))
+            .json(&start)
             .send()
-            .map_err(|error| Error::Codec(format!("checkpoint upload: {error}")))?;
+            .map_err(|error| Error::Codec(format!("checkpoint start: {error}")))?;
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(false);
+        }
         if !response.status().is_success() {
             return Err(response_error(response));
         }
+        Ok(true)
+    })?;
+    if !started {
+        return Ok(false);
+    }
+    for (index, chunk) in ciphertext.chunks(CHECKPOINT_CHUNK_BYTES).enumerate() {
+        gate.without_database_lock(|| {
+            let response = client
+                .put(format!("{base}/v3/checkpoints/{upload_id}/{index}"))
+                .header("content-type", "application/octet-stream")
+                .body(chunk.to_vec())
+                .send()
+                .map_err(|error| Error::Codec(format!("checkpoint upload: {error}")))?;
+            if !response.status().is_success() {
+                return Err(response_error(response));
+            }
+            Ok(())
+        })?;
     }
     let commit = CheckpointCommit {
         upload_id: &upload_id,
@@ -770,21 +854,30 @@ fn upload_current_checkpoint(
         expected_latest_sequence: latest_sequence,
         new_epoch: &new_epoch,
     };
-    let response = client
-        .post(format!("{base}/v3/checkpoints/commit"))
-        .json(&commit)
-        .send()
-        .map_err(|error| Error::Codec(format!("checkpoint commit: {error}")))?;
-    if response.status() == StatusCode::CONFLICT {
+    let committed = gate.without_database_lock(|| {
+        let response = client
+            .post(format!("{base}/v3/checkpoints/commit"))
+            .json(&commit)
+            .send()
+            .map_err(|error| Error::Codec(format!("checkpoint commit: {error}")))?;
+        if response.status() == StatusCode::CONFLICT {
+            return Ok(false);
+        }
+        if !response.status().is_success() {
+            return Err(response_error(response));
+        }
+        Ok(true)
+    })?;
+    if !committed {
         return Ok(false);
-    }
-    if !response.status().is_success() {
-        return Err(response_error(response));
     }
     conn.execute("DELETE FROM sync_relay_known_ops", [])?;
     conn.execute("DELETE FROM sync_relay_outbox", [])?;
     set_relay_state(conn, &new_epoch, 0)?;
-    mark_known(conn, &all_ops(conn)?)?;
+    // Local edits can be persisted while checkpoint chunks are in flight. Only
+    // operations actually present in the uploaded checkpoint are known; newer
+    // ones must remain eligible for the next incremental outbox.
+    mark_known(conn, &checkpoint_ops)?;
     Ok(true)
 }
 
@@ -794,9 +887,20 @@ pub fn sync_once(
     key: &SyncKey,
     options: SyncOptions,
 ) -> Result<SyncPassResult> {
+    let mut gate = ContinuousDatabaseAccess;
+    sync_once_with_network_gate(conn, relay_url, key, options, &mut gate)
+}
+
+pub(crate) fn sync_once_with_network_gate(
+    conn: &Connection,
+    relay_url: &str,
+    key: &SyncKey,
+    options: SyncOptions,
+    gate: &mut impl NetworkDatabaseGate,
+) -> Result<SyncPassResult> {
     ensure_relay_tables(conn)?;
     prune_obsolete_relay_rows(conn)?;
-    let result = sync_once_inner(conn, relay_url, key, options);
+    let result = sync_once_inner(conn, relay_url, key, options, gate);
     if let Err(error) = &result {
         let _ = conn.execute(
             "UPDATE sync_relay_state SET last_error = ?1 WHERE singleton = 1",
@@ -811,6 +915,7 @@ fn sync_once_inner(
     relay_url: &str,
     key: &SyncKey,
     options: SyncOptions,
+    gate: &mut impl NetworkDatabaseGate,
 ) -> Result<SyncPassResult> {
     ensure_relay_tables(conn)?;
     let client = relay_http_client(options)?;
@@ -821,8 +926,8 @@ fn sync_once_inner(
     let device = device_token(key, &device_id);
     let (local_epoch, cursor) = relay_state(conn)?;
     let mut download_budget = DownloadBudget::for_options(options);
-    let first = manifest(&client, base, &local_epoch, cursor)?;
-    let (first_pulled, first_changed) = apply_manifest_with_budget(
+    let first = manifest(&client, base, &local_epoch, cursor, gate)?;
+    let (first_pulled, first_changed) = apply_manifest_with_budget_and_gate(
         conn,
         &client,
         base,
@@ -830,6 +935,7 @@ fn sync_once_inner(
         &first,
         &local_epoch,
         &mut download_budget,
+        gate,
     )?;
     let mut pulled = first_pulled;
     let mut changed = first_changed;
@@ -847,6 +953,7 @@ fn sync_once_inner(
             key,
             &first.epoch,
             first.latest_sequence,
+            gate,
         )?
     {
         let (epoch, latest_sequence) = relay_state(conn)?;
@@ -878,7 +985,15 @@ fn sync_once_inner(
                 "a quarantined relay batch prevents safe checkpoint promotion; sync another device to compact it".into(),
             ));
         }
-        if commit_checkpoint(conn, &client, base, key, &active_epoch, latest_sequence)? {
+        if commit_checkpoint(
+            conn,
+            &client,
+            base,
+            key,
+            &active_epoch,
+            latest_sequence,
+            gate,
+        )? {
             let (epoch, latest_sequence) = relay_state(conn)?;
             conn.execute(
                 "UPDATE sync_relay_state SET last_success_ms = ?1, last_error = NULL WHERE singleton = 1",
@@ -897,11 +1012,11 @@ fn sync_once_inner(
             "relay changed while uploading a large checkpoint; retry sync".into(),
         ));
     }
-    let pushed = upload_outbox(conn, &client, base, &device, &active_epoch)?;
+    let pushed = upload_outbox(conn, &client, base, &device, &active_epoch, gate)?;
 
     let cursor = relay_state(conn)?.1;
-    let second = manifest(&client, base, &active_epoch, cursor)?;
-    let (second_pulled, second_changed) = apply_manifest_with_budget(
+    let second = manifest(&client, base, &active_epoch, cursor, gate)?;
+    let (second_pulled, second_changed) = apply_manifest_with_budget_and_gate(
         conn,
         &client,
         base,
@@ -909,6 +1024,7 @@ fn sync_once_inner(
         &second,
         &active_epoch,
         &mut download_budget,
+        gate,
     )?;
     pulled += second_pulled;
     changed |= second_changed;
@@ -923,6 +1039,7 @@ fn sync_once_inner(
             key,
             &second.epoch,
             second.latest_sequence,
+            gate,
         )?;
     let (epoch, latest_sequence) = relay_state(conn)?;
     conn.execute(

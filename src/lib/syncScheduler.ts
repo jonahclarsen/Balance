@@ -21,6 +21,7 @@ export type AutomaticSyncStatus = {
   pending: boolean
   configured: boolean | null
   initialSyncComplete: boolean
+  offline: boolean
 }
 
 export const automaticSyncStatus = writable<AutomaticSyncStatus>({
@@ -30,6 +31,7 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
   pending: false,
   configured: null,
   initialSyncComplete: false,
+  offline: typeof navigator !== 'undefined' && !navigator.onLine,
 })
 
 let running: Promise<SyncPassResult | null> | null = null
@@ -72,7 +74,7 @@ async function configured(): Promise<boolean> {
 }
 
 function requiresFollowup(reason: string): boolean {
-  return ['edit', 'manual', 'warning-retry', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
+  return ['edit', 'manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
 }
 
 async function reloadVisibleStateAfterLaunch(reason: string, stateChanged: boolean): Promise<void> {
@@ -122,6 +124,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         running: false,
         lastError: message,
         configured: null,
+        offline: !navigator.onLine,
       }))
       scheduleRetry()
       return null
@@ -135,6 +138,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         pending: false,
         configured: false,
         initialSyncComplete: true,
+        offline: !navigator.onLine,
       })
       return null
     }
@@ -143,6 +147,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       ...status,
       running: true,
       configured: true,
+      offline: !navigator.onLine,
     }))
     try {
       const result = await syncRelayOnce(reason)
@@ -164,6 +169,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         pending: false,
         configured: true,
         initialSyncComplete: true,
+        offline: false,
       })
       return result
     } catch (error) {
@@ -180,6 +186,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         running: false,
         lastError: message,
         configured: true,
+        offline: !navigator.onLine,
       }))
       scheduleRetry()
       return null
@@ -204,6 +211,7 @@ export function startAutomaticSync(): () => void {
     ...status,
     configured: null,
     initialSyncComplete: false,
+    offline: !navigator.onLine,
   }))
   schedulePoll()
 
@@ -214,7 +222,13 @@ export function startAutomaticSync(): () => void {
       void requestSync('edit')
     }, EDIT_DEBOUNCE_MS)
   }
-  const onOnline = () => void requestSync('online')
+  const onOnline = () => {
+    automaticSyncStatus.update((status) => ({ ...status, offline: false }))
+    void requestSync('online')
+  }
+  const onOffline = () => {
+    automaticSyncStatus.update((status) => ({ ...status, offline: true }))
+  }
   const onFocus = () => void requestSync('focus')
   const onVisibility = () => {
     schedulePoll()
@@ -222,6 +236,7 @@ export function startAutomaticSync(): () => void {
   }
   const stopPersisted = onPersistedOperation(triggerEdit)
   window.addEventListener('online', onOnline)
+  window.addEventListener('offline', onOffline)
   window.addEventListener('focus', onFocus)
   document.addEventListener('visibilitychange', onVisibility)
 
@@ -232,6 +247,7 @@ export function startAutomaticSync(): () => void {
     if (pollTimer) clearTimeout(pollTimer)
     if (retryTimer) clearTimeout(retryTimer)
     window.removeEventListener('online', onOnline)
+    window.removeEventListener('offline', onOffline)
     window.removeEventListener('focus', onFocus)
     document.removeEventListener('visibilitychange', onVisibility)
   }

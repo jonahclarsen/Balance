@@ -815,7 +815,7 @@ nav button.active {
   gap: 9px;
 }
 
-.initial-sync-indicator {
+.sync-status-indicator {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -826,16 +826,27 @@ nav button.active {
   white-space: nowrap;
 }
 
-.initial-sync-dot {
+.sync-status-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
-  animation: initial-sync-pulse 1.4s ease-in-out infinite;
+  animation: sync-status-pulse 1.4s ease-in-out infinite;
 }
 
-@keyframes initial-sync-pulse {
+.sync-status-indicator.retrying .sync-status-dot {
+  animation-duration: 2.2s;
+}
+
+.sync-status-indicator.offline .sync-status-dot {
+  background: currentColor;
+  box-shadow: none;
+  opacity: 0.55;
+  animation: none;
+}
+
+@keyframes sync-status-pulse {
   50% {
     opacity: 0.42;
     transform: scale(0.82);
@@ -843,7 +854,7 @@ nav button.active {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .initial-sync-dot {
+  .sync-status-dot {
     animation: none;
   }
 }
@@ -2351,22 +2362,6 @@ nav button.active {
 
 .update-available-banner .app-error-banner-icon {
   color: var(--accent);
-}
-
-.sync-freshness-banner {
-  border-color: var(--accent);
-}
-
-.sync-freshness-banner .app-error-banner-icon {
-  color: var(--accent);
-}
-
-.sync-freshness-banner.sync-error {
-  border-color: var(--danger);
-}
-
-.sync-freshness-banner.sync-error .app-error-banner-icon {
-  color: var(--danger);
 }
 
 .app-error-banner-icon {
