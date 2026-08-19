@@ -275,7 +275,7 @@ test('launch reloads visible state even when a background pass already consumed 
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
 })
 
-test('routine sync checks use the subtle status without resetting launch completion', async ({ page }) => {
+test('routine sync checks stay silent without resetting launch completion', async ({ page }) => {
   await page.goto('/?launch-then-hold=1')
 
   await expect.poll(() => readSyncStatus(page)).toEqual({
@@ -293,8 +293,28 @@ test('routine sync checks use the subtle status without resetting launch complet
     initialSyncComplete: true,
   })
 
-  await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
+  await expect(page.getByRole('status', { name: /^Sync status:/ })).toHaveCount(0)
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
   await expect(page.getByText('Reading sync settings…')).toHaveCount(0)
   await expect(page.getByText('Waiting for database access…')).toHaveCount(0)
+})
+
+test('a manual sync still uses the subtle syncing status', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+
+  await expect.poll(() => readSyncStatus(page)).toEqual({
+    running: false,
+    initialSyncComplete: true,
+  })
+  await page.evaluate(async () => {
+    const schedulerPath = '/src/lib/syncScheduler.ts'
+    const scheduler = await import(/* @vite-ignore */ schedulerPath)
+    void scheduler.requestSync('manual')
+  })
+
+  await expect.poll(() => readSyncStatus(page)).toEqual({
+    running: true,
+    initialSyncComplete: true,
+  })
+  await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
 })

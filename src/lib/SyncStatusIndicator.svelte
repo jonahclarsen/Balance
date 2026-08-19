@@ -3,9 +3,10 @@
 
   $: visible =
     $automaticSyncStatus.configured !== false &&
-    ($automaticSyncStatus.running ||
-      !$automaticSyncStatus.initialSyncComplete ||
-      Boolean($automaticSyncStatus.lastError))
+    ($automaticSyncStatus.offline ||
+      Boolean($automaticSyncStatus.lastError) ||
+      ($automaticSyncStatus.running &&
+        ($automaticSyncStatus.showActivity || !$automaticSyncStatus.initialSyncComplete)))
   $: label = $automaticSyncStatus.offline
     ? 'Offline'
     : $automaticSyncStatus.lastError

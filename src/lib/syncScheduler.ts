@@ -22,6 +22,7 @@ export type AutomaticSyncStatus = {
   configured: boolean | null
   initialSyncComplete: boolean
   offline: boolean
+  showActivity: boolean
 }
 
 export const automaticSyncStatus = writable<AutomaticSyncStatus>({
@@ -32,6 +33,7 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
   configured: null,
   initialSyncComplete: false,
   offline: typeof navigator !== 'undefined' && !navigator.onLine,
+  showActivity: false,
 })
 
 let running: Promise<SyncPassResult | null> | null = null
@@ -77,6 +79,10 @@ function requiresFollowup(reason: string): boolean {
   return ['edit', 'manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
 }
 
+function shouldShowActivity(reason: string): boolean {
+  return ['launch', 'edit', 'manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
+}
+
 async function reloadVisibleStateAfterLaunch(reason: string, stateChanged: boolean): Promise<void> {
   if (reason === 'launch' || stateChanged) await plannerStore.reloadFromBackend()
 }
@@ -94,7 +100,11 @@ function scheduleRetry(): void {
 export async function requestSync(reason: string): Promise<SyncPassResult | null> {
   if (running) {
     if (requiresFollowup(reason)) queuedReason = reason
-    automaticSyncStatus.update((status) => ({ ...status, pending: Boolean(queuedReason) }))
+    automaticSyncStatus.update((status) => ({
+      ...status,
+      pending: Boolean(queuedReason),
+      showActivity: status.showActivity || shouldShowActivity(reason),
+    }))
     return running
   }
   running = (async () => {
@@ -105,6 +115,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       running: false,
       pending: false,
       configured: null,
+      showActivity: false,
     }))
 
     let syncConfigured: boolean
@@ -125,6 +136,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         lastError: message,
         configured: null,
         offline: !navigator.onLine,
+        showActivity: false,
       }))
       scheduleRetry()
       return null
@@ -139,6 +151,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         configured: false,
         initialSyncComplete: true,
         offline: !navigator.onLine,
+        showActivity: false,
       })
       return null
     }
@@ -148,6 +161,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       running: true,
       configured: true,
       offline: !navigator.onLine,
+      showActivity: shouldShowActivity(reason),
     }))
     try {
       const result = await syncRelayOnce(reason)
@@ -170,6 +184,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         configured: true,
         initialSyncComplete: true,
         offline: false,
+        showActivity: false,
       })
       return result
     } catch (error) {
@@ -187,6 +202,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         lastError: message,
         configured: true,
         offline: !navigator.onLine,
+        showActivity: false,
       }))
       scheduleRetry()
       return null
@@ -212,6 +228,7 @@ export function startAutomaticSync(): () => void {
     configured: null,
     initialSyncComplete: false,
     offline: !navigator.onLine,
+    showActivity: false,
   }))
   schedulePoll()
 
