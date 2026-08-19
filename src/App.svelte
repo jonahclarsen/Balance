@@ -24,6 +24,7 @@
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
   import DocumentFindBar from './lib/DocumentFindBar.svelte'
   import Celebration from './lib/Celebration.svelte'
+  import CelebrationSettings from './lib/CelebrationSettings.svelte'
   import GoalBurst from './lib/GoalBurst.svelte'
   import { filterGoalsByPhrase, goalLightnessShift, goalsMatchingItemText, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
@@ -56,6 +57,12 @@
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient } from './lib/preferences'
   import { DEFAULT_THEME_ID, normalizeThemeId, THEME_PRESETS, type ThemeId } from './lib/themes'
   import { isNoteTrashed } from './lib/noteTrash'
+  import {
+    DEFAULT_COMPLETION_CELEBRATION_ID,
+    getCompletionCelebration,
+    normalizeCompletionCelebrationId,
+    type CompletionCelebrationId,
+  } from './lib/celebrations'
 
   // Pasting four or more items onto a different day routes through a review queue
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
@@ -73,6 +80,17 @@
     usesDefaultExportDirectory: boolean
   }
   type AvailableUpdate = { version: string; url: string }
+  type CelebrationPreviewSession = {
+    token: number
+    celebrationId: CompletionCelebrationId
+    previewDate: string
+    returnView: View
+    persistedActivePlanDate: string
+    compareDayOpen: boolean
+    compareDayDate: string
+    settingsScrollTop: number
+    focusCelebrationId: CompletionCelebrationId
+  }
 
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
   const GOAL_HISTORY_UPDATE_DEBOUNCE_MS = 1_000
@@ -165,6 +183,13 @@
   let celebrationDate: string | null = null
   let celebrationListId: Id | null = null
   let celebrationKind: 'day' | 'list' | null = null
+  let completionCelebrationId: CompletionCelebrationId = DEFAULT_COMPLETION_CELEBRATION_ID
+  let celebrationPreview: CelebrationPreviewSession | null = null
+  let celebrationPreviewTimer: number | null = null
+  let celebrationPreviewToken = 0
+  let celebrationPreviewReturnButton: HTMLButtonElement | null = null
+  let celebrationPreviewAnnouncement = ''
+  let celebrationPreviewAnnouncementTimer: number | null = null
   let goalBurst: GoalBurst | null = null
   // Tracks each plan item's done state so we can fire a goal burst the moment an
   // item that contributes to a goal transitions to done (via any completion path).
@@ -362,20 +387,22 @@ return rows`
   $: if (goals !== $plannerStore.goals) goals = $plannerStore.goals
   $: if (goalCompletions !== $plannerStore.goalCompletions) goalCompletions = $plannerStore.goalCompletions
   $: if (goals !== goalHistoryGoals) scheduleGoalHistoryUpdate()
-  $: activePlan = $plannerStore.plans.find((plan) => plan.date === $plannerStore.activePlanDate)
+  $: displayedPlanDate = celebrationPreview?.previewDate ?? $plannerStore.activePlanDate
+  $: displayedCompareDayOpen = compareDayOpen && !celebrationPreview
+  $: activePlan = $plannerStore.plans.find((plan) => plan.date === displayedPlanDate)
   $: activePlanTimeWarnings = buildItemTimeWarnings(activePlan?.items ?? [])
-  $: comparePlan = compareDayOpen ? $plannerStore.plans.find((plan) => plan.date === compareDayDate) : undefined
+  $: comparePlan = displayedCompareDayOpen ? $plannerStore.plans.find((plan) => plan.date === compareDayDate) : undefined
   $: comparePlanTimeWarnings = buildItemTimeWarnings(comparePlan?.items ?? [])
   // One pane when closed, two when comparing. Rendering the normal day through
   // the same loop keeps a single copy of the day markup.
   $: dayPanes = [
     {
       key: 'primary' as const,
-      date: $plannerStore.activePlanDate,
+      date: displayedPlanDate,
       plan: activePlan,
       timeWarnings: activePlanTimeWarnings,
     },
-    ...(compareDayOpen
+    ...(displayedCompareDayOpen
       ? [
           {
             key: 'compare' as const,
@@ -389,13 +416,13 @@ return rows`
   // Selection, clipboard and the plan keyboard shortcuts act on whichever day was
   // last touched; everything else (celebrations, goal tracking, generation) stays
   // anchored to the active plan date.
-  $: focusedPlan = compareDayOpen && comparePlan && focusedPlanId === comparePlan.id ? comparePlan : activePlan
+  $: focusedPlan = displayedCompareDayOpen && comparePlan && focusedPlanId === comparePlan.id ? comparePlan : activePlan
   $: if (compareDayStateReady) persistCompareDayState(compareDayOpen, compareDayDate)
   // Scroll position is remembered per page. Today scrolls independently for each
   // date, and List Templates scrolls independently for each template.
   $: scrollPageKey =
     view === 'today'
-      ? `today:${$plannerStore.activePlanDate || ''}`
+      ? `today:${displayedPlanDate || ''}`
       : view === 'listTemplates'
         ? `list-template:${selectedListTemplate?.id ?? ''}`
         : `view:${view}`
@@ -455,7 +482,7 @@ return rows`
   $: metricOverlayMetric = metricOverlay ? metrics.find((metric) => metric.id === metricOverlay?.metricId) : null
   $: metricOverlayAnswers =
     metricOverlay && metricOverlayMetric ? answersForEntry(metricOverlay.metricId, metricOverlay.date) : {}
-  $: generateButtonLabel = $plannerStore.activePlanDate === currentDay ? 'Generate today' : 'Generate selected day'
+  $: generateButtonLabel = displayedPlanDate === currentDay ? 'Generate today' : 'Generate selected day'
   $: selectedItemIdSet = new Set(selectedItemIds)
   $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
   $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
@@ -464,6 +491,9 @@ return rows`
   $: themeId = normalizeThemeId($plannerStore.preferences.themeId)
   $: doneTintColor = $plannerStore.preferences.doneTintColor
   $: checkboxColor = $plannerStore.preferences.checkboxColor
+  $: completionCelebrationId = normalizeCompletionCelebrationId(
+    $plannerStore.preferences.completionCelebrationId,
+  )
   $: persistedIridescentGradient = $plannerStore.preferences.iridescentGradient
   $: if (persistedIridescentGradient !== previousPersistedIridescentGradient) {
     previousPersistedIridescentGradient = persistedIridescentGradient
@@ -518,7 +548,7 @@ return rows`
   // The list overlay toast belongs to the page it was opened over: leaving that
   // page hides it, returning shows it again (its state + selection persist).
   $: listOverlayVisible = Boolean(listOverlay && listOverlayInstance && view === listOverlayView)
-  $: if (workspaceViewStateReady) {
+  $: if (workspaceViewStateReady && !celebrationPreview) {
     persistWorkspaceViewState(
       view,
       listOverlay,
@@ -530,7 +560,7 @@ return rows`
   $: filteredDatabaseOperations = filterDatabaseRows(databaseInspection?.operations ?? [], databaseSearch)
   $: filteredDatabaseHistoryEntries = filterDatabaseRows(databaseInspection?.historyEntries ?? [], databaseSearch)
   $: filteredDatabasePlans = filterDatabaseRows(databaseInspection?.plans ?? [], databaseSearch)
-  $: observeActivePlanCompletion(activePlan, $plannerStore.activePlanDate, view, completionTrackingReady)
+  $: observeActivePlanCompletion(activePlan, displayedPlanDate, view, completionTrackingReady)
   $: observeGoalItemCompletions(activePlan, view, completionTrackingReady)
   $: observeGoalItemCompletions(comparePlan, view, completionTrackingReady)
   $: observeListCompletions(
@@ -675,7 +705,7 @@ return rows`
       celebrationDate = plan.date
       celebrationListId = null
       celebrationKind = 'day'
-      celebration?.celebrate('day')
+      celebration?.play({ kind: 'day', celebrationId: completionCelebrationId })
     } else if (wasComplete === true && !complete && celebrationKind === 'day' && celebrationDate === plan.date) {
       dismissCelebration()
     }
@@ -713,7 +743,7 @@ return rows`
     celebrationDate = null
     celebrationListId = listId
     celebrationKind = 'list'
-    celebration?.celebrate('list')
+    celebration?.play({ kind: 'list' })
   }
 
   function dismissCelebration() {
@@ -721,6 +751,99 @@ return rows`
     celebrationListId = null
     celebrationKind = null
     celebration?.dismiss()
+  }
+
+  function waitForAnimationFrame(): Promise<void> {
+    return new Promise((resolve) => requestAnimationFrame(() => resolve()))
+  }
+
+  function clearCelebrationPreviewTimer() {
+    if (celebrationPreviewTimer !== null) {
+      window.clearTimeout(celebrationPreviewTimer)
+      celebrationPreviewTimer = null
+    }
+  }
+
+  async function startCelebrationPreview(id: CompletionCelebrationId) {
+    plannerStore.patchPreferences({ completionCelebrationId: id })
+    clearCelebrationPreviewTimer()
+    dismissCelebration()
+    rememberWorkspaceScroll()
+
+    const token = ++celebrationPreviewToken
+    const settingsScrollTop = currentWorkspaceScrollTop()
+    scrollPositionsByPage['view:settings'] = settingsScrollTop
+    celebrationPreview = {
+      token,
+      celebrationId: id,
+      previewDate: shiftISODate(currentDay, -1),
+      returnView: view,
+      persistedActivePlanDate: $plannerStore.activePlanDate,
+      compareDayOpen,
+      compareDayDate,
+      settingsScrollTop,
+      focusCelebrationId: id,
+    }
+    celebrationPreviewAnnouncement = ''
+    closeMobileDrawer()
+    view = 'today'
+
+    await tick()
+    await waitForAnimationFrame()
+    if (!celebrationPreview || celebrationPreview.token !== token) return
+
+    const definition = getCompletionCelebration(id)
+    const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
+    const previewDuration = prefersReducedMotion
+      ? 2_000
+      : Math.min(5_000, Math.max(3_200, definition.durationMs))
+    celebrationPreviewReturnButton?.focus({ preventScroll: true })
+    try {
+      celebration?.play({ kind: 'day', celebrationId: id, preview: true })
+    } catch (error) {
+      console.error(`Could not preview ${definition.name}`, error)
+    }
+    celebrationPreviewTimer = window.setTimeout(() => {
+      void finishCelebrationPreview(token)
+    }, previewDuration)
+  }
+
+  async function finishCelebrationPreview(token = celebrationPreview?.token) {
+    const preview = celebrationPreview
+    if (!preview || token !== preview.token || token !== celebrationPreviewToken) return
+
+    clearCelebrationPreviewTimer()
+    celebration?.dismiss()
+    celebrationDate = null
+    celebrationListId = null
+    celebrationKind = null
+    celebrationPreview = null
+    view = preview.returnView
+    scrollPositionsByPage['view:settings'] = preview.settingsScrollTop
+
+    await tick()
+    await waitForAnimationFrame()
+    if (token !== celebrationPreviewToken || celebrationPreview) return
+
+    if (usesWindowScroll()) window.scrollTo(0, preview.settingsScrollTop)
+    else if (workspaceEl) workspaceEl.scrollTop = preview.settingsScrollTop
+    document
+      .querySelector<HTMLButtonElement>(`[data-celebration-option="${preview.focusCelebrationId}"]`)
+      ?.focus({ preventScroll: true })
+    celebrationPreviewAnnouncement = 'Preview finished. Settings restored.'
+    if (celebrationPreviewAnnouncementTimer !== null) {
+      window.clearTimeout(celebrationPreviewAnnouncementTimer)
+    }
+    celebrationPreviewAnnouncementTimer = window.setTimeout(() => {
+      celebrationPreviewAnnouncement = ''
+      celebrationPreviewAnnouncementTimer = null
+    }, 2_500)
+  }
+
+  function handleCelebrationVisibilityChange() {
+    if (document.hidden && celebrationPreview) {
+      void finishCelebrationPreview(celebrationPreview.token)
+    }
   }
 
   // Fire a fun burst whenever a plan item that contributes to a goal is checked
@@ -1195,6 +1318,7 @@ return rows`
     const currentDayTimer = window.setInterval(refreshCurrentDay, 60_000)
     window.addEventListener('focus', refreshCurrentDay)
     document.addEventListener('visibilitychange', refreshCurrentDay)
+    document.addEventListener('visibilitychange', handleCelebrationVisibilityChange)
     const storedWorkspaceViewState = readWorkspaceViewState()
 
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
@@ -1340,7 +1464,14 @@ return rows`
       if (noteTrashCleanupTimer !== null) window.clearInterval(noteTrashCleanupTimer)
       window.removeEventListener('focus', refreshCurrentDay)
       document.removeEventListener('visibilitychange', refreshCurrentDay)
+      document.removeEventListener('visibilitychange', handleCelebrationVisibilityChange)
       if (goalHistoryUpdateTimer !== null) window.clearTimeout(goalHistoryUpdateTimer)
+      clearCelebrationPreviewTimer()
+      if (celebrationPreviewAnnouncementTimer !== null) {
+        window.clearTimeout(celebrationPreviewAnnouncementTimer)
+      }
+      celebrationPreviewToken += 1
+      celebrationPreview = null
       clearGoalRhythmAutoShowTimer()
       dismissCelebration()
     }
@@ -2187,6 +2318,14 @@ return rows`
     // The native store begins with a disposable bootstrap state. Do not let a
     // shortcut mutate it while SQLCipher is still opening the real database.
     if ($databaseLoadPending || $databaseLoadError) return
+
+    if (celebrationPreview) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        void finishCelebrationPreview(celebrationPreview.token)
+      }
+      return
+    }
 
     if (mobileDrawerOpen && event.key === 'Escape') {
       event.preventDefault()
@@ -4434,8 +4573,8 @@ return rows`
   class:mobile-drawer-open={mobileDrawerOpen}
   class:mobile-drawer-dragging={mobileDrawerDragging}
   style={appShellStyle}
-  inert={$databaseLoadPending || Boolean($databaseLoadError)}
-  aria-hidden={$databaseLoadPending || $databaseLoadError ? 'true' : undefined}
+  inert={$databaseLoadPending || Boolean($databaseLoadError) || Boolean(celebrationPreview)}
+  aria-hidden={$databaseLoadPending || $databaseLoadError || celebrationPreview ? 'true' : undefined}
 >
   {#if isMac && !isMobile}
     <div class="macos-titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
@@ -4621,15 +4760,15 @@ return rows`
     <section
       class="workspace"
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
-      class:comparing-days={view === 'today' && compareDayOpen}
-      class:before-current-day-workspace={view === 'today' && !compareDayOpen && $plannerStore.activePlanDate < currentDay}
-      class:current-day-workspace={view === 'today' && !compareDayOpen && $plannerStore.activePlanDate === currentDay}
-      class:after-current-day-workspace={view === 'today' && !compareDayOpen && $plannerStore.activePlanDate > currentDay}
+      class:comparing-days={view === 'today' && displayedCompareDayOpen}
+      class:before-current-day-workspace={view === 'today' && !displayedCompareDayOpen && displayedPlanDate < currentDay}
+      class:current-day-workspace={view === 'today' && !displayedCompareDayOpen && displayedPlanDate === currentDay}
+      class:after-current-day-workspace={view === 'today' && !displayedCompareDayOpen && displayedPlanDate > currentDay}
       bind:this={workspaceEl}
       on:scroll={handleWorkspaceScroll}
     >
     {#if view === 'today'}
-      <div class="day-panes" class:comparing={compareDayOpen}>
+      <div class="day-panes" class:comparing={displayedCompareDayOpen}>
         {#each dayPanes as pane (pane.key)}
           {@const plan = pane.plan}
           <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
@@ -4638,7 +4777,7 @@ return rows`
             class:before-current-day-pane={pane.date < currentDay}
             class:current-day-pane={pane.date === currentDay}
             class:after-current-day-pane={pane.date > currentDay}
-            class:focused-pane={compareDayOpen && focusedPlan?.id === plan?.id}
+            class:focused-pane={displayedCompareDayOpen && focusedPlan?.id === plan?.id}
             aria-label={pane.key === 'compare' ? 'Compared day' : 'Daily plan'}
             aria-current={pane.date === currentDay ? 'date' : undefined}
             on:pointerdown|capture={() => focusPane(plan?.id)}
@@ -4709,9 +4848,9 @@ return rows`
                 {#if pane.key === 'primary'}
                   <button
                     class="date-nav-button compare-toggle"
-                    class:active={compareDayOpen}
+                    class:active={displayedCompareDayOpen}
                     type="button"
-                    aria-pressed={compareDayOpen}
+                    aria-pressed={displayedCompareDayOpen}
                     aria-label="Compare with another day"
                     title={`Compare with another day (${altShortcutLabel('B')})`}
                     on:click={toggleCompareDay}
@@ -4747,7 +4886,7 @@ return rows`
               <div
                 class="list-panel"
                 data-plan-item-scope={plan.id}
-                data-item-drop-zone={compareDayOpen ? plan.id : undefined}
+                data-item-drop-zone={displayedCompareDayOpen ? plan.id : undefined}
               >
                 {#if plan.items.length === 0}
                   <p class="empty">No items yet.</p>
@@ -4765,7 +4904,7 @@ return rows`
                     deleteItem={plannerStore.deletePlanItem}
                     deleteItemPreservingChildren={plannerStore.deletePlanItemPreservingChildren}
                     moveItem={plannerStore.movePlanItem}
-                    moveItemAcrossContainers={compareDayOpen ? movePlanItemAcrossDays : null}
+                    moveItemAcrossContainers={displayedCompareDayOpen ? movePlanItemAcrossDays : null}
                     moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
                     outdentItem={plannerStore.outdentPlanItem}
                     historyRevision={$plannerStore.historyRevision}
@@ -5586,6 +5725,12 @@ return rows`
           </div>
         </section>
 
+        <CelebrationSettings
+          selectedId={completionCelebrationId}
+          previewingId={celebrationPreview?.celebrationId ?? null}
+          onSelect={(id) => { void startCelebrationPreview(id) }}
+        />
+
         {#if isMac && !isMobile}
           <section class="settings-section">
             <div>
@@ -5834,6 +5979,26 @@ return rows`
     {/if}
   </div>
 </main>
+
+{#if celebrationPreview}
+  <div class="celebration-preview-control" role="region" aria-label="Celebration preview controls">
+    <span>
+      Previewing <strong>{getCompletionCelebration(celebrationPreview.celebrationId).name}</strong> on yesterday
+      <span aria-hidden="true"> · </span>Returning to Settings…
+    </span>
+    <button
+      bind:this={celebrationPreviewReturnButton}
+      type="button"
+      on:click={() => { void finishCelebrationPreview(celebrationPreview?.token) }}
+    >Return now</button>
+  </div>
+{/if}
+
+{#if celebrationPreviewAnnouncement}
+  <div class="celebration-preview-announcement" role="status" aria-live="polite">
+    {celebrationPreviewAnnouncement}
+  </div>
+{/if}
 
 <Celebration bind:this={celebration} />
 <GoalBurst bind:this={goalBurst} />

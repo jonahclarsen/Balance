@@ -1,3 +1,5 @@
+import type { CompletionCelebrationId } from './celebrations'
+
 export type Id = string
 
 export type TemplateOption = {
@@ -173,6 +175,7 @@ export type Operation = {
 
 export type ReplicatedPreferences = {
   themeId: string
+  completionCelebrationId: CompletionCelebrationId
   doneTintColor: string
   checkboxColor: string
   databaseLoadingMessages: string[]

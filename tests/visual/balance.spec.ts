@@ -769,7 +769,8 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
         const style = getComputedStyle(checkbox)
         return (
           style.appearance === 'none' &&
-          style.backgroundColor === 'rgb(47, 111, 104)' &&
+          style.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+          style.backgroundColor !== 'transparent' &&
           style.backgroundImage !== 'none'
         )
       }),

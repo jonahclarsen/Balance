@@ -1,4 +1,5 @@
 import { DEFAULT_THEME_ID, normalizeThemeId } from './themes'
+import { DEFAULT_COMPLETION_CELEBRATION_ID, normalizeCompletionCelebrationId } from './celebrations'
 import type { IridescentGradientColor, IridescentGradientPreferences, ReplicatedPreferences } from './types'
 
 export const DEFAULT_DATABASE_LOADING_MESSAGES = [
@@ -30,6 +31,7 @@ export function createDefaultIridescentGradient(): IridescentGradientPreferences
 export function createDefaultReplicatedPreferences(): ReplicatedPreferences {
   return {
     themeId: DEFAULT_THEME_ID,
+    completionCelebrationId: DEFAULT_COMPLETION_CELEBRATION_ID,
     doneTintColor: '',
     checkboxColor: '',
     databaseLoadingMessages: [...DEFAULT_DATABASE_LOADING_MESSAGES],
@@ -92,6 +94,7 @@ export function normalizeReplicatedPreferences(value: unknown): ReplicatedPrefer
 
   return {
     themeId: normalizeThemeId(typeof preferences.themeId === 'string' ? preferences.themeId : null),
+    completionCelebrationId: normalizeCompletionCelebrationId(preferences.completionCelebrationId),
     doneTintColor: normalizeColorOverride(preferences.doneTintColor),
     checkboxColor: normalizeColorOverride(preferences.checkboxColor),
     databaseLoadingMessages,

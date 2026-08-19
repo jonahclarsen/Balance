@@ -1039,6 +1039,7 @@ fn replicated_preferences_converge_and_survive_a_checkpoint() {
                 "2026-08-15T12:00:00.000Z",
                 json!({
                     "themeId": "midnight",
+                    "completionCelebrationId": "deadline-goose",
                     "doneTintColor": "#123456",
                     "checkboxColor": "#abcdef",
                     "databaseLoadingMessages": ["One", "Two"],
@@ -1052,6 +1053,7 @@ fn replicated_preferences_converge_and_survive_a_checkpoint() {
 
     let expected = json!({
         "themeId": "midnight",
+        "completionCelebrationId": "deadline-goose",
         "doneTintColor": "#123456",
         "checkboxColor": "#abcdef",
         "databaseLoadingMessages": ["One", "Two"],

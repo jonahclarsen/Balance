@@ -2057,6 +2057,301 @@ nav button.active {
   padding-top: 22px;
 }
 
+.celebration-settings {
+  container: celebration-picker / inline-size;
+}
+
+.celebration-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: 11px;
+}
+
+.celebration-option {
+  display: flex;
+  min-width: 0;
+}
+
+.celebration-option-button {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  align-content: start;
+  width: 100%;
+  min-width: 0;
+  min-height: 238px;
+  overflow: hidden;
+  overflow: clip;
+  border-radius: 12px;
+  padding: 0 0 11px;
+  background: var(--paper-strong);
+  color: var(--ink);
+  text-align: left;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease, transform 150ms ease;
+}
+
+.celebration-option-button:hover {
+  border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
+  background: color-mix(in srgb, var(--paper-strong) 95%, var(--celebration-art-a));
+  transform: translateY(-2px);
+}
+
+.celebration-option-button:focus-visible {
+  outline: 2px solid var(--focus-ring, var(--accent));
+  outline-offset: 3px;
+}
+
+.celebration-option-button.selected {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--paper-strong) 91%, var(--accent));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent), var(--shadow);
+}
+
+.celebration-option-art {
+  position: relative;
+  display: grid;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  place-items: center;
+  overflow: hidden;
+  overflow: clip;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  background:
+    radial-gradient(circle at 18% 22%, color-mix(in srgb, var(--celebration-art-c) 80%, transparent) 0 8%, transparent 9%),
+    conic-gradient(from 35deg at 68% 48%, var(--celebration-art-a), var(--celebration-art-b), var(--celebration-art-c), var(--celebration-art-a));
+  isolation: isolate;
+}
+
+.celebration-option-art::before,
+.celebration-option-art::after {
+  position: absolute;
+  content: '';
+  pointer-events: none;
+}
+
+.celebration-option-art::before {
+  inset: 9% 8%;
+  border: 2px solid rgb(255 255 255 / 0.58);
+  border-radius: 44% 56% 38% 62% / 55% 32% 68% 45%;
+  box-shadow: inset 0 0 25px rgb(255 255 255 / 0.22), 0 8px 30px rgb(0 0 0 / 0.15);
+  transform: rotate(-8deg);
+}
+
+.celebration-option-art::after {
+  width: 68%;
+  height: 68%;
+  border-radius: 50%;
+  background: repeating-radial-gradient(circle, rgb(255 255 255 / 0.28) 0 2px, transparent 3px 10px);
+  mix-blend-mode: overlay;
+}
+
+.celebration-option-art[data-celebration-category='funny']::before {
+  border-radius: 18px;
+  transform: rotate(5deg) translateX(8%);
+}
+
+.celebration-option-art[data-celebration-category='culture']::after {
+  border-radius: 0;
+  background: repeating-conic-gradient(from 22.5deg, rgb(255 255 255 / 0.28) 0 12deg, transparent 12deg 45deg);
+}
+
+.celebration-option-art[data-celebration-category='ui'] {
+  background:
+    linear-gradient(90deg, transparent 0 23%, rgb(255 255 255 / 0.22) 23% 25%, transparent 25%),
+    linear-gradient(180deg, var(--celebration-art-a), var(--celebration-art-b));
+}
+
+.celebration-option-art[data-celebration-category='trippy'],
+.celebration-option-art[data-celebration-category='maximum'] {
+  background:
+    repeating-conic-gradient(from 0deg, var(--celebration-art-a) 0 13deg, var(--celebration-art-b) 13deg 26deg, var(--celebration-art-c) 26deg 39deg);
+}
+
+.celebration-option-art-orbit {
+  position: absolute;
+  z-index: 1;
+  width: 72%;
+  height: 36%;
+  border: 3px solid rgb(255 255 255 / 0.7);
+  border-right-color: transparent;
+  border-left-color: transparent;
+  border-radius: 50%;
+  transform: rotate(-12deg);
+}
+
+.celebration-option-icon {
+  position: relative;
+  z-index: 2;
+  font-family: system-ui, sans-serif;
+  font-size: clamp(36px, 6vw, 52px);
+  line-height: 1;
+  filter: drop-shadow(0 4px 5px rgb(0 0 0 / 0.24));
+}
+
+.celebration-option-art-check {
+  position: absolute;
+  z-index: 2;
+  right: 8px;
+  bottom: 7px;
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 0.72);
+  border-radius: 50%;
+  background: rgb(17 27 31 / 0.64);
+  color: white;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.celebration-option-copy {
+  display: grid;
+  gap: 5px;
+  padding: 11px 11px 5px;
+}
+
+.celebration-option-copy strong {
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.celebration-option-copy small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.38;
+}
+
+.celebration-option-badges {
+  display: flex;
+  align-self: end;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 4px 11px 0;
+}
+
+.celebration-intense-badge,
+.celebration-selected-badge,
+.celebration-previewing-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+.celebration-intense-badge {
+  background: color-mix(in srgb, var(--celebration-art-c) 24%, var(--paper));
+  color: var(--ink);
+}
+
+.celebration-selected-badge,
+.celebration-previewing-badge {
+  background: var(--accent);
+  color: var(--paper-strong);
+}
+
+.celebration-reminder {
+  margin: 2px 0 0;
+  border: 1px dashed color-mix(in srgb, var(--accent) 54%, var(--line));
+  border-radius: 12px;
+  padding: 13px 14px;
+  background: color-mix(in srgb, var(--paper-strong) 89%, var(--accent));
+  color: var(--accent-strong);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.celebration-preview-control {
+  position: fixed;
+  z-index: 10002;
+  right: max(14px, env(safe-area-inset-right));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  left: max(14px, env(safe-area-inset-left));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: fit-content;
+  max-width: calc(100vw - 28px);
+  margin-inline: auto;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
+  border-radius: 14px;
+  padding: 9px 10px 9px 14px;
+  background: color-mix(in srgb, var(--paper-strong) 94%, transparent);
+  box-shadow: 0 14px 45px rgb(0 0 0 / 0.24);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: auto;
+  backdrop-filter: blur(14px);
+}
+
+.celebration-preview-control button {
+  flex: 0 0 auto;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--paper-strong);
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.celebration-preview-announcement {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+@container celebration-picker (max-width: 560px) {
+  .celebration-options {
+    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  }
+}
+
+@container celebration-picker (max-width: 390px) {
+  .celebration-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .celebration-option-button {
+    min-height: 0;
+  }
+}
+
+@media (max-width: 480px) {
+  .celebration-preview-control {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+    width: auto;
+    padding: 10px;
+  }
+
+  .celebration-preview-control button {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .celebration-option-button {
+    transition: none;
+  }
+
+  .celebration-option-button:hover {
+    transform: none;
+  }
+}
+
 .path-row {
   display: block;
   overflow-wrap: anywhere;
