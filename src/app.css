@@ -4675,6 +4675,26 @@ nav button.active {
   margin-bottom: 14px;
 }
 
+.notes-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notes-trash-header-button {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.notes-trash-header-button:hover,
+.notes-trash-header-button:focus-visible {
+  border-color: var(--line);
+  background: var(--paper-strong);
+  color: var(--ink);
+}
+
 .notes-workspace {
   position: relative;
   z-index: 1;
@@ -4722,7 +4742,6 @@ nav button.active {
   font-size: 12px;
 }
 
-.notes-trash-link,
 .notes-back-link {
   display: flex;
   align-items: center;
@@ -4735,29 +4754,12 @@ nav button.active {
   font-size: 12px;
 }
 
-.notes-trash-link {
-  opacity: 0.68;
-}
-
-.notes-trash-link:hover,
-.notes-trash-link:focus-visible,
 .notes-back-link:hover,
 .notes-back-link:focus-visible {
   border-color: transparent;
   background: transparent;
   color: var(--ink);
   opacity: 1;
-}
-
-.notes-trash-count {
-  min-width: 19px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--muted) 12%, transparent);
-  padding: 1px 5px;
-  color: var(--muted);
-  font-size: 10px;
-  font-variant-numeric: tabular-nums;
-  text-align: center;
 }
 
 .notes-filter {

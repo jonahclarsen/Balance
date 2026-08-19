@@ -204,6 +204,7 @@
   // focus, so the global key handler routes arrows / Cmd+D into its ListPanel
   // through this binding. The Lists-tab ListPanel handles its own keys directly.
   let overlayListPanel: ListPanel | null = null
+  let notesPanel: NotesPanel | null = null
   let wordCapUnlocked = false
   let selectedMetricId = ''
   let selectedNoteId = ''
@@ -5277,9 +5278,13 @@ return rows`
           <p class="eyebrow">Reference</p>
           <h2>Notes</h2>
         </div>
-        <ImaxButton active={viewMaximized} onToggle={(event) => toggleViewMaximized('notes', event)} />
+        <div class="notes-page-actions">
+          <button class="notes-trash-header-button" type="button" title="Open Notes Trash" on:click={() => notesPanel?.openTrash()}>Trash</button>
+          <ImaxButton active={viewMaximized} onToggle={(event) => toggleViewMaximized('notes', event)} />
+        </div>
       </header>
       <NotesPanel
+        bind:this={notesPanel}
         notes={allNotes}
         {selectedNoteId}
         {listTemplates}

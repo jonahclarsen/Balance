@@ -133,10 +133,14 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await page.reload()
 
   await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  const notesPageActions = page.locator('.notes-page-actions')
+  const trashButton = notesPageActions.getByRole('button', { name: 'Trash', exact: true })
   const imaxButton = page.getByRole('button', { name: 'Enter IMAX mode' })
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
   const sidebar = page.getByRole('complementary', { name: 'Primary navigation drawer' })
 
+  await expect(notesPageActions.locator('button')).toHaveCount(2)
+  await expect(trashButton).toBeVisible()
   await expect(imaxButton).toBeVisible()
   await expect(goalRhythm).toBeVisible()
   await expect(sidebar).toBeVisible()
@@ -894,9 +898,9 @@ test('moving a note to Trash confirms and remains undoable', async ({ page }) =>
   await page.getByLabel('Note title').fill('Temporary note')
 
   page.once('dialog', (dialog) => dialog.accept())
-  await page.getByRole('button', { name: 'Move to Trash' }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(page.getByLabel('Note title')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Trash 1' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Trash', exact: true })).toBeVisible()
 
   await page.keyboard.press('Meta+Z')
   await expect(page.getByLabel('Note title')).toHaveValue('Temporary note')
@@ -912,8 +916,8 @@ test('Trash keeps notes read-only, restores them, and supports immediate deletio
   await page.getByLabel('Note text').fill('Worth keeping after all')
 
   page.once('dialog', (dialog) => dialog.accept())
-  await page.getByRole('button', { name: 'Move to Trash' }).click()
-  await page.getByRole('button', { name: 'Trash 1' }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await page.getByRole('button', { name: 'Trash', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Recoverable thought' })).toBeVisible()
   await expect(page.getByRole('status')).toContainText('Permanently deleted in 30 days')
@@ -925,8 +929,8 @@ test('Trash keeps notes read-only, restores them, and supports immediate deletio
   await expect(page.getByRole('button', { name: 'Trash', exact: true })).toBeVisible()
 
   page.once('dialog', (dialog) => dialog.accept())
-  await page.getByRole('button', { name: 'Move to Trash' }).click()
-  await page.getByRole('button', { name: 'Trash 1' }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
+  await page.getByRole('button', { name: 'Trash', exact: true }).click()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Delete now' }).click()
   await expect(page.getByRole('heading', { name: 'Trash is empty' })).toBeVisible()
@@ -950,7 +954,7 @@ test('notes expire from Trash after 30 days', async ({ page }) => {
   await page.getByLabel('Note title').fill('Old discarded note')
 
   page.once('dialog', (dialog) => dialog.accept())
-  await page.getByRole('button', { name: 'Move to Trash' }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     state.notes[0].deletedAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString()

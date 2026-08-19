@@ -115,7 +115,7 @@
     if (noteId) onSelect(noteId)
   }
 
-  function showTrash() {
+  export function openTrash() {
     trashOpen = true
     filter = ''
     const noteId = trashedNotes.find((note) => note.id === lastTrashNoteId)?.id ?? trashedNotes[0]?.id
@@ -670,14 +670,7 @@
       {/each}
       {#if visibleNotes.length > 0 && filteredNotes.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
     </div>
-    {#if trashOpen}
-      <button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>
-    {:else}
-      <button class="notes-trash-link" type="button" on:click={showTrash}>
-        <span>Trash</span>
-        {#if trashedNotes.length > 0}<span class="notes-trash-count">{trashedNotes.length}</span>{/if}
-      </button>
-    {/if}
+    {#if trashOpen}<button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>{/if}
   </aside>
 
   <section class="note-document">
@@ -694,7 +687,7 @@
             <button class="ghost danger" type="button" on:click={() => permanentlyDelete(selectedNote!.id)}>Delete now</button>
           {:else}
             <button type="button" title="Copy an app link to this note" aria-live="polite" on:click={copyLink}>{copyButtonText}</button>
-            <button class="ghost danger" type="button" on:click={() => moveToTrash(selectedNote!.id)}>Move to Trash</button>
+            <button class="ghost danger" type="button" on:click={() => moveToTrash(selectedNote!.id)}>Delete</button>
           {/if}
         </div>
       </header>
