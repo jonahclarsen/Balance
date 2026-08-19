@@ -44,6 +44,7 @@
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
   let noteScrollSpacePercent = DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+  let noteScrollSpaceControlVisible = false
   $: noteScrollSpaceVh = noteScrollSpaceVhForPercent(noteScrollSpacePercent)
   let toolbarSelection: Range | null = null
   let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
@@ -192,11 +193,49 @@
   }
 
   function noteScrollContainer() {
-    return noteBlocksElement?.closest<HTMLElement>('.workspace') ?? null
+    const workspace = noteBlocksElement?.closest<HTMLElement>('.workspace') ?? null
+    if (!workspace) return null
+
+    const documentScroller = document.scrollingElement as HTMLElement | null
+    const workspaceCanScroll = workspace.scrollHeight - workspace.clientHeight > 4
+    const documentCanScroll = documentScroller && documentScroller.scrollHeight - documentScroller.clientHeight > 4
+    return !workspaceCanScroll && documentCanScroll ? documentScroller : workspace
   }
 
   function isAtNoteBottom(scroller: HTMLElement) {
     return scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 4
+  }
+
+  function trackNoteScrollSpace(node: HTMLDivElement) {
+    const scroller = noteScrollContainer()
+    if (!scroller) return {}
+
+    let frame: number | null = null
+    const scrollEventTarget: HTMLElement | Document = scroller === document.scrollingElement ? document : scroller
+    const updateVisibility = () => {
+      frame = null
+      noteScrollSpaceControlVisible = isAtNoteBottom(scroller)
+    }
+    const scheduleVisibilityUpdate = () => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(updateVisibility)
+    }
+    const resizeObserver = new ResizeObserver(scheduleVisibilityUpdate)
+
+    scrollEventTarget.addEventListener('scroll', scheduleVisibilityUpdate, { passive: true })
+    resizeObserver.observe(scroller)
+    resizeObserver.observe(node)
+    if (noteBlocksElement) resizeObserver.observe(noteBlocksElement)
+    scheduleVisibilityUpdate()
+
+    return {
+      destroy() {
+        scrollEventTarget.removeEventListener('scroll', scheduleVisibilityUpdate)
+        resizeObserver.disconnect()
+        if (frame !== null) window.cancelAnimationFrame(frame)
+        noteScrollSpaceControlVisible = false
+      },
+    }
   }
 
   async function scrollNoteToBottomAfterLayout(scroller: HTMLElement) {
@@ -626,8 +665,9 @@
   <div
     class="note-scroll-space"
     style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh; --note-scroll-space-progress: ${noteScrollSpacePercent}%`}
+    use:trackNoteScrollSpace
   >
-    <label class="note-scroll-space-control">
+    <label class="note-scroll-space-control" class:visible={noteScrollSpaceControlVisible}>
       <span class="note-scroll-space-slider">
         <input
           class="note-scroll-space-native-slider"

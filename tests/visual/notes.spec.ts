@@ -663,14 +663,21 @@ test('notes save adjustable breathing room and follow edits only from the bottom
   expect(writingSpace.height).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.32)
 
   await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
-  const controlIsHiddenBeforeBottom = await page.locator('.note-scroll-space-control').evaluate((element) => {
-    const control = element.getBoundingClientRect()
-    const scroller = element.closest('.workspace')?.getBoundingClientRect()
-    return scroller ? control.top >= scroller.bottom : false
-  })
-  expect(controlIsHiddenBeforeBottom).toBe(true)
+  const spacingControl = page.locator('.note-scroll-space-control')
+  await expect(spacingControl).toHaveCSS('opacity', '0')
+  await expect(spacingControl).toHaveCSS('visibility', 'hidden')
+  await expect(spacingControl).toHaveCSS('transition-property', /opacity.*visibility/)
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await expect(spacingControl).toHaveCSS('opacity', '1')
+  await expect(spacingControl).toHaveCSS('visibility', 'visible')
+
+  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollTop - 20 }))
+  await expect(spacingControl).toHaveCSS('opacity', '0')
+  await expect(spacingControl).toHaveCSS('visibility', 'hidden')
+
+  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await expect(spacingControl).toHaveCSS('opacity', '1')
   await spacingSlider.fill('0')
   const minimumSpace = await page.locator('.note-scroll-space').evaluate((element) => ({
     spacerHeight: element.getBoundingClientRect().height,
