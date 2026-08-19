@@ -365,6 +365,49 @@ test('dragging can extend a note selection across list items', async ({ page }, 
   })
 })
 
+test('shift-clicking extends a note selection across list items', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'touch selection is owned by the platform')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Bulleted list' }).click()
+
+  const first = page.locator('[data-note-text-input]').first()
+  await first.fill('First line')
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+  const second = page.locator('[data-note-text-input]').nth(1)
+  await second.fill('Second line')
+  await placeCaretAtEnd(second)
+  await second.press('Enter')
+  const third = page.locator('[data-note-text-input]').nth(2)
+  await third.fill('Third line')
+
+  await placeCaretAtOffset(first, 4)
+  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+    anchor: { text: 'First line', offset: 4 },
+    focus: { text: 'First line', offset: 4 },
+  })
+  await third.click({ modifiers: ['Shift'] })
+
+  await expect(page.locator('.note-multi-selected')).toHaveCount(3)
+  await expect.poll(() => copyNoteSelection(page)).toEqual({
+    handled: true,
+    plainText: '- First line\n- Second line\n- Third line',
+    html: '<ul><li>First line</li><li>Second line</li><li>Third line</li></ul>',
+  })
+
+  await second.click({ modifiers: ['Shift'] })
+  await expect(page.locator('.note-multi-selected')).toHaveCount(2)
+  await expect.poll(() => copyNoteSelection(page)).toEqual({
+    handled: true,
+    plainText: '- First line\n- Second line',
+    html: '<ul><li>First line</li><li>Second line</li></ul>',
+  })
+})
+
 test('notes support a seamless editor, natural formatting, persistence, search, and app links', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

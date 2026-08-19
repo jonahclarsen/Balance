@@ -329,14 +329,57 @@
 
   function handleNotePointerDown(event: PointerEvent) {
     if (event.button !== 0 || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) return
-    clearItemSelection()
     const target = event.target instanceof Element ? event.target : null
     const editor = target?.closest<HTMLDivElement>('[data-note-text-input]') ?? null
     const point = editor ? caretPointFromCoordinates(editor, event.clientX, event.clientY) : null
     const itemId = editor?.dataset.noteTextInputId
+
+    if (event.shiftKey && editor && point && itemId && extendSelectionToClick(editor, point, itemId)) {
+      event.preventDefault()
+      pointerSelectionAnchor = null
+      pointerSelectionFocus = null
+      pointerUsesItemSelection = false
+      return
+    }
+
+    clearItemSelection()
     pointerSelectionAnchor = editor && point && itemId ? { ...point, editor, itemId } : null
     pointerSelectionFocus = null
     pointerUsesItemSelection = false
+  }
+
+  function extendSelectionToClick(
+    focusEditor: HTMLDivElement,
+    focus: { node: Node; offset: number },
+    focusId: Id,
+  ) {
+    const inputs = noteInputs()
+    const selection = document.getSelection()
+    const nativeAnchorNode = selection?.anchorNode ?? null
+    const nativeAnchorEditor = nativeAnchorNode
+      ? inputs.find((input) => input.contains(nativeAnchorNode)) ?? null
+      : null
+    const trackedAnchorEditor = selectionAnchorItemId
+      ? inputs.find((input) => input.dataset.noteTextInputId === selectionAnchorItemId) ?? null
+      : null
+    const anchorEditor = trackedAnchorEditor ?? nativeAnchorEditor
+    const anchorId = selectionAnchorItemId ?? anchorEditor?.dataset.noteTextInputId
+    if (!anchorEditor || !anchorId || anchorEditor === focusEditor && !selectionAnchorItemId) return false
+
+    if (isListEditor(anchorEditor) || isListEditor(focusEditor)) {
+      selectItemRange(anchorId, focusId)
+      focusEditor.focus()
+      clearNativeSelection()
+      window.requestAnimationFrame(clearNativeSelection)
+      return true
+    }
+
+    if (!selection || !nativeAnchorNode) return false
+    const anchor = { node: nativeAnchorNode, offset: selection.anchorOffset }
+    focusEditor.focus()
+    applyPointerSelection(anchor, focus)
+    window.requestAnimationFrame(() => applyPointerSelection(anchor, focus))
+    return true
   }
 
   function handleNotePointerMove(event: PointerEvent) {
