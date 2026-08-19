@@ -254,6 +254,44 @@ test('mobile task options gate selection and open the large auto-saving time edi
   )
   expect(vibrationPatterns).toContainEqual([16, 24, 16, 24, 16])
 
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      isTauri?: boolean
+      balanceNativeHaptics?: Array<{ command: string; args?: Record<string, unknown> }>
+      __TAURI_INTERNALS__?: {
+        invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
+      }
+    }
+    testWindow.isTauri = true
+    testWindow.__TAURI_INTERNALS__ = {
+      invoke: async (command, args) => {
+        testWindow.balanceNativeHaptics = [...(testWindow.balanceNativeHaptics ?? []), { command, args }]
+        return null
+      },
+    }
+  })
+  const nativeStart = await start.innerText()
+  await dragVertically(page, start, 14, 1)
+  await expect(start).not.toHaveText(nativeStart)
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          (window as typeof window & {
+            balanceNativeHaptics?: Array<{ command: string; args?: Record<string, unknown> }>
+          }).balanceNativeHaptics ?? [],
+      ),
+    )
+    .toContainEqual({ command: 'plugin:haptics|vibrate', args: { duration: 16 } })
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      isTauri?: boolean
+      __TAURI_INTERNALS__?: unknown
+    }
+    testWindow.isTauri = false
+    delete testWindow.__TAURI_INTERNALS__
+  })
+
   await page.locator('.mobile-time-editor-backdrop').click({ position: { x: 4, y: 4 } })
   await expect(dialog).toBeHidden()
   await expect(untimedRow.locator('.mobile-time-summary')).toBeVisible()

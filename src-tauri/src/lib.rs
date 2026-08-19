@@ -9575,9 +9575,11 @@ pub fn run() {
                     .build(),
             )?;
 
-            // Camera QR-code scanning for sync pairing (mobile only).
+            // Mobile-native camera and haptic integrations.
             #[cfg(mobile)]
             app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
+            #[cfg(mobile)]
+            app.handle().plugin(tauri_plugin_haptics::init())?;
 
             // On Android debug builds, run the real two-database pairing and
             // transport flow on-device. CI greps logcat for the marker below.

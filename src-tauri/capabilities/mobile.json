@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/android-schema.json",
   "identifier": "mobile",
-  "description": "Mobile-only: camera QR-code scanning for sync pairing.",
+  "description": "Mobile-only: camera QR-code scanning and native haptic feedback.",
   "platforms": ["android", "iOS"],
   "windows": ["main"],
-  "permissions": ["barcode-scanner:default"]
+  "permissions": ["barcode-scanner:default", "haptics:allow-vibrate"]
 }

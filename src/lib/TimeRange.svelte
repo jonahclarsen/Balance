@@ -7,6 +7,8 @@
 </script>
 
 <script lang="ts">
+  import { isTauri } from '@tauri-apps/api/core'
+  import { vibrate } from '@tauri-apps/plugin-haptics'
   import { clampMinutes, formatMinutes, MAX_TIMELINE_MINUTES } from './planner'
 
   const STEP_HAPTIC_MS = 16
@@ -110,7 +112,30 @@
   }
 
   function vibrateCrossedSteps(count: number) {
-    if (typeof navigator.vibrate !== 'function' || count < 1) return
+    if (count < 1) return
+
+    if (isTauri()) {
+      // Android WebViews may expose navigator.vibrate() while silently
+      // ignoring it. Tauri's mobile plugin calls the native vibrator service.
+      void vibrateNatively(count).catch(() => vibrateInBrowser(count))
+      return
+    }
+
+    vibrateInBrowser(count)
+  }
+
+  async function vibrateNatively(count: number) {
+    for (let index = 0; index < count; index += 1) {
+      const result = await vibrate(STEP_HAPTIC_MS)
+      if (result.status === 'error') throw new Error('Native haptic feedback failed')
+      if (index < count - 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, STEP_HAPTIC_PAUSE_MS))
+      }
+    }
+  }
+
+  function vibrateInBrowser(count: number) {
+    if (typeof navigator.vibrate !== 'function') return
 
     // Pointer events can skip several 15-minute boundaries during a quick
     // swipe. A single vibration call with a pulse pattern preserves one tactile
