@@ -159,6 +159,7 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
 
   await expect(imaxButton).toBeVisible()
+  await expect(imaxButton).toHaveAttribute('aria-keyshortcuts', 'Alt+I')
   await expect(primaryPane.getByRole('button', { name: 'Previous day' })).toHaveCount(0)
   await expect(primaryPane.getByRole('button', { name: 'Next day' })).toHaveCount(0)
   const imaxBox = await imaxButton.boundingBox()
@@ -211,6 +212,12 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
     await primaryPane.getByRole('button', { name: 'Exit IMAX mode' }).click()
     await expect(goalRhythm.getByRole('searchbox', { name: 'Search goals' })).toHaveValue('')
   }
+
+  await dateInput.focus()
+  await page.keyboard.press('Alt+i')
+  await expect(primaryPane.getByRole('button', { name: 'Exit IMAX mode' })).toHaveAttribute('aria-pressed', 'true')
+  await page.keyboard.press('Alt+i')
+  await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
 })
 
 test('sidebar shows the task time shortcut legend above the template selector', async ({ page }, testInfo) => {

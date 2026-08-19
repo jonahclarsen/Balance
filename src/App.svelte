@@ -2273,6 +2273,12 @@ return rows`
     }
 
     if (event.altKey && !primaryModifier && !event.shiftKey) {
+      if (event.code === 'KeyI' && (view === 'today' || view === 'notes')) {
+        event.preventDefault()
+        if (!event.repeat) toggleViewMaximized(view)
+        return
+      }
+
       const sidebarViewByCode: Partial<Record<string, View>> = {
         KeyD: 'templates',
         KeyN: 'notes',
