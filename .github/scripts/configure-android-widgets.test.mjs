@@ -150,6 +150,7 @@ class BalanceSyncWorker {
     assert.match(kotlin, /timeValues\?\.optString/)
     assert.match(kotlin, /json\.optString\("themeId", "violet"\)/)
     assert.match(kotlin, /R\.layout\.balance_home_widget_iridescent/)
+    assert.match(kotlin, /R\.layout\.balance_home_widget_graphite/)
     assert.match(kotlin, /R\.layout\.balance_home_widget_ocean/)
     assert.match(kotlin, /else -> R\.layout\.balance_home_widget_violet/)
     assert.match(kotlin, /setViewPadding/)
@@ -228,6 +229,7 @@ class BalanceSyncWorker {
     )
     assert.match(iridescentLayout, /#A13C91/)
     assert.match(iridescentLayout, /#282134/)
+    assert.match(iridescentLayout, /android:textColor="#FFFFFF"/)
     const iridescentBackground = await readFile(
       join(root, 'res/drawable/balance_widget_iridescent_background.xml'),
       'utf8',
@@ -237,7 +239,23 @@ class BalanceSyncWorker {
     assert.match(iridescentBackground, /android:centerColor="#F2F8FA"/)
     assert.match(iridescentBackground, /android:endColor="#FAF6EF"/)
 
-    for (const theme of ['iridescent', 'forest', 'ocean', 'violet', 'sunset', 'berry', 'pink', 'mint', 'midnight']) {
+    const iridescentTimePill = await readFile(
+      join(root, 'res/drawable/balance_widget_iridescent_time_pill.xml'),
+      'utf8',
+    )
+    assert.match(iridescentTimePill, /android:startColor="#A13C91"/)
+    assert.match(iridescentTimePill, /android:centerColor="#7150B0"/)
+    assert.match(iridescentTimePill, /android:endColor="#267985"/)
+
+    const graphiteLayout = await readFile(
+      join(root, 'res/layout/balance_home_widget_graphite.xml'),
+      'utf8',
+    )
+    assert.match(graphiteLayout, /#3A3A38/)
+    assert.match(graphiteLayout, /#191918/)
+    assert.doesNotMatch(graphiteLayout, /#7355A2/)
+
+    for (const theme of ['iridescent', 'forest', 'ocean', 'violet', 'sunset', 'berry', 'pink', 'mint', 'midnight', 'graphite']) {
       await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8')
@@ -284,6 +302,28 @@ class BalanceSyncWorker {
     assert.match(darkIridescentBackground, /android:startColor="#15101B"/)
     assert.match(darkIridescentBackground, /android:centerColor="#10191E"/)
     assert.match(darkIridescentBackground, /android:endColor="#1C1710"/)
+
+    const darkIridescentProgress = await readFile(
+      join(root, 'res/drawable-night/balance_widget_iridescent_progress.xml'),
+      'utf8',
+    )
+    assert.match(darkIridescentProgress, /android:startColor="#E777C0"/)
+    assert.match(darkIridescentProgress, /android:centerColor="#B79AF2"/)
+    assert.match(darkIridescentProgress, /android:endColor="#5AC6C4"/)
+
+    const darkGraphiteLayout = await readFile(
+      join(root, 'res/layout-night/balance_home_widget_graphite.xml'),
+      'utf8',
+    )
+    assert.match(darkGraphiteLayout, /#70706E/)
+    assert.match(darkGraphiteLayout, /#F0F0ED/)
+    assert.match(darkGraphiteLayout, /android:textColor="#FFFFFF"/)
+    assert.doesNotMatch(darkGraphiteLayout, /#B69ADB/)
+    const darkGraphiteBackground = await readFile(
+      join(root, 'res/drawable-night/balance_widget_graphite_background.xml'),
+      'utf8',
+    )
+    assert.match(darkGraphiteBackground, /#161617/)
 
     const widgetStyles = await readFile(
       join(root, 'res/values/balance_widget_styles.xml'),

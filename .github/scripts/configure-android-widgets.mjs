@@ -238,6 +238,7 @@ object BalanceWidgets {
 
     private fun themeLayout(themeId: String): Int = when (themeId) {
         "iridescent" -> R.layout.balance_home_widget_iridescent
+        "graphite" -> R.layout.balance_home_widget_graphite
         "forest" -> R.layout.balance_home_widget_forest
         "ocean" -> R.layout.balance_home_widget_ocean
         "sunset" -> R.layout.balance_home_widget_sunset
@@ -347,7 +348,7 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 `
 
 const widgetThemes = [
-  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
+  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', accentColors: ['#A13C91', '#7150B0', '#267985'], timePillColors: ['#A13C91', '#7150B0', '#267985'], timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
   { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },
   { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F' },
   { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
@@ -356,10 +357,11 @@ const widgetThemes = [
   { id: 'pink', paper: '#FFF9FC', surface: '#FFFFFF', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', accent: '#C33F7A' },
   { id: 'mint', paper: '#F9FDFA', surface: '#FFFFFF', ink: '#1E2D29', muted: '#657771', line: '#CCDDD7', accent: '#287968' },
   { id: 'midnight', paper: '#FAFBFE', surface: '#FFFFFF', ink: '#202738', muted: '#687083', line: '#D1D6E2', accent: '#425B9B' },
+  { id: 'graphite', paper: '#F9F9F7', surface: '#FFFFFF', ink: '#191918', muted: '#6D6D69', line: '#D1D1CD', accent: '#3A3A38' },
 ]
 
 const darkWidgetThemes = [
-  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#9B3F86', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
+  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#E777C0', accentColors: ['#E777C0', '#B79AF2', '#5AC6C4'], timePillColors: ['#A13C91', '#7150B0', '#267985'], timePillInk: '#FFFFFF', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
   { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
   { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
   { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
@@ -368,6 +370,7 @@ const darkWidgetThemes = [
   { id: 'pink', paper: '#261A20', surface: '#312229', ink: '#F4E8EE', muted: '#BAA3AF', line: '#4D3541', accent: '#F08DB8' },
   { id: 'mint', paper: '#18231F', surface: '#202E29', ink: '#E7F1ED', muted: '#9DB2AA', line: '#30453E', accent: '#77C8B1' },
   { id: 'midnight', paper: '#181C29', surface: '#212638', ink: '#E9ECF5', muted: '#A1A9BD', line: '#343B52', accent: '#91A7E4' },
+  { id: 'graphite', paper: '#161617', surface: '#202022', ink: '#F0F0ED', muted: '#A1A19D', line: '#343436', accent: '#70706E', timePillInk: '#FFFFFF' },
 ]
 
 const alphaColor = (hex, alpha) => `#${alpha}${hex.slice(1)}`
@@ -420,7 +423,7 @@ function taskRows(theme) {
             android:paddingEnd="6dp"
             android:paddingStart="6dp"
             android:paddingTop="2dp"
-            android:textColor="${theme.paper}"
+            android:textColor="${theme.timePillInk ?? theme.paper}"
             android:textSize="9sp"${time} />
 
         <TextView
@@ -593,10 +596,21 @@ function background(theme) {
 `
 }
 
+function gradientFill(colors, fallback, alpha = null) {
+  const color = (value) => alpha ? alphaColor(value, alpha) : value
+  return colors
+    ? `<gradient
+        android:angle="0"
+        android:centerColor="${color(colors[1])}"
+        android:endColor="${color(colors[2])}"
+        android:startColor="${color(colors[0])}" />`
+    : `<solid android:color="${color(fallback)}" />`
+}
+
 function pill(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="${alphaColor(theme.accent, '1F')}" />
+    ${gradientFill(theme.accentColors, theme.accent, '1F')}
     <corners android:radius="999dp" />
     <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '33')}" />
 </shape>
@@ -606,7 +620,7 @@ function pill(theme) {
 function refreshBackground(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
-    <solid android:color="${alphaColor(theme.accent, '1F')}" />
+    ${gradientFill(theme.accentColors, theme.accent, '1F')}
     <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '33')}" />
 </shape>
 `
@@ -639,7 +653,7 @@ function taskSurface(theme) {
 function timePill(theme) {
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="${theme.accent}" />
+    ${gradientFill(theme.timePillColors, theme.accent)}
     <corners android:radius="999dp" />
 </shape>
 `
@@ -650,7 +664,7 @@ function taskCircle(theme) {
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="oval">
     <size android:width="11dp" android:height="11dp" />
     <solid android:color="@android:color/transparent" />
-    <stroke android:width="1.5dp" android:color="${alphaColor(theme.accent, 'B3')}" />
+    <stroke android:width="1.5dp" android:color="${alphaColor(theme.accentColors?.[1] ?? theme.accent, 'B3')}" />
 </shape>
 `
 }
@@ -668,7 +682,7 @@ function progress(theme) {
         <clip>
             <shape android:shape="rectangle">
                 <corners android:radius="4dp" />
-                <solid android:color="${theme.accent}" />
+                ${gradientFill(theme.accentColors, theme.accent)}
             </shape>
         </clip>
     </item>

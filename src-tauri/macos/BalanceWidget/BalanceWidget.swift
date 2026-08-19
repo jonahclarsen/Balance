@@ -196,10 +196,6 @@ private struct BalanceWidgetView: View {
         family == .systemLarge ? 6 : 4
     }
 
-    private var accentColor: Color {
-        palette.accent
-    }
-
     private var palette: WidgetPalette {
         WidgetPalette.resolve(themeId: entry.snapshot?.themeId, colorScheme: colorScheme)
     }
@@ -261,7 +257,7 @@ private struct BalanceWidgetView: View {
                     Text("TODAY")
                         .font(.caption2.weight(.bold))
                         .tracking(0.8)
-                        .foregroundStyle(accentColor)
+                        .foregroundStyle(palette.accentGradient())
                     Text(snapshot.title.isEmpty ? "Today’s plan" : snapshot.title)
                         .font(.headline)
                         .fontDesign(.rounded)
@@ -273,11 +269,16 @@ private struct BalanceWidgetView: View {
                 Text(progressLabel(snapshot))
                     .font(.caption.weight(.bold))
                     .fontDesign(.rounded)
-                    .foregroundStyle(accentColor)
+                    .foregroundStyle(palette.accentGradient())
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(accentColor.opacity(0.12), in: Capsule())
-                    .overlay(Capsule().stroke(accentColor.opacity(0.2), lineWidth: 1))
+                    .background(palette.accentGradient(opacity: 0.12), in: Capsule())
+                    .overlay(
+                        Capsule().stroke(
+                            palette.accentGradient(opacity: 0.2),
+                            lineWidth: 1
+                        )
+                    )
                     .accessibilityLabel("\(snapshot.done) of \(snapshot.total) tasks complete")
             }
 
@@ -296,7 +297,7 @@ private struct BalanceWidgetView: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(palette.line.opacity(0.7))
                         Capsule()
-                            .fill(accentColor)
+                            .fill(palette.accentGradient())
                             .frame(width: geometry.size.width * progress(snapshot))
                     }
                 }
@@ -307,7 +308,7 @@ private struct BalanceWidgetView: View {
             if snapshot.items.isEmpty {
                 Label("All done", systemImage: "checkmark.circle.fill")
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(accentColor)
+                    .foregroundStyle(palette.accentGradient())
             } else {
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(Array(snapshot.items.prefix(itemLimit).enumerated()), id: \.offset) { offset, item in
@@ -317,7 +318,10 @@ private struct BalanceWidgetView: View {
                         }
                         HStack(alignment: .center, spacing: 8) {
                             Circle()
-                                .strokeBorder(accentColor.opacity(0.72), lineWidth: 1.5)
+                                .strokeBorder(
+                                    palette.accentGradient(opacity: 0.72),
+                                    lineWidth: 1.5
+                                )
                                 .frame(width: 11, height: 11)
                             taskLabel(item, time: snapshot.itemTimes?[safe: offset])
                                 .fixedSize(horizontal: false, vertical: true)
@@ -357,10 +361,10 @@ private struct BalanceWidgetView: View {
             if let time, !time.isEmpty {
                 Text(time)
                     .font(.system(size: 9, weight: .regular, design: .rounded).monospacedDigit())
-                    .foregroundStyle(palette.paper)
+                    .foregroundStyle(palette.timePillInk)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(accentColor, in: Capsule())
+                    .background(palette.timePillGradient(), in: Capsule())
                     .fixedSize(horizontal: true, vertical: false)
             }
             Text(item)
@@ -380,7 +384,7 @@ private struct BalanceWidgetView: View {
                     .foregroundStyle(palette.ink)
                 Spacer()
                 Image(systemName: "circle.lefthalf.filled")
-                    .foregroundStyle(accentColor)
+                    .foregroundStyle(palette.accentGradient())
                     .accessibilityHidden(true)
             }
             Text(message)
@@ -405,7 +409,9 @@ private struct WidgetPalette {
     let ink: Color
     let muted: Color
     let line: Color
-    let accent: Color
+    let accentColors: [Color]
+    let timePillColors: [Color]
+    let timePillInk: Color
     let backgroundColors: [Color]?
 
     private init(
@@ -415,6 +421,9 @@ private struct WidgetPalette {
         muted: UInt32,
         line: UInt32,
         accent: UInt32,
+        accentColors: [UInt32]? = nil,
+        timePillColors: [UInt32]? = nil,
+        timePillInk: UInt32? = nil,
         backgroundColors: [UInt32]? = nil
     ) {
         self.paper = Color(rgb: paper)
@@ -422,8 +431,26 @@ private struct WidgetPalette {
         self.ink = Color(rgb: ink)
         self.muted = Color(rgb: muted)
         self.line = Color(rgb: line)
-        self.accent = Color(rgb: accent)
+        self.accentColors = (accentColors ?? [accent]).map(Color.init(rgb:))
+        self.timePillColors = (timePillColors ?? [accent]).map(Color.init(rgb:))
+        self.timePillInk = Color(rgb: timePillInk ?? paper)
         self.backgroundColors = backgroundColors?.map(Color.init(rgb:))
+    }
+
+    func accentGradient(opacity: Double = 1) -> LinearGradient {
+        LinearGradient(
+            colors: accentColors.map { $0.opacity(opacity) },
+            startPoint: .leading,
+            endPoint: .trailing
+        )
+    }
+
+    func timePillGradient() -> LinearGradient {
+        LinearGradient(
+            colors: timePillColors,
+            startPoint: .leading,
+            endPoint: .trailing
+        )
     }
 
     @ViewBuilder
@@ -450,6 +477,9 @@ private struct WidgetPalette {
                     muted: 0xB5A6BD,
                     line: 0x493B54,
                     accent: 0x9B3F86,
+                    accentColors: [0xE777C0, 0xB79AF2, 0x5AC6C4, 0xE0A34E],
+                    timePillColors: [0xA13C91, 0x7150B0, 0x267985, 0x98611A],
+                    timePillInk: 0xFFFFFF,
                     backgroundColors: [0x15101B, 0x10191E, 0x1C1710]
                 )
             case "forest":
@@ -466,6 +496,8 @@ private struct WidgetPalette {
                 return WidgetPalette(paper: 0x18231F, surface: 0x202E29, ink: 0xE7F1ED, muted: 0x9DB2AA, line: 0x30453E, accent: 0x77C8B1)
             case "midnight":
                 return WidgetPalette(paper: 0x181C29, surface: 0x212638, ink: 0xE9ECF5, muted: 0xA1A9BD, line: 0x343B52, accent: 0x91A7E4)
+            case "graphite":
+                return WidgetPalette(paper: 0x161617, surface: 0x202022, ink: 0xF0F0ED, muted: 0xA1A19D, line: 0x343436, accent: 0x70706E, timePillInk: 0xFFFFFF)
             default:
                 return WidgetPalette(paper: 0x201C25, surface: 0x29232F, ink: 0xEEE9F2, muted: 0xAFA3B8, line: 0x42384B, accent: 0xB69ADB)
             }
@@ -480,6 +512,9 @@ private struct WidgetPalette {
                 muted: 0x736B80,
                 line: 0xDDD3E6,
                 accent: 0xA13C91,
+                accentColors: [0xA13C91, 0x7150B0, 0x267985, 0x98611A],
+                timePillColors: [0xA13C91, 0x7150B0, 0x267985, 0x98611A],
+                timePillInk: 0xFFFFFF,
                 backgroundColors: [0xF8F3FB, 0xF2F8FA, 0xFAF6EF]
             )
         case "forest":
@@ -496,6 +531,8 @@ private struct WidgetPalette {
             return WidgetPalette(paper: 0xF9FDFA, surface: 0xFFFFFF, ink: 0x1E2D29, muted: 0x657771, line: 0xCCDDD7, accent: 0x287968)
         case "midnight":
             return WidgetPalette(paper: 0xFAFBFE, surface: 0xFFFFFF, ink: 0x202738, muted: 0x687083, line: 0xD1D6E2, accent: 0x425B9B)
+        case "graphite":
+            return WidgetPalette(paper: 0xF9F9F7, surface: 0xFFFFFF, ink: 0x191918, muted: 0x6D6D69, line: 0xD1D1CD, accent: 0x3A3A38)
         default:
             return WidgetPalette(paper: 0xFCFAFF, surface: 0xFFFFFF, ink: 0x292332, muted: 0x756C7F, line: 0xDAD2E2, accent: 0x7355A2)
         }

@@ -104,8 +104,8 @@ pub(crate) fn snapshot_from_plan(
 
 fn normalize_theme_id(theme_id: &str) -> &str {
     match theme_id {
-        "iridescent" | "forest" | "ocean" | "violet" | "sunset" | "berry" | "pink" | "mint"
-        | "midnight" => theme_id,
+        "iridescent" | "graphite" | "forest" | "ocean" | "violet" | "sunset" | "berry" | "pink"
+        | "mint" | "midnight" => theme_id,
         _ => DEFAULT_THEME_ID,
     }
 }
@@ -263,6 +263,17 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&snapshot).unwrap()["themeId"],
             "iridescent"
+        );
+    }
+
+    #[test]
+    fn widget_snapshot_preserves_the_graphite_theme() {
+        let snapshot = snapshot_from_plan("2026-08-01", None, "graphite");
+
+        assert_eq!(snapshot.theme_id, "graphite");
+        assert_eq!(
+            serde_json::to_value(&snapshot).unwrap()["themeId"],
+            "graphite"
         );
     }
 }
