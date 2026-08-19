@@ -348,7 +348,7 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 `
 
 const widgetThemes = [
-  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', taskAccent: '#7B5BD6', doneAccent: '#28A987', progressAccent: '#7B5BD6', timePill: '#71328B', timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
+  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', statusAccent: '#7B5BD6', taskAccent: '#7B5BD6', doneAccent: '#28A987', progressAccent: '#7B5BD6', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#52798A', timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
   { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },
   { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F' },
   { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
@@ -361,7 +361,7 @@ const widgetThemes = [
 ]
 
 const darkWidgetThemes = [
-  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#F5B8E3', taskAccent: '#B79AF2', doneAccent: '#65CFAA', progressAccent: '#B79AF2', timePill: '#9B3F86', timePillInk: '#FFFFFF', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
+  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#F5B8E3', statusAccent: '#B79AF2', taskAccent: '#B79AF2', doneAccent: '#65CFAA', progressAccent: '#B79AF2', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#4C6877', timePillInk: '#FFFFFF', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
   { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
   { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
   { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
@@ -492,7 +492,7 @@ function homeLayout(theme) {
             android:paddingStart="9dp"
             android:paddingTop="5dp"
             android:text="2/6"
-            android:textColor="${theme.accent}"
+            android:textColor="${theme.statusAccent ?? theme.accent}"
             android:textSize="11sp" />
 
         <FrameLayout
@@ -597,11 +597,12 @@ function background(theme) {
 }
 
 function pill(theme) {
+  const accent = theme.statusAccent ?? theme.accent
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="${alphaColor(theme.accent, '1F')}" />
+    <solid android:color="${alphaColor(accent, '1F')}" />
     <corners android:radius="999dp" />
-    <stroke android:width="1dp" android:color="${alphaColor(theme.accent, '33')}" />
+    <stroke android:width="1dp" android:color="${alphaColor(accent, '33')}" />
 </shape>
 `
 }
@@ -659,6 +660,9 @@ function taskCircle(theme) {
 }
 
 function progress(theme) {
+  const fill = theme.progressColors
+    ? `<gradient android:angle="0" android:startColor="${theme.progressColors[0]}" android:centerColor="${theme.progressColors[1]}" android:endColor="${theme.progressColors[2]}" />`
+    : `<solid android:color="${theme.progressAccent ?? theme.accent}" />`
   return `<?xml version="1.0" encoding="utf-8"?>
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item android:id="@android:id/background">
@@ -671,7 +675,7 @@ function progress(theme) {
         <clip>
             <shape android:shape="rectangle">
                 <corners android:radius="4dp" />
-                <solid android:color="${theme.progressAccent ?? theme.accent}" />
+                ${fill}
             </shape>
         </clip>
     </item>

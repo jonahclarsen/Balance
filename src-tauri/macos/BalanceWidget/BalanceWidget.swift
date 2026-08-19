@@ -269,13 +269,13 @@ private struct BalanceWidgetView: View {
                 Text(progressLabel(snapshot))
                     .font(.caption.weight(.bold))
                     .fontDesign(.rounded)
-                    .foregroundStyle(palette.accent)
+                    .foregroundStyle(palette.statusAccent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
-                    .background(palette.accent.opacity(0.12), in: Capsule())
+                    .background(palette.statusAccent.opacity(0.12), in: Capsule())
                     .overlay(
                         Capsule().stroke(
-                            palette.accent.opacity(0.2),
+                            palette.statusAccent.opacity(0.2),
                             lineWidth: 1
                         )
                     )
@@ -297,7 +297,7 @@ private struct BalanceWidgetView: View {
                     ZStack(alignment: .leading) {
                         Capsule().fill(palette.line.opacity(0.7))
                         Capsule()
-                            .fill(palette.progressAccent)
+                            .fill(palette.progressStyle)
                             .frame(width: geometry.size.width * progress(snapshot))
                     }
                 }
@@ -410,9 +410,11 @@ private struct WidgetPalette {
     let muted: Color
     let line: Color
     let accent: Color
+    let statusAccent: Color
     let taskAccent: Color
     let doneAccent: Color
     let progressAccent: Color
+    let progressColors: [Color]?
     let timePill: Color
     let timePillInk: Color
     let backgroundColors: [Color]?
@@ -424,9 +426,11 @@ private struct WidgetPalette {
         muted: UInt32,
         line: UInt32,
         accent: UInt32,
+        statusAccent: UInt32? = nil,
         taskAccent: UInt32? = nil,
         doneAccent: UInt32? = nil,
         progressAccent: UInt32? = nil,
+        progressColors: [UInt32]? = nil,
         timePill: UInt32? = nil,
         timePillInk: UInt32? = nil,
         backgroundColors: [UInt32]? = nil
@@ -437,12 +441,27 @@ private struct WidgetPalette {
         self.muted = Color(rgb: muted)
         self.line = Color(rgb: line)
         self.accent = Color(rgb: accent)
+        self.statusAccent = Color(rgb: statusAccent ?? accent)
         self.taskAccent = Color(rgb: taskAccent ?? accent)
         self.doneAccent = Color(rgb: doneAccent ?? accent)
         self.progressAccent = Color(rgb: progressAccent ?? accent)
+        self.progressColors = progressColors?.map(Color.init(rgb:))
         self.timePill = Color(rgb: timePill ?? accent)
         self.timePillInk = Color(rgb: timePillInk ?? paper)
         self.backgroundColors = backgroundColors?.map(Color.init(rgb:))
+    }
+
+    var progressStyle: AnyShapeStyle {
+        if let progressColors {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: progressColors,
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+        }
+        return AnyShapeStyle(progressAccent)
     }
 
     @ViewBuilder
@@ -469,10 +488,12 @@ private struct WidgetPalette {
                     muted: 0xB5A6BD,
                     line: 0x493B54,
                     accent: 0xF5B8E3,
+                    statusAccent: 0xB79AF2,
                     taskAccent: 0xB79AF2,
                     doneAccent: 0x65CFAA,
                     progressAccent: 0xB79AF2,
-                    timePill: 0x9B3F86,
+                    progressColors: [0x4257C9, 0x6A54D1, 0x9455C9, 0xC85FB0, 0xEC6A8F, 0xF7856A, 0xF9A94F, 0xF6CF68],
+                    timePill: 0x4C6877,
                     timePillInk: 0xFFFFFF,
                     backgroundColors: [0x15101B, 0x10191E, 0x1C1710]
                 )
@@ -506,10 +527,12 @@ private struct WidgetPalette {
                 muted: 0x736B80,
                 line: 0xDDD3E6,
                 accent: 0xA13C91,
+                statusAccent: 0x7B5BD6,
                 taskAccent: 0x7B5BD6,
                 doneAccent: 0x28A987,
                 progressAccent: 0x7B5BD6,
-                timePill: 0x71328B,
+                progressColors: [0x4257C9, 0x6A54D1, 0x9455C9, 0xC85FB0, 0xEC6A8F, 0xF7856A, 0xF9A94F, 0xF6CF68],
+                timePill: 0x52798A,
                 timePillInk: 0xFFFFFF,
                 backgroundColors: [0xF8F3FB, 0xF2F8FA, 0xFAF6EF]
             )
