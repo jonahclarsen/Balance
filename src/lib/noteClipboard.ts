@@ -72,7 +72,7 @@ function renderNodes(nodes: NoteClipboardNode[]): string {
     }
 
     const tag = node.kind === 'heading' ? 'h1' : 'p'
-    result += `<${tag}>${node.html || '<br>'}</${tag}>`
+    result += `<${tag}>${clipboardInlineHTML(node.html) || '<br>'}</${tag}>`
     if (node.children.length > 0) result += renderNodes(node.children)
     index += 1
   }
@@ -83,7 +83,13 @@ function renderNodes(nodes: NoteClipboardNode[]): string {
 function renderListItem(node: NoteClipboardNode): string {
   const checkbox = node.kind === 'checklist' ? `${node.done ? '☑' : '☐'} ` : ''
   const children = node.children.length > 0 ? renderNodes(node.children) : ''
-  return `<li>${checkbox}${node.html}${children}</li>`
+  return `<li>${checkbox}${clipboardInlineHTML(node.html)}${children}</li>`
+}
+
+function clipboardInlineHTML(html: string): string {
+  // Notion represents soft line breaks as literal newlines in its HTML
+  // clipboard flavor and drops <br> elements when importing external HTML.
+  return html.replace(/<br>/g, '\n')
 }
 
 function htmlListTag(kind: NoteItemKind): 'ul' | 'ol' | null {

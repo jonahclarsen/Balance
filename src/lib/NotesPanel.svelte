@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { invoke, isTauri } from '@tauri-apps/api/core'
   import { onDestroy, onMount, tick } from 'svelte'
   import { caretPointFromCoordinates } from './caretGeometry'
   import NoteItemEditor from './NoteItemEditor.svelte'
@@ -326,7 +327,7 @@
       range = selection.getRangeAt(0)
       selectedInputs = inputs.filter((input) => range?.intersectsNode(input))
     }
-    if (selectedInputs.length < 2) return
+    if (selectedInputs.length === 0) return
 
     const blocks = selectedInputs.flatMap((input) => {
       const fragmentRange = document.createRange()
@@ -354,11 +355,21 @@
         number: numberedMarker(row),
       } satisfies NoteClipboardBlock]
     })
-    if (blocks.length < 2) return
+    if (blocks.length === 0 || (blocks.length === 1 && !blocks[0].html.includes('<br>'))) return
 
+    const plainText = noteClipboardPlainText(blocks)
+    const html = noteClipboardHTML(blocks)
     event.preventDefault()
-    event.clipboardData.setData('text/plain', noteClipboardPlainText(blocks))
-    event.clipboardData.setData('text/html', noteClipboardHTML(blocks))
+    event.clipboardData.setData('text/plain', plainText)
+    event.clipboardData.setData('text/html', html)
+    if (isTauri()) {
+      window.setTimeout(() => {
+        void invoke('write_note_clipboard', {
+          plainText,
+          html: `<meta charset='utf-8'>${html}`,
+        }).catch(() => {})
+      })
+    }
   }
 
   function numberedMarker(row: HTMLElement) {

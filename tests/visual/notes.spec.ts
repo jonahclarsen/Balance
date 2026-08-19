@@ -316,6 +316,9 @@ test('notes select all blocks and copy plain text plus semantic HTML lists', asy
   const second = page.locator('[data-note-text-input]').nth(1)
   await second.fill('Beta')
   await placeCaretAtEnd(second)
+  await second.press('Shift+Enter')
+  await second.type('Beta continuation')
+  await placeCaretAtEnd(second)
   await second.press('Enter')
 
   const third = page.locator('[data-note-text-input]').nth(2)
@@ -326,8 +329,8 @@ test('notes select all blocks and copy plain text plus semantic HTML lists', asy
   await expect(page.locator('.note-multi-selected')).toHaveCount(3)
   await expect.poll(() => copyNoteSelection(page)).toEqual({
     handled: true,
-    plainText: '- Alpha\n- Beta\n- Gamma',
-    html: '<ul><li><strong>Alpha</strong></li><li>Beta</li><li>Gamma</li></ul>',
+    plainText: '- Alpha\n- Beta\n  Beta continuation\n- Gamma',
+    html: '<ul><li><strong>Alpha</strong></li><li>Beta\nBeta continuation</li><li>Gamma</li></ul>',
   })
 })
 

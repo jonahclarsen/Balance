@@ -657,6 +657,31 @@ fn write_balance_clipboard(_plain_text: String, _structured_payload: String) -> 
 
 #[cfg(target_os = "macos")]
 #[tauri::command]
+fn write_note_clipboard(plain_text: String, html: String) -> Result<(), String> {
+    use objc2_app_kit::{NSPasteboard, NSPasteboardTypeHTML, NSPasteboardTypeString};
+    use objc2_foundation::NSString;
+
+    let pasteboard = NSPasteboard::generalPasteboard();
+    let plain_text = NSString::from_str(&plain_text);
+    let html = NSString::from_str(&html);
+
+    pasteboard.clearContents();
+    if !pasteboard.setString_forType(&plain_text, unsafe { NSPasteboardTypeString })
+        || !pasteboard.setString_forType(&html, unsafe { NSPasteboardTypeHTML })
+    {
+        return Err("Could not write note contents to the system pasteboard".to_string());
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+fn write_note_clipboard(_plain_text: String, _html: String) -> Result<(), String> {
+    Err("Rich note clipboard writing is currently supported on macOS".to_string())
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
 fn read_balance_clipboard() -> ClipboardContents {
     use objc2_app_kit::{NSPasteboard, NSPasteboardTypeHTML, NSPasteboardTypeString};
     use objc2_foundation::NSString;
@@ -9691,6 +9716,7 @@ pub fn run() {
             reveal_path_in_file_manager,
             open_external_url,
             write_balance_clipboard,
+            write_note_clipboard,
             read_balance_clipboard,
             get_sync_settings,
             set_sync_relay_url,
