@@ -111,6 +111,7 @@ import type {
   TemplateOption,
 } from './types'
 import { normalizeReplicatedPreferences } from './preferences'
+import { isNoteTrashExpired } from './noteTrash'
 
 const STORAGE_KEY = 'balance.appState.v1'
 const TEXT_MERGE_WINDOW_MS = 1200
@@ -1368,8 +1369,48 @@ function createPlannerStore() {
       return note.id
     },
 
-    deleteNote(noteId: Id) {
-      commit('delete_note', { noteId }, (state) => ({ ...state, notes: state.notes.filter((note) => note.id !== noteId) }))
+    trashNote(noteId: Id) {
+      const deletedAt = nowISO()
+      commit('trash_note', { noteId, deletedAt }, (state) =>
+        updateNote(state, noteId, (note) => note.deletedAt ? note : { ...note, deletedAt }),
+      )
+    },
+
+    restoreNote(noteId: Id) {
+      commit('restore_note', { noteId }, (state) =>
+        updateNote(state, noteId, (note) => note.deletedAt ? { ...note, deletedAt: null } : note),
+      )
+    },
+
+    permanentlyDeleteNote(noteId: Id) {
+      commit(
+        'permanently_delete_note',
+        { noteId },
+        (state) => ({ ...state, notes: state.notes.filter((note) => note.id !== noteId) }),
+      )
+    },
+
+    emptyNoteTrash() {
+      commit(
+        'empty_note_trash',
+        {},
+        (state) => {
+          const notes = state.notes.filter((note) => !note.deletedAt)
+          return notes.length === state.notes.length ? state : { ...state, notes }
+        },
+      )
+    },
+
+    purgeExpiredNotes(now = Date.now()) {
+      commit(
+        'purge_expired_notes',
+        { now },
+        (state) => {
+          const notes = state.notes.filter((note) => !isNoteTrashExpired(note, now))
+          return notes.length === state.notes.length ? state : { ...state, notes }
+        },
+        { undoable: false },
+      )
     },
 
     renameNote(noteId: Id, title: string) {
@@ -2569,6 +2610,7 @@ function normalizeState(state: AppState): AppState {
     notes: (state.notes ?? []).map((note) => ({
       ...note,
       title: note.title ?? '',
+      deletedAt: typeof note.deletedAt === 'string' && Number.isFinite(Date.parse(note.deletedAt)) ? note.deletedAt : null,
       items: normalizeNoteItems(note.items ?? []),
     })),
   }

@@ -3,8 +3,10 @@
   import { onDestroy, onMount, tick } from 'svelte'
   import { caretPointFromCoordinates } from './caretGeometry'
   import NoteItemEditor from './NoteItemEditor.svelte'
+  import ReadOnlyNoteItem from './ReadOnlyNoteItem.svelte'
   import { htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
   import { noteClipboardHTML, noteClipboardPlainText, type NoteClipboardBlock } from './noteClipboard'
+  import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind } from './types'
 
   type InlineFormatCommand = 'bold' | 'italic' | 'underline'
@@ -23,7 +25,10 @@
   export let historyRevision = 0
   export let onSelect: (noteId: Id) => void
   export let onCreate: () => Id
-  export let onDelete: (noteId: Id) => void | Promise<void>
+  export let onTrash: (noteId: Id) => boolean | Promise<boolean>
+  export let onRestore: (noteId: Id) => void
+  export let onPermanentlyDelete: (noteId: Id) => boolean | Promise<boolean>
+  export let onEmptyTrash: () => boolean | Promise<boolean>
   export let onRename: (noteId: Id, title: string) => void
   export let onAddItem: (noteId: Id, kind?: NoteItemKind) => Id
   export let patchItem: typeof import('./store').plannerStore.patchNoteItem
@@ -37,6 +42,9 @@
   export let onOpenLink: (link: ItemLink) => void
 
   let filter = ''
+  let trashOpen = false
+  let lastActiveNoteId: Id | null = null
+  let lastTrashNoteId: Id | null = null
   let copyButtonText = 'Copy note link'
   let copyButtonResetTimer: number | undefined
   let activeItemId: Id | null = null
@@ -58,7 +66,14 @@
   let selectionFocusItemId: Id | null = null
   let pointerUsesItemSelection = false
   let inlineFormats: InlineFormatState = { bold: false, italic: false, underline: false }
-  $: selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null
+  $: activeNotes = notes.filter((note) => !note.deletedAt)
+  $: trashedNotes = notes
+    .filter((note) => note.deletedAt)
+    .sort((a, b) => (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''))
+  $: visibleNotes = trashOpen ? trashedNotes : activeNotes
+  $: selectedNote = visibleNotes.find((note) => note.id === selectedNoteId) ?? visibleNotes[0] ?? null
+  $: if (!trashOpen && selectedNote) lastActiveNoteId = selectedNote.id
+  $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
   $: if (selectedNoteId !== activeNoteId) {
     activeNoteId = selectedNoteId
     activeItemId = selectedNote?.items[0]?.id ?? null
@@ -66,9 +81,11 @@
     inlineFormats = { bold: false, italic: false, underline: false }
   }
   $: activeItem = selectedNote && activeItemId ? findItem(selectedNote.items, activeItemId) : null
-  $: filteredNotes = [...notes]
+  $: filteredNotes = [...visibleNotes]
     .filter((note) => `${note.title} ${flattenText(note)}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()))
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .sort((a, b) => trashOpen
+      ? (b.deletedAt ?? '').localeCompare(a.deletedAt ?? '')
+      : b.updatedAt.localeCompare(a.updatedAt))
 
   function flattenText(note: Note): string {
     const visit = (items: Note['items']): string => items.map((item) => `${item.text} ${visit(item.children)}`).join(' ')
@@ -85,9 +102,50 @@
   }
 
   function createAndSelect() {
+    trashOpen = false
     const id = onCreate()
     onSelect(id)
     void tick().then(() => document.querySelector<HTMLInputElement>('#note-title')?.select())
+  }
+
+  function showNotes() {
+    trashOpen = false
+    filter = ''
+    const noteId = activeNotes.find((note) => note.id === lastActiveNoteId)?.id ?? activeNotes[0]?.id
+    if (noteId) onSelect(noteId)
+  }
+
+  function showTrash() {
+    trashOpen = true
+    filter = ''
+    const noteId = trashedNotes.find((note) => note.id === lastTrashNoteId)?.id ?? trashedNotes[0]?.id
+    if (noteId) onSelect(noteId)
+  }
+
+  async function moveToTrash(noteId: Id) {
+    const index = activeNotes.findIndex((note) => note.id === noteId)
+    const nextNoteId = activeNotes[index + 1]?.id ?? activeNotes[index - 1]?.id ?? ''
+    if (await onTrash(noteId)) onSelect(nextNoteId)
+  }
+
+  async function restoreFromTrash(noteId: Id) {
+    onRestore(noteId)
+    lastActiveNoteId = noteId
+    trashOpen = false
+    filter = ''
+    onSelect(noteId)
+    await tick()
+    document.querySelector<HTMLInputElement>('#note-title')?.focus()
+  }
+
+  async function permanentlyDelete(noteId: Id) {
+    const index = trashedNotes.findIndex((note) => note.id === noteId)
+    const nextNoteId = trashedNotes[index + 1]?.id ?? trashedNotes[index - 1]?.id ?? ''
+    if (await onPermanentlyDelete(noteId)) onSelect(nextNoteId)
+  }
+
+  async function emptyTrash() {
+    if (await onEmptyTrash()) onSelect('')
   }
 
   async function copyLink() {
@@ -117,6 +175,12 @@
     const date = new Date(value)
     if (Number.isNaN(date.getTime())) return ''
     return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: date.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' }).format(date)
+  }
+
+  function deletionCountdown(note: Note) {
+    const days = noteTrashDaysRemaining(note)
+    if (days <= 1) return 'Permanently deleted within 1 day'
+    return `Permanently deleted in ${days} days`
   }
 
   async function applyBlockKind(kind: NoteItemKind) {
@@ -588,33 +652,68 @@
 <div class="notes-workspace">
   <aside class="notes-sidebar" aria-label="Notes">
     <div class="notes-sidebar-head">
-      <h3>Notes</h3>
-      <button class="primary note-new" type="button" on:click={createAndSelect}>+ New</button>
+      <h3>{trashOpen ? 'Trash' : 'Notes'}</h3>
+      {#if trashOpen}
+        {#if trashedNotes.length > 0}<button class="ghost danger note-empty-trash" type="button" aria-label="Empty Trash" on:click={emptyTrash}>Empty</button>{/if}
+      {:else}
+        <button class="primary note-new" type="button" on:click={createAndSelect}>+ New</button>
+      {/if}
     </div>
-    <input class="notes-filter" type="search" bind:value={filter} placeholder="Filter notes" aria-label="Filter notes" />
+    <div class="notes-shelves" role="group" aria-label="Note location">
+      <button type="button" class:active={!trashOpen} aria-pressed={!trashOpen} on:click={showNotes}>Notes <span>{activeNotes.length}</span></button>
+      <button type="button" class:active={trashOpen} aria-pressed={trashOpen} on:click={showTrash}>Trash <span>{trashedNotes.length}</span></button>
+    </div>
+    <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Trash' : 'Filter notes'} aria-label={trashOpen ? 'Filter Trash' : 'Filter notes'} />
     <div class="notes-list">
       {#each filteredNotes as note (note.id)}
-        <button type="button" class="note-card" class:active={note.id === selectedNoteId} on:click={() => onSelect(note.id)}>
+        <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => onSelect(note.id)}>
           <strong>{note.title.trim() || 'Untitled note'}</strong>
           <span>{flattenText(note).trim().replace(/\s+/g, ' ').slice(0, 90) || 'Empty note'}</span>
-          <time datetime={note.updatedAt}>{readableDate(note.updatedAt)}</time>
+          <time datetime={trashOpen ? note.deletedAt ?? note.updatedAt : note.updatedAt}>{readableDate(trashOpen ? note.deletedAt ?? note.updatedAt : note.updatedAt)}</time>
         </button>
       {/each}
-      {#if notes.length > 0 && filteredNotes.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
+      {#if visibleNotes.length > 0 && filteredNotes.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
     </div>
   </aside>
 
   <section class="note-document">
     {#if selectedNote}
       <header class="note-document-head">
-        <input id="note-title" class="note-title" value={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} />
+        {#if trashOpen}
+          <h1 class="note-title note-trashed-title">{selectedNote.title.trim() || 'Untitled note'}</h1>
+        {:else}
+          <input id="note-title" class="note-title" value={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} />
+        {/if}
         <div class="note-actions">
-          <button type="button" title="Copy an app link to this note" aria-live="polite" on:click={copyLink}>{copyButtonText}</button>
-          <button class="ghost danger" type="button" on:click={() => onDelete(selectedNote!.id)}>Delete</button>
+          {#if trashOpen}
+            <button class="primary" type="button" on:click={() => restoreFromTrash(selectedNote!.id)}>Restore</button>
+            <button class="ghost danger" type="button" on:click={() => permanentlyDelete(selectedNote!.id)}>Delete now</button>
+          {:else}
+            <button type="button" title="Copy an app link to this note" aria-live="polite" on:click={copyLink}>{copyButtonText}</button>
+            <button class="ghost danger" type="button" on:click={() => moveToTrash(selectedNote!.id)}>Move to Trash</button>
+          {/if}
         </div>
       </header>
 
-      <div class="note-format-toolbar" role="toolbar" aria-label="Note formatting">
+      {#if trashOpen}
+        <div class="note-trash-notice" role="status">
+          <span aria-hidden="true">⌛</span>
+          <div>
+            <strong>{deletionCountdown(selectedNote)}</strong>
+            <small>Notes stay in Trash for {NOTE_TRASH_RETENTION_DAYS} days. Restore this note to edit it again.</small>
+          </div>
+        </div>
+        <div class="note-blocks note-readonly-blocks">
+          {#if selectedNote.items.length === 0}
+            <p class="note-readonly-empty">This note is empty.</p>
+          {:else}
+            {#each selectedNote.items as item (item.id)}
+              <ReadOnlyNoteItem {item} siblings={selectedNote.items} />
+            {/each}
+          {/if}
+        </div>
+      {:else}
+        <div class="note-format-toolbar" role="toolbar" aria-label="Note formatting">
         <div class="note-format-group" aria-label="Text style">
           <button type="button" class:active={activeItem?.kind === 'paragraph'} aria-label="Text" title="Text" on:click={() => applyBlockKind('paragraph')}>Aa</button>
           <button type="button" class:active={activeItem?.kind === 'heading'} aria-label="Heading" title="Heading (# then Space)" on:click={() => applyBlockKind('heading')}>H1</button>
@@ -630,9 +729,9 @@
           <button type="button" class:active={inlineFormats.underline} aria-label="Underline" aria-pressed={inlineFormats.underline ? 'true' : 'false'} title="Underline (⌘U)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('underline')}><u>U</u></button>
         </div>
         <span class="note-format-hint">Type <kbd>/</kbd> for more</span>
-      </div>
+        </div>
 
-      <div class="note-blocks" bind:this={noteBlocksElement}>
+        <div class="note-blocks" bind:this={noteBlocksElement}>
         {#if selectedNote.items.length === 0}
           <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
         {:else}
@@ -652,7 +751,7 @@
               {historyRevision}
               {listTemplates}
               {metrics}
-              {notes}
+              notes={activeNotes}
               {onOpenLink}
               {selectedItemIds}
               onExtendItemSelection={extendItemSelection}
@@ -661,18 +760,26 @@
             />
           {/each}
         {/if}
-      </div>
+        </div>
+      {/if}
 
     {:else}
       <div class="empty-state note-empty">
-        <h3>{notes.length === 0 ? 'Your notes live here' : 'Choose a note'}</h3>
-        <p>Keep reference material, lists, and ideas separate from any particular day.</p>
-        <button class="primary" type="button" on:click={createAndSelect}>+ New note</button>
+        {#if trashOpen}
+          <div class="note-empty-trash-icon" aria-hidden="true">✓</div>
+          <h3>Trash is empty</h3>
+          <p>Deleted notes stay here for {NOTE_TRASH_RETENTION_DAYS} days before they are permanently deleted.</p>
+          <button type="button" on:click={showNotes}>Back to Notes</button>
+        {:else}
+          <h3>{activeNotes.length === 0 ? 'Your notes live here' : 'Choose a note'}</h3>
+          <p>Keep reference material, lists, and ideas separate from any particular day.</p>
+          <button class="primary" type="button" on:click={createAndSelect}>+ New note</button>
+        {/if}
       </div>
     {/if}
   </section>
 </div>
-{#if selectedNote}
+{#if selectedNote && !trashOpen}
   <div
     class="note-scroll-space"
     style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh; --note-scroll-space-progress: ${noteScrollSpacePercent}%`}

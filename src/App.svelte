@@ -60,6 +60,7 @@
     normalizeInterfaceFontId,
     type InterfaceFontId,
   } from './lib/fonts'
+  import { isNoteTrashed } from './lib/noteTrash'
 
   // Pasting four or more items onto a different day routes through a review queue
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
@@ -344,7 +345,8 @@ return rows`
   let listTemplates = $plannerStore.listTemplates
   let lists = $plannerStore.lists
   let metrics = $plannerStore.metrics
-  let notes = $plannerStore.notes
+  let allNotes = $plannerStore.notes
+  let notes = allNotes.filter((note) => !isNoteTrashed(note))
   let goals = $plannerStore.goals
   let goalCompletions = $plannerStore.goalCompletions
   let goalHistoryGoals = goals
@@ -354,7 +356,10 @@ return rows`
   $: if (listTemplates !== $plannerStore.listTemplates) listTemplates = $plannerStore.listTemplates
   $: if (lists !== $plannerStore.lists) lists = $plannerStore.lists
   $: if (metrics !== $plannerStore.metrics) metrics = $plannerStore.metrics
-  $: if (notes !== $plannerStore.notes) notes = $plannerStore.notes
+  $: if (allNotes !== $plannerStore.notes) {
+    allNotes = $plannerStore.notes
+    notes = allNotes.filter((note) => !isNoteTrashed(note))
+  }
   $: if (goals !== $plannerStore.goals) goals = $plannerStore.goals
   $: if (goalCompletions !== $plannerStore.goalCompletions) goalCompletions = $plannerStore.goalCompletions
   $: if (goals !== goalHistoryGoals) scheduleGoalHistoryUpdate()
@@ -435,7 +440,7 @@ return rows`
   $: if (!importMetricId && metrics[0]) importMetricId = metrics[0].id
   // ---- Notes ----
   $: if (!selectedNoteId && notes[0]) selectedNoteId = notes[0].id
-  $: if (selectedNoteId && !notes.some((note) => note.id === selectedNoteId)) selectedNoteId = notes[0]?.id ?? ''
+  $: if (selectedNoteId && !allNotes.some((note) => note.id === selectedNoteId)) selectedNoteId = notes[0]?.id ?? ''
 
   // ---- Overlays: auto-close a list toast once every box is checked ----
   // Only auto-close when the list *transitions* to complete while open, so
@@ -808,7 +813,7 @@ return rows`
   function openLink(link: ItemLink, opener: Opener | null) {
     const date = $plannerStore.activePlanDate
     if (link.kind === 'note') {
-      if ($plannerStore.notes.some((note) => note.id === link.noteId)) {
+      if (notes.some((note) => note.id === link.noteId)) {
         selectedNoteId = link.noteId
         view = 'notes'
       }
@@ -849,15 +854,40 @@ return rows`
     return true
   }
 
-  async function confirmDeleteNote(noteId: Id) {
+  async function confirmTrashNote(noteId: Id): Promise<boolean> {
     const note = $plannerStore.notes.find((candidate) => candidate.id === noteId)
-    if (!note) return
-    const message = `Delete “${note.title.trim() || 'Untitled note'}”?`
+    if (!note) return false
+    const message = `Move “${note.title.trim() || 'Untitled note'}” to Trash? You can restore it for 30 days.`
     const confirmed = isTauri()
-      ? await confirmDialog(message, { title: 'Delete note', kind: 'warning' })
+      ? await confirmDialog(message, { title: 'Move note to Trash?', kind: 'warning' })
       : window.confirm(message)
-    if (!confirmed) return
-    plannerStore.deleteNote(noteId)
+    if (!confirmed) return false
+    plannerStore.trashNote(noteId)
+    return true
+  }
+
+  async function confirmPermanentlyDeleteNote(noteId: Id): Promise<boolean> {
+    const note = $plannerStore.notes.find((candidate) => candidate.id === noteId)
+    if (!note?.deletedAt) return false
+    const message = `Delete “${note.title.trim() || 'Untitled note'}” now instead of waiting 30 days? You can still undo this action.`
+    const confirmed = isTauri()
+      ? await confirmDialog(message, { title: 'Delete note now?', kind: 'warning' })
+      : window.confirm(message)
+    if (!confirmed) return false
+    plannerStore.permanentlyDeleteNote(noteId)
+    return true
+  }
+
+  async function confirmEmptyNoteTrash(): Promise<boolean> {
+    const count = $plannerStore.notes.filter((note) => note.deletedAt).length
+    if (count === 0) return false
+    const message = `Delete ${count} note${count === 1 ? '' : 's'} now instead of waiting 30 days? You can still undo this action.`
+    const confirmed = isTauri()
+      ? await confirmDialog(message, { title: 'Empty Trash?', kind: 'warning' })
+      : window.confirm(message)
+    if (!confirmed) return false
+    plannerStore.emptyNoteTrash()
+    return true
   }
 
   // Jump from a generated list item to the source item on the list-templates
@@ -1157,6 +1187,7 @@ return rows`
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
     let stopPasteMatchStyleListener: (() => void) | null = null
+    let noteTrashCleanupTimer: number | null = null
     const databaseLoadingMessageTimer = window.setInterval(() => {
       if (!$databaseLoadPending || databaseLoadingMessages.length < 2) return
       databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(
@@ -1209,6 +1240,9 @@ return rows`
       // before native hydration. Never treat that placeholder as user data when
       // SQLCipher or Android Keystore failed to open the real database.
       if ($databaseLoadError) return
+
+      plannerStore.purgeExpiredNotes()
+      noteTrashCleanupTimer = window.setInterval(() => plannerStore.purgeExpiredNotes(), 60 * 1000)
 
       // Android may serialize event-plugin registration with command IPC while
       // the WebView is starting. Register optional listeners only after the
@@ -1282,6 +1316,7 @@ return rows`
       stopAutomaticSync = startAutomaticSync()
       // Pull remote changes before evaluating threshold-based housekeeping.
       await requestSync('launch')
+      plannerStore.purgeExpiredNotes()
 
       try {
         buildInfo = await invoke<{ version: string; commit: string }>('build_info')
@@ -1304,6 +1339,7 @@ return rows`
       stopPasteMatchStyleListener?.()
       window.clearInterval(databaseLoadingMessageTimer)
       window.clearInterval(currentDayTimer)
+      if (noteTrashCleanupTimer !== null) window.clearInterval(noteTrashCleanupTimer)
       window.removeEventListener('focus', refreshCurrentDay)
       document.removeEventListener('visibilitychange', refreshCurrentDay)
       if (goalHistoryUpdateTimer !== null) window.clearTimeout(goalHistoryUpdateTimer)
@@ -5059,14 +5095,17 @@ return rows`
         <ImaxButton active={viewMaximized} onToggle={(event) => toggleViewMaximized('notes', event)} />
       </header>
       <NotesPanel
-        {notes}
+        notes={allNotes}
         {selectedNoteId}
         {listTemplates}
         {metrics}
         historyRevision={$plannerStore.historyRevision}
         onSelect={(noteId) => (selectedNoteId = noteId)}
         onCreate={plannerStore.addNote}
-        onDelete={confirmDeleteNote}
+        onTrash={confirmTrashNote}
+        onRestore={plannerStore.restoreNote}
+        onPermanentlyDelete={confirmPermanentlyDeleteNote}
+        onEmptyTrash={confirmEmptyNoteTrash}
         onRename={plannerStore.renameNote}
         onAddItem={plannerStore.addRootNoteItem}
         patchItem={plannerStore.patchNoteItem}

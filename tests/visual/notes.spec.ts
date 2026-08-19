@@ -13,6 +13,18 @@ async function placeCaretAtEnd(editor: Locator) {
   })
 }
 
+async function openNotesView(page: Page) {
+  const mobileMenu = page.locator('.mobile-app-header').getByRole('button', { name: 'Open navigation' })
+  if (await mobileMenu.isVisible()) {
+    await mobileMenu.click()
+    await page.getByRole('complementary', { name: 'Primary navigation drawer' })
+      .getByRole('button', { name: 'Notes', exact: true })
+      .click()
+    return
+  }
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+}
+
 async function placeCaretAtOffset(editor: Locator, offset: number) {
   await editor.evaluate((element, caretOffset) => {
     const input = element as HTMLElement
@@ -873,18 +885,81 @@ test('note text restores the caret after tabbing away mid-edit', async ({ page }
     .toBe(6)
 })
 
-test('deleting a note confirms and remains undoable', async ({ page }) => {
+test('moving a note to Trash confirms and remains undoable', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openNotesView(page)
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByLabel('Note title').fill('Temporary note')
 
   page.once('dialog', (dialog) => dialog.accept())
-  await page.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Move to Trash' }).click()
   await expect(page.getByLabel('Note title')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Trash 1' })).toBeVisible()
 
   await page.keyboard.press('Meta+Z')
   await expect(page.getByLabel('Note title')).toHaveValue('Temporary note')
+})
+
+test('Trash keeps notes read-only, restores them, and supports immediate deletion', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByLabel('Note title').fill('Recoverable thought')
+  await page.getByLabel('Note text').fill('Worth keeping after all')
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Move to Trash' }).click()
+  await page.getByRole('button', { name: 'Trash 1' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Recoverable thought' })).toBeVisible()
+  await expect(page.getByRole('status')).toContainText('Permanently deleted in 30 days')
+  await expect(page.locator('.note-readonly-blocks').getByText('Worth keeping after all')).toBeVisible()
+  await expect(page.getByLabel('Note text')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Restore' }).click()
+  await expect(page.getByLabel('Note title')).toHaveValue('Recoverable thought')
+  await expect(page.getByRole('button', { name: 'Trash 0' })).toBeVisible()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Move to Trash' }).click()
+  await page.getByRole('button', { name: 'Trash 1' }).click()
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Delete now' }).click()
+  await expect(page.getByRole('heading', { name: 'Trash is empty' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Trash 0' })).toBeVisible()
+
+  await page.keyboard.press('Meta+Z')
+  await expect(page.getByRole('heading', { name: 'Recoverable thought' })).toBeVisible()
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Empty Trash' }).click()
+  await expect(page.getByRole('heading', { name: 'Trash is empty' })).toBeVisible()
+  await page.keyboard.press('Meta+Z')
+  await expect(page.getByRole('heading', { name: 'Recoverable thought' })).toBeVisible()
+})
+
+test('notes expire from Trash after 30 days', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByLabel('Note title').fill('Old discarded note')
+
+  page.once('dialog', (dialog) => dialog.accept())
+  await page.getByRole('button', { name: 'Move to Trash' }).click()
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    state.notes[0].deletedAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString()
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+  await openNotesView(page)
+
+  await expect(page.getByRole('button', { name: 'Trash 0' })).toBeVisible()
+  await page.getByRole('button', { name: 'Trash 0' }).click()
+  await expect(page.getByRole('heading', { name: 'Trash is empty' })).toBeVisible()
 })

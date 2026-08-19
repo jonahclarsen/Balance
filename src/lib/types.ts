@@ -43,6 +43,7 @@ export type Note = {
   items: NoteItem[]
   createdAt: string
   updatedAt: string
+  deletedAt?: string | null
 }
 
 export type MovePlacement = 'before' | 'after' | 'inside'

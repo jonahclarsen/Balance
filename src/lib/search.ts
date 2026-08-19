@@ -1,4 +1,5 @@
 import type { AppState, Id, ListTemplateItem, PlanItem, TemplateItem } from './types'
+import { isNoteTrashed } from './noteTrash'
 
 export type SearchResult =
   | {
@@ -129,7 +130,7 @@ export function searchBalanceState(state: AppState, query: string): SearchResult
     }]
   })
 
-  const noteResults: SearchResult[] = [...state.notes]
+  const noteResults: SearchResult[] = state.notes.filter((note) => !isNoteTrashed(note))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .flatMap((note) => {
       const lines = flattenPlanItems(note.items)
