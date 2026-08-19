@@ -237,6 +237,7 @@ object BalanceWidgets {
     }
 
     private fun themeLayout(themeId: String): Int = when (themeId) {
+        "iridescent" -> R.layout.balance_home_widget_iridescent
         "forest" -> R.layout.balance_home_widget_forest
         "ocean" -> R.layout.balance_home_widget_ocean
         "sunset" -> R.layout.balance_home_widget_sunset
@@ -346,6 +347,7 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 `
 
 const widgetThemes = [
+  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
   { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },
   { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F' },
   { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
@@ -357,6 +359,7 @@ const widgetThemes = [
 ]
 
 const darkWidgetThemes = [
+  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#9B3F86', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
   { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
   { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
   { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
@@ -574,9 +577,16 @@ const styles = `<?xml version="1.0" encoding="utf-8"?>
 `
 
 function background(theme) {
+  const fill = theme.backgroundColors
+    ? `<gradient
+        android:angle="135"
+        android:centerColor="${theme.backgroundColors[1]}"
+        android:endColor="${theme.backgroundColors[2]}"
+        android:startColor="${theme.backgroundColors[0]}" />`
+    : `<solid android:color="${theme.paper}" />`
   return `<?xml version="1.0" encoding="utf-8"?>
 <shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
-    <solid android:color="${theme.paper}" />
+    ${fill}
     <corners android:radius="24dp" />
     <stroke android:width="1dp" android:color="${theme.line}" />
 </shape>

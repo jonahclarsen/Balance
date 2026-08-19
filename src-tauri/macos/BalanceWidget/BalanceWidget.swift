@@ -406,6 +406,7 @@ private struct WidgetPalette {
     let muted: Color
     let line: Color
     let accent: Color
+    let backgroundColors: [Color]?
 
     private init(
         paper: UInt32,
@@ -413,7 +414,8 @@ private struct WidgetPalette {
         ink: UInt32,
         muted: UInt32,
         line: UInt32,
-        accent: UInt32
+        accent: UInt32,
+        backgroundColors: [UInt32]? = nil
     ) {
         self.paper = Color(rgb: paper)
         self.surface = Color(rgb: surface)
@@ -421,11 +423,35 @@ private struct WidgetPalette {
         self.muted = Color(rgb: muted)
         self.line = Color(rgb: line)
         self.accent = Color(rgb: accent)
+        self.backgroundColors = backgroundColors?.map(Color.init(rgb:))
+    }
+
+    @ViewBuilder
+    var background: some View {
+        if let backgroundColors {
+            LinearGradient(
+                colors: backgroundColors,
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        } else {
+            paper
+        }
     }
 
     static func resolve(themeId: String?, colorScheme: ColorScheme) -> WidgetPalette {
         if colorScheme == .dark {
             switch themeId {
+            case "iridescent":
+                return WidgetPalette(
+                    paper: 0x1F1926,
+                    surface: 0x2A2232,
+                    ink: 0xF4EDF6,
+                    muted: 0xB5A6BD,
+                    line: 0x493B54,
+                    accent: 0x9B3F86,
+                    backgroundColors: [0x15101B, 0x10191E, 0x1C1710]
+                )
             case "forest":
                 return WidgetPalette(paper: 0x1B201F, surface: 0x232A28, ink: 0xE7ECE8, muted: 0x9BA8A3, line: 0x34403C, accent: 0x79B9AE)
             case "ocean":
@@ -446,6 +472,16 @@ private struct WidgetPalette {
         }
 
         switch themeId {
+        case "iridescent":
+            return WidgetPalette(
+                paper: 0xFFFDFE,
+                surface: 0xFFFFFF,
+                ink: 0x282134,
+                muted: 0x736B80,
+                line: 0xDDD3E6,
+                accent: 0xA13C91,
+                backgroundColors: [0xF8F3FB, 0xF2F8FA, 0xFAF6EF]
+            )
         case "forest":
             return WidgetPalette(paper: 0xFFFDF8, surface: 0xFFFFFF, ink: 0x1D2428, muted: 0x687276, line: 0xD8D4CA, accent: 0x2F6F68)
         case "ocean":
@@ -481,10 +517,10 @@ private extension View {
     func balanceWidgetBackground(palette: WidgetPalette) -> some View {
         if #available(macOSApplicationExtension 14.0, *) {
             containerBackground(for: .widget) {
-                palette.paper
+                palette.background
             }
         } else {
-            background(palette.paper)
+            background(palette.background)
         }
     }
 }

@@ -149,6 +149,7 @@ class BalanceSyncWorker {
     assert.match(kotlin, /depthValues\?\.optInt/)
     assert.match(kotlin, /timeValues\?\.optString/)
     assert.match(kotlin, /json\.optString\("themeId", "violet"\)/)
+    assert.match(kotlin, /R\.layout\.balance_home_widget_iridescent/)
     assert.match(kotlin, /R\.layout\.balance_home_widget_ocean/)
     assert.match(kotlin, /else -> R\.layout\.balance_home_widget_violet/)
     assert.match(kotlin, /setViewPadding/)
@@ -221,7 +222,22 @@ class BalanceSyncWorker {
     assert.match(oceanLayout, /#276A9F/)
     assert.match(oceanLayout, /#172733/)
 
-    for (const theme of ['forest', 'ocean', 'violet', 'sunset', 'berry', 'pink', 'mint', 'midnight']) {
+    const iridescentLayout = await readFile(
+      join(root, 'res/layout/balance_home_widget_iridescent.xml'),
+      'utf8',
+    )
+    assert.match(iridescentLayout, /#A13C91/)
+    assert.match(iridescentLayout, /#282134/)
+    const iridescentBackground = await readFile(
+      join(root, 'res/drawable/balance_widget_iridescent_background.xml'),
+      'utf8',
+    )
+    assert.match(iridescentBackground, /<gradient/)
+    assert.match(iridescentBackground, /android:startColor="#F8F3FB"/)
+    assert.match(iridescentBackground, /android:centerColor="#F2F8FA"/)
+    assert.match(iridescentBackground, /android:endColor="#FAF6EF"/)
+
+    for (const theme of ['iridescent', 'forest', 'ocean', 'violet', 'sunset', 'berry', 'pink', 'mint', 'midnight']) {
       await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8')
@@ -260,6 +276,14 @@ class BalanceSyncWorker {
     )
     assert.match(darkVioletLayout, /#201C25/)
     assert.match(darkVioletLayout, /#EEE9F2/)
+
+    const darkIridescentBackground = await readFile(
+      join(root, 'res/drawable-night/balance_widget_iridescent_background.xml'),
+      'utf8',
+    )
+    assert.match(darkIridescentBackground, /android:startColor="#15101B"/)
+    assert.match(darkIridescentBackground, /android:centerColor="#10191E"/)
+    assert.match(darkIridescentBackground, /android:endColor="#1C1710"/)
 
     const widgetStyles = await readFile(
       join(root, 'res/values/balance_widget_styles.xml'),
