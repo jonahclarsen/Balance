@@ -11,7 +11,7 @@ on:
       candidate_ref:
         description: Git ref containing the interaction optimization
         required: true
-        default: "codex/system-load-performance"
+        default: "main"
         type: string
 
 permissions:
@@ -59,8 +59,17 @@ jobs:
           CANDIDATE_DIR: ${{ runner.temp }}/balance-load-candidate
         run: |
           set -euo pipefail
-          baseline_sha="$(git rev-parse --verify "${BASELINE_REF}^{commit}")"
-          candidate_sha="$(git rev-parse --verify "${CANDIDATE_REF}^{commit}")"
+          resolve_ref() {
+            ref="$1"
+            if git rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              git rev-parse --verify "${ref}^{commit}"
+              return
+            fi
+            git fetch --no-tags origin "$ref"
+            git rev-parse --verify 'FETCH_HEAD^{commit}'
+          }
+          baseline_sha="$(resolve_ref "$BASELINE_REF")"
+          candidate_sha="$(resolve_ref "$CANDIDATE_REF")"
           echo "BASELINE_SHA=$baseline_sha" >> "$GITHUB_ENV"
           echo "CANDIDATE_SHA=$candidate_sha" >> "$GITHUB_ENV"
           echo "BASELINE_DIR=$BASELINE_DIR" >> "$GITHUB_ENV"
