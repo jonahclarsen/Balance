@@ -258,6 +258,14 @@
   --active-nav:
     linear-gradient(105deg, transparent 12%, rgb(255 255 255 / 0.58) 34%, rgb(214 238 235 / 0.28) 45%, transparent 62%),
     linear-gradient(112deg, #eedee9 0%, #e4e1ef 31%, #dbeae7 58%, #eadfd5 79%, #eedee9 100%);
+  --iridescent-loading-progress-gradient: linear-gradient(
+    112deg,
+    color-mix(in srgb, #eedee9 78%, #c85fb0) 0%,
+    color-mix(in srgb, #e4e1ef 78%, #9455c9) 31%,
+    color-mix(in srgb, #dbeae7 78%, #58c3c5) 58%,
+    color-mix(in srgb, #eadfd5 78%, #e9b36b) 79%,
+    color-mix(in srgb, #eedee9 78%, #c85fb0) 100%
+  );
   --row-border: rgb(221 211 230 / 0.78);
   --drop-inside: #e7dcf2;
   --time-border: #b8cfe1;
@@ -544,6 +552,14 @@
     --active-nav:
       linear-gradient(105deg, transparent 12%, rgb(255 255 255 / 0.11) 34%, rgb(178 222 218 / 0.08) 45%, transparent 62%),
       linear-gradient(112deg, #3d2b39 0%, #303147 31%, #274144 58%, #493d2e 79%, #3d2b39 100%);
+    --iridescent-loading-progress-gradient: linear-gradient(
+      112deg,
+      color-mix(in srgb, #3d2b39 74%, #ef77bc) 0%,
+      color-mix(in srgb, #303147 74%, #aa8bea) 31%,
+      color-mix(in srgb, #274144 74%, #58c3c5) 58%,
+      color-mix(in srgb, #493d2e 74%, #e9b36b) 79%,
+      color-mix(in srgb, #3d2b39 74%, #ef77bc) 100%
+    );
     --row-border: rgb(73 59 84 / 0.8);
     --drop-inside: #382a46;
     --time-border: #4c6877;
@@ -1015,7 +1031,7 @@ nav button.active {
   filter: drop-shadow(0 1px 1px rgb(78 43 101 / 0.16));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: iridescent-brand-flow 16s ease-in-out infinite alternate;
+  animation: iridescent-brand-flow 28s ease-in-out infinite alternate;
 }
 
 @keyframes iridescent-brand-flow {
@@ -3051,7 +3067,7 @@ body.mobile-checkbox-dragging {
 }
 
 :root[data-theme='iridescent'] .database-loading-progress > span {
-  background: var(--active-nav);
+  background: var(--iridescent-loading-progress-gradient);
   box-shadow:
     0 0 8px color-mix(in srgb, var(--accent) 12%, transparent),
     inset 0 0 0 1px rgb(255 255 255 / 0.16);
