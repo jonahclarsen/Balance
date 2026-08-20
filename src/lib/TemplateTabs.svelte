@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { tick } from 'svelte'
+  import { randomIridescentSelectionAnimationDelay, restartElementAnimations } from './iridescentSelectionAnimation'
   import type { Id } from './types'
 
   export let templates: { id: Id; name: string }[]
@@ -21,6 +23,22 @@
   let dropTargetId = ''
   let dropPlacement: 'before' | 'after' = 'before'
   let suppressClickId = ''
+  let animatedSelectedId = selectedId
+  let selectionAnimationDelay = randomIridescentSelectionAnimationDelay()
+  let selectionAnimationRevision = 0
+
+  function updateSelectionAnimation(templateId: Id) {
+    if (templateId === animatedSelectedId) return
+    animatedSelectedId = templateId
+    selectionAnimationDelay = randomIridescentSelectionAnimationDelay()
+    const revision = ++selectionAnimationRevision
+    void tick().then(() => {
+      if (revision !== selectionAnimationRevision) return
+      restartElementAnimations(tabs?.querySelector('.template-tab.active'))
+    })
+  }
+
+  $: updateSelectionAnimation(selectedId)
 
   function startDrag(templateId: Id, event: PointerEvent) {
     if (event.button !== 0) return
@@ -100,7 +118,11 @@
   }
 </script>
 
-<div class="list-template-tabs" bind:this={tabs}>
+<div
+  class="list-template-tabs"
+  style:--active-nav-animation-delay={selectionAnimationDelay}
+  bind:this={tabs}
+>
   {#each templates as template (template.id)}
     <button
       type="button"

@@ -940,6 +940,85 @@ test('iridescent sidebar gradient starts at a random phase on each page', async 
   expect(threeQuarterPhase.backgroundPosition).toBeGreaterThan(72)
   expect(threeQuarterPhase.backgroundPosition).toBeLessThan(78)
   await expect(activeSidebarButton).toHaveText(/Day Templates/)
+
+  const rapidReturnAnimationTime = await page.evaluate(async () => {
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.primary-nav > button')]
+    const todayButton = buttons.find((button) => button.textContent?.includes('Today'))!
+    const templatesButton = buttons.find((button) => button.textContent?.includes('Day Templates'))!
+    const currentAnimation = document.querySelector<HTMLElement>('.sidebar nav button.active')?.getAnimations()[0]
+    if (currentAnimation) currentAnimation.currentTime = 5_000
+
+    const originalRandom = Math.random
+    const randomValues = [0.4, 0.25, 0.8, 0.25]
+    try {
+      Math.random = () => randomValues.shift() ?? 0.5
+      todayButton.click()
+      await Promise.resolve()
+      templatesButton.click()
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      return Number(document.querySelector<HTMLElement>('.sidebar nav button.active')?.getAnimations()[0]?.currentTime)
+    } finally {
+      Math.random = originalRandom
+    }
+  })
+  expect(rapidReturnAnimationTime).toBeLessThan(500)
+})
+
+test('iridescent template tabs randomize and restart on rapid selection', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+  await page.locator('.primary-nav button').filter({ hasText: 'Day Templates' }).evaluate((button) => button.click())
+  await page.getByRole('button', { name: 'New day', exact: true }).click()
+
+  const selectAtVisibleProgress = (name: 'Default day' | 'New day', visibleProgress: number) => page.evaluate(
+    async ({ name, visibleProgress }) => {
+      const originalRandom = Math.random
+      const randomValues = [visibleProgress, 0.25]
+      try {
+        Math.random = () => randomValues.shift() ?? 0.5
+        const tab = [...document.querySelectorAll<HTMLButtonElement>('[data-day-template-tab-id]')]
+          .find((candidate) => candidate.textContent?.includes(name))!
+        tab.click()
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        const activeTab = document.querySelector<HTMLElement>('[data-day-template-tab-id].active')!
+        return Number.parseFloat(getComputedStyle(activeTab).backgroundPosition)
+      } finally {
+        Math.random = originalRandom
+      }
+    },
+    { name, visibleProgress },
+  )
+
+  const quarterPhase = await selectAtVisibleProgress('Default day', 0.25)
+  const threeQuarterPhase = await selectAtVisibleProgress('New day', 0.75)
+  expect(quarterPhase).toBeGreaterThan(22)
+  expect(quarterPhase).toBeLessThan(28)
+  expect(threeQuarterPhase).toBeGreaterThan(72)
+  expect(threeQuarterPhase).toBeLessThan(78)
+
+  const rapidReturnAnimationTime = await page.evaluate(async () => {
+    const tabs = [...document.querySelectorAll<HTMLButtonElement>('[data-day-template-tab-id]')]
+    const defaultTab = tabs.find((tab) => tab.textContent?.includes('Default day'))!
+    const newTab = tabs.find((tab) => tab.textContent?.includes('New day'))!
+    const currentAnimation = newTab.getAnimations()[0]
+    if (currentAnimation) currentAnimation.currentTime = 5_000
+
+    const originalRandom = Math.random
+    const randomValues = [0.4, 0.25, 0.8, 0.25]
+    try {
+      Math.random = () => randomValues.shift() ?? 0.5
+      defaultTab.click()
+      await Promise.resolve()
+      newTab.click()
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      return Number(newTab.getAnimations()[0]?.currentTime)
+    } finally {
+      Math.random = originalRandom
+    }
+  })
+  expect(rapidReturnAnimationTime).toBeLessThan(500)
 })
 
 test('color themes update the whole palette, persist, and adapt to dark mode', async ({ page }, testInfo) => {

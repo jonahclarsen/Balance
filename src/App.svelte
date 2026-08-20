@@ -26,6 +26,7 @@
   import Celebration from './lib/Celebration.svelte'
   import CelebrationSettings from './lib/CelebrationSettings.svelte'
   import GoalBurst from './lib/GoalBurst.svelte'
+  import { randomIridescentSelectionAnimationDelay, restartElementAnimations } from './lib/iridescentSelectionAnimation'
   import { filterGoalsByPhrase, goalLightnessShift, goalsMatchingItemText, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
   import {
     compactDatabase,
@@ -118,7 +119,6 @@
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
   const WORKSPACE_VIEW_STATE_KEY = 'balance:workspaceViewState'
   const COMPARE_DAY_KEY = 'balance:compareDay'
-  const ACTIVE_NAV_ANIMATION_DURATION_SECONDS = 12
   const isMobile = /android|iphone|ipad|ipod/i.test(
     (typeof navigator !== 'undefined' && navigator.userAgent) || '',
   )
@@ -162,7 +162,9 @@
   let listHistoryNavigationVisible = false
   let searchOpen = false
   let activeNavAnimationTarget: View | 'search' = view
-  let activeNavAnimationDelay = randomActiveNavAnimationDelay()
+  let activeNavAnimationDelay = randomIridescentSelectionAnimationDelay()
+  let activeNavAnimationRevision = 0
+  let primaryNavEl: HTMLElement | null = null
   let documentFindOpen = false
   let documentFindBar: DocumentFindBar | null = null
   let shortcutsHelpOpen = false
@@ -191,38 +193,15 @@
   let doneTintColor = ''
   let checkboxColor = ''
 
-  function easeInOutElapsedFractionForProgress(progress: number): number {
-    // CSS ease-in-out is cubic-bezier(0.42, 0, 0.58, 1). Find the curve
-    // parameter for the desired visible progress, then return its elapsed time.
-    let low = 0
-    let high = 1
-    for (let iteration = 0; iteration < 16; iteration += 1) {
-      const parameter = (low + high) / 2
-      const visibleProgress = parameter * parameter * (3 - 2 * parameter)
-      if (visibleProgress < progress) low = parameter
-      else high = parameter
-    }
-
-    const parameter = (low + high) / 2
-    const inverse = 1 - parameter
-    return 3 * inverse * inverse * parameter * 0.42
-      + 3 * inverse * parameter * parameter * 0.58
-      + parameter * parameter * parameter
-  }
-
-  function randomActiveNavAnimationDelay(): string {
-    // Sampling elapsed time directly makes ease-in-out cluster visibly near its
-    // two endpoints. Sample visible progress uniformly, then randomly enter the
-    // forward or reverse half of the alternating animation cycle.
-    const elapsedFraction = easeInOutElapsedFractionForProgress(Math.random())
-    const cycleFraction = Math.random() < 0.5 ? elapsedFraction : 2 - elapsedFraction
-    return `${-cycleFraction * ACTIVE_NAV_ANIMATION_DURATION_SECONDS}s`
-  }
-
   function updateActiveNavAnimationDelay(target: View | 'search') {
     if (target === activeNavAnimationTarget) return
     activeNavAnimationTarget = target
-    activeNavAnimationDelay = randomActiveNavAnimationDelay()
+    activeNavAnimationDelay = randomIridescentSelectionAnimationDelay()
+    const revision = ++activeNavAnimationRevision
+    void tick().then(() => {
+      if (revision !== activeNavAnimationRevision) return
+      restartElementAnimations(primaryNavEl?.querySelector('button.active'))
+    })
   }
 
   $: updateActiveNavAnimationDelay(searchOpen ? 'search' : view)
@@ -4939,6 +4918,7 @@ return rows`
       class="primary-nav"
       aria-label="Primary"
       style:--active-nav-animation-delay={activeNavAnimationDelay}
+      bind:this={primaryNavEl}
     >
       <button
         class:active={searchOpen}
