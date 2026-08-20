@@ -897,7 +897,7 @@ test('binning a note happens immediately and remains undoable', async ({ page })
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByLabel('Note title').fill('Temporary note')
 
-  await page.locator('.note-actions').getByRole('button', { name: 'Bin', exact: true }).click()
+  await page.locator('.note-actions').getByRole('button', { name: 'Bin it.', exact: true }).click()
   await expect(page.getByLabel('Note title')).toHaveCount(0)
   await expect(page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true })).toBeVisible()
 
@@ -914,7 +914,7 @@ test('Bin keeps notes read-only, restores them, and supports immediate deletion'
   await page.getByLabel('Note title').fill('Recoverable thought')
   await page.getByLabel('Note text').fill('Worth keeping after all')
 
-  await page.locator('.note-actions').getByRole('button', { name: 'Bin', exact: true }).click()
+  await page.locator('.note-actions').getByRole('button', { name: 'Bin it.', exact: true }).click()
   await page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Recoverable thought' })).toBeVisible()
@@ -926,7 +926,7 @@ test('Bin keeps notes read-only, restores them, and supports immediate deletion'
   await expect(page.getByLabel('Note title')).toHaveValue('Recoverable thought')
   await expect(page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true })).toBeVisible()
 
-  await page.locator('.note-actions').getByRole('button', { name: 'Bin', exact: true }).click()
+  await page.locator('.note-actions').getByRole('button', { name: 'Bin it.', exact: true }).click()
   await page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true }).click()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Delete now' }).click()
@@ -950,7 +950,7 @@ test('notes expire from Bin after 30 days', async ({ page }) => {
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByLabel('Note title').fill('Old discarded note')
 
-  await page.locator('.note-actions').getByRole('button', { name: 'Bin', exact: true }).click()
+  await page.locator('.note-actions').getByRole('button', { name: 'Bin it.', exact: true }).click()
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     state.notes[0].deletedAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString()
