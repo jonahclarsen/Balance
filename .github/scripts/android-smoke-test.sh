@@ -745,6 +745,9 @@ dismiss_recovery_key_setup() {
 
 open_mobile_view() {
   local view_name="$1"
+  # Settings is a long document and the mobile header scrolls with it. Return
+  # to the top before opening the drawer so the menu button is actually visible.
+  scroll_page_to_top
   tap_ui text "Open navigation"
   tap_ui text "$view_name"
 }
