@@ -263,6 +263,7 @@
     radial-gradient(circle at 88% 16%, var(--iridescent-aqua, rgb(57 197 214 / 0.14)), transparent var(--iridescent-aqua-reach, 32%)),
     radial-gradient(circle at 76% 88%, var(--iridescent-gold, rgb(240 162 62 / 0.13)), transparent var(--iridescent-gold-reach, 36%)),
     linear-gradient(var(--iridescent-angle, 145deg), var(--iridescent-base-light-1, #f8f3fb), var(--iridescent-base-light-2, #f2f8fa) 52%, var(--iridescent-base-light-3, #faf6ef));
+  --iridescent-app-background-base: var(--iridescent-base-light-2, #f2f8fa);
   --paper: rgb(255 253 255 / 0.92);
   --paper-strong: #ffffff;
   --ink: #282134;
@@ -294,12 +295,8 @@
   --time-border: #b8cfe1;
   --time-bg: #e7f3f6;
   --focus-ring: rgb(161 60 145 / 0.26);
-  --iridescent-line-pink: #dfcfda;
-  --iridescent-line-aqua: #c9dcdf;
-  --iridescent-line-gold: #e1d6c8;
-  --iridescent-line-strong-pink: #c6abb9;
-  --iridescent-line-strong-aqua: #9fc2c5;
-  --iridescent-line-strong-gold: #cbb79d;
+  --iridescent-goal-line: #ddd3e6;
+  --iridescent-goal-line-strong: #beaed0;
   --iridescent-border-pink: color-mix(in srgb, var(--line) 66%, #ee73b3);
   --iridescent-border-aqua: color-mix(in srgb, var(--line) 66%, #54cbd4);
   --iridescent-border-gold: color-mix(in srgb, var(--line) 70%, #eeae5d);
@@ -579,6 +576,7 @@
       radial-gradient(circle at 88% 16%, var(--iridescent-aqua-dark, rgb(51 198 218 / 0.14)), transparent var(--iridescent-aqua-reach, 32%)),
       radial-gradient(circle at 76% 88%, var(--iridescent-gold-dark, rgb(246 170 66 / 0.11)), transparent var(--iridescent-gold-reach, 36%)),
       linear-gradient(var(--iridescent-angle, 145deg), var(--iridescent-base-dark-1, #15101b), var(--iridescent-base-dark-2, #10191e) 52%, var(--iridescent-base-dark-3, #1c1710));
+    --iridescent-app-background-base: var(--iridescent-base-dark-2, #10191e);
     --paper: rgb(31 25 38 / 0.94);
     --paper-strong: #2a2232;
     --ink: #f4edf6;
@@ -610,12 +608,8 @@
     --time-border: #4c6877;
     --time-bg: #203840;
     --focus-ring: rgb(238 140 210 / 0.3);
-    --iridescent-line-pink: #543c4d;
-    --iridescent-line-aqua: #354f55;
-    --iridescent-line-gold: #554a3a;
-    --iridescent-line-strong-pink: #755269;
-    --iridescent-line-strong-aqua: #4d6f74;
-    --iridescent-line-strong-gold: #75654c;
+    --iridescent-goal-line: #493b54;
+    --iridescent-goal-line-strong: #695676;
     --iridescent-border-pink: color-mix(in srgb, var(--line) 58%, #ed70b0);
     --iridescent-border-aqua: color-mix(in srgb, var(--line) 58%, #4cc5d1);
     --iridescent-border-gold: color-mix(in srgb, var(--line) 62%, #e9a657);
@@ -624,20 +618,8 @@
 
 @property --iridescent-border-angle {
   syntax: '<angle>';
-  inherits: true;
+  inherits: false;
   initial-value: 120deg;
-}
-
-@property --line {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #d8d4ca;
-}
-
-@property --line-strong {
-  syntax: '<color>';
-  inherits: true;
-  initial-value: #c3bdb0;
 }
 
 :root[data-theme='iridescent'] .sidebar {
@@ -648,12 +630,31 @@
 }
 
 :root[data-theme='iridescent'] {
-  background-position: 0% 0%, 100% 0%, 75% 100%, 0% 0%;
+  background: var(--iridescent-app-background-base);
+}
+
+/* Paint the full-window gradient once, then breathe it with a compositor-only
+   transform. Animating the root background made every frame contend with app
+   input and scrolling for main-thread paint time. */
+:root[data-theme='iridescent'] body {
+  position: relative;
+  isolation: isolate;
+}
+
+:root[data-theme='iridescent'] body::before {
+  position: fixed;
+  z-index: -1;
+  inset: -12vh -12vw;
+  contain: strict;
+  background: var(--app-background);
   background-repeat: no-repeat;
-  background-size: 125% 125%, 128% 128%, 125% 125%, 112% 112%;
-  animation:
-    iridescent-background-breathe 18s ease-in-out infinite alternate,
-    iridescent-border-turn 34s linear infinite;
+  background-size: cover;
+  content: '';
+  pointer-events: none;
+  transform: translate3d(-1.5%, -1%, 0) scale(1.04);
+  transform-origin: center;
+  will-change: transform;
+  animation: iridescent-background-breathe 18s ease-in-out infinite alternate;
 }
 
 :root[data-theme='iridescent'] .sidebar nav button.active,
@@ -751,6 +752,7 @@
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
   mask-composite: exclude;
+  animation: var(--iridescent-border-animation, iridescent-border-turn 34s linear infinite);
 }
 
 /* Keep the ring inside surfaces that clip or scroll their children. */
@@ -778,8 +780,7 @@
 
 @keyframes iridescent-background-breathe {
   to {
-    background-position: 55% 65%, 42% 58%, 32% 38%, 100% 100%;
-    background-size: 138% 138%, 140% 140%, 137% 137%, 124% 124%;
+    transform: translate3d(1.5%, 1%, 0) scale(1.1);
   }
 }
 
@@ -797,22 +798,6 @@
 }
 
 @keyframes iridescent-border-turn {
-  0%,
-  100% {
-    --line: var(--iridescent-line-pink);
-    --line-strong: var(--iridescent-line-strong-pink);
-  }
-
-  34% {
-    --line: var(--iridescent-line-aqua);
-    --line-strong: var(--iridescent-line-strong-aqua);
-  }
-
-  67% {
-    --line: var(--iridescent-line-gold);
-    --line-strong: var(--iridescent-line-strong-gold);
-  }
-
   to {
     --iridescent-border-angle: 480deg;
   }
@@ -820,7 +805,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   :root[data-theme='iridescent'] {
-    animation: iridescent-background-breathe 18s ease-in-out infinite alternate;
+    --iridescent-border-animation: none;
   }
 
   :root[data-theme='iridescent'] :is(
@@ -3993,6 +3978,13 @@ body.mobile-checkbox-dragging {
   border-top: 1px solid var(--line-strong);
   background: var(--paper);
   box-shadow: 0 -8px 24px rgba(38, 35, 27, 0.06);
+}
+
+/* Goal Rhythm contains thousands of descendants, so explicitly terminate any
+   future inherited Iridescent border animation at the panel boundary. */
+:root[data-theme='iridescent'] .goal-history-panel {
+  --line: var(--iridescent-goal-line);
+  --line-strong: var(--iridescent-goal-line-strong);
 }
 
 .goal-history-panel[hidden] {

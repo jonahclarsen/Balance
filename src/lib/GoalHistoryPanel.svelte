@@ -36,7 +36,10 @@
   let highlightResetTimer: ReturnType<typeof setTimeout> | undefined
   let lastHandledScrollNonce = -1
   let wasVisible = visible
-  const DAY_CHUNK_SIZE = 16
+  // Profiling under CPU contention found 48 days to be the best balance: large
+  // enough to avoid delayed paints while scrolling, but still small enough for
+  // content-visibility to skip most of the offscreen timeline.
+  const DAY_CHUNK_SIZE = 48
 
   function chunksOf<T>(values: T[]): T[][] {
     const chunks: T[][] = []

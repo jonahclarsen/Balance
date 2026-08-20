@@ -68,14 +68,19 @@ codebase for no reason.
 
 ## Preserve Goal Rhythm rendering containment
 
-The Iridescent theme animates inherited root CSS variables. Without rendering
-containment, that animation can repeatedly style and paint every cell in Goal
+Do not animate inherited CSS variables or backgrounds on `:root` or `body`.
+Keep Iridescent border animation scoped to the decorated pseudo-elements and
+full-window motion on the fixed compositor layer. Goal Rhythm deliberately
+overrides the theme's border variables at its panel boundary. Without those
+boundaries, an animation can repeatedly style and paint every cell in Goal
 Rhythm, including thousands of offscreen cells. Preserve the
 `goal-history-day-row` and `goal-history-day-chunk` wrappers and their
 `content-visibility`/intrinsic sizing when changing `GoalHistoryPanel.svelte` or
-its CSS. When changing those wrappers or animated theme variables, run the
-interaction performance profile with both `graphite` and `iridescent` under CPU
-contention as well as the Goal Rhythm behavior tests.
+its CSS. Unrelated task edits and scrolling must cause zero
+`buildGoalDayCells` calls; a completion change should rebuild exactly once per
+visible goal. When changing those wrappers, Goal Rhythm reactivity, or animated
+theme variables, run the interaction performance profile with both `graphite`
+and `iridescent` under CPU contention as well as the Goal Rhythm behavior tests.
 
 ## Android: CI only — never build locally
 

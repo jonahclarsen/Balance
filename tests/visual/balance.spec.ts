@@ -1256,14 +1256,25 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await iridescentTheme.click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
   await expect(sidebar).toHaveCSS('background-image', /linear-gradient/)
-  await expect(page.locator('html')).toHaveCSS('background-image', /radial-gradient/)
   await expect(sidebar).not.toHaveCSS('background-image', /data:image/)
   await expect(page.locator('html')).not.toHaveCSS('background-image', /data:image/)
-  await expect(page.locator('html')).toHaveCSS(
-    'animation-name',
-    'iridescent-background-breathe, iridescent-border-turn',
-  )
-  await expect(page.locator('html')).toHaveCSS('animation-duration', '18s, 34s')
+  await expect(page.locator('html')).toHaveCSS('animation-name', 'none')
+  const iridescentMotionStyles = await page.evaluate(() => {
+    const background = getComputedStyle(document.body, '::before')
+    const activeBorder = getComputedStyle(document.querySelector<HTMLElement>('.sidebar nav button.active')!, '::after')
+    return {
+      backgroundImage: background.backgroundImage,
+      backgroundAnimationName: background.animationName,
+      backgroundAnimationDuration: background.animationDuration,
+      borderAnimationName: activeBorder.animationName,
+      borderAnimationDuration: activeBorder.animationDuration,
+    }
+  })
+  expect(iridescentMotionStyles.backgroundImage).toContain('radial-gradient')
+  expect(iridescentMotionStyles.backgroundAnimationName).toBe('iridescent-background-breathe')
+  expect(iridescentMotionStyles.backgroundAnimationDuration).toBe('18s')
+  expect(iridescentMotionStyles.borderAnimationName).toBe('iridescent-border-turn')
+  expect(iridescentMotionStyles.borderAnimationDuration).toBe('34s')
   await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
   await expect(sidebar).toHaveCSS('animation-duration', '22s')
   await expect(activeSidebarButton).toHaveCSS('animation-name', 'iridescent-active-nav-breathe')
@@ -1289,11 +1300,12 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   })
 
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
-  await expect(page.locator('html')).toHaveCSS('animation-name', 'iridescent-background-breathe')
+  await expect(page.locator('html')).toHaveCSS('animation-name', 'none')
   await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
   await expect(activeSidebarButton).toHaveCSS('animation-name', 'none')
+  expect(await activeSidebarButton.evaluate((element) => getComputedStyle(element, '::after').animationName)).toBe('none')
   const animatedGradientPositions = () => page.evaluate(() => [
-    getComputedStyle(document.documentElement).backgroundPosition,
+    getComputedStyle(document.body, '::before').transform,
     getComputedStyle(document.querySelector<HTMLElement>('.sidebar')!).backgroundPosition,
   ])
   const initialGradientPositions = await animatedGradientPositions()
