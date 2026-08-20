@@ -1254,7 +1254,7 @@ nav button.active {
 }
 
 :root[data-theme='iridescent'] .sidebar-footer > .primary {
-  justify-self: start;
+  justify-self: center;
   padding: 2px 0;
   border: 0;
   background: transparent;
