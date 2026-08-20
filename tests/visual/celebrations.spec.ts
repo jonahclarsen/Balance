@@ -239,7 +239,7 @@ test('mindful celebrations render their distinct presence, metta, and enough sce
     {
       id: 'bell-of-now',
       selector: '.presence-bell',
-      copy: ['HERE · NOW'],
+      copy: ['YOU ARE HERE + NOW'],
     },
     {
       id: 'loving-kindness-ripple',

@@ -602,7 +602,7 @@
     {:else if activeDefinition.recipe === 'bell-of-now'}
       <div class="presence-ripple ripple-one"></div><div class="presence-ripple ripple-two"></div><div class="presence-ripple ripple-three"></div>
       <div class="presence-bell"><span></span><i></i></div>
-      <b class="presence-words">HERE <i>·</i> NOW</b>
+      <b class="presence-words">YOU ARE HERE <i>+</i> NOW</b>
     {:else if activeDefinition.recipe === 'metta-ripple'}
       <div class="metta-halo halo-one"></div><div class="metta-halo halo-two"></div><div class="metta-halo halo-three"></div>
       <div class="metta-heart">♡<span>✓</span></div>
