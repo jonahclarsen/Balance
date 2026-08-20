@@ -636,13 +636,15 @@
             <path class="presence-bell-shoulder" d="M60 72 C71 66 109 66 120 72"></path>
             <path class="presence-bell-highlight" d="M76 47 C68 61 69 91 63 116 C60 129 54 142 46 151"></path>
             <ellipse class="presence-bell-mouth" cx="90" cy="159" rx="58" ry="17"></ellipse>
-            <g class="presence-bell-clapper">
+            <g class="presence-bell-clapper-arm">
               <path class="presence-bell-clapper-rod" d="M90 67 L90 165"></path>
-              <ellipse cx="90" cy="169" rx="12" ry="14"></ellipse>
-              <path class="presence-bell-clapper-light" d="M84 164 C87 159 93 158 97 163"></path>
             </g>
             <path class="presence-bell-lip" d="M31 151 C52 163 128 163 149 151 L153 160 C128 178 52 178 27 160 Z"></path>
             <path class="presence-bell-lip-light" d="M38 155 C63 165 117 165 142 155"></path>
+            <g class="presence-bell-clapper">
+              <ellipse cx="90" cy="169" rx="12" ry="14"></ellipse>
+              <path class="presence-bell-clapper-light" d="M84 164 C87 159 93 158 97 163"></path>
+            </g>
           </g>
         </svg>
       </div>
@@ -822,7 +824,7 @@
 
   .presence-ripple { position: absolute; left: 50%; top: 50%; width: min(24vmin, 180px); aspect-ratio: 1; border: 2px solid var(--c1); border-radius: 50%; box-shadow: 0 0 24px color-mix(in srgb, var(--c1) 28%, transparent); transform: translate(-50%, -50%); animation: presence-ripple 3.7s ease-out both; }
   .ripple-two { animation-delay: .42s; } .ripple-three { animation-delay: .84s; }
-  .presence-bell { position: absolute; z-index: 4; left: 50%; top: 44%; width: clamp(116px, 17vmin, 168px); aspect-ratio: 180 / 205; transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
+  .presence-bell { position: absolute; z-index: 2; left: 50%; top: 44%; width: clamp(116px, 17vmin, 168px); aspect-ratio: 180 / 205; transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
   .presence-bell svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 13px 12px #3d29182e); }
   .presence-bell-shadow { fill: #33211438; filter: blur(4px); animation: presence-bell-shadow 4.2s ease-in-out both; }
   .presence-bell-body { transform-origin: 90px 12px; animation: presence-bell-swing 4.2s cubic-bezier(.36,.08,.2,1) both; }
@@ -833,8 +835,8 @@
   .presence-bell-shoulder { fill: none; stroke: #f3d78a; stroke-width: 2; opacity: .5; }
   .presence-bell-highlight { fill: none; stroke: #fff2bd; stroke-width: 5; stroke-linecap: round; opacity: .55; }
   .presence-bell-mouth { fill: url(#bell-mouth); stroke: #553115; stroke-width: 3; }
-  .presence-bell-clapper { transform-origin: 90px 67px; animation: presence-bell-clapper 4.2s cubic-bezier(.36,.08,.2,1) both; }
-  .presence-bell-clapper path { fill: none; stroke: #3b2514; stroke-width: 5; stroke-linecap: round; }
+  .presence-bell-clapper-arm, .presence-bell-clapper { transform-origin: 90px 67px; animation: presence-bell-clapper 4.2s cubic-bezier(.36,.08,.2,1) both; }
+  .presence-bell-clapper-arm path, .presence-bell-clapper path { fill: none; stroke: #3b2514; stroke-width: 5; stroke-linecap: round; }
   .presence-bell-clapper-rod { clip-path: url(#bell-opening); }
   .presence-bell-clapper ellipse { fill: #7f4d1e; stroke: #3e2714; stroke-width: 2; }
   .presence-bell-clapper .presence-bell-clapper-light { stroke: #d59a45; stroke-width: 2; opacity: .75; }
