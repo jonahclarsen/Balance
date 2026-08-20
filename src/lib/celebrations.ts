@@ -76,7 +76,7 @@ export const COMPLETION_CELEBRATIONS = [
     id: 'tiny-janitor',
     name: 'Tiny Janitor',
     description: 'Management sent one extremely small employee to sweep away the remaining stress.',
-    icon: '🧹', category: 'funny', engine: 'character', recipe: 'janitor', durationMs: 4000, intensity: 2,
+    icon: '🧹', category: 'funny', engine: 'character', recipe: 'janitor', durationMs: 5000, intensity: 2,
     palette: ['#f6c453', '#64a6bd', '#7a5c45'],
   },
   {

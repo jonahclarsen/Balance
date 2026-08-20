@@ -152,9 +152,18 @@ test('Tiny Janitor renders an articulated sweeping character without a signature
   await expect(stage.locator('.janitor-person')).toHaveCount(1)
   await expect(stage.locator('.janitor-front-arm, .janitor-rear-arm')).toHaveCount(2)
   await expect(stage.locator('.janitor-front-leg, .janitor-back-leg')).toHaveCount(2)
+  await expect(stage.locator('.janitor-front-leg-art')).toHaveCount(1)
   await expect(stage.locator('.janitor-broom')).toHaveCount(1)
   await expect(stage.locator('.janitor-all-clear')).toHaveCount(1)
   await expect(page.locator('.effect-signature')).toHaveCount(0)
+  expect(await stage.locator('.janitor-broom').evaluate((broom) => {
+    const animation = getComputedStyle(broom).animation
+    return {
+      duration: getComputedStyle(broom).animationDuration,
+      iterationCount: getComputedStyle(broom).animationIterationCount,
+      hasPerformanceTimeline: animation.includes('broom-performance'),
+    }
+  })).toEqual({ duration: '5s', iterationCount: '1', hasPerformanceTimeline: true })
 })
 
 test('reduced motion draws no canvas frames and automatic return restores Settings and focus', async ({ page }, testInfo) => {
