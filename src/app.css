@@ -1011,6 +1011,21 @@ nav button.active {
   background: var(--accent-strong);
 }
 
+:root[data-theme='iridescent'] .sidebar-footer > .primary,
+:root[data-theme='iridescent'] .day-template-picker + .primary {
+  border-color: #5e4b91;
+  background: linear-gradient(110deg, #9c368d 0%, #6751b5 32%, #20737e 67%, #8a5724 100%);
+  box-shadow: 0 5px 14px rgb(85 55 119 / 0.22);
+  transition: border-color 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+:root[data-theme='iridescent'] .sidebar-footer > .primary:hover,
+:root[data-theme='iridescent'] .day-template-picker + .primary:hover {
+  border-color: #493874;
+  box-shadow: 0 7px 18px rgb(63 94 120 / 0.28);
+  filter: saturate(1.14) brightness(0.94);
+}
+
 .primary.outlined {
   background: transparent;
   color: var(--accent);
