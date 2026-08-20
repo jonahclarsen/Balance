@@ -124,17 +124,17 @@
     const end = plainTextOffsetForBoundary(editor, range.endContainer, range.endOffset)
     const nextText = `${currentText.slice(0, start)}${event.data}${currentText.slice(end)}`
 
-    // A separator is useful only when the word it starts would fit. Check that
-    // hypothetical word with the same probability math as ordinary letters.
-    const nextWordWouldExceed =
+    const prefix = currentText.slice(0, start)
+    const suffix = currentText.slice(end)
+    // Keep one count-neutral separator after a word, but stop repeated whitespace
+    // when a word at this caret would exceed the cap.
+    const repeatedWhitespaceWithoutRoom =
       range.collapsed &&
       /^\s+$/u.test(event.data) &&
-      wouldExceedCap(
-        `${currentText.slice(0, start)}${event.data}word${currentText.slice(end)}`,
-        item.probability,
-      )
+      (event.data.length > 1 || /\s$/u.test(prefix) || /^\s/u.test(suffix)) &&
+      wouldExceedCap(`${prefix}${event.data}word${suffix}`, item.probability)
 
-    if (wouldExceedCap(nextText, item.probability) || nextWordWouldExceed) event.preventDefault()
+    if (wouldExceedCap(nextText, item.probability) || repeatedWhitespaceWithoutRoom) event.preventDefault()
   }
 
   function plainTextOffsetForBoundary(editor: HTMLDivElement, node: Node, offset: number) {

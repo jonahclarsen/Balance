@@ -517,17 +517,13 @@ return rows`
   }
   $: if (listTemplatesViewStateReady) persistListTemplatesViewState(selectedListTemplateId)
   $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = listTemplates[0].id
-  $: selectedListExpectedWordCount = selectedListTemplate ? expectedWordCount(selectedListTemplate.items) : 0
+  $: selectedListWordCount = selectedListTemplate ? Math.round(expectedWordCount(selectedListTemplate.items)) : 0
   $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items) : 0
   $: selectedArchivedListItems = [...(selectedListTemplate?.archivedItems ?? [])]
     .sort((left, right) => right.archivedAt.localeCompare(left.archivedAt))
   $: listViewInstance = lists.find(
     (list) => list.listTemplateId === listViewTemplateId && list.date === $plannerStore.activePlanDate,
   )
-
-  function formatExpectedWordCount(value: number) {
-    return String(Math.round((value + Number.EPSILON) * 1000) / 1000)
-  }
 
   // ---- Metrics ----
   $: selectedMetric = metrics.find((metric) => metric.id === selectedMetricId) ?? metrics[0]
@@ -5441,9 +5437,9 @@ return rows`
               <span
                 class="word-cap-count"
                 class:over={selectedListTemplate.maxExpectedWords > 0 &&
-                  selectedListExpectedWordCount > selectedListTemplate.maxExpectedWords}
+                  selectedListWordCount > selectedListTemplate.maxExpectedWords}
               >
-                {formatExpectedWordCount(selectedListExpectedWordCount)} / {selectedListTemplate.maxExpectedWords || '∞'} expected words ·
+                {selectedListWordCount} / {selectedListTemplate.maxExpectedWords || '∞'} expected words ·
                 {selectedListTotalWordCount} total words
               </span>
               <div class="word-cap-edit">

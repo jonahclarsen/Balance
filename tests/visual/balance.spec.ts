@@ -4410,7 +4410,7 @@ test('list template items support rich text formatting shortcuts while over the 
   }
 })
 
-test('list-template word cap allows every 30-percent word that fits and blocks the next space', async ({ page }, testInfo) => {
+test('list-template word cap allows one trailing space and letters within a word', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -4436,15 +4436,30 @@ test('list-template word cap allows every 30-percent word that fits and blocks t
 
   const textAtLimit = 'one two three'
   await expect(editor).toHaveText(textAtLimit)
-  await expect(page.locator('.word-cap-count')).toContainText('1.9 / 2 expected words')
+  await expect(page.locator('.word-cap-count')).toContainText('2 / 2 expected words')
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length)
 
-  // A fourth 30%-probability word would raise the exact total from 1.9 to 2.2,
-  // so the space that would start it is rejected without moving the caret.
+  // One trailing space is allowed even though a fourth 30%-probability word
+  // would raise the exact total from 1.9 to 2.2.
   await page.keyboard.press('Space')
+  const trailingSpaceOffset = textAtLimit.length + 1
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(trailingSpaceOffset)
 
-  await expect(editor).toHaveText(textAtLimit)
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length)
+  // Additional spaces and a new word are rejected without moving the caret.
+  await page.keyboard.press('Space')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(trailingSpaceOffset)
+  await page.keyboard.type('four')
+
+  await expect(editor).not.toContainText('four')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(trailingSpaceOffset)
+
+  // Letters inside an existing word do not increase the word count, so they
+  // remain editable at the cap.
+  await setCaretOffsetInFocusedEditor(page, textAtLimit.length)
+  await page.keyboard.type('x')
+
+  await expect(editor).toContainText('one two threex')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(trailingSpaceOffset)
 })
 
 test('list template item appearance probability grandfathers saved values below 30 percent', async ({ page }) => {
