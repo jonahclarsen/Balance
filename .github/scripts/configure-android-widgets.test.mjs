@@ -350,9 +350,9 @@ class BalanceSyncWorker {
       join(root, 'res/drawable-night/balance_widget_iridescent_background.xml'),
       'utf8',
     )
-    assert.match(darkIridescentBackground, /android:startColor="#15101B"/)
-    assert.match(darkIridescentBackground, /android:centerColor="#10191E"/)
-    assert.match(darkIridescentBackground, /android:endColor="#1C1710"/)
+    assert.match(darkIridescentBackground, /android:startColor="#3D2B39"/)
+    assert.match(darkIridescentBackground, /android:centerColor="#274144"/)
+    assert.match(darkIridescentBackground, /android:endColor="#493D2E"/)
 
     const darkIridescentProgress = await readFile(
       join(root, 'res/drawable-night/balance_widget_iridescent_progress.xml'),

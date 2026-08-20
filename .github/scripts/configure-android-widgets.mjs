@@ -364,7 +364,7 @@ const widgetThemes = [
 ]
 
 const darkWidgetThemes = [
-  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#F5B8E3', statusAccent: '#B79AF2', taskAccent: '#B79AF2', doneAccent: '#65CFAA', progressAccent: '#B79AF2', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#4C6877', timePillGradients: [['#4A5E91', '#645586'], ['#654F80', '#80536F'], ['#3F706B', '#4B6684'], ['#7B594C', '#78526A']], timePillInk: '#FFFFFF', backgroundColors: ['#15101B', '#10191E', '#1C1710'] },
+  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#F5B8E3', statusAccent: '#B79AF2', taskAccent: '#B79AF2', doneAccent: '#65CFAA', progressAccent: '#B79AF2', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#4C6877', timePillGradients: [['#4A5E91', '#645586'], ['#654F80', '#80536F'], ['#3F706B', '#4B6684'], ['#7B594C', '#78526A']], timePillInk: '#FFFFFF', backgroundColors: ['#3D2B39', '#274144', '#493D2E'] },
   { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
   { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
   { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
