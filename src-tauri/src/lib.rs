@@ -631,10 +631,10 @@ fn perform_time_step_haptic() -> bool {
             NSHapticFeedbackPerformer,
         };
 
-        // LevelChange is AppKit's discrete-control feedback, which matches each
-        // 15-minute boundary crossed while dragging a time value.
+        // Alignment is AppKit's feedback for dragging to preferred positions,
+        // which matches each 15-minute boundary crossed by a time value.
         NSHapticFeedbackManager::defaultPerformer().performFeedbackPattern_performanceTime(
-            NSHapticFeedbackPattern::LevelChange,
+            NSHapticFeedbackPattern::Alignment,
             NSHapticFeedbackPerformanceTime::Now,
         );
         true
