@@ -602,7 +602,11 @@
     {:else if activeDefinition.recipe === 'bell-of-now'}
       <div class="presence-ripple ripple-one"></div><div class="presence-ripple ripple-two"></div><div class="presence-ripple ripple-three"></div>
       <div class="presence-bell"><span></span><i></i></div>
-      <b class="presence-words">YOU ARE HERE <i>+</i> NOW</b>
+      <b class="presence-words presence-pebble"><small>1</small>YOU ARE HERE <i>+</i> NOW</b>
+      <b class="presence-words presence-torn"><small>2</small>YOU ARE HERE <i>+</i> NOW</b>
+      <b class="presence-words presence-brush"><small>3</small>YOU ARE HERE <i>+</i> NOW</b>
+      <b class="presence-words presence-leaf"><small>4</small>YOU ARE HERE <i>+</i> NOW</b>
+      <b class="presence-words presence-cloud"><small>5</small>YOU ARE HERE <i>+</i> NOW</b>
     {:else if activeDefinition.recipe === 'metta-ripple'}
       <div class="metta-halo halo-one"></div><div class="metta-halo halo-two"></div><div class="metta-halo halo-three"></div>
       <div class="metta-heart">♡<span>✓</span></div>
@@ -778,14 +782,28 @@
 
   .presence-ripple { position: absolute; left: 50%; top: 50%; width: min(24vmin, 180px); aspect-ratio: 1; border: 2px solid var(--c1); border-radius: 50%; box-shadow: 0 0 24px color-mix(in srgb, var(--c1) 28%, transparent); transform: translate(-50%, -50%); animation: presence-ripple 3.7s ease-out both; }
   .ripple-two { animation-delay: .42s; } .ripple-three { animation-delay: .84s; }
-  .presence-bell { position: absolute; z-index: 2; left: 50%; top: 46%; width: clamp(72px, 12vmin, 116px); height: clamp(68px, 11vmin, 108px); transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
+  .presence-bell { position: absolute; z-index: 2; left: 50%; top: 10%; width: clamp(58px, 9vmin, 88px); height: clamp(55px, 8vmin, 82px); transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
   .presence-bell span { position: absolute; inset: 0 8% 17%; border: 4px solid color-mix(in srgb, var(--c1) 78%, #5f4825); border-radius: 50% 50% 18% 18%; background: radial-gradient(circle at 35% 24%, #fff8 0 7%, transparent 8%), linear-gradient(135deg, var(--c3), var(--c1) 62%, color-mix(in srgb, var(--c1) 58%, #5f4825)); box-shadow: inset -10px -8px 18px #6a4c2538, 0 13px 25px #3126112c; }
   .presence-bell span::before { content: ''; position: absolute; left: 50%; top: -15%; width: 22%; height: 18%; border: 4px solid var(--c1); border-bottom: 0; border-radius: 999px 999px 0 0; transform: translateX(-50%); }
   .presence-bell i { position: absolute; left: 50%; bottom: 4%; width: 22%; aspect-ratio: 1; border-radius: 50%; background: var(--c1); box-shadow: 0 4px 8px #3d2d1638; transform: translateX(-50%); }
-  .presence-words { position: absolute; z-index: 3; left: 50%; top: 63%; isolation: isolate; padding: .82em 1.12em .82em 1.32em; color: #fffaf0; font: 720 clamp(14px, 2.2vw, 22px)/1 ui-rounded, system-ui; letter-spacing: .22em; text-shadow: 0 2px 6px #4b332599; white-space: nowrap; transform: translateX(-50%); animation: presence-words 4.2s ease both; }
-  .presence-words::before { content: ''; position: absolute; z-index: -2; inset: -.3em -.95em; background: radial-gradient(ellipse at 26% 32%, #ffd88f8c 0 7%, transparent 28%), radial-gradient(ellipse at 72% 70%, #496e5a38, transparent 34%), linear-gradient(98deg, #d6a23f, #cf7167 51%, #668f78); box-shadow: 0 8px 22px #795a3438, 0 0 25px #e5ae5b52; clip-path: polygon(0 34%, 4% 17%, 14% 23%, 25% 12%, 38% 20%, 52% 10%, 67% 18%, 82% 9%, 97% 20%, 100% 43%, 97% 75%, 86% 88%, 71% 81%, 56% 92%, 40% 83%, 25% 91%, 10% 80%, 1% 67%); animation: presence-wash 2.6s ease-in-out infinite alternate; }
-  .presence-words::after { content: ''; position: absolute; z-index: -1; inset: .18em -.45em; background: linear-gradient(96deg, #fff3 0 18%, transparent 35% 66%, #fff2 82%); clip-path: polygon(0 35%, 7% 20%, 20% 27%, 34% 16%, 49% 25%, 66% 15%, 82% 25%, 100% 18%, 97% 70%, 83% 82%, 64% 76%, 48% 88%, 31% 78%, 14% 86%, 2% 67%); }
+  .presence-words { position: absolute; z-index: 3; left: 50%; isolation: isolate; padding: .68em 1.05em .68em 1.25em; color: #fffaf0; font: 720 clamp(13px, 1.8vw, 18px)/1 ui-rounded, system-ui; letter-spacing: .2em; text-shadow: 0 2px 6px #4b332599; white-space: nowrap; transform: translateX(-50%); animation: presence-words 4.2s ease both; }
+  .presence-words::before { content: ''; position: absolute; z-index: -2; inset: -.3em -.95em; background: radial-gradient(ellipse at 26% 32%, #ffd88f8c 0 7%, transparent 28%), radial-gradient(ellipse at 72% 70%, #496e5a38, transparent 34%), linear-gradient(98deg, #d6a23f, #cf7167 51%, #668f78); box-shadow: 0 8px 22px #795a3438, 0 0 25px #e5ae5b52; animation: presence-wash 2.6s ease-in-out infinite alternate; }
+  .presence-words::after { content: ''; position: absolute; z-index: -1; inset: .18em -.45em; background: linear-gradient(96deg, #fff3 0 18%, transparent 35% 66%, #fff2 82%); }
+  .presence-words small { position: absolute; z-index: 2; left: -2.15em; top: 50%; display: grid; width: 1.55em; aspect-ratio: 1; place-items: center; border: 2px solid #fff9; border-radius: 50%; background: #493d35d9; box-shadow: 0 4px 10px #4d372b38; color: white; font: 800 .7em/1 system-ui; letter-spacing: 0; transform: translateY(-50%); }
   .presence-words i { color: #ffe29a; font-style: normal; text-shadow: 0 1px 5px #6b3f2e; }
+  .presence-pebble { top: 18%; }
+  .presence-pebble::before, .presence-pebble::after { border-radius: 45% 55% 48% 52% / 58% 43% 57% 42%; }
+  .presence-torn { top: 31%; }
+  .presence-torn::before { clip-path: polygon(0 24%, 7% 13%, 16% 24%, 27% 14%, 39% 24%, 51% 12%, 63% 23%, 76% 15%, 89% 25%, 100% 16%, 98% 76%, 88% 87%, 76% 77%, 63% 89%, 50% 78%, 37% 88%, 24% 76%, 11% 86%, 1% 73%); }
+  .presence-torn::after { clip-path: polygon(0 26%, 12% 19%, 25% 27%, 40% 18%, 55% 26%, 70% 17%, 85% 27%, 100% 20%, 97% 72%, 83% 80%, 67% 73%, 52% 84%, 36% 75%, 19% 83%, 2% 70%); }
+  .presence-brush { top: 44%; }
+  .presence-brush::before { clip-path: polygon(0 37%, 5% 21%, 18% 26%, 31% 15%, 47% 22%, 63% 13%, 79% 21%, 96% 16%, 100% 43%, 96% 69%, 81% 80%, 64% 74%, 47% 86%, 30% 77%, 14% 84%, 2% 66%); }
+  .presence-brush::after { clip-path: polygon(0 38%, 10% 27%, 26% 31%, 43% 23%, 61% 29%, 79% 22%, 100% 29%, 97% 66%, 79% 72%, 60% 66%, 42% 76%, 23% 68%, 4% 73%); }
+  .presence-leaf { top: 57%; }
+  .presence-leaf::before, .presence-leaf::after { clip-path: polygon(0 50%, 13% 18%, 50% 4%, 87% 18%, 100% 50%, 87% 82%, 50% 96%, 13% 82%); }
+  .presence-cloud { top: 70%; }
+  .presence-cloud::before { border-radius: 32% 68% 37% 63% / 62% 36% 64% 38%; }
+  .presence-cloud::after { border-radius: 67% 33% 62% 38% / 38% 62% 35% 65%; }
 
   .metta-halo { position: absolute; left: 50%; top: 50%; width: min(20vmin, 150px); aspect-ratio: 1; border: 2px solid var(--c1); border-radius: 50%; background: color-mix(in srgb, var(--c3) 16%, transparent); transform: translate(-50%, -50%); animation: metta-halo 3.6s ease-out both; }
   .halo-two { border-color: var(--c2); animation-delay: .55s; } .halo-three { border-color: var(--c1); animation-delay: 1.1s; }
