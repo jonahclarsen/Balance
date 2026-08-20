@@ -612,7 +612,7 @@
 }
 
 :root[data-theme='iridescent'] .sidebar nav button.active,
-:root[data-theme='iridescent'] .plan-row.selected,
+:root[data-theme='iridescent'] .plan-row .item-text:focus,
 :root[data-theme='iridescent'] :is(
   .time-shortcut-legend,
   .day-template-option:not(.selected),
@@ -652,7 +652,7 @@
 }
 
 :root[data-theme='iridescent'] .sidebar nav button.active::after,
-:root[data-theme='iridescent'] .plan-row.selected::after,
+:root[data-theme='iridescent'] .plan-row .item-text:focus::after,
 :root[data-theme='iridescent'] :is(
   .time-shortcut-legend,
   .day-template-option:not(.selected),
@@ -708,10 +708,6 @@
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
   mask-composite: exclude;
-}
-
-:root[data-theme='iridescent'] .plan-row.selected {
-  border-radius: 6px;
 }
 
 /* Keep the ring inside surfaces that clip or scroll their children. */
