@@ -17,8 +17,8 @@
     },
     {
       id: 'theme-preview-timed',
-      text: 'Ask Sam-I-Am why the green eggs are hatching',
-      html: 'Ask Sam-I-Am why the green eggs are hatching',
+      text: 'Conduct the Roomba’s performance review (it knows what it did)',
+      html: 'Conduct the Roomba’s performance review (it knows what it did)',
       done: false,
       startMinutes: 9 * 60,
       endMinutes: 9 * 60 + 30,
