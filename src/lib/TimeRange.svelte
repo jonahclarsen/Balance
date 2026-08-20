@@ -7,7 +7,8 @@
 </script>
 
 <script lang="ts">
-  import { vibrateSteps } from './haptics'
+  import { onDestroy } from 'svelte'
+  import { beginHapticDrag, endHapticDrag, vibrateSteps } from './haptics'
   import { clampMinutes, formatMinutes, MAX_TIMELINE_MINUTES } from './planner'
 
   export let startMinutes: number
@@ -57,6 +58,7 @@
       shiftTargets: adjustStartOnly ? null : getShiftTargets?.() ?? null,
       lastSteps: 0,
     }
+    beginHapticDrag()
   }
 
   function continueDrag(event: PointerEvent) {
@@ -104,9 +106,12 @@
   }
 
   function endDrag() {
+    if (!dragState) return
     dragState = null
+    endHapticDrag()
   }
 
+  onDestroy(endDrag)
 </script>
 
 <span

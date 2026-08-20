@@ -3,6 +3,35 @@ import { vibrate } from '@tauri-apps/plugin-haptics'
 
 const STEP_HAPTIC_MS = 16
 const STEP_HAPTIC_PAUSE_MS = 24
+let activeHapticDrags = 0
+let nativeDragOverride: Promise<boolean> | null = null
+let nativeDragRelease = Promise.resolve()
+const pendingNativeHaptics = new Set<Promise<void>>()
+
+export function beginHapticDrag() {
+  activeHapticDrags += 1
+  if (activeHapticDrags !== 1 || !isTauri()) return
+  nativeDragOverride = nativeDragRelease
+    .then(() => invoke<boolean>('begin_haptic_drag'))
+    .catch(() => false)
+}
+
+export function endHapticDrag() {
+  if (activeHapticDrags < 1) return
+  activeHapticDrags -= 1
+  if (activeHapticDrags !== 0) return
+
+  const override = nativeDragOverride
+  const pendingHaptics = [...pendingNativeHaptics]
+  nativeDragOverride = null
+  if (!override) return
+
+  nativeDragRelease = override.then(async (changedSystemState) => {
+    if (!changedSystemState) return
+    await Promise.allSettled(pendingHaptics)
+    await invoke('end_haptic_drag')
+  }).catch(() => undefined)
+}
 
 export function vibrateSteps(count = 1) {
   if (count < 1) return
@@ -10,7 +39,12 @@ export function vibrateSteps(count = 1) {
   if (isTauri()) {
     // Tauri reaches AppKit on macOS and the native vibrator service on
     // Android; Android WebViews can silently ignore navigator.vibrate().
-    void vibrateNatively(count).catch(() => vibrateInBrowser(count))
+    const haptic = vibrateNatively(count).catch(() => vibrateInBrowser(count))
+    pendingNativeHaptics.add(haptic)
+    void haptic.then(
+      () => pendingNativeHaptics.delete(haptic),
+      () => pendingNativeHaptics.delete(haptic),
+    )
     return
   }
 
@@ -18,6 +52,9 @@ export function vibrateSteps(count = 1) {
 }
 
 async function vibrateNatively(count: number) {
+  const override = nativeDragOverride
+  if (override) await override
+
   for (let index = 0; index < count; index += 1) {
     const handledByMacos = await invoke<boolean>('perform_alignment_haptic')
     if (!handledByMacos) {
@@ -51,6 +88,7 @@ export function hapticSlider(node: HTMLInputElement) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     pointerActive = true
     lastValue = node.value
+    beginHapticDrag()
   }
 
   function handleInput() {
@@ -60,7 +98,9 @@ export function hapticSlider(node: HTMLInputElement) {
   }
 
   function endPointer() {
+    if (!pointerActive) return
     pointerActive = false
+    endHapticDrag()
   }
 
   node.addEventListener('pointerdown', beginPointer)
@@ -70,6 +110,7 @@ export function hapticSlider(node: HTMLInputElement) {
 
   return {
     destroy() {
+      if (pointerActive) endHapticDrag()
       node.removeEventListener('pointerdown', beginPointer)
       node.removeEventListener('input', handleInput)
       window.removeEventListener('pointerup', endPointer)

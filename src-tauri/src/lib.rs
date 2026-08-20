@@ -26,6 +26,95 @@ mod android_widget;
 mod database_keys;
 #[cfg(target_os = "macos")]
 mod macos_widget;
+#[cfg(target_os = "macos")]
+mod macos_haptic_drag {
+    use std::ffi::c_void;
+    use std::sync::Mutex;
+
+    struct DisabledHapticsOverride {
+        device: usize,
+        actuator: usize,
+    }
+
+    static ACTIVE_OVERRIDE: Mutex<Option<DisabledHapticsOverride>> = Mutex::new(None);
+
+    #[link(name = "MultitouchSupport", kind = "framework")]
+    unsafe extern "C" {
+        fn MTDeviceCreateDefault() -> *const c_void;
+        fn MTDeviceGetMTActuator(device: *const c_void) -> *const c_void;
+        fn MTActuatorGetSystemActuationsEnabled(actuator: *const c_void) -> std::ffi::c_long;
+        fn MTActuatorSetSystemActuationsEnabled(
+            actuator: *const c_void,
+            enabled: std::ffi::c_long,
+        ) -> i32;
+        fn MTDeviceRelease(device: *const c_void);
+    }
+
+    pub fn begin() -> Result<bool, String> {
+        let mut active = ACTIVE_OVERRIDE
+            .lock()
+            .map_err(|_| "Could not lock the macOS haptic override state".to_string())?;
+        if active.is_some() {
+            return Ok(false);
+        }
+
+        unsafe {
+            let device = MTDeviceCreateDefault();
+            if device.is_null() {
+                return Err("Could not find the default macOS trackpad".to_string());
+            }
+            let actuator = MTDeviceGetMTActuator(device);
+            if actuator.is_null() {
+                MTDeviceRelease(device);
+                return Err("The default macOS trackpad has no haptic actuator".to_string());
+            }
+
+            // Most users leave system haptics enabled. Do not alter their
+            // actuator state; the normal AppKit performer already works.
+            if MTActuatorGetSystemActuationsEnabled(actuator) != 0 {
+                MTDeviceRelease(device);
+                return Ok(false);
+            }
+
+            let status = MTActuatorSetSystemActuationsEnabled(actuator, 1);
+            if status != 0 {
+                MTDeviceRelease(device);
+                return Err(format!(
+                    "Could not enable haptics for the drag (error 0x{:08x})",
+                    status as u32
+                ));
+            }
+
+            *active = Some(DisabledHapticsOverride {
+                device: device as usize,
+                actuator: actuator as usize,
+            });
+            Ok(true)
+        }
+    }
+
+    pub fn end() -> Result<(), String> {
+        let active = ACTIVE_OVERRIDE
+            .lock()
+            .map_err(|_| "Could not lock the macOS haptic override state".to_string())?
+            .take();
+        let Some(active) = active else {
+            return Ok(());
+        };
+
+        unsafe {
+            let status = MTActuatorSetSystemActuationsEnabled(active.actuator as *const c_void, 0);
+            MTDeviceRelease(active.device as *const c_void);
+            if status != 0 {
+                return Err(format!(
+                    "Could not restore disabled macOS haptics (error 0x{:08x})",
+                    status as u32
+                ));
+            }
+        }
+        Ok(())
+    }
+}
 mod sync;
 #[cfg(any(test, target_os = "android", target_os = "macos"))]
 mod widget;
@@ -620,6 +709,24 @@ struct ClipboardContents {
     structured_payload: Option<String>,
     plain_text: Option<String>,
     html: Option<String>,
+}
+
+#[tauri::command]
+fn begin_haptic_drag() -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    return macos_haptic_drag::begin();
+
+    #[cfg(not(target_os = "macos"))]
+    Ok(false)
+}
+
+#[tauri::command]
+fn end_haptic_drag() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    return macos_haptic_drag::end();
+
+    #[cfg(not(target_os = "macos"))]
+    Ok(())
 }
 
 #[tauri::command]
@@ -9860,6 +9967,8 @@ pub fn run() {
             reset_export_directory,
             reveal_path_in_file_manager,
             open_external_url,
+            begin_haptic_drag,
+            end_haptic_drag,
             perform_alignment_haptic,
             write_balance_clipboard,
             write_note_clipboard,
@@ -9879,9 +9988,14 @@ pub fn run() {
 
     app.run(|_app_handle, event| {
         #[cfg(target_os = "macos")]
-        if matches!(event, tauri::RunEvent::Exit) && macos_widget::hides_content_after_close() {
-            if let Err(error) = macos_widget::schedule_snapshot_expiration() {
-                eprintln!("Could not expire macOS widget content after shutdown: {error}");
+        if matches!(event, tauri::RunEvent::Exit) {
+            if let Err(error) = macos_haptic_drag::end() {
+                eprintln!("Could not restore macOS haptics during shutdown: {error}");
+            }
+            if macos_widget::hides_content_after_close() {
+                if let Err(error) = macos_widget::schedule_snapshot_expiration() {
+                    eprintln!("Could not expire macOS widget content after shutdown: {error}");
+                }
             }
         }
 

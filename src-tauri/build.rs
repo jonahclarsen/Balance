@@ -24,6 +24,18 @@ fn build_macos_widget_bridge() {
     let architecture = target
         .strip_suffix("-apple-darwin")
         .expect("macOS target architecture");
+    let sdk_output = std::process::Command::new("xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-path"])
+        .output()
+        .expect("failed to locate the macOS SDK");
+    assert!(
+        sdk_output.status.success(),
+        "failed to locate the macOS SDK"
+    );
+    let sdk_path = String::from_utf8(sdk_output.stdout)
+        .expect("macOS SDK path was not valid UTF-8")
+        .trim()
+        .to_string();
     let swift_target = format!("{architecture}-apple-macosx13.0");
     let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR"))
         .join("WidgetBridge.o");
@@ -52,4 +64,5 @@ fn build_macos_widget_bridge() {
     println!("cargo:rustc-link-lib=framework=AppKit");
     println!("cargo:rustc-link-lib=framework=Security");
     println!("cargo:rustc-link-lib=framework=WidgetKit");
+    println!("cargo:rustc-link-search=framework={sdk_path}/System/Library/PrivateFrameworks");
 }

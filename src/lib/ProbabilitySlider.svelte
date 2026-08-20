@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { vibrateSteps } from './haptics'
+  import { onDestroy } from 'svelte'
+  import { beginHapticDrag, endHapticDrag, vibrateSteps } from './haptics'
 
   export let value: number
   export let min = 0
@@ -56,6 +57,7 @@
     input.focus({ preventScroll: true })
     activePointerId = event.pointerId
     lastPointerValue = value
+    beginHapticDrag()
     input.setPointerCapture(event.pointerId)
     updateFromPointer(input, event.clientX)
   }
@@ -73,6 +75,7 @@
     updateFromPointer(input, event.clientX)
     activePointerId = null
     lastPointerValue = null
+    endHapticDrag()
     if (input.hasPointerCapture(event.pointerId)) input.releasePointerCapture(event.pointerId)
   }
 
@@ -80,8 +83,13 @@
     if (event.pointerId === activePointerId) {
       activePointerId = null
       lastPointerValue = null
+      endHapticDrag()
     }
   }
+
+  onDestroy(() => {
+    if (activePointerId !== null) endHapticDrag()
+  })
 
   // Commit the typed value on change/blur so intermediate keystrokes aren't
   // clamped mid-entry; revert the box if the field is left empty/invalid.
