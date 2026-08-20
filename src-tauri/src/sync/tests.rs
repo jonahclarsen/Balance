@@ -1100,6 +1100,98 @@ fn operations_created_on_both_devices_between_syncs_all_propagate() {
 }
 
 #[test]
+fn task_created_on_phone_while_today_catches_up_survives_replay() {
+    let sa = Scratch::new("today-catchup-a");
+    let sb = Scratch::new("today-catchup-b");
+    let mut initial = state("device-A", json!([]));
+    initial["activePlanDate"] = json!("2026-08-20");
+    initial["plans"] = json!([{
+        "id": "today-plan",
+        "date": "2026-08-20",
+        "title": "Thursday",
+        "dailyReminder": "",
+        "generatedFromTemplateId": null,
+        "createdAt": "2026-08-20T08:00:00Z",
+        "items": []
+    }]);
+    let a = open_seeded(&sa.path, "key-a", &initial);
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let key = SyncKey::generate();
+    exchange(&b, &a, &key);
+
+    for sequence in 1..=12 {
+        a.write(|conn| {
+            persist_operation_to_database(
+                conn,
+                &json!({
+                    "id": format!("desktop-catchup-op-{sequence}"),
+                    "deviceId": "device-A",
+                    "sequence": sequence,
+                    "type": "add_plan_item",
+                    "timestamp": format!("2026-08-20T08:00:{sequence:02}Z"),
+                    "payload": {
+                        "planId": "today-plan",
+                        "parentId": null,
+                        "item": {
+                            "id": format!("desktop-catchup-task-{sequence}"),
+                            "text": format!("Desktop backlog {sequence}"),
+                            "html": format!("Desktop backlog {sequence}"),
+                            "done": false,
+                            "startMinutes": null,
+                            "endMinutes": null,
+                            "children": []
+                        }
+                    }
+                }),
+            )
+            .unwrap()
+        });
+    }
+    b.write(|conn| {
+        persist_operation_to_database(
+            conn,
+            &json!({
+                "id": "phone-during-catchup-op",
+                "deviceId": "device-B",
+                "sequence": 1,
+                "type": "add_plan_item",
+                "timestamp": "2026-08-20T08:00:06.500Z",
+                "payload": {
+                    "planId": "today-plan",
+                    "parentId": null,
+                    "item": {
+                        "id": "phone-during-catchup-task",
+                        "text": "Typed during catch-up",
+                        "html": "Typed during catch-up",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }
+                }
+            }),
+        )
+        .unwrap()
+    });
+
+    exchange(&b, &a, &key);
+
+    for device in [&a, &b] {
+        let state = device.state();
+        let items = state["plans"][0]["items"].as_array().unwrap();
+        assert_eq!(items.len(), 13);
+        assert!(items
+            .iter()
+            .any(|item| item["id"] == "phone-during-catchup-task"));
+    }
+    assert_eq!(domain(&a.state()), domain(&b.state()));
+}
+
+#[test]
 fn replicated_preferences_converge_and_survive_a_checkpoint() {
     let sa = Scratch::new("preferences-a");
     let sb = Scratch::new("preferences-b");
@@ -1136,6 +1228,9 @@ fn replicated_preferences_converge_and_survive_a_checkpoint() {
 
     let expected = json!({
         "themeId": "midnight",
+        "randomThemeId": "iridescent",
+        "randomThemeDate": "",
+        "randomThemeStartDate": "",
         "completionCelebrationId": "deadline-goose",
         "doneTintColor": "#123456",
         "checkboxColor": "#abcdef",

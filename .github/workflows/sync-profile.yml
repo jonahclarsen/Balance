@@ -10,24 +10,63 @@ on:
       - "package.json"
       - "relay-worker/**"
       - "scripts/profile-empty-relay-poll.mjs"
+      - "playwright.config.ts"
+      - "pnpm-lock.yaml"
+      - "src/lib/store.ts"
       - "src/lib/syncScheduler.ts"
       - "src-tauri/src/lib.rs"
       - "src-tauri/src/sync/**"
+      - "tests/visual/sync-freshness.spec.ts"
   pull_request:
     paths:
       - ".github/workflows/sync-profile.yml"
       - "package.json"
       - "relay-worker/**"
       - "scripts/profile-empty-relay-poll.mjs"
+      - "playwright.config.ts"
+      - "pnpm-lock.yaml"
+      - "src/lib/store.ts"
       - "src/lib/syncScheduler.ts"
       - "src-tauri/src/lib.rs"
       - "src-tauri/src/sync/**"
+      - "tests/visual/sync-freshness.spec.ts"
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  frontend-reload:
+    name: Mobile sync reload races
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Check frontend types
+        run: pnpm check
+
+      - name: Test mobile sync reload behavior
+        run: pnpm exec playwright test tests/visual/sync-freshness.spec.ts --project=mobile
+
   empty-poll:
     name: Empty manifest poll
     runs-on: ubuntu-latest
@@ -91,6 +130,9 @@ jobs:
           key: ${{ runner.os }}-large-task-sync-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-large-task-sync-
+
+      - name: Test encrypted database and sync behavior
+        run: cargo test --manifest-path src-tauri/Cargo.toml
 
       - name: Profile two-task incremental relay sync
         run: |

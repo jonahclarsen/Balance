@@ -252,6 +252,7 @@ let operationFlushPromise: Promise<void> | null = null
 let operationFlushTimer: number | null = null
 let lastOperationMergeKey: string | null = null
 let lastOperationMergeUpdatedAt = 0
+let localMutationRevision = 0
 const persistedOperationListeners = new Set<() => void>()
 
 export const persistenceError = writable('')
@@ -347,6 +348,7 @@ function shouldMoveChildrenToSplitItem(before: { text?: string }, after: { text?
 }
 
 function queueOperationPersistence(operation: Operation): void {
+  localMutationRevision += 1
   if (persistenceTarget === 'localStorage') return
 
   pendingOperations.set(operation.id, operation)
@@ -504,10 +506,62 @@ function moveById<T extends { id: Id }>(
 
 function createPlannerStore() {
   const store = writable<AppState>(readInitialState())
+  let backendReloadPromise: Promise<void> | null = null
+  let backendReloadRequestRevision = 0
   store.subscribe((state) => {
     if (persistenceReady && persistenceTarget === 'localStorage') persistLocalState(state)
   })
   const ready = hydratePersistence(store)
+
+  async function waitForLocalMutationQuietPeriod(): Promise<void> {
+    let observedRevision = localMutationRevision
+    while (true) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, PERSIST_DEBOUNCE_MS))
+      if (observedRevision === localMutationRevision) return
+      observedRevision = localMutationRevision
+    }
+  }
+
+  async function reloadFromBackendWhenStable(): Promise<void> {
+    let waitForQuiet = false
+
+    while (true) {
+      if (waitForQuiet) await waitForLocalMutationQuietPeriod()
+      await flushOperations()
+
+      const mutationRevisionBeforeRead = localMutationRevision
+      const requestRevisionBeforeRead = backendReloadRequestRevision
+      const stored = await invoke<string | null>('read_app_state')
+      const mutationChanged = mutationRevisionBeforeRead !== localMutationRevision
+
+      if (mutationChanged || requestRevisionBeforeRead !== backendReloadRequestRevision) {
+        // The backend result predates an edit or a newer refresh request. Never
+        // replace the live workspace with it. A quiet period prevents a slow
+        // mobile database from being reread after every keystroke.
+        waitForQuiet = mutationChanged
+        continue
+      }
+
+      const parsed = parseStoredState(stored)
+      if (!parsed) return
+
+      lastOperationMergeKey = null
+      undoStack = []
+      redoStack = []
+      store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+      return
+    }
+  }
+
+  function requestStableBackendReload(): Promise<void> {
+    backendReloadRequestRevision += 1
+    if (!backendReloadPromise) {
+      backendReloadPromise = reloadFromBackendWhenStable().finally(() => {
+        backendReloadPromise = null
+      })
+    }
+    return backendReloadPromise
+  }
 
   function commit(type: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
     let operationToPersist: Operation | null = null
@@ -2219,16 +2273,7 @@ function createPlannerStore() {
 
     async reloadFromBackend(): Promise<void> {
       if (!isTauri()) return
-
-      await flushOperations()
-      const stored = await invoke<string | null>('read_app_state')
-      const parsed = parseStoredState(stored)
-      if (!parsed) return
-
-      lastOperationMergeKey = null
-      undoStack = []
-      redoStack = []
-      store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+      await requestStableBackendReload()
     },
   }
 }

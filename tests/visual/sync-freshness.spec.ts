@@ -34,8 +34,16 @@ test.beforeEach(async ({ page }) => {
       isTauri: boolean
       __syncAttemptCount: number
       __syncSettingsCount: number
+      __stateReadCount: number
+      __persistOperationCount: number
+      __persistedOperationIds: string[]
+      __reloadReadStarted: boolean
+      __releaseLaunchSync?: () => void
+      __releaseReloadRead?: () => void
+      __storedState: string
+      __taskDisappeared: boolean
       __TAURI_INTERNALS__: {
-        invoke: (command: string) => Promise<unknown>
+        invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
         transformCallback: () => number
       }
       __TAURI_EVENT_PLUGIN_INTERNALS__: {
@@ -50,6 +58,7 @@ test.beforeEach(async ({ page }) => {
       localSequence: 0,
       historyRevision: 0,
       activePlanDate: date,
+      preferences: { themeId: 'iridescent' },
       templates: [],
       plans: [{
         id: 'local-plan',
@@ -81,13 +90,82 @@ test.beforeEach(async ({ page }) => {
     runtime.isTauri = true
     runtime.__syncAttemptCount = 0
     runtime.__syncSettingsCount = 0
+    runtime.__stateReadCount = 0
+    runtime.__persistOperationCount = 0
+    runtime.__persistedOperationIds = []
+    runtime.__reloadReadStarted = false
+    runtime.__storedState = storedState
+    runtime.__taskDisappeared = false
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
       transformCallback: () => 1,
-      invoke: async (command: string) => {
+      invoke: async (command: string, args?: Record<string, unknown>) => {
         switch (command) {
-          case 'read_app_state':
+          case 'read_app_state': {
+            runtime.__stateReadCount += 1
+            if (
+              new URLSearchParams(location.search).has('edit-during-launch-reload') &&
+              runtime.__stateReadCount === 2
+            ) {
+              const snapshotBeforeEdit = storedState
+              runtime.__reloadReadStarted = true
+              await new Promise<void>((resolve) => {
+                runtime.__releaseReloadRead = resolve
+              })
+              return snapshotBeforeEdit
+            }
             return storedState
+          }
+          case 'persist_operation': {
+            runtime.__persistOperationCount += 1
+            const operation = JSON.parse(String(args?.operationJson)) as {
+              id: string
+              sequence: number
+              type: string
+              payload?: {
+                planId?: string
+                itemId?: string
+                item?: {
+                  id: string
+                  text: string
+                  html: string
+                  done: boolean
+                  startMinutes: number | null
+                  endMinutes: number | null
+                  children: unknown[]
+                }
+                patch?: { text?: string, html?: string }
+              }
+            }
+            runtime.__persistedOperationIds.push(operation.id)
+            const state = JSON.parse(storedState) as {
+              localSequence: number
+              plans: Array<{
+                id: string
+                items: Array<{
+                  id: string
+                  text: string
+                  html: string
+                  done: boolean
+                  startMinutes: number | null
+                  endMinutes: number | null
+                  children: unknown[]
+                }>
+              }>
+            }
+            const plan = state.plans.find((candidate) => candidate.id === operation.payload?.planId)
+            if (operation.type === 'add_plan_item' && plan && operation.payload?.item) {
+              plan.items.push(operation.payload.item)
+            }
+            if (operation.type === 'patch_plan_item' && plan && operation.payload?.itemId) {
+              const item = plan.items.find((candidate) => candidate.id === operation.payload?.itemId)
+              if (item) Object.assign(item, operation.payload.patch)
+            }
+            state.localSequence = operation.sequence
+            storedState = JSON.stringify(state)
+            runtime.__storedState = storedState
+            return null
+          }
           case 'get_recovery_key_status':
             return { confirmed: true, recoveryKey: null, databasePath: '/tmp/synthetic.sqlite3' }
           case 'get_export_settings':
@@ -121,6 +199,21 @@ test.beforeEach(async ({ page }) => {
             }
           case 'sync_relay_once':
             runtime.__syncAttemptCount += 1
+            if (new URLSearchParams(location.search).has('edit-during-launch-reload')) {
+              await new Promise<void>((resolve) => {
+                runtime.__releaseLaunchSync = resolve
+              })
+              storedState = syncedState
+              runtime.__storedState = storedState
+              return {
+                pulledOperations: 12,
+                pushedOperations: 0,
+                stateChanged: true,
+                checkpointCommitted: false,
+                epoch: 'synthetic',
+                latestSequence: 12,
+              }
+            }
             if (new URLSearchParams(location.search).has('launch-then-hold')) {
               if (runtime.__syncAttemptCount > 1) return new Promise(() => undefined)
               return {
@@ -275,6 +368,96 @@ test('launch reloads visible state even when a background pass already consumed 
   await expect(page.getByText('Local version')).toHaveCount(0)
   await expect(page.getByRole('status', { name: /^Sync status:/ })).toHaveCount(0)
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __stateReadCount: number }
+    return runtime.__stateReadCount
+  })).toBe(2)
+})
+
+test('a task typed while the launch reload is reading never disappears', async ({ page }) => {
+  await page.goto('/?edit-during-launch-reload=1')
+
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __syncAttemptCount: number }
+    return runtime.__syncAttemptCount
+  })).toBe(1)
+  await page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __releaseLaunchSync?: () => void }
+    runtime.__releaseLaunchSync?.()
+  })
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __reloadReadStarted: boolean }
+    return runtime.__reloadReadStarted
+  })).toBe(true)
+
+  await page.getByRole('button', { name: '+ Add item' }).click()
+  const newTask = page.getByRole('textbox', { name: 'Plan item' }).last()
+  await newTask.click()
+  await page.keyboard.type('Typed during sync')
+  await expect(page.getByText('Typed during sync')).toBeVisible()
+
+  await page.evaluate(async () => {
+    const storePath = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    let trackedTaskId = ''
+    const findTrackedTask = (state: {
+      plans: Array<{ items: Array<{ id: string, text: string }> }>
+    }) => state.plans.flatMap((plan) => plan.items).find((item) => item.text === 'Typed during sync')
+    const capture = plannerStore.subscribe((state) => {
+      const task = findTrackedTask(state)
+      if (!trackedTaskId && task) trackedTaskId = task.id
+      if (trackedTaskId && !state.plans.some((plan) => plan.items.some((item) => item.id === trackedTaskId))) {
+        const runtime = globalThis as typeof globalThis & { __taskDisappeared: boolean }
+        runtime.__taskDisappeared = true
+      }
+    })
+    void capture
+  })
+  await page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __releaseReloadRead?: () => void }
+    runtime.__releaseReloadRead?.()
+  })
+
+  await expect(page.getByText('Typed during sync')).toBeVisible()
+  await expect(page.getByText('Synced version')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & {
+      __stateReadCount: number
+      __persistOperationCount: number
+      __persistedOperationIds: string[]
+      __storedState: string
+      __taskDisappeared: boolean
+    }
+    return {
+      reads: runtime.__stateReadCount,
+      persistedOperations: runtime.__persistOperationCount >= 2,
+      duplicateOperations: new Set(runtime.__persistedOperationIds).size !== runtime.__persistedOperationIds.length,
+      stored: runtime.__storedState.includes('Typed during sync'),
+      disappeared: runtime.__taskDisappeared,
+    }
+  })).toEqual({ reads: 3, persistedOperations: true, duplicateOperations: false, stored: true, disappeared: false })
+})
+
+test('concurrent backend reload callers share one stable database read', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(() => readSyncStatus(page)).toEqual({
+    running: false,
+    initialSyncComplete: true,
+  })
+
+  const readsBefore = await page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __stateReadCount: number }
+    return runtime.__stateReadCount
+  })
+  await page.evaluate(async () => {
+    const storePath = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    await Promise.all([plannerStore.reloadFromBackend(), plannerStore.reloadFromBackend()])
+  })
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __stateReadCount: number }
+    return runtime.__stateReadCount
+  })).toBe(readsBefore + 1)
 })
 
 test('routine sync checks stay silent without resetting launch completion', async ({ page }) => {
