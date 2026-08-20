@@ -8,6 +8,7 @@ test('Android recovery-key confirmation stays usable in a short viewport and sub
     type TestRuntime = typeof globalThis & {
       isTauri: boolean
       __confirmedRecoveryKeys: string[]
+      __recoveryClipboardWrites: Array<Record<string, unknown> | undefined>
       __TAURI_INTERNALS__: {
         invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
         transformCallback: () => number
@@ -24,6 +25,7 @@ test('Android recovery-key confirmation stays usable in a short viewport and sub
     Object.defineProperty(navigator, 'userAgent', { value: 'Balance Android CI', configurable: true })
     runtime.isTauri = true
     runtime.__confirmedRecoveryKeys = []
+    runtime.__recoveryClipboardWrites = []
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
       transformCallback: () => 1,
@@ -44,6 +46,9 @@ test('Android recovery-key confirmation stays usable in a short viewport and sub
           case 'confirm_recovery_key':
             runtime.__confirmedRecoveryKeys.push(String(args?.recoveryKey ?? ''))
             confirmed = true
+            return null
+          case 'write_balance_clipboard':
+            runtime.__recoveryClipboardWrites.push(args)
             return null
           case 'get_export_settings':
             return {
@@ -109,6 +114,15 @@ test('Android recovery-key confirmation stays usable in a short viewport and sub
 
   const syntheticRecoveryKey = await dialog.locator('.recovery-key').textContent()
   expect(syntheticRecoveryKey).toBeTruthy()
+  await dialog.getByRole('button', { name: 'Copy key' }).click()
+  await expect(dialog.getByRole('button', { name: 'Copied' })).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & {
+      __recoveryClipboardWrites: Array<Record<string, unknown> | undefined>
+    }
+    return runtime.__recoveryClipboardWrites
+  })).toEqual([{ plainText: syntheticRecoveryKey, structuredPayload: '' }])
+
   await input.fill(syntheticRecoveryKey ?? '')
   await input.press('Enter')
 

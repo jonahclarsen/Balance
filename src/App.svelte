@@ -4650,9 +4650,17 @@ return rows`
   }
 
   async function copyRecoveryKey() {
-    if (!recoveryKeyStatus?.recoveryKey) return
+    const recoveryKey = recoveryKeyStatus?.recoveryKey
+    if (!recoveryKey) return
 
-    await navigator.clipboard.writeText(recoveryKeyStatus.recoveryKey)
+    if (isTauri()) {
+      await invoke('write_balance_clipboard', {
+        plainText: recoveryKey,
+        structuredPayload: '',
+      }).catch(() => navigator.clipboard.writeText(recoveryKey))
+    } else {
+      await navigator.clipboard.writeText(recoveryKey)
+    }
     recoveryKeyCopied = true
   }
 
