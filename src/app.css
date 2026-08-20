@@ -2687,6 +2687,41 @@ body.mobile-checkbox-dragging {
   resize: vertical;
 }
 
+.widget-privacy-control {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.widget-privacy-control:has(input:disabled) {
+  cursor: default;
+  opacity: 0.65;
+}
+
+.widget-privacy-control input {
+  width: 17px;
+  height: 17px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.widget-privacy-control span {
+  display: grid;
+  gap: 4px;
+}
+
+.widget-privacy-control small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .theme-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));

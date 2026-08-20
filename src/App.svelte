@@ -81,6 +81,7 @@
     usesDefaultExportDirectory: boolean
   }
   type AvailableUpdate = { version: string; url: string }
+  type MacosWidgetSettings = { hideContentAfterClose: boolean }
   type CelebrationPreviewSession = {
     token: number
     celebrationId: CompletionCelebrationId
@@ -308,6 +309,11 @@ return rows`
   let exportSettingsStatus = ''
   let exportSettingsStatusIsError = false
   let exportSettingsBusy = false
+  let widgetHideContentAfterClose = true
+  let widgetPrivacySettingsReady = false
+  let widgetPrivacySettingsBusy = false
+  let widgetPrivacySettingsStatus = ''
+  let widgetPrivacySettingsStatusIsError = false
   let recoveryPanelOpen = false
   let recoveryEntries: RecoveryEntry[] = []
   let recoveryBusy = false
@@ -1628,6 +1634,7 @@ return rows`
       )
       completionTrackingReady = true
       await loadExportSettings()
+      await loadMacosWidgetSettings()
 
       if (!mounted || !isTauri()) return
 
@@ -1719,6 +1726,45 @@ return rows`
     databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
     databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
     plannerStore.patchPreferences({ databaseLoadingMessages })
+  }
+
+  async function loadMacosWidgetSettings() {
+    if (!isTauri() || !isMac || isMobile) return
+
+    widgetPrivacySettingsBusy = true
+    widgetPrivacySettingsStatus = ''
+    widgetPrivacySettingsStatusIsError = false
+    try {
+      const settings = await invoke<MacosWidgetSettings>('get_macos_widget_settings')
+      widgetHideContentAfterClose = settings.hideContentAfterClose
+      widgetPrivacySettingsReady = true
+    } catch (error) {
+      widgetPrivacySettingsStatusIsError = true
+      widgetPrivacySettingsStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      widgetPrivacySettingsBusy = false
+    }
+  }
+
+  async function updateWidgetHideContentAfterClose(enabled: boolean) {
+    const previous = widgetHideContentAfterClose
+    widgetHideContentAfterClose = enabled
+    widgetPrivacySettingsBusy = true
+    widgetPrivacySettingsStatus = ''
+    widgetPrivacySettingsStatusIsError = false
+    try {
+      const settings = await invoke<MacosWidgetSettings>('set_macos_widget_hide_content_after_close', { enabled })
+      widgetHideContentAfterClose = settings.hideContentAfterClose
+      widgetPrivacySettingsStatus = enabled
+        ? 'Widget content will be hidden 15 minutes after Balance closes.'
+        : 'Widget content will remain visible when Balance closes.'
+    } catch (error) {
+      widgetHideContentAfterClose = previous
+      widgetPrivacySettingsStatusIsError = true
+      widgetPrivacySettingsStatus = error instanceof Error ? error.message : String(error)
+    } finally {
+      widgetPrivacySettingsBusy = false
+    }
   }
 
   function clampGoalHistoryHeight(value: number): number {
@@ -5909,6 +5955,37 @@ return rows`
             <button type="button" on:click={resetDatabaseLoadingMessages}>Restore defaults</button>
           </div>
         </section>
+
+        {#if isMac && !isMobile && isTauri()}
+          <section class="settings-section">
+            <div>
+              <h3>Widget privacy</h3>
+              <p>
+                Balance reloads WidgetKit when the app quits normally and hides your tasks after a 15-minute grace
+                period. A crash or force-quit can prevent the privacy timer from being scheduled.
+              </p>
+            </div>
+
+            <label class="widget-privacy-control">
+              <input
+                type="checkbox"
+                checked={widgetHideContentAfterClose}
+                disabled={!widgetPrivacySettingsReady || widgetPrivacySettingsBusy}
+                on:change={(event) => { void updateWidgetHideContentAfterClose(event.currentTarget.checked) }}
+              />
+              <span>
+                <strong>Hide widget content 15 minutes after Balance closes</strong>
+                <small>Enabled by default. Reopening Balance during the grace period cancels the pending hide.</small>
+              </span>
+            </label>
+
+            {#if widgetPrivacySettingsStatus}
+              <p class:error={widgetPrivacySettingsStatusIsError} class="export-status">
+                {widgetPrivacySettingsStatus}
+              </p>
+            {/if}
+          </section>
+        {/if}
 
         <SyncPanel />
 

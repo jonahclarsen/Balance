@@ -1022,6 +1022,12 @@ struct SyncSettings {
     relay_url: String,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MacosWidgetSettings {
+    hide_content_after_close: bool,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct DatabaseCompactionResult {
@@ -1474,6 +1480,38 @@ fn available_update(
 #[tauri::command]
 fn exit_after_inactivity(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+#[tauri::command]
+fn get_macos_widget_settings() -> Result<MacosWidgetSettings, String> {
+    #[cfg(target_os = "macos")]
+    {
+        Ok(MacosWidgetSettings {
+            hide_content_after_close: macos_widget::hides_content_after_close(),
+        })
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("The macOS widget is only available on macOS".to_string())
+    }
+}
+
+#[tauri::command]
+fn set_macos_widget_hide_content_after_close(enabled: bool) -> Result<MacosWidgetSettings, String> {
+    #[cfg(target_os = "macos")]
+    {
+        macos_widget::set_hides_content_after_close(enabled)?;
+        Ok(MacosWidgetSettings {
+            hide_content_after_close: macos_widget::hides_content_after_close(),
+        })
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = enabled;
+        Err("The macOS widget is only available on macOS".to_string())
+    }
 }
 
 #[tauri::command]
@@ -9648,7 +9686,7 @@ async fn sync_p2p_sync(app: tauri::AppHandle, address: String) -> Result<Option<
 pub fn run() {
     disable_automatic_text_substitutions();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .setup(|app| {
             #[cfg(target_os = "macos")]
             {
@@ -9779,6 +9817,8 @@ pub fn run() {
             recover_database_with_key,
             build_info,
             exit_after_inactivity,
+            get_macos_widget_settings,
+            set_macos_widget_hide_content_after_close,
             check_for_update,
             save_export_file,
             get_export_settings,
@@ -9799,8 +9839,20 @@ pub fn run() {
             sync_p2p_peers,
             sync_p2p_sync
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(|_app_handle, event| {
+        #[cfg(target_os = "macos")]
+        if matches!(event, tauri::RunEvent::Exit) && macos_widget::hides_content_after_close() {
+            if let Err(error) = macos_widget::schedule_snapshot_expiration() {
+                eprintln!("Could not expire macOS widget content after shutdown: {error}");
+            }
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        let _ = event;
+    });
 }
 
 #[cfg(test)]

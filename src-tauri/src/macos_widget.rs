@@ -4,8 +4,33 @@ use std::ffi::CString;
 
 use crate::widget::snapshot_from_plan;
 
+const SNAPSHOT_EXIT_GRACE_PERIOD_SECONDS: f64 = 15.0 * 60.0;
+
 extern "C" {
     fn balance_publish_encrypted_widget_snapshot(snapshot: *const std::ffi::c_char) -> bool;
+    fn balance_schedule_widget_snapshot_expiration(delay_seconds: f64) -> bool;
+    fn balance_widget_hides_content_after_close() -> bool;
+    fn balance_set_widget_hides_content_after_close(enabled: bool) -> bool;
+}
+
+pub(crate) fn hides_content_after_close() -> bool {
+    unsafe { balance_widget_hides_content_after_close() }
+}
+
+pub(crate) fn set_hides_content_after_close(enabled: bool) -> Result<(), String> {
+    if unsafe { balance_set_widget_hides_content_after_close(enabled) } {
+        Ok(())
+    } else {
+        Err("Could not save the macOS widget privacy setting".to_string())
+    }
+}
+
+pub(crate) fn schedule_snapshot_expiration() -> Result<(), String> {
+    if unsafe { balance_schedule_widget_snapshot_expiration(SNAPSHOT_EXIT_GRACE_PERIOD_SECONDS) } {
+        Ok(())
+    } else {
+        Err("Could not schedule the macOS widget snapshot expiration".to_string())
+    }
 }
 
 pub(crate) fn publish_snapshot(connection: &Connection) -> Result<(), String> {

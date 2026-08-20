@@ -3,6 +3,7 @@ import WidgetKit
 import Security
 
 private let encryptedSnapshotKey = "balance.widget.encrypted-snapshot.v2"
+private let snapshotVisibleUntilKey = "balance.widget.snapshot-visible-until.v1"
 private let snapshotDomain = "app.balance.local"
 private let widgetKind = "BalanceToday"
 
@@ -118,7 +119,14 @@ private struct BalanceSnapshot: Codable {
         return formatter.string(from: currentDay)
     }
 
-    static func load() -> BalanceSnapshot? {
+    static var visibleUntil: Date? {
+        UserDefaults(suiteName: snapshotDomain)?.object(forKey: snapshotVisibleUntilKey) as? Date
+    }
+
+    static func load(at now: Date = Date()) -> BalanceSnapshot? {
+        if let visibleUntil, now >= visibleUntil {
+            return nil
+        }
         guard
             let privateKey = WidgetSnapshotKey.privateKey(),
             SecKeyIsAlgorithmSupported(privateKey, .decrypt, WidgetSnapshotKey.algorithm),
@@ -167,9 +175,16 @@ private struct BalanceProvider: TimelineProvider {
             matching: DateComponents(hour: 3, minute: 0),
             matchingPolicy: .nextTime
         ) ?? regularRefresh
-        let refresh = min(regularRefresh, dayBoundary)
+        let visibleUntil = BalanceSnapshot.visibleUntil
+        let expirationRefresh = visibleUntil.flatMap { $0 > now ? $0 : nil } ?? regularRefresh
+        let refresh = min(min(regularRefresh, dayBoundary), expirationRefresh)
+        let snapshot = BalanceSnapshot.load(at: now)
+        var entries = [BalanceEntry(date: now, snapshot: snapshot)]
+        if snapshot != nil, let visibleUntil, visibleUntil > now {
+            entries.append(BalanceEntry(date: visibleUntil, snapshot: nil))
+        }
         completion(Timeline(
-            entries: [BalanceEntry(date: now, snapshot: BalanceSnapshot.load())],
+            entries: entries,
             policy: .after(refresh)
         ))
     }
