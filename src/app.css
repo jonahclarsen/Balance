@@ -2789,7 +2789,8 @@ body.mobile-checkbox-dragging {
 .theme-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
-  gap: 10px;
+  column-gap: 10px;
+  row-gap: 8.5px;
 }
 
 .theme-option {
@@ -2798,7 +2799,7 @@ body.mobile-checkbox-dragging {
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 11px;
-  min-height: 64px;
+  min-height: 63px;
   border-radius: 10px;
   padding: 10px 12px;
   text-align: left;
