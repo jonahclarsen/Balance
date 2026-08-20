@@ -66,6 +66,17 @@ If there's a part of the code that's no longer used, there's no need to hold
 onto regression tests or migration code for it forever, that just bloats the
 codebase for no reason.
 
+## Preserve Goal Rhythm rendering containment
+
+The Iridescent theme animates inherited root CSS variables. Without rendering
+containment, that animation can repeatedly style and paint every cell in Goal
+Rhythm, including thousands of offscreen cells. Preserve the
+`goal-history-day-row` and `goal-history-day-chunk` wrappers and their
+`content-visibility`/intrinsic sizing when changing `GoalHistoryPanel.svelte` or
+its CSS. When changing those wrappers or animated theme variables, run the
+interaction performance profile with both `graphite` and `iridescent` under CPU
+contention as well as the Goal Rhythm behavior tests.
+
 ## Android: CI only — never build locally
 
 Do **not** build, link, or run anything Android locally (no `tauri android build`,

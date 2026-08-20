@@ -4,14 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       baseline_ref:
-        description: Git ref before the interaction optimization
-        required: true
-        default: "753c900"
-        type: string
-      candidate_ref:
-        description: Git ref containing the interaction optimization
+        description: Git ref for the baseline run
         required: true
         default: "main"
+        type: string
+      baseline_theme:
+        description: Theme ID for the baseline run
+        required: true
+        default: "graphite"
+        type: string
+      candidate_ref:
+        description: Git ref for the comparison run
+        required: true
+        default: "main"
+        type: string
+      candidate_theme:
+        description: Theme ID for the comparison run
+        required: true
+        default: "iridescent"
         type: string
 
 permissions:
@@ -19,12 +29,14 @@ permissions:
 
 jobs:
   compare:
-    name: Matched before/after under CPU contention
+    name: Matched ref/theme comparison under CPU contention
     runs-on: macos-15
     timeout-minutes: 30
     env:
       BASELINE_REF: ${{ inputs.baseline_ref }}
+      BASELINE_THEME: ${{ inputs.baseline_theme }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      CANDIDATE_THEME: ${{ inputs.candidate_theme }}
       BALANCE_INTERACTION_PERF_PROFILE_ONLY: "1"
       BALANCE_INTERACTION_PERF_OPERATIONS: "1"
       BALANCE_INTERACTION_PERF_EDITS: "4"
@@ -104,10 +116,11 @@ jobs:
             variant="$1"
             round="$2"
             directory="$3"
-            echo "Running $variant round $round" | tee -a "$logs"
+            theme="$4"
+            echo "Running $variant ($theme) round $round" | tee -a "$logs"
             output="$({
               cd "$directory"
-              pnpm exec playwright test \
+              BALANCE_INTERACTION_PERF_THEME="$theme" pnpm exec playwright test \
                 --config playwright.interaction-performance.config.ts \
                 --project mac-desktop-6x-cpu \
                 --grep "common typing" \
@@ -125,11 +138,11 @@ jobs:
 
           for round in 1 2 3; do
             if (( round % 2 == 1 )); then
-              run_profile baseline "$round" "$BASELINE_DIR"
-              run_profile candidate "$round" "$CANDIDATE_DIR"
+              run_profile baseline "$round" "$BASELINE_DIR" "$BASELINE_THEME"
+              run_profile candidate "$round" "$CANDIDATE_DIR" "$CANDIDATE_THEME"
             else
-              run_profile candidate "$round" "$CANDIDATE_DIR"
-              run_profile baseline "$round" "$BASELINE_DIR"
+              run_profile candidate "$round" "$CANDIDATE_DIR" "$CANDIDATE_THEME"
+              run_profile baseline "$round" "$BASELINE_DIR" "$BASELINE_THEME"
             fi
           done
 
@@ -143,6 +156,7 @@ jobs:
                 .[0].variant as $variant
                 | {
                     variant: $variant,
+                    theme: .[0].profile.fixture.themeId,
                     runs: length,
                     metrics: from_entries([
                       metric("idle_frame_interval_ms"; ["profile", "idleFrameIntervals", "medianMs"]),
@@ -158,9 +172,13 @@ jobs:
             | ($variants[] | select(.variant == "candidate")) as $candidate
             | {
                 variants: $variants,
-                speedups: ($baseline.metrics | to_entries | map({
+                candidate_to_baseline_ratio: ($baseline.metrics | to_entries | map({
                   key,
-                  value: ((.value / $candidate.metrics[.key]) * 100 | round / 100)
+                  value: (($candidate.metrics[.key] / .value) * 100 | round / 100)
+                }) | from_entries),
+                candidate_overhead_percent: ($baseline.metrics | to_entries | map({
+                  key,
+                  value: (((($candidate.metrics[.key] / .value) - 1) * 1000 | round) / 10)
                 }) | from_entries)
               }
           ' "$results")"
@@ -168,7 +186,7 @@ jobs:
           {
             echo '## Desktop interaction profile under CPU contention'
             echo
-            echo "Baseline: \`$BASELINE_SHA\` · Candidate: \`$CANDIDATE_SHA\`"
+            echo "Baseline: \`$BASELINE_SHA\` ($BASELINE_THEME) · Comparison: \`$CANDIDATE_SHA\` ($CANDIDATE_THEME)"
             echo
             echo 'Three alternating runs per revision; two host CPU workers plus Chromium 6× CPU throttling.'
             echo
@@ -180,7 +198,7 @@ jobs:
       - name: Upload benchmark results
         uses: actions/upload-artifact@v7
         with:
-          name: system-load-before-after-profile
+          name: system-load-comparison-profile
           path: |
             ${{ runner.temp }}/system-load-performance.jsonl
             ${{ runner.temp }}/system-load-performance-summary.json
