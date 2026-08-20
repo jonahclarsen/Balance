@@ -195,22 +195,39 @@ test('Tiny Janitor renders an articulated sweeping character without a signature
   await option.click()
 
   const stage = page.locator('.celebration-stage[data-celebration-id="tiny-janitor"]')
-  await expect(stage.locator('svg.janitor')).toBeVisible()
-  await expect(stage.locator('.janitor-person')).toHaveCount(1)
-  await expect(stage.locator('.janitor-front-arm, .janitor-rear-arm')).toHaveCount(2)
-  await expect(stage.locator('.janitor-front-leg, .janitor-back-leg')).toHaveCount(2)
-  await expect(stage.locator('.janitor-front-leg-art')).toHaveCount(1)
-  await expect(stage.locator('.janitor-broom')).toHaveCount(1)
-  await expect(stage.locator('.janitor-all-clear')).toHaveCount(1)
-  await expect(page.locator('.effect-signature')).toHaveCount(0)
-  expect(await stage.locator('.janitor-broom').evaluate((broom) => {
+  await expect(stage).toBeVisible()
+  expect(await stage.evaluate((root) => {
+    const broom = root.querySelector('.janitor-broom')
+    if (!broom) return null
     const animation = getComputedStyle(broom).animation
     return {
+      janitorCount: root.querySelectorAll('svg.janitor').length,
+      personCount: root.querySelectorAll('.janitor-person').length,
+      armCount: root.querySelectorAll('.janitor-front-arm, .janitor-rear-arm').length,
+      legCount: root.querySelectorAll('.janitor-front-leg, .janitor-back-leg').length,
+      mirroredLegCount: root.querySelectorAll('.janitor-front-leg-art').length,
+      broomCount: root.querySelectorAll('.janitor-broom').length,
+      gripCount: broom.querySelectorAll('.janitor-hand').length,
+      allClearCount: root.querySelectorAll('.janitor-all-clear').length,
+      signatureCount: document.querySelectorAll('.effect-signature').length,
       duration: getComputedStyle(broom).animationDuration,
       iterationCount: getComputedStyle(broom).animationIterationCount,
       hasPerformanceTimeline: animation.includes('broom-performance'),
     }
-  })).toEqual({ duration: '5s', iterationCount: '1', hasPerformanceTimeline: true })
+  })).toEqual({
+    janitorCount: 1,
+    personCount: 1,
+    armCount: 2,
+    legCount: 2,
+    mirroredLegCount: 1,
+    broomCount: 1,
+    gripCount: 2,
+    allClearCount: 1,
+    signatureCount: 0,
+    duration: '5s',
+    iterationCount: '1',
+    hasPerformanceTimeline: true,
+  })
 })
 
 test('reduced motion draws no canvas frames and automatic return restores Settings and focus', async ({ page }, testInfo) => {

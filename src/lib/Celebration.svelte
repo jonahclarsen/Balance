@@ -629,32 +629,32 @@
             <g class="janitor-head">
               <path class="janitor-neck" d="M91 72 L94 60 L111 61 L114 78 Q103 86 91 72 Z"></path>
               <circle class="janitor-face" cx="101" cy="43" r="26"></circle>
-              <path class="janitor-ear" d="M124 43 Q135 41 132 52 Q129 61 122 57"></path>
+              <path class="janitor-ear" d="M79 42 Q70 41 72 50 Q74 58 81 55"></path>
               <path class="janitor-hair" d="M78 40 Q77 15 102 14 Q122 14 129 35 Q116 31 106 24 Q96 35 78 40 Z"></path>
-              <path class="janitor-nose" d="M123 38 Q135 43 123 48"></path>
+              <path class="janitor-nose" d="M124 39 Q131 42 124 45"></path>
               <circle class="janitor-eye" cx="117" cy="35" r="2.6"></circle>
-              <path class="janitor-smile" d="M116 55 Q123 61 129 54"></path>
+              <path class="janitor-smile" d="M116 53 Q121 57 125 52"></path>
               <path class="janitor-cap" d="M76 30 Q78 7 104 8 Q121 8 129 24 Z"></path>
               <path class="janitor-cap-brim" d="M96 27 Q121 20 137 28 Q123 34 99 33 Z"></path>
             </g>
 
             <g class="janitor-rear-arm">
               <path class="janitor-sleeve" d="M123 82 Q137 78 147 93 L160 112 L147 122 L130 105 Z"></path>
-              <path class="janitor-skin" d="M153 108 Q163 113 171 121 L162 132 Q153 127 145 119 Z"></path>
-              <circle class="janitor-hand" cx="166" cy="127" r="9"></circle>
-            </g>
-
-            <g class="janitor-broom">
-              <path class="broom-handle" d="M174 105 L199 188"></path>
-              <path class="broom-collar" d="M187 181 L207 176 L211 187 L191 192 Z"></path>
-              <path class="broom-bristles" d="M192 190 Q208 185 219 183 L232 204 Q207 214 177 209 Z"></path>
-              <path class="broom-bristle-line" d="M191 193 L187 207 M200 190 L199 210 M209 188 L212 207 M217 187 L224 203"></path>
+              <path class="janitor-skin" d="M153 108 Q159 111 163 119 L158 132 Q151 128 145 119 Z"></path>
             </g>
 
             <g class="janitor-front-arm">
               <path class="janitor-sleeve" d="M75 82 Q64 83 63 97 Q79 113 96 123 L106 110 Q87 99 75 82 Z"></path>
-              <path class="janitor-skin" d="M93 117 Q111 126 132 130 L136 116 Q115 112 103 107 Z"></path>
-              <circle class="janitor-hand" cx="137" cy="123" r="9"></circle>
+              <path class="janitor-skin" d="M93 117 Q123 134 161 145 L167 131 Q132 122 103 107 Z"></path>
+            </g>
+
+            <g class="janitor-broom">
+              <path class="broom-handle" d="M154 105 L179 188"></path>
+              <path class="broom-collar" d="M167 181 L187 176 L191 187 L171 192 Z"></path>
+              <path class="broom-bristles" d="M172 190 Q188 185 199 183 L212 204 Q187 214 157 209 Z"></path>
+              <path class="broom-bristle-line" d="M171 193 L167 207 M180 190 L179 210 M189 188 L192 207 M197 187 L204 203"></path>
+              <circle class="janitor-hand" cx="160" cy="125" r="8"></circle>
+              <circle class="janitor-hand" cx="166" cy="145" r="8"></circle>
             </g>
           </g>
           <g class="janitor-dust-puff">
@@ -792,7 +792,7 @@
   .janitor-back-leg, .janitor-front-leg { transform-box: fill-box; transform-origin: center top; }
   .janitor-back-leg { animation: janitor-back-step 5s ease-in-out both; }
   .janitor-front-leg { animation: janitor-front-step 5s ease-in-out both; }
-  .janitor-front-leg-art { transform-box: fill-box; transform-origin: center; transform: scaleX(-1); }
+  .janitor-front-leg-art { transform-box: fill-box; transform-origin: center; transform: translateX(-28px) scaleX(-1); }
   .janitor-rear-arm { transform-box: fill-box; transform-origin: 15% 12%; animation: janitor-rear-arm-performance 5s ease-in-out both; }
   .janitor-front-arm { transform-box: fill-box; transform-origin: 9% 15%; animation: janitor-front-arm-performance 5s ease-in-out both; }
   .janitor-broom { transform-box: fill-box; transform-origin: 0 0; animation: broom-performance 5s cubic-bezier(.45,.05,.55,.95) both; }
@@ -903,8 +903,9 @@
     5%{opacity:1}
     26%,69%{opacity:1;transform:translateX(calc(50vw + 105px))}
     70%{transform:translateX(calc(50vw + 105px));animation-timing-function:cubic-bezier(.55,0,.85,.45)}
-    94%{opacity:1;transform:translateX(calc(100vw + 270px))}
-    100%{opacity:0;transform:translateX(calc(100vw + 270px))}
+    84%{opacity:1}
+    96%{opacity:.08}
+    100%{opacity:0;transform:translateX(calc(100vw + 55px))}
   }
   @keyframes janitor-performance {
     0%,5%,10%,15%,20%,26%,69%,74%,79%,84%,89%,94%,100%{transform:translateY(0) rotate(0)}
@@ -924,9 +925,9 @@
   }
   @keyframes janitor-back-step { 0%,10%,20%,26%,69%,79%,89%,100%{transform:rotate(8deg)} 5%,15%,23%,74%,84%,94%{transform:rotate(-8deg)} 27%,68%{transform:rotate(0)} }
   @keyframes janitor-front-step { 0%,10%,20%,26%,69%,79%,89%,100%{transform:rotate(-8deg)} 5%,15%,23%,74%,84%,94%{transform:rotate(8deg)} 27%,68%{transform:rotate(0)} }
-  @keyframes janitor-rear-arm-performance { 0%,26%,69%,100%{transform:rotate(0)} 34%,45%,56%,65%{transform:rotate(12deg)} 39%,50%,61%{transform:rotate(-10deg)} }
-  @keyframes janitor-front-arm-performance { 0%,26%,69%,100%{transform:rotate(0)} 34%,45%,56%,65%{transform:rotate(-13deg)} 39%,50%,61%{transform:rotate(10deg)} }
-  @keyframes broom-performance { 0%,27%,69%,100%{transform:rotate(0)} 34%,45%,56%,65%{transform:rotate(-19deg)} 39%,50%,61%{transform:rotate(23deg)} }
+  @keyframes janitor-rear-arm-performance { 0%,26%,69%,100%{transform:rotate(0)} 34%,45%,56%,65%{transform:rotate(-5deg)} 39%,50%,61%{transform:rotate(6deg)} }
+  @keyframes janitor-front-arm-performance { 0%,26%,69%,100%{transform:rotate(0)} 34%,45%,56%,65%{transform:rotate(-6deg)} 39%,50%,61%{transform:rotate(7deg)} }
+  @keyframes broom-performance { 0%,27%,69%,100%{transform:rotate(0)} 34%,45%,56%,65%{transform:rotate(-14deg)} 39%,50%,61%{transform:rotate(16deg)} }
   @keyframes janitor-puffs {
     0%,33%,40%,44%,51%,55%,62%,64%,70%,100%{opacity:0;transform:translate(0,0) scale(.4)}
     36%,47%,58%,67%{opacity:.85;transform:translate(8px,-5px) scale(.9)}
