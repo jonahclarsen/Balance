@@ -124,7 +124,8 @@ test('selecting saves, previews yesterday without chrome or plan mutations, and 
 
   const picker = page.getByRole('group', { name: 'Day completion celebration' })
   const deadlineGoose = picker.locator('[data-celebration-option="deadline-goose"]')
-  await deadlineGoose.scrollIntoViewIfNeeded()
+  await deadlineGoose.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }))
+  await expect(deadlineGoose).toBeVisible()
   const settingsScrollTop = await page.evaluate((mobile) =>
     mobile ? window.scrollY : (document.querySelector<HTMLElement>('.workspace')?.scrollTop ?? 0),
   testInfo.project.name === 'mobile')
@@ -228,6 +229,42 @@ test('Tiny Janitor renders an articulated sweeping character without a signature
     iterationCount: '1',
     hasPerformanceTimeline: true,
   })
+})
+
+test('mindful celebrations render their distinct presence, metta, and enough scenes', async ({ page }, testInfo) => {
+  await resetBrowserState(page)
+  await openSettings(page, testInfo)
+
+  const recipes = [
+    {
+      id: 'bell-of-now',
+      selector: '.presence-bell',
+      copy: ['HERE · NOW'],
+    },
+    {
+      id: 'loving-kindness-ripple',
+      selector: '.metta-heart',
+      copy: ['May I be well', 'May you be well', 'May all be well'],
+    },
+    {
+      id: 'enough-for-today',
+      selector: '.enough-candle',
+      copy: ['this day was lived', 'and it is enough'],
+    },
+  ] as const
+
+  for (const recipe of recipes) {
+    const option = page.locator(`[data-celebration-option="${recipe.id}"]`)
+    await option.scrollIntoViewIfNeeded()
+    await option.click()
+
+    const stage = page.locator(`.celebration-stage[data-celebration-id="${recipe.id}"]`)
+    await expect(stage.locator(recipe.selector)).toHaveCount(1)
+    for (const copy of recipe.copy) await expect(stage).toContainText(copy)
+
+    await page.keyboard.press('Escape')
+    await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+  }
 })
 
 test('reduced motion draws no canvas frames and automatic return restores Settings and focus', async ({ page }, testInfo) => {

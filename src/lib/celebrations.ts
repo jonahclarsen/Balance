@@ -66,6 +66,27 @@ export const COMPLETION_CELEBRATIONS = [
     palette: ['#ffe889', '#8bd3dd', '#28326b'],
   },
   {
+    id: 'bell-of-now',
+    name: 'Bell of Now',
+    description: 'One clear bell sends gentle ripples through this finished moment: here, now.',
+    icon: '🔔', category: 'pretty', engine: 'atmosphere', recipe: 'bell-of-now', durationMs: 4200, intensity: 1,
+    palette: ['#d7b66d', '#6f8f83', '#f4ead4'],
+  },
+  {
+    id: 'loving-kindness-ripple',
+    name: 'Loving-Kindness Ripple',
+    description: 'A warm wish travels outward: may I be well, may you be well, may all be well.',
+    icon: '💗', category: 'pretty', engine: 'atmosphere', recipe: 'metta-ripple', durationMs: 4800, intensity: 1,
+    palette: ['#e8899d', '#f1bd87', '#fff0dc'],
+  },
+  {
+    id: 'enough-for-today',
+    name: 'Enough for Today',
+    description: 'A small flame settles beside a quiet reminder: this day was lived, and it is enough.',
+    icon: '🕯️', category: 'pretty', engine: 'atmosphere', recipe: 'enough', durationMs: 4400, intensity: 1,
+    palette: ['#f0a45d', '#8d6f68', '#f7e6c8'],
+  },
+  {
     id: 'deadline-goose',
     name: 'Deadline Goose',
     description: 'A goose steals the final deadline and honks offscreen. No follow-up questions.',

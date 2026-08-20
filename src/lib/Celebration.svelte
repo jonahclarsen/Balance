@@ -599,6 +599,21 @@
     {:else if activeDefinition.recipe === 'aurora'}
       <div class="aurora-ribbon ribbon-one"></div><div class="aurora-ribbon ribbon-two"></div><div class="aurora-ribbon ribbon-three"></div>
       <div class="aurora-checks">✓　·　✓　·　✓</div>
+    {:else if activeDefinition.recipe === 'bell-of-now'}
+      <div class="presence-ripple ripple-one"></div><div class="presence-ripple ripple-two"></div><div class="presence-ripple ripple-three"></div>
+      <div class="presence-bell"><span></span><i></i></div>
+      <b class="presence-words">HERE <i>·</i> NOW</b>
+    {:else if activeDefinition.recipe === 'metta-ripple'}
+      <div class="metta-halo halo-one"></div><div class="metta-halo halo-two"></div><div class="metta-halo halo-three"></div>
+      <div class="metta-heart">♡<span>✓</span></div>
+      <p class="metta-wish wish-self">May I be well</p>
+      <p class="metta-wish wish-you">May you be well</p>
+      <p class="metta-wish wish-all">May all be well</p>
+    {:else if activeDefinition.recipe === 'enough'}
+      <div class="enough-scene">
+        <div class="enough-candle"><i></i><span></span></div>
+        <p><small>this day was lived</small><b>and it is enough</b></p>
+      </div>
     {:else if activeDefinition.recipe === 'goose'}
       <div class="goose-scene"><span class="goose">🪿</span><span class="deadline-paper">DEADLINE</span><b>HONK!</b></div>
     {:else if activeDefinition.recipe === 'janitor'}
@@ -761,6 +776,33 @@
   .ribbon-three { top: 39%; background: linear-gradient(110deg, transparent, var(--c3), transparent 85%); animation: aurora 3.8s .3s ease-in-out both; }
   .aurora-checks { position: absolute; inset: 37% 0 auto; text-align: center; color: white; font-size: clamp(22px, 5vw, 54px); text-shadow: 0 0 20px var(--c1); animation: float-up 3.4s ease both; }
 
+  .presence-ripple { position: absolute; left: 50%; top: 50%; width: min(24vmin, 180px); aspect-ratio: 1; border: 2px solid var(--c1); border-radius: 50%; box-shadow: 0 0 24px color-mix(in srgb, var(--c1) 28%, transparent); transform: translate(-50%, -50%); animation: presence-ripple 3.7s ease-out both; }
+  .ripple-two { animation-delay: .42s; } .ripple-three { animation-delay: .84s; }
+  .presence-bell { position: absolute; z-index: 2; left: 50%; top: 46%; width: clamp(72px, 12vmin, 116px); height: clamp(68px, 11vmin, 108px); transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
+  .presence-bell span { position: absolute; inset: 0 8% 17%; border: 4px solid color-mix(in srgb, var(--c1) 78%, #5f4825); border-radius: 50% 50% 18% 18%; background: radial-gradient(circle at 35% 24%, #fff8 0 7%, transparent 8%), linear-gradient(135deg, var(--c3), var(--c1) 62%, color-mix(in srgb, var(--c1) 58%, #5f4825)); box-shadow: inset -10px -8px 18px #6a4c2538, 0 13px 25px #3126112c; }
+  .presence-bell span::before { content: ''; position: absolute; left: 50%; top: -15%; width: 22%; height: 18%; border: 4px solid var(--c1); border-bottom: 0; border-radius: 999px 999px 0 0; transform: translateX(-50%); }
+  .presence-bell i { position: absolute; left: 50%; bottom: 4%; width: 22%; aspect-ratio: 1; border-radius: 50%; background: var(--c1); box-shadow: 0 4px 8px #3d2d1638; transform: translateX(-50%); }
+  .presence-words { position: absolute; left: 50%; top: 63%; color: var(--c2); font: 650 clamp(14px, 2.2vw, 22px)/1 system-ui; letter-spacing: .36em; white-space: nowrap; transform: translateX(-50%); animation: presence-words 4.2s ease both; }
+  .presence-words i { color: var(--c1); font-style: normal; }
+
+  .metta-halo { position: absolute; left: 50%; top: 50%; width: min(20vmin, 150px); aspect-ratio: 1; border: 2px solid var(--c1); border-radius: 50%; background: color-mix(in srgb, var(--c3) 16%, transparent); transform: translate(-50%, -50%); animation: metta-halo 3.6s ease-out both; }
+  .halo-two { border-color: var(--c2); animation-delay: .55s; } .halo-three { border-color: var(--c1); animation-delay: 1.1s; }
+  .metta-heart { position: absolute; z-index: 2; left: 50%; top: 50%; display: grid; width: clamp(78px, 13vmin, 128px); aspect-ratio: 1; place-items: center; border-radius: 50%; background: radial-gradient(circle at 35% 28%, #fff9, transparent 22%), color-mix(in srgb, var(--c1) 74%, var(--c3)); box-shadow: 0 16px 38px color-mix(in srgb, var(--c1) 35%, transparent); color: white; font: 300 clamp(58px, 9vmin, 88px)/1 serif; transform: translate(-50%, -50%); animation: metta-heart 4.8s ease-in-out both; }
+  .metta-heart span { position: absolute; right: 7%; bottom: 6%; display: grid; width: 31%; aspect-ratio: 1; place-items: center; border: 2px solid var(--c3); border-radius: 50%; background: var(--c2); color: white; font: 800 clamp(13px, 2vmin, 20px)/1 system-ui; }
+  .metta-wish { position: absolute; z-index: 3; left: 50%; top: 50%; margin: 0; border-radius: 999px; padding: .55em 1em; background: color-mix(in srgb, var(--c3) 82%, transparent); box-shadow: 0 8px 24px #5f39401f; color: color-mix(in srgb, var(--c2) 72%, #352a29); font: 600 clamp(13px, 1.8vw, 18px)/1.2 system-ui; white-space: nowrap; transform: translate(-50%, -50%); animation: metta-wish 3.8s ease both; }
+  .wish-self { --wish-x: 0px; --wish-y: -122px; animation-delay: 0s; }
+  .wish-you { --wish-x: clamp(-150px, -14vw, -64px); --wish-y: 122px; animation-delay: .48s; }
+  .wish-all { --wish-x: clamp(64px, 14vw, 150px); --wish-y: 122px; animation-delay: .96s; }
+
+  .enough-scene { position: absolute; left: 50%; top: 50%; display: grid; grid-template-columns: auto auto; align-items: center; gap: clamp(22px, 4vw, 48px); transform: translate(-50%, -50%); animation: enough-arrive 4.4s ease both; }
+  .enough-candle { position: relative; width: clamp(58px, 9vmin, 88px); height: clamp(102px, 16vmin, 156px); border-radius: 9px 9px 16px 16px; background: linear-gradient(90deg, color-mix(in srgb, var(--c3) 82%, white), var(--c3) 54%, color-mix(in srgb, var(--c3) 82%, var(--c2))); box-shadow: inset -12px 0 18px #6f554521, 0 20px 28px #4a35232b; }
+  .enough-candle::after { content: ''; position: absolute; inset: auto 15% 9%; height: 2px; border-radius: 50%; background: color-mix(in srgb, var(--c2) 28%, transparent); }
+  .enough-candle i { position: absolute; left: 50%; bottom: calc(100% + 7px); width: 42%; aspect-ratio: .72; border-radius: 56% 44% 58% 42% / 66% 60% 40% 34%; background: radial-gradient(circle at 50% 68%, #fff8 0 9%, transparent 10%), linear-gradient(var(--c3), var(--c1) 62%, #d66f38); box-shadow: 0 0 20px 7px color-mix(in srgb, var(--c1) 35%, transparent); transform: translateX(-50%); transform-origin: center bottom; animation: enough-flame 1.8s ease-in-out infinite alternate; }
+  .enough-candle span { position: absolute; left: 50%; top: -7px; width: 3px; height: 11px; border-radius: 2px; background: #4d392d; transform: translateX(-50%); }
+  .enough-scene p { display: grid; gap: .5rem; min-width: max-content; margin: 0; color: var(--c2); }
+  .enough-scene small { font: 500 clamp(13px, 1.8vw, 18px)/1.2 system-ui; letter-spacing: .08em; }
+  .enough-scene b { color: color-mix(in srgb, var(--c2) 76%, #392c2a); font: 650 clamp(22px, 4vw, 42px)/1.05 system-ui; }
+
   .dandelion-seed { left: var(--x); bottom: 20%; color: var(--c2); font: 700 18px/1 serif; transform: scale(var(--scale)); animation: seed-flight 3.2s var(--delay) cubic-bezier(.2,.6,.2,1) both; }
   .firefly { left: var(--x); top: var(--y); width: 8px; height: 8px; border-radius: 50%; background: var(--c1); box-shadow: 0 0 8px 3px var(--c1), 0 0 18px 6px var(--c2); color: white; font: 11px/1 system-ui; animation: firefly 2s var(--delay) ease-in-out infinite alternate; }
   .glass-pane { left: var(--x); top: var(--y); width: 19vw; height: 38vh; border: 4px solid #251f31; background: radial-gradient(circle at 70% 20%, #fff8, transparent 22%), var(--color); color: white; font: bold 28px system-ui; transform: rotate(var(--r)); opacity: .7; animation: glass-in 2.8s var(--delay) cubic-bezier(.2,.8,.2,1) both; clip-path: polygon(8% 0, 100% 12%, 88% 100%, 0 84%); }
@@ -893,6 +935,14 @@
   @keyframes wash-in { 0%,100%{opacity:0} 25%,75%{opacity:.22} }
   @keyframes aurora { 0%,100%{opacity:0;transform:translateY(25%) skewX(-8deg) scaleY(.4)} 30%,70%{opacity:.75;transform:translateY(-8%) skewX(7deg) scaleY(1.15)} }
   @keyframes float-up { 0%,100%{opacity:0;transform:translateY(70px)} 30%,70%{opacity:1;transform:translateY(0)} }
+  @keyframes presence-ripple { 0%{opacity:0;transform:translate(-50%,-50%) scale(.24)} 18%{opacity:.7} 100%{opacity:0;transform:translate(-50%,-50%) scale(4.2)} }
+  @keyframes presence-bell { 0%,100%{opacity:0;transform:translate(-50%,-44%) rotate(0) scale(.88)} 17%{opacity:1;transform:translate(-50%,-50%) rotate(0) scale(1)} 24%{transform:translate(-50%,-50%) rotate(-4deg)} 31%{transform:translate(-50%,-50%) rotate(3deg)} 40%,78%{opacity:1;transform:translate(-50%,-50%) rotate(0)} }
+  @keyframes presence-words { 0%,28%,100%{opacity:0;transform:translate(-50%,12px)} 43%,78%{opacity:1;transform:translate(-50%,0)} }
+  @keyframes metta-halo { 0%{opacity:0;transform:translate(-50%,-50%) scale(.45)} 18%{opacity:.72} 100%{opacity:0;transform:translate(-50%,-50%) scale(4.7)} }
+  @keyframes metta-heart { 0%,100%{opacity:0;transform:translate(-50%,-50%) scale(.7)} 18%{opacity:1;transform:translate(-50%,-50%) scale(1.06)} 36%,78%{opacity:1;transform:translate(-50%,-50%) scale(1)} 52%{transform:translate(-50%,-50%) scale(1.05)} }
+  @keyframes metta-wish { 0%,16%{opacity:0;transform:translate(-50%,-50%) scale(.9)} 33%,73%{opacity:1;transform:translate(calc(-50% + var(--wish-x)),calc(-50% + var(--wish-y))) scale(1)} 100%{opacity:0;transform:translate(calc(-50% + var(--wish-x)),calc(-50% + var(--wish-y))) scale(.96)} }
+  @keyframes enough-arrive { 0%,100%{opacity:0;transform:translate(-50%,-45%) scale(.96)} 20%,78%{opacity:1;transform:translate(-50%,-50%) scale(1)} }
+  @keyframes enough-flame { from{transform:translateX(-50%) rotate(-2deg) scale(.97)} to{transform:translateX(-50%) rotate(3deg) scale(1.05)} }
   @keyframes seed-flight { 0%{opacity:0;transform:translate(0,40px) scale(var(--scale)) rotate(0)} 12%,70%{opacity:1} 100%{opacity:0;transform:translate(var(--drift),-88vh) scale(.45) rotate(520deg)} }
   @keyframes firefly { to{transform:translate(var(--dx),var(--dy));opacity:.25} }
   @keyframes glass-in { 0%,100%{opacity:0;transform:translateY(90px) rotate(var(--r)) scale(.5)} 25%,72%{opacity:.72;transform:rotate(var(--r)) scale(1)} }
