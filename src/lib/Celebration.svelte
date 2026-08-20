@@ -822,7 +822,7 @@
 
   .presence-ripple { position: absolute; left: 50%; top: 50%; width: min(24vmin, 180px); aspect-ratio: 1; border: 2px solid var(--c1); border-radius: 50%; box-shadow: 0 0 24px color-mix(in srgb, var(--c1) 28%, transparent); transform: translate(-50%, -50%); animation: presence-ripple 3.7s ease-out both; }
   .ripple-two { animation-delay: .42s; } .ripple-three { animation-delay: .84s; }
-  .presence-bell { position: absolute; z-index: 2; left: 50%; top: 44%; width: clamp(116px, 17vmin, 168px); aspect-ratio: 180 / 205; transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
+  .presence-bell { position: absolute; z-index: 4; left: 50%; top: 44%; width: clamp(116px, 17vmin, 168px); aspect-ratio: 180 / 205; transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
   .presence-bell svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 13px 12px #3d29182e); }
   .presence-bell-shadow { fill: #33211438; filter: blur(4px); animation: presence-bell-shadow 4.2s ease-in-out both; }
   .presence-bell-body { transform-origin: 90px 12px; animation: presence-bell-swing 4.2s cubic-bezier(.36,.08,.2,1) both; }
