@@ -1,0 +1,109 @@
+name: Tag nightly release
+
+on:
+  schedule:
+    # Avoid the start-of-hour congestion window used by many scheduled jobs.
+    - cron: "17 3 * * *"
+      timezone: America/Vancouver
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-release-tag
+  cancel-in-progress: false
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  tag:
+    name: Tag latest main and start the release build
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check out main with release tags
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: main
+
+      - name: Tag the latest untagged main commit
+        id: release
+        run: |
+          set -euo pipefail
+
+          # A newer main commit may have landed while this scheduled run was
+          # waiting for a runner, so resolve the remote branch immediately
+          # before deciding what to tag.
+          git fetch origin main --tags
+          TARGET_SHA="$(git rev-parse refs/remotes/origin/main)"
+
+          while IFS= read -r candidate; do
+            if [[ "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-all)?$ ]]; then
+              echo "$TARGET_SHA already has release tag $candidate"
+              echo "created=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done < <(git tag --points-at "$TARGET_SHA")
+
+          LATEST_TAG=""
+          while IFS= read -r candidate; do
+            if [[ "$candidate" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)(-all)?$ ]]; then
+              LATEST_TAG="$candidate"
+              MAJOR="${BASH_REMATCH[1]}"
+              MINOR="${BASH_REMATCH[2]}"
+              PATCH="${BASH_REMATCH[3]}"
+              break
+            fi
+          done < <(git tag --list --sort=-version:refname)
+
+          if [[ -z "$LATEST_TAG" ]]; then
+            echo "::error::No existing vMAJOR.MINOR.PATCH release tag was found"
+            exit 1
+          fi
+
+          RELEASE_TAG="v${MAJOR}.${MINOR}.$((10#$PATCH + 1))"
+          if git rev-parse --verify --quiet "refs/tags/$RELEASE_TAG" >/dev/null; then
+            echo "::error::$RELEASE_TAG already exists but does not point at the latest main commit"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag --annotate "$RELEASE_TAG" "$TARGET_SHA" --message "Balance $RELEASE_TAG"
+          git push origin "refs/tags/$RELEASE_TAG"
+
+          echo "Created $RELEASE_TAG at $TARGET_SHA"
+          echo "created=true" >> "$GITHUB_OUTPUT"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch Android release build
+        if: steps.release.outputs.created == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          # GITHUB_TOKEN tag pushes intentionally do not trigger other
+          # workflows. workflow_dispatch is allowed, so start the existing
+          # Android workflow explicitly at the newly-created tag.
+          for attempt in 1 2 3; do
+            if gh workflow run android.yml \
+              --repo "$GITHUB_REPOSITORY" \
+              --ref "$RELEASE_TAG" \
+              --field publish_tag="$RELEASE_TAG"; then
+              echo "Dispatched Android release build for $RELEASE_TAG"
+              exit 0
+            fi
+
+            if [[ "$attempt" -lt 3 ]]; then
+              echo "Dispatch attempt $attempt failed; retrying after tag propagation"
+              sleep 3
+            fi
+          done
+
+          echo "::error::Could not dispatch the Android release build for $RELEASE_TAG"
+          exit 1

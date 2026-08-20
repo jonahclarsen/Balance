@@ -6,6 +6,11 @@ on:
       - "v*.*.*"
   workflow_dispatch:
     inputs:
+      publish_tag:
+        description: Internal release tag passed by the nightly coordinator
+        required: false
+        default: ""
+        type: string
       build_release:
         description: Also build a signed arm64 APK (release tags always do)
         required: false
@@ -101,7 +106,20 @@ jobs:
 
       - name: Resolve Android release version
         id: android-version
+        env:
+          PUBLISH_TAG: ${{ inputs.publish_tag }}
         run: |
+          if [[ -n "$PUBLISH_TAG" ]]; then
+            if [[ "$GITHUB_REF_TYPE" != "tag" || "$GITHUB_REF_NAME" != "$PUBLISH_TAG" ]]; then
+              echo "::error::publish_tag must match the workflow's tag ref"
+              exit 1
+            fi
+            if [[ ! "$PUBLISH_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::Invalid coordinated release tag: $PUBLISH_TAG"
+              exit 1
+            fi
+          fi
+
           if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
             VERSION_SOURCE="tag $GITHUB_REF_NAME"
@@ -134,6 +152,20 @@ jobs:
           echo "Building Android release version $VERSION from $VERSION_SOURCE"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "ANDROID_RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Record coordinated release tag
+        if: inputs.publish_tag != ''
+        env:
+          PUBLISH_TAG: ${{ inputs.publish_tag }}
+        run: printf '%s\n' "$PUBLISH_TAG" > release-tag.txt
+
+      - name: Upload coordinated release metadata
+        if: inputs.publish_tag != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: Balance-release-metadata
+          path: release-tag.txt
+          if-no-files-found: error
 
       - name: Set up Android release project
         uses: ./.github/actions/setup-android-build
