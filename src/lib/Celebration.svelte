@@ -602,11 +602,7 @@
     {:else if activeDefinition.recipe === 'bell-of-now'}
       <div class="presence-ripple ripple-one"></div><div class="presence-ripple ripple-two"></div><div class="presence-ripple ripple-three"></div>
       <div class="presence-bell"><span></span><i></i></div>
-      <b class="presence-words presence-square"><small>1</small>YOU ARE HERE <i>+</i> NOW</b>
-      <b class="presence-words presence-rounded"><small>2</small>YOU ARE HERE <i>+</i> NOW</b>
-      <b class="presence-words presence-soft"><small>3</small>YOU ARE HERE <i>+</i> NOW</b>
-      <b class="presence-words presence-bevel"><small>4</small>YOU ARE HERE <i>+</i> NOW</b>
-      <b class="presence-words presence-slant"><small>5</small>YOU ARE HERE <i>+</i> NOW</b>
+      <b class="presence-words">YOU ARE HERE <i>+</i> NOW</b>
     {:else if activeDefinition.recipe === 'metta-ripple'}
       <div class="metta-halo halo-one"></div><div class="metta-halo halo-two"></div><div class="metta-halo halo-three"></div>
       <div class="metta-heart">♡<span>✓</span></div>
@@ -782,25 +778,14 @@
 
   .presence-ripple { position: absolute; left: 50%; top: 50%; width: min(24vmin, 180px); aspect-ratio: 1; border: 2px solid var(--c1); border-radius: 50%; box-shadow: 0 0 24px color-mix(in srgb, var(--c1) 28%, transparent); transform: translate(-50%, -50%); animation: presence-ripple 3.7s ease-out both; }
   .ripple-two { animation-delay: .42s; } .ripple-three { animation-delay: .84s; }
-  .presence-bell { position: absolute; z-index: 2; left: 50%; top: 10%; width: clamp(58px, 9vmin, 88px); height: clamp(55px, 8vmin, 82px); transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
+  .presence-bell { position: absolute; z-index: 2; left: 50%; top: 46%; width: clamp(72px, 12vmin, 116px); height: clamp(68px, 11vmin, 108px); transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
   .presence-bell span { position: absolute; inset: 0 8% 17%; border: 4px solid color-mix(in srgb, var(--c1) 78%, #5f4825); border-radius: 50% 50% 18% 18%; background: radial-gradient(circle at 35% 24%, #fff8 0 7%, transparent 8%), linear-gradient(135deg, var(--c3), var(--c1) 62%, color-mix(in srgb, var(--c1) 58%, #5f4825)); box-shadow: inset -10px -8px 18px #6a4c2538, 0 13px 25px #3126112c; }
   .presence-bell span::before { content: ''; position: absolute; left: 50%; top: -15%; width: 22%; height: 18%; border: 4px solid var(--c1); border-bottom: 0; border-radius: 999px 999px 0 0; transform: translateX(-50%); }
   .presence-bell i { position: absolute; left: 50%; bottom: 4%; width: 22%; aspect-ratio: 1; border-radius: 50%; background: var(--c1); box-shadow: 0 4px 8px #3d2d1638; transform: translateX(-50%); }
-  .presence-words { position: absolute; z-index: 3; left: 50%; isolation: isolate; padding: .68em 1.05em .68em 1.25em; color: #fffaf0; font: 720 clamp(13px, 1.8vw, 18px)/1 ui-rounded, system-ui; letter-spacing: .2em; text-shadow: 0 2px 6px #4b332599; white-space: nowrap; transform: translateX(-50%); animation: presence-words 4.2s ease both; }
-  .presence-words::before { content: ''; position: absolute; z-index: -2; inset: -.3em -.95em; background: radial-gradient(ellipse at 26% 32%, #ffd88f8c 0 7%, transparent 28%), radial-gradient(ellipse at 72% 70%, #496e5a38, transparent 34%), linear-gradient(98deg, #d6a23f, #cf7167 51%, #668f78); box-shadow: 0 8px 22px #795a3438, 0 0 25px #e5ae5b52; animation: presence-wash 2.6s ease-in-out infinite alternate; }
-  .presence-words::after { content: ''; position: absolute; z-index: -1; inset: .18em -.45em; background: linear-gradient(96deg, #fff3 0 18%, transparent 35% 66%, #fff2 82%); }
-  .presence-words small { position: absolute; z-index: 2; left: -2.15em; top: 50%; display: grid; width: 1.55em; aspect-ratio: 1; place-items: center; border: 2px solid #fff9; border-radius: 50%; background: #493d35d9; box-shadow: 0 4px 10px #4d372b38; color: white; font: 800 .7em/1 system-ui; letter-spacing: 0; transform: translateY(-50%); }
+  .presence-words { position: absolute; z-index: 3; left: 50%; top: 63%; isolation: isolate; padding: .82em 1.12em .82em 1.32em; color: #fffaf0; font: 720 clamp(14px, 2.2vw, 22px)/1 ui-rounded, system-ui; letter-spacing: .22em; text-shadow: 0 2px 6px #4b332599; white-space: nowrap; transform: translateX(-50%); animation: presence-words 4.2s ease both; }
+  .presence-words::before { content: ''; position: absolute; z-index: -2; inset: -.3em -.95em; border-radius: 17px; background: radial-gradient(ellipse at 26% 32%, #ffd88f8c 0 7%, transparent 28%), radial-gradient(ellipse at 72% 70%, #496e5a38, transparent 34%), linear-gradient(98deg, #d6a23f, #cf7167 51%, #668f78); box-shadow: 0 8px 22px #795a3438, 0 0 25px #e5ae5b52; animation: presence-wash 2.6s ease-in-out infinite alternate; }
+  .presence-words::after { content: ''; position: absolute; z-index: -1; inset: .18em -.45em; border-radius: 17px; background: linear-gradient(96deg, #fff3 0 18%, transparent 35% 66%, #fff2 82%); }
   .presence-words i { color: #ffe29a; font-style: normal; text-shadow: 0 1px 5px #6b3f2e; }
-  .presence-square { top: 18%; }
-  .presence-square::before, .presence-square::after { border-radius: 2px; }
-  .presence-rounded { top: 31%; }
-  .presence-rounded::before, .presence-rounded::after { border-radius: 8px; }
-  .presence-soft { top: 44%; }
-  .presence-soft::before, .presence-soft::after { border-radius: 17px; }
-  .presence-bevel { top: 57%; }
-  .presence-bevel::before, .presence-bevel::after { clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px); }
-  .presence-slant { top: 70%; }
-  .presence-slant::before, .presence-slant::after { clip-path: polygon(4% 0, 100% 0, 96% 100%, 0 100%); }
 
   .metta-halo { position: absolute; left: 50%; top: 50%; width: min(20vmin, 150px); aspect-ratio: 1; border: 2px solid var(--c1); border-radius: 50%; background: color-mix(in srgb, var(--c3) 16%, transparent); transform: translate(-50%, -50%); animation: metta-halo 3.6s ease-out both; }
   .halo-two { border-color: var(--c2); animation-delay: .55s; } .halo-three { border-color: var(--c1); animation-delay: 1.1s; }
@@ -955,7 +940,7 @@
   @keyframes presence-ripple { 0%{opacity:0;transform:translate(-50%,-50%) scale(.24)} 18%{opacity:.7} 100%{opacity:0;transform:translate(-50%,-50%) scale(4.2)} }
   @keyframes presence-bell { 0%,100%{opacity:0;transform:translate(-50%,-44%) rotate(0) scale(.88)} 17%{opacity:1;transform:translate(-50%,-50%) rotate(0) scale(1)} 24%{transform:translate(-50%,-50%) rotate(-4deg)} 31%{transform:translate(-50%,-50%) rotate(3deg)} 40%,78%{opacity:1;transform:translate(-50%,-50%) rotate(0)} }
   @keyframes presence-words { 0%,28%,100%{opacity:0;transform:translate(-50%,12px)} 43%,78%{opacity:1;transform:translate(-50%,0)} }
-  @keyframes presence-wash { from{transform:rotate(-1.5deg) scale(.97)} to{transform:rotate(1.5deg) scale(1.035)} }
+  @keyframes presence-wash { from{transform:scale(.97)} to{transform:scale(1.035)} }
   @keyframes metta-halo { 0%{opacity:0;transform:translate(-50%,-50%) scale(.45)} 18%{opacity:.72} 100%{opacity:0;transform:translate(-50%,-50%) scale(4.7)} }
   @keyframes metta-heart { 0%,100%{opacity:0;transform:translate(-50%,-50%) scale(.7)} 18%{opacity:1;transform:translate(-50%,-50%) scale(1.06)} 36%,78%{opacity:1;transform:translate(-50%,-50%) scale(1)} 52%{transform:translate(-50%,-50%) scale(1.05)} }
   @keyframes metta-wish { 0%,16%{opacity:0;transform:translate(-50%,-50%) scale(.9)} 33%,73%{opacity:1;transform:translate(calc(-50% + var(--wish-x)),calc(-50% + var(--wish-y))) scale(1)} 100%{opacity:0;transform:translate(calc(-50% + var(--wish-x)),calc(-50% + var(--wish-y))) scale(.96)} }
