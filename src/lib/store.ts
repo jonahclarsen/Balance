@@ -41,6 +41,7 @@ import {
   outdentTemplateItem as outdentTemplateItemInTree,
   clonePlanItemsForPaste,
   completePlanItemAncestors,
+  completePlanItemDescendants,
   copyPlanItems as copyPlanItemsFromTree,
   pastePlanItems as pastePlanItemsIntoTree,
   sanitizeInlineHTML,
@@ -651,19 +652,34 @@ function createPlannerStore() {
       const isTextPatch = 'text' in patch || 'html' in patch
       let goalMatchesChanged = false
       const completedParentIds: Id[] = []
+      const completedDescendantIds: Id[] = []
       const mergeOptions =
         options.mergeKey && options.mergeHistory !== false
           ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
           : isTextPatch && options.mergeHistory !== false
             ? { mergeKey: `plan-item-text:${planId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
             : {}
-      commit('patch_plan_item', { planId, itemId, patch, completedParentIds }, (state) => updatePlan(state, planId, (plan) => {
+      commit('patch_plan_item', { planId, itemId, patch, completedParentIds, completedDescendantIds }, (state) => updatePlan(state, planId, (plan) => {
         let items = updatePlanItem(plan.items, itemId, (item) => {
           const nextItem = applyPatch(item, patch)
           goalMatchesChanged = planItemGoalMatchesChanged(state.goals, plan.date, item, nextItem, { force: true })
           return nextItem
         })
         if (patch.done === true) {
+          const completedDescendants = completePlanItemDescendants(items, [itemId])
+          items = completedDescendants.items
+          completedDescendantIds.push(...completedDescendants.completedDescendantIds)
+          for (const descendantId of completedDescendants.completedDescendantIds) {
+            const previousDescendant = findPlanItem(plan.items, descendantId)
+            const completedDescendant = findPlanItem(items, descendantId)
+            if (
+              previousDescendant &&
+              completedDescendant &&
+              planItemGoalMatchesChanged(state.goals, plan.date, previousDescendant, completedDescendant, { force: true })
+            ) {
+              goalMatchesChanged = true
+            }
+          }
           const completed = completePlanItemAncestors(items, [itemId])
           items = completed.items
           completedParentIds.push(...completed.completedParentIds)
@@ -695,8 +711,9 @@ function createPlannerStore() {
 
       let goalMatchesChanged = false
       const completedParentIds: Id[] = []
+      const completedDescendantIds: Id[] = []
 
-      commit('patch_plan_items_done', { planId, itemIds, done, completedParentIds }, (state) => updatePlan(state, planId, (plan) => {
+      commit('patch_plan_items_done', { planId, itemIds, done, completedParentIds, completedDescendantIds }, (state) => updatePlan(state, planId, (plan) => {
         let items = plan.items
 
         for (const itemId of itemIds) {
@@ -710,6 +727,20 @@ function createPlannerStore() {
         }
 
         if (done) {
+          const completedDescendants = completePlanItemDescendants(items, itemIds)
+          items = completedDescendants.items
+          completedDescendantIds.push(...completedDescendants.completedDescendantIds)
+          for (const descendantId of completedDescendants.completedDescendantIds) {
+            const previousDescendant = findPlanItem(plan.items, descendantId)
+            const completedDescendant = findPlanItem(items, descendantId)
+            if (
+              previousDescendant &&
+              completedDescendant &&
+              planItemGoalMatchesChanged(state.goals, plan.date, previousDescendant, completedDescendant, { force: true })
+            ) {
+              goalMatchesChanged = true
+            }
+          }
           const completed = completePlanItemAncestors(items, itemIds)
           items = completed.items
           completedParentIds.push(...completed.completedParentIds)
@@ -1799,7 +1830,8 @@ function createPlannerStore() {
             : {}
       commit('patch_list_item', { listId, itemId, patch }, (state) =>
         updateList(state, listId, (list) => {
-          const items = updatePlanItem(list.items, itemId, (item) => applyPatch(item, patch))
+          let items = updatePlanItem(list.items, itemId, (item) => applyPatch(item, patch))
+          if (patch.done === true) items = completePlanItemDescendants(items, [itemId]).items
           return items === list.items ? list : { ...list, items }
         }),
         mergeOptions,

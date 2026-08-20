@@ -394,6 +394,38 @@ export function completePlanItemAncestors(
   return { items: result.nodes, completedParentIds }
 }
 
+export function completePlanItemDescendants(
+  items: PlanItem[],
+  changedItemIds: Iterable<Id>,
+): { items: PlanItem[]; completedDescendantIds: Id[] } {
+  const changedIds = new Set(changedItemIds)
+  const completedDescendantIds: Id[] = []
+
+  function completeDescendants(nodes: PlanItem[], belowChangedItem: boolean): PlanItem[] {
+    let changed = false
+    const nextNodes = nodes.map((item) => {
+      const itemIsChanged = changedIds.has(item.id)
+      const children = completeDescendants(item.children, belowChangedItem || itemIsChanged)
+      let nextItem = children === item.children ? item : { ...item, children }
+
+      if (belowChangedItem && !itemIsChanged && !nextItem.done) {
+        nextItem = { ...nextItem, done: true }
+        completedDescendantIds.push(nextItem.id)
+      }
+
+      if (nextItem !== item) changed = true
+      return nextItem
+    })
+
+    return changed ? nextNodes : nodes
+  }
+
+  return {
+    items: completeDescendants(items, false),
+    completedDescendantIds,
+  }
+}
+
 export function addPlanItem(items: PlanItem[], parentId: Id | null, item = createPlanItem()): PlanItem[] {
   if (!parentId) return [...items, item]
 

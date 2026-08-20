@@ -2454,6 +2454,44 @@ test('checking the final child completes each satisfied parent task', async ({ p
   await expect(parent).toBeChecked()
 })
 
+test('checking a parent completes all of its descendants', async ({ page }) => {
+  await seedPlanTree(page, [
+    {
+      id: 'parent',
+      text: 'Parent task',
+      children: [
+        {
+          id: 'child-group',
+          text: 'Child group',
+          children: [{ id: 'grandchild', text: 'Grandchild', children: [] }],
+        },
+        { id: 'direct-child', text: 'Direct child', children: [] },
+      ],
+    },
+    { id: 'unrelated-task', text: 'Unrelated task', children: [] },
+  ])
+
+  const checkbox = (text: string) =>
+    page
+      .getByRole('listitem', { name: `Plan item: ${text}`, exact: true })
+      .getByRole('checkbox', { name: 'Complete item' })
+      .first()
+
+  await checkbox('Parent task').check()
+
+  await expect(checkbox('Parent task')).toBeChecked()
+  await expect(checkbox('Child group')).toBeChecked()
+  await expect(checkbox('Grandchild')).toBeChecked()
+  await expect(checkbox('Direct child')).toBeChecked()
+  await expect(checkbox('Unrelated task')).not.toBeChecked()
+
+  await page.keyboard.press('Meta+Z')
+  await expect(checkbox('Parent task')).not.toBeChecked()
+  await expect(checkbox('Child group')).not.toBeChecked()
+  await expect(checkbox('Grandchild')).not.toBeChecked()
+  await expect(checkbox('Direct child')).not.toBeChecked()
+})
+
 test('enter splits plan items and shift-enter inserts a line break', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
