@@ -1174,7 +1174,7 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await expect(themeButtons.first()).toContainText('Random')
   const themeColumnCount = await themeGroup.evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length)
-  expect(themeColumnCount).toBe(testInfo.project.name === 'mobile' ? 1 : 3)
+  expect(themeColumnCount).toBe(testInfo.project.name === 'mobile' ? 1 : 2)
   await expect(page.getByText(
     'Pick a theme based on your mood. Each theme adapts automatically to light and dark mode.',
     { exact: true },
