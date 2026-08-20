@@ -190,20 +190,23 @@ impl MacosRect {
 }
 
 #[cfg(target_os = "macos")]
-fn disable_automatic_text_replacement() {
+fn disable_automatic_text_substitutions() {
     use objc2_foundation::{NSString, NSUserDefaults};
 
     // WebKit gives this app-specific preference precedence over the system-wide
-    // NSSpellChecker setting. Set it before the webview is created so text
-    // replacements such as "omw" never become enabled in editable elements.
-    NSUserDefaults::standardUserDefaults().setBool_forKey(
-        false,
-        &NSString::from_str("WebAutomaticTextReplacementEnabled"),
-    );
+    // NSSpellChecker settings. Set them before the webview is created so text
+    // replacements and smart quotes never become enabled in editable elements.
+    let defaults = NSUserDefaults::standardUserDefaults();
+    for key in [
+        "WebAutomaticTextReplacementEnabled",
+        "WebAutomaticQuoteSubstitutionEnabled",
+    ] {
+        defaults.setBool_forKey(false, &NSString::from_str(key));
+    }
 }
 
 #[cfg(not(target_os = "macos"))]
-fn disable_automatic_text_replacement() {}
+fn disable_automatic_text_substitutions() {}
 
 #[cfg(target_os = "macos")]
 fn restore_macos_main_window_frame(app: &tauri::App) -> tauri::Result<()> {
@@ -9587,7 +9590,7 @@ async fn sync_p2p_sync(app: tauri::AppHandle, address: String) -> Result<Option<
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    disable_automatic_text_replacement();
+    disable_automatic_text_substitutions();
 
     tauri::Builder::default()
         .setup(|app| {
