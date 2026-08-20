@@ -6103,7 +6103,7 @@ return rows`
             <span>Messages</span>
             <textarea
               aria-label="Database opening messages"
-              rows="5"
+              rows="3"
               value={databaseLoadingMessagesDraft}
               on:input={(event) => updateDatabaseLoadingMessages(event.currentTarget.value)}
               on:blur={finishEditingDatabaseLoadingMessages}
@@ -6118,10 +6118,10 @@ return rows`
         {#if isMac && !isMobile && isTauri()}
           <section class="settings-section">
             <div>
-              <h3>Widget privacy</h3>
+              <h3>Widget visibility</h3>
               <p>
-                Balance reloads WidgetKit when the app quits normally and hides your tasks after a 15-minute grace
-                period. A crash or force-quit can prevent the privacy timer from being scheduled.
+                When enabled, Balance reloads WidgetKit when the app quits normally and hides your tasks after a
+                15-minute grace period. A crash or force-quit can prevent the hide timer from being scheduled.
               </p>
             </div>
 

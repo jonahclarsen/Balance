@@ -2792,7 +2792,8 @@ body.mobile-checkbox-dragging {
 }
 
 .loading-messages-control textarea {
-  min-height: 116px;
+  min-height: 81px;
+  font-size: 15px;
   resize: vertical;
 }
 
