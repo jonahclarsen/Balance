@@ -299,6 +299,26 @@ test('routine sync checks stay silent without resetting launch completion', asyn
   await expect(page.getByText('Waiting for database access…')).toHaveCount(0)
 })
 
+test('edit-triggered syncs stay silent', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+
+  await expect.poll(() => readSyncStatus(page)).toEqual({
+    running: false,
+    initialSyncComplete: true,
+  })
+  await page.evaluate(async () => {
+    const schedulerPath = '/src/lib/syncScheduler.ts'
+    const scheduler = await import(/* @vite-ignore */ schedulerPath)
+    void scheduler.requestSync('edit')
+  })
+
+  await expect.poll(() => readSyncStatus(page)).toEqual({
+    running: true,
+    initialSyncComplete: true,
+  })
+  await expect(page.getByRole('status', { name: /^Sync status:/ })).toHaveCount(0)
+})
+
 test('a manual sync still uses the subtle syncing status', async ({ page }) => {
   await page.goto('/?launch-then-hold=1')
 

@@ -80,7 +80,7 @@ function requiresFollowup(reason: string): boolean {
 }
 
 function shouldShowActivity(reason: string): boolean {
-  return ['launch', 'edit', 'manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
+  return ['launch', 'manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
 }
 
 async function reloadVisibleStateAfterLaunch(reason: string, stateChanged: boolean): Promise<void> {
