@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick } from 'svelte'
+  import { onDestroy, tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
   import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
   import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
@@ -29,6 +29,7 @@
     patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
     options?: TextChangeOptions,
   ) => void
+  export let patchItemsDone: ((planId: Id, itemIds: Id[], done: boolean) => void) | null = null
   export let splitItem: (
     planId: Id,
     itemId: Id,
@@ -124,6 +125,23 @@
   let mobileMenuOpen = false
   let mobileTimeEditorOpen = false
   let mobileTaskActions: HTMLDivElement | null = null
+  let suppressCheckboxClick = false
+
+  type MobileCheckboxDrag = {
+    pointerId: number
+    startX: number
+    startY: number
+    source: HTMLElement
+    holdTimer: ReturnType<typeof setTimeout> | null
+    active: boolean
+    itemIds: Set<Id>
+    previewRows: Set<HTMLElement>
+    lastItemId: Id
+  }
+
+  const MOBILE_CHECKBOX_HOLD_MS = 1000
+  const MOBILE_CHECKBOX_HOLD_SLOP = 10
+  let mobileCheckboxDrag: MobileCheckboxDrag | null = null
 
   // Recompute link segments only when the text or the available targets change,
   // so unrelated edits elsewhere in the tree don't trigger a rescan per keystroke.
@@ -178,6 +196,144 @@
     mobileMenuOpen = false
     mobileTimeEditorOpen = true
   }
+
+  function beginMobileCheckboxDrag(event: PointerEvent) {
+    if (
+      !mobile ||
+      !patchItemsDone ||
+      event.pointerType !== 'touch' ||
+      !event.isPrimary ||
+      event.button !== 0
+    ) return
+
+    cancelMobileCheckboxDrag()
+    const source = event.currentTarget as HTMLElement
+    const drag: MobileCheckboxDrag = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      source,
+      holdTimer: null,
+      active: false,
+      itemIds: new Set(),
+      previewRows: new Set(),
+      lastItemId: item.id,
+    }
+    mobileCheckboxDrag = drag
+    drag.holdTimer = setTimeout(() => activateMobileCheckboxDrag(drag), MOBILE_CHECKBOX_HOLD_MS)
+    source.setPointerCapture?.(event.pointerId)
+    window.addEventListener('pointermove', moveMobileCheckboxDrag, { passive: false })
+    window.addEventListener('pointerup', finishMobileCheckboxDrag)
+    window.addEventListener('pointercancel', cancelMobileCheckboxDragFromEvent)
+  }
+
+  function activateMobileCheckboxDrag(drag: MobileCheckboxDrag) {
+    if (mobileCheckboxDrag !== drag) return
+    drag.holdTimer = null
+    drag.active = true
+    document.body.classList.add('mobile-checkbox-dragging')
+    addMobileCheckboxDragItem(drag, item.id, drag.source.closest<HTMLElement>('[data-plan-item-id]'))
+    navigator.vibrate?.(20)
+  }
+
+  function moveMobileCheckboxDrag(event: PointerEvent) {
+    const drag = mobileCheckboxDrag
+    if (!drag || event.pointerId !== drag.pointerId) return
+
+    if (!drag.active) {
+      if (Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) > MOBILE_CHECKBOX_HOLD_SLOP) {
+        cancelMobileCheckboxDrag()
+      }
+      return
+    }
+
+    event.preventDefault()
+    const hovered = document.elementFromPoint(event.clientX, event.clientY)
+    const row = hovered?.closest<HTMLElement>('[data-plan-item-id]') ?? null
+    if (!row || row.dataset.itemContainerId !== planId) return
+    const hoveredItemId = row.dataset.planItemId
+    if (hoveredItemId) addMobileCheckboxDragRange(drag, hoveredItemId, row)
+  }
+
+  // Touchmove events can be sparse during a quick swipe. Fill the visible tree
+  // range between samples so every row the finger travelled across is included.
+  function addMobileCheckboxDragRange(drag: MobileCheckboxDrag, nextItemId: Id, nextRow: HTMLElement) {
+    const itemIds = flattenPlanItemIds(allItems)
+    const fromIndex = itemIds.indexOf(drag.lastItemId)
+    const toIndex = itemIds.indexOf(nextItemId)
+    if (fromIndex === -1 || toIndex === -1) {
+      addMobileCheckboxDragItem(drag, nextItemId, nextRow)
+    } else {
+      const [start, end] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex]
+      for (const itemId of itemIds.slice(start, end + 1)) {
+        const row = itemId === nextItemId
+          ? nextRow
+          : Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]')).find(
+              (candidate) => candidate.dataset.itemContainerId === planId && candidate.dataset.planItemId === itemId,
+            ) ?? null
+        addMobileCheckboxDragItem(drag, itemId, row)
+      }
+    }
+    drag.lastItemId = nextItemId
+  }
+
+  function flattenPlanItemIds(items: PlanItem[]): Id[] {
+    return items.flatMap((candidate) => [candidate.id, ...flattenPlanItemIds(candidate.children)])
+  }
+
+  function addMobileCheckboxDragItem(drag: MobileCheckboxDrag, itemId: Id, row: HTMLElement | null) {
+    if (!row || drag.itemIds.has(itemId)) return
+    drag.itemIds.add(itemId)
+    drag.previewRows.add(row)
+    row.classList.add('mobile-checkbox-drag-preview')
+  }
+
+  function finishMobileCheckboxDrag(event: PointerEvent) {
+    const drag = mobileCheckboxDrag
+    if (!drag || event.pointerId !== drag.pointerId) return
+
+    const commit = drag.active && drag.itemIds.size > 0 ? patchItemsDone : null
+    const itemIds = [...drag.itemIds]
+    if (drag.active) {
+      event.preventDefault()
+      suppressCheckboxClick = true
+      setTimeout(() => (suppressCheckboxClick = false), 0)
+    }
+    clearMobileCheckboxDrag(drag)
+    commit?.(planId, itemIds, true)
+  }
+
+  function cancelMobileCheckboxDragFromEvent(event: PointerEvent) {
+    if (mobileCheckboxDrag?.pointerId === event.pointerId) cancelMobileCheckboxDrag()
+  }
+
+  function cancelMobileCheckboxDrag() {
+    if (mobileCheckboxDrag) clearMobileCheckboxDrag(mobileCheckboxDrag)
+  }
+
+  function clearMobileCheckboxDrag(drag: MobileCheckboxDrag) {
+    if (drag.holdTimer !== null) clearTimeout(drag.holdTimer)
+    for (const row of drag.previewRows) row.classList.remove('mobile-checkbox-drag-preview')
+    if (drag.source.hasPointerCapture?.(drag.pointerId)) drag.source.releasePointerCapture(drag.pointerId)
+    document.body.classList.remove('mobile-checkbox-dragging')
+    window.removeEventListener('pointermove', moveMobileCheckboxDrag)
+    window.removeEventListener('pointerup', finishMobileCheckboxDrag)
+    window.removeEventListener('pointercancel', cancelMobileCheckboxDragFromEvent)
+    if (mobileCheckboxDrag === drag) mobileCheckboxDrag = null
+  }
+
+  function handleCheckboxClick(event: MouseEvent) {
+    if (!suppressCheckboxClick) return
+    event.preventDefault()
+    event.stopPropagation()
+  }
+
+  function handleCheckboxChange(event: Event & { currentTarget: HTMLInputElement }) {
+    if (suppressCheckboxClick) return
+    patchItem(planId, item.id, { done: event.currentTarget.checked })
+  }
+
+  onDestroy(cancelMobileCheckboxDrag)
 
   function removeTime() {
     mobileMenuOpen = false
@@ -532,12 +688,21 @@
   onWholeRowSelectionToggle={onMobileSelectionToggle}
   onRowClick={handleLockedRowClick}
 >
-  <label class="check-target" title="Complete item">
+  <label
+    class="check-target"
+    class:mobile-checkbox-drag-enabled={mobile && Boolean(patchItemsDone)}
+    title="Complete item"
+    on:pointerdown={beginMobileCheckboxDrag}
+    on:contextmenu={(event) => {
+      if (mobileCheckboxDrag?.active) event.preventDefault()
+    }}
+  >
     <input
       class="check"
       type="checkbox"
       checked={item.done}
-      on:change={(event) => patchItem(planId, item.id, { done: event.currentTarget.checked })}
+      on:click={handleCheckboxClick}
+      on:change={handleCheckboxChange}
       aria-label="Complete item"
     />
   </label>
@@ -720,6 +885,7 @@
             {planId}
             parentId={item.id}
             {patchItem}
+            {patchItemsDone}
             {splitItem}
             {backspaceItemAtStart}
             {deleteItem}

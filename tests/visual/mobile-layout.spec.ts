@@ -463,6 +463,74 @@ test('mobile task dragging auto-scrolls near both viewport edges', async ({ page
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 })
 
+test('holding a mobile checkbox then dragging checks every crossed task in one action', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The checkbox hold-and-drag gesture is mobile-only')
+
+  const taskNames = [
+    'Parent task with a scheduled time',
+    'Nested task without a time',
+    'Deeply nested task text should still have enough room to be comfortably readable',
+    'Another task used to verify mobile drag selection',
+  ]
+  const rows = taskNames.map((name) => page.getByRole('listitem', { name: `Plan item: ${name}` }))
+  const boxes = await Promise.all(rows.map((row) => row.getByRole('checkbox').boundingBox()))
+  if (boxes.some((box) => !box)) throw new Error('Missing checkbox gesture geometry')
+
+  const cdp = await page.context().newCDPSession(page)
+  const origin = boxes[0]!
+  const touchPoint = (box: NonNullable<(typeof boxes)[number]>) => ({
+    x: box.x + box.width / 2,
+    y: box.y + box.height / 2,
+  })
+
+  await page.touchscreen.tap(touchPoint(origin).x, touchPoint(origin).y)
+  await expect(rows[0].getByRole('checkbox')).toBeChecked()
+  await page.touchscreen.tap(touchPoint(origin).x, touchPoint(origin).y)
+  await expect(rows[0].getByRole('checkbox')).not.toBeChecked()
+
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [touchPoint(origin)],
+  })
+  await page.waitForTimeout(1100)
+  await expect(rows[0]).toHaveClass(/mobile-checkbox-drag-preview/)
+
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [touchPoint(boxes.at(-1)!)],
+  })
+  await expect(page.locator('.plan-row.mobile-checkbox-drag-preview')).toHaveCount(taskNames.length)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+
+  for (const row of rows) await expect(row.getByRole('checkbox')).toBeChecked()
+  await expect(page.locator('.plan-row.mobile-checkbox-drag-preview')).toHaveCount(0)
+
+  await page.locator('.mobile-app-header').getByRole('button', { name: 'Undo' }).click()
+  for (const row of rows) await expect(row.getByRole('checkbox')).not.toBeChecked()
+})
+
+test('holding and dragging a checkbox does not bulk-check tasks on desktop', async ({ page }, testInfo) => {
+  test.skip(isMobileProject(testInfo.project.name), 'Desktop-only mobile gesture guard')
+
+  const origin = page
+    .getByRole('listitem', { name: 'Plan item: Parent task with a scheduled time' })
+    .getByRole('checkbox')
+  const target = page
+    .getByRole('listitem', { name: 'Plan item: Another task used to verify mobile drag selection' })
+    .getByRole('checkbox')
+
+  const [originBox, targetBox] = await Promise.all([origin.boundingBox(), target.boundingBox()])
+  if (!originBox || !targetBox) throw new Error('Missing desktop checkbox gesture geometry')
+  await page.mouse.move(originBox.x + originBox.width / 2, originBox.y + originBox.height / 2)
+  await page.mouse.down()
+  await page.waitForTimeout(1100)
+  await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2)
+  await page.mouse.up()
+
+  await expect(target).not.toBeChecked()
+  await expect(page.locator('.plan-row.mobile-checkbox-drag-preview')).toHaveCount(0)
+})
+
 test('mobile task options copy and cut whole task trees and remove tasks', async ({ page }, testInfo) => {
   test.skip(!isMobileProject(testInfo.project.name), 'The task overflow interactions are mobile-only')
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin })

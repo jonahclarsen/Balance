@@ -5133,6 +5133,7 @@ return rows`
                     timeWarnings={pane.timeWarnings}
                     planId={plan.id}
                     patchItem={plannerStore.patchPlanItem}
+                    patchItemsDone={plannerStore.patchPlanItemsDone}
                     splitItem={plannerStore.splitPlanItem}
                     backspaceItemAtStart={plannerStore.backspacePlanItemAtStart}
                     deleteItem={plannerStore.deletePlanItem}

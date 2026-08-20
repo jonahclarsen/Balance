@@ -1584,6 +1584,15 @@ nav button.active {
   cursor: pointer;
 }
 
+.check-target.mobile-checkbox-drag-enabled {
+  -webkit-touch-callout: none;
+  touch-action: none;
+}
+
+body.mobile-checkbox-dragging {
+  user-select: none;
+}
+
 .check {
   -webkit-appearance: none;
   appearance: none;
@@ -1604,6 +1613,17 @@ nav button.active {
 }
 
 .check:checked {
+  border-color: var(--checkbox-checked);
+  background-color: var(--checkbox-checked);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'%3E%3Cpath d='m2 6 3 3 7-7' fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.4'/%3E%3C/svg%3E");
+  background-size: 14px 12px;
+}
+
+.plan-row.mobile-checkbox-drag-preview {
+  background: var(--done-tint);
+}
+
+.plan-row.mobile-checkbox-drag-preview .check {
   border-color: var(--checkbox-checked);
   background-color: var(--checkbox-checked);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'%3E%3Cpath d='m2 6 3 3 7-7' fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.4'/%3E%3C/svg%3E");
