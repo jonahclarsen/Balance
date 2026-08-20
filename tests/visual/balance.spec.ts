@@ -3389,6 +3389,13 @@ test('plan item rich text preserves paste formatting and supports shortcuts', as
   await page.keyboard.press('Meta+I')
   await expect.poll(async () => richHTMLForFocusedItem(page)).toContain('<i>')
   await expect.poll(async () => storedHTMLForFocusedItem(page)).toContain('<em>')
+  await expect.poll(async () => page.evaluate(() => {
+    const italic = document.querySelector<HTMLElement>('[data-plan-text-input] i, [data-plan-text-input] em')
+    return italic ? {
+      fontStyle: getComputedStyle(italic).fontStyle,
+      fontSynthesis: getComputedStyle(italic).fontSynthesis,
+    } : null
+  })).toEqual({ fontStyle: 'italic', fontSynthesis: 'style' })
   await expect.poll(async () => selectedText(page)).toBe('Shortcut')
 
   await page.evaluate(async () => {

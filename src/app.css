@@ -1748,6 +1748,14 @@ body.mobile-checkbox-dragging {
   outline: none;
 }
 
+/* The Rounded content stack has no native italic face on macOS. Allow the
+   browser to synthesize one for rich-text formatting while keeping synthesis
+   disabled for the surrounding interface. */
+[data-rich-text-input],
+.item-text-display {
+  font-synthesis: style;
+}
+
 .item-text:focus,
 .template-text:focus {
   border-color: var(--accent);
