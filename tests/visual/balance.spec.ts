@@ -2455,6 +2455,48 @@ test('enter splits plan items and shift-enter inserts a line break', async ({ pa
   await expect.poll(async () => topLevelTexts(page).then((texts) => texts.length)).toBe(4)
 })
 
+test('enter on an empty plan item focuses a new blank sibling below it', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+  }
+  await page.getByRole('button', { name: 'Add item' }).click()
+
+  const original = page.locator('[data-plan-text-input]').last()
+  const originalId = await original.getAttribute('data-plan-text-input-id')
+  expect(originalId).not.toBeNull()
+  await original.focus()
+  await page.keyboard.press('Enter')
+
+  await expect
+    .poll(async () =>
+      page.evaluate((sourceId) => {
+        const inputs = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-text-input-id]'))
+        const active = document.activeElement instanceof HTMLElement ? document.activeElement : null
+        const sourceIndex = inputs.findIndex((input) => input.dataset.planTextInputId === sourceId)
+        const activeIndex = active ? inputs.indexOf(active) : -1
+
+        return {
+          sourcePresent: sourceIndex >= 0,
+          activeFollowsSource: activeIndex === sourceIndex + 1,
+          activeIsNew: active?.dataset.planTextInputId !== sourceId,
+          activeText: active?.textContent ?? null,
+        }
+      }, originalId),
+    )
+    .toEqual({
+      sourcePresent: true,
+      activeFollowsSource: true,
+      activeIsNew: true,
+      activeText: '',
+    })
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(0)
+})
+
 test('enter at the start of a parent plan item inserts a blank sibling above it', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
