@@ -4361,7 +4361,8 @@ test('list-template word-cap spaces use item probability and preserve the caret'
   await expect(editor).not.toContainText('seven')
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length + 1)
 
-  // Once the exact total reaches the cap, count-neutral spaces are blocked too.
+  // At the exact cap, a trailing space is still count-neutral and follows the
+  // same rule as any other edit. The first letter of a new word is rejected.
   await editor.fill('one two')
   await probability.focus()
   await page.keyboard.press('End')
@@ -4369,8 +4370,21 @@ test('list-template word-cap spaces use item probability and preserve the caret'
   await editor.focus()
   await setCaretOffsetInFocusedEditor(page, 'one two'.length)
   await page.keyboard.press('Space')
+  await expect.poll(async () => editor.evaluate((element) => element.textContent?.length)).toBe('one two '.length)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two '.length)
+  await page.keyboard.type('three')
 
-  await expect(editor).toHaveText('one two')
+  await expect(editor).not.toContainText('three')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two '.length)
+
+  // A space that splits an existing word does add a word, so it is rejected by
+  // that same cap calculation without moving the caret.
+  await editor.fill('one twothree')
+  await editor.focus()
+  await setCaretOffsetInFocusedEditor(page, 'one two'.length)
+  await page.keyboard.press('Space')
+
+  await expect(editor).toHaveText('one twothree')
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two'.length)
 })
 

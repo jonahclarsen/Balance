@@ -124,18 +124,7 @@
     const end = plainTextOffsetForBoundary(editor, range.endContainer, range.endOffset)
     const nextText = `${currentText.slice(0, start)}${event.data}${currentText.slice(end)}`
 
-    // The counter is rounded for display, so it can look full while the exact
-    // probability-weighted total is still below the cap. Only suppress a
-    // count-neutral separator when that exact total has actually reached it.
-    const whitespaceAtExactCap =
-      range.collapsed &&
-      /^\s+$/u.test(event.data) &&
-      maxExpectedWords > 0 &&
-      currentExpected >= maxExpectedWords - 1e-9
-
-    if (wouldExceedCap(nextText, item.probability) || whitespaceAtExactCap) {
-      event.preventDefault()
-    }
+    if (wouldExceedCap(nextText, item.probability)) event.preventDefault()
   }
 
   function plainTextOffsetForBoundary(editor: HTMLDivElement, node: Node, offset: number) {
