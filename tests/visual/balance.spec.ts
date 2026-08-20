@@ -4349,10 +4349,29 @@ test('list-template word-cap spaces use item probability and preserve the caret'
   const textAtLimit = 'one two three four five six'
   await expect(editor).toHaveText(textAtLimit)
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length)
+
+  // The rounded counter is full at 1.8 expected words, but the exact total is
+  // still below 2, so a count-neutral space remains available.
+  await page.keyboard.press('Space')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length + 1)
+
+  // A seventh word would contribute another 0.3 and exceed the cap, so its
+  // first letter is rejected without moving the caret.
+  await page.keyboard.type('seven')
+  await expect(editor).not.toContainText('seven')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length + 1)
+
+  // Once the exact total reaches the cap, count-neutral spaces are blocked too.
+  await editor.fill('one two')
+  await probability.focus()
+  await page.keyboard.press('End')
+  await expect(probability).toHaveValue('100')
+  await editor.focus()
+  await setCaretOffsetInFocusedEditor(page, 'one two'.length)
   await page.keyboard.press('Space')
 
-  await expect(editor).toHaveText(textAtLimit)
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length)
+  await expect(editor).toHaveText('one two')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two'.length)
 })
 
 test('list template item appearance probability grandfathers saved values below 30 percent', async ({ page }) => {

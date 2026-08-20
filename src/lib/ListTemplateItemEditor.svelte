@@ -124,17 +124,16 @@
     const end = plainTextOffsetForBoundary(editor, range.endContainer, range.endOffset)
     const nextText = `${currentText.slice(0, start)}${event.data}${currentText.slice(end)}`
 
-    // A separator does not change the count by itself. Allow it only when a word
-    // typed at the resulting caret would still fit at this item's probability.
-    const nextWordWouldExceed =
+    // The counter is rounded for display, so it can look full while the exact
+    // probability-weighted total is still below the cap. Only suppress a
+    // count-neutral separator when that exact total has actually reached it.
+    const whitespaceAtExactCap =
       range.collapsed &&
       /^\s+$/u.test(event.data) &&
-      wouldExceedCap(
-        `${currentText.slice(0, start)}${event.data}word${currentText.slice(end)}`,
-        item.probability,
-      )
+      maxExpectedWords > 0 &&
+      currentExpected >= maxExpectedWords - 1e-9
 
-    if (wouldExceedCap(nextText, item.probability) || nextWordWouldExceed) {
+    if (wouldExceedCap(nextText, item.probability) || whitespaceAtExactCap) {
       event.preventDefault()
     }
   }
