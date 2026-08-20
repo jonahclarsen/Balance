@@ -7,21 +7,21 @@
   const previewPlanId = 'theme-preview-plan'
   const previewItems: PlanItem[] = [
     {
-      id: 'theme-preview-laundry-negotiation',
-      text: 'Negotiate a peace treaty with the laundry chair',
-      html: 'Negotiate a peace treaty with the laundry chair',
-      done: false,
-      startMinutes: 9 * 60,
-      endMinutes: 9 * 60 + 30,
-      children: [],
-    },
-    {
-      id: 'theme-preview-plant-apology',
-      text: 'Apologize to the houseplants for the quarterly results',
-      html: 'Apologize to the houseplants for the quarterly results',
+      id: 'theme-preview-completed',
+      text: 'Return Thing Three to the Cat in the Hat before anyone counts',
+      html: 'Return Thing Three to the Cat in the Hat before anyone counts',
       done: true,
       startMinutes: null,
       endMinutes: null,
+      children: [],
+    },
+    {
+      id: 'theme-preview-timed',
+      text: 'Cross-examine the moon about who put soup in my shoes',
+      html: 'Cross-examine the moon about who put soup in my shoes',
+      done: false,
+      startMinutes: 9 * 60,
+      endMinutes: 9 * 60 + 30,
       children: [],
     },
   ]
@@ -30,7 +30,6 @@
 </script>
 
 <div class="theme-task-preview">
-  <p class="theme-task-preview-label">Live preview</p>
   <div class="list-panel theme-task-preview-list" inert aria-hidden="true">
     {#each previewItems as item (item.id)}
       <PlanItemEditor
@@ -52,19 +51,6 @@
 </div>
 
 <style>
-  .theme-task-preview {
-    display: grid;
-    gap: 7px;
-  }
-
-  .theme-task-preview-label {
-    color: var(--muted);
-    font-size: 11px;
-    font-weight: 800;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
   .theme-task-preview-list {
     padding-block: 5px;
   }

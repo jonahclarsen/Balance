@@ -1155,9 +1155,10 @@ test('color theme settings show live Today task previews', async ({ page }, test
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
 
   const taskPreview = page.locator('.theme-task-preview')
-  const timedPreviewRow = taskPreview.locator('[data-plan-item-id="theme-preview-laundry-negotiation"]')
-  const completedPreviewRow = taskPreview.locator('[data-plan-item-id="theme-preview-plant-apology"]')
+  const completedPreviewRow = taskPreview.locator('[data-plan-item-id="theme-preview-completed"]')
+  const timedPreviewRow = taskPreview.locator('[data-plan-item-id="theme-preview-timed"]')
   await expect(taskPreview.locator('.plan-row')).toHaveCount(2)
+  await expect(taskPreview.locator('.plan-row').first()).toHaveClass(/done/)
   await expect(timedPreviewRow.locator('.mobile-time-start-side, .time-start-side')).toContainText('9am')
   await expect(timedPreviewRow.locator('.mobile-time-end-side, .time-end-side')).toContainText('9:30am')
   await expect(completedPreviewRow).toHaveClass(/done/)
