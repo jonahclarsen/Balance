@@ -92,6 +92,16 @@
         { keys: ['del'], label: 'Delete selected items' },
       ],
     },
+    {
+      title: 'Celebration review',
+      shortcuts: [
+        { keys: ['left'], label: 'Previous / next celebration', alt: ['right'] },
+        { keys: ['Y'], label: 'Keep and continue' },
+        { keys: ['N'], label: 'Mark for removal and continue' },
+        { keys: ['C'], label: 'Copy removal list' },
+        { keys: ['esc'], label: 'Close review' },
+      ],
+    },
   ]
 </script>
 

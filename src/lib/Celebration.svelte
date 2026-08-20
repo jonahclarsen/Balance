@@ -161,6 +161,30 @@
         style: `--angle:${index * 90 + 45}deg;--color:${definition.palette[index % 3]};--delay:${index * 0.12}s`,
       }))
     }
+    if (recipe === 'poltergeist') {
+      return Array.from({ length: 14 }, (_, index) => {
+        const radius = 110 + (index % 4) * 48
+        return {
+          className: 'haunted-card', text: index % 3 === 0 ? '✓' : index % 3 === 1 ? '—  —' : '☰',
+          style: `--angle:${index * 25.7}deg;--radius:${radius}px;--radius-mid:${radius * .55}px;--radius-wide:${radius * 1.2}px;--delay:${index * -0.08}s;--color:${definition.palette[index % 3]}`,
+        }
+      })
+    }
+    if (recipe === 'recursive-fever') {
+      return Array.from({ length: 9 }, (_, index) => ({
+        className: 'fever-window', text: `BALANCE\n${'□ '.repeat((index % 3) + 1)}✓`,
+        style: `--depth:${index * 58}px;--turn:${index * 23}deg;--x:${(index - 4) * 7}vw;--y:${(index - 4) * 5}vh;--delay:${index * 0.07}s;--color:${definition.palette[index % 3]}`,
+      }))
+    }
+    if (recipe === 'buffer-overflow') {
+      return Array.from({ length: 10 }, (_, index) => {
+        const direction = index % 2 === 0 ? -1 : 1
+        return {
+          className: 'buffer-slab', text: index % 2 === 0 ? '//// SYSTEM OK ////' : '✓ ✓ ✓ ✓ ✓',
+          style: `--y:${index * 10}%;--shift-a:${direction * 17}vw;--shift-b:${direction * -24}vw;--shift-c:${direction * 9}vw;--shift-d:${direction * -4}vw;--color:${definition.palette[index % 3]}`,
+        }
+      })
+    }
     return []
   }
 
@@ -304,6 +328,55 @@
         { transform: 'perspective(700px) rotateX(7deg) translateY(7px)', offset: 0.43 },
         { transform: 'perspective(700px) rotateX(0deg)' },
       ], { duration: 2200, easing: 'ease-in-out' })
+    } else if (recipe === 'poltergeist') {
+      addAnimation(shell, [
+        { transform: 'perspective(1000px) rotate3d(0,0,0,0deg) scale(1)', filter: 'saturate(1)' },
+        { transform: 'perspective(1000px) rotate3d(.15,.7,.2,9deg) scale(.91)', filter: 'saturate(1.8)', offset: 0.24 },
+        { transform: 'perspective(1000px) rotate3d(.7,-.2,.4,-12deg) scale(1.08)', filter: 'saturate(2.1) hue-rotate(65deg)', offset: 0.56 },
+        { transform: 'perspective(1000px) rotate3d(-.3,.4,.8,7deg) scale(.96)', filter: 'saturate(1.5) hue-rotate(-35deg)', offset: 0.78 },
+        { transform: 'perspective(1000px) rotate3d(0,0,0,0deg) scale(1)', filter: 'saturate(1)' },
+      ], { duration: 4900, easing: 'cubic-bezier(.45,-.25,.2,1.3)' })
+      rows.forEach((row, index) => addAnimation(row, [
+        { transform: 'translate(0,0) rotate(0deg)', opacity: 1 },
+        { transform: `translate(${(index % 2 ? -1 : 1) * (80 + index * 7)}px, ${-70 + (index % 5) * 36}px) rotate(${index % 2 ? -35 : 42}deg)`, opacity: .75, offset: 0.45 },
+        { transform: `translate(${(index % 3 - 1) * 55}px, ${(index % 4 - 2) * 45}px) rotate(${index * 11}deg)`, opacity: .9, offset: 0.7 },
+        { transform: 'translate(0,0) rotate(0deg)', opacity: 1 },
+      ], { duration: 4300, delay: index * 32, easing: 'cubic-bezier(.2,.9,.2,1)' }))
+    } else if (recipe === 'non-euclidean') {
+      addAnimation(pane, [
+        { transform: 'perspective(900px) rotateX(0) rotateY(0) skew(0)', transformOrigin: '50% 50%' },
+        { transform: 'perspective(900px) rotateX(58deg) rotateY(-22deg) skewY(8deg) scale(.72)', transformOrigin: '10% 10%', offset: 0.32 },
+        { transform: 'perspective(900px) rotateX(-18deg) rotateY(68deg) skewX(-14deg) scale(.82)', transformOrigin: '90% 20%', offset: 0.64 },
+        { transform: 'perspective(900px) rotateX(0) rotateY(0) skew(0)', transformOrigin: '50% 50%' },
+      ], { duration: 5100, easing: 'cubic-bezier(.6,-.15,.25,1.18)' })
+      addAnimation(sidebar, [
+        { transform: 'translate(0,0) rotate(0deg)' },
+        { transform: 'translate(42vw,-16vh) rotate(88deg) scale(.78)', offset: 0.38 },
+        { transform: 'translate(67vw,38vh) rotate(181deg) scale(.62)', offset: 0.68 },
+        { transform: 'translate(0,0) rotate(360deg)' },
+      ], { duration: 5000, easing: 'cubic-bezier(.3,.8,.2,1)' })
+    } else if (recipe === 'recursive-fever') {
+      addAnimation(shell, [
+        { transform: 'scale(1)', filter: 'hue-rotate(0deg) saturate(1)' },
+        { transform: 'scale(.82) rotate(-2deg)', filter: 'hue-rotate(110deg) saturate(2.4)', offset: 0.28 },
+        { transform: 'scale(1.12) rotate(3deg)', filter: 'hue-rotate(250deg) saturate(2)', offset: 0.6 },
+        { transform: 'scale(.94) rotate(-1deg)', filter: 'hue-rotate(330deg) saturate(1.7)', offset: 0.82 },
+        { transform: 'scale(1)', filter: 'hue-rotate(360deg) saturate(1)' },
+      ], { duration: 5300, easing: 'ease-in-out' })
+      rows.forEach((row, index) => addAnimation(row, [
+        { transform: 'translateX(0) scaleX(1)' },
+        { transform: `translateX(${index % 2 ? -18 : 18}vw) scaleX(${index % 3 ? .55 : 1.45})`, offset: 0.44 },
+        { transform: `translateX(${index % 2 ? 8 : -8}vw) scaleX(${index % 3 ? 1.25 : .7})`, offset: 0.7 },
+        { transform: 'translateX(0) scaleX(1)' },
+      ], { duration: 4400, delay: index * 44, easing: 'cubic-bezier(.4,0,.2,1)' }))
+    } else if (recipe === 'buffer-overflow') {
+      addAnimation(shell, [
+        { transform: 'translate(0,0) skew(0)', filter: 'none', clipPath: 'inset(0 0 0 0)' },
+        { transform: 'translate(-5vw,2vh) skewX(7deg)', filter: 'hue-rotate(55deg) saturate(2)', clipPath: 'inset(4% 0 13% 0)', offset: 0.2 },
+        { transform: 'translate(7vw,-3vh) skewY(-5deg)', filter: 'hue-rotate(170deg) saturate(2.3)', clipPath: 'inset(20% 0 2% 0)', offset: 0.43 },
+        { transform: 'translate(-2vw,4vh) skewX(-9deg) scale(1.08)', filter: 'hue-rotate(285deg) saturate(1.8)', clipPath: 'inset(7% 0 26% 0)', offset: 0.68 },
+        { transform: 'translate(0,0) skew(0)', filter: 'none', clipPath: 'inset(0 0 0 0)' },
+      ], { duration: 4700, easing: 'steps(8, jump-none)' })
     }
   }
 
@@ -622,6 +695,17 @@
       <div class="rgb-panel red-panel">✓</div><div class="rgb-panel green-panel">✓</div><div class="rgb-panel blue-panel">✓</div>
     {:else if activeDefinition.recipe === 'mitosis'}
       <div class="mitosis-core">BALANCE<br>✓</div>
+    {:else if activeDefinition.recipe === 'poltergeist'}
+      <div class="poltergeist-eye"><span>✓</span></div><div class="poltergeist-vortex"></div>
+    {:else if activeDefinition.recipe === 'non-euclidean'}
+      <div class="impossible-room">
+        <i class="impossible-floor"></i><i class="impossible-wall wall-a"></i><i class="impossible-wall wall-b"></i>
+        <b>THIS CORNER<br>HAS TOO MANY<br>CORNERS</b><span>✓</span>
+      </div>
+    {:else if activeDefinition.recipe === 'recursive-fever'}
+      <div class="fever-core">YOU ARE HERE<div>YOU ARE ALSO HERE<div>STILL HERE</div></div></div>
+    {:else if activeDefinition.recipe === 'buffer-overflow'}
+      <div class="overflow-meter"><span>REALITY</span><b>137%</b><i></i></div>
     {:else if activeDefinition.recipe === 'applause'}
       <div class="applause-marquee">👏　✓　👏　✓　👏</div><div class="applause-title">BALANCE DEMANDS APPLAUSE</div>
     {/if}
@@ -768,6 +852,25 @@
   .red-panel { --dx: -18px; color: #ff2851; } .green-panel { --dx: 0px; color: #22e39f; } .blue-panel { --dx: 18px; color: #287cff; }
   .mitosis-core { border-radius: 18px; background: var(--c1); font-size: 14px; line-height: 1.7; }
   .baby-ui { left: 50%; top: 50%; width: 92px; height: 66px; border: 4px solid var(--color); border-radius: 12px; background: white; color: var(--color); white-space: pre-line; font: 800 12px/1.5 ui-monospace, monospace; animation: mitosis 4.5s var(--delay) cubic-bezier(.2,.8,.2,1) both; }
+  .poltergeist-vortex { position: absolute; left: 50%; top: 50%; width: min(82vmin, 720px); aspect-ratio: 1; border: 22px double var(--c1); border-radius: 46% 54% 38% 62%; box-shadow: inset 0 0 0 18px var(--c2), inset 0 0 0 40px var(--c3), 0 0 90px var(--c2); mix-blend-mode: difference; animation: poltergeist-vortex 4.8s cubic-bezier(.3,.7,.2,1) both; }
+  .poltergeist-eye { position: absolute; z-index: 3; left: 50%; top: 50%; display: grid; width: min(28vmin, 230px); aspect-ratio: 1.7; place-items: center; border: 8px solid var(--c3); border-radius: 65% 35% 64% 36%; background: radial-gradient(circle, #111 0 15%, var(--c1) 16% 30%, white 31% 47%, var(--c2) 49%); box-shadow: 0 0 60px var(--c1); transform: translate(-50%, -50%) rotate(-12deg); animation: possessed-eye 4.5s ease-in-out both; }
+  .poltergeist-eye span { color: white; font: 1000 34px/1 system-ui; text-shadow: 0 0 8px #000; }
+  .haunted-card { left: 50%; top: 50%; width: 82px; height: 48px; border: 3px solid var(--color); border-radius: 9px; background: color-mix(in srgb, var(--color) 22%, white); box-shadow: 0 12px 30px #0005; color: var(--color); white-space: pre; font: 900 13px/1 ui-monospace, monospace; animation: haunted-orbit 4.8s var(--delay) cubic-bezier(.25,.7,.2,1) both; }
+  .impossible-room { position: absolute; left: 50%; top: 50%; width: min(72vmin, 650px); aspect-ratio: 1; transform-style: preserve-3d; animation: impossible-room 5.1s cubic-bezier(.5,-.1,.2,1.12) both; }
+  .impossible-floor, .impossible-wall { position: absolute; inset: 12%; border: 9px solid var(--c1); background: repeating-linear-gradient(45deg, color-mix(in srgb, var(--c2) 76%, transparent) 0 18px, color-mix(in srgb, var(--c3) 70%, transparent) 18px 36px); box-shadow: inset 0 0 60px #0005; }
+  .impossible-floor { transform: perspective(700px) rotateX(68deg) rotateZ(12deg); }
+  .wall-a { transform: perspective(700px) rotateY(73deg) translateX(-28%); }
+  .wall-b { transform: perspective(700px) rotateY(-67deg) translateX(30%) rotateZ(90deg); }
+  .impossible-room b { position: absolute; z-index: 2; left: 50%; top: 50%; color: white; font: 1000 clamp(16px, 3.5vw, 39px)/.83 system-ui; text-align: center; text-shadow: 3px 3px 0 var(--c1), -3px -3px 0 var(--c2); transform: translate(-50%, -50%) rotate(-9deg); }
+  .impossible-room > span { position: absolute; z-index: 3; right: 8%; top: 3%; color: var(--c3); font: 1000 clamp(60px, 12vw, 140px)/1 system-ui; animation: impossible-check 4.6s ease-in-out both; }
+  .fever-core { position: absolute; z-index: 2; left: 50%; top: 50%; border: 5px solid var(--c1); padding: 20px; background: var(--c3); color: #111; font: 1000 clamp(15px, 3vw, 32px)/1 system-ui; transform: translate(-50%, -50%); animation: fever-core 5s ease-in-out both; }
+  .fever-core div { margin: 12px; border: 4px solid currentColor; padding: 12px; background: var(--c2); transform: rotate(7deg); }
+  .fever-core div div { background: var(--c1); transform: rotate(-18deg); }
+  .fever-window { left: 50%; top: 50%; width: clamp(110px, 18vw, 220px); min-height: 72px; border: 5px solid var(--color); border-radius: 8px; padding: 12px; background: color-mix(in srgb, var(--color) 25%, #10101a); box-shadow: 0 0 30px var(--color); color: white; white-space: pre-line; font: 900 12px/1.55 ui-monospace, monospace; transform-style: preserve-3d; animation: fever-window 5.2s var(--delay) cubic-bezier(.25,.8,.15,1) both; }
+  .overflow-meter { position: absolute; z-index: 3; left: 50%; top: 48%; display: grid; gap: 6px; width: min(70vw, 560px); border: 7px solid var(--c1); padding: 19px; background: #090810e8; box-shadow: 18px 18px 0 var(--c2), -18px -18px 0 var(--c3); color: white; font: 1000 clamp(18px, 4vw, 42px)/1 ui-monospace, monospace; transform: translate(-50%, -50%); animation: overflow-meter 4.6s steps(7, jump-none) both; }
+  .overflow-meter b { justify-self: end; color: var(--c3); font-size: 1.7em; }
+  .overflow-meter i { height: 20px; background: linear-gradient(90deg, var(--c1), var(--c2), var(--c3)); box-shadow: 0 0 25px var(--c2); transform-origin: left; animation: overflow-fill 3.8s steps(9, end) both; }
+  .buffer-slab { left: -8%; top: var(--y); width: 116%; height: 9%; justify-content: center; overflow: hidden; border-block: 2px solid var(--color); background: color-mix(in srgb, var(--color) 28%, transparent); color: white; font: 1000 clamp(10px, 2.2vw, 23px)/1 ui-monospace, monospace; letter-spacing: .12em; mix-blend-mode: screen; animation: buffer-slab 4.5s steps(9, jump-none) both; }
   .applause-marquee { position: absolute; left: 0; right: 0; top: 9%; padding: 12px; border-block: 4px solid var(--c1); background: var(--c3); color: white; font: 900 clamp(22px, 6vw, 58px) system-ui; text-align: center; white-space: nowrap; animation: marquee-bow 3.4s ease both; }
   .applause-title { position: absolute; left: 50%; top: 52%; padding: 22px; border: 6px double var(--c1); background: var(--c2); color: #27231b; font: 1000 clamp(28px, 7vw, 72px)/.92 system-ui; text-align: center; transform: translate(-50%, -50%); animation: stamp 3.2s ease both; }
   .reduced-emblem { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: min(42vw, 220px); aspect-ratio: 1; border: 3px solid var(--c1); border-radius: 50%; background: radial-gradient(circle, color-mix(in srgb, var(--c2) 65%, white), color-mix(in srgb, var(--c3) 35%, transparent)); box-shadow: 0 16px 46px #0002; transform: translate(-50%, -50%); }
@@ -859,6 +962,16 @@
   @keyframes chrome-melt { 0%,100%{opacity:0;transform:scale(.2) rotate(-20deg)} 25%,75%{opacity:.75;transform:scale(1) rotate(5deg)} 52%{transform:translateX(8vw) scale(1.2) rotate(-5deg)} }
   @keyframes rgb-echo { 0%,100%{opacity:0;transform:translate(-50%,-50%)} 25%,70%{opacity:.3;transform:translate(calc(-50% + var(--dx)),-50%) scale(1.04)} 82%{opacity:.5;transform:translate(-50%,-50%) scale(1)} }
   @keyframes mitosis { 0%,100%{opacity:0;transform:translate(-50%,-50%) rotate(var(--angle)) translateX(0) scale(.1)} 25%{opacity:1;transform:translate(-50%,-50%) rotate(var(--angle)) translateX(150px) rotate(calc(var(--angle) * -1)) scale(1)} 68%{opacity:1;transform:translate(-50%,-50%) rotate(calc(var(--angle) + 250deg)) translateX(150px) rotate(calc((var(--angle) + 250deg) * -1)) scale(.8)} }
+  @keyframes poltergeist-vortex { 0%,100%{opacity:0;transform:translate(-50%,-50%) rotate(0) scale(.1);border-radius:50%} 20%{opacity:.75} 52%{opacity:.9;transform:translate(-50%,-50%) rotate(410deg) scale(1.15);border-radius:28% 72% 62% 38%} 78%{transform:translate(-50%,-50%) rotate(-130deg) scale(.72);border-radius:73% 27% 31% 69%} }
+  @keyframes possessed-eye { 0%,100%{opacity:0;transform:translate(-50%,-50%) rotate(-80deg) scale(.2)} 24%{opacity:1;transform:translate(-50%,-50%) rotate(15deg) scale(1.15)} 48%{transform:translate(-50%,-50%) rotate(-18deg) scale(.82)} 70%{transform:translate(-50%,-50%) rotate(190deg) scale(1.4)} }
+  @keyframes haunted-orbit { 0%,100%{opacity:0;transform:translate(-50%,-50%) rotate(var(--angle)) translateX(0) rotate(calc(var(--angle) * -1)) scale(.1)} 16%{opacity:.95} 42%{transform:translate(-50%,-50%) rotate(calc(var(--angle) + 290deg)) translateX(var(--radius)) rotate(calc((var(--angle) + 290deg) * -1)) scale(1.25)} 68%{transform:translate(-50%,-50%) rotate(calc(var(--angle) - 190deg)) translateX(var(--radius-mid)) rotate(calc((var(--angle) - 190deg) * -1)) scale(.65)} 82%{opacity:1;transform:translate(-50%,-50%) rotate(calc(var(--angle) + 540deg)) translateX(var(--radius-wide)) rotate(calc((var(--angle) + 540deg) * -1)) scale(1)} }
+  @keyframes impossible-room { 0%,100%{opacity:0;transform:translate(-50%,-50%) perspective(800px) rotateX(0) rotateY(0) scale(.25)} 18%{opacity:.9} 38%{transform:translate(-50%,-50%) perspective(800px) rotateX(48deg) rotateY(-38deg) rotateZ(12deg) scale(1.05)} 66%{transform:translate(-50%,-50%) perspective(800px) rotateX(-34deg) rotateY(118deg) rotateZ(-19deg) scale(.82)} 82%{opacity:1;transform:translate(-50%,-50%) perspective(800px) rotateX(72deg) rotateY(205deg) scale(1.18)} }
+  @keyframes impossible-check { 0%,100%{opacity:0;transform:translate(-40vw,55vh) rotate(-180deg) scale(.2)} 34%{opacity:1;transform:translate(0,0) rotate(22deg) scale(1)} 63%{transform:translate(-52vw,-20vh) rotate(320deg) scale(1.8)} 80%{transform:translate(-8vw,22vh) rotate(600deg) scale(.7)} }
+  @keyframes fever-core { 0%,100%{opacity:0;transform:translate(-50%,-50%) scale(.05) rotate(-40deg)} 25%{opacity:1;transform:translate(-50%,-50%) scale(1.18) rotate(8deg)} 51%{transform:translate(-50%,-50%) scale(.72) rotate(-11deg)} 76%{opacity:1;transform:translate(-50%,-50%) scale(1.45) rotate(19deg)} }
+  @keyframes fever-window { 0%,100%{opacity:0;transform:translate(-50%,-50%) translateZ(0) rotate(0) scale(.05)} 18%{opacity:.9} 38%{transform:translate(-50%,-50%) translateZ(var(--depth)) rotate(var(--turn)) translateX(var(--x)) scale(.85)} 64%{transform:translate(-50%,-50%) translateZ(calc(var(--depth) * -1)) rotate(calc(var(--turn) * -1)) translateY(var(--y)) scale(1.2)} 82%{opacity:.95;transform:translate(-50%,-50%) translateZ(var(--depth)) rotate(calc(var(--turn) + 270deg)) scale(.55)} }
+  @keyframes overflow-meter { 0%,100%{opacity:0;transform:translate(-50%,-50%) scaleX(.1) skewX(-22deg)} 16%{opacity:1;transform:translate(-44%,-52%) scaleX(1.2) skewX(8deg)} 39%{transform:translate(-55%,-44%) scale(.8,1.35) skewY(-6deg)} 62%{transform:translate(-48%,-57%) scale(1.28,.74) skewX(13deg)} 82%{opacity:1;transform:translate(-50%,-50%) scale(.95) skew(0)} }
+  @keyframes overflow-fill { 0%{transform:scaleX(.03)} 55%{transform:scaleX(.82)} 72%,100%{transform:scaleX(1.37)} }
+  @keyframes buffer-slab { 0%,100%{opacity:0;transform:translateX(0) skewX(0)} 12%{opacity:.75} 27%{transform:translateX(var(--shift-a)) skewX(12deg)} 49%{transform:translateX(var(--shift-b)) skewX(-18deg) scaleY(1.55)} 68%{transform:translateX(var(--shift-c)) skewX(25deg) scaleY(.55)} 85%{opacity:.85;transform:translateX(var(--shift-d))} }
   @keyframes marquee-bow { 0%,100%{opacity:0;transform:translateY(-60px)} 22%,70%{opacity:1;transform:translateY(0) scaleX(1)} 48%{transform:translateY(9px) scaleX(.95)} }
   @keyframes completed-list-pop { 0%{opacity:0;transform:translate(-50%,-42%) rotate(-9deg) scale(.48)} 18%{opacity:1;transform:translate(-50%,-50%) rotate(3deg) scale(1.12)} 31%,76%{opacity:1;transform:translate(-50%,-50%)} 100%{opacity:0;transform:translate(-50%,-62%) rotate(2deg) scale(.94)} }
   @keyframes completed-row-check { from{opacity:0;transform:translateX(-12px) scale(.92)} to{opacity:1;transform:none} }

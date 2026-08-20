@@ -38,16 +38,16 @@ async function storedNavigationAndPlans(page: Page) {
   })
 }
 
-test('Settings renders exactly 30 named celebration cards with copy, icons, and the exact reminder', async ({ page }, testInfo) => {
+test('Settings renders every named celebration card with copy, icons, and the exact reminder', async ({ page }, testInfo) => {
   await resetBrowserState(page)
   await openSettings(page, testInfo)
 
   const picker = page.getByRole('group', { name: 'Day completion celebration' })
   const options = picker.locator('.celebration-option')
   const cards = picker.locator('.celebration-option-button')
-  await expect(options).toHaveCount(30)
-  await expect(cards).toHaveCount(30)
-  await expect(picker.locator('.celebration-option-art')).toHaveCount(30)
+  await expect(options).toHaveCount(COMPLETION_CELEBRATIONS.length)
+  await expect(cards).toHaveCount(COMPLETION_CELEBRATIONS.length)
+  await expect(picker.locator('.celebration-option-art')).toHaveCount(COMPLETION_CELEBRATIONS.length)
 
   const renderedCatalog = await cards.evaluateAll((buttons) => buttons.map((button) => ({
     id: button.getAttribute('data-celebration-option'),
@@ -67,6 +67,53 @@ test('Settings renders exactly 30 named celebration cards with copy, icons, and 
   await expect(reminder).toHaveText(REMINDER)
   await expect(reminder).toHaveJSProperty('tagName', 'H4')
   await expect(reminder.locator('xpath=..').locator(':scope > :last-child')).toHaveText(REMINDER)
+})
+
+test('keyboard celebration review marks choices, browses, and copies only removals', async ({ page }, testInfo) => {
+  await resetBrowserState(page)
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin })
+  const initialDate = await page.locator('.today-date-input').inputValue()
+  const before = await storedNavigationAndPlans(page)
+  await openSettings(page, testInfo)
+
+  const start = page.getByRole('button', { name: 'Review all with Y / N' })
+  await start.click()
+
+  const review = page.getByRole('dialog', { name: 'Celebration review' })
+  await expect(review).toBeVisible()
+  await expect(review).toContainText(`1 / ${COMPLETION_CELEBRATIONS.length}`)
+  await expect(review).toContainText('Aurora Checkwave')
+  await expect(review).toContainText('UNDECIDED')
+  await expect(page.locator('.app-shell')).toHaveAttribute('inert', '')
+  await expect(page.locator('.today-date-input')).toHaveValue(addDays(initialDate, -1))
+  await expect(page.locator('.celebration-stage')).toHaveAttribute('data-celebration-id', 'aurora-checkwave')
+
+  await page.keyboard.press('n')
+  await expect(review).toContainText('Dandelion Done')
+  await expect(page.locator('.celebration-stage')).toHaveAttribute('data-celebration-id', 'dandelion-done')
+  await page.keyboard.press('y')
+  await expect(review).toContainText('Constellation Closure')
+  await page.keyboard.press('ArrowRight')
+  await expect(review).toContainText('Bioluminescent Tide')
+  await page.keyboard.press('ArrowLeft')
+  await expect(review).toContainText('Constellation Closure')
+  await page.keyboard.press('n')
+  await expect(review).toContainText('Bioluminescent Tide')
+
+  await page.keyboard.press('c')
+  await expect(review.getByRole('status')).toHaveText('Copied 2 removals.')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe([
+    'Aurora Checkwave',
+    'Constellation Closure',
+  ].join('\n'))
+
+  await page.keyboard.press('Escape')
+  await expect(review).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+  await expect(start).toBeFocused()
+  await expect(page.locator('.app-shell')).not.toHaveAttribute('inert', '')
+  await expect(page.locator('[data-celebration-option="aurora-checkwave"]')).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => storedNavigationAndPlans(page)).toEqual(before)
 })
 
 test('selecting saves, previews yesterday without chrome or plan mutations, and Escape restores Settings', async ({ page }, testInfo) => {

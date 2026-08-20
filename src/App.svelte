@@ -58,6 +58,7 @@
   import { DEFAULT_THEME_ID, normalizeThemeId, THEME_PRESETS, type ThemeId } from './lib/themes'
   import { isNoteTrashed } from './lib/noteTrash'
   import {
+    COMPLETION_CELEBRATIONS,
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
     normalizeCompletionCelebrationId,
@@ -90,6 +91,17 @@
     compareDayDate: string
     settingsScrollTop: number
     focusCelebrationId: CompletionCelebrationId
+  }
+  type CelebrationCullDecision = 'keep' | 'remove'
+  type CelebrationCullingSession = {
+    token: number
+    index: number
+    decisions: Partial<Record<CompletionCelebrationId, CelebrationCullDecision>>
+    previewDate: string
+    returnView: View
+    compareDayOpen: boolean
+    compareDayDate: string
+    settingsScrollTop: number
   }
 
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
@@ -205,6 +217,10 @@
   let celebrationPreviewToken = 0
   let celebrationPreviewAnnouncement = ''
   let celebrationPreviewAnnouncementTimer: number | null = null
+  let celebrationCulling: CelebrationCullingSession | null = null
+  let celebrationCullingToken = 0
+  let celebrationCullingPanel: HTMLDivElement | null = null
+  let celebrationCullingStatus = ''
   let goalBurst: GoalBurst | null = null
   // Tracks each plan item's done state so we can fire a goal burst the moment an
   // item that contributes to a goal transitions to done (via any completion path).
@@ -403,8 +419,14 @@ return rows`
   $: if (goals !== $plannerStore.goals) goals = $plannerStore.goals
   $: if (goalCompletions !== $plannerStore.goalCompletions) goalCompletions = $plannerStore.goalCompletions
   $: if (goals !== goalHistoryGoals) scheduleGoalHistoryUpdate()
-  $: displayedPlanDate = celebrationPreview?.previewDate ?? $plannerStore.activePlanDate
-  $: displayedCompareDayOpen = compareDayOpen && !celebrationPreview
+  $: displayedPlanDate = celebrationCulling?.previewDate ?? celebrationPreview?.previewDate ?? $plannerStore.activePlanDate
+  $: displayedCompareDayOpen = compareDayOpen && !celebrationPreview && !celebrationCulling
+  $: celebrationCullingDefinition = celebrationCulling
+    ? COMPLETION_CELEBRATIONS[celebrationCulling.index]
+    : null
+  $: celebrationCullingDecision = celebrationCulling && celebrationCullingDefinition
+    ? celebrationCulling.decisions[celebrationCullingDefinition.id]
+    : undefined
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === displayedPlanDate)
   $: activePlanTimeWarnings = buildItemTimeWarnings(activePlan?.items ?? [])
   $: comparePlan = displayedCompareDayOpen ? $plannerStore.plans.find((plan) => plan.date === compareDayDate) : undefined
@@ -564,7 +586,7 @@ return rows`
   // The list overlay toast belongs to the page it was opened over: leaving that
   // page hides it, returning shows it again (its state + selection persist).
   $: listOverlayVisible = Boolean(listOverlay && listOverlayInstance && view === listOverlayView)
-  $: if (workspaceViewStateReady && !celebrationPreview) {
+  $: if (workspaceViewStateReady && !celebrationPreview && !celebrationCulling) {
     persistWorkspaceViewState(
       view,
       listOverlay,
@@ -853,6 +875,104 @@ return rows`
       celebrationPreviewAnnouncement = ''
       celebrationPreviewAnnouncementTimer = null
     }, 2_500)
+  }
+
+  async function startCelebrationCulling() {
+    if (celebrationPreview || celebrationCulling) return
+    dismissCelebration()
+    rememberWorkspaceScroll()
+
+    const token = ++celebrationCullingToken
+    const settingsScrollTop = currentWorkspaceScrollTop()
+    scrollPositionsByPage['view:settings'] = settingsScrollTop
+    celebrationCulling = {
+      token,
+      index: 0,
+      decisions: {},
+      previewDate: shiftISODate(currentDay, -1),
+      returnView: view,
+      compareDayOpen,
+      compareDayDate,
+      settingsScrollTop,
+    }
+    celebrationCullingStatus = ''
+    closeMobileDrawer()
+    view = 'today'
+
+    await tick()
+    await waitForAnimationFrame()
+    if (!celebrationCulling || celebrationCulling.token !== token) return
+    celebrationCullingPanel?.focus({ preventScroll: true })
+    playCelebrationCullingIndex(0)
+  }
+
+  function playCelebrationCullingIndex(index: number) {
+    const session = celebrationCulling
+    if (!session) return
+    const boundedIndex = Math.max(0, Math.min(COMPLETION_CELEBRATIONS.length - 1, index))
+    const definition = COMPLETION_CELEBRATIONS[boundedIndex]
+    celebrationCulling = { ...session, index: boundedIndex }
+    celebrationCullingStatus = session.decisions[definition.id] === 'keep'
+      ? 'Marked keep.'
+      : session.decisions[definition.id] === 'remove'
+        ? 'Marked remove.'
+        : ''
+    celebration?.play({ kind: 'day', celebrationId: definition.id, preview: true })
+  }
+
+  function moveCelebrationCulling(direction: -1 | 1) {
+    if (!celebrationCulling) return
+    playCelebrationCullingIndex(celebrationCulling.index + direction)
+  }
+
+  function decideCelebrationCulling(decision: CelebrationCullDecision) {
+    const session = celebrationCulling
+    if (!session) return
+    const definition = COMPLETION_CELEBRATIONS[session.index]
+    celebrationCulling = {
+      ...session,
+      decisions: { ...session.decisions, [definition.id]: decision },
+    }
+    if (session.index < COMPLETION_CELEBRATIONS.length - 1) {
+      playCelebrationCullingIndex(session.index + 1)
+    } else {
+      celebrationCullingStatus = `${decision === 'keep' ? 'Kept' : 'Marked for removal'}. End reached — press C to copy removals.`
+    }
+  }
+
+  async function copyCelebrationCullRemovals() {
+    const session = celebrationCulling
+    if (!session) return
+    const removals = COMPLETION_CELEBRATIONS
+      .filter((definition) => session.decisions[definition.id] === 'remove')
+      .map((definition) => definition.name)
+    try {
+      await navigator.clipboard.writeText(removals.join('\n'))
+      celebrationCullingStatus = `Copied ${removals.length} removal${removals.length === 1 ? '' : 's'}.`
+    } catch {
+      celebrationCullingStatus = 'Could not copy the removal list.'
+    }
+  }
+
+  async function finishCelebrationCulling(token = celebrationCulling?.token) {
+    const session = celebrationCulling
+    if (!session || token !== session.token || token !== celebrationCullingToken) return
+    celebration?.dismiss()
+    celebrationCulling = null
+    celebrationCullingStatus = ''
+    compareDayOpen = session.compareDayOpen
+    compareDayDate = session.compareDayDate
+    view = session.returnView
+    scrollPositionsByPage['view:settings'] = session.settingsScrollTop
+
+    await tick()
+    await waitForAnimationFrame()
+    if (token !== celebrationCullingToken || celebrationCulling) return
+    if (usesWindowScroll()) window.scrollTo(0, session.settingsScrollTop)
+    else if (workspaceEl) workspaceEl.scrollTop = session.settingsScrollTop
+    document
+      .querySelector<HTMLButtonElement>('[data-celebration-cull-start]')
+      ?.focus({ preventScroll: true })
   }
 
   function handleCelebrationVisibilityChange() {
@@ -1530,6 +1650,8 @@ return rows`
       }
       celebrationPreviewToken += 1
       celebrationPreview = null
+      celebrationCullingToken += 1
+      celebrationCulling = null
       clearGoalRhythmAutoShowTimer()
       dismissCelebration()
     }
@@ -2376,6 +2498,31 @@ return rows`
     // The native store begins with a disposable bootstrap state. Do not let a
     // shortcut mutate it while SQLCipher is still opening the real database.
     if ($databaseLoadPending || $databaseLoadError) return
+
+    if (celebrationCulling) {
+      const key = event.key.toLowerCase()
+      const plainKey = !event.metaKey && !event.ctrlKey && !event.altKey
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        void finishCelebrationCulling(celebrationCulling.token)
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        moveCelebrationCulling(-1)
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        moveCelebrationCulling(1)
+      } else if (plainKey && !event.repeat && key === 'y') {
+        event.preventDefault()
+        decideCelebrationCulling('keep')
+      } else if (plainKey && !event.repeat && key === 'n') {
+        event.preventDefault()
+        decideCelebrationCulling('remove')
+      } else if (plainKey && !event.repeat && key === 'c') {
+        event.preventDefault()
+        void copyCelebrationCullRemovals()
+      }
+      return
+    }
 
     if (celebrationPreview) {
       if (event.key === 'Escape') {
@@ -4631,8 +4778,8 @@ return rows`
   class:mobile-drawer-open={mobileDrawerOpen}
   class:mobile-drawer-dragging={mobileDrawerDragging}
   style={appShellStyle}
-  inert={$databaseLoadPending || Boolean($databaseLoadError) || Boolean(celebrationPreview)}
-  aria-hidden={$databaseLoadPending || $databaseLoadError || celebrationPreview ? 'true' : undefined}
+  inert={$databaseLoadPending || Boolean($databaseLoadError) || Boolean(celebrationPreview) || Boolean(celebrationCulling)}
+  aria-hidden={$databaseLoadPending || $databaseLoadError || celebrationPreview || celebrationCulling ? 'true' : undefined}
 >
   {#if isMac && !isMobile}
     <div class="macos-titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
@@ -5795,6 +5942,7 @@ return rows`
           selectedId={completionCelebrationId}
           previewingId={celebrationPreview?.celebrationId ?? null}
           onSelect={(id) => { void startCelebrationPreview(id) }}
+          onCull={() => { void startCelebrationCulling() }}
         />
 
         {#if isMac && !isMobile}
@@ -6045,6 +6193,38 @@ return rows`
     {/if}
   </div>
 </main>
+
+{#if celebrationCulling && celebrationCullingDefinition}
+  <div
+    class="celebration-culling-panel"
+    class:keep={celebrationCullingDecision === 'keep'}
+    class:remove={celebrationCullingDecision === 'remove'}
+    role="dialog"
+    aria-modal="true"
+    aria-label="Celebration review"
+    tabindex="-1"
+    bind:this={celebrationCullingPanel}
+  >
+    <div class="celebration-culling-summary">
+      <span>{celebrationCulling.index + 1} / {COMPLETION_CELEBRATIONS.length}</span>
+      <strong>{celebrationCullingDefinition.icon} {celebrationCullingDefinition.name}</strong>
+      <span>{celebrationCullingDecision === 'keep' ? 'YES' : celebrationCullingDecision === 'remove' ? 'NO — REMOVE' : 'UNDECIDED'}</span>
+    </div>
+    <div class="celebration-culling-keys" aria-label="Keyboard controls">
+      ←/→ browse · Y keep · N remove · C copy removals · Esc close
+    </div>
+    <div class="celebration-culling-actions">
+      <button type="button" disabled={celebrationCulling.index === 0} on:click={() => moveCelebrationCulling(-1)}>←</button>
+      <button type="button" class:active={celebrationCullingDecision === 'keep'} on:click={() => decideCelebrationCulling('keep')}>Y — keep</button>
+      <button type="button" class:active={celebrationCullingDecision === 'remove'} on:click={() => decideCelebrationCulling('remove')}>N — remove</button>
+      <button type="button" disabled={celebrationCulling.index === COMPLETION_CELEBRATIONS.length - 1} on:click={() => moveCelebrationCulling(1)}>→</button>
+      <button type="button" on:click={() => playCelebrationCullingIndex(celebrationCulling?.index ?? 0)}>Replay</button>
+      <button type="button" on:click={() => { void copyCelebrationCullRemovals() }}>C — copy removals</button>
+      <button type="button" on:click={() => { void finishCelebrationCulling(celebrationCulling?.token) }}>Close</button>
+    </div>
+    <div class="celebration-culling-status" role="status" aria-live="polite">{celebrationCullingStatus}</div>
+  </div>
+{/if}
 
 {#if celebrationPreviewAnnouncement}
   <div class="celebration-preview-announcement" role="status" aria-live="polite">

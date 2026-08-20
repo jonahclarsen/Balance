@@ -4,6 +4,7 @@
   export let selectedId: CompletionCelebrationId
   export let previewingId: CompletionCelebrationId | null = null
   export let onSelect: (id: CompletionCelebrationId) => void
+  export let onCull: () => void
 
   let grid: HTMLDivElement
   let rovingId: CompletionCelebrationId = selectedId
@@ -55,6 +56,10 @@
       Pick a card to save it immediately. Balance will open yesterday for a read-only preview, play it for a few
       seconds, then bring you right back here. Reduced-motion mode swaps in a calm still version.
     </p>
+  </div>
+
+  <div class="settings-actions">
+    <button type="button" data-celebration-cull-start on:click={onCull}>Review all with Y / N</button>
   </div>
 
   <div
