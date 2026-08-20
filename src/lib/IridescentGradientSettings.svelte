@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy } from 'svelte'
+  import { hapticSlider } from './haptics'
   import type { IridescentGradientColor, IridescentGradientPreferences } from './types'
 
   export let value: IridescentGradientPreferences
@@ -152,6 +153,7 @@
         <span><strong>Contrast</strong><output>{value.contrast}%</output></span>
         <small>Separation between the color washes and backdrop</small>
         <input
+          use:hapticSlider
           type="range"
           min="0"
           max="250"
@@ -166,6 +168,7 @@
         <span><strong>Backdrop saturation</strong><output>{value.backgroundSaturation}%</output></span>
         <small>Colorfulness of the quiet layer underneath</small>
         <input
+          use:hapticSlider
           type="range"
           min="0"
           max="200"
@@ -180,6 +183,7 @@
         <span><strong>Backdrop lightness</strong><output>{value.backgroundLightness > 0 ? '+' : ''}{value.backgroundLightness}</output></span>
         <small>Shift both the light and dark appearances</small>
         <input
+          use:hapticSlider
           type="range"
           min="-12"
           max="12"
@@ -194,6 +198,7 @@
         <span><strong>Direction</strong><output>{value.angle}°</output></span>
         <small>Angle of the underlying directional gradient</small>
         <input
+          use:hapticSlider
           type="range"
           min="0"
           max="360"
@@ -208,6 +213,7 @@
         <span><strong>Color reach</strong><output>{value.reach}%</output></span>
         <small>How far each wash travels before fading away</small>
         <input
+          use:hapticSlider
           type="range"
           min="16"
           max="70"
@@ -247,6 +253,7 @@
           <label class="iridescent-gradient-control compact">
             <span><strong>Hue</strong><output>{color.hue}°</output></span>
             <input
+              use:hapticSlider
               class="hue-track"
               type="range"
               min="0"
@@ -261,6 +268,7 @@
           <label class="iridescent-gradient-control compact">
             <span><strong>Saturation</strong><output>{color.saturation}%</output></span>
             <input
+              use:hapticSlider
               class="saturation-track"
               type="range"
               min="0"
@@ -275,6 +283,7 @@
           <label class="iridescent-gradient-control compact">
             <span><strong>Lightness</strong><output>{color.lightness}%</output></span>
             <input
+              use:hapticSlider
               class="lightness-track"
               type="range"
               min="0"
@@ -289,6 +298,7 @@
           <label class="iridescent-gradient-control compact">
             <span><strong>Strength</strong><output>{color.strength}%</output></span>
             <input
+              use:hapticSlider
               class="strength-track"
               type="range"
               min="0"

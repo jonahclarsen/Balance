@@ -718,7 +718,16 @@ test('notes save adjustable breathing room and follow edits only from the bottom
   expect(startGeometry?.fillWidth).toBeCloseTo(0, 0)
 
   const fixedControlBottom = await page.locator('.note-scroll-space-control').evaluate((element) => element.getBoundingClientRect().bottom)
-  await spacingSlider.fill('100')
+  await spacingSlider.evaluate((element) => {
+    const input = element as HTMLInputElement
+    input.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }))
+    input.value = '100'
+    input.dispatchEvent(new InputEvent('input', { bubbles: true }))
+  })
+  await expect(spacingSlider).toHaveValue('100')
+  await expect(spacingControl).toHaveClass(/visible/)
+  await expect(spacingControl).toHaveCSS('opacity', '1')
+  await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })))
   await expect.poll(() => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(4)
   await expect.poll(() => page.locator('.note-scroll-space-control').evaluate((element) => element.getBoundingClientRect().bottom)).toBeCloseTo(fixedControlBottom, 0)
   const endGeometry = await page.evaluate(() => {

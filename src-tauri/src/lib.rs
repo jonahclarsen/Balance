@@ -623,7 +623,7 @@ struct ClipboardContents {
 }
 
 #[tauri::command]
-fn perform_time_step_haptic() -> bool {
+fn perform_alignment_haptic() -> bool {
     #[cfg(target_os = "macos")]
     {
         use objc2_app_kit::{
@@ -9848,7 +9848,7 @@ pub fn run() {
             reset_export_directory,
             reveal_path_in_file_manager,
             open_external_url,
-            perform_time_step_haptic,
+            perform_alignment_haptic,
             write_balance_clipboard,
             write_note_clipboard,
             read_balance_clipboard,

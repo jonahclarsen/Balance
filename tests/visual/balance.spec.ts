@@ -1897,7 +1897,7 @@ test('dragging a desktop time requests native step haptics', async ({ page }, te
     testWindow.__TAURI_INTERNALS__ = {
       invoke: async (command) => {
         testWindow.balanceNativeHaptics = [...(testWindow.balanceNativeHaptics ?? []), command]
-        return command === 'perform_time_step_haptic'
+        return command === 'perform_alignment_haptic'
       },
     }
   })
@@ -1910,7 +1910,72 @@ test('dragging a desktop time requests native step haptics', async ({ page }, te
         () => (window as typeof window & { balanceNativeHaptics?: string[] }).balanceNativeHaptics ?? [],
       ),
     )
-    .toContain('perform_time_step_haptic')
+    .toContain('perform_alignment_haptic')
+})
+
+test('dragging app sliders requests native haptics except for notes writing space', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'This verifies macOS-style desktop slider feedback')
+
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      isTauri?: boolean
+      balanceNativeHaptics?: string[]
+      __TAURI_INTERNALS__?: {
+        invoke: (command: string) => Promise<unknown>
+      }
+    }
+    testWindow.isTauri = true
+    testWindow.__TAURI_INTERNALS__ = {
+      invoke: async (command) => {
+        if (command === 'perform_alignment_haptic') {
+          testWindow.balanceNativeHaptics = [...(testWindow.balanceNativeHaptics ?? []), command]
+          return true
+        }
+        return null
+      },
+    }
+  })
+
+  const hapticCount = () => page.evaluate(
+    () => (window as typeof window & { balanceNativeHaptics?: string[] }).balanceNativeHaptics?.length ?? 0,
+  )
+
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await dragRangeToRatio(page, page.getByLabel('Probability', { exact: true }).first(), 0.45)
+  await expect.poll(hapticCount).toBeGreaterThan(0)
+  const dayTemplateHaptics = await hapticCount()
+
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
+  await dragRangeToRatio(page, page.getByLabel('Appearance probability').first(), 0.5)
+  await expect.poll(hapticCount).toBeGreaterThan(dayTemplateHaptics)
+  const probabilityHaptics = await hapticCount()
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  const contrast = page.getByLabel('Iridescent contrast')
+  await contrast.scrollIntoViewIfNeeded()
+  const contrastBounds = await contrast.boundingBox()
+  if (!contrastBounds) throw new Error('Missing Iridescent contrast slider geometry')
+  const contrastY = contrastBounds.y + contrastBounds.height / 2
+  await page.mouse.move(contrastBounds.x + contrastBounds.width * 0.4, contrastY)
+  await page.mouse.down()
+  await page.mouse.move(contrastBounds.x + contrastBounds.width * 0.7, contrastY)
+  await page.mouse.up()
+  await expect.poll(hapticCount).toBeGreaterThan(probabilityHaptics)
+
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+  const editor = page.locator('[data-note-text-input]').first()
+  await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
+  await page.locator('.workspace').evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  const notesSlider = page.getByLabel('Bottom writing space')
+  await expect(notesSlider).toBeVisible()
+  const hapticsBeforeNotesDrag = await hapticCount()
+  await dragRangeToRatio(page, notesSlider, 0.8)
+  expect(await hapticCount()).toBe(hapticsBeforeNotesDrag)
 })
 
 test('quick repeated plan time drags undo as one entry', async ({ page }) => {

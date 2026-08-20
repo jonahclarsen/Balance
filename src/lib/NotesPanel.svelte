@@ -54,6 +54,7 @@
   let bottomFollowRequest = 0
   let noteScrollSpacePercent = DEFAULT_NOTE_SCROLL_SPACE_PERCENT
   let noteScrollSpaceControlVisible = false
+  let noteScrollSpaceAdjustmentActive = false
   $: noteScrollSpaceVh = noteScrollSpaceVhForPercent(noteScrollSpacePercent)
   let toolbarSelection: Range | null = null
   let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
@@ -279,7 +280,7 @@
     const scrollEventTarget: HTMLElement | Document = scroller === document.scrollingElement ? document : scroller
     const updateVisibility = () => {
       frame = null
-      noteScrollSpaceControlVisible = isAtNoteBottom(scroller)
+      noteScrollSpaceControlVisible = noteScrollSpaceAdjustmentActive || isAtNoteBottom(scroller)
     }
     const scheduleVisibilityUpdate = () => {
       if (frame !== null) return
@@ -349,6 +350,26 @@
     localStorage.setItem(NOTE_SCROLL_SPACE_PERCENT_KEY, String(noteScrollSpacePercent))
 
     if (scroller && keepFollowingBottom) void scrollNoteToBottomAfterLayout(scroller)
+  }
+
+  function beginNoteScrollSpaceAdjustment(event: PointerEvent) {
+    if (event.pointerType === 'mouse' && event.button !== 0) return
+    noteScrollSpaceAdjustmentActive = true
+    noteScrollSpaceControlVisible = true
+  }
+
+  async function finishNoteScrollSpaceAdjustment() {
+    if (!noteScrollSpaceAdjustmentActive) return
+
+    const scroller = noteScrollContainer()
+    if (scroller) await scrollNoteToBottomAfterLayout(scroller)
+    await tick()
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        noteScrollSpaceAdjustmentActive = false
+        noteScrollSpaceControlVisible = Boolean(scroller && isAtNoteBottom(scroller))
+      })
+    })
   }
 
   function handleEditorKeydownCapture(event: KeyboardEvent) {
@@ -634,6 +655,7 @@
   onDestroy(() => {
     bottomFollowRequest += 1
     if (bottomFollowFrame !== null) window.cancelAnimationFrame(bottomFollowFrame)
+    noteScrollSpaceAdjustmentActive = false
   })
 </script>
 
@@ -647,6 +669,10 @@
   on:pointermove|capture={handleNotePointerMove}
   on:pointerup|capture={finishNotePointerSelection}
   on:pointercancel|capture={finishNotePointerSelection}
+/>
+<svelte:window
+  on:pointerup={finishNoteScrollSpaceAdjustment}
+  on:pointercancel={finishNoteScrollSpaceAdjustment}
 />
 
 <div class="notes-workspace">
@@ -792,6 +818,7 @@
           value={noteScrollSpacePercent}
           aria-label="Bottom writing space"
           on:input={updateNoteScrollSpace}
+          on:pointerdown={beginNoteScrollSpaceAdjustment}
         />
         <span class="note-scroll-space-track" aria-hidden="true"></span>
         <span class="note-scroll-space-fill" aria-hidden="true"></span>

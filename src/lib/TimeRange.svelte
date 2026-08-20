@@ -7,12 +7,8 @@
 </script>
 
 <script lang="ts">
-  import { invoke, isTauri } from '@tauri-apps/api/core'
-  import { vibrate } from '@tauri-apps/plugin-haptics'
+  import { vibrateSteps } from './haptics'
   import { clampMinutes, formatMinutes, MAX_TIMELINE_MINUTES } from './planner'
-
-  const STEP_HAPTIC_MS = 16
-  const STEP_HAPTIC_PAUSE_MS = 24
 
   export let startMinutes: number
   export let endMinutes: number
@@ -72,7 +68,7 @@
     if (steps !== dragState.lastSteps) {
       const crossedSteps = Math.abs(steps - dragState.lastSteps)
       dragState.lastSteps = steps
-      vibrateCrossedSteps(crossedSteps)
+      vibrateSteps(crossedSteps)
     }
 
     if (dragState.shiftTargets) {
@@ -111,44 +107,6 @@
     dragState = null
   }
 
-  function vibrateCrossedSteps(count: number) {
-    if (count < 1) return
-
-    if (isTauri()) {
-      // Tauri reaches AppKit on macOS and the native vibrator service on
-      // Android; Android WebViews can silently ignore navigator.vibrate().
-      void vibrateNatively(count).catch(() => vibrateInBrowser(count))
-      return
-    }
-
-    vibrateInBrowser(count)
-  }
-
-  async function vibrateNatively(count: number) {
-    for (let index = 0; index < count; index += 1) {
-      const handledByMacos = await invoke<boolean>('perform_time_step_haptic')
-      if (!handledByMacos) {
-        const result = await vibrate(STEP_HAPTIC_MS)
-        if (result.status === 'error') throw new Error('Native haptic feedback failed')
-      }
-      if (index < count - 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, STEP_HAPTIC_PAUSE_MS))
-      }
-    }
-  }
-
-  function vibrateInBrowser(count: number) {
-    if (typeof navigator.vibrate !== 'function') return
-
-    // Pointer events can skip several 15-minute boundaries during a quick
-    // swipe. A single vibration call with a pulse pattern preserves one tactile
-    // tick per crossed boundary instead of collapsing them into one buzz.
-    const pattern = Array.from(
-      { length: count * 2 - 1 },
-      (_, index) => (index % 2 === 0 ? STEP_HAPTIC_MS : STEP_HAPTIC_PAUSE_MS),
-    )
-    navigator.vibrate(pattern)
-  }
 </script>
 
 <span

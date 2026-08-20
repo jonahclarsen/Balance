@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { vibrateSteps } from './haptics'
+
   export let value: number
   export let min = 0
   export let max = 100
@@ -27,6 +29,7 @@
   }
 
   let activePointerId: number | null = null
+  let lastPointerValue: number | null = null
 
   // Native range controls keep their thumb center inset from both ends. That
   // makes their effective drag track narrower than our edge-to-edge custom
@@ -38,7 +41,11 @@
     if (bounds.width <= 0) return
 
     const ratio = Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width))
-    onChange(clampToStep(min + ratio * (max - min)))
+    const next = clampToStep(min + ratio * (max - min))
+    if (next === lastPointerValue) return
+    lastPointerValue = next
+    vibrateSteps()
+    onChange(next)
   }
 
   function handlePointerDown(event: PointerEvent) {
@@ -48,6 +55,7 @@
     event.preventDefault()
     input.focus({ preventScroll: true })
     activePointerId = event.pointerId
+    lastPointerValue = value
     input.setPointerCapture(event.pointerId)
     updateFromPointer(input, event.clientX)
   }
@@ -64,11 +72,15 @@
     const input = event.currentTarget as HTMLInputElement
     updateFromPointer(input, event.clientX)
     activePointerId = null
+    lastPointerValue = null
     if (input.hasPointerCapture(event.pointerId)) input.releasePointerCapture(event.pointerId)
   }
 
   function cancelPointer(event: PointerEvent) {
-    if (event.pointerId === activePointerId) activePointerId = null
+    if (event.pointerId === activePointerId) {
+      activePointerId = null
+      lastPointerValue = null
+    }
   }
 
   // Commit the typed value on change/blur so intermediate keystrokes aren't
