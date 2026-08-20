@@ -2,7 +2,6 @@ import { expect, test, type Locator } from '@playwright/test'
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
 const transparent = 'rgba(0, 0, 0, 0)'
-const accent = 'rgb(115, 85, 162)'
 
 async function expectDayRail(
   locator: Locator,
@@ -12,17 +11,27 @@ async function expectDayRail(
   if (mobile) {
     await expect(locator).toHaveCSS('border-right-width', '0px')
     await expect(locator).toHaveCSS('border-left-width', '0px')
-    const shadow = direction === 'before'
-      ? `${accent} -6px 0px 0px 0px inset`
-      : direction === 'after'
-        ? `${accent} 6px 0px 0px 0px inset`
-        : 'none'
-    await expect(locator).toHaveCSS('box-shadow', shadow)
+    if (direction === 'current') {
+      await expect(locator).toHaveCSS('box-shadow', 'none')
+    } else {
+      await expect(locator).toHaveCSS(
+        'box-shadow',
+        new RegExp(`${direction === 'before' ? '-6px' : '6px'} 0px 0px 0px inset$`),
+      )
+    }
     return
   }
 
-  await expect(locator).toHaveCSS('border-right-color', direction === 'before' ? accent : transparent)
-  await expect(locator).toHaveCSS('border-left-color', direction === 'after' ? accent : transparent)
+  if (direction === 'before') {
+    await expect(locator).not.toHaveCSS('border-right-color', transparent)
+    await expect(locator).toHaveCSS('border-left-color', transparent)
+  } else if (direction === 'after') {
+    await expect(locator).toHaveCSS('border-right-color', transparent)
+    await expect(locator).not.toHaveCSS('border-left-color', transparent)
+  } else {
+    await expect(locator).toHaveCSS('border-right-color', transparent)
+    await expect(locator).toHaveCSS('border-left-color', transparent)
+  }
 }
 
 test('day rail points toward today and disappears on today', async ({ page }, testInfo) => {
@@ -93,12 +102,53 @@ test('today rolls over at 3am while the app stays open', async ({ page }, testIn
   const primaryPane = page.getByRole('region', { name: 'Daily plan' })
   await expect(primaryPane.locator('.date-input')).toHaveValue('2026-08-17')
   await expect(workspace).toHaveClass(/current-day-workspace/)
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    return [state?.preferences?.themeId, state?.preferences?.randomThemeDate]
+  })).toEqual(['random', '2026-08-17'])
+  const initialTheme = await page.locator('html').getAttribute('data-theme')
+  expect(initialTheme).toBeTruthy()
+  expect(initialTheme).not.toBe('random')
 
   await page.clock.runFor(60_001)
 
   await expect(workspace).toHaveClass(/before-current-day-workspace/)
   await expectDayRail(workspace, 'before', testInfo.project.name === 'mobile')
   await expect(page.locator('.sidebar-footer button.primary')).toHaveText('Generate selected day')
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', initialTheme!)
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    return state?.preferences?.randomThemeDate
+  })).toBe('2026-08-18')
+})
+
+test('random theme catches up on launch after a missed rollover', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-08-18T10:00:00') })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    return state?.preferences?.randomThemeDate
+  })).toBe('2026-08-18')
+
+  await page.addInitScript(() => {
+    const key = 'balance.appState.v1'
+    const rawState = localStorage.getItem(key)
+    if (!rawState) return
+    const state = JSON.parse(rawState)
+    state.preferences.themeId = 'random'
+    state.preferences.randomThemeId = 'graphite'
+    state.preferences.randomThemeDate = '2026-08-17'
+    localStorage.setItem(key, JSON.stringify(state))
+  })
+  await page.reload()
+
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    return [state?.preferences?.randomThemeDate, state?.preferences?.randomThemeId]
+  })).toEqual(['2026-08-18', expect.not.stringMatching(/^graphite$/)])
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'graphite')
 })
 
 test('day navigation buttons are available only on mobile', async ({ page }, testInfo) => {
@@ -1061,11 +1111,13 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   const themeButtons = themeGroup.getByRole('button')
   const sidebar = page.locator('.sidebar')
   const activeSidebarButton = sidebar.locator('nav button.active')
-  await expect(themeButtons).toHaveCount(10)
-  await expect(themeButtons.first()).toContainText('Violet')
-  const violetTheme = themeGroup.getByRole('button', { name: 'Violet Purple and soft lilac' })
-  await expect(violetTheme).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'violet')
+  await expect(themeButtons).toHaveCount(12)
+  await expect(themeButtons.first()).toContainText('Random')
+  const randomTheme = themeGroup.getByRole('button', { name: 'Random A different theme every Balance day' })
+  await expect(randomTheme).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'random')
+  await expect(themeGroup.getByText('Sunset', { exact: true })).toHaveCount(1)
+  await expect(themeGroup.getByText('Crimson', { exact: true })).toHaveCount(1)
   const pinkTheme = themeGroup.getByRole('button', { name: 'Pink Bright pink and petal white' })
   await expect(pinkTheme).toHaveAttribute('aria-pressed', 'false')
   await pinkTheme.click()
@@ -1118,8 +1170,11 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await expect(page.locator('html')).toHaveCSS('background-image', /radial-gradient/)
   await expect(sidebar).not.toHaveCSS('background-image', /data:image/)
   await expect(page.locator('html')).not.toHaveCSS('background-image', /data:image/)
-  await expect(page.locator('html')).toHaveCSS('animation-name', 'iridescent-background-breathe')
-  await expect(page.locator('html')).toHaveCSS('animation-duration', '18s')
+  await expect(page.locator('html')).toHaveCSS(
+    'animation-name',
+    'iridescent-background-breathe, iridescent-border-turn',
+  )
+  await expect(page.locator('html')).toHaveCSS('animation-duration', '18s, 34s')
   await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
   await expect(sidebar).toHaveCSS('animation-duration', '22s')
   await expect(activeSidebarButton).toHaveCSS('animation-name', 'iridescent-active-nav-breathe')
@@ -1147,11 +1202,10 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await page.emulateMedia({ colorScheme: 'dark', reducedMotion: 'reduce' })
   await expect(page.locator('html')).toHaveCSS('animation-name', 'iridescent-background-breathe')
   await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
-  await expect(activeSidebarButton).toHaveCSS('animation-name', 'iridescent-active-nav-breathe')
+  await expect(activeSidebarButton).toHaveCSS('animation-name', 'none')
   const animatedGradientPositions = () => page.evaluate(() => [
     getComputedStyle(document.documentElement).backgroundPosition,
     getComputedStyle(document.querySelector<HTMLElement>('.sidebar')!).backgroundPosition,
-    getComputedStyle(document.querySelector<HTMLElement>('.sidebar nav button.active')!).backgroundPosition,
   ])
   const initialGradientPositions = await animatedGradientPositions()
   await expect.poll(async () => {

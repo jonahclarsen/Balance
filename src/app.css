@@ -119,6 +119,29 @@
   --focus-ring: rgb(185 86 63 / 0.25);
 }
 
+:root[data-theme='crimson'] {
+  --app-background: #f8f1f2;
+  --paper: #fffafb;
+  --paper-strong: #ffffff;
+  --ink: #321f23;
+  --muted: #78666a;
+  --line: #e1cfd3;
+  --line-strong: #c9afb5;
+  --accent: #a92f42;
+  --accent-strong: #812333;
+  --theme-hue: 351.5;
+  --theme-checkbox: #bd4051;
+  --theme-done: #a94552;
+  --danger: #a92f3e;
+  --sidebar: #f2e2e5;
+  --active-nav: #f1d2d8;
+  --row-border: rgb(225 207 211 / 0.8);
+  --drop-inside: #f8dfe4;
+  --time-border: #ddbec5;
+  --time-bg: #fae8eb;
+  --focus-ring: rgb(169 47 66 / 0.25);
+}
+
 :root[data-theme='berry'] {
   --app-background: #f8f3f6;
   --paper: #fffafd;
@@ -415,6 +438,28 @@
     --time-border: #69483a;
     --time-bg: #3a261f;
     --focus-ring: rgb(229 148 127 / 0.3);
+  }
+
+  :root[data-theme='crimson'] {
+    --app-background: #1b1214;
+    --paper: #24181b;
+    --paper-strong: #2e2023;
+    --ink: #f2e8ea;
+    --muted: #baa4a9;
+    --line: #4b3439;
+    --line-strong: #67474e;
+    --accent: #e67f8e;
+    --accent-strong: #f2aeba;
+    --theme-checkbox: #e67f8e;
+    --theme-done: #d87582;
+    --danger: #f07b88;
+    --sidebar: #201619;
+    --active-nav: #44242b;
+    --row-border: rgb(75 52 57 / 0.8);
+    --drop-inside: #3c2228;
+    --time-border: #6b3f49;
+    --time-bg: #3c2228;
+    --focus-ring: rgb(230 127 142 / 0.3);
   }
 
   :root[data-theme='berry'] {

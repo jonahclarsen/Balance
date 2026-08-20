@@ -2,7 +2,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 const MAX_VISIBLE_ITEMS: usize = 10;
-const DEFAULT_THEME_ID: &str = "violet";
+const DEFAULT_THEME_ID: &str = "iridescent";
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -104,10 +104,26 @@ pub(crate) fn snapshot_from_plan(
 
 fn normalize_theme_id(theme_id: &str) -> &str {
     match theme_id {
-        "iridescent" | "graphite" | "forest" | "ocean" | "violet" | "sunset" | "berry" | "pink"
-        | "mint" | "midnight" => theme_id,
+        "iridescent" | "graphite" | "forest" | "ocean" | "violet" | "sunset" | "crimson"
+        | "berry" | "pink" | "mint" | "midnight" => theme_id,
         _ => DEFAULT_THEME_ID,
     }
+}
+
+pub(crate) fn theme_id_from_preferences(preferences: &Value) -> &str {
+    let selected_theme_id = preferences
+        .get("themeId")
+        .and_then(Value::as_str)
+        .unwrap_or(DEFAULT_THEME_ID);
+    let effective_theme_id = if selected_theme_id == "random" {
+        preferences
+            .get("randomThemeId")
+            .and_then(Value::as_str)
+            .unwrap_or(DEFAULT_THEME_ID)
+    } else {
+        selected_theme_id
+    };
+    normalize_theme_id(effective_theme_id)
 }
 
 fn flatten_items(items: &[Value], depth: usize, output: &mut Vec<(String, bool, usize, String)>) {
@@ -169,7 +185,7 @@ fn format_minutes(minutes: i64) -> String {
 mod tests {
     use serde_json::json;
 
-    use super::snapshot_from_plan;
+    use super::{snapshot_from_plan, theme_id_from_preferences};
 
     #[test]
     fn widget_snapshot_flattens_pending_items_and_counts_progress() {
@@ -252,7 +268,24 @@ mod tests {
         assert!(snapshot.items.is_empty());
         assert!(snapshot.item_depths.is_empty());
         assert!(snapshot.item_times.is_empty());
-        assert_eq!(snapshot.theme_id, "violet");
+        assert_eq!(snapshot.theme_id, "iridescent");
+    }
+
+    #[test]
+    fn widget_uses_the_concrete_theme_selected_by_random_mode() {
+        let preferences = serde_json::json!({
+            "themeId": "random",
+            "randomThemeId": "berry",
+        });
+
+        assert_eq!(theme_id_from_preferences(&preferences), "berry");
+    }
+
+    #[test]
+    fn widget_preserves_the_crimson_theme() {
+        let preferences = serde_json::json!({ "themeId": "crimson" });
+
+        assert_eq!(theme_id_from_preferences(&preferences), "crimson");
     }
 
     #[test]

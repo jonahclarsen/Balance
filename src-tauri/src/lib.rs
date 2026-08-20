@@ -2894,7 +2894,9 @@ fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, 
 
 fn default_replicated_preferences() -> Value {
     json!({
-        "themeId": "violet",
+        "themeId": "random",
+        "randomThemeId": "iridescent",
+        "randomThemeDate": "",
         "completionCelebrationId": "aurora-checkwave",
         "doneTintColor": "",
         "checkboxColor": "",
@@ -2913,6 +2915,14 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
         .ok_or_else(|| "Replicated preferences must be an object".to_string())?;
 
     let theme_id = required_string(value, "themeId")?;
+    let random_theme_id = value
+        .get("randomThemeId")
+        .and_then(Value::as_str)
+        .unwrap_or("iridescent");
+    let random_theme_date = value
+        .get("randomThemeDate")
+        .and_then(Value::as_str)
+        .unwrap_or("");
     let completion_celebration_id = value
         .get("completionCelebrationId")
         .and_then(Value::as_str)
@@ -2937,6 +2947,8 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
     }
 
     preferences.insert("themeId".into(), json!(theme_id));
+    preferences.insert("randomThemeId".into(), json!(random_theme_id));
+    preferences.insert("randomThemeDate".into(), json!(random_theme_date));
     preferences.insert(
         "completionCelebrationId".into(),
         json!(completion_celebration_id),

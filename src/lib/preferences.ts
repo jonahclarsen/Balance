@@ -1,4 +1,9 @@
-import { DEFAULT_THEME_ID, normalizeThemeId } from './themes'
+import {
+  DEFAULT_PRESET_THEME_ID,
+  DEFAULT_THEME_ID,
+  normalizePresetThemeId,
+  normalizeThemeId,
+} from './themes'
 import { DEFAULT_COMPLETION_CELEBRATION_ID, normalizeCompletionCelebrationId } from './celebrations'
 import type { IridescentGradientColor, IridescentGradientPreferences, ReplicatedPreferences } from './types'
 
@@ -31,6 +36,8 @@ export function createDefaultIridescentGradient(): IridescentGradientPreferences
 export function createDefaultReplicatedPreferences(): ReplicatedPreferences {
   return {
     themeId: DEFAULT_THEME_ID,
+    randomThemeId: DEFAULT_PRESET_THEME_ID,
+    randomThemeDate: '',
     completionCelebrationId: DEFAULT_COMPLETION_CELEBRATION_ID,
     doneTintColor: '',
     checkboxColor: '',
@@ -94,6 +101,13 @@ export function normalizeReplicatedPreferences(value: unknown): ReplicatedPrefer
 
   return {
     themeId: normalizeThemeId(typeof preferences.themeId === 'string' ? preferences.themeId : null),
+    randomThemeId: normalizePresetThemeId(
+      typeof preferences.randomThemeId === 'string' ? preferences.randomThemeId : null,
+    ),
+    randomThemeDate: typeof preferences.randomThemeDate === 'string'
+      && /^\d{4}-\d{2}-\d{2}$/.test(preferences.randomThemeDate)
+      ? preferences.randomThemeDate
+      : '',
     completionCelebrationId: normalizeCompletionCelebrationId(preferences.completionCelebrationId),
     doneTintColor: normalizeColorOverride(preferences.doneTintColor),
     checkboxColor: normalizeColorOverride(preferences.checkboxColor),

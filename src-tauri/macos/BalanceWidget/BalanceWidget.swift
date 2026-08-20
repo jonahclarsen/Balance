@@ -6,6 +6,7 @@ private let encryptedSnapshotKey = "balance.widget.encrypted-snapshot.v2"
 private let snapshotVisibleUntilKey = "balance.widget.snapshot-visible-until.v1"
 private let snapshotDomain = "app.balance.local"
 private let widgetKind = "BalanceToday"
+private let dayRolloverHour = 3
 
 private enum WidgetSnapshotKey {
     static let tag = Data("app.balance.local.widget.snapshot-key.v2".utf8)
@@ -108,7 +109,7 @@ private struct BalanceSnapshot: Codable {
     static var today: String {
         let calendar = Calendar.autoupdatingCurrent
         let now = Date()
-        let currentDay = calendar.component(.hour, from: now) < 3
+        let currentDay = calendar.component(.hour, from: now) < dayRolloverHour
             ? calendar.date(byAdding: .day, value: -1, to: now) ?? now
             : now
         let formatter = DateFormatter()
@@ -172,7 +173,7 @@ private struct BalanceProvider: TimelineProvider {
             ?? now.addingTimeInterval(15 * 60)
         let dayBoundary = Calendar.autoupdatingCurrent.nextDate(
             after: now,
-            matching: DateComponents(hour: 3, minute: 0),
+            matching: DateComponents(hour: dayRolloverHour, minute: 0),
             matchingPolicy: .nextTime
         ) ?? regularRefresh
         let visibleUntil = BalanceSnapshot.visibleUntil
@@ -548,6 +549,8 @@ private struct WidgetPalette {
                 return WidgetPalette(paper: 0x18222B, surface: 0x202D38, ink: 0xE8F0F6, muted: 0x9FB0BD, line: 0x30414E, accent: 0x73B7E6)
             case "sunset":
                 return WidgetPalette(paper: 0x241C18, surface: 0x2E241F, ink: 0xF1E9E4, muted: 0xB8A69B, line: 0x493A32, accent: 0xE5947F)
+            case "crimson":
+                return WidgetPalette(paper: 0x24181B, surface: 0x2E2023, ink: 0xF2E8EA, muted: 0xBAA4A9, line: 0x4B3439, accent: 0xE67F8E)
             case "berry":
                 return WidgetPalette(paper: 0x241B20, surface: 0x2E2329, ink: 0xF1E8ED, muted: 0xB5A3AD, line: 0x493741, accent: 0xDB8BAA)
             case "pink":
@@ -593,6 +596,8 @@ private struct WidgetPalette {
             return WidgetPalette(paper: 0xF9FCFF, surface: 0xFFFFFF, ink: 0x172733, muted: 0x637581, line: 0xCCD9E1, accent: 0x276A9F)
         case "sunset":
             return WidgetPalette(paper: 0xFFFAF5, surface: 0xFFFFFF, ink: 0x33241F, muted: 0x7B6B63, line: 0xE2D3C7, accent: 0xB9563F)
+        case "crimson":
+            return WidgetPalette(paper: 0xFFFAFB, surface: 0xFFFFFF, ink: 0x321F23, muted: 0x78666A, line: 0xE1CFD3, accent: 0xA92F42)
         case "berry":
             return WidgetPalette(paper: 0xFFFAFD, surface: 0xFFFFFF, ink: 0x30242A, muted: 0x786B72, line: 0xDFD2D9, accent: 0x9B496B)
         case "pink":

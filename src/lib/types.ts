@@ -187,6 +187,8 @@ export type Operation = {
 
 export type ReplicatedPreferences = {
   themeId: string
+  randomThemeId: string
+  randomThemeDate: string
   completionCelebrationId: CompletionCelebrationId
   doneTintColor: string
   checkboxColor: string

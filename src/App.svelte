@@ -57,7 +57,17 @@
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient } from './lib/preferences'
-  import { DEFAULT_THEME_ID, normalizeThemeId, THEME_PRESETS, type ThemeId } from './lib/themes'
+  import {
+    DEFAULT_PRESET_THEME_ID,
+    DEFAULT_THEME_ID,
+    normalizePresetThemeId,
+    normalizeThemeId,
+    pickRandomThemeId,
+    THEME_OPTIONS,
+    THEME_PRESETS,
+    type PresetThemeId,
+    type ThemeId,
+  } from './lib/themes'
   import { isNoteTrashed } from './lib/noteTrash'
   import {
     COMPLETION_CELEBRATIONS,
@@ -207,6 +217,8 @@
 
   $: updateActiveNavAnimationDelay(searchOpen ? 'search' : view)
   let themeId: ThemeId = DEFAULT_THEME_ID
+  let effectiveThemeId: PresetThemeId = DEFAULT_PRESET_THEME_ID
+  let preferencesReady = false
   let iridescentGradient = createDefaultIridescentGradient()
   let previousPersistedIridescentGradient: IridescentGradientPreferences | null = null
   let completionTrackingReady = false
@@ -541,6 +553,16 @@ return rows`
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
   $: themeId = normalizeThemeId($plannerStore.preferences.themeId)
+  $: effectiveThemeId = themeId === 'random'
+    ? normalizePresetThemeId($plannerStore.preferences.randomThemeId)
+    : themeId
+  $: if (
+    preferencesReady
+    && themeId === 'random'
+    && $plannerStore.preferences.randomThemeDate !== currentDay
+  ) {
+    rotateRandomTheme(currentDay)
+  }
   $: doneTintColor = $plannerStore.preferences.doneTintColor
   $: checkboxColor = $plannerStore.preferences.checkboxColor
   $: completionCelebrationId = normalizeCompletionCelebrationId(
@@ -551,7 +573,9 @@ return rows`
     previousPersistedIridescentGradient = persistedIridescentGradient
     iridescentGradient = persistedIridescentGradient
   }
-  $: document.documentElement.dataset.theme = themeId
+  $: document.documentElement.dataset.theme = themeId === 'random'
+    ? normalizePresetThemeId($plannerStore.preferences.randomThemeId)
+    : themeId
   $: applyIridescentGradient(iridescentGradient)
   $: if ($plannerStore.preferences.databaseLoadingMessages !== previousDatabaseLoadingMessages) {
     previousDatabaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
@@ -559,7 +583,7 @@ return rows`
     databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
     if (!editingDatabaseLoadingMessages) databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
   }
-  $: activeTheme = THEME_PRESETS.find((theme) => theme.id === themeId) ?? THEME_PRESETS[0]
+  $: activeTheme = THEME_PRESETS.find((theme) => theme.id === effectiveThemeId) ?? THEME_PRESETS[0]
   $: doneTintHex = doneTintColor || activeTheme.doneColor
   $: checkboxColorHex = checkboxColor || activeTheme.checkboxColor
   $: doneTintPickerColor = hexToPickerColor(doneTintHex)
@@ -1573,6 +1597,8 @@ return rows`
       // SQLCipher or Android Keystore failed to open the real database.
       if ($databaseLoadError) return
 
+      preferencesReady = true
+
       plannerStore.purgeExpiredNotes()
       noteTrashCleanupTimer = window.setInterval(() => plannerStore.purgeExpiredNotes(), 60 * 1000)
 
@@ -1808,7 +1834,28 @@ return rows`
   function updateTheme(nextThemeId: ThemeId) {
     // A preset should look cohesive immediately. Fine-tuned completion colors
     // remain available below and become overrides only after the preset is set.
+    if (nextThemeId === 'random') {
+      if (themeId === 'random') return
+      plannerStore.patchPreferences({
+        themeId: nextThemeId,
+        randomThemeId: pickRandomThemeId(effectiveThemeId),
+        randomThemeDate: currentDay,
+        doneTintColor: '',
+        checkboxColor: '',
+      })
+      return
+    }
     plannerStore.patchPreferences({ themeId: nextThemeId, doneTintColor: '', checkboxColor: '' })
+  }
+
+  function rotateRandomTheme(date: string) {
+    const currentRandomThemeId = normalizePresetThemeId($plannerStore.preferences.randomThemeId)
+    plannerStore.patchPreferences({
+      randomThemeId: pickRandomThemeId(currentRandomThemeId),
+      randomThemeDate: date,
+      doneTintColor: '',
+      checkboxColor: '',
+    })
   }
 
   function adjustedIridescentBaseColor(
@@ -5958,12 +6005,12 @@ return rows`
         <section class="settings-section">
           <div>
             <h3>Color theme</h3>
-            <p>Pick a theme based on your mood. Each theme adapts automatically to light and dark mode.</p>
+            <p>Pick a theme, or let Balance choose a new one each day. Every theme adapts automatically to light and dark mode.</p>
           </div>
 
           <div class="theme-options-stack">
             <div class="theme-grid" role="group" aria-label="Color theme">
-              {#each THEME_PRESETS as theme (theme.id)}
+              {#each THEME_OPTIONS as theme (theme.id)}
                 <button
                   type="button"
                   class="theme-option"

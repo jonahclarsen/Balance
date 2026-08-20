@@ -52,6 +52,14 @@ export const THEME_PRESETS = [
     doneColor: '#c77832',
   },
   {
+    id: 'crimson',
+    name: 'Crimson',
+    description: 'Rich red and soft ivory',
+    swatches: ['#a92f42', '#f2e2e5', '#bd4051'],
+    checkboxColor: '#bd4051',
+    doneColor: '#a94552',
+  },
+  {
     id: 'berry',
     name: 'Berry',
     description: 'Rose and cool blush',
@@ -85,10 +93,45 @@ export const THEME_PRESETS = [
   },
 ] as const
 
-export type ThemeId = (typeof THEME_PRESETS)[number]['id']
+export type PresetThemeId = (typeof THEME_PRESETS)[number]['id']
+export type ThemeId = 'random' | PresetThemeId
 
-export const DEFAULT_THEME_ID: ThemeId = 'iridescent'
+export const DEFAULT_THEME_ID: ThemeId = 'random'
+export const DEFAULT_PRESET_THEME_ID: PresetThemeId = 'iridescent'
+
+export const THEME_OPTIONS = [
+  {
+    id: 'random',
+    name: 'Random',
+    description: 'A different theme every Balance day',
+    swatches: [
+      'linear-gradient(135deg, #f24c9f, #9b62dd 48%, #39c5d6)',
+      'linear-gradient(135deg, #287968, #276a9f)',
+      'linear-gradient(135deg, #c33f7a, #425b9b)',
+    ],
+  },
+  ...THEME_PRESETS,
+] as const
 
 export function normalizeThemeId(value: string | null | undefined): ThemeId {
-  return THEME_PRESETS.some((theme) => theme.id === value) ? (value as ThemeId) : DEFAULT_THEME_ID
+  return value === 'random' || THEME_PRESETS.some((theme) => theme.id === value)
+    ? (value as ThemeId)
+    : DEFAULT_THEME_ID
+}
+
+export function normalizePresetThemeId(value: string | null | undefined): PresetThemeId {
+  return THEME_PRESETS.some((theme) => theme.id === value)
+    ? (value as PresetThemeId)
+    : DEFAULT_PRESET_THEME_ID
+}
+
+export function pickRandomThemeId(
+  currentThemeId?: PresetThemeId,
+  random: () => number = Math.random,
+): PresetThemeId {
+  const candidates = currentThemeId && THEME_PRESETS.length > 1
+    ? THEME_PRESETS.filter((theme) => theme.id !== currentThemeId)
+    : THEME_PRESETS
+  const index = Math.min(candidates.length - 1, Math.floor(Math.max(0, random()) * candidates.length))
+  return candidates[index]?.id ?? DEFAULT_PRESET_THEME_ID
 }

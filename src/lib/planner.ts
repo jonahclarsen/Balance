@@ -22,6 +22,7 @@ import { goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
 import { createDefaultReplicatedPreferences } from './preferences'
 
 export const DEFAULT_DAILY_REMINDER = "This shouldn't be aspirational"
+export const DAY_ROLLOVER_HOUR = 3
 
 export type BackspacePlanItemAtStartResult = {
   items: PlanItem[]
@@ -74,7 +75,7 @@ export function createId(prefix = 'id'): Id {
  */
 export function todayISO(now = new Date()): string {
   const day = new Date(now)
-  if (day.getHours() < 3) day.setDate(day.getDate() - 1)
+  if (day.getHours() < DAY_ROLLOVER_HOUR) day.setDate(day.getDate() - 1)
   return calendarDateISO(day)
 }
 

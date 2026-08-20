@@ -4,7 +4,7 @@ use jni::objects::{JClass, JString};
 use jni::JNIEnv;
 use zeroize::Zeroizing;
 
-use crate::widget::{snapshot_from_plan, WidgetSnapshot};
+use crate::widget::{snapshot_from_plan, theme_id_from_preferences, WidgetSnapshot};
 
 fn load_snapshot(app_data_path: &Path, date: &str) -> Result<WidgetSnapshot, String> {
     let database_path = super::app_database_path_from_data_dir(app_data_path);
@@ -20,10 +20,7 @@ fn load_snapshot(app_data_path: &Path, date: &str) -> Result<WidgetSnapshot, Str
     let connection = super::open_database_at(&database_path, recovery_key.as_str())?;
     let plan = super::read_plan_by_date(&connection, date)?;
     let preferences = super::read_replicated_preferences(&connection)?;
-    let theme_id = preferences
-        .get("themeId")
-        .and_then(serde_json::Value::as_str)
-        .unwrap_or("violet");
+    let theme_id = theme_id_from_preferences(&preferences);
     Ok(snapshot_from_plan(date, plan.as_ref(), theme_id))
 }
 
