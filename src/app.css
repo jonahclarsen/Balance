@@ -5428,6 +5428,11 @@ nav button.active {
     --mobile-top-inset: max(24px, env(safe-area-inset-top));
   }
 
+  .app-shell.android .sidebar,
+  .app-shell.android .sidebar.sidebar-hidden {
+    width: min(72vw, 248px);
+  }
+
   .mobile-app-header {
     position: sticky;
     z-index: 60;
