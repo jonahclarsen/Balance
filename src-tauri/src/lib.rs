@@ -622,6 +622,28 @@ struct ClipboardContents {
     html: Option<String>,
 }
 
+#[tauri::command]
+fn perform_time_step_haptic() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use objc2_app_kit::{
+            NSHapticFeedbackManager, NSHapticFeedbackPattern, NSHapticFeedbackPerformanceTime,
+            NSHapticFeedbackPerformer,
+        };
+
+        // LevelChange is AppKit's discrete-control feedback, which matches each
+        // 15-minute boundary crossed while dragging a time value.
+        NSHapticFeedbackManager::defaultPerformer().performFeedbackPattern_performanceTime(
+            NSHapticFeedbackPattern::LevelChange,
+            NSHapticFeedbackPerformanceTime::Now,
+        );
+        true
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    false
+}
+
 #[cfg(target_os = "macos")]
 #[tauri::command]
 fn write_balance_clipboard(plain_text: String, structured_payload: String) -> Result<(), String> {
@@ -9826,6 +9848,7 @@ pub fn run() {
             reset_export_directory,
             reveal_path_in_file_manager,
             open_external_url,
+            perform_time_step_haptic,
             write_balance_clipboard,
             write_note_clipboard,
             read_balance_clipboard,

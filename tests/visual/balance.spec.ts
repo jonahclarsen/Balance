@@ -1844,6 +1844,44 @@ test('alt-dragging a plan start time changes only the start time', async ({ page
     .toEqual([570, 600])
 })
 
+test('dragging a desktop time requests native step haptics', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Desktop time controls are replaced by the mobile time editor')
+
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const pickRow = page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
+  await pickRow.getByRole('button', { name: 'Add time range' }).click()
+  await page.evaluate(() => {
+    const testWindow = window as typeof window & {
+      isTauri?: boolean
+      balanceNativeHaptics?: string[]
+      __TAURI_INTERNALS__?: {
+        invoke: (command: string) => Promise<unknown>
+      }
+    }
+    testWindow.isTauri = true
+    testWindow.__TAURI_INTERNALS__ = {
+      invoke: async (command) => {
+        testWindow.balanceNativeHaptics = [...(testWindow.balanceNativeHaptics ?? []), command]
+        return command === 'perform_time_step_haptic'
+      },
+    }
+  })
+
+  await verticalDrag(page, pickRow.getByRole('button', { name: '9am' }), -10)
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => (window as typeof window & { balanceNativeHaptics?: string[] }).balanceNativeHaptics ?? [],
+      ),
+    )
+    .toContain('perform_time_step_haptic')
+})
+
 test('quick repeated plan time drags undo as one entry', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

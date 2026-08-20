@@ -7,7 +7,7 @@
 </script>
 
 <script lang="ts">
-  import { isTauri } from '@tauri-apps/api/core'
+  import { invoke, isTauri } from '@tauri-apps/api/core'
   import { vibrate } from '@tauri-apps/plugin-haptics'
   import { clampMinutes, formatMinutes, MAX_TIMELINE_MINUTES } from './planner'
 
@@ -25,7 +25,6 @@
   export let getShiftTargets: (() => TimeShiftTarget[] | null) | null = null
   export let onShift: ((targets: TimeShiftTarget[], delta: number) => void) | null = null
   export let expanded = false
-  export let hapticSteps = false
   export let dragPixelsPerStep = 10
   export let showRemove = true
 
@@ -70,7 +69,7 @@
     const steps = Math.round((dragState.originY - event.clientY) / dragPixelsPerStep)
     const delta = steps * 15
 
-    if (hapticSteps && steps !== dragState.lastSteps) {
+    if (steps !== dragState.lastSteps) {
       const crossedSteps = Math.abs(steps - dragState.lastSteps)
       dragState.lastSteps = steps
       vibrateCrossedSteps(crossedSteps)
@@ -116,8 +115,8 @@
     if (count < 1) return
 
     if (isTauri()) {
-      // Android WebViews may expose navigator.vibrate() while silently
-      // ignoring it. Tauri's mobile plugin calls the native vibrator service.
+      // Tauri reaches AppKit on macOS and the native vibrator service on
+      // Android; Android WebViews can silently ignore navigator.vibrate().
       void vibrateNatively(count).catch(() => vibrateInBrowser(count))
       return
     }
@@ -127,8 +126,11 @@
 
   async function vibrateNatively(count: number) {
     for (let index = 0; index < count; index += 1) {
-      const result = await vibrate(STEP_HAPTIC_MS)
-      if (result.status === 'error') throw new Error('Native haptic feedback failed')
+      const handledByMacos = await invoke<boolean>('perform_time_step_haptic')
+      if (!handledByMacos) {
+        const result = await vibrate(STEP_HAPTIC_MS)
+        if (result.status === 'error') throw new Error('Native haptic feedback failed')
+      }
       if (index < count - 1) {
         await new Promise((resolve) => window.setTimeout(resolve, STEP_HAPTIC_PAUSE_MS))
       }

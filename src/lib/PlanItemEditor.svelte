@@ -953,7 +953,6 @@
         onChange={patchTimeRange}
         onRemove={() => {}}
         expanded
-        hapticSteps
         dragPixelsPerStep={12}
         showRemove={false}
       />
