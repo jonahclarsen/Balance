@@ -892,6 +892,37 @@ test('checkbox color can be changed in settings and persists', async ({ page }) 
   await expect(page.getByLabel('Checked checkbox hex code')).toHaveValue(selectedColor!)
 })
 
+test('iridescent sidebar gradient starts at a random phase on each page', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.emulateMedia({ reducedMotion: 'no-preference' })
+
+  const activeSidebarButton = page.locator('.sidebar nav button.active')
+  const animationDelay = () => activeSidebarButton.evaluate(
+    (button) => Number.parseFloat(getComputedStyle(button).animationDelay),
+  )
+  const navigateTo = async (name: 'Today' | 'Day Templates') => {
+    if (testInfo.project.name === 'mobile') {
+      await page.getByRole('button', { name: 'Open navigation' }).click()
+    }
+    await page.getByRole('button', { name, exact: true }).click()
+  }
+
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
+  await expect(activeSidebarButton).toHaveText(/Today/)
+  const todayAnimationDelay = await animationDelay()
+  expect(todayAnimationDelay).toBeLessThanOrEqual(0)
+  expect(todayAnimationDelay).toBeGreaterThan(-12)
+
+  await navigateTo('Day Templates')
+  await expect(activeSidebarButton).toHaveText(/Day Templates/)
+  const templatesAnimationDelay = await animationDelay()
+  expect(templatesAnimationDelay).toBeLessThanOrEqual(0)
+  expect(templatesAnimationDelay).toBeGreaterThan(-12)
+  expect(templatesAnimationDelay).not.toBe(todayAnimationDelay)
+})
+
 test('color themes update the whole palette, persist, and adapt to dark mode', async ({ page }, testInfo) => {
   const openSettings = async () => {
     const openNavigation = page.getByRole('button', { name: 'Open navigation' })

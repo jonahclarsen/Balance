@@ -104,6 +104,7 @@
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
   const WORKSPACE_VIEW_STATE_KEY = 'balance:workspaceViewState'
   const COMPARE_DAY_KEY = 'balance:compareDay'
+  const ACTIVE_NAV_ANIMATION_DURATION_SECONDS = 12
   const isMobile = /android|iphone|ipad|ipod/i.test(
     (typeof navigator !== 'undefined' && navigator.userAgent) || '',
   )
@@ -146,6 +147,8 @@
   // entry available while visiting other pages; returning to Lists dismisses it.
   let listHistoryNavigationVisible = false
   let searchOpen = false
+  let activeNavAnimationTarget: View | 'search' = view
+  let activeNavAnimationDelay = randomActiveNavAnimationDelay()
   let documentFindOpen = false
   let documentFindBar: DocumentFindBar | null = null
   let shortcutsHelpOpen = false
@@ -173,6 +176,18 @@
   // Empty means "use the active theme color"; a hex value overrides it.
   let doneTintColor = ''
   let checkboxColor = ''
+
+  function randomActiveNavAnimationDelay(): string {
+    return `${-Math.random() * ACTIVE_NAV_ANIMATION_DURATION_SECONDS}s`
+  }
+
+  function updateActiveNavAnimationDelay(target: View | 'search') {
+    if (target === activeNavAnimationTarget) return
+    activeNavAnimationTarget = target
+    activeNavAnimationDelay = randomActiveNavAnimationDelay()
+  }
+
+  $: updateActiveNavAnimationDelay(searchOpen ? 'search' : view)
   let themeId: ThemeId = DEFAULT_THEME_ID
   let iridescentGradient = createDefaultIridescentGradient()
   let previousPersistedIridescentGradient: IridescentGradientPreferences | null = null
@@ -4653,7 +4668,11 @@ return rows`
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>
     </button>
 
-    <nav class="primary-nav" aria-label="Primary">
+    <nav
+      class="primary-nav"
+      aria-label="Primary"
+      style:--active-nav-animation-delay={activeNavAnimationDelay}
+    >
       <button
         class:active={searchOpen}
         type="button"
