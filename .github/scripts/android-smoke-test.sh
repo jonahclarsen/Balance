@@ -743,6 +743,12 @@ dismiss_recovery_key_setup() {
   return 1
 }
 
+open_mobile_view() {
+  local view_name="$1"
+  tap_ui text "Open navigation"
+  tap_ui text "$view_name"
+}
+
 PAIRING_CODE="$(tr -d '\r\n' < sync-e2e-pairing-code.txt)"
 if [[ "$PAIRING_CODE" != BALSYNC1:* ]]; then
   echo "The camera fixture did not contain a Balance pairing code."
@@ -751,7 +757,7 @@ fi
 
 echo "[ui-sync] enabling the source installation with the camera fixture key"
 dismiss_recovery_key_setup
-tap_ui text "Settings"
+open_mobile_view "Settings"
 type_into_ui_after_text "Pair with another device" "$PAIRING_CODE"
 # The emulator injects text through its hardware input path, so no soft keyboard
 # is guaranteed to be visible. Submit with Enter and never send Back here: Back
@@ -780,7 +786,7 @@ fi
 echo "[ui-sync] source is paired and listening at $PRIMARY_ADDRESS"
 
 echo "[ui-sync] creating recognizable data on the source installation"
-tap_ui_scrolling_up text "Goals"
+open_mobile_view "Goals"
 wait_for_ui_text "Add a goal"
 # A goal requires both a name and at least one matching phrase. Fill the real
 # fields and press the visible Add button so seeing the name afterward proves a
@@ -832,7 +838,7 @@ sleep 8
 
 echo "[ui-sync] scanning the pairing QR through Android's emulated back camera"
 dismiss_recovery_key_setup
-tap_ui_scrolling_up text "Settings"
+open_mobile_view "Settings"
 tap_ui_scrolling text "Scan QR code"
 for _ in $(seq 1 30); do
   if wait_for_ui_text "Paired." 1; then
@@ -850,7 +856,7 @@ wait_for_ui_text "Synced directly with" 30
 
 # A successful sync rehydrates the frontend from the joining profile's encrypted
 # database. The primary-only goal must now be present in that materialized state.
-tap_ui_scrolling_up text "Goals"
+open_mobile_view "Goals"
 wait_for_ui_text "CISyncGoal" 30
 echo "[ui-sync] PASS: camera QR pairing transferred source user data to the isolated joiner"
 
