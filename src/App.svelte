@@ -99,6 +99,7 @@
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
+  const DESKTOP_INACTIVITY_CLOSE_MS = 2 * 60 * 60 * 1000
   const isAndroid = /android/i.test(navigator.userAgent)
   const DAY_TEMPLATE_SELECTION_KEY = 'balance:selectedDayTemplateId'
   const LIST_TEMPLATES_VIEW_STATE_KEY = 'balance:listTemplatesViewState'
@@ -1317,6 +1318,48 @@ return rows`
     let stopAutomaticSync: (() => void) | null = null
     let stopPasteMatchStyleListener: (() => void) | null = null
     let noteTrashCleanupTimer: number | null = null
+    let desktopInactivityCloseTimer: number | null = null
+    let desktopInactivityCloseRequested = false
+    let lastDesktopActivityAt = Date.now()
+    const desktopActivityEvents = ['keydown', 'pointerdown', 'pointermove', 'wheel', 'input'] as const
+
+    function closeDesktopIfInactive() {
+      if (!isTauri() || isMobile || desktopInactivityCloseRequested) return
+
+      const remaining = DESKTOP_INACTIVITY_CLOSE_MS - (Date.now() - lastDesktopActivityAt)
+      if (remaining > 0) {
+        desktopInactivityCloseTimer = window.setTimeout(closeDesktopIfInactive, remaining)
+        return
+      }
+
+      desktopInactivityCloseRequested = true
+      void invoke('exit_after_inactivity').catch((error) => {
+        desktopInactivityCloseRequested = false
+        console.error('Could not close Balance after desktop inactivity', error)
+      })
+    }
+
+    function recordDesktopActivity() {
+      if (!isTauri() || isMobile || desktopInactivityCloseRequested) return
+
+      if (Date.now() - lastDesktopActivityAt >= DESKTOP_INACTIVITY_CLOSE_MS) {
+        closeDesktopIfInactive()
+        return
+      }
+      lastDesktopActivityAt = Date.now()
+    }
+
+    if (isTauri() && !isMobile) {
+      desktopInactivityCloseTimer = window.setTimeout(
+        closeDesktopIfInactive,
+        DESKTOP_INACTIVITY_CLOSE_MS,
+      )
+      for (const eventName of desktopActivityEvents) {
+        window.addEventListener(eventName, recordDesktopActivity, { passive: true })
+      }
+      window.addEventListener('focus', recordDesktopActivity)
+      document.addEventListener('visibilitychange', recordDesktopActivity)
+    }
     const databaseLoadingMessageTimer = window.setInterval(() => {
       if (!$databaseLoadPending || databaseLoadingMessages.length < 2) return
       databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(
@@ -1470,7 +1513,13 @@ return rows`
       stopAndroidSelectionBackListener()
       window.clearInterval(databaseLoadingMessageTimer)
       window.clearInterval(currentDayTimer)
+      if (desktopInactivityCloseTimer !== null) window.clearTimeout(desktopInactivityCloseTimer)
       if (noteTrashCleanupTimer !== null) window.clearInterval(noteTrashCleanupTimer)
+      for (const eventName of desktopActivityEvents) {
+        window.removeEventListener(eventName, recordDesktopActivity)
+      }
+      window.removeEventListener('focus', recordDesktopActivity)
+      document.removeEventListener('visibilitychange', recordDesktopActivity)
       window.removeEventListener('focus', refreshCurrentDay)
       document.removeEventListener('visibilitychange', refreshCurrentDay)
       document.removeEventListener('visibilitychange', handleCelebrationVisibilityChange)

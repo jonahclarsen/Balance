@@ -1469,6 +1469,11 @@ fn available_update(
 }
 
 #[tauri::command]
+fn exit_after_inactivity(app: tauri::AppHandle) {
+    app.exit(0);
+}
+
+#[tauri::command]
 async fn check_for_update(app: tauri::AppHandle) -> Result<Option<AvailableUpdate>, String> {
     if cfg!(debug_assertions) {
         return Ok(None);
@@ -9714,6 +9719,7 @@ pub fn run() {
             rotate_database_recovery_key,
             recover_database_with_key,
             build_info,
+            exit_after_inactivity,
             check_for_update,
             save_export_file,
             get_export_settings,
