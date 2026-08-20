@@ -1,0 +1,213 @@
+name: Profile desktop interactions under system load
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Git ref before the interaction optimization
+        required: true
+        default: "753c900"
+        type: string
+      candidate_ref:
+        description: Git ref containing the interaction optimization
+        required: true
+        default: "codex/system-load-performance"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Matched before/after under CPU contention
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      BALANCE_INTERACTION_PERF_PROFILE_ONLY: "1"
+      BALANCE_INTERACTION_PERF_OPERATIONS: "1"
+      BALANCE_INTERACTION_PERF_EDITS: "4"
+      BALANCE_INTERACTION_PERF_CLICKS: "4"
+      BALANCE_INTERACTION_PERF_FRAME_SAMPLE_MS: "1000"
+
+    steps:
+      - name: Check out benchmark harness
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+
+      - name: Prepare matched revisions
+        env:
+          BASELINE_DIR: ${{ runner.temp }}/balance-load-baseline
+          CANDIDATE_DIR: ${{ runner.temp }}/balance-load-candidate
+        run: |
+          set -euo pipefail
+          baseline_sha="$(git rev-parse --verify "${BASELINE_REF}^{commit}")"
+          candidate_sha="$(git rev-parse --verify "${CANDIDATE_REF}^{commit}")"
+          echo "BASELINE_SHA=$baseline_sha" >> "$GITHUB_ENV"
+          echo "CANDIDATE_SHA=$candidate_sha" >> "$GITHUB_ENV"
+          echo "BASELINE_DIR=$BASELINE_DIR" >> "$GITHUB_ENV"
+          echo "CANDIDATE_DIR=$CANDIDATE_DIR" >> "$GITHUB_ENV"
+
+          git worktree add --detach "$BASELINE_DIR" "$baseline_sha"
+          git worktree add --detach "$CANDIDATE_DIR" "$candidate_sha"
+          cp tests/performance/interactions.spec.ts "$BASELINE_DIR/tests/performance/interactions.spec.ts"
+          cp playwright.interaction-performance.config.ts "$BASELINE_DIR/playwright.interaction-performance.config.ts"
+          (cd "$BASELINE_DIR" && pnpm install --force --frozen-lockfile --offline)
+          (cd "$CANDIDATE_DIR" && pnpm install --force --frozen-lockfile --offline)
+
+      - name: Alternate three measured runs under host and renderer contention
+        run: |
+          set -euo pipefail
+          results="$RUNNER_TEMP/system-load-performance.jsonl"
+          logs="$RUNNER_TEMP/system-load-performance.log"
+          : > "$results"
+          : > "$logs"
+
+          load_pids=()
+          for worker in 1 2; do
+            yes > /dev/null &
+            load_pids+=("$!")
+          done
+          cleanup_load() {
+            kill "${load_pids[@]}" 2>/dev/null || true
+          }
+          trap cleanup_load EXIT INT TERM
+
+          run_profile() {
+            variant="$1"
+            round="$2"
+            directory="$3"
+            echo "Running $variant round $round" | tee -a "$logs"
+            output="$({
+              cd "$directory"
+              pnpm exec playwright test \
+                --config playwright.interaction-performance.config.ts \
+                --project mac-desktop-6x-cpu \
+                --grep "common typing" \
+                --trace off
+            } 2>&1)"
+            printf '%s\n' "$output" | tee -a "$logs"
+            payload="$(printf '%s\n' "$output" | sed -n 's/^INTERACTION_PERF //p')"
+            test -n "$payload"
+            jq -cn \
+              --arg variant "$variant" \
+              --argjson round "$round" \
+              --argjson profile "$payload" \
+              '{variant: $variant, round: $round, profile: $profile}' >> "$results"
+          }
+
+          for round in 1 2 3; do
+            if (( round % 2 == 1 )); then
+              run_profile baseline "$round" "$BASELINE_DIR"
+              run_profile candidate "$round" "$CANDIDATE_DIR"
+            else
+              run_profile candidate "$round" "$CANDIDATE_DIR"
+              run_profile baseline "$round" "$BASELINE_DIR"
+            fi
+          done
+
+          summary="$(jq -s '
+            def median: sort | .[length / 2 | floor];
+            def metric($name; $path):
+              ([.[] | getpath($path)] | median) as $value
+              | {key: $name, value: $value};
+            group_by(.variant)
+            | map(
+                .[0].variant as $variant
+                | {
+                    variant: $variant,
+                    runs: length,
+                    metrics: from_entries([
+                      metric("idle_frame_interval_ms"; ["profile", "idleFrameIntervals", "medianMs"]),
+                      metric("task_focus_paint_ms"; ["profile", "taskFocus", "paint", "medianMs"]),
+                      metric("checkbox_paint_ms"; ["profile", "checkboxClick", "paint", "medianMs"]),
+                      metric("typing_paint_ms"; ["profile", "typing", "paint", "medianMs"]),
+                      metric("backspace_paint_ms"; ["profile", "backspacing", "paint", "medianMs"])
+                    ])
+                  }
+              )
+            | . as $variants
+            | ($variants[] | select(.variant == "baseline")) as $baseline
+            | ($variants[] | select(.variant == "candidate")) as $candidate
+            | {
+                variants: $variants,
+                speedups: ($baseline.metrics | to_entries | map({
+                  key,
+                  value: ((.value / $candidate.metrics[.key]) * 100 | round / 100)
+                }) | from_entries)
+              }
+          ' "$results")"
+          printf '%s\n' "$summary" > "$RUNNER_TEMP/system-load-performance-summary.json"
+          {
+            echo '## Desktop interaction profile under CPU contention'
+            echo
+            echo "Baseline: \`$BASELINE_SHA\` · Candidate: \`$CANDIDATE_SHA\`"
+            echo
+            echo 'Three alternating runs per revision; two host CPU workers plus Chromium 6× CPU throttling.'
+            echo
+            echo '```json'
+            printf '%s\n' "$summary"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v7
+        with:
+          name: system-load-before-after-profile
+          path: |
+            ${{ runner.temp }}/system-load-performance.jsonl
+            ${{ runner.temp }}/system-load-performance-summary.json
+            ${{ runner.temp }}/system-load-performance.log
+          if-no-files-found: error
+
+  verify:
+    name: Typecheck and Goal Rhythm behavior
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+
+      - name: Check source
+        run: pnpm check
+
+      - name: Verify Goal Rhythm scrolling and task-badge interactions
+        run: |
+          pnpm exec playwright test tests/visual/goals.spec.ts \
+            --project desktop \
+            --grep "a completion resets a rolling deadline|goal rhythm keeps its name column aligned|clicking a plan item goal badge reveals|clicking an unchecked goal preview reveals"

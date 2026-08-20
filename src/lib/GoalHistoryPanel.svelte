@@ -36,6 +36,15 @@
   let highlightResetTimer: ReturnType<typeof setTimeout> | undefined
   let lastHandledScrollNonce = -1
   let wasVisible = visible
+  const DAY_CHUNK_SIZE = 16
+
+  function chunksOf<T>(values: T[]): T[][] {
+    const chunks: T[][] = []
+    for (let index = 0; index < values.length; index += DAY_CHUNK_SIZE) {
+      chunks.push(values.slice(index, index + DAY_CHUNK_SIZE))
+    }
+    return chunks
+  }
 
   $: if (visible !== wasVisible) {
     wasVisible = visible
@@ -128,6 +137,7 @@
   $: futureDayCount = Math.max(0, isoDateDiffDays(today, viewedDate) + GOAL_FUTURE_DAYS)
   $: futureDates = Array.from({ length: futureDayCount }, (_, index) => shiftISODate(today, index + 1))
   $: dates = [...pastDates, ...futureDates]
+  $: dateChunks = chunksOf(dates)
   $: upcomingGoalCount = goals.filter((goal) => {
     const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)
     return daysUntilLapse !== null && daysUntilLapse <= 3
@@ -153,7 +163,10 @@
     const currentDayHead = scrollEl.querySelector<HTMLElement>(`[data-goal-date="${today}"]`)
     if (!currentDayHead) return
 
-    scrollEl.scrollLeft = currentDayHead.offsetLeft + currentDayHead.offsetWidth / 2 - scrollEl.clientWidth / 2
+    const scrollRect = scrollEl.getBoundingClientRect()
+    const currentDayRect = currentDayHead.getBoundingClientRect()
+    const currentDayCenter = currentDayRect.left - scrollRect.left + scrollEl.scrollLeft + currentDayRect.width / 2
+    scrollEl.scrollLeft = currentDayCenter - scrollEl.clientWidth / 2
     syncTimelineScroll()
   }
 
@@ -315,53 +328,65 @@
     </div>
 
     <div class="goal-history-scroll" bind:this={scrollEl} on:scroll={syncTimelineScroll}>
-      <div class="goal-history-grid" style={`--goal-day-count: ${dates.length}`}>
-        {#each dates as date (date)}
-          <button
-            type="button"
-            class:viewed={date === viewedDate}
-            class:today={date === today}
-            class:future={date > today}
-            class="goal-date-head"
-            data-goal-date={date}
-            aria-label={`Open ${date} in Today view`}
-            title={`Open ${date} in Today view`}
-            on:click={() => onOpenDate(date)}
-          >
-            <span>{dayLabel(date)}</span>
-            <strong>{dateLabel(date)}</strong>
-          </button>
-        {/each}
+      <div class="goal-history-grid">
+        <div class="goal-history-date-row">
+          {#each dateChunks as dateChunk (dateChunk[0])}
+            <div class="goal-history-day-chunk" style={`--goal-chunk-day-count: ${dateChunk.length}`}>
+              {#each dateChunk as date (date)}
+                <button
+                  type="button"
+                  class:viewed={date === viewedDate}
+                  class:today={date === today}
+                  class:future={date > today}
+                  class="goal-date-head"
+                  data-goal-date={date}
+                  aria-label={`Open ${date} in Today view`}
+                  title={`Open ${date} in Today view`}
+                  on:click={() => onOpenDate(date)}
+                >
+                  <span>{dayLabel(date)}</span>
+                  <strong>{dateLabel(date)}</strong>
+                </button>
+              {/each}
+            </div>
+          {/each}
+        </div>
 
         {#each visibleGoals as goal (goal.id)}
           {@const cells = buildGoalDayCells(goal, completions, dates, today)}
-          {#each cells as cell (cell.date)}
-            <div
-              class="goal-day-cell"
-              class:active={cell.active}
-              class:segment-start={cell.segmentStart}
-              class:segment-end={cell.segmentEnd}
-              class:current-period={cell.current}
-              class:completed={cell.completed}
-              class:relieved={cell.relieved}
-              class:missed={cell.missed}
-              class:overdue={cell.overdue}
-              class:viewed={cell.date === viewedDate}
-              class:future={cell.date > today}
-              style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
-              title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.overdue ? ' · overdue' : cell.missed ? ' · missed' : cell.active ? ' · active' : ' · inactive'}`}
-            >
-              {#if cell.completed}
-                <span class="goal-cell-mark checked">✓</span>
-              {:else if cell.relieved}
-                <span class="goal-cell-mark relieved-mark">✓</span>
-              {:else if cell.overdue}
-                <span class="goal-cell-mark overdue-mark">×</span>
-              {:else if cell.active}
-                <span class="goal-cell-mark open"></span>
-              {/if}
-            </div>
-          {/each}
+          <div class="goal-history-day-row">
+            {#each chunksOf(cells) as cellChunk (cellChunk[0].date)}
+              <div class="goal-history-day-chunk" style={`--goal-chunk-day-count: ${cellChunk.length}`}>
+                {#each cellChunk as cell (cell.date)}
+                  <div
+                    class="goal-day-cell"
+                    class:active={cell.active}
+                    class:segment-start={cell.segmentStart}
+                    class:segment-end={cell.segmentEnd}
+                    class:current-period={cell.current}
+                    class:completed={cell.completed}
+                    class:relieved={cell.relieved}
+                    class:missed={cell.missed}
+                    class:overdue={cell.overdue}
+                    class:viewed={cell.date === viewedDate}
+                    class:future={cell.date > today}
+                    style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
+                    title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.overdue ? ' · overdue' : cell.missed ? ' · missed' : cell.active ? ' · active' : ' · inactive'}`}
+                  >
+                    {#if cell.completed}
+                      <span class="goal-cell-mark checked">✓</span>
+                    {:else if cell.relieved}
+                      <span class="goal-cell-mark relieved-mark">✓</span>
+                    {:else if cell.overdue}
+                      <span class="goal-cell-mark overdue-mark">×</span>
+                    {:else if cell.active}
+                      <span class="goal-cell-mark open"></span>
+                    {/if}
+                  </div>
+                {/each}
+              </div>
+            {/each}
+          </div>
         {/each}
       </div>
     </div>

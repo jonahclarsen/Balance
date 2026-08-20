@@ -17,6 +17,13 @@ export default defineConfig({
       },
     },
     {
+      name: 'mac-desktop-6x-cpu',
+      use: {
+        ...devices['Desktop Chrome'],
+        viewport: { width: 1280, height: 820 },
+      },
+    },
+    {
       name: 'android-like-6x-cpu',
       use: {
         ...devices['Pixel 5'],

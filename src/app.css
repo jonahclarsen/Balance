@@ -4007,13 +4007,42 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-history-grid {
-  display: grid;
-  grid-template-columns: repeat(var(--goal-day-count), 30px);
-  grid-auto-rows: 30px;
   width: max-content;
   min-width: 100%;
-  align-content: start;
   padding-bottom: 8px;
+}
+
+.goal-history-date-row,
+.goal-history-day-row {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  height: 30px;
+}
+
+.goal-history-date-row {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+}
+
+/* Goal Rhythm can span hundreds of days and thousands of cells. Keep every
+   cell in the DOM and preserve the exact 30px scroll geometry, while letting
+   the browser omit paint/style work for rows outside the vertical viewport. */
+.goal-history-day-row {
+  content-visibility: auto;
+  contain-intrinsic-block-size: 30px;
+}
+
+.goal-history-day-chunk {
+  display: grid;
+  width: calc(var(--goal-chunk-day-count) * 30px);
+  height: 30px;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(var(--goal-chunk-day-count), 30px);
+  grid-auto-rows: 30px;
+  content-visibility: auto;
+  contain-intrinsic-inline-size: calc(var(--goal-chunk-day-count) * 30px);
 }
 
 .goal-history-corner,
@@ -4025,8 +4054,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-date-head {
-  position: sticky;
-  z-index: 3;
+  position: relative;
 }
 
 .goal-history-corner {
@@ -4042,7 +4070,6 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-date-head {
-  top: 0;
   display: grid;
   place-content: center;
   gap: 1px;

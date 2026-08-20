@@ -9,6 +9,9 @@ const EXISTING_OPERATION_COUNT = performanceSize('BALANCE_INTERACTION_PERF_OPERA
 const EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_EDITS', 24)
 const GOAL_EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_GOAL_EDITS', 8)
 const IMAX_TOGGLE_COUNT = performanceSize('BALANCE_IMAX_PERF_TOGGLES', 10)
+const THEME_ID = process.env.BALANCE_INTERACTION_PERF_THEME ?? 'iridescent'
+const CLICK_COUNT = performanceSize('BALANCE_INTERACTION_PERF_CLICKS', 12)
+const FRAME_SAMPLE_MS = performanceSize('BALANCE_INTERACTION_PERF_FRAME_SAMPLE_MS', 1_500)
 const ACTIVE_DATE = '2026-08-16'
 const EDITOR_SELECTOR = `[data-plan-text-input-id="plan_${PLAN_COUNT - 1}_item_1"]`
 
@@ -45,9 +48,18 @@ function summarize(samples: Sample[]) {
   }
 }
 
+function summarizeDurations(values: number[]) {
+  return {
+    count: values.length,
+    medianMs: percentile(values, 0.5),
+    p95Ms: percentile(values, 0.95),
+    maxMs: Math.max(...values),
+  }
+}
+
 async function installSyntheticWorkspace(page: Page) {
   await page.addInitScript(
-    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate }) => {
+    ({ planCount, itemsPerPlan, listCount, itemsPerList, goalCount, operationCount, activeDate, themeId }) => {
       const planDate = (index: number) => {
         if (index === planCount - 1) return activeDate
         const date = new Date(`${activeDate}T12:00:00Z`)
@@ -107,7 +119,7 @@ async function installSyntheticWorkspace(page: Page) {
         historyRevision: 0,
         activePlanDate: activeDate,
         preferences: {
-          themeId: 'balance',
+          themeId,
           doneTintColor: '',
           checkboxColor: '',
           databaseLoadingMessages: [],
@@ -143,6 +155,7 @@ async function installSyntheticWorkspace(page: Page) {
       goalCount: GOAL_COUNT,
       operationCount: EXISTING_OPERATION_COUNT,
       activeDate: ACTIVE_DATE,
+      themeId: THEME_ID,
     },
   )
 }
@@ -176,6 +189,54 @@ async function profileEdits(page: Page, selector: string, direction: 'type' | 'b
   )
 }
 
+async function profileIdleFrames(page: Page, durationMs = FRAME_SAMPLE_MS) {
+  return page.evaluate(async (durationMs) => {
+    const intervals: number[] = []
+    await new Promise<void>((resolve) => {
+      const started = performance.now()
+      let previous = started
+      const sample = (now: number) => {
+        intervals.push(now - previous)
+        previous = now
+        if (now - started >= durationMs) resolve()
+        else requestAnimationFrame(sample)
+      }
+      requestAnimationFrame(sample)
+    })
+    return intervals.slice(1)
+  }, durationMs)
+}
+
+async function profileTaskActions(page: Page, editorSelector: string, clickCount = CLICK_COUNT) {
+  return page.locator(editorSelector).evaluate(
+    async (element, clickCount) => {
+      const editor = element as HTMLDivElement
+      const checkbox = editor.closest('.plan-row')?.querySelector<HTMLInputElement>('input.check')
+      if (!checkbox) throw new Error('Could not find task checkbox')
+      const focus: Sample[] = []
+      const checkboxClicks: Sample[] = []
+
+      for (let index = 0; index < clickCount; index += 1) {
+        editor.blur()
+        const focusStarted = performance.now()
+        editor.focus()
+        const focusDispatched = performance.now()
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+        focus.push({ dispatchMs: focusDispatched - focusStarted, paintMs: performance.now() - focusStarted })
+
+        const clickStarted = performance.now()
+        checkbox.click()
+        const clickDispatched = performance.now()
+        await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+        checkboxClicks.push({ dispatchMs: clickDispatched - clickStarted, paintMs: performance.now() - clickStarted })
+      }
+
+      return { focus, checkboxClicks, checked: checkbox.checked }
+    },
+    clickCount,
+  )
+}
+
 async function profileImaxToggles(page: Page, toggleCount = 10) {
   return page.getByRole('button', { name: 'Enter IMAX mode' }).evaluate(
     async (element, toggleCount) => {
@@ -204,7 +265,7 @@ async function profileImaxToggles(page: Page, toggleCount = 10) {
 
 test.beforeEach(async ({ page }, testInfo) => {
   await installSyntheticWorkspace(page)
-  if (testInfo.project.name.includes('android-like')) {
+  if (testInfo.project.name.includes('6x-cpu')) {
     const session = await page.context().newCDPSession(page)
     await session.send('Emulation.setCPUThrottlingRate', { rate: 6 })
   }
@@ -213,6 +274,8 @@ test.beforeEach(async ({ page }, testInfo) => {
 })
 
 test('profiles common typing and backspacing paths', async ({ page }, testInfo) => {
+  const idleFrames = await profileIdleFrames(page)
+  const taskActions = await profileTaskActions(page, EDITOR_SELECTOR)
   const typing = await profileEdits(page, EDITOR_SELECTOR, 'type')
   const backspacing = await profileEdits(page, EDITOR_SELECTOR, 'backspace')
   const profile = {
@@ -224,7 +287,11 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
       listItems: LIST_COUNT * ITEMS_PER_LIST,
       goals: GOAL_COUNT,
       existingOperations: EXISTING_OPERATION_COUNT,
+      themeId: THEME_ID,
     },
+    idleFrameIntervals: summarizeDurations(idleFrames),
+    taskFocus: summarize(taskActions.focus),
+    checkboxClick: summarize(taskActions.checkboxClicks),
     typing: summarize(typing),
     backspacing: summarize(backspacing),
   }
@@ -234,9 +301,13 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
     body: JSON.stringify(profile, null, 2),
     contentType: 'application/json',
   })
-  const paintP95BudgetMs = testInfo.project.name.includes('android-like') ? 1_200 : 200
-  expect(profile.typing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
-  expect(profile.backspacing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
+  const paintP95BudgetMs = testInfo.project.name.includes('6x-cpu') ? 1_200 : 200
+  if (!process.env.BALANCE_INTERACTION_PERF_PROFILE_ONLY) {
+    expect(profile.taskFocus.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
+    expect(profile.checkboxClick.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
+    expect(profile.typing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
+    expect(profile.backspacing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
+  }
   await expect(page.locator(EDITOR_SELECTOR)).toContainText('task')
 })
 
@@ -262,9 +333,11 @@ test('profiles goal-name edits that legitimately change the goal collection', as
     body: JSON.stringify(profile, null, 2),
     contentType: 'application/json',
   })
-  const paintP95BudgetMs = testInfo.project.name.includes('android-like') ? 1_200 : 250
-  expect(profile.typing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
-  expect(profile.backspacing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
+  const paintP95BudgetMs = testInfo.project.name.includes('6x-cpu') ? 1_200 : 250
+  if (!process.env.BALANCE_INTERACTION_PERF_PROFILE_ONLY) {
+    expect(profile.typing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
+    expect(profile.backspacing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
+  }
 })
 
 test('profiles entering and exiting IMAX mode', async ({ page }, testInfo) => {
