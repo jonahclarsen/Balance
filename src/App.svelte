@@ -5958,7 +5958,7 @@ return rows`
         <section class="settings-section">
           <div>
             <h3>Color theme</h3>
-            <p>Pick a theme based on your mood.</p>
+            <p>Pick a theme based on your mood. Each theme adapts automatically to light and dark mode.</p>
           </div>
 
           <div class="theme-options-stack">
