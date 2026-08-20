@@ -17,8 +17,8 @@
     },
     {
       id: 'theme-preview-timed',
-      text: 'Cross-examine the moon about who put soup in my shoes',
-      html: 'Cross-examine the moon about who put soup in my shoes',
+      text: 'Ask Sam-I-Am why the green eggs are hatching',
+      html: 'Ask Sam-I-Am why the green eggs are hatching',
       done: false,
       startMinutes: 9 * 60,
       endMinutes: 9 * 60 + 30,
