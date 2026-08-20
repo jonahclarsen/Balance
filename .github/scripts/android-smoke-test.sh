@@ -714,9 +714,18 @@ dismiss_recovery_key_setup() {
   for _ in $(seq 1 30); do
     dump_ui
     if [ -n "$(find_ui_node text "Save your recovery key" exact)" ]; then
-      tap_ui class "android.widget.CheckBox"
+      if [ -n "$(find_ui_node resource-id "recovery-key-confirmation" exact)" ]; then
+        # Exercise the current confirmation flow with the synthetic key while
+        # keeping the key out of the workflow log and test artifacts.
+        tap_ui text "Copy key"
+        tap_ui resource-id "recovery-key-confirmation"
+        adb shell input keyevent KEYCODE_PASTE
+      else
+        # Older APK fixtures used an acknowledgement checkbox instead.
+        tap_ui class "android.widget.CheckBox"
+      fi
       # Enabling Continue is asynchronous in the WebView. tap_ui ignores
-      # disabled nodes, so it waits for the checked state to render first.
+      # disabled nodes, so it waits for the confirmed state to render first.
       tap_ui text "Continue"
       for _ in $(seq 1 20); do
         dump_ui
