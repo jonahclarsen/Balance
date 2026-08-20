@@ -17,8 +17,8 @@
     },
     {
       id: 'theme-preview-timed',
-      text: 'Conduct the Roomba’s performance review (it knows what it did)',
-      html: 'Conduct the Roomba’s performance review (it knows what it did)',
+      text: 'Find the second horse before the landlord finds the first',
+      html: 'Find the second horse before the landlord finds the first',
       done: false,
       startMinutes: 9 * 60,
       endMinutes: 9 * 60 + 30,

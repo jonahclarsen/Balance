@@ -2786,11 +2786,15 @@ body.mobile-checkbox-dragging {
   line-height: 1.45;
 }
 
+.theme-options-stack,
 .theme-grid {
   display: grid;
+  row-gap: 8.5px;
+}
+
+.theme-grid {
   grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
   column-gap: 10px;
-  row-gap: 8.5px;
 }
 
 .theme-option {

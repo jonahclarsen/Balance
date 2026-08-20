@@ -5876,42 +5876,44 @@ return rows`
         <section class="settings-section">
           <div>
             <h3>Color theme</h3>
-            <p>Change Balance’s colors everywhere with one choice. Each theme adapts automatically to light and dark mode.</p>
+            <p>Pick a theme based on your mood.</p>
           </div>
 
-          <div class="theme-grid" role="group" aria-label="Color theme">
-            {#each THEME_PRESETS as theme (theme.id)}
-              <button
-                type="button"
-                class="theme-option"
-                class:active={themeId === theme.id}
-                aria-pressed={themeId === theme.id}
-                on:click={() => updateTheme(theme.id)}
-              >
-                <span class="theme-swatches" aria-hidden="true">
-                  {#each theme.swatches as swatch}
-                    <span style={`--theme-swatch: ${swatch}`}></span>
-                  {/each}
-                </span>
-                <span class="theme-option-copy">
-                  <strong>{theme.name}</strong>
-                  <small>{theme.description}</small>
-                </span>
-                <span class="theme-selected-mark" aria-hidden="true">✓</span>
-              </button>
-            {/each}
+          <div class="theme-options-stack">
+            <div class="theme-grid" role="group" aria-label="Color theme">
+              {#each THEME_PRESETS as theme (theme.id)}
+                <button
+                  type="button"
+                  class="theme-option"
+                  class:active={themeId === theme.id}
+                  aria-pressed={themeId === theme.id}
+                  on:click={() => updateTheme(theme.id)}
+                >
+                  <span class="theme-swatches" aria-hidden="true">
+                    {#each theme.swatches as swatch}
+                      <span style={`--theme-swatch: ${swatch}`}></span>
+                    {/each}
+                  </span>
+                  <span class="theme-option-copy">
+                    <strong>{theme.name}</strong>
+                    <small>{theme.description}</small>
+                  </span>
+                  <span class="theme-selected-mark" aria-hidden="true">✓</span>
+                </button>
+              {/each}
+            </div>
+
+            {#if themeId === 'iridescent'}
+              <IridescentGradientSettings
+                value={iridescentGradient}
+                defaults={defaultIridescentGradient}
+                onPreview={previewIridescentGradient}
+                onCommit={commitIridescentGradient}
+              />
+            {/if}
+
+            <ThemeTaskPreview mobile={isMobile} />
           </div>
-
-          {#if themeId === 'iridescent'}
-            <IridescentGradientSettings
-              value={iridescentGradient}
-              defaults={defaultIridescentGradient}
-              onPreview={previewIridescentGradient}
-              onCommit={commitIridescentGradient}
-            />
-          {/if}
-
-          <ThemeTaskPreview mobile={isMobile} />
         </section>
 
         <section class="settings-section">
