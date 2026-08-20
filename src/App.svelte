@@ -22,6 +22,7 @@
   import RichTextEditor from './lib/RichTextEditor.svelte'
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
+  import ThemeTaskPreview from './lib/ThemeTaskPreview.svelte'
   import DocumentFindBar from './lib/DocumentFindBar.svelte'
   import Celebration from './lib/Celebration.svelte'
   import CelebrationSettings from './lib/CelebrationSettings.svelte'
@@ -5909,6 +5910,8 @@ return rows`
               onCommit={commitIridescentGradient}
             />
           {/if}
+
+          <ThemeTaskPreview mobile={isMobile} />
         </section>
 
         <section class="settings-section">

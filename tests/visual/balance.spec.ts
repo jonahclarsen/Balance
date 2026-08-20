@@ -1147,6 +1147,36 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   })
 })
 
+test('color theme settings show live Today task previews', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  const taskPreview = page.locator('.theme-task-preview')
+  const timedPreviewRow = taskPreview.locator('[data-plan-item-id="theme-preview-laundry-negotiation"]')
+  const completedPreviewRow = taskPreview.locator('[data-plan-item-id="theme-preview-plant-apology"]')
+  await expect(taskPreview.locator('.plan-row')).toHaveCount(2)
+  await expect(timedPreviewRow.locator('.mobile-time-start-side, .time-start-side')).toContainText('9am')
+  await expect(timedPreviewRow.locator('.mobile-time-end-side, .time-end-side')).toContainText('9:30am')
+  await expect(completedPreviewRow).toHaveClass(/done/)
+  await expect(completedPreviewRow.locator('.check')).toBeChecked()
+  await expect(completedPreviewRow.locator('.item-text')).toHaveClass(/done/)
+
+  const pinkTheme = page.getByRole('group', { name: 'Color theme' }).getByRole('button', {
+    name: 'Pink Bright pink and petal white',
+  })
+  await pinkTheme.click()
+  await expect(completedPreviewRow.locator('.check')).toHaveCSS('background-color', 'rgb(211, 79, 137)')
+
+  await taskPreview.scrollIntoViewIfNeeded()
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-theme-task-preview.png`,
+    fullPage: false,
+  })
+})
+
 test('iridescent gradient controls preview live, persist, and toggle with the original palette', async ({ page }, testInfo) => {
   const openSettings = async () => {
     const openNavigation = page.getByRole('button', { name: 'Open navigation' })
