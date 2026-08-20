@@ -815,6 +815,30 @@ test('checking the final list item celebrates the completed list', async ({ page
   await expect(page.getByRole('status', { name: 'List finished' })).toBeVisible()
 })
 
+test('checking a parent list item leaves its children unchecked', async ({ page }, testInfo) => {
+  await seedListItems(page, ['Parent item', 'Child item'])
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const [parent, child] = state.lists[0].items
+    state.lists[0].items = [{ ...parent, children: [child] }]
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+  await openSidebarPage(page, 'Lists', testInfo.project.name === 'mobile')
+  await page.getByRole('button', { name: 'View List History' }).click()
+
+  const checkbox = (text: string) =>
+    page
+      .getByRole('listitem', { name: `Plan item: ${text}`, exact: true })
+      .getByRole('checkbox', { name: 'Complete item' })
+      .first()
+
+  await checkbox('Parent item').check()
+
+  await expect(checkbox('Parent item')).toBeChecked()
+  await expect(checkbox('Child item')).not.toBeChecked()
+})
+
 test('completing a linked list celebrates after its overlay closes', async ({ page }) => {
   await seedListItems(page, ['Pack charger', 'Pack snacks'])
   await page.evaluate(() => {

@@ -1830,8 +1830,7 @@ function createPlannerStore() {
             : {}
       commit('patch_list_item', { listId, itemId, patch }, (state) =>
         updateList(state, listId, (list) => {
-          let items = updatePlanItem(list.items, itemId, (item) => applyPatch(item, patch))
-          if (patch.done === true) items = completePlanItemDescendants(items, [itemId]).items
+          const items = updatePlanItem(list.items, itemId, (item) => applyPatch(item, patch))
           return items === list.items ? list : { ...list, items }
         }),
         mergeOptions,
