@@ -687,7 +687,7 @@
             <button class="ghost danger" type="button" on:click={() => permanentlyDelete(selectedNote!.id)}>Delete now</button>
           {:else}
             <button type="button" title="Copy an app link to this note" aria-live="polite" on:click={copyLink}>{copyButtonText}</button>
-            <button class="ghost danger" type="button" on:click={() => moveToTrash(selectedNote!.id)}>Bin it.</button>
+            <button class="ghost danger" type="button" on:click={() => moveToTrash(selectedNote!.id)}>Bin it</button>
           {/if}
         </div>
       </header>
