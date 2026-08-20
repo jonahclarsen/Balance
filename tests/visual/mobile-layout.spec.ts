@@ -483,10 +483,15 @@ test('holding a mobile checkbox then dragging checks every crossed task in one a
     y: box.y + box.height / 2,
   })
 
-  await page.touchscreen.tap(touchPoint(origin).x, touchPoint(origin).y)
-  await expect(rows[0].getByRole('checkbox')).toBeChecked()
-  await page.touchscreen.tap(touchPoint(origin).x, touchPoint(origin).y)
-  await expect(rows[0].getByRole('checkbox')).not.toBeChecked()
+  const leafCheckbox = page
+    .getByRole('listitem', { name: 'Plan item: Filler task 1', exact: true })
+    .getByRole('checkbox')
+  const leafBox = await leafCheckbox.boundingBox()
+  if (!leafBox) throw new Error('Missing leaf checkbox tap geometry')
+  await page.touchscreen.tap(touchPoint(leafBox).x, touchPoint(leafBox).y)
+  await expect(leafCheckbox).toBeChecked()
+  await page.touchscreen.tap(touchPoint(leafBox).x, touchPoint(leafBox).y)
+  await expect(leafCheckbox).not.toBeChecked()
 
   await cdp.send('Input.dispatchTouchEvent', {
     type: 'touchStart',
