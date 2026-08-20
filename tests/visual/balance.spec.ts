@@ -2028,7 +2028,7 @@ test('alt-dragging a plan start time changes only the start time', async ({ page
     .toEqual([570, 600])
 })
 
-test('dragging a desktop time requests native step haptics', async ({ page }, testInfo) => {
+test('clicking and dragging a desktop time request native haptics', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Desktop time controls are replaced by the mobile time editor')
 
   await page.goto('/')
@@ -2055,14 +2055,29 @@ test('dragging a desktop time requests native step haptics', async ({ page }, te
     }
   })
 
-  await verticalDrag(page, pickRow.getByRole('button', { name: '9am' }), -10)
+  const startTime = pickRow.getByRole('button', { name: '9am' })
+  await startTime.click()
 
   await expect.poll(() => page.evaluate(
     () => (window as typeof window & { balanceNativeHaptics?: string[] }).balanceNativeHaptics ?? [],
   )).toEqual(['begin_haptic_drag', 'perform_alignment_haptic', 'end_haptic_drag'])
+
+  await page.evaluate(() => {
+    (window as typeof window & { balanceNativeHaptics?: string[] }).balanceNativeHaptics = []
+  })
+  await verticalDrag(page, startTime, -10)
+
+  await expect.poll(() => page.evaluate(
+    () => (window as typeof window & { balanceNativeHaptics?: string[] }).balanceNativeHaptics ?? [],
+  )).toEqual([
+    'begin_haptic_drag',
+    'perform_alignment_haptic',
+    'perform_alignment_haptic',
+    'end_haptic_drag',
+  ])
 })
 
-test('dragging leaves already-enabled system haptics unchanged', async ({ page }, testInfo) => {
+test('clicking a desktop time leaves already-enabled system haptics unchanged', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Desktop time controls are replaced by the mobile time editor')
 
   await page.goto('/')
@@ -2089,7 +2104,7 @@ test('dragging leaves already-enabled system haptics unchanged', async ({ page }
     }
   })
 
-  await verticalDrag(page, pickRow.getByRole('button', { name: '9am' }), -10)
+  await pickRow.getByRole('button', { name: '9am' }).click()
 
   await expect.poll(() => page.evaluate(
     () => (window as typeof window & { balanceNativeHaptics?: string[] }).balanceNativeHaptics ?? [],

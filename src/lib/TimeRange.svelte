@@ -59,6 +59,7 @@
       lastSteps: 0,
     }
     beginHapticDrag()
+    vibrateSteps()
   }
 
   function continueDrag(event: PointerEvent) {
