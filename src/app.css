@@ -260,6 +260,15 @@
   --time-border: #b8cfe1;
   --time-bg: #e7f3f6;
   --focus-ring: rgb(161 60 145 / 0.26);
+  --iridescent-line-pink: #dfcfda;
+  --iridescent-line-aqua: #c9dcdf;
+  --iridescent-line-gold: #e1d6c8;
+  --iridescent-line-strong-pink: #c6abb9;
+  --iridescent-line-strong-aqua: #9fc2c5;
+  --iridescent-line-strong-gold: #cbb79d;
+  --iridescent-border-pink: color-mix(in srgb, var(--line) 66%, #ee73b3);
+  --iridescent-border-aqua: color-mix(in srgb, var(--line) 66%, #54cbd4);
+  --iridescent-border-gold: color-mix(in srgb, var(--line) 70%, #eeae5d);
 }
 
 :root[data-theme='graphite'],
@@ -510,7 +519,34 @@
     --time-border: #4c6877;
     --time-bg: #203840;
     --focus-ring: rgb(238 140 210 / 0.3);
+    --iridescent-line-pink: #543c4d;
+    --iridescent-line-aqua: #354f55;
+    --iridescent-line-gold: #554a3a;
+    --iridescent-line-strong-pink: #755269;
+    --iridescent-line-strong-aqua: #4d6f74;
+    --iridescent-line-strong-gold: #75654c;
+    --iridescent-border-pink: color-mix(in srgb, var(--line) 58%, #ed70b0);
+    --iridescent-border-aqua: color-mix(in srgb, var(--line) 58%, #4cc5d1);
+    --iridescent-border-gold: color-mix(in srgb, var(--line) 62%, #e9a657);
   }
+}
+
+@property --iridescent-border-angle {
+  syntax: '<angle>';
+  inherits: true;
+  initial-value: 120deg;
+}
+
+@property --line {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #d8d4ca;
+}
+
+@property --line-strong {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #c3bdb0;
 }
 
 :root[data-theme='iridescent'] .sidebar {
@@ -524,7 +560,117 @@
   background-position: 0% 0%, 100% 0%, 75% 100%, 0% 0%;
   background-repeat: no-repeat;
   background-size: 125% 125%, 128% 128%, 125% 125%, 112% 112%;
-  animation: iridescent-background-breathe 18s ease-in-out infinite alternate;
+  animation:
+    iridescent-background-breathe 18s ease-in-out infinite alternate,
+    iridescent-border-turn 34s linear infinite;
+}
+
+:root[data-theme='iridescent'] :is(
+  .time-shortcut-legend,
+  .day-template-option,
+  .list-panel,
+  .template-panel,
+  .empty-state,
+  .export-panel,
+  .settings-panel,
+  .mobile-task-menu,
+  .mobile-time-editor,
+  .export-panel > div,
+  .celebration-option-button:not(.selected),
+  .path-row,
+  .iridescent-gradient-settings,
+  .iridescent-gradient-control:not(.compact),
+  .iridescent-color-card,
+  .database-loading-card,
+  .recovery-dialog,
+  .paste-review,
+  .recovery-key,
+  .recovery-panel,
+  .recovery-panel-status:not(.error),
+  .recovery-row,
+  .recovery-json,
+  .goal-create-panel,
+  .goal-card,
+  .segmented,
+  .metric-card,
+  .notes-workspace,
+  .note-trash-notice,
+  .note-format-toolbar,
+  .note-scroll-space-control,
+  .note-slash-icon
+) {
+  position: relative;
+  border-color: transparent;
+}
+
+:root[data-theme='iridescent'] :is(
+  .time-shortcut-legend,
+  .day-template-option,
+  .list-panel,
+  .template-panel,
+  .empty-state,
+  .export-panel,
+  .settings-panel,
+  .mobile-task-menu,
+  .mobile-time-editor,
+  .export-panel > div,
+  .celebration-option-button:not(.selected),
+  .path-row,
+  .iridescent-gradient-settings,
+  .iridescent-gradient-control:not(.compact),
+  .iridescent-color-card,
+  .database-loading-card,
+  .recovery-dialog,
+  .paste-review,
+  .recovery-key,
+  .recovery-panel,
+  .recovery-panel-status:not(.error),
+  .recovery-row,
+  .recovery-json,
+  .goal-create-panel,
+  .goal-card,
+  .segmented,
+  .metric-card,
+  .notes-workspace,
+  .note-trash-notice,
+  .note-format-toolbar,
+  .note-scroll-space-control,
+  .note-slash-icon
+)::after {
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: inherit;
+  background: conic-gradient(
+    from var(--iridescent-border-angle),
+    var(--iridescent-border-pink),
+    var(--iridescent-border-aqua) 34%,
+    var(--iridescent-border-gold) 67%,
+    var(--iridescent-border-pink)
+  );
+  content: '';
+  pointer-events: none;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+}
+
+/* Keep the ring inside surfaces that clip or scroll their children. */
+:root[data-theme='iridescent'] :is(
+  .celebration-option-button,
+  .iridescent-gradient-settings,
+  .recovery-dialog,
+  .paste-review,
+  .recovery-json,
+  .notes-workspace,
+  .note-format-toolbar
+)::after {
+  inset: 0;
 }
 
 :root[data-theme='iridescent'] .sidebar nav button.active {
@@ -552,6 +698,34 @@
   to {
     background-position: 100% 50%;
     background-size: 220% 220%;
+  }
+}
+
+@keyframes iridescent-border-turn {
+  0%,
+  100% {
+    --line: var(--iridescent-line-pink);
+    --line-strong: var(--iridescent-line-strong-pink);
+  }
+
+  34% {
+    --line: var(--iridescent-line-aqua);
+    --line-strong: var(--iridescent-line-strong-aqua);
+  }
+
+  67% {
+    --line: var(--iridescent-line-gold);
+    --line-strong: var(--iridescent-line-strong-gold);
+  }
+
+  to {
+    --iridescent-border-angle: 480deg;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme='iridescent'] {
+    animation: iridescent-background-breathe 18s ease-in-out infinite alternate;
   }
 }
 
@@ -1013,17 +1187,42 @@ nav button.active {
 
 :root[data-theme='iridescent'] .sidebar-footer > .primary,
 :root[data-theme='iridescent'] .day-template-picker + .primary {
-  border-color: #5e4b91;
-  background: linear-gradient(110deg, #9c368d 0%, #6751b5 32%, #20737e 67%, #8a5724 100%);
-  box-shadow: 0 5px 14px rgb(85 55 119 / 0.22);
-  transition: border-color 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+  border-color: #6e47a8;
+  background: repeating-linear-gradient(
+    110deg,
+    #c01488 0%,
+    #5f45d2 12.5%,
+    #007986 25%,
+    #a95600 37.5%,
+    #c01488 50%
+  );
+  background-size: 200% 100%;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.2) inset, 0 7px 20px rgb(85 55 119 / 0.34);
+  text-shadow: 0 1px 2px rgb(26 11 43 / 0.5);
+  animation: iridescent-generate-button-flow 3.2s linear infinite;
+  transition: border-color 180ms ease, box-shadow 180ms ease, filter 180ms ease, transform 180ms ease;
 }
 
 :root[data-theme='iridescent'] .sidebar-footer > .primary:hover,
 :root[data-theme='iridescent'] .day-template-picker + .primary:hover {
-  border-color: #493874;
-  box-shadow: 0 7px 18px rgb(63 94 120 / 0.28);
-  filter: saturate(1.14) brightness(0.94);
+  border-color: #3e366f;
+  box-shadow: 0 0 0 1px rgb(255 255 255 / 0.28) inset, 0 9px 25px rgb(63 94 120 / 0.42);
+  filter: saturate(1.25) brightness(1.04);
+  transform: translateY(-1px);
+}
+
+@keyframes iridescent-generate-button-flow {
+  to {
+    background-position: 100% 50%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme='iridescent'] .sidebar-footer > .primary,
+  :root[data-theme='iridescent'] .day-template-picker + .primary {
+    background-size: 100% 100%;
+    animation: none;
+  }
 }
 
 .primary.outlined {
