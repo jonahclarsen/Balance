@@ -55,6 +55,7 @@
     | ((direction: 'in' | 'out', editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
     | null = null
   export let onFocusChange: ((focused: boolean) => void) | null = null
+  export let onBeforeInput: ((editor: HTMLDivElement, event: InputEvent) => void) | null = null
   export let onKeyDown: ((editor: HTMLDivElement, event: KeyboardEvent) => void) | null = null
   export let internalLinkSegments: ItemTextSegment[] = []
   export let onInternalLinkClick: ((link: ItemLink, event: MouseEvent) => void | Promise<void>) | null = null
@@ -426,6 +427,10 @@
     lastInteractionSelection = saveSelection(activeEditor)
   }
 
+  function handleBeforeInput(event: InputEvent) {
+    onBeforeInput?.(event.currentTarget as HTMLDivElement, event)
+  }
+
   function handleKeyup(event: KeyboardEvent) {
     if (windowBlurred || editorBlurPendingWindowOutcome || restoreSelectionOnNextFocus) return
     lastInteractionSelection = saveSelection(event.currentTarget as HTMLDivElement)
@@ -776,6 +781,7 @@
   data-placeholder={placeholder}
   on:blur={handleBlur}
   on:focus={handleFocus}
+  on:beforeinput={handleBeforeInput}
   on:keydown={handleKeydown}
   on:keyup={handleKeyup}
   on:click={handleClick}

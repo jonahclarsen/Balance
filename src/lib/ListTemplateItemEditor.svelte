@@ -95,6 +95,33 @@
     patchItem(templateId, item.id, { html, text }, options)
   }
 
+  function handleBeforeTextInput(editor: HTMLDivElement, event: InputEvent) {
+    if (!event.cancelable || event.data === null || !event.inputType.startsWith('insert')) return
+
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return
+
+    const currentText = htmlToPlainText(editor.innerHTML)
+    const start = plainTextOffsetForBoundary(editor, range.startContainer, range.startOffset)
+    const end = plainTextOffsetForBoundary(editor, range.endContainer, range.endOffset)
+    const nextText = `${currentText.slice(0, start)}${event.data}${currentText.slice(end)}`
+
+    if (wouldExceedCap(nextText, item.probability)) event.preventDefault()
+  }
+
+  function plainTextOffsetForBoundary(editor: HTMLDivElement, node: Node, offset: number) {
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.setEnd(node, offset)
+
+    const container = document.createElement('div')
+    container.append(range.cloneContents())
+    return htmlToPlainText(container.innerHTML).length
+  }
+
   function handleProbabilityChange(probability: number) {
     const targetIds = selected ? selectedItemIds : new Set([item.id])
     const mergeKey = `list-template-item-probability:${templateId}:${Array.from(targetIds).sort().join(',')}`
@@ -308,6 +335,7 @@
         ariaLabel="List item"
         {revision}
         onChange={handleTextChange}
+        onBeforeInput={handleBeforeTextInput}
         onArrowKey={(direction, editor, event) => handleTextArrowKey(direction, editor, event)}
         interceptShiftArrowAtBoundary
         onSplit={(before, after) => handleTextSplit(before, after)}

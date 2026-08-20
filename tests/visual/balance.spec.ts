@@ -4236,6 +4236,27 @@ test('list template items support rich text formatting shortcuts while over the 
   }
 })
 
+test('rejecting a list-template word-cap edit preserves the caret position', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
+  await page.getByRole('button', { name: 'Unlock to edit max word count' }).click()
+  await page.getByRole('spinbutton', { name: 'max' }).fill('2')
+
+  const editor = page.locator('[data-list-template-text-input]').first()
+  await editor.fill('one twothree')
+  await editor.focus()
+  await setCaretOffsetInFocusedEditor(page, 'one two'.length)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two'.length)
+  await page.keyboard.press('Space')
+
+  await expect(editor).toHaveText('one twothree')
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two'.length)
+})
+
 test('list template item appearance probability grandfathers saved values below 30 percent', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {
