@@ -158,13 +158,13 @@ jobs:
                     variant: $variant,
                     theme: .[0].profile.fixture.themeId,
                     runs: length,
-                    metrics: from_entries([
+                    metrics: ([
                       metric("idle_frame_interval_ms"; ["profile", "idleFrameIntervals", "medianMs"]),
                       metric("task_focus_paint_ms"; ["profile", "taskFocus", "paint", "medianMs"]),
                       metric("checkbox_paint_ms"; ["profile", "checkboxClick", "paint", "medianMs"]),
                       metric("typing_paint_ms"; ["profile", "typing", "paint", "medianMs"]),
                       metric("backspace_paint_ms"; ["profile", "backspacing", "paint", "medianMs"])
-                    ])
+                    ] | from_entries)
                   }
               )
             | . as $variants
