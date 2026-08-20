@@ -1,5 +1,17 @@
 export const THEME_PRESETS = [
   {
+    id: 'iridescent',
+    name: 'Iridescent',
+    description: 'Prismatic pink, violet, aqua, and gold',
+    swatches: [
+      'linear-gradient(135deg, #f24c9f, #9b62dd 48%, #39c5d6)',
+      'linear-gradient(135deg, #39c5d6, #46b887)',
+      'linear-gradient(135deg, #46b887, #f0a23e)',
+    ],
+    checkboxColor: '#7b5bd6',
+    doneColor: '#28a987',
+  },
+  {
     id: 'graphite',
     name: 'Graphite',
     description: 'Charcoal, silver, and clean gray',
@@ -79,18 +91,6 @@ export const THEME_PRESETS = [
     checkboxColor: '#7c5aaa',
     doneColor: '#8a63b8',
   },
-  {
-    id: 'iridescent',
-    name: 'Iridescent',
-    description: 'Prismatic pink, violet, aqua, and gold',
-    swatches: [
-      'linear-gradient(135deg, #f24c9f, #9b62dd 48%, #39c5d6)',
-      'linear-gradient(135deg, #39c5d6, #46b887)',
-      'linear-gradient(135deg, #46b887, #f0a23e)',
-    ],
-    checkboxColor: '#7b5bd6',
-    doneColor: '#28a987',
-  },
 ] as const
 
 export type PresetThemeId = (typeof THEME_PRESETS)[number]['id']
@@ -103,7 +103,7 @@ export const THEME_OPTIONS = [
   {
     id: 'random',
     name: 'Random',
-    description: 'A different theme every Balance day',
+    description: 'A different theme every day',
     swatches: [
       'linear-gradient(135deg, #f24c9f, #9b62dd 48%, #39c5d6)',
       'linear-gradient(135deg, #287968, #276a9f)',

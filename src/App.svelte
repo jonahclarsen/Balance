@@ -6035,7 +6035,7 @@ return rows`
         <section class="settings-section">
           <div>
             <h3>Color theme</h3>
-            <p>Pick a theme, or let Balance choose a new one each day. Every theme adapts automatically to light and dark mode.</p>
+            <p>Pick a theme based on your mood. Each theme adapts automatically to light and dark mode.</p>
           </div>
 
           <div class="theme-options-stack">
@@ -6044,6 +6044,7 @@ return rows`
                 <div
                   class="theme-option"
                   class:active={themeId === theme.id}
+                  class:has-schedule={theme.id === 'random' && themeId !== 'random'}
                 >
                   <button
                     type="button"
@@ -6070,7 +6071,7 @@ return rows`
                       aria-pressed={randomThemeScheduled}
                       on:click={toggleRandomThemeSchedule}
                     >
-                      {randomThemeScheduled ? 'Cancel next-day start' : 'Start next day'}
+                      {randomThemeScheduled ? 'Cancel start' : 'Start next day'}
                     </button>
                   {/if}
                 </div>

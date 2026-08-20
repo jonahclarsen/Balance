@@ -2839,7 +2839,7 @@ body.mobile-checkbox-dragging {
 }
 
 .theme-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   column-gap: 10px;
 }
 
@@ -2882,19 +2882,38 @@ body.mobile-checkbox-dragging {
 }
 
 .random-theme-schedule {
-  width: calc(100% - 24px);
-  margin: -2px 12px 10px;
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: auto;
+  margin: 0;
   border-color: color-mix(in srgb, var(--accent) 34%, var(--line));
   background: color-mix(in srgb, var(--paper-strong) 94%, var(--accent));
   color: var(--accent-strong);
   padding: 5px 8px;
   font-size: 11px;
   font-weight: 700;
+  white-space: nowrap;
+  transform: translateY(-50%);
 }
 
 .random-theme-schedule.scheduled {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
   background: color-mix(in srgb, var(--paper-strong) 84%, var(--accent));
+}
+
+.theme-option.has-schedule .theme-option-select {
+  padding-right: 100px;
+}
+
+.theme-option.has-schedule .theme-selected-mark {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .theme-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .theme-swatches {

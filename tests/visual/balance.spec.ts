@@ -163,8 +163,10 @@ test('random theme can be scheduled for the next day boundary without changing t
 
   const themeGroup = page.getByRole('group', { name: 'Color theme' })
   const randomTheme = themeGroup.getByRole('button', {
-    name: 'Random A different theme every Balance day',
+    name: 'Random A different theme every day',
   })
+  const randomThemeCard = randomTheme.locator('..')
+  const initialRandomThemeHeight = (await randomThemeCard.boundingBox())!.height
   const graphiteTheme = themeGroup.getByRole('button', {
     name: 'Graphite Charcoal, silver, and clean gray',
   })
@@ -172,8 +174,13 @@ test('random theme can be scheduled for the next day boundary without changing t
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
   await expect(randomTheme).toHaveAttribute('aria-pressed', 'false')
 
-  await themeGroup.getByRole('button', { name: 'Start next day' }).click()
-  const cancelSchedule = themeGroup.getByRole('button', { name: 'Cancel next-day start' })
+  const startNextDay = themeGroup.getByRole('button', { name: 'Start next day' })
+  const randomThemeCardBox = (await randomThemeCard.boundingBox())!
+  const startNextDayBox = (await startNextDay.boundingBox())!
+  expect(randomThemeCardBox.height).toBe(initialRandomThemeHeight)
+  expect(startNextDayBox.x).toBeGreaterThan(randomThemeCardBox.x + randomThemeCardBox.width / 2)
+  await startNextDay.click()
+  const cancelSchedule = themeGroup.getByRole('button', { name: 'Cancel start' })
   await expect(cancelSchedule).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
   await expect.poll(() => page.evaluate(() => {
@@ -1165,8 +1172,16 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   const activeSidebarButton = sidebar.locator('nav button.active')
   await expect(themeButtons).toHaveCount(12)
   await expect(themeButtons.first()).toContainText('Random')
+  const themeColumnCount = await themeGroup.evaluate((element) =>
+    getComputedStyle(element).gridTemplateColumns.split(' ').length)
+  expect(themeColumnCount).toBe(testInfo.project.name === 'mobile' ? 1 : 3)
+  await expect(page.getByText(
+    'Pick a theme based on your mood. Each theme adapts automatically to light and dark mode.',
+    { exact: true },
+  )).toBeVisible()
   await expect(themeGroup.locator('.theme-option-copy strong')).toHaveText([
     'Random',
+    'Iridescent',
     'Graphite',
     'Crimson',
     'Pink',
@@ -1177,9 +1192,8 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
     'Ocean',
     'Midnight',
     'Violet',
-    'Iridescent',
   ])
-  const randomTheme = themeGroup.getByRole('button', { name: 'Random A different theme every Balance day' })
+  const randomTheme = themeGroup.getByRole('button', { name: 'Random A different theme every day' })
   await expect(randomTheme).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'random')
   await expect(themeGroup.getByText('Sunset', { exact: true })).toHaveCount(1)
