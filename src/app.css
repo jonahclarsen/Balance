@@ -1035,7 +1035,7 @@ nav button.active {
   filter: drop-shadow(0 1px 1px rgb(78 43 101 / 0.16));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
-  animation: iridescent-brand-flow 28s ease-in-out infinite alternate;
+  animation: iridescent-brand-flow 42s ease-in-out infinite alternate;
 }
 
 @keyframes iridescent-brand-flow {
