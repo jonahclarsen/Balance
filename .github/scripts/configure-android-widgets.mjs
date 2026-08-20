@@ -244,7 +244,7 @@ object BalanceWidgets {
         "ocean" -> R.layout.balance_home_widget_ocean
         "sunset" -> R.layout.balance_home_widget_sunset
         "crimson" -> R.layout.balance_home_widget_crimson
-        "berry" -> R.layout.balance_home_widget_berry
+        "banana" -> R.layout.balance_home_widget_banana
         "pink" -> R.layout.balance_home_widget_pink
         "mint" -> R.layout.balance_home_widget_mint
         "midnight" -> R.layout.balance_home_widget_midnight
@@ -356,7 +356,7 @@ const widgetThemes = [
   { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
   { id: 'sunset', paper: '#FFFAF5', surface: '#FFFFFF', ink: '#33241F', muted: '#7B6B63', line: '#E2D3C7', accent: '#B9563F' },
   { id: 'crimson', paper: '#FFFAFB', surface: '#FFFFFF', ink: '#321F23', muted: '#78666A', line: '#E1CFD3', accent: '#A92F42' },
-  { id: 'berry', paper: '#FFFAFD', surface: '#FFFFFF', ink: '#30242A', muted: '#786B72', line: '#DFD2D9', accent: '#9B496B' },
+  { id: 'banana', paper: '#FFFDF4', surface: '#FFFFFF', ink: '#2D2819', muted: '#756D50', line: '#E4DCC0', accent: '#8F7000' },
   { id: 'pink', paper: '#FFF9FC', surface: '#FFFFFF', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', accent: '#C33F7A' },
   { id: 'mint', paper: '#F9FDFA', surface: '#FFFFFF', ink: '#1E2D29', muted: '#657771', line: '#CCDDD7', accent: '#287968' },
   { id: 'midnight', paper: '#FAFBFE', surface: '#FFFFFF', ink: '#202738', muted: '#687083', line: '#D1D6E2', accent: '#425B9B' },
@@ -370,7 +370,7 @@ const darkWidgetThemes = [
   { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
   { id: 'sunset', paper: '#241C18', surface: '#2E241F', ink: '#F1E9E4', muted: '#B8A69B', line: '#493A32', accent: '#E5947F' },
   { id: 'crimson', paper: '#24181B', surface: '#2E2023', ink: '#F2E8EA', muted: '#BAA4A9', line: '#4B3439', accent: '#E67F8E' },
-  { id: 'berry', paper: '#241B20', surface: '#2E2329', ink: '#F1E8ED', muted: '#B5A3AD', line: '#493741', accent: '#DB8BAA' },
+  { id: 'banana', paper: '#252216', surface: '#302C1C', ink: '#F2EDDA', muted: '#B8AE87', line: '#4B442B', accent: '#E0C75E' },
   { id: 'pink', paper: '#261A20', surface: '#312229', ink: '#F4E8EE', muted: '#BAA3AF', line: '#4D3541', accent: '#F08DB8' },
   { id: 'mint', paper: '#18231F', surface: '#202E29', ink: '#E7F1ED', muted: '#9DB2AA', line: '#30453E', accent: '#77C8B1' },
   { id: 'midnight', paper: '#181C29', surface: '#212638', ink: '#E9ECF5', muted: '#A1A9BD', line: '#343B52', accent: '#91A7E4' },

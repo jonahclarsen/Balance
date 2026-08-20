@@ -3004,6 +3004,7 @@ fn default_replicated_preferences() -> Value {
         "themeId": "random",
         "randomThemeId": "iridescent",
         "randomThemeDate": "",
+        "randomThemeStartDate": "",
         "completionCelebrationId": "aurora-checkwave",
         "doneTintColor": "",
         "checkboxColor": "",
@@ -3028,6 +3029,10 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
         .unwrap_or("iridescent");
     let random_theme_date = value
         .get("randomThemeDate")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let random_theme_start_date = value
+        .get("randomThemeStartDate")
         .and_then(Value::as_str)
         .unwrap_or("");
     let completion_celebration_id = value
@@ -3056,6 +3061,10 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
     preferences.insert("themeId".into(), json!(theme_id));
     preferences.insert("randomThemeId".into(), json!(random_theme_id));
     preferences.insert("randomThemeDate".into(), json!(random_theme_date));
+    preferences.insert(
+        "randomThemeStartDate".into(),
+        json!(random_theme_start_date),
+    );
     preferences.insert(
         "completionCelebrationId".into(),
         json!(completion_celebration_id),

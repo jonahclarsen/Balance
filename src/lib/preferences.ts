@@ -38,6 +38,7 @@ export function createDefaultReplicatedPreferences(): ReplicatedPreferences {
     themeId: DEFAULT_THEME_ID,
     randomThemeId: DEFAULT_PRESET_THEME_ID,
     randomThemeDate: '',
+    randomThemeStartDate: '',
     completionCelebrationId: DEFAULT_COMPLETION_CELEBRATION_ID,
     doneTintColor: '',
     checkboxColor: '',
@@ -107,6 +108,10 @@ export function normalizeReplicatedPreferences(value: unknown): ReplicatedPrefer
     randomThemeDate: typeof preferences.randomThemeDate === 'string'
       && /^\d{4}-\d{2}-\d{2}$/.test(preferences.randomThemeDate)
       ? preferences.randomThemeDate
+      : '',
+    randomThemeStartDate: typeof preferences.randomThemeStartDate === 'string'
+      && /^\d{4}-\d{2}-\d{2}$/.test(preferences.randomThemeStartDate)
+      ? preferences.randomThemeStartDate
       : '',
     completionCelebrationId: normalizeCompletionCelebrationId(preferences.completionCelebrationId),
     doneTintColor: normalizeColorOverride(preferences.doneTintColor),

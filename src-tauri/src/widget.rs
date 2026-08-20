@@ -105,7 +105,8 @@ pub(crate) fn snapshot_from_plan(
 fn normalize_theme_id(theme_id: &str) -> &str {
     match theme_id {
         "iridescent" | "graphite" | "forest" | "ocean" | "violet" | "sunset" | "crimson"
-        | "berry" | "pink" | "mint" | "midnight" => theme_id,
+        | "banana" | "pink" | "mint" | "midnight" => theme_id,
+        "berry" => "banana",
         _ => DEFAULT_THEME_ID,
     }
 }
@@ -275,10 +276,17 @@ mod tests {
     fn widget_uses_the_concrete_theme_selected_by_random_mode() {
         let preferences = serde_json::json!({
             "themeId": "random",
-            "randomThemeId": "berry",
+            "randomThemeId": "banana",
         });
 
-        assert_eq!(theme_id_from_preferences(&preferences), "berry");
+        assert_eq!(theme_id_from_preferences(&preferences), "banana");
+    }
+
+    #[test]
+    fn widget_migrates_the_replaced_berry_theme_to_banana() {
+        let preferences = serde_json::json!({ "themeId": "berry" });
+
+        assert_eq!(theme_id_from_preferences(&preferences), "banana");
     }
 
     #[test]

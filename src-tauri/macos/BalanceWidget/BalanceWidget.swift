@@ -551,8 +551,8 @@ private struct WidgetPalette {
                 return WidgetPalette(paper: 0x241C18, surface: 0x2E241F, ink: 0xF1E9E4, muted: 0xB8A69B, line: 0x493A32, accent: 0xE5947F)
             case "crimson":
                 return WidgetPalette(paper: 0x24181B, surface: 0x2E2023, ink: 0xF2E8EA, muted: 0xBAA4A9, line: 0x4B3439, accent: 0xE67F8E)
-            case "berry":
-                return WidgetPalette(paper: 0x241B20, surface: 0x2E2329, ink: 0xF1E8ED, muted: 0xB5A3AD, line: 0x493741, accent: 0xDB8BAA)
+            case "banana":
+                return WidgetPalette(paper: 0x252216, surface: 0x302C1C, ink: 0xF2EDDA, muted: 0xB8AE87, line: 0x4B442B, accent: 0xE0C75E)
             case "pink":
                 return WidgetPalette(paper: 0x261A20, surface: 0x312229, ink: 0xF4E8EE, muted: 0xBAA3AF, line: 0x4D3541, accent: 0xF08DB8)
             case "mint":
@@ -598,8 +598,8 @@ private struct WidgetPalette {
             return WidgetPalette(paper: 0xFFFAF5, surface: 0xFFFFFF, ink: 0x33241F, muted: 0x7B6B63, line: 0xE2D3C7, accent: 0xB9563F)
         case "crimson":
             return WidgetPalette(paper: 0xFFFAFB, surface: 0xFFFFFF, ink: 0x321F23, muted: 0x78666A, line: 0xE1CFD3, accent: 0xA92F42)
-        case "berry":
-            return WidgetPalette(paper: 0xFFFAFD, surface: 0xFFFFFF, ink: 0x30242A, muted: 0x786B72, line: 0xDFD2D9, accent: 0x9B496B)
+        case "banana":
+            return WidgetPalette(paper: 0xFFFDF4, surface: 0xFFFFFF, ink: 0x2D2819, muted: 0x756D50, line: 0xE4DCC0, accent: 0x8F7000)
         case "pink":
             return WidgetPalette(paper: 0xFFF9FC, surface: 0xFFFFFF, ink: 0x31232B, muted: 0x7D6A74, line: 0xE6D0DC, accent: 0xC33F7A)
         case "mint":

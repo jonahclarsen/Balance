@@ -151,6 +151,58 @@ test('random theme catches up on launch after a missed rollover', async ({ page 
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'graphite')
 })
 
+test('random theme can be scheduled for the next day boundary without changing today', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-08-18T02:59:00') })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const openNavigation = page.getByRole('button', { name: 'Open navigation' })
+  if (await openNavigation.isVisible()) await openNavigation.click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  const themeGroup = page.getByRole('group', { name: 'Color theme' })
+  const randomTheme = themeGroup.getByRole('button', {
+    name: 'Random A different theme every Balance day',
+  })
+  const graphiteTheme = themeGroup.getByRole('button', {
+    name: 'Graphite Charcoal, silver, and clean gray',
+  })
+  await graphiteTheme.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
+  await expect(randomTheme).toHaveAttribute('aria-pressed', 'false')
+
+  await themeGroup.getByRole('button', { name: 'Start next day' }).click()
+  const cancelSchedule = themeGroup.getByRole('button', { name: 'Cancel next-day start' })
+  await expect(cancelSchedule).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    return state?.preferences?.randomThemeStartDate
+  })).toBe('2026-08-18')
+
+  await cancelSchedule.click()
+  await expect(themeGroup.getByRole('button', { name: 'Start next day' })).toHaveAttribute('aria-pressed', 'false')
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    return state?.preferences?.randomThemeStartDate
+  })).toBe('')
+  await themeGroup.getByRole('button', { name: 'Start next day' }).click()
+
+  await page.clock.runFor(60_001)
+
+  await expect(randomTheme).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'graphite')
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    return [
+      state?.preferences?.themeId,
+      state?.preferences?.randomThemeDate,
+      state?.preferences?.randomThemeStartDate,
+    ]
+  })).toEqual(['random', '2026-08-18', ''])
+})
+
 test('day navigation buttons are available only on mobile', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1108,16 +1160,39 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await openSettings()
 
   const themeGroup = page.getByRole('group', { name: 'Color theme' })
-  const themeButtons = themeGroup.getByRole('button')
+  const themeButtons = themeGroup.locator('.theme-option-select')
   const sidebar = page.locator('.sidebar')
   const activeSidebarButton = sidebar.locator('nav button.active')
   await expect(themeButtons).toHaveCount(12)
   await expect(themeButtons.first()).toContainText('Random')
+  await expect(themeGroup.locator('.theme-option-copy strong')).toHaveText([
+    'Random',
+    'Graphite',
+    'Crimson',
+    'Pink',
+    'Sunset',
+    'Banana',
+    'Mint',
+    'Forest',
+    'Ocean',
+    'Midnight',
+    'Violet',
+    'Iridescent',
+  ])
   const randomTheme = themeGroup.getByRole('button', { name: 'Random A different theme every Balance day' })
   await expect(randomTheme).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'random')
   await expect(themeGroup.getByText('Sunset', { exact: true })).toHaveCount(1)
   await expect(themeGroup.getByText('Crimson', { exact: true })).toHaveCount(1)
+  await expect(themeGroup.getByText('Berry', { exact: true })).toHaveCount(0)
+  const bananaTheme = themeGroup.getByRole('button', { name: 'Banana Sunny yellow and warm cream' })
+  await bananaTheme.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'banana')
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(242, 235, 201)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(143, 112, 0)',
+  )
   const pinkTheme = themeGroup.getByRole('button', { name: 'Pink Bright pink and petal white' })
   await expect(pinkTheme).toHaveAttribute('aria-pressed', 'false')
   await pinkTheme.click()

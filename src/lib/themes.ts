@@ -1,17 +1,5 @@
 export const THEME_PRESETS = [
   {
-    id: 'iridescent',
-    name: 'Iridescent',
-    description: 'Prismatic pink, violet, aqua, and gold',
-    swatches: [
-      'linear-gradient(135deg, #f24c9f, #9b62dd 48%, #39c5d6)',
-      'linear-gradient(135deg, #39c5d6, #46b887)',
-      'linear-gradient(135deg, #46b887, #f0a23e)',
-    ],
-    checkboxColor: '#7b5bd6',
-    doneColor: '#28a987',
-  },
-  {
     id: 'graphite',
     name: 'Graphite',
     description: 'Charcoal, silver, and clean gray',
@@ -20,12 +8,44 @@ export const THEME_PRESETS = [
     doneColor: '#777774',
   },
   {
-    id: 'violet',
-    name: 'Violet',
-    description: 'Purple and soft lilac',
-    swatches: ['#7355a2', '#ece7f3', '#8a63b8'],
-    checkboxColor: '#7c5aaa',
-    doneColor: '#8a63b8',
+    id: 'crimson',
+    name: 'Crimson',
+    description: 'Rich red and soft ivory',
+    swatches: ['#a92f42', '#f2e2e5', '#bd4051'],
+    checkboxColor: '#bd4051',
+    doneColor: '#a94552',
+  },
+  {
+    id: 'pink',
+    name: 'Pink',
+    description: 'Bright pink and petal white',
+    swatches: ['#c33f7a', '#f5e0ea', '#e16491'],
+    checkboxColor: '#d34f89',
+    doneColor: '#e16491',
+  },
+  {
+    id: 'sunset',
+    name: 'Sunset',
+    description: 'Coral and warm sand',
+    swatches: ['#b9563f', '#f1e4d9', '#c77832'],
+    checkboxColor: '#c25d43',
+    doneColor: '#c77832',
+  },
+  {
+    id: 'banana',
+    name: 'Banana',
+    description: 'Sunny yellow and warm cream',
+    swatches: ['#8f7000', '#f2ebc9', '#d7b948'],
+    checkboxColor: '#8f7000',
+    doneColor: '#9b7c16',
+  },
+  {
+    id: 'mint',
+    name: 'Mint',
+    description: 'Fresh green and pale mint',
+    swatches: ['#287968', '#dff0e9', '#42a878'],
+    checkboxColor: '#348b74',
+    doneColor: '#42a878',
   },
   {
     id: 'forest',
@@ -44,52 +64,32 @@ export const THEME_PRESETS = [
     doneColor: '#278b9f',
   },
   {
-    id: 'sunset',
-    name: 'Sunset',
-    description: 'Coral and warm sand',
-    swatches: ['#b9563f', '#f1e4d9', '#c77832'],
-    checkboxColor: '#c25d43',
-    doneColor: '#c77832',
-  },
-  {
-    id: 'crimson',
-    name: 'Crimson',
-    description: 'Rich red and soft ivory',
-    swatches: ['#a92f42', '#f2e2e5', '#bd4051'],
-    checkboxColor: '#bd4051',
-    doneColor: '#a94552',
-  },
-  {
-    id: 'berry',
-    name: 'Berry',
-    description: 'Rose and cool blush',
-    swatches: ['#9b496b', '#f1e5ec', '#b45672'],
-    checkboxColor: '#a75070',
-    doneColor: '#b45672',
-  },
-  {
-    id: 'pink',
-    name: 'Pink',
-    description: 'Bright pink and petal white',
-    swatches: ['#c33f7a', '#f5e0ea', '#e16491'],
-    checkboxColor: '#d34f89',
-    doneColor: '#e16491',
-  },
-  {
-    id: 'mint',
-    name: 'Mint',
-    description: 'Fresh green and pale mint',
-    swatches: ['#287968', '#dff0e9', '#42a878'],
-    checkboxColor: '#348b74',
-    doneColor: '#42a878',
-  },
-  {
     id: 'midnight',
     name: 'Midnight',
     description: 'Indigo and cool moonlight',
     swatches: ['#425b9b', '#e4e8f3', '#596fbb'],
     checkboxColor: '#526bb0',
     doneColor: '#596fbb',
+  },
+  {
+    id: 'violet',
+    name: 'Violet',
+    description: 'Purple and soft lilac',
+    swatches: ['#7355a2', '#ece7f3', '#8a63b8'],
+    checkboxColor: '#7c5aaa',
+    doneColor: '#8a63b8',
+  },
+  {
+    id: 'iridescent',
+    name: 'Iridescent',
+    description: 'Prismatic pink, violet, aqua, and gold',
+    swatches: [
+      'linear-gradient(135deg, #f24c9f, #9b62dd 48%, #39c5d6)',
+      'linear-gradient(135deg, #39c5d6, #46b887)',
+      'linear-gradient(135deg, #46b887, #f0a23e)',
+    ],
+    checkboxColor: '#7b5bd6',
+    doneColor: '#28a987',
   },
 ] as const
 
@@ -114,12 +114,14 @@ export const THEME_OPTIONS = [
 ] as const
 
 export function normalizeThemeId(value: string | null | undefined): ThemeId {
+  if (value === 'berry') return 'banana'
   return value === 'random' || THEME_PRESETS.some((theme) => theme.id === value)
     ? (value as ThemeId)
     : DEFAULT_THEME_ID
 }
 
 export function normalizePresetThemeId(value: string | null | undefined): PresetThemeId {
+  if (value === 'berry') return 'banana'
   return THEME_PRESETS.some((theme) => theme.id === value)
     ? (value as PresetThemeId)
     : DEFAULT_PRESET_THEME_ID

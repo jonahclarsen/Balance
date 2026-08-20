@@ -219,6 +219,7 @@
   let themeId: ThemeId = DEFAULT_THEME_ID
   let effectiveThemeId: PresetThemeId = DEFAULT_PRESET_THEME_ID
   let preferencesReady = false
+  let randomThemeScheduled = false
   let iridescentGradient = createDefaultIridescentGradient()
   let previousPersistedIridescentGradient: IridescentGradientPreferences | null = null
   let completionTrackingReady = false
@@ -557,6 +558,16 @@ return rows`
   $: effectiveThemeId = themeId === 'random'
     ? normalizePresetThemeId($plannerStore.preferences.randomThemeId)
     : themeId
+  $: randomThemeScheduled = themeId !== 'random'
+    && $plannerStore.preferences.randomThemeStartDate > currentDay
+  $: if (
+    preferencesReady
+    && themeId !== 'random'
+    && $plannerStore.preferences.randomThemeStartDate
+    && $plannerStore.preferences.randomThemeStartDate <= currentDay
+  ) {
+    activateScheduledRandomTheme(currentDay, effectiveThemeId)
+  }
   $: if (
     preferencesReady
     && themeId === 'random'
@@ -1841,12 +1852,30 @@ return rows`
         themeId: nextThemeId,
         randomThemeId: pickRandomThemeId(effectiveThemeId),
         randomThemeDate: currentDay,
+        randomThemeStartDate: '',
         doneTintColor: '',
         checkboxColor: '',
       })
       return
     }
     plannerStore.patchPreferences({ themeId: nextThemeId, doneTintColor: '', checkboxColor: '' })
+  }
+
+  function toggleRandomThemeSchedule() {
+    plannerStore.patchPreferences({
+      randomThemeStartDate: randomThemeScheduled ? '' : shiftISODate(currentDay, 1),
+    })
+  }
+
+  function activateScheduledRandomTheme(date: string, currentThemeId: PresetThemeId) {
+    plannerStore.patchPreferences({
+      themeId: 'random',
+      randomThemeId: pickRandomThemeId(currentThemeId),
+      randomThemeDate: date,
+      randomThemeStartDate: '',
+      doneTintColor: '',
+      checkboxColor: '',
+    })
   }
 
   function rotateRandomTheme(date: string) {
@@ -6012,24 +6041,39 @@ return rows`
           <div class="theme-options-stack">
             <div class="theme-grid" role="group" aria-label="Color theme">
               {#each THEME_OPTIONS as theme (theme.id)}
-                <button
-                  type="button"
+                <div
                   class="theme-option"
                   class:active={themeId === theme.id}
-                  aria-pressed={themeId === theme.id}
-                  on:click={() => updateTheme(theme.id)}
                 >
-                  <span class="theme-swatches" aria-hidden="true">
-                    {#each theme.swatches as swatch}
-                      <span style={`--theme-swatch: ${swatch}`}></span>
-                    {/each}
-                  </span>
-                  <span class="theme-option-copy">
-                    <strong>{theme.name}</strong>
-                    <small>{theme.description}</small>
-                  </span>
-                  <span class="theme-selected-mark" aria-hidden="true">✓</span>
-                </button>
+                  <button
+                    type="button"
+                    class="theme-option-select"
+                    aria-pressed={themeId === theme.id}
+                    on:click={() => updateTheme(theme.id)}
+                  >
+                    <span class="theme-swatches" aria-hidden="true">
+                      {#each theme.swatches as swatch}
+                        <span style={`--theme-swatch: ${swatch}`}></span>
+                      {/each}
+                    </span>
+                    <span class="theme-option-copy">
+                      <strong>{theme.name}</strong>
+                      <small>{theme.description}</small>
+                    </span>
+                    <span class="theme-selected-mark" aria-hidden="true">✓</span>
+                  </button>
+                  {#if theme.id === 'random' && themeId !== 'random'}
+                    <button
+                      type="button"
+                      class="random-theme-schedule"
+                      class:scheduled={randomThemeScheduled}
+                      aria-pressed={randomThemeScheduled}
+                      on:click={toggleRandomThemeSchedule}
+                    >
+                      {randomThemeScheduled ? 'Cancel next-day start' : 'Start next day'}
+                    </button>
+                  {/if}
+                </div>
               {/each}
             </div>
 

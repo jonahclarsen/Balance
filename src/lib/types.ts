@@ -189,6 +189,7 @@ export type ReplicatedPreferences = {
   themeId: string
   randomThemeId: string
   randomThemeDate: string
+  randomThemeStartDate: string
   completionCelebrationId: CompletionCelebrationId
   doneTintColor: string
   checkboxColor: string
