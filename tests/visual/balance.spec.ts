@@ -4379,7 +4379,7 @@ test('list template items support rich text formatting shortcuts while over the 
   }
 })
 
-test('list-template word-cap spaces use item probability and preserve the caret', async ({ page }, testInfo) => {
+test('list-template word cap allows every 30-percent word that fits and blocks the next space', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -4388,58 +4388,32 @@ test('list-template word-cap spaces use item probability and preserve the caret'
   await page.getByRole('button', { name: 'New list' }).click()
   await page.getByRole('button', { name: 'Unlock to edit max word count' }).click()
   await page.getByRole('spinbutton', { name: 'max' }).fill('2')
+  await page.getByRole('button', { name: 'Add list item' }).click()
 
-  const editor = page.locator('[data-list-template-text-input]').first()
-  const probability = page.getByLabel('Appearance probability').first()
+  const editors = page.locator('[data-list-template-text-input]')
+  await editors.first().fill('base')
+
+  const editor = editors.nth(1)
+  const probability = page.getByLabel('Appearance probability').nth(1)
   await probability.focus()
   await page.keyboard.press('Home')
   await expect(probability).toHaveValue('30')
 
-  await editor.fill('one two three four five')
-  await expect(page.locator('.word-cap-count')).toContainText('2 / 2 expected words')
+  await editor.fill('')
   await editor.focus()
-  await page.keyboard.type(' six')
+  await page.keyboard.type('one two three')
 
-  const textAtLimit = 'one two three four five six'
+  const textAtLimit = 'one two three'
   await expect(editor).toHaveText(textAtLimit)
+  await expect(page.locator('.word-cap-count')).toContainText('1.9 / 2 expected words')
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length)
 
-  // The rounded counter is full at 1.8 expected words, but the exact total is
-  // still below 2, so a count-neutral space remains available.
-  await page.keyboard.press('Space')
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length + 1)
-
-  // A seventh word would contribute another 0.3 and exceed the cap, so its
-  // first letter is rejected without moving the caret.
-  await page.keyboard.type('seven')
-  await expect(editor).not.toContainText('seven')
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length + 1)
-
-  // At the exact cap, a trailing space is still count-neutral and follows the
-  // same rule as any other edit. The first letter of a new word is rejected.
-  await editor.fill('one two')
-  await probability.focus()
-  await page.keyboard.press('End')
-  await expect(probability).toHaveValue('100')
-  await editor.focus()
-  await setCaretOffsetInFocusedEditor(page, 'one two'.length)
-  await page.keyboard.press('Space')
-  await expect.poll(async () => editor.evaluate((element) => element.textContent?.length)).toBe('one two '.length)
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two '.length)
-  await page.keyboard.type('three')
-
-  await expect(editor).not.toContainText('three')
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two '.length)
-
-  // A space that splits an existing word does add a word, so it is rejected by
-  // that same cap calculation without moving the caret.
-  await editor.fill('one twothree')
-  await editor.focus()
-  await setCaretOffsetInFocusedEditor(page, 'one two'.length)
+  // A fourth 30%-probability word would raise the exact total from 1.9 to 2.2,
+  // so the space that would start it is rejected without moving the caret.
   await page.keyboard.press('Space')
 
-  await expect(editor).toHaveText('one twothree')
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two'.length)
+  await expect(editor).toHaveText(textAtLimit)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length)
 })
 
 test('list template item appearance probability grandfathers saved values below 30 percent', async ({ page }) => {

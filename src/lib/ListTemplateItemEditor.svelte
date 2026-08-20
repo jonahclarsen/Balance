@@ -124,7 +124,17 @@
     const end = plainTextOffsetForBoundary(editor, range.endContainer, range.endOffset)
     const nextText = `${currentText.slice(0, start)}${event.data}${currentText.slice(end)}`
 
-    if (wouldExceedCap(nextText, item.probability)) event.preventDefault()
+    // A separator is useful only when the word it starts would fit. Check that
+    // hypothetical word with the same probability math as ordinary letters.
+    const nextWordWouldExceed =
+      range.collapsed &&
+      /^\s+$/u.test(event.data) &&
+      wouldExceedCap(
+        `${currentText.slice(0, start)}${event.data}word${currentText.slice(end)}`,
+        item.probability,
+      )
+
+    if (wouldExceedCap(nextText, item.probability) || nextWordWouldExceed) event.preventDefault()
   }
 
   function plainTextOffsetForBoundary(editor: HTMLDivElement, node: Node, offset: number) {
