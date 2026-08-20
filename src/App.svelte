@@ -5481,7 +5481,7 @@ return rows`
               aria-controls="list-item-archive"
               on:click={() => (listArchiveOpen = !listArchiveOpen)}
             >
-              Archive
+              View Archive
             </button>
             <button
               class="ghost danger"
