@@ -4301,7 +4301,7 @@ test('list template items support rich text formatting shortcuts while over the 
   }
 })
 
-test('rejecting a list-template word-cap edit preserves the caret position', async ({ page }, testInfo) => {
+test('list-template word-cap spaces use item probability and preserve the caret', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -4312,14 +4312,23 @@ test('rejecting a list-template word-cap edit preserves the caret position', asy
   await page.getByRole('spinbutton', { name: 'max' }).fill('2')
 
   const editor = page.locator('[data-list-template-text-input]').first()
-  await editor.fill('one twothree')
+  const probability = page.getByLabel('Appearance probability').first()
+  await probability.focus()
+  await page.keyboard.press('Home')
+  await expect(probability).toHaveValue('30')
+
+  await editor.fill('one two three four five')
+  await expect(page.locator('.word-cap-count')).toContainText('2 / 2 expected words')
   await editor.focus()
-  await setCaretOffsetInFocusedEditor(page, 'one two'.length)
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two'.length)
+  await page.keyboard.type(' six')
+
+  const textAtLimit = 'one two three four five six'
+  await expect(editor).toHaveText(textAtLimit)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length)
   await page.keyboard.press('Space')
 
-  await expect(editor).toHaveText('one twothree')
-  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe('one two'.length)
+  await expect(editor).toHaveText(textAtLimit)
+  await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length)
 })
 
 test('list template item appearance probability grandfathers saved values below 30 percent', async ({ page }) => {

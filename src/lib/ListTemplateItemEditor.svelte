@@ -109,7 +109,19 @@
     const end = plainTextOffsetForBoundary(editor, range.endContainer, range.endOffset)
     const nextText = `${currentText.slice(0, start)}${event.data}${currentText.slice(end)}`
 
-    if (wouldExceedCap(nextText, item.probability)) event.preventDefault()
+    // A separator does not change the count by itself. Allow it only when a word
+    // typed at the resulting caret would still fit at this item's probability.
+    const nextWordWouldExceed =
+      range.collapsed &&
+      /^\s+$/u.test(event.data) &&
+      wouldExceedCap(
+        `${currentText.slice(0, start)}${event.data}word${currentText.slice(end)}`,
+        item.probability,
+      )
+
+    if (wouldExceedCap(nextText, item.probability) || nextWordWouldExceed) {
+      event.preventDefault()
+    }
   }
 
   function plainTextOffsetForBoundary(editor: HTMLDivElement, node: Node, offset: number) {
