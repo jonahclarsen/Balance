@@ -12,6 +12,7 @@ import {
   DEFAULT_DAILY_REMINDER,
   backspacePlanItemAtStart as backspacePlanItemAtStartInTree,
   backspaceTemplateOptionAtStart as backspaceTemplateOptionAtStartInTree,
+  calendarDateISO,
   deletePlanItem,
   deletePlanItemPreservingChildren,
   deletePlanItems,
@@ -90,6 +91,7 @@ import {
 } from './goals'
 import type {
   AppState,
+  ArchivedListTemplateItem,
   DailyPlan,
   Goal,
   Id,
@@ -1651,21 +1653,25 @@ function createPlannerStore() {
     },
 
     deleteListTemplateItem(templateId: Id, itemId: Id) {
-      commit('delete_list_template_item', { templateId, itemId }, (state) =>
+      const archivedAt = nowISO()
+      const archivedDate = calendarDateISO()
+      const archiveId = createId('archived_list_item')
+      commit('delete_list_template_item', { templateId, itemId, archiveId, archivedAt, archivedDate }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
-          ...template,
-          updatedAt: nowISO(),
-          items: deleteListTemplateItem(template.items, itemId),
+          ...archiveListTemplateItem(template, itemId, false, archiveId, archivedAt, archivedDate),
+          updatedAt: archivedAt,
         })),
       )
     },
 
     deleteListTemplateItemPreservingChildren(templateId: Id, itemId: Id) {
-      commit('delete_list_template_item_preserving_children', { templateId, itemId }, (state) =>
+      const archivedAt = nowISO()
+      const archivedDate = calendarDateISO()
+      const archiveId = createId('archived_list_item')
+      commit('delete_list_template_item_preserving_children', { templateId, itemId, archiveId, archivedAt, archivedDate }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
-          ...template,
-          updatedAt: nowISO(),
-          items: deleteListTemplateItemPreservingChildren(template.items, itemId),
+          ...archiveListTemplateItem(template, itemId, true, archiveId, archivedAt, archivedDate),
+          updatedAt: archivedAt,
         })),
       )
     },
@@ -1699,7 +1705,7 @@ function createPlannerStore() {
       if (copiedItems.length === 0) return []
 
       const rootIds = copiedItems.map((item) => item.id)
-      commit('delete_list_template_items', { templateId, itemIds: rootIds }, (state) =>
+      commit('cut_list_template_items', { templateId, itemIds: rootIds }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
           ...template,
           updatedAt: nowISO(),
@@ -1714,12 +1720,30 @@ function createPlannerStore() {
       const rootIds = template ? copyListTemplateItemsFromTree(template.items, itemIds).map((item) => item.id) : []
       if (rootIds.length === 0) return []
 
-      commit('delete_list_template_items', { templateId, itemIds: rootIds }, (state) =>
-        updateListTemplate(state, templateId, (template) => ({
-          ...template,
-          updatedAt: nowISO(),
-          items: deleteListTemplateItems(template.items, rootIds),
-        })),
+      const archivedAt = nowISO()
+      const archivedDate = calendarDateISO()
+      const archiveIds = rootIds.map(() => createId('archived_list_item'))
+      commit('delete_list_template_items', { templateId, itemIds: rootIds, archiveIds, archivedAt, archivedDate }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const archivedItems = rootIds.flatMap((itemId, index) => {
+            const location = findListTemplateItemLocation(template.items, itemId)
+            if (!location || !listTemplateItemHasArchiveContent(location.item)) return []
+            return [{
+              id: archiveIds[index],
+              item: location.item,
+              parentId: location.parentId,
+              position: location.position,
+              archivedAt,
+              archivedDate,
+            } satisfies ArchivedListTemplateItem]
+          })
+          return {
+            ...template,
+            updatedAt: archivedAt,
+            items: deleteListTemplateItems(template.items, rootIds),
+            archivedItems: [...template.archivedItems, ...archivedItems],
+          }
+        }),
       )
       return rootIds
     },
@@ -1727,14 +1751,60 @@ function createPlannerStore() {
     pasteListTemplateItems(templateId: Id, itemsToPaste: ListTemplateItem[], targetId: Id | null, placement: 'after' | 'replace') {
       if (itemsToPaste.length === 0) return []
       const pastedItems = cloneListTemplateItemsForPaste(itemsToPaste)
-      commit('paste_list_template_items', { templateId, targetId, placement, items: pastedItems }, (state) =>
-        updateListTemplate(state, templateId, (template) => ({
-          ...template,
-          updatedAt: nowISO(),
-          items: pasteListTemplateItemsIntoTree(template.items, pastedItems, targetId, placement),
-        })),
+      const archivedAt = nowISO()
+      const archivedDate = calendarDateISO()
+      const archiveId = createId('archived_list_item')
+      commit('paste_list_template_items', { templateId, targetId, placement, items: pastedItems, archiveId, archivedAt, archivedDate }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const archivedTemplate = placement === 'replace' && targetId
+            ? archiveListTemplateItemSnapshot(template, targetId, archiveId, archivedAt, archivedDate)
+            : template
+          return {
+            ...archivedTemplate,
+            updatedAt: archivedAt,
+            items: pasteListTemplateItemsIntoTree(template.items, pastedItems, targetId, placement),
+          }
+        }),
       )
       return pastedItems.map((item) => item.id)
+    },
+
+    restoreArchivedListTemplateItem(templateId: Id, archiveId: Id) {
+      commit('restore_archived_list_template_item', { templateId, archiveId }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const archived = template.archivedItems.find((entry) => entry.id === archiveId)
+          if (!archived) return template
+
+          const restoredItem = listTemplateItemIdExists(template.items, archived.item.id)
+            ? cloneListTemplateItemWithFreshIds(archived.item)
+            : archived.item
+          const items = insertListTemplateItemAt(
+            template.items,
+            archived.parentId,
+            archived.position,
+            restoredItem,
+          )
+          return {
+            ...template,
+            updatedAt: nowISO(),
+            items,
+            archivedItems: template.archivedItems.filter((entry) => entry.id !== archiveId),
+          }
+        }),
+      )
+    },
+
+    permanentlyDeleteArchivedListTemplateItem(templateId: Id, archiveId: Id) {
+      commit('delete_archived_list_template_item', { templateId, archiveId }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          if (!template.archivedItems.some((entry) => entry.id === archiveId)) return template
+          return {
+            ...template,
+            updatedAt: nowISO(),
+            archivedItems: template.archivedItems.filter((entry) => entry.id !== archiveId),
+          }
+        }),
+      )
     },
 
     moveListTemplateItemsWithinLevel(templateId: Id, itemIds: Id[], direction: 'up' | 'down') {
@@ -2305,6 +2375,142 @@ function updateListTemplate(state: AppState, templateId: Id, updater: (template:
   return changed ? { ...state, listTemplates } : state
 }
 
+type ListTemplateItemLocation = {
+  item: ListTemplateItem
+  parentId: Id | null
+  position: number
+}
+
+function findListTemplateItemLocation(
+  items: ListTemplateItem[],
+  itemId: Id,
+  parentId: Id | null = null,
+): ListTemplateItemLocation | null {
+  for (let position = 0; position < items.length; position += 1) {
+    const item = items[position]
+    if (item.id === itemId) return { item, parentId, position }
+    const child = findListTemplateItemLocation(item.children, itemId, item.id)
+    if (child) return child
+  }
+  return null
+}
+
+function listTemplateItemHasArchiveContent(item: ListTemplateItem): boolean {
+  return item.text.trim() !== '' || htmlToPlainText(item.html).trim() !== '' || item.children.length > 0
+}
+
+function archiveListTemplateItemSnapshot(
+  template: ListTemplate,
+  itemId: Id,
+  archiveId: Id,
+  archivedAt: string,
+  archivedDate: string,
+  preserveChildren = false,
+): ListTemplate {
+  const location = findListTemplateItemLocation(template.items, itemId)
+  if (!location) return template
+
+  const snapshot = preserveChildren ? { ...location.item, children: [] } : location.item
+  if (!listTemplateItemHasArchiveContent(snapshot)) return template
+
+  const archived: ArchivedListTemplateItem = {
+    id: archiveId,
+    item: snapshot,
+    parentId: location.parentId,
+    position: location.position,
+    archivedAt,
+    archivedDate,
+  }
+  return { ...template, archivedItems: [...template.archivedItems, archived] }
+}
+
+function archiveListTemplateItem(
+  template: ListTemplate,
+  itemId: Id,
+  preserveChildren: boolean,
+  archiveId: Id,
+  archivedAt: string,
+  archivedDate: string,
+): ListTemplate {
+  const archived = archiveListTemplateItemSnapshot(
+    template,
+    itemId,
+    archiveId,
+    archivedAt,
+    archivedDate,
+    preserveChildren,
+  )
+  return {
+    ...archived,
+    items: preserveChildren
+      ? deleteListTemplateItemPreservingChildren(template.items, itemId)
+      : deleteListTemplateItem(template.items, itemId),
+  }
+}
+
+function listTemplateItemIdExists(items: ListTemplateItem[], itemId: Id): boolean {
+  return items.some((item) => item.id === itemId || listTemplateItemIdExists(item.children, itemId))
+}
+
+function cloneListTemplateItemWithFreshIds(item: ListTemplateItem): ListTemplateItem {
+  return {
+    ...item,
+    id: createId('list_item'),
+    children: item.children.map(cloneListTemplateItemWithFreshIds),
+  }
+}
+
+function insertListTemplateItemAt(
+  items: ListTemplateItem[],
+  parentId: Id | null,
+  position: number,
+  item: ListTemplateItem,
+): ListTemplateItem[] {
+  if (!parentId) {
+    const insertion = Math.min(Math.max(0, position), items.length)
+    return [...items.slice(0, insertion), item, ...items.slice(insertion)]
+  }
+
+  const nested = insertListTemplateItemAtExistingParent(items, parentId, position, item)
+  return nested === items ? [...items, item] : nested
+}
+
+function insertListTemplateItemAtExistingParent(
+  items: ListTemplateItem[],
+  parentId: Id,
+  position: number,
+  item: ListTemplateItem,
+): ListTemplateItem[] {
+  for (let index = 0; index < items.length; index += 1) {
+    const candidate = items[index]
+    if (candidate.id === parentId) {
+      const insertion = Math.min(Math.max(0, position), candidate.children.length)
+      return [
+        ...items.slice(0, index),
+        {
+          ...candidate,
+          children: [
+            ...candidate.children.slice(0, insertion),
+            item,
+            ...candidate.children.slice(insertion),
+          ],
+        },
+        ...items.slice(index + 1),
+      ]
+    }
+
+    const children = insertListTemplateItemAtExistingParent(candidate.children, parentId, position, item)
+    if (children !== candidate.children) {
+      return [
+        ...items.slice(0, index),
+        { ...candidate, children },
+        ...items.slice(index + 1),
+      ]
+    }
+  }
+  return items
+}
+
 function updateNote(state: AppState, noteId: Id, updater: (note: Note) => Note): AppState {
   let changed = false
   const notes = state.notes.map((note) => {
@@ -2622,6 +2828,7 @@ function normalizeState(state: AppState): AppState {
       ...template,
       maxExpectedWords: template.maxExpectedWords ?? 0,
       items: normalizeListTemplateItems(template.items ?? []),
+      archivedItems: (template.archivedItems ?? []).map(normalizeArchivedListTemplateItem),
     })),
     lists: (state.lists ?? []).map((list) => ({
       ...list,
@@ -2645,6 +2852,24 @@ function normalizeState(state: AppState): AppState {
       deletedAt: typeof note.deletedAt === 'string' && Number.isFinite(Date.parse(note.deletedAt)) ? note.deletedAt : null,
       items: normalizeNoteItems(note.items ?? []),
     })),
+  }
+}
+
+function normalizeArchivedListTemplateItem(entry: ArchivedListTemplateItem): ArchivedListTemplateItem {
+  const archivedAt = typeof entry.archivedAt === 'string' && Number.isFinite(Date.parse(entry.archivedAt))
+    ? entry.archivedAt
+    : nowISO()
+  const archivedDate = /^\d{4}-\d{2}-\d{2}$/.test(entry.archivedDate ?? '')
+    ? entry.archivedDate
+    : archivedAt.slice(0, 10)
+
+  return {
+    ...entry,
+    parentId: entry.parentId ?? null,
+    position: Math.max(0, Math.round(entry.position) || 0),
+    archivedAt,
+    archivedDate,
+    item: normalizeListTemplateItems([entry.item])[0] ?? createListTemplateItem(),
   }
 }
 

@@ -62,6 +62,17 @@ export type ListTemplateItem = {
   children: ListTemplateItem[]
 }
 
+export type ArchivedListTemplateItem = {
+  id: Id
+  item: ListTemplateItem
+  parentId: Id | null
+  position: number
+  archivedAt: string
+  // Keep the calendar day recorded on the deleting device. Deriving this from
+  // archivedAt on another device could move the deletion to an adjacent day.
+  archivedDate: string
+}
+
 export type ListTemplate = {
   id: Id
   name: string
@@ -70,6 +81,7 @@ export type ListTemplate = {
   // 0 means unlimited.
   maxExpectedWords: number
   items: ListTemplateItem[]
+  archivedItems: ArchivedListTemplateItem[]
   createdAt: string
   updatedAt: string
 }

@@ -63,6 +63,11 @@
   // template's expected word count past the cap.
   let revertNonce = 0
   let allowsLowProbability = item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY
+  // Clearing a row is ambiguous until focus moves: it may be a deletion, or the
+  // first half of replacing all text. Keep the persisted item intact while the
+  // editor is empty so a committed deletion can archive the original snapshot,
+  // while replacement typing remains one ordinary edit.
+  let pendingDeletion = false
   $: revision = historyRevision + revertNonce
   $: selected = selectedItemIds.has(item.id)
   $: if (item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY) allowsLowProbability = true
@@ -89,9 +94,19 @@
   function handleTextChange(html: string, text: string, options?: TextChangeOptions) {
     if (wouldExceedCap(htmlToPlainText(html) || text, item.probability)) {
       // Reject: revert the editor to the last accepted content.
+      pendingDeletion = false
       revertNonce += 1
       return
     }
+
+    const nextIsEmpty = text.trim() === '' && htmlToPlainText(html).trim() === ''
+    const currentIsEmpty = item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
+    if (nextIsEmpty && !currentIsEmpty) {
+      pendingDeletion = true
+      return
+    }
+
+    if (!nextIsEmpty) pendingDeletion = false
     patchItem(templateId, item.id, { html, text }, options)
   }
 
@@ -134,6 +149,26 @@
     return htmlToPlainText(container.innerHTML).length
   }
 
+  function commitPendingDeletion() {
+    if (!pendingDeletion) return false
+    pendingDeletion = false
+    deleteItemPreservingChildren(templateId, item.id)
+    return true
+  }
+
+  function handleFocusChange(focused: boolean) {
+    // Let RichTextEditor finish its blur persistence before removing the keyed
+    // row; destroying it from inside its own blur callback leaves Svelte reading
+    // derived editor state after the effect has been torn down.
+    if (!focused && pendingDeletion) queueMicrotask(commitPendingDeletion)
+  }
+
+  function handlePendingDeletionKeydown(_editor: HTMLDivElement, event: KeyboardEvent) {
+    if (!pendingDeletion || (event.key !== 'Enter' && event.key !== 'Tab')) return
+    event.preventDefault()
+    commitPendingDeletion()
+  }
+
   function handleProbabilityChange(probability: number) {
     const targetIds = selected ? selectedItemIds : new Set([item.id])
     const mergeKey = `list-template-item-probability:${templateId}:${Array.from(targetIds).sort().join(',')}`
@@ -170,6 +205,7 @@
   }
 
   async function handleTextTab(direction: 'in' | 'out', current: HTMLDivElement) {
+    if (commitPendingDeletion()) return
     const caretOffset = textOffsetForCaret(current)
 
     if (direction === 'in') {
@@ -214,6 +250,7 @@
   }
 
   async function handleBackspaceEmpty() {
+    if (commitPendingDeletion()) return
     const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
     const current = inputs.findIndex((input) => input.dataset.listTemplateTextInputId === item.id)
     deleteItem(templateId, item.id)
@@ -226,6 +263,7 @@
   async function handleMetaBackspaceEnd() {
     const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
     const current = inputs.findIndex((input) => input.dataset.listTemplateTextInputId === item.id)
+    pendingDeletion = false
     deleteItemPreservingChildren(templateId, item.id)
     await tick()
     const nextInputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
@@ -234,6 +272,17 @@
   }
 
   async function handleBackspaceStart(current: HTMLDivElement) {
+    if (pendingDeletion) {
+      const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
+      const index = inputs.indexOf(current)
+      commitPendingDeletion()
+      await tick()
+      const nextInputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
+      const target = nextInputs[Math.max(0, index - 1)] ?? nextInputs[0]
+      if (target) focusTextInput(target)
+      return
+    }
+
     const result = backspaceItemAtStart(templateId, item.id)
 
     if (!result) {
@@ -348,6 +397,8 @@
         {revision}
         onChange={handleTextChange}
         onBeforeInput={handleBeforeTextInput}
+        onFocusChange={handleFocusChange}
+        onKeyDown={handlePendingDeletionKeydown}
         onArrowKey={(direction, editor, event) => handleTextArrowKey(direction, editor, event)}
         interceptShiftArrowAtBoundary
         onSplit={(before, after) => handleTextSplit(before, after)}

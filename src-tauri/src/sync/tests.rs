@@ -924,6 +924,89 @@ fn v4_entity_delta_converges_without_replicating_unrelated_entities() {
     assert_eq!(b.state()["notes"][1]["title"], sentinel);
 }
 
+#[test]
+fn archived_list_item_and_deletion_day_converge() {
+    let sa = Scratch::new("list-archive-a");
+    let sb = Scratch::new("list-archive-b");
+    let active_item = json!({
+        "id": "list-item-milk",
+        "text": "Milk",
+        "html": "Milk",
+        "probability": 100,
+        "children": []
+    });
+    let mut primary_state = state("device-A", json!([]));
+    primary_state["listTemplates"] = json!([{
+        "id": "list-template-groceries",
+        "name": "Groceries",
+        "maxExpectedWords": 0,
+        "items": [active_item.clone()],
+        "archivedItems": [],
+        "createdAt": "2026-08-19T12:00:00Z",
+        "updatedAt": "2026-08-19T12:00:00Z"
+    }]);
+
+    let a = open_seeded(&sa.path, "key-a", &primary_state);
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+
+    let archived_template = json!({
+        "id": "list-template-groceries",
+        "name": "Groceries",
+        "maxExpectedWords": 0,
+        "items": [],
+        "archivedItems": [{
+            "id": "archived-list-item-milk",
+            "item": active_item,
+            "parentId": Value::Null,
+            "position": 0,
+            "archivedAt": "2026-08-20T06:30:00Z",
+            "archivedDate": "2026-08-19"
+        }],
+        "createdAt": "2026-08-19T12:00:00Z",
+        "updatedAt": "2026-08-20T06:30:00Z"
+    });
+    let mut operation_connection = open_database_at(&sa.path, &test_database_key("key-a")).unwrap();
+    persist_operation_to_database(
+        &mut operation_connection,
+        &json!({
+            "id": "archive-list-item", "deviceId": "device-A", "sequence": 1,
+            "type": "delete_list_template_item", "timestamp": "2026-08-20T06:30:00Z",
+            "payload": {
+                "templateId": "list-template-groceries",
+                "itemId": "list-item-milk",
+                "entityChanges": {
+                    "version": 1,
+                    "upserts": [{
+                        "collection": "listTemplates",
+                        "key": "list-template-groceries",
+                        "position": 0,
+                        "value": archived_template
+                    }],
+                    "deletes": []
+                }
+            }
+        }),
+    )
+    .unwrap();
+    drop(operation_connection);
+
+    let a = TestStore::new(open_database_at(&sa.path, &test_database_key("key-a")).unwrap());
+    let b = TestStore::new(b);
+    exchange(&b, &a, &SyncKey::generate());
+
+    assert_eq!(domain(&a.state()), domain(&b.state()));
+    assert_eq!(
+        b.state()["listTemplates"][0]["archivedItems"][0]["archivedDate"],
+        "2026-08-19"
+    );
+    assert_eq!(
+        b.state()["listTemplates"][0]["archivedItems"][0]["item"]["text"],
+        "Milk"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // 2. Re-sync is a no-op
 // ---------------------------------------------------------------------------

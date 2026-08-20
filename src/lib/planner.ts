@@ -75,6 +75,10 @@ export function createId(prefix = 'id'): Id {
 export function todayISO(now = new Date()): string {
   const day = new Date(now)
   if (day.getHours() < 3) day.setDate(day.getDate() - 1)
+  return calendarDateISO(day)
+}
+
+export function calendarDateISO(day = new Date()): string {
   const year = day.getFullYear()
   const month = String(day.getMonth() + 1).padStart(2, '0')
   const date = String(day.getDate()).padStart(2, '0')
@@ -1720,6 +1724,7 @@ export function createListTemplate(name = 'New list'): ListTemplate {
     name,
     maxExpectedWords: 0,
     items: [createListTemplateItem('First item')],
+    archivedItems: [],
     createdAt,
     updatedAt: createdAt,
   }

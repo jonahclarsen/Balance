@@ -4868,6 +4868,92 @@ body.mobile-checkbox-dragging {
   flex-wrap: wrap;
 }
 
+.template-panel-actions .ghost.active {
+  border-color: var(--line-strong);
+  background: var(--active-nav);
+  color: var(--ink);
+}
+
+.list-item-archive {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--paper-strong) 86%, transparent);
+  padding: 14px;
+}
+
+.list-item-archive-header,
+.list-item-archive-row,
+.list-item-archive-actions {
+  display: flex;
+  align-items: center;
+}
+
+.list-item-archive-header {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.list-item-archive-header h3,
+.list-item-archive-header p,
+.list-item-archive-empty {
+  margin: 0;
+}
+
+.list-item-archive-header > span,
+.list-item-archive-copy > span,
+.list-item-archive-empty {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.list-item-archive-list {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.list-item-archive-row {
+  justify-content: space-between;
+  gap: 16px;
+  min-width: 0;
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+.list-item-archive-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.list-item-archive-copy strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.list-item-archive-actions {
+  flex: 0 0 auto;
+  gap: 6px;
+}
+
+@media (max-width: 560px) {
+  .list-item-archive-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .list-item-archive-actions {
+    justify-content: flex-end;
+  }
+}
+
 /* A linked plan/list item: read-only text where only the matching substrings
    render as inline hyperlinks. Shares .item-text sizing with the editor. */
 .item-text-display {

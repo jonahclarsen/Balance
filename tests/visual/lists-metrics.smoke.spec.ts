@@ -107,12 +107,22 @@ async function openMetrics(page: import('@playwright/test').Page) {
   }
 }
 
+async function openLists(page: import('@playwright/test').Page) {
+  const mobileMenu = page.getByRole('button', { name: 'Open navigation' })
+  if (await mobileMenu.isVisible()) {
+    await mobileMenu.click()
+    await page.getByRole('complementary', { name: 'Primary navigation drawer' }).getByRole('button', { name: 'Lists', exact: true }).click()
+  } else {
+    await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  }
+}
+
 test('list template word cap blocks typing past the max', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openLists(page)
   await page.getByRole('button', { name: '+ New list' }).click()
 
   // Unlock and set a small cap of 2 expected words.
@@ -126,6 +136,73 @@ test('list template word cap blocks typing past the max', async ({ page }) => {
   await listItem.click()
   await page.keyboard.type('one two three four')
   await expect(page.locator('.word-cap-count')).toContainText('2 / 2')
+})
+
+test('clearing a list item archives it on blur, while replacement typing stays an edit', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openLists(page)
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+
+  let item = page.locator('[data-list-template-text-input]').first()
+  await item.fill('Milk')
+  await item.press('Meta+A')
+  await item.press('Backspace')
+  await expect(item).toHaveText('')
+
+  // Leaving the cleared editor commits a deletion using the still-persisted
+  // non-empty snapshot, so one Undo can restore the whole operation.
+  await page.getByLabel('List name').click()
+  await expect(page.locator('[data-list-template-text-input]')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Archive (1)' }).click()
+
+  const archivedRow = page.locator('.list-item-archive-row', { hasText: 'Milk' })
+  await expect(archivedRow).toBeVisible()
+  const archivedDate = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.listTemplates[0].archivedItems[0].archivedDate as string
+  })
+  await expect(archivedRow.locator('time')).toHaveAttribute('datetime', archivedDate)
+
+  await page.keyboard.press('Meta+Z')
+  await expect(page.locator('[data-list-template-text-input]').first()).toHaveText('Milk')
+  await expect(page.getByRole('button', { name: 'Archive (0)' })).toBeVisible()
+  await page.keyboard.press('Meta+Shift+Z')
+  await expect(page.locator('[data-list-template-text-input]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Archive (1)' })).toBeVisible()
+
+  await archivedRow.getByRole('button', { name: 'Restore' }).click()
+  await expect(page.getByRole('button', { name: 'Archive (0)' })).toBeVisible()
+  item = page.locator('[data-list-template-text-input]').first()
+  await expect(item).toHaveText('Milk')
+
+  // Clearing and then typing before focus leaves the row is a replacement edit,
+  // not an archive-worthy deletion.
+  await item.press('Meta+A')
+  await item.press('Backspace')
+  await item.type('Oat milk')
+  await page.getByLabel('List name').click()
+  await expect(page.locator('[data-list-template-text-input]').first()).toHaveText('Oat milk')
+  await expect(page.getByRole('button', { name: 'Archive (0)' })).toBeVisible()
+})
+
+test('command backspace archives a list item immediately', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Command-key editing is covered by the desktop project')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  const item = page.locator('[data-list-template-text-input]').first()
+  await item.fill('Remove me')
+  await item.press('Meta+Backspace')
+
+  await expect(page.locator('[data-list-template-text-input]')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Archive (1)' })).toBeVisible()
 })
 
 test('metric quiz records answers and bulk import backfills', async ({ page }) => {

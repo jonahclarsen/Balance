@@ -50,7 +50,7 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { DailyPlan, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
+  import type { ArchivedListTemplateItem, DailyPlan, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
@@ -236,6 +236,7 @@
   // Lists + Metrics feature state
   let selectedListTemplateId = ''
   let listViewTemplateId = ''
+  let listArchiveOpen = false
   // The list overlay toast lives inside a modal that doesn't reliably hold DOM
   // focus, so the global key handler routes arrows / Cmd+D into its ListPanel
   // through this binding. The Lists-tab ListPanel handles its own keys directly.
@@ -506,6 +507,8 @@ return rows`
   $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = listTemplates[0].id
   $: selectedListWordCount = selectedListTemplate ? Math.round(expectedWordCount(selectedListTemplate.items)) : 0
   $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items) : 0
+  $: selectedArchivedListItems = [...(selectedListTemplate?.archivedItems ?? [])]
+    .sort((left, right) => right.archivedAt.localeCompare(left.archivedAt))
   $: listViewInstance = lists.find(
     (list) => list.listTemplateId === listViewTemplateId && list.date === $plannerStore.activePlanDate,
   )
@@ -1414,6 +1417,31 @@ return rows`
     if (!confirmed) return
 
     plannerStore.deleteListTemplate(templateId)
+  }
+
+  function formatArchivedListItemDate(entry: ArchivedListTemplateItem): string {
+    const [year, month, day] = entry.archivedDate.split('-').map(Number)
+    if (!year || !month || !day) return entry.archivedDate
+    return new Date(year, month - 1, day).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+  }
+
+  function archivedListItemChildCount(item: ListTemplateItem): number {
+    return item.children.reduce((count, child) => count + 1 + archivedListItemChildCount(child), 0)
+  }
+
+  async function confirmPermanentlyDeleteArchivedListItem(entry: ArchivedListTemplateItem) {
+    if (!selectedListTemplate) return
+    const label = entry.item.text.trim() || 'Untitled list item'
+    const message = `Delete “${label}” from the archive forever? You can still undo this action.`
+    const confirmed = isTauri()
+      ? await confirmDialog(message, { title: 'Delete archived item?', kind: 'warning' })
+      : window.confirm(message)
+    if (!confirmed) return
+    plannerStore.permanentlyDeleteArchivedListTemplateItem(selectedListTemplate.id, entry.id)
   }
 
   function createMetricAndSelect() {
@@ -5446,6 +5474,16 @@ return rows`
               + Add list item
             </button>
             <button
+              class="ghost"
+              class:active={listArchiveOpen}
+              type="button"
+              aria-expanded={listArchiveOpen}
+              aria-controls="list-item-archive"
+              on:click={() => (listArchiveOpen = !listArchiveOpen)}
+            >
+              Archive ({selectedArchivedListItems.length})
+            </button>
+            <button
               class="ghost danger"
               type="button"
               on:click={() => { void confirmDeleteListTemplate(selectedListTemplate.id, selectedListTemplate.name) }}
@@ -5453,6 +5491,50 @@ return rows`
               Delete list
             </button>
           </div>
+
+          {#if listArchiveOpen}
+            <section id="list-item-archive" class="list-item-archive" aria-labelledby="list-item-archive-title">
+              <div class="list-item-archive-header">
+                <div>
+                  <p class="eyebrow">Deleted items</p>
+                  <h3 id="list-item-archive-title">Archive</h3>
+                </div>
+                <span>{selectedArchivedListItems.length} saved</span>
+              </div>
+
+              {#if selectedArchivedListItems.length === 0}
+                <p class="list-item-archive-empty">Deleted list items will appear here.</p>
+              {:else}
+                <ul class="list-item-archive-list">
+                  {#each selectedArchivedListItems as archived (archived.id)}
+                    {@const childCount = archivedListItemChildCount(archived.item)}
+                    <li class="list-item-archive-row">
+                      <div class="list-item-archive-copy">
+                        <strong>{archived.item.text.trim() || 'Untitled list item'}</strong>
+                        <span>
+                          Deleted <time datetime={archived.archivedDate}>{formatArchivedListItemDate(archived)}</time>
+                          {#if childCount > 0}
+                            · {childCount} nested item{childCount === 1 ? '' : 's'}
+                          {/if}
+                        </span>
+                      </div>
+                      <div class="list-item-archive-actions">
+                        <button
+                          type="button"
+                          on:click={() => plannerStore.restoreArchivedListTemplateItem(selectedListTemplate.id, archived.id)}
+                        >Restore</button>
+                        <button
+                          class="ghost danger"
+                          type="button"
+                          on:click={() => { void confirmPermanentlyDeleteArchivedListItem(archived) }}
+                        >Delete forever</button>
+                      </div>
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            </section>
+          {/if}
         </div>
       {:else}
         <div class="empty-state">
