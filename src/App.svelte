@@ -187,7 +187,6 @@
   let celebrationPreview: CelebrationPreviewSession | null = null
   let celebrationPreviewTimer: number | null = null
   let celebrationPreviewToken = 0
-  let celebrationPreviewReturnButton: HTMLButtonElement | null = null
   let celebrationPreviewAnnouncement = ''
   let celebrationPreviewAnnouncementTimer: number | null = null
   let goalBurst: GoalBurst | null = null
@@ -798,7 +797,6 @@ return rows`
     const previewDuration = prefersReducedMotion
       ? 2_000
       : Math.min(5_000, Math.max(3_200, definition.durationMs))
-    celebrationPreviewReturnButton?.focus({ preventScroll: true })
     try {
       celebration?.play({ kind: 'day', celebrationId: id, preview: true })
     } catch (error) {
@@ -5979,20 +5977,6 @@ return rows`
     {/if}
   </div>
 </main>
-
-{#if celebrationPreview}
-  <div class="celebration-preview-control" role="region" aria-label="Celebration preview controls">
-    <span>
-      Previewing <strong>{getCompletionCelebration(celebrationPreview.celebrationId).name}</strong> on yesterday
-      <span aria-hidden="true"> · </span>Returning to Settings…
-    </span>
-    <button
-      bind:this={celebrationPreviewReturnButton}
-      type="button"
-      on:click={() => { void finishCelebrationPreview(celebrationPreview?.token) }}
-    >Return now</button>
-  </div>
-{/if}
 
 {#if celebrationPreviewAnnouncement}
   <div class="celebration-preview-announcement" role="status" aria-live="polite">

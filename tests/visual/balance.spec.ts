@@ -778,7 +778,8 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
     .toBe(true)
 
   await final.check()
-  await expect(page.getByRole('status', { name: 'Day finished' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Day finished' })).toBeAttached()
+  await expect(page.locator('.celebration-banner')).toHaveCount(0)
   await expect(page.locator('.celebration-canvas')).toHaveAttribute('width', /\d+/)
   await expect(page.locator('.list-celebration')).toHaveCount(0)
 
@@ -786,7 +787,7 @@ test('checking the final item celebrates the completed day', async ({ page }) =>
   await expect(page.getByRole('status', { name: 'Day finished' })).toHaveCount(0)
 
   await final.check()
-  await expect(page.getByRole('status', { name: 'Day finished' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Day finished' })).toBeAttached()
 })
 
 test('checking the final list item celebrates the completed list', async ({ page }) => {

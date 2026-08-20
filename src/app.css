@@ -2269,40 +2269,6 @@ nav button.active {
   line-height: 1.5;
 }
 
-.celebration-preview-control {
-  position: fixed;
-  z-index: 10002;
-  right: max(14px, env(safe-area-inset-right));
-  bottom: max(14px, env(safe-area-inset-bottom));
-  left: max(14px, env(safe-area-inset-left));
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  width: fit-content;
-  max-width: calc(100vw - 28px);
-  margin-inline: auto;
-  border: 1px solid color-mix(in srgb, var(--accent) 55%, var(--line));
-  border-radius: 14px;
-  padding: 9px 10px 9px 14px;
-  background: color-mix(in srgb, var(--paper-strong) 94%, transparent);
-  box-shadow: 0 14px 45px rgb(0 0 0 / 0.24);
-  color: var(--ink);
-  font-size: 12px;
-  line-height: 1.35;
-  pointer-events: auto;
-  backdrop-filter: blur(14px);
-}
-
-.celebration-preview-control button {
-  flex: 0 0 auto;
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--paper-strong);
-  font-weight: 800;
-  white-space: nowrap;
-}
-
 .celebration-preview-announcement {
   position: fixed;
   width: 1px;
@@ -2325,20 +2291,6 @@ nav button.active {
 
   .celebration-option-button {
     min-height: 0;
-  }
-}
-
-@media (max-width: 480px) {
-  .celebration-preview-control {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 8px;
-    width: auto;
-    padding: 10px;
-  }
-
-  .celebration-preview-control button {
-    width: 100%;
   }
 }
 

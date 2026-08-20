@@ -69,7 +69,7 @@ test('Settings renders exactly 30 named celebration cards with copy, icons, and 
   await expect(reminder.locator('xpath=..').locator(':scope > :last-child')).toHaveText(REMINDER)
 })
 
-test('selecting saves, previews yesterday without mutating navigation or plans, and Return now restores Settings', async ({ page }, testInfo) => {
+test('selecting saves, previews yesterday without chrome or plan mutations, and Escape restores Settings', async ({ page }, testInfo) => {
   await resetBrowserState(page)
   const initialDate = await page.locator('.today-date-input').inputValue()
   const before = await storedNavigationAndPlans(page)
@@ -83,10 +83,9 @@ test('selecting saves, previews yesterday without mutating navigation or plans, 
   testInfo.project.name === 'mobile')
   await deadlineGoose.click()
 
-  const previewControl = page.locator('.celebration-preview-control')
-  await expect(previewControl).toContainText('Previewing Deadline Goose on yesterday')
-  const returnButton = page.getByRole('button', { name: 'Return now' })
-  await expect(returnButton).toBeFocused()
+  await expect(page.locator('.celebration-preview-control')).toHaveCount(0)
+  await expect(page.locator('.celebration-banner')).toHaveCount(0)
+  await expect(page.locator('.celebration-announcement')).toHaveCount(1)
   expect(await page.evaluate(() => {
     const shell = document.querySelector('.app-shell')
     const stage = document.querySelector('.celebration-stage')
@@ -101,6 +100,7 @@ test('selecting saves, previews yesterday without mutating navigation or plans, 
       stageRecipe: stage?.getAttribute('data-celebration-recipe'),
       canvasId: canvas?.getAttribute('data-celebration-id'),
       canvasEngine: canvas?.getAttribute('data-celebration-engine'),
+      activeElement: document.activeElement?.tagName,
       activePlanDate: state?.activePlanDate,
       plans: state?.plans,
     }
@@ -113,10 +113,11 @@ test('selecting saves, previews yesterday without mutating navigation or plans, 
     stageRecipe: 'goose',
     canvasId: 'deadline-goose',
     canvasEngine: 'character',
+    activeElement: 'BODY',
     ...before,
   })
 
-  await returnButton.press('Enter')
+  await page.keyboard.press('Escape')
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await expect(deadlineGoose).toHaveAttribute('aria-pressed', 'true')
   await expect(deadlineGoose).toBeFocused()
@@ -188,7 +189,7 @@ test('every catalog entry launches its own stable hooks and fully cleans up', as
     await expect(page.locator('.celebration-canvas')).toHaveAttribute('data-celebration-id', celebration.id)
     await expect(page.locator('html')).toHaveAttribute('data-celebration-id', celebration.id)
 
-    await page.getByRole('button', { name: 'Return now' }).click()
+    await page.keyboard.press('Escape')
     await expect(stage).toHaveCount(0)
     await expect(page.locator('.celebration-canvas')).not.toHaveAttribute('data-celebration-id', /.+/)
     await expect(page.locator('html')).not.toHaveAttribute('data-celebration-id', /.+/)

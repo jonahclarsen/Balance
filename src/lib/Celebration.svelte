@@ -584,7 +584,15 @@
 {/if}
 
 {#if banner}
-  <div class="celebration-banner" class:reduced-motion={reduced} role="status" aria-live="polite" aria-atomic="true" aria-label={ariaLabel}>
+  <div
+    class:celebration-banner={!activeDefinition}
+    class:celebration-announcement={Boolean(activeDefinition)}
+    class:reduced-motion={reduced}
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+    aria-label={ariaLabel}
+  >
     {message}
   </div>
 {/if}
@@ -673,6 +681,7 @@
 
   .celebration-banner { position: fixed; z-index: 9999; top: max(18%, env(safe-area-inset-top)); left: 50%; max-width: min(86vw, 620px); border-radius: 999px; padding: .7rem 1.4rem; background: var(--accent, #2f6f68); box-shadow: 0 10px 30px #0004; color: #fff; font: 700 1.05rem/1.2 system-ui; letter-spacing: .01em; text-align: center; pointer-events: none; transform: translateX(-50%); animation: celebration-pop 2.2s ease forwards; }
   .celebration-banner.reduced-motion { opacity: 1; animation: none; }
+  .celebration-announcement { position: fixed; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
   .list-celebration { overflow: hidden; }
   .completed-list-card { position: absolute; top: 50%; left: 50%; display: grid; gap: 9px; width: 190px; padding: 18px; border: 2px solid color-mix(in srgb, var(--accent, #2f6f68) 72%, white); border-radius: 14px; background: var(--paper-strong, #fff); box-shadow: 0 18px 55px rgba(20,40,37,.28); color: var(--accent-strong, #245952); animation: completed-list-pop 1.8s cubic-bezier(.22,.8,.25,1) both; }
