@@ -160,6 +160,10 @@ class BalanceSyncWorker {
       kotlin,
       /R\.id\.widget_progress,[\s\S]*?if \(snapshot\.hasPlan \|\| snapshot\.unavailable\) View\.VISIBLE else View\.GONE/,
     )
+    assert.match(
+      kotlin,
+      /R\.id\.widget_progress_glow,[\s\S]*?if \(showProgress\) View\.VISIBLE else View\.GONE/,
+    )
     assert.doesNotMatch(kotlin, /Start today/)
     assert.match(kotlin, /R\.id\.widget_task_surface/)
     assert.match(kotlin, /R\.id\.widget_all_done/)
@@ -204,7 +208,11 @@ class BalanceSyncWorker {
     assert.match(refreshArrow, /android:fillColor="#7355A2"/)
     assert.match(
       violetLayout,
-      /android:id="@\+id\/widget_progress_bar"[\s\S]*?android:layout_height="4dp"/,
+      /android:id="@\+id\/widget_progress_glow"[\s\S]*?android:layout_height="8dp"[\s\S]*?android:background="@drawable\/balance_widget_violet_progress_glow"[\s\S]*?android:padding="2dp"/,
+    )
+    assert.match(
+      violetLayout,
+      /android:id="@\+id\/widget_progress_bar"[\s\S]*?android:layout_height="match_parent"/,
     )
     assert.ok(
       violetLayout.indexOf('@+id/widget_reminder') <
@@ -294,11 +302,13 @@ class BalanceSyncWorker {
     for (const theme of ['iridescent', 'forest', 'ocean', 'violet', 'sunset', 'berry', 'pink', 'mint', 'midnight', 'graphite']) {
       await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
+      await readFile(join(root, `res/drawable/balance_widget_${theme}_progress_glow.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_task_circle.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_task_surface.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_time_pill.xml`), 'utf8')
       await readFile(join(root, `res/layout-night/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable-night/balance_widget_${theme}_progress.xml`), 'utf8')
+      await readFile(join(root, `res/drawable-night/balance_widget_${theme}_progress_glow.xml`), 'utf8')
       await assert.rejects(
         readFile(join(root, `res/drawable/balance_widget_${theme}_progress_fill.xml`), 'utf8'),
         { code: 'ENOENT' },
@@ -323,6 +333,11 @@ class BalanceSyncWorker {
     assert.match(violetProgress, /<solid android:color="#DAD2E2"/)
     assert.match(violetProgress, /<solid android:color="#7355A2"/)
     assert.doesNotMatch(violetProgress, /progress_fill|<gradient/)
+    const violetProgressGlow = await readFile(
+      join(root, 'res/drawable/balance_widget_violet_progress_glow.xml'),
+      'utf8',
+    )
+    assert.match(violetProgressGlow, /android:color="#1F7355A2"/)
 
     const darkVioletLayout = await readFile(
       join(root, 'res/layout-night/balance_home_widget_violet.xml'),

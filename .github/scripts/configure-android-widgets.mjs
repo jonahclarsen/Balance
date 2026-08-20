@@ -142,7 +142,7 @@ object BalanceWidgets {
             false,
         )
         views.setViewVisibility(
-            R.id.widget_progress_bar,
+            R.id.widget_progress_glow,
             if (showProgress) View.VISIBLE else View.GONE,
         )
         views.setTextViewText(R.id.widget_reminder, snapshot.reminder)
@@ -528,15 +528,22 @@ function homeLayout(theme) {
         android:textColor="${theme.muted}"
         android:textSize="12sp" />
 
-    <ProgressBar
-        android:id="@+id/widget_progress_bar"
-        style="?android:attr/progressBarStyleHorizontal"
+    <FrameLayout
+        android:id="@+id/widget_progress_glow"
         android:layout_width="match_parent"
-        android:layout_height="4dp"
-        android:layout_marginTop="8dp"
-        android:indeterminate="false"
-        android:progress="33"
-        android:progressDrawable="@drawable/balance_widget_${theme.id}_progress" />
+        android:layout_height="8dp"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/balance_widget_${theme.id}_progress_glow"
+        android:padding="2dp">
+        <ProgressBar
+            android:id="@+id/widget_progress_bar"
+            style="?android:attr/progressBarStyleHorizontal"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:indeterminate="false"
+            android:progress="33"
+            android:progressDrawable="@drawable/balance_widget_${theme.id}_progress" />
+    </FrameLayout>
 
     <TextView
         android:id="@+id/widget_all_done"
@@ -689,6 +696,15 @@ function progress(theme) {
 `
 }
 
+function progressGlow(theme) {
+  return `<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="${alphaColor(theme.progressAccent ?? theme.accent, '1F')}" />
+    <corners android:radius="999dp" />
+</shape>
+`
+}
+
 const strings = `<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="balance_home_widget_name">Balance Today</string>
@@ -752,6 +768,10 @@ function addThemeFiles(theme, layoutDirectory, drawableDirectory) {
   files.set(
     join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_progress.xml`),
     progress(theme),
+  )
+  files.set(
+    join(resPath, `${drawableDirectory}/balance_widget_${theme.id}_progress_glow.xml`),
+    progressGlow(theme),
   )
 }
 

@@ -317,6 +317,10 @@ private struct BalanceWidgetView: View {
                     }
                 }
                 .frame(height: 4)
+                .shadow(
+                    color: palette.progressAccent.opacity(0.24),
+                    radius: 3
+                )
                 .accessibilityHidden(true)
             }
 
