@@ -2562,23 +2562,6 @@ body.mobile-checkbox-dragging {
   filter: drop-shadow(0 4px 5px rgb(0 0 0 / 0.24));
 }
 
-.celebration-option-art-check {
-  position: absolute;
-  z-index: 2;
-  right: 8px;
-  bottom: 7px;
-  display: grid;
-  width: 25px;
-  height: 25px;
-  place-items: center;
-  border: 1px solid rgb(255 255 255 / 0.72);
-  border-radius: 50%;
-  background: rgb(17 27 31 / 0.64);
-  color: white;
-  font-size: 14px;
-  font-weight: 900;
-}
-
 .celebration-option-copy {
   display: grid;
   gap: 5px;

@@ -91,7 +91,6 @@
           >
             <span class="celebration-option-art-orbit"></span>
             <span class="celebration-option-icon">{celebration.icon}</span>
-            <span class="celebration-option-art-check">✓</span>
           </span>
           <span class="celebration-option-copy">
             <strong>{celebration.name}</strong>
