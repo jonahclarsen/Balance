@@ -4734,6 +4734,14 @@ nav button.active {
   color: var(--ink);
 }
 
+.notes-trash-header-button.active,
+.notes-trash-header-button.active:hover,
+.notes-trash-header-button.active:focus-visible {
+  border-color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, var(--paper-strong));
+  color: var(--danger);
+}
+
 .notes-workspace {
   position: relative;
   z-index: 1;

@@ -40,9 +40,9 @@
   export let moveItemWithinLevel: typeof import('./store').plannerStore.moveNoteItemWithinLevel
   export let outdentItem: typeof import('./store').plannerStore.outdentNoteItem
   export let onOpenLink: (link: ItemLink) => void
+  export let trashOpen = false
 
   let filter = ''
-  let trashOpen = false
   let lastActiveNoteId: Id | null = null
   let lastTrashNoteId: Id | null = null
   let copyButtonText = 'Copy note link'
@@ -108,7 +108,7 @@
     void tick().then(() => document.querySelector<HTMLInputElement>('#note-title')?.select())
   }
 
-  function showNotes() {
+  export function showNotes() {
     trashOpen = false
     filter = ''
     const noteId = activeNotes.find((note) => note.id === lastActiveNoteId)?.id ?? activeNotes[0]?.id

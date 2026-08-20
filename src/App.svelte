@@ -236,6 +236,7 @@
   // through this binding. The Lists-tab ListPanel handles its own keys directly.
   let overlayListPanel: ListPanel | null = null
   let notesPanel: NotesPanel | null = null
+  let notesTrashOpen = false
   let wordCapUnlocked = false
   let selectedMetricId = ''
   let selectedNoteId = ''
@@ -5487,12 +5488,20 @@ return rows`
           <h2>Notes</h2>
         </div>
         <div class="notes-page-actions">
-          <button class="notes-trash-header-button" type="button" title="Open Notes Bin" on:click={() => notesPanel?.openTrash()}>Bin</button>
+          <button
+            class="notes-trash-header-button"
+            class:active={notesTrashOpen}
+            type="button"
+            aria-pressed={notesTrashOpen}
+            title={notesTrashOpen ? 'Back to Notes' : 'Open Notes Bin'}
+            on:click={() => (notesTrashOpen ? notesPanel?.showNotes() : notesPanel?.openTrash())}
+          >Bin</button>
           <ImaxButton active={viewMaximized} onToggle={(event) => toggleViewMaximized('notes', event)} />
         </div>
       </header>
       <NotesPanel
         bind:this={notesPanel}
+        bind:trashOpen={notesTrashOpen}
         notes={allNotes}
         {selectedNoteId}
         {listTemplates}
