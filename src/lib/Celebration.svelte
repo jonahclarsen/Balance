@@ -141,10 +141,13 @@
       }))
     }
     if (recipe === 'janitor') {
-      return Array.from({ length: 16 }, (_, index) => ({
-        className: 'dust', text: index % 3 === 0 ? '×' : '·',
-        style: `--x:${18 + random() * 66}vw;--delay:${random() * 1.3}s;--size:${0.7 + random()}`,
-      }))
+      return Array.from({ length: 18 }, (_, index) => {
+        const x = 7 + index * 5.05 + random() * 2.4
+        return {
+          className: 'dust', text: index % 3 === 0 ? '×' : '·',
+          style: `--x:${x}vw;--delay:${0.36 + x * 0.027}s;--size:${0.7 + random()}`,
+        }
+      })
     }
     if (recipe === 'zero-gravity') {
       return Array.from({ length: 12 }, (_, index) => ({
@@ -526,7 +529,67 @@
     {:else if activeDefinition.recipe === 'goose'}
       <div class="goose-scene"><span class="goose">🪿</span><span class="deadline-paper">DEADLINE</span><b>HONK!</b></div>
     {:else if activeDefinition.recipe === 'janitor'}
-      <div class="janitor-scene"><span>🧹</span><span class="janitor">🧑‍🔧</span><b>ALL CLEAR</b></div>
+      <div class="janitor-scene">
+        <svg class="janitor" viewBox="0 0 240 220" role="presentation">
+          <ellipse class="janitor-shadow" cx="118" cy="202" rx="79" ry="9"></ellipse>
+          <g class="janitor-person">
+            <g class="janitor-back-leg">
+              <path class="janitor-trouser" d="M94 139 L94 181 L78 200"></path>
+              <path class="janitor-boot" d="M80 195 Q71 200 68 207 L98 207 Q100 202 93 197 Z"></path>
+            </g>
+            <g class="janitor-front-leg">
+              <path class="janitor-trouser" d="M119 139 L126 178 L145 198"></path>
+              <path class="janitor-boot" d="M140 193 Q151 197 157 204 L154 209 L126 207 Q126 200 133 196 Z"></path>
+            </g>
+
+            <path class="janitor-shirt" d="M77 78 Q91 68 111 72 Q133 76 143 98 L132 143 Q105 153 76 140 L68 101 Q68 87 77 78 Z"></path>
+            <path class="janitor-overalls" d="M86 85 L101 91 L120 83 L132 143 Q105 153 76 140 Z"></path>
+            <path class="janitor-bib" d="M87 80 L118 80 L122 121 Q104 128 85 120 Z"></path>
+            <path class="janitor-strap" d="M84 76 L91 77 L96 102 L89 104 Z"></path>
+            <path class="janitor-strap" d="M115 77 L122 80 L116 103 L109 101 Z"></path>
+            <circle class="janitor-button" cx="93" cy="104" r="3"></circle>
+            <circle class="janitor-button" cx="113" cy="104" r="3"></circle>
+            <path class="janitor-pocket" d="M94 109 Q104 114 114 109 L113 119 Q103 123 95 118 Z"></path>
+
+            <g class="janitor-head">
+              <path class="janitor-neck" d="M91 72 L94 60 L111 61 L114 78 Q103 86 91 72 Z"></path>
+              <circle class="janitor-face" cx="101" cy="43" r="26"></circle>
+              <path class="janitor-ear" d="M124 43 Q135 41 132 52 Q129 61 122 57"></path>
+              <path class="janitor-hair" d="M78 40 Q77 15 102 14 Q122 14 129 35 Q116 31 106 24 Q96 35 78 40 Z"></path>
+              <path class="janitor-nose" d="M123 38 Q135 43 123 48"></path>
+              <circle class="janitor-eye" cx="117" cy="35" r="2.6"></circle>
+              <path class="janitor-smile" d="M116 55 Q123 61 129 54"></path>
+              <path class="janitor-cap" d="M76 30 Q78 7 104 8 Q121 8 129 24 Z"></path>
+              <path class="janitor-cap-brim" d="M96 27 Q121 20 137 28 Q123 34 99 33 Z"></path>
+            </g>
+
+            <g class="janitor-rear-arm">
+              <path class="janitor-sleeve" d="M123 82 Q137 78 147 93 L160 112 L147 122 L130 105 Z"></path>
+              <path class="janitor-skin" d="M153 108 Q163 113 171 121 L162 132 Q153 127 145 119 Z"></path>
+              <circle class="janitor-hand" cx="166" cy="127" r="9"></circle>
+            </g>
+
+            <g class="janitor-broom">
+              <path class="broom-handle" d="M174 105 L199 188"></path>
+              <path class="broom-collar" d="M187 181 L207 176 L211 187 L191 192 Z"></path>
+              <path class="broom-bristles" d="M192 190 Q208 185 219 183 L232 204 Q207 214 177 209 Z"></path>
+              <path class="broom-bristle-line" d="M191 193 L187 207 M200 190 L199 210 M209 188 L212 207 M217 187 L224 203"></path>
+            </g>
+
+            <g class="janitor-front-arm">
+              <path class="janitor-sleeve" d="M75 82 Q64 83 63 97 Q79 113 96 123 L106 110 Q87 99 75 82 Z"></path>
+              <path class="janitor-skin" d="M93 117 Q111 126 132 130 L136 116 Q115 112 103 107 Z"></path>
+              <circle class="janitor-hand" cx="137" cy="123" r="9"></circle>
+            </g>
+          </g>
+          <g class="janitor-dust-puff">
+            <circle cx="215" cy="191" r="4"></circle>
+            <circle cx="225" cy="184" r="3"></circle>
+            <circle cx="232" cy="194" r="2"></circle>
+          </g>
+        </svg>
+      </div>
+      <b class="janitor-all-clear"><span>✓</span> ALL CLEAR</b>
     {:else if activeDefinition.recipe === 'approved'}
       <div class="approval-stamp">APPROVED<small>DEPARTMENT OF DONE</small></div>
     {:else if activeDefinition.recipe === 'toaster'}
@@ -565,7 +628,6 @@
       <span class={`effect-piece ${piece.className}`} style={piece.style}>{piece.text ?? ''}</span>
     {/each}
 
-    <div class="effect-signature">{activeDefinition.icon} {activeDefinition.name}</div>
   </div>
 {/if}
 
@@ -605,7 +667,6 @@
   .celebration-canvas.active { opacity: 1; }
   .celebration-stage { overflow: hidden; overflow: clip; contain: strict; isolation: isolate; }
   .effect-wash { position: absolute; inset: 0; opacity: .2; background: radial-gradient(circle at 50% 55%, color-mix(in srgb, var(--c2) 30%, transparent), transparent 58%); animation: wash-in 2.8s ease both; }
-  .effect-signature { position: absolute; right: max(18px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); padding: 7px 12px; border: 1px solid color-mix(in srgb, var(--c1) 55%, white); border-radius: 999px; background: color-mix(in srgb, var(--paper-strong, #fff) 88%, transparent); box-shadow: 0 8px 25px #0002; color: var(--ink, #243443); font: 700 11px/1.1 system-ui; letter-spacing: .05em; animation: signature 3.2s ease both; }
   .effect-piece { position: absolute; display: grid; place-items: center; }
 
   .aurora-ribbon { position: absolute; left: -15%; width: 130%; height: 38%; border-radius: 50%; filter: blur(26px); mix-blend-mode: screen; transform-origin: center bottom; }
@@ -622,10 +683,39 @@
   .goose { font-size: clamp(58px, 10vw, 112px); filter: drop-shadow(0 12px 8px #0003); }
   .deadline-paper { padding: 10px; border: 2px solid #555; background: #fffdf2; color: #222; font: 900 14px/1 system-ui; transform: rotate(8deg); }
   .goose-scene b { position: absolute; top: -28px; left: 48%; color: var(--c3); font: 900 22px system-ui; animation: honk .7s 1.4s ease both; }
-  .janitor-scene { position: absolute; left: 12%; bottom: 8%; display: flex; align-items: end; font-size: 62px; animation: janitor-sweep 4s ease-in-out both; }
-  .janitor-scene .janitor { font-size: 48px; }
-  .janitor-scene b { padding: 7px 10px; border-radius: 5px; background: var(--c1); color: #222; font: 900 12px system-ui; transform: rotate(-5deg); }
-  .dust { left: var(--x); bottom: 13%; color: #796b59; font-size: calc(14px * var(--size)); animation: dust-sweep 2.4s var(--delay) ease both; }
+  .janitor-scene { position: absolute; left: -210px; bottom: clamp(64px, 9vh, 92px); width: clamp(145px, 17vw, 210px); filter: drop-shadow(0 10px 9px #0002); animation: janitor-cross 4s linear both; }
+  .janitor { display: block; width: 100%; overflow: visible; }
+  .janitor-person { transform-box: fill-box; transform-origin: center bottom; animation: janitor-work-bob .36s ease-in-out infinite alternate; }
+  .janitor-shadow { fill: #25323b2e; animation: janitor-shadow-pulse .36s ease-in-out infinite alternate; }
+  .janitor-shirt { fill: color-mix(in srgb, var(--c1) 72%, #f4f0df); stroke: #26343c; stroke-width: 4; stroke-linejoin: round; }
+  .janitor-overalls, .janitor-bib { fill: #315a70; stroke: #243b48; stroke-width: 4; stroke-linejoin: round; }
+  .janitor-strap { fill: none; stroke: #243b48; stroke-width: 5; stroke-linecap: round; }
+  .janitor-button { fill: var(--c1); stroke: #243b48; stroke-width: 1.5; }
+  .janitor-pocket { fill: none; stroke: #8db1c0; stroke-width: 2; stroke-linecap: round; }
+  .janitor-face, .janitor-neck, .janitor-skin, .janitor-hand, .janitor-ear { fill: #b96f48; stroke: #3d302b; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+  .janitor-ear, .janitor-nose, .janitor-smile { fill: none; }
+  .janitor-hair { fill: #49362d; stroke: #3d302b; stroke-width: 3.5; stroke-linejoin: round; }
+  .janitor-eye { fill: #252526; }
+  .janitor-smile { stroke: #633627; stroke-width: 2.5; }
+  .janitor-cap { fill: var(--c1); stroke: #26343c; stroke-width: 4; stroke-linejoin: round; }
+  .janitor-cap-brim { fill: color-mix(in srgb, var(--c1) 76%, #18252c); stroke: #26343c; stroke-width: 3; stroke-linejoin: round; }
+  .janitor-sleeve { fill: color-mix(in srgb, var(--c1) 72%, #f4f0df); stroke: #26343c; stroke-width: 4; stroke-linejoin: round; }
+  .janitor-trouser { fill: none; stroke: #243b48; stroke-width: 19; stroke-linecap: round; stroke-linejoin: round; }
+  .janitor-boot { fill: #273137; stroke: #172027; stroke-width: 3; stroke-linejoin: round; }
+  .janitor-head { transform-box: fill-box; transform-origin: center bottom; animation: janitor-head-nod .72s ease-in-out infinite; }
+  .janitor-back-leg, .janitor-front-leg { transform-box: fill-box; transform-origin: center top; animation: janitor-step .72s ease-in-out infinite alternate; }
+  .janitor-front-leg { animation-direction: alternate-reverse; }
+  .janitor-rear-arm { transform-box: fill-box; transform-origin: 15% 12%; animation: janitor-rear-arm .72s ease-in-out infinite alternate; }
+  .janitor-front-arm { transform-box: fill-box; transform-origin: 9% 15%; animation: janitor-front-arm .72s ease-in-out infinite alternate; }
+  .janitor-broom { transform-box: fill-box; transform-origin: 18% 5%; animation: broom-stroke .72s cubic-bezier(.45,.05,.55,.95) infinite alternate; }
+  .broom-handle { fill: none; stroke: #8b5a34; stroke-width: 7; stroke-linecap: round; }
+  .broom-collar { fill: #8c9293; stroke: #343c3d; stroke-width: 3; stroke-linejoin: round; }
+  .broom-bristles { fill: #d9aa4d; stroke: #57442c; stroke-width: 3; stroke-linejoin: round; }
+  .broom-bristle-line { fill: none; stroke: #9b7134; stroke-width: 2; stroke-linecap: round; }
+  .janitor-dust-puff { fill: #9b846d; transform-box: fill-box; transform-origin: left bottom; animation: janitor-puff .72s ease-out infinite; }
+  .janitor-all-clear { position: absolute; right: clamp(22px, 8vw, 120px); bottom: clamp(74px, 10vh, 95px); display: flex; align-items: center; gap: 7px; padding: 9px 13px; border: 2px solid #26343c; border-radius: 5px; background: var(--c1); box-shadow: 3px 4px 0 #26343c, 0 12px 22px #0002; color: #222; font: 900 12px/1 system-ui; letter-spacing: .08em; transform: rotate(-5deg); animation: janitor-sign 4s cubic-bezier(.2,.85,.25,1) both; }
+  .janitor-all-clear span { display: grid; width: 19px; height: 19px; place-items: center; border-radius: 50%; background: #26343c; color: white; font-size: 13px; }
+  .dust { left: var(--x); bottom: clamp(76px, 11vh, 112px); color: #796b59; font-size: calc(14px * var(--size)); animation: dust-swept .78s var(--delay) ease-out both; }
 
   .approval-stamp { position: absolute; left: 50%; top: 48%; display: grid; gap: 4px; padding: 18px 28px; border: 7px double var(--c1); color: var(--c1); font: 1000 clamp(38px, 9vw, 96px)/.9 system-ui; letter-spacing: .06em; text-align: center; transform: translate(-50%, -50%) rotate(-8deg); filter: drop-shadow(0 10px 6px #0003); animation: stamp 2.8s cubic-bezier(.2,.9,.2,1) both; }
   .approval-stamp small { font-size: 11px; letter-spacing: .16em; }
@@ -694,7 +784,6 @@
 
   @keyframes celebration-pop { 0%{opacity:0;transform:translateX(-50%) translateY(8px) scale(.9)} 12%{opacity:1;transform:translateX(-50%) scale(1.04)} 22%,80%{opacity:1;transform:translateX(-50%) scale(1)} 100%{opacity:0;transform:translateX(-50%) translateY(-6px)} }
   @keyframes wash-in { 0%,100%{opacity:0} 25%,75%{opacity:.22} }
-  @keyframes signature { 0%,100%{opacity:0;transform:translateY(8px)} 18%,82%{opacity:1;transform:none} }
   @keyframes aurora { 0%,100%{opacity:0;transform:translateY(25%) skewX(-8deg) scaleY(.4)} 30%,70%{opacity:.75;transform:translateY(-8%) skewX(7deg) scaleY(1.15)} }
   @keyframes float-up { 0%,100%{opacity:0;transform:translateY(70px)} 30%,70%{opacity:1;transform:translateY(0)} }
   @keyframes seed-flight { 0%{opacity:0;transform:translate(0,40px) scale(var(--scale)) rotate(0)} 12%,70%{opacity:1} 100%{opacity:0;transform:translate(var(--drift),-88vh) scale(.45) rotate(520deg)} }
@@ -702,8 +791,17 @@
   @keyframes glass-in { 0%,100%{opacity:0;transform:translateY(90px) rotate(var(--r)) scale(.5)} 25%,72%{opacity:.72;transform:rotate(var(--r)) scale(1)} }
   @keyframes goose-march { 0%{left:-22%} 38%{left:36%} 55%{left:42%;transform:rotate(-4deg)} 100%{left:115%;transform:rotate(2deg)} }
   @keyframes honk { 0%{opacity:0;transform:scale(.2)} 55%{opacity:1;transform:scale(1.3) rotate(-5deg)} 100%{opacity:0} }
-  @keyframes janitor-sweep { 0%,100%{opacity:0;transform:translateX(-20vw)} 16%{opacity:1} 72%{opacity:1;transform:translateX(55vw)} 88%{transform:translateX(55vw)} }
-  @keyframes dust-sweep { 0%,25%{opacity:1} 70%,100%{opacity:0;transform:translateX(40vw) scale(.2)} }
+  @keyframes janitor-cross { 0%{opacity:0;transform:translateX(0)} 6%{opacity:1} 82%{opacity:1} 100%{opacity:0;transform:translateX(calc(100vw + 270px))} }
+  @keyframes janitor-work-bob { to{transform:translateY(3px) rotate(.8deg)} }
+  @keyframes janitor-shadow-pulse { to{transform:scaleX(.92);opacity:.7} }
+  @keyframes janitor-head-nod { 0%,100%{transform:rotate(-3deg)} 50%{transform:rotate(3deg)} }
+  @keyframes janitor-step { from{transform:rotate(9deg)} to{transform:rotate(-9deg)} }
+  @keyframes janitor-rear-arm { from{transform:rotate(-7deg)} to{transform:rotate(8deg)} }
+  @keyframes janitor-front-arm { from{transform:rotate(6deg)} to{transform:rotate(-8deg)} }
+  @keyframes broom-stroke { from{transform:rotate(-12deg)} to{transform:rotate(13deg)} }
+  @keyframes janitor-puff { 0%,18%{opacity:0;transform:translate(0,0) scale(.4)} 38%{opacity:.8} 100%{opacity:0;transform:translate(17px,-14px) scale(1.4)} }
+  @keyframes janitor-sign { 0%,75%{opacity:0;transform:translateY(-45px) rotate(-14deg) scale(.75)} 82%{opacity:1;transform:translateY(7px) rotate(-2deg) scale(1.06)} 88%,96%{opacity:1;transform:translateY(0) rotate(-5deg) scale(1)} 100%{opacity:0;transform:translateY(6px) rotate(-5deg)} }
+  @keyframes dust-swept { 0%,12%{opacity:1;transform:translate(0,0) rotate(0) scale(1)} 62%{opacity:.8;transform:translate(24px,-9px) rotate(150deg) scale(.75)} 100%{opacity:0;transform:translate(55px,-3px) rotate(260deg) scale(.15)} }
   @keyframes stamp { 0%{opacity:0;transform:translate(-50%,-50%) rotate(-24deg) scale(2.5)} 17%{opacity:1;transform:translate(-50%,-50%) rotate(-8deg) scale(.88)} 26%,78%{opacity:1;transform:translate(-50%,-50%) rotate(-8deg)} 100%{opacity:0;transform:translate(-50%,-50%) rotate(-5deg) scale(.95)} }
   @keyframes seal { from{opacity:0;transform:rotate(var(--r)) scale(2)} to{opacity:1;transform:rotate(var(--r))} }
   @keyframes toast-pop { 0%,25%{top:72px;opacity:0} 38%{top:-15px;opacity:1} 46%,82%{top:10px;opacity:1} 100%{top:-15px;opacity:0} }
@@ -734,10 +832,6 @@
 
   @supports not (color: color-mix(in srgb, white, black)) {
     .effect-wash { background: radial-gradient(circle, rgba(120,120,220,.25), transparent 58%); }
-    .effect-signature { background: #fff; border-color: #bbb; }
-  }
-  @supports (backdrop-filter: blur(2px)) {
-    .effect-signature { backdrop-filter: blur(8px); }
   }
   @media (prefers-reduced-motion: reduce) {
     .celebration-stage *, .celebration-banner, .list-celebration { animation: none !important; }

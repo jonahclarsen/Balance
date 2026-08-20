@@ -139,6 +139,24 @@ test('selecting saves, previews yesterday without chrome or plan mutations, and 
   await expect(page.locator('[data-celebration-option="deadline-goose"]')).toHaveAttribute('aria-pressed', 'true')
 })
 
+test('Tiny Janitor renders an articulated sweeping character without a signature pill', async ({ page }, testInfo) => {
+  await resetBrowserState(page)
+  await openSettings(page, testInfo)
+
+  const option = page.locator('[data-celebration-option="tiny-janitor"]')
+  await option.scrollIntoViewIfNeeded()
+  await option.click()
+
+  const stage = page.locator('.celebration-stage[data-celebration-id="tiny-janitor"]')
+  await expect(stage.locator('svg.janitor')).toBeVisible()
+  await expect(stage.locator('.janitor-person')).toHaveCount(1)
+  await expect(stage.locator('.janitor-front-arm, .janitor-rear-arm')).toHaveCount(2)
+  await expect(stage.locator('.janitor-front-leg, .janitor-back-leg')).toHaveCount(2)
+  await expect(stage.locator('.janitor-broom')).toHaveCount(1)
+  await expect(stage.locator('.janitor-all-clear')).toHaveCount(1)
+  await expect(page.locator('.effect-signature')).toHaveCount(0)
+})
+
 test('reduced motion draws no canvas frames and automatic return restores Settings and focus', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' })
   await resetBrowserState(page)
