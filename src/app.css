@@ -614,7 +614,6 @@
 :root[data-theme='iridescent'] .sidebar nav button.active,
 :root[data-theme='iridescent'] .plan-row .item-text:focus,
 :root[data-theme='iridescent'] :is(
-  .time-shortcut-legend,
   .day-template-option:not(.selected),
   .list-panel,
   .template-panel,
@@ -654,7 +653,6 @@
 :root[data-theme='iridescent'] .sidebar nav button.active::after,
 :root[data-theme='iridescent'] .plan-row .item-text:focus::after,
 :root[data-theme='iridescent'] :is(
-  .time-shortcut-legend,
   .day-template-option:not(.selected),
   .list-panel,
   .template-panel,

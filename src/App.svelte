@@ -4952,7 +4952,7 @@ return rows`
     <div class="sidebar-footer">
       {#if view === 'today' || view === 'templates'}
         <section class="time-shortcut-legend" aria-labelledby="time-shortcut-legend-title">
-          <h2 id="time-shortcut-legend-title">Task time shortcuts</h2>
+          <h2 id="time-shortcut-legend-title">Some Shortcuts</h2>
           <table>
             <thead>
               <tr>
