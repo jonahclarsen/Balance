@@ -40,6 +40,9 @@ test('the Android loading card is horizontally centered', async ({ page }, testI
   const loadingScreen = page.getByRole('status')
   await expect(loadingScreen).toBeVisible()
   await expect(loadingScreen.getByText('Loading…')).toBeVisible()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
+  await expect(page.locator('.database-maintenance-spinner')).toHaveCSS('background-image', /conic-gradient/)
+  await expect(page.locator('.database-loading-progress > span')).toHaveCSS('background-image', /linear-gradient/)
 
   const geometry = await loadingScreen.evaluate((backdrop) => {
     const card = backdrop.querySelector<HTMLElement>('.database-loading-card')

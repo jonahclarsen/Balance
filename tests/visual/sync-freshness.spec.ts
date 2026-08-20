@@ -200,7 +200,9 @@ test('a slow launch sync leaves local state visible with a subtle status cue', a
   await page.goto('/?hold-sync=1')
 
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
-  await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
+  const syncStatus = page.getByRole('status', { name: 'Sync status: Syncing' })
+  await expect(syncStatus).toBeVisible()
+  await expect(syncStatus.locator('.sync-status-dot')).toHaveCSS('background-image', /conic-gradient/)
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-initial-sync-status.png`,
