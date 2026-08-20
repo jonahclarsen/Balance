@@ -240,6 +240,7 @@ test('mindful celebrations render their distinct presence, metta, and enough sce
       id: 'bell-of-now',
       selector: '.presence-bell',
       copy: ['YOU ARE HERE + NOW'],
+      parts: ['.presence-bell-casting', '.presence-bell-mouth', '.presence-bell-clapper'],
     },
     {
       id: 'loving-kindness-ripple',
@@ -261,6 +262,9 @@ test('mindful celebrations render their distinct presence, metta, and enough sce
     const stage = page.locator(`.celebration-stage[data-celebration-id="${recipe.id}"]`)
     await expect(stage.locator(recipe.selector)).toHaveCount(1)
     for (const copy of recipe.copy) await expect(stage).toContainText(copy)
+    if ('parts' in recipe) {
+      for (const part of recipe.parts) await expect(stage.locator(part)).toHaveCount(1)
+    }
 
     await page.keyboard.press('Escape')
     await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()

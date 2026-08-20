@@ -601,7 +601,51 @@
       <div class="aurora-checks">✓　·　✓　·　✓</div>
     {:else if activeDefinition.recipe === 'bell-of-now'}
       <div class="presence-ripple ripple-one"></div><div class="presence-ripple ripple-two"></div><div class="presence-ripple ripple-three"></div>
-      <div class="presence-bell"><span></span><i></i></div>
+      <div class="presence-bell">
+        <svg viewBox="0 0 180 205" role="presentation">
+          <defs>
+            <linearGradient id="bell-bronze" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0" stop-color="#5a3515"></stop>
+              <stop offset=".15" stop-color="#9b6425"></stop>
+              <stop offset=".37" stop-color="#e4bd69"></stop>
+              <stop offset=".51" stop-color="#f8e4a5"></stop>
+              <stop offset=".68" stop-color="#bd7d2d"></stop>
+              <stop offset=".88" stop-color="#7a491c"></stop>
+              <stop offset="1" stop-color="#432811"></stop>
+            </linearGradient>
+            <linearGradient id="bell-rim" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#f0cc78"></stop>
+              <stop offset=".42" stop-color="#9b5f20"></stop>
+              <stop offset="1" stop-color="#4a2b12"></stop>
+            </linearGradient>
+            <radialGradient id="bell-mouth" cx="50%" cy="18%" r="78%">
+              <stop offset="0" stop-color="#5f3918"></stop>
+              <stop offset=".58" stop-color="#2d1b0e"></stop>
+              <stop offset="1" stop-color="#120c08"></stop>
+            </radialGradient>
+            <clipPath id="bell-opening">
+              <ellipse cx="90" cy="159" rx="56" ry="15"></ellipse>
+            </clipPath>
+          </defs>
+          <ellipse class="presence-bell-shadow" cx="90" cy="187" rx="54" ry="8"></ellipse>
+          <g class="presence-bell-body">
+            <path class="presence-bell-handle" d="M70 37 C70 20 77 10 90 10 C103 10 110 20 110 37"></path>
+            <path class="presence-bell-handle-light" d="M78 35 C78 23 82 18 90 18"></path>
+            <ellipse class="presence-bell-crown" cx="90" cy="39" rx="25" ry="9"></ellipse>
+            <path class="presence-bell-casting" d="M90 34 C70 34 60 50 59 72 C57 103 51 126 33 146 C27 153 30 161 39 164 C68 175 112 175 141 164 C150 161 153 153 147 146 C129 126 123 103 121 72 C120 50 110 34 90 34 Z"></path>
+            <path class="presence-bell-shoulder" d="M60 72 C71 66 109 66 120 72"></path>
+            <path class="presence-bell-highlight" d="M76 47 C68 61 69 91 63 116 C60 129 54 142 46 151"></path>
+            <ellipse class="presence-bell-mouth" cx="90" cy="159" rx="58" ry="17"></ellipse>
+            <g class="presence-bell-clapper">
+              <path class="presence-bell-clapper-rod" d="M90 67 L90 165"></path>
+              <ellipse cx="90" cy="169" rx="12" ry="14"></ellipse>
+              <path class="presence-bell-clapper-light" d="M84 164 C87 159 93 158 97 163"></path>
+            </g>
+            <path class="presence-bell-lip" d="M31 151 C52 163 128 163 149 151 L153 160 C128 178 52 178 27 160 Z"></path>
+            <path class="presence-bell-lip-light" d="M38 155 C63 165 117 165 142 155"></path>
+          </g>
+        </svg>
+      </div>
       <b class="presence-words">YOU ARE HERE <i>+</i> NOW</b>
     {:else if activeDefinition.recipe === 'metta-ripple'}
       <div class="metta-halo halo-one"></div><div class="metta-halo halo-two"></div><div class="metta-halo halo-three"></div>
@@ -778,10 +822,24 @@
 
   .presence-ripple { position: absolute; left: 50%; top: 50%; width: min(24vmin, 180px); aspect-ratio: 1; border: 2px solid var(--c1); border-radius: 50%; box-shadow: 0 0 24px color-mix(in srgb, var(--c1) 28%, transparent); transform: translate(-50%, -50%); animation: presence-ripple 3.7s ease-out both; }
   .ripple-two { animation-delay: .42s; } .ripple-three { animation-delay: .84s; }
-  .presence-bell { position: absolute; z-index: 2; left: 50%; top: 46%; width: clamp(72px, 12vmin, 116px); height: clamp(68px, 11vmin, 108px); transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
-  .presence-bell span { position: absolute; inset: 0 8% 17%; border: 4px solid color-mix(in srgb, var(--c1) 78%, #5f4825); border-radius: 50% 50% 18% 18%; background: radial-gradient(circle at 35% 24%, #fff8 0 7%, transparent 8%), linear-gradient(135deg, var(--c3), var(--c1) 62%, color-mix(in srgb, var(--c1) 58%, #5f4825)); box-shadow: inset -10px -8px 18px #6a4c2538, 0 13px 25px #3126112c; }
-  .presence-bell span::before { content: ''; position: absolute; left: 50%; top: -15%; width: 22%; height: 18%; border: 4px solid var(--c1); border-bottom: 0; border-radius: 999px 999px 0 0; transform: translateX(-50%); }
-  .presence-bell i { position: absolute; left: 50%; bottom: 4%; width: 22%; aspect-ratio: 1; border-radius: 50%; background: var(--c1); box-shadow: 0 4px 8px #3d2d1638; transform: translateX(-50%); }
+  .presence-bell { position: absolute; z-index: 2; left: 50%; top: 44%; width: clamp(116px, 17vmin, 168px); aspect-ratio: 180 / 205; transform: translate(-50%, -50%); animation: presence-bell 4.2s ease-in-out both; }
+  .presence-bell svg { display: block; width: 100%; height: 100%; overflow: visible; filter: drop-shadow(0 13px 12px #3d29182e); }
+  .presence-bell-shadow { fill: #33211438; filter: blur(4px); animation: presence-bell-shadow 4.2s ease-in-out both; }
+  .presence-bell-body { transform-origin: 90px 12px; animation: presence-bell-swing 4.2s cubic-bezier(.36,.08,.2,1) both; }
+  .presence-bell-handle { fill: none; stroke: #7b4a1d; stroke-width: 11; stroke-linecap: round; }
+  .presence-bell-handle-light { fill: none; stroke: #ebc873; stroke-width: 3; stroke-linecap: round; opacity: .8; }
+  .presence-bell-crown { fill: url(#bell-bronze); stroke: #684019; stroke-width: 2.5; }
+  .presence-bell-casting { fill: url(#bell-bronze); stroke: #593515; stroke-width: 2.5; stroke-linejoin: round; }
+  .presence-bell-shoulder { fill: none; stroke: #f3d78a; stroke-width: 2; opacity: .5; }
+  .presence-bell-highlight { fill: none; stroke: #fff2bd; stroke-width: 5; stroke-linecap: round; opacity: .55; }
+  .presence-bell-mouth { fill: url(#bell-mouth); stroke: #553115; stroke-width: 3; }
+  .presence-bell-clapper { transform-origin: 90px 67px; animation: presence-bell-clapper 4.2s cubic-bezier(.36,.08,.2,1) both; }
+  .presence-bell-clapper path { fill: none; stroke: #3b2514; stroke-width: 5; stroke-linecap: round; }
+  .presence-bell-clapper-rod { clip-path: url(#bell-opening); }
+  .presence-bell-clapper ellipse { fill: #7f4d1e; stroke: #3e2714; stroke-width: 2; }
+  .presence-bell-clapper .presence-bell-clapper-light { stroke: #d59a45; stroke-width: 2; opacity: .75; }
+  .presence-bell-lip { fill: url(#bell-rim); stroke: #4b2d13; stroke-width: 2.5; stroke-linejoin: round; }
+  .presence-bell-lip-light { fill: none; stroke: #f6d98a; stroke-width: 2.5; stroke-linecap: round; opacity: .7; }
   .presence-words { position: absolute; z-index: 3; left: 50%; top: 63%; isolation: isolate; padding: .82em 1.12em .82em 1.32em; color: #fffaf0; font: 720 clamp(14px, 2.2vw, 22px)/1 ui-rounded, system-ui; letter-spacing: .22em; text-shadow: 0 2px 6px #4b332599; white-space: nowrap; transform: translateX(-50%); animation: presence-words 4.2s ease both; }
   .presence-words::before { content: ''; position: absolute; z-index: -2; inset: -.3em -.95em; border-radius: 17px; background: radial-gradient(ellipse at 26% 32%, #ffd88f8c 0 7%, transparent 28%), radial-gradient(ellipse at 72% 70%, #496e5a38, transparent 34%), linear-gradient(98deg, #d6a23f, #cf7167 51%, #668f78); box-shadow: 0 8px 22px #795a3438, 0 0 25px #e5ae5b52; animation: presence-wash 2.6s ease-in-out infinite alternate; }
   .presence-words::after { content: ''; position: absolute; z-index: -1; inset: .18em -.45em; border-radius: 17px; background: linear-gradient(96deg, #fff3 0 18%, transparent 35% 66%, #fff2 82%); }
@@ -938,7 +996,10 @@
   @keyframes aurora { 0%,100%{opacity:0;transform:translateY(25%) skewX(-8deg) scaleY(.4)} 30%,70%{opacity:.75;transform:translateY(-8%) skewX(7deg) scaleY(1.15)} }
   @keyframes float-up { 0%,100%{opacity:0;transform:translateY(70px)} 30%,70%{opacity:1;transform:translateY(0)} }
   @keyframes presence-ripple { 0%{opacity:0;transform:translate(-50%,-50%) scale(.24)} 18%{opacity:.7} 100%{opacity:0;transform:translate(-50%,-50%) scale(4.2)} }
-  @keyframes presence-bell { 0%,100%{opacity:0;transform:translate(-50%,-44%) rotate(0) scale(.88)} 17%{opacity:1;transform:translate(-50%,-50%) rotate(0) scale(1)} 24%{transform:translate(-50%,-50%) rotate(-4deg)} 31%{transform:translate(-50%,-50%) rotate(3deg)} 40%,78%{opacity:1;transform:translate(-50%,-50%) rotate(0)} }
+  @keyframes presence-bell { 0%,100%{opacity:0;transform:translate(-50%,-44%) scale(.88)} 17%,78%{opacity:1;transform:translate(-50%,-50%) scale(1)} }
+  @keyframes presence-bell-swing { 0%,17%,52%,100%{transform:rotate(0)} 23%{transform:rotate(-8deg)} 29%{transform:rotate(6deg)} 35%{transform:rotate(-3.5deg)} 41%{transform:rotate(2deg)} 47%{transform:rotate(-.7deg)} }
+  @keyframes presence-bell-clapper { 0%,18%,54%,100%{transform:rotate(0)} 23%{transform:rotate(18deg)} 29%{transform:rotate(-15deg)} 35%{transform:rotate(10deg)} 41%{transform:rotate(-6deg)} 47%{transform:rotate(2deg)} }
+  @keyframes presence-bell-shadow { 0%,100%{opacity:0;transform:scaleX(.72)} 17%,78%{opacity:1;transform:scaleX(1)} }
   @keyframes presence-words { 0%,28%,100%{opacity:0;transform:translate(-50%,12px)} 43%,78%{opacity:1;transform:translate(-50%,0)} }
   @keyframes presence-wash { from{transform:scale(.97)} to{transform:scale(1.035)} }
   @keyframes metta-halo { 0%{opacity:0;transform:translate(-50%,-50%) scale(.45)} 18%{opacity:.72} 100%{opacity:0;transform:translate(-50%,-50%) scale(4.7)} }
