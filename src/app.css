@@ -567,7 +567,7 @@
 
 :root[data-theme='iridescent'] :is(
   .time-shortcut-legend,
-  .day-template-option,
+  .day-template-option:not(.selected),
   .list-panel,
   .template-panel,
   .empty-state,
@@ -605,7 +605,7 @@
 
 :root[data-theme='iridescent'] :is(
   .time-shortcut-legend,
-  .day-template-option,
+  .day-template-option:not(.selected),
   .list-panel,
   .template-panel,
   .empty-state,
