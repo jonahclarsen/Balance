@@ -25,6 +25,9 @@
 
   let panel: HTMLDivElement
   let scrollContainer: HTMLElement | null = null
+  let scrollAnimationFrame: number | null = null
+
+  const selectionScrollDurationMs = 320
 
   // Drop a stale selection when the item it pointed at disappears.
   $: if (selectedItemId && !findPlanItem(instance.items, selectedItemId)) selectedItemId = null
@@ -53,6 +56,7 @@
 
     return () => {
       scrollContainer?.removeEventListener('scroll', handleScrollContainerScroll)
+      if (scrollAnimationFrame !== null) cancelAnimationFrame(scrollAnimationFrame)
     }
   })
 
@@ -119,13 +123,38 @@
     const scrollContainer = findScrollContainer(row)
     const rowRect = row.getBoundingClientRect()
     if (scrollContainer) {
-      scrollContainer.scrollTo({
-        top: scrollContainer.scrollTop + rowRect.top - window.innerHeight / 3,
-        behavior,
-      })
+      scrollToPosition(scrollContainer, scrollContainer.scrollTop + rowRect.top - window.innerHeight / 3, behavior)
       return
     }
-    window.scrollBy({ top: rowRect.top - window.innerHeight / 3, behavior })
+    scrollToPosition(null, window.scrollY + rowRect.top - window.innerHeight / 3, behavior)
+  }
+
+  function scrollToPosition(container: HTMLElement | null, top: number, behavior: ScrollBehavior) {
+    if (scrollAnimationFrame !== null) {
+      cancelAnimationFrame(scrollAnimationFrame)
+      scrollAnimationFrame = null
+    }
+
+    const setScrollTop = (nextTop: number) => {
+      if (container) container.scrollTo({ top: nextTop, behavior: 'auto' })
+      else window.scrollTo({ top: nextTop, behavior: 'auto' })
+    }
+    const startTop = container ? container.scrollTop : window.scrollY
+    if (behavior !== 'smooth' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setScrollTop(top)
+      return
+    }
+
+    const startedAt = performance.now()
+    const distance = top - startTop
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / selectionScrollDurationMs)
+      const easedProgress = 1 - Math.pow(1 - progress, 3)
+      setScrollTop(startTop + distance * easedProgress)
+      if (progress < 1) scrollAnimationFrame = requestAnimationFrame(step)
+      else scrollAnimationFrame = null
+    }
+    scrollAnimationFrame = requestAnimationFrame(step)
   }
 
   function findScrollContainer(element: HTMLElement): HTMLElement | null {
