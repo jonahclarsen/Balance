@@ -1182,12 +1182,12 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await expect(themeGroup.locator('.theme-option-copy strong')).toHaveText([
     'Random',
     'Iridescent',
+    'White',
     'Graphite',
     'Crimson',
     'Pink',
     'Sunset',
     'Banana',
-    'Mint',
     'Forest',
     'Ocean',
     'Midnight',
@@ -1199,6 +1199,21 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await expect(themeGroup.getByText('Sunset', { exact: true })).toHaveCount(1)
   await expect(themeGroup.getByText('Crimson', { exact: true })).toHaveCount(1)
   await expect(themeGroup.getByText('Berry', { exact: true })).toHaveCount(0)
+  const whiteTheme = themeGroup.getByRole('button', { name: 'White Crisp white and soft gray' })
+  await whiteTheme.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'white')
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(247, 247, 247)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(74, 74, 74)',
+  )
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(23, 23, 23)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(240, 240, 240)',
+  )
+  await page.emulateMedia({ colorScheme: 'light' })
   const bananaTheme = themeGroup.getByRole('button', { name: 'Banana Sunny yellow and warm cream' })
   await bananaTheme.click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'banana')

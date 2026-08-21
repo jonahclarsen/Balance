@@ -12,6 +12,14 @@ export const THEME_PRESETS = [
     doneColor: '#28a987',
   },
   {
+    id: 'white',
+    name: 'White',
+    description: 'Crisp white and soft gray',
+    swatches: ['#ffffff', '#ededed', '#5f5f5f'],
+    checkboxColor: '#4a4a4a',
+    doneColor: '#767676',
+  },
+  {
     id: 'graphite',
     name: 'Graphite',
     description: 'Charcoal, silver, and clean gray',
@@ -50,14 +58,6 @@ export const THEME_PRESETS = [
     swatches: ['#8f7000', '#f2ebc9', '#d7b948'],
     checkboxColor: '#8f7000',
     doneColor: '#9b7c16',
-  },
-  {
-    id: 'mint',
-    name: 'Mint',
-    description: 'Fresh green and pale mint',
-    swatches: ['#287968', '#dff0e9', '#42a878'],
-    checkboxColor: '#348b74',
-    doneColor: '#42a878',
   },
   {
     id: 'forest',

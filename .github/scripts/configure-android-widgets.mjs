@@ -239,6 +239,7 @@ object BalanceWidgets {
 
     private fun themeLayout(themeId: String): Int = when (themeId) {
         "iridescent" -> R.layout.balance_home_widget_iridescent
+        "white" -> R.layout.balance_home_widget_white
         "graphite" -> R.layout.balance_home_widget_graphite
         "forest" -> R.layout.balance_home_widget_forest
         "ocean" -> R.layout.balance_home_widget_ocean
@@ -246,7 +247,6 @@ object BalanceWidgets {
         "crimson" -> R.layout.balance_home_widget_crimson
         "banana" -> R.layout.balance_home_widget_banana
         "pink" -> R.layout.balance_home_widget_pink
-        "mint" -> R.layout.balance_home_widget_mint
         "midnight" -> R.layout.balance_home_widget_midnight
         else -> R.layout.balance_home_widget_violet
     }
@@ -358,8 +358,8 @@ const widgetThemes = [
   { id: 'crimson', paper: '#FFFAFB', surface: '#FFFFFF', ink: '#321F23', muted: '#78666A', line: '#E1CFD3', accent: '#A92F42' },
   { id: 'banana', paper: '#FFFDF4', surface: '#FFFFFF', ink: '#2D2819', muted: '#756D50', line: '#E4DCC0', accent: '#8F7000' },
   { id: 'pink', paper: '#FFF9FC', surface: '#FFFFFF', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', accent: '#C33F7A' },
-  { id: 'mint', paper: '#F9FDFA', surface: '#FFFFFF', ink: '#1E2D29', muted: '#657771', line: '#CCDDD7', accent: '#287968' },
   { id: 'midnight', paper: '#FAFBFE', surface: '#FFFFFF', ink: '#202738', muted: '#687083', line: '#D1D6E2', accent: '#425B9B' },
+  { id: 'white', paper: '#FFFFFF', surface: '#FFFFFF', ink: '#181818', muted: '#6F6F6F', line: '#DEDEDE', accent: '#4A4A4A' },
   { id: 'graphite', paper: '#F9F9F7', surface: '#FFFFFF', ink: '#191918', muted: '#6D6D69', line: '#D1D1CD', accent: '#3A3A38' },
 ]
 
@@ -372,8 +372,8 @@ const darkWidgetThemes = [
   { id: 'crimson', paper: '#24181B', surface: '#2E2023', ink: '#F2E8EA', muted: '#BAA4A9', line: '#4B3439', accent: '#E67F8E' },
   { id: 'banana', paper: '#252216', surface: '#302C1C', ink: '#F2EDDA', muted: '#B8AE87', line: '#4B442B', accent: '#E0C75E' },
   { id: 'pink', paper: '#261A20', surface: '#312229', ink: '#F4E8EE', muted: '#BAA3AF', line: '#4D3541', accent: '#F08DB8' },
-  { id: 'mint', paper: '#18231F', surface: '#202E29', ink: '#E7F1ED', muted: '#9DB2AA', line: '#30453E', accent: '#77C8B1' },
   { id: 'midnight', paper: '#181C29', surface: '#212638', ink: '#E9ECF5', muted: '#A1A9BD', line: '#343B52', accent: '#91A7E4' },
+  { id: 'white', paper: '#1B1B1B', surface: '#252525', ink: '#FFFFFF', muted: '#B3B3B3', line: '#3C3C3C', accent: '#F0F0F0' },
   { id: 'graphite', paper: '#161617', surface: '#202022', ink: '#F0F0ED', muted: '#A1A19D', line: '#343436', accent: '#70706E', timePillInk: '#FFFFFF' },
 ]
 

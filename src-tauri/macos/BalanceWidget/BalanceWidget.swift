@@ -555,10 +555,10 @@ private struct WidgetPalette {
                 return WidgetPalette(paper: 0x252216, surface: 0x302C1C, ink: 0xF2EDDA, muted: 0xB8AE87, line: 0x4B442B, accent: 0xE0C75E)
             case "pink":
                 return WidgetPalette(paper: 0x261A20, surface: 0x312229, ink: 0xF4E8EE, muted: 0xBAA3AF, line: 0x4D3541, accent: 0xF08DB8)
-            case "mint":
-                return WidgetPalette(paper: 0x18231F, surface: 0x202E29, ink: 0xE7F1ED, muted: 0x9DB2AA, line: 0x30453E, accent: 0x77C8B1)
             case "midnight":
                 return WidgetPalette(paper: 0x181C29, surface: 0x212638, ink: 0xE9ECF5, muted: 0xA1A9BD, line: 0x343B52, accent: 0x91A7E4)
+            case "white":
+                return WidgetPalette(paper: 0x1B1B1B, surface: 0x252525, ink: 0xFFFFFF, muted: 0xB3B3B3, line: 0x3C3C3C, accent: 0xF0F0F0)
             case "graphite":
                 return WidgetPalette(paper: 0x161617, surface: 0x202022, ink: 0xF0F0ED, muted: 0xA1A19D, line: 0x343436, accent: 0x70706E, timePillInk: 0xFFFFFF)
             default:
@@ -602,10 +602,10 @@ private struct WidgetPalette {
             return WidgetPalette(paper: 0xFFFDF4, surface: 0xFFFFFF, ink: 0x2D2819, muted: 0x756D50, line: 0xE4DCC0, accent: 0x8F7000)
         case "pink":
             return WidgetPalette(paper: 0xFFF9FC, surface: 0xFFFFFF, ink: 0x31232B, muted: 0x7D6A74, line: 0xE6D0DC, accent: 0xC33F7A)
-        case "mint":
-            return WidgetPalette(paper: 0xF9FDFA, surface: 0xFFFFFF, ink: 0x1E2D29, muted: 0x657771, line: 0xCCDDD7, accent: 0x287968)
         case "midnight":
             return WidgetPalette(paper: 0xFAFBFE, surface: 0xFFFFFF, ink: 0x202738, muted: 0x687083, line: 0xD1D6E2, accent: 0x425B9B)
+        case "white":
+            return WidgetPalette(paper: 0xFFFFFF, surface: 0xFFFFFF, ink: 0x181818, muted: 0x6F6F6F, line: 0xDEDEDE, accent: 0x4A4A4A)
         case "graphite":
             return WidgetPalette(paper: 0xF9F9F7, surface: 0xFFFFFF, ink: 0x191918, muted: 0x6D6D69, line: 0xD1D1CD, accent: 0x3A3A38)
         default:

@@ -104,8 +104,8 @@ pub(crate) fn snapshot_from_plan(
 
 fn normalize_theme_id(theme_id: &str) -> &str {
     match theme_id {
-        "iridescent" | "graphite" | "forest" | "ocean" | "violet" | "sunset" | "crimson"
-        | "banana" | "pink" | "mint" | "midnight" => theme_id,
+        "iridescent" | "white" | "graphite" | "forest" | "ocean" | "violet" | "sunset"
+        | "crimson" | "banana" | "pink" | "midnight" => theme_id,
         "berry" => "banana",
         _ => DEFAULT_THEME_ID,
     }
@@ -294,6 +294,13 @@ mod tests {
         let preferences = serde_json::json!({ "themeId": "crimson" });
 
         assert_eq!(theme_id_from_preferences(&preferences), "crimson");
+    }
+
+    #[test]
+    fn widget_preserves_the_white_theme() {
+        let preferences = serde_json::json!({ "themeId": "white" });
+
+        assert_eq!(theme_id_from_preferences(&preferences), "white");
     }
 
     #[test]
