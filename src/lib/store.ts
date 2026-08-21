@@ -192,6 +192,14 @@ export type RecoveryEntry = {
   undoJson: string
 }
 
+export type RecoverySearchMatch = {
+  historyId: string
+  operationType: string | null
+  createdAtMs: number
+  timestamp: string | null
+  preview: string
+}
+
 export type DatabaseOperationEntry = {
   id: string
   deviceId: string
@@ -2696,6 +2704,13 @@ export async function listRecoveryEntries(): Promise<RecoveryEntry[]> {
   if (!isTauri()) return []
   const raw = await invoke<string>('list_recovery_entries')
   const parsed = JSON.parse(raw) as { entries: RecoveryEntry[] }
+  return parsed.entries ?? []
+}
+
+export async function searchRecoveryHistory(query: string): Promise<RecoverySearchMatch[]> {
+  if (!isTauri() || !query.trim()) return []
+  const raw = await invoke<string>('search_recovery_history', { query: query.trim() })
+  const parsed = JSON.parse(raw) as { entries: RecoverySearchMatch[] }
   return parsed.entries ?? []
 }
 

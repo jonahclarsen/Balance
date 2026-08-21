@@ -1322,6 +1322,16 @@ async fn list_recovery_entries(app: tauri::AppHandle) -> Result<String, String> 
 }
 
 #[tauri::command]
+async fn search_recovery_history(app: tauri::AppHandle, query: String) -> Result<String, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        search_recovery_history_from_database(&connection, &query, 50)
+            .map(|value| value.to_string())
+    })
+    .await
+}
+
+#[tauri::command]
 async fn list_metadata(app: tauri::AppHandle) -> Result<String, String> {
     run_database_task(move || {
         let connection = open_database(&app)?;
@@ -3900,12 +3910,150 @@ fn list_recovery_entries_from_database(connection: &Connection) -> Result<Value,
     Ok(json!({ "entries": entries }))
 }
 
+/// Searches retained undo snapshots for user-authored text without returning or
+/// matching opaque ids and raw operation JSON in the normal search interface.
+fn search_recovery_history_from_database(
+    connection: &Connection,
+    query: &str,
+    limit: usize,
+) -> Result<Value, String> {
+    let terms = query
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .filter(|term| !term.is_empty())
+        .collect::<Vec<_>>();
+    if terms.is_empty() {
+        return Ok(json!({ "entries": [] }));
+    }
+
+    let mut statement = connection
+        .prepare(
+            "
+          select h.id, h.created_at_ms, h.undo_operation_json,
+                 h.redo_operation_json, o.type, o.timestamp
+          from history_entries h
+          left join operations o on o.id = h.operation_id
+          order by h.created_at_ms desc, h.sequence desc
+        ",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, Option<String>>(4)?,
+                row.get::<_, Option<String>>(5)?,
+            ))
+        })
+        .map_err(|error| error.to_string())?;
+
+    let mut entries = Vec::new();
+    for row in rows {
+        let (history_id, created_at_ms, undo_json, redo_json, mut operation_type, mut timestamp) =
+            row.map_err(|error| error.to_string())?;
+        let Ok(undo_operation) = serde_json::from_str::<Value>(&undo_json) else {
+            continue;
+        };
+        let mut values = Vec::new();
+        collect_history_search_values(&undo_operation, &mut values);
+        let haystack = values.join(" ").to_lowercase();
+        if !terms.iter().all(|term| haystack.contains(term)) {
+            continue;
+        }
+
+        if operation_type.is_none() || timestamp.is_none() {
+            if let Ok(redo_operation) = serde_json::from_str::<Value>(&redo_json) {
+                operation_type = operation_type.or_else(|| {
+                    redo_operation
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                });
+                timestamp = timestamp.or_else(|| {
+                    redo_operation
+                        .get("timestamp")
+                        .and_then(Value::as_str)
+                        .map(str::to_string)
+                });
+            }
+        }
+        let preview = values
+            .iter()
+            .find(|value| {
+                let normalized = value.to_lowercase();
+                terms.iter().all(|term| normalized.contains(term))
+            })
+            .or_else(|| {
+                values.iter().find(|value| {
+                    let normalized = value.to_lowercase();
+                    terms.iter().any(|term| normalized.contains(term))
+                })
+            })
+            .cloned()
+            .unwrap_or_default();
+        let preview = preview.chars().take(180).collect::<String>();
+
+        entries.push(json!({
+            "historyId": history_id,
+            "operationType": operation_type,
+            "createdAtMs": created_at_ms,
+            "timestamp": timestamp,
+            "preview": preview,
+        }));
+        if entries.len() >= limit {
+            break;
+        }
+    }
+
+    Ok(json!({ "entries": entries }))
+}
+
+fn collect_history_search_values(value: &Value, values: &mut Vec<String>) {
+    match value {
+        Value::Array(children) => {
+            for child in children {
+                collect_history_search_values(child, values);
+            }
+        }
+        Value::Object(object) => {
+            for (key, child) in object {
+                if matches!(key.as_str(), "text" | "title" | "name" | "dailyReminder") {
+                    if let Some(text) = child.as_str() {
+                        let compact = text.split_whitespace().collect::<Vec<_>>().join(" ");
+                        if !compact.is_empty() && !values.contains(&compact) {
+                            values.push(compact);
+                        }
+                    }
+                }
+                if child.is_array() || child.is_object() {
+                    collect_history_search_values(child, values);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
 /// Walks an undo operation to estimate how many plan items it would re-insert and to
 /// grab a short preview of their text, so the Recovery list is identifiable at a glance.
 fn summarize_undo_operation(operation: &Value) -> (i64, String) {
     let mut count = 0;
     let mut preview = String::new();
     collect_undo_summary(operation, &mut count, &mut preview);
+    if preview.is_empty() {
+        let mut values = Vec::new();
+        collect_history_search_values(operation, &mut values);
+        preview = values
+            .into_iter()
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .take(80)
+            .collect();
+    }
     (count, preview)
 }
 
@@ -9954,6 +10102,7 @@ pub fn run() {
             undo_last_operation,
             redo_last_operation,
             list_recovery_entries,
+            search_recovery_history,
             list_metadata,
             inspect_database,
             compact_database,
@@ -15062,6 +15211,20 @@ mod tests {
         assert_eq!(entry["preview"], "Important child A");
         let history_id = entry["historyId"].as_str().unwrap().to_string();
 
+        let search =
+            search_recovery_history_from_database(&connection, "important child b", 50).unwrap();
+        let matches = search["entries"].as_array().unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0]["historyId"], history_id);
+        assert_eq!(matches[0]["preview"], "Important child B");
+        assert!(
+            search_recovery_history_from_database(&connection, "plan_item_child_b", 50).unwrap()
+                ["entries"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+
         // Restoring reverses the paste: parent and children come back, pasted item removed.
         let restored = restore_recovery_entry_in_database(&mut connection, &history_id)
             .unwrap()
@@ -15073,6 +15236,47 @@ mod tests {
         assert_eq!(children.len(), 2);
         assert_eq!(children[0]["text"], "Important child A");
         assert_eq!(children[1]["text"], "Important child B");
+    }
+
+    #[test]
+    fn recovery_history_search_finds_earlier_task_text() {
+        let database = TestDatabase::new("recovery-search-earlier-text");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("History search");
+        state["plans"][0]["items"][0]["text"] = json!("Original cobalt wording");
+        state["plans"][0]["items"][0]["html"] = json!("Original cobalt wording");
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "patch_plan_item",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemId": "plan_item_wake",
+                    "patch": {
+                        "text": "Updated wording",
+                        "html": "Updated wording"
+                    }
+                }
+            }),
+        )
+        .unwrap();
+
+        let search =
+            search_recovery_history_from_database(&connection, "cobalt wording", 50).unwrap();
+        let matches = search["entries"].as_array().unwrap();
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0]["operationType"], "patch_plan_item");
+        assert_eq!(matches[0]["preview"], "Original cobalt wording");
+
+        let listed = list_recovery_entries_from_database(&connection).unwrap();
+        assert_eq!(listed["entries"][0]["preview"], "Original cobalt wording");
     }
 
     fn test_state(plan_title: &str) -> Value {

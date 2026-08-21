@@ -314,6 +314,7 @@ return rows`
   let recoveryStatus = ''
   let recoveryStatusIsError = false
   let recoveryExpandedId: string | null = null
+  let recoveryListOpen = false
   let metadataEntries: MetadataEntry[] = []
   let databaseInspection: DatabaseInspection | null = null
   let databaseInspectionBusy = false
@@ -4180,15 +4181,21 @@ return rows`
     pasteReview = { ...pasteReview, nodes }
   }
 
-  async function openRecoveryPanel() {
+  async function openRecoveryPanel(historyId: string | null = null) {
     recoveryPanelOpen = true
-    recoveryExpandedId = null
+    recoveryExpandedId = historyId
+    recoveryListOpen = historyId !== null
     await Promise.all([
       refreshRecoveryEntries(),
       refreshMetadata(),
       refreshDatabaseInspection(),
       refreshDatabaseMaintenanceStatus(),
     ])
+    if (historyId) {
+      await tick()
+      document.querySelector<HTMLElement>(`[data-recovery-history-id="${CSS.escape(historyId)}"]`)
+        ?.scrollIntoView({ block: 'center' })
+    }
   }
 
   async function refreshMetadata() {
@@ -4319,11 +4326,15 @@ return rows`
   async function restoreRecoveryEntry(entry: RecoveryEntry) {
     if (recoveryBusy) return
 
+    const description = entry.restoredItemCount > 0
+      ? `Restore ${entry.restoredItemCount} item${entry.restoredItemCount === 1 ? '' : 's'}${
+          entry.preview ? ` (“${entry.preview}”)` : ''
+        }? This reverses the action that removed them.`
+      : `Restore the earlier state${entry.preview ? ` (“${entry.preview}”)` : ''}? ` +
+        'This reverses that saved change against the current data.'
     const confirmed = await confirmDialog(
-      `Restore ${entry.restoredItemCount} item${entry.restoredItemCount === 1 ? '' : 's'}${
-        entry.preview ? ` (“${entry.preview}”)` : ''
-      }? This reverses the action that removed them.`,
-      { title: 'Restore items', kind: 'warning' },
+      description,
+      { title: entry.restoredItemCount > 0 ? 'Restore items' : 'Restore earlier state', kind: 'warning' },
     )
     if (!confirmed) return
 
@@ -4334,7 +4345,9 @@ return rows`
     try {
       const restored = await plannerStore.restoreRecoveryEntry(entry.historyId)
       if (restored) {
-        recoveryStatus = 'Restored. Check your plan — the items should be back.'
+        recoveryStatus = entry.restoredItemCount > 0
+          ? 'Restored. Check your plan — the items should be back.'
+          : 'Restored the earlier state. Check the affected item or document.'
         await refreshRecoveryEntries()
       } else {
         recoveryStatusIsError = true
@@ -4774,6 +4787,9 @@ return rows`
     } else if (result.kind === 'list-template') {
       selectedListTemplateId = result.templateId
       openLists()
+    } else if (result.kind === 'history') {
+      await openRecoveryPanel(result.historyId)
+      return
     }
 
     if (!result.itemId) return
@@ -6262,7 +6278,7 @@ return rows`
                 change each day, and reclaims file space only when enough unused pages accumulate.
               </p>
             {:else}
-              <p>Restore removed items and inspect database history. Automatic housekeeping runs in the installed app.</p>
+              <p>Restore removed items or earlier states and inspect database history. Automatic housekeeping runs in the installed app.</p>
             {/if}
           </div>
 
@@ -6668,13 +6684,12 @@ return rows`
       <div class="recovery-panel-head">
         <div>
           <p class="eyebrow">Recovery &amp; diagnostics</p>
-          <h2 id="recovery-panel-title">Restore removed items</h2>
+          <h2 id="recovery-panel-title">Recovery history</h2>
         </div>
         <button type="button" class="ghost" on:click={closeRecoveryPanel} disabled={databaseCompactionBusy}>Close</button>
       </div>
       <p class="recovery-copy">
-        Each entry is a saved undo snapshot. Restoring reverses the action that removed those items — useful when an
-        edit deleted something it shouldn't have.
+        Each entry is a saved undo snapshot. It can restore removed content or an earlier version of edited text.
       </p>
 
       {#if recoveryStatus}
@@ -6704,17 +6719,22 @@ return rows`
       </p>
 
       <div class="recovery-scroll">
-      <details class="metadata-section">
-        <summary>Restore removed items ({recoveryEntries.length})</summary>
+      <details class="metadata-section" bind:open={recoveryListOpen}>
+        <summary>Saved states ({recoveryEntries.length})</summary>
         <ul class="recovery-list">
           {#each recoveryEntries as entry (entry.historyId)}
-            <li class="recovery-row" class:undone={entry.undone}>
+            <li
+              class="recovery-row"
+              class:undone={entry.undone}
+              class:search-result-target={recoveryExpandedId === entry.historyId}
+              data-recovery-history-id={entry.historyId}
+            >
               <div class="recovery-row-main">
                 <div class="recovery-row-info">
                   <span class="recovery-row-title">
                     {entry.restoredItemCount > 0
                       ? `Restores ${entry.restoredItemCount} item${entry.restoredItemCount === 1 ? '' : 's'}`
-                      : entry.operationType ?? 'Operation'}
+                      : 'Restores an earlier state'}
                   </span>
                   {#if entry.preview}<span class="recovery-row-preview">“{entry.preview}”</span>{/if}
                   <span class="recovery-row-meta">

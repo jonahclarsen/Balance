@@ -454,7 +454,7 @@ test('settings opens recovery and diagnostics above goal rhythm', async ({ page 
   await expect(openRecovery).toBeVisible()
   await openRecovery.click()
 
-  const dialog = page.getByRole('dialog', { name: 'Restore removed items' })
+  const dialog = page.getByRole('dialog', { name: 'Recovery history' })
   await expect(dialog).toBeVisible()
 
   const stacking = await page.evaluate(() => {

@@ -1,5 +1,6 @@
 import type { AppState, Id, ListTemplateItem, PlanItem, TemplateItem } from './types'
 import { isNoteTrashed } from './noteTrash'
+import type { RecoverySearchMatch } from './store'
 
 export type SearchResult =
   | {
@@ -47,6 +48,14 @@ export type SearchResult =
       preview: string
       templateId: Id
       itemId: Id | null
+    }
+  | {
+      kind: 'history'
+      id: Id
+      title: string
+      meta: string
+      preview: string
+      historyId: string
     }
 
 type SearchLine = { itemId: Id; text: string }
@@ -148,6 +157,34 @@ export function searchBalanceState(state: AppState, query: string): SearchResult
     })
 
   return [...noteResults, ...dayResults, ...listResults, ...dayTemplateResults, ...listTemplateResults]
+}
+
+export function recoveryMatchesToSearchResults(entries: RecoverySearchMatch[]): SearchResult[] {
+  return entries.map((entry) => ({
+    kind: 'history' as const,
+    id: entry.historyId,
+    title: historyTitle(entry.operationType),
+    meta: `Previous state · ${formatHistoryDate(entry)}`,
+    preview: previewText(entry.preview || 'Saved change'),
+    historyId: entry.historyId,
+  }))
+}
+
+function historyTitle(operationType: string | null): string {
+  if (!operationType) return 'Earlier saved state'
+  if (operationType.includes('delete') || operationType.includes('backspace')) return 'Removed content'
+  if (operationType.includes('patch') || operationType.includes('rename')) return 'Earlier text'
+  if (operationType.includes('generate')) return 'Replaced content'
+  return 'Earlier saved state'
+}
+
+function formatHistoryDate(entry: RecoverySearchMatch): string {
+  const timestamp = entry.timestamp ? Date.parse(entry.timestamp) : entry.createdAtMs
+  if (!Number.isFinite(timestamp)) return 'unknown time'
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  }).format(new Date(timestamp))
 }
 
 function normalizedTerms(query: string): string[] {

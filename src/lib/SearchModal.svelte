@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
   import OverlayModal from './OverlayModal.svelte'
-  import { searchBalanceState, type SearchResult } from './search'
+  import { recoveryMatchesToSearchResults, searchBalanceState, type SearchResult } from './search'
+  import { searchRecoveryHistory } from './store'
   import type { AppState } from './types'
 
   export let state: AppState
@@ -14,6 +15,7 @@
     { kind: 'list', label: 'List History' },
     { kind: 'day-template', label: 'Day templates' },
     { kind: 'list-template', label: 'Lists' },
+    { kind: 'history', label: 'Earlier versions & removed items' },
   ]
 
   let searchInput: HTMLInputElement | null = null
@@ -21,18 +23,49 @@
   let debouncedQuery = ''
   let debounceTimer: number | null = null
   let selectedIndex = 0
+  let historyResults: SearchResult[] = []
+  let historyPending = false
+  let historySearchRequest = 0
 
-  $: results = debouncedQuery ? searchBalanceState(state, debouncedQuery) : []
+  $: results = debouncedQuery
+    ? [...searchBalanceState(state, debouncedQuery), ...historyResults]
+    : []
   $: groupedResults = groups
     .map((group) => ({ ...group, results: results.filter((result) => result.kind === group.kind) }))
     .filter((group) => group.results.length > 0)
-  $: pending = query.trim() !== debouncedQuery
+  $: pending = query.trim() !== debouncedQuery || historyPending
+  $: void updateHistorySearch(debouncedQuery)
 
   onMount(() => {
     void tick().then(() => searchInput?.focus())
   })
 
-  onDestroy(clearDebounce)
+  onDestroy(() => {
+    clearDebounce()
+    historySearchRequest += 1
+  })
+
+  async function updateHistorySearch(value: string) {
+    const request = ++historySearchRequest
+    if (!value) {
+      historyResults = []
+      historyPending = false
+      return
+    }
+
+    historyPending = true
+    try {
+      const matches = await searchRecoveryHistory(value)
+      if (request === historySearchRequest) historyResults = recoveryMatchesToSearchResults(matches)
+    } catch (error) {
+      if (request === historySearchRequest) {
+        historyResults = []
+        console.error('Could not search saved history', error)
+      }
+    } finally {
+      if (request === historySearchRequest) historyPending = false
+    }
+  }
 
   function updateQuery(value: string) {
     query = value
@@ -99,7 +132,7 @@
     {#if !query.trim()}
       <div class="search-empty">
         <strong>Search everything in Balance.</strong>
-        <span>Notes, saved days, lists, and list history are all included.</span>
+        <span>Notes, saved days, lists, and retained earlier versions are all included.</span>
       </div>
     {:else if !pending && results.length === 0}
       <div class="search-empty" role="status">
