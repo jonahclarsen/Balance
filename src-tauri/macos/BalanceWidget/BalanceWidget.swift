@@ -547,18 +547,18 @@ private struct WidgetPalette {
                 return WidgetPalette(paper: 0x1B201F, surface: 0x232A28, ink: 0xE7ECE8, muted: 0x9BA8A3, line: 0x34403C, accent: 0x79B9AE)
             case "ocean":
                 return WidgetPalette(paper: 0x18222B, surface: 0x202D38, ink: 0xE8F0F6, muted: 0x9FB0BD, line: 0x30414E, accent: 0x73B7E6)
-            case "sunset":
-                return WidgetPalette(paper: 0x241C18, surface: 0x2E241F, ink: 0xF1E9E4, muted: 0xB8A69B, line: 0x493A32, accent: 0xE5947F)
+            case "orange":
+                return WidgetPalette(paper: 0x231F1A, surface: 0x2D2821, ink: 0xF2ECE5, muted: 0xB7AA9D, line: 0x473E34, accent: 0xDFA15F)
+            case "earth":
+                return WidgetPalette(paper: 0x201B17, surface: 0x2A231E, ink: 0xF0EBE5, muted: 0xAFA49A, line: 0x40362E, accent: 0xBDA58F)
             case "crimson":
                 return WidgetPalette(paper: 0x24181B, surface: 0x2E2023, ink: 0xF2E8EA, muted: 0xBAA4A9, line: 0x4B3439, accent: 0xE67F8E)
             case "banana":
-                return WidgetPalette(paper: 0x252216, surface: 0x302C1C, ink: 0xF2EDDA, muted: 0xB8AE87, line: 0x4B442B, accent: 0xE0C75E)
+                return WidgetPalette(paper: 0x211F18, surface: 0x2B2920, ink: 0xEEEADE, muted: 0xAAA38F, line: 0x403C30, accent: 0xC3B574)
             case "pink":
                 return WidgetPalette(paper: 0x261A20, surface: 0x312229, ink: 0xF4E8EE, muted: 0xBAA3AF, line: 0x4D3541, accent: 0xF08DB8)
             case "midnight":
                 return WidgetPalette(paper: 0x181C29, surface: 0x212638, ink: 0xE9ECF5, muted: 0xA1A9BD, line: 0x343B52, accent: 0x91A7E4)
-            case "white":
-                return WidgetPalette(paper: 0x1B1B1B, surface: 0x252525, ink: 0xFFFFFF, muted: 0xB3B3B3, line: 0x3C3C3C, accent: 0xF0F0F0)
             case "graphite":
                 return WidgetPalette(paper: 0x161617, surface: 0x202022, ink: 0xF0F0ED, muted: 0xA1A19D, line: 0x343436, accent: 0x70706E, timePillInk: 0xFFFFFF)
             default:
@@ -594,18 +594,18 @@ private struct WidgetPalette {
             return WidgetPalette(paper: 0xFFFDF8, surface: 0xFFFFFF, ink: 0x1D2428, muted: 0x687276, line: 0xD8D4CA, accent: 0x2F6F68)
         case "ocean":
             return WidgetPalette(paper: 0xF9FCFF, surface: 0xFFFFFF, ink: 0x172733, muted: 0x637581, line: 0xCCD9E1, accent: 0x276A9F)
-        case "sunset":
-            return WidgetPalette(paper: 0xFFFAF5, surface: 0xFFFFFF, ink: 0x33241F, muted: 0x7B6B63, line: 0xE2D3C7, accent: 0xB9563F)
+        case "orange":
+            return WidgetPalette(paper: 0xFFFDF9, surface: 0xFFFFFF, ink: 0x30271F, muted: 0x796D61, line: 0xE4D8CA, accent: 0xB96F25)
+        case "earth":
+            return WidgetPalette(paper: 0xFCFAF6, surface: 0xFFFFFF, ink: 0x2D2924, muted: 0x756E65, line: 0xDED7CD, accent: 0x796451)
         case "crimson":
             return WidgetPalette(paper: 0xFFFAFB, surface: 0xFFFFFF, ink: 0x321F23, muted: 0x78666A, line: 0xE1CFD3, accent: 0xA92F42)
         case "banana":
-            return WidgetPalette(paper: 0xFFFDF4, surface: 0xFFFFFF, ink: 0x2D2819, muted: 0x756D50, line: 0xE4DCC0, accent: 0x8F7000)
+            return WidgetPalette(paper: 0xFFFDF8, surface: 0xFFFFFF, ink: 0x302D24, muted: 0x777164, line: 0xE2DED0, accent: 0x827136)
         case "pink":
             return WidgetPalette(paper: 0xFFF9FC, surface: 0xFFFFFF, ink: 0x31232B, muted: 0x7D6A74, line: 0xE6D0DC, accent: 0xC33F7A)
         case "midnight":
             return WidgetPalette(paper: 0xFAFBFE, surface: 0xFFFFFF, ink: 0x202738, muted: 0x687083, line: 0xD1D6E2, accent: 0x425B9B)
-        case "white":
-            return WidgetPalette(paper: 0xFFFFFF, surface: 0xFFFFFF, ink: 0x181818, muted: 0x6F6F6F, line: 0xDEDEDE, accent: 0x4A4A4A)
         case "graphite":
             return WidgetPalette(paper: 0xF9F9F7, surface: 0xFFFFFF, ink: 0x191918, muted: 0x6D6D69, line: 0xD1D1CD, accent: 0x3A3A38)
         default:

@@ -299,7 +299,7 @@ class BalanceSyncWorker {
     assert.match(graphiteLayout, /#191918/)
     assert.doesNotMatch(graphiteLayout, /#7355A2/)
 
-    for (const theme of ['iridescent', 'forest', 'ocean', 'violet', 'sunset', 'crimson', 'banana', 'pink', 'midnight', 'white', 'graphite']) {
+    for (const theme of ['iridescent', 'forest', 'ocean', 'violet', 'orange', 'earth', 'crimson', 'banana', 'pink', 'midnight', 'graphite']) {
       await readFile(join(root, `res/layout/balance_home_widget_${theme}.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress.xml`), 'utf8')
       await readFile(join(root, `res/drawable/balance_widget_${theme}_progress_glow.xml`), 'utf8')
@@ -421,16 +421,16 @@ class BalanceSyncWorker {
     assert.doesNotMatch(widgetStyles, /balance_widget_task_circle/)
 
     const widgetTaskSurface = await readFile(
-      join(root, 'res/drawable/balance_widget_white_task_surface.xml'),
+      join(root, 'res/drawable/balance_widget_earth_task_surface.xml'),
       'utf8',
     )
     assert.match(widgetTaskSurface, /#FFFFFF/)
 
     const darkWidgetTaskSurface = await readFile(
-      join(root, 'res/drawable-night/balance_widget_white_task_surface.xml'),
+      join(root, 'res/drawable-night/balance_widget_earth_task_surface.xml'),
       'utf8',
     )
-    assert.match(darkWidgetTaskSurface, /#252525/)
+    assert.match(darkWidgetTaskSurface, /#2A231E/)
 
     const homeInfo = await readFile(
       join(root, 'res/xml/balance_home_widget_info.xml'),

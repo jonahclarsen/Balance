@@ -1182,11 +1182,11 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await expect(themeGroup.locator('.theme-option-copy strong')).toHaveText([
     'Random',
     'Iridescent',
-    'White',
     'Graphite',
     'Crimson',
     'Pink',
-    'Sunset',
+    'Orange',
+    'Earth',
     'Banana',
     'Forest',
     'Ocean',
@@ -1196,32 +1196,60 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   const randomTheme = themeGroup.getByRole('button', { name: 'Random A different theme every day' })
   await expect(randomTheme).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'random')
-  await expect(themeGroup.getByText('Sunset', { exact: true })).toHaveCount(1)
+  await expect(themeGroup.getByText('Orange', { exact: true })).toHaveCount(1)
+  await expect(themeGroup.getByText('Earth', { exact: true })).toHaveCount(1)
+  await expect(themeGroup.getByText('Sunset', { exact: true })).toHaveCount(0)
+  await expect(themeGroup.getByText('White', { exact: true })).toHaveCount(0)
   await expect(themeGroup.getByText('Crimson', { exact: true })).toHaveCount(1)
   await expect(themeGroup.getByText('Berry', { exact: true })).toHaveCount(0)
-  const whiteTheme = themeGroup.getByRole('button', { name: 'White Crisp white and soft gray' })
-  await whiteTheme.click()
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'white')
-  await expect(sidebar).toHaveCSS('background-color', 'rgb(247, 247, 247)')
+  const orangeTheme = themeGroup.getByRole('button', { name: 'Orange Clear orange and light apricot' })
+  await orangeTheme.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'orange')
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(242, 231, 216)')
   await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
     'background-color',
-    'rgb(74, 74, 74)',
+    'rgb(185, 111, 37)',
   )
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-theme-orange.png`,
+    fullPage: false,
+  })
+  const earthTheme = themeGroup.getByRole('button', { name: 'Earth Weathered wood and quiet soil' })
+  await earthTheme.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'earth')
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(235, 229, 220)')
+  await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
+    'background-color',
+    'rgb(121, 100, 81)',
+  )
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-theme-earth.png`,
+    fullPage: false,
+  })
   await page.emulateMedia({ colorScheme: 'dark' })
-  await expect(sidebar).toHaveCSS('background-color', 'rgb(23, 23, 23)')
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(27, 23, 20)')
   await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
     'background-color',
-    'rgb(240, 240, 240)',
+    'rgb(121, 96, 77)',
   )
+  await page.waitForTimeout(200)
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-theme-earth-dark.png`,
+    fullPage: false,
+  })
   await page.emulateMedia({ colorScheme: 'light' })
-  const bananaTheme = themeGroup.getByRole('button', { name: 'Banana Sunny yellow and warm cream' })
+  const bananaTheme = themeGroup.getByRole('button', { name: 'Banana Soft ochre and mellow cream' })
   await bananaTheme.click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'banana')
-  await expect(sidebar).toHaveCSS('background-color', 'rgb(242, 235, 201)')
+  await expect(sidebar).toHaveCSS('background-color', 'rgb(238, 234, 221)')
   await expect(page.getByRole('checkbox', { name: 'Example checked checkbox' })).toHaveCSS(
     'background-color',
-    'rgb(143, 112, 0)',
+    'rgb(130, 113, 54)',
   )
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-theme-banana.png`,
+    fullPage: false,
+  })
   const pinkTheme = themeGroup.getByRole('button', { name: 'Pink Bright pink and petal white' })
   await expect(pinkTheme).toHaveAttribute('aria-pressed', 'false')
   await pinkTheme.click()

@@ -239,11 +239,11 @@ object BalanceWidgets {
 
     private fun themeLayout(themeId: String): Int = when (themeId) {
         "iridescent" -> R.layout.balance_home_widget_iridescent
-        "white" -> R.layout.balance_home_widget_white
         "graphite" -> R.layout.balance_home_widget_graphite
         "forest" -> R.layout.balance_home_widget_forest
         "ocean" -> R.layout.balance_home_widget_ocean
-        "sunset" -> R.layout.balance_home_widget_sunset
+        "orange" -> R.layout.balance_home_widget_orange
+        "earth" -> R.layout.balance_home_widget_earth
         "crimson" -> R.layout.balance_home_widget_crimson
         "banana" -> R.layout.balance_home_widget_banana
         "pink" -> R.layout.balance_home_widget_pink
@@ -354,12 +354,12 @@ const widgetThemes = [
   { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },
   { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F' },
   { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
-  { id: 'sunset', paper: '#FFFAF5', surface: '#FFFFFF', ink: '#33241F', muted: '#7B6B63', line: '#E2D3C7', accent: '#B9563F' },
+  { id: 'orange', paper: '#FFFDF9', surface: '#FFFFFF', ink: '#30271F', muted: '#796D61', line: '#E4D8CA', accent: '#B96F25' },
+  { id: 'earth', paper: '#FCFAF6', surface: '#FFFFFF', ink: '#2D2924', muted: '#756E65', line: '#DED7CD', accent: '#796451' },
   { id: 'crimson', paper: '#FFFAFB', surface: '#FFFFFF', ink: '#321F23', muted: '#78666A', line: '#E1CFD3', accent: '#A92F42' },
-  { id: 'banana', paper: '#FFFDF4', surface: '#FFFFFF', ink: '#2D2819', muted: '#756D50', line: '#E4DCC0', accent: '#8F7000' },
+  { id: 'banana', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#302D24', muted: '#777164', line: '#E2DED0', accent: '#827136' },
   { id: 'pink', paper: '#FFF9FC', surface: '#FFFFFF', ink: '#31232B', muted: '#7D6A74', line: '#E6D0DC', accent: '#C33F7A' },
   { id: 'midnight', paper: '#FAFBFE', surface: '#FFFFFF', ink: '#202738', muted: '#687083', line: '#D1D6E2', accent: '#425B9B' },
-  { id: 'white', paper: '#FFFFFF', surface: '#FFFFFF', ink: '#181818', muted: '#6F6F6F', line: '#DEDEDE', accent: '#4A4A4A' },
   { id: 'graphite', paper: '#F9F9F7', surface: '#FFFFFF', ink: '#191918', muted: '#6D6D69', line: '#D1D1CD', accent: '#3A3A38' },
 ]
 
@@ -368,12 +368,12 @@ const darkWidgetThemes = [
   { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
   { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
   { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
-  { id: 'sunset', paper: '#241C18', surface: '#2E241F', ink: '#F1E9E4', muted: '#B8A69B', line: '#493A32', accent: '#E5947F' },
+  { id: 'orange', paper: '#231F1A', surface: '#2D2821', ink: '#F2ECE5', muted: '#B7AA9D', line: '#473E34', accent: '#DFA15F' },
+  { id: 'earth', paper: '#201B17', surface: '#2A231E', ink: '#F0EBE5', muted: '#AFA49A', line: '#40362E', accent: '#BDA58F' },
   { id: 'crimson', paper: '#24181B', surface: '#2E2023', ink: '#F2E8EA', muted: '#BAA4A9', line: '#4B3439', accent: '#E67F8E' },
-  { id: 'banana', paper: '#252216', surface: '#302C1C', ink: '#F2EDDA', muted: '#B8AE87', line: '#4B442B', accent: '#E0C75E' },
+  { id: 'banana', paper: '#211F18', surface: '#2B2920', ink: '#EEEADE', muted: '#AAA38F', line: '#403C30', accent: '#C3B574' },
   { id: 'pink', paper: '#261A20', surface: '#312229', ink: '#F4E8EE', muted: '#BAA3AF', line: '#4D3541', accent: '#F08DB8' },
   { id: 'midnight', paper: '#181C29', surface: '#212638', ink: '#E9ECF5', muted: '#A1A9BD', line: '#343B52', accent: '#91A7E4' },
-  { id: 'white', paper: '#1B1B1B', surface: '#252525', ink: '#FFFFFF', muted: '#B3B3B3', line: '#3C3C3C', accent: '#F0F0F0' },
   { id: 'graphite', paper: '#161617', surface: '#202022', ink: '#F0F0ED', muted: '#A1A19D', line: '#343436', accent: '#70706E', timePillInk: '#FFFFFF' },
 ]
 
