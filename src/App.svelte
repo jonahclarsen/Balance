@@ -5376,7 +5376,6 @@ return rows`
     {#if view === 'templates'}
       <header class="page-header">
         <div>
-          <p class="eyebrow">Generator</p>
           <h2>Daily template</h2>
         </div>
       </header>
@@ -5466,7 +5465,6 @@ return rows`
     {#if view === 'listTemplates'}
       <header class="page-header">
         <div>
-          <p class="eyebrow">Templates</p>
           <h2>Lists</h2>
         </div>
         <button class="primary outlined" type="button" on:click={openListHistory}>View List History →</button>
@@ -5651,7 +5649,6 @@ return rows`
         <div class="list-history-heading">
           <button class="list-history-back" type="button" on:click={openLists}>← Back to Lists</button>
           <div>
-            <p class="eyebrow">Lists</p>
             <h2>List History</h2>
             <p class="list-history-date">{formatPlanTitle($plannerStore.activePlanDate)}</p>
           </div>
@@ -5719,7 +5716,6 @@ return rows`
     {#if view === 'notes'}
       <header class="page-header notes-page-header">
         <div>
-          <p class="eyebrow">Reference</p>
           <h2>Notes</h2>
         </div>
         <div class="notes-page-actions">
@@ -5765,7 +5761,6 @@ return rows`
     {#if view === 'metrics'}
       <header class="page-header">
         <div>
-          <p class="eyebrow">Tracking</p>
           <h2>Metrics</h2>
         </div>
         {#if metrics.length > 0}
@@ -5859,7 +5854,6 @@ return rows`
     {#if view === 'goals'}
       <header class="page-header">
         <div>
-          <p class="eyebrow">Automatic habits</p>
           <h2>Goals</h2>
         </div>
         <input
@@ -6050,7 +6044,6 @@ return rows`
     {#if view === 'settings'}
       <header class="page-header">
         <div>
-          <p class="eyebrow">Preferences</p>
           <h2>Settings</h2>
         </div>
       </header>

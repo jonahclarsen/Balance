@@ -2410,7 +2410,10 @@ body.mobile-checkbox-dragging {
 .settings-panel {
   display: grid;
   gap: 24px;
-  max-width: 760px;
+  width: 100%;
+  max-width: 1080px;
+  margin-inline: auto;
+  container: settings-panel / inline-size;
 }
 
 .settings-section {
@@ -2814,7 +2817,7 @@ body.mobile-checkbox-dragging {
 }
 
 .theme-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   column-gap: 10px;
 }
 
@@ -2885,7 +2888,13 @@ body.mobile-checkbox-dragging {
   display: none;
 }
 
-@media (max-width: 760px) {
+@container settings-panel (max-width: 760px) {
+  .theme-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container settings-panel (max-width: 520px) {
   .theme-grid {
     grid-template-columns: minmax(0, 1fr);
   }

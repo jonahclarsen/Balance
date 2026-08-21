@@ -1155,6 +1155,8 @@ test('iridescent template tabs randomize and restart on rapid selection', async 
 })
 
 test('color themes update the whole palette, persist, and adapt to dark mode', async ({ page }, testInfo) => {
+  if (testInfo.project.name === 'desktop') await page.setViewportSize({ width: 1600, height: 900 })
+
   const openSettings = async () => {
     const openNavigation = page.getByRole('button', { name: 'Open navigation' })
     if (await openNavigation.isVisible()) await openNavigation.click()
@@ -1174,7 +1176,29 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await expect(themeButtons.first()).toContainText('Random')
   const themeColumnCount = await themeGroup.evaluate((element) =>
     getComputedStyle(element).gridTemplateColumns.split(' ').length)
-  expect(themeColumnCount).toBe(testInfo.project.name === 'mobile' ? 1 : 2)
+  expect(themeColumnCount).toBe(testInfo.project.name === 'mobile' ? 1 : 3)
+  if (testInfo.project.name === 'desktop') {
+    const settingsLayout = await page.locator('.settings-panel').evaluate((panel) => {
+      const panelRect = panel.getBoundingClientRect()
+      const workspace = panel.closest('.workspace')
+      if (!(workspace instanceof HTMLElement)) throw new Error('Settings panel is outside the workspace')
+      const workspaceRect = workspace.getBoundingClientRect()
+      const workspaceStyle = getComputedStyle(workspace)
+      const contentLeft = workspaceRect.left
+        + Number.parseFloat(workspaceStyle.borderLeftWidth)
+        + Number.parseFloat(workspaceStyle.paddingLeft)
+      const contentRight = workspaceRect.right
+        - Number.parseFloat(workspaceStyle.borderRightWidth)
+        - Number.parseFloat(workspaceStyle.paddingRight)
+      return {
+        width: panelRect.width,
+        leftGap: panelRect.left - contentLeft,
+        rightGap: contentRight - panelRect.right,
+      }
+    })
+    expect(settingsLayout.width).toBeCloseTo(1080, 0)
+    expect(Math.abs(settingsLayout.leftGap - settingsLayout.rightGap)).toBeLessThan(1)
+  }
   await expect(page.getByText(
     'Pick a theme based on your mood. Each theme adapts automatically to light and dark mode.',
     { exact: true },
