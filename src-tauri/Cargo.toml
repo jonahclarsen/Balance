@@ -37,7 +37,7 @@ zeroize = "1.8"
 zstd = "0.13"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }
 # LAN peer discovery for P2P sync (advertise + browse for other Balance devices).
-mdns-sd = "0.11"
+mdns-sd = "0.21"
 if-addrs = "0.13"
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-log = "2"

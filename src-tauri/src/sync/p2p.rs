@@ -167,7 +167,9 @@ fn start_mdns(port: u16) {
             while let Ok(event) = receiver.recv() {
                 if let ServiceEvent::ServiceResolved(info) = event {
                     let name = info.get_fullname().to_string();
-                    let Some(addr) = info.get_addresses().iter().next().copied() else {
+                    // The direct-sync listener is IPv4-only, so prefer the matching
+                    // advertised address instead of an arbitrary scoped IPv6 address.
+                    let Some(addr) = info.get_addresses_v4().into_iter().next() else {
                         continue;
                     };
                     let peer_port = info.get_port();
