@@ -800,12 +800,25 @@ test('Cmd or Ctrl+F searches the current document instead of opening overall sea
   await expect(find).toBeVisible()
   await expect(page.getByRole('dialog', { name: 'Search Balance' })).toHaveCount(0)
 
-  await find.getByLabel('Find text').fill('Daily plan')
+  const findInput = find.getByLabel('Find text')
+  await findInput.pressSequentially('Daily plan', { delay: 25 })
+  await expect(findInput).toHaveValue('Daily plan')
   await expect(find.locator('.find-status')).toHaveText('Match')
-  await expect.poll(async () => page.evaluate(() => window.getSelection()?.toString().toLowerCase())).toBe('daily plan')
+  await expect(findInput).toBeFocused()
+  await expect.poll(() => findInput.evaluate((input) => (input as HTMLInputElement).selectionStart)).toBe('Daily plan'.length)
+  await expect.poll(() => page.evaluate(() => {
+    const highlight = CSS.highlights.get('balance-document-find-match')
+    return highlight
+      ? Array.from(highlight, (range) => range instanceof Range ? range.toString().toLowerCase() : '').join('')
+      : ''
+  })).toBe('daily plan')
+
+  await page.keyboard.type('s')
+  await expect(findInput).toHaveValue('Daily plans')
 
   await page.keyboard.press('Escape')
   await expect(find).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => CSS.highlights.has('balance-document-find-match'))).toBe(false)
 })
 
 test('Cmd or Ctrl+F focuses goal search on the Goals page', async ({ page }) => {
