@@ -45,7 +45,7 @@
       title: 'Navigate',
       shortcuts: [
         { keys: ['alt', 'C'], label: 'Search' },
-        { keys: ['alt', 'T'], label: 'Open Today / jump to today' },
+        { keys: ['alt', 'T'], label: 'Open Today; press again to jump to today' },
         { keys: ['alt', 'R'], label: 'Open List History' },
         { keys: ['alt', 'N'], label: 'Open Notes' },
         { keys: ['alt', 'D'], label: 'Open Day Templates' },

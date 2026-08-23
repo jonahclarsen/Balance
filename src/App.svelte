@@ -2835,8 +2835,8 @@ return rows`
 
       if (event.code === 'KeyT') {
         event.preventDefault()
-        view = 'today'
-        plannerStore.setActivePlanDate(todayISO())
+        if (view === 'today') plannerStore.setActivePlanDate(todayISO())
+        else view = 'today'
         return
       }
 

@@ -2637,6 +2637,54 @@ test('today scroll position survives a reload', async ({ page }) => {
   await expect.poll(scrollTop).toBe(targetScrollTop)
 })
 
+test('returning to Today keeps the selected day and its scroll position', async ({ page }) => {
+  const texts = Array.from({ length: 50 }, (_, index) => `Return row ${index + 1}`)
+  await seedPlanItems(page, texts)
+
+  const currentDate = await page.locator('.today-date-input').inputValue()
+  const selectedDate = addDays(currentDate, -1)
+  await page.evaluate((date) => {
+    const key = 'balance.appState.v1'
+    const state = JSON.parse(localStorage.getItem(key) || '{}')
+    state.activePlanDate = date
+    state.plans[0].date = date
+    localStorage.setItem(key, JSON.stringify(state))
+  }, selectedDate)
+  await page.reload()
+  await expect(page.locator('.today-date-input')).toHaveValue(selectedDate)
+
+  const scrollTop = () =>
+    page.evaluate(() => {
+      const workspace = document.querySelector<HTMLElement>('.workspace')
+      return window.innerWidth <= 760 ? window.scrollY : (workspace?.scrollTop ?? 0)
+    })
+  const targetScrollTop = await page.evaluate(() => {
+    const workspace = document.querySelector<HTMLElement>('.workspace')
+    const target = 620
+    if (window.innerWidth <= 760) {
+      const top = Math.min(target, document.documentElement.scrollHeight - window.innerHeight)
+      window.scrollTo(0, top)
+      return top
+    }
+    if (!workspace) return 0
+    const top = Math.min(target, workspace.scrollHeight - workspace.clientHeight)
+    workspace.scrollTop = top
+    return top
+  })
+  expect(targetScrollTop).toBeGreaterThan(0)
+  await expect.poll(scrollTop).toBe(targetScrollTop)
+
+  await page.keyboard.press('Alt+N')
+  await expect(page.getByRole('heading', { name: 'Notes', exact: true }).first()).toBeVisible()
+
+  await page.keyboard.press('Alt+T')
+  await expect(page.locator('.today-date-input')).toHaveValue(selectedDate)
+  await expect.poll(scrollTop).toBe(targetScrollTop)
+
+  await page.keyboard.press('Alt+T')
+  await expect(page.locator('.today-date-input')).toHaveValue(currentDate)
+})
+
 test('plan item text fields support left and right boundary focus', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
