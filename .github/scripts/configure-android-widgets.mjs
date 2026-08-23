@@ -18,8 +18,12 @@ import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.View
 import android.widget.RemoteViews
@@ -124,6 +128,7 @@ object BalanceWidgets {
 
     private fun renderHome(context: Context, snapshot: BalanceWidgetSnapshot): RemoteViews {
         val views = RemoteViews(context.packageName, themeLayout(snapshot.themeId))
+        views.setTextViewText(R.id.widget_brand, brandText(context, snapshot.themeId))
         views.setTextViewText(
             R.id.widget_title,
             snapshot.title.ifBlank { "Today’s plan" },
@@ -235,6 +240,43 @@ object BalanceWidgets {
         views.setViewVisibility(R.id.widget_all_done, if (showAllDone) View.VISIBLE else View.GONE)
         attachActions(context, views)
         return views
+    }
+
+    private fun brandText(context: Context, themeId: String): CharSequence {
+        if (themeId != "iridescent") return "Balance"
+        val dark = context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+            Configuration.UI_MODE_NIGHT_YES
+        val colors = if (dark) {
+            intArrayOf(
+                0xFFEF77BC.toInt(),
+                0xFFC184DB.toInt(),
+                0xFF929CDF.toInt(),
+                0xFF61BDC9.toInt(),
+                0xFFA7BA94.toInt(),
+                0xFFEAA47F.toInt(),
+                0xFFEF77BC.toInt(),
+            )
+        } else {
+            intArrayOf(
+                0xFFA13C91.toInt(),
+                0xFF8251AA.toInt(),
+                0xFF5E62AA.toInt(),
+                0xFF367B8F.toInt(),
+                0xFF6B755C.toInt(),
+                0xFF9D614B.toInt(),
+                0xFFA13C91.toInt(),
+            )
+        }
+        return SpannableString("Balance").apply {
+            colors.forEachIndexed { index, color ->
+                setSpan(
+                    ForegroundColorSpan(color),
+                    index,
+                    index + 1,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+                )
+            }
+        }
     }
 
     private fun themeLayout(themeId: String): Int = when (themeId) {
@@ -350,7 +392,7 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 `
 
 const widgetThemes = [
-  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', statusAccent: '#7B5BD6', taskAccent: '#7B5BD6', doneAccent: '#28A987', progressAccent: '#7B5BD6', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#52798A', timePillGradients: [['#4257A8', '#6655A7'], ['#6B4F92', '#87527F'], ['#34726F', '#466C91'], ['#825A4B', '#7E526C']], timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
+  { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', brand: '#A13C91', statusAccent: '#7B5BD6', taskAccent: '#7B5BD6', doneAccent: '#28A987', progressAccent: '#7B5BD6', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#52798A', timePillGradients: [['#4257A8', '#6655A7'], ['#6B4F92', '#87527F'], ['#34726F', '#466C91'], ['#825A4B', '#7E526C']], timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
   { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },
   { id: 'ocean', paper: '#F9FCFF', surface: '#FFFFFF', ink: '#172733', muted: '#637581', line: '#CCD9E1', accent: '#276A9F' },
   { id: 'violet', paper: '#FCFAFF', surface: '#FFFFFF', ink: '#292332', muted: '#756C7F', line: '#DAD2E2', accent: '#7355A2' },
@@ -364,7 +406,7 @@ const widgetThemes = [
 ]
 
 const darkWidgetThemes = [
-  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#F5B8E3', statusAccent: '#B79AF2', taskAccent: '#B79AF2', doneAccent: '#65CFAA', progressAccent: '#B79AF2', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#4C6877', timePillGradients: [['#4A5E91', '#645586'], ['#654F80', '#80536F'], ['#3F706B', '#4B6684'], ['#7B594C', '#78526A']], timePillInk: '#FFFFFF', backgroundColors: ['#3D2B39', '#274144', '#493D2E'] },
+  { id: 'iridescent', paper: '#1F1926', surface: '#2A2232', ink: '#F4EDF6', muted: '#B5A6BD', line: '#493B54', accent: '#F5B8E3', brand: '#EF77BC', statusAccent: '#B79AF2', taskAccent: '#B79AF2', doneAccent: '#65CFAA', progressAccent: '#B79AF2', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#4C6877', timePillGradients: [['#4A5E91', '#645586'], ['#654F80', '#80536F'], ['#3F706B', '#4B6684'], ['#7B594C', '#78526A']], timePillInk: '#FFFFFF', backgroundColors: ['#3D2B39', '#274144', '#493D2E'] },
   { id: 'forest', paper: '#1B201F', surface: '#232A28', ink: '#E7ECE8', muted: '#9BA8A3', line: '#34403C', accent: '#79B9AE' },
   { id: 'ocean', paper: '#18222B', surface: '#202D38', ink: '#E8F0F6', muted: '#9FB0BD', line: '#30414E', accent: '#73B7E6' },
   { id: 'violet', paper: '#201C25', surface: '#29232F', ink: '#EEE9F2', muted: '#AFA3B8', line: '#42384B', accent: '#B69ADB' },
@@ -464,9 +506,19 @@ function homeLayout(theme) {
             android:layout_weight="1"
             android:orientation="vertical">
             <TextView
+                android:id="@+id/widget_brand"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-rounded"
+                android:text="Balance"
+                android:textColor="${theme.brand ?? theme.ink}"
+                android:textSize="20sp"
+                android:textStyle="bold" />
+            <TextView
                 android:id="@+id/widget_date"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="5dp"
                 android:fontFamily="sans-serif-medium"
                 android:letterSpacing="0.08"
                 android:text="TODAY"

@@ -268,19 +268,8 @@ private struct BalanceWidgetView: View {
 
     private func snapshotContent(_ snapshot: BalanceSnapshot, itemLimit: Int) -> some View {
         VStack(alignment: .leading, spacing: contentSpacing) {
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("TODAY")
-                        .font(.caption2.weight(.bold))
-                        .tracking(0.8)
-                        .foregroundStyle(palette.accent)
-                    Text(snapshot.title.isEmpty ? "Today’s plan" : snapshot.title)
-                        .font(.headline)
-                        .fontDesign(.rounded)
-                        .foregroundStyle(palette.ink)
-                        .lineLimit(family == .systemSmall ? 1 : 2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            HStack(alignment: .center, spacing: 8) {
+                brand
                 Spacer(minLength: 4)
                 Text(progressLabel(snapshot))
                     .font(.caption.weight(.bold))
@@ -296,6 +285,19 @@ private struct BalanceWidgetView: View {
                         )
                     )
                     .accessibilityLabel("\(snapshot.done) of \(snapshot.total) tasks complete")
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("TODAY")
+                    .font(.caption2.weight(.bold))
+                    .tracking(0.8)
+                    .foregroundStyle(palette.accent)
+                Text(snapshot.title.isEmpty ? "Today’s plan" : snapshot.title)
+                    .font(.headline)
+                    .fontDesign(.rounded)
+                    .foregroundStyle(palette.ink)
+                    .lineLimit(family == .systemSmall ? 1 : 2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             if family != .systemSmall && !snapshot.reminder.isEmpty {
@@ -400,8 +402,22 @@ private struct BalanceWidgetView: View {
         .fontDesign(.rounded)
     }
 
+    private var brand: some View {
+        Text("Balance")
+            .font(.system(size: 20, weight: .bold, design: .rounded))
+            .foregroundStyle(palette.brandStyle)
+            .shadow(
+                color: palette.brandShadow,
+                radius: 1,
+                x: 0,
+                y: 1
+            )
+            .accessibilityAddTraits(.isHeader)
+    }
+
     private func emptyView(title: String, message: String) -> some View {
         VStack(alignment: .leading, spacing: 9) {
+            brand
             HStack {
                 Text(title)
                     .font(.headline)
@@ -439,6 +455,8 @@ private struct WidgetPalette {
     let doneAccent: Color
     let progressAccent: Color
     let progressColors: [Color]?
+    let brandColors: [Color]?
+    let brandShadow: Color
     let timePill: Color
     let timePillGradients: [[Color]]?
     let timePillInk: Color
@@ -456,6 +474,8 @@ private struct WidgetPalette {
         doneAccent: UInt32? = nil,
         progressAccent: UInt32? = nil,
         progressColors: [UInt32]? = nil,
+        brandColors: [UInt32]? = nil,
+        brandShadow: UInt32? = nil,
         timePill: UInt32? = nil,
         timePillGradients: [[UInt32]]? = nil,
         timePillInk: UInt32? = nil,
@@ -472,6 +492,8 @@ private struct WidgetPalette {
         self.doneAccent = Color(rgb: doneAccent ?? accent)
         self.progressAccent = Color(rgb: progressAccent ?? accent)
         self.progressColors = progressColors?.map(Color.init(rgb:))
+        self.brandColors = brandColors?.map(Color.init(rgb:))
+        self.brandShadow = brandShadow.map { Color(rgb: $0).opacity(0.16) } ?? .clear
         self.timePill = Color(rgb: timePill ?? accent)
         self.timePillGradients = timePillGradients?.map { $0.map(Color.init(rgb:)) }
         self.timePillInk = Color(rgb: timePillInk ?? paper)
@@ -489,6 +511,19 @@ private struct WidgetPalette {
             )
         }
         return AnyShapeStyle(progressAccent)
+    }
+
+    var brandStyle: AnyShapeStyle {
+        if let brandColors {
+            return AnyShapeStyle(
+                LinearGradient(
+                    colors: brandColors,
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            )
+        }
+        return AnyShapeStyle(ink)
     }
 
     func timePillStyle(at index: Int) -> AnyShapeStyle {
@@ -533,6 +568,8 @@ private struct WidgetPalette {
                     doneAccent: 0x65CFAA,
                     progressAccent: 0xB79AF2,
                     progressColors: [0x4257C9, 0x6A54D1, 0x9455C9, 0xC85FB0, 0xEC6A8F, 0xF7856A, 0xF9A94F, 0xF6CF68],
+                    brandColors: [0xEF77BC, 0xAA8BEA, 0x58C3C5, 0xE9B36B, 0xEF77BC],
+                    brandShadow: 0x4E2B65,
                     timePill: 0x4C6877,
                     timePillGradients: [
                         [0x4A5E91, 0x645586],
@@ -580,6 +617,8 @@ private struct WidgetPalette {
                 doneAccent: 0x28A987,
                 progressAccent: 0x7B5BD6,
                 progressColors: [0x4257C9, 0x6A54D1, 0x9455C9, 0xC85FB0, 0xEC6A8F, 0xF7856A, 0xF9A94F, 0xF6CF68],
+                brandColors: [0xA13C91, 0x7256B7, 0x2F7F8A, 0x9C6D35, 0xA13C91],
+                brandShadow: 0x4E2B65,
                 timePill: 0x52798A,
                 timePillGradients: [
                     [0x4257A8, 0x6655A7],

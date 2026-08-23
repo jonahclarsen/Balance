@@ -138,6 +138,10 @@ class BalanceSyncWorker {
     assert.match(kotlin, /external fun nativeSnapshot/)
     assert.match(kotlin, /BalanceSyncWorker\.refreshNow\(context\)/)
     assert.match(kotlin, /R\.id\.widget_refresh_touch_target/)
+    assert.match(kotlin, /setTextViewText\(R\.id\.widget_brand, brandText\(context, snapshot\.themeId\)\)/)
+    assert.match(kotlin, /SpannableString\("Balance"\)/)
+    assert.match(kotlin, /0xFFA13C91\.toInt\(\)/)
+    assert.match(kotlin, /0xFFEF77BC\.toInt\(\)/)
     assert.doesNotMatch(kotlin, /BalanceWidgets\.refreshAllAsync\(context\) \{ pending\.finish\(\) \}/)
     assert.doesNotMatch(kotlin, /SharedPreferences|openFileOutput|writeText/)
     assert.doesNotMatch(kotlin, /BalanceLockWidgetProvider|renderLock|balance_lock_widget/)
@@ -189,6 +193,10 @@ class BalanceSyncWorker {
       /android:id="@\+id\/widget_item_time_1"[\s\S]*?android:fontFamily="sans-serif"[\s\S]*?android:textSize="9sp"/,
     )
     assert.match(violetLayout, /@\+id\/widget_all_done/)
+    assert.match(
+      violetLayout,
+      /android:id="@\+id\/widget_brand"[\s\S]*?android:fontFamily="sans-serif-rounded"[\s\S]*?android:text="Balance"[\s\S]*?android:textColor="#292332"[\s\S]*?android:textStyle="bold"/,
+    )
     assert.match(violetLayout, /android:text="TODAY"/)
     assert.match(violetLayout, /@\+id\/widget_refresh_touch_target/)
     assert.match(
@@ -236,6 +244,10 @@ class BalanceSyncWorker {
       'utf8',
     )
     assert.match(iridescentLayout, /#A13C91/)
+    assert.match(
+      iridescentLayout,
+      /android:id="@\+id\/widget_brand"[\s\S]*?android:textColor="#A13C91"/,
+    )
     assert.match(iridescentLayout, /#7B5BD6/)
     assert.match(iridescentLayout, /#282134/)
     assert.match(iridescentLayout, /#28A987/)
@@ -368,6 +380,10 @@ class BalanceSyncWorker {
       'utf8',
     )
     assert.match(darkIridescentLayout, /#F5B8E3/)
+    assert.match(
+      darkIridescentLayout,
+      /android:id="@\+id\/widget_brand"[\s\S]*?android:textColor="#EF77BC"/,
+    )
     assert.match(darkIridescentLayout, /#B79AF2/)
     assert.match(darkIridescentLayout, /#65CFAA/)
     assert.match(darkIridescentLayout, /android:textColor="#FFFFFF"/)
