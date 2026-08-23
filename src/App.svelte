@@ -5023,6 +5023,26 @@ return rows`
       {/if}
     </div>
     <div class="mobile-header-actions">
+      {#if isMobile && view === 'today'}
+        <button
+          class="mobile-header-previous-day-button"
+          type="button"
+          title="Previous day"
+          aria-label="Previous day"
+          on:click={() => shiftActivePlanDate(-1)}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6" /></svg>
+        </button>
+        <button
+          class="mobile-header-next-day-button"
+          type="button"
+          title="Next day"
+          aria-label="Next day"
+          on:click={() => shiftActivePlanDate(1)}
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6" /></svg>
+        </button>
+      {/if}
       {#if isAndroid}
         {#if selectedItemIds.length > 0}
           <button
@@ -5232,20 +5252,20 @@ return rows`
                 </h2>
               </div>
               <div class="date-controls" aria-label="Day navigation">
-                {#if isMobile}
+                {#if isMobile && pane.key === 'compare'}
                   <button
                     class="date-nav-button"
                     type="button"
-                    aria-label="Previous day"
-                    on:click={() => (pane.key === 'compare' ? shiftCompareDayDate(-1) : shiftActivePlanDate(-1))}
+                    aria-label="Previous compared day"
+                    on:click={() => shiftCompareDayDate(-1)}
                   >
                     &lt;
                   </button>
                   <button
                     class="date-nav-button"
                     type="button"
-                    aria-label="Next day"
-                    on:click={() => (pane.key === 'compare' ? shiftCompareDayDate(1) : shiftActivePlanDate(1))}
+                    aria-label="Next compared day"
+                    on:click={() => shiftCompareDayDate(1)}
                   >
                     &gt;
                   </button>

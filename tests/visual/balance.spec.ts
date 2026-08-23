@@ -210,14 +210,15 @@ test('random theme can be scheduled for the next day boundary without changing t
   })).toEqual(['random', '2026-08-18', ''])
 })
 
-test('day navigation buttons are available only on mobile', async ({ page }, testInfo) => {
+test('day navigation buttons live in the fixed mobile header', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
   const primaryPane = page.getByRole('region', { name: 'Daily plan' })
-  const previousDayButton = primaryPane.getByRole('button', { name: 'Previous day' })
-  const nextDayButton = primaryPane.getByRole('button', { name: 'Next day' })
+  const mobileHeader = page.getByLabel('Mobile app header')
+  const previousDayButton = mobileHeader.getByRole('button', { name: 'Previous day' })
+  const nextDayButton = mobileHeader.getByRole('button', { name: 'Next day' })
 
   if (testInfo.project.name === 'desktop') {
     await expect(previousDayButton).toHaveCount(0)
@@ -226,6 +227,9 @@ test('day navigation buttons are available only on mobile', async ({ page }, tes
   }
 
   const initialDate = await primaryPane.locator('.date-input').inputValue()
+  await expect(mobileHeader).toHaveCSS('position', 'sticky')
+  await expect(primaryPane.getByRole('button', { name: 'Previous day' })).toHaveCount(0)
+  await expect(primaryPane.getByRole('button', { name: 'Next day' })).toHaveCount(0)
   await expect(previousDayButton).toBeVisible()
   await expect(nextDayButton).toBeVisible()
   await nextDayButton.click()
