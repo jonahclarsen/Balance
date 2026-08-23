@@ -3697,7 +3697,9 @@ return rows`
     const targetIndex = direction === 'up' ? Math.max(0, index - 1) : Math.min(itemIds.length - 1, index + 1)
     if (targetIndex === index) return
     selectionAnchorId = itemId
-    selectItemRange(itemId, itemIds[targetIndex], false)
+    const targetId = itemIds[targetIndex]
+    selectItemRange(itemId, targetId, false)
+    scrollItemTextInputIntoView(targetId)
   }
 
   function extendItemSelectionByKeyboard(direction: MoveDirection) {
@@ -3714,6 +3716,7 @@ return rows`
       return
     }
     selectItemRange(anchorId, targetId, false)
+    scrollItemTextInputIntoView(targetId)
   }
 
   function selectAllItems() {
@@ -4668,14 +4671,22 @@ return rows`
     }
   }
 
-  function focusItemTextInput(itemId: Id, position: 'start' | 'end' = 'end') {
+  function itemTextInput(itemId: Id): HTMLDivElement | null {
     const surface = activeItemSurface()
     const selector = surface === 'plan'
       ? `[data-plan-text-focus-target-id="${CSS.escape(itemId)}"]`
       : surface === 'day-template'
         ? `[data-template-item-id="${CSS.escape(itemId)}"] [data-template-option-text-input]`
         : `[data-list-template-text-input-id="${CSS.escape(itemId)}"]`
-    const input = document.querySelector<HTMLDivElement>(selector)
+    return document.querySelector<HTMLDivElement>(selector)
+  }
+
+  function scrollItemTextInputIntoView(itemId: Id) {
+    itemTextInput(itemId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+
+  function focusItemTextInput(itemId: Id, position: 'start' | 'end' = 'end') {
+    const input = itemTextInput(itemId)
     if (!input) return
 
     input.focus()

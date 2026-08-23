@@ -2845,6 +2845,36 @@ test('holding command-shift keeps extending whole-item selection in either direc
   await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(4)
 })
 
+test('shift vertical arrows scroll the moving end of a whole-item selection into view', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Whole-item keyboard range selection is a desktop interaction')
+  const texts = Array.from({ length: 30 }, (_, index) => `Task ${index + 1}`)
+  await page.setViewportSize({ width: 1000, height: 500 })
+  await seedPlanItems(page, texts)
+
+  const workspace = page.locator('.workspace')
+  const firstRow = page.locator('[data-plan-item-id="item_0"]')
+  const lastRow = page.locator('[data-plan-item-id="item_29"]')
+  await expect(lastRow).not.toBeInViewport()
+
+  await focusInputByValue(page, texts[0])
+  await page.keyboard.down('Shift')
+  for (let index = 1; index < texts.length; index += 1) await page.keyboard.press('ArrowDown')
+  await page.keyboard.up('Shift')
+
+  await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(texts.length)
+  await expect(lastRow).toBeInViewport()
+  await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+
+  await page.keyboard.press('Escape')
+  await focusInputByValue(page, texts.at(-1)!)
+  await page.keyboard.down('Shift')
+  for (let index = texts.length - 1; index > 0; index -= 1) await page.keyboard.press('ArrowUp')
+  await page.keyboard.up('Shift')
+
+  await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(texts.length)
+  await expect(firstRow).toBeInViewport()
+})
+
 test('shift down extends a selection from the penultimate soft-wrapped line to the item end', async ({ page }) => {
   const text = Array.from({ length: 34 }, (_, index) => `word${index + 1}`).join(' ')
   await seedPlanItems(page, ['Previous', text, 'Next'])
