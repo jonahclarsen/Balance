@@ -1198,6 +1198,8 @@ function createPlannerStore() {
       before: Partial<TemplateOption>,
       after: { html: string; text: string },
     ) {
+      const template = get(store).templates.find((candidate) => candidate.id === templateId)
+      const probability = findTemplateOption(template?.items ?? [], optionId)?.probability ?? 100
       const placement = splitPlacementForBeforeText(before)
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
@@ -1205,7 +1207,7 @@ function createPlannerStore() {
         ...createTemplateItem(inserted.text ?? ''),
         options: [
           {
-            ...createTemplateOption(inserted.text ?? '', 100),
+            ...createTemplateOption(inserted.text ?? '', probability),
             html: inserted.html ?? '',
           },
         ],
@@ -1699,10 +1701,12 @@ function createPlannerStore() {
       before: Partial<Pick<ListTemplateItem, 'text' | 'html'>>,
       after: { html: string; text: string },
     ) {
+      const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
+      const probability = findListTemplateItemLocation(template?.items ?? [], itemId)?.item.probability ?? 100
       const placement: 'before' | 'after' = splitPlacementForBeforeText(before) === 'before' ? 'before' : 'after'
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
-      const newItem = { ...createListTemplateItem(inserted.text ?? ''), html: inserted.html ?? '' }
+      const newItem = { ...createListTemplateItem(inserted.text ?? ''), html: inserted.html ?? '', probability }
 
       commit('split_list_template_item', { templateId, itemId, patch, newItem, placement }, (state) =>
         updateListTemplate(state, templateId, (template) => {
@@ -2426,6 +2430,16 @@ function updateListTemplate(state: AppState, templateId: Id, updater: (template:
   })
 
   return changed ? { ...state, listTemplates } : state
+}
+
+function findTemplateOption(items: TemplateItem[], optionId: Id): TemplateOption | null {
+  for (const item of items) {
+    const option = item.options.find((candidate) => candidate.id === optionId)
+    if (option) return option
+    const child = findTemplateOption(item.children, optionId)
+    if (child) return child
+  }
+  return null
 }
 
 type ListTemplateItemLocation = {

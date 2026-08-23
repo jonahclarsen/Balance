@@ -4092,6 +4092,52 @@ test('day template probabilities snap to five-percent increments', async ({ page
     .toBe(75)
 })
 
+test('splitting day- and list-template items preserves the source probability', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('button', { name: 'Day Templates' }).click()
+
+  const dayProbability = page.getByLabel('Probability percent').first()
+  await dayProbability.fill('65')
+  await dayProbability.blur()
+  await focusTemplateOptionByValue(page, 'Wake up')
+  await setCaretOffsetInFocusedEditor(page, 4)
+  await page.keyboard.press('Enter')
+
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.templates?.[0]?.items?.slice(0, 2).map((item: {
+      options?: Array<{ text: string; probability: number }>
+    }) => ({ text: item.options?.[0]?.text, probability: item.options?.[0]?.probability }))
+  })).toEqual([
+    { text: 'Wake', probability: 65 },
+    { text: ' up', probability: 65 },
+  ])
+
+  const openNavigation = page.getByRole('button', { name: 'Open navigation' })
+  if (await openNavigation.isVisible()) await openNavigation.click()
+  await page.getByRole('button', { name: 'Lists' }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
+  await page.getByLabel('Appearance probability').first().fill('40')
+  const listItem = page.locator('[data-list-template-text-input]').first()
+  await listItem.focus()
+  await setCaretOffsetInFocusedEditor(page, 5)
+  await page.keyboard.press('Enter')
+
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.listTemplates?.[0]?.items?.slice(0, 2).map((item: {
+      text: string
+      probability: number
+    }) => ({ text: item.text, probability: item.probability }))
+  })).toEqual([
+    { text: 'First', probability: 40 },
+    { text: ' item', probability: 40 },
+  ])
+})
+
 test('dragging a selected day-template probability applies it to every selected row', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
