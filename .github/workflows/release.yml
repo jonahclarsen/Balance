@@ -21,63 +21,18 @@ jobs:
   publish:
     name: Publish coordinated GitHub Release
     if: >-
-      (github.event.workflow_run.event == 'push' &&
-       startsWith(github.event.workflow_run.head_branch, 'v')) ||
-      (github.event.workflow_run.event == 'workflow_dispatch' &&
-       github.event.workflow_run.name == 'Build Android' &&
-       startsWith(github.event.workflow_run.head_branch, 'v'))
+      github.event.workflow_run.event == 'push' &&
+      startsWith(github.event.workflow_run.head_branch, 'v')
     runs-on: ubuntu-latest
 
     env:
       GH_TOKEN: ${{ github.token }}
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha }}
-      TRIGGER_BRANCH: ${{ github.event.workflow_run.head_branch }}
-      TRIGGER_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-      TRIGGER_EVENT: ${{ github.event.workflow_run.event }}
-      TRIGGER_RUN_ID: ${{ github.event.workflow_run.id }}
+      RELEASE_TAG: ${{ github.event.workflow_run.head_branch }}
 
     steps:
-      - name: Check out release commit and tags
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          ref: ${{ github.event.workflow_run.head_sha }}
-
-      - name: Resolve release context
-        id: release
-        run: |
-          set -euo pipefail
-
-          if [[ "$TRIGGER_EVENT" == "push" ]]; then
-            RELEASE_TAG="$TRIGGER_BRANCH"
-          else
-            mkdir -p release-context
-            if ! gh run download "$TRIGGER_RUN_ID" \
-              --repo "$GITHUB_REPOSITORY" \
-              --name Balance-release-metadata \
-              --dir release-context; then
-              echo "This manual Android run was not dispatched by the nightly release coordinator."
-              echo "eligible=false" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            RELEASE_TAG="$(tr -d '\r\n' < release-context/release-tag.txt)"
-          fi
-
-          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-all)?$ ]]; then
-            echo "::error::Invalid coordinated release tag: $RELEASE_TAG"
-            exit 1
-          fi
-          if [[ "$(git rev-parse "$RELEASE_TAG^{}")" != "$RELEASE_SHA" ]]; then
-            echo "::error::$RELEASE_TAG does not resolve to workflow commit $RELEASE_SHA"
-            exit 1
-          fi
-
-          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
-          echo "eligible=true" >> "$GITHUB_OUTPUT"
-
       - name: Locate successful platform runs
         id: runs
-        if: steps.release.outputs.eligible == 'true'
         run: |
           set -euo pipefail
 
@@ -87,18 +42,14 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --workflow "$workflow" \
               --commit "$RELEASE_SHA" \
-              --event "$TRIGGER_EVENT" \
+              --event push \
               --limit 20 \
               --json databaseId,status,conclusion,headBranch,createdAt \
               --jq \
                 "map(select(.headBranch == \"$RELEASE_TAG\")) | sort_by(.createdAt) | last | [.databaseId, .status, .conclusion] | @tsv"
           }
 
-          if [[ "$TRIGGER_EVENT" == "workflow_dispatch" ]]; then
-            ANDROID_RUN="$TRIGGER_RUN_ID completed $TRIGGER_CONCLUSION"
-          else
-            ANDROID_RUN="$(find_run android.yml)"
-          fi
+          ANDROID_RUN="$(find_run android.yml)"
 
           require_successful_run() {
             local platform="$1"

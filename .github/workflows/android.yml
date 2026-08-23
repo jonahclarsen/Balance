@@ -317,3 +317,80 @@ jobs:
             sync-e2e-*.xml
             sync-e2e-*.png
           if-no-files-found: ignore
+
+  publish-nightly-release:
+    name: Publish coordinated nightly release
+    needs:
+      - build-release
+      - smoke-test
+    if: >-
+      inputs.publish_tag != '' &&
+      needs['build-release'].result == 'success' &&
+      needs['smoke-test'].result == 'success'
+    runs-on: ubuntu-latest
+
+    permissions:
+      actions: read
+      contents: write
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: ${{ inputs.publish_tag }}
+
+    steps:
+      - name: Check out release commit and tags
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Download verified Android artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-arm64
+          path: release-assets/android
+
+      - name: Download coordinated release metadata
+        uses: actions/download-artifact@v7
+        with:
+          name: Balance-release-metadata
+          path: release-assets/context
+
+      - name: Validate coordinated release
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid coordinated release tag: $RELEASE_TAG"
+            exit 1
+          fi
+          if [[ "$GITHUB_REF_TYPE" != "tag" || "$GITHUB_REF_NAME" != "$RELEASE_TAG" ]]; then
+            echo "::error::Coordinated release tag must match the workflow tag ref"
+            exit 1
+          fi
+          if [[ "$(git rev-parse "$RELEASE_TAG^{}")" != "$GITHUB_SHA" ]]; then
+            echo "::error::$RELEASE_TAG does not resolve to workflow commit $GITHUB_SHA"
+            exit 1
+          fi
+
+          RECORDED_TAG="$(tr -d '\r\n' < release-assets/context/release-tag.txt)"
+          if [[ "$RECORDED_TAG" != "$RELEASE_TAG" ]]; then
+            echo "::error::Release metadata names $RECORDED_TAG instead of $RELEASE_TAG"
+            exit 1
+          fi
+
+          test -f release-assets/android/balance-arm64.apk
+
+      - name: Create or update GitHub Release
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "Balance $RELEASE_TAG" \
+              --generate-notes
+          fi
+
+          gh release upload "$RELEASE_TAG" \
+            release-assets/android/balance-arm64.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
