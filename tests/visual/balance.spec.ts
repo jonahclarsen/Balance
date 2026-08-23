@@ -2863,7 +2863,9 @@ test('shift vertical arrows scroll the moving end of a whole-item selection into
 
   await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(texts.length)
   await expect(lastRow).toBeInViewport()
-  await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  await expect.poll(() => workspace.evaluate((element) =>
+    Math.abs(element.scrollTop - (element.scrollHeight - element.clientHeight)) <= 1,
+  )).toBe(true)
 
   await page.keyboard.press('Escape')
   await focusInputByValue(page, texts.at(-1)!)
@@ -2873,6 +2875,7 @@ test('shift vertical arrows scroll the moving end of a whole-item selection into
 
   await expect(page.getByRole('button', { name: 'Selected item' })).toHaveCount(texts.length)
   await expect(firstRow).toBeInViewport()
+  await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBe(0)
 })
 
 test('shift down extends a selection from the penultimate soft-wrapped line to the item end', async ({ page }) => {

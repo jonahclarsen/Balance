@@ -4682,7 +4682,23 @@ return rows`
   }
 
   function scrollItemTextInputIntoView(itemId: Id) {
-    itemTextInput(itemId)?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    const input = itemTextInput(itemId)
+    if (!input) return
+
+    const itemIds = flattenItemIds(activeItemTree())
+    const itemIndex = itemIds.indexOf(itemId)
+    if (itemIndex !== -1 && (itemIndex === 0 || itemIndex === itemIds.length - 1)) {
+      const scrollContainer = findScrollContainer(input)
+      const scrollToTop = itemIndex === 0
+      if (scrollContainer) {
+        scrollContainer.scrollTop = scrollToTop ? 0 : scrollContainer.scrollHeight
+      } else {
+        window.scrollTo(0, scrollToTop ? 0 : document.documentElement.scrollHeight)
+      }
+      return
+    }
+
+    input.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }
 
   function focusItemTextInput(itemId: Id, position: 'start' | 'end' = 'end') {
