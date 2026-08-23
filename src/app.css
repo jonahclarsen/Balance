@@ -1527,7 +1527,7 @@ nav button.active {
 [data-plan-text-focus-target],
 [data-template-option-text-input],
 [data-list-template-text-input] {
-  scroll-margin-block: 10px;
+  scroll-margin-block: 5vh;
 }
 
 .plan-row.done {
