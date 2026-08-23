@@ -151,6 +151,7 @@ type TextChangeOptions = {
 
 type HistoryEntry = {
   operationId: string
+  operationType: string
   before: AppState
   after: AppState
   mergeKey: string | null
@@ -636,7 +637,7 @@ function createPlannerStore() {
       lastOperationMergeUpdatedAt = now
 
       if (options.undoable !== false) {
-        recordHistory(state, committed, operation.id, options)
+        recordHistory(state, committed, operation.id, operation.type, options)
       }
 
       return committed
@@ -2173,7 +2174,7 @@ function createPlannerStore() {
       })
     },
 
-    async undo() {
+    async undo(): Promise<string | null> {
       if (isTauri()) {
         await flushOperations()
         const expected = undoStack.at(-1)
@@ -2184,9 +2185,12 @@ function createPlannerStore() {
         if (!result) {
           undoStack = []
           redoStack = []
-          return
+          return null
         }
 
+        const operationType = result.operationId === expected?.operationId
+          ? expected.operationType
+          : result.state?.operations.find((operation) => operation.id === result.operationId)?.type ?? null
         lastOperationMergeKey = null
         if (expected && result.operationId === expected.operationId && result.state === null) {
           undoStack.pop()
@@ -2201,15 +2205,17 @@ function createPlannerStore() {
           }
         }
         notifyPersistedOperation()
-        return
+        return operationType
       }
 
       let operationToPersist: Operation | null = null
+      let operationType: string | null = null
 
       store.update((state) => {
         const entry = undoStack.pop()
         if (!entry) return state
 
+        operationType = entry.operationType
         redoStack.push(entry)
         lastOperationMergeKey = null
         const next = applyHistorySnapshot(state, entry.before, 'history_undo', entry)
@@ -2218,6 +2224,7 @@ function createPlannerStore() {
       })
 
       if (operationToPersist) queueOperationPersistence(operationToPersist)
+      return operationType
     },
 
     async redo() {
@@ -2351,7 +2358,13 @@ function applyHistorySnapshot(current: AppState, snapshot: AppState, type: strin
   }
 }
 
-function recordHistory(before: AppState, after: AppState, operationId: string, options: CommitOptions): void {
+function recordHistory(
+  before: AppState,
+  after: AppState,
+  operationId: string,
+  operationType: string,
+  options: CommitOptions,
+): void {
   const now = Date.now()
   const mergeKey = options.mergeKey ?? null
   const mergeWindowMs = options.mergeWindowMs ?? 0
@@ -2365,9 +2378,10 @@ function recordHistory(before: AppState, after: AppState, operationId: string, o
   if (last && mergeKey && last.mergeKey === mergeKey && now - last.updatedAt <= mergeWindowMs) {
     last.after = historyAfter
     last.operationId = operationId
+    last.operationType = operationType
     last.updatedAt = now
   } else {
-    undoStack.push({ operationId, before: historyBefore, after: historyAfter, mergeKey, updatedAt: now })
+    undoStack.push({ operationId, operationType, before: historyBefore, after: historyAfter, mergeKey, updatedAt: now })
     if (undoStack.length > MAX_HISTORY_ENTRIES) undoStack = undoStack.slice(-MAX_HISTORY_ENTRIES)
   }
 

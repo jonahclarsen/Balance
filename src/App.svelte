@@ -702,6 +702,34 @@ return rows`
     searchOpen = true
   }
 
+  function undoViewForOperation(operationType: string): View | null {
+    if (operationType.includes('list_template')) return 'listTemplates'
+    if (operationType === 'generate_list' || operationType.includes('list_item')) return 'lists'
+    if (
+      operationType === 'generate_plan' ||
+      operationType === 'set_active_plan_date' ||
+      operationType.includes('plan_item') ||
+      operationType.includes('plan_daily_reminder')
+    ) return 'today'
+    if (operationType.includes('template')) return 'templates'
+    if (operationType.includes('note')) return 'notes'
+    if (operationType.includes('metric')) return 'metrics'
+    if (operationType.includes('goal')) return 'goals'
+    return null
+  }
+
+  async function undoAndOpenDestination() {
+    const operationType = await plannerStore.undo()
+    if (!operationType) return
+
+    const destination = undoViewForOperation(operationType)
+    if (!destination) return
+
+    searchOpen = false
+    documentFindOpen = false
+    openMobileDrawerView(destination)
+  }
+
   function beginMobileDrawerGesture(event: PointerEvent) {
     if (!usesMobileLayout() || !mobileDrawerOpen || event.button !== 0 || mobileDrawerGesture) return
 
@@ -3181,7 +3209,7 @@ return rows`
 
     if (key === 'z' && !event.shiftKey) {
       event.preventDefault()
-      void plannerStore.undo()
+      void undoAndOpenDestination()
       return
     }
 
@@ -5007,7 +5035,7 @@ return rows`
             <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
           </button>
         {/if}
-        <button class="mobile-header-undo-button" type="button" title="Undo" aria-label="Undo" on:click={() => { void plannerStore.undo() }}>
+        <button class="mobile-header-undo-button" type="button" title="Undo" aria-label="Undo" on:click={() => { void undoAndOpenDestination() }}>
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7-4 4 4 4" /><path d="M5 11h8a6 6 0 1 1-4.2 10.3" /></svg>
         </button>
       {/if}
@@ -5074,7 +5102,7 @@ return rows`
           type="button"
           title="Undo"
           aria-label="Undo"
-          on:click={() => { void plannerStore.undo() }}
+          on:click={() => { void undoAndOpenDestination() }}
         >↶ Undo</button>
       {/if}
     </nav>
