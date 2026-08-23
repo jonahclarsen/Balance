@@ -262,7 +262,8 @@ private struct BalanceWidgetView: View {
                     alignment: .center
                 )
             }
-            .padding(contentPadding)
+            .padding(.horizontal, contentPadding)
+            .padding(.vertical, contentPadding - 2)
         }
     }
 
@@ -432,7 +433,8 @@ private struct BalanceWidgetView: View {
                 .foregroundStyle(palette.muted)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(contentPadding)
+        .padding(.horizontal, contentPadding)
+        .padding(.vertical, contentPadding - 2)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
