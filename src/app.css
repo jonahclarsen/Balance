@@ -2616,17 +2616,6 @@ body.mobile-checkbox-dragging {
   color: var(--paper-strong);
 }
 
-.celebration-reminder {
-  margin: 2px 0 0;
-  border: 1px dashed color-mix(in srgb, var(--accent) 54%, var(--line));
-  border-radius: 12px;
-  padding: 13px 14px;
-  background: color-mix(in srgb, var(--paper-strong) 89%, var(--accent));
-  color: var(--accent-strong);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .celebration-preview-announcement {
   position: fixed;
   width: 1px;
@@ -2634,92 +2623,6 @@ body.mobile-checkbox-dragging {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
-}
-
-.celebration-culling-panel {
-  position: fixed;
-  z-index: 10003;
-  right: max(10px, env(safe-area-inset-right));
-  bottom: max(10px, env(safe-area-inset-bottom));
-  left: max(10px, env(safe-area-inset-left));
-  display: grid;
-  gap: 7px;
-  max-width: 880px;
-  margin-inline: auto;
-  border: 2px solid color-mix(in srgb, var(--accent) 70%, white);
-  border-radius: 12px;
-  padding: 10px;
-  background: color-mix(in srgb, var(--paper-strong) 91%, transparent);
-  box-shadow: 0 16px 60px rgb(0 0 0 / .34);
-  color: var(--ink);
-  backdrop-filter: blur(12px);
-}
-
-.celebration-culling-panel:focus-visible {
-  outline: 2px solid var(--focus-ring, var(--accent));
-  outline-offset: 3px;
-}
-
-.celebration-culling-panel.keep {
-  border-color: #25a66f;
-}
-
-.celebration-culling-panel.remove {
-  border-color: #d34661;
-}
-
-.celebration-culling-summary {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  font-size: 11px;
-  font-weight: 800;
-}
-
-.celebration-culling-summary strong {
-  overflow: hidden;
-  font-size: 14px;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.celebration-culling-keys,
-.celebration-culling-status {
-  min-height: 1.2em;
-  color: var(--muted);
-  font-size: 11px;
-  text-align: center;
-}
-
-.celebration-culling-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 6px;
-}
-
-.celebration-culling-actions button {
-  min-height: 30px;
-  padding: 5px 9px;
-  font-size: 11px;
-}
-
-.celebration-culling-actions button.active {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--paper-strong);
-}
-
-@media (max-width: 560px) {
-  .celebration-culling-keys {
-    font-size: 10px;
-  }
-
-  .celebration-culling-actions button {
-    flex: 1 1 auto;
-  }
 }
 
 @container celebration-picker (max-width: 560px) {

@@ -1,10 +1,9 @@
 <script lang="ts">
-  import { COMPLETION_CELEBRATIONS, type CompletionCelebrationId } from './celebrations'
+  import { COMPLETION_CELEBRATION_OPTIONS, type CompletionCelebrationId } from './celebrations'
 
   export let selectedId: CompletionCelebrationId
   export let previewingId: CompletionCelebrationId | null = null
   export let onSelect: (id: CompletionCelebrationId) => void
-  export let onCull: () => void
 
   let grid: HTMLDivElement
   let rovingId: CompletionCelebrationId = selectedId
@@ -24,7 +23,7 @@
   }
 
   function focusAt(index: number) {
-    const celebrations = COMPLETION_CELEBRATIONS
+    const celebrations = COMPLETION_CELEBRATION_OPTIONS
     const boundedIndex = Math.max(0, Math.min(celebrations.length - 1, index))
     rovingId = celebrations[boundedIndex].id
     requestAnimationFrame(() => {
@@ -41,7 +40,7 @@
     else if (event.key === 'ArrowUp') nextIndex = index - columnCount()
     else if (event.key === 'ArrowDown') nextIndex = index + columnCount()
     else if (event.key === 'Home') nextIndex = 0
-    else if (event.key === 'End') nextIndex = COMPLETION_CELEBRATIONS.length - 1
+    else if (event.key === 'End') nextIndex = COMPLETION_CELEBRATION_OPTIONS.length - 1
 
     if (nextIndex === null) return
     event.preventDefault()
@@ -58,17 +57,13 @@
     </p>
   </div>
 
-  <div class="settings-actions">
-    <button type="button" data-celebration-cull-start on:click={onCull}>Review all with Y / N</button>
-  </div>
-
   <div
     class="celebration-options"
     role="group"
     aria-label="Day completion celebration"
     bind:this={grid}
   >
-    {#each COMPLETION_CELEBRATIONS as celebration, index (celebration.id)}
+    {#each COMPLETION_CELEBRATION_OPTIONS as celebration, index (celebration.id)}
       <div class="celebration-option">
         <button
           type="button"
@@ -110,6 +105,4 @@
       </div>
     {/each}
   </div>
-
-  <h4 class="celebration-reminder">REMINDER: YOU MIGHT WANT TO PICK YOUR FAVS AND JUST HAVE IT ASSIGN ONE AT RANDOM TO EACH DAY AND PLAY THAT AFTER THE DAY IS OVER, AND DELETE THE OTHERS AND THIS SETTINGS SECTION</h4>
 </section>

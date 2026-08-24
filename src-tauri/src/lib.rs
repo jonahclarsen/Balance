@@ -3015,7 +3015,7 @@ fn default_replicated_preferences() -> Value {
         "randomThemeId": "iridescent",
         "randomThemeDate": "",
         "randomThemeStartDate": "",
-        "completionCelebrationId": "aurora-checkwave",
+        "completionCelebrationId": "random",
         "doneTintColor": "",
         "checkboxColor": "",
         "databaseLoadingMessages": [
@@ -3048,7 +3048,7 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
     let completion_celebration_id = value
         .get("completionCelebrationId")
         .and_then(Value::as_str)
-        .unwrap_or("aurora-checkwave");
+        .unwrap_or("random");
     let done_tint_color = required_string(value, "doneTintColor")?;
     let checkbox_color = required_string(value, "checkboxColor")?;
     for (name, color) in [

@@ -1,7 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { COMPLETION_CELEBRATIONS } from '../../src/lib/celebrations'
-
-const REMINDER = 'REMINDER: YOU MIGHT WANT TO PICK YOUR FAVS AND JUST HAVE IT ASSIGN ONE AT RANDOM TO EACH DAY AND PLAY THAT AFTER THE DAY IS OVER, AND DELETE THE OTHERS AND THIS SETTINGS SECTION'
+import { COMPLETION_CELEBRATIONS, COMPLETION_CELEBRATION_OPTIONS } from '../../src/lib/celebrations'
 
 function addDays(date: string, days: number): string {
   const [year, month, day] = date.split('-').map(Number)
@@ -38,16 +36,16 @@ async function storedNavigationAndPlans(page: Page) {
   })
 }
 
-test('Settings renders every named celebration card with copy, icons, and the exact reminder', async ({ page }, testInfo) => {
+test('Settings renders Random first followed by every celebration card', async ({ page }, testInfo) => {
   await resetBrowserState(page)
   await openSettings(page, testInfo)
 
   const picker = page.getByRole('group', { name: 'Day completion celebration' })
   const options = picker.locator('.celebration-option')
   const cards = picker.locator('.celebration-option-button')
-  await expect(options).toHaveCount(COMPLETION_CELEBRATIONS.length)
-  await expect(cards).toHaveCount(COMPLETION_CELEBRATIONS.length)
-  await expect(picker.locator('.celebration-option-art')).toHaveCount(COMPLETION_CELEBRATIONS.length)
+  await expect(options).toHaveCount(COMPLETION_CELEBRATION_OPTIONS.length)
+  await expect(cards).toHaveCount(COMPLETION_CELEBRATION_OPTIONS.length)
+  await expect(picker.locator('.celebration-option-art')).toHaveCount(COMPLETION_CELEBRATION_OPTIONS.length)
 
   const renderedCatalog = await cards.evaluateAll((buttons) => buttons.map((button) => ({
     id: button.getAttribute('data-celebration-option'),
@@ -55,65 +53,34 @@ test('Settings renders every named celebration card with copy, icons, and the ex
     description: button.querySelector('.celebration-option-copy small')?.textContent?.trim(),
     icon: button.querySelector('.celebration-option-icon')?.textContent?.trim(),
   })))
-  expect(renderedCatalog).toEqual(COMPLETION_CELEBRATIONS.map(({ id, name, description, icon }) => ({
+  expect(renderedCatalog).toEqual(COMPLETION_CELEBRATION_OPTIONS.map(({ id, name, description, icon }) => ({
     id,
     name,
     description,
     icon,
   })))
 
-  const reminder = page.getByRole('heading', { name: REMINDER, exact: true })
-  await expect(reminder).toBeVisible()
-  await expect(reminder).toHaveText(REMINDER)
-  await expect(reminder).toHaveJSProperty('tagName', 'H4')
-  await expect(reminder.locator('xpath=..').locator(':scope > :last-child')).toHaveText(REMINDER)
+  await expect(cards.first()).toHaveAttribute('data-celebration-option', 'random')
+  await expect(cards.first()).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('.celebration-settings > .settings-actions')).toHaveCount(0)
 })
 
-test('keyboard celebration review marks choices, browses, and copies only removals', async ({ page }, testInfo) => {
+test('Random persists as the preference and previews a concrete celebration', async ({ page }, testInfo) => {
   await resetBrowserState(page)
-  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: new URL(page.url()).origin })
-  const initialDate = await page.locator('.today-date-input').inputValue()
-  const before = await storedNavigationAndPlans(page)
   await openSettings(page, testInfo)
 
-  const start = page.getByRole('button', { name: 'Review all with Y / N' })
-  await start.click()
+  const random = page.locator('[data-celebration-option="random"]')
+  await random.click()
 
-  const review = page.getByRole('dialog', { name: 'Celebration review' })
-  await expect(review).toBeVisible()
-  await expect(review).toContainText(`1 / ${COMPLETION_CELEBRATIONS.length}`)
-  await expect(review).toContainText('Aurora Checkwave')
-  await expect(review).toContainText('UNDECIDED')
-  await expect(page.locator('.app-shell')).toHaveAttribute('inert', '')
-  await expect(page.locator('.today-date-input')).toHaveValue(addDays(initialDate, -1))
-  await expect(page.locator('.celebration-stage')).toHaveAttribute('data-celebration-id', 'aurora-checkwave')
-
-  await page.keyboard.press('n')
-  await expect(review).toContainText('Dandelion Done')
-  await expect(page.locator('.celebration-stage')).toHaveAttribute('data-celebration-id', 'dandelion-done')
-  await page.keyboard.press('y')
-  await expect(review).toContainText('Constellation Closure')
-  await page.keyboard.press('ArrowRight')
-  await expect(review).toContainText('Bioluminescent Tide')
-  await page.keyboard.press('ArrowLeft')
-  await expect(review).toContainText('Constellation Closure')
-  await page.keyboard.press('n')
-  await expect(review).toContainText('Bioluminescent Tide')
-
-  await page.keyboard.press('c')
-  await expect(review.getByRole('status')).toHaveText('Copied 2 removals.')
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe([
-    'Aurora Checkwave',
-    'Constellation Closure',
-  ].join('\n'))
+  const stageId = await page.locator('.celebration-stage').getAttribute('data-celebration-id')
+  expect(COMPLETION_CELEBRATIONS.map(({ id }) => id)).toContain(stageId)
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
+    return state?.preferences?.completionCelebrationId
+  })).toBe('random')
 
   await page.keyboard.press('Escape')
-  await expect(review).toHaveCount(0)
-  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
-  await expect(start).toBeFocused()
-  await expect(page.locator('.app-shell')).not.toHaveAttribute('inert', '')
-  await expect(page.locator('[data-celebration-option="aurora-checkwave"]')).toHaveAttribute('aria-pressed', 'true')
-  await expect.poll(() => storedNavigationAndPlans(page)).toEqual(before)
+  await expect(random).toHaveAttribute('aria-pressed', 'true')
 })
 
 test('selecting saves, previews yesterday without chrome or plan mutations, and Escape restores Settings', async ({ page }, testInfo) => {
@@ -277,12 +244,12 @@ test('reduced motion draws no canvas frames and automatic return restores Settin
   const before = await storedNavigationAndPlans(page)
   await openSettings(page, testInfo)
 
-  const option = page.locator('[data-celebration-option="event-horizon"]')
+  const option = page.locator('[data-celebration-option="infinite-feedback-cathedral"]')
   await option.scrollIntoViewIfNeeded()
   await option.click()
 
   await expect(page.locator('.celebration-stage')).toHaveClass(/reduced/)
-  await expect(page.locator('.celebration-stage')).toHaveAttribute('data-celebration-id', 'event-horizon')
+  await expect(page.locator('.celebration-stage')).toHaveAttribute('data-celebration-id', 'infinite-feedback-cathedral')
   const canvasSnapshot = async () => page.locator('.celebration-canvas').evaluate((canvas: HTMLCanvasElement) => {
     const context = canvas.getContext('2d')
     const pixels = context?.getImageData(0, 0, canvas.width, canvas.height).data ?? []
@@ -333,8 +300,8 @@ test('celebration picker arrows rove without saving or previewing until activati
   await openSettings(page, testInfo)
 
   const picker = page.getByRole('group', { name: 'Day completion celebration' })
-  const first = picker.locator('[data-celebration-option="aurora-checkwave"]')
-  const second = picker.locator('[data-celebration-option="dandelion-done"]')
+  const first = picker.locator('[data-celebration-option="random"]')
+  const second = picker.locator('[data-celebration-option="stained-glass-sunrise"]')
   await first.focus()
   await first.press('ArrowRight')
   await expect(second).toBeFocused()
