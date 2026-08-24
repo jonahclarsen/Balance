@@ -14,6 +14,7 @@
     "test:relay": "node --test scripts/relay-server.test.mjs relay-worker/src/index.test.js",
     "profile:relay-empty-poll": "node scripts/profile-empty-relay-poll.mjs",
     "test:interaction-performance": "playwright test --config playwright.interaction-performance.config.ts",
+    "profile:mobile-drawer": "playwright test --config playwright.mobile-drawer-performance.config.ts",
     "test:undo-performance": "cargo test --manifest-path src-tauri/Cargo.toml tests::undo_performance_profile -- --exact --ignored --nocapture && playwright test --config playwright.undo-performance.config.ts",
     "test:visual": "playwright test"
   },

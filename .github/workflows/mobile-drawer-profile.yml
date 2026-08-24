@@ -1,0 +1,228 @@
+name: Profile mobile hamburger drawer
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Git ref for the baseline run
+        required: true
+        default: "main"
+        type: string
+      baseline_theme:
+        description: Theme ID for the baseline run
+        required: true
+        default: "iridescent"
+        type: string
+      candidate_ref:
+        description: Git ref for the comparison run
+        required: true
+        default: "main"
+        type: string
+      candidate_theme:
+        description: Theme ID for the comparison run
+        required: true
+        default: "iridescent"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Matched mobile drawer comparison under CPU contention
+    runs-on: macos-15
+    timeout-minutes: 35
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      BASELINE_THEME: ${{ inputs.baseline_theme }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      CANDIDATE_THEME: ${{ inputs.candidate_theme }}
+
+    steps:
+      - name: Check out benchmark harness
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+
+      - name: Prepare matched revisions
+        env:
+          BASELINE_DIR: ${{ runner.temp }}/balance-drawer-baseline
+          CANDIDATE_DIR: ${{ runner.temp }}/balance-drawer-candidate
+        run: |
+          set -euo pipefail
+          resolve_ref() {
+            ref="$1"
+            if git rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              git rev-parse --verify "${ref}^{commit}"
+              return
+            fi
+            git fetch --no-tags origin "$ref"
+            git rev-parse --verify 'FETCH_HEAD^{commit}'
+          }
+          baseline_sha="$(resolve_ref "$BASELINE_REF")"
+          candidate_sha="$(resolve_ref "$CANDIDATE_REF")"
+          echo "BASELINE_SHA=$baseline_sha" >> "$GITHUB_ENV"
+          echo "CANDIDATE_SHA=$candidate_sha" >> "$GITHUB_ENV"
+          echo "BASELINE_DIR=$BASELINE_DIR" >> "$GITHUB_ENV"
+          echo "CANDIDATE_DIR=$CANDIDATE_DIR" >> "$GITHUB_ENV"
+
+          git worktree add --detach "$BASELINE_DIR" "$baseline_sha"
+          git worktree add --detach "$CANDIDATE_DIR" "$candidate_sha"
+          cp tests/performance/mobile-drawer.spec.ts "$BASELINE_DIR/tests/performance/mobile-drawer.spec.ts"
+          cp playwright.mobile-drawer-performance.config.ts "$BASELINE_DIR/playwright.mobile-drawer-performance.config.ts"
+          cp tests/performance/mobile-drawer.spec.ts "$CANDIDATE_DIR/tests/performance/mobile-drawer.spec.ts"
+          cp playwright.mobile-drawer-performance.config.ts "$CANDIDATE_DIR/playwright.mobile-drawer-performance.config.ts"
+          (cd "$BASELINE_DIR" && pnpm install --force --frozen-lockfile --offline)
+          (cd "$CANDIDATE_DIR" && pnpm install --force --frozen-lockfile --offline)
+
+      - name: Alternate five measured runs per revision
+        run: |
+          set -euo pipefail
+          results="$RUNNER_TEMP/mobile-drawer-performance.jsonl"
+          logs="$RUNNER_TEMP/mobile-drawer-performance.log"
+          : > "$results"
+          : > "$logs"
+
+          run_profile() {
+            variant="$1"
+            round="$2"
+            directory="$3"
+            theme="$4"
+            echo "Running $variant ($theme) round $round" | tee -a "$logs"
+            output="$({
+              cd "$directory"
+              BALANCE_MOBILE_DRAWER_PERF_THEME="$theme" pnpm exec playwright test \
+                --config playwright.mobile-drawer-performance.config.ts \
+                --project android-like-6x-cpu \
+                --trace off
+            } 2>&1)"
+            printf '%s\n' "$output" | tee -a "$logs"
+            payload="$(printf '%s\n' "$output" | sed -n 's/^MOBILE_DRAWER_PERF //p')"
+            test -n "$payload"
+            jq -cn \
+              --arg variant "$variant" \
+              --argjson round "$round" \
+              --argjson profile "$payload" \
+              '{variant: $variant, round: $round, profile: $profile}' >> "$results"
+          }
+
+          for round in 1 2 3 4 5; do
+            if (( round % 2 == 1 )); then
+              run_profile baseline "$round" "$BASELINE_DIR" "$BASELINE_THEME"
+              run_profile candidate "$round" "$CANDIDATE_DIR" "$CANDIDATE_THEME"
+            else
+              run_profile candidate "$round" "$CANDIDATE_DIR" "$CANDIDATE_THEME"
+              run_profile baseline "$round" "$BASELINE_DIR" "$BASELINE_THEME"
+            fi
+          done
+
+          summary="$(jq -s '
+            def median: sort | .[length / 2 | floor];
+            def metric($name; $path):
+              ([.[] | getpath($path)] | median) as $value
+              | {key: $name, value: $value};
+            group_by(.variant)
+            | map(
+                .[0].variant as $variant
+                | {
+                    variant: $variant,
+                    theme: .[0].profile.fixture.themeId,
+                    runs: length,
+                    metrics: ([
+                      metric("opening_first_paint_ms"; ["profile", "opening", "firstPaint", "medianMs"]),
+                      metric("opening_frame_p95_ms"; ["profile", "opening", "frameIntervals", "p95Ms"]),
+                      metric("cycle_renderer_task_ms"; ["profile", "cycles", "rendererTaskMsPerOpenClose"]),
+                      metric("cycle_long_task_total_ms"; ["profile", "cycles", "longTaskTotalMs"]),
+                      metric("open_idle_renderer_task_ms"; ["profile", "openIdle", "renderer", "taskDurationMs"]),
+                      metric("closed_idle_renderer_task_ms"; ["profile", "closedIdle", "renderer", "taskDurationMs"])
+                    ] | from_entries),
+                    run_metrics: [.[].profile | {
+                      opening_first_paint_ms: .opening.firstPaint.medianMs,
+                      opening_frame_p95_ms: .opening.frameIntervals.p95Ms,
+                      cycle_renderer_task_ms: .cycles.rendererTaskMsPerOpenClose,
+                      cycle_long_task_total_ms: .cycles.longTaskTotalMs,
+                      open_idle_renderer_task_ms: .openIdle.renderer.taskDurationMs,
+                      closed_idle_renderer_task_ms: .closedIdle.renderer.taskDurationMs
+                    }]
+                  }
+              )
+            | . as $variants
+            | ($variants[] | select(.variant == "baseline")) as $baseline
+            | ($variants[] | select(.variant == "candidate")) as $candidate
+            | {
+                variants: $variants,
+                candidate_change_percent: ($baseline.metrics | to_entries | map({
+                  key,
+                  value: (((($candidate.metrics[.key] / .value) - 1) * 1000 | round) / 10)
+                }) | from_entries)
+              }
+          ' "$results")"
+          printf '%s\n' "$summary" > "$RUNNER_TEMP/mobile-drawer-performance-summary.json"
+          {
+            echo '## Mobile hamburger drawer profile'
+            echo
+            echo "Baseline: \`$BASELINE_SHA\` ($BASELINE_THEME) · Candidate: \`$CANDIDATE_SHA\` ($CANDIDATE_THEME)"
+            echo
+            echo 'Five alternating runs per revision; 12 open/close cycles per run; Pixel 5 viewport with Chromium 6× CPU throttling.'
+            echo
+            echo '```json'
+            printf '%s\n' "$summary"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v7
+        with:
+          name: mobile-drawer-comparison-profile
+          path: |
+            ${{ runner.temp }}/mobile-drawer-performance.jsonl
+            ${{ runner.temp }}/mobile-drawer-performance-summary.json
+            ${{ runner.temp }}/mobile-drawer-performance.log
+          if-no-files-found: error
+
+  verify:
+    name: Typecheck and mobile drawer behavior
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out candidate
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+
+      - name: Check source
+        run: pnpm check
+
+      - name: Verify mobile drawer behavior
+        run: pnpm exec playwright test tests/visual/mobile-navigation.spec.ts --project mobile
