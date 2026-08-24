@@ -5834,7 +5834,7 @@ return rows`
     {/if}
 
     {#if view === 'metrics'}
-      <header class="page-header">
+      <header class="page-header metric-page-header">
         <div>
           <h2>Metrics</h2>
         </div>
@@ -5844,7 +5844,7 @@ return rows`
       </header>
 
       {#if metrics.length > 0}
-        <nav class="template-rail" aria-label="Select metric">
+        <nav class="template-rail metric-rail" aria-label="Select metric">
           {#each metrics as metric (metric.id)}
             <button
               type="button"

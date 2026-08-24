@@ -5201,11 +5201,13 @@ body.mobile-checkbox-dragging {
 /* Metrics view */
 .metric-list {
   display: grid;
+  min-width: 0;
   gap: 16px;
 }
 
 .metric-card {
   display: grid;
+  min-width: 0;
   gap: 12px;
   padding: 16px;
   border: 1px solid var(--line);
@@ -5218,6 +5220,10 @@ body.mobile-checkbox-dragging {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.metric-card-header .title-input {
+  margin-bottom: 0;
 }
 
 .metric-question-row {
@@ -5295,6 +5301,101 @@ body.mobile-checkbox-dragging {
 .metric-import-preview {
   font-size: 13px;
   color: var(--muted);
+}
+
+@media (max-width: 760px) {
+  .metric-page-header {
+    align-items: center;
+    flex-direction: row;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .metric-page-header h2 {
+    font-size: 26px;
+  }
+
+  .metric-page-header button {
+    min-height: 40px;
+    margin-left: auto;
+    padding: 7px 10px;
+    font-size: 13px;
+  }
+
+  .metric-rail {
+    margin-inline: -12px;
+    margin-bottom: 14px;
+    padding-inline: 12px;
+    scroll-padding-inline: 12px;
+  }
+
+  .metric-rail .rail-chip {
+    min-height: 40px;
+    flex: 0 0 auto;
+  }
+
+  .metric-card {
+    gap: 14px;
+    padding: 12px;
+    border-radius: 12px;
+  }
+
+  .metric-card-header {
+    gap: 8px;
+  }
+
+  .metric-card-header .title-input {
+    min-height: 44px;
+    padding: 8px 10px;
+    font-size: 20px;
+  }
+
+  .metric-card-header .icon-button {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 auto;
+    font-size: 20px;
+  }
+
+  .metric-question-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) repeat(3, 40px);
+    gap: 6px;
+    padding: 10px;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: var(--paper);
+  }
+
+  .metric-question-prompt {
+    grid-column: 1 / -1;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .metric-question-row select {
+    grid-column: 1;
+    width: 100%;
+    min-width: 0;
+    height: 40px;
+    padding-block: 7px;
+    font-size: 14px;
+  }
+
+  .metric-question-row .icon-button {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  .metric-card > .add-row {
+    min-height: 44px;
+    margin-top: 0;
+  }
+
+  .metric-graph-block {
+    padding-top: 12px;
+  }
 }
 
 /* Notes */
