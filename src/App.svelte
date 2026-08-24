@@ -6119,6 +6119,8 @@ return rows`
               {/each}
             </div>
 
+            <ThemeTaskPreview mobile={isMobile} />
+
             {#if themeId === 'iridescent'}
               <IridescentGradientSettings
                 value={iridescentGradient}
@@ -6127,8 +6129,6 @@ return rows`
                 onCommit={commitIridescentGradient}
               />
             {/if}
-
-            <ThemeTaskPreview mobile={isMobile} />
           </div>
         </section>
 
