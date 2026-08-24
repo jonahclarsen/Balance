@@ -291,6 +291,8 @@ test('every catalog entry launches its own stable hooks and fully cleans up', as
   await resetBrowserState(page)
   await openSettings(page, testInfo)
 
+  const scrollbarFreeIds = new Set(COMPLETION_CELEBRATIONS.slice(-5).map(({ id }) => id))
+
   for (const celebration of COMPLETION_CELEBRATIONS) {
     const option = page.locator(`[data-celebration-option="${celebration.id}"]`)
     await option.scrollIntoViewIfNeeded()
@@ -301,11 +303,22 @@ test('every catalog entry launches its own stable hooks and fully cleans up', as
     await expect(stage).toHaveAttribute('data-celebration-recipe', celebration.recipe)
     await expect(page.locator('.celebration-canvas')).toHaveAttribute('data-celebration-id', celebration.id)
     await expect(page.locator('html')).toHaveAttribute('data-celebration-id', celebration.id)
+    if (scrollbarFreeIds.has(celebration.id)) {
+      await expect(page.locator('html')).toHaveAttribute('data-celebration-scrollbars', 'hidden')
+      expect(await page.evaluate(() => ({
+        root: getComputedStyle(document.documentElement).scrollbarWidth,
+        body: getComputedStyle(document.body).scrollbarWidth,
+        workspace: getComputedStyle(document.querySelector('.workspace')!).scrollbarWidth,
+      }))).toEqual({ root: 'none', body: 'none', workspace: 'none' })
+    } else {
+      await expect(page.locator('html')).not.toHaveAttribute('data-celebration-scrollbars', /.+/)
+    }
 
     await page.keyboard.press('Escape')
     await expect(stage).toHaveCount(0)
     await expect(page.locator('.celebration-canvas')).not.toHaveAttribute('data-celebration-id', /.+/)
     await expect(page.locator('html')).not.toHaveAttribute('data-celebration-id', /.+/)
+    await expect(page.locator('html')).not.toHaveAttribute('data-celebration-scrollbars', /.+/)
   }
 })
 

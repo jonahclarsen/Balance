@@ -55,6 +55,13 @@
     { x: -158, y: 120, delay: 50, hue: 166 },
     { x: -220, y: 34, delay: 110, hue: 43 },
   ]
+  const SCROLLBAR_FREE_RECIPES = new Set([
+    'feedback-tunnel',
+    'poltergeist',
+    'non-euclidean',
+    'recursive-fever',
+    'buffer-overflow',
+  ])
 
   function prefersReducedMotion() {
     return typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
@@ -180,7 +187,10 @@
     resizeCleanup = null
     visibilityCleanup = null
     clearCanvas()
-    if (typeof document !== 'undefined') delete document.documentElement.dataset.celebrationId
+    if (typeof document !== 'undefined') {
+      delete document.documentElement.dataset.celebrationId
+      delete document.documentElement.dataset.celebrationScrollbars
+    }
     pieces = []
     activeDefinition = null
     preview = false
@@ -227,6 +237,9 @@
     ariaLabel = 'Day finished'
     banner = true
     document.documentElement.dataset.celebrationId = definition.id
+    if (SCROLLBAR_FREE_RECIPES.has(definition.recipe)) {
+      document.documentElement.dataset.celebrationScrollbars = 'hidden'
+    }
     later(() => { if (token === runToken) banner = false }, reduced ? 2000 : 2200)
     later(() => { if (token === runToken) cleanup(true) }, Math.min(6000, definition.durationMs + 500))
 

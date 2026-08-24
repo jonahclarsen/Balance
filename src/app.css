@@ -1372,6 +1372,21 @@ nav button.active {
   overflow: hidden;
 }
 
+/* The final full-screen celebrations deliberately transform content beyond its
+   normal bounds. Keep that overflow available to the animation without letting
+   transient root or workspace scrollbars appear around it. */
+:root[data-celebration-scrollbars='hidden'],
+:root[data-celebration-scrollbars='hidden'] body,
+:root[data-celebration-scrollbars='hidden'] .workspace {
+  scrollbar-width: none;
+}
+
+:root[data-celebration-scrollbars='hidden']::-webkit-scrollbar,
+:root[data-celebration-scrollbars='hidden'] body::-webkit-scrollbar,
+:root[data-celebration-scrollbars='hidden'] .workspace::-webkit-scrollbar {
+  display: none;
+}
+
 .workspace.before-current-day-workspace {
   border-right-color: var(--accent);
 }
