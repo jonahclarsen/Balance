@@ -226,6 +226,8 @@ const PASTE_MATCH_STYLE_MENU_ID: &str = "balance-paste-match-style";
 #[cfg(target_os = "macos")]
 const PASTE_MATCH_STYLE_EVENT: &str = "balance-paste-match-style";
 #[cfg(target_os = "macos")]
+const MACOS_ALT_SHORTCUT_EVENT: &str = "balance-macos-alt-shortcut";
+#[cfg(target_os = "macos")]
 const MAIN_WINDOW_FRAME_DEFAULTS_KEY: &str = "BalanceMainWindowFrameV1";
 #[cfg(target_os = "macos")]
 static MAIN_WINDOW_FRAME_RESTORED: std::sync::atomic::AtomicBool =
@@ -238,6 +240,15 @@ struct MacosWindowPlacement {
     frame: MacosRect,
     screen: MacosRect,
     screen_name: String,
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct MacosAltShortcut {
+    code: &'static str,
+    shift_key: bool,
+    repeat: bool,
 }
 
 #[cfg(target_os = "macos")]
@@ -296,6 +307,90 @@ fn disable_automatic_text_substitutions() {
 
 #[cfg(not(target_os = "macos"))]
 fn disable_automatic_text_substitutions() {}
+
+#[cfg(target_os = "macos")]
+fn macos_alt_shortcut_code(key_code: u16, shift_key: bool) -> Option<&'static str> {
+    if shift_key && !matches!(key_code, 17 | 30 | 33 | 44) {
+        return None;
+    }
+
+    match key_code {
+        0 => Some("KeyA"),
+        1 => Some("KeyS"),
+        2 => Some("KeyD"),
+        3 => Some("KeyF"),
+        5 => Some("KeyG"),
+        8 => Some("KeyC"),
+        9 => Some("KeyV"),
+        11 => Some("KeyB"),
+        12 => Some("KeyQ"),
+        13 => Some("KeyW"),
+        14 => Some("KeyE"),
+        15 => Some("KeyR"),
+        17 => Some("KeyT"),
+        30 => Some("BracketRight"),
+        33 => Some("BracketLeft"),
+        34 => Some("KeyI"),
+        44 => Some("Slash"),
+        45 => Some("KeyN"),
+        _ => None,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn install_macos_alt_shortcut_monitor(app: &tauri::App) {
+    use block2::RcBlock;
+    use objc2_app_kit::{NSEvent, NSEventMask, NSEventModifierFlags};
+    use std::ptr::NonNull;
+
+    let app = app.handle().clone();
+    let handler = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
+        let event_ptr = event.as_ptr();
+        let event = unsafe { event.as_ref() };
+        let modifiers = event.modifierFlags();
+        if !modifiers.contains(NSEventModifierFlags::Option)
+            || modifiers.intersects(NSEventModifierFlags::Control | NSEventModifierFlags::Command)
+        {
+            return event_ptr;
+        }
+
+        let shift_key = modifiers.contains(NSEventModifierFlags::Shift);
+        let Some(code) = macos_alt_shortcut_code(event.keyCode(), shift_key) else {
+            return event_ptr;
+        };
+        let main_window_focused = app
+            .get_webview_window("main")
+            .and_then(|window| window.is_focused().ok())
+            .unwrap_or(false);
+        if !main_window_focused {
+            return event_ptr;
+        }
+
+        let shortcut = MacosAltShortcut {
+            code,
+            shift_key,
+            repeat: event.isARepeat(),
+        };
+        if app.emit(MACOS_ALT_SHORTCUT_EVENT, shortcut).is_ok() {
+            // A null monitor result consumes the key before AppKit asks the
+            // WKWebView text system to create or update marked text.
+            std::ptr::null_mut()
+        } else {
+            event_ptr
+        }
+    });
+
+    let monitor = unsafe {
+        NSEvent::addLocalMonitorForEventsMatchingMask_handler(NSEventMask::KeyDown, &handler)
+    };
+    if let Some(monitor) = monitor {
+        // AppKit owns the monitor registration for the process lifetime. Keep
+        // its token alive so the local monitor remains installed.
+        std::mem::forget(monitor);
+    } else {
+        eprintln!("Could not install the macOS Option-shortcut monitor");
+    }
+}
 
 #[cfg(target_os = "macos")]
 fn restore_macos_main_window_frame(app: &tauri::App) -> tauri::Result<()> {
@@ -9990,6 +10085,7 @@ pub fn run() {
             {
                 restore_macos_main_window_frame(app)?;
                 install_paste_and_match_style_menu(app)?;
+                install_macos_alt_shortcut_monitor(app);
             }
 
             if cfg!(debug_assertions) {
@@ -10165,6 +10261,45 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_option_shortcuts_map_physical_keys_before_webkit() {
+        for (key_code, code) in [
+            (0, "KeyA"),
+            (1, "KeyS"),
+            (2, "KeyD"),
+            (3, "KeyF"),
+            (5, "KeyG"),
+            (8, "KeyC"),
+            (9, "KeyV"),
+            (11, "KeyB"),
+            (12, "KeyQ"),
+            (13, "KeyW"),
+            (14, "KeyE"),
+            (15, "KeyR"),
+            (17, "KeyT"),
+            (30, "BracketRight"),
+            (33, "BracketLeft"),
+            (34, "KeyI"),
+            (44, "Slash"),
+            (45, "KeyN"),
+        ] {
+            assert_eq!(macos_alt_shortcut_code(key_code, false), Some(code));
+        }
+
+        for (key_code, code) in [
+            (17, "KeyT"),
+            (30, "BracketRight"),
+            (33, "BracketLeft"),
+            (44, "Slash"),
+        ] {
+            assert_eq!(macos_alt_shortcut_code(key_code, true), Some(code));
+        }
+        assert_eq!(macos_alt_shortcut_code(34, true), None);
+        assert_eq!(macos_alt_shortcut_code(45, true), None);
+        assert_eq!(macos_alt_shortcut_code(99, false), None);
+    }
 
     #[derive(Default)]
     struct TestRecoveryKeyStore {

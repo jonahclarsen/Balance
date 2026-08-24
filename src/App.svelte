@@ -81,6 +81,7 @@
   const PASTE_REVIEW_THRESHOLD = 4
   const PASTE_REVIEW_COOLDOWN_MS = 2000
   const PASTE_MATCH_STYLE_EVENT = 'balance-paste-match-style'
+  const MACOS_ALT_SHORTCUT_EVENT = 'balance-macos-alt-shortcut'
   const TIME_KEYBOARD_STEP_MINUTES = 15
   const TIME_KEYBOARD_MERGE_WINDOW_MS = 1500
 
@@ -93,6 +94,7 @@
   }
   type AvailableUpdate = { version: string; url: string }
   type MacosWidgetSettings = { hideContentAfterClose: boolean }
+  type MacosAltShortcut = { code: string; shiftKey: boolean; repeat: boolean }
   type CelebrationPreviewSession = {
     token: number
     celebrationId: CompletionCelebrationId
@@ -167,14 +169,6 @@
   let documentFindOpen = false
   let documentFindBar: DocumentFindBar | null = null
   let shortcutsHelpOpen = false
-  type HandledAltShortcutInput = {
-    code: string
-    target: HTMLInputElement | HTMLTextAreaElement | HTMLElement
-    value: string
-    selectionStart: number | null
-    selectionEnd: number | null
-  }
-  let handledAltShortcutInput: HandledAltShortcutInput | null = null
   let workspaceEl: HTMLElement
   let scrollPositionsByPage: Record<string, number> = {}
   let lastScrolledPage = ''
@@ -1429,6 +1423,7 @@ return rows`
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
     let stopPasteMatchStyleListener: (() => void) | null = null
+    let stopMacosAltShortcutListener: (() => void) | null = null
     let noteTrashCleanupTimer: number | null = null
     let desktopInactivityCloseTimer: number | null = null
     let desktopInactivityCloseRequested = false
@@ -1544,6 +1539,15 @@ return rows`
           console.error('Could not listen for Paste and Match Style', error)
         })
 
+        void listen<MacosAltShortcut>(MACOS_ALT_SHORTCUT_EVENT, ({ payload }) => {
+          dispatchMacosAltShortcut(payload)
+        }).then((stopListening) => {
+          if (mounted) stopMacosAltShortcutListener = stopListening
+          else stopListening()
+        }).catch((error) => {
+          console.error('Could not listen for native macOS Option shortcuts', error)
+        })
+
         if (import.meta.env.PROD) {
           void invoke<AvailableUpdate | null>('check_for_update').then((update) => {
             if (
@@ -1625,6 +1629,7 @@ return rows`
       mounted = false
       stopAutomaticSync?.()
       stopPasteMatchStyleListener?.()
+      stopMacosAltShortcutListener?.()
       stopAndroidSelectionBackListener()
       window.clearInterval(databaseLoadingMessageTimer)
       window.clearInterval(currentDayTimer)
@@ -2565,7 +2570,7 @@ return rows`
 
   // When you add/remove/change a shortcut here, also update the user-facing
   // reference in src/lib/KeyboardShortcutsModal.svelte (opened with `?`).
-  function applyGlobalKeydown(event: KeyboardEvent) {
+  function handleGlobalKeydown(event: KeyboardEvent) {
     // The native store begins with a disposable bootstrap state. Do not let a
     // shortcut mutate it while SQLCipher is still opening the real database.
     if ($databaseLoadPending || $databaseLoadError) return
@@ -3080,91 +3085,26 @@ return rows`
     }
   }
 
-  function handleGlobalKeydown(event: KeyboardEvent) {
-    clearHandledAltShortcutInput()
-    const shortcutInput = snapshotShortcutInput(event.target)
-    applyGlobalKeydown(event)
-
-    if (!shortcutInput || !event.altKey || event.metaKey || event.ctrlKey || !event.defaultPrevented) return
-
-    // macOS text services can still deliver dead-key composition input after a
-    // WebKit keydown was canceled. Intercept that input on the focused editor;
-    // non-cancelable composition events are rolled back before editor handlers
-    // can persist them.
-    handledAltShortcutInput = { code: event.code, ...shortcutInput }
-    shortcutInput.target.addEventListener('beforeinput', handleGlobalBeforeInput, true)
-    shortcutInput.target.addEventListener('input', handleGlobalInput, true)
-  }
-
-  function handleGlobalBeforeInput(event: Event) {
-    if (!(event instanceof InputEvent)) return
-    const shortcutInput = handledAltShortcutInput
-    if (!shortcutInput || event.target !== shortcutInput.target || !event.inputType.startsWith('insert')) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    if (event.defaultPrevented) clearHandledAltShortcutInput()
-  }
-
-  function handleGlobalInput(event: Event) {
-    if (!(event instanceof InputEvent)) return
-    const shortcutInput = handledAltShortcutInput
-    if (!shortcutInput || event.target !== shortcutInput.target || !event.inputType.startsWith('insert')) return
-
-    if (shortcutInput.target instanceof HTMLInputElement || shortcutInput.target instanceof HTMLTextAreaElement) {
-      shortcutInput.target.value = shortcutInput.value
-      if (shortcutInput.selectionStart !== null && shortcutInput.selectionEnd !== null) {
-        shortcutInput.target.setSelectionRange(shortcutInput.selectionStart, shortcutInput.selectionEnd)
-      }
-    } else {
-      shortcutInput.target.innerHTML = shortcutInput.value
-      if (shortcutInput.selectionStart !== null && shortcutInput.selectionEnd !== null) {
-        const range = document.createRange()
-        const start = domPositionForTextOffset(shortcutInput.target, shortcutInput.selectionStart)
-        const end = domPositionForTextOffset(shortcutInput.target, shortcutInput.selectionEnd)
-        range.setStart(start.node, start.offset)
-        range.setEnd(end.node, end.offset)
-        const selection = document.getSelection()
-        selection?.removeAllRanges()
-        selection?.addRange(range)
-      }
-    }
-    event.stopPropagation()
-    clearHandledAltShortcutInput()
-  }
-
-  function snapshotShortcutInput(target: EventTarget | null): Omit<HandledAltShortcutInput, 'code'> | null {
-    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-      return {
-        target,
-        value: target.value,
-        selectionStart: target.selectionStart,
-        selectionEnd: target.selectionEnd,
-      }
-    }
-    if (!(target instanceof HTMLElement) || !target.isContentEditable) return null
-    const selection = document.getSelection()
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
-    const selectionInsideTarget = Boolean(
-      range && target.contains(range.startContainer) && target.contains(range.endContainer),
-    )
-    return {
-      target,
-      value: target.innerHTML,
-      selectionStart: range && selectionInsideTarget
-        ? textOffsetForRangeBoundary(target, range.startContainer, range.startOffset)
-        : null,
-      selectionEnd: range && selectionInsideTarget
-        ? textOffsetForRangeBoundary(target, range.endContainer, range.endOffset)
-        : null,
-    }
-  }
-
-  function clearHandledAltShortcutInput() {
-    if (!handledAltShortcutInput) return
-    handledAltShortcutInput.target.removeEventListener('beforeinput', handleGlobalBeforeInput, true)
-    handledAltShortcutInput.target.removeEventListener('input', handleGlobalInput, true)
-    handledAltShortcutInput = null
+  function dispatchMacosAltShortcut(shortcut: MacosAltShortcut) {
+    const key = shortcut.code.startsWith('Key')
+      ? shortcut.code.slice(3)
+      : shortcut.code === 'Slash'
+        ? '/'
+        : shortcut.code === 'BracketLeft'
+          ? '['
+          : shortcut.code === 'BracketRight'
+            ? ']'
+            : shortcut.code
+    const target = document.activeElement ?? window
+    target.dispatchEvent(new KeyboardEvent('keydown', {
+      altKey: true,
+      shiftKey: shortcut.shiftKey,
+      bubbles: true,
+      cancelable: true,
+      code: shortcut.code,
+      key,
+      repeat: shortcut.repeat,
+    }))
   }
 
   function findPlanItem(items: PlanItem[], itemId: string): PlanItem | null {
@@ -3583,7 +3523,6 @@ return rows`
   }
 
   function handleGlobalPointerDown(event: PointerEvent) {
-    clearHandledAltShortcutInput()
     beginMobileDrawerGesture(event)
     if (event.button !== 0 || !activeItemSurface()) {
       itemTextDragOrigin = null

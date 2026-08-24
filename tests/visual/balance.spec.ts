@@ -328,40 +328,7 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
 
   await dateInput.focus()
   const originalDate = await dateInput.inputValue()
-  const shortcutCancellation = await dateInput.evaluate((input) => {
-    const keydown = new KeyboardEvent('keydown', {
-      altKey: true,
-      bubbles: true,
-      cancelable: true,
-      code: 'KeyI',
-      key: 'Dead',
-    })
-    input.dispatchEvent(keydown)
-    input.dispatchEvent(new KeyboardEvent('keyup', {
-      altKey: true,
-      bubbles: true,
-      code: 'KeyI',
-      key: 'Dead',
-    }))
-    const beforeinput = new InputEvent('beforeinput', {
-      bubbles: true,
-      cancelable: false,
-      data: '\u02c6',
-      inputType: 'insertCompositionText',
-    })
-    input.dispatchEvent(beforeinput)
-    input.value += '\u02c6'
-    input.dispatchEvent(new InputEvent('input', {
-      bubbles: true,
-      data: '\u02c6',
-      inputType: 'insertCompositionText',
-    }))
-    return {
-      keydownPrevented: keydown.defaultPrevented,
-      value: input.value,
-    }
-  })
-  expect(shortcutCancellation).toEqual({ keydownPrevented: true, value: originalDate })
+  await page.keyboard.press('Alt+i')
   await expect(primaryPane.getByRole('button', { name: 'Exit IMAX mode' })).toHaveAttribute('aria-pressed', 'true')
   await page.keyboard.press('Alt+i')
   await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
