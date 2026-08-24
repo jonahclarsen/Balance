@@ -27,7 +27,7 @@
   let scrollContainer: HTMLElement | null = null
   let scrollAnimationFrame: number | null = null
 
-  const selectionScrollDurationMs = 320
+  const selectionScrollDurationMs = 235
 
   // Drop a stale selection when the item it pointed at disappears.
   $: if (selectedItemId && !findPlanItem(instance.items, selectedItemId)) selectedItemId = null
