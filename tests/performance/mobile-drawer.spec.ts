@@ -13,6 +13,7 @@ const ACTIVE_DATE = '2026-08-16'
 type ActionSample = {
   dispatchMs: number
   firstPaintMs: number
+  settleMs: number
   frameIntervals: number[]
 }
 
@@ -40,6 +41,7 @@ function summarizeActions(samples: ActionSample[]) {
     count: samples.length,
     dispatch: summarizeDurations(samples.map((sample) => sample.dispatchMs)),
     firstPaint: summarizeDurations(samples.map((sample) => sample.firstPaintMs)),
+    settle: summarizeDurations(samples.map((sample) => sample.settleMs)),
     frameIntervals: summarizeDurations(samples.flatMap((sample) => sample.frameIntervals)),
     framesOver32Ms: samples.flatMap((sample) => sample.frameIntervals).filter((duration) => duration > 32).length,
     framesOver50Ms: samples.flatMap((sample) => sample.frameIntervals).filter((duration) => duration > 50).length,
@@ -183,7 +185,9 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
     async ({ cycleCount, openSampleMs, closeSampleMs }) => {
       const menuButton = document.querySelector<HTMLButtonElement>('.mobile-menu-button')
       const closeButton = document.querySelector<HTMLButtonElement>('.mobile-drawer-close-button')
-      if (!menuButton || !closeButton) throw new Error('Missing mobile drawer controls')
+      const drawer = document.querySelector<HTMLElement>('.sidebar')
+      const backdrop = document.querySelector<HTMLElement>('.mobile-drawer-backdrop')
+      if (!menuButton || !closeButton || !drawer || !backdrop) throw new Error('Missing mobile drawer controls')
 
       const longTasks: number[] = []
       const observer = typeof PerformanceObserver !== 'undefined'
@@ -201,13 +205,26 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
         let previous = started
         let frameCount = 0
         let firstPaintMs = 0
+        let settleMs: number | null = null
         const sample = (now: number) => {
           intervals.push(now - previous)
           previous = now
           frameCount += 1
+          if (frameCount === 1) {
+            const transitions = [drawer, backdrop]
+              .flatMap((element) => element.getAnimations())
+              .filter((animation) => Number.isFinite(Number(animation.effect?.getComputedTiming().iterations)))
+            if (transitions.length === 0) {
+              settleMs = now - started
+            } else {
+              void Promise.allSettled(transitions.map((animation) => animation.finished)).then(() => {
+                settleMs = performance.now() - started
+              })
+            }
+          }
           if (frameCount === 2) firstPaintMs = now - started
-          if (now - started >= sampleMs && frameCount >= 2) {
-            resolve({ dispatchMs: dispatched - started, firstPaintMs, frameIntervals: intervals.slice(1) })
+          if (now - started >= sampleMs && frameCount >= 2 && settleMs != null) {
+            resolve({ dispatchMs: dispatched - started, firstPaintMs, settleMs, frameIntervals: intervals.slice(1) })
           } else {
             requestAnimationFrame(sample)
           }

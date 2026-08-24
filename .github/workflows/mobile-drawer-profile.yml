@@ -146,6 +146,7 @@ jobs:
                     runs: length,
                     metrics: ([
                       metric("opening_first_paint_ms"; ["profile", "opening", "firstPaint", "medianMs"]),
+                      metric("opening_settle_ms"; ["profile", "opening", "settle", "medianMs"]),
                       metric("opening_frame_p95_ms"; ["profile", "opening", "frameIntervals", "p95Ms"]),
                       metric("cycle_renderer_task_ms"; ["profile", "cycles", "rendererTaskMsPerOpenClose"]),
                       metric("cycle_long_task_total_ms"; ["profile", "cycles", "longTaskTotalMs"]),
@@ -154,6 +155,7 @@ jobs:
                     ] | from_entries),
                     run_metrics: [.[].profile | {
                       opening_first_paint_ms: .opening.firstPaint.medianMs,
+                      opening_settle_ms: .opening.settle.medianMs,
                       opening_frame_p95_ms: .opening.frameIntervals.p95Ms,
                       cycle_renderer_task_ms: .cycles.rendererTaskMsPerOpenClose,
                       cycle_long_task_total_ms: .cycles.longTaskTotalMs,
