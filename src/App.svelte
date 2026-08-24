@@ -6252,7 +6252,6 @@ return rows`
 
         <CelebrationSettings
           selectedId={completionCelebrationId}
-          previewingId={celebrationPreview?.celebrationId ?? null}
           onSelect={(id) => { void startCelebrationPreview(id) }}
         />
 

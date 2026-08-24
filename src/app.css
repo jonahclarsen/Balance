@@ -2438,7 +2438,7 @@ body.mobile-checkbox-dragging {
 
 .celebration-options {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 11px;
 }
 
@@ -2450,11 +2450,11 @@ body.mobile-checkbox-dragging {
 .celebration-option-button {
   position: relative;
   display: grid;
-  grid-template-rows: auto auto 1fr;
+  grid-template-rows: auto 1fr;
   align-content: start;
   width: 100%;
   min-width: 0;
-  min-height: 238px;
+  min-height: 0;
   overflow: hidden;
   overflow: clip;
   border-radius: 12px;
@@ -2582,40 +2582,6 @@ body.mobile-checkbox-dragging {
   line-height: 1.38;
 }
 
-.celebration-option-badges {
-  display: flex;
-  align-self: end;
-  flex-wrap: wrap;
-  gap: 5px;
-  padding: 4px 11px 0;
-}
-
-.celebration-intense-badge,
-.celebration-selected-badge,
-.celebration-previewing-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  border-radius: 999px;
-  padding: 3px 7px;
-  font-size: 9px;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  line-height: 1.2;
-  text-transform: uppercase;
-}
-
-.celebration-intense-badge {
-  background: color-mix(in srgb, var(--celebration-art-c) 24%, var(--paper));
-  color: var(--ink);
-}
-
-.celebration-selected-badge,
-.celebration-previewing-badge {
-  background: var(--accent);
-  color: var(--paper-strong);
-}
-
 .celebration-preview-announcement {
   position: fixed;
   width: 1px;
@@ -2623,6 +2589,18 @@ body.mobile-checkbox-dragging {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+@container celebration-picker (max-width: 900px) {
+  .celebration-options {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container celebration-picker (max-width: 720px) {
+  .celebration-options {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @container celebration-picker (max-width: 560px) {

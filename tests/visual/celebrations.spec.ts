@@ -63,6 +63,20 @@ test('Settings renders Random first followed by every celebration card', async (
   await expect(cards.first()).toHaveAttribute('data-celebration-option', 'random')
   await expect(cards.first()).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('.celebration-settings > .settings-actions')).toHaveCount(0)
+
+  const layout = await cards.evaluateAll((buttons) => {
+    const firstTop = buttons[0]?.getBoundingClientRect().top
+    return {
+      firstRowCount: buttons.filter((button) => button.getBoundingClientRect().top === firstTop).length,
+      firstRowHeight: buttons[0]?.getBoundingClientRect().height,
+      pillCount: document.querySelectorAll(
+        '.celebration-intense-badge, .celebration-selected-badge, .celebration-previewing-badge',
+      ).length,
+    }
+  })
+  expect(layout.firstRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 5)
+  if (testInfo.project.name === 'desktop') expect(layout.firstRowHeight).toBeLessThan(238)
+  expect(layout.pillCount).toBe(0)
 })
 
 test('Random persists as the preference and previews a concrete celebration', async ({ page }, testInfo) => {
@@ -96,7 +110,7 @@ test('selecting saves, previews yesterday without chrome or plan mutations, and 
   const settingsScrollTop = await page.evaluate((mobile) =>
     mobile ? window.scrollY : (document.querySelector<HTMLElement>('.workspace')?.scrollTop ?? 0),
   testInfo.project.name === 'mobile')
-  await deadlineGoose.click()
+  await deadlineGoose.evaluate((element) => (element as HTMLButtonElement).click())
 
   await expect(page.locator('.celebration-preview-control')).toHaveCount(0)
   await expect(page.locator('.celebration-banner')).toHaveCount(0)

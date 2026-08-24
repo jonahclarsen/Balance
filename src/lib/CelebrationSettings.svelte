@@ -2,7 +2,6 @@
   import { COMPLETION_CELEBRATION_OPTIONS, type CompletionCelebrationId } from './celebrations'
 
   export let selectedId: CompletionCelebrationId
-  export let previewingId: CompletionCelebrationId | null = null
   export let onSelect: (id: CompletionCelebrationId) => void
 
   let grid: HTMLDivElement
@@ -69,7 +68,6 @@
           type="button"
           class="celebration-option-button"
           class:selected={selectedId === celebration.id}
-          class:previewing={previewingId === celebration.id}
           aria-pressed={selectedId === celebration.id}
           tabindex={rovingId === celebration.id ? 0 : -1}
           data-celebration-option={celebration.id}
@@ -90,16 +88,6 @@
           <span class="celebration-option-copy">
             <strong>{celebration.name}</strong>
             <small>{celebration.description}</small>
-          </span>
-          <span class="celebration-option-badges">
-            {#if celebration.intensity >= 4}
-              <span class="celebration-intense-badge">Visually intense</span>
-            {/if}
-            {#if previewingId === celebration.id}
-              <span class="celebration-previewing-badge">Previewing…</span>
-            {:else if selectedId === celebration.id}
-              <span class="celebration-selected-badge"><span aria-hidden="true">✓</span> Selected</span>
-            {/if}
           </span>
         </button>
       </div>
