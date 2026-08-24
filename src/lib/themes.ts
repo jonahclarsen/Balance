@@ -141,6 +141,7 @@ const FNV_PRIME_64 = 0x0000_0100_0000_01b3n
 const MIX_MULTIPLIER_1 = 0xff51_afd7_ed55_8ccdn
 const MIX_MULTIPLIER_2 = 0xc4ce_b9fe_1a85_ec53n
 const RANDOM_THEME_HASH_NAMESPACE = 'balance-random-v1\0'
+const UTF8_ENCODER = new TextEncoder()
 
 /**
  * Stable synchronous 64-bit FNV-1a plus a Murmur-style avalanche. Do not swap
@@ -149,7 +150,7 @@ const RANDOM_THEME_HASH_NAMESPACE = 'balance-random-v1\0'
  */
 export function stableThemeHash64(value: string): bigint {
   let hash = FNV_OFFSET_64
-  for (const byte of new TextEncoder().encode(value)) {
+  for (const byte of UTF8_ENCODER.encode(value)) {
     hash ^= BigInt(byte)
     hash = (hash * FNV_PRIME_64) & MASK_64
   }

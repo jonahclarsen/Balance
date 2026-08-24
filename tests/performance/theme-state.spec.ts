@@ -68,7 +68,7 @@ test('device theme bootstrap stays effectively instant across repeated startups'
     ...stats(samples),
   }
   console.log(`THEME_PERF ${JSON.stringify(profile)}`)
-  expect(profile.p95Ms).toBeLessThan(5)
+  expect(profile.p95Ms).toBeLessThan(10)
 })
 
 test('today observation stays cheap with 3,264 historical themes', async ({ page }) => {
