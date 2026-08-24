@@ -327,10 +327,39 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   }
 
   await dateInput.focus()
-  await page.keyboard.press('Alt+i')
+  const originalDate = await dateInput.inputValue()
+  const shortcutCancellation = await dateInput.evaluate((input) => {
+    const keydown = new KeyboardEvent('keydown', {
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+      code: 'KeyI',
+      key: 'Dead',
+    })
+    input.dispatchEvent(keydown)
+    const beforeinput = new InputEvent('beforeinput', {
+      bubbles: true,
+      cancelable: false,
+      data: '\u02c6',
+      inputType: 'insertCompositionText',
+    })
+    input.dispatchEvent(beforeinput)
+    input.value += '\u02c6'
+    input.dispatchEvent(new InputEvent('input', {
+      bubbles: true,
+      data: '\u02c6',
+      inputType: 'insertCompositionText',
+    }))
+    return {
+      keydownPrevented: keydown.defaultPrevented,
+      value: input.value,
+    }
+  })
+  expect(shortcutCancellation).toEqual({ keydownPrevented: true, value: originalDate })
   await expect(primaryPane.getByRole('button', { name: 'Exit IMAX mode' })).toHaveAttribute('aria-pressed', 'true')
   await page.keyboard.press('Alt+i')
   await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
+  await expect(dateInput).toHaveValue(originalDate)
 })
 
 test('sidebar shows the task time shortcut legend above the template selector', async ({ page }, testInfo) => {
@@ -758,6 +787,16 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
   await expect(search.locator('.nav-shortcut')).toHaveText(/^(?:⌥|Alt\+)C$/)
   await page.keyboard.press('Alt+c')
   await expect(page.getByRole('dialog', { name: 'Search Balance' })).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Alt+t')
+  const dateInput = page.getByRole('region', { name: 'Daily plan' }).locator('.date-input')
+  const originalDate = await dateInput.inputValue()
+  await dateInput.focus()
+  await page.keyboard.press('Alt+n')
+  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Notes', exact: true })).toHaveClass(/active/)
+  await page.keyboard.press('Alt+t')
+  await expect(dateInput).toHaveValue(originalDate)
 })
 
 test('List History is an obvious contextual child of Lists', async ({ page }) => {

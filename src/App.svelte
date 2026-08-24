@@ -179,6 +179,14 @@
   let documentFindOpen = false
   let documentFindBar: DocumentFindBar | null = null
   let shortcutsHelpOpen = false
+  type HandledAltShortcutInput = {
+    code: string
+    target: HTMLInputElement | HTMLTextAreaElement | HTMLElement
+    value: string
+    selectionStart: number | null
+    selectionEnd: number | null
+  }
+  let handledAltShortcutInput: HandledAltShortcutInput | null = null
   let workspaceEl: HTMLElement
   let scrollPositionsByPage: Record<string, number> = {}
   let lastScrolledPage = ''
@@ -2679,7 +2687,7 @@ return rows`
 
   // When you add/remove/change a shortcut here, also update the user-facing
   // reference in src/lib/KeyboardShortcutsModal.svelte (opened with `?`).
-  function handleGlobalKeydown(event: KeyboardEvent) {
+  function applyGlobalKeydown(event: KeyboardEvent) {
     // The native store begins with a disposable bootstrap state. Do not let a
     // shortcut mutate it while SQLCipher is still opening the real database.
     if ($databaseLoadPending || $databaseLoadError) return
@@ -3217,6 +3225,97 @@ return rows`
       event.preventDefault()
       void plannerStore.redo()
     }
+  }
+
+  function handleGlobalKeydown(event: KeyboardEvent) {
+    clearHandledAltShortcutInput()
+    const shortcutInput = snapshotShortcutInput(event.target)
+    applyGlobalKeydown(event)
+
+    if (!shortcutInput || !event.altKey || event.metaKey || event.ctrlKey || !event.defaultPrevented) return
+
+    // macOS text services can still deliver dead-key composition input after a
+    // WebKit keydown was canceled. Intercept that input on the focused editor;
+    // non-cancelable composition events are rolled back before editor handlers
+    // can persist them.
+    handledAltShortcutInput = { code: event.code, ...shortcutInput }
+    shortcutInput.target.addEventListener('beforeinput', handleGlobalBeforeInput, true)
+    shortcutInput.target.addEventListener('input', handleGlobalInput, true)
+  }
+
+  function handleGlobalBeforeInput(event: Event) {
+    if (!(event instanceof InputEvent)) return
+    const shortcutInput = handledAltShortcutInput
+    if (!shortcutInput || event.target !== shortcutInput.target || !event.inputType.startsWith('insert')) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    if (event.defaultPrevented) clearHandledAltShortcutInput()
+  }
+
+  function handleGlobalInput(event: Event) {
+    if (!(event instanceof InputEvent)) return
+    const shortcutInput = handledAltShortcutInput
+    if (!shortcutInput || event.target !== shortcutInput.target || !event.inputType.startsWith('insert')) return
+
+    if (shortcutInput.target instanceof HTMLInputElement || shortcutInput.target instanceof HTMLTextAreaElement) {
+      shortcutInput.target.value = shortcutInput.value
+      if (shortcutInput.selectionStart !== null && shortcutInput.selectionEnd !== null) {
+        shortcutInput.target.setSelectionRange(shortcutInput.selectionStart, shortcutInput.selectionEnd)
+      }
+    } else {
+      shortcutInput.target.innerHTML = shortcutInput.value
+      if (shortcutInput.selectionStart !== null && shortcutInput.selectionEnd !== null) {
+        const range = document.createRange()
+        const start = domPositionForTextOffset(shortcutInput.target, shortcutInput.selectionStart)
+        const end = domPositionForTextOffset(shortcutInput.target, shortcutInput.selectionEnd)
+        range.setStart(start.node, start.offset)
+        range.setEnd(end.node, end.offset)
+        const selection = document.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+      }
+    }
+    event.stopPropagation()
+    clearHandledAltShortcutInput()
+  }
+
+  function handleGlobalKeyup(event: KeyboardEvent) {
+    if (event.code === handledAltShortcutInput?.code) clearHandledAltShortcutInput()
+  }
+
+  function snapshotShortcutInput(target: EventTarget | null): Omit<HandledAltShortcutInput, 'code'> | null {
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      return {
+        target,
+        value: target.value,
+        selectionStart: target.selectionStart,
+        selectionEnd: target.selectionEnd,
+      }
+    }
+    if (!(target instanceof HTMLElement) || !target.isContentEditable) return null
+    const selection = document.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    const selectionInsideTarget = Boolean(
+      range && target.contains(range.startContainer) && target.contains(range.endContainer),
+    )
+    return {
+      target,
+      value: target.innerHTML,
+      selectionStart: range && selectionInsideTarget
+        ? textOffsetForRangeBoundary(target, range.startContainer, range.startOffset)
+        : null,
+      selectionEnd: range && selectionInsideTarget
+        ? textOffsetForRangeBoundary(target, range.endContainer, range.endOffset)
+        : null,
+    }
+  }
+
+  function clearHandledAltShortcutInput() {
+    if (!handledAltShortcutInput) return
+    handledAltShortcutInput.target.removeEventListener('beforeinput', handleGlobalBeforeInput, true)
+    handledAltShortcutInput.target.removeEventListener('input', handleGlobalInput, true)
+    handledAltShortcutInput = null
   }
 
   function findPlanItem(items: PlanItem[], itemId: string): PlanItem | null {
@@ -4887,6 +4986,7 @@ return rows`
 
 <svelte:window
   on:keydown|capture={handleGlobalKeydown}
+  on:keyup|capture={handleGlobalKeyup}
   on:focusin={handleGlobalFocusIn}
   on:scroll={handleWindowScroll}
   on:pointerdown|capture={handleGlobalPointerDown}
