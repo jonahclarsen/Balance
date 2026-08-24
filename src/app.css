@@ -6070,11 +6070,6 @@ body.mobile-checkbox-dragging {
     color: var(--ink);
   }
 
-  .mobile-app-header button:hover {
-    border-color: var(--line);
-    background: var(--paper-strong);
-  }
-
   .mobile-app-header svg {
     width: 22px;
     height: 22px;
@@ -6154,11 +6149,6 @@ body.mobile-checkbox-dragging {
     color: var(--ink);
   }
 
-  .mobile-drawer-close-button:hover {
-    border-color: var(--line);
-    background: var(--paper-strong);
-  }
-
   .mobile-drawer-close-button svg {
     width: 22px;
     height: 22px;
@@ -6232,6 +6222,18 @@ body.mobile-checkbox-dragging {
     will-change: opacity;
   }
 
+  .mobile-menu-button,
+  .mobile-drawer-close-button,
+  .mobile-drawer-backdrop {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-menu-button:hover,
+  .mobile-drawer-close-button:hover {
+    border-color: transparent;
+    background: transparent;
+  }
+
   .mobile-drawer-backdrop.open {
     opacity: 1;
     visibility: visible;
@@ -6243,4 +6245,12 @@ body.mobile-checkbox-dragging {
     transition: none;
   }
 
+}
+
+@media (max-width: 760px) and (hover: hover) {
+  .mobile-app-header button:hover,
+  .mobile-drawer-close-button:hover {
+    border-color: var(--line);
+    background: var(--paper-strong);
+  }
 }

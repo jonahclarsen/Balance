@@ -16,6 +16,20 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
   await expect(header.getByRole('button', { name: 'Undo' })).toBeVisible()
   await expect(drawer).toBeHidden()
 
+  const idleMenuButtonStyles = await menuButton.evaluate((element) => {
+    const styles = getComputedStyle(element)
+    return { backgroundColor: styles.backgroundColor, borderColor: styles.borderColor }
+  })
+
+  const tapHighlightColors = await page.locator('.mobile-menu-button, .mobile-drawer-close-button, .mobile-drawer-backdrop').evaluateAll(
+    (elements) => elements.map((element) => getComputedStyle(element).webkitTapHighlightColor),
+  )
+  expect(tapHighlightColors).toEqual([
+    'rgba(0, 0, 0, 0)',
+    'rgba(0, 0, 0, 0)',
+    'rgba(0, 0, 0, 0)',
+  ])
+
   const headerGeometry = await header.evaluate((element) => {
     const rect = element.getBoundingClientRect()
     return { top: rect.top, height: rect.height }
@@ -25,10 +39,14 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
 
   const menuButtonBox = await menuButton.boundingBox()
   if (!menuButtonBox) throw new Error('Menu button has no tappable bounds')
-  await menuButton.click()
+  await menuButton.tap()
   await expect(drawer).toBeVisible()
   await expect(drawer.getByRole('button', { name: 'Undo' })).toHaveCount(0)
   await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+  await expect.poll(() => menuButton.evaluate((element) => {
+    const styles = getComputedStyle(element)
+    return { backgroundColor: styles.backgroundColor, borderColor: styles.borderColor }
+  })).toEqual(idleMenuButtonStyles)
   await page.waitForTimeout(250)
 
   const closeButtonBox = await closeButton.boundingBox()
@@ -43,8 +61,12 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
     fullPage: false,
   })
 
-  await closeButton.click()
+  await closeButton.tap()
   await expect(drawer).toBeHidden()
+  await expect.poll(() => menuButton.evaluate((element) => {
+    const styles = getComputedStyle(element)
+    return { backgroundColor: styles.backgroundColor, borderColor: styles.borderColor }
+  })).toEqual(idleMenuButtonStyles)
 
   // The left edge belongs to Android's Back gesture; opening is button-only.
   await page.mouse.move(2, 320)
@@ -136,7 +158,7 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
 
   await menuButton.click()
   await drawer.getByRole('button', { name: 'Settings', exact: true }).click()
-  await expect(page.getByRole('heading', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
   await expect.poll(() => header.evaluate((element) => element.getBoundingClientRect().top)).toBe(0)
 })
