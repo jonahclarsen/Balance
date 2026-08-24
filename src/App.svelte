@@ -4959,7 +4959,6 @@ return rows`
   class:macos-titlebar-overlay={isMac && !isMobile}
   class:sidebar-hidden={viewMaximized}
   class:page-maximized={viewMaximized}
-  class:mobile-drawer-open={mobileDrawerOpen}
   class:mobile-drawer-dragging={mobileDrawerDragging}
   style={appShellStyle}
   inert={$databaseLoadPending || Boolean($databaseLoadError) || Boolean(celebrationPreview)}
@@ -5045,6 +5044,7 @@ return rows`
     id="primary-sidebar"
     class="sidebar"
     class:sidebar-hidden={viewMaximized}
+    class:mobile-drawer-open={mobileDrawerOpen}
     aria-label="Primary navigation drawer"
     bind:this={mobileDrawerEl}
   >

@@ -6108,7 +6108,7 @@ body.mobile-checkbox-dragging {
     will-change: transform;
   }
 
-  .app-shell.mobile-drawer-open .sidebar,
+  .sidebar.mobile-drawer-open,
   .app-shell.mobile-drawer-dragging .sidebar {
     visibility: visible;
     transform: translate3d(0, 0, 0);
