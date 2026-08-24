@@ -105,15 +105,22 @@ jobs:
             directory="$3"
             theme="$4"
             echo "Running $variant ($theme) round $round" | tee -a "$logs"
-            output="$({
-              cd "$directory"
-              BALANCE_MOBILE_DRAWER_PERF_THEME="$theme" pnpm exec playwright test \
-                --config playwright.mobile-drawer-performance.config.ts \
-                --project android-like-6x-cpu \
-                --retries 2 \
-                --trace off
-            } 2>&1)"
-            printf '%s\n' "$output" | tee -a "$logs"
+            for attempt in 1 2 3; do
+              set +e
+              output="$({
+                cd "$directory"
+                BALANCE_MOBILE_DRAWER_PERF_THEME="$theme" pnpm exec playwright test \
+                  --config playwright.mobile-drawer-performance.config.ts \
+                  --project android-like-6x-cpu \
+                  --trace off
+              } 2>&1)"
+              command_exit="$?"
+              set -e
+              printf '%s\n' "$output" | tee -a "$logs"
+              if (( command_exit == 0 )); then break; fi
+              echo "Attempt $attempt failed for $variant ($theme) round $round" | tee -a "$logs"
+              if (( attempt == 3 )); then return "$command_exit"; fi
+            done
             payload="$(printf '%s\n' "$output" | sed -n 's/^MOBILE_DRAWER_PERF //p')"
             test -n "$payload"
             jq -cn \
