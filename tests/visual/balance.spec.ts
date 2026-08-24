@@ -1,7 +1,17 @@
-import { expect, test, type Locator } from '@playwright/test'
+import { expect, test, type Locator, type Page } from '@playwright/test'
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
 const transparent = 'rgba(0, 0, 0, 0)'
+
+async function selectDeviceThemeForTest(page: Page, themeId: string) {
+  await page.evaluate((selectedThemeId) => localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
+    version: 1,
+    themeId: selectedThemeId,
+    randomThemeStartDate: '',
+    doneTintColor: '',
+    checkboxColor: '',
+  })), themeId)
+}
 
 async function expectDayRail(
   locator: Locator,
@@ -92,10 +102,17 @@ test('day rail points toward today and disappears on today', async ({ page }, te
   })
 })
 
-test('today rolls over at 3am while the app stays open', async ({ page }, testInfo) => {
+test('a Random day keeps its recorded theme after the 3am rollover', async ({ page }, testInfo) => {
   await page.clock.install({ time: new Date('2026-08-18T02:59:00') })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
+  await page.evaluate(() => localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
+    version: 1,
+    themeId: 'random',
+    randomThemeStartDate: '',
+    doneTintColor: '',
+    checkboxColor: '',
+  })))
   await page.reload()
 
   const workspace = page.locator('.workspace')
@@ -104,51 +121,67 @@ test('today rolls over at 3am while the app stays open', async ({ page }, testIn
   await expect(workspace).toHaveClass(/current-day-workspace/)
   await expect.poll(() => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    return [state?.preferences?.themeId, state?.preferences?.randomThemeDate]
-  })).toEqual(['random', '2026-08-17'])
+    return state?.preferences?.['dayTheme/2026-08-17']
+  })).toBe('earth')
   const initialTheme = await page.locator('html').getAttribute('data-theme')
-  expect(initialTheme).toBeTruthy()
-  expect(initialTheme).not.toBe('random')
+  expect(initialTheme).toBe('earth')
 
   await page.clock.runFor(60_001)
 
   await expect(workspace).toHaveClass(/before-current-day-workspace/)
   await expectDayRail(workspace, 'before', testInfo.project.name === 'mobile')
   await expect(page.locator('.sidebar-footer button.primary')).toHaveText('Generate selected day')
-  await expect(page.locator('html')).not.toHaveAttribute('data-theme', initialTheme!)
-  await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    return state?.preferences?.randomThemeDate
-  })).toBe('2026-08-18')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', initialTheme!)
 })
 
-test('random theme catches up on launch after a missed rollover', async ({ page }) => {
+test('Random is deterministic for the date across launches', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-08-18T10:00:00') })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.evaluate(() => localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
+    version: 1,
+    themeId: 'random',
+    randomThemeStartDate: '',
+    doneTintColor: '',
+    checkboxColor: '',
+  })))
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
+})
+
+test('a synced historical theme temporarily overrides this device theme', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-08-18T10:00:00') })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    return state?.preferences?.randomThemeDate
-  })).toBe('2026-08-18')
-
-  await page.addInitScript(() => {
+  await page.evaluate(() => {
     const key = 'balance.appState.v1'
-    const rawState = localStorage.getItem(key)
-    if (!rawState) return
-    const state = JSON.parse(rawState)
-    state.preferences.themeId = 'random'
-    state.preferences.randomThemeId = 'graphite'
-    state.preferences.randomThemeDate = '2026-08-17'
+    const state = JSON.parse(localStorage.getItem(key) ?? 'null')
+    state.preferences['dayTheme/2026-08-17'] = 'pink'
     localStorage.setItem(key, JSON.stringify(state))
   })
+  await selectDeviceThemeForTest(page, 'graphite')
   await page.reload()
 
-  await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    return [state?.preferences?.randomThemeDate, state?.preferences?.randomThemeId]
-  })).toEqual(['2026-08-18', expect.not.stringMatching(/^graphite$/)])
-  await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'graphite')
+  const dateInput = page.getByRole('region', { name: 'Daily plan' }).locator('.date-input')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
+  await dateInput.fill('2026-08-17')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'pink')
+
+  const openNavigation = page.getByRole('button', { name: 'Open navigation' })
+  if (await openNavigation.isVisible()) await openNavigation.click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
+  await page.getByRole('group', { name: 'Color theme' }).getByRole('button', {
+    name: 'Orange Clear orange and light apricot',
+  }).click()
+  if (await openNavigation.isVisible()) await openNavigation.click()
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'pink')
+  await dateInput.fill('2026-08-18')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'orange')
 })
 
 test('random theme can be scheduled for the next day boundary without changing today', async ({ page }) => {
@@ -184,15 +217,15 @@ test('random theme can be scheduled for the next day boundary without changing t
   await expect(cancelSchedule).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
   await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    return state?.preferences?.randomThemeStartDate
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return appearance?.randomThemeStartDate
   })).toBe('2026-08-18')
 
   await cancelSchedule.click()
   await expect(themeGroup.getByRole('button', { name: 'Start next day' })).toHaveAttribute('aria-pressed', 'false')
   await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    return state?.preferences?.randomThemeStartDate
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return appearance?.randomThemeStartDate
   })).toBe('')
   await themeGroup.getByRole('button', { name: 'Start next day' }).click()
 
@@ -201,13 +234,9 @@ test('random theme can be scheduled for the next day boundary without changing t
   await expect(randomTheme).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'graphite')
   await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    return [
-      state?.preferences?.themeId,
-      state?.preferences?.randomThemeDate,
-      state?.preferences?.randomThemeStartDate,
-    ]
-  })).toEqual(['random', '2026-08-18', ''])
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return [appearance?.themeId, appearance?.randomThemeStartDate]
+  })).toEqual(['random', ''])
 })
 
 test('day navigation buttons live in the fixed mobile header', async ({ page }, testInfo) => {
@@ -1037,10 +1066,16 @@ test('checkbox color can be changed in settings and persists', async ({ page }) 
   await colorPicker.focus()
   await colorPicker.press('Shift+ArrowRight')
   await colorPicker.press('Shift+ArrowDown')
-  const selectedColor = await page.evaluate(() => localStorage.getItem('balance:checkboxColor'))
+  const selectedColor = await page.evaluate(() => {
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return appearance?.checkboxColor ?? null
+  })
   expect(selectedColor).toMatch(/^#[0-9a-f]{6}$/)
   await expect
-    .poll(() => page.evaluate(() => localStorage.getItem('balance:checkboxColor')))
+    .poll(() => page.evaluate(() => {
+      const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+      return appearance?.checkboxColor ?? null
+    }))
     .toBe(selectedColor)
   const previewColor = await page.getByRole('checkbox', { name: 'Example checked checkbox' }).evaluate(
     (checkbox) => getComputedStyle(checkbox).backgroundColor,
@@ -1057,6 +1092,7 @@ test('checkbox color can be changed in settings and persists', async ({ page }) 
 test('iridescent sidebar gradient starts at a random phase on each page', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
+  await selectDeviceThemeForTest(page, 'iridescent')
   await page.reload()
   await page.emulateMedia({ reducedMotion: 'no-preference' })
 
@@ -1129,6 +1165,7 @@ test('iridescent sidebar gradient starts at a random phase on each page', async 
 test('iridescent template tabs randomize and restart on rapid selection', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
+  await selectDeviceThemeForTest(page, 'iridescent')
   await page.reload()
   await page.emulateMedia({ reducedMotion: 'no-preference' })
   await page.locator('.primary-nav button').filter({ hasText: 'Day Templates' }).evaluate((button) => button.click())
@@ -1310,8 +1347,8 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   await expect(pinkTheme).toHaveAttribute('aria-pressed', 'true')
   await expect
     .poll(() => page.evaluate(() => {
-      const storedState = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-      return storedState?.preferences?.themeId ?? null
+      const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+      return appearance?.themeId ?? null
     }))
     .toBe('pink')
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'pink')
@@ -1462,6 +1499,7 @@ test('iridescent gradient controls preview live, persist, and toggle with the or
 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
+  await selectDeviceThemeForTest(page, 'iridescent')
   await page.reload()
   await openSettings()
 
@@ -1508,8 +1546,8 @@ test('iridescent gradient controls preview live, persist, and toggle with the or
   )).toContain('282')
   await expect(gradientToggle).toBeEnabled()
   await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    const gradient = state?.preferences?.iridescentGradient
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    const gradient = appearance?.iridescentGradient
     return gradient ? { ...gradient, colors: gradient.colors?.slice(0, 1) } : null
   })).toMatchObject({
     contrast: 180,

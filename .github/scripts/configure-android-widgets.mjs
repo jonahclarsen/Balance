@@ -391,6 +391,8 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 }
 `
 
+// Historical days may reference every shipped theme forever. Never delete a
+// palette; retire the theme from current selection and Random mode instead.
 const widgetThemes = [
   { id: 'iridescent', paper: '#FFFDFE', surface: '#FFFFFF', ink: '#282134', muted: '#736B80', line: '#DDD3E6', accent: '#A13C91', brand: '#A13C91', statusAccent: '#7B5BD6', taskAccent: '#7B5BD6', doneAccent: '#28A987', progressAccent: '#7B5BD6', progressColors: ['#4257C9', '#C85FB0', '#F9A94F'], timePill: '#52798A', timePillGradients: [['#4257A8', '#6655A7'], ['#6B4F92', '#87527F'], ['#34726F', '#466C91'], ['#825A4B', '#7E526C']], timePillInk: '#FFFFFF', backgroundColors: ['#F8F3FB', '#F2F8FA', '#FAF6EF'] },
   { id: 'forest', paper: '#FFFDF8', surface: '#FFFFFF', ink: '#1D2428', muted: '#687276', line: '#D8D4CA', accent: '#2F6F68' },

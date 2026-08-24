@@ -113,7 +113,7 @@ import type {
   TemplateItem,
   TemplateOption,
 } from './types'
-import { normalizeReplicatedPreferences } from './preferences'
+import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './preferences'
 import { isNoteTrashExpired } from './noteTrash'
 
 const STORAGE_KEY = 'balance.appState.v1'
@@ -664,6 +664,22 @@ function createPlannerStore() {
           ? state
           : { ...state, preferences }
       }, { undoable: false, reconcileGoals: false })
+    },
+
+    recordDayTheme(date: string, themeId: string): boolean {
+      const key = dayThemePreferenceKey(date)
+      const current = get(store)
+      if ((current.preferences as unknown as Record<string, unknown>)[key] === themeId) return false
+      commit('patch_preferences', { patch: { [key]: themeId } }, (state) => {
+        if ((state.preferences as unknown as Record<string, unknown>)[key] === themeId) return state
+        return {
+          ...state,
+          // The date and concrete theme are generated internally, so avoid
+          // renormalizing every historical day-theme key on this hot path.
+          preferences: { ...state.preferences, [key]: themeId },
+        }
+      }, { undoable: false, reconcileGoals: false })
+      return true
     },
 
     // Generating normally moves the app onto the generated day. The side-by-side

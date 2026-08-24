@@ -186,6 +186,9 @@ export type Operation = {
 }
 
 export type ReplicatedPreferences = {
+  // Legacy appearance fields stay in the replicated envelope so older app
+  // versions can replay checkpoints. Current builds migrate them once and then
+  // use DeviceAppearancePreferences instead.
   themeId: string
   randomThemeId: string
   randomThemeDate: string
@@ -194,6 +197,15 @@ export type ReplicatedPreferences = {
   doneTintColor: string
   checkboxColor: string
   databaseLoadingMessages: string[]
+  iridescentGradient: IridescentGradientPreferences
+}
+
+export type DeviceAppearancePreferences = {
+  version: 1
+  themeId: string
+  randomThemeStartDate: string
+  doneTintColor: string
+  checkboxColor: string
   iridescentGradient: IridescentGradientPreferences
 }
 

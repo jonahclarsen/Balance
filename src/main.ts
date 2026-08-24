@@ -1,9 +1,16 @@
 import { mount } from 'svelte'
 import './app.css'
 import App from './App.svelte'
-import { DEFAULT_PRESET_THEME_ID } from './lib/themes'
+import { createDefaultDeviceAppearance, effectiveThemeForDate, readDeviceAppearanceBootstrap } from './lib/deviceAppearance'
+import { todayISO } from './lib/planner'
 
-document.documentElement.dataset.theme = DEFAULT_PRESET_THEME_ID
+const deviceThemeBootstrapStartedAt = performance.now()
+const startupAppearance = readDeviceAppearanceBootstrap() ?? createDefaultDeviceAppearance()
+document.documentElement.dataset.theme = effectiveThemeForDate(startupAppearance, todayISO())
+performance.measure('balance-device-theme-bootstrap', {
+  start: deviceThemeBootstrapStartedAt,
+  end: performance.now(),
+})
 
 const app = mount(App, {
   target: document.getElementById('app')!,

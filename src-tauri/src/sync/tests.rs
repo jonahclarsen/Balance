@@ -20,8 +20,8 @@ use super::crypto::SyncKey;
 use super::transport::{self, TIMEOUT_MESSAGE};
 use super::*;
 use crate::{
-    open_database_at, persist_operation_to_database, read_app_state_from_database,
-    replace_app_state,
+    metadata_value, open_database_at, persist_operation_to_database, read_app_state_from_database,
+    replace_app_state, set_metadata,
 };
 
 /// A unique scratch DB path that cleans up on drop.
@@ -1243,6 +1243,119 @@ fn replicated_preferences_converge_and_survive_a_checkpoint() {
     a.read(|connection| checkpoint_operation_log(connection).unwrap());
     exchange(&b, &a, &key);
     assert_eq!(b.state()["preferences"], expected);
+}
+
+#[test]
+fn daily_theme_registers_converge_independently_and_survive_a_checkpoint() {
+    let sa = Scratch::new("day-themes-a");
+    let sb = Scratch::new("day-themes-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let key = SyncKey::generate();
+
+    exchange(&b, &a, &key);
+    a.write(|connection| {
+        persist_operation_to_database(
+            connection,
+            &patch_preferences_op(
+                "day-theme-a-1",
+                "device-A",
+                1,
+                "2026-08-24T20:00:00.000Z",
+                json!({ "dayTheme/2026-08-24": "graphite" }),
+            ),
+        )
+        .unwrap();
+        persist_operation_to_database(
+            connection,
+            &patch_preferences_op(
+                "day-theme-a-2",
+                "device-A",
+                2,
+                "2026-08-25T20:00:00.000Z",
+                json!({ "dayTheme/2026-08-25": "ocean" }),
+            ),
+        )
+        .unwrap();
+    });
+    b.write(|connection| {
+        persist_operation_to_database(
+            connection,
+            &patch_preferences_op(
+                "day-theme-b-1",
+                "device-B",
+                1,
+                "2026-08-24T21:00:00.000Z",
+                json!({ "dayTheme/2026-08-24": "pink" }),
+            ),
+        )
+        .unwrap();
+        // Unknown IDs can be themes introduced by a newer app or retired
+        // themes preserved for history. Older peers must relay them verbatim.
+        persist_operation_to_database(
+            connection,
+            &patch_preferences_op(
+                "day-theme-b-2",
+                "device-B",
+                2,
+                "2026-08-26T21:00:00.000Z",
+                json!({ "dayTheme/2026-08-26": "retired-theme" }),
+            ),
+        )
+        .unwrap();
+    });
+
+    exchange(&a, &b, &key);
+    for device in [&a, &b] {
+        let state = device.state();
+        assert_eq!(state["preferences"]["dayTheme/2026-08-24"], "pink");
+        assert_eq!(state["preferences"]["dayTheme/2026-08-25"], "ocean");
+        assert_eq!(state["preferences"]["dayTheme/2026-08-26"], "retired-theme");
+    }
+
+    a.read(|connection| checkpoint_operation_log(connection).unwrap());
+    exchange(&b, &a, &key);
+    assert_eq!(b.state()["preferences"]["dayTheme/2026-08-24"], "pink");
+    assert_eq!(b.state()["preferences"]["dayTheme/2026-08-25"], "ocean");
+    assert_eq!(
+        b.state()["preferences"]["dayTheme/2026-08-26"],
+        "retired-theme"
+    );
+}
+
+#[test]
+fn device_appearance_metadata_does_not_cross_the_sync_boundary() {
+    let sa = Scratch::new("device-appearance-a");
+    let sb = Scratch::new("device-appearance-b");
+    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let a = TestStore::new(a);
+    let b = TestStore::new(b);
+    let key = SyncKey::generate();
+
+    a.write(|connection| {
+        set_metadata(connection, "device_appearance", r#"{"themeId":"graphite"}"#).unwrap()
+    });
+    b.write(|connection| {
+        set_metadata(connection, "device_appearance", r#"{"themeId":"pink"}"#).unwrap()
+    });
+    exchange(&a, &b, &key);
+    exchange(&b, &a, &key);
+
+    assert_eq!(
+        a.read(|connection| metadata_value(connection, "device_appearance").unwrap()),
+        Some(r#"{"themeId":"graphite"}"#.to_string())
+    );
+    assert_eq!(
+        b.read(|connection| metadata_value(connection, "device_appearance").unwrap()),
+        Some(r#"{"themeId":"pink"}"#.to_string())
+    );
 }
 
 // ---------------------------------------------------------------------------

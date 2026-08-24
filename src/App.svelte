@@ -50,19 +50,28 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, DailyPlan, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
+  import type { ArchivedListTemplateItem, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
-  import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient } from './lib/preferences'
+  import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
+  import {
+    createDefaultDeviceAppearance,
+    deviceAppearanceFromLegacyPreferences,
+    effectiveThemeForDate,
+    normalizeDeviceAppearance,
+    persistEncryptedDeviceAppearance,
+    readDeviceAppearanceBootstrap,
+    readEncryptedDeviceAppearance,
+    selectedThemeForDate,
+    writeDeviceAppearanceBootstrap,
+  } from './lib/deviceAppearance'
   import {
     DEFAULT_PRESET_THEME_ID,
     DEFAULT_THEME_ID,
     normalizePresetThemeId,
-    normalizeThemeId,
-    pickRandomThemeId,
     THEME_OPTIONS,
     THEME_PRESETS,
     type PresetThemeId,
@@ -210,8 +219,13 @@
   let effectiveThemeId: PresetThemeId = DEFAULT_PRESET_THEME_ID
   let preferencesReady = false
   let randomThemeScheduled = false
+  let deviceAppearance: DeviceAppearancePreferences = readDeviceAppearanceBootstrap()
+    ?? createDefaultDeviceAppearance()
+  let deviceAppearanceDatabaseReady = false
+  let lastObservedTodayKey = ''
+  let historicalThemeId: string | null = null
+  let displayedThemeId: PresetThemeId = DEFAULT_PRESET_THEME_ID
   let iridescentGradient = createDefaultIridescentGradient()
-  let previousPersistedIridescentGradient: IridescentGradientPreferences | null = null
   let completionTrackingReady = false
   let planCompletionById = new Map<Id, boolean>()
   let listCompletionById = new Map<Id, boolean>()
@@ -535,40 +549,41 @@ return rows`
   $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
-  $: themeId = normalizeThemeId($plannerStore.preferences.themeId)
-  $: effectiveThemeId = themeId === 'random'
-    ? normalizePresetThemeId($plannerStore.preferences.randomThemeId)
-    : themeId
-  $: randomThemeScheduled = themeId !== 'random'
-    && $plannerStore.preferences.randomThemeStartDate > currentDay
+  $: themeId = selectedThemeForDate(deviceAppearance, currentDay)
+  $: effectiveThemeId = effectiveThemeForDate(deviceAppearance, currentDay)
+  $: randomThemeScheduled = deviceAppearance.themeId !== 'random'
+    && deviceAppearance.randomThemeStartDate > currentDay
   $: if (
     preferencesReady
-    && themeId !== 'random'
-    && $plannerStore.preferences.randomThemeStartDate
-    && $plannerStore.preferences.randomThemeStartDate <= currentDay
+    && deviceAppearance.themeId !== 'random'
+    && deviceAppearance.randomThemeStartDate
+    && deviceAppearance.randomThemeStartDate <= currentDay
   ) {
-    activateScheduledRandomTheme(currentDay, effectiveThemeId)
+    activateScheduledRandomTheme()
   }
-  $: if (
-    preferencesReady
-    && themeId === 'random'
-    && $plannerStore.preferences.randomThemeDate !== currentDay
-  ) {
-    rotateRandomTheme(currentDay)
-  }
-  $: doneTintColor = $plannerStore.preferences.doneTintColor
-  $: checkboxColor = $plannerStore.preferences.checkboxColor
+  $: doneTintColor = deviceAppearance.doneTintColor
+  $: checkboxColor = deviceAppearance.checkboxColor
   $: completionCelebrationId = normalizeCompletionCelebrationId(
     $plannerStore.preferences.completionCelebrationId,
   )
-  $: persistedIridescentGradient = $plannerStore.preferences.iridescentGradient
-  $: if (persistedIridescentGradient !== previousPersistedIridescentGradient) {
-    previousPersistedIridescentGradient = persistedIridescentGradient
-    iridescentGradient = persistedIridescentGradient
-  }
-  $: document.documentElement.dataset.theme = themeId === 'random'
-    ? normalizePresetThemeId($plannerStore.preferences.randomThemeId)
-    : themeId
+  $: iridescentGradient = deviceAppearance.iridescentGradient
+  $: historicalThemeId = view === 'today'
+    && !celebrationPreview
+    && displayedPlanDate < currentDay
+    ? replicatedDayTheme($plannerStore.preferences, displayedPlanDate)
+    : null
+  $: displayedThemeId = historicalThemeId
+    ? normalizePresetThemeId(historicalThemeId)
+    : effectiveThemeId
+  $: document.documentElement.dataset.theme = displayedThemeId
+  $: observeCurrentTodayTheme(
+    preferencesReady
+      && view === 'today'
+      && !celebrationPreview
+      && displayedPlanDate === currentDay,
+    currentDay,
+    effectiveThemeId,
+  )
   $: applyIridescentGradient(iridescentGradient)
   $: if ($plannerStore.preferences.databaseLoadingMessages !== previousDatabaseLoadingMessages) {
     previousDatabaseLoadingMessages = $plannerStore.preferences.databaseLoadingMessages
@@ -576,7 +591,7 @@ return rows`
     databaseLoadingMessageIndex = randomDatabaseLoadingMessageIndex(databaseLoadingMessages)
     if (!editingDatabaseLoadingMessages) databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
   }
-  $: activeTheme = THEME_PRESETS.find((theme) => theme.id === effectiveThemeId) ?? THEME_PRESETS[0]
+  $: activeTheme = THEME_PRESETS.find((theme) => theme.id === displayedThemeId) ?? THEME_PRESETS[0]
   $: doneTintHex = doneTintColor || activeTheme.doneColor
   $: checkboxColorHex = checkboxColor || activeTheme.checkboxColor
   $: doneTintPickerColor = hexToPickerColor(doneTintHex)
@@ -1521,6 +1536,26 @@ return rows`
       // SQLCipher or Android Keystore failed to open the real database.
       if ($databaseLoadError) return
 
+      const bootstrapAppearance = readDeviceAppearanceBootstrap()
+      let encryptedAppearance: DeviceAppearancePreferences | null = null
+      if (!bootstrapAppearance && isTauri()) {
+        try {
+          encryptedAppearance = await readEncryptedDeviceAppearance()
+        } catch (error) {
+          console.error('Could not read this device appearance', error)
+        }
+      }
+      deviceAppearance = normalizeDeviceAppearance(
+        bootstrapAppearance
+          ?? encryptedAppearance
+          ?? deviceAppearanceFromLegacyPreferences($plannerStore.preferences),
+      )
+      writeDeviceAppearanceBootstrap(deviceAppearance)
+      deviceAppearanceDatabaseReady = true
+      void persistEncryptedDeviceAppearance(deviceAppearance).catch((error) => {
+        console.error('Could not save this device appearance', error)
+      })
+
       preferencesReady = true
 
       plannerStore.purgeExpiredNotes()
@@ -1657,7 +1692,43 @@ return rows`
 
   function refreshCurrentDay() {
     const nextDay = todayISO()
-    if (nextDay !== currentDay) currentDay = nextDay
+    if (nextDay !== currentDay) {
+      currentDay = nextDay
+      lastObservedTodayKey = ''
+    }
+    recordVisibleTodayTheme()
+  }
+
+  function observeCurrentTodayTheme(visible: boolean, date: string, concreteThemeId: PresetThemeId) {
+    if (!visible) {
+      lastObservedTodayKey = ''
+      return
+    }
+    const observationKey = `${date}\0${concreteThemeId}`
+    if (lastObservedTodayKey === observationKey) return
+    lastObservedTodayKey = observationKey
+    plannerStore.recordDayTheme(date, concreteThemeId)
+  }
+
+  function recordVisibleTodayTheme() {
+    if (
+      preferencesReady
+      && view === 'today'
+      && !celebrationPreview
+      && displayedPlanDate === currentDay
+    ) {
+      plannerStore.recordDayTheme(currentDay, effectiveThemeId)
+    }
+  }
+
+  function commitDeviceAppearance(patch: Partial<DeviceAppearancePreferences>) {
+    deviceAppearance = normalizeDeviceAppearance({ ...deviceAppearance, ...patch })
+    writeDeviceAppearanceBootstrap(deviceAppearance)
+    if (deviceAppearanceDatabaseReady) {
+      void persistEncryptedDeviceAppearance(deviceAppearance).catch((error) => {
+        console.error('Could not save this device appearance', error)
+      })
+    }
   }
 
   function normalizeDatabaseLoadingMessages(value: string): string[] {
@@ -1746,13 +1817,13 @@ return rows`
   function updateDoneTint(value: string) {
     const normalized = normalizeHexColor(value)
     if (!normalized) return
-    plannerStore.patchPreferences({ doneTintColor: normalized })
+    commitDeviceAppearance({ doneTintColor: normalized })
   }
 
   function updateCheckboxColor(value: string) {
     const normalized = normalizeHexColor(value)
     if (!normalized) return
-    plannerStore.patchPreferences({ checkboxColor: normalized })
+    commitDeviceAppearance({ checkboxColor: normalized })
   }
 
   function updateDoneTintFromPicker(color: PickerColor) {
@@ -1766,43 +1837,25 @@ return rows`
   function updateTheme(nextThemeId: ThemeId) {
     // A preset should look cohesive immediately. Fine-tuned completion colors
     // remain available below and become overrides only after the preset is set.
-    if (nextThemeId === 'random') {
-      if (themeId === 'random') return
-      plannerStore.patchPreferences({
-        themeId: nextThemeId,
-        randomThemeId: pickRandomThemeId(effectiveThemeId),
-        randomThemeDate: currentDay,
-        randomThemeStartDate: '',
-        doneTintColor: '',
-        checkboxColor: '',
-      })
-      return
-    }
-    plannerStore.patchPreferences({ themeId: nextThemeId, doneTintColor: '', checkboxColor: '' })
-  }
-
-  function toggleRandomThemeSchedule() {
-    plannerStore.patchPreferences({
-      randomThemeStartDate: randomThemeScheduled ? '' : shiftISODate(currentDay, 1),
-    })
-  }
-
-  function activateScheduledRandomTheme(date: string, currentThemeId: PresetThemeId) {
-    plannerStore.patchPreferences({
-      themeId: 'random',
-      randomThemeId: pickRandomThemeId(currentThemeId),
-      randomThemeDate: date,
+    if (nextThemeId === themeId && !deviceAppearance.randomThemeStartDate) return
+    commitDeviceAppearance({
+      themeId: nextThemeId,
       randomThemeStartDate: '',
       doneTintColor: '',
       checkboxColor: '',
     })
   }
 
-  function rotateRandomTheme(date: string) {
-    const currentRandomThemeId = normalizePresetThemeId($plannerStore.preferences.randomThemeId)
-    plannerStore.patchPreferences({
-      randomThemeId: pickRandomThemeId(currentRandomThemeId),
-      randomThemeDate: date,
+  function toggleRandomThemeSchedule() {
+    commitDeviceAppearance({
+      randomThemeStartDate: randomThemeScheduled ? '' : shiftISODate(currentDay, 1),
+    })
+  }
+
+  function activateScheduledRandomTheme() {
+    commitDeviceAppearance({
+      themeId: 'random',
+      randomThemeStartDate: '',
       doneTintColor: '',
       checkboxColor: '',
     })
@@ -1873,11 +1926,11 @@ return rows`
   function commitIridescentGradient(value: IridescentGradientPreferences) {
     const normalized = normalizeIridescentGradient(value)
     iridescentGradient = normalized
-    plannerStore.patchPreferences({ iridescentGradient: normalized })
+    commitDeviceAppearance({ iridescentGradient: normalized })
   }
 
   function resetCompletedItemColors() {
-    plannerStore.patchPreferences({ doneTintColor: '', checkboxColor: '' })
+    commitDeviceAppearance({ doneTintColor: '', checkboxColor: '' })
   }
 
   function clearGoalRhythmAutoShowTimer() {

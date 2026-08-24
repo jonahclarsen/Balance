@@ -151,6 +151,8 @@ const SYNC_CHECKPOINT_PAYLOAD_BYTES: i64 = 8 * 1024 * 1024;
 const SYNC_CHECKPOINT_MAX_AGE_MS: i64 = 30 * 24 * 60 * 60 * 1_000;
 const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
+const DEVICE_APPEARANCE: &str = "device_appearance";
+const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
 const ENTITY_COLLECTIONS: [&str; 7] = [
     "goals",
     "goalCompletions",
@@ -3162,6 +3164,22 @@ fn validate_replicated_preferences(value: &Value) -> Result<Value, String> {
     if !messages.iter().all(Value::is_string) {
         return Err("databaseLoadingMessages must contain only strings".to_string());
     }
+    for (key, theme_id) in &preferences {
+        let Some(date) = key.strip_prefix(DAY_THEME_PREFERENCE_PREFIX) else {
+            continue;
+        };
+        if !is_iso_calendar_date(date)
+            || !theme_id.as_str().is_some_and(|value| {
+                !value.is_empty()
+                    && value.len() <= 64
+                    && value.bytes().all(|byte| {
+                        byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+                    })
+            })
+        {
+            return Err(format!("Invalid replicated day theme: {key}"));
+        }
+    }
 
     preferences.insert("themeId".into(), json!(theme_id));
     preferences.insert("randomThemeId".into(), json!(random_theme_id));
@@ -3209,6 +3227,67 @@ fn patch_replicated_preferences(connection: &Connection, patch: &Value) -> Resul
     }
     let preferences = validate_replicated_preferences(&preferences)?;
     set_metadata(connection, REPLICATED_PREFERENCES, &preferences.to_string())
+}
+
+fn is_iso_calendar_date(value: &str) -> bool {
+    value.len() == 10
+        && value.as_bytes()[4] == b'-'
+        && value.as_bytes()[7] == b'-'
+        && value
+            .bytes()
+            .enumerate()
+            .all(|(index, byte)| index == 4 || index == 7 || byte.is_ascii_digit())
+}
+
+fn validate_device_appearance(value: &Value) -> Result<Value, String> {
+    let appearance = value
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "Device appearance must be an object".to_string())?;
+    let theme_id = required_string(value, "themeId")?;
+    if !crate::widget::is_known_theme_selection(theme_id) {
+        return Err("Device appearance has an unknown selected theme".to_string());
+    }
+    let random_start = value
+        .get("randomThemeStartDate")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if !random_start.is_empty() && !is_iso_calendar_date(random_start) {
+        return Err("Device appearance has an invalid Random start date".to_string());
+    }
+    Ok(Value::Object(appearance))
+}
+
+fn read_device_appearance(connection: &Connection) -> Result<Option<Value>, String> {
+    metadata_value(connection, DEVICE_APPEARANCE)?
+        .map(|raw| {
+            serde_json::from_str::<Value>(&raw)
+                .map_err(|error| format!("Could not parse device appearance: {error}"))
+                .and_then(|value| validate_device_appearance(&value))
+        })
+        .transpose()
+}
+
+#[tauri::command]
+async fn get_device_appearance(app: tauri::AppHandle) -> Result<Option<Value>, String> {
+    run_database_task(move || with_database(&app, |connection| read_device_appearance(connection)))
+        .await
+}
+
+#[tauri::command]
+async fn set_device_appearance(app: tauri::AppHandle, appearance: Value) -> Result<(), String> {
+    run_database_task(move || {
+        with_database(&app, |connection| {
+            let appearance = validate_device_appearance(&appearance)?;
+            set_metadata(connection, DEVICE_APPEARANCE, &appearance.to_string())?;
+            #[cfg(target_os = "macos")]
+            if let Err(error) = macos_widget::publish_snapshot(connection) {
+                eprintln!("Could not refresh the macOS widget: {error}");
+            }
+            Ok(())
+        })
+    })
+    .await
 }
 const LISTS_METRICS_KEYS: [&str; 5] = [
     "listTemplates",
@@ -10192,6 +10271,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_app_state,
+            get_device_appearance,
+            set_device_appearance,
             initialize_app_state,
             persist_operation,
             persist_operations_for_android_ci,
@@ -14955,6 +15036,132 @@ mod tests {
         fn drop(&mut self) {
             let _ = fs::remove_dir_all(&self.directory);
         }
+    }
+
+    /// Opt-in CI profile for the two new persistence paths. It uses a generated
+    /// encrypted database and test-only key; it never opens an installed Balance
+    /// database. Repeated day-theme observations are separately covered in the
+    /// browser profile because they must become zero writes before reaching Rust.
+    #[test]
+    #[ignore = "performance profile; run explicitly with --ignored --nocapture"]
+    fn theme_state_performance_profile() {
+        const SAMPLE_COUNT: usize = 30;
+        const HISTORICAL_DAY_COUNT: usize = 3_264;
+        let database = TestDatabase::new("theme-state-performance");
+        let recovery_key = generate_recovery_key();
+        {
+            let mut state = test_state("Synthetic theme profile");
+            let mut preferences = default_replicated_preferences();
+            let preference_object = preferences.as_object_mut().unwrap();
+            for index in 0..HISTORICAL_DAY_COUNT {
+                let year = 2_000 + index / 336;
+                let month = index / 28 % 12 + 1;
+                let day = index % 28 + 1;
+                preference_object.insert(
+                    format!("{DAY_THEME_PREFERENCE_PREFIX}{year:04}-{month:02}-{day:02}"),
+                    json!(if index % 2 == 0 { "graphite" } else { "pink" }),
+                );
+            }
+            state["preferences"] = preferences;
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            replace_app_state(&mut connection, &state).unwrap();
+        }
+
+        let appearance = json!({
+            "version": 1,
+            "themeId": "graphite",
+            "randomThemeStartDate": "",
+            "doneTintColor": "",
+            "checkboxColor": "",
+            "iridescentGradient": {
+                "contrast": 100,
+                "backgroundSaturation": 100,
+                "backgroundLightness": 0,
+                "angle": 145,
+                "reach": 34,
+                "colors": []
+            }
+        });
+        let mut appearance_open_ms = Vec::with_capacity(SAMPLE_COUNT);
+        let mut appearance_write_ms = Vec::with_capacity(SAMPLE_COUNT);
+        for _ in 0..SAMPLE_COUNT {
+            let open_started = std::time::Instant::now();
+            let connection = open_database_at(&database.path, &recovery_key).unwrap();
+            appearance_open_ms.push(open_started.elapsed().as_secs_f64() * 1_000.0);
+            let write_started = std::time::Instant::now();
+            let validated = validate_device_appearance(&appearance).unwrap();
+            set_metadata(&connection, DEVICE_APPEARANCE, &validated.to_string()).unwrap();
+            appearance_write_ms.push(write_started.elapsed().as_secs_f64() * 1_000.0);
+        }
+
+        let mut day_theme_open_ms = Vec::with_capacity(SAMPLE_COUNT);
+        let mut day_theme_persist_ms = Vec::with_capacity(SAMPLE_COUNT);
+        let mut operation_bytes = 0;
+        for index in 0..SAMPLE_COUNT {
+            let sequence = index + 2;
+            let date = format!("2026-09-{:02}", index + 1);
+            let operation = json!({
+                "id": format!("op_device_test_{sequence}"),
+                "deviceId": "device_test",
+                "sequence": sequence,
+                "type": "patch_preferences",
+                "timestamp": format!("2026-09-{:02}T12:00:00Z", index + 1),
+                "payload": {
+                    "patch": { (format!("{DAY_THEME_PREFERENCE_PREFIX}{date}")): "graphite" }
+                }
+            });
+            operation_bytes = operation.to_string().len();
+            let open_started = std::time::Instant::now();
+            let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+            day_theme_open_ms.push(open_started.elapsed().as_secs_f64() * 1_000.0);
+            let persist_started = std::time::Instant::now();
+            persist_operation_to_database(&mut connection, &operation).unwrap();
+            day_theme_persist_ms.push(persist_started.elapsed().as_secs_f64() * 1_000.0);
+        }
+
+        let stats = |samples: &[f64]| {
+            let mut sorted = samples.to_vec();
+            sorted.sort_by(f64::total_cmp);
+            let percentile = |fraction: f64| {
+                let index = ((sorted.len() - 1) as f64 * fraction).ceil() as usize;
+                sorted[index]
+            };
+            json!({
+                "medianMs": percentile(0.50),
+                "p95Ms": percentile(0.95),
+                "maxMs": sorted[sorted.len() - 1],
+            })
+        };
+        let profile = json!({
+            "samples": SAMPLE_COUNT,
+            "historicalDayThemes": HISTORICAL_DAY_COUNT,
+            "deviceAppearance": {
+                "open": stats(&appearance_open_ms),
+                "encryptedMetadataWrite": stats(&appearance_write_ms),
+                "debounceMs": 250,
+                "networkOperations": 0,
+            },
+            "dayTheme": {
+                "open": stats(&day_theme_open_ms),
+                "persistOperation": stats(&day_theme_persist_ms),
+                "operationBytes": operation_bytes,
+                "localPersistDebounceMs": 500,
+                "networkDebounceMs": 2_000,
+            }
+        });
+        assert!(
+            profile["deviceAppearance"]["encryptedMetadataWrite"]["p95Ms"]
+                .as_f64()
+                .unwrap()
+                < 25.0
+        );
+        assert!(
+            profile["dayTheme"]["persistOperation"]["p95Ms"]
+                .as_f64()
+                .unwrap()
+                < 50.0
+        );
+        eprintln!("THEME_NATIVE_PERF {profile}");
     }
 
     /// Opt-in profile for the complete native undo path. This deliberately uses a

@@ -555,6 +555,8 @@ private struct WidgetPalette {
     }
 
     static func resolve(themeId: String?, colorScheme: ColorScheme) -> WidgetPalette {
+        // Historical days may reference every shipped theme forever. Never
+        // delete a palette case; retire the theme from current selection.
         if colorScheme == .dark {
             switch themeId {
             case "iridescent":

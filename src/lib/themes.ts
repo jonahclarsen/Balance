@@ -1,3 +1,7 @@
+// Historical day records persist theme IDs forever. Never delete an entry,
+// rename its ID, or remove its CSS/native palettes. Retire a theme by setting
+// `retired: true`; that hides it from current selection and Random mode while
+// keeping old days renderable. See the balance-themes skill.
 export const THEME_PRESETS = [
   {
     id: 'iridescent',
@@ -99,6 +103,10 @@ export type ThemeId = 'random' | PresetThemeId
 export const DEFAULT_THEME_ID: ThemeId = 'random'
 export const DEFAULT_PRESET_THEME_ID: PresetThemeId = 'iridescent'
 
+export const ACTIVE_THEME_PRESETS = THEME_PRESETS.filter(
+  (theme) => !('retired' in theme && theme.retired === true),
+)
+
 export const THEME_OPTIONS = [
   {
     id: 'random',
@@ -110,12 +118,12 @@ export const THEME_OPTIONS = [
       'linear-gradient(135deg, #c33f7a, #425b9b)',
     ],
   },
-  ...THEME_PRESETS,
+  ...ACTIVE_THEME_PRESETS,
 ] as const
 
 export function normalizeThemeId(value: string | null | undefined): ThemeId {
   if (value === 'berry') return 'banana'
-  return value === 'random' || THEME_PRESETS.some((theme) => theme.id === value)
+  return value === 'random' || ACTIVE_THEME_PRESETS.some((theme) => theme.id === value)
     ? (value as ThemeId)
     : DEFAULT_THEME_ID
 }
@@ -127,13 +135,49 @@ export function normalizePresetThemeId(value: string | null | undefined): Preset
     : DEFAULT_PRESET_THEME_ID
 }
 
-export function pickRandomThemeId(
-  currentThemeId?: PresetThemeId,
-  random: () => number = Math.random,
+const MASK_64 = 0xffff_ffff_ffff_ffffn
+const FNV_OFFSET_64 = 0xcbf2_9ce4_8422_2325n
+const FNV_PRIME_64 = 0x0000_0100_0000_01b3n
+const MIX_MULTIPLIER_1 = 0xff51_afd7_ed55_8ccdn
+const MIX_MULTIPLIER_2 = 0xc4ce_b9fe_1a85_ec53n
+const RANDOM_THEME_HASH_NAMESPACE = 'balance-random-v1\0'
+
+/**
+ * Stable synchronous 64-bit FNV-1a plus a Murmur-style avalanche. Do not swap
+ * this for a platform hash: startup TypeScript and native Rust widgets must
+ * keep producing the exact same scores. Golden vectors protect the contract.
+ */
+export function stableThemeHash64(value: string): bigint {
+  let hash = FNV_OFFSET_64
+  for (const byte of new TextEncoder().encode(value)) {
+    hash ^= BigInt(byte)
+    hash = (hash * FNV_PRIME_64) & MASK_64
+  }
+  hash ^= hash >> 33n
+  hash = (hash * MIX_MULTIPLIER_1) & MASK_64
+  hash ^= hash >> 33n
+  hash = (hash * MIX_MULTIPLIER_2) & MASK_64
+  hash ^= hash >> 33n
+  return hash & MASK_64
+}
+
+/**
+ * Equal-weight rendezvous hashing: every active theme has a 1/N chance for a
+ * date, catalog order is irrelevant, and adding/removing one theme remaps only
+ * dates won by that theme. Independent daily choices may legitimately repeat.
+ */
+export function randomThemeForDate(
+  date: string,
+  themeIds: readonly PresetThemeId[] = ACTIVE_THEME_PRESETS.map((theme) => theme.id),
 ): PresetThemeId {
-  const candidates = currentThemeId && THEME_PRESETS.length > 1
-    ? THEME_PRESETS.filter((theme) => theme.id !== currentThemeId)
-    : THEME_PRESETS
-  const index = Math.min(candidates.length - 1, Math.floor(Math.max(0, random()) * candidates.length))
-  return candidates[index]?.id ?? DEFAULT_PRESET_THEME_ID
+  let winner = DEFAULT_PRESET_THEME_ID
+  let winningScore = -1n
+  for (const themeId of themeIds) {
+    const score = stableThemeHash64(`${RANDOM_THEME_HASH_NAMESPACE}${date}\0${themeId}`)
+    if (score > winningScore || (score === winningScore && themeId > winner)) {
+      winner = themeId
+      winningScore = score
+    }
+  }
+  return winner
 }

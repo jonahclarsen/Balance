@@ -4,6 +4,28 @@ use serde_json::Value;
 const MAX_VISIBLE_ITEMS: usize = 10;
 const DEFAULT_THEME_ID: &str = "iridescent";
 
+// Historical day records can reference these IDs forever. Never delete or
+// rename an ID or its web/macOS/Android renderer. Retire it from current
+// selection instead; see the balance-themes skill.
+const ACTIVE_RANDOM_THEME_IDS: [&str; 11] = [
+    "iridescent",
+    "graphite",
+    "crimson",
+    "pink",
+    "orange",
+    "earth",
+    "banana",
+    "forest",
+    "ocean",
+    "midnight",
+    "violet",
+];
+const FNV_OFFSET_64: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME_64: u64 = 0x0000_0100_0000_01b3;
+const MIX_MULTIPLIER_1: u64 = 0xff51_afd7_ed55_8ccd;
+const MIX_MULTIPLIER_2: u64 = 0xc4ce_b9fe_1a85_ec53;
+const RANDOM_THEME_HASH_NAMESPACE: &str = "balance-random-v1\0";
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct WidgetSnapshot {
@@ -111,6 +133,57 @@ fn normalize_theme_id(theme_id: &str) -> &str {
     }
 }
 
+pub(crate) fn is_known_theme_selection(theme_id: &str) -> bool {
+    theme_id == "random" || normalize_theme_id(theme_id) == theme_id || theme_id == "berry"
+}
+
+fn stable_theme_hash_64(value: &str) -> u64 {
+    let mut hash = FNV_OFFSET_64;
+    for byte in value.as_bytes() {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME_64);
+    }
+    hash ^= hash >> 33;
+    hash = hash.wrapping_mul(MIX_MULTIPLIER_1);
+    hash ^= hash >> 33;
+    hash = hash.wrapping_mul(MIX_MULTIPLIER_2);
+    hash ^ (hash >> 33)
+}
+
+fn random_theme_for_date_from<'a>(date: &str, theme_ids: &'a [&'a str]) -> &'a str {
+    let mut winner = theme_ids.first().copied().unwrap_or(DEFAULT_THEME_ID);
+    let mut winning_score = 0;
+    for theme_id in theme_ids.iter().copied() {
+        let score =
+            stable_theme_hash_64(&format!("{RANDOM_THEME_HASH_NAMESPACE}{date}\0{theme_id}"));
+        if score > winning_score || (score == winning_score && theme_id > winner) {
+            winner = theme_id;
+            winning_score = score;
+        }
+    }
+    winner
+}
+
+pub(crate) fn random_theme_for_date(date: &str) -> &'static str {
+    random_theme_for_date_from(date, &ACTIVE_RANDOM_THEME_IDS)
+}
+
+pub(crate) fn theme_id_from_device_appearance(appearance: &Value, date: &str) -> String {
+    let selected = appearance
+        .get("themeId")
+        .and_then(Value::as_str)
+        .unwrap_or("random");
+    let scheduled = appearance
+        .get("randomThemeStartDate")
+        .and_then(Value::as_str)
+        .is_some_and(|start| !start.is_empty() && start <= date);
+    if selected == "random" || scheduled {
+        random_theme_for_date(date).to_string()
+    } else {
+        normalize_theme_id(selected).to_string()
+    }
+}
+
 pub(crate) fn theme_id_from_preferences(preferences: &Value) -> &str {
     let selected_theme_id = preferences
         .get("themeId")
@@ -186,7 +259,11 @@ fn format_minutes(minutes: i64) -> String {
 mod tests {
     use serde_json::json;
 
-    use super::{snapshot_from_plan, theme_id_from_preferences};
+    use super::{
+        random_theme_for_date, random_theme_for_date_from, snapshot_from_plan,
+        stable_theme_hash_64, theme_id_from_device_appearance, theme_id_from_preferences,
+        ACTIVE_RANDOM_THEME_IDS,
+    };
 
     #[test]
     fn widget_snapshot_flattens_pending_items_and_counts_progress() {
@@ -323,5 +400,56 @@ mod tests {
             serde_json::to_value(&snapshot).unwrap()["themeId"],
             "graphite"
         );
+    }
+
+    #[test]
+    fn deterministic_random_theme_vectors_are_stable() {
+        assert_eq!(
+            stable_theme_hash_64("balance-random-v1\02026-08-24\0pink"),
+            6_228_563_125_600_655_469
+        );
+        assert_eq!(random_theme_for_date("2026-08-24"), "midnight");
+        assert_eq!(random_theme_for_date("2026-08-25"), "graphite");
+    }
+
+    #[test]
+    fn device_random_theme_depends_only_on_the_balance_date() {
+        let appearance = serde_json::json!({
+            "themeId": "random",
+            "randomThemeStartDate": ""
+        });
+        assert_eq!(
+            theme_id_from_device_appearance(&appearance, "2026-08-24"),
+            random_theme_for_date("2026-08-24")
+        );
+    }
+
+    #[test]
+    fn rendezvous_selection_is_order_independent_and_minimally_remapped() {
+        let original = ["graphite", "pink", "ocean", "violet"];
+        let reversed = ["violet", "ocean", "pink", "graphite"];
+        let expanded = ["graphite", "pink", "ocean", "violet", "future-theme"];
+        for index in 0..3_264 {
+            let date = format!("synthetic-day-{index}");
+            let winner = random_theme_for_date_from(&date, &original);
+            assert_eq!(winner, random_theme_for_date_from(&date, &reversed));
+            let expanded_winner = random_theme_for_date_from(&date, &expanded);
+            assert!(expanded_winner == winner || expanded_winner == "future-theme");
+        }
+    }
+
+    #[test]
+    fn rendezvous_selection_is_balanced_across_the_active_catalog() {
+        let mut counts = std::collections::HashMap::new();
+        for index in 0..3_264 {
+            let winner = random_theme_for_date(&format!("synthetic-day-{index}"));
+            *counts.entry(winner).or_insert(0usize) += 1;
+        }
+        // Expected count is about 297 per theme. This broad deterministic
+        // bound catches a biased hash/catalog implementation without asserting
+        // that a finite sample must be perfectly even.
+        for theme_id in ACTIVE_RANDOM_THEME_IDS {
+            assert!((220..=380).contains(counts.get(theme_id).unwrap()));
+        }
     }
 }

@@ -1,0 +1,99 @@
+name: Verify theme-state performance
+
+on:
+  push:
+    paths:
+      - ".github/workflows/theme-performance.yml"
+      - "playwright.theme-performance.config.ts"
+      - "src/main.ts"
+      - "src/App.svelte"
+      - "src/lib/deviceAppearance.ts"
+      - "src/lib/preferences.ts"
+      - "src/lib/store.ts"
+      - "src/lib/themes.ts"
+      - "src-tauri/src/lib.rs"
+      - "src-tauri/src/widget.rs"
+      - "tests/performance/theme-state.spec.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    name: Synthetic startup and persistence profile
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+
+      - name: Check source
+        run: pnpm check
+
+      - name: Measure loading-theme bootstrap and repeated today observations
+        run: |
+          set -euo pipefail
+          pnpm test:theme-performance 2>&1 | tee "$RUNNER_TEMP/theme-browser-performance.log"
+          sed -n 's/^.*THEME_PERF /THEME_PERF /p' "$RUNNER_TEMP/theme-browser-performance.log" \
+            | sed 's/^THEME_PERF //' > "$RUNNER_TEMP/theme-browser-performance.jsonl"
+          test "$(wc -l < "$RUNNER_TEMP/theme-browser-performance.jsonl")" -eq 2
+
+      - name: Measure encrypted device and synced day-theme writes
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml \
+            tests::theme_state_performance_profile -- --exact --ignored --nocapture \
+            2>&1 | tee "$RUNNER_TEMP/theme-native-performance.log"
+          sed -n 's/^.*THEME_NATIVE_PERF /THEME_NATIVE_PERF /p' "$RUNNER_TEMP/theme-native-performance.log" \
+            | sed 's/^THEME_NATIVE_PERF //' > "$RUNNER_TEMP/theme-native-performance.json"
+          test -s "$RUNNER_TEMP/theme-native-performance.json"
+
+      - name: Summarize profile
+        run: |
+          {
+            echo '## Theme-state performance'
+            echo
+            echo 'Chromium measurements use 6× CPU slowdown; native measurements use a generated encrypted database and test-only key.'
+            echo
+            echo '### Browser'
+            echo '```json'
+            jq -s . "$RUNNER_TEMP/theme-browser-performance.jsonl"
+            echo '```'
+            echo
+            echo '### Native persistence'
+            echo '```json'
+            jq . "$RUNNER_TEMP/theme-native-performance.json"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v7
+        with:
+          name: theme-state-performance
+          path: |
+            ${{ runner.temp }}/theme-browser-performance.jsonl
+            ${{ runner.temp }}/theme-browser-performance.log
+            ${{ runner.temp }}/theme-native-performance.json
+            ${{ runner.temp }}/theme-native-performance.log
+          if-no-files-found: error

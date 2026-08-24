@@ -50,6 +50,8 @@
   --goal-open-mark-lightness: 50%;
 }
 
+/* Historical days persist theme IDs forever. Never delete a theme's CSS block;
+   retire it from the active catalog instead. See the balance-themes skill. */
 :root[data-theme='ocean'] {
   --app-background: #f3f7fa;
   --paper: #f9fcff;

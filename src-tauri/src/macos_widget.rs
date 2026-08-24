@@ -2,7 +2,9 @@ use chrono::{Local, Timelike};
 use rusqlite::Connection;
 use std::ffi::CString;
 
-use crate::widget::{snapshot_from_plan, theme_id_from_preferences};
+use crate::widget::{
+    snapshot_from_plan, theme_id_from_device_appearance, theme_id_from_preferences,
+};
 
 const SNAPSHOT_EXIT_GRACE_PERIOD_SECONDS: f64 = 15.0 * 60.0;
 const DAY_ROLLOVER_HOUR: u32 = 3;
@@ -42,9 +44,15 @@ pub(crate) fn publish_snapshot(connection: &Connection) -> Result<(), String> {
     }
     let date = current_day.format("%Y-%m-%d").to_string();
     let plan = super::read_plan_by_date(connection, &date)?;
-    let preferences = super::read_replicated_preferences(connection)?;
-    let theme_id = theme_id_from_preferences(&preferences);
-    let snapshot = snapshot_from_plan(&date, plan.as_ref(), theme_id);
+    let theme_id = if let Some(appearance) = super::read_device_appearance(connection)? {
+        theme_id_from_device_appearance(&appearance, &date)
+    } else {
+        // One-launch compatibility fallback before the frontend migrates this
+        // device from the former replicated appearance fields.
+        let preferences = super::read_replicated_preferences(connection)?;
+        theme_id_from_preferences(&preferences).to_string()
+    };
+    let snapshot = snapshot_from_plan(&date, plan.as_ref(), &theme_id);
     let json = serde_json::to_string(&snapshot).map_err(|error| error.to_string())?;
     let json = CString::new(json).map_err(|error| error.to_string())?;
 

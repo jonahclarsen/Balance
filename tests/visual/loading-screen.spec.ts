@@ -4,6 +4,13 @@ test('the Android loading card is horizontally centered', async ({ page }, testI
   test.skip(testInfo.project.name !== 'mobile', 'The startup layout regression is Android-only')
 
   await page.addInitScript(() => {
+    localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
+      version: 1,
+      themeId: 'graphite',
+      randomThemeStartDate: '',
+      doneTintColor: '',
+      checkboxColor: '',
+    }))
     type TestRuntime = typeof globalThis & {
       isTauri: boolean
       __TAURI_INTERNALS__: {
@@ -40,9 +47,9 @@ test('the Android loading card is horizontally centered', async ({ page }, testI
   const loadingScreen = page.getByRole('status')
   await expect(loadingScreen).toBeVisible()
   await expect(loadingScreen.getByText('Loading…')).toBeVisible()
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
-  await expect(page.locator('.database-maintenance-spinner')).toHaveCSS('background-image', /conic-gradient/)
-  await expect(page.locator('.database-loading-progress > span')).toHaveCSS('background-image', /linear-gradient/)
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
+  await expect(page.locator('.database-maintenance-spinner')).toHaveCSS('border-top-color', 'rgb(58, 58, 56)')
+  await expect(page.locator('.database-loading-progress > span')).toHaveCSS('background-color', 'rgb(58, 58, 56)')
 
   const geometry = await loadingScreen.evaluate((backdrop) => {
     const card = backdrop.querySelector<HTMLElement>('.database-loading-card')
