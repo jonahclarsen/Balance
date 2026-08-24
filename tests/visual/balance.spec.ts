@@ -337,6 +337,12 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
       key: 'Dead',
     })
     input.dispatchEvent(keydown)
+    input.dispatchEvent(new KeyboardEvent('keyup', {
+      altKey: true,
+      bubbles: true,
+      code: 'KeyI',
+      key: 'Dead',
+    }))
     const beforeinput = new InputEvent('beforeinput', {
       bubbles: true,
       cancelable: false,

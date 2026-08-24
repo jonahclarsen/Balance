@@ -3133,10 +3133,6 @@ return rows`
     clearHandledAltShortcutInput()
   }
 
-  function handleGlobalKeyup(event: KeyboardEvent) {
-    if (event.code === handledAltShortcutInput?.code) clearHandledAltShortcutInput()
-  }
-
   function snapshotShortcutInput(target: EventTarget | null): Omit<HandledAltShortcutInput, 'code'> | null {
     if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
       return {
@@ -3587,6 +3583,7 @@ return rows`
   }
 
   function handleGlobalPointerDown(event: PointerEvent) {
+    clearHandledAltShortcutInput()
     beginMobileDrawerGesture(event)
     if (event.button !== 0 || !activeItemSurface()) {
       itemTextDragOrigin = null
@@ -4839,7 +4836,6 @@ return rows`
 
 <svelte:window
   on:keydown|capture={handleGlobalKeydown}
-  on:keyup|capture={handleGlobalKeyup}
   on:focusin={handleGlobalFocusIn}
   on:scroll={handleWindowScroll}
   on:pointerdown|capture={handleGlobalPointerDown}
