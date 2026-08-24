@@ -74,7 +74,7 @@ test('Settings renders Random first followed by every celebration card', async (
       ).length,
     }
   })
-  expect(layout.firstRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 5)
+  expect(layout.firstRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 6)
   if (testInfo.project.name === 'desktop') expect(layout.firstRowHeight).toBeLessThan(238)
   expect(layout.pillCount).toBe(0)
 })

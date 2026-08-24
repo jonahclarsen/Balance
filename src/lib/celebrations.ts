@@ -94,6 +94,13 @@ export const COMPLETION_CELEBRATIONS = [
     palette: ['#9ce5d8', '#c5b3ff', '#f9cae5'],
   },
   {
+    id: 'app-demands-applause',
+    name: 'The App Demands Applause',
+    description: 'Balance informs the operating system that this achievement concerns everyone.',
+    icon: '👏', category: 'maximum', engine: 'ui', recipe: 'applause', durationMs: 3400, intensity: 5,
+    palette: ['#f4b942', '#ef6f6c', '#2f6f68'],
+  },
+  {
     id: 'infinite-feedback-cathedral',
     name: 'Infinite Feedback Cathedral',
     description: 'The day falls through a neon tunnel made from echoes of its own interface.',
@@ -127,13 +134,6 @@ export const COMPLETION_CELEBRATIONS = [
     description: 'The interface desynchronizes into moving slabs, briefly exceeds reality, and hard-snaps home.',
     icon: '📺', category: 'maximum', engine: 'ui', recipe: 'buffer-overflow', durationMs: 5000, intensity: 5,
     palette: ['#ff335f', '#24ffd1', '#7950ff'],
-  },
-  {
-    id: 'app-demands-applause',
-    name: 'The App Demands Applause',
-    description: 'Balance informs the operating system that this achievement concerns everyone.',
-    icon: '👏', category: 'maximum', engine: 'ui', recipe: 'applause', durationMs: 3400, intensity: 5,
-    palette: ['#f4b942', '#ef6f6c', '#2f6f68'],
   },
 ] as const satisfies readonly CompletionCelebrationDefinition[]
 
