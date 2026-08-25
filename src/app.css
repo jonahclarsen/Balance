@@ -5372,13 +5372,22 @@ body.mobile-checkbox-dragging {
 }
 
 .notes-sidebar {
+  position: sticky;
+  top: 8px;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: calc((100vh - 100px) / 1.1);
+  max-height: calc((100dvh - 100px) / 1.1);
+  align-self: start;
   gap: 10px;
   min-width: 0;
   padding: 14px;
   border-right: 1px solid var(--line);
   background: color-mix(in srgb, var(--sidebar) 62%, var(--paper));
+}
+
+.notes-sidebar.notes-trash-open {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
 }
 
 .notes-sidebar-head,
@@ -5396,8 +5405,15 @@ body.mobile-checkbox-dragging {
 }
 
 .note-new {
-  margin-left: auto;
+  flex: 0 0 auto;
   padding: 6px 10px;
+}
+
+.notes-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .note-empty-trash {
@@ -5426,7 +5442,9 @@ body.mobile-checkbox-dragging {
 }
 
 .notes-filter {
-  width: 100%;
+  width: auto;
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .notes-list {
@@ -5970,7 +5988,9 @@ body.mobile-checkbox-dragging {
   }
 
   .notes-sidebar {
+    position: static;
     grid-template-rows: auto auto auto auto;
+    max-height: none;
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }

@@ -721,16 +721,17 @@
 />
 
 <div class="notes-workspace">
-  <aside class="notes-sidebar" aria-label="Notes">
-    <div class="notes-sidebar-head">
-      {#if trashOpen}
+  <aside class="notes-sidebar" class:notes-trash-open={trashOpen} aria-label="Notes">
+    {#if trashOpen}
+      <div class="notes-sidebar-head">
         <h3>Bin</h3>
         {#if trashedNotes.length > 0}<button class="ghost danger note-empty-trash" type="button" aria-label="Empty Bin" on:click={emptyTrash}>Empty</button>{/if}
-      {:else}
-        <button class="primary note-new" type="button" on:click={createAndSelect}>+ New</button>
-      {/if}
+      </div>
+    {/if}
+    <div class="notes-filter-row">
+      {#if !trashOpen}<button class="primary note-new" type="button" on:click={createAndSelect}>New</button>{/if}
+      <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
     </div>
-    <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
     <div class="notes-list">
       {#each filteredNotes as note (note.id)}
         <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => onSelect(note.id)}>

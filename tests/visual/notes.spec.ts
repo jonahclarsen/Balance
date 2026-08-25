@@ -190,6 +190,63 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await expect(notesSidebar).toBeVisible()
 })
 
+test('the Notes sidebar list scrolls independently and keeps New beside the filter', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'the mobile note picker remains horizontal')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.notes?.length ?? 0
+  })).toBe(1)
+
+  await page.evaluate(() => {
+    const key = 'balance.appState.v1'
+    const state = JSON.parse(localStorage.getItem(key) || '{}')
+    const source = state.notes[0]
+    state.notes = Array.from({ length: 40 }, (_, index) => ({
+      ...source,
+      id: `note_sidebar_${index}`,
+      title: `Sidebar note ${String(index + 1).padStart(2, '0')}`,
+      items: source.items.map((item: { id: string }) => ({ ...item, id: `${item.id}_${index}` })),
+      updatedAt: new Date(Date.now() - index * 1_000).toISOString(),
+    }))
+    localStorage.setItem(key, JSON.stringify(state))
+  })
+  await page.reload()
+  await openNotesView(page)
+
+  const sidebar = page.locator('.notes-sidebar')
+  const newButton = sidebar.getByRole('button', { name: 'New', exact: true })
+  const filter = sidebar.getByRole('searchbox', { name: 'Filter notes' })
+  await expect(newButton).toBeVisible()
+  await expect(sidebar.getByRole('button', { name: '+ New', exact: true })).toHaveCount(0)
+  const controls = await Promise.all([newButton.boundingBox(), filter.boundingBox()])
+  expect(controls[0]).not.toBeNull()
+  expect(controls[1]).not.toBeNull()
+  expect(controls[0]!.x + controls[0]!.width).toBeLessThan(controls[1]!.x)
+  expect(Math.abs(
+    controls[0]!.y + controls[0]!.height / 2 - (controls[1]!.y + controls[1]!.height / 2),
+  )).toBeLessThanOrEqual(2)
+
+  const workspace = page.locator('.workspace')
+  const notesList = sidebar.locator('.notes-list')
+  const before = await page.evaluate(() => ({
+    workspace: document.querySelector<HTMLElement>('.workspace')?.scrollTop ?? -1,
+    listClientHeight: document.querySelector<HTMLElement>('.notes-list')?.clientHeight ?? -1,
+    listScrollHeight: document.querySelector<HTMLElement>('.notes-list')?.scrollHeight ?? -1,
+  }))
+  expect(before.listScrollHeight).toBeGreaterThan(before.listClientHeight)
+  await notesList.evaluate((element) => { element.scrollTop = element.scrollHeight })
+  await expect.poll(() => notesList.evaluate((element) => (
+    element.scrollTop + element.clientHeight >= element.scrollHeight - 1
+  ))).toBe(true)
+  await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBe(before.workspace)
+  await page.screenshot({ path: testInfo.outputPath('notes-sidebar.png') })
+})
+
 test('note style menu escapes the note card and stays inside the viewport', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop popup placement is covered here')
   await page.goto('/')
