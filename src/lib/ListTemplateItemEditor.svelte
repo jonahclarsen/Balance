@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { clampListItemProbability, expectedWordCount, htmlToPlainText, linkifyItemText, MIN_LIST_ITEM_PROBABILITY, type ItemLink, wordCount } from './planner'
+  import { clampListItemProbability, htmlToPlainText, linkifyItemText, MIN_LIST_ITEM_PROBABILITY, type ItemLink, wordCount } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
@@ -20,7 +20,7 @@
   const PROBABILITY_DRAG_MERGE_WINDOW_MS = 1500
 
   export let item: ListTemplateItem
-  export let allItems: ListTemplateItem[]
+  export let currentExpected: number
   export let depth = 0
   export let ancestorProbability = 1
   export let templateId: Id
@@ -74,7 +74,6 @@
 
   // Expected words contributed by everything except this item's own text, so we can
   // check whether new text would breach the cap without rebuilding the whole tree.
-  $: currentExpected = expectedWordCount(allItems)
   $: appearanceProbability =
     ancestorProbability * (clampListItemProbability(item.probability) / 100)
   $: itemContribution = wordCount(htmlToPlainText(item.html) || item.text) * appearanceProbability
@@ -425,7 +424,7 @@
         {#each item.children as child (child.id)}
           <svelte:self
             item={child}
-            {allItems}
+            {currentExpected}
             depth={depth + 1}
             ancestorProbability={appearanceProbability}
             {templateId}

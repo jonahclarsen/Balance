@@ -525,7 +525,8 @@ return rows`
   }
   $: if (listTemplatesViewStateReady) persistListTemplatesViewState(selectedListTemplateId)
   $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = listTemplates[0].id
-  $: selectedListWordCount = selectedListTemplate ? Math.round(expectedWordCount(selectedListTemplate.items)) : 0
+  $: selectedListExpectedWordCount = selectedListTemplate ? expectedWordCount(selectedListTemplate.items) : 0
+  $: selectedListWordCount = Math.round(selectedListExpectedWordCount)
   $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items) : 0
   $: selectedArchivedListItems = [...(selectedListTemplate?.archivedItems ?? [])]
     .sort((left, right) => right.archivedAt.localeCompare(left.archivedAt))
@@ -5729,7 +5730,7 @@ return rows`
             {#each selectedListTemplate.items as item (item.id)}
               <ListTemplateItemEditor
                 {item}
-                allItems={selectedListTemplate.items}
+                currentExpected={selectedListExpectedWordCount}
                 templateId={selectedListTemplate.id}
                 maxExpectedWords={selectedListTemplate.maxExpectedWords}
                 patchItem={plannerStore.patchListTemplateItem}
