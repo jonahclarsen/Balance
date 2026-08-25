@@ -5343,6 +5343,7 @@ return rows`
   <div class="content-shell" style={contentShellStyle}>
     <section
       class="workspace"
+      class:notes-view-workspace={view === 'notes'}
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
       class:comparing-days={view === 'today' && displayedCompareDayOpen}
       class:before-current-day-workspace={view === 'today' && !displayedCompareDayOpen && displayedPlanDate < currentDay}

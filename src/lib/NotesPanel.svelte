@@ -334,14 +334,22 @@
     const inputs = noteInputs()
     const lastInput = inputs.at(-1)
     if (!selection?.isCollapsed || !selection.focusNode || !lastInput?.contains(selection.focusNode)) return
-
-    const contentBeforeCaret = document.createRange()
-    contentBeforeCaret.selectNodeContents(lastInput)
-    contentBeforeCaret.setEnd(selection.focusNode, selection.focusOffset)
-    if (contentBeforeCaret.toString().length !== (lastInput.textContent?.length ?? 0)) return
+    if (!caretIsOnLastVisualLine(lastInput, selection.getRangeAt(0))) return
 
     const scroller = noteScrollContainer()
     if (scroller && !isAtNoteBottom(scroller)) void scrollNoteToBottomAfterLayout(scroller)
+  }
+
+  function caretIsOnLastVisualLine(input: HTMLDivElement, caret: Range) {
+    const content = document.createRange()
+    content.selectNodeContents(input)
+    const lineRects = Array.from(content.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
+    if (lineRects.length === 0) return true
+
+    const caretRect = caret.getBoundingClientRect()
+    const lastLineTop = Math.max(...lineRects.map((rect) => rect.top))
+    const lineHeight = Number.parseFloat(getComputedStyle(input).lineHeight) || 20
+    return caretRect.bottom > lastLineTop && caretRect.top < lastLineTop + lineHeight
   }
 
   function normalizeNoteScrollSpacePercent(value: number) {

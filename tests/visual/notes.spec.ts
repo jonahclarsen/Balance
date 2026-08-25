@@ -40,6 +40,30 @@ async function placeCaretAtOffset(editor: Locator, offset: number) {
   }, offset)
 }
 
+async function placeCaretOnLastLine(editor: Locator) {
+  await editor.evaluate((element) => {
+    const input = element as HTMLElement
+    const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT)
+    const nodes: Text[] = []
+    let node = walker.nextNode()
+    while (node) {
+      nodes.push(node as Text)
+      node = walker.nextNode()
+    }
+    const lastNode = nodes.at(-1)
+    if (!lastNode) return
+    const lastBreak = lastNode.data.lastIndexOf('\n')
+    const offset = Math.min(lastNode.length, Math.max(0, lastBreak + 2))
+    input.focus()
+    const range = document.createRange()
+    range.setStart(lastNode, offset)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  })
+}
+
 async function noteSelectionEndpoints(page: Page) {
   return page.evaluate(() => {
     const selection = document.getSelection()
@@ -682,10 +706,36 @@ test('note formatting toolbar stays visible while scrolling a long note', async 
   const editor = page.locator('[data-note-text-input]').first()
   const workspace = page.locator('.workspace')
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  const formatHint = toolbar.locator('.note-format-hint')
   const slashKey = toolbar.locator('.note-format-hint kbd')
+  const zoomedNotes = page.locator('.notes-workspace')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
-  await expect(slashKey).toHaveCSS('display', 'inline-grid')
+  await expect(zoomedNotes).toHaveCSS('zoom', '1.1')
+  await expect(formatHint).toHaveCSS('display', 'flex')
+  await expect(formatHint).toHaveCSS('align-items', 'center')
+  await expect(formatHint).toHaveCSS('font-size', '12px')
+  await expect(slashKey).toHaveCSS('display', 'grid')
   await expect(slashKey).toHaveCSS('place-items', 'center')
+  await expect(slashKey).toHaveCSS('width', '15px')
+  await expect(slashKey).toHaveCSS('height', '15px')
+  const hintAlignment = await slashKey.evaluate((element) => {
+    const keyBounds = element.getBoundingClientRect()
+    const hintBounds = element.parentElement?.getBoundingClientRect()
+    return hintBounds
+      ? { keyCenter: keyBounds.top + keyBounds.height / 2, hintCenter: hintBounds.top + hintBounds.height / 2 }
+      : null
+  })
+  expect(hintAlignment).not.toBeNull()
+  expect(Math.abs((hintAlignment?.keyCenter ?? 0) - (hintAlignment?.hintCenter ?? 0))).toBeLessThan(1)
+  const zoomGeometry = await page.evaluate(() => {
+    const workspaceBounds = document.querySelector('.workspace')?.getBoundingClientRect()
+    const notesBounds = document.querySelector('.notes-workspace')?.getBoundingClientRect()
+    return workspaceBounds && notesBounds
+      ? { workspaceRight: workspaceBounds.right, notesRight: notesBounds.right }
+      : null
+  })
+  expect(zoomGeometry).not.toBeNull()
+  expect(zoomGeometry?.notesRight).toBeLessThanOrEqual((zoomGeometry?.workspaceRight ?? 0) + 1)
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
 
   await expect.poll(async () => {
@@ -700,7 +750,7 @@ test('note formatting toolbar stays visible while scrolling a long note', async 
   }).toBe(true)
 })
 
-test('moving the caret to the end of a note scrolls fully to the page bottom', async ({ page }, testInfo) => {
+test('moving the caret onto the final visual line scrolls fully to the page bottom', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop scroll behavior is covered here')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -712,7 +762,7 @@ test('moving the caret to the end of a note scrolls fully to the page bottom', a
   const workspace = page.locator('.workspace')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Caret scroll line ${index + 1}`).join('\n'))
   await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
-  await placeCaretAtEnd(editor)
+  await placeCaretOnLastLine(editor)
 
   await expect.poll(() => workspace.evaluate(
     (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
@@ -811,14 +861,23 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     const track = document.querySelector('.note-scroll-space-track')?.getBoundingClientRect()
     const fill = document.querySelector('.note-scroll-space-fill')?.getBoundingClientRect()
     const thumb = document.querySelector('.note-scroll-space-thumb')?.getBoundingClientRect()
-    return track && fill && thumb
-      ? { trackLeft: track.left, thumbCenter: thumb.left + thumb.width / 2, fillLeft: fill.left, fillWidth: fill.width }
+    const control = document.querySelector('.note-scroll-space-control')?.getBoundingClientRect()
+    return track && fill && thumb && control
+      ? {
+          trackLeft: track.left,
+          thumbCenter: thumb.left + thumb.width / 2,
+          thumbLeft: thumb.left,
+          controlLeft: control.left,
+          fillLeft: fill.left,
+          fillWidth: fill.width,
+        }
       : null
   })
   expect(startGeometry).not.toBeNull()
   expect(startGeometry?.thumbCenter).toBeCloseTo(startGeometry?.trackLeft ?? 0, 0)
   expect(startGeometry?.fillLeft).toBeCloseTo(startGeometry?.trackLeft ?? 0, 0)
   expect(startGeometry?.fillWidth).toBeCloseTo(0, 0)
+  expect(startGeometry?.thumbLeft).toBeGreaterThanOrEqual(startGeometry?.controlLeft ?? Number.POSITIVE_INFINITY)
 
   const fixedControlBottom = await page.locator('.note-scroll-space-control').evaluate((element) => element.getBoundingClientRect().bottom)
   await spacingSlider.evaluate((element) => {
@@ -844,6 +903,23 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   expect(endGeometry).not.toBeNull()
   expect(endGeometry?.thumbCenter).toBeCloseTo(endGeometry?.trackRight ?? 0, 0)
   expect(endGeometry?.fillWidth).toBeCloseTo(endGeometry?.trackWidth ?? 0, 0)
+  const pillGeometry = await page.evaluate(() => {
+    const control = document.querySelector('.note-scroll-space-control')?.getBoundingClientRect()
+    const thumb = document.querySelector('.note-scroll-space-thumb')?.getBoundingClientRect()
+    return control && thumb
+      ? {
+          controlLeft: control.left,
+          controlRight: control.right,
+          controlWidth: control.width,
+          thumbLeft: thumb.left,
+          thumbRight: thumb.right,
+        }
+      : null
+  })
+  expect(pillGeometry).not.toBeNull()
+  expect(pillGeometry?.controlWidth).toBeGreaterThan(330)
+  expect(pillGeometry?.thumbLeft).toBeGreaterThanOrEqual(pillGeometry?.controlLeft ?? Number.POSITIVE_INFINITY)
+  expect(pillGeometry?.thumbRight).toBeLessThanOrEqual(pillGeometry?.controlRight ?? Number.NEGATIVE_INFINITY)
   const maximumSpaceHeight = await page.locator('.note-scroll-space').evaluate((element) => element.getBoundingClientRect().height)
   expect(maximumSpaceHeight).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.59)
   expect(maximumSpaceHeight).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.61)
