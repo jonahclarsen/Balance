@@ -1274,11 +1274,12 @@ function createPlannerStore() {
       const placement = splitPlacementForBeforeText(before)
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
+      const insertedProbability = (inserted.text ?? '') === '' ? 100 : probability
       const newItem = {
         ...createTemplateItem(inserted.text ?? ''),
         options: [
           {
-            ...createTemplateOption(inserted.text ?? '', probability),
+            ...createTemplateOption(inserted.text ?? '', insertedProbability),
             html: inserted.html ?? '',
           },
         ],
@@ -1777,7 +1778,12 @@ function createPlannerStore() {
       const placement: 'before' | 'after' = splitPlacementForBeforeText(before) === 'before' ? 'before' : 'after'
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
-      const newItem = { ...createListTemplateItem(inserted.text ?? ''), html: inserted.html ?? '', probability }
+      const insertedProbability = (inserted.text ?? '') === '' ? 100 : probability
+      const newItem = {
+        ...createListTemplateItem(inserted.text ?? ''),
+        html: inserted.html ?? '',
+        probability: insertedProbability,
+      }
 
       commit('split_list_template_item', { templateId, itemId, patch, newItem, placement }, (state) =>
         updateListTemplate(state, templateId, (template) => {

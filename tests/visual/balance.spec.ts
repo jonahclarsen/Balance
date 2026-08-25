@@ -4179,7 +4179,7 @@ test('day template probabilities snap to five-percent increments', async ({ page
     .toBe(75)
 })
 
-test('splitting day- and list-template items preserves the source probability', async ({ page }, testInfo) => {
+test('template splits preserve probability for text and default empty items to 100%', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -4203,6 +4203,25 @@ test('splitting day- and list-template items preserves the source probability', 
     { text: ' up', probability: 65 },
   ])
 
+  await focusTemplateOptionByValue(page, 'Wake')
+  await setCaretOffsetInFocusedEditor(page, 4)
+  await page.keyboard.press('Enter')
+  await focusTemplateOptionByValue(page, ' up')
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Enter')
+
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.templates?.[0]?.items?.slice(0, 4).map((item: {
+      options?: Array<{ text: string; probability: number }>
+    }) => ({ text: item.options?.[0]?.text, probability: item.options?.[0]?.probability }))
+  })).toEqual([
+    { text: 'Wake', probability: 65 },
+    { text: '', probability: 100 },
+    { text: '', probability: 100 },
+    { text: ' up', probability: 65 },
+  ])
+
   const openNavigation = page.getByRole('button', { name: 'Open navigation' })
   if (await openNavigation.isVisible()) await openNavigation.click()
   await page.getByRole('button', { name: 'Lists' }).click()
@@ -4221,6 +4240,27 @@ test('splitting day- and list-template items preserves the source probability', 
     }) => ({ text: item.text, probability: item.probability }))
   })).toEqual([
     { text: 'First', probability: 40 },
+    { text: ' item', probability: 40 },
+  ])
+
+  await listItem.focus()
+  await setCaretOffsetInFocusedEditor(page, 5)
+  await page.keyboard.press('Enter')
+  const trailingListItem = page.locator('[data-list-template-text-input]').filter({ hasText: 'item' })
+  await trailingListItem.focus()
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Enter')
+
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.listTemplates?.[0]?.items?.slice(0, 4).map((item: {
+      text: string
+      probability: number
+    }) => ({ text: item.text, probability: item.probability }))
+  })).toEqual([
+    { text: 'First', probability: 40 },
+    { text: '', probability: 100 },
+    { text: '', probability: 100 },
     { text: ' item', probability: 40 },
   ])
 })
