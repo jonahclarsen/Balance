@@ -2333,8 +2333,6 @@ body.mobile-checkbox-dragging {
 .imax-button {
   width: 64px;
   overflow: hidden;
-  border-color: color-mix(in srgb, var(--accent) 38%, var(--line));
-  background: var(--paper-strong);
 }
 
 /* IMAX adds macOS title-bar clearance, so briefly preserve the button's old
@@ -2352,10 +2350,9 @@ body.mobile-checkbox-dragging {
   background: transparent;
 }
 
-.imax-button:hover,
 .imax-button.active {
   border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, var(--paper-strong));
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 .imax-logo {
