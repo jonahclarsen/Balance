@@ -340,9 +340,11 @@ hooks belong in `.github/scripts/configure-android-widgets.mjs`, not in a locall
 generated Android tree.
 
 Keep the Android manual refresh action connected to the relay sync worker, which
-redraws the widget after a successful pass. A local snapshot redraw alone cannot
-retrieve changes made on another device. Preserve a minimum 48dp touch target
-around the refresh control even when its visible treatment is smaller.
+redraws the widget after a successful pass. Also redraw the current local
+snapshot immediately: the network-constrained worker may be deferred or unable
+to run offline, and otherwise a tap appears inert. A local snapshot redraw alone
+cannot retrieve changes made on another device. Preserve a minimum 48dp touch
+target around the refresh control even when its visible treatment is smaller.
 
 Run only the generator test locally:
 

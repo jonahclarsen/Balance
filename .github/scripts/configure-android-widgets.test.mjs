@@ -137,12 +137,16 @@ class BalanceSyncWorker {
     )
     assert.match(kotlin, /external fun nativeSnapshot/)
     assert.match(kotlin, /BalanceSyncWorker\.refreshNow\(context\)/)
+    assert.match(kotlin, /Intent\.FLAG_RECEIVER_FOREGROUND/)
     assert.match(kotlin, /R\.id\.widget_refresh_touch_target/)
     assert.match(kotlin, /setTextViewText\(R\.id\.widget_brand, brandText\(context, snapshot\.themeId\)\)/)
     assert.match(kotlin, /SpannableString\("Balance"\)/)
     assert.match(kotlin, /0xFFA13C91\.toInt\(\)/)
     assert.match(kotlin, /0xFFEF77BC\.toInt\(\)/)
-    assert.doesNotMatch(kotlin, /BalanceWidgets\.refreshAllAsync\(context\) \{ pending\.finish\(\) \}/)
+    assert.match(
+      kotlin,
+      /BalanceWidgets\.refreshAllAsync\(context\) \{[\s\S]*BalanceSyncWorker\.refreshNow\(context\)[\s\S]*pending\.finish\(\)/,
+    )
     assert.doesNotMatch(kotlin, /SharedPreferences|openFileOutput|writeText/)
     assert.doesNotMatch(kotlin, /BalanceLockWidgetProvider|renderLock|balance_lock_widget/)
     assert.match(kotlin, /BALANCE_WIDGET_E2E: OK home native-snapshot/)

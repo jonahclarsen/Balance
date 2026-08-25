@@ -310,7 +310,9 @@ object BalanceWidgets {
 
     private fun attachActions(context: Context, views: RemoteViews) {
         views.setOnClickPendingIntent(R.id.widget_root, openAppIntent(context))
-        val refresh = Intent(context, BalanceHomeWidgetProvider::class.java).setAction(ACTION_REFRESH)
+        val refresh = Intent(context, BalanceHomeWidgetProvider::class.java)
+            .setAction(ACTION_REFRESH)
+            .addFlags(Intent.FLAG_RECEIVER_FOREGROUND)
         val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         views.setOnClickPendingIntent(
             R.id.widget_refresh_touch_target,
@@ -383,7 +385,11 @@ class BalanceHomeWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action == BalanceWidgets.ACTION_REFRESH) {
-            BalanceSyncWorker.refreshNow(context)
+            val pending = goAsync()
+            BalanceWidgets.refreshAllAsync(context) {
+                BalanceSyncWorker.refreshNow(context)
+                pending.finish()
+            }
         } else {
             super.onReceive(context, intent)
         }
