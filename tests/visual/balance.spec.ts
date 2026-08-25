@@ -3067,12 +3067,30 @@ test('undo returns the untouched completion caret to the unchecked task', async 
   await seedPlanItems(page, ['First task', 'Second task'])
   const firstCheckbox = page.getByRole('listitem', { name: 'Plan item: First task' }).getByRole('checkbox')
 
+  await focusInputByValue(page, 'First task')
+  await setCaretOffsetInFocusedEditor(page, 3)
   await firstCheckbox.check()
   await expect.poll(async () => activeInputValue(page)).toBe('Second task')
   await page.keyboard.press('Meta+Z')
 
   await expect(firstCheckbox).not.toBeChecked()
   await expect.poll(async () => activeInputValue(page)).toBe('First task')
+  await expect.poll(async () => activeInputCaretOffset(page)).toBe(3)
+})
+
+test('undo restores the pre-completion caret offset after cmd d', async ({ page }) => {
+  await seedPlanItems(page, ['First task', 'Second task'])
+  const firstCheckbox = page.getByRole('listitem', { name: 'Plan item: First task' }).getByRole('checkbox')
+
+  await focusInputByValue(page, 'First task')
+  await setCaretOffsetInFocusedEditor(page, 6)
+  await page.keyboard.press('Meta+D')
+  await expect.poll(async () => activeInputValue(page)).toBe('Second task')
+  await page.keyboard.press('Meta+Z')
+
+  await expect(firstCheckbox).not.toBeChecked()
+  await expect.poll(async () => activeInputValue(page)).toBe('First task')
+  await expect.poll(async () => activeInputCaretOffset(page)).toBe(6)
 })
 
 test('undo leaves a deliberately moved completion caret in place', async ({ page }) => {
@@ -5530,6 +5548,20 @@ async function activeInputValue(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const active = document.activeElement
     return active instanceof HTMLElement && active.matches('[data-plan-text-input]') ? active.textContent : null
+  })
+}
+
+async function activeInputCaretOffset(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    const selection = document.getSelection()
+    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-input]') || !selection?.rangeCount) return null
+    const caret = selection.getRangeAt(0)
+    if (!active.contains(caret.startContainer)) return null
+    const beforeCaret = document.createRange()
+    beforeCaret.selectNodeContents(active)
+    beforeCaret.setEnd(caret.startContainer, caret.startOffset)
+    return beforeCaret.toString().length
   })
 }
 

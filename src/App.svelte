@@ -53,7 +53,7 @@
   import type { ArchivedListTemplateItem, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
-  import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
+  import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
@@ -366,6 +366,7 @@ return rows`
     target: HTMLElement
     start: number | null
     end: number | null
+    completedCaret: TaskCaretOffsets | null
   }
   let selectedItemIds: Id[] = []
   let selectionAnchorId: Id | null = null
@@ -743,7 +744,11 @@ return rows`
     documentFindOpen = false
     openMobileDrawerView(destination)
     if (completionCaret) {
-      await focusTaskById(completionCaret.containerId, completionCaret.completedItemId)
+      await focusTaskById(
+        completionCaret.containerId,
+        completionCaret.completedItemId,
+        completionCaret.completedCaret ?? undefined,
+      )
     }
   }
 
@@ -779,6 +784,7 @@ return rows`
       target,
       start,
       end,
+      completedCaret: detail.completedCaret ?? null,
     }
   }
 
