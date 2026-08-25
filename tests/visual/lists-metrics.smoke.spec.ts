@@ -219,6 +219,7 @@ test('metric quiz records answers and bulk import backfills', async ({ page }) =
   await page.getByRole('button', { name: 'Today', exact: true }).click()
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   const firstItem = page.locator('[data-plan-text-input]').first()
+  const secondItemId = await page.locator('[data-plan-text-input]').nth(1).getAttribute('data-plan-text-input-id')
   await firstItem.fill('log Mood now')
   await firstItem.blur()
 
@@ -233,6 +234,11 @@ test('metric quiz records answers and bulk import backfills', async ({ page }) =
   await dialog.getByPlaceholder('Type your answer, press Enter').fill('7')
   await page.keyboard.press('Enter')
   await expect(dialog).toBeHidden()
+  await expect.poll(() => activePlanTextTarget(page)).toEqual({
+    id: secondItemId,
+    display: false,
+    collapsedCaret: true,
+  })
 
   // The numeric graph shows up in the Metrics view.
   await openMetrics(page)

@@ -3,6 +3,7 @@
   import PlanItemEditor from './PlanItemEditor.svelte'
   import { buildItemTimeWarnings, findPlanItem, itemMetricLink, type ItemLink } from './planner'
   import { plannerStore } from './store'
+  import { focusTaskBelow, TASK_COMPLETION_FOCUS_EVENT } from './taskCompletionFocus'
   import type { Id, ListTemplate, Metric, Note, PlanItem } from './types'
 
   export let instance: { id: Id; items: PlanItem[] }
@@ -35,6 +36,7 @@
   $: timeWarnings = buildItemTimeWarnings(instance.items)
 
   onMount(() => {
+    panel.addEventListener(TASK_COMPLETION_FOCUS_EVENT, handleCompletionFocus)
     const setup = async () => {
       await tick()
       if (!panel) return
@@ -55,6 +57,7 @@
     void setup()
 
     return () => {
+      panel.removeEventListener(TASK_COMPLETION_FOCUS_EVENT, handleCompletionFocus)
       scrollContainer?.removeEventListener('scroll', handleScrollContainerScroll)
       if (scrollAnimationFrame !== null) cancelAnimationFrame(scrollAnimationFrame)
     }
@@ -198,7 +201,9 @@
       onOpenLink(metricLink, item.id)
       return
     }
-    plannerStore.patchListItem(instance.id, item.id, { done: !item.done })
+    const done = !item.done
+    plannerStore.patchListItem(instance.id, item.id, { done })
+    if (done) void focusTaskBelow(instance.id, [item.id])
   }
 
   export function hasSelection() {
@@ -248,6 +253,11 @@
       event.preventDefault()
       toggleSelectedDone()
     }
+  }
+
+  function handleCompletionFocus(event: Event) {
+    const itemId = (event as CustomEvent<{ itemId?: Id }>).detail?.itemId
+    if (itemId && findPlanItem(instance.items, itemId)) selectedItemId = itemId
   }
 </script>
 

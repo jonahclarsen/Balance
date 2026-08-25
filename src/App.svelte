@@ -53,6 +53,7 @@
   import type { ArchivedListTemplateItem, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
+  import { focusTaskBelow } from './lib/taskCompletionFocus'
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
@@ -1201,6 +1202,7 @@ return rows`
       } else {
         plannerStore.patchListItem(opener.containerId, opener.itemId, { done: true })
       }
+      void focusTaskBelow(opener.containerId, [opener.itemId])
     })
   }
 
@@ -1217,6 +1219,7 @@ return rows`
     } else {
       plannerStore.patchListItem(opener.containerId, opener.itemId, { done: true })
     }
+    void focusTaskBelow(opener.containerId, [opener.itemId])
   }
 
   function answersForEntry(metricId: Id, date: string): Record<Id, string> {
@@ -3125,11 +3128,17 @@ return rows`
       if (selectedItems.length === 0) return
 
       event.preventDefault()
+      const done = !selectedItems.every((item) => item.done)
+      const completedItemIds = selectedItems.map((item) => item.id)
       plannerStore.patchPlanItemsDone(
         focusedPlan.id,
-        selectedItems.map((item) => item.id),
-        !selectedItems.every((item) => item.done),
+        completedItemIds,
+        done,
       )
+      if (done) {
+        clearItemSelection()
+        void focusTaskBelow(focusedPlan.id, completedItemIds)
+      }
       return
     }
 
@@ -3162,7 +3171,9 @@ return rows`
       if (!plan || !item) return
 
       event.preventDefault()
-      plannerStore.patchPlanItem(plan.id, item.id, { done: !item.done })
+      const done = !item.done
+      plannerStore.patchPlanItem(plan.id, item.id, { done })
+      if (done) void focusTaskBelow(plan.id, [item.id])
       return
     }
 

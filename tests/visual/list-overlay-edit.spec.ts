@@ -198,6 +198,7 @@ test('list overlay header progress fills as items are checked off', async ({ pag
 
   await expect(progress).toHaveAttribute('aria-valuenow', '1')
   await expect(progress).toHaveCSS('--list-progress', '50%')
+  await expect(dialog.locator('.plan-row.selected')).toContainText('Eggs')
 })
 
 test('list overlay opens note and external links from generated items', async ({ page }) => {
@@ -314,23 +315,27 @@ test('clicking a list row selects it without checking it', async ({ page }) => {
   await expect(eggsRow.getByRole('checkbox')).not.toBeChecked()
 })
 
-test('ArrowUp unchecks both the current and previous list items', async ({ page }) => {
+test('ArrowUp reopens the two items above completion-advanced focus', async ({ page }) => {
   const dialog = await openThreeItemGroceriesOverlay(page)
   const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })
   const eggsRow = dialog.locator('.plan-row', { hasText: 'Eggs' })
   const milkCheckbox = milkRow.getByRole('checkbox')
   const eggsCheckbox = eggsRow.getByRole('checkbox')
+  const breadRow = dialog.locator('.plan-row', { hasText: 'Bread' })
+  const breadCheckbox = breadRow.getByRole('checkbox')
 
   await page.keyboard.press('ArrowDown')
   await expect(milkCheckbox).toBeChecked()
   await expect(eggsRow).toHaveClass(/selected/)
   await eggsCheckbox.check()
+  await expect(breadRow).toHaveClass(/selected/)
 
   await page.keyboard.press('ArrowUp')
 
-  await expect(milkCheckbox).not.toBeChecked()
+  await expect(milkCheckbox).toBeChecked()
   await expect(eggsCheckbox).not.toBeChecked()
-  await expect(milkRow).toHaveClass(/selected/)
+  await expect(breadCheckbox).not.toBeChecked()
+  await expect(eggsRow).toHaveClass(/selected/)
 })
 
 test('ArrowDown checks the final list item when it cannot navigate farther', async ({ page }) => {

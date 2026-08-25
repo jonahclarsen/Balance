@@ -5,6 +5,7 @@
   import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
   import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
+  import { focusTaskBelow } from './taskCompletionFocus'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
@@ -302,6 +303,7 @@
     }
     clearMobileCheckboxDrag(drag)
     commit?.(planId, itemIds, true)
+    if (commit) void focusTaskBelow(planId, itemIds)
   }
 
   function cancelMobileCheckboxDragFromEvent(event: PointerEvent) {
@@ -331,7 +333,9 @@
 
   function handleCheckboxChange(event: Event & { currentTarget: HTMLInputElement }) {
     if (suppressCheckboxClick) return
-    patchItem(planId, item.id, { done: event.currentTarget.checked })
+    const done = event.currentTarget.checked
+    patchItem(planId, item.id, { done })
+    if (done) void focusTaskBelow(planId, [item.id])
   }
 
   onDestroy(cancelMobileCheckboxDrag)
@@ -602,7 +606,9 @@
         onOpenLink(metricLink, item.id)
         return
       }
-      patchItem(planId, item.id, { done: !item.done })
+      const done = !item.done
+      patchItem(planId, item.id, { done })
+      if (done) void focusTaskBelow(planId, [item.id])
     }
   }
 

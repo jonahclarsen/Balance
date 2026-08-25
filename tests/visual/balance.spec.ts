@@ -3020,38 +3020,47 @@ test('template item text fields support arrow focus and option-arrow sibling mov
   await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual(initialOrder)
 })
 
-test('cmd d toggles the focused plan item completion state', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+test('checking a plan item moves the caret to the task beneath it', async ({ page }) => {
+  await seedPlanItems(page, ['First task', 'Second task', 'Third task'])
+  const firstCheckbox = page.getByRole('listitem', { name: 'Plan item: First task' }).getByRole('checkbox')
+  const secondCheckbox = page.getByRole('listitem', { name: 'Plan item: Second task' }).getByRole('checkbox')
 
-  await focusInputByValue(page, 'Wake up')
-  const wakeCheckbox = page.getByRole('listitem', { name: /Plan item: Wake up/ }).getByRole('checkbox')
+  await firstCheckbox.check()
 
-  await page.keyboard.press('Meta+D')
-
-  await expect(wakeCheckbox).toBeChecked()
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-        return state.plans?.[0]?.items?.find((item: { text: string }) => item.text === 'Wake up')?.done
-      }),
-    )
-    .toBe(true)
+  await expect(firstCheckbox).toBeChecked()
+  await expect.poll(async () => activeInputValue(page)).toBe('Second task')
 
   await page.keyboard.press('Meta+D')
 
-  await expect(wakeCheckbox).not.toBeChecked()
-  await expect
-    .poll(async () =>
-      page.evaluate(() => {
-        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-        return state.plans?.[0]?.items?.find((item: { text: string }) => item.text === 'Wake up')?.done
-      }),
-    )
-    .toBe(false)
+  await expect(secondCheckbox).toBeChecked()
+  await expect.poll(async () => activeInputValue(page)).toBe('Third task')
+})
+
+test('unchecking a plan item keeps the caret on that task', async ({ page }) => {
+  await seedPlanItems(page, ['First task', 'Second task'])
+  const firstCheckbox = page.getByRole('listitem', { name: 'Plan item: First task' }).getByRole('checkbox')
+  await firstCheckbox.check()
+  await expect.poll(async () => activeInputValue(page)).toBe('Second task')
+
+  await focusInputByValue(page, 'First task')
+
+  await page.keyboard.press('Meta+D')
+  await expect(firstCheckbox).not.toBeChecked()
+  await expect.poll(async () => activeInputValue(page)).toBe('First task')
+})
+
+test('bulk completion moves the caret below the last selected task', async ({ page }) => {
+  await seedPlanItems(page, ['First task', 'Second task', 'Third task'])
+  const firstRow = page.getByRole('listitem', { name: 'Plan item: First task' })
+  const secondRow = page.getByRole('listitem', { name: 'Plan item: Second task' })
+
+  await firstRow.getByRole('button', { name: 'Select item' }).click()
+  await secondRow.getByRole('button', { name: 'Select item' }).click({ modifiers: ['Meta'] })
+  await page.keyboard.press('Meta+D')
+
+  await expect(firstRow.getByRole('checkbox')).toBeChecked()
+  await expect(secondRow.getByRole('checkbox')).toBeChecked()
+  await expect.poll(async () => activeInputValue(page)).toBe('Third task')
 })
 
 test('checking the final child completes each satisfied parent task', async ({ page }) => {
