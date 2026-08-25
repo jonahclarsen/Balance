@@ -200,6 +200,100 @@ test('list overlay header progress fills as items are checked off', async ({ pag
   await expect(progress).toHaveCSS('--list-progress', '50%')
 })
 
+test('list overlay opens note and external links from generated items', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openPrimaryView(page, 'Notes')
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByLabel('Note title').fill('Project Brain')
+  const noteLink = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return `balance://note/${state.notes[0].id}`
+  })
+
+  await openPrimaryView(page, 'Lists')
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Reading')
+
+  const listItems = page.locator('[data-list-template-text-input]')
+  const noteItem = listItems.first()
+  await noteItem.fill('Open Project Brain')
+  await pasteLinkOverText(noteItem, noteLink, 5, 18)
+  await noteItem.blur()
+
+  await page.getByRole('button', { name: '+ Add list item' }).click()
+  const externalItem = listItems.nth(1)
+  await externalItem.fill('Visit example')
+  await pasteLinkOverText(externalItem, 'https://example.com/docs', 6, 13)
+  await externalItem.blur()
+
+  await generateToday(page)
+  const firstItem = page.locator('[data-plan-text-input]').first()
+  await firstItem.fill('Reading')
+  await firstItem.blur()
+  await page.getByTitle('Open Reading').first().click()
+
+  const dialog = page.getByRole('dialog', { name: 'Reading' })
+  await expect(dialog).toBeVisible()
+  await page.evaluate(() => {
+    ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = ''
+    window.open = ((url?: string | URL) => {
+      ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = String(url)
+      return null
+    }) as typeof window.open
+  })
+
+  await dialog.getByRole('link', { name: 'example' }).click()
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { openedExternalURL?: string }).openedExternalURL))
+    .toBe('https://example.com/docs')
+  await expect(dialog).toBeVisible()
+
+  await dialog.getByRole('link', { name: 'Project Brain' }).click()
+  await expect(page.getByLabel('Note title')).toHaveValue('Project Brain')
+})
+
+async function pasteLinkOverText(
+  editor: import('@playwright/test').Locator,
+  link: string,
+  start: number,
+  end: number,
+) {
+  await editor.evaluate((element, selection) => {
+    const range = document.createRange()
+    range.setStart(element.firstChild!, selection.start)
+    range.setEnd(element.firstChild!, selection.end)
+    const browserSelection = document.getSelection()
+    browserSelection?.removeAllRanges()
+    browserSelection?.addRange(range)
+
+    const clipboard = new DataTransfer()
+    clipboard.setData('text/plain', selection.link)
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }))
+  }, { link, start, end })
+}
+
+async function openPrimaryView(page: import('@playwright/test').Page, name: 'Today' | 'Lists' | 'Notes') {
+  const mobileMenu = page.getByRole('button', { name: 'Open navigation' })
+  if (await mobileMenu.isVisible()) {
+    await mobileMenu.click()
+    await page.getByRole('complementary', { name: 'Primary navigation drawer' })
+      .getByRole('button', { name, exact: true })
+      .click()
+    return
+  }
+
+  await page.getByRole('button', { name, exact: true }).click()
+}
+
+async function generateToday(page: import('@playwright/test').Page) {
+  await openPrimaryView(page, 'Today')
+  const emptyState = page.locator('.empty-state')
+  await emptyState.getByRole('radio', { name: 'Default day' }).check()
+  await emptyState.getByRole('button', { name: 'Generate today' }).click()
+}
+
 test('list overlay selects its first item when initially opened', async ({ page }) => {
   const dialog = await openTwoItemGroceriesOverlay(page)
 

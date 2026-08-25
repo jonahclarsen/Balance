@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
+  import { openExternalURL } from './externalLinks'
   import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
-  import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
+  import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
@@ -605,20 +606,28 @@
     }
   }
 
-  // The locked display renders via {@html}, so internal-link anchors have no
-  // Svelte handlers. Catch clicks on them here and route to onOpenLink, stopping
-  // the event before handleLockedRowClick toggles the row done.
-  function handleDisplayLinkClick(event: MouseEvent) {
+  // The locked display renders via {@html}, so its anchors have no Svelte
+  // handlers. Route both internal and external links explicitly instead of
+  // letting the embedded webview try to navigate to them.
+  async function handleDisplayLinkClick(event: MouseEvent) {
     const target = event.target instanceof Element ? event.target : null
-    const anchor = target?.closest<HTMLAnchorElement>('a[data-internal-link-kind]')
+    const anchor = target?.closest<HTMLAnchorElement>('a[href]')
     if (!anchor) return
 
     const link = itemLinkFromAnchor(anchor)
-    if (!link) return
+    if (link) {
+      event.preventDefault()
+      event.stopPropagation()
+      onOpenLink(link, item.id)
+      return
+    }
+
+    const href = anchor.href
+    if (!isURL(href)) return
 
     event.preventDefault()
     event.stopPropagation()
-    onOpenLink(link, item.id)
+    await openExternalURL(href)
   }
 
   function handleLockedRowClick(event: MouseEvent) {

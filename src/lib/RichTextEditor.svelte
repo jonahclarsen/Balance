@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { invoke, isTauri } from '@tauri-apps/api/core'
   import { onMount } from 'svelte'
+  import { openExternalURL } from './externalLinks'
   import {
     escapeHTML,
     htmlToPlainText,
@@ -568,12 +568,7 @@
     event.preventDefault()
     event.stopPropagation()
 
-    if (isTauri()) {
-      await invoke('open_external_url', { url: href })
-      return
-    }
-
-    window.open(href, '_blank', 'noopener,noreferrer')
+    await openExternalURL(href)
   }
 
   function persistPasteIfInputDidNotFire(activeEditor: HTMLDivElement) {
