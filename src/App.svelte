@@ -78,6 +78,7 @@
     type ThemeId,
   } from './lib/themes'
   import { isNoteTrashed } from './lib/noteTrash'
+  import { BALANCE_DEEP_LINK_EVENT, parseBalanceDeepLink } from './lib/deepLinks'
   import {
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
@@ -1439,11 +1440,47 @@ return rows`
     let stopAutomaticSync: (() => void) | null = null
     let stopPasteMatchStyleListener: (() => void) | null = null
     let stopMacosAltShortcutListener: (() => void) | null = null
+    let stopDeepLinkListener: (() => void) | null = null
+    let deepLinksReady = false
+    const pendingDeepLinks: string[] = []
     let noteTrashCleanupTimer: number | null = null
     let desktopInactivityCloseTimer: number | null = null
     let desktopInactivityCloseRequested = false
     let lastDesktopActivityAt = Date.now()
     const desktopActivityEvents = ['keydown', 'pointerdown', 'pointermove', 'wheel', 'input'] as const
+
+    function receiveDeepLink(raw: string) {
+      pendingDeepLinks.push(raw)
+      if (deepLinksReady) drainDeepLinks()
+    }
+
+    function drainDeepLinks() {
+      if (!deepLinksReady || $databaseLoadError) return
+      for (const raw of pendingDeepLinks.splice(0)) {
+        const deepLink = parseBalanceDeepLink(raw)
+        if (!deepLink) continue
+        plannerStore.addRootPlanItemFromSiri(deepLink.text, deepLink.requestId, todayISO())
+        closeCompareDay()
+        closeMobileDrawer()
+        view = 'today'
+      }
+    }
+
+    if (isTauri() && isMac) {
+      void listen<string>(BALANCE_DEEP_LINK_EVENT, ({ payload }) => {
+        receiveDeepLink(payload)
+      }).then(async (stopListening) => {
+        if (!mounted) {
+          stopListening()
+          return
+        }
+        stopDeepLinkListener = stopListening
+        const queued = await invoke<string[]>('take_pending_deep_links')
+        for (const raw of queued) receiveDeepLink(raw)
+      }).catch((error) => {
+        console.error('Could not listen for Balance deep links', error)
+      })
+    }
 
     function closeDesktopIfInactive() {
       if (!isTauri() || isMobile || desktopInactivityCloseRequested) return
@@ -1628,6 +1665,8 @@ return rows`
 
       workspaceViewStateReady = true
       listTemplatesViewStateReady = true
+      deepLinksReady = true
+      drainDeepLinks()
       planCompletionById = new Map(
         $plannerStore.plans.map((plan) => [plan.id, allPlanItemsDone(plan.items)]),
       )
@@ -1665,6 +1704,7 @@ return rows`
       stopAutomaticSync?.()
       stopPasteMatchStyleListener?.()
       stopMacosAltShortcutListener?.()
+      stopDeepLinkListener?.()
       stopAndroidSelectionBackListener()
       window.clearInterval(databaseLoadingMessageTimer)
       window.clearInterval(currentDayTimer)

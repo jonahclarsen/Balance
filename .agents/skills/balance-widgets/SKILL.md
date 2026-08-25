@@ -46,7 +46,8 @@ Read only the files relevant to the requested change:
 - `src-tauri/build.rs`: compiles the host Swift bridge and links AppKit, Security,
   and WidgetKit into the Rust app.
 - `src-tauri/macos/BalanceWidget/BalanceWidget.swift`: WidgetKit timeline,
-  decryption, backward-compatible decoding, privacy marking, and rendering.
+  decryption, backward-compatible decoding, privacy marking, rendering, and the
+  macOS 15+ Add to Balance App Intent exposed to Siri and Shortcuts.
 - `src-tauri/macos/BalanceWidget.xcodeproj`: the real WidgetKit extension target.
 - `scripts/build-macos-widget.mjs`: universal Xcode build and extension signing.
 - `scripts/macos-tauri-cargo.sh`: macOS Cargo pass-through that injects the dev
@@ -223,6 +224,14 @@ nor a URL scheme. After bridge changes, verify a successful reload in unified
 logs, exactly one `pluginkit` result rooted under `/Applications/Balance.app`,
 and Launch Services URL resolution to `/Applications/Balance.app`. Never print
 widget payloads during those checks.
+
+The Siri intent passes a one-time `balance://add` URL to the installed app and
+never reads, decrypts, or writes the database itself. While `tauri dev` is
+running, the extension also broadcasts that URL in memory and only the debug
+host installs the native listener; the installed release still performs its
+normal activation handoff. Do not persist Siri task text in preferences or a
+plaintext queue. Preserve the request identifier and frontend deduplication so
+the debug notification plus production URL cannot insert a task twice.
 
 ## Install and register macOS correctly
 

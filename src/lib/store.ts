@@ -27,6 +27,7 @@ import {
   outdentTemplateItems as outdentTemplateItemsInTree,
   escapeHTML,
   findPlanItem,
+  formatPlanTitle,
   formatMinutes,
   generatePlanFromTemplate,
   htmlToPlainText,
@@ -722,6 +723,59 @@ function createPlannerStore() {
         ...plan,
         items: addPlanItem(plan.items, null, item),
       })))
+    },
+
+    addRootPlanItemFromSiri(text: string, requestId: string, date = todayISO()): boolean {
+      const normalizedText = text.trim()
+      if (!normalizedText || !requestId) return false
+
+      const item = createPlanItem(normalizedText)
+      const current = get(store)
+      const existingPlan = current.plans.find((plan) => plan.date === date)
+      const createdPlan: DailyPlan | null = existingPlan
+        ? null
+        : {
+            id: createId('plan'),
+            date,
+            title: formatPlanTitle(date),
+            dailyReminder: DEFAULT_DAILY_REMINDER,
+            generatedFromTemplateId: null,
+            createdAt: nowISO(),
+            items: [item],
+          }
+      let added = false
+      commit('add_plan_item_from_siri', {
+        date,
+        requestId,
+        createdPlan,
+        item,
+      }, (state) => {
+        const alreadyAdded = state.operations.some((operation) => {
+          if (operation.type !== 'add_plan_item_from_siri' || !operation.payload || typeof operation.payload !== 'object') {
+            return false
+          }
+          return (operation.payload as Record<string, unknown>).requestId === requestId
+        })
+        if (alreadyAdded) return state
+
+        added = true
+        const targetPlan = state.plans.find((plan) => plan.date === date)
+        if (targetPlan) {
+          return updatePlan(
+            { ...state, activePlanDate: date },
+            targetPlan.id,
+            (plan) => ({ ...plan, items: addPlanItem(plan.items, null, item) }),
+          )
+        }
+
+        if (!createdPlan) return state
+        return {
+          ...state,
+          activePlanDate: date,
+          plans: [...state.plans, createdPlan].sort((a, b) => b.date.localeCompare(a.date)),
+        }
+      })
+      return added
     },
 
     patchPlanItem(

@@ -1,12 +1,89 @@
 import SwiftUI
 import WidgetKit
 import Security
+import AppIntents
 
 private let encryptedSnapshotKey = "balance.widget.encrypted-snapshot.v2"
 private let snapshotVisibleUntilKey = "balance.widget.snapshot-visible-until.v1"
 private let snapshotDomain = "app.balance.local"
 private let widgetKind = "BalanceToday"
 private let dayRolloverHour = 3
+private let siriAddNotification = Notification.Name("app.balance.local.siri.add")
+private let maximumSiriTaskLength = 2_000
+
+private enum AddToBalanceIntentError: Error {
+    case invalidURL
+}
+
+@available(macOS 15.0, *)
+private struct AddToBalanceIntent: AppIntent {
+    static let title: LocalizedStringResource = "Add to Balance"
+    static let description = IntentDescription("Add a task to today's plan in Balance.")
+
+    @Parameter(
+        title: "Task",
+        description: "What you want to add to today's plan",
+        requestValueDialog: "What would you like to add to Balance?"
+    )
+    var task: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Add \(\.$task) to Balance")
+    }
+
+    func perform() async throws -> some IntentResult & ProvidesDialog & OpensIntent {
+        let trimmedTask = task.trimmingCharacters(in: .whitespacesAndNewlines)
+        let text = String(String.UnicodeScalarView(trimmedTask.unicodeScalars.prefix(maximumSiriTaskLength)))
+        guard !text.isEmpty else {
+            throw $task.needsValueError("What would you like to add to Balance?")
+        }
+
+        var components = URLComponents()
+        components.scheme = "balance"
+        components.host = "add"
+        components.queryItems = [
+            URLQueryItem(name: "text", value: text),
+            URLQueryItem(name: "request", value: UUID().uuidString),
+        ]
+        guard let url = components.url else {
+            throw AddToBalanceIntentError.invalidURL
+        }
+
+        // A debug Balance host cannot own the installed app's URL scheme. This
+        // in-memory notification lets only debug builds receive the same URL;
+        // production builds use OpenURLIntent below.
+        DistributedNotificationCenter.default().postNotificationName(
+            siriAddNotification,
+            object: nil,
+            userInfo: ["url": url.absoluteString],
+            deliverImmediately: true
+        )
+
+        return .result(
+            opensIntent: OpenURLIntent(url),
+            dialog: "Sending that to Balance."
+        )
+    }
+}
+
+@available(macOS 15.0, *)
+private struct BalanceAppShortcuts: AppShortcutsProvider {
+    static var appShortcuts: [AppShortcut] {
+        AppShortcut(
+            intent: AddToBalanceIntent(),
+            phrases: [
+                "Add to \(.applicationName)",
+                "Add something to \(.applicationName)",
+                "Add a task to \(.applicationName)",
+                "Remember something in \(.applicationName)",
+            ],
+            shortTitle: "Add to Balance",
+            systemImageName: "plus.circle.fill"
+        )
+    }
+
+    static var shortcutTileColor: ShortcutTileColor { .purple }
+}
 
 private enum WidgetSnapshotKey {
     static let tag = Data("app.balance.local.widget.snapshot-key.v2".utf8)

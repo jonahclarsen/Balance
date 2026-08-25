@@ -10,11 +10,37 @@ private let snapshotVisibleUntilKey = "balance.widget.snapshot-visible-until.v1"
 private let snapshotPreferenceDomain = "app.balance.local"
 private let widgetPreferenceDomain = "app.balance.local.widget"
 private let widgetReloadNotification = Notification.Name("app.balance.local.widget.reload")
+private let siriAddNotification = Notification.Name("app.balance.local.siri.add")
 private let rawDevelopmentExecutableSuffix = "/src-tauri/target/debug/Balance"
 private let developmentAppExecutableSuffix = "/BalanceDev.app/Contents/MacOS/Balance"
 
 private var snapshotDefaults: UserDefaults {
     UserDefaults(suiteName: snapshotPreferenceDomain) ?? .standard
+}
+
+private var siriRequestObserver: NSObjectProtocol?
+private var siriRequestCallback: (@convention(c) (UnsafePointer<CChar>?) -> Void)?
+
+@_cdecl("balance_install_siri_request_handler")
+public func balanceInstallSiriRequestHandler(
+    _ callback: @escaping @convention(c) (UnsafePointer<CChar>?) -> Void
+) {
+    siriRequestCallback = callback
+    guard siriRequestObserver == nil else {
+        return
+    }
+    siriRequestObserver = DistributedNotificationCenter.default().addObserver(
+        forName: siriAddNotification,
+        object: nil,
+        queue: .main
+    ) { notification in
+        guard let url = notification.userInfo?["url"] as? String else {
+            return
+        }
+        url.withCString { pointer in
+            siriRequestCallback?(pointer)
+        }
+    }
 }
 
 private func widgetPublicKeyString() -> String? {

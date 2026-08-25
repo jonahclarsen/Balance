@@ -230,10 +230,60 @@ const PASTE_MATCH_STYLE_EVENT: &str = "balance-paste-match-style";
 #[cfg(target_os = "macos")]
 const MACOS_ALT_SHORTCUT_EVENT: &str = "balance-macos-alt-shortcut";
 #[cfg(target_os = "macos")]
+const BALANCE_DEEP_LINK_EVENT: &str = "balance-deep-link";
+#[cfg(target_os = "macos")]
 const MAIN_WINDOW_FRAME_DEFAULTS_KEY: &str = "BalanceMainWindowFrameV1";
 #[cfg(target_os = "macos")]
 static MAIN_WINDOW_FRAME_RESTORED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
+static PENDING_DEEP_LINKS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+#[cfg(all(target_os = "macos", debug_assertions))]
+static MACOS_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+#[tauri::command]
+fn take_pending_deep_links() -> Vec<String> {
+    PENDING_DEEP_LINKS
+        .lock()
+        .map(|mut links| std::mem::take(&mut *links))
+        .unwrap_or_default()
+}
+
+#[cfg(target_os = "macos")]
+fn deliver_balance_deep_link(app: &tauri::AppHandle, url: String) {
+    if !url.starts_with("balance://") {
+        return;
+    }
+    if let Ok(mut links) = PENDING_DEEP_LINKS.lock() {
+        if links.len() >= 32 {
+            links.remove(0);
+        }
+        links.push(url.clone());
+    }
+    let _ = app.emit(BALANCE_DEEP_LINK_EVENT, url);
+}
+
+#[cfg(all(target_os = "macos", debug_assertions))]
+extern "C" fn receive_siri_deep_link(url: *const std::ffi::c_char) {
+    if url.is_null() {
+        return;
+    }
+    let Ok(url) = unsafe { std::ffi::CStr::from_ptr(url) }.to_str() else {
+        return;
+    };
+    if let Some(app) = MACOS_APP_HANDLE.get() {
+        deliver_balance_deep_link(app, url.to_string());
+    }
+}
+
+#[cfg(all(target_os = "macos", debug_assertions))]
+fn install_siri_request_handler(app: &tauri::AppHandle) {
+    extern "C" {
+        fn balance_install_siri_request_handler(callback: extern "C" fn(*const std::ffi::c_char));
+    }
+
+    let _ = MACOS_APP_HANDLE.set(app.clone());
+    unsafe { balance_install_siri_request_handler(receive_siri_deep_link) };
+}
 
 #[cfg(target_os = "macos")]
 #[derive(Deserialize, Serialize)]
@@ -4340,6 +4390,30 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
                 optional_string(payload, "parentId")?.as_deref(),
             )?,
         ),
+        "add_plan_item_from_siri" => {
+            let date = required_string(payload, "date")?;
+            let existing_plan_id = tx
+                .query_row(
+                    "select id from plans where date = ?1",
+                    params![date],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+                .map_err(|error| error.to_string())?;
+
+            if let Some(plan_id) = existing_plan_id {
+                insert_plan_item(
+                    tx,
+                    &plan_id,
+                    None,
+                    required_value(payload, "item")?,
+                    next_plan_item_position(tx, &plan_id, None)?,
+                )?;
+            } else {
+                insert_plan(tx, required_value(payload, "createdPlan")?)?;
+            }
+            set_metadata(tx, "active_plan_date", date)
+        }
         "patch_plan_item" => patch_plan_item(tx, payload),
         "patch_plan_items_done" => {
             for item_id in required_array(payload, "itemIds")? {
@@ -4799,6 +4873,43 @@ fn build_domain_undo_operation(
             "delete_plan_item",
             json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
         ))),
+        "add_plan_item_from_siri" => {
+            let previous_active_date =
+                metadata_value(connection, "active_plan_date")?.unwrap_or_default();
+            let date = required_string(payload, "date")?;
+            let plan_existed = connection
+                .query_row("select 1 from plans where date = ?1", params![date], |_| {
+                    Ok(())
+                })
+                .optional()
+                .map_err(|error| error.to_string())?
+                .is_some();
+            let remove_addition = if plan_existed {
+                storage_operation(
+                    "delete_plan_item",
+                    json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
+                )
+            } else {
+                storage_operation(
+                    "delete_plan",
+                    json!({
+                        "planId": required_string(required_value(payload, "createdPlan")?, "id")?
+                    }),
+                )
+            };
+            Ok(Some(storage_operation(
+                "batch",
+                json!({
+                    "operations": [
+                        remove_addition,
+                        storage_operation(
+                            "set_active_plan_date",
+                            json!({ "date": previous_active_date }),
+                        ),
+                    ]
+                }),
+            )))
+        }
         "patch_plan_item" => build_plan_item_patch_undo(connection, payload),
         "patch_plan_items_done" => build_patch_plan_items_done_undo(connection, payload),
         "patch_plan_daily_reminder" => {
@@ -10165,6 +10276,8 @@ pub fn run() {
                 restore_macos_main_window_frame(app)?;
                 install_paste_and_match_style_menu(app)?;
                 install_macos_alt_shortcut_monitor(app);
+                #[cfg(debug_assertions)]
+                install_siri_request_handler(app.handle());
             }
 
             if cfg!(debug_assertions) {
@@ -10271,6 +10384,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_app_state,
+            take_pending_deep_links,
             get_device_appearance,
             set_device_appearance,
             initialize_app_state,
@@ -10321,7 +10435,14 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
 
-    app.run(|_app_handle, event| {
+    app.run(|app_handle, event| {
+        #[cfg(target_os = "macos")]
+        if let tauri::RunEvent::Opened { urls } = &event {
+            for url in urls {
+                deliver_balance_deep_link(app_handle, url.to_string());
+            }
+        }
+
         #[cfg(target_os = "macos")]
         if matches!(event, tauri::RunEvent::Exit) {
             if let Err(error) = macos_haptic_drag::end() {
@@ -10527,6 +10648,96 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn siri_add_persists_and_undoes_with_or_without_a_plan() {
+        let recovery_key = generate_recovery_key();
+        let siri_item = json!({
+            "id": "plan_item_siri",
+            "text": "Call Frank",
+            "html": "Call Frank",
+            "done": false,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": []
+        });
+
+        let existing_database = TestDatabase::new("siri-existing-plan");
+        let mut existing_connection =
+            open_database_at(&existing_database.path, &recovery_key).unwrap();
+        replace_app_state(&mut existing_connection, &test_state("Existing plan")).unwrap();
+        persist_operation_to_database(
+            &mut existing_connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "add_plan_item_from_siri",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "date": "2026-05-21",
+                    "requestId": "request-existing",
+                    "createdPlan": null,
+                    "item": siri_item.clone()
+                }
+            }),
+        )
+        .unwrap();
+        let added = read_app_state_from_database(&existing_connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(added["plans"][0]["items"].as_array().unwrap().len(), 2);
+        assert_eq!(added["plans"][0]["items"][1]["text"], "Call Frank");
+        let undone = undo_last_operation_in_database(&mut existing_connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(undone["plans"][0]["items"].as_array().unwrap().len(), 1);
+
+        let empty_database = TestDatabase::new("siri-empty-day");
+        let mut empty_state = test_state("Removed plan");
+        empty_state["plans"] = json!([]);
+        let mut empty_connection = open_database_at(&empty_database.path, &recovery_key).unwrap();
+        replace_app_state(&mut empty_connection, &empty_state).unwrap();
+        persist_operation_to_database(
+            &mut empty_connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "add_plan_item_from_siri",
+                "timestamp": "2026-05-22T00:01:00Z",
+                "payload": {
+                    "date": "2026-05-22",
+                    "requestId": "request-empty",
+                    "createdPlan": {
+                        "id": "plan_siri",
+                        "date": "2026-05-22",
+                        "title": "Friday, May 22",
+                        "dailyReminder": "This shouldn't be aspirational",
+                        "generatedFromTemplateId": null,
+                        "createdAt": "2026-05-22T00:01:00Z",
+                        "items": [siri_item.clone()]
+                    },
+                    "item": siri_item
+                }
+            }),
+        )
+        .unwrap();
+        let created = read_app_state_from_database(&empty_connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(created["activePlanDate"], "2026-05-22");
+        assert_eq!(created["plans"][0]["items"][0]["text"], "Call Frank");
+        let undone = undo_last_operation_in_database(&mut empty_connection)
+            .unwrap()
+            .unwrap();
+        assert!(undone["plans"].as_array().unwrap().is_empty());
+        assert_eq!(undone["activePlanDate"], "2026-05-21");
+        let redone = redo_last_operation_in_database(&mut empty_connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(redone["plans"][0]["items"][0]["text"], "Call Frank");
     }
 
     #[test]
