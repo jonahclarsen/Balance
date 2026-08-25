@@ -137,8 +137,8 @@
     holdTimer: ReturnType<typeof setTimeout> | null
     active: boolean
     itemIds: Set<Id>
-    previewRows: Set<HTMLElement>
-    lastItemId: Id
+    previewRows: Map<Id, HTMLElement>
+    anchorItemId: Id
   }
 
   const MOBILE_CHECKBOX_HOLD_MS = 1000
@@ -218,8 +218,8 @@
       holdTimer: null,
       active: false,
       itemIds: new Set(),
-      previewRows: new Set(),
-      lastItemId: item.id,
+      previewRows: new Map(),
+      anchorItemId: item.id,
     }
     mobileCheckboxDrag = drag
     drag.holdTimer = setTimeout(() => activateMobileCheckboxDrag(drag), MOBILE_CHECKBOX_HOLD_MS)
@@ -254,29 +254,35 @@
     const row = hovered?.closest<HTMLElement>('[data-plan-item-id]') ?? null
     if (!row || row.dataset.itemContainerId !== planId) return
     const hoveredItemId = row.dataset.planItemId
-    if (hoveredItemId) addMobileCheckboxDragRange(drag, hoveredItemId, row)
+    if (hoveredItemId) updateMobileCheckboxDragRange(drag, hoveredItemId, row)
   }
 
   // Touchmove events can be sparse during a quick swipe. Fill the visible tree
-  // range between samples so every row the finger travelled across is included.
-  function addMobileCheckboxDragRange(drag: MobileCheckboxDrag, nextItemId: Id, nextRow: HTMLElement) {
+  // range from the starting checkbox to the current row. Rebuilding that range
+  // also removes rows as the finger retraces its path.
+  function updateMobileCheckboxDragRange(drag: MobileCheckboxDrag, nextItemId: Id, nextRow: HTMLElement) {
     const itemIds = flattenPlanItemIds(allItems)
-    const fromIndex = itemIds.indexOf(drag.lastItemId)
+    const fromIndex = itemIds.indexOf(drag.anchorItemId)
     const toIndex = itemIds.indexOf(nextItemId)
     if (fromIndex === -1 || toIndex === -1) {
       addMobileCheckboxDragItem(drag, nextItemId, nextRow)
-    } else {
-      const [start, end] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex]
-      for (const itemId of itemIds.slice(start, end + 1)) {
-        const row = itemId === nextItemId
-          ? nextRow
-          : Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]')).find(
-              (candidate) => candidate.dataset.itemContainerId === planId && candidate.dataset.planItemId === itemId,
-            ) ?? null
-        addMobileCheckboxDragItem(drag, itemId, row)
-      }
+      return
     }
-    drag.lastItemId = nextItemId
+
+    const [start, end] = fromIndex < toIndex ? [fromIndex, toIndex] : [toIndex, fromIndex]
+    const nextItemIds = new Set(itemIds.slice(start, end + 1))
+    for (const itemId of drag.itemIds) {
+      if (!nextItemIds.has(itemId)) removeMobileCheckboxDragItem(drag, itemId)
+    }
+
+    const rowsById = new Map(
+      Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
+        .filter((candidate) => candidate.dataset.itemContainerId === planId)
+        .map((candidate) => [candidate.dataset.planItemId, candidate]),
+    )
+    for (const itemId of nextItemIds) {
+      addMobileCheckboxDragItem(drag, itemId, itemId === nextItemId ? nextRow : rowsById.get(itemId) ?? null)
+    }
   }
 
   function flattenPlanItemIds(items: PlanItem[]): Id[] {
@@ -286,8 +292,14 @@
   function addMobileCheckboxDragItem(drag: MobileCheckboxDrag, itemId: Id, row: HTMLElement | null) {
     if (!row || drag.itemIds.has(itemId)) return
     drag.itemIds.add(itemId)
-    drag.previewRows.add(row)
+    drag.previewRows.set(itemId, row)
     row.classList.add('mobile-checkbox-drag-preview')
+  }
+
+  function removeMobileCheckboxDragItem(drag: MobileCheckboxDrag, itemId: Id) {
+    drag.itemIds.delete(itemId)
+    drag.previewRows.get(itemId)?.classList.remove('mobile-checkbox-drag-preview')
+    drag.previewRows.delete(itemId)
   }
 
   function finishMobileCheckboxDrag(event: PointerEvent) {
@@ -316,7 +328,7 @@
 
   function clearMobileCheckboxDrag(drag: MobileCheckboxDrag) {
     if (drag.holdTimer !== null) clearTimeout(drag.holdTimer)
-    for (const row of drag.previewRows) row.classList.remove('mobile-checkbox-drag-preview')
+    for (const row of drag.previewRows.values()) row.classList.remove('mobile-checkbox-drag-preview')
     if (drag.source.hasPointerCapture?.(drag.pointerId)) drag.source.releasePointerCapture(drag.pointerId)
     document.body.classList.remove('mobile-checkbox-dragging')
     window.removeEventListener('pointermove', moveMobileCheckboxDrag)

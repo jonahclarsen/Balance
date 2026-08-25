@@ -514,6 +514,52 @@ test('holding a mobile checkbox then dragging checks every crossed task in one a
   for (const row of rows) await expect(row.getByRole('checkbox')).not.toBeChecked()
 })
 
+test('reversing a mobile checkbox drag unchecks tasks the finger retraces', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The checkbox hold-and-drag gesture is mobile-only')
+
+  const rows = [1, 2, 3, 4].map((number) =>
+    page.getByRole('listitem', { name: `Plan item: Filler task ${number}`, exact: true }),
+  )
+  const boxes = await Promise.all(rows.map((row) => row.getByRole('checkbox').boundingBox()))
+  if (boxes.some((box) => !box)) throw new Error('Missing reversible checkbox gesture geometry')
+
+  const cdp = await page.context().newCDPSession(page)
+  const touchPoint = (index: number) => ({
+    x: boxes[index]!.x + boxes[index]!.width / 2,
+    y: boxes[index]!.y + boxes[index]!.height / 2,
+  })
+  const previewRows = page.locator('.plan-row.mobile-checkbox-drag-preview')
+
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touchPoint(0)] })
+  await page.waitForTimeout(1100)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchPoint(3)] })
+  await expect(previewRows).toHaveCount(4)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchPoint(2)] })
+  await expect(previewRows).toHaveCount(3)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchPoint(1)] })
+  await expect(previewRows).toHaveCount(2)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+
+  for (const row of rows.slice(0, 2)) await expect(row.getByRole('checkbox')).toBeChecked()
+  for (const row of rows.slice(2)) await expect(row.getByRole('checkbox')).not.toBeChecked()
+
+  await page.locator('.mobile-app-header').getByRole('button', { name: 'Undo' }).click()
+  for (const row of rows) await expect(row.getByRole('checkbox')).not.toBeChecked()
+
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touchPoint(3)] })
+  await page.waitForTimeout(1100)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchPoint(0)] })
+  await expect(previewRows).toHaveCount(4)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchPoint(1)] })
+  await expect(previewRows).toHaveCount(3)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touchPoint(2)] })
+  await expect(previewRows).toHaveCount(2)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+
+  for (const row of rows.slice(0, 2)) await expect(row.getByRole('checkbox')).not.toBeChecked()
+  for (const row of rows.slice(2)) await expect(row.getByRole('checkbox')).toBeChecked()
+})
+
 test('holding and dragging a checkbox does not bulk-check tasks on desktop', async ({ page }, testInfo) => {
   test.skip(isMobileProject(testInfo.project.name), 'Desktop-only mobile gesture guard')
 
