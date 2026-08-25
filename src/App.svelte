@@ -5142,6 +5142,12 @@ return rows`
     ></button>
   {/if}
 
+  {#if viewMaximized}
+    <div class="imax-exit-control">
+      <ImaxButton active onToggle={(event) => toggleViewMaximized(view, event)} />
+    </div>
+  {/if}
+
   <header class="mobile-app-header" aria-label="Mobile app header">
     <button
       class="mobile-menu-button"

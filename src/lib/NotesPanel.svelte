@@ -16,7 +16,10 @@
   const LEGACY_NOTE_SCROLL_SPACE_VH_KEY = 'balance:noteScrollSpaceVh'
   const DEFAULT_NOTE_SCROLL_SPACE_PERCENT = 60
   const MIN_NOTE_SCROLL_SPACE_VH = 6
-  const MAX_NOTE_SCROLL_SPACE_VH = 48
+  // Keep the existing default height stable while giving the upper 40% of the
+  // slider more range for lifting the final lines higher in the viewport.
+  const DEFAULT_NOTE_SCROLL_SPACE_VH = 31.2
+  const MAX_NOTE_SCROLL_SPACE_VH = 60
 
   export let notes: Note[]
   export let selectedNoteId: Id
@@ -331,14 +334,31 @@
   }
 
   function noteScrollSpaceVhForPercent(percent: number) {
-    return MIN_NOTE_SCROLL_SPACE_VH + (MAX_NOTE_SCROLL_SPACE_VH - MIN_NOTE_SCROLL_SPACE_VH) * percent / 100
+    if (percent <= DEFAULT_NOTE_SCROLL_SPACE_PERCENT) {
+      return MIN_NOTE_SCROLL_SPACE_VH
+        + (DEFAULT_NOTE_SCROLL_SPACE_VH - MIN_NOTE_SCROLL_SPACE_VH) * percent / DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+    }
+
+    return DEFAULT_NOTE_SCROLL_SPACE_VH
+      + (MAX_NOTE_SCROLL_SPACE_VH - DEFAULT_NOTE_SCROLL_SPACE_VH)
+        * (percent - DEFAULT_NOTE_SCROLL_SPACE_PERCENT) / (100 - DEFAULT_NOTE_SCROLL_SPACE_PERCENT)
   }
 
   function noteScrollSpacePercentForVh(value: number) {
     if (!Number.isFinite(value)) return DEFAULT_NOTE_SCROLL_SPACE_PERCENT
     const clamped = Math.max(MIN_NOTE_SCROLL_SPACE_VH, Math.min(MAX_NOTE_SCROLL_SPACE_VH, value))
+    if (clamped <= DEFAULT_NOTE_SCROLL_SPACE_VH) {
+      return normalizeNoteScrollSpacePercent(
+        (clamped - MIN_NOTE_SCROLL_SPACE_VH)
+          / (DEFAULT_NOTE_SCROLL_SPACE_VH - MIN_NOTE_SCROLL_SPACE_VH) * DEFAULT_NOTE_SCROLL_SPACE_PERCENT,
+      )
+    }
+
     return normalizeNoteScrollSpacePercent(
-      (clamped - MIN_NOTE_SCROLL_SPACE_VH) / (MAX_NOTE_SCROLL_SPACE_VH - MIN_NOTE_SCROLL_SPACE_VH) * 100,
+      DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+        + (clamped - DEFAULT_NOTE_SCROLL_SPACE_VH)
+          / (MAX_NOTE_SCROLL_SPACE_VH - DEFAULT_NOTE_SCROLL_SPACE_VH)
+          * (100 - DEFAULT_NOTE_SCROLL_SPACE_PERCENT),
     )
   }
 
@@ -678,8 +698,8 @@
 <div class="notes-workspace">
   <aside class="notes-sidebar" aria-label="Notes">
     <div class="notes-sidebar-head">
-      <h3>{trashOpen ? 'Bin' : 'Notes'}</h3>
       {#if trashOpen}
+        <h3>Bin</h3>
         {#if trashedNotes.length > 0}<button class="ghost danger note-empty-trash" type="button" aria-label="Empty Bin" on:click={emptyTrash}>Empty</button>{/if}
       {:else}
         <button class="primary note-new" type="button" on:click={createAndSelect}>+ New</button>

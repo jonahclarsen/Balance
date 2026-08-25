@@ -134,6 +134,8 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
 
   await page.getByRole('button', { name: 'Notes', exact: true }).click()
   const notesPageActions = page.locator('.notes-page-actions')
+  const notesPageHeader = page.locator('.notes-page-header')
+  const notesSidebar = page.locator('.notes-sidebar')
   const binButton = notesPageActions.getByRole('button', { name: 'Bin', exact: true })
   const imaxButton = page.getByRole('button', { name: 'Enter IMAX mode' })
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
@@ -144,17 +146,63 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await expect(imaxButton).toBeVisible()
   await expect(goalRhythm).toBeVisible()
   await expect(sidebar).toBeVisible()
+  await expect(notesPageHeader).toBeVisible()
+  await expect(notesSidebar).toBeVisible()
+  await expect(notesSidebar.getByRole('heading', { name: 'Notes', exact: true })).toHaveCount(0)
   await imaxButton.click()
 
-  const exitImaxButton = page.getByRole('button', { name: 'Exit IMAX mode' })
+  const exitImaxButton = page.locator('.imax-exit-control').getByRole('button', { name: 'Exit IMAX mode' })
   await expect(exitImaxButton).toHaveAttribute('aria-pressed', 'true')
   await expect(goalRhythm).toBeHidden()
   await expect(sidebar).toBeHidden()
+  await expect(notesPageHeader).toBeHidden()
+  await expect(notesSidebar).toBeHidden()
 
   await exitImaxButton.click()
   await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
   await expect(goalRhythm).toBeVisible()
   await expect(sidebar).toBeVisible()
+  await expect(notesPageHeader).toBeVisible()
+  await expect(notesSidebar).toBeVisible()
+})
+
+test('note style menu escapes the note card and stays inside the viewport', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop popup placement is covered here')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const workspace = page.locator('.workspace')
+  const firstEditor = page.locator('[data-note-text-input]').first()
+  await firstEditor.fill(Array.from({ length: 60 }, (_, index) => `Popup positioning line ${index + 1}`).join('\n'))
+  await placeCaretAtEnd(firstEditor)
+  await firstEditor.press('Enter')
+  const slashEditor = page.locator('[data-note-text-input]').nth(1)
+  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await page.getByLabel('Bottom writing space').fill('0')
+  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await slashEditor.fill('/')
+
+  const menu = page.getByRole('listbox', { name: 'Note styles' })
+  await expect(menu).toBeVisible()
+  const geometry = await page.evaluate(() => {
+    const menuBounds = document.querySelector('.note-slash-menu')?.getBoundingClientRect()
+    const noteBounds = document.querySelector('.notes-workspace')?.getBoundingClientRect()
+    return menuBounds && noteBounds
+      ? {
+          menuTop: menuBounds.top,
+          menuBottom: menuBounds.bottom,
+          noteBottom: noteBounds.bottom,
+          viewportHeight: window.innerHeight,
+        }
+      : null
+  })
+  expect(geometry).not.toBeNull()
+  expect(geometry?.menuTop).toBeGreaterThanOrEqual(8)
+  expect(geometry?.menuBottom).toBeLessThanOrEqual((geometry?.viewportHeight ?? 0) - 8)
+  expect(geometry?.menuBottom).toBeGreaterThan(geometry?.noteBottom ?? Number.POSITIVE_INFINITY)
 })
 
 test('shift arrow keys extend note selection to the matching position on an adjacent block', async ({ page }) => {
@@ -661,6 +709,7 @@ test('notes save adjustable breathing room and follow edits only from the bottom
   const workspace = page.locator('.workspace')
   const spacingSlider = page.getByLabel('Bottom writing space')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
+  await expect(editor).toHaveCSS('line-height', '25.5px')
 
   await expect(spacingSlider).toHaveAttribute('min', '0')
   await expect(spacingSlider).toHaveAttribute('max', '100')
@@ -741,6 +790,9 @@ test('notes save adjustable breathing room and follow edits only from the bottom
   expect(endGeometry).not.toBeNull()
   expect(endGeometry?.thumbCenter).toBeCloseTo(endGeometry?.trackRight ?? 0, 0)
   expect(endGeometry?.fillWidth).toBeCloseTo(endGeometry?.trackWidth ?? 0, 0)
+  const maximumSpaceHeight = await page.locator('.note-scroll-space').evaluate((element) => element.getBoundingClientRect().height)
+  expect(maximumSpaceHeight).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.59)
+  expect(maximumSpaceHeight).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.61)
   await page.screenshot({ path: testInfo.outputPath('note-spacing-slider-at-bottom.png'), fullPage: false })
   const visibleNoteHeight = await page.evaluate(() => {
     const scroller = document.querySelector('.workspace')?.getBoundingClientRect()

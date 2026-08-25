@@ -33,6 +33,7 @@
   let linkSegments: ItemTextSegment[] = [{ text: item.text, link: null }]
   let slashQuery: string | null = null
   let slashIndex = 0
+  let noteBlockElement: HTMLDivElement
   const blockCommands: { kind: NoteItemKind; label: string; hint: string }[] = [
     { kind: 'paragraph', label: 'Text', hint: 'Plain body text' },
     { kind: 'heading', label: 'Heading', hint: 'Large section heading' },
@@ -46,6 +47,51 @@
     ? []
     : blockCommands.filter((command) => command.label.toLocaleLowerCase().includes(slashQuery ?? ''))
   $: if (slashIndex >= slashCommands.length) slashIndex = 0
+
+  function positionSlashMenu(node: HTMLDivElement) {
+    let frame: number | null = null
+    const workspace = node.closest<HTMLElement>('.workspace')
+    const update = () => {
+      frame = null
+      if (!noteBlockElement.isConnected || !node.isConnected) return
+
+      node.style.top = 'calc(100% + 4px)'
+      node.style.left = '0px'
+      const blockBounds = noteBlockElement.getBoundingClientRect()
+      const menuBounds = node.getBoundingClientRect()
+      const viewportGap = 8
+      const top = Math.max(
+        viewportGap,
+        Math.min(blockBounds.bottom + 4, window.innerHeight - viewportGap - menuBounds.height),
+      )
+      const left = Math.max(
+        viewportGap,
+        Math.min(blockBounds.left, window.innerWidth - viewportGap - menuBounds.width),
+      )
+      node.style.top = `${top - blockBounds.top}px`
+      node.style.left = `${left - blockBounds.left}px`
+    }
+    const scheduleUpdate = () => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(update)
+    }
+    const resizeObserver = new ResizeObserver(scheduleUpdate)
+
+    window.addEventListener('resize', scheduleUpdate)
+    workspace?.addEventListener('scroll', scheduleUpdate, { passive: true })
+    resizeObserver.observe(node)
+    resizeObserver.observe(noteBlockElement)
+    scheduleUpdate()
+
+    return {
+      destroy() {
+        window.removeEventListener('resize', scheduleUpdate)
+        workspace?.removeEventListener('scroll', scheduleUpdate)
+        resizeObserver.disconnect()
+        if (frame !== null) window.cancelAnimationFrame(frame)
+      },
+    }
+  }
 
   async function handleSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
     if ((item.kind === 'heading' || item.kind === 'checklist') && !before.text.trim() && !after.text.trim()) {
@@ -406,7 +452,7 @@
   data-note-item-number={item.kind === 'numbered' ? itemNumber : undefined}
   aria-label={`Note block: ${item.text || 'Empty'}`}
 >
-  <div class="note-block" data-note-item-number={item.kind === 'numbered' ? itemNumber : undefined}>
+  <div class="note-block" data-note-item-number={item.kind === 'numbered' ? itemNumber : undefined} bind:this={noteBlockElement}>
     {#if item.kind === 'checklist'}
       <input
         class="check note-check"
@@ -445,7 +491,7 @@
       onInternalLinkClick={(link) => onOpenLink(link)}
     />
     {#if slashQuery !== null && slashCommands.length > 0}
-      <div class="note-slash-menu" role="listbox" aria-label="Note styles">
+      <div class="note-slash-menu" role="listbox" aria-label="Note styles" use:positionSlashMenu>
         {#each slashCommands as command, index (command.kind)}
           <button
             type="button"

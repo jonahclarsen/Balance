@@ -2350,6 +2350,31 @@ body.mobile-checkbox-dragging {
   background: transparent;
 }
 
+.imax-exit-control {
+  position: fixed;
+  z-index: 45;
+  top: calc(env(safe-area-inset-top) + 12px);
+  right: 28px;
+}
+
+.imax-exit-control .imax-button {
+  background: color-mix(in srgb, var(--paper) 90%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px);
+}
+
+.app-shell.page-maximized .page-header {
+  display: none;
+}
+
+.app-shell.page-maximized .notes-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.app-shell.page-maximized .notes-sidebar {
+  display: none;
+}
+
 .imax-button.active {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
@@ -5333,9 +5358,9 @@ body.mobile-checkbox-dragging {
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   border: 1px solid var(--line);
   border-radius: 12px;
-  /* Preserve rounded-edge clipping without trapping the sticky toolbar in a
-     non-scrolling overflow container. The workspace is the actual scroller. */
-  overflow: clip;
+  /* Popovers such as the slash-command menu may extend beyond the note card.
+     The outer workspace remains the actual scroller. */
+  overflow: visible;
   background: var(--paper);
   box-shadow: var(--shadow);
 }
@@ -5365,6 +5390,7 @@ body.mobile-checkbox-dragging {
 }
 
 .note-new {
+  margin-left: auto;
   padding: 6px 10px;
 }
 
@@ -5736,7 +5762,7 @@ body.mobile-checkbox-dragging {
   color: var(--muted);
   cursor: text;
   font-size: 15px;
-  line-height: 1.6;
+  line-height: 1.7;
   text-align: left;
 }
 
@@ -5802,7 +5828,7 @@ body.mobile-checkbox-dragging {
   outline: none;
   font-size: 15px;
   font-synthesis: style;
-  line-height: 1.6;
+  line-height: 1.7;
   white-space: pre-wrap;
 }
 
@@ -5862,7 +5888,7 @@ body.mobile-checkbox-dragging {
   z-index: 12;
   display: grid;
   width: min(310px, calc(100vw - 48px));
-  max-height: 320px;
+  max-height: min(320px, calc(100dvh - 16px));
   border: 1px solid var(--line-strong);
   border-radius: 11px;
   background: var(--paper-strong);

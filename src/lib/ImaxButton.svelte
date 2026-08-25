@@ -10,7 +10,7 @@
   aria-label={active ? 'Exit IMAX mode' : 'Enter IMAX mode'}
   aria-keyshortcuts="Alt+I"
   aria-pressed={active}
-  title={`${active ? 'Show sidebar and Goal Rhythm' : 'Hide sidebar and Goal Rhythm'} (Alt+I)`}
+  title={`${active ? 'Restore page chrome and Goal Rhythm' : 'Hide page chrome and Goal Rhythm'} (Alt+I)`}
   on:click={onToggle}
 >
   <svg class="imax-logo" aria-hidden="true" viewBox="0 0 489.215 94.727">
