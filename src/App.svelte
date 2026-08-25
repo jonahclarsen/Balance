@@ -53,7 +53,7 @@
   import type { ArchivedListTemplateItem, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
-  import { focusTaskBelow } from './lib/taskCompletionFocus'
+  import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
@@ -359,6 +359,14 @@ return rows`
     start: number
     end: number
   }
+  type CompletionUndoCaret = {
+    operationId: Id
+    containerId: Id
+    completedItemId: Id
+    target: HTMLElement
+    start: number | null
+    end: number | null
+  }
   let selectedItemIds: Id[] = []
   let selectionAnchorId: Id | null = null
   let selectionFocusId: Id | null = null
@@ -367,6 +375,7 @@ return rows`
   let itemContextRestoreNonce = 0
   const itemSelectionsByContext: Record<string, ItemSelectionState> = {}
   const itemCaretsByContext: Record<string, ItemCaretState> = {}
+  let completionUndoCaret: CompletionUndoCaret | null = null
   let selectingItems = false
   type PlanItemClipboard = { items: PlanItem[]; cut: boolean; sourceDate: string }
   type TemplateItemClipboard =
@@ -716,6 +725,14 @@ return rows`
   }
 
   async function undoAndOpenDestination() {
+    const latestOperationId = $plannerStore.operations.at(-1)?.id
+    const completionCaret = completionUndoCaret &&
+      completionUndoCaret.operationId === latestOperationId &&
+      completionUndoCaretIsUntouched()
+        ? completionUndoCaret
+        : null
+    completionUndoCaret = null
+
     const operationType = await plannerStore.undo()
     if (!operationType) return
 
@@ -725,6 +742,87 @@ return rows`
     searchOpen = false
     documentFindOpen = false
     openMobileDrawerView(destination)
+    if (completionCaret) {
+      await focusTaskById(completionCaret.containerId, completionCaret.completedItemId)
+    }
+  }
+
+  function handleTaskCompletionFocus(event: Event) {
+    if (!(event instanceof CustomEvent)) return
+    const detail = event.detail as TaskCompletionFocusDetail
+    const target = event.target
+    const operation = $plannerStore.operations.at(-1)
+    if (
+      !detail.completedItemId ||
+      !(target instanceof HTMLElement) ||
+      !operation ||
+      !operationMatchesCompletionFocus(operation.type, operation.payload, detail)
+    ) {
+      return
+    }
+
+    let start: number | null = null
+    let end: number | null = null
+    const selection = document.getSelection()
+    if (target.matches('[contenteditable="true"]')) {
+      if (!selection || selection.rangeCount === 0) return
+      const range = selection.getRangeAt(0)
+      if (!target.contains(range.startContainer) || !target.contains(range.endContainer)) return
+      start = textOffsetForRangeBoundary(target, range.startContainer, range.startOffset)
+      end = textOffsetForRangeBoundary(target, range.endContainer, range.endOffset)
+    }
+
+    completionUndoCaret = {
+      operationId: operation.id,
+      containerId: detail.containerId,
+      completedItemId: detail.completedItemId,
+      target,
+      start,
+      end,
+    }
+  }
+
+  function operationMatchesCompletionFocus(type: string, payload: unknown, detail: TaskCompletionFocusDetail) {
+    if (!payload || typeof payload !== 'object') return false
+    const record = payload as Record<string, unknown>
+    if (type === 'patch_plan_item') {
+      return record.planId === detail.containerId && record.itemId === detail.completedItemId &&
+        Boolean(record.patch && typeof record.patch === 'object' && (record.patch as Record<string, unknown>).done === true)
+    }
+    if (type === 'patch_plan_items_done') {
+      return record.planId === detail.containerId && record.done === true &&
+        Array.isArray(record.itemIds) && record.itemIds.includes(detail.completedItemId)
+    }
+    if (type === 'patch_list_item') {
+      return record.listId === detail.containerId && record.itemId === detail.completedItemId &&
+        Boolean(record.patch && typeof record.patch === 'object' && (record.patch as Record<string, unknown>).done === true)
+    }
+    return false
+  }
+
+  function completionUndoCaretIsUntouched() {
+    const pending = completionUndoCaret
+    if (!pending) return false
+    if (
+      document.activeElement instanceof Element &&
+      document.activeElement.closest('[data-completion-undo-trigger]')
+    ) return true
+    if (!pending.target.isConnected || document.activeElement !== pending.target) return false
+    if (pending.start === null || pending.end === null) return true
+
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return false
+    const range = selection.getRangeAt(0)
+    if (!pending.target.contains(range.startContainer) || !pending.target.contains(range.endContainer)) return false
+    return textOffsetForRangeBoundary(pending.target, range.startContainer, range.startOffset) === pending.start &&
+      textOffsetForRangeBoundary(pending.target, range.endContainer, range.endOffset) === pending.end
+  }
+
+  function validateCompletionUndoCaret() {
+    // A selectionchange can occur long after the completion's focus call. Clear
+    // the handoff on its first real caret move so moving away and back does not
+    // accidentally qualify as an untouched caret.
+    if (completionUndoCaret && !completionUndoCaretIsUntouched()) completionUndoCaret = null
   }
 
   function beginMobileDrawerGesture(event: PointerEvent) {
@@ -1451,6 +1549,7 @@ return rows`
     let desktopInactivityCloseRequested = false
     let lastDesktopActivityAt = Date.now()
     const desktopActivityEvents = ['keydown', 'pointerdown', 'pointermove', 'wheel', 'input'] as const
+    window.addEventListener(TASK_COMPLETION_FOCUS_EVENT, handleTaskCompletionFocus)
 
     function receiveDeepLink(raw: string) {
       pendingDeepLinks.push(raw)
@@ -1709,6 +1808,7 @@ return rows`
       stopMacosAltShortcutListener?.()
       stopDeepLinkListener?.()
       stopAndroidSelectionBackListener()
+      window.removeEventListener(TASK_COMPLETION_FOCUS_EVENT, handleTaskCompletionFocus)
       window.clearInterval(databaseLoadingMessageTimer)
       window.clearInterval(currentDayTimer)
       if (desktopInactivityCloseTimer !== null) window.clearTimeout(desktopInactivityCloseTimer)
@@ -3427,6 +3527,7 @@ return rows`
   }
 
   function rememberActiveItemCaret() {
+    validateCompletionUndoCaret()
     if (!itemStateContext || itemStateContext !== activeItemContext || selectedItemIds.length > 0) return
 
     const active = document.activeElement
@@ -3627,6 +3728,13 @@ return rows`
   }
 
   function handleGlobalPointerDown(event: PointerEvent) {
+    const pointerTarget = event.target instanceof Element ? event.target : null
+    if (
+      completionUndoCaret &&
+      !pointerTarget?.closest('[data-completion-undo-trigger]') &&
+      !completionUndoCaret.target.contains(pointerTarget)
+    ) completionUndoCaret = null
+
     beginMobileDrawerGesture(event)
     if (event.button !== 0 || !activeItemSurface()) {
       itemTextDragOrigin = null
@@ -3668,6 +3776,11 @@ return rows`
 
   function handleGlobalFocusIn(event: FocusEvent) {
     const target = event.target instanceof Element ? event.target : null
+    if (
+      completionUndoCaret &&
+      target !== completionUndoCaret.target &&
+      !target?.closest('[data-completion-undo-trigger]')
+    ) completionUndoCaret = null
     if (!target?.closest('input, textarea, [contenteditable="true"]')) return
 
     const probabilityRow = target.closest('[data-item-probability-control]')?.closest<HTMLElement>(itemRowSelector())
@@ -5073,7 +5186,7 @@ return rows`
             <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
           </button>
         {/if}
-        <button class="mobile-header-undo-button" type="button" title="Undo" aria-label="Undo" on:click={() => { void undoAndOpenDestination() }}>
+        <button class="mobile-header-undo-button" data-completion-undo-trigger type="button" title="Undo" aria-label="Undo" on:click={() => { void undoAndOpenDestination() }}>
           <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7-4 4 4 4" /><path d="M5 11h8a6 6 0 1 1-4.2 10.3" /></svg>
         </button>
       {/if}
@@ -5138,6 +5251,7 @@ return rows`
       {#if !isAndroid}
         <button
           class="mobile-undo-button"
+          data-completion-undo-trigger
           type="button"
           title="Undo"
           aria-label="Undo"

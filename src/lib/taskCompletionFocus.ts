@@ -2,6 +2,11 @@ import { tick } from 'svelte'
 import type { Id } from './types'
 
 export const TASK_COMPLETION_FOCUS_EVENT = 'balance-task-completion-focus'
+export type TaskCompletionFocusDetail = {
+  containerId: Id
+  itemId: Id
+  completedItemId?: Id
+}
 
 export async function focusTaskBelow(containerId: Id, completedItemIds: Iterable<Id>): Promise<boolean> {
   const completedIds = new Set(completedItemIds)
@@ -26,6 +31,29 @@ export async function focusTaskBelow(containerId: Id, completedItemIds: Iterable
   )
   if (!target) return false
 
+  const completedItemId = rows[lastCompletedIndex].dataset.planItemId
+  const itemId = targetRow.dataset.planItemId
+  if (!completedItemId || !itemId) return false
+
+  focusTaskTarget(target, { containerId, itemId, completedItemId })
+
+  return true
+}
+
+export async function focusTaskById(containerId: Id, itemId: Id): Promise<boolean> {
+  await tick()
+
+  const row = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]')).find(
+    (candidate) => candidate.dataset.itemContainerId === containerId && candidate.dataset.planItemId === itemId,
+  )
+  const target = row?.querySelector<HTMLElement>('[data-plan-text-focus-target], .item-text-display')
+  if (!target) return false
+
+  focusTaskTarget(target, { containerId, itemId })
+  return true
+}
+
+function focusTaskTarget(target: HTMLElement, detail: TaskCompletionFocusDetail) {
   target.focus()
   if (target.matches('[contenteditable="true"]')) {
     const range = document.createRange()
@@ -35,10 +63,8 @@ export async function focusTaskBelow(containerId: Id, completedItemIds: Iterable
     selection?.removeAllRanges()
     selection?.addRange(range)
   }
-  target.dispatchEvent(new CustomEvent(TASK_COMPLETION_FOCUS_EVENT, {
+  target.dispatchEvent(new CustomEvent<TaskCompletionFocusDetail>(TASK_COMPLETION_FOCUS_EVENT, {
     bubbles: true,
-    detail: { itemId: targetRow.dataset.planItemId },
+    detail,
   }))
-
-  return true
 }

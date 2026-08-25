@@ -3063,6 +3063,31 @@ test('bulk completion moves the caret below the last selected task', async ({ pa
   await expect.poll(async () => activeInputValue(page)).toBe('Third task')
 })
 
+test('undo returns the untouched completion caret to the unchecked task', async ({ page }) => {
+  await seedPlanItems(page, ['First task', 'Second task'])
+  const firstCheckbox = page.getByRole('listitem', { name: 'Plan item: First task' }).getByRole('checkbox')
+
+  await firstCheckbox.check()
+  await expect.poll(async () => activeInputValue(page)).toBe('Second task')
+  await page.keyboard.press('Meta+Z')
+
+  await expect(firstCheckbox).not.toBeChecked()
+  await expect.poll(async () => activeInputValue(page)).toBe('First task')
+})
+
+test('undo leaves a deliberately moved completion caret in place', async ({ page }) => {
+  await seedPlanItems(page, ['First task', 'Second task'])
+  const firstCheckbox = page.getByRole('listitem', { name: 'Plan item: First task' }).getByRole('checkbox')
+
+  await firstCheckbox.check()
+  await expect.poll(async () => activeInputValue(page)).toBe('Second task')
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Meta+Z')
+
+  await expect(firstCheckbox).not.toBeChecked()
+  await expect.poll(async () => activeInputValue(page)).toBe('Second task')
+})
+
 test('checking the final child completes each satisfied parent task', async ({ page }) => {
   await seedPlanTree(page, [
     {
