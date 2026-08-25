@@ -327,6 +327,23 @@
     if (scroller && isAtNoteBottom(scroller)) void scrollNoteToBottomAfterLayout(scroller)
   }
 
+  function handleNoteSelectionChange() {
+    updateInlineFormatState()
+
+    const selection = document.getSelection()
+    const inputs = noteInputs()
+    const lastInput = inputs.at(-1)
+    if (!selection?.isCollapsed || !selection.focusNode || !lastInput?.contains(selection.focusNode)) return
+
+    const contentBeforeCaret = document.createRange()
+    contentBeforeCaret.selectNodeContents(lastInput)
+    contentBeforeCaret.setEnd(selection.focusNode, selection.focusOffset)
+    if (contentBeforeCaret.toString().length !== (lastInput.textContent?.length ?? 0)) return
+
+    const scroller = noteScrollContainer()
+    if (scroller && !isAtNoteBottom(scroller)) void scrollNoteToBottomAfterLayout(scroller)
+  }
+
   function normalizeNoteScrollSpacePercent(value: number) {
     return Number.isFinite(value)
       ? Math.max(0, Math.min(100, Math.round(value)))
@@ -680,7 +697,7 @@
 </script>
 
 <svelte:document
-  on:selectionchange={updateInlineFormatState}
+  on:selectionchange={handleNoteSelectionChange}
   on:keyup={updateInlineFormatState}
   on:beforeinput|capture={followNoteBottomAfterEdit}
   on:keydown|capture={handleEditorKeydownCapture}

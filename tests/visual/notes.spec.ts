@@ -682,7 +682,10 @@ test('note formatting toolbar stays visible while scrolling a long note', async 
   const editor = page.locator('[data-note-text-input]').first()
   const workspace = page.locator('.workspace')
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  const slashKey = toolbar.locator('.note-format-hint kbd')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
+  await expect(slashKey).toHaveCSS('display', 'inline-grid')
+  await expect(slashKey).toHaveCSS('place-items', 'center')
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
 
   await expect.poll(async () => {
@@ -697,7 +700,58 @@ test('note formatting toolbar stays visible while scrolling a long note', async 
   }).toBe(true)
 })
 
-test('notes save adjustable breathing room and follow edits only from the bottom', async ({ page }, testInfo) => {
+test('moving the caret to the end of a note scrolls fully to the page bottom', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop scroll behavior is covered here')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const editor = page.locator('[data-note-text-input]').first()
+  const workspace = page.locator('.workspace')
+  await editor.fill(Array.from({ length: 80 }, (_, index) => `Caret scroll line ${index + 1}`).join('\n'))
+  await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
+  await placeCaretAtEnd(editor)
+
+  await expect.poll(() => workspace.evaluate(
+    (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+  )).toBeLessThanOrEqual(4)
+})
+
+test('Enter moves the caret into the newly created note line', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const firstEditor = page.locator('[data-note-text-input]').first()
+  const workspace = page.locator('.workspace')
+  await firstEditor.fill(Array.from({ length: 80 }, (_, index) => `Enter focus line ${index + 1}`).join('\n'))
+  await placeCaretAtEnd(firstEditor)
+  await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
+  await firstEditor.press('Enter')
+  await expect(page.locator('[data-note-text-input]')).toHaveCount(2)
+  await expect.poll(() => page.evaluate(() => {
+    const inputs = Array.from(document.querySelectorAll<HTMLElement>('[data-note-text-input]'))
+    const selection = document.getSelection()
+    const activeIndex = inputs.indexOf(document.activeElement as HTMLElement)
+    const activeInput = inputs[activeIndex]
+    if (!activeInput || !selection?.isCollapsed || !selection.focusNode || !activeInput.contains(selection.focusNode)) {
+      return null
+    }
+    const before = document.createRange()
+    before.selectNodeContents(activeInput)
+    before.setEnd(selection.focusNode, selection.focusOffset)
+    return { activeIndex, caretOffset: before.toString().length }
+  })).toEqual({ activeIndex: 1, caretOffset: 0 })
+  await expect.poll(() => workspace.evaluate(
+    (element) => element.scrollHeight - element.clientHeight - element.scrollTop,
+  )).toBeLessThanOrEqual(4)
+})
+
+test('notes save adjustable breathing room and follow the final caret to the bottom', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop scroll behavior is covered here')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -816,6 +870,9 @@ test('notes save adjustable breathing room and follow edits only from the bottom
   const secondEditor = page.locator('[data-note-text-input]').nth(1)
   await secondEditor.type('Still following the bottom')
   await expect.poll(() => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(4)
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
 
   const scrolledUpPosition = await workspace.evaluate((element) => {
     element.scrollTop = Math.max(0, element.scrollTop - 160)

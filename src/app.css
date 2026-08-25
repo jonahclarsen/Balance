@@ -5636,12 +5636,18 @@ body.mobile-checkbox-dragging {
 }
 
 .note-format-hint kbd {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: var(--sidebar);
-  padding: 0 4px;
+  padding: 0 3px;
   color: var(--ink);
   font: inherit;
+  line-height: 1;
+  vertical-align: middle;
 }
 
 .note-blocks {
