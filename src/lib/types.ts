@@ -96,7 +96,7 @@ export type ListInstance = {
   items: PlanItem[]
 }
 
-export type MetricQuestionType = 'text' | 'boolean'
+export type MetricQuestionType = 'text' | 'number' | 'boolean'
 
 export type MetricQuestion = {
   id: Id
@@ -115,7 +115,7 @@ export type Metric = {
 
 export type MetricAnswer = {
   questionId: Id
-  // Booleans stored as 'y' | 'n'; text/number answers stored verbatim.
+  // Booleans are stored as 'y' | 'n'; text and number answers are stored verbatim.
   value: string
 }
 

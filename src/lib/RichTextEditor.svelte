@@ -767,6 +767,8 @@
   data-template-option-text-input-id={kind === 'template-option' ? inputId : undefined}
   data-list-template-text-input={kind === 'list-template-item' ? '' : undefined}
   data-list-template-text-input-id={kind === 'list-template-item' ? inputId : undefined}
+  data-metric-question-text-input={kind === 'metric-question' ? '' : undefined}
+  data-metric-question-text-input-id={kind === 'metric-question' ? inputId : undefined}
   data-note-text-input={kind === 'note' ? '' : undefined}
   data-note-text-input-id={kind === 'note' ? inputId : undefined}
   contenteditable="true"

@@ -24,7 +24,7 @@ test('metrics editor uses a readable phone layout', async ({ page }, testInfo) =
             id: 'wellbeing',
             name: 'Wellbeing check-in',
             questions: [
-              { id: 'energy', prompt: 'How was your energy today?', html: 'How was your energy today?', type: 'text' },
+              { id: 'energy', prompt: 'How was your energy today?', html: 'How was your energy today?', type: 'number' },
               { id: 'outside', prompt: 'Did you spend time outside?', html: 'Did you spend time outside?', type: 'boolean' },
               { id: 'note', prompt: 'What helped most?', html: 'What helped most?', type: 'text' },
             ],
@@ -34,7 +34,7 @@ test('metrics editor uses a readable phone layout', async ({ page }, testInfo) =
           {
             id: 'sleep',
             name: 'Sleep',
-            questions: [{ id: 'hours', prompt: 'Hours slept', html: 'Hours slept', type: 'text' }],
+            questions: [{ id: 'hours', prompt: 'Hours slept', html: 'Hours slept', type: 'number' }],
             createdAt,
             updatedAt: createdAt,
           },
@@ -82,29 +82,29 @@ test('metrics editor uses a readable phone layout', async ({ page }, testInfo) =
   await expect(page.getByRole('heading', { name: 'Metrics' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
 
-  const questionRows = page.locator('.metric-question-row')
+  const questionRows = page.locator('[data-metric-question-id]')
   await expect(questionRows).toHaveCount(3)
   const layout = await questionRows.first().evaluate((row) => {
     const rowRect = row.getBoundingClientRect()
     const promptRect = row.querySelector<HTMLElement>('.metric-question-prompt')?.getBoundingClientRect()
-    const selectRect = row.querySelector<HTMLSelectElement>('select')?.getBoundingClientRect()
+    const typeRect = row.querySelector<HTMLElement>('.metric-question-types')?.getBoundingClientRect()
     const buttonRects = [...row.querySelectorAll<HTMLButtonElement>('button')].map((button) => button.getBoundingClientRect())
     return {
       rowWidth: rowRect.width,
       rowRight: rowRect.right,
       promptWidth: promptRect?.width ?? 0,
       promptBottom: promptRect?.bottom ?? 0,
-      controlsTop: selectRect?.top ?? 0,
-      selectWidth: selectRect?.width ?? 0,
+      controlsTop: typeRect?.top ?? 0,
+      typeWidth: typeRect?.width ?? 0,
       buttonSizes: buttonRects.map(({ width, height }) => ({ width, height })),
     }
   })
   expect(layout.rowRight).toBeLessThanOrEqual(360)
-  expect(layout.promptWidth).toBeGreaterThan(layout.rowWidth * 0.85)
+  expect(layout.promptWidth).toBeGreaterThan(layout.rowWidth * 0.7)
   expect(layout.controlsTop).toBeGreaterThan(layout.promptBottom)
-  expect(layout.selectWidth).toBeGreaterThanOrEqual(140)
-  expect(layout.buttonSizes).toHaveLength(3)
-  expect(layout.buttonSizes.every(({ width, height }) => width >= 40 && height >= 40)).toBe(true)
+  expect(layout.typeWidth).toBeGreaterThanOrEqual(240)
+  expect(layout.buttonSizes).toHaveLength(5)
+  expect(layout.buttonSizes.every(({ height }) => height >= 40)).toBe(true)
 
   await page.screenshot({
     path: 'artifacts/visual-smoke/mobile-metrics.png',

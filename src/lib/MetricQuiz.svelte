@@ -28,7 +28,7 @@
 
   async function focusTextSoon() {
     await tick()
-    if (question?.type === 'text') textInput?.focus()
+    if (question?.type !== 'boolean') textInput?.focus()
   }
 
   function advance() {
@@ -89,9 +89,11 @@
       <input
         bind:this={textInput}
         class="metric-text-input"
-        type="text"
+        type={question.type === 'number' ? 'number' : 'text'}
+        inputmode={question.type === 'number' ? 'decimal' : undefined}
+        step={question.type === 'number' ? 'any' : undefined}
         value={draft}
-        placeholder="Type your answer, press Enter"
+        placeholder={question.type === 'number' ? 'Enter a number, press Enter' : 'Type your answer, press Enter'}
         on:input={(event) => (draft = event.currentTarget.value)}
         on:keydown={(event) => {
           if (event.key === 'Enter') {
@@ -104,7 +106,7 @@
 
     <div class="metric-quiz-nav">
       <button type="button" on:click={goBack} disabled={index === 0}>← Back</button>
-      {#if question.type === 'text'}
+      {#if question.type !== 'boolean'}
         <button class="primary" type="button" on:click={submitText}>
           {index >= total - 1 ? 'Finish' : 'Next →'}
         </button>

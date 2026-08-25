@@ -2173,6 +2173,33 @@ function createPlannerStore() {
       return question.id
     },
 
+    splitMetricQuestion(
+      metricId: Id,
+      questionId: Id,
+      before: Pick<MetricQuestion, 'prompt' | 'html'>,
+      after: Pick<MetricQuestion, 'prompt' | 'html'>,
+    ) {
+      const currentQuestion = get(store).metrics
+        .find((metric) => metric.id === metricId)
+        ?.questions.find((question) => question.id === questionId)
+      if (!currentQuestion) return ''
+
+      const question = {
+        ...createMetricQuestion(after.prompt, currentQuestion.type),
+        html: after.html,
+      }
+      commit('split_metric_question', { metricId, questionId, before, question }, (state) =>
+        updateMetric(state, metricId, (metric) => {
+          const index = metric.questions.findIndex((candidate) => candidate.id === questionId)
+          if (index === -1) return metric
+          const questions = [...metric.questions]
+          questions.splice(index, 1, { ...questions[index], ...before }, question)
+          return { ...metric, updatedAt: nowISO(), questions }
+        }),
+      )
+      return question.id
+    },
+
     patchMetricQuestion(metricId: Id, questionId: Id, patch: Partial<Pick<MetricQuestion, 'prompt' | 'html' | 'type'>>) {
       const isTextPatch = 'prompt' in patch
       commit(
@@ -2203,15 +2230,16 @@ function createPlannerStore() {
       )
     },
 
-    moveMetricQuestion(metricId: Id, questionId: Id, direction: 'up' | 'down') {
-      commit('move_metric_question', { metricId, questionId, direction }, (state) =>
+    moveMetricQuestion(metricId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) {
+      commit('move_metric_question', { metricId, sourceId, targetId, placement }, (state) =>
         updateMetric(state, metricId, (metric) => {
-          const index = metric.questions.findIndex((question) => question.id === questionId)
-          if (index === -1) return metric
-          const targetIndex = direction === 'up' ? index - 1 : index + 1
-          if (targetIndex < 0 || targetIndex >= metric.questions.length) return metric
-          const questions = [...metric.questions]
-          ;[questions[index], questions[targetIndex]] = [questions[targetIndex], questions[index]]
+          if (sourceId === targetId) return metric
+          const source = metric.questions.find((question) => question.id === sourceId)
+          if (!source || !metric.questions.some((question) => question.id === targetId)) return metric
+
+          const questions = metric.questions.filter((question) => question.id !== sourceId)
+          const targetIndex = questions.findIndex((question) => question.id === targetId)
+          questions.splice(targetIndex + (placement === 'before' ? 0 : 1), 0, source)
           return { ...metric, updatedAt: nowISO(), questions }
         }),
       )
@@ -3014,7 +3042,7 @@ function normalizeState(state: AppState): AppState {
       questions: (metric.questions ?? []).map((question) => ({
         ...question,
         html: sanitizeInlineHTML(question.html ?? escapeHTML(question.prompt ?? '')),
-        type: question.type === 'boolean' ? 'boolean' : 'text',
+        type: question.type === 'boolean' || question.type === 'number' ? question.type : 'text',
       })),
     })),
     metricEntries: (state.metricEntries ?? []).map((entry) => ({

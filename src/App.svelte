@@ -19,6 +19,7 @@
   import SyncStatusIndicator from './lib/SyncStatusIndicator.svelte'
   import MetricQuiz from './lib/MetricQuiz.svelte'
   import MetricGraph from './lib/MetricGraph.svelte'
+  import MetricQuestionEditor from './lib/MetricQuestionEditor.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
   import SearchModal from './lib/SearchModal.svelte'
   import KeyboardShortcutsModal from './lib/KeyboardShortcutsModal.svelte'
@@ -1345,6 +1346,8 @@ return rows`
       return { type: 'boolean', points: rows.map((row) => ({ date: row.date, value: row.value === 'y' ? 1 : 0 })) }
     }
 
+    if (question.type !== 'number') return null
+
     const nonEmpty = rows.filter((row) => row.value.trim() !== '')
     const numeric = nonEmpty.map((row) => ({ date: row.date, value: Number(row.value) }))
     if (nonEmpty.length > 0 && numeric.every((point) => Number.isFinite(point.value))) {
@@ -1519,6 +1522,15 @@ return rows`
     const id = plannerStore.addMetric()
     selectedMetricId = id
     if (!importMetricId) importMetricId = id
+  }
+
+  async function addMetricQuestionAndFocus(metricId: Id) {
+    const questionId = plannerStore.addMetricQuestion(metricId)
+    await tick()
+    const editor = Array.from(document.querySelectorAll<HTMLDivElement>('[data-metric-question-text-input]')).find(
+      (candidate) => candidate.dataset.metricQuestionTextInputId === questionId,
+    )
+    editor?.focus()
   }
 
   async function selectAdjacentMetric(direction: -1 | 1) {
@@ -6001,36 +6013,21 @@ return rows`
               <button class="icon-button danger" type="button" title="Delete metric" on:click={() => plannerStore.deleteMetric(metric.id)}>×</button>
             </div>
 
-            {#each metric.questions as question, index (question.id)}
-              <div class="metric-question-row">
-                <RichTextEditor
-                  className="metric-question-prompt"
-                  kind="metric-question"
-                  inputId={question.id}
-                  placeholder="Question prompt"
-                  html={question.html}
-                  text={question.prompt}
-                  ariaLabel="Question prompt"
-                  revision={$plannerStore.historyRevision}
-                  onChange={(html, prompt) => plannerStore.patchMetricQuestion(metric.id, question.id, { html, prompt })}
+            <div class="metric-question-list" role="list" aria-label="Metric questions">
+              {#each metric.questions as question (question.id)}
+                <MetricQuestionEditor
+                  metricId={metric.id}
+                  {question}
+                  questionIds={metric.questions.map((candidate) => candidate.id)}
+                  historyRevision={$plannerStore.historyRevision}
+                  patchQuestion={plannerStore.patchMetricQuestion}
+                  splitQuestion={plannerStore.splitMetricQuestion}
+                  deleteQuestion={plannerStore.deleteMetricQuestion}
+                  moveQuestion={plannerStore.moveMetricQuestion}
                 />
-                <select
-                  aria-label="Question type"
-                  value={question.type}
-                  on:change={(event) =>
-                    plannerStore.patchMetricQuestion(metric.id, question.id, {
-                      type: event.currentTarget.value === 'boolean' ? 'boolean' : 'text',
-                    })}
-                >
-                  <option value="text">Text / number</option>
-                  <option value="boolean">Yes / no</option>
-                </select>
-                <button class="icon-button" type="button" title="Move up" disabled={index === 0} on:click={() => plannerStore.moveMetricQuestion(metric.id, question.id, 'up')}>↑</button>
-                <button class="icon-button" type="button" title="Move down" disabled={index === metric.questions.length - 1} on:click={() => plannerStore.moveMetricQuestion(metric.id, question.id, 'down')}>↓</button>
-                <button class="icon-button danger" type="button" title="Delete question" on:click={() => plannerStore.deleteMetricQuestion(metric.id, question.id)}>×</button>
-              </div>
-            {/each}
-            <button class="add-row" type="button" on:click={() => plannerStore.addMetricQuestion(metric.id)}>+ Add question</button>
+              {/each}
+            </div>
+            <button class="add-row" type="button" on:click={() => addMetricQuestionAndFocus(metric.id)}>+ Add question</button>
 
             {#each metric.questions as question (question.id)}
               {@const graph = buildGraph(metric, question)}

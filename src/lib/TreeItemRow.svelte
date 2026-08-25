@@ -2,7 +2,7 @@
   import { onDestroy } from 'svelte'
   import type { Id, MovePlacement } from './types'
 
-  type TreeItemRowKind = 'plan' | 'day-template' | 'list-template' | 'note'
+  type TreeItemRowKind = 'plan' | 'day-template' | 'list-template' | 'metric' | 'note'
 
   export let kind: TreeItemRowKind
   export let itemId: Id
@@ -49,12 +49,15 @@
         ? '[data-template-item-id]'
         : kind === 'list-template'
           ? '[data-list-template-item-id]'
+          : kind === 'metric'
+            ? '[data-metric-question-id]'
           : '[data-note-item-id]'
 
   function rowItemId(row: HTMLElement): Id | null {
     if (kind === 'plan') return row.dataset.planItemId ?? null
     if (kind === 'day-template') return row.dataset.templateItemId ?? null
     if (kind === 'list-template') return row.dataset.listTemplateItemId ?? null
+    if (kind === 'metric') return row.dataset.metricQuestionId ?? null
     return row.dataset.noteItemId ?? null
   }
 
@@ -85,6 +88,7 @@
   function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
     const rect = row.getBoundingClientRect()
     const y = clientY - rect.top
+    if (kind === 'metric') return y < rect.height / 2 ? 'before' : 'after'
     if (y < rect.height * 0.28) return 'before'
     if (y > rect.height * 0.72) return 'after'
     return 'inside'
@@ -263,6 +267,7 @@
     data-template-item-depth={kind === 'day-template' ? depth : undefined}
     data-list-template-item-id={kind === 'list-template' ? itemId : undefined}
     data-list-template-item-depth={kind === 'list-template' ? depth : undefined}
+    data-metric-question-id={kind === 'metric' ? itemId : undefined}
     data-note-item-id={kind === 'note' ? itemId : undefined}
     data-note-item-depth={kind === 'note' ? depth : undefined}
     role="listitem"

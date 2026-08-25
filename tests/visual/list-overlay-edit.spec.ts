@@ -152,7 +152,7 @@ test('Alt+F opens the metric linked by the selected list item', async ({ page })
   await page.getByRole('button', { name: '+ New metric' }).first().click()
   await page.getByLabel('Metric name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Score')
-  await page.getByLabel('Question type').selectOption('boolean')
+  await page.getByRole('group', { name: 'Question type' }).getByRole('button', { name: 'Yes / no' }).click()
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
   await page.getByRole('button', { name: '+ New list' }).click()
