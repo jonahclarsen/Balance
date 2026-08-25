@@ -233,6 +233,11 @@ normal activation handoff. Do not persist Siri task text in preferences or a
 plaintext queue. Preserve the request identifier and frontend deduplication so
 the debug notification plus production URL cannot insert a task twice.
 
+App Shortcut phrases cannot interpolate a raw `String` parameter. Keep the
+spoken task represented by the transient `SiriTaskEntity` and resolved through
+its `EntityStringQuery`; the App Intents metadata compiler accepts that entity
+slot in the inline “Add to Balance [task]” phrases while rejecting `String`.
+
 ## Install and register macOS correctly
 
 `tauri dev` does not install a WidgetKit extension. Opening

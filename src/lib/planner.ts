@@ -23,6 +23,7 @@ import { createDefaultReplicatedPreferences } from './preferences'
 
 export const DEFAULT_DAILY_REMINDER = "This shouldn't be aspirational"
 export const DAY_ROLLOVER_HOUR = 3
+export const SIRI_REMINDERS_HEADING = 'reminders from siri:'
 
 export type BackspacePlanItemAtStartResult = {
   items: PlanItem[]
@@ -84,6 +85,13 @@ export function calendarDateISO(day = new Date()): string {
   const month = String(day.getMonth() + 1).padStart(2, '0')
   const date = String(day.getDate()).padStart(2, '0')
   return `${year}-${month}-${date}`
+}
+
+export function shiftCalendarDateISO(date: string, days: number): string {
+  const [year, month, day] = date.split('-').map(Number)
+  const shifted = new Date(year, month - 1, day)
+  shifted.setDate(shifted.getDate() + days)
+  return calendarDateISO(shifted)
 }
 
 export function nowISO(): string {
@@ -197,6 +205,111 @@ export function createPlanItem(text = ''): PlanItem {
     endMinutes: null,
     children: [],
   }
+}
+
+export type SiriReminderInsertion = {
+  items: PlanItem[]
+  item: PlanItem
+  heading: PlanItem | null
+  headingId: Id
+  parentId: Id | null
+  position: number
+  reactivatedItemIds: Id[]
+}
+
+export function hasIncompletePlanItems(items: PlanItem[]): boolean {
+  return items.some((item) => !item.done || hasIncompletePlanItems(item.children))
+}
+
+export function insertSiriReminder(items: PlanItem[], text: string): SiriReminderInsertion {
+  const item = createPlanItem(text)
+  const existingHeadingPath = findPlanItemPath(items, SIRI_REMINDERS_HEADING)
+
+  if (existingHeadingPath) {
+    const reactivatedItemIds: Id[] = []
+    const nextItems = appendToExistingSiriHeading(items, existingHeadingPath, item, reactivatedItemIds)
+    return {
+      items: nextItems,
+      item,
+      heading: null,
+      headingId: existingHeadingPath.at(-1)!,
+      parentId: existingHeadingPath.at(-2) ?? null,
+      position: -1,
+      reactivatedItemIds,
+    }
+  }
+
+  const heading = {
+    ...createPlanItem(SIRI_REMINDERS_HEADING),
+    children: [item],
+  }
+  const insertion = insertBeforeDeepestFirstIncomplete(items, heading)
+  return {
+    items: insertion.items,
+    item,
+    heading,
+    headingId: heading.id,
+    parentId: insertion.parentId,
+    position: insertion.position,
+    reactivatedItemIds: [],
+  }
+}
+
+function findPlanItemPath(items: PlanItem[], text: string, ancestors: Id[] = []): Id[] | null {
+  for (const item of items) {
+    const path = [...ancestors, item.id]
+    if (item.text === text) return path
+    const childPath = findPlanItemPath(item.children, text, path)
+    if (childPath) return childPath
+  }
+  return null
+}
+
+function appendToExistingSiriHeading(
+  items: PlanItem[],
+  path: Id[],
+  item: PlanItem,
+  reactivatedItemIds: Id[],
+): PlanItem[] {
+  const [nextId, ...remainingPath] = path
+  return items.map((candidate) => {
+    if (candidate.id !== nextId) return candidate
+
+    if (candidate.done) reactivatedItemIds.push(candidate.id)
+    if (remainingPath.length === 0) {
+      return { ...candidate, done: false, children: [...candidate.children, item] }
+    }
+    return {
+      ...candidate,
+      done: false,
+      children: appendToExistingSiriHeading(candidate.children, remainingPath, item, reactivatedItemIds),
+    }
+  })
+}
+
+function insertBeforeDeepestFirstIncomplete(
+  items: PlanItem[],
+  heading: PlanItem,
+  parentId: Id | null = null,
+): { items: PlanItem[]; parentId: Id | null; position: number } {
+  const firstIncompleteIndex = items.findIndex((item) => !item.done)
+  if (firstIncompleteIndex < 0) {
+    return { items: [...items, heading], parentId, position: items.length }
+  }
+
+  const firstIncomplete = items[firstIncompleteIndex]
+  if (!firstIncomplete.children.some((child) => !child.done)) {
+    return {
+      items: [...items.slice(0, firstIncompleteIndex), heading, ...items.slice(firstIncompleteIndex)],
+      parentId,
+      position: firstIncompleteIndex,
+    }
+  }
+
+  const childInsertion = insertBeforeDeepestFirstIncomplete(firstIncomplete.children, heading, firstIncomplete.id)
+  const nextItems = [...items]
+  nextItems[firstIncompleteIndex] = { ...firstIncomplete, children: childInsertion.items }
+  return { items: nextItems, parentId: childInsertion.parentId, position: childInsertion.position }
 }
 
 export function generatePlanFromTemplate(

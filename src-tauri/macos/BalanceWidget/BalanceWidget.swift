@@ -16,25 +16,57 @@ private enum AddToBalanceIntentError: Error {
 }
 
 @available(macOS 15.0, *)
+private struct SiriTaskEntity: AppEntity {
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Task"
+    static let defaultQuery = SiriTaskEntityQuery()
+
+    let id: String
+    let text: String
+
+    init(text: String) {
+        id = text
+        self.text = text
+    }
+
+    var displayRepresentation: DisplayRepresentation {
+        DisplayRepresentation(title: LocalizedStringResource(stringLiteral: text))
+    }
+}
+
+@available(macOS 15.0, *)
+private struct SiriTaskEntityQuery: EntityStringQuery {
+    func entities(for identifiers: [SiriTaskEntity.ID]) async throws -> [SiriTaskEntity] {
+        identifiers.map(SiriTaskEntity.init(text:))
+    }
+
+    func entities(matching string: String) async throws -> [SiriTaskEntity] {
+        [SiriTaskEntity(text: string)]
+    }
+
+    func suggestedEntities() async throws -> [SiriTaskEntity] {
+        []
+    }
+}
+
+@available(macOS 15.0, *)
 private struct AddToBalanceIntent: AppIntent {
     static let title: LocalizedStringResource = "Add to Balance"
-    static let description = IntentDescription("Add a task to today's plan in Balance.")
+    static let description = IntentDescription("Add a task to Balance.")
 
     @Parameter(
         title: "Task",
-        description: "What you want to add to today's plan",
+        description: "What you want to add to Balance",
         requestValueDialog: "What would you like to add to Balance?"
     )
-    var task: String
+    var task: SiriTaskEntity
 
     static var parameterSummary: some ParameterSummary {
         Summary("Add \(\.$task) to Balance")
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog & OpensIntent {
-        let trimmedTask = task.trimmingCharacters(in: .whitespacesAndNewlines)
-        let text = String(String.UnicodeScalarView(trimmedTask.unicodeScalars.prefix(maximumSiriTaskLength)))
-        guard !text.isEmpty else {
+        let text = String(String.UnicodeScalarView(task.text.unicodeScalars.prefix(maximumSiriTaskLength)))
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw $task.needsValueError("What would you like to add to Balance?")
         }
 
@@ -72,6 +104,8 @@ private struct BalanceAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: AddToBalanceIntent(),
             phrases: [
+                "Add to \(.applicationName) \(\.$task)",
+                "Add this to \(.applicationName) \(\.$task)",
                 "Add to \(.applicationName)",
                 "Add something to \(.applicationName)",
                 "Add a task to \(.applicationName)",

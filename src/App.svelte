@@ -1459,7 +1459,7 @@ return rows`
       for (const raw of pendingDeepLinks.splice(0)) {
         const deepLink = parseBalanceDeepLink(raw)
         if (!deepLink) continue
-        plannerStore.addRootPlanItemFromSiri(deepLink.text, deepLink.requestId, todayISO())
+        plannerStore.addPlanItemFromSiri(deepLink.text, deepLink.requestId, todayISO())
         closeCompareDay()
         closeMobileDrawer()
         view = 'today'

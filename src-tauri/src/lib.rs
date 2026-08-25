@@ -4402,13 +4402,45 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
                 .map_err(|error| error.to_string())?;
 
             if let Some(plan_id) = existing_plan_id {
-                insert_plan_item(
-                    tx,
-                    &plan_id,
-                    None,
-                    required_value(payload, "item")?,
-                    next_plan_item_position(tx, &plan_id, None)?,
-                )?;
+                let heading = required_value(payload, "heading")?;
+                if heading.is_null() {
+                    for item_id in required_array(payload, "reactivatedItemIds")? {
+                        tx.execute(
+                            "update plan_items set done = 0 where id = ?1 and plan_id = ?2",
+                            params![
+                                item_id
+                                    .as_str()
+                                    .ok_or_else(|| "Expected string item id".to_string())?,
+                                plan_id,
+                            ],
+                        )
+                        .map_err(|error| error.to_string())?;
+                    }
+                    let heading_id = required_string(payload, "headingId")?;
+                    insert_plan_item(
+                        tx,
+                        &plan_id,
+                        Some(heading_id),
+                        required_value(payload, "item")?,
+                        next_plan_item_position(tx, &plan_id, Some(heading_id))?,
+                    )?;
+                } else {
+                    let parent_id = optional_string(payload, "parentId")?;
+                    let mut sibling_ids =
+                        plan_item_sibling_ids(tx, &plan_id, parent_id.as_deref())?;
+                    let position = required_i64(payload, "position")?
+                        .clamp(0, sibling_ids.len() as i64)
+                        as usize;
+                    insert_plan_item(
+                        tx,
+                        &plan_id,
+                        parent_id.as_deref(),
+                        heading,
+                        sibling_ids.len() as i64,
+                    )?;
+                    sibling_ids.insert(position, required_string(heading, "id")?.to_string());
+                    rewrite_plan_item_positions(tx, &sibling_ids)?;
+                }
             } else {
                 insert_plan(tx, required_value(payload, "createdPlan")?)?;
             }
@@ -4885,10 +4917,28 @@ fn build_domain_undo_operation(
                 .map_err(|error| error.to_string())?
                 .is_some();
             let remove_addition = if plan_existed {
-                storage_operation(
-                    "delete_plan_item",
-                    json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
-                )
+                let heading = required_value(payload, "heading")?;
+                if heading.is_null() {
+                    let mut operations = vec![storage_operation(
+                        "delete_plan_item",
+                        json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
+                    )];
+                    for item_id in required_array(payload, "reactivatedItemIds")? {
+                        operations.push(storage_operation(
+                            "patch_plan_item",
+                            json!({
+                                "itemId": item_id,
+                                "patch": { "done": true }
+                            }),
+                        ));
+                    }
+                    storage_operation("batch", json!({ "operations": operations }))
+                } else {
+                    storage_operation(
+                        "delete_plan_item",
+                        json!({ "itemId": required_string(heading, "id")? }),
+                    )
+                }
             } else {
                 storage_operation(
                     "delete_plan",
@@ -10662,6 +10712,15 @@ mod tests {
             "endMinutes": null,
             "children": []
         });
+        let siri_heading = json!({
+            "id": "plan_item_siri_heading",
+            "text": "reminders from siri:",
+            "html": "reminders from siri:",
+            "done": false,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": [siri_item.clone()]
+        });
 
         let existing_database = TestDatabase::new("siri-existing-plan");
         let mut existing_connection =
@@ -10679,7 +10738,12 @@ mod tests {
                     "date": "2026-05-21",
                     "requestId": "request-existing",
                     "createdPlan": null,
-                    "item": siri_item.clone()
+                    "item": siri_item.clone(),
+                    "heading": siri_heading.clone(),
+                    "headingId": "plan_item_siri_heading",
+                    "parentId": null,
+                    "position": 0,
+                    "reactivatedItemIds": []
                 }
             }),
         )
@@ -10688,7 +10752,15 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(added["plans"][0]["items"].as_array().unwrap().len(), 2);
-        assert_eq!(added["plans"][0]["items"][1]["text"], "Call Frank");
+        assert_eq!(
+            added["plans"][0]["items"][0]["text"],
+            "reminders from siri:"
+        );
+        assert_eq!(
+            added["plans"][0]["items"][0]["children"][0]["text"],
+            "Call Frank"
+        );
+        assert_eq!(added["plans"][0]["items"][1]["text"], "Wake up");
         let undone = undo_last_operation_in_database(&mut existing_connection)
             .unwrap()
             .unwrap();
@@ -10717,9 +10789,14 @@ mod tests {
                         "dailyReminder": "This shouldn't be aspirational",
                         "generatedFromTemplateId": null,
                         "createdAt": "2026-05-22T00:01:00Z",
-                        "items": [siri_item.clone()]
+                        "items": [siri_heading.clone()]
                     },
-                    "item": siri_item
+                    "item": siri_item,
+                    "heading": siri_heading,
+                    "headingId": "plan_item_siri_heading",
+                    "parentId": null,
+                    "position": 0,
+                    "reactivatedItemIds": []
                 }
             }),
         )
@@ -10728,7 +10805,14 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(created["activePlanDate"], "2026-05-22");
-        assert_eq!(created["plans"][0]["items"][0]["text"], "Call Frank");
+        assert_eq!(
+            created["plans"][0]["items"][0]["text"],
+            "reminders from siri:"
+        );
+        assert_eq!(
+            created["plans"][0]["items"][0]["children"][0]["text"],
+            "Call Frank"
+        );
         let undone = undo_last_operation_in_database(&mut empty_connection)
             .unwrap()
             .unwrap();
@@ -10737,7 +10821,85 @@ mod tests {
         let redone = redo_last_operation_in_database(&mut empty_connection)
             .unwrap()
             .unwrap();
-        assert_eq!(redone["plans"][0]["items"][0]["text"], "Call Frank");
+        assert_eq!(
+            redone["plans"][0]["items"][0]["children"][0]["text"],
+            "Call Frank"
+        );
+    }
+
+    #[test]
+    fn siri_add_reuses_and_reactivates_an_existing_heading() {
+        let recovery_key = generate_recovery_key();
+        let database = TestDatabase::new("siri-existing-heading");
+        let mut state = test_state("Existing heading");
+        state["plans"][0]["items"] = json!([{
+            "id": "plan_item_parent",
+            "text": "Completed group",
+            "html": "Completed group",
+            "done": true,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": [{
+                "id": "plan_item_siri_heading",
+                "text": "reminders from siri:",
+                "html": "reminders from siri:",
+                "done": true,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }]
+        }]);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "add_plan_item_from_siri",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "date": "2026-05-21",
+                    "requestId": "request-existing-heading",
+                    "createdPlan": null,
+                    "item": {
+                        "id": "plan_item_siri",
+                        "text": "  Preserve my spacing  ",
+                        "html": "  Preserve my spacing  ",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    },
+                    "heading": null,
+                    "headingId": "plan_item_siri_heading",
+                    "parentId": "plan_item_parent",
+                    "position": -1,
+                    "reactivatedItemIds": ["plan_item_parent", "plan_item_siri_heading"]
+                }
+            }),
+        )
+        .unwrap();
+
+        let added = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(added["plans"][0]["items"][0]["done"], false);
+        assert_eq!(added["plans"][0]["items"][0]["children"][0]["done"], false);
+        assert_eq!(
+            added["plans"][0]["items"][0]["children"][0]["children"][0]["text"],
+            "  Preserve my spacing  "
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(undone["plans"][0]["items"][0]["done"], true);
+        assert_eq!(undone["plans"][0]["items"][0]["children"][0]["done"], true);
+        assert!(undone["plans"][0]["items"][0]["children"][0]["children"]
+            .as_array()
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

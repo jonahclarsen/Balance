@@ -72,11 +72,14 @@ import {
   createListTemplateItem,
   clampListItemProbability,
   generateListFromTemplate,
+  hasIncompletePlanItems,
+  insertSiriReminder,
   createMetric,
   createMetricQuestion,
   createMetricEntry,
   createNote,
   createNoteItem,
+  shiftCalendarDateISO,
 } from './planner'
 import {
   createGoal,
@@ -725,30 +728,38 @@ function createPlannerStore() {
       })))
     },
 
-    addRootPlanItemFromSiri(text: string, requestId: string, date = todayISO()): boolean {
-      const normalizedText = text.trim()
-      if (!normalizedText || !requestId) return false
+    addPlanItemFromSiri(text: string, requestId: string, date = todayISO()): boolean {
+      if (!text.trim() || !requestId) return false
 
-      const item = createPlanItem(normalizedText)
       const current = get(store)
-      const existingPlan = current.plans.find((plan) => plan.date === date)
+      const currentPlan = current.plans.find((plan) => plan.date === date)
+      const targetDate = currentPlan && hasIncompletePlanItems(currentPlan.items)
+        ? date
+        : shiftCalendarDateISO(date, 1)
+      const existingPlan = current.plans.find((plan) => plan.date === targetDate)
+      const insertion = insertSiriReminder(existingPlan?.items ?? [], text)
       const createdPlan: DailyPlan | null = existingPlan
         ? null
         : {
             id: createId('plan'),
-            date,
-            title: formatPlanTitle(date),
+            date: targetDate,
+            title: formatPlanTitle(targetDate),
             dailyReminder: DEFAULT_DAILY_REMINDER,
             generatedFromTemplateId: null,
             createdAt: nowISO(),
-            items: [item],
+            items: insertion.items,
           }
       let added = false
       commit('add_plan_item_from_siri', {
-        date,
+        date: targetDate,
         requestId,
         createdPlan,
-        item,
+        item: insertion.item,
+        heading: insertion.heading,
+        headingId: insertion.headingId,
+        parentId: insertion.parentId,
+        position: insertion.position,
+        reactivatedItemIds: insertion.reactivatedItemIds,
       }, (state) => {
         const alreadyAdded = state.operations.some((operation) => {
           if (operation.type !== 'add_plan_item_from_siri' || !operation.payload || typeof operation.payload !== 'object') {
@@ -759,19 +770,19 @@ function createPlannerStore() {
         if (alreadyAdded) return state
 
         added = true
-        const targetPlan = state.plans.find((plan) => plan.date === date)
+        const targetPlan = state.plans.find((plan) => plan.date === targetDate)
         if (targetPlan) {
           return updatePlan(
-            { ...state, activePlanDate: date },
+            { ...state, activePlanDate: targetDate },
             targetPlan.id,
-            (plan) => ({ ...plan, items: addPlanItem(plan.items, null, item) }),
+            (plan) => ({ ...plan, items: insertion.items }),
           )
         }
 
         if (!createdPlan) return state
         return {
           ...state,
-          activePlanDate: date,
+          activePlanDate: targetDate,
           plans: [...state.plans, createdPlan].sort((a, b) => b.date.localeCompare(a.date)),
         }
       })
