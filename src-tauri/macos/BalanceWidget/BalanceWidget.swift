@@ -16,39 +16,6 @@ private enum AddToBalanceIntentError: Error {
 }
 
 @available(macOS 15.0, *)
-private struct SiriTaskEntity: AppEntity {
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Task"
-    static let defaultQuery = SiriTaskEntityQuery()
-
-    let id: String
-    let text: String
-
-    init(text: String) {
-        id = text
-        self.text = text
-    }
-
-    var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: LocalizedStringResource(stringLiteral: text))
-    }
-}
-
-@available(macOS 15.0, *)
-private struct SiriTaskEntityQuery: EntityStringQuery {
-    func entities(for identifiers: [SiriTaskEntity.ID]) async throws -> [SiriTaskEntity] {
-        identifiers.map(SiriTaskEntity.init(text:))
-    }
-
-    func entities(matching string: String) async throws -> [SiriTaskEntity] {
-        [SiriTaskEntity(text: string)]
-    }
-
-    func suggestedEntities() async throws -> [SiriTaskEntity] {
-        []
-    }
-}
-
-@available(macOS 15.0, *)
 private struct AddToBalanceIntent: AppIntent {
     static let title: LocalizedStringResource = "Add to Balance"
     static let description = IntentDescription("Add a task to Balance.")
@@ -58,14 +25,14 @@ private struct AddToBalanceIntent: AppIntent {
         description: "What you want to add to Balance",
         requestValueDialog: "What would you like to add to Balance?"
     )
-    var task: SiriTaskEntity
+    var task: String
 
     static var parameterSummary: some ParameterSummary {
         Summary("Add \(\.$task) to Balance")
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog & OpensIntent {
-        let text = String(String.UnicodeScalarView(task.text.unicodeScalars.prefix(maximumSiriTaskLength)))
+        let text = String(String.UnicodeScalarView(task.unicodeScalars.prefix(maximumSiriTaskLength)))
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw $task.needsValueError("What would you like to add to Balance?")
         }
@@ -96,27 +63,6 @@ private struct AddToBalanceIntent: AppIntent {
             dialog: "Sending that to Balance."
         )
     }
-}
-
-@available(macOS 15.0, *)
-private struct BalanceAppShortcuts: AppShortcutsProvider {
-    static var appShortcuts: [AppShortcut] {
-        AppShortcut(
-            intent: AddToBalanceIntent(),
-            phrases: [
-                "Add to \(.applicationName) \(\.$task)",
-                "Add this to \(.applicationName) \(\.$task)",
-                "Add to \(.applicationName)",
-                "Add something to \(.applicationName)",
-                "Add a task to \(.applicationName)",
-                "Remember something in \(.applicationName)",
-            ],
-            shortTitle: "Add to Balance",
-            systemImageName: "plus.circle.fill"
-        )
-    }
-
-    static var shortcutTileColor: ShortcutTileColor { .purple }
 }
 
 private enum WidgetSnapshotKey {

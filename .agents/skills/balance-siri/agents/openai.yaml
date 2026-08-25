@@ -1,0 +1,4 @@
+interface:
+  display_name: "Balance Siri"
+  short_description: "Build and debug Balance voice capture safely"
+  default_prompt: "Use $balance-siri to implement or diagnose Balance Siri and Shortcuts capture on macOS."

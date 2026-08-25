@@ -1,6 +1,6 @@
 ---
 name: balance-widgets
-description: Develop, debug, secure, build, install, or test Balance's macOS WidgetKit and Android AppWidget integrations. Use for widget discovery or Edit Widgets failures, macOS dev-mode clicks and deep links, encrypted widget database/cache access, snapshot schema or rendering changes, task indentation and time labels, extension signing or registration, and Android widget generator or CI changes. Do not use for unrelated Balance UI work.
+description: Develop, debug, secure, build, install, or test Balance's macOS WidgetKit and Android AppWidget integrations. Use for widget discovery or Edit Widgets failures, macOS dev-mode clicks and deep links, encrypted widget database/cache access, snapshot schema or rendering changes, task indentation and time labels, extension signing or registration, and Android widget generator or CI changes. Use balance-siri for Siri and Shortcuts capture unless the task also changes widget integration. Do not use for unrelated Balance UI work.
 ---
 
 # Balance widgets
@@ -225,18 +225,9 @@ logs, exactly one `pluginkit` result rooted under `/Applications/Balance.app`,
 and Launch Services URL resolution to `/Applications/Balance.app`. Never print
 widget payloads during those checks.
 
-The Siri intent passes a one-time `balance://add` URL to the installed app and
-never reads, decrypts, or writes the database itself. While `tauri dev` is
-running, the extension also broadcasts that URL in memory and only the debug
-host installs the native listener; the installed release still performs its
-normal activation handoff. Do not persist Siri task text in preferences or a
-plaintext queue. Preserve the request identifier and frontend deduplication so
-the debug notification plus production URL cannot insert a task twice.
-
-App Shortcut phrases cannot interpolate a raw `String` parameter. Keep the
-spoken task represented by the transient `SiriTaskEntity` and resolved through
-its `EntityStringQuery`; the App Intents metadata compiler accepts that entity
-slot in the inline “Add to Balance [task]” phrases while rejecting `String`.
+Voice capture shares the installed extension and URL handoff machinery. Use the
+`balance-siri` skill for its platform limits, privacy boundary, planner behavior,
+and App Intents verification; keep this skill focused on WidgetKit concerns.
 
 ## Install and register macOS correctly
 
