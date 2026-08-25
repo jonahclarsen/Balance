@@ -165,7 +165,17 @@ export function createNoteItem(text = '', kind: import('./types').NoteItemKind =
   }
 }
 
-export function createNote(title = 'Untitled note'): import('./types').Note {
+export function formatDefaultNoteTitle(now = new Date()): string {
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const hour = String(now.getHours() % 12 || 12).padStart(2, '0')
+  const minute = String(now.getMinutes()).padStart(2, '0')
+  const period = now.getHours() >= 12 ? 'PM' : 'AM'
+  return `${year}/${month}/${day} ${hour}:${minute}${period}`
+}
+
+export function createNote(title = formatDefaultNoteTitle()): import('./types').Note {
   const createdAt = nowISO()
   return {
     id: createId('note'),
