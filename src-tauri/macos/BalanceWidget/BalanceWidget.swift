@@ -2,6 +2,7 @@ import SwiftUI
 import WidgetKit
 import Security
 import AppIntents
+import AppKit
 
 private let encryptedSnapshotKey = "balance.widget.encrypted-snapshot.v2"
 private let snapshotVisibleUntilKey = "balance.widget.snapshot-visible-until.v1"
@@ -13,6 +14,7 @@ private let maximumSiriTaskLength = 2_000
 
 private enum AddToBalanceIntentError: Error {
     case invalidURL
+    case launchFailed
 }
 
 @available(macOS 15.0, *)
@@ -32,7 +34,7 @@ struct AddToBalanceIntent: AppIntent {
         Summary("Add \(\.$task) to Balance")
     }
 
-    func perform() async throws -> some IntentResult & ProvidesDialog & OpensIntent {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         let text = String(String.UnicodeScalarView(task.unicodeScalars.prefix(maximumSiriTaskLength)))
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw $task.needsValueError("What would you like to add to Balance?")
@@ -59,10 +61,13 @@ struct AddToBalanceIntent: AppIntent {
             deliverImmediately: true
         )
 
-        return .result(
-            opensIntent: OpenURLIntent(url),
-            dialog: "Sending that to Balance."
-        )
+        // OpenURLIntent accepts universal links only. Balance uses a local URL
+        // scheme, which macOS Shortcuts supports through Launch Services.
+        guard NSWorkspace.shared.open(url) else {
+            throw AddToBalanceIntentError.launchFailed
+        }
+
+        return .result(dialog: "Sending that to Balance.")
     }
 }
 
