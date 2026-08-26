@@ -5417,6 +5417,7 @@ body.mobile-checkbox-dragging {
   min-width: 0;
   padding: 14px;
   border-right: 1px solid var(--line);
+  border-top-left-radius: 11px;
   background: color-mix(in srgb, var(--sidebar) 62%, var(--paper));
 }
 
