@@ -45,9 +45,12 @@ the recognized text, but test the behavior on that supported platform.
   must not read or decrypt Balance's database.
 - The intent creates a one-time `balance://add?text=...&request=...` URL. On
   macOS, submit that custom scheme through `NSWorkspace`; `OpenURLIntent` only
-  supports universal links and rejects `balance://`. The request identifier
-  prevents the debug notification and normal URL activation from inserting the
-  same task twice.
+  supports universal links and rejects `balance://`. A sandboxed widget
+  extension cannot forward the payload through a distributed notification.
+  When a development Balance process is running, the installed app must receive
+  the initial URL through AppKit, relay it in memory to development Balance, and
+  exit before Tauri or database initialization. The request identifier prevents
+  repeated delivery from inserting the same task twice.
 - `src/lib/deepLinks.ts` validates the URL. Reject blank or oversized input, but
   do not trim or otherwise rewrite accepted task text.
 - `src/App.svelte` receives the deep link and calls the planner store.

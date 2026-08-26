@@ -88,6 +88,32 @@ private func isDevelopmentExecutable(_ executablePath: String) -> Bool {
         && executablePath.hasSuffix(developmentAppExecutableSuffix)
 }
 
+private func stopApplicationRunLoop(_ application: NSApplication) {
+    application.stop(nil)
+    if let event = NSEvent.otherEvent(
+        with: .applicationDefined,
+        location: .zero,
+        modifierFlags: [],
+        timestamp: ProcessInfo.processInfo.systemUptime,
+        windowNumber: 0,
+        context: nil,
+        subtype: 0,
+        data1: 0,
+        data2: 0
+    ) {
+        application.postEvent(event, atStart: true)
+    }
+}
+
+private final class DevelopmentDeepLinkHandoff: NSObject, NSApplicationDelegate {
+    private(set) var urls: [URL] = []
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        self.urls.append(contentsOf: urls.filter { $0.scheme == "balance" })
+        stopApplicationRunLoop(application)
+    }
+}
+
 @_cdecl("balance_publish_encrypted_widget_snapshot")
 public func balancePublishEncryptedWidgetSnapshot(_ snapshot: UnsafePointer<CChar>?) -> Bool {
     // Always erase the old plaintext cache, including when the extension has not
@@ -185,6 +211,28 @@ public func balanceActivateRunningDevelopmentApp() -> Int32 {
         return isDevelopmentExecutable(executablePath)
     }) else {
         return 0
+    }
+
+    // Launch Services delivers a cold-start custom URL through the application
+    // delegate before applicationDidFinishLaunching. Receive it in this tiny
+    // handoff process, then exit before Tauri or database initialization.
+    let handoff = DevelopmentDeepLinkHandoff()
+    let application = NSApplication.shared
+    application.setActivationPolicy(.prohibited)
+    application.delegate = handoff
+    let timeout = Timer.scheduledTimer(withTimeInterval: 1, repeats: false) { _ in
+        stopApplicationRunLoop(application)
+    }
+    application.run()
+    timeout.invalidate()
+
+    for url in handoff.urls {
+        DistributedNotificationCenter.default().postNotificationName(
+            siriAddNotification,
+            object: nil,
+            userInfo: ["url": url.absoluteString],
+            deliverImmediately: true
+        )
     }
 
     _ = developmentApp.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])

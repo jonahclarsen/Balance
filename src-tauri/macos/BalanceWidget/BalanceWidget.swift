@@ -9,7 +9,6 @@ private let snapshotVisibleUntilKey = "balance.widget.snapshot-visible-until.v1"
 private let snapshotDomain = "app.balance.local"
 private let widgetKind = "BalanceToday"
 private let dayRolloverHour = 3
-private let siriAddNotification = Notification.Name("app.balance.local.siri.add")
 private let maximumSiriTaskLength = 2_000
 
 private enum AddToBalanceIntentError: Error {
@@ -50,16 +49,6 @@ struct AddToBalanceIntent: AppIntent {
         guard let url = components.url else {
             throw AddToBalanceIntentError.invalidURL
         }
-
-        // A debug Balance host cannot own the installed app's URL scheme. This
-        // in-memory notification lets only debug builds receive the same URL;
-        // production builds use OpenURLIntent below.
-        DistributedNotificationCenter.default().postNotificationName(
-            siriAddNotification,
-            object: nil,
-            userInfo: ["url": url.absoluteString],
-            deliverImmediately: true
-        )
 
         // OpenURLIntent accepts universal links only. Balance uses a local URL
         // scheme, which macOS Shortcuts supports through Launch Services.
