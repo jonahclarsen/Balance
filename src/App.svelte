@@ -1999,10 +1999,10 @@ return rows`
   function updateTheme(nextThemeId: ThemeId) {
     // A preset should look cohesive immediately. Fine-tuned completion colors
     // remain available below and become overrides only after the preset is set.
-    if (nextThemeId === themeId && !deviceAppearance.randomThemeStartDate) return
+    if (nextThemeId === themeId) return
     commitDeviceAppearance({
       themeId: nextThemeId,
-      randomThemeStartDate: '',
+      randomThemeStartDate: nextThemeId === 'random' ? '' : deviceAppearance.randomThemeStartDate,
       doneTintColor: '',
       checkboxColor: '',
     })

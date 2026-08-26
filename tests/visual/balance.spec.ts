@@ -184,7 +184,7 @@ test('a synced historical theme temporarily overrides this device theme', async 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'orange')
 })
 
-test('random theme can be scheduled for the next day boundary without changing today', async ({ page }) => {
+test('random theme can be scheduled for the next day boundary while changing today\'s theme', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-08-18T02:59:00') })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -228,6 +228,22 @@ test('random theme can be scheduled for the next day boundary without changing t
     return appearance?.randomThemeStartDate
   })).toBe('')
   await themeGroup.getByRole('button', { name: 'Start next day' }).click()
+  await expect(cancelSchedule).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => page.evaluate(() => {
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return appearance?.randomThemeStartDate
+  })).toBe('2026-08-18')
+
+  const orangeTheme = themeGroup.getByRole('button', {
+    name: 'Orange Clear orange and light apricot',
+  })
+  await orangeTheme.click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'orange')
+  await expect(cancelSchedule).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => page.evaluate(() => {
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return [appearance?.themeId, appearance?.randomThemeStartDate]
+  })).toEqual(['orange', '2026-08-18'])
 
   await page.clock.runFor(60_001)
 
