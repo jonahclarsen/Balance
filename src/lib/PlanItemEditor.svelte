@@ -127,6 +127,9 @@
   let mobileMenuOpen = false
   let mobileTimeEditorOpen = false
   let mobileTaskActions: HTMLDivElement | null = null
+  let mobileTaskMenuButton: HTMLButtonElement | null = null
+  let mobileTaskMenu: HTMLDivElement | null = null
+  let mobileTaskMenuPosition: { left: number; top: number; maxHeight: number } | null = null
   let suppressCheckboxClick = false
 
   type MobileCheckboxDrag = {
@@ -192,6 +195,50 @@
     addTime()
     mobileMenuOpen = false
     mobileTimeEditorOpen = true
+  }
+
+  async function toggleMobileMenu() {
+    if (mobileMenuOpen) {
+      mobileMenuOpen = false
+      mobileTaskMenuPosition = null
+      return
+    }
+
+    mobileMenuOpen = true
+    mobileTaskMenuPosition = null
+    await tick()
+    positionMobileTaskMenu()
+  }
+
+  function positionMobileTaskMenu() {
+    if (!mobileMenuOpen || !mobileTaskMenuButton || !mobileTaskMenu) return
+
+    const viewport = window.visualViewport
+    const viewportLeft = viewport?.offsetLeft ?? 0
+    const viewportTop = viewport?.offsetTop ?? 0
+    const viewportRight = viewportLeft + (viewport?.width ?? window.innerWidth)
+    const viewportBottom = viewportTop + (viewport?.height ?? window.innerHeight)
+    const viewportInset = 8
+    const maxHeight = Math.max(0, viewportBottom - viewportTop - viewportInset * 2)
+    const buttonRect = mobileTaskMenuButton.getBoundingClientRect()
+    const menuRect = mobileTaskMenu.getBoundingClientRect()
+    const menuHeight = Math.min(menuRect.height, maxHeight)
+
+    const belowTop = buttonRect.bottom - 2
+    const aboveTop = buttonRect.top + 2 - menuHeight
+    const roomBelow = viewportBottom - viewportInset - belowTop
+    const roomAbove = buttonRect.top + 2 - viewportTop - viewportInset
+    const preferredTop = menuHeight <= roomBelow || roomBelow >= roomAbove ? belowTop : aboveTop
+    const top = Math.min(
+      Math.max(preferredTop, viewportTop + viewportInset),
+      viewportBottom - viewportInset - menuHeight,
+    )
+    const left = Math.min(
+      Math.max(buttonRect.right - menuRect.width, viewportLeft + viewportInset),
+      viewportRight - viewportInset - menuRect.width,
+    )
+
+    mobileTaskMenuPosition = { left, top, maxHeight }
   }
 
   function openMobileTimeEditor() {
@@ -854,15 +901,25 @@
       {:else}
         <button
           class="mobile-task-menu-button"
+          bind:this={mobileTaskMenuButton}
           type="button"
           title="Task options"
           aria-label={`Task options for ${item.text || 'untitled task'}`}
           aria-haspopup="menu"
           aria-expanded={mobileMenuOpen}
-          on:click|stopPropagation={() => (mobileMenuOpen = !mobileMenuOpen)}
+          on:click|stopPropagation={toggleMobileMenu}
         >⋮</button>
         {#if mobileMenuOpen}
-          <div class="mobile-task-menu" role="menu" aria-label={`Options for ${item.text || 'untitled task'}`}>
+          <div
+            class="mobile-task-menu"
+            class:positioned={mobileTaskMenuPosition !== null}
+            bind:this={mobileTaskMenu}
+            style:left={mobileTaskMenuPosition ? `${mobileTaskMenuPosition.left}px` : null}
+            style:top={mobileTaskMenuPosition ? `${mobileTaskMenuPosition.top}px` : null}
+            style:max-height={mobileTaskMenuPosition ? `${mobileTaskMenuPosition.maxHeight}px` : null}
+            role="menu"
+            aria-label={`Options for ${item.text || 'untitled task'}`}
+          >
             {#if hasActiveTimeRange(item)}
               <button type="button" role="menuitem" on:click|stopPropagation={openMobileTimeEditor}>Edit time</button>
               <button type="button" role="menuitem" on:click|stopPropagation={removeTime}>Remove time</button>

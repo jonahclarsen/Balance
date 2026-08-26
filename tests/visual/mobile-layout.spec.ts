@@ -560,6 +560,56 @@ test('reversing a mobile checkbox drag unchecks tasks the finger retraces', asyn
   for (const row of rows.slice(2)) await expect(row.getByRole('checkbox')).toBeChecked()
 })
 
+test('mobile task options stay inside the viewport at the top and bottom of the page', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The task overflow interactions are mobile-only')
+
+  const topText = 'Parent task with a scheduled time'
+  const topRow = page.getByRole('listitem', { name: `Plan item: ${topText}` })
+  await topRow.scrollIntoViewIfNeeded()
+  await topRow.getByRole('button', { name: `Task options for ${topText}` }).click()
+
+  const topMenu = topRow.getByRole('menu', { name: `Options for ${topText}` })
+  await expect(topMenu).toBeVisible()
+  const topBounds = await topMenu.evaluate((element) => {
+    const rect = element.getBoundingClientRect()
+    const viewport = window.visualViewport
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      viewportTop: viewport?.offsetTop ?? 0,
+      viewportBottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
+    }
+  })
+  expect(topBounds.top).toBeGreaterThanOrEqual(topBounds.viewportTop + 7)
+  expect(topBounds.bottom).toBeLessThanOrEqual(topBounds.viewportBottom - 7)
+  await page.keyboard.press('Escape')
+
+  const bottomText = 'Filler task 28'
+  const bottomRow = page.getByRole('listitem', { name: `Plan item: ${bottomText}`, exact: true })
+  await bottomRow.evaluate((element) => element.scrollIntoView({ block: 'end' }))
+  const bottomButton = bottomRow.getByRole('button', { name: `Task options for ${bottomText}`, exact: true })
+  await bottomButton.click()
+
+  const bottomMenu = bottomRow.getByRole('menu', { name: `Options for ${bottomText}`, exact: true })
+  await expect(bottomMenu).toBeVisible()
+  const bottomBounds = await bottomRow.evaluate((element) => {
+    const buttonRect = element.querySelector('.mobile-task-menu-button')?.getBoundingClientRect()
+    const menuRect = element.querySelector('.mobile-task-menu')?.getBoundingClientRect()
+    const viewport = window.visualViewport
+    if (!buttonRect || !menuRect) throw new Error('Missing mobile task menu geometry')
+    return {
+      buttonTop: buttonRect.top,
+      menuTop: menuRect.top,
+      menuBottom: menuRect.bottom,
+      viewportTop: viewport?.offsetTop ?? 0,
+      viewportBottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
+    }
+  })
+  expect(bottomBounds.menuTop).toBeLessThan(bottomBounds.buttonTop)
+  expect(bottomBounds.menuTop).toBeGreaterThanOrEqual(bottomBounds.viewportTop + 7)
+  expect(bottomBounds.menuBottom).toBeLessThanOrEqual(bottomBounds.viewportBottom - 7)
+})
+
 test('holding and dragging a checkbox does not bulk-check tasks on desktop', async ({ page }, testInfo) => {
   test.skip(isMobileProject(testInfo.project.name), 'Desktop-only mobile gesture guard')
 

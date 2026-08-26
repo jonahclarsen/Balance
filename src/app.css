@@ -2206,10 +2206,10 @@ body.mobile-checkbox-dragging {
 }
 
 .mobile-task-menu {
-  position: absolute;
+  position: fixed;
   z-index: 90;
-  top: calc(100% - 2px);
-  right: 0;
+  top: 0;
+  left: 0;
   display: grid;
   min-width: 156px;
   border: 1px solid var(--line);
@@ -2217,6 +2217,20 @@ body.mobile-checkbox-dragging {
   background: var(--paper-strong);
   padding: 5px;
   box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 22%, transparent);
+  visibility: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The iridescent border treatment makes decorated surfaces positioned. This
+   menu already establishes its positioning context and must remain viewport-
+   fixed so its collision adjustment is not converted back to row-relative. */
+:root[data-theme='iridescent'] .mobile-task-menu {
+  position: fixed;
+}
+
+.mobile-task-menu.positioned {
+  visibility: visible;
 }
 
 .mobile-task-menu button {
