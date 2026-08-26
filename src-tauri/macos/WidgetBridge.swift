@@ -88,6 +88,55 @@ private func isDevelopmentExecutable(_ executablePath: String) -> Bool {
         && executablePath.hasSuffix(developmentAppExecutableSuffix)
 }
 
+private func runningDevelopmentApplication(
+    excluding currentProcess: pid_t
+) -> NSRunningApplication? {
+    if let application = NSWorkspace.shared.runningApplications.first(where: { application in
+        guard
+            application.processIdentifier != currentProcess,
+            let executablePath = application.executableURL?.path
+        else {
+            return false
+        }
+        return isDevelopmentExecutable(executablePath)
+    }) {
+        return application
+    }
+
+    // A newly launched production handoff can run before Launch Services has
+    // populated NSWorkspace's application snapshot. Fall back to the kernel's
+    // read-only process list so an already-running raw `tauri dev` executable
+    // is still found without touching application data.
+    var processIdentifiers = [pid_t](repeating: 0, count: 32_768)
+    let processCount = proc_listallpids(
+        &processIdentifiers,
+        Int32(processIdentifiers.count * MemoryLayout<pid_t>.size)
+    )
+    guard processCount > 0 else {
+        return nil
+    }
+
+    for processIdentifier in processIdentifiers.prefix(min(Int(processCount), processIdentifiers.count)) {
+        guard processIdentifier > 1, processIdentifier != currentProcess else {
+            continue
+        }
+        var executablePathBuffer = [CChar](repeating: 0, count: 4_096)
+        guard proc_pidpath(
+            processIdentifier,
+            &executablePathBuffer,
+            UInt32(executablePathBuffer.count)
+        ) > 0 else {
+            continue
+        }
+        guard isDevelopmentExecutable(String(cString: executablePathBuffer)) else {
+            continue
+        }
+        return NSRunningApplication(processIdentifier: processIdentifier)
+    }
+
+    return nil
+}
+
 private func stopApplicationRunLoop(_ application: NSApplication) {
     application.stop(nil)
     if let event = NSEvent.otherEvent(
@@ -201,15 +250,7 @@ private enum WidgetSnapshotKey {
 @_cdecl("balance_activate_running_development_app")
 public func balanceActivateRunningDevelopmentApp() -> Int32 {
     let currentProcess = ProcessInfo.processInfo.processIdentifier
-    guard let developmentApp = NSWorkspace.shared.runningApplications.first(where: { app in
-        guard
-            app.processIdentifier != currentProcess,
-            let executablePath = app.executableURL?.path
-        else {
-            return false
-        }
-        return isDevelopmentExecutable(executablePath)
-    }) else {
+    guard let developmentApp = runningDevelopmentApplication(excluding: currentProcess) else {
         return 0
     }
 
