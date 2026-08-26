@@ -23,7 +23,8 @@ private struct AddToBalanceIntent: AppIntent {
     @Parameter(
         title: "Task",
         description: "What you want to add to Balance",
-        requestValueDialog: "What would you like to add to Balance?"
+        requestValueDialog: "What would you like to add to Balance?",
+        inputConnectionBehavior: .connectToPreviousIntentResult
     )
     var task: String
 
