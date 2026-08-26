@@ -729,7 +729,7 @@
       </div>
     {/if}
     <div class="notes-filter-row">
-      {#if !trashOpen}<button class="primary note-new" type="button" on:click={createAndSelect}>New</button>{/if}
+      {#if !trashOpen}<button class="note-new" type="button" on:click={createAndSelect}>New</button>{/if}
       <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
     </div>
     <div class="notes-list">

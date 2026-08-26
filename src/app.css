@@ -5413,7 +5413,6 @@ body.mobile-checkbox-dragging {
   grid-template-rows: auto minmax(0, 1fr) auto;
   max-height: calc((100vh - 100px) / 1.1);
   max-height: calc((100dvh - 100px) / 1.1);
-  align-self: start;
   gap: 10px;
   min-width: 0;
   padding: 14px;
@@ -5441,13 +5440,21 @@ body.mobile-checkbox-dragging {
 
 .note-new {
   flex: 0 0 auto;
-  padding: 6px 10px;
+  padding: 6px 11px;
+  border-color: var(--line-strong);
+  background: color-mix(in srgb, var(--paper-strong) 86%, var(--sidebar));
+  font-weight: 650;
+}
+
+.note-new:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  background: color-mix(in srgb, var(--paper-strong) 90%, var(--accent));
 }
 
 .notes-filter-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  align-items: stretch;
+  gap: 6px;
   min-width: 0;
 }
 

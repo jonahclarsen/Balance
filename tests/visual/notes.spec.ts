@@ -201,6 +201,8 @@ test('the Notes sidebar list scrolls independently and keeps New beside the filt
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return state.notes?.length ?? 0
   })).toBe(1)
+  await page.locator('.workspace').evaluate((element) => { element.scrollTop = 0 })
+  await page.screenshot({ path: testInfo.outputPath('notes-sidebar-short.png') })
 
   await page.evaluate(() => {
     const key = 'balance.appState.v1'
