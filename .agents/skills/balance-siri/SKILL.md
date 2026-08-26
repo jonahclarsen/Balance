@@ -26,10 +26,13 @@ run the custom shortcut by name, but macOS does not pass an arbitrary spoken
 suffix into an app-provided phrase.
 
 Set the text parameter's `inputConnectionBehavior` to
-`.connectToPreviousIntentResult`. With the default behavior, Shortcuts can
-render the task as a literal-only text box instead of accepting the output from
-an Ask for Input or Dictate Text action. Verify the extracted metadata reports a
-nondefault connection behavior and confirm the variable token in Shortcuts.
+`.connectToPreviousIntentResult`, but do not expect a graph socket or a different
+control: macOS Shortcuts still renders a connectable `String` parameter as a
+text box. To connect an earlier action, Control-click inside that field, choose
+**Insert Variable > Select Variable**, then click the earlier action's blue Magic
+Variable token. Verify the extracted metadata reports the nondefault connection
+behavior and the editor displays the chosen variable as a blue token in the
+text field.
 
 If App Shortcut phrases are later added for a platform that supports them, the
 metadata compiler only permits `AppEntity` and `AppEnum` phrase slots, not a raw
