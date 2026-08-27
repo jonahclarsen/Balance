@@ -10,6 +10,7 @@ const EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_EDITS', 24)
 const GOAL_EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_GOAL_EDITS', 8)
 const IMAX_TOGGLE_COUNT = performanceSize('BALANCE_IMAX_PERF_TOGGLES', 10)
 const THEME_ID = process.env.BALANCE_INTERACTION_PERF_THEME ?? 'iridescent'
+const IRIDESCENT_MOTION_PROFILE = process.env.BALANCE_INTERACTION_PERF_IRIDESCENT_MOTION ?? 'full'
 const CLICK_COUNT = performanceSize('BALANCE_INTERACTION_PERF_CLICKS', 12)
 const FRAME_SAMPLE_MS = performanceSize('BALANCE_INTERACTION_PERF_FRAME_SAMPLE_MS', 1_500)
 const ACTIVE_DATE = '2026-08-16'
@@ -19,6 +20,60 @@ type Sample = {
   dispatchMs: number
   paintMs: number
 }
+
+const IRIDESCENT_MOTION_STYLES: Record<string, string> = {
+  static: '',
+  'only-background': `
+    :root[data-theme='iridescent'] body::before {
+      animation: iridescent-background-breathe 18s ease-in-out infinite alternate !important;
+    }
+  `,
+  'only-sidebar': `
+    :root[data-theme='iridescent'] .sidebar {
+      animation: iridescent-sidebar-breathe 22s ease-in-out infinite alternate !important;
+    }
+  `,
+  'only-borders': `
+    :root[data-theme='iridescent'] {
+      --iridescent-border-animation: iridescent-border-turn 34s linear infinite !important;
+    }
+  `,
+  'only-active-nav': `
+    :root[data-theme='iridescent'] :is(
+      .sidebar nav button.active,
+      .list-template-tabs .rail-chip.active
+    ) {
+      animation: iridescent-active-nav-breathe 12s ease-in-out infinite alternate !important;
+    }
+  `,
+  'only-brand': `
+    :root[data-theme='iridescent'] :is(.sidebar-brand-heading h1, .mobile-app-title strong) {
+      animation: iridescent-brand-flow 42s ease-in-out infinite alternate !important;
+    }
+  `,
+}
+
+const DISABLE_IRIDESCENT_MOTION = `
+  :root[data-theme='iridescent'] {
+    --iridescent-border-animation: none !important;
+  }
+
+  :root[data-theme='iridescent'] body::before,
+  :root[data-theme='iridescent'] .sidebar {
+    animation: none !important;
+  }
+
+  :root[data-theme='iridescent'] :is(
+    .sidebar nav button.active,
+    .list-template-tabs .rail-chip.active
+  ),
+  :root[data-theme='iridescent'] :is(
+    .sidebar-brand-heading h1,
+    .mobile-app-title strong
+  ) {
+    animation: none !important;
+  }
+`
 
 function performanceSize(variable: string, fallback: number) {
   const value = Number(process.env[variable])
@@ -207,6 +262,36 @@ async function profileIdleFrames(page: Page, durationMs = FRAME_SAMPLE_MS) {
   }, durationMs)
 }
 
+async function profileIdleRenderer(page: Page) {
+  const session = await page.context().newCDPSession(page)
+  await session.send('Performance.enable')
+  const readMetrics = async () => {
+    const result = await session.send('Performance.getMetrics') as {
+      metrics: Array<{ name: string; value: number }>
+    }
+    return new Map(result.metrics.map(({ name, value }) => [name, value]))
+  }
+  const before = await readMetrics()
+  const frameIntervals = await profileIdleFrames(page)
+  const after = await readMetrics()
+  await session.detach()
+
+  const elapsedSeconds = (after.get('Timestamp') ?? 0) - (before.get('Timestamp') ?? 0)
+  const durationMs = (name: string) => ((after.get(name) ?? 0) - (before.get(name) ?? 0)) * 1_000
+  const taskDurationMs = durationMs('TaskDuration')
+  return {
+    frameIntervals,
+    renderer: {
+      elapsedMs: elapsedSeconds * 1_000,
+      taskDurationMs,
+      taskUtilizationPercent: elapsedSeconds > 0 ? taskDurationMs / (elapsedSeconds * 10) : 0,
+      scriptDurationMs: durationMs('ScriptDuration'),
+      layoutDurationMs: durationMs('LayoutDuration'),
+      recalcStyleDurationMs: durationMs('RecalcStyleDuration'),
+    },
+  }
+}
+
 async function profileTaskActions(page: Page, editorSelector: string, clickCount = CLICK_COUNT) {
   return page.locator(editorSelector).evaluate(
     async (element, clickCount) => {
@@ -270,11 +355,31 @@ test.beforeEach(async ({ page }, testInfo) => {
     await session.send('Emulation.setCPUThrottlingRate', { rate: 6 })
   }
   await page.goto('/')
+  if (IRIDESCENT_MOTION_PROFILE !== 'full') {
+    const selectedMotion = IRIDESCENT_MOTION_STYLES[IRIDESCENT_MOTION_PROFILE]
+    if (selectedMotion === undefined) {
+      throw new Error(`Unknown Iridescent motion profile: ${IRIDESCENT_MOTION_PROFILE}`)
+    }
+    await page.addStyleTag({ content: `${DISABLE_IRIDESCENT_MOTION}\n${selectedMotion}` })
+  }
   await expect(page.locator(EDITOR_SELECTOR)).toBeVisible()
 })
 
 test('profiles common typing and backspacing paths', async ({ page }, testInfo) => {
-  const idleFrames = await profileIdleFrames(page)
+  await page.locator(EDITOR_SELECTOR).focus()
+  const motionAnimations = await page.evaluate(() => {
+    const activeNav = document.querySelector<HTMLElement>('.sidebar nav button.active')!
+    const focusedEditor = document.querySelector<HTMLElement>('.plan-row .item-text:focus')!
+    const brand = document.querySelector<HTMLElement>('.sidebar-brand-heading h1')!
+    return {
+      background: getComputedStyle(document.body, '::before').animationName,
+      sidebar: getComputedStyle(document.querySelector<HTMLElement>('.sidebar')!).animationName,
+      border: getComputedStyle(focusedEditor, '::after').animationName,
+      activeNav: getComputedStyle(activeNav).animationName,
+      brand: getComputedStyle(brand).animationName,
+    }
+  })
+  const idle = await profileIdleRenderer(page)
   const taskActions = await profileTaskActions(page, EDITOR_SELECTOR)
   const typing = await profileEdits(page, EDITOR_SELECTOR, 'type')
   const backspacing = await profileEdits(page, EDITOR_SELECTOR, 'backspace')
@@ -288,8 +393,11 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
       goals: GOAL_COUNT,
       existingOperations: EXISTING_OPERATION_COUNT,
       themeId: THEME_ID,
+      iridescentMotionProfile: IRIDESCENT_MOTION_PROFILE,
+      motionAnimations,
     },
-    idleFrameIntervals: summarizeDurations(idleFrames),
+    idleFrameIntervals: summarizeDurations(idle.frameIntervals),
+    idleRenderer: idle.renderer,
     taskFocus: summarize(taskActions.focus),
     checkboxClick: summarize(taskActions.checkboxClicks),
     typing: summarize(typing),
