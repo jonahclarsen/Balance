@@ -138,6 +138,27 @@ test('list template word cap blocks typing past the max', async ({ page }) => {
   await expect(page.locator('.word-cap-count')).toContainText('2 / 2')
 })
 
+test('list template max word count automatically locks 10 seconds after unlocking', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openLists(page)
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.clock.install()
+
+  const maxInput = page.getByRole('spinbutton', { name: 'max' })
+  await expect(maxInput).toBeDisabled()
+  await page.getByRole('button', { name: 'Unlock to edit max word count' }).click()
+  await expect(maxInput).toBeEnabled()
+
+  await page.clock.fastForward(9_000)
+  await expect(maxInput).toBeEnabled()
+  await page.clock.fastForward(1_000)
+  await expect(maxInput).toBeDisabled()
+  await expect(page.getByRole('button', { name: 'Unlock to edit max word count' })).toBeVisible()
+})
+
 test('clearing a list item archives it on blur, while replacement typing stays an edit', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

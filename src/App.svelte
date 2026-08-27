@@ -126,6 +126,7 @@
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
+  const WORD_CAP_UNLOCK_MS = 10_000
   const DESKTOP_INACTIVITY_CLOSE_MS = 2 * 60 * 60 * 1000
   const isAndroid = /android/i.test(navigator.userAgent)
   const DAY_TEMPLATE_SELECTION_KEY = 'balance:selectedDayTemplateId'
@@ -260,6 +261,7 @@
   let notesPanel: NotesPanel | null = null
   let notesTrashOpen = false
   let wordCapUnlocked = false
+  let wordCapUnlockTimer: number | null = null
   let selectedMetricId = ''
   let selectedNoteId = ''
   let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
@@ -1496,6 +1498,21 @@ return rows`
     plannerStore.deleteListTemplate(templateId)
   }
 
+  function toggleWordCapUnlock() {
+    if (wordCapUnlocked) {
+      wordCapUnlocked = false
+      if (wordCapUnlockTimer !== null) window.clearTimeout(wordCapUnlockTimer)
+      wordCapUnlockTimer = null
+      return
+    }
+
+    wordCapUnlocked = true
+    wordCapUnlockTimer = window.setTimeout(() => {
+      wordCapUnlocked = false
+      wordCapUnlockTimer = null
+    }, WORD_CAP_UNLOCK_MS)
+  }
+
   function formatArchivedListItemDate(entry: ArchivedListTemplateItem): string {
     const [year, month, day] = entry.archivedDate.split('-').map(Number)
     if (!year || !month || !day) return entry.archivedDate
@@ -1849,6 +1866,7 @@ return rows`
       if (celebrationPreviewAnnouncementTimer !== null) {
         window.clearTimeout(celebrationPreviewAnnouncementTimer)
       }
+      if (wordCapUnlockTimer !== null) window.clearTimeout(wordCapUnlockTimer)
       celebrationPreviewToken += 1
       celebrationPreview = null
       clearGoalRhythmAutoShowTimer()
@@ -5716,7 +5734,7 @@ return rows`
                   title={wordCapUnlocked ? 'Lock max word count' : 'Unlock to edit max word count'}
                   aria-label={wordCapUnlocked ? 'Lock max word count' : 'Unlock to edit max word count'}
                   aria-pressed={wordCapUnlocked}
-                  on:click={() => (wordCapUnlocked = !wordCapUnlocked)}
+                  on:click={toggleWordCapUnlock}
                 >
                   <svg class="word-cap-lock-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                     {#if wordCapUnlocked}
