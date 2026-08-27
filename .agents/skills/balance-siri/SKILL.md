@@ -46,8 +46,13 @@ the recognized text, but test the behavior on that supported platform.
 
 ## Know the capture path
 
-- `src-tauri/macos/BalanceWidget/BalanceWidget.swift` exposes the App Intent. It
-  must not read or decrypt Balance's database.
+- `src-tauri/macos/BalanceIntents/AddToBalanceIntent.swift` exposes the App
+  Intent from a dedicated `com.apple.appintents-extension`. Keep it out of the
+  WidgetKit extension: `linkd` may retain widget-hosted intent metadata only in
+  cache and lose the action after a cold restart. The intents extension must not
+  read or decrypt Balance's database. Embed it under
+  `Balance.app/Contents/Extensions`, not `Contents/PlugIns`; PluginKit can list a
+  misplaced ExtensionKit bundle even though `linkd` will not index its actions.
 - The intent creates a one-time `balance://add?text=...&request=...` URL. On
   macOS, submit that custom scheme through `NSWorkspace`; `OpenURLIntent` only
   supports universal links and rejects `balance://`. A sandboxed widget
@@ -94,13 +99,15 @@ For the supported action, verify:
 
 1. The signed app and extension are valid and use the same team.
 2. Launch Services has exactly one `app.balance.local` application record,
-   owned by `/Applications/Balance.app`, and exactly one
-   `app.balance.local.widget` extension is enabled from that path. The running
-   `BalanceWidgetDevBridge.app` deliberately presents the host bundle identity
-   for WidgetKit, but `run-macos-dev-app.sh` must unregister the helper path
-   immediately after launch so Shortcuts cannot resolve intents against it.
-3. Extracted metadata contains `AddToBalanceIntent` with a discoverable task
-   input.
+   owned by `/Applications/Balance.app`, with exactly one
+   `app.balance.local.widget` extension and one `app.balance.local.intents`
+   extension enabled from that path. The running `BalanceWidgetDevBridge.app`
+   deliberately presents the host bundle identity for WidgetKit, but
+   `run-macos-dev-app.sh` must unregister the helper path immediately after
+   launch so Shortcuts cannot resolve intents against it.
+3. The dedicated intents extension's extracted metadata contains
+   `AddToBalanceIntent` with a discoverable task input, while the widget
+   extension contains no shortcut action metadata.
 4. The Balance action appears in the Shortcuts app and accepts text supplied by
    the shortcut.
 5. A synthetic deep link inserts exactly once, preserves text, chooses the
@@ -116,8 +123,12 @@ app or `BalanceWidgetDevBridge.app` can shadow the installed app even while the
 installed extension remains correctly enabled.
 
 Swift intent changes require a signed production rebuild, nested-signature
-verification, installation under `/Applications`, extension re-registration,
-WidgetKit process restart, and installed-versus-built executable hash
-comparison. Follow the repository's worktree and commit/push rules. Do not
-launch the production host for verification when no debug host is available,
-because that would open the user's database.
+verification, installation under `/Applications`, re-registration of both
+extensions, WidgetKit process restart, and installed-versus-built executable
+hash comparison. After restarting `linkd`, verify it can resolve
+`app.balance.local:AddToBalanceIntent`; static metadata on disk and `pluginkit`
+registration alone are insufficient. A raw bundle replacement may not notify
+ExtensionKit until the host is launched. If the intents extension is absent
+from `pluginkit`, use a safe pre-database registration path; do not launch the
+production host solely to register it when that would open the user's database.
+Follow the repository's worktree and commit/push rules.
