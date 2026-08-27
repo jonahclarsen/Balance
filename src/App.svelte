@@ -6280,7 +6280,7 @@ return rows`
                       aria-pressed={randomThemeScheduled}
                       on:click={toggleRandomThemeSchedule}
                     >
-                      {randomThemeScheduled ? 'Cancel start' : 'Start next day'}
+                      {randomThemeScheduled ? 'Cancel start' : 'Start tomorrow'}
                     </button>
                   {/if}
                 </div>

@@ -207,7 +207,7 @@ test('random theme can be scheduled for the next day boundary while changing tod
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
   await expect(randomTheme).toHaveAttribute('aria-pressed', 'false')
 
-  const startNextDay = themeGroup.getByRole('button', { name: 'Start next day' })
+  const startNextDay = themeGroup.getByRole('button', { name: 'Start tomorrow' })
   const randomThemeCardBox = (await randomThemeCard.boundingBox())!
   const startNextDayBox = (await startNextDay.boundingBox())!
   expect(randomThemeCardBox.height).toBe(initialRandomThemeHeight)
@@ -222,12 +222,12 @@ test('random theme can be scheduled for the next day boundary while changing tod
   })).toBe('2026-08-18')
 
   await cancelSchedule.click()
-  await expect(themeGroup.getByRole('button', { name: 'Start next day' })).toHaveAttribute('aria-pressed', 'false')
+  await expect(themeGroup.getByRole('button', { name: 'Start tomorrow' })).toHaveAttribute('aria-pressed', 'false')
   await expect.poll(() => page.evaluate(() => {
     const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
     return appearance?.randomThemeStartDate
   })).toBe('')
-  await themeGroup.getByRole('button', { name: 'Start next day' }).click()
+  await themeGroup.getByRole('button', { name: 'Start tomorrow' }).click()
   await expect(cancelSchedule).toHaveAttribute('aria-pressed', 'true')
   await expect.poll(() => page.evaluate(() => {
     const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
