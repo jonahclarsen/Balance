@@ -489,6 +489,37 @@ export function completePlanItemAncestors(
   items: PlanItem[],
   changedItemIds: Iterable<Id>,
 ): { items: PlanItem[]; completedParentIds: Id[] } {
+  return completePlanItemBranches(items, changedItemIds, false)
+}
+
+export function completePlanItemAncestorsAfterRemoval(
+  previousItems: PlanItem[],
+  items: PlanItem[],
+  removedItemIds: Iterable<Id>,
+): { items: PlanItem[]; completedParentIds: Id[] } {
+  const removedIds = new Set(removedItemIds)
+  const affectedParentIds = new Set<Id>()
+
+  function collectAffectedParents(nodes: PlanItem[], ancestors: Id[]): void {
+    for (const item of nodes) {
+      if (removedIds.has(item.id)) {
+        const survivingParentId = ancestors.findLast((ancestorId) => !removedIds.has(ancestorId))
+        if (survivingParentId) affectedParentIds.add(survivingParentId)
+        continue
+      }
+      collectAffectedParents(item.children, [...ancestors, item.id])
+    }
+  }
+
+  collectAffectedParents(previousItems, [])
+  return completePlanItemBranches(items, affectedParentIds, true)
+}
+
+function completePlanItemBranches(
+  items: PlanItem[],
+  changedItemIds: Iterable<Id>,
+  includeChangedItems: boolean,
+): { items: PlanItem[]; completedParentIds: Id[] } {
   const changedIds = new Set(changedItemIds)
   const completedParentIds: Id[] = []
 
@@ -502,7 +533,7 @@ export function completePlanItemAncestors(
 
       let nextItem = childResult.nodes === item.children ? item : { ...item, children: childResult.nodes }
       if (
-        childResult.containsChange &&
+        (childResult.containsChange || (includeChangedItems && changedIds.has(item.id))) &&
         !nextItem.done &&
         nextItem.children.length > 0 &&
         nextItem.children.every((child) => child.done)

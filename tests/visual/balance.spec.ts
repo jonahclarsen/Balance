@@ -3213,6 +3213,50 @@ test('checking a parent completes all of its descendants', async ({ page }) => {
   await expect(checkbox('Direct child')).not.toBeChecked()
 })
 
+test('deleting the final incomplete child completes each satisfied parent task', async ({ page }, testInfo) => {
+  await seedPlanTree(page, [
+    {
+      id: 'parent',
+      text: 'Parent task',
+      children: [
+        {
+          id: 'child-group',
+          text: 'Child group',
+          children: [
+            { id: 'completed-child', text: 'Completed child', done: true, children: [] },
+            { id: 'incomplete-child', text: 'Incomplete child', children: [] },
+          ],
+        },
+        { id: 'completed-direct-child', text: 'Completed direct child', done: true, children: [] },
+      ],
+    },
+  ])
+
+  const checkbox = (text: string) =>
+    page
+      .getByRole('listitem', { name: `Plan item: ${text}`, exact: true })
+      .getByRole('checkbox', { name: 'Complete item' })
+      .first()
+  const incompleteChild = page.getByRole('listitem', { name: 'Plan item: Incomplete child', exact: true })
+
+  if (testInfo.project.name === 'mobile') {
+    await incompleteChild.getByRole('button', { name: 'Task options for Incomplete child' }).click()
+    await incompleteChild.getByRole('menuitem', { name: 'Remove' }).click()
+  } else {
+    await incompleteChild.getByRole('button', { name: 'Select item' }).click()
+    await page.keyboard.press('Backspace')
+  }
+
+  await expect(incompleteChild).toHaveCount(0)
+  await expect(checkbox('Child group')).toBeChecked()
+  await expect(checkbox('Parent task')).toBeChecked()
+
+  await page.keyboard.press('Meta+Z')
+  await expect(incompleteChild).toBeVisible()
+  await expect(checkbox('Child group')).not.toBeChecked()
+  await expect(checkbox('Parent task')).not.toBeChecked()
+})
+
 test('enter splits plan items and shift-enter inserts a line break', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -5443,6 +5487,7 @@ async function seedPlanItems(page: import('@playwright/test').Page, texts: strin
 type SeedPlanTreeItem = {
   id: string
   text: string
+  done?: boolean
   children: SeedPlanTreeItem[]
 }
 
@@ -5458,7 +5503,7 @@ async function seedPlanTree(page: import('@playwright/test').Page, items: SeedPl
     } => ({
       ...item,
       html: item.text,
-      done: false,
+      done: item.done ?? false,
       startMinutes: null,
       endMinutes: null,
       children: item.children.map(normalize),

@@ -43,6 +43,7 @@ import {
   outdentTemplateItem as outdentTemplateItemInTree,
   clonePlanItemsForPaste,
   completePlanItemAncestors,
+  completePlanItemAncestorsAfterRemoval,
   completePlanItemDescendants,
   copyPlanItems as copyPlanItemsFromTree,
   pastePlanItems as pastePlanItemsIntoTree,
@@ -358,6 +359,17 @@ function splitPlacementForBeforeText(before: { html?: string; text?: string }): 
 
 function shouldMoveChildrenToSplitItem(before: { text?: string }, after: { text?: string }): boolean {
   return (before.text ?? '') !== ''
+}
+
+function completeParentsAfterPlanItemRemoval(
+  previousItems: PlanItem[],
+  items: PlanItem[],
+  removedItemIds: Iterable<Id>,
+  completedParentIds: Id[],
+): PlanItem[] {
+  const completed = completePlanItemAncestorsAfterRemoval(previousItems, items, removedItemIds)
+  completedParentIds.push(...completed.completedParentIds)
+  return completed.items
 }
 
 function queueOperationPersistence(operation: Operation): void {
@@ -939,17 +951,29 @@ function createPlannerStore() {
     },
 
     deletePlanItem(planId: Id, itemId: Id) {
-      commit('delete_plan_item', { planId, itemId }, (state) => updatePlan(state, planId, (plan) => ({
+      const completedParentIds: Id[] = []
+      commit('delete_plan_item', { planId, itemId, completedParentIds }, (state) => updatePlan(state, planId, (plan) => ({
         ...plan,
-        items: deletePlanItem(plan.items, itemId),
+        items: completeParentsAfterPlanItemRemoval(
+          plan.items,
+          deletePlanItem(plan.items, itemId),
+          [itemId],
+          completedParentIds,
+        ),
       })))
     },
 
     deletePlanItemPreservingChildren(planId: Id, itemId: Id) {
-      commit('delete_plan_item_preserving_children', { planId, itemId }, (state) =>
+      const completedParentIds: Id[] = []
+      commit('delete_plan_item_preserving_children', { planId, itemId, completedParentIds }, (state) =>
         updatePlan(state, planId, (plan) => ({
           ...plan,
-          items: deletePlanItemPreservingChildren(plan.items, itemId),
+          items: completeParentsAfterPlanItemRemoval(
+            plan.items,
+            deletePlanItemPreservingChildren(plan.items, itemId),
+            [itemId],
+            completedParentIds,
+          ),
         })),
       )
     },
@@ -960,13 +984,16 @@ function createPlannerStore() {
 
       const result = backspacePlanItemAtStartInTree(plan.items, itemId)
       if (!result) return null
+      const completedParentIds: Id[] = []
+      const removedItemId = result.operation.action === 'delete_previous' ? result.operation.previousId : itemId
+      const items = completeParentsAfterPlanItemRemoval(plan.items, result.items, [removedItemId], completedParentIds)
 
       commit(
         'backspace_plan_item_at_start',
-        { planId, itemId, ...result.operation },
+        { planId, itemId, ...result.operation, completedParentIds },
         (state) =>
           updatePlan(state, planId, (candidate) =>
-            candidate.id === plan.id ? { ...candidate, items: result.items } : candidate,
+            candidate.id === plan.id ? { ...candidate, items } : candidate,
           ),
       )
 
@@ -987,9 +1014,15 @@ function createPlannerStore() {
       if (copiedItems.length === 0) return []
 
       const selectedRootIds = copiedItems.map((item) => item.id)
-      commit('delete_plan_items', { planId, itemIds: selectedRootIds }, (state) => updatePlan(state, planId, (plan) => ({
+      const completedParentIds: Id[] = []
+      commit('delete_plan_items', { planId, itemIds: selectedRootIds, completedParentIds }, (state) => updatePlan(state, planId, (plan) => ({
         ...plan,
-        items: deletePlanItems(plan.items, selectedRootIds),
+        items: completeParentsAfterPlanItemRemoval(
+          plan.items,
+          deletePlanItems(plan.items, selectedRootIds),
+          selectedRootIds,
+          completedParentIds,
+        ),
       })))
 
       return copiedItems
@@ -1000,9 +1033,15 @@ function createPlannerStore() {
       const selectedRootIds = plan ? copyPlanItemsFromTree(plan.items, itemIds).map((item) => item.id) : []
       if (selectedRootIds.length === 0) return []
 
-      commit('delete_plan_items', { planId, itemIds: selectedRootIds }, (state) => updatePlan(state, planId, (plan) => ({
+      const completedParentIds: Id[] = []
+      commit('delete_plan_items', { planId, itemIds: selectedRootIds, completedParentIds }, (state) => updatePlan(state, planId, (plan) => ({
         ...plan,
-        items: deletePlanItems(plan.items, selectedRootIds),
+        items: completeParentsAfterPlanItemRemoval(
+          plan.items,
+          deletePlanItems(plan.items, selectedRootIds),
+          selectedRootIds,
+          completedParentIds,
+        ),
       })))
 
       return selectedRootIds
