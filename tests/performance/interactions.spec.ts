@@ -428,6 +428,17 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
       brand: getComputedStyle(brand).animationName,
     }
   })
+  if (THEME_ID === 'iridescent' && IRIDESCENT_MOTION_PROFILE === 'full') {
+    expect(motionAnimations.sidebarBorder).toEqual({
+      name: 'iridescent-border-turn',
+      timingFunction: 'steps(272)',
+    })
+    expect(motionAnimations.focusedTaskBorder).toEqual({
+      name: 'iridescent-border-turn',
+      timingFunction: 'steps(272)',
+    })
+    expect(motionAnimations.taskListBorder.name).toBe('none')
+  }
   const idle = await profileIdleRenderer(page)
   const taskActions = await profileTaskActions(page, EDITOR_SELECTOR)
   const typing = await profileEdits(page, EDITOR_SELECTOR, 'type')

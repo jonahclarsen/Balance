@@ -765,7 +765,7 @@
 }
 
 /* The large task-list ring is expensive to repaint and does not need to move. */
-:root[data-theme='iridescent'] .list-panel {
+:root[data-theme='iridescent'] .list-panel::after {
   --iridescent-border-animation: none;
 }
 
