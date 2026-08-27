@@ -88,8 +88,12 @@ availability.
 For the supported action, verify:
 
 1. The signed app and extension are valid and use the same team.
-2. `/Applications/Balance.app` is the installed container and exactly one
-   `app.balance.local.widget` extension is enabled from that path.
+2. Launch Services has exactly one `app.balance.local` application record,
+   owned by `/Applications/Balance.app`, and exactly one
+   `app.balance.local.widget` extension is enabled from that path. The running
+   `BalanceWidgetDevBridge.app` deliberately presents the host bundle identity
+   for WidgetKit, but `run-macos-dev-app.sh` must unregister the helper path
+   immediately after launch so Shortcuts cannot resolve intents against it.
 3. Extracted metadata contains `AddToBalanceIntent` with a discoverable task
    input.
 4. The Balance action appears in the Shortcuts app and accepts text supplied by
@@ -101,7 +105,10 @@ Stale Launch Services registrations from build-tree apps and Trash backups can
 confuse app and URL discovery. Inspect them before changing registration state;
 unregister only resolved stale Balance bundle paths, keep
 `/Applications/Balance.app`, and do not delete the underlying backups as part of
-that cleanup.
+that cleanup. If Shortcuts says an action could not be found, check application
+records as well as `pluginkit`: an `app.balance.local` record for a build-tree
+app or `BalanceWidgetDevBridge.app` can shadow the installed app even while the
+installed extension remains correctly enabled.
 
 Swift intent changes require a signed production rebuild, nested-signature
 verification, installation under `/Applications`, extension re-registration,

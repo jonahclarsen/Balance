@@ -54,4 +54,18 @@ if [ ! -f "$ready_file" ]; then
 fi
 
 rm -f "$ready_file"
+
+# WidgetKit needs the helper to present the production app's bundle identity,
+# but launching that app-shaped helper also makes Launch Services register it as
+# another app.balance.local owner. That can make Shortcuts resolve Balance's
+# App Intent against the helper (which has no intent metadata). Keep the helper
+# running, remove only its registration, and make the installed app canonical.
+launch_services_register=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+if [ -x "$launch_services_register" ]; then
+  "$launch_services_register" -u "$bridge_app" >/dev/null 2>&1 || true
+  if [ -d /Applications/Balance.app ]; then
+    "$launch_services_register" -f /Applications/Balance.app >/dev/null 2>&1 || true
+  fi
+fi
+
 exec "$source_executable" "$@"
