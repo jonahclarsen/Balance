@@ -131,6 +131,7 @@
   let mobileTaskMenu: HTMLDivElement | null = null
   let mobileTaskMenuPosition: { left: number; top: number; maxHeight: number } | null = null
   let suppressCheckboxClick = false
+  let mobileCheckboxStartedWithTaskCaret: boolean | null = null
 
   type MobileCheckboxDrag = {
     pointerId: number
@@ -247,6 +248,12 @@
   }
 
   function beginMobileCheckboxDrag(event: PointerEvent) {
+    // Capture this before the checkbox tap changes DOM focus. A mobile user who
+    // is only scrolling and checking tasks should not acquire a new caret.
+    if (mobile && event.isPrimary && event.button === 0) {
+      mobileCheckboxStartedWithTaskCaret = activeTaskEditorHasCaret()
+    }
+
     if (
       !mobile ||
       !patchItemsDone ||
@@ -362,7 +369,7 @@
     }
     clearMobileCheckboxDrag(drag)
     commit?.(planId, itemIds, true)
-    if (commit) void focusTaskBelow(planId, itemIds)
+    if (commit) focusBelowAfterCheckboxCompletion(itemIds)
   }
 
   function cancelMobileCheckboxDragFromEvent(event: PointerEvent) {
@@ -394,7 +401,24 @@
     if (suppressCheckboxClick) return
     const done = event.currentTarget.checked
     patchItem(planId, item.id, { done })
-    if (done) void focusTaskBelow(planId, [item.id])
+    if (done) focusBelowAfterCheckboxCompletion([item.id])
+    else mobileCheckboxStartedWithTaskCaret = null
+  }
+
+  function activeTaskEditorHasCaret() {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-focus-target]')) return false
+
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return false
+    const range = selection.getRangeAt(0)
+    return active.contains(range.startContainer) && active.contains(range.endContainer)
+  }
+
+  function focusBelowAfterCheckboxCompletion(itemIds: Id[]) {
+    const shouldFocus = !mobile || mobileCheckboxStartedWithTaskCaret === true
+    mobileCheckboxStartedWithTaskCaret = null
+    if (shouldFocus) void focusTaskBelow(planId, itemIds)
   }
 
   onDestroy(cancelMobileCheckboxDrag)

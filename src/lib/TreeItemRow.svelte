@@ -109,6 +109,13 @@
   function startPointerDrag(event: PointerEvent) {
     event.preventDefault()
     event.stopPropagation()
+    const focusedElement = document.activeElement
+    if ((event.pointerType === 'touch' || usesMobileLayout()) && focusedElement instanceof HTMLElement) {
+      // Preventing the drag handle's default focus change can otherwise leave a
+      // contenteditable focused, keeping Android's soft keyboard on screen.
+      document.getSelection()?.removeAllRanges()
+      focusedElement.blur()
+    }
     dragging = true
     dragPointerId = event.pointerId
     dragPointer = { x: event.clientX, y: event.clientY }

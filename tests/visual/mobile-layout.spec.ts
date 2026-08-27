@@ -463,6 +463,71 @@ test('mobile task dragging auto-scrolls near both viewport edges', async ({ page
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 })
 
+test('starting a mobile task drag dismisses the active task editor', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'Touch keyboard dismissal is mobile-only')
+
+  const row = page.getByRole('listitem', { name: 'Plan item: Parent task with a scheduled time' })
+  const editor = row.locator('[data-plan-text-input]')
+  const handle = row.getByRole('button', { name: 'Drag to move item' })
+  await editor.focus()
+  await expect(editor).toBeFocused()
+
+  const handleBox = await handle.boundingBox()
+  if (!handleBox) throw new Error('Missing drag handle geometry')
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: handleBox.x + handleBox.width / 2, y: handleBox.y + handleBox.height / 2 }],
+  })
+
+  await expect(handle).toHaveClass(/dragging/)
+  await expect(editor).not.toBeFocused()
+  await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(0)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+})
+
+test('checking a task without an active mobile caret leaves task editors unfocused', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The no-caret completion behavior is mobile-only')
+
+  const row = page.getByRole('listitem', { name: 'Plan item: Filler task 1', exact: true })
+  const checkbox = row.getByRole('checkbox')
+  const checkboxBox = await checkbox.boundingBox()
+  if (!checkboxBox) throw new Error('Missing checkbox geometry')
+  await page.evaluate(() => {
+    document.getSelection()?.removeAllRanges()
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+  })
+  await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(0)
+
+  await page.touchscreen.tap(
+    checkboxBox.x + checkboxBox.width / 2,
+    checkboxBox.y + checkboxBox.height / 2,
+  )
+
+  await expect(checkbox).toBeChecked()
+  await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(0)
+})
+
+test('checking a task with an active mobile caret still advances to the next task', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The active-caret completion behavior is mobile-only')
+
+  const currentRow = page.getByRole('listitem', { name: 'Plan item: Filler task 1', exact: true })
+  const nextRow = page.getByRole('listitem', { name: 'Plan item: Filler task 2', exact: true })
+  const currentEditor = currentRow.locator('[data-plan-text-input]')
+  const checkbox = currentRow.getByRole('checkbox')
+  await currentEditor.focus()
+
+  const checkboxBox = await checkbox.boundingBox()
+  if (!checkboxBox) throw new Error('Missing checkbox geometry')
+  await page.touchscreen.tap(
+    checkboxBox.x + checkboxBox.width / 2,
+    checkboxBox.y + checkboxBox.height / 2,
+  )
+
+  await expect(checkbox).toBeChecked()
+  await expect(nextRow.locator('[data-plan-text-input]')).toBeFocused()
+})
+
 test('holding a mobile checkbox then dragging checks every crossed task in one action', async ({ page }, testInfo) => {
   test.skip(!isMobileProject(testInfo.project.name), 'The checkbox hold-and-drag gesture is mobile-only')
 
