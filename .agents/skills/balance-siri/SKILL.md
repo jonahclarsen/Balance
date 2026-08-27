@@ -25,6 +25,11 @@ can ask or dictate the task, then pass that text to the Balance action. Siri can
 run the custom shortcut by name, but macOS does not pass an arbitrary spoken
 suffix into an app-provided phrase.
 
+Keep the app action title distinct from the custom shortcut name. The action is
+named “Add Task to Balance” so the custom shortcut can be named “Add to Balance.”
+If both have the same title, Siri can invoke the app action directly and bypass
+the custom shortcut's input prompt.
+
 Set the text parameter's `inputConnectionBehavior` to
 `.connectToPreviousIntentResult`, but do not expect a graph socket or a different
 control: macOS Shortcuts still renders a connectable `String` parameter as a

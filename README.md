@@ -15,7 +15,7 @@ Current slice:
 - Review goal completions in an always-available, scrollable cadence history panel.
 - Export the app state as JSON or readable plan history as HTML.
 - See today’s progress and next tasks in small, medium, or large native macOS widgets. Widget snapshots are encrypted with an extension-owned Keychain key; the database key is never shared with the widget.
-- Use the macOS 15+ “Add to Balance” action in Shortcuts to capture a task verbatim under “reminders from siri:”. Balance uses today while it has incomplete tasks, then rolls capture forward to tomorrow. To use Siri on Mac, create a custom shortcut named “Add to Balance” containing this action; Siri will run it by name and ask for the task. Apple does not support direct App Shortcut phrases on macOS.
+- Use the macOS 15+ “Add Task to Balance” action in Shortcuts to capture a task verbatim under “reminders from siri:”. Balance uses today while it has incomplete tasks, then rolls capture forward to tomorrow. To use Siri on Mac, create a custom shortcut named “Add to Balance” containing this action; the distinct names keep Siri from bypassing the custom shortcut's input prompt. Siri will run the shortcut by name and ask for the task. Apple does not support direct App Shortcut phrases on macOS.
 - Record local mutations in an operation log for future sync work.
 
 ## Development

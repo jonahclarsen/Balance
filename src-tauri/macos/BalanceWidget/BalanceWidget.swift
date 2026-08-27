@@ -18,7 +18,7 @@ private enum AddToBalanceIntentError: Error {
 
 @available(macOS 15.0, *)
 struct AddToBalanceIntent: AppIntent {
-    static let title: LocalizedStringResource = "Add to Balance"
+    static let title: LocalizedStringResource = "Add Task to Balance"
     static let description = IntentDescription("Add a task to Balance.")
 
     @Parameter(
