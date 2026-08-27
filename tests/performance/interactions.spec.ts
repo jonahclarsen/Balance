@@ -38,6 +38,31 @@ const IRIDESCENT_MOTION_STYLES: Record<string, string> = {
       --iridescent-border-animation: iridescent-border-turn 34s linear infinite !important;
     }
   `,
+  'only-borders-2fps': `
+    :root[data-theme='iridescent'] {
+      --iridescent-border-animation: iridescent-border-turn 34s steps(68, end) infinite !important;
+    }
+  `,
+  'only-borders-4fps': `
+    :root[data-theme='iridescent'] {
+      --iridescent-border-animation: iridescent-border-turn 34s steps(136, end) infinite !important;
+    }
+  `,
+  'only-borders-8fps': `
+    :root[data-theme='iridescent'] {
+      --iridescent-border-animation: iridescent-border-turn 34s steps(272, end) infinite !important;
+    }
+  `,
+  'only-borders-15fps': `
+    :root[data-theme='iridescent'] {
+      --iridescent-border-animation: iridescent-border-turn 34s steps(510, end) infinite !important;
+    }
+  `,
+  'only-borders-30fps': `
+    :root[data-theme='iridescent'] {
+      --iridescent-border-animation: iridescent-border-turn 34s steps(1020, end) infinite !important;
+    }
+  `,
   'only-active-nav': `
     :root[data-theme='iridescent'] :is(
       .sidebar nav button.active,
@@ -72,6 +97,17 @@ const DISABLE_IRIDESCENT_MOTION = `
     .mobile-app-title strong
   ) {
     animation: none !important;
+  }
+`
+
+const KEEP_ONLY_FOCUSED_BORDER_MOTION = `
+  :root[data-theme='iridescent'] {
+    --iridescent-border-animation: none !important;
+  }
+
+  :root[data-theme='iridescent'] .sidebar nav button.active::after,
+  :root[data-theme='iridescent'] .plan-row .item-text:focus::after {
+    animation: iridescent-border-turn 34s linear infinite !important;
   }
 `
 
@@ -355,7 +391,9 @@ test.beforeEach(async ({ page }, testInfo) => {
     await session.send('Emulation.setCPUThrottlingRate', { rate: 6 })
   }
   await page.goto('/')
-  if (IRIDESCENT_MOTION_PROFILE !== 'full') {
+  if (IRIDESCENT_MOTION_PROFILE === 'full-focused-borders') {
+    await page.addStyleTag({ content: KEEP_ONLY_FOCUSED_BORDER_MOTION })
+  } else if (IRIDESCENT_MOTION_PROFILE !== 'full') {
     const selectedMotion = IRIDESCENT_MOTION_STYLES[IRIDESCENT_MOTION_PROFILE]
     if (selectedMotion === undefined) {
       throw new Error(`Unknown Iridescent motion profile: ${IRIDESCENT_MOTION_PROFILE}`)
@@ -370,11 +408,22 @@ test('profiles common typing and backspacing paths', async ({ page }, testInfo) 
   const motionAnimations = await page.evaluate(() => {
     const activeNav = document.querySelector<HTMLElement>('.sidebar nav button.active')!
     const focusedEditor = document.querySelector<HTMLElement>('.plan-row .item-text:focus')!
+    const taskList = focusedEditor.closest('.list-panel') as HTMLElement
     const brand = document.querySelector<HTMLElement>('.sidebar-brand-heading h1')!
+    const pseudoAnimation = (element: HTMLElement) => {
+      const styles = getComputedStyle(element, '::after')
+      return {
+        name: styles.animationName,
+        timingFunction: styles.animationTimingFunction,
+      }
+    }
     return {
       background: getComputedStyle(document.body, '::before').animationName,
       sidebar: getComputedStyle(document.querySelector<HTMLElement>('.sidebar')!).animationName,
       border: getComputedStyle(focusedEditor, '::after').animationName,
+      sidebarBorder: pseudoAnimation(activeNav),
+      focusedTaskBorder: pseudoAnimation(focusedEditor),
+      taskListBorder: pseudoAnimation(taskList),
       activeNav: getComputedStyle(activeNav).animationName,
       brand: getComputedStyle(brand).animationName,
     }

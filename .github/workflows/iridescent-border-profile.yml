@@ -1,0 +1,145 @@
+name: Profile Iridescent border frame rates
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    name: Compare stepped rates and focused border scope
+    runs-on: macos-15
+    timeout-minutes: 30
+    env:
+      BALANCE_INTERACTION_PERF_PROFILE_ONLY: "1"
+      BALANCE_INTERACTION_PERF_OPERATIONS: "1"
+      BALANCE_INTERACTION_PERF_EDITS: "4"
+      BALANCE_INTERACTION_PERF_CLICKS: "4"
+      BALANCE_INTERACTION_PERF_FRAME_SAMPLE_MS: "3000"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies and Chromium
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+
+      - name: Run three rotated rounds for every border variant
+        run: |
+          set -euo pipefail
+          results="$RUNNER_TEMP/iridescent-border-performance.jsonl"
+          logs="$RUNNER_TEMP/iridescent-border-performance.log"
+          : > "$results"
+          : > "$logs"
+
+          load_pids=()
+          for worker in 1 2; do
+            yes > /dev/null &
+            load_pids+=("$!")
+          done
+          cleanup_load() {
+            kill "${load_pids[@]}" 2>/dev/null || true
+          }
+          trap cleanup_load EXIT INT TERM
+
+          scenarios=(
+            "iridescent:static"
+            "iridescent:only-borders-2fps"
+            "iridescent:only-borders-4fps"
+            "iridescent:only-borders-8fps"
+            "iridescent:only-borders-15fps"
+            "iridescent:only-borders-30fps"
+            "iridescent:only-borders"
+            "iridescent:full-focused-borders"
+            "iridescent:full"
+          )
+
+          run_profile() {
+            scenario="$1"
+            round="$2"
+            theme="${scenario%%:*}"
+            motion="${scenario#*:}"
+            echo "Running $theme/$motion round $round" | tee -a "$logs"
+            output="$(BALANCE_INTERACTION_PERF_THEME="$theme" \
+              BALANCE_INTERACTION_PERF_IRIDESCENT_MOTION="$motion" \
+              pnpm exec playwright test \
+                --config playwright.interaction-performance.config.ts \
+                --project mac-desktop-6x-cpu \
+                --grep "common typing" \
+                --trace off 2>&1)"
+            printf '%s\n' "$output" | tee -a "$logs"
+            payload="$(printf '%s\n' "$output" | sed -n 's/^INTERACTION_PERF //p')"
+            test -n "$payload"
+            jq -cn \
+              --arg scenario "$motion" \
+              --argjson round "$round" \
+              --argjson profile "$payload" \
+              '{scenario: $scenario, round: $round, profile: $profile}' >> "$results"
+          }
+
+          scenario_count="${#scenarios[@]}"
+          for round in 1 2 3; do
+            offset=$(( (round - 1) * 4 ))
+            for (( position = 0; position < scenario_count; position += 1 )); do
+              index=$(( (position + offset) % scenario_count ))
+              run_profile "${scenarios[$index]}" "$round"
+            done
+          done
+
+          summary="$(jq -s '
+            def median: sort | .[length / 2 | floor];
+            def metric($path): [.[] | getpath($path)] | median;
+            sort_by(.scenario)
+            | group_by(.scenario)
+            | map({
+                scenario: .[0].scenario,
+                runs: length,
+                focused_border_timing: .[0].profile.fixture.motionAnimations.focusedTaskBorder.timingFunction,
+                task_list_border_animation: .[0].profile.fixture.motionAnimations.taskListBorder.name,
+                metrics: {
+                  idle_frame_interval_ms: metric(["profile", "idleFrameIntervals", "medianMs"]),
+                  idle_renderer_task_ms: metric(["profile", "idleRenderer", "taskDurationMs"]),
+                  idle_renderer_utilization_percent: metric(["profile", "idleRenderer", "taskUtilizationPercent"]),
+                  task_focus_paint_ms: metric(["profile", "taskFocus", "paint", "medianMs"]),
+                  checkbox_paint_ms: metric(["profile", "checkboxClick", "paint", "medianMs"]),
+                  typing_paint_ms: metric(["profile", "typing", "paint", "medianMs"]),
+                  backspace_paint_ms: metric(["profile", "backspacing", "paint", "medianMs"])
+                }
+              })
+          ' "$results")"
+          printf '%s\n' "$summary" > "$RUNNER_TEMP/iridescent-border-performance-summary.json"
+          {
+            echo '## Iridescent border frame-rate and scope profile'
+            echo
+            echo 'Three rotated runs per scenario; two host CPU workers plus Chromium 6× CPU throttling.'
+            echo
+            echo 'The stepped-rate variants disable every other Iridescent animation. The two full variants differ only in border scope.'
+            echo
+            echo '```json'
+            printf '%s\n' "$summary"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark results
+        uses: actions/upload-artifact@v7
+        with:
+          name: iridescent-border-performance-profile
+          path: |
+            ${{ runner.temp }}/iridescent-border-performance.jsonl
+            ${{ runner.temp }}/iridescent-border-performance-summary.json
+            ${{ runner.temp }}/iridescent-border-performance.log
+          if-no-files-found: error
