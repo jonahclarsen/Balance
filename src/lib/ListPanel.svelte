@@ -20,6 +20,8 @@
   export let selectedItemId: Id | null = null
   export let initialScrollTop: number | null = null
   export let onScrollTopChange: ((scrollTop: number) => void) | null = null
+  export let initialBottomCollapse = 0
+  export let onBottomCollapseSettled: ((pixels: number) => void) | null = null
   // Modal list panels show the E hint beneath each edit button. The page version
   // omits it because the plain-key shortcut is modal-only.
   export let showEditShortcutHint = false
@@ -27,6 +29,8 @@
   let panel: HTMLDivElement
   let scrollContainer: HTMLElement | null = null
   let scrollAnimationFrame: number | null = null
+  let bottomCollapse = initialBottomCollapse
+  let expandedModalHeight: number | null = null
 
   const selectionScrollDurationMs = 235
 
@@ -42,6 +46,7 @@
       if (!panel) return
 
       scrollContainer = findScrollContainer(panel)
+      setBottomCollapse(initialBottomCollapse)
       if (scrollContainer && onScrollTopChange) {
         scrollContainer.addEventListener('scroll', handleScrollContainerScroll)
       }
@@ -60,6 +65,7 @@
       panel.removeEventListener(TASK_COMPLETION_FOCUS_EVENT, handleCompletionFocus)
       scrollContainer?.removeEventListener('scroll', handleScrollContainerScroll)
       if (scrollAnimationFrame !== null) cancelAnimationFrame(scrollAnimationFrame)
+      onBottomCollapseSettled?.(bottomCollapse)
     }
   })
 
@@ -126,13 +132,24 @@
     const scrollContainer = findScrollContainer(row)
     const rowRect = row.getBoundingClientRect()
     if (scrollContainer) {
-      scrollToPosition(scrollContainer, scrollContainer.scrollTop + rowRect.top - window.innerHeight / 3, behavior)
+      const targetTop = Math.max(0, scrollContainer.scrollTop + rowRect.top - window.innerHeight / 3)
+      const expandedMaxScrollTop = Math.max(
+        0,
+        scrollContainer.scrollHeight - scrollContainer.clientHeight - bottomCollapse,
+      )
+      const targetBottomCollapse = Math.max(0, targetTop - expandedMaxScrollTop)
+      scrollToPosition(scrollContainer, targetTop, behavior, targetBottomCollapse)
       return
     }
-    scrollToPosition(null, window.scrollY + rowRect.top - window.innerHeight / 3, behavior)
+    scrollToPosition(null, window.scrollY + rowRect.top - window.innerHeight / 3, behavior, 0)
   }
 
-  function scrollToPosition(container: HTMLElement | null, top: number, behavior: ScrollBehavior) {
+  function scrollToPosition(
+    container: HTMLElement | null,
+    top: number,
+    behavior: ScrollBehavior,
+    targetBottomCollapse: number,
+  ) {
     if (scrollAnimationFrame !== null) {
       cancelAnimationFrame(scrollAnimationFrame)
       scrollAnimationFrame = null
@@ -144,20 +161,55 @@
     }
     const startTop = container ? container.scrollTop : window.scrollY
     if (behavior !== 'smooth' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setBottomCollapse(targetBottomCollapse)
       setScrollTop(top)
+      onBottomCollapseSettled?.(bottomCollapse)
       return
     }
 
     const startedAt = performance.now()
     const distance = top - startTop
+    const startBottomCollapse = bottomCollapse
+    const collapseDistance = targetBottomCollapse - startBottomCollapse
     const step = (now: number) => {
       const progress = Math.min(1, (now - startedAt) / selectionScrollDurationMs)
       const easedProgress = 1 - Math.pow(1 - progress, 3)
+      setBottomCollapse(startBottomCollapse + collapseDistance * easedProgress)
       setScrollTop(startTop + distance * easedProgress)
       if (progress < 1) scrollAnimationFrame = requestAnimationFrame(step)
-      else scrollAnimationFrame = null
+      else {
+        scrollAnimationFrame = null
+        onBottomCollapseSettled?.(bottomCollapse)
+      }
     }
     scrollAnimationFrame = requestAnimationFrame(step)
+  }
+
+  // Flex centering would normally move both card edges as its height changes.
+  // Lifting it by half the collapse cancels the top-edge movement, so only the
+  // bottom edge rises. The shared selection animation drives both CSS variables.
+  function setBottomCollapse(pixels: number) {
+    const modalCard = panel?.closest<HTMLElement>('.overlay-card')
+    if (!modalCard) {
+      bottomCollapse = 0
+      return
+    }
+
+    const requestedCollapse = Math.max(0, pixels)
+    if (requestedCollapse === 0) {
+      bottomCollapse = 0
+      modalCard.style.setProperty('--overlay-bottom-collapse', '0px')
+      modalCard.style.setProperty('--overlay-bottom-lift', '0px')
+      expandedModalHeight = null
+      return
+    }
+    if (expandedModalHeight === null) {
+      expandedModalHeight = modalCard.getBoundingClientRect().height
+    }
+    const maxCollapse = expandedModalHeight === null ? 0 : Math.max(0, expandedModalHeight - 160)
+    bottomCollapse = Math.min(requestedCollapse, maxCollapse)
+    modalCard.style.setProperty('--overlay-bottom-collapse', `${bottomCollapse}px`)
+    modalCard.style.setProperty('--overlay-bottom-lift', `${bottomCollapse / 2}px`)
   }
 
   function findScrollContainer(element: HTMLElement): HTMLElement | null {

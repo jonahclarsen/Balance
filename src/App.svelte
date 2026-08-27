@@ -265,6 +265,7 @@
   let listOverlay: { listId: Id; date: string; opener: Opener | null } | null = null
   let selectedListOverlayItemIdsByList: Record<Id, Id | null> = {}
   let listOverlayScrollTopsByList: Record<Id, number> = {}
+  let listOverlayBottomCollapsesByList: Record<Id, number> = {}
   let listOverlayArmed = false
   // The page the list overlay was opened over. Navigating to any other page
   // hides the overlay, then returning shows it again with its state intact.
@@ -653,6 +654,7 @@ return rows`
       listOverlayView,
       selectedListOverlayItemIdsByList,
       listOverlayScrollTopsByList,
+      listOverlayBottomCollapsesByList,
     )
   }
   $: filteredDatabaseOperations = filterDatabaseRows(databaseInspection?.operations ?? [], databaseSearch)
@@ -1169,6 +1171,7 @@ return rows`
         listOverlayArmed = false
         listOverlayView = view
         delete listOverlayScrollTopsByList[listId]
+        delete listOverlayBottomCollapsesByList[listId]
         listOverlay = { listId, date, opener }
       }
     } else {
@@ -1768,6 +1771,7 @@ return rows`
         }
         selectedListOverlayItemIdsByList = storedWorkspaceViewState.selectedListOverlayItemIdsByList
         listOverlayScrollTopsByList = storedWorkspaceViewState.listOverlayScrollTopsByList
+        listOverlayBottomCollapsesByList = storedWorkspaceViewState.listOverlayBottomCollapsesByList
 
         const storedOverlay = storedWorkspaceViewState.listOverlay
         if (storedOverlay && $plannerStore.lists.some((list) => list.id === storedOverlay.listId)) {
@@ -2385,6 +2389,7 @@ return rows`
         listOverlayView,
         selectedListOverlayItemIdsByList,
         listOverlayScrollTopsByList,
+        listOverlayBottomCollapsesByList,
       )
     }
   }
@@ -2432,6 +2437,7 @@ return rows`
     listOverlay: ({ listId: Id; date: string; opener: Opener | null; view: View }) | null
     selectedListOverlayItemIdsByList: Record<Id, Id | null>
     listOverlayScrollTopsByList: Record<Id, number>
+    listOverlayBottomCollapsesByList: Record<Id, number>
   } | null {
     const raw = localStorage.getItem(WORKSPACE_VIEW_STATE_KEY)
     if (!raw) return null
@@ -2455,6 +2461,7 @@ return rows`
         listOverlay: storedOverlay,
         selectedListOverlayItemIdsByList: readStoredNullableIdRecord(parsed.selectedListOverlayItemIdsByList),
         listOverlayScrollTopsByList: readStoredNumberRecord(parsed.listOverlayScrollTopsByList),
+        listOverlayBottomCollapsesByList: readStoredNumberRecord(parsed.listOverlayBottomCollapsesByList),
       }
     } catch {
       return null
@@ -2511,6 +2518,7 @@ return rows`
     overlayView: View | null,
     selectedItemIdsByList: Record<Id, Id | null>,
     overlayScrollTopsByList: Record<Id, number>,
+    overlayBottomCollapsesByList: Record<Id, number>,
   ) {
     if (!workspaceViewStateReady) return
 
@@ -2528,6 +2536,7 @@ return rows`
         listOverlay: visibleOverlay,
         selectedListOverlayItemIdsByList: selectedItemIdsByList,
         listOverlayScrollTopsByList: overlayScrollTopsByList,
+        listOverlayBottomCollapsesByList: overlayBottomCollapsesByList,
       }),
     )
   }
@@ -6606,8 +6615,15 @@ return rows`
           {notes}
           bind:selectedItemId={selectedListOverlayItemIdsByList[instance.id]}
           initialScrollTop={listOverlayScrollTopsByList[instance.id] ?? null}
+          initialBottomCollapse={listOverlayBottomCollapsesByList[instance.id] ?? 0}
           onScrollTopChange={(scrollTop) => {
             listOverlayScrollTopsByList = { ...listOverlayScrollTopsByList, [instance.id]: scrollTop }
+          }}
+          onBottomCollapseSettled={(pixels) => {
+            listOverlayBottomCollapsesByList = {
+              ...listOverlayBottomCollapsesByList,
+              [instance.id]: pixels,
+            }
           }}
           onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
           onEditTemplate={(itemId) => editListItemInTemplate(instance, itemId)}

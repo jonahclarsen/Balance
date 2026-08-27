@@ -74,7 +74,8 @@
     display: flex;
     flex-direction: column;
     width: min(720px, 100%);
-    max-height: min(82vh, 100%);
+    max-height: calc(min(82vh, 100%) - var(--overlay-bottom-collapse, 0px));
+    transform: translateY(calc(0px - var(--overlay-bottom-lift, 0px)));
     background: var(--paper-strong);
     border: 1px solid var(--line-strong);
     border-radius: 14px;
@@ -122,7 +123,8 @@
 
     .overlay-card {
       max-height: calc(
-        100dvh - max(env(safe-area-inset-top), var(--mobile-overlay-top)) - env(safe-area-inset-bottom) - 24px
+        100dvh - max(env(safe-area-inset-top), var(--mobile-overlay-top)) - env(safe-area-inset-bottom) - 24px -
+          var(--overlay-bottom-collapse, 0px)
       );
     }
 

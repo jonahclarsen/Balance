@@ -352,6 +352,95 @@ test('ArrowDown checks the final list item when it cannot navigate farther', asy
   await expect(eggsRow).toHaveClass(/selected/)
 })
 
+test('ArrowDown turns the clamped end scroll into a bottom-up modal collapse', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'The long-list setup helper uses desktop navigation')
+  test.setTimeout(60_000)
+  const dialog = await openLongGroceriesOverlay(page)
+  const body = dialog.locator('.overlay-body')
+  const rows = dialog.locator('.plan-row')
+
+  await body.evaluate((element) => {
+    element.scrollTop = element.scrollHeight - element.clientHeight
+  })
+  const crossoverIndex = await rows.evaluateAll((elements) => {
+    const targetTop = window.innerHeight / 3
+    let closestIndex = -1
+    let closestDistance = Number.POSITIVE_INFINITY
+    for (const [index, element] of elements.entries()) {
+      const distance = targetTop - element.getBoundingClientRect().top
+      if (distance >= 0 && distance < closestDistance && index < elements.length - 2) {
+        closestIndex = index
+        closestDistance = distance
+      }
+    }
+    return closestIndex
+  })
+  expect(crossoverIndex).toBeGreaterThanOrEqual(0)
+
+  await rows.nth(crossoverIndex).click()
+  await page.waitForTimeout(300)
+
+  const before = await body.evaluate(modalGeometry)
+  const expectedFirstCollapse = Math.max(
+    0,
+    before.nextTop - before.selectedTop - (before.maxScrollTop - before.scrollTop),
+  )
+  expect(expectedFirstCollapse).toBeGreaterThan(2)
+
+  await page.keyboard.press('ArrowDown')
+  await page.waitForTimeout(70)
+  const midHeight = await dialog.evaluate((element) => element.getBoundingClientRect().height)
+  await page.waitForTimeout(220)
+  const afterFirst = await body.evaluate(modalGeometry)
+
+  expect(midHeight).toBeLessThan(before.cardHeight)
+  expect(midHeight).toBeGreaterThan(afterFirst.cardHeight)
+  expect(afterFirst.cardTop).toBeCloseTo(before.cardTop, 0)
+  expect(before.cardHeight - afterFirst.cardHeight).toBeCloseTo(expectedFirstCollapse, 0)
+  expect(afterFirst.selectedTop).toBeCloseTo(before.selectedTop, 0)
+
+  await page.keyboard.press('ArrowDown')
+  await page.waitForTimeout(300)
+  const afterSecond = await body.evaluate(modalGeometry)
+
+  expect(afterSecond.cardHeight).toBeLessThan(afterFirst.cardHeight)
+  expect(afterSecond.cardTop).toBeCloseTo(before.cardTop, 0)
+  expect(afterSecond.selectedTop).toBeCloseTo(before.selectedTop, 0)
+
+  await page.keyboard.press('ArrowUp')
+  await page.waitForTimeout(300)
+  const afterFirstReverse = await body.evaluate(modalGeometry)
+  expect(afterFirstReverse.cardHeight).toBeCloseTo(afterFirst.cardHeight, 0)
+  expect(afterFirstReverse.selectedTop).toBeCloseTo(before.selectedTop, 0)
+
+  await page.keyboard.press('ArrowUp')
+  await page.waitForTimeout(300)
+  const restored = await body.evaluate(modalGeometry)
+  expect(restored.cardHeight).toBeCloseTo(before.cardHeight, 0)
+  expect(restored.cardTop).toBeCloseTo(before.cardTop, 0)
+  expect(restored.selectedTop).toBeCloseTo(before.selectedTop, 0)
+})
+
+function modalGeometry(element: Element) {
+  if (!(element instanceof HTMLElement)) throw new Error('Expected the overlay body')
+  const card = element.closest<HTMLElement>('.overlay-card')
+  const rows = card ? Array.from(card.querySelectorAll<HTMLElement>('.plan-row')) : []
+  const selected = card?.querySelector<HTMLElement>('.plan-row.selected') ?? null
+  const selectedIndex = selected ? rows.indexOf(selected) : -1
+  const next = rows[selectedIndex + 1]
+  if (!card || !selected || !next) throw new Error('Expected a selected row with a following row')
+
+  const cardRect = card.getBoundingClientRect()
+  return {
+    cardTop: cardRect.top,
+    cardHeight: cardRect.height,
+    selectedTop: selected.getBoundingClientRect().top,
+    nextTop: next.getBoundingClientRect().top,
+    scrollTop: element.scrollTop,
+    maxScrollTop: element.scrollHeight - element.clientHeight,
+  }
+}
+
 test('list overlay item shows an edit pencil that jumps to the template and reopens on return', async ({ page }) => {
   const dialog = await openGroceriesOverlay(page)
 
