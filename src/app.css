@@ -761,7 +761,12 @@
     linear-gradient(#000 0 0) content-box,
     linear-gradient(#000 0 0);
   mask-composite: exclude;
-  animation: var(--iridescent-border-animation, iridescent-border-turn 34s linear infinite);
+  animation: var(--iridescent-border-animation, iridescent-border-turn 34s steps(272, end) infinite);
+}
+
+/* The large task-list ring is expensive to repaint and does not need to move. */
+:root[data-theme='iridescent'] .list-panel {
+  --iridescent-border-animation: none;
 }
 
 /* Keep the ring inside surfaces that clip or scroll their children. */

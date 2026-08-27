@@ -1406,12 +1406,15 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   const iridescentMotionStyles = await page.evaluate(() => {
     const background = getComputedStyle(document.body, '::before')
     const activeBorder = getComputedStyle(document.querySelector<HTMLElement>('.sidebar nav button.active')!, '::after')
+    const listBorder = getComputedStyle(document.querySelector<HTMLElement>('.list-panel')!, '::after')
     return {
       backgroundImage: background.backgroundImage,
       backgroundAnimationName: background.animationName,
       backgroundAnimationDuration: background.animationDuration,
       borderAnimationName: activeBorder.animationName,
       borderAnimationDuration: activeBorder.animationDuration,
+      borderAnimationTimingFunction: activeBorder.animationTimingFunction,
+      listBorderAnimationName: listBorder.animationName,
     }
   })
   expect(iridescentMotionStyles.backgroundImage).toContain('radial-gradient')
@@ -1419,6 +1422,8 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
   expect(iridescentMotionStyles.backgroundAnimationDuration).toBe('18s')
   expect(iridescentMotionStyles.borderAnimationName).toBe('iridescent-border-turn')
   expect(iridescentMotionStyles.borderAnimationDuration).toBe('34s')
+  expect(iridescentMotionStyles.borderAnimationTimingFunction).toBe('steps(272)')
+  expect(iridescentMotionStyles.listBorderAnimationName).toBe('none')
   await expect(sidebar).toHaveCSS('animation-name', 'iridescent-sidebar-breathe')
   await expect(sidebar).toHaveCSS('animation-duration', '22s')
   await expect(activeSidebarButton).toHaveCSS('animation-name', 'iridescent-active-nav-breathe')
