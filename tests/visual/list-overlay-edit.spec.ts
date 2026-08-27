@@ -352,7 +352,7 @@ test('ArrowDown checks the final list item when it cannot navigate farther', asy
   await expect(eggsRow).toHaveClass(/selected/)
 })
 
-test('ArrowDown turns the clamped end scroll into a bottom-up modal collapse', async ({ page }, testInfo) => {
+test('list modal collapses at the keyboard boundary and expands for upward wheel scrolling', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'The long-list setup helper uses desktop navigation')
   test.setTimeout(60_000)
   const dialog = await openLongGroceriesOverlay(page)
@@ -419,6 +419,30 @@ test('ArrowDown turns the clamped end scroll into a bottom-up modal collapse', a
   expect(restored.cardHeight).toBeCloseTo(before.cardHeight, 0)
   expect(restored.cardTop).toBeCloseTo(before.cardTop, 0)
   expect(restored.selectedTop).toBeCloseTo(before.selectedTop, 0)
+
+  await page.keyboard.press('ArrowDown')
+  await page.waitForTimeout(300)
+  const recollapsed = await body.evaluate(modalGeometry)
+  expect(recollapsed.cardHeight).toBeCloseTo(afterFirst.cardHeight, 0)
+
+  await body.hover()
+  await page.mouse.wheel(0, -120)
+  await page.waitForTimeout(70)
+  const wheelMidHeight = await dialog.evaluate((element) => element.getBoundingClientRect().height)
+  await page.waitForTimeout(220)
+  const afterWheel = await body.evaluate(modalGeometry)
+
+  expect(wheelMidHeight).toBeGreaterThan(recollapsed.cardHeight)
+  expect(wheelMidHeight).toBeLessThan(before.cardHeight)
+  expect(afterWheel.cardHeight).toBeCloseTo(before.cardHeight, 0)
+  expect(afterWheel.cardTop).toBeCloseTo(before.cardTop, 0)
+
+  await page.keyboard.press('ArrowDown')
+  await page.waitForTimeout(300)
+  const afterKeyboardResume = await body.evaluate(modalGeometry)
+  expect(afterKeyboardResume.cardHeight).toBeLessThan(afterWheel.cardHeight)
+  expect(afterKeyboardResume.cardTop).toBeCloseTo(before.cardTop, 0)
+  expect(afterKeyboardResume.selectedTop).toBeCloseTo(before.selectedTop, 0)
 })
 
 function modalGeometry(element: Element) {

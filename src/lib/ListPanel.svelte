@@ -29,6 +29,7 @@
   let panel: HTMLDivElement
   let scrollContainer: HTMLElement | null = null
   let scrollAnimationFrame: number | null = null
+  let animationBottomCollapseTarget: number | null = null
   let bottomCollapse = initialBottomCollapse
   let expandedModalHeight: number | null = null
 
@@ -50,6 +51,7 @@
       if (scrollContainer && onScrollTopChange) {
         scrollContainer.addEventListener('scroll', handleScrollContainerScroll)
       }
+      scrollContainer?.addEventListener('wheel', handleScrollContainerWheel, { passive: true })
 
       if (initialScrollTop != null && scrollContainer) {
         scrollContainer.scrollTop = initialScrollTop
@@ -64,6 +66,7 @@
     return () => {
       panel.removeEventListener(TASK_COMPLETION_FOCUS_EVENT, handleCompletionFocus)
       scrollContainer?.removeEventListener('scroll', handleScrollContainerScroll)
+      scrollContainer?.removeEventListener('wheel', handleScrollContainerWheel)
       if (scrollAnimationFrame !== null) cancelAnimationFrame(scrollAnimationFrame)
       onBottomCollapseSettled?.(bottomCollapse)
     }
@@ -128,6 +131,11 @@
     if (scrollContainer) onScrollTopChange?.(scrollContainer.scrollTop)
   }
 
+  function handleScrollContainerWheel(event: WheelEvent) {
+    if (event.deltaY >= 0 || bottomCollapse <= 0 || animationBottomCollapseTarget === 0) return
+    animateBottomCollapse(0)
+  }
+
   function scrollRowTopToOneThird(row: HTMLElement, behavior: ScrollBehavior) {
     const scrollContainer = findScrollContainer(row)
     const rowRect = row.getBoundingClientRect()
@@ -154,6 +162,7 @@
       cancelAnimationFrame(scrollAnimationFrame)
       scrollAnimationFrame = null
     }
+    animationBottomCollapseTarget = targetBottomCollapse
 
     const setScrollTop = (nextTop: number) => {
       if (container) container.scrollTo({ top: nextTop, behavior: 'auto' })
@@ -164,6 +173,7 @@
       setBottomCollapse(targetBottomCollapse)
       setScrollTop(top)
       onBottomCollapseSettled?.(bottomCollapse)
+      animationBottomCollapseTarget = null
       return
     }
 
@@ -179,6 +189,38 @@
       if (progress < 1) scrollAnimationFrame = requestAnimationFrame(step)
       else {
         scrollAnimationFrame = null
+        animationBottomCollapseTarget = null
+        onBottomCollapseSettled?.(bottomCollapse)
+      }
+    }
+    scrollAnimationFrame = requestAnimationFrame(step)
+  }
+
+  function animateBottomCollapse(targetBottomCollapse: number) {
+    if (scrollAnimationFrame !== null) {
+      cancelAnimationFrame(scrollAnimationFrame)
+      scrollAnimationFrame = null
+    }
+
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setBottomCollapse(targetBottomCollapse)
+      animationBottomCollapseTarget = null
+      onBottomCollapseSettled?.(bottomCollapse)
+      return
+    }
+
+    animationBottomCollapseTarget = targetBottomCollapse
+    const startedAt = performance.now()
+    const startBottomCollapse = bottomCollapse
+    const collapseDistance = targetBottomCollapse - startBottomCollapse
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - startedAt) / selectionScrollDurationMs)
+      const easedProgress = 1 - Math.pow(1 - progress, 3)
+      setBottomCollapse(startBottomCollapse + collapseDistance * easedProgress)
+      if (progress < 1) scrollAnimationFrame = requestAnimationFrame(step)
+      else {
+        scrollAnimationFrame = null
+        animationBottomCollapseTarget = null
         onBottomCollapseSettled?.(bottomCollapse)
       }
     }
