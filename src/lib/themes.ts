@@ -111,7 +111,7 @@ export const THEME_OPTIONS = [
   {
     id: 'random',
     name: 'Random',
-    description: 'A different theme every day',
+    description: 'Different every day',
     swatches: [
       'linear-gradient(135deg, #f24c9f, #9b62dd 48%, #39c5d6)',
       'linear-gradient(135deg, #287968, #276a9f)',

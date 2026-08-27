@@ -196,7 +196,7 @@ test('random theme can be scheduled for the next day boundary while changing tod
 
   const themeGroup = page.getByRole('group', { name: 'Color theme' })
   const randomTheme = themeGroup.getByRole('button', {
-    name: 'Random A different theme every day',
+    name: 'Random Different every day',
   })
   const randomThemeCard = randomTheme.locator('..')
   const initialRandomThemeHeight = (await randomThemeCard.boundingBox())!.height
@@ -1294,7 +1294,7 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
     'Midnight',
     'Violet',
   ])
-  const randomTheme = themeGroup.getByRole('button', { name: 'Random A different theme every day' })
+  const randomTheme = themeGroup.getByRole('button', { name: 'Random Different every day' })
   await expect(randomTheme).toHaveAttribute('aria-pressed', 'true')
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'random')
   await expect(themeGroup.getByText('Orange', { exact: true })).toHaveCount(1)
