@@ -11,6 +11,7 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "check": "svelte-check --tsconfig ./tsconfig.app.json && tsc -p tsconfig.node.json",
+    "test:unit": "playwright test --config playwright.unit.config.ts",
     "test:relay": "node --test scripts/relay-server.test.mjs relay-worker/src/index.test.js",
     "profile:relay-empty-poll": "node scripts/profile-empty-relay-poll.mjs",
     "test:interaction-performance": "playwright test --config playwright.interaction-performance.config.ts",

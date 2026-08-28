@@ -1299,7 +1299,8 @@ function previousTimedItem<T extends {
   for (const item of items) {
     if (item.id === itemId) return { found: true, previous: lastTimedItem, depth }
 
-    if (hasActiveTimeRange(item)) {
+    const itemHasTimeRange = hasActiveTimeRange(item)
+    if (itemHasTimeRange) {
       lastTimedItem = {
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
@@ -1310,7 +1311,10 @@ function previousTimedItem<T extends {
     const childResult = previousTimedItem(item.children, itemId, lastTimedItem, depth + 1)
     if (childResult.found) return childResult
 
-    lastTimedItem = childResult.previous
+    // A timed item contains its descendants' ranges, so it remains the time
+    // boundary for the next sibling after its subtree has been traversed.
+    // Descendant time only propagates outward when the subtree root is untimed.
+    if (!itemHasTimeRange) lastTimedItem = childResult.previous
   }
 
   return { found: false, previous: lastTimedItem, depth }
