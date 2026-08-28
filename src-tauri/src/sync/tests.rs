@@ -295,6 +295,107 @@ fn patch_preferences_op(id: &str, device_id: &str, sequence: i64, at: &str, patc
     })
 }
 
+fn cut_paste_state(device_id: &str) -> Value {
+    let mut fixture = state(device_id, json!([]));
+    fixture["activePlanDate"] = json!("2026-08-27");
+    fixture["plans"] = json!([{
+        "id": "cut-paste-plan",
+        "date": "2026-08-27",
+        "title": "Thursday",
+        "dailyReminder": "",
+        "generatedFromTemplateId": null,
+        "createdAt": "2026-08-27T08:00:00.000Z",
+        "items": [{
+            "id": "morning-block",
+            "text": "Morning",
+            "html": "Morning",
+            "done": false,
+            "startMinutes": 540,
+            "endMinutes": 600,
+            "children": [{
+                "id": "original-task-a",
+                "text": "Synthetic moved task A",
+                "html": "Synthetic moved task A",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }, {
+                "id": "original-task-b",
+                "text": "Synthetic moved task B",
+                "html": "Synthetic moved task B",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }]
+        }, {
+            "id": "evening-block",
+            "text": "Evening",
+            "html": "Evening",
+            "done": false,
+            "startMinutes": 1020,
+            "endMinutes": 1080,
+            "children": []
+        }]
+    }]);
+    fixture
+}
+
+fn cut_tasks_operation() -> Value {
+    json!({
+        "id": "desktop-cut-operation",
+        "deviceId": "desktop",
+        "sequence": 1,
+        "type": "delete_plan_items",
+        "timestamp": "2026-08-27T18:00:00.000Z",
+        "payload": {
+            "planId": "cut-paste-plan",
+            "itemIds": ["original-task-a", "original-task-b"],
+            "completedParentIds": ["morning-block"]
+        }
+    })
+}
+
+fn paste_tasks_operation() -> Value {
+    json!({
+        "id": "desktop-paste-operation",
+        "deviceId": "desktop",
+        "sequence": 2,
+        "type": "paste_plan_items",
+        "timestamp": "2026-08-27T18:00:01.000Z",
+        "payload": {
+            "planId": "cut-paste-plan",
+            "targetId": "evening-block",
+            "placement": "inside",
+            "items": [{
+                "id": "pasted-task-a",
+                "text": "Synthetic moved task A",
+                "html": "Synthetic moved task A",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }, {
+                "id": "pasted-task-b",
+                "text": "Synthetic moved task B",
+                "html": "Synthetic moved task B",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }]
+        }
+    })
+}
+
+fn plan_item_ids(items: &Value, ids: &mut Vec<String>) {
+    for item in items.as_array().expect("plan items") {
+        ids.push(item["id"].as_str().expect("plan item id").to_string());
+        plan_item_ids(&item["children"], ids);
+    }
+}
+
 #[test]
 fn the_v3_http_client_bootstraps_then_sends_only_incremental_operations() {
     let relay = ReferenceRelay::start();
@@ -369,6 +470,184 @@ fn the_v3_http_client_bootstraps_then_sends_only_incremental_operations() {
     .unwrap();
     assert_eq!(redundant.pulled_operations, 0);
     assert_eq!(redundant.pushed_operations, 0);
+}
+
+#[test]
+fn android_relay_catchup_does_not_duplicate_tasks_cut_and_pasted_on_desktop() {
+    let relay = ReferenceRelay::start();
+    let desktop_scratch = Scratch::new("cut-paste-relay-desktop");
+    let android_scratch = Scratch::new("cut-paste-relay-android");
+    let mut desktop = open_seeded(
+        &desktop_scratch.path,
+        "cut-paste-desktop-key",
+        &cut_paste_state("desktop"),
+    );
+    let android = open_seeded(
+        &android_scratch.path,
+        "cut-paste-android-key",
+        &state("android", json!([])),
+    );
+    enable_primary(&desktop).unwrap();
+    enable_joiner(&android).unwrap();
+    let key = SyncKey::generate();
+
+    relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    relay_client::sync_once(
+        &android,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+
+    // Force the cut and paste through separate relay passes, which is the most
+    // failure-prone form of the reported action. The delayed Android replica
+    // receives both only after the desktop has uploaded the second batch.
+    persist_operation_to_database(&mut desktop, &cut_tasks_operation()).unwrap();
+    let cut_push = relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert_eq!(cut_push.pushed_operations, 1);
+
+    persist_operation_to_database(&mut desktop, &paste_tasks_operation()).unwrap();
+    let paste_push = relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert_eq!(paste_push.pushed_operations, 1);
+
+    drop(android);
+    let android = open_database_at(
+        &android_scratch.path,
+        &test_database_key("cut-paste-android-key"),
+    )
+    .unwrap();
+    let caught_up = relay_client::sync_once(
+        &android,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert_eq!(caught_up.pulled_operations, 2);
+
+    let android_state = read_app_state_from_database(&android).unwrap().unwrap();
+    let mut ids = Vec::new();
+    plan_item_ids(&android_state["plans"][0]["items"], &mut ids);
+    assert!(!ids.iter().any(|id| id.starts_with("original-task-")));
+    assert!(ids.contains(&"pasted-task-a".to_string()));
+    assert!(ids.contains(&"pasted-task-b".to_string()));
+    assert_eq!(
+        android_state["plans"][0]["items"][0]["done"],
+        true,
+        "cutting the unfinished children completed their now-empty parent in the live desktop state; replay must preserve that state change",
+    );
+
+    // A second app restart and a reverse-direction sync must be a no-op. This
+    // catches stale Android state being uploaded back to the desktop later.
+    drop(android);
+    let android = open_database_at(
+        &android_scratch.path,
+        &test_database_key("cut-paste-android-key"),
+    )
+    .unwrap();
+    let redundant = relay_client::sync_once(
+        &android,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert_eq!(redundant.pulled_operations, 0);
+    assert_eq!(redundant.pushed_operations, 0);
+    relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert_eq!(
+        domain(&read_app_state_from_database(&desktop).unwrap().unwrap()),
+        domain(&read_app_state_from_database(&android).unwrap().unwrap())
+    );
+}
+
+#[test]
+fn task_typed_on_android_before_initial_catchup_survives_the_baseline_replay() {
+    let primary_scratch = Scratch::new("pre-catchup-primary");
+    let android_scratch = Scratch::new("pre-catchup-android");
+    let primary = open_seeded(
+        &primary_scratch.path,
+        "pre-catchup-primary-key",
+        &cut_paste_state("desktop"),
+    );
+    let mut android = open_seeded(
+        &android_scratch.path,
+        "pre-catchup-android-key",
+        &state("android", json!([])),
+    );
+    enable_primary(&primary).unwrap();
+    enable_joiner(&android).unwrap();
+
+    // The plan is not materialized on the joining database yet, so the native
+    // write is initially a no-op in the domain tables. Its durable operation
+    // must still replay after the incoming baseline and create the task.
+    persist_operation_to_database(
+        &mut android,
+        &json!({
+            "id": "android-pre-catchup-add",
+            "deviceId": "android",
+            "sequence": 1,
+            "type": "add_plan_item",
+            "timestamp": "2026-08-27T17:59:59.000Z",
+            "payload": {
+                "planId": "cut-paste-plan",
+                "parentId": null,
+                "item": {
+                    "id": "android-pre-catchup-task",
+                    "text": "Typed before catch-up finished",
+                    "html": "Typed before catch-up finished",
+                    "done": false,
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "children": []
+                }
+            }
+        }),
+    )
+    .unwrap();
+    assert!(
+        read_app_state_from_database(&android).unwrap().unwrap()["plans"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+
+    let primary = TestStore::new(primary);
+    let android = TestStore::new(android);
+    exchange(&android, &primary, &SyncKey::generate());
+
+    for device in [&primary, &android] {
+        let state = device.state();
+        let mut ids = Vec::new();
+        plan_item_ids(&state["plans"][0]["items"], &mut ids);
+        assert!(ids.contains(&"android-pre-catchup-task".to_string()));
+    }
+    assert_eq!(domain(&primary.state()), domain(&android.state()));
 }
 
 #[test]
