@@ -121,6 +121,7 @@ test('task rows stay readable on mobile without changing the desktop arrangement
     textRange.selectNodeContents(textElement)
     const firstTextRect = textRange.getClientRects()[0]
     const mainRect = mainElement?.getBoundingClientRect()
+    const textStyle = getComputedStyle(textElement)
     return {
       textWidth: textRect.width,
       textTop: textRect.top,
@@ -131,6 +132,9 @@ test('task rows stay readable on mobile without changing the desktop arrangement
       taskTextLeft: firstTextRect?.left ?? null,
       timeSpaceAbove: mainRect ? timeRect.top - mainRect.top : null,
       timeSpaceBelow: firstTextRect ? firstTextRect.top - timeRect.bottom : null,
+      textPaddingLeft: Number.parseFloat(textStyle.paddingLeft),
+      textPaddingTop: Number.parseFloat(textStyle.paddingTop),
+      textPaddingBottom: Number.parseFloat(textStyle.paddingBottom),
     }
   })
 
@@ -139,6 +143,8 @@ test('task rows stay readable on mobile without changing the desktop arrangement
     expect(geometry.timeTop).toBeLessThan(geometry.textTop)
     expect(Math.abs((geometry.taskTextLeft ?? 0) - geometry.timeLeft)).toBeLessThanOrEqual(1)
     expect(Math.abs((geometry.timeSpaceAbove ?? 0) - (geometry.timeSpaceBelow ?? 0))).toBeLessThanOrEqual(4)
+    expect(geometry.textPaddingLeft).toBe(10)
+    expect(geometry.textPaddingTop).toBe(geometry.textPaddingBottom)
     await expect(time).toHaveClass(/warning-end/)
     await expect(time).not.toHaveClass(/warning-start/)
     const timeColors = await time.evaluate((element) => {
