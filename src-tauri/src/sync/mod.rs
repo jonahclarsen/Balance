@@ -1074,6 +1074,35 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
             ));
         }
 
+        // A user can type while the first Android foreground sync is still
+        // fetching the primary's baseline. The target plan is not materialized
+        // yet, but the durable operation must replay immediately after the
+        // checkpoint instead of disappearing.
+        crate::persist_operation_to_database(
+            &mut joiner,
+            &json!({
+                "id": "ci-pre-bootstrap-task-op",
+                "deviceId": "selftest-joiner",
+                "sequence": 1,
+                "timestamp": "2026-07-14T11:59:59.000Z",
+                "type": "add_plan_item",
+                "payload": {
+                    "planId": target_plan_id,
+                    "parentId": JsonValue::Null,
+                    "item": {
+                        "id": "ci-pre-bootstrap-task",
+                        "text": "Synthetic task typed before initial sync",
+                        "html": "Synthetic task typed before initial sync",
+                        "done": false,
+                        "startMinutes": JsonValue::Null,
+                        "endMinutes": JsonValue::Null,
+                        "children": [],
+                    }
+                }
+            }),
+        )
+        .map_err(Error::Codec)?;
+
         // Mirror the app's manual-address flow: the primary listens and the
         // joining device initiates a bidirectional, E2EE P2P sync.
         let bootstrap_started = std::time::Instant::now();
@@ -1113,6 +1142,20 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
                 "joiner did not persist its pairing key".into(),
             ));
         }
+        let pre_bootstrap_task_survived = joined_state["plans"]
+            .as_array()
+            .and_then(|plans| plans.iter().find(|plan| plan["id"] == target_plan_id))
+            .and_then(|plan| plan["items"].as_array())
+            .is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|item| item["id"] == "ci-pre-bootstrap-task")
+            });
+        if !pre_bootstrap_task_survived {
+            return Err(Error::Codec(
+                "task typed before Android bootstrap disappeared during baseline replay".into(),
+            ));
+        }
 
         // Reproduce the reported direction after bootstrap: the joining
         // (Android-like) database adds two long-duration tasks, then the
@@ -1136,7 +1179,7 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
                 &json!({
                     "id": format!("ci-long-task-op-{sequence}"),
                     "deviceId": "selftest-joiner",
-                    "sequence": sequence + 1,
+                    "sequence": sequence + 2,
                     "timestamp": format!("2026-07-14T12:00:0{sequence}.000Z"),
                     "type": "add_plan_item",
                     "payload": {
@@ -1198,6 +1241,142 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
             return Err(Error::Codec(format!(
                 "two appended tasks took {long_task_incremental_sync_ms} ms to sync after a {seed_and_checkpoint_ms} ms fixture setup; the incremental path rebuilt too much state"
             )));
+        }
+
+        // Reproduce the reported desktop-to-Android cut/paste direction after
+        // both devices were already in sync. Use separate immutable operations,
+        // then restart the Android-like database and sync back to prove the old
+        // task ids cannot reappear on either side.
+        let mut primary = primary;
+        crate::persist_operation_to_database(
+            &mut primary,
+            &json!({
+                "id": "ci-desktop-cut-op",
+                "deviceId": "selftest-primary",
+                "sequence": 1,
+                "timestamp": "2026-07-14T12:01:00.000Z",
+                "type": "delete_plan_items",
+                "payload": {
+                    "planId": target_plan_id,
+                    "itemIds": ["fixture-item-0-0", "fixture-item-0-1"],
+                    "completedParentIds": [],
+                }
+            }),
+        )
+        .map_err(Error::Codec)?;
+        crate::persist_operation_to_database(
+            &mut primary,
+            &json!({
+                "id": "ci-desktop-paste-op",
+                "deviceId": "selftest-primary",
+                "sequence": 2,
+                "timestamp": "2026-07-14T12:01:01.000Z",
+                "type": "paste_plan_items",
+                "payload": {
+                    "planId": target_plan_id,
+                    "targetId": "fixture-item-0-19",
+                    "placement": "after",
+                    "items": [{
+                        "id": "ci-pasted-task-0",
+                        "text": "Synthetic existing task 0-0",
+                        "html": "Synthetic existing task 0-0",
+                        "done": true,
+                        "startMinutes": JsonValue::Null,
+                        "endMinutes": JsonValue::Null,
+                        "children": [],
+                    }, {
+                        "id": "ci-pasted-task-1",
+                        "text": "Synthetic existing task 0-1",
+                        "html": "Synthetic existing task 0-1",
+                        "done": false,
+                        "startMinutes": JsonValue::Null,
+                        "endMinutes": JsonValue::Null,
+                        "children": [],
+                    }]
+                }
+            }),
+        )
+        .map_err(Error::Codec)?;
+
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
+        let address = listener
+            .local_addr()
+            .map_err(|e| Error::Codec(e.to_string()))?
+            .to_string();
+        let cut_paste_sync_key = joiner_sync_key.clone();
+        let primary_thread = std::thread::spawn(move || -> Result<()> {
+            transport::sync_accept(&listener, &cut_paste_sync_key, &ConnectionStore(&primary))
+        });
+        transport::sync_connect(&address, &joiner_sync_key, &ConnectionStore(&joiner))?;
+        primary_thread
+            .join()
+            .map_err(|_| Error::Codec("primary cut/paste sync thread panicked".into()))??;
+
+        drop(joiner);
+        let joiner =
+            crate::open_database_at(&b_path, &joiner_recovery_key).map_err(Error::Codec)?;
+        let primary =
+            crate::open_database_at(&a_path, &primary_recovery_key).map_err(Error::Codec)?;
+        for (label, connection) in [("primary", &primary), ("Android joiner", &joiner)] {
+            let state = crate::read_app_state_from_database(connection)
+                .map_err(Error::Codec)?
+                .ok_or_else(|| Error::Codec(format!("{label} state missing after cut/paste")))?;
+            let items = state["plans"]
+                .as_array()
+                .and_then(|plans| plans.iter().find(|plan| plan["id"] == target_plan_id))
+                .and_then(|plan| plan["items"].as_array())
+                .ok_or_else(|| {
+                    Error::Codec(format!("{label} target plan missing after cut/paste"))
+                })?;
+            if items.iter().any(|item| {
+                matches!(
+                    item["id"].as_str(),
+                    Some("fixture-item-0-0" | "fixture-item-0-1")
+                )
+            }) || !["ci-pasted-task-0", "ci-pasted-task-1"]
+                .iter()
+                .all(|id| items.iter().any(|item| item["id"] == *id))
+            {
+                return Err(Error::Codec(format!(
+                    "{label} duplicated or lost tasks after desktop cut/paste"
+                )));
+            }
+        }
+
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
+        let address = listener
+            .local_addr()
+            .map_err(|e| Error::Codec(e.to_string()))?
+            .to_string();
+        let restart_sync_key = joiner_sync_key.clone();
+        let primary_thread = std::thread::spawn(move || -> Result<()> {
+            transport::sync_accept(&listener, &restart_sync_key, &ConnectionStore(&primary))
+        });
+        transport::sync_connect(&address, &joiner_sync_key, &ConnectionStore(&joiner))?;
+        primary_thread
+            .join()
+            .map_err(|_| Error::Codec("primary post-restart sync thread panicked".into()))??;
+
+        drop(joiner);
+        let joiner =
+            crate::open_database_at(&b_path, &joiner_recovery_key).map_err(Error::Codec)?;
+        let primary =
+            crate::open_database_at(&a_path, &primary_recovery_key).map_err(Error::Codec)?;
+        let materialized_tables = [
+            "templates",
+            "template_items",
+            "template_options",
+            "plans",
+            "plan_items",
+            "state_entities",
+        ];
+        if state_hash(&primary, &materialized_tables)? != state_hash(&joiner, &materialized_tables)?
+        {
+            return Err(Error::Codec(
+                "Android restart uploaded stale cut/paste state back to the primary".into(),
+            ));
         }
 
         Ok(SyncSelftestProfile {

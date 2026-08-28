@@ -4475,9 +4475,13 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             Ok(())
         }
         "split_plan_item" => split_plan_item_row(tx, payload),
-        "backspace_plan_item_at_start" => backspace_plan_item_at_start_row(tx, payload),
+        "backspace_plan_item_at_start" => {
+            backspace_plan_item_at_start_row(tx, payload)?;
+            complete_plan_item_parents(tx, payload)
+        }
         "delete_plan_item_preserving_children" => {
-            delete_plan_item_preserving_children_row(tx, required_string(payload, "itemId")?)
+            delete_plan_item_preserving_children_row(tx, required_string(payload, "itemId")?)?;
+            complete_plan_item_parents(tx, payload)
         }
         "delete_plan_item" => {
             tx.execute(
@@ -4485,7 +4489,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
                 params![required_string(payload, "itemId")?],
             )
             .map_err(|error| error.to_string())?;
-            Ok(())
+            complete_plan_item_parents(tx, payload)
         }
         "delete_plan_items" => {
             for item_id in required_array(payload, "itemIds")? {
@@ -4497,7 +4501,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
                 )
                 .map_err(|error| error.to_string())?;
             }
-            Ok(())
+            complete_plan_item_parents(tx, payload)
         }
         "paste_plan_items" => paste_plan_items_row(
             tx,
@@ -5004,6 +5008,7 @@ fn build_domain_undo_operation(
                     "item": snapshot.item,
                 }),
             ));
+            append_completed_parent_undo_operations(connection, payload, &mut operations)?;
 
             Ok(Some(storage_operation(
                 "batch",
@@ -5017,7 +5022,7 @@ fn build_domain_undo_operation(
                 return Ok(None);
             };
 
-            Ok(Some(storage_operation(
+            let mut operations = vec![storage_operation(
                 "insert_plan_item_at",
                 json!({
                     "planId": snapshot.plan_id,
@@ -5025,6 +5030,12 @@ fn build_domain_undo_operation(
                     "position": snapshot.position,
                     "item": snapshot.item,
                 }),
+            )];
+            append_completed_parent_undo_operations(connection, payload, &mut operations)?;
+
+            Ok(Some(storage_operation(
+                "batch",
+                json!({ "operations": operations }),
             )))
         }
         "delete_plan_items" => build_delete_plan_items_undo(connection, payload),
@@ -5517,6 +5528,39 @@ fn build_split_plan_item_undo(
     )))
 }
 
+fn append_completed_parent_undo_operations(
+    connection: &Connection,
+    payload: &Value,
+    operations: &mut Vec<Value>,
+) -> Result<(), String> {
+    let Some(parent_ids) = payload.get("completedParentIds") else {
+        return Ok(());
+    };
+    let plan_id = required_string(payload, "planId")?;
+
+    for parent_id in parent_ids
+        .as_array()
+        .ok_or_else(|| "Expected completedParentIds array".to_string())?
+    {
+        let parent_id = parent_id
+            .as_str()
+            .ok_or_else(|| "Expected completed parent item id".to_string())?;
+        let Some((_, _, done, _, _, _)) = read_plan_item_fields(connection, parent_id)? else {
+            continue;
+        };
+        operations.push(storage_operation(
+            "patch_plan_item",
+            json!({
+                "planId": plan_id,
+                "itemId": parent_id,
+                "patch": { "done": done },
+            }),
+        ));
+    }
+
+    Ok(())
+}
+
 fn build_backspace_plan_item_at_start_undo(
     connection: &Connection,
     payload: &Value,
@@ -5529,7 +5573,7 @@ fn build_backspace_plan_item_at_start_undo(
                 return Ok(None);
             };
 
-            Ok(Some(storage_operation(
+            let mut operations = vec![storage_operation(
                 "insert_plan_item_at",
                 json!({
                     "planId": snapshot.plan_id,
@@ -5537,6 +5581,12 @@ fn build_backspace_plan_item_at_start_undo(
                     "position": snapshot.position,
                     "item": snapshot.item,
                 }),
+            )];
+            append_completed_parent_undo_operations(connection, payload, &mut operations)?;
+
+            Ok(Some(storage_operation(
+                "batch",
+                json!({ "operations": operations }),
             )))
         }
         "merge" => {
@@ -5563,6 +5613,7 @@ fn build_backspace_plan_item_at_start_undo(
             if let Some(patch_undo) = build_plan_item_patch_undo(connection, &patch_payload)? {
                 operations.push(patch_undo);
             }
+            append_completed_parent_undo_operations(connection, payload, &mut operations)?;
 
             Ok(Some(storage_operation(
                 "batch",
@@ -5597,6 +5648,8 @@ fn build_delete_plan_items_undo(
             }),
         ));
     }
+
+    append_completed_parent_undo_operations(connection, payload, &mut operations)?;
 
     if operations.is_empty() {
         return Ok(None);
@@ -12347,6 +12400,122 @@ mod tests {
         assert_eq!(grandparent["done"], true);
         assert_eq!(grandparent["children"][0]["done"], true);
         assert_eq!(grandparent["children"][0]["children"][1]["done"], true);
+    }
+
+    #[test]
+    fn deleting_unfinished_children_persists_and_undoes_completed_parents() {
+        let database = TestDatabase::new("delete-completes-plan-item-parents");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Deletion parent completion test");
+        state["plans"][0]["items"] = json!([{
+            "id": "parent",
+            "text": "Parent",
+            "html": "Parent",
+            "done": false,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": [{
+                "id": "child-a",
+                "text": "Child A",
+                "html": "Child A",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }, {
+                "id": "child-b",
+                "text": "Child B",
+                "html": "Child B",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }]
+        }]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "delete_plan_items",
+                "timestamp": "2026-08-27T18:00:00.000Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "itemIds": ["child-a", "child-b"],
+                    "completedParentIds": ["parent"]
+                }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(saved["plans"][0]["items"][0]["done"], true);
+        assert_eq!(saved["plans"][0]["items"][0]["children"], json!([]));
+
+        let undone = undo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(undone["plans"][0]["items"][0]["done"], false);
+        assert_eq!(
+            undone["plans"][0]["items"][0]["children"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(redone["plans"][0]["items"][0]["done"], true);
+        assert_eq!(redone["plans"][0]["items"][0]["children"], json!([]));
+    }
+
+    #[test]
+    fn older_delete_operations_without_parent_completion_metadata_still_replay() {
+        let database = TestDatabase::new("legacy-delete-without-parent-completion");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Older deletion replay test");
+        state["plans"][0]["items"] = json!([{
+            "id": "parent",
+            "text": "Parent",
+            "html": "Parent",
+            "done": false,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": [{
+                "id": "child",
+                "text": "Child",
+                "html": "Child",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }]
+        }]);
+        replace_app_state(&mut connection, &state).unwrap();
+
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "delete_plan_item",
+                "timestamp": "2026-08-26T18:00:00.000Z",
+                "payload": { "planId": "plan_today", "itemId": "child" }
+            }),
+        )
+        .unwrap();
+
+        let saved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(saved["plans"][0]["items"][0]["done"], false);
+        assert_eq!(saved["plans"][0]["items"][0]["children"], json!([]));
     }
 
     #[test]
