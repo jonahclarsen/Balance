@@ -2989,6 +2989,21 @@ export async function syncRelayOnce(reason: string): Promise<SyncPassResult> {
   return invoke<SyncPassResult>('sync_relay_once', { reason })
 }
 
+/**
+ * Structural sync trace whose database strings are replaced with account-keyed
+ * one-way tokens. Paired devices can be compared without exposing their text.
+ */
+export async function syncAnonymousDiagnostics(frontendStateJson: string): Promise<string> {
+  if (!isTauri()) throw new Error('Anonymous sync diagnostics require the Balance app.')
+  await flushOperations()
+  return invoke<string>('sync_anonymous_diagnostics', { frontendStateJson })
+}
+
+export async function saveExportFile(filename: string, content: string): Promise<string> {
+  if (!isTauri()) throw new Error('Saving exports requires the Balance app.')
+  return invoke<string>('save_export_file', { filename, content })
+}
+
 export type MetadataEntry = {
   key: string
   value: string

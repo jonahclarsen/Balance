@@ -30,6 +30,7 @@ use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
 
 pub mod crypto;
+pub mod diagnostics;
 pub mod p2p;
 pub mod relay;
 pub mod relay_client;

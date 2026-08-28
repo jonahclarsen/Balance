@@ -10301,6 +10301,43 @@ async fn sync_relay_once(
     .await
 }
 
+/// Export only one-way, account-keyed tokens and structural sync metadata.
+/// Raw strings from the encrypted database, the pairing code, relay URL, and
+/// recovery key never enter the returned JSON.
+#[tauri::command]
+async fn sync_anonymous_diagnostics(
+    app: tauri::AppHandle,
+    frontend_state_json: String,
+) -> Result<String, String> {
+    let version = app.package_info().version.to_string();
+    run_database_task(move || {
+        let frontend_state = serde_json::from_str::<Value>(&frontend_state_json)
+            .map_err(|error| format!("Could not read the current app state: {error}"))?;
+        let connection = open_database(&app)?;
+        if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
+            return Err("Sync is not enabled on this device.".to_string());
+        }
+        let pairing_code = sync::read_pairing_code(&connection)
+            .map_err(sync::Error::into_string)?
+            .ok_or_else(|| "This device's sync key is missing.".to_string())?;
+        let key = sync::crypto::SyncKey::from_pairing_code(&pairing_code)
+            .map_err(sync::Error::into_string)?;
+        sync::diagnostics::anonymous_sync_trace(
+            &connection,
+            &key,
+            &version,
+            std::env::consts::OS,
+            Some(frontend_state),
+        )
+        .and_then(|trace| {
+            serde_json::to_string_pretty(&trace)
+                .map_err(|error| sync::Error::Codec(error.to_string()))
+        })
+        .map_err(sync::Error::into_string)
+    })
+    .await
+}
+
 /// Read the stored pairing code (the E2E key) from the encrypted DB.
 fn stored_sync_key(app: &tauri::AppHandle) -> Result<Option<sync::crypto::SyncKey>, String> {
     let connection = open_database(app)?;
@@ -10531,6 +10568,7 @@ pub fn run() {
             sync_enable_primary,
             sync_enable_joiner,
             sync_relay_once,
+            sync_anonymous_diagnostics,
             sync_p2p_serve,
             sync_p2p_peers,
             sync_p2p_sync
@@ -16161,6 +16199,164 @@ mod tests {
 
         let listed = list_recovery_entries_from_database(&connection).unwrap();
         assert_eq!(listed["entries"][0]["preview"], "Original cobalt wording");
+    }
+
+    #[test]
+    fn anonymous_sync_trace_preserves_structure_without_database_strings() {
+        let database = TestDatabase::new("anonymous-sync-trace");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Canary private plan title");
+        state["plans"][0]["items"][0]["text"] = json!("Canary private task text");
+        state["plans"][0]["items"][0]["html"] = json!("<b>Canary private task text</b>");
+        replace_app_state(&mut connection, &state).unwrap();
+        sync::enable_primary(&connection).unwrap();
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "canary-operation-id",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "add_plan_item",
+                "timestamp": "2026-05-21T00:01:00.500Z",
+                "payload": {
+                    "planId": "plan_today",
+                    "parentId": null,
+                    "item": {
+                        "id": "canary-private-item-id",
+                        "text": "Canary second private task",
+                        "html": "Canary second private task",
+                        "done": false,
+                        "startMinutes": 615,
+                        "endMinutes": 645,
+                        "children": []
+                    },
+                    "dynamic:2026-05-21": "Canary dynamic field value"
+                }
+            }),
+        )
+        .unwrap();
+        sync::relay_client::ensure_relay_tables(&connection).unwrap();
+        connection
+            .execute(
+                "UPDATE sync_relay_state SET epoch = ?1, cursor = 9, last_error = ?2 WHERE singleton = 1",
+                params![
+                    "canary-private-relay-epoch",
+                    "Canary private relay error https://private.example/path"
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sync_relay_known_ops (op_id) VALUES (?1)",
+                params!["canary-operation-id"],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sync_relay_quarantine (blob_id, error, recorded_at_ms) VALUES (?1, ?2, ?3)",
+                params!["canary-private-blob", "Canary private quarantine error", current_timestamp_ms()],
+            )
+            .unwrap();
+
+        let key = sync::crypto::SyncKey::from_bytes([23; 32]);
+        let state_before_trace = read_app_state_from_database(&connection).unwrap().unwrap();
+        let operation_ids_before_trace = sync::local_op_ids(&connection).unwrap();
+        let total_changes_before_trace = connection.total_changes();
+        let schema_version_before_trace: i64 = connection
+            .query_row("PRAGMA schema_version", [], |row| row.get(0))
+            .unwrap();
+        let mut frontend_state = state.clone();
+        frontend_state["plans"][0]["items"][0]["text"] = json!("Canary frontend-only task text");
+        let trace = sync::diagnostics::anonymous_sync_trace(
+            &connection,
+            &key,
+            "test",
+            "test-os",
+            Some(frontend_state),
+        )
+        .unwrap();
+        let serialized = serde_json::to_string_pretty(&trace).unwrap();
+
+        for secret in [
+            "Canary private plan title",
+            "Canary private task text",
+            "Canary second private task",
+            "Canary dynamic field value",
+            "2026-05-21",
+            "device_test",
+            "plan_today",
+            "canary-operation-id",
+            "canary-private-relay-epoch",
+            "private.example",
+            "Canary private quarantine error",
+            "Canary frontend-only task text",
+        ] {
+            assert!(!serialized.contains(secret), "trace leaked {secret:?}");
+        }
+        assert_eq!(trace["privacy"]["rawUserDataStringsIncluded"], false);
+        let add_operation = trace["operations"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|operation| operation["type"] == "add_plan_item")
+            .unwrap();
+        assert!(add_operation["elapsedMs"].is_number());
+        assert_eq!(add_operation["payload"]["item"]["startMinutes"], 615);
+        assert!(add_operation["payload"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .any(|key| key.starts_with("field_")));
+        assert_eq!(trace["relay"]["cursor"], 9);
+        assert_eq!(trace["relay"]["quarantine"].as_array().unwrap().len(), 1);
+        assert_eq!(trace["frontend"]["matchesDatabase"], false);
+        assert_ne!(
+            trace["frontend"]["stateToken"],
+            trace["materializedStateToken"]
+        );
+        assert_eq!(
+            read_app_state_from_database(&connection).unwrap().unwrap(),
+            state_before_trace,
+            "exporting diagnostics must not change materialized app data"
+        );
+        assert_eq!(
+            sync::local_op_ids(&connection).unwrap(),
+            operation_ids_before_trace,
+            "exporting diagnostics must not change the operation log"
+        );
+        assert_eq!(
+            connection.total_changes(),
+            total_changes_before_trace,
+            "exporting diagnostics must not write database rows"
+        );
+        assert_eq!(
+            connection
+                .query_row("PRAGMA schema_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            schema_version_before_trace,
+            "exporting diagnostics must not alter the database schema"
+        );
+
+        let repeated =
+            sync::diagnostics::anonymous_sync_trace(&connection, &key, "test", "test-os", None)
+                .unwrap();
+        assert_eq!(trace["accountToken"], repeated["accountToken"]);
+        assert_eq!(
+            trace["materializedStateToken"],
+            repeated["materializedStateToken"]
+        );
+        let other_key = sync::crypto::SyncKey::from_bytes([24; 32]);
+        let other = sync::diagnostics::anonymous_sync_trace(
+            &connection,
+            &other_key,
+            "test",
+            "test-os",
+            None,
+        )
+        .unwrap();
+        assert_ne!(trace["accountToken"], other["accountToken"]);
+        assert_ne!(trace["device"]["id"], other["device"]["id"]);
     }
 
     fn test_state(plan_title: &str) -> Value {

@@ -15,6 +15,11 @@ if (secret.length < 24 || !/^[A-Za-z0-9_-]+$/.test(secret)) {
   process.exit(1)
 }
 const secretBytes = Buffer.from(secret)
+const responseDelayMs = Number(process.env.BALANCE_RELAY_RESPONSE_DELAY_MS ?? 0)
+if (!Number.isInteger(responseDelayMs) || responseDelayMs < 0 || responseDelayMs > 30_000) {
+  console.error('BALANCE_RELAY_RESPONSE_DELAY_MS must be an integer from 0 to 30000')
+  process.exit(1)
+}
 
 const MAX_BATCH_BYTES = 512 * 1024
 const STORAGE_CHUNK_BYTES = 96 * 1024
@@ -239,10 +244,13 @@ async function route(req, res, url) {
   return sendJson(res, 404, { error: 'not found' })
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') return sendJson(res, 204)
   const url = authenticatedUrl(req.url)
   if (!url) return sendJson(res, 404, { error: 'not found' })
+  if (responseDelayMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, responseDelayMs))
+  }
   route(req, res, url).catch((error) => {
     if (!res.headersSent) sendJson(res, error.message === 'request too large' ? 413 : 500, { error: String(error) })
   })

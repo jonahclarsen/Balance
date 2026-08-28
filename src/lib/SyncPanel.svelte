@@ -17,6 +17,8 @@
     syncP2pServe,
     syncP2pPeers,
     syncP2pSync,
+    syncAnonymousDiagnostics,
+    saveExportFile,
     plannerStore,
     type SyncPeer,
   } from './store'
@@ -39,6 +41,8 @@
   let scanning = false
   let copyLabel = 'Copy code'
   let copyTimer: ReturnType<typeof setTimeout> | undefined
+  let diagnosticBusy = false
+  let diagnosticPath = ''
 
   let localAddress = ''
   let peers: SyncPeer[] = []
@@ -289,6 +293,21 @@
     }
   }
 
+  async function exportAnonymousDiagnostics() {
+    diagnosticBusy = true
+    diagnosticPath = ''
+    try {
+      const content = await syncAnonymousDiagnostics(JSON.stringify($plannerStore))
+      const date = new Date().toISOString().slice(0, 10)
+      diagnosticPath = await saveExportFile(`balance-anonymous-sync-trace-${date}.json`, content)
+      setStatus('Anonymous sync trace saved. Export the trace on your other device too, then compare the two files.')
+    } catch (err) {
+      setStatus(`Could not export anonymous sync trace: ${err}`, true)
+    } finally {
+      diagnosticBusy = false
+    }
+  }
+
 </script>
 
 <section class="settings-section sync-panel">
@@ -435,6 +454,31 @@
       </span>
     </div>
 
+    {#if syncEnabled}
+      <div class="sync-diagnostics">
+        <strong>Anonymous sync diagnostics</strong>
+        <p>
+          Saves operation ordering, relative timing, opaque entity relationships,
+          relay cursors, and both the current screen state and database state. Task
+          text, dates, URLs, keys, and every other data string are replaced with
+          one-way account-keyed tokens.
+        </p>
+        <div class="sync-actions">
+          <button type="button" on:click={exportAnonymousDiagnostics} disabled={busy || diagnosticBusy}>
+            {diagnosticBusy ? 'Preparing trace…' : 'Export anonymous sync trace'}
+          </button>
+          {#if diagnosticPath}
+            <span class="sync-state">Saved to {diagnosticPath}</span>
+          {/if}
+        </div>
+        <p class="sync-disclosure">
+          The file still reveals operation types, counts, order, time gaps,
+          numeric task fields, whether opaque values match, and whether the current
+          screen state matches the database state.
+        </p>
+      </div>
+    {/if}
+
     {#if status}
       <p class="sync-status" class:error={isError} aria-live="polite">{status}</p>
     {/if}
@@ -484,7 +528,8 @@
   }
   .sync-join,
   .sync-relay,
-  .sync-p2p {
+  .sync-p2p,
+  .sync-diagnostics {
     display: flex;
     flex-direction: column;
     gap: 0.35rem;
@@ -514,6 +559,11 @@
   .sync-empty {
     font-size: 0.82rem;
     opacity: 0.7;
+    margin: 0;
+  }
+  .sync-disclosure {
+    font-size: 0.78rem;
+    opacity: 0.68;
     margin: 0;
   }
   .sync-actions {

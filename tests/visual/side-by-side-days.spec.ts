@@ -190,3 +190,115 @@ test('the comparison toggles with Alt+B and survives a reload', async ({ page })
   await page.reload()
   await expect(paneFor(page, 'Compared day')).toHaveCount(0)
 })
+
+test('cut nested children stay removed after paste, comparison layout, and reload', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'The reported cut and split-view sequence is a desktop workflow.')
+
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const primaryPane = paneFor(page, 'Daily plan')
+  const original = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const plan = state.plans?.find((candidate: { date: string }) => candidate.date === state.activePlanDate)
+    const parent = plan?.items?.find((item: { text: string }) => item.text === 'Work block')
+    return {
+      parentId: parent?.id as string,
+      childIds: (parent?.children ?? []).map((child: { id: string }) => child.id) as string[],
+    }
+  })
+  expect(original.childIds).toHaveLength(2)
+
+  // Select only the two children at position A, exactly as a keyboard cut does.
+  await primaryPane.locator('[data-plan-text-input]').filter({ hasText: 'Pick the first useful task' }).click()
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(primaryPane.locator('.plan-row.selected')).toHaveCount(2)
+  await page.keyboard.press('Meta+X')
+
+  await expect(primaryPane.locator(`[data-plan-item-id="${original.childIds[0]}"]`)).toHaveCount(0)
+  await expect(primaryPane.locator(`[data-plan-item-id="${original.childIds[1]}"]`)).toHaveCount(0)
+  await expect.poll(() => storedTree(page, original.parentId)).toEqual({ done: false, children: [] })
+
+  // Paste the cut tasks at position B. A cut/paste deliberately creates new ids;
+  // the old ids must never reappear in either storage or the rendered tree.
+  await primaryPane.locator('[data-plan-text-input]').filter({ hasText: 'Wake up' }).click()
+  await page.keyboard.press('Meta+V')
+  await expect.poll(() => storedChildMove(page, original.parentId, original.childIds)).toEqual({
+    originalParent: { done: false, children: [] },
+    oldIdsPresent: false,
+    pastedTexts: ['Pick the first useful task', 'Write down next action'],
+    pastedIdsDiffer: true,
+  })
+  await page.getByRole('button', { name: 'Compare with another day' }).click()
+  await expect(paneFor(page, 'Compared day')).toBeVisible()
+  await page.getByRole('button', { name: 'Close day comparison' }).click()
+  await expect(paneFor(page, 'Compared day')).toHaveCount(0)
+  await expect.poll(() => storedChildMove(page, original.parentId, original.childIds)).toEqual({
+    originalParent: { done: false, children: [] },
+    oldIdsPresent: false,
+    pastedTexts: ['Pick the first useful task', 'Write down next action'],
+    pastedIdsDiffer: true,
+  })
+  await expect(primaryPane.locator('[data-plan-text-input]').filter({ hasText: 'Pick the first useful task' })).toHaveCount(1)
+  await expect(primaryPane.locator('[data-plan-text-input]').filter({ hasText: 'Write down next action' })).toHaveCount(1)
+
+  await testInfo.attach('nested-cut-paste-after-comparison', {
+    body: await page.screenshot({ fullPage: true }),
+    contentType: 'image/png',
+  })
+
+  await page.reload()
+  await expect.poll(() => storedChildMove(page, original.parentId, original.childIds)).toEqual({
+    originalParent: { done: false, children: [] },
+    oldIdsPresent: false,
+    pastedTexts: ['Pick the first useful task', 'Write down next action'],
+    pastedIdsDiffer: true,
+  })
+  await expect(primaryPane.locator(`[data-plan-item-id="${original.childIds[0]}"]`)).toHaveCount(0)
+  await expect(primaryPane.locator(`[data-plan-item-id="${original.childIds[1]}"]`)).toHaveCount(0)
+  await expect(primaryPane.locator('[data-plan-text-input]').filter({ hasText: 'Pick the first useful task' })).toHaveCount(1)
+  await expect(primaryPane.locator('[data-plan-text-input]').filter({ hasText: 'Write down next action' })).toHaveCount(1)
+})
+
+async function storedTree(page: Page, parentId: string) {
+  return page.evaluate((expectedParentId) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const plan = state.plans?.find((candidate: { date: string }) => candidate.date === state.activePlanDate)
+    const parent = plan?.items?.find((item: { id: string }) => item.id === expectedParentId)
+    return {
+      done: parent?.done ?? null,
+      children: (parent?.children ?? []).map((child: { id: string }) => child.id),
+    }
+  }, parentId)
+}
+
+async function storedChildMove(page: Page, parentId: string, originalChildIds: string[]) {
+  return page.evaluate(({ expectedParentId, oldIds }) => {
+    type Item = { id: string; text: string; done: boolean; children: Item[] }
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const plan = state.plans?.find((candidate: { date: string }) => candidate.date === state.activePlanDate)
+    const items = (plan?.items ?? []) as Item[]
+    const flattened: Item[] = []
+    const visit = (nodes: Item[]) => nodes.forEach((item) => {
+      flattened.push(item)
+      visit(item.children)
+    })
+    visit(items)
+    const parent = flattened.find((item) => item.id === expectedParentId)
+    const pasted = items.filter((item) =>
+      item.text === 'Pick the first useful task' || item.text === 'Write down next action',
+    )
+    return {
+      originalParent: {
+        done: parent?.done ?? null,
+        children: parent?.children.map((child) => child.id) ?? [],
+      },
+      oldIdsPresent: flattened.some((item) => oldIds.includes(item.id)),
+      pastedTexts: pasted.map((item) => item.text),
+      pastedIdsDiffer: pasted.length === 2 && pasted.every((item) => !oldIds.includes(item.id)),
+    }
+  }, { expectedParentId: parentId, oldIds: originalChildIds })
+}

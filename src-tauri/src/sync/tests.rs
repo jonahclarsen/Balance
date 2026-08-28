@@ -55,6 +55,10 @@ struct ReferenceRelay {
 
 impl ReferenceRelay {
     fn start() -> Self {
+        Self::start_with_delay(0)
+    }
+
+    fn start_with_delay(response_delay_ms: u64) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
@@ -67,6 +71,10 @@ impl ReferenceRelay {
             .arg(project.join("scripts/relay-server.mjs"))
             .arg(port.to_string())
             .env("BALANCE_RELAY_SECRET", secret)
+            .env(
+                "BALANCE_RELAY_RESPONSE_DELAY_MS",
+                response_delay_ms.to_string(),
+            )
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
@@ -648,6 +656,151 @@ fn task_typed_on_android_before_initial_catchup_survives_the_baseline_replay() {
         assert!(ids.contains(&"android-pre-catchup-task".to_string()));
     }
     assert_eq!(domain(&primary.state()), domain(&android.state()));
+}
+
+#[test]
+fn delayed_relay_requests_preserve_edits_written_during_cut_paste_catchup() {
+    let relay = ReferenceRelay::start_with_delay(120);
+    let desktop_scratch = Scratch::new("delayed-cut-paste-desktop");
+    let android_scratch = Scratch::new("delayed-cut-paste-android");
+    let mut desktop = open_seeded(
+        &desktop_scratch.path,
+        "delayed-cut-paste-desktop-key",
+        &cut_paste_state("desktop"),
+    );
+    let android = open_seeded(
+        &android_scratch.path,
+        "delayed-cut-paste-android-key",
+        &state("android", json!([])),
+    );
+    enable_primary(&desktop).unwrap();
+    enable_joiner(&android).unwrap();
+    let key = SyncKey::generate();
+
+    relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    relay_client::sync_once(
+        &android,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    drop(android);
+
+    persist_operation_to_database(&mut desktop, &cut_tasks_operation()).unwrap();
+    relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+
+    // Start Android's catch-up and deliberately write through another real
+    // SQLCipher connection while its first delayed manifest is in flight. This
+    // is the native equivalent of typing before the sync indicator finishes.
+    let android_path = android_scratch.path.clone();
+    let android_database_key = test_database_key("delayed-cut-paste-android-key");
+    let android_sync_path = android_path.clone();
+    let android_sync_key = android_database_key.clone();
+    let relay_url = relay.url.clone();
+    let sync_key = key.clone();
+    let android_sync = std::thread::spawn(move || {
+        let connection = open_database_at(&android_sync_path, &android_sync_key).unwrap();
+        relay_client::sync_once(
+            &connection,
+            &relay_url,
+            &sync_key,
+            relay_client::SyncOptions::foreground(true),
+        )
+        .unwrap()
+    });
+    std::thread::sleep(Duration::from_millis(30));
+    let mut android_writer = open_database_at(&android_path, &android_database_key).unwrap();
+    persist_operation_to_database(
+        &mut android_writer,
+        &json!({
+            "id": "android-inflight-add-operation",
+            "deviceId": "android",
+            "sequence": 1,
+            "type": "add_plan_item",
+            "timestamp": "2026-08-27T18:00:00.500Z",
+            "payload": {
+                "planId": "cut-paste-plan",
+                "parentId": null,
+                "item": {
+                    "id": "android-inflight-task",
+                    "text": "Synthetic task typed during delayed catch-up",
+                    "html": "Synthetic task typed during delayed catch-up",
+                    "done": false,
+                    "startMinutes": null,
+                    "endMinutes": null,
+                    "children": []
+                }
+            }
+        }),
+    )
+    .unwrap();
+    drop(android_writer);
+
+    // The paste begins on the desktop while Android's original request is
+    // still delayed. The exact response interleaving is intentionally left to
+    // the real HTTP server; repeated passes below must converge from either
+    // ordering.
+    persist_operation_to_database(&mut desktop, &paste_tasks_operation()).unwrap();
+    relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    android_sync.join().unwrap();
+
+    // Restart Android, then alternate foreground passes to model later app
+    // opens and prove that neither an old location nor the in-flight edit can
+    // disappear or be uploaded back as stale state.
+    for _ in 0..3 {
+        let android = open_database_at(&android_path, &android_database_key).unwrap();
+        relay_client::sync_once(
+            &android,
+            &relay.url,
+            &key,
+            relay_client::SyncOptions::foreground(true),
+        )
+        .unwrap();
+        drop(android);
+        relay_client::sync_once(
+            &desktop,
+            &relay.url,
+            &key,
+            relay_client::SyncOptions::foreground(true),
+        )
+        .unwrap();
+    }
+
+    let android = open_database_at(&android_path, &android_database_key).unwrap();
+    let desktop_state = read_app_state_from_database(&desktop).unwrap().unwrap();
+    let android_state = read_app_state_from_database(&android).unwrap().unwrap();
+    for state in [&desktop_state, &android_state] {
+        let mut ids = Vec::new();
+        plan_item_ids(&state["plans"][0]["items"], &mut ids);
+        assert!(!ids.iter().any(|id| id.starts_with("original-task-")));
+        assert!(ids.contains(&"pasted-task-a".to_string()));
+        assert!(ids.contains(&"pasted-task-b".to_string()));
+        assert!(ids.contains(&"android-inflight-task".to_string()));
+    }
+    assert_eq!(domain(&desktop_state), domain(&android_state));
+    assert_eq!(
+        local_op_ids(&desktop).unwrap(),
+        local_op_ids(&android).unwrap()
+    );
 }
 
 #[test]
