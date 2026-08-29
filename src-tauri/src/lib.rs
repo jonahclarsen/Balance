@@ -10308,6 +10308,7 @@ async fn sync_relay_once(
 async fn sync_anonymous_diagnostics(
     app: tauri::AppHandle,
     frontend_state_json: String,
+    nearby_dates: Vec<String>,
 ) -> Result<String, String> {
     let version = app.package_info().version.to_string();
     run_database_task(move || {
@@ -10328,6 +10329,7 @@ async fn sync_anonymous_diagnostics(
             &version,
             std::env::consts::OS,
             Some(frontend_state),
+            &nearby_dates,
         )
         .and_then(|trace| {
             serde_json::to_string_pretty(&trace)
@@ -16286,12 +16288,22 @@ mod tests {
             .unwrap();
         let mut frontend_state = state.clone();
         frontend_state["plans"][0]["items"][0]["text"] = json!("Canary frontend-only task text");
+        frontend_state["activePlanDate"] = json!("2026-05-20");
+        let nearby_dates = [
+            "2026-05-19",
+            "2026-05-20",
+            "2026-05-21",
+            "2026-05-22",
+            "2026-05-23",
+        ]
+        .map(String::from);
         let trace = sync::diagnostics::anonymous_sync_trace(
             &connection,
             &key,
             "test",
             "test-os",
             Some(frontend_state),
+            &nearby_dates,
         )
         .unwrap();
         let serialized = serde_json::to_string_pretty(&trace).unwrap();
@@ -16301,6 +16313,7 @@ mod tests {
             "Canary private task text",
             "Canary second private task",
             "Canary dynamic field value",
+            "2026-05-20",
             "2026-05-21",
             "device_test",
             "plan_today",
@@ -16352,6 +16365,31 @@ mod tests {
         assert!(trace["frontend"].get("state").is_none());
         assert_eq!(trace["window"]["maximumOperations"], 300);
         assert_eq!(trace["window"]["truncated"], false);
+        assert_eq!(trace["nearbyPlanStructure"]["comparisonComplete"], true);
+        assert_eq!(trace["nearbyPlanStructure"]["matchesDatabase"], false);
+        assert_eq!(
+            trace["nearbyPlanStructure"]["database"]["activeDayOffset"],
+            0
+        );
+        assert_eq!(
+            trace["nearbyPlanStructure"]["frontend"]["activeDayOffset"],
+            -1
+        );
+        assert_eq!(
+            trace["nearbyPlanStructure"]["database"]["items"]
+                .as_array()
+                .unwrap()
+                .len(),
+            2
+        );
+        assert_eq!(
+            trace["nearbyPlanStructure"]["database"]["items"][0]["dayOffset"],
+            0
+        );
+        assert_ne!(
+            trace["nearbyPlanStructure"]["database"]["items"][0]["textToken"],
+            trace["nearbyPlanStructure"]["frontend"]["items"][0]["textToken"]
+        );
         assert!(trace["recentIdentifierPresence"]
             .as_array()
             .unwrap()
@@ -16384,9 +16422,15 @@ mod tests {
             "exporting diagnostics must not alter the database schema"
         );
 
-        let repeated =
-            sync::diagnostics::anonymous_sync_trace(&connection, &key, "test", "test-os", None)
-                .unwrap();
+        let repeated = sync::diagnostics::anonymous_sync_trace(
+            &connection,
+            &key,
+            "test",
+            "test-os",
+            None,
+            &nearby_dates,
+        )
+        .unwrap();
         assert_eq!(trace["accountToken"], repeated["accountToken"]);
         assert_eq!(
             trace["materializedStateToken"],
@@ -16399,6 +16443,7 @@ mod tests {
             "test",
             "test-os",
             None,
+            &nearby_dates,
         )
         .unwrap();
         assert_ne!(trace["accountToken"], other["accountToken"]);

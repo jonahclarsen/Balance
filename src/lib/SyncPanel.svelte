@@ -460,9 +460,11 @@
         <p>
           Saves only the newest 300 changes, their ordering and relative timing,
           limited relay status, and fingerprints showing whether the current screen
-          and database agree. It does not include a full copy of either state. Task
-          text, dates, URLs, keys, and every other data string are replaced with
-          one-way account-keyed tokens.
+          and database agree. It also saves a structural inventory of at most 50
+          tasks from the five days surrounding today so moved copies can be compared.
+          It does not include a full copy of either state. Task text, dates, URLs,
+          keys, and every other data string are replaced with one-way account-keyed
+          tokens.
         </p>
         <div class="sync-actions">
           <button type="button" on:click={exportAnonymousDiagnostics} disabled={busy || diagnosticBusy}>
@@ -474,8 +476,8 @@
         </div>
         <p class="sync-disclosure">
           The file still reveals recent operation types, order, time gaps, numeric
-          task fields, whether opaque values match, and occurrence counts for IDs
-          referenced by those recent operations.
+          task fields, whether opaque values match, occurrence counts for recent IDs,
+          and nearby task ordering, nesting, completion state, and content equality.
         </p>
       </div>
     {/if}
