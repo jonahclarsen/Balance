@@ -976,8 +976,8 @@ h3 {
   z-index: 30;
   top: 0;
   left: 84px;
-  width: 146px;
-  height: 40px;
+  right: 0;
+  height: 28px;
 }
 
 .app-shell.macos-titlebar-overlay.sidebar-hidden .workspace {
