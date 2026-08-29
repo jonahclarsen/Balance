@@ -10308,12 +10308,15 @@ async fn sync_relay_once(
 async fn sync_anonymous_diagnostics(
     app: tauri::AppHandle,
     frontend_state_json: String,
+    rendered_plan_json: String,
     nearby_dates: Vec<String>,
 ) -> Result<String, String> {
     let version = app.package_info().version.to_string();
     run_database_task(move || {
         let frontend_state = serde_json::from_str::<Value>(&frontend_state_json)
             .map_err(|error| format!("Could not read the current app state: {error}"))?;
+        let rendered_plan = serde_json::from_str::<Value>(&rendered_plan_json)
+            .map_err(|error| format!("Could not read the rendered planner snapshot: {error}"))?;
         let connection = open_database(&app)?;
         if !sync::is_sync_enabled(&connection).map_err(sync::Error::into_string)? {
             return Err("Sync is not enabled on this device.".to_string());
@@ -10329,6 +10332,7 @@ async fn sync_anonymous_diagnostics(
             &version,
             std::env::consts::OS,
             Some(frontend_state),
+            Some(rendered_plan),
             &nearby_dates,
         )
         .and_then(|trace| {
@@ -16290,12 +16294,38 @@ mod tests {
         frontend_state["plans"][0]["items"][0]["text"] = json!("Canary frontend-only task text");
         frontend_state["activePlanDate"] = json!("2026-05-20");
         let nearby_dates = ["2026-05-21", "2026-05-20"].map(String::from);
+        let rendered_plan = json!({
+            "capturedAtMs": current_timestamp_ms() - 25,
+            "mobileLayout": false,
+            "documentVisible": true,
+            "ignoredPrivateText": "Canary rendered private task text",
+            "panes": [{
+                "paneIndex": 0,
+                "comparisonPane": false,
+                "date": "2026-05-21",
+                "rows": [{
+                    "rowIndex": 0,
+                    "itemId": "plan_item_wake",
+                    "planId": "plan_today",
+                    "depth": 0,
+                    "checkboxCount": 1,
+                    "checkboxChecked": true,
+                    "checkboxDefaultChecked": false,
+                    "checkedAttributePresent": false,
+                    "checkboxIndeterminate": false,
+                    "rowDoneClass": false,
+                    "editorDoneClass": true,
+                    "ignoredPrivateText": "Canary rendered row text"
+                }]
+            }]
+        });
         let trace = sync::diagnostics::anonymous_sync_trace(
             &connection,
             &key,
             "test",
             "test-os",
             Some(frontend_state),
+            Some(rendered_plan),
             &nearby_dates,
         )
         .unwrap();
@@ -16317,6 +16347,8 @@ mod tests {
             "private.example",
             "Canary private quarantine error",
             "Canary frontend-only task text",
+            "Canary rendered private task text",
+            "Canary rendered row text",
         ] {
             assert!(!serialized.contains(secret), "trace leaked {secret:?}");
         }
@@ -16360,6 +16392,30 @@ mod tests {
         assert_eq!(trace["window"]["truncated"], false);
         assert_eq!(trace["nearbyPlanStructure"]["comparisonComplete"], true);
         assert_eq!(trace["nearbyPlanStructure"]["matchesDatabase"], false);
+        assert_eq!(trace["renderedPlan"]["available"], true);
+        assert_eq!(trace["renderedPlan"]["includedItems"], 1);
+        assert_eq!(trace["renderedPlan"]["panes"][0]["dayOffset"], 0);
+        assert_eq!(
+            trace["renderedPlan"]["summary"]["checkboxDatabaseDoneMismatches"],
+            1
+        );
+        assert_eq!(
+            trace["renderedPlan"]["summary"]["rowClassDatabaseDoneMismatches"],
+            0
+        );
+        assert_eq!(trace["renderedPlan"]["summary"]["duplicateRenderedIds"], 0);
+        assert_eq!(
+            trace["renderedPlan"]["panes"][0]["rows"][0]["database"]["resolvedDone"],
+            false
+        );
+        assert_eq!(
+            trace["renderedPlan"]["panes"][0]["rows"][0]["checkboxMatchesDatabase"],
+            false
+        );
+        assert_eq!(
+            trace["renderedPlan"]["panes"][0]["rows"][0]["rowClassMatchesDatabase"],
+            true
+        );
         assert_eq!(
             trace["nearbyPlanStructure"]["database"]["activeDayOffset"],
             0
@@ -16421,6 +16477,7 @@ mod tests {
             "test",
             "test-os",
             None,
+            None,
             &nearby_dates,
         )
         .unwrap();
@@ -16435,6 +16492,7 @@ mod tests {
             &other_key,
             "test",
             "test-os",
+            None,
             None,
             &nearby_dates,
         )

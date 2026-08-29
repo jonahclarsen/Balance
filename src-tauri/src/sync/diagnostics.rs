@@ -17,12 +17,24 @@ use sha2::Sha256;
 use super::crypto::SyncKey;
 use super::{ensure_sync_tables, sync_frontiers, Error, Op, Result};
 
-const TRACE_FORMAT: &str = "balance-anonymous-sync-trace-v4";
+const TRACE_FORMAT: &str = "balance-anonymous-sync-trace-v5";
+// Keep opaque equality tokens comparable with v4 traces while the exported
+// schema grows. This context is not a key and reveals no user data.
+const TOKEN_CONTEXT: &str = "balance-anonymous-sync-trace-v4";
 const TOKEN_BYTES: usize = 20;
 const MAX_TRACE_OPERATIONS: usize = 300;
 const MAX_QUARANTINE_ROWS: usize = 20;
 const NEARBY_DAY_OFFSETS: [i64; 2] = [0, -1];
 const MAX_NEARBY_PLAN_ITEMS: usize = 50;
+const MAX_RENDERED_PLAN_ITEMS: usize = 100;
+
+#[derive(Clone)]
+struct IndexedPlanItem {
+    plan_id: String,
+    date: String,
+    path: Vec<usize>,
+    done: Option<bool>,
+}
 
 struct Tokenizer<'a> {
     key: &'a SyncKey,
@@ -32,7 +44,7 @@ impl Tokenizer<'_> {
     fn token(&self, domain: &str, value: &str) -> String {
         let mut mac = Hmac::<Sha256>::new_from_slice(self.key.as_bytes())
             .expect("HMAC accepts the 32-byte sync key");
-        mac.update(TRACE_FORMAT.as_bytes());
+        mac.update(TOKEN_CONTEXT.as_bytes());
         mac.update(&[0]);
         mac.update(domain.as_bytes());
         mac.update(&[0]);
@@ -337,6 +349,273 @@ fn nearby_plan_inventory(
     }))
 }
 
+fn index_plan_items(
+    items: &[Value],
+    plan_id: &str,
+    date: &str,
+    path: &mut Vec<usize>,
+    index: &mut HashMap<String, Vec<IndexedPlanItem>>,
+) {
+    for (position, item) in items.iter().enumerate() {
+        path.push(position);
+        let item_id = item.get("id").and_then(Value::as_str).unwrap_or_default();
+        index
+            .entry(item_id.to_string())
+            .or_default()
+            .push(IndexedPlanItem {
+                plan_id: plan_id.to_string(),
+                date: date.to_string(),
+                path: path.clone(),
+                done: item.get("done").and_then(Value::as_bool),
+            });
+        if let Some(children) = item.get("children").and_then(Value::as_array) {
+            index_plan_items(children, plan_id, date, path, index);
+        }
+        path.pop();
+    }
+}
+
+fn plan_item_index(state: &Value) -> HashMap<String, Vec<IndexedPlanItem>> {
+    let mut index = HashMap::new();
+    for plan in state
+        .get("plans")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let plan_id = plan.get("id").and_then(Value::as_str).unwrap_or_default();
+        let date = plan.get("date").and_then(Value::as_str).unwrap_or_default();
+        if let Some(items) = plan.get("items").and_then(Value::as_array) {
+            index_plan_items(items, plan_id, date, &mut Vec::new(), &mut index);
+        }
+    }
+    index
+}
+
+fn indexed_item_trace(
+    index: &HashMap<String, Vec<IndexedPlanItem>>,
+    item_id: &str,
+    rendered_plan_id: &str,
+    date_offsets: &HashMap<&str, i64>,
+) -> Value {
+    let occurrences = index.get(item_id).map(Vec::as_slice).unwrap_or_default();
+    let same_plan = occurrences
+        .iter()
+        .filter(|item| item.plan_id == rendered_plan_id)
+        .collect::<Vec<_>>();
+    let resolved = if same_plan.len() == 1 {
+        Some(same_plan[0])
+    } else if same_plan.is_empty() && occurrences.len() == 1 {
+        occurrences.first()
+    } else {
+        None
+    };
+    json!({
+        "occurrences": occurrences.len(),
+        "samePlanOccurrences": same_plan.len(),
+        "resolvedDone": resolved.and_then(|item| item.done),
+        "resolvedDayOffset": resolved.and_then(|item| date_offsets.get(item.date.as_str()).copied()),
+        "resolvedPath": resolved.map(|item| &item.path),
+        "resolvedPlanMatchesRendered": resolved.map(|item| item.plan_id == rendered_plan_id),
+    })
+}
+
+fn rendered_plan_trace(
+    rendered: Option<&Value>,
+    database: &Value,
+    frontend: Option<&Value>,
+    tokenizer: &Tokenizer<'_>,
+    nearby_dates: &[String],
+    now_ms: i64,
+) -> Value {
+    let Some(rendered) = rendered.filter(|value| value.is_object()) else {
+        return json!({ "available": false });
+    };
+    let date_offsets = nearby_dates
+        .iter()
+        .enumerate()
+        .map(|(index, date)| (date.as_str(), NEARBY_DAY_OFFSETS[index]))
+        .collect::<HashMap<_, _>>();
+    let database_index = plan_item_index(database);
+    let frontend_index = frontend.map(plan_item_index);
+    let rendered_occurrences = rendered
+        .get("panes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .flat_map(|pane| {
+            pane.get("rows")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+        })
+        .filter_map(|row| row.get("itemId").and_then(Value::as_str))
+        .fold(HashMap::<&str, usize>::new(), |mut counts, item_id| {
+            *counts.entry(item_id).or_default() += 1;
+            counts
+        });
+    let mut included_items = 0_usize;
+    let mut truncated = false;
+    let mut checkbox_database_mismatches = 0_usize;
+    let mut checkbox_frontend_mismatches = 0_usize;
+    let mut row_class_database_mismatches = 0_usize;
+    let mut editor_class_database_mismatches = 0_usize;
+    let mut database_frontend_mismatches = 0_usize;
+    let mut missing_database_items = 0_usize;
+    let mut missing_frontend_items = 0_usize;
+    let mut wrong_database_plan_or_day = 0_usize;
+    let duplicate_rendered_ids = rendered_occurrences
+        .values()
+        .filter(|occurrences| **occurrences > 1)
+        .count();
+    let panes = rendered
+        .get("panes")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .map(|pane| {
+            let date = pane.get("date").and_then(Value::as_str).unwrap_or_default();
+            let rendered_day_offset = date_offsets.get(date).copied();
+            let rows = pane
+                .get("rows")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .take_while(|_| {
+                    if included_items == MAX_RENDERED_PLAN_ITEMS {
+                        truncated = true;
+                        false
+                    } else {
+                        included_items += 1;
+                        true
+                    }
+                })
+                .map(|row| {
+                    let item_id = row.get("itemId").and_then(Value::as_str).unwrap_or_default();
+                    let plan_id = row.get("planId").and_then(Value::as_str).unwrap_or_default();
+                    let database_item = indexed_item_trace(
+                        &database_index,
+                        item_id,
+                        plan_id,
+                        &date_offsets,
+                    );
+                    let frontend_item = frontend_index.as_ref().map(|index| {
+                        indexed_item_trace(index, item_id, plan_id, &date_offsets)
+                    });
+                    let checkbox_checked = row.get("checkboxChecked").and_then(Value::as_bool);
+                    let row_done_class = row.get("rowDoneClass").and_then(Value::as_bool);
+                    let editor_done_class = row.get("editorDoneClass").and_then(Value::as_bool);
+                    let database_done = database_item["resolvedDone"].as_bool();
+                    let frontend_done = frontend_item
+                        .as_ref()
+                        .and_then(|item| item["resolvedDone"].as_bool());
+                    let checkbox_matches_database = checkbox_checked
+                        .zip(database_done)
+                        .map(|(left, right)| left == right);
+                    let checkbox_matches_frontend = checkbox_checked
+                        .zip(frontend_done)
+                        .map(|(left, right)| left == right);
+                    let row_class_matches_database = row_done_class
+                        .zip(database_done)
+                        .map(|(left, right)| left == right);
+                    let row_class_matches_frontend = row_done_class
+                        .zip(frontend_done)
+                        .map(|(left, right)| left == right);
+                    let editor_class_matches_database = editor_done_class
+                        .zip(database_done)
+                        .map(|(left, right)| left == right);
+                    let editor_class_matches_frontend = editor_done_class
+                        .zip(frontend_done)
+                        .map(|(left, right)| left == right);
+                    if checkbox_matches_database == Some(false) {
+                        checkbox_database_mismatches += 1;
+                    }
+                    if checkbox_matches_frontend == Some(false) {
+                        checkbox_frontend_mismatches += 1;
+                    }
+                    if row_class_matches_database == Some(false) {
+                        row_class_database_mismatches += 1;
+                    }
+                    if editor_class_matches_database == Some(false) {
+                        editor_class_database_mismatches += 1;
+                    }
+                    if database_done.zip(frontend_done).is_some_and(|(left, right)| left != right) {
+                        database_frontend_mismatches += 1;
+                    }
+                    if database_done.is_none() {
+                        missing_database_items += 1;
+                    }
+                    if frontend_index.is_some() && frontend_done.is_none() {
+                        missing_frontend_items += 1;
+                    }
+                    let database_plan_or_day_matches = database_item["resolvedPlanMatchesRendered"]
+                        .as_bool()
+                        .zip(rendered_day_offset.zip(database_item["resolvedDayOffset"].as_i64()))
+                        .map(|(plan_matches, (rendered_day, database_day))| {
+                            plan_matches && rendered_day == database_day
+                        });
+                    if database_plan_or_day_matches == Some(false) {
+                        wrong_database_plan_or_day += 1;
+                    }
+                    json!({
+                        "rowIndex": row.get("rowIndex").and_then(Value::as_i64),
+                        "itemId": tokenizer.id_token(item_id),
+                        "planId": tokenizer.id_token(plan_id),
+                        "depth": row.get("depth").and_then(Value::as_i64),
+                        "renderedOccurrences": rendered_occurrences.get(item_id).copied().unwrap_or(0),
+                        "checkboxCount": row.get("checkboxCount").and_then(Value::as_i64),
+                        "checkboxChecked": checkbox_checked,
+                        "checkboxDefaultChecked": row.get("checkboxDefaultChecked").and_then(Value::as_bool),
+                        "checkedAttributePresent": row.get("checkedAttributePresent").and_then(Value::as_bool),
+                        "checkboxIndeterminate": row.get("checkboxIndeterminate").and_then(Value::as_bool),
+                        "rowDoneClass": row_done_class,
+                        "editorDoneClass": editor_done_class,
+                        "database": database_item,
+                        "frontend": frontend_item,
+                        "databasePlanAndDayMatchRendered": database_plan_or_day_matches,
+                        "checkboxMatchesDatabase": checkbox_matches_database,
+                        "checkboxMatchesFrontend": checkbox_matches_frontend,
+                        "rowClassMatchesDatabase": row_class_matches_database,
+                        "rowClassMatchesFrontend": row_class_matches_frontend,
+                        "editorClassMatchesDatabase": editor_class_matches_database,
+                        "editorClassMatchesFrontend": editor_class_matches_frontend,
+                    })
+                })
+                .collect::<Vec<_>>();
+            json!({
+                "paneIndex": pane.get("paneIndex").and_then(Value::as_i64),
+                "comparisonPane": pane.get("comparisonPane").and_then(Value::as_bool),
+                "dayOffset": date_offsets.get(date).copied(),
+                "dateToken": tokenizer.value_token(date),
+                "rows": rows,
+            })
+        })
+        .collect::<Vec<_>>();
+    let captured_at_ms = rendered.get("capturedAtMs").and_then(Value::as_i64);
+    json!({
+        "available": true,
+        "capturePolicy": "last-non-empty-planner-before-settings",
+        "capturedAgeMs": captured_at_ms.map(|value| now_ms.saturating_sub(value)),
+        "mobileLayout": rendered.get("mobileLayout").and_then(Value::as_bool),
+        "documentVisible": rendered.get("documentVisible").and_then(Value::as_bool),
+        "maximumItems": MAX_RENDERED_PLAN_ITEMS,
+        "includedItems": included_items,
+        "truncated": truncated,
+        "summary": {
+            "duplicateRenderedIds": duplicate_rendered_ids,
+            "missingDatabaseItems": missing_database_items,
+            "missingFrontendItems": missing_frontend_items,
+            "wrongDatabasePlanOrDay": wrong_database_plan_or_day,
+            "databaseFrontendDoneMismatches": database_frontend_mismatches,
+            "checkboxDatabaseDoneMismatches": checkbox_database_mismatches,
+            "checkboxFrontendDoneMismatches": checkbox_frontend_mismatches,
+            "rowClassDatabaseDoneMismatches": row_class_database_mismatches,
+            "editorClassDatabaseDoneMismatches": editor_class_database_mismatches,
+        },
+        "panes": panes,
+    })
+}
+
 fn recent_operations(operations: &[Op]) -> &[Op] {
     &operations[operations.len().saturating_sub(MAX_TRACE_OPERATIONS)..]
 }
@@ -618,6 +897,7 @@ pub fn anonymous_sync_trace(
     app_version: &str,
     platform: &str,
     frontend_state: Option<Value>,
+    rendered_plan: Option<Value>,
     nearby_dates: &[String],
 ) -> Result<Value> {
     ensure_sync_tables(connection)?;
@@ -704,19 +984,27 @@ pub fn anonymous_sync_trace(
         .map(|(device, sequence)| (tokenizer.id_token(&device), sequence))
         .collect::<BTreeMap<_, _>>();
     let now_ms = crate::current_timestamp_ms();
+    let rendered_plan = rendered_plan_trace(
+        rendered_plan.as_ref(),
+        &domain,
+        frontend_domain.as_ref(),
+        &tokenizer,
+        nearby_dates,
+        now_ms,
+    );
 
     Ok(json!({
         "format": TRACE_FORMAT,
         "privacy": {
             "rawUserDataStringsIncluded": false,
             "tokenMethod": "HMAC-SHA256/account-sync-key",
-            "warning": "This reveals recent operation types, ordering, relative timing, numeric task fields, equality relationships, occurrence counts for recent identifiers, and the structure and completion state of up to 50 tasks from today followed by yesterday.",
+            "warning": "This reveals recent operation types, ordering, relative timing, numeric task fields, equality relationships, occurrence counts for recent identifiers, the structure and completion state of up to 50 tasks from today followed by yesterday, and text-free rendered checkbox and completion-style state for up to 100 rows from the last visible planner screen.",
         },
         "build": {
             "version": app_version,
             "platform": platform,
         },
-        "accountToken": tokenizer.opaque_token("account", TRACE_FORMAT),
+        "accountToken": tokenizer.opaque_token("account", TOKEN_CONTEXT),
         "device": {
             "id": tokenizer.id_token(&local_device),
             "localSequence": local_sequence,
@@ -741,6 +1029,7 @@ pub fn anonymous_sync_trace(
             "database": nearby_database,
             "frontend": nearby_frontend,
         },
+        "renderedPlan": rendered_plan,
         "materializedStateToken": tokenizer.opaque_token("state", &domain_json),
         "frontend": frontend_trace,
     }))

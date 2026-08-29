@@ -392,6 +392,46 @@ test('three tasks cut to tomorrow never render back on the completed source day'
   })
 })
 
+test('render diagnostics retain text-free checkbox state after leaving the planner', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'The DOM diagnostic is shared; this sequence targets the reported Mac view.')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await expect(page.locator('[data-plan-item-id]').first()).toBeVisible()
+
+  const captured = await page.evaluate(async () => {
+    const diagnosticsPath = '/src/lib/renderedPlanDiagnostics.ts'
+    const diagnostics = await import(/* @vite-ignore */ diagnosticsPath)
+    const row = document.querySelector<HTMLElement>('[data-plan-item-id]')
+    const checkbox = row?.querySelector<HTMLInputElement>(':scope > .check-target > input.check')
+    if (!row || !checkbox) throw new Error('Expected a rendered plan checkbox')
+    checkbox.checked = true
+    diagnostics.captureRenderedPlanSnapshot()
+    return diagnostics.getLastRenderedPlanSnapshot()
+  })
+  expect(captured?.panes[0].rows[0]).toMatchObject({
+    rowIndex: 0,
+    depth: 0,
+    checkboxCount: 1,
+    checkboxChecked: true,
+    rowDoneClass: false,
+    editorDoneClass: false,
+  })
+  expect(JSON.stringify(captured)).not.toContain('Wake up')
+  expect(JSON.stringify(captured)).not.toContain('Work block')
+
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+  const retained = await page.evaluate(async () => {
+    const diagnosticsPath = '/src/lib/renderedPlanDiagnostics.ts'
+    const diagnostics = await import(/* @vite-ignore */ diagnosticsPath)
+    return diagnostics.getLastRenderedPlanSnapshot()
+  })
+  expect(retained?.panes[0].rows[0].checkboxChecked).toBe(true)
+  expect(retained?.panes[0].rows.length).toBe(captured?.panes[0].rows.length)
+})
+
 async function storedTree(page: Page, parentId: string) {
   return page.evaluate((expectedParentId) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')

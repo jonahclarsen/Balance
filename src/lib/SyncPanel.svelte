@@ -23,6 +23,7 @@
     type SyncPeer,
   } from './store'
   import { automaticSyncStatus, requestSync } from './syncScheduler'
+  import { getLastRenderedPlanSnapshot } from './renderedPlanDiagnostics'
 
   // Camera QR scanning is mobile-only (native plugin); on desktop you paste.
   const isMobile = /android|iphone|ipad|ipod/i.test(navigator.userAgent)
@@ -297,7 +298,10 @@
     diagnosticBusy = true
     diagnosticPath = ''
     try {
-      const content = await syncAnonymousDiagnostics(JSON.stringify($plannerStore))
+      const content = await syncAnonymousDiagnostics(
+        JSON.stringify($plannerStore),
+        JSON.stringify(getLastRenderedPlanSnapshot()),
+      )
       const date = new Date().toISOString().slice(0, 10)
       diagnosticPath = await saveExportFile(`balance-recent-anonymous-sync-trace-${date}.json`, content)
       setStatus('Recent anonymous sync trace saved. Export one on your other device too, then compare the two files.')
@@ -462,6 +466,8 @@
           limited relay status, and fingerprints showing whether the current screen
           and database agree. It also saves a structural inventory of at most 50
           tasks, starting with today and then yesterday, so moved copies can be compared.
+          The last visible planner screen is compared separately using only row order,
+          nesting, checkbox state, and completion styling—never task text.
           It does not include a full copy of either state. Task text, dates, URLs,
           keys, and every other data string are replaced with one-way account-keyed
           tokens.
@@ -477,7 +483,8 @@
         <p class="sync-disclosure">
           The file still reveals recent operation types, order, time gaps, numeric
           task fields, whether opaque values match, occurrence counts for recent IDs,
-          and nearby task ordering, nesting, completion state, and content equality.
+          nearby task ordering, nesting, completion state, content equality, and
+          text-free rendered checkbox and row-style state.
         </p>
       </div>
     {/if}

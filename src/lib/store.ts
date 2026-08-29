@@ -2993,12 +2993,12 @@ export async function syncRelayOnce(reason: string): Promise<SyncPassResult> {
  * Structural sync trace whose database strings are replaced with account-keyed
  * one-way tokens. Paired devices can be compared without exposing their text.
  */
-export async function syncAnonymousDiagnostics(frontendStateJson: string): Promise<string> {
+export async function syncAnonymousDiagnostics(frontendStateJson: string, renderedPlanJson: string): Promise<string> {
   if (!isTauri()) throw new Error('Anonymous sync diagnostics require the Balance app.')
   await flushOperations()
   const today = todayISO()
   const nearbyDates = [today, shiftCalendarDateISO(today, -1)]
-  return invoke<string>('sync_anonymous_diagnostics', { frontendStateJson, nearbyDates })
+  return invoke<string>('sync_anonymous_diagnostics', { frontendStateJson, renderedPlanJson, nearbyDates })
 }
 
 export async function saveExportFile(filename: string, content: string): Promise<string> {

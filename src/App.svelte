@@ -81,6 +81,7 @@
   } from './lib/themes'
   import { isNoteTrashed } from './lib/noteTrash'
   import { BALANCE_DEEP_LINK_EVENT, parseBalanceDeepLink } from './lib/deepLinks'
+  import { captureRenderedPlanSnapshot } from './lib/renderedPlanDiagnostics'
   import {
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
@@ -698,6 +699,7 @@ return rows`
 
   function openMobileDrawerView(nextView: View) {
     closeMobileDrawer()
+    if (nextView === 'settings' && view === 'today') captureRenderedPlanSnapshot()
     if (nextView === 'listTemplates') {
       openLists()
     } else if (nextView === 'lists') {
@@ -2953,6 +2955,7 @@ return rows`
 
       if (sidebarView) {
         event.preventDefault()
+        if (sidebarView === 'settings' && view === 'today') captureRenderedPlanSnapshot()
         view = sidebarView
         return
       }
