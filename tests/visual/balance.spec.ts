@@ -3036,7 +3036,8 @@ test('template item text fields support arrow focus and option-arrow sibling mov
   await expect.poll(async () => topLevelTemplateOptionTexts(page)).toEqual(initialOrder)
 })
 
-test('checking a plan item moves the caret to the task beneath it', async ({ page }) => {
+test('checking a plan item moves the desktop caret to the task beneath it', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile checkbox taps deliberately dismiss task editing')
   await seedPlanItems(page, ['First task', 'Second task', 'Third task'])
   const firstCheckbox = page.getByRole('listitem', { name: 'Plan item: First task' }).getByRole('checkbox')
   const secondCheckbox = page.getByRole('listitem', { name: 'Plan item: Second task' }).getByRole('checkbox')
@@ -3052,7 +3053,8 @@ test('checking a plan item moves the caret to the task beneath it', async ({ pag
   await expect.poll(async () => activeInputValue(page)).toBe('Third task')
 })
 
-test('unchecking a plan item keeps the caret on that task', async ({ page }) => {
+test('unchecking a plan item keeps the desktop caret on that task', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile checkbox taps deliberately dismiss task editing')
   await seedPlanItems(page, ['First task', 'Second task'])
   const firstCheckbox = page.getByRole('listitem', { name: 'Plan item: First task' }).getByRole('checkbox')
   await firstCheckbox.check()
@@ -3241,7 +3243,7 @@ test('deleting the final incomplete child completes each satisfied parent task',
 
   if (testInfo.project.name === 'mobile') {
     await incompleteChild.getByRole('button', { name: 'Task options for Incomplete child' }).click()
-    await incompleteChild.getByRole('menuitem', { name: 'Remove' }).click()
+    await page.getByRole('menuitem', { name: 'Remove' }).click()
   } else {
     await incompleteChild.getByRole('button', { name: 'Select item' }).click()
     await page.keyboard.press('Backspace')

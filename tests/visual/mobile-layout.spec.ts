@@ -300,11 +300,10 @@ test('checking a task without an active mobile caret leaves task editors unfocus
   await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(0)
 })
 
-test('checking a task with an active mobile caret still advances to the next task', async ({ page }, testInfo) => {
-  test.skip(!isMobileProject(testInfo.project.name), 'The active-caret completion behavior is mobile-only')
+test('checking a task with an active mobile caret leaves task editors unfocused', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The no-caret completion behavior is mobile-only')
 
   const currentRow = page.getByRole('listitem', { name: 'Plan item: Filler task 1', exact: true })
-  const nextRow = page.getByRole('listitem', { name: 'Plan item: Filler task 2', exact: true })
   const currentEditor = currentRow.locator('[data-plan-text-input]')
   const checkbox = currentRow.getByRole('checkbox')
   await currentEditor.focus()
@@ -317,7 +316,7 @@ test('checking a task with an active mobile caret still advances to the next tas
   )
 
   await expect(checkbox).toBeChecked()
-  await expect(nextRow.locator('[data-plan-text-input]')).toBeFocused()
+  await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(0)
 })
 
 test('holding a mobile checkbox then dragging checks every crossed task in one action', async ({ page }, testInfo) => {
@@ -423,22 +422,50 @@ test('mobile task options stay inside the viewport at the top and bottom of the 
   const topText = 'Parent task with a scheduled time'
   const topRow = page.getByRole('listitem', { name: `Plan item: ${topText}` })
   await topRow.scrollIntoViewIfNeeded()
+  await topRow.locator('[data-plan-text-input]').focus()
   await topRow.getByRole('button', { name: `Task options for ${topText}` }).click()
 
-  const topMenu = topRow.getByRole('menu', { name: `Options for ${topText}` })
+  const topMenu = page.getByRole('menu', { name: `Options for ${topText}` })
   await expect(topMenu).toBeVisible()
-  const topBounds = await topMenu.evaluate((element) => {
-    const rect = element.getBoundingClientRect()
+  await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(0)
+  const topBounds = await topRow.evaluate((element, menuLabel) => {
+    const buttonRect = element.querySelector('.mobile-task-menu-button')?.getBoundingClientRect()
+    const menu = Array.from(document.querySelectorAll<HTMLElement>('.mobile-task-menu'))
+      .find((candidate) => candidate.getAttribute('aria-label') === menuLabel)
+    const menuRect = menu?.getBoundingClientRect()
+    if (!buttonRect || !menuRect) throw new Error('Missing mobile task menu geometry')
     const viewport = window.visualViewport
     return {
-      top: rect.top,
-      bottom: rect.bottom,
+      top: menuRect.top,
+      bottom: menuRect.bottom,
+      buttonRight: buttonRect.right,
+      menuRight: menuRect.right,
+      menuParent: menu?.parentElement?.tagName,
       viewportTop: viewport?.offsetTop ?? 0,
       viewportBottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
     }
-  })
+  }, `Options for ${topText}`)
   expect(topBounds.top).toBeGreaterThanOrEqual(topBounds.viewportTop + 7)
   expect(topBounds.bottom).toBeLessThanOrEqual(topBounds.viewportBottom - 7)
+  expect(Math.abs(topBounds.menuRight - topBounds.buttonRight)).toBeLessThanOrEqual(1)
+  expect(topBounds.menuParent).toBe('BODY')
+
+  await page.setViewportSize({ width: 360, height: 740 })
+  await expect.poll(async () => topRow.evaluate((element, menuLabel) => {
+    const buttonRect = element.querySelector('.mobile-task-menu-button')?.getBoundingClientRect()
+    const menu = Array.from(document.querySelectorAll<HTMLElement>('.mobile-task-menu'))
+      .find((candidate) => candidate.getAttribute('aria-label') === menuLabel)
+    const menuRect = menu?.getBoundingClientRect()
+    if (!buttonRect || !menuRect) return Number.POSITIVE_INFINITY
+    const viewport = window.visualViewport
+    const viewportLeft = viewport?.offsetLeft ?? 0
+    const viewportRight = viewportLeft + (viewport?.width ?? window.innerWidth)
+    const expectedLeft = Math.min(
+      Math.max(buttonRect.right - menuRect.width, viewportLeft + 8),
+      viewportRight - 8 - menuRect.width,
+    )
+    return Math.abs(menuRect.left - expectedLeft)
+  }, `Options for ${topText}`)).toBeLessThanOrEqual(1)
   await page.keyboard.press('Escape')
 
   const bottomText = 'Filler task 28'
@@ -447,22 +474,35 @@ test('mobile task options stay inside the viewport at the top and bottom of the 
   const bottomButton = bottomRow.getByRole('button', { name: `Task options for ${bottomText}`, exact: true })
   await bottomButton.click()
 
-  const bottomMenu = bottomRow.getByRole('menu', { name: `Options for ${bottomText}`, exact: true })
+  const bottomMenu = page.getByRole('menu', { name: `Options for ${bottomText}`, exact: true })
   await expect(bottomMenu).toBeVisible()
-  const bottomBounds = await bottomRow.evaluate((element) => {
+  const bottomBounds = await bottomRow.evaluate((element, menuLabel) => {
     const buttonRect = element.querySelector('.mobile-task-menu-button')?.getBoundingClientRect()
-    const menuRect = element.querySelector('.mobile-task-menu')?.getBoundingClientRect()
+    const menu = Array.from(document.querySelectorAll<HTMLElement>('.mobile-task-menu'))
+      .find((candidate) => candidate.getAttribute('aria-label') === menuLabel)
+    const menuRect = menu?.getBoundingClientRect()
     const viewport = window.visualViewport
     if (!buttonRect || !menuRect) throw new Error('Missing mobile task menu geometry')
     return {
       buttonTop: buttonRect.top,
+      buttonRight: buttonRect.right,
       menuTop: menuRect.top,
       menuBottom: menuRect.bottom,
+      menuRight: menuRect.right,
+      menuLeft: menuRect.left,
+      menuWidth: menuRect.width,
+      viewportLeft: viewport?.offsetLeft ?? 0,
+      viewportRight: (viewport?.offsetLeft ?? 0) + (viewport?.width ?? window.innerWidth),
       viewportTop: viewport?.offsetTop ?? 0,
       viewportBottom: (viewport?.offsetTop ?? 0) + (viewport?.height ?? window.innerHeight),
     }
-  })
+  }, `Options for ${bottomText}`)
   expect(bottomBounds.menuTop).toBeLessThan(bottomBounds.buttonTop)
+  const expectedBottomLeft = Math.min(
+    Math.max(bottomBounds.buttonRight - bottomBounds.menuWidth, bottomBounds.viewportLeft + 8),
+    bottomBounds.viewportRight - 8 - bottomBounds.menuWidth,
+  )
+  expect(Math.abs(bottomBounds.menuLeft - expectedBottomLeft)).toBeLessThanOrEqual(1)
   expect(bottomBounds.menuTop).toBeGreaterThanOrEqual(bottomBounds.viewportTop + 7)
   expect(bottomBounds.menuBottom).toBeLessThanOrEqual(bottomBounds.viewportBottom - 7)
 })
@@ -496,7 +536,7 @@ test('mobile task options copy and cut whole task trees and remove tasks', async
   const parentText = 'Parent task with a scheduled time'
   const parentRow = page.getByRole('listitem', { name: `Plan item: ${parentText}` })
   await parentRow.getByRole('button', { name: `Task options for ${parentText}` }).click()
-  await parentRow.getByRole('menuitem', { name: 'Copy' }).click()
+  await page.getByRole('menuitem', { name: 'Copy' }).click()
 
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe([
     parentText,
@@ -507,20 +547,20 @@ test('mobile task options copy and cut whole task trees and remove tasks', async
   const trailingText = 'Another task used to verify mobile drag selection'
   const trailingRow = page.getByRole('listitem', { name: `Plan item: ${trailingText}` })
   await trailingRow.getByRole('button', { name: `Task options for ${trailingText}` }).click()
-  await trailingRow.getByRole('menuitem', { name: 'Paste' }).click()
+  await page.getByRole('menuitem', { name: 'Paste' }).click()
   await expect(page.getByRole('listitem', { name: `Plan item: ${parentText}` })).toHaveCount(2)
   await expect(page.getByRole('listitem', { name: 'Plan item: Nested task without a time' })).toHaveCount(2)
   await page.keyboard.press('Escape')
 
   await trailingRow.getByRole('button', { name: `Task options for ${trailingText}` }).click()
-  await trailingRow.getByRole('menuitem', { name: 'Cut' }).click()
+  await page.getByRole('menuitem', { name: 'Cut' }).click()
   await expect(trailingRow).toHaveCount(0)
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(trailingText)
 
   const removableText = 'Filler task 1'
   const removableRow = page.getByRole('listitem', { name: `Plan item: ${removableText}`, exact: true })
   await removableRow.getByRole('button', { name: `Task options for ${removableText}`, exact: true }).click()
-  await removableRow.getByRole('menuitem', { name: 'Remove' }).click()
+  await page.getByRole('menuitem', { name: 'Remove' }).click()
   await expect(removableRow).toHaveCount(0)
 })
 

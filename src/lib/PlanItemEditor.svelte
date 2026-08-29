@@ -131,7 +131,7 @@
   let mobileTaskMenu: HTMLDivElement | null = null
   let mobileTaskMenuPosition: { left: number; top: number; maxHeight: number } | null = null
   let suppressCheckboxClick = false
-  let mobileCheckboxStartedWithTaskCaret: boolean | null = null
+  let mobileTaskMenuPositionFrame: number | null = null
 
   type MobileCheckboxDrag = {
     pointerId: number
@@ -207,8 +207,49 @@
 
     mobileMenuOpen = true
     mobileTaskMenuPosition = null
+    dismissActiveTaskEditor()
     await tick()
     positionMobileTaskMenu()
+  }
+
+  function mountMobileTaskMenu(node: HTMLDivElement) {
+    mobileTaskMenu = node
+    // A fixed descendant can still be positioned relative to a transformed or
+    // contained task-list ancestor on mobile. Keep the popup at the document
+    // root so its measured viewport coordinates remain viewport coordinates.
+    document.body.appendChild(node)
+
+    const visualViewport = window.visualViewport
+    const resizeObserver = new ResizeObserver(scheduleMobileTaskMenuPosition)
+    resizeObserver.observe(node)
+    if (mobileTaskMenuButton) resizeObserver.observe(mobileTaskMenuButton)
+    window.addEventListener('resize', scheduleMobileTaskMenuPosition)
+    window.addEventListener('scroll', scheduleMobileTaskMenuPosition, true)
+    visualViewport?.addEventListener('resize', scheduleMobileTaskMenuPosition)
+    visualViewport?.addEventListener('scroll', scheduleMobileTaskMenuPosition)
+    scheduleMobileTaskMenuPosition()
+
+    return {
+      destroy() {
+        resizeObserver.disconnect()
+        window.removeEventListener('resize', scheduleMobileTaskMenuPosition)
+        window.removeEventListener('scroll', scheduleMobileTaskMenuPosition, true)
+        visualViewport?.removeEventListener('resize', scheduleMobileTaskMenuPosition)
+        visualViewport?.removeEventListener('scroll', scheduleMobileTaskMenuPosition)
+        if (mobileTaskMenuPositionFrame !== null) cancelAnimationFrame(mobileTaskMenuPositionFrame)
+        mobileTaskMenuPositionFrame = null
+        mobileTaskMenu = null
+        node.remove()
+      },
+    }
+  }
+
+  function scheduleMobileTaskMenuPosition() {
+    if (mobileTaskMenuPositionFrame !== null) return
+    mobileTaskMenuPositionFrame = requestAnimationFrame(() => {
+      mobileTaskMenuPositionFrame = null
+      positionMobileTaskMenu()
+    })
   }
 
   function positionMobileTaskMenu() {
@@ -248,11 +289,7 @@
   }
 
   function beginMobileCheckboxDrag(event: PointerEvent) {
-    // Capture this before the checkbox tap changes DOM focus. A mobile user who
-    // is only scrolling and checking tasks should not acquire a new caret.
-    if (mobile && event.isPrimary && event.button === 0) {
-      mobileCheckboxStartedWithTaskCaret = activeTaskEditorHasCaret()
-    }
+    if (mobile && event.isPrimary && event.button === 0) dismissActiveTaskEditor()
 
     if (
       !mobile ||
@@ -402,23 +439,19 @@
     const done = event.currentTarget.checked
     patchItem(planId, item.id, { done })
     if (done) focusBelowAfterCheckboxCompletion([item.id])
-    else mobileCheckboxStartedWithTaskCaret = null
   }
 
-  function activeTaskEditorHasCaret() {
+  function dismissActiveTaskEditor() {
     const active = document.activeElement
-    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-focus-target]')) return false
-
-    const selection = document.getSelection()
-    if (!selection || selection.rangeCount === 0) return false
-    const range = selection.getRangeAt(0)
-    return active.contains(range.startContainer) && active.contains(range.endContainer)
+    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-focus-target]')) return
+    document.getSelection()?.removeAllRanges()
+    active.blur()
   }
 
   function focusBelowAfterCheckboxCompletion(itemIds: Id[]) {
-    const shouldFocus = !mobile || mobileCheckboxStartedWithTaskCaret === true
-    mobileCheckboxStartedWithTaskCaret = null
-    if (shouldFocus) void focusTaskBelow(planId, itemIds)
+    // Checkbox taps are a complete mobile interaction: never move the editor or
+    // reopen the software keyboard just because the checked row had the caret.
+    if (!mobile) void focusTaskBelow(planId, itemIds)
   }
 
   onDestroy(cancelMobileCheckboxDrag)
@@ -454,7 +487,11 @@
   }
 
   function handleWindowPointerDown(event: PointerEvent) {
-    if (!mobileMenuOpen || mobileTaskActions?.contains(event.target as Node)) return
+    if (
+      !mobileMenuOpen ||
+      mobileTaskActions?.contains(event.target as Node) ||
+      mobileTaskMenu?.contains(event.target as Node)
+    ) return
     mobileMenuOpen = false
   }
 
@@ -937,7 +974,7 @@
           <div
             class="mobile-task-menu"
             class:positioned={mobileTaskMenuPosition !== null}
-            bind:this={mobileTaskMenu}
+            use:mountMobileTaskMenu
             style:left={mobileTaskMenuPosition ? `${mobileTaskMenuPosition.left}px` : null}
             style:top={mobileTaskMenuPosition ? `${mobileTaskMenuPosition.top}px` : null}
             style:max-height={mobileTaskMenuPosition ? `${mobileTaskMenuPosition.maxHeight}px` : null}
