@@ -263,6 +263,135 @@ test('cut nested children stay removed after paste, comparison layout, and reloa
   await expect(primaryPane.locator('[data-plan-text-input]').filter({ hasText: 'Write down next action' })).toHaveCount(1)
 })
 
+test('three tasks cut to tomorrow never render back on the completed source day', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'The reported cut and split-view sequence is a desktop workflow.')
+
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  const logicalToday = await paneFor(page, 'Daily plan').locator('.date-input').inputValue()
+  const dates = await page.evaluate((today) => {
+    localStorage.clear()
+    const tomorrowDate = new Date(`${today}T12:00:00`)
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1)
+    const tomorrow = tomorrowDate.toISOString().slice(0, 10)
+    const item = (id: string, text: string, done = false, children: unknown[] = []) => ({
+      id,
+      text,
+      html: text,
+      done,
+      startMinutes: null,
+      endMinutes: null,
+      children,
+    })
+    const retained = Array.from({ length: 8 }, (_, index) =>
+      item(`retained-${index}`, `Retained source task ${index}`, index < 7),
+    )
+    const moved = Array.from({ length: 3 }, (_, index) =>
+      item(`original-moved-${index}`, `Synthetic moved task ${index}`),
+    )
+    const completedChild = (root: number, child: number) =>
+      item(`trace-child-${root}-${child}`, `Completed trace child ${root}-${child}`, true)
+    const traceShapedRoots = Array.from({ length: 19 }, (_, root) =>
+      item(
+        `trace-root-${root}`,
+        `Completed trace root ${root}`,
+        true,
+        root >= 8 ? [completedChild(root, 0), completedChild(root, 1)] : [],
+      ),
+    )
+    localStorage.setItem('balance.appState.v1', JSON.stringify({
+      schemaVersion: 1,
+      deviceId: 'trace-repro-device',
+      localSequence: 0,
+      historyRevision: 0,
+      activePlanDate: today,
+      templates: [],
+      plans: [
+        { id: 'source-plan', date: today, dailyReminder: '', items: [...retained, ...moved] },
+        { id: 'target-plan', date: tomorrow, dailyReminder: '', items: traceShapedRoots },
+      ],
+      goals: [],
+      goalCompletions: [],
+      operations: [],
+    }))
+    return { today, tomorrow }
+  }, logicalToday)
+  await page.reload()
+
+  const primaryPane = paneFor(page, 'Daily plan')
+  const sourceDate = primaryPane.locator('.date-input')
+  const movedText = (index: number) => `Synthetic moved task ${index}`
+  const row = (text: string) => primaryPane.getByRole('listitem', { name: `Plan item: ${text}`, exact: true })
+
+  await row(movedText(0)).locator('[data-plan-text-input]').click()
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(primaryPane.locator('.plan-row.selected')).toHaveCount(3)
+  await page.keyboard.press('Meta+X')
+  for (let index = 0; index < 3; index += 1) await expect(row(movedText(index))).toHaveCount(0)
+
+  await sourceDate.fill(dates.tomorrow)
+  await expect(row('Completed trace root 0')).toBeVisible()
+  await row('Completed trace root 18').locator('[data-plan-text-input]').click()
+  await page.keyboard.press('Meta+V')
+  for (let index = 0; index < 3; index += 1) await expect(row(movedText(index))).toHaveCount(1)
+
+  await sourceDate.fill(dates.today)
+  await expect(row('Retained source task 7')).toBeVisible()
+  const finalSourceCheckbox = row('Retained source task 7').getByRole('checkbox', { name: 'Complete item' })
+  await finalSourceCheckbox.check()
+  await row('Retained source task 6').getByRole('checkbox', { name: 'Complete item' }).uncheck()
+  await row('Retained source task 6').getByRole('checkbox', { name: 'Complete item' }).check()
+  await expect(primaryPane.locator('.plan-row.done')).toHaveCount(8)
+
+  await page.getByRole('button', { name: 'Compare with another day' }).click()
+  await expect(paneFor(page, 'Compared day')).toBeVisible()
+  await page.setViewportSize({ width: 760, height: 850 })
+  await page.setViewportSize({ width: 1280, height: 850 })
+  await page.getByRole('button', { name: 'Close day comparison' }).click()
+  await page.waitForTimeout(2_500)
+  await page.reload()
+
+  await expect(sourceDate).toHaveValue(dates.today)
+  await expect(primaryPane.locator('[data-plan-item-id]')).toHaveCount(8)
+  await expect(primaryPane.locator('.plan-row.done')).toHaveCount(8)
+  for (let index = 0; index < 3; index += 1) await expect(row(movedText(index))).toHaveCount(0)
+
+  await sourceDate.fill(dates.tomorrow)
+  await expect(primaryPane.locator('[data-plan-item-id]')).toHaveCount(44)
+  for (let index = 0; index < 3; index += 1) {
+    await expect(row(movedText(index))).toHaveCount(1)
+    await expect(row(movedText(index)).getByRole('checkbox', { name: 'Complete item' })).not.toBeChecked()
+  }
+
+  const stored = await page.evaluate(({ today, tomorrow }) => {
+    type Item = { id: string; text: string; done: boolean; children: Item[] }
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const flatten = (items: Item[]): Item[] => items.flatMap((candidate) => [candidate, ...flatten(candidate.children)])
+    const itemsFor = (date: string) => flatten(state.plans.find((plan: { date: string }) => plan.date === date).items)
+    const source = itemsFor(today)
+    const target = itemsFor(tomorrow)
+    return {
+      sourceCount: source.length,
+      sourceDone: source.filter((item) => item.done).length,
+      sourceMoved: source.filter((item) => item.text.startsWith('Synthetic moved task')).length,
+      targetCount: target.length,
+      targetMoved: target.filter((item) => item.text.startsWith('Synthetic moved task')).length,
+      oldIdsPresent: [...source, ...target].some((item) => item.id.startsWith('original-moved-')),
+    }
+  }, dates)
+  expect(stored).toEqual({
+    sourceCount: 8,
+    sourceDone: 8,
+    sourceMoved: 0,
+    targetCount: 44,
+    targetMoved: 3,
+    oldIdsPresent: false,
+  })
+})
+
 async function storedTree(page: Page, parentId: string) {
   return page.evaluate((expectedParentId) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')

@@ -397,6 +397,82 @@ fn paste_tasks_operation() -> Value {
     })
 }
 
+fn cross_day_cut_paste_state(device_id: &str) -> Value {
+    let mut fixture = cut_paste_state(device_id);
+    fixture["plans"][0]["items"][0]["children"]
+        .as_array_mut()
+        .expect("source children")
+        .push(json!({
+            "id": "original-task-c",
+            "text": "Synthetic moved task C",
+            "html": "Synthetic moved task C",
+            "done": false,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": []
+        }));
+    fixture["plans"].as_array_mut().expect("plans").push(json!({
+        "id": "tomorrow-plan",
+        "date": "2026-08-28",
+        "title": "Friday",
+        "dailyReminder": "",
+        "generatedFromTemplateId": null,
+        "createdAt": "2026-08-27T08:00:00.000Z",
+        "items": [{
+            "id": "tomorrow-anchor",
+            "text": "Tomorrow anchor",
+            "html": "Tomorrow anchor",
+            "done": true,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": []
+        }]
+    }));
+    fixture
+}
+
+fn cross_day_cut_operation() -> Value {
+    json!({
+        "id": "desktop-cross-day-cut-operation",
+        "deviceId": "desktop",
+        "sequence": 1,
+        "type": "delete_plan_items",
+        "timestamp": "2026-08-27T18:00:00.000Z",
+        "payload": {
+            "planId": "cut-paste-plan",
+            "itemIds": ["original-task-a", "original-task-b", "original-task-c"],
+            "completedParentIds": ["morning-block"]
+        }
+    })
+}
+
+fn cross_day_paste_operation() -> Value {
+    let item = |suffix: &str| {
+        json!({
+            "id": format!("cross-day-pasted-task-{suffix}"),
+            "text": format!("Synthetic moved task {}", suffix.to_uppercase()),
+            "html": format!("Synthetic moved task {}", suffix.to_uppercase()),
+            "done": false,
+            "startMinutes": null,
+            "endMinutes": null,
+            "children": []
+        })
+    };
+    json!({
+        "id": "desktop-cross-day-paste-operation",
+        "deviceId": "desktop",
+        "sequence": 2,
+        "type": "paste_plan_items",
+        "timestamp": "2026-08-27T18:00:01.000Z",
+        "payload": {
+            "planId": "tomorrow-plan",
+            "targetId": "tomorrow-anchor",
+            "placement": "after",
+            "items": [item("a"), item("b"), item("c")]
+        }
+    })
+}
+
 fn plan_item_ids(items: &Value, ids: &mut Vec<String>) {
     for item in items.as_array().expect("plan items") {
         ids.push(item["id"].as_str().expect("plan item id").to_string());
@@ -591,6 +667,129 @@ fn android_relay_catchup_does_not_duplicate_tasks_cut_and_pasted_on_desktop() {
     assert_eq!(
         domain(&read_app_state_from_database(&desktop).unwrap().unwrap()),
         domain(&read_app_state_from_database(&android).unwrap().unwrap())
+    );
+}
+
+#[test]
+fn delayed_replica_does_not_restore_tasks_cut_and_pasted_to_another_day() {
+    let relay = ReferenceRelay::start();
+    let desktop_scratch = Scratch::new("cross-day-cut-paste-relay-desktop");
+    let replica_scratch = Scratch::new("cross-day-cut-paste-relay-replica");
+    let mut desktop = open_seeded(
+        &desktop_scratch.path,
+        "cross-day-cut-paste-desktop-key",
+        &cross_day_cut_paste_state("desktop"),
+    );
+    let replica = open_seeded(
+        &replica_scratch.path,
+        "cross-day-cut-paste-replica-key",
+        &state("replica", json!([])),
+    );
+    enable_primary(&desktop).unwrap();
+    enable_joiner(&replica).unwrap();
+    let key = SyncKey::generate();
+
+    relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    relay_client::sync_once(
+        &replica,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+
+    persist_operation_to_database(&mut desktop, &cross_day_cut_operation()).unwrap();
+    relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    persist_operation_to_database(&mut desktop, &cross_day_paste_operation()).unwrap();
+    relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+
+    drop(replica);
+    let replica = open_database_at(
+        &replica_scratch.path,
+        &test_database_key("cross-day-cut-paste-replica-key"),
+    )
+    .unwrap();
+    let caught_up = relay_client::sync_once(
+        &replica,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert_eq!(caught_up.pulled_operations, 2);
+
+    for connection in [&desktop, &replica] {
+        let state = read_app_state_from_database(connection).unwrap().unwrap();
+        let source = state["plans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|plan| plan["id"] == "cut-paste-plan")
+            .unwrap();
+        let target = state["plans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|plan| plan["id"] == "tomorrow-plan")
+            .unwrap();
+        let mut source_ids = Vec::new();
+        let mut target_ids = Vec::new();
+        plan_item_ids(&source["items"], &mut source_ids);
+        plan_item_ids(&target["items"], &mut target_ids);
+        assert!(!source_ids.iter().any(|id| id.starts_with("original-task-")));
+        assert_eq!(
+            target_ids
+                .iter()
+                .filter(|id| id.starts_with("cross-day-pasted-task-"))
+                .count(),
+            3
+        );
+        assert_eq!(source["items"][0]["done"], true);
+    }
+
+    drop(replica);
+    let replica = open_database_at(
+        &replica_scratch.path,
+        &test_database_key("cross-day-cut-paste-replica-key"),
+    )
+    .unwrap();
+    let restarted = relay_client::sync_once(
+        &replica,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert_eq!(restarted.pulled_operations, 0);
+    assert_eq!(restarted.pushed_operations, 0);
+    relay_client::sync_once(
+        &desktop,
+        &relay.url,
+        &key,
+        relay_client::SyncOptions::foreground(true),
+    )
+    .unwrap();
+    assert_eq!(
+        domain(&read_app_state_from_database(&desktop).unwrap().unwrap()),
+        domain(&read_app_state_from_database(&replica).unwrap().unwrap())
     );
 }
 
