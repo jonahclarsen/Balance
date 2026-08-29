@@ -2997,7 +2997,7 @@ export async function syncAnonymousDiagnostics(frontendStateJson: string): Promi
   if (!isTauri()) throw new Error('Anonymous sync diagnostics require the Balance app.')
   await flushOperations()
   const today = todayISO()
-  const nearbyDates = [-2, -1, 0, 1, 2].map((offset) => shiftCalendarDateISO(today, offset))
+  const nearbyDates = [today, shiftCalendarDateISO(today, -1)]
   return invoke<string>('sync_anonymous_diagnostics', { frontendStateJson, nearbyDates })
 }
 

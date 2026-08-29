@@ -16289,14 +16289,7 @@ mod tests {
         let mut frontend_state = state.clone();
         frontend_state["plans"][0]["items"][0]["text"] = json!("Canary frontend-only task text");
         frontend_state["activePlanDate"] = json!("2026-05-20");
-        let nearby_dates = [
-            "2026-05-19",
-            "2026-05-20",
-            "2026-05-21",
-            "2026-05-22",
-            "2026-05-23",
-        ]
-        .map(String::from);
+        let nearby_dates = ["2026-05-21", "2026-05-20"].map(String::from);
         let trace = sync::diagnostics::anonymous_sync_trace(
             &connection,
             &key,

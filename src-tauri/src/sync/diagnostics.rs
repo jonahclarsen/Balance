@@ -17,11 +17,11 @@ use sha2::Sha256;
 use super::crypto::SyncKey;
 use super::{ensure_sync_tables, sync_frontiers, Error, Op, Result};
 
-const TRACE_FORMAT: &str = "balance-anonymous-sync-trace-v3";
+const TRACE_FORMAT: &str = "balance-anonymous-sync-trace-v4";
 const TOKEN_BYTES: usize = 20;
 const MAX_TRACE_OPERATIONS: usize = 300;
 const MAX_QUARANTINE_ROWS: usize = 20;
-const NEARBY_DAY_RADIUS: i64 = 2;
+const NEARBY_DAY_OFFSETS: [i64; 2] = [0, -1];
 const MAX_NEARBY_PLAN_ITEMS: usize = 50;
 
 struct Tokenizer<'a> {
@@ -265,18 +265,18 @@ fn nearby_plan_inventory(
     tokenizer: &Tokenizer<'_>,
     nearby_dates: &[String],
 ) -> Result<Value> {
-    let expected_dates = (NEARBY_DAY_RADIUS * 2 + 1) as usize;
+    let expected_dates = NEARBY_DAY_OFFSETS.len();
     if nearby_dates.len() != expected_dates
         || nearby_dates.iter().collect::<HashSet<_>>().len() != expected_dates
     {
         return Err(Error::Codec(
-            "nearby diagnostic dates must contain five distinct days".into(),
+            "nearby diagnostic dates must contain today and yesterday".into(),
         ));
     }
     let date_offsets = nearby_dates
         .iter()
         .enumerate()
-        .map(|(index, date)| (date.as_str(), index as i64 - NEARBY_DAY_RADIUS))
+        .map(|(index, date)| (date.as_str(), NEARBY_DAY_OFFSETS[index]))
         .collect::<HashMap<_, _>>();
     let active_date = state.get("activePlanDate").and_then(Value::as_str);
     let active_day_offset = active_date.and_then(|date| date_offsets.get(date).copied());
@@ -292,7 +292,7 @@ fn nearby_plan_inventory(
             Some((day_offset, tokenizer.value_token(plan_id), plan))
         })
         .collect::<Vec<_>>();
-    selected_plans.sort_by(|left, right| (left.0, &left.1).cmp(&(right.0, &right.1)));
+    selected_plans.sort_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
 
     let plans = selected_plans
         .iter()
@@ -710,7 +710,7 @@ pub fn anonymous_sync_trace(
         "privacy": {
             "rawUserDataStringsIncluded": false,
             "tokenMethod": "HMAC-SHA256/account-sync-key",
-            "warning": "This reveals recent operation types, ordering, relative timing, numeric task fields, equality relationships, occurrence counts for recent identifiers, and the structure and completion state of up to 50 tasks within two days of local today.",
+            "warning": "This reveals recent operation types, ordering, relative timing, numeric task fields, equality relationships, occurrence counts for recent identifiers, and the structure and completion state of up to 50 tasks from today followed by yesterday.",
         },
         "build": {
             "version": app_version,
@@ -732,8 +732,9 @@ pub fn anonymous_sync_trace(
         "operations": operation_trace(connection, &tokenizer, &operations)?,
         "recentIdentifierPresence": recent_identifier_presence,
         "nearbyPlanStructure": {
-            "minimumDayOffset": -NEARBY_DAY_RADIUS,
-            "maximumDayOffset": NEARBY_DAY_RADIUS,
+            "minimumDayOffset": -1,
+            "maximumDayOffset": 0,
+            "selectionOrder": "today-then-yesterday",
             "maximumItems": MAX_NEARBY_PLAN_ITEMS,
             "comparisonComplete": nearby_comparison_complete,
             "matchesDatabase": nearby_matches_database,
@@ -907,14 +908,7 @@ mod tests {
                 }
             ]
         });
-        let dates = [
-            "2026-08-27",
-            "2026-08-28",
-            "2026-08-29",
-            "2026-08-30",
-            "2026-08-31",
-        ]
-        .map(String::from);
+        let dates = ["2026-08-29", "2026-08-28"].map(String::from);
 
         let inventory = nearby_plan_inventory(&state, &tokenizer, &dates).unwrap();
         let serialized = serde_json::to_string(&inventory).unwrap();
@@ -932,9 +926,9 @@ mod tests {
         assert_eq!(inventory["plans"].as_array().unwrap().len(), 2);
         assert_eq!(inventory["items"].as_array().unwrap().len(), 3);
         assert_eq!(inventory["activeDayOffset"], 0);
-        let yesterday = &inventory["items"][0];
-        let child = &inventory["items"][1];
-        let today = &inventory["items"][2];
+        let today = &inventory["items"][0];
+        let yesterday = &inventory["items"][1];
+        let child = &inventory["items"][2];
         assert_eq!(yesterday["dayOffset"], -1);
         assert_eq!(today["dayOffset"], 0);
         assert_ne!(yesterday["itemId"], today["itemId"]);
@@ -947,37 +941,72 @@ mod tests {
     }
 
     #[test]
-    fn nearby_inventory_caps_large_days() {
+    fn nearby_inventory_starts_with_today_then_yesterday() {
         let key = SyncKey::from_bytes([11; 32]);
         let tokenizer = Tokenizer { key: &key };
-        let items = (0..=MAX_NEARBY_PLAN_ITEMS)
+        let yesterday_items = (0..MAX_NEARBY_PLAN_ITEMS)
             .map(|index| {
                 json!({
-                    "id": format!("item-{index}"),
-                    "text": format!("private item {index}"),
-                    "html": format!("private item {index}"),
+                    "id": format!("yesterday-item-{index}"),
+                    "text": format!("private yesterday item {index}"),
+                    "html": format!("private yesterday item {index}"),
                     "done": false,
                     "children": []
                 })
             })
             .collect::<Vec<_>>();
         let state = json!({
-            "plans": [{"id": "plan", "date": "2026-08-29", "items": items}]
+            "plans": [
+                {
+                    "id": "yesterday-plan",
+                    "date": "2026-08-28",
+                    "items": yesterday_items
+                },
+                {
+                    "id": "today-plan",
+                    "date": "2026-08-29",
+                    "items": [{
+                        "id": "today-item",
+                        "text": "private today item",
+                        "html": "private today item",
+                        "done": false,
+                        "children": []
+                    }]
+                },
+                {
+                    "id": "older-plan",
+                    "date": "2026-08-27",
+                    "items": [{"id": "older-item", "text": "private older item", "children": []}]
+                }
+            ]
         });
-        let dates = [
-            "2026-08-27",
-            "2026-08-28",
-            "2026-08-29",
-            "2026-08-30",
-            "2026-08-31",
-        ]
-        .map(String::from);
+        let dates = ["2026-08-29", "2026-08-28"].map(String::from);
 
         let inventory = nearby_plan_inventory(&state, &tokenizer, &dates).unwrap();
+        assert_eq!(inventory["plans"].as_array().unwrap().len(), 2);
         assert_eq!(inventory["includedItems"], MAX_NEARBY_PLAN_ITEMS);
         assert_eq!(
             inventory["items"].as_array().unwrap().len(),
             MAX_NEARBY_PLAN_ITEMS
+        );
+        assert_eq!(inventory["items"][0]["dayOffset"], 0);
+        assert_eq!(
+            inventory["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|item| item["dayOffset"] == 0)
+                .count(),
+            1
+        );
+        assert_eq!(
+            inventory["items"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|item| item["dayOffset"] == -1)
+                .count(),
+            MAX_NEARBY_PLAN_ITEMS - 1
         );
         assert_eq!(inventory["truncated"], true);
     }

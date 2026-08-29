@@ -461,7 +461,7 @@
           Saves only the newest 300 changes, their ordering and relative timing,
           limited relay status, and fingerprints showing whether the current screen
           and database agree. It also saves a structural inventory of at most 50
-          tasks from the five days surrounding today so moved copies can be compared.
+          tasks, starting with today and then yesterday, so moved copies can be compared.
           It does not include a full copy of either state. Task text, dates, URLs,
           keys, and every other data string are replaced with one-way account-keyed
           tokens.
