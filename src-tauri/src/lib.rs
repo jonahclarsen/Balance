@@ -16254,6 +16254,24 @@ mod tests {
             .unwrap();
         connection
             .execute(
+                "INSERT INTO sync_relay_known_ops (op_id) VALUES (?1)",
+                params!["canary-historical-known-operation-id"],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sync_relay_outbox (batch_id, epoch, ciphertext, op_ids_json)
+                 VALUES (?1, ?2, ?3, ?4)",
+                params![
+                    "canary-private-batch",
+                    "canary-private-relay-epoch",
+                    vec![1_u8, 2, 3],
+                    r#"["canary-operation-id","canary-historical-known-operation-id"]"#
+                ],
+            )
+            .unwrap();
+        connection
+            .execute(
                 "INSERT INTO sync_relay_quarantine (blob_id, error, recorded_at_ms) VALUES (?1, ?2, ?3)",
                 params!["canary-private-blob", "Canary private quarantine error", current_timestamp_ms()],
             )
@@ -16287,6 +16305,8 @@ mod tests {
             "device_test",
             "plan_today",
             "canary-operation-id",
+            "canary-historical-known-operation-id",
+            "canary-private-batch",
             "canary-private-relay-epoch",
             "private.example",
             "Canary private quarantine error",
@@ -16309,8 +16329,34 @@ mod tests {
             .keys()
             .any(|key| key.starts_with("field_")));
         assert_eq!(trace["relay"]["cursor"], 9);
+        assert_eq!(
+            trace["relay"]["knownRecentOperationIds"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(trace["relay"].get("knownOperationIds").is_none());
+        assert_eq!(trace["relay"]["outbox"].as_array().unwrap().len(), 1);
+        assert_eq!(
+            trace["relay"]["outbox"][0]["operationIds"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1
+        );
+        assert_eq!(trace["relay"]["outbox"][0]["containsOtherOperations"], true);
         assert_eq!(trace["relay"]["quarantine"].as_array().unwrap().len(), 1);
         assert_eq!(trace["frontend"]["matchesDatabase"], false);
+        assert!(trace.get("materializedState").is_none());
+        assert!(trace["frontend"].get("state").is_none());
+        assert_eq!(trace["window"]["maximumOperations"], 300);
+        assert_eq!(trace["window"]["truncated"], false);
+        assert!(trace["recentIdentifierPresence"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|entry| entry["databaseOccurrences"] == 1 && entry["frontendOccurrences"] == 1));
         assert_ne!(
             trace["frontend"]["stateToken"],
             trace["materializedStateToken"]

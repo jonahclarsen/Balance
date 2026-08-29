@@ -299,8 +299,8 @@
     try {
       const content = await syncAnonymousDiagnostics(JSON.stringify($plannerStore))
       const date = new Date().toISOString().slice(0, 10)
-      diagnosticPath = await saveExportFile(`balance-anonymous-sync-trace-${date}.json`, content)
-      setStatus('Anonymous sync trace saved. Export the trace on your other device too, then compare the two files.')
+      diagnosticPath = await saveExportFile(`balance-recent-anonymous-sync-trace-${date}.json`, content)
+      setStatus('Recent anonymous sync trace saved. Export one on your other device too, then compare the two files.')
     } catch (err) {
       setStatus(`Could not export anonymous sync trace: ${err}`, true)
     } finally {
@@ -456,25 +456,26 @@
 
     {#if syncEnabled}
       <div class="sync-diagnostics">
-        <strong>Anonymous sync diagnostics</strong>
+        <strong>Recent anonymous sync diagnostics</strong>
         <p>
-          Saves operation ordering, relative timing, opaque entity relationships,
-          relay cursors, and both the current screen state and database state. Task
+          Saves only the newest 300 changes, their ordering and relative timing,
+          limited relay status, and fingerprints showing whether the current screen
+          and database agree. It does not include a full copy of either state. Task
           text, dates, URLs, keys, and every other data string are replaced with
           one-way account-keyed tokens.
         </p>
         <div class="sync-actions">
           <button type="button" on:click={exportAnonymousDiagnostics} disabled={busy || diagnosticBusy}>
-            {diagnosticBusy ? 'Preparing trace…' : 'Export anonymous sync trace'}
+            {diagnosticBusy ? 'Preparing trace…' : 'Export recent anonymous sync trace'}
           </button>
           {#if diagnosticPath}
             <span class="sync-state">Saved to {diagnosticPath}</span>
           {/if}
         </div>
         <p class="sync-disclosure">
-          The file still reveals operation types, counts, order, time gaps,
-          numeric task fields, whether opaque values match, and whether the current
-          screen state matches the database state.
+          The file still reveals recent operation types, order, time gaps, numeric
+          task fields, whether opaque values match, and occurrence counts for IDs
+          referenced by those recent operations.
         </p>
       </div>
     {/if}

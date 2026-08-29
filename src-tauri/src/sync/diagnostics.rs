@@ -6,7 +6,7 @@
 //! operation/entity/content while someone holding only the export cannot test
 //! guesses or recover the original value.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use data_encoding::BASE32_NOPAD;
 use hmac::{Hmac, Mac};
@@ -15,10 +15,12 @@ use serde_json::{json, Map, Value};
 use sha2::Sha256;
 
 use super::crypto::SyncKey;
-use super::{all_ops, ensure_sync_tables, sync_frontiers, Error, Result};
+use super::{ensure_sync_tables, sync_frontiers, Error, Op, Result};
 
-const TRACE_FORMAT: &str = "balance-anonymous-sync-trace-v1";
+const TRACE_FORMAT: &str = "balance-anonymous-sync-trace-v2";
 const TOKEN_BYTES: usize = 20;
+const MAX_TRACE_OPERATIONS: usize = 300;
+const MAX_QUARANTINE_ROWS: usize = 20;
 
 struct Tokenizer<'a> {
     key: &'a SyncKey,
@@ -201,6 +203,114 @@ fn domain_state(mut state: Value) -> Value {
     state
 }
 
+fn recent_operations(operations: &[Op]) -> &[Op] {
+    &operations[operations.len().saturating_sub(MAX_TRACE_OPERATIONS)..]
+}
+
+fn load_recent_operations(connection: &Connection) -> Result<(Vec<Op>, bool)> {
+    let mut statement = connection.prepare(
+        "SELECT id, device_id, sequence, type, timestamp, payload_json
+         FROM (
+           SELECT id, device_id, sequence, type, timestamp, payload_json
+           FROM operations
+           ORDER BY timestamp DESC, device_id DESC, sequence DESC, id DESC
+           LIMIT ?1
+         )
+         ORDER BY timestamp, device_id, sequence, id",
+    )?;
+    let fetched = statement
+        .query_map(params![MAX_TRACE_OPERATIONS + 1], |row| {
+            Ok(Op {
+                id: row.get(0)?,
+                device_id: row.get(1)?,
+                sequence: row.get(2)?,
+                op_type: row.get(3)?,
+                timestamp: row.get(4)?,
+                payload_json: row.get(5)?,
+            })
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+    let truncated = fetched.len() > MAX_TRACE_OPERATIONS;
+    Ok((recent_operations(&fetched).to_vec(), truncated))
+}
+
+fn identifier_key(key: &str) -> bool {
+    key == "id" || key.ends_with("Id") || key.ends_with("Ids")
+}
+
+fn collect_strings(value: &Value, identifiers: &mut BTreeSet<String>) {
+    match value {
+        Value::String(value) => {
+            identifiers.insert(value.clone());
+        }
+        Value::Array(values) => {
+            for value in values {
+                collect_strings(value, identifiers);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn collect_recent_identifiers(value: &Value, identifiers: &mut BTreeSet<String>) {
+    match value {
+        Value::Array(values) => {
+            for value in values {
+                collect_recent_identifiers(value, identifiers);
+            }
+        }
+        Value::Object(values) => {
+            for (key, value) in values {
+                if identifier_key(key) {
+                    collect_strings(value, identifiers);
+                } else {
+                    collect_recent_identifiers(value, identifiers);
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+fn matching_string_occurrences(
+    value: &Value,
+    identifiers: &HashSet<&str>,
+    occurrences: &mut HashMap<String, usize>,
+) {
+    match value {
+        Value::String(value) if identifiers.contains(value.as_str()) => {
+            *occurrences.entry(value.clone()).or_default() += 1;
+        }
+        Value::Array(values) => {
+            for value in values {
+                matching_string_occurrences(value, identifiers, occurrences);
+            }
+        }
+        Value::Object(values) => {
+            for value in values.values() {
+                matching_string_occurrences(value, identifiers, occurrences);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn diagnostic_payload(operation: &Op, payload: &Value, tokenizer: &Tokenizer<'_>) -> Value {
+    if operation.op_type != "replace_full_state" {
+        return anonymize_json(payload, tokenizer);
+    }
+
+    let state_token = payload.get("state").map(|state| {
+        let serialized = serde_json::to_string(state).unwrap_or_default();
+        tokenizer.opaque_token("checkpoint-state", &serialized)
+    });
+    json!({
+        "generation": payload.get("generation"),
+        "frontiers": payload.get("frontiers").map(|value| anonymize_json(value, tokenizer)),
+        "stateToken": state_token,
+    })
+}
+
 fn elapsed_millis(connection: &Connection, timestamp: &str, earliest: f64) -> Option<i64> {
     connection
         .query_row(
@@ -213,18 +323,27 @@ fn elapsed_millis(connection: &Connection, timestamp: &str, earliest: f64) -> Op
         .flatten()
 }
 
-fn operation_trace(connection: &Connection, tokenizer: &Tokenizer<'_>) -> Result<Vec<Value>> {
-    let operations = all_ops(connection)?;
-    let earliest = connection
-        .query_row(
-            "SELECT min(julianday(timestamp)) FROM operations",
-            [],
-            |row| row.get::<_, Option<f64>>(0),
-        )?
+fn operation_trace(
+    connection: &Connection,
+    tokenizer: &Tokenizer<'_>,
+    operations: &[Op],
+) -> Result<Vec<Value>> {
+    let earliest = operations
+        .first()
+        .and_then(|operation| {
+            connection
+                .query_row(
+                    "SELECT julianday(?1)",
+                    params![operation.timestamp],
+                    |row| row.get::<_, Option<f64>>(0),
+                )
+                .ok()
+                .flatten()
+        })
         .unwrap_or(0.0);
     let mut previous_elapsed = None;
     operations
-        .into_iter()
+        .iter()
         .enumerate()
         .map(|(canonical_index, operation)| {
             let payload: Value = serde_json::from_str(&operation.payload_json)
@@ -245,13 +364,18 @@ fn operation_trace(connection: &Connection, tokenizer: &Tokenizer<'_>) -> Result
                 "timestampToken": tokenizer.opaque_token("timestamp", &operation.timestamp),
                 "elapsedMs": elapsed,
                 "previousGapMs": gap,
-                "payload": anonymize_json(&payload, tokenizer),
+                "payload": diagnostic_payload(operation, &payload, tokenizer),
             }))
         })
         .collect()
 }
 
-fn relay_trace(connection: &Connection, tokenizer: &Tokenizer<'_>, now_ms: i64) -> Result<Value> {
+fn relay_trace(
+    connection: &Connection,
+    tokenizer: &Tokenizer<'_>,
+    now_ms: i64,
+    recent_operation_ids: &HashSet<&str>,
+) -> Result<Value> {
     super::relay_client::ensure_relay_tables(connection)?;
     let (epoch, cursor, last_success_ms, last_error) = connection.query_row(
         "SELECT epoch, cursor, last_success_ms, last_error FROM sync_relay_state WHERE singleton = 1",
@@ -266,15 +390,21 @@ fn relay_trace(connection: &Connection, tokenizer: &Tokenizer<'_>, now_ms: i64) 
         },
     )?;
 
-    let known_operations = {
-        let mut statement =
-            connection.prepare("SELECT op_id FROM sync_relay_known_ops ORDER BY op_id")?;
-        let rows = statement
-            .query_map([], |row| row.get::<_, String>(0))?
-            .collect::<std::result::Result<Vec<_>, _>>()?;
-        rows.into_iter()
-            .map(|id| tokenizer.id_token(&id))
-            .collect::<Vec<_>>()
+    let known_recent_operations = {
+        let mut statement = connection
+            .prepare("SELECT EXISTS(SELECT 1 FROM sync_relay_known_ops WHERE op_id = ?1)")?;
+        let mut known = recent_operation_ids
+            .iter()
+            .filter_map(|id| {
+                statement
+                    .query_row(params![id], |row| row.get::<_, bool>(0))
+                    .ok()
+                    .filter(|known| *known)
+                    .map(|_| tokenizer.id_token(id))
+            })
+            .collect::<Vec<_>>();
+        known.sort();
+        known
     };
 
     let outbox = {
@@ -290,16 +420,21 @@ fn relay_trace(connection: &Connection, tokenizer: &Tokenizer<'_>, now_ms: i64) 
             })?
             .collect::<std::result::Result<Vec<_>, _>>()?;
         rows.into_iter()
-            .map(|(batch_id, epoch, ids_json)| {
-                let operation_ids = serde_json::from_str::<Vec<String>>(&ids_json)
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|id| tokenizer.id_token(&id))
+            .filter_map(|(batch_id, epoch, ids_json)| {
+                let all_operation_ids =
+                    serde_json::from_str::<Vec<String>>(&ids_json).unwrap_or_default();
+                let operation_ids = all_operation_ids
+                    .iter()
+                    .filter(|id| recent_operation_ids.contains(id.as_str()))
+                    .map(|id| tokenizer.id_token(id))
                     .collect::<Vec<_>>();
-                json!({
-                    "batch": tokenizer.opaque_token("batch", &batch_id),
-                    "epoch": tokenizer.opaque_token("epoch", &epoch),
-                    "operationIds": operation_ids,
+                (!operation_ids.is_empty()).then(|| {
+                    json!({
+                        "batch": tokenizer.opaque_token("batch", &batch_id),
+                        "epoch": tokenizer.opaque_token("epoch", &epoch),
+                        "operationIds": operation_ids,
+                        "containsOtherOperations": all_operation_ids.len() > operation_ids.len(),
+                    })
                 })
             })
             .collect::<Vec<_>>()
@@ -307,10 +442,11 @@ fn relay_trace(connection: &Connection, tokenizer: &Tokenizer<'_>, now_ms: i64) 
 
     let quarantine = {
         let mut statement = connection.prepare(
-            "SELECT blob_id, error, recorded_at_ms FROM sync_relay_quarantine ORDER BY recorded_at_ms, blob_id",
+            "SELECT blob_id, error, recorded_at_ms FROM sync_relay_quarantine
+             ORDER BY recorded_at_ms DESC, blob_id DESC LIMIT ?1",
         )?;
         let rows = statement
-            .query_map([], |row| {
+            .query_map(params![MAX_QUARANTINE_ROWS], |row| {
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
@@ -334,7 +470,7 @@ fn relay_trace(connection: &Connection, tokenizer: &Tokenizer<'_>, now_ms: i64) 
         "cursor": cursor,
         "lastSuccessAgeMs": last_success_ms.map(|value| now_ms.saturating_sub(value)),
         "lastErrorToken": last_error.map(|value| tokenizer.opaque_token("error", &value)),
-        "knownOperationIds": known_operations,
+        "knownRecentOperationIds": known_recent_operations,
         "outbox": outbox,
         "quarantine": quarantine,
     }))
@@ -372,9 +508,46 @@ pub fn anonymous_sync_trace(
         json!({
             "matchesDatabase": frontend == &domain,
             "stateToken": tokenizer.opaque_token("state", &serialized),
-            "state": anonymize_json(frontend, &tokenizer),
         })
     });
+    let (operations, truncated) = load_recent_operations(connection)?;
+    let recent_operation_ids = operations
+        .iter()
+        .map(|operation| operation.id.as_str())
+        .collect::<HashSet<_>>();
+    let mut recent_identifiers = BTreeSet::new();
+    for operation in &operations {
+        if operation.op_type == "replace_full_state" {
+            continue;
+        }
+        let payload: Value = serde_json::from_str(&operation.payload_json)
+            .map_err(|error| Error::Codec(format!("invalid operation payload: {error}")))?;
+        collect_recent_identifiers(&payload, &mut recent_identifiers);
+    }
+    let identifiers = recent_identifiers
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let mut database_occurrences = HashMap::new();
+    matching_string_occurrences(&domain, &identifiers, &mut database_occurrences);
+    let mut frontend_occurrences = HashMap::new();
+    if let Some(frontend) = &frontend_domain {
+        matching_string_occurrences(frontend, &identifiers, &mut frontend_occurrences);
+    }
+    let mut recent_identifier_presence = recent_identifiers
+        .into_iter()
+        .map(|identifier| {
+            json!({
+                "token": tokenizer.value_token(&identifier),
+                "databaseOccurrences": database_occurrences.get(&identifier).copied().unwrap_or(0),
+                "frontendOccurrences": frontend_domain
+                    .as_ref()
+                    .map(|_| frontend_occurrences.get(&identifier).copied().unwrap_or(0)),
+            })
+        })
+        .collect::<Vec<_>>();
+    recent_identifier_presence
+        .sort_by(|left, right| left["token"].as_str().cmp(&right["token"].as_str()));
     let frontiers = sync_frontiers(connection)?
         .into_iter()
         .map(|(device, sequence)| (tokenizer.id_token(&device), sequence))
@@ -386,7 +559,7 @@ pub fn anonymous_sync_trace(
         "privacy": {
             "rawUserDataStringsIncluded": false,
             "tokenMethod": "HMAC-SHA256/account-sync-key",
-            "warning": "This reveals operation types, counts, ordering, relative timing, numeric task fields, and equality relationships.",
+            "warning": "This reveals recent operation types, ordering, relative timing, numeric task fields, equality relationships, and occurrence counts for identifiers referenced by recent operations.",
         },
         "build": {
             "version": app_version,
@@ -398,10 +571,16 @@ pub fn anonymous_sync_trace(
             "localSequence": local_sequence,
         },
         "frontiers": frontiers,
-        "relay": relay_trace(connection, &tokenizer, now_ms)?,
-        "operations": operation_trace(connection, &tokenizer)?,
+        "window": {
+            "policy": "newest-canonical-operations",
+            "maximumOperations": MAX_TRACE_OPERATIONS,
+            "includedOperations": operations.len(),
+            "truncated": truncated,
+        },
+        "relay": relay_trace(connection, &tokenizer, now_ms, &recent_operation_ids)?,
+        "operations": operation_trace(connection, &tokenizer, &operations)?,
+        "recentIdentifierPresence": recent_identifier_presence,
         "materializedStateToken": tokenizer.opaque_token("state", &domain_json),
-        "materializedState": anonymize_json(&domain, &tokenizer),
         "frontend": frontend_trace,
     }))
 }
@@ -426,5 +605,100 @@ mod tests {
         assert_eq!(first.value_token("secret"), first.value_token("secret"));
         assert_ne!(first.value_token("secret"), first.value_token("other"));
         assert_ne!(first.value_token("secret"), second.value_token("secret"));
+    }
+
+    #[test]
+    fn recent_window_is_bounded_and_keeps_canonical_order() {
+        let operations = (0..305)
+            .map(|sequence| Op {
+                id: format!("operation-{sequence}"),
+                device_id: "device".into(),
+                sequence,
+                op_type: "patch_state".into(),
+                timestamp: format!("2026-08-29T00:{:02}:00Z", sequence % 60),
+                payload_json: "{}".into(),
+            })
+            .collect::<Vec<_>>();
+
+        let recent = recent_operations(&operations);
+        assert_eq!(recent.len(), MAX_TRACE_OPERATIONS);
+        assert_eq!(recent.first().unwrap().id, "operation-5");
+        assert_eq!(recent.last().unwrap().id, "operation-304");
+    }
+
+    #[test]
+    fn database_query_returns_only_the_newest_canonical_operations() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE operations (
+                   id TEXT PRIMARY KEY,
+                   device_id TEXT NOT NULL,
+                   sequence INTEGER NOT NULL,
+                   type TEXT NOT NULL,
+                   timestamp TEXT NOT NULL,
+                   payload_json TEXT NOT NULL
+                 );",
+            )
+            .unwrap();
+        for sequence in (0..305_i64).rev() {
+            connection
+                .execute(
+                    "INSERT INTO operations
+                     (id, device_id, sequence, type, timestamp, payload_json)
+                     VALUES (?1, 'device', ?2, 'patch_state', '2026-08-29T00:00:00Z', '{}')",
+                    params![format!("operation-{sequence:03}"), sequence],
+                )
+                .unwrap();
+        }
+
+        let (operations, truncated) = load_recent_operations(&connection).unwrap();
+        assert!(truncated);
+        assert_eq!(operations.len(), MAX_TRACE_OPERATIONS);
+        assert_eq!(operations.first().unwrap().sequence, 5);
+        assert_eq!(operations.last().unwrap().sequence, 304);
+        assert!(operations
+            .windows(2)
+            .all(|window| window[0].sequence < window[1].sequence));
+    }
+
+    #[test]
+    fn checkpoint_trace_uses_a_fingerprint_instead_of_snapshot_contents() {
+        let key = SyncKey::from_bytes([9; 32]);
+        let tokenizer = Tokenizer { key: &key };
+        let operation = Op {
+            id: "checkpoint".into(),
+            device_id: "device".into(),
+            sequence: 0,
+            op_type: "replace_full_state".into(),
+            timestamp: "0000-00-00T00:00:00.000Z".into(),
+            payload_json: "{}".into(),
+        };
+        let payload = json!({
+            "state": {"plans": [{"title": "private checkpoint canary"}]},
+            "generation": 4,
+            "frontiers": {"private-device": 12}
+        });
+        let trace = diagnostic_payload(&operation, &payload, &tokenizer);
+        let serialized = serde_json::to_string(&trace).unwrap();
+
+        assert!(!serialized.contains("private checkpoint canary"));
+        assert!(!serialized.contains("private-device"));
+        assert_eq!(trace["generation"], 4);
+        assert!(trace["stateToken"].as_str().unwrap().starts_with("x_"));
+        assert!(trace.get("state").is_none());
+    }
+
+    #[test]
+    fn identifier_presence_counts_exact_values_only() {
+        let state = json!({
+            "plans": [{"id": "plan-a", "items": [{"id": "task-a"}, {"id": "task-a"}]}],
+            "text": "task-a is not counted inside other text"
+        });
+        let identifiers = HashSet::from(["task-a", "plan-a"]);
+        let mut occurrences = HashMap::new();
+        matching_string_occurrences(&state, &identifiers, &mut occurrences);
+        assert_eq!(occurrences["task-a"], 2);
+        assert_eq!(occurrences["plan-a"], 1);
     }
 }
