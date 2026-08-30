@@ -16208,6 +16208,156 @@ mod tests {
     }
 
     #[test]
+    fn anonymous_history_recovers_cut_paste_and_restore_after_checkpoint() {
+        let database = TestDatabase::new("anonymous-history-after-checkpoint");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Synthetic today");
+        state["plans"].as_array_mut().unwrap().push(json!({
+            "id": "plan_yesterday",
+            "date": "2026-05-20",
+            "title": "Synthetic yesterday",
+            "dailyReminder": "",
+            "generatedFromTemplateId": null,
+            "createdAt": "2026-05-20T00:00:00Z",
+            "items": [{
+                "id": "original_moved_task",
+                "text": "Synthetic private moved text",
+                "html": "Synthetic private moved text",
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }]
+        }));
+        replace_app_state(&mut connection, &state).unwrap();
+
+        let operation = |id: &str, sequence: i64, operation_type: &str, payload: Value| {
+            json!({
+                "id": id,
+                "deviceId": "device_test",
+                "sequence": sequence,
+                "type": operation_type,
+                "timestamp": format!("2026-05-21T00:00:0{sequence}Z"),
+                "payload": payload,
+            })
+        };
+        persist_operation_to_database(
+            &mut connection,
+            &operation(
+                "cut-operation",
+                2,
+                "delete_plan_items",
+                json!({
+                    "planId": "plan_yesterday",
+                    "itemIds": ["original_moved_task"],
+                    "completedParentIds": []
+                }),
+            ),
+        )
+        .unwrap();
+        persist_operation_to_database(
+            &mut connection,
+            &operation(
+                "paste-operation",
+                3,
+                "paste_plan_items",
+                json!({
+                    "planId": "plan_today",
+                    "targetId": "plan_item_wake",
+                    "placement": "after",
+                    "items": [{
+                        "id": "pasted_moved_task",
+                        "text": "Synthetic private moved text",
+                        "html": "Synthetic private moved text",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }]
+                }),
+            ),
+        )
+        .unwrap();
+        persist_operation_to_database(
+            &mut connection,
+            &operation(
+                "restore-operation",
+                4,
+                "paste_plan_items",
+                json!({
+                    "planId": "plan_yesterday",
+                    "targetId": null,
+                    "placement": "after",
+                    "items": [{
+                        "id": "original_moved_task",
+                        "text": "Synthetic private moved text",
+                        "html": "Synthetic private moved text",
+                        "done": false,
+                        "startMinutes": null,
+                        "endMinutes": null,
+                        "children": []
+                    }]
+                }),
+            ),
+        )
+        .unwrap();
+
+        sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
+        assert_eq!(sync::local_op_ids(&connection).unwrap().len(), 1);
+
+        let key = sync::crypto::SyncKey::from_bytes([25; 32]);
+        let current_state = read_app_state_from_database(&connection).unwrap().unwrap();
+        let nearby_dates = ["2026-05-21", "2026-05-20"].map(String::from);
+        let trace = sync::diagnostics::anonymous_sync_trace(
+            &connection,
+            &key,
+            "test",
+            "test-os",
+            Some(current_state),
+            None,
+            &nearby_dates,
+        )
+        .unwrap();
+        let entries = trace["retainedPlanHistory"]["entries"].as_array().unwrap();
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0]["type"], "delete_plan_items");
+        assert_eq!(entries[1]["type"], "paste_plan_items");
+        assert_eq!(entries[2]["type"], "paste_plan_items");
+
+        let nearby = trace["nearbyPlanStructure"]["database"]["items"]
+            .as_array()
+            .unwrap();
+        let today = nearby
+            .iter()
+            .find(|item| item["dayOffset"] == 0 && item["path"] == json!([1]))
+            .unwrap();
+        let yesterday = nearby.iter().find(|item| item["dayOffset"] == -1).unwrap();
+        assert_ne!(today["itemId"], yesterday["itemId"]);
+        assert_eq!(today["textToken"], yesterday["textToken"]);
+        assert_eq!(
+            entries[0]["redo"]["payload"]["itemIds"][0],
+            yesterday["itemId"]
+        );
+        assert_eq!(
+            entries[1]["redo"]["payload"]["items"][0]["id"],
+            today["itemId"]
+        );
+        assert_eq!(
+            entries[2]["redo"]["payload"]["items"][0]["id"],
+            yesterday["itemId"]
+        );
+        let serialized = serde_json::to_string(&trace).unwrap();
+        for private in [
+            "Synthetic private moved text",
+            "original_moved_task",
+            "pasted_moved_task",
+        ] {
+            assert!(!serialized.contains(private), "trace leaked {private:?}");
+        }
+    }
+
+    #[test]
     fn anonymous_sync_trace_preserves_structure_without_database_strings() {
         let database = TestDatabase::new("anonymous-sync-trace");
         let recovery_key = generate_recovery_key();
@@ -16390,6 +16540,24 @@ mod tests {
         assert!(trace["frontend"].get("state").is_none());
         assert_eq!(trace["window"]["maximumOperations"], 300);
         assert_eq!(trace["window"]["truncated"], false);
+        assert_eq!(
+            trace["retainedPlanHistory"]["source"],
+            "encrypted-undo-history"
+        );
+        assert_eq!(trace["retainedPlanHistory"]["scope"], "today-and-yesterday");
+        assert_eq!(
+            trace["retainedPlanHistory"]["survivesSyncCheckpoints"],
+            true
+        );
+        assert_eq!(trace["retainedPlanHistory"]["includedEntries"], 1);
+        assert_eq!(
+            trace["retainedPlanHistory"]["entries"][0]["type"],
+            "add_plan_item"
+        );
+        assert_eq!(
+            trace["retainedPlanHistory"]["entries"][0]["redo"]["payload"]["item"]["text"],
+            trace["nearbyPlanStructure"]["database"]["items"][1]["textToken"]
+        );
         assert_eq!(trace["nearbyPlanStructure"]["comparisonComplete"], true);
         assert_eq!(trace["nearbyPlanStructure"]["matchesDatabase"], false);
         assert_eq!(trace["renderedPlan"]["available"], true);

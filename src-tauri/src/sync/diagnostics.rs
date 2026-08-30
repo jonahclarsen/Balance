@@ -17,12 +17,13 @@ use sha2::Sha256;
 use super::crypto::SyncKey;
 use super::{ensure_sync_tables, sync_frontiers, Error, Op, Result};
 
-const TRACE_FORMAT: &str = "balance-anonymous-sync-trace-v5";
+const TRACE_FORMAT: &str = "balance-anonymous-sync-trace-v6";
 // Keep opaque equality tokens comparable with v4 traces while the exported
 // schema grows. This context is not a key and reveals no user data.
 const TOKEN_CONTEXT: &str = "balance-anonymous-sync-trace-v4";
 const TOKEN_BYTES: usize = 20;
 const MAX_TRACE_OPERATIONS: usize = 300;
+const MAX_RETAINED_PLAN_HISTORY: usize = 50;
 const MAX_QUARANTINE_ROWS: usize = 20;
 const NEARBY_DAY_OFFSETS: [i64; 2] = [0, -1];
 const MAX_NEARBY_PLAN_ITEMS: usize = 50;
@@ -708,6 +709,131 @@ fn matching_string_occurrences(
     }
 }
 
+fn retained_plan_operation_type(operation_type: &str) -> bool {
+    matches!(
+        operation_type,
+        "add_plan_item"
+            | "add_plan_item_from_siri"
+            | "patch_plan_item"
+            | "patch_plan_items_done"
+            | "split_plan_item"
+            | "backspace_plan_item_at_start"
+            | "delete_plan_item_preserving_children"
+            | "delete_plan_item"
+            | "delete_plan_items"
+            | "paste_plan_items"
+            | "insert_plan_item_at"
+            | "move_plan_item"
+            | "move_plan_item_to_plan"
+            | "move_plan_item_within_level"
+            | "move_plan_items_within_level"
+            | "indent_plan_items"
+            | "outdent_plan_item"
+            | "outdent_plan_items"
+            | "move_plan_item_to_position"
+            | "generate_plan"
+            | "delete_plan"
+            | "insert_plan"
+    )
+}
+
+fn contains_exact_string(value: &Value, wanted: &HashSet<String>) -> bool {
+    match value {
+        Value::String(value) => wanted.contains(value),
+        Value::Array(values) => values
+            .iter()
+            .any(|value| contains_exact_string(value, wanted)),
+        Value::Object(values) => values
+            .values()
+            .any(|value| contains_exact_string(value, wanted)),
+        _ => false,
+    }
+}
+
+/// Undo history survives sync checkpoints, so it can retain the cut/paste
+/// sequence after the ordinary operation log has been compacted. The returned
+/// values use the same account-keyed tokens as the rest of the trace.
+fn retained_plan_history_trace(
+    connection: &Connection,
+    tokenizer: &Tokenizer<'_>,
+    now_ms: i64,
+    nearby_identifiers: &HashSet<String>,
+) -> Result<Value> {
+    let mut statement = connection.prepare(
+        "SELECT operation_id, device_id, sequence, undone, created_at_ms, updated_at_ms,
+                undo_operation_json, redo_operation_json
+         FROM history_entries
+         ORDER BY updated_at_ms DESC, sequence DESC, id DESC",
+    )?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, i64>(3)? != 0,
+                row.get::<_, i64>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, String>(6)?,
+                row.get::<_, String>(7)?,
+            ))
+        })?
+        .collect::<std::result::Result<Vec<_>, _>>()?;
+
+    let mut matching = Vec::new();
+    for (
+        operation_id,
+        device_id,
+        sequence,
+        undone,
+        created_at_ms,
+        updated_at_ms,
+        undo_json,
+        redo_json,
+    ) in rows
+    {
+        let redo: Value = serde_json::from_str(&redo_json)
+            .map_err(|error| Error::Codec(format!("invalid retained redo operation: {error}")))?;
+        let operation_type = redo.get("type").and_then(Value::as_str).unwrap_or_default();
+        if !retained_plan_operation_type(operation_type) {
+            continue;
+        }
+        if !contains_exact_string(&redo, nearby_identifiers) {
+            continue;
+        }
+        let undo: Value = serde_json::from_str(&undo_json)
+            .map_err(|error| Error::Codec(format!("invalid retained undo operation: {error}")))?;
+        matching.push(json!({
+            "operationId": tokenizer.id_token(&operation_id),
+            "device": tokenizer.id_token(&device_id),
+            "sequence": sequence,
+            "type": operation_type,
+            "undone": undone,
+            "createdAgeMs": now_ms.saturating_sub(created_at_ms),
+            "updatedAgeMs": now_ms.saturating_sub(updated_at_ms),
+            "redo": anonymize_json(&redo, tokenizer),
+            "undo": anonymize_json(&undo, tokenizer),
+        }));
+    }
+
+    let total_retained_entries = matching.len();
+    matching.truncate(MAX_RETAINED_PLAN_HISTORY);
+    // The database query is newest-first. Chronological output makes a cut,
+    // paste, and later restoration readable as one forward sequence.
+    matching.reverse();
+
+    Ok(json!({
+        "source": "encrypted-undo-history",
+        "scope": "today-and-yesterday",
+        "survivesSyncCheckpoints": true,
+        "maximumEntries": MAX_RETAINED_PLAN_HISTORY,
+        "totalRetainedPlanEntries": total_retained_entries,
+        "includedEntries": matching.len(),
+        "truncated": total_retained_entries > matching.len(),
+        "entries": matching,
+    }))
+}
+
 fn diagnostic_payload(operation: &Op, payload: &Value, tokenizer: &Tokenizer<'_>) -> Value {
     if operation.op_type != "replace_full_state" {
         return anonymize_json(payload, tokenizer);
@@ -984,6 +1110,29 @@ pub fn anonymous_sync_trace(
         .map(|(device, sequence)| (tokenizer.id_token(&device), sequence))
         .collect::<BTreeMap<_, _>>();
     let now_ms = crate::current_timestamp_ms();
+    let nearby_date_set = nearby_dates
+        .iter()
+        .map(String::as_str)
+        .collect::<HashSet<_>>();
+    let mut nearby_history_identifiers = nearby_dates.iter().cloned().collect::<HashSet<_>>();
+    for plan in domain
+        .get("plans")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let Some(date) = plan.get("date").and_then(Value::as_str) else {
+            continue;
+        };
+        if !nearby_date_set.contains(date) {
+            continue;
+        }
+        if let Some(plan_id) = plan.get("id").and_then(Value::as_str) {
+            nearby_history_identifiers.insert(plan_id.to_string());
+        }
+    }
+    let retained_plan_history =
+        retained_plan_history_trace(connection, &tokenizer, now_ms, &nearby_history_identifiers)?;
     let rendered_plan = rendered_plan_trace(
         rendered_plan.as_ref(),
         &domain,
@@ -998,7 +1147,7 @@ pub fn anonymous_sync_trace(
         "privacy": {
             "rawUserDataStringsIncluded": false,
             "tokenMethod": "HMAC-SHA256/account-sync-key",
-            "warning": "This reveals recent operation types, ordering, relative timing, numeric task fields, equality relationships, occurrence counts for recent identifiers, the structure and completion state of up to 50 tasks from today followed by yesterday, and text-free rendered checkbox and completion-style state for up to 100 rows from the last visible planner screen.",
+            "warning": "This reveals recent operation types, ordering, relative timing, numeric task fields, equality relationships, occurrence counts for recent identifiers, anonymized undo/redo structure for up to 50 retained task mutations associated with today or yesterday, the structure and completion state of up to 50 tasks from today followed by yesterday, and text-free rendered checkbox and completion-style state for up to 100 rows from the last visible planner screen.",
         },
         "build": {
             "version": app_version,
@@ -1018,6 +1167,7 @@ pub fn anonymous_sync_trace(
         },
         "relay": relay_trace(connection, &tokenizer, now_ms, &recent_operation_ids)?,
         "operations": operation_trace(connection, &tokenizer, &operations)?,
+        "retainedPlanHistory": retained_plan_history,
         "recentIdentifierPresence": recent_identifier_presence,
         "nearbyPlanStructure": {
             "minimumDayOffset": -1,
@@ -1150,6 +1300,102 @@ mod tests {
         matching_string_occurrences(&state, &identifiers, &mut occurrences);
         assert_eq!(occurrences["task-a"], 2);
         assert_eq!(occurrences["plan-a"], 1);
+    }
+
+    #[test]
+    fn retained_plan_history_is_private_filtered_and_capped() {
+        let connection = Connection::open_in_memory().unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE history_entries (
+                   id TEXT PRIMARY KEY,
+                   operation_id TEXT NOT NULL UNIQUE,
+                   device_id TEXT NOT NULL,
+                   sequence INTEGER NOT NULL,
+                   undo_operation_json TEXT NOT NULL,
+                   redo_operation_json TEXT NOT NULL,
+                   undone INTEGER NOT NULL,
+                   created_at_ms INTEGER NOT NULL,
+                   updated_at_ms INTEGER NOT NULL
+                 );",
+            )
+            .unwrap();
+        for sequence in 0..52_i64 {
+            let undo = json!({
+                "type": "patch_plan_item",
+                "payload": {
+                    "planId": "private-plan-id",
+                    "itemId": format!("private-item-{sequence}"),
+                    "patch": {"text": format!("private old text {sequence}")}
+                }
+            });
+            let redo = json!({
+                "id": format!("private-operation-{sequence}"),
+                "deviceId": "private-device",
+                "sequence": sequence,
+                "type": "patch_plan_item",
+                "timestamp": "2026-08-29T00:00:00Z",
+                "payload": {
+                    "planId": "private-plan-id",
+                    "itemId": format!("private-item-{sequence}"),
+                    "patch": {"text": format!("private new text {sequence}")}
+                }
+            });
+            connection
+                .execute(
+                    "INSERT INTO history_entries
+                     (id, operation_id, device_id, sequence, undo_operation_json,
+                      redo_operation_json, undone, created_at_ms, updated_at_ms)
+                     VALUES (?1, ?2, 'private-device', ?3, ?4, ?5, 0, ?3, ?3)",
+                    params![
+                        format!("private-history-{sequence}"),
+                        format!("private-operation-{sequence}"),
+                        sequence,
+                        undo.to_string(),
+                        redo.to_string(),
+                    ],
+                )
+                .unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO history_entries
+                 (id, operation_id, device_id, sequence, undo_operation_json,
+                  redo_operation_json, undone, created_at_ms, updated_at_ms)
+                 VALUES ('preference-history', 'preference-operation', 'private-device', 100,
+                         '{}', ?1, 0, 100, 100)",
+                params![json!({"type": "patch_preferences", "payload": {}}).to_string()],
+            )
+            .unwrap();
+
+        let key = SyncKey::from_bytes([12; 32]);
+        let tokenizer = Tokenizer { key: &key };
+        let nearby_identifiers = HashSet::from(["private-plan-id".to_string()]);
+        let trace =
+            retained_plan_history_trace(&connection, &tokenizer, 1_000, &nearby_identifiers)
+                .unwrap();
+        let serialized = serde_json::to_string(&trace).unwrap();
+
+        assert_eq!(trace["totalRetainedPlanEntries"], 52);
+        assert_eq!(trace["includedEntries"], MAX_RETAINED_PLAN_HISTORY);
+        assert_eq!(trace["truncated"], true);
+        assert_eq!(trace["entries"][0]["sequence"], 2);
+        assert_eq!(trace["entries"][49]["sequence"], 51);
+        assert!(trace["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|entry| entry["type"] == "patch_plan_item"));
+        for private in [
+            "private-plan-id",
+            "private-item-51",
+            "private new text 51",
+            "private old text 51",
+            "private-device",
+            "private-operation-51",
+        ] {
+            assert!(!serialized.contains(private), "history leaked {private:?}");
+        }
     }
 
     #[test]

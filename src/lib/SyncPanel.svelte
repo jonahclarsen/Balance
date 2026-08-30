@@ -302,8 +302,8 @@
         JSON.stringify($plannerStore),
         JSON.stringify(getLastRenderedPlanSnapshot()),
       )
-      const date = new Date().toISOString().slice(0, 10)
-      diagnosticPath = await saveExportFile(`balance-recent-anonymous-sync-trace-${date}.json`, content)
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-')
+      diagnosticPath = await saveExportFile(`balance-recent-anonymous-sync-trace-${timestamp}.json`, content)
       setStatus('Recent anonymous sync trace saved. Export one on your other device too, then compare the two files.')
     } catch (err) {
       setStatus(`Could not export anonymous sync trace: ${err}`, true)
@@ -466,6 +466,9 @@
           limited relay status, and fingerprints showing whether the current screen
           and database agree. It also saves a structural inventory of at most 50
           tasks, starting with today and then yesterday, so moved copies can be compared.
+          Up to 50 recent task mutations associated with today or yesterday are read
+          separately from encrypted undo history, which survives sync checkpoint
+          compaction and may preserve an earlier cut/paste.
           The last visible planner screen is compared separately using only row order,
           nesting, checkbox state, and completion styling—never task text.
           It does not include a full copy of either state. Task text, dates, URLs,
