@@ -10,11 +10,18 @@
   let focusTimeout: number | null = null
   let highlightedQuery = ''
   let highlightedRange: Range | null = null
+  let highlightRects: Array<{ top: number; left: number; width: number; height: number }> = []
 
   const highlightName = 'balance-document-find-match'
 
   onMount(() => {
     void focus()
+    window.addEventListener('scroll', updateHighlightRects, true)
+    window.addEventListener('resize', updateHighlightRects)
+    return () => {
+      window.removeEventListener('scroll', updateHighlightRects, true)
+      window.removeEventListener('resize', updateHighlightRects)
+    }
   })
 
   export async function focus() {
@@ -32,7 +39,28 @@
   function clearHighlight() {
     highlightedQuery = ''
     highlightedRange = null
+    highlightRects = []
     CSS.highlights.delete(highlightName)
+  }
+
+  function updateHighlightRects() {
+    if (
+      !highlightedRange?.startContainer.isConnected
+      || !highlightedRange.endContainer.isConnected
+    ) {
+      if (highlightRects.length > 0) highlightRects = []
+      return
+    }
+
+    highlightRects = Array.from(highlightedRange.getClientRects())
+      .filter((rect) => rect.width > 0 && rect.height > 0)
+      .map((rect) => ({
+        top: Math.max(0, rect.top),
+        left: Math.max(0, rect.left),
+        width: Math.max(0, Math.min(window.innerWidth, rect.right) - Math.max(0, rect.left)),
+        height: Math.max(0, Math.min(window.innerHeight, rect.bottom) - Math.max(0, rect.top)),
+      }))
+      .filter((rect) => rect.width > 0 && rect.height > 0)
   }
 
   function scrollRangeIntoView(range: Range) {
@@ -122,6 +150,7 @@
     if (highlightedRange) {
       CSS.highlights.set(highlightName, new Highlight(highlightedRange))
       scrollRangeIntoView(highlightedRange)
+      updateHighlightRects()
     }
 
     if (focusTimeout !== null) window.clearTimeout(focusTimeout)
@@ -138,6 +167,14 @@
     find(event.shiftKey)
   }
 </script>
+
+{#each highlightRects as rect}
+  <span
+    class="find-match-overlay"
+    aria-hidden="true"
+    style={`top: ${rect.top}px; left: ${rect.left}px; width: ${rect.width}px; height: ${rect.height}px;`}
+  ></span>
+{/each}
 
 <div class="document-find" role="search" aria-label="Find in current document">
   <input
@@ -197,9 +234,13 @@
     text-align: center;
   }
 
-  :global(::highlight(balance-document-find-match)) {
-    color: inherit;
-    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  .find-match-overlay {
+    position: fixed;
+    z-index: 74;
+    border-radius: 2px;
+    background-color: color-mix(in srgb, var(--accent) 32%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent);
+    pointer-events: none;
   }
 
   @media (max-width: 520px) {
