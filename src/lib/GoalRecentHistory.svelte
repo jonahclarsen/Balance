@@ -5,6 +5,7 @@
   export let goal: Goal
   export let completions: GoalCompletion[]
   export let currentDate: string
+  export let onOpenDate: (date: string) => void
 
   const RECENT_DAY_COUNT = 14
 
@@ -48,15 +49,20 @@
     {#each dates as date (date)}
       {@const active = isGoalActiveOnDate(goal, date)}
       {@const completed = completionDates.has(date)}
-      <li
-        class:active
-        class:completed
-        class:today={date === currentDate}
-        data-goal-date={date}
-        aria-label={`${fullDateLabel(date)}: ${completed ? 'completed' : active ? 'no completion' : 'inactive'}`}
-        title={`${fullDateLabel(date)} · ${completed ? 'Completed' : active ? 'No completion' : 'Inactive'}`}
-      >
-        {#if completed}<span aria-hidden="true">✓</span>{/if}
+      <li>
+        <button
+          type="button"
+          class="goal-recent-day"
+          class:active
+          class:completed
+          class:today={date === currentDate}
+          data-goal-date={date}
+          aria-label={`Open ${fullDateLabel(date)} in Today view: ${completed ? 'completed' : active ? 'no completion' : 'inactive'}`}
+          on:click={() => onOpenDate(date)}
+        >
+          <span class="goal-recent-day-tooltip" aria-hidden="true">{fullDateLabel(date)}</span>
+          {#if completed}<span aria-hidden="true">✓</span>{/if}
+        </button>
       </li>
     {/each}
   </ol>

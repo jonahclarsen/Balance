@@ -4052,8 +4052,13 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-recent-days li {
+  min-width: 0;
+}
+
+.goal-recent-day {
   position: relative;
   display: grid;
+  width: 100%;
   min-width: 0;
   aspect-ratio: 1;
   place-items: center;
@@ -4064,26 +4069,85 @@ body.mobile-checkbox-dragging {
   font-size: clamp(8px, 1.5vw, 11px);
   font-weight: 800;
   line-height: 1;
+  padding: 0;
+  cursor: pointer;
 }
 
-.goal-recent-days li.active {
+.goal-recent-day:hover,
+.goal-recent-day:focus-visible {
+  z-index: 1;
+  border-color: var(--accent-strong);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
+  outline: none;
+}
+
+.goal-recent-day.active {
   border-style: solid;
   border-color: hsl(var(--goal-hue) 42% calc(62% + var(--goal-lightness-shift, 0%)) / 0.55);
   background: hsl(var(--goal-hue) 55% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%)));
 }
 
-.goal-recent-days li.completed {
+.goal-recent-day.completed {
   border-color: hsl(var(--goal-hue) 58% calc(42% + var(--goal-lightness-shift, 0%)));
   background: hsl(var(--goal-hue) 58% calc(42% + var(--goal-lightness-shift, 0%)));
 }
 
-.goal-recent-days li.today::after {
+.goal-recent-day.today::after {
   position: absolute;
   inset: -3px;
   border: 1.5px solid hsl(var(--goal-hue) 52% calc(45% + var(--goal-lightness-shift, 0%)));
   border-radius: 7px;
   content: '';
   pointer-events: none;
+}
+
+.goal-recent-day-tooltip {
+  position: absolute;
+  z-index: 2;
+  bottom: calc(100% + 7px);
+  left: 50%;
+  width: max-content;
+  max-width: 190px;
+  transform: translate(-50%, 2px);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ink);
+  box-shadow: var(--shadow);
+  color: var(--paper);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.2;
+  opacity: 0;
+  padding: 5px 7px;
+  pointer-events: none;
+  transition: opacity 100ms ease, transform 100ms ease, visibility 100ms;
+  visibility: hidden;
+  white-space: nowrap;
+}
+
+.goal-recent-days li:first-child .goal-recent-day-tooltip {
+  left: 0;
+  transform: translate(0, 2px);
+}
+
+.goal-recent-days li:last-child .goal-recent-day-tooltip {
+  right: 0;
+  left: auto;
+  transform: translate(0, 2px);
+}
+
+.goal-recent-day:hover .goal-recent-day-tooltip,
+.goal-recent-day:focus-visible .goal-recent-day-tooltip {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  visibility: visible;
+}
+
+.goal-recent-days li:first-child .goal-recent-day:hover .goal-recent-day-tooltip,
+.goal-recent-days li:first-child .goal-recent-day:focus-visible .goal-recent-day-tooltip,
+.goal-recent-days li:last-child .goal-recent-day:hover .goal-recent-day-tooltip,
+.goal-recent-days li:last-child .goal-recent-day:focus-visible .goal-recent-day-tooltip {
+  transform: translate(0, 0);
 }
 
 .goal-name-input {

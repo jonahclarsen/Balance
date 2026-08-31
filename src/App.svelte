@@ -6315,6 +6315,7 @@ return rows`
                 {goal}
                 completions={goalCompletionHistory}
                 currentDate={currentDay}
+                onOpenDate={openDateInToday}
               />
             </div>
           </article>

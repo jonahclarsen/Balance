@@ -154,9 +154,10 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
   const history = page.getByRole('region', {
     name: 'Recent 14-day history for Exercise: 3 completions',
   })
-  const days = history.locator('.goal-recent-days li')
+  const days = history.locator('.goal-recent-day')
   await expect(history).toBeVisible()
   await expect(days).toHaveCount(14)
+  await expect(days.locator('.goal-recent-day-tooltip')).toHaveCount(14)
   await expect(days.first()).toHaveAttribute('data-goal-date', addDays(currentDate, -13))
   await expect(days.last()).toHaveAttribute('data-goal-date', currentDate)
   for (const date of completionDates) {
@@ -174,10 +175,18 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
   } else {
     expect(historyBox!.y).toBeGreaterThan(savedCompletionBox!.y + savedCompletionBox!.height)
   }
+  const targetDate = addDays(currentDate, -4)
+  const targetDay = history.locator(`[data-goal-date="${targetDate}"]`)
+  await targetDay.hover()
+  await expect(targetDay.locator('.goal-recent-day-tooltip')).toBeVisible()
+  await expect(targetDay).toHaveAttribute('aria-label', /Open .+ in Today view: completed/)
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-goal-recent-history.png`,
     fullPage: true,
   })
+  await targetDay.click()
+  await expect(page.getByLabel('Day date')).toHaveValue(targetDate)
+  await expect(history).toHaveCount(0)
 })
 
 test('goal matching terms preserve rich text and turn a pasted URL into a link', async ({ page }) => {
