@@ -428,8 +428,7 @@ return rows`
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
   let newGoalTermsHtml = ''
-  let newGoalHue = 165
-  let newGoalLightness = 50
+  let newGoalHue = randomGoalHue()
   let goalFormStatus = ''
   let goalSearch = ''
   let goalSearchInput: HTMLInputElement | null = null
@@ -2627,14 +2626,20 @@ return rows`
       return
     }
 
-    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue, newGoalLightness, newGoalTermsHtml)
+    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue, 50, newGoalTermsHtml)
     newGoalName = ''
     newGoalCadenceDays = 1
     newGoalTerms = ''
     newGoalTermsHtml = ''
-    newGoalHue = (newGoalHue + 47) % 360
-    newGoalLightness = 50
+    newGoalHue = randomGoalHue(newGoalHue)
     goalFormStatus = ''
+  }
+
+  function randomGoalHue(excludedHue?: number): number {
+    if (excludedHue === undefined) return Math.floor(Math.random() * 360)
+
+    const hue = Math.floor(Math.random() * 359)
+    return hue >= excludedHue ? hue + 1 : hue
   }
 
   async function confirmDeleteArchivedGoal(goalId: Id, goalName: string) {
@@ -6124,20 +6129,12 @@ return rows`
             }}
           />
         </label>
-        <div class="goal-color-field">
-          <span>Color</span>
-          <GoalColorPicker
-            hue={newGoalHue}
-            lightness={newGoalLightness}
-            ariaLabel="New goal color"
-            mobile={isMobile}
-            onChange={(color) => {
-              newGoalHue = color.hue
-              newGoalLightness = color.lightness
-            }}
-          />
-        </div>
-        <button class="primary goal-add-button" type="button" on:click={addGoal}>Add goal</button>
+        <button
+          class="primary goal-add-button"
+          type="button"
+          style={`--goal-hue: ${newGoalHue}`}
+          on:click={addGoal}
+        >Add goal</button>
         {#if goalFormStatus}
           <p class="goal-form-status">{goalFormStatus}</p>
         {/if}
@@ -6223,16 +6220,6 @@ return rows`
                     })}
                   />
                 </label>
-                <div class="goal-color-field">
-                  <span>Color</span>
-                  <GoalColorPicker
-                    hue={goal.hue}
-                    lightness={goal.lightness}
-                    ariaLabel={`Color for ${goal.name}`}
-                    mobile={isMobile}
-                    onChange={(color) => plannerStore.patchGoal(goal.id, color)}
-                  />
-                </div>
               </div>
               <p class="goal-card-meta">
                 {completionCount} saved completion{completionCount === 1 ? '' : 's'}

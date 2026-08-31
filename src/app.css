@@ -3722,14 +3722,8 @@ body.mobile-checkbox-dragging {
   flex: 0 1 130px;
 }
 
-.goal-create-panel > .goal-color-field {
-  flex: 1 1 220px;
-}
-
 .goal-create-panel label,
-.goal-create-panel > .goal-color-field,
-.goal-card-fields label,
-.goal-card-fields .goal-color-field {
+.goal-card-fields label {
   display: grid;
   align-content: end;
   gap: 6px;
@@ -3737,9 +3731,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-create-panel label > span,
-.goal-create-panel > .goal-color-field > span,
-.goal-card-fields label > span,
-.goal-card-fields .goal-color-field > span {
+.goal-card-fields label > span {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
@@ -3803,7 +3795,14 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-add-button {
+  border-color: hsl(var(--goal-hue) 58% 48%);
+  background: hsl(var(--goal-hue) 58% 48%);
   white-space: nowrap;
+}
+
+.goal-add-button:hover {
+  border-color: hsl(var(--goal-hue) 58% 40%);
+  background: hsl(var(--goal-hue) 58% 40%);
 }
 
 .goal-form-status {
@@ -3903,7 +3902,7 @@ body.mobile-checkbox-dragging {
 
 .goal-card-fields {
   display: grid;
-  grid-template-columns: 160px 150px minmax(220px, 1fr) minmax(180px, 0.7fr);
+  grid-template-columns: 160px 150px minmax(220px, 1fr);
   gap: 12px;
 }
 
@@ -4709,8 +4708,7 @@ body.mobile-checkbox-dragging {
   .goal-create-panel > label,
   .goal-create-panel > label.goal-name-field,
   .goal-create-panel > label.goal-terms-field,
-  .goal-create-panel > label.goal-cadence-field,
-  .goal-create-panel > .goal-color-field {
+  .goal-create-panel > label.goal-cadence-field {
     flex: 1 1 100%;
   }
 

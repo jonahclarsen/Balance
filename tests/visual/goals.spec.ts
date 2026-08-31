@@ -8,86 +8,38 @@ test.beforeEach(async ({ page }) => {
   await page.reload()
 })
 
-test('goal colors use a two-dimensional hue and lightness picker', async ({ page }, testInfo) => {
+test('a new goal receives the color previewed by the add button and has no color editor', async ({ page }) => {
+  await page.getByRole('button', { name: 'Manage goals' }).click()
+  const addButton = page.getByRole('button', { name: 'Add goal', exact: true })
+  const previewHue = await addButton.evaluate((button) =>
+    Number(getComputedStyle(button).getPropertyValue('--goal-hue')),
+  )
+  const previewColor = await addButton.evaluate((button) => getComputedStyle(button).backgroundColor)
+
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 
-  const mobile = testInfo.project.name === 'mobile'
-  const originalColor = await savedGoalColor(page)
-  if (mobile) await page.getByRole('button', { name: 'Color for Exercise', exact: true }).click()
-  const picker = page.getByRole('button', { name: mobile ? 'Color for Exercise picker' : 'Color for Exercise' })
-  const bounds = await picker.boundingBox()
-  expect(bounds).not.toBeNull()
-  await picker.click({
-    position: {
-      x: bounds!.width * 0.75,
-      y: bounds!.height * 0.25,
-    },
-  })
-
-  if (mobile) {
-    await expect.poll(() => savedGoalColor(page)).toEqual(originalColor)
-    await page.getByRole('button', { name: 'Save color' }).click()
-  }
-
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-        const goal = state.goals?.[0]
-        return Math.abs(goal?.hue - 269) <= 3 && Math.abs(goal?.lightness - 75) <= 3
-      }),
-    )
-    .toBe(true)
-
-  const clickedColor = await page.evaluate(() => {
+  await expect.poll(() => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return { hue: state.goals[0].hue, lightness: state.goals[0].lightness }
-  })
+  })).toEqual({ hue: previewHue, lightness: 50 })
+  await expect(page.locator('.goal-card-accent')).toHaveCSS('background-color', previewColor)
+  await expect(page.getByLabel('New goal color')).toHaveCount(0)
+  await expect(page.getByLabel('Color for Exercise')).toHaveCount(0)
 
-  if (mobile) await page.getByRole('button', { name: 'Color for Exercise', exact: true }).click()
-  const keyboardPicker = page.getByRole('button', { name: mobile ? 'Color for Exercise picker' : 'Color for Exercise' })
-  await keyboardPicker.press('ArrowUp')
-  await keyboardPicker.press('Shift+ArrowLeft')
-  if (mobile) {
-    await expect.poll(() => savedGoalColor(page)).toEqual(clickedColor)
-    await page.getByRole('button', { name: 'Save color' }).click()
-  }
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-        return { hue: state.goals?.[0]?.hue, lightness: state.goals?.[0]?.lightness }
-      }),
-    )
-    .toEqual({ hue: clickedColor.hue - 10, lightness: clickedColor.lightness + 1 })
-
-  await expect(page.locator('.goal-hue-slider, .goal-lightness-slider')).toHaveCount(0)
-  await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-goal-color-grid.png`,
-    fullPage: true,
-  })
+  const nextHue = await addButton.evaluate((button) =>
+    Number(getComputedStyle(button).getPropertyValue('--goal-hue')),
+  )
+  expect(nextHue).not.toBe(previewHue)
 })
 
-test('the mobile goal search and color controls are compact and deliberate', async ({ page }, testInfo) => {
+test('the mobile goal search stays compact without goal color controls', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'Mobile-only interaction')
   await page.setViewportSize({ width: 360, height: 760 })
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 
   const search = page.locator('.goal-search-input')
   expect((await search.boundingBox())?.height).toBeLessThanOrEqual(44)
-
-  const trigger = page.getByRole('button', { name: 'Color for Exercise', exact: true })
-  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  await trigger.click()
-  await expect(trigger).toHaveAttribute('aria-expanded', 'true')
-
-  const picker = page.getByRole('button', { name: 'Color for Exercise picker' })
-  const before = await savedGoalColor(page)
-  await picker.click({ position: { x: 30, y: 12 } })
-  await expect.poll(() => savedGoalColor(page)).toEqual(before)
-  await page.getByRole('button', { name: 'Cancel' }).click()
-  await expect(trigger).toHaveAttribute('aria-expanded', 'false')
-  await expect.poll(() => savedGoalColor(page)).toEqual(before)
+  await expect(page.getByLabel('Color for Exercise')).toHaveCount(0)
 })
 
 test('goal matching terms preserve rich text and turn a pasted URL into a link', async ({ page }) => {
@@ -1327,6 +1279,8 @@ test('goal rhythm copy button copies the goal name without opening the row', asy
 })
 
 test('goal rhythm uses dark segment and open-circle colors in dark mode', async ({ page }) => {
+  await page.addInitScript(() => { Math.random = () => 165 / 360 })
+  await page.reload()
   await page.emulateMedia({ colorScheme: 'dark' })
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
@@ -1352,13 +1306,6 @@ async function createGoal(page: import('@playwright/test').Page, name: string, c
   await page.getByLabel('New goal matching terms').fill(terms)
   await page.getByRole('button', { name: 'Add goal', exact: true }).click()
   await expect(page.getByLabel(`Goal name: ${name}`)).toBeVisible()
-}
-
-async function savedGoalColor(page: import('@playwright/test').Page) {
-  return page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-    return { hue: state.goals?.[0]?.hue, lightness: state.goals?.[0]?.lightness }
-  })
 }
 
 function todayISO() {
