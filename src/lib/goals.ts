@@ -461,6 +461,24 @@ export function sortGoalsByUrgency(goals: Goal[], completions: GoalCompletion[],
   })
 }
 
+/**
+ * Keeps the standard urgency order within each group, but moves goals that
+ * have already defaulted below every goal that is still on track. A goal due
+ * today has a lapse value of zero, so it remains in the upper group.
+ */
+export function sortGoalsForRhythm(goals: Goal[], completions: GoalCompletion[], currentDate = todayISO()): Goal[] {
+  const sorted = sortGoalsByUrgency(goals, completions, currentDate)
+  const onTrack: Goal[] = []
+  const overdue: Goal[] = []
+
+  for (const goal of sorted) {
+    const destination = (goalDaysUntilLapse(goal, completions, currentDate) ?? 0) < 0 ? overdue : onTrack
+    destination.push(goal)
+  }
+
+  return [...onTrack, ...overdue]
+}
+
 export function shiftISODate(date: string, days: number): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
   if (!match) return todayISO()

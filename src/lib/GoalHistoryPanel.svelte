@@ -9,7 +9,7 @@
     isGoalActiveOnDate,
     isoDateDiffDays,
     shiftISODate,
-    sortGoalsByUrgency,
+    sortGoalsForRhythm,
   } from './goals'
   import { todayISO } from './planner'
   import type { Goal, GoalCompletion } from './types'
@@ -147,7 +147,7 @@
     return daysUntilLapse !== null && daysUntilLapse <= 3
   }).length
   $: visibleGoals = filterGoalsByPhrase(
-    sortGoalsByUrgency(
+    sortGoalsForRhythm(
       activeGoals,
       completions,
       viewedDate,

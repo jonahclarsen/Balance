@@ -744,13 +744,14 @@ test('goal rhythm keeps rounded segment ends when saved activity periods overlap
   await expect(currentEnd).toHaveCSS('border-bottom-right-radius', '999px')
 })
 
-test('goals put daily intervals first, then order by days until lapse and shortest interval', async ({ page }) => {
+test('goal rhythm puts overdue goals last while the goals page keeps urgency order', async ({ page }) => {
   const today = todayISO()
+  const fiveDaysAgo = addDays(today, -5)
   const threeDaysAgo = addDays(today, -3)
   const yesterday = addDays(today, -1)
 
   await page.evaluate(
-    ({ today, threeDaysAgo, yesterday }) => {
+    ({ today, fiveDaysAgo, threeDaysAgo, yesterday }) => {
       const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
       const timestamp = new Date().toISOString()
       state.goals = [
@@ -785,6 +786,16 @@ test('goals put daily intervals first, then order by days until lapse and shorte
           updatedAt: timestamp,
         },
         {
+          id: 'goal_overdue',
+          name: 'Overdue',
+          cadenceDays: 3,
+          matchTerms: ['overdue'],
+          hue: 220,
+          activityPeriods: [{ startDate: fiveDaysAgo, endDate: null }],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+        {
           id: 'goal_archived_daily',
           name: 'Archived daily',
           cadenceDays: 1,
@@ -798,7 +809,7 @@ test('goals put daily intervals first, then order by days until lapse and shorte
       state.goalCompletions = []
       localStorage.setItem('balance.appState.v1', JSON.stringify(state))
     },
-    { today, threeDaysAgo, yesterday },
+    { today, fiveDaysAgo, threeDaysAgo, yesterday },
   )
   await page.reload()
 
@@ -806,6 +817,7 @@ test('goals put daily intervals first, then order by days until lapse and shorte
     'Sooner',
     'Short tie',
     'Long tie',
+    'Overdue',
   ])
 
   await page.getByRole('button', { name: 'Goals', exact: true }).click()
@@ -813,7 +825,7 @@ test('goals put daily intervals first, then order by days until lapse and shorte
     page.locator('.goal-card .goal-name-input').evaluateAll((inputs) =>
       inputs.map((input) => input.textContent),
     ),
-  ).resolves.toEqual(['Sooner', 'Short tie', 'Long tie', 'Archived daily'])
+  ).resolves.toEqual(['Overdue', 'Sooner', 'Short tie', 'Long tie', 'Archived daily'])
   await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible()
 })
 
