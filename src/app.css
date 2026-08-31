@@ -3876,6 +3876,9 @@ body.mobile-checkbox-dragging {
   position: relative;
   display: grid;
   grid-template-columns: 6px minmax(0, 1fr) auto;
+  grid-template-areas:
+    'accent main actions'
+    'accent history history';
   gap: 16px;
   overflow: hidden;
   padding: 16px 16px 16px 0;
@@ -3947,11 +3950,13 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-card-accent {
+  grid-area: accent;
   margin: -16px 0;
   background: hsl(var(--goal-hue) 58% calc(48% + var(--goal-lightness-shift, 0%)));
 }
 
 .goal-card-main {
+  grid-area: main;
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   gap: 12px;
@@ -3968,6 +3973,10 @@ body.mobile-checkbox-dragging {
   display: grid;
   width: min(100%, 420px);
   gap: 4px;
+}
+
+.goal-card > .goal-recent-history {
+  grid-area: history;
 }
 
 .goal-recent-history-header,
@@ -4092,6 +4101,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-card-actions {
+  grid-area: actions;
   display: flex;
   align-items: flex-start;
   gap: 6px;
@@ -4918,6 +4928,14 @@ body.mobile-checkbox-dragging {
   .goal-card-fields,
   .goal-card {
     grid-template-columns: 1fr;
+  }
+
+  .goal-card {
+    grid-template-areas:
+      'accent'
+      'main'
+      'actions'
+      'history';
   }
 
   .goal-create-panel > label,

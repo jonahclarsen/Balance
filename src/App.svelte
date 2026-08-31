@@ -6247,11 +6247,6 @@ return rows`
                 />
                 <span class:active class="goal-state">{active ? 'Active' : 'Archived'}</span>
               </div>
-              <GoalRecentHistory
-                {goal}
-                completions={goalCompletionHistory}
-                currentDate={currentDay}
-              />
               <div class="goal-card-fields">
                 <div class="goal-field goal-cadence-field">
                   <span>Complete every</span>
@@ -6315,6 +6310,11 @@ return rows`
                 <button class="danger-text" type="button" on:click={() => { void confirmDeleteArchivedGoal(goal.id, goal.name) }}>Delete</button>
               {/if}
             </div>
+            <GoalRecentHistory
+              {goal}
+              completions={goalCompletionHistory}
+              currentDate={currentDay}
+            />
           </article>
         {:else}
           <div class="empty-state">
