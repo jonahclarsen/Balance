@@ -7,12 +7,16 @@ const CYCLE_COUNT = performanceSize('BALANCE_MOBILE_DRAWER_PERF_CYCLES', 12)
 const IDLE_SAMPLE_MS = performanceSize('BALANCE_MOBILE_DRAWER_PERF_IDLE_MS', 1_200)
 const OPEN_SAMPLE_MS = performanceSize('BALANCE_MOBILE_DRAWER_PERF_OPEN_MS', 300)
 const CLOSE_SAMPLE_MS = performanceSize('BALANCE_MOBILE_DRAWER_PERF_CLOSE_MS', 260)
+const TAP_HOLD_MS = performanceSize('BALANCE_MOBILE_DRAWER_PERF_TAP_HOLD_MS', 50)
 const THEME_ID = process.env.BALANCE_MOBILE_DRAWER_PERF_THEME ?? 'iridescent'
 const ACTIVE_DATE = '2026-08-16'
 
 type ActionSample = {
   dispatchMs: number
   firstPaintMs: number
+  firstMovementMs: number
+  tenPercentMs: number
+  halfwayMs: number
   settleMs: number
   frameIntervals: number[]
 }
@@ -41,6 +45,9 @@ function summarizeActions(samples: ActionSample[]) {
     count: samples.length,
     dispatch: summarizeDurations(samples.map((sample) => sample.dispatchMs)),
     firstPaint: summarizeDurations(samples.map((sample) => sample.firstPaintMs)),
+    firstMovement: summarizeDurations(samples.map((sample) => sample.firstMovementMs)),
+    tenPercent: summarizeDurations(samples.map((sample) => sample.tenPercentMs)),
+    halfway: summarizeDurations(samples.map((sample) => sample.halfwayMs)),
     settle: summarizeDurations(samples.map((sample) => sample.settleMs)),
     frameIntervals: summarizeDurations(samples.flatMap((sample) => sample.frameIntervals)),
     framesOver32Ms: samples.flatMap((sample) => sample.frameIntervals).filter((duration) => duration > 32).length,
@@ -182,7 +189,7 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
 
   const cycleRendererBefore = await readMetrics()
   const actions = await page.evaluate(
-    async ({ cycleCount, openSampleMs, closeSampleMs }) => {
+    async ({ cycleCount, openSampleMs, closeSampleMs, tapHoldMs }) => {
       const menuButton = document.querySelector<HTMLButtonElement>('.mobile-menu-button')
       const closeButton = document.querySelector<HTMLButtonElement>('.mobile-drawer-close-button')
       const drawer = document.querySelector<HTMLElement>('.sidebar')
@@ -197,19 +204,52 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
         : null
       observer?.observe({ type: 'longtask' })
 
-      const measure = (button: HTMLButtonElement, sampleMs: number) => new Promise<ActionSample>((resolve) => {
+      const measure = (
+        button: HTMLButtonElement,
+        sampleMs: number,
+        direction: 'opening' | 'closing',
+      ) => new Promise<ActionSample>((resolve) => {
+        const drawerWidth = drawer.getBoundingClientRect().width
         const started = performance.now()
-        button.click()
+        if (direction === 'opening') {
+          button.dispatchEvent(new PointerEvent('pointerdown', {
+            bubbles: true,
+            button: 0,
+            isPrimary: true,
+            pointerId: 1,
+            pointerType: 'touch',
+          }))
+          window.setTimeout(() => {
+            button.dispatchEvent(new PointerEvent('pointerup', {
+              bubbles: true,
+              button: 0,
+              isPrimary: true,
+              pointerId: 1,
+              pointerType: 'touch',
+            }))
+            button.click()
+          }, tapHoldMs)
+        } else {
+          button.click()
+        }
         const dispatched = performance.now()
         const intervals: number[] = []
         let previous = started
         let frameCount = 0
         let firstPaintMs = 0
+        let firstMovementMs: number | null = null
+        let tenPercentMs: number | null = null
+        let halfwayMs: number | null = null
         let settleMs: number | null = null
         const sample = (now: number) => {
           intervals.push(now - previous)
           previous = now
           frameCount += 1
+          const openProgress = Math.max(0, Math.min(1, 1 + drawer.getBoundingClientRect().left / drawerWidth))
+          const actionProgress = direction === 'opening' ? openProgress : 1 - openProgress
+          if (firstMovementMs == null && actionProgress >= 0.01) firstMovementMs = now - started
+          if (tenPercentMs == null && actionProgress >= 0.1) tenPercentMs = now - started
+          if (halfwayMs == null && actionProgress >= 0.5) halfwayMs = now - started
           if (frameCount === 1) {
             const transitions = [drawer, backdrop]
               .flatMap((element) => element.getAnimations())
@@ -223,8 +263,23 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
             }
           }
           if (frameCount === 2) firstPaintMs = now - started
-          if (now - started >= sampleMs && frameCount >= 2 && settleMs != null) {
-            resolve({ dispatchMs: dispatched - started, firstPaintMs, settleMs, frameIntervals: intervals.slice(1) })
+          if (
+            now - started >= sampleMs
+            && frameCount >= 2
+            && firstMovementMs != null
+            && tenPercentMs != null
+            && halfwayMs != null
+            && settleMs != null
+          ) {
+            resolve({
+              dispatchMs: dispatched - started,
+              firstPaintMs,
+              firstMovementMs,
+              tenPercentMs,
+              halfwayMs,
+              settleMs,
+              frameIntervals: intervals.slice(1),
+            })
           } else {
             requestAnimationFrame(sample)
           }
@@ -235,15 +290,20 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
       const opening: ActionSample[] = []
       const closing: ActionSample[] = []
       for (let index = 0; index < cycleCount; index += 1) {
-        opening.push(await measure(menuButton, openSampleMs))
+        opening.push(await measure(menuButton, openSampleMs, 'opening'))
         if (menuButton.getAttribute('aria-expanded') !== 'true') throw new Error('Drawer did not open')
-        closing.push(await measure(closeButton, closeSampleMs))
+        closing.push(await measure(closeButton, closeSampleMs, 'closing'))
         if (menuButton.getAttribute('aria-expanded') !== 'false') throw new Error('Drawer did not close')
       }
       observer?.disconnect()
       return { opening, closing, longTasks }
     },
-    { cycleCount: CYCLE_COUNT, openSampleMs: OPEN_SAMPLE_MS, closeSampleMs: CLOSE_SAMPLE_MS },
+    {
+      cycleCount: CYCLE_COUNT,
+      openSampleMs: OPEN_SAMPLE_MS,
+      closeSampleMs: CLOSE_SAMPLE_MS,
+      tapHoldMs: TAP_HOLD_MS,
+    },
   )
   const cycleRenderer = rendererDelta(cycleRendererBefore, await readMetrics())
 
@@ -263,6 +323,7 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
       goals: GOAL_COUNT,
       themeId: THEME_ID,
       cycles: CYCLE_COUNT,
+      tapHoldMs: TAP_HOLD_MS,
     },
     closedIdle: {
       sampleMs: IDLE_SAMPLE_MS,

@@ -39,7 +39,12 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
 
   const menuButtonBox = await menuButton.boundingBox()
   if (!menuButtonBox) throw new Error('Menu button has no tappable bounds')
-  await menuButton.tap()
+  await menuButton.dispatchEvent('pointerdown', { button: 0, pointerType: 'touch' })
+  await expect(page.locator('.sidebar')).toBeVisible()
+  await expect(drawer).toHaveCount(0)
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+  await menuButton.dispatchEvent('pointerup', { button: 0, pointerType: 'touch' })
+  await menuButton.dispatchEvent('click')
   await expect(drawer).toBeVisible()
   await expect(drawer.getByRole('button', { name: 'Undo' })).toHaveCount(0)
   await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
@@ -67,6 +72,14 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
     const styles = getComputedStyle(element)
     return { backgroundColor: styles.backgroundColor, borderColor: styles.borderColor }
   })).toEqual(idleMenuButtonStyles)
+
+  // The close button replaces the menu button under the active finger. A full
+  // tap must still leave the drawer open instead of retargeting to Close.
+  await menuButton.tap()
+  await expect(drawer).toBeVisible()
+  await page.waitForTimeout(100)
+  await closeButton.tap()
+  await expect(drawer).toBeHidden()
 
   // The left edge belongs to Android's Back gesture; opening is button-only.
   await page.mouse.move(2, 320)

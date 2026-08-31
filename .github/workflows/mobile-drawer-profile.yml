@@ -154,6 +154,9 @@ jobs:
                     runs: length,
                     metrics: ([
                       metric("opening_first_paint_ms"; ["profile", "opening", "firstPaint", "medianMs"]),
+                      metric("opening_first_movement_ms"; ["profile", "opening", "firstMovement", "medianMs"]),
+                      metric("opening_ten_percent_ms"; ["profile", "opening", "tenPercent", "medianMs"]),
+                      metric("opening_halfway_ms"; ["profile", "opening", "halfway", "medianMs"]),
                       metric("opening_settle_ms"; ["profile", "opening", "settle", "medianMs"]),
                       metric("opening_frame_p95_ms"; ["profile", "opening", "frameIntervals", "p95Ms"]),
                       metric("cycle_renderer_task_ms"; ["profile", "cycles", "rendererTaskMsPerOpenClose"]),
@@ -163,6 +166,9 @@ jobs:
                     ] | from_entries),
                     run_metrics: [.[].profile | {
                       opening_first_paint_ms: .opening.firstPaint.medianMs,
+                      opening_first_movement_ms: .opening.firstMovement.medianMs,
+                      opening_ten_percent_ms: .opening.tenPercent.medianMs,
+                      opening_halfway_ms: .opening.halfway.medianMs,
                       opening_settle_ms: .opening.settle.medianMs,
                       opening_frame_p95_ms: .opening.frameIntervals.p95Ms,
                       cycle_renderer_task_ms: .cycles.rendererTaskMsPerOpenClose,

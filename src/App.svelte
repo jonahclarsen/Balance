@@ -172,6 +172,7 @@
   let view: View = 'today'
   let currentDay = todayISO()
   let mobileDrawerOpen = false
+  let mobileDrawerPressing = false
   let mobileDrawerDragging = false
   let mobileDrawerEl: HTMLElement | null = null
   let mobileDrawerBackdropEl: HTMLButtonElement | null = null
@@ -712,8 +713,29 @@ return rows`
     return Math.min(window.innerWidth * 0.86, 320)
   }
 
+  function previewMobileDrawer(event: PointerEvent) {
+    if (event.button !== 0) return
+    mobileDrawerPressing = true
+  }
+
+  function finishMobileDrawerPress() {
+    mobileDrawerOpen = true
+    mobileDrawerPressing = false
+  }
+
+  function releaseMobileDrawerPress() {
+    window.setTimeout(() => {
+      if (!mobileDrawerOpen) mobileDrawerPressing = false
+    })
+  }
+
+  function cancelMobileDrawerPress() {
+    mobileDrawerPressing = false
+  }
+
   function closeMobileDrawer() {
     mobileDrawerOpen = false
+    mobileDrawerPressing = false
     finishMobileDrawerGesture()
   }
 
@@ -5239,7 +5261,10 @@ return rows`
       aria-label="Open navigation"
       aria-expanded={mobileDrawerOpen}
       aria-controls="primary-sidebar"
-      on:click={() => (mobileDrawerOpen = true)}
+      on:pointerdown={previewMobileDrawer}
+      on:pointerup={releaseMobileDrawerPress}
+      on:pointercancel={cancelMobileDrawerPress}
+      on:click={finishMobileDrawerPress}
     >
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
     </button>
@@ -5296,8 +5321,11 @@ return rows`
     id="primary-sidebar"
     class="sidebar"
     class:sidebar-hidden={viewMaximized}
-    class:mobile-drawer-open={mobileDrawerOpen}
+    class:mobile-drawer-open={mobileDrawerOpen || mobileDrawerPressing}
+    class:mobile-drawer-pressing={mobileDrawerPressing}
     aria-label="Primary navigation drawer"
+    aria-hidden={mobileDrawerPressing && !mobileDrawerOpen ? 'true' : undefined}
+    inert={mobileDrawerPressing}
     bind:this={mobileDrawerEl}
   >
     <div>
@@ -5415,7 +5443,8 @@ return rows`
 
   <button
     class="mobile-drawer-backdrop"
-    class:open={mobileDrawerOpen || mobileDrawerDragging}
+    class:open={mobileDrawerOpen || mobileDrawerPressing || mobileDrawerDragging}
+    class:mobile-drawer-pressing={mobileDrawerPressing}
     type="button"
     aria-label="Close navigation"
     tabindex={mobileDrawerOpen ? 0 : -1}
