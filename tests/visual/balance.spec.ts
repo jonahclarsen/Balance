@@ -897,7 +897,7 @@ test('Cmd or Ctrl+F searches the current document instead of opening overall sea
   const findInput = find.getByLabel('Find text')
   await findInput.pressSequentially('Daily plan', { delay: 25 })
   await expect(findInput).toHaveValue('Daily plan')
-  await expect(find.locator('.find-status')).toHaveText('Match')
+  await expect(find.locator('.find-status')).toHaveText('1/1 matches')
   await expect(findInput).toBeFocused()
   await expect.poll(() => findInput.evaluate((input) => (input as HTMLInputElement).selectionStart)).toBe('Daily plan'.length)
   await expect.poll(() => page.evaluate(() => {
@@ -933,7 +933,7 @@ test('Cmd or Ctrl+F scrolls an off-screen Today match into view', async ({ page 
   const findInput = find.getByLabel('Find text')
   await findInput.fill('hidden target')
 
-  await expect(find.locator('.find-status')).toHaveText('Match')
+  await expect(find.locator('.find-status')).toHaveText('1/1 matches')
   await expect(target).toBeInViewport()
   await expect(findInput).toBeFocused()
   const highlightOverlay = page.locator('.find-match-overlay')
@@ -946,6 +946,41 @@ test('Cmd or Ctrl+F scrolls an off-screen Today match into view', async ({ page 
       ? Array.from(highlight, (range) => range instanceof Range ? range.toString().toLowerCase() : '').join('')
       : ''
   })).toBe('hidden target')
+})
+
+test('Cmd or Ctrl+F reports match position and wraps in both directions', async ({ page }) => {
+  await seedPlanItems(
+    page,
+    Array.from({ length: 40 }, (_, index) => {
+      if (index === 0) return 'Cycle target at the start'
+      if (index === 38) return 'Cycle target at the end'
+      return `Filler task ${index + 1}`
+    }),
+  )
+
+  const firstTarget = page.getByRole('listitem', { name: 'Plan item: Cycle target at the start' })
+  const lastTarget = page.getByRole('listitem', { name: 'Plan item: Cycle target at the end' })
+  await page.keyboard.press('Meta+f')
+  const find = page.getByRole('search', { name: 'Find in current document' })
+  const status = find.locator('.find-status')
+  const findInput = find.getByLabel('Find text')
+  await findInput.fill('cycle target')
+
+  await expect(status).toHaveText('1/2 matches')
+  await expect(status).toBeVisible()
+  await expect(firstTarget).toBeInViewport()
+
+  await findInput.press('Enter')
+  await expect(status).toHaveText('2/2 matches')
+  await expect(lastTarget).toBeInViewport()
+
+  await findInput.press('Enter')
+  await expect(status).toHaveText('1/2 matches')
+  await expect(firstTarget).toBeInViewport()
+
+  await findInput.press('Shift+Enter')
+  await expect(status).toHaveText('2/2 matches')
+  await expect(lastTarget).toBeInViewport()
 })
 
 test('Cmd or Ctrl+F focuses goal search on the Goals page', async ({ page }) => {

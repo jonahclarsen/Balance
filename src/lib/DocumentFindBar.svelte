@@ -10,6 +10,8 @@
   let focusTimeout: number | null = null
   let highlightedQuery = ''
   let highlightedRange: Range | null = null
+  let matchRanges: Range[] = []
+  let activeMatchIndex = -1
   let highlightRects: Array<{ top: number; left: number; width: number; height: number }> = []
 
   const highlightName = 'balance-document-find-match'
@@ -39,8 +41,79 @@
   function clearHighlight() {
     highlightedQuery = ''
     highlightedRange = null
+    matchRanges = []
+    activeMatchIndex = -1
     highlightRects = []
     CSS.highlights.delete(highlightName)
+  }
+
+  function findTextRanges(searchQuery: string): Range[] {
+    type TextPiece = { node: Text; start: number; end: number }
+    type TextRun = { block: Element; text: string; pieces: TextPiece[] }
+
+    const runs: TextRun[] = []
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        const text = node instanceof Text ? node : null
+        const parent = text?.parentElement
+        if (!text?.data || !parent) return NodeFilter.FILTER_REJECT
+        if (parent.closest('.document-find, .find-match-overlay, script, style, noscript, [hidden], [aria-hidden="true"]')) {
+          return NodeFilter.FILTER_REJECT
+        }
+
+        const range = document.createRange()
+        range.selectNodeContents(text)
+        return range.getClientRects().length > 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
+      },
+    })
+
+    let node = walker.nextNode()
+    while (node) {
+      const text = node as Text
+      const block = textBlock(text)
+      if (block) {
+        let run = runs.at(-1)
+        if (!run || run.block !== block) {
+          run = { block, text: '', pieces: [] }
+          runs.push(run)
+        }
+        const start = run.text.length
+        run.text += text.data
+        run.pieces.push({ node: text, start, end: run.text.length })
+      }
+      node = walker.nextNode()
+    }
+
+    const needle = searchQuery.toLocaleLowerCase()
+    const ranges: Range[] = []
+    for (const run of runs) {
+      const haystack = run.text.toLocaleLowerCase()
+      let matchStart = haystack.indexOf(needle)
+      while (matchStart !== -1) {
+        const matchEnd = matchStart + needle.length
+        const startPiece = run.pieces.find((piece) => matchStart >= piece.start && matchStart < piece.end)
+        const endPiece = run.pieces.find((piece) => matchEnd > piece.start && matchEnd <= piece.end)
+        if (startPiece && endPiece) {
+          const range = document.createRange()
+          range.setStart(startPiece.node, matchStart - startPiece.start)
+          range.setEnd(endPiece.node, matchEnd - endPiece.start)
+          ranges.push(range)
+        }
+        matchStart = haystack.indexOf(needle, matchEnd)
+      }
+    }
+    return ranges
+  }
+
+  function textBlock(text: Text): Element | null {
+    let element = text.parentElement
+    const fallback = element
+    while (element && element !== document.body) {
+      const display = window.getComputedStyle(element).display
+      if (display !== 'contents' && !display.startsWith('inline')) return element
+      element = element.parentElement
+    }
+    return fallback
   }
 
   function updateHighlightRects() {
@@ -118,34 +191,27 @@
     const selectionStart = input?.selectionStart ?? query.length
     const selectionEnd = input?.selectionEnd ?? selectionStart
 
-    if (
-      highlightedQuery === query &&
-      highlightedRange?.startContainer.isConnected &&
-      highlightedRange.endContainer.isConnected
-    ) {
-      const selection = window.getSelection()
-      selection?.removeAllRanges()
-      selection?.addRange(highlightedRange)
+    const canReuseMatches = highlightedQuery === query
+      && matchRanges.length > 0
+      && matchRanges.every((range) => range.startContainer.isConnected && range.endContainer.isConnected)
+    if (!canReuseMatches) {
+      matchRanges = findTextRanges(query)
+      activeMatchIndex = -1
     }
 
-    const findInPage = (window as Window & {
-      find?: (
-        text: string,
-        caseSensitive?: boolean,
-        backwards?: boolean,
-        wrapAround?: boolean,
-        wholeWord?: boolean,
-        searchInFrames?: boolean,
-        showDialog?: boolean,
-      ) => boolean
-    }).find
+    found = matchRanges.length > 0
+    highlightedQuery = query
+    if (found) {
+      activeMatchIndex = activeMatchIndex === -1
+        ? (backwards ? matchRanges.length - 1 : 0)
+        : (activeMatchIndex + (backwards ? -1 : 1) + matchRanges.length) % matchRanges.length
+      highlightedRange = matchRanges[activeMatchIndex]
+    } else {
+      activeMatchIndex = -1
+      highlightedRange = null
+      highlightRects = []
+    }
 
-    found = findInPage?.call(window, query, false, backwards, true, false, false, false) ?? false
-    const matchSelection = window.getSelection()
-    highlightedRange = found && matchSelection?.rangeCount
-      ? matchSelection.getRangeAt(0).cloneRange()
-      : null
-    highlightedQuery = highlightedRange ? query : ''
     CSS.highlights.delete(highlightName)
     if (highlightedRange) {
       CSS.highlights.set(highlightName, new Highlight(highlightedRange))
@@ -187,7 +253,7 @@
     on:keydown={handleKeydown}
   />
   <span class:missing={found === false} class="find-status" role="status">
-    {found === false ? 'No matches' : found === true ? 'Match' : ''}
+    {found === false ? 'No matches' : found === true ? `${activeMatchIndex + 1}/${matchRanges.length} matches` : ''}
   </span>
   <button type="button" title="Previous match (Shift+Enter)" aria-label="Previous match" on:click={() => find(true)}>↑</button>
   <button type="button" title="Next match (Enter)" aria-label="Next match" on:click={() => find()}>↓</button>
@@ -216,7 +282,7 @@
   }
 
   .find-status {
-    min-width: 40px;
+    min-width: 68px;
     color: var(--muted);
     font-size: 11px;
     text-align: center;
@@ -252,10 +318,6 @@
     input {
       width: 100%;
       min-width: 0;
-    }
-
-    .find-status {
-      display: none;
     }
   }
 </style>
