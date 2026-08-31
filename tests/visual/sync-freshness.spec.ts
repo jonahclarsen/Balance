@@ -38,8 +38,11 @@ test.beforeEach(async ({ page }) => {
       __persistOperationCount: number
       __persistedOperationIds: string[]
       __reloadReadStarted: boolean
+      __syncSettingsBlocked: boolean
+      __syncSawPendingEdit: boolean
       __releaseLaunchSync?: () => void
       __releaseReloadRead?: () => void
+      __releaseSyncSettings?: () => void
       __storedState: string
       __taskDisappeared: boolean
       __TAURI_INTERNALS__: {
@@ -94,6 +97,8 @@ test.beforeEach(async ({ page }) => {
     runtime.__persistOperationCount = 0
     runtime.__persistedOperationIds = []
     runtime.__reloadReadStarted = false
+    runtime.__syncSettingsBlocked = false
+    runtime.__syncSawPendingEdit = false
     runtime.__storedState = storedState
     runtime.__taskDisappeared = false
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
@@ -183,6 +188,12 @@ test.beforeEach(async ({ page }) => {
             }
           case 'get_sync_settings':
             runtime.__syncSettingsCount += 1
+            if (new URLSearchParams(location.search).has('resume-with-pending-edit')) {
+              runtime.__syncSettingsBlocked = true
+              await new Promise<void>((resolve) => {
+                runtime.__releaseSyncSettings = resolve
+              })
+            }
             if (new URLSearchParams(location.search).has('hold-settings')) {
               return new Promise(() => undefined)
             }
@@ -199,6 +210,35 @@ test.beforeEach(async ({ page }) => {
             }
           case 'sync_relay_once':
             runtime.__syncAttemptCount += 1
+            if (new URLSearchParams(location.search).has('resume-with-pending-edit')) {
+              runtime.__syncSawPendingEdit = storedState.includes('Offline phone task')
+              const state = JSON.parse(storedState) as {
+                plans: Array<{ items: Array<Record<string, unknown>> }>
+              }
+              if (!runtime.__syncSawPendingEdit) state.plans[0].items = []
+              if (!state.plans[0].items.some((item) => item.id === 'remote-item')) {
+                state.plans[0].items.push({
+                  id: 'remote-item',
+                  text: 'Remote Mac task',
+                  html: 'Remote Mac task',
+                  done: false,
+                  startMinutes: null,
+                  endMinutes: null,
+                  timeHidden: false,
+                  children: [],
+                })
+              }
+              storedState = JSON.stringify(state)
+              runtime.__storedState = storedState
+              return {
+                pulledOperations: 8,
+                pushedOperations: runtime.__syncSawPendingEdit ? 1 : 0,
+                stateChanged: true,
+                checkpointCommitted: false,
+                epoch: 'synthetic',
+                latestSequence: 8,
+              }
+            }
             if (new URLSearchParams(location.search).has('edit-during-launch-reload')) {
               await new Promise<void>((resolve) => {
                 runtime.__releaseLaunchSync = resolve
@@ -436,6 +476,43 @@ test('a task typed while the launch reload is reading never disappears', async (
       disappeared: runtime.__taskDisappeared,
     }
   })).toEqual({ reads: 3, persistedOperations: true, duplicateOperations: false, stored: true, disappeared: false })
+})
+
+test('a pending offline phone edit is durable before resume sync reconciles Mac changes', async ({ page }) => {
+  await page.goto('/?resume-with-pending-edit=1')
+
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __syncSettingsBlocked: boolean }
+    return runtime.__syncSettingsBlocked
+  })).toBe(true)
+
+  await page.evaluate(async () => {
+    const storePath = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    plannerStore.patchPlanItem('local-plan', 'visible-item', {
+      text: 'Offline phone task',
+      html: 'Offline phone task',
+    })
+    const runtime = globalThis as typeof globalThis & { __releaseSyncSettings?: () => void }
+    runtime.__releaseSyncSettings?.()
+  })
+
+  await expect(page.getByText('Offline phone task')).toBeVisible()
+  await expect(page.getByText('Remote Mac task')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & {
+      __persistOperationCount: number
+      __syncAttemptCount: number
+      __syncSawPendingEdit: boolean
+      __storedState: string
+    }
+    return {
+      persistedBeforeSync: runtime.__syncSawPendingEdit,
+      persisted: runtime.__persistOperationCount >= 1,
+      synced: runtime.__syncAttemptCount >= 1,
+      stored: runtime.__storedState.includes('Offline phone task'),
+    }
+  })).toEqual({ persistedBeforeSync: true, persisted: true, synced: true, stored: true })
 })
 
 test('concurrent backend reload callers share one stable database read', async ({ page }) => {

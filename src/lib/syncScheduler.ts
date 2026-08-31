@@ -164,6 +164,11 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       showActivity: shouldShowActivity(reason),
     }))
     try {
+      // A mobile WebView can be suspended before the ordinary persistence
+      // debounce fires. Reconcile only after every edit still visible in the
+      // frontend is durable, or an incoming checkpoint can replace its older
+      // database state before the pending operation is applied.
+      await plannerStore.flushPendingOperations()
       const result = await syncRelayOnce(reason)
       // A due WorkManager pass may have updated the database immediately before
       // this foreground pass. Reload on launch even when this pass sees no new
@@ -249,12 +254,20 @@ export function startAutomaticSync(): () => void {
   const onFocus = () => void requestSync('focus')
   const onVisibility = () => {
     schedulePoll()
-    if (document.visibilityState === 'visible') void requestSync('resume')
+    if (document.visibilityState === 'visible') {
+      void requestSync('resume')
+    } else {
+      // Start the native write while Android still gives the WebView time to
+      // finish its background transition instead of relying on a paused timer.
+      void plannerStore.flushPendingOperations()
+    }
   }
+  const onPageHide = () => void plannerStore.flushPendingOperations()
   const stopPersisted = onPersistedOperation(triggerEdit)
   window.addEventListener('online', onOnline)
   window.addEventListener('offline', onOffline)
   window.addEventListener('focus', onFocus)
+  window.addEventListener('pagehide', onPageHide)
   document.addEventListener('visibilitychange', onVisibility)
 
   return () => {
@@ -266,6 +279,7 @@ export function startAutomaticSync(): () => void {
     window.removeEventListener('online', onOnline)
     window.removeEventListener('offline', onOffline)
     window.removeEventListener('focus', onFocus)
+    window.removeEventListener('pagehide', onPageHide)
     document.removeEventListener('visibilitychange', onVisibility)
   }
 }

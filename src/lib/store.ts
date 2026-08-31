@@ -2444,6 +2444,11 @@ function createPlannerStore() {
       return true
     },
 
+    async flushPendingOperations(): Promise<void> {
+      if (!isTauri()) return
+      await flushOperations()
+    },
+
     async reloadFromBackend(): Promise<void> {
       if (!isTauri()) return
       await requestStableBackendReload()
