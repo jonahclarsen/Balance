@@ -11,18 +11,20 @@ import {
   type PresetThemeId,
   type ThemeId,
 } from './themes'
-import type { DeviceAppearancePreferences, ReplicatedPreferences } from './types'
+import type { ColorSchemePreference, DeviceAppearancePreferences, ReplicatedPreferences } from './types'
 
 // This deliberately contains appearance data only. It is the sole state needed
 // before SQLCipher opens, so the loading screen can render the device's theme
 // without exposing planner content or historical day-theme records.
 export const DEVICE_APPEARANCE_BOOTSTRAP_KEY = 'balance:deviceAppearance.v1'
+export const COLOR_SCHEME_QUERY = '(prefers-color-scheme: dark)'
 
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/
 
 export function createDefaultDeviceAppearance(): DeviceAppearancePreferences {
   return {
     version: 1,
+    colorScheme: 'system',
     themeId: DEFAULT_THEME_ID,
     randomThemeStartDate: '',
     doneTintColor: '',
@@ -37,6 +39,7 @@ export function normalizeDeviceAppearance(value: unknown): DeviceAppearancePrefe
   const appearance = value as Record<string, unknown>
   return {
     version: 1,
+    colorScheme: normalizeColorScheme(appearance.colorScheme),
     themeId: normalizeThemeId(typeof appearance.themeId === 'string' ? appearance.themeId : null),
     randomThemeStartDate: typeof appearance.randomThemeStartDate === 'string'
       && DATE_PATTERN.test(appearance.randomThemeStartDate)
@@ -46,6 +49,17 @@ export function normalizeDeviceAppearance(value: unknown): DeviceAppearancePrefe
     checkboxColor: normalizeColorOverride(appearance.checkboxColor),
     iridescentGradient: normalizeIridescentGradient(appearance.iridescentGradient),
   }
+}
+
+export function normalizeColorScheme(value: unknown): ColorSchemePreference {
+  return value === 'light' || value === 'dark' ? value : 'system'
+}
+
+export function effectiveColorScheme(
+  preference: ColorSchemePreference,
+  systemPrefersDark: boolean,
+): 'light' | 'dark' {
+  return preference === 'system' ? (systemPrefersDark ? 'dark' : 'light') : preference
 }
 
 export function deviceAppearanceFromLegacyPreferences(

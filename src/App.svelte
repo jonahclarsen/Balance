@@ -51,7 +51,7 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
@@ -60,8 +60,10 @@
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
   import {
+    COLOR_SCHEME_QUERY,
     createDefaultDeviceAppearance,
     deviceAppearanceFromLegacyPreferences,
+    effectiveColorScheme,
     effectiveThemeForDate,
     normalizeDeviceAppearance,
     persistEncryptedDeviceAppearance,
@@ -97,6 +99,15 @@
   const MACOS_ALT_SHORTCUT_EVENT = 'balance-macos-alt-shortcut'
   const TIME_KEYBOARD_STEP_MINUTES = 15
   const TIME_KEYBOARD_MERGE_WINDOW_MS = 1500
+  const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
+    id: ColorSchemePreference
+    name: string
+    description: string
+  }> = [
+    { id: 'system', name: 'System', description: 'Match this device' },
+    { id: 'light', name: 'Light', description: 'Always use light mode' },
+    { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
+  ]
 
   type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'metrics' | 'goals' | 'settings'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
@@ -226,6 +237,7 @@
   let randomThemeScheduled = false
   let deviceAppearance: DeviceAppearancePreferences = readDeviceAppearanceBootstrap()
     ?? createDefaultDeviceAppearance()
+  let systemPrefersDark = window.matchMedia(COLOR_SCHEME_QUERY).matches
   let deviceAppearanceDatabaseReady = false
   let lastObservedTodayKey = ''
   let historicalThemeId: string | null = null
@@ -595,6 +607,10 @@ return rows`
   $: displayedThemeId = historicalThemeId
     ? normalizePresetThemeId(historicalThemeId)
     : effectiveThemeId
+  $: document.documentElement.dataset.colorScheme = effectiveColorScheme(
+    deviceAppearance.colorScheme,
+    systemPrefersDark,
+  )
   $: document.documentElement.dataset.theme = displayedThemeId
   $: observeCurrentTodayTheme(
     preferencesReady
@@ -1592,6 +1608,11 @@ return rows`
     let desktopInactivityCloseRequested = false
     let lastDesktopActivityAt = Date.now()
     const desktopActivityEvents = ['keydown', 'pointerdown', 'pointermove', 'wheel', 'input'] as const
+    const colorSchemeMedia = window.matchMedia(COLOR_SCHEME_QUERY)
+    const handleSystemColorSchemeChange = (event: MediaQueryListEvent) => {
+      systemPrefersDark = event.matches
+    }
+    colorSchemeMedia.addEventListener('change', handleSystemColorSchemeChange)
     window.addEventListener(TASK_COMPLETION_FOCUS_EVENT, handleTaskCompletionFocus)
 
     function receiveDeepLink(raw: string) {
@@ -1853,6 +1874,7 @@ return rows`
       stopDeepLinkListener?.()
       stopAndroidSelectionBackListener()
       window.removeEventListener(TASK_COMPLETION_FOCUS_EVENT, handleTaskCompletionFocus)
+      colorSchemeMedia.removeEventListener('change', handleSystemColorSchemeChange)
       window.clearInterval(databaseLoadingMessageTimer)
       window.clearInterval(currentDayTimer)
       if (desktopInactivityCloseTimer !== null) window.clearTimeout(desktopInactivityCloseTimer)
@@ -2032,6 +2054,11 @@ return rows`
       doneTintColor: '',
       checkboxColor: '',
     })
+  }
+
+  function updateColorScheme(colorScheme: ColorSchemePreference) {
+    if (colorScheme === deviceAppearance.colorScheme) return
+    commitDeviceAppearance({ colorScheme })
   }
 
   function toggleRandomThemeSchedule() {
@@ -6272,8 +6299,33 @@ return rows`
       <div class="settings-panel">
         <section class="settings-section">
           <div>
+            <h3>Appearance</h3>
+            <p>Choose how Balance looks on this device.</p>
+          </div>
+
+          <div class="color-scheme-grid" role="group" aria-label="Appearance">
+            {#each COLOR_SCHEME_OPTIONS as option (option.id)}
+              <button
+                type="button"
+                class="color-scheme-option"
+                class:active={deviceAppearance.colorScheme === option.id}
+                aria-pressed={deviceAppearance.colorScheme === option.id}
+                on:click={() => updateColorScheme(option.id)}
+              >
+                <span>
+                  <strong>{option.name}</strong>
+                  <small>{option.description}</small>
+                </span>
+                <span class="theme-selected-mark" aria-hidden="true">✓</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div>
             <h3>Color theme</h3>
-            <p>Pick a theme based on your mood. Each theme adapts automatically to light and dark mode.</p>
+            <p>Pick a theme based on your mood. Each theme adapts to the appearance selected above.</p>
           </div>
 
           <div class="theme-options-stack">

@@ -184,6 +184,57 @@ test('a synced historical theme temporarily overrides this device theme', async 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'orange')
 })
 
+test('appearance can follow the system or stay light or dark on this device', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await selectDeviceThemeForTest(page, 'graphite')
+  await page.reload()
+
+  const root = page.locator('html')
+  await expect(root).toHaveAttribute('data-color-scheme', 'dark')
+  await expect(root).toHaveCSS('color-scheme', 'dark')
+  await expect(root).toHaveCSS('color', 'rgb(240, 240, 237)')
+
+  const openNavigation = page.getByRole('button', { name: 'Open navigation' })
+  if (await openNavigation.isVisible()) await openNavigation.click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  const appearanceGroup = page.getByRole('group', { name: 'Appearance' })
+  const system = appearanceGroup.getByRole('button', { name: 'System Match this device' })
+  const light = appearanceGroup.getByRole('button', { name: 'Light Always use light mode' })
+  const dark = appearanceGroup.getByRole('button', { name: 'Dark Always use dark mode' })
+  await expect(system).toHaveAttribute('aria-pressed', 'true')
+
+  await light.click()
+  await expect(root).toHaveAttribute('data-color-scheme', 'light')
+  await expect(root).toHaveCSS('color-scheme', 'light')
+  await expect(root).toHaveCSS('color', 'rgb(25, 25, 24)')
+  await expect.poll(() => page.evaluate(() => {
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return appearance?.colorScheme
+  })).toBe('light')
+  await page.reload()
+  await expect(root).toHaveAttribute('data-color-scheme', 'light')
+  await expect(root).toHaveCSS('color', 'rgb(25, 25, 24)')
+  if (await openNavigation.isVisible()) await openNavigation.click()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  await page.emulateMedia({ colorScheme: 'light' })
+  await dark.click()
+  await expect(root).toHaveAttribute('data-color-scheme', 'dark')
+  await expect(root).toHaveCSS('color-scheme', 'dark')
+
+  await system.click()
+  await expect(root).toHaveAttribute('data-color-scheme', 'light')
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await expect(root).toHaveAttribute('data-color-scheme', 'dark')
+  await expect.poll(() => page.evaluate(() => {
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return appearance?.colorScheme
+  })).toBe('system')
+})
+
 test('random theme can be scheduled for the next day boundary while changing today\'s theme', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-08-18T02:59:00') })
   await page.goto('/')

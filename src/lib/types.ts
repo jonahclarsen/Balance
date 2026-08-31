@@ -202,12 +202,15 @@ export type ReplicatedPreferences = {
 
 export type DeviceAppearancePreferences = {
   version: 1
+  colorScheme: ColorSchemePreference
   themeId: string
   randomThemeStartDate: string
   doneTintColor: string
   checkboxColor: string
   iridescentGradient: IridescentGradientPreferences
 }
+
+export type ColorSchemePreference = 'system' | 'light' | 'dark'
 
 export type IridescentGradientColor = {
   hue: number
