@@ -5477,10 +5477,12 @@ body.mobile-checkbox-dragging {
   box-shadow: var(--shadow);
 }
 
-.notes-view-workspace > .notes-page-header,
-.notes-view-workspace > .notes-workspace {
-  width: 90.9091%;
-  zoom: 1.1;
+@media (min-width: 761px) {
+  .notes-view-workspace > .notes-page-header,
+  .notes-view-workspace > .notes-workspace {
+    width: 90.9091%;
+    zoom: 1.1;
+  }
 }
 
 .notes-sidebar {
@@ -6140,6 +6142,10 @@ body.mobile-checkbox-dragging {
   }
 
   .note-format-hint {
+    display: none;
+  }
+
+  .note-scroll-space-control {
     display: none;
   }
 

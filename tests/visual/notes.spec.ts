@@ -1024,7 +1024,7 @@ test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openNotesView(page)
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByLabel('Note title').fill('Pocket note')
   await page.locator('[data-note-text-input]').first().fill('Readable on a phone')
@@ -1033,7 +1033,16 @@ test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   const documentBox = await page.locator('.note-document').boundingBox()
   expect(documentBox?.x).toBeGreaterThanOrEqual(0)
   expect((documentBox?.x ?? 0) + (documentBox?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
+  expect(documentBox?.width ?? 0).toBeGreaterThan((viewport?.width ?? 0) - 30)
+  await expect(page.locator('.note-scroll-space-control')).toHaveCSS('display', 'none')
+  await expect(page.locator('.goal-history-panel')).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('notes-mobile.png'), fullPage: true })
+
+  await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('complementary', { name: 'Primary navigation drawer' })
+    .getByRole('button', { name: 'Today', exact: true })
+    .click()
+  await expect(page.getByRole('region', { name: 'Goal history' })).toBeVisible()
 })
 
 test('an empty note always has a place to start typing', async ({ page }) => {

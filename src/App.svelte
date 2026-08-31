@@ -6596,7 +6596,7 @@ return rows`
     {/if}
     </section>
 
-    {#if goalRhythmVisible || viewMaximized}
+    {#if (goalRhythmVisible || viewMaximized) && (!isMobile || view === 'today')}
       <GoalHistoryPanel
         goals={goalHistoryGoals}
         completions={goalCompletions}
