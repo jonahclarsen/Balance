@@ -3817,6 +3817,10 @@ body.mobile-checkbox-dragging {
   gap: 10px;
 }
 
+.goal-archive-title {
+  margin: 18px 0 2px;
+}
+
 .goal-card {
   position: relative;
   display: grid;

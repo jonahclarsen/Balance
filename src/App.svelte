@@ -567,6 +567,9 @@ return rows`
   $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
+  $: activeFilteredGoals = filteredGoals.filter((goal) => isGoalActiveOnDate(goal, currentDay))
+  $: archivedFilteredGoals = filteredGoals.filter((goal) => !isGoalActiveOnDate(goal, currentDay))
+  $: groupedFilteredGoals = [...activeFilteredGoals, ...archivedFilteredGoals]
   $: themeId = selectedThemeForDate(deviceAppearance, currentDay)
   $: effectiveThemeId = effectiveThemeForDate(deviceAppearance, currentDay)
   $: randomThemeScheduled = deviceAppearance.themeId !== 'random'
@@ -2634,24 +2637,19 @@ return rows`
     goalFormStatus = ''
   }
 
-  async function confirmDeleteGoal(goalId: Id, goalName: string) {
-    const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goalId).length
-    const firstMessage =
-      completionCount > 0
-        ? `“${goalName}” has ${completionCount} saved completion${completionCount === 1 ? '' : 's'}. Archiving it keeps that history visible when you scroll back. Delete it and all of its history anyway?`
-        : `Delete “${goalName}”?`
-    const confirmed = isTauri()
-      ? await confirmDialog(firstMessage, { title: completionCount > 0 ? 'Archive instead?' : 'Delete goal?', kind: 'warning' })
-      : window.confirm(firstMessage)
-    if (!confirmed) return
+  async function confirmDeleteArchivedGoal(goalId: Id, goalName: string) {
+    const goal = $plannerStore.goals.find((candidate) => candidate.id === goalId)
+    if (!goal || isGoalActiveOnDate(goal, currentDay)) return
 
-    if (completionCount > 0) {
-      const finalMessage = `Permanently delete “${goalName}” and its ${completionCount} saved completion${completionCount === 1 ? '' : 's'}?`
-      const finalConfirmed = isTauri()
-        ? await confirmDialog(finalMessage, { title: 'Permanently delete goal?', kind: 'warning' })
-        : window.confirm(finalMessage)
-      if (!finalConfirmed) return
-    }
+    const completionCount = $plannerStore.goalCompletions.filter((completion) => completion.goalId === goalId).length
+    const message =
+      completionCount > 0
+        ? `Permanently delete “${goalName}” and its ${completionCount} saved completion${completionCount === 1 ? '' : 's'}? You can still undo this action.`
+        : `Permanently delete “${goalName}” from the archive? You can still undo this action.`
+    const confirmed = isTauri()
+      ? await confirmDialog(message, { title: 'Permanently delete goal?', kind: 'warning' })
+      : window.confirm(message)
+    if (!confirmed) return
 
     plannerStore.deleteGoal(goalId)
   }
@@ -6146,10 +6144,13 @@ return rows`
       </div>
 
       <div class="goal-list">
-        {#each filteredGoals as goal (goal.id)}
+        {#each groupedFilteredGoals as goal (goal.id)}
           {@const active = isGoalActiveOnDate(goal, currentDay)}
           {@const completionCount = goalCompletions.filter((completion) => completion.goalId === goal.id).length}
           {@const firstPeriod = goal.activityPeriods[0]}
+          {#if !active && goal.id === archivedFilteredGoals[0]?.id}
+            <h3 class="goal-archive-title">Archive</h3>
+          {/if}
           <article
             class="goal-card"
             class:archived={!active}
@@ -6244,7 +6245,9 @@ return rows`
               >
                 {active ? 'Archive' : 'Reactivate'}
               </button>
-              <button class="danger-text" type="button" on:click={() => { void confirmDeleteGoal(goal.id, goal.name) }}>Delete</button>
+              {#if !active}
+                <button class="danger-text" type="button" on:click={() => { void confirmDeleteArchivedGoal(goal.id, goal.name) }}>Delete</button>
+              {/if}
             </div>
           </article>
         {:else}

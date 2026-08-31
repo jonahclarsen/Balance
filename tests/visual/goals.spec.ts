@@ -560,7 +560,7 @@ test('task typing only rescans goals when its match result changes', async ({ pa
   await expect.poll(() => unrelatedGoalIncludes(page)).toBe(1)
 })
 
-test('old goal snapshots survive rule edits and archiving, and deletion advises archiving', async ({ page }, testInfo) => {
+test('old goal snapshots survive rule edits and permanent deletion is only available from the archive', async ({ page }, testInfo) => {
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
@@ -596,7 +596,9 @@ test('old goal snapshots survive rule edits and archiving, and deletion advises 
     )
     .toBe(true)
 
+  await expect(page.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Archive', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible()
   await expect(page.getByText('Archived', { exact: true })).toBeVisible()
   await expect(page.locator(`.goal-day-cell[title="Exercise · ${oldDate} · completed"]`)).toBeVisible()
 
@@ -607,7 +609,7 @@ test('old goal snapshots survive rule edits and archiving, and deletion advises 
   })
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect.poll(() => dialogMessages.length).toBe(1)
-  expect(dialogMessages[0]).toContain('Archiving it keeps that history visible')
+  expect(dialogMessages[0]).toContain('Permanently delete “Exercise” and its 1 saved completion?')
   await expect(page.getByLabel('Goal name: Exercise')).toBeVisible()
 
   await page.screenshot({
@@ -859,7 +861,8 @@ test('goals put daily intervals first, then order by days until lapse and shorte
     page.locator('.goal-card .goal-name-input').evaluateAll((inputs) =>
       inputs.map((input) => input.textContent),
     ),
-  ).resolves.toEqual(['Archived daily', 'Sooner', 'Short tie', 'Long tie'])
+  ).resolves.toEqual(['Sooner', 'Short tie', 'Long tie', 'Archived daily'])
+  await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible()
 })
 
 test('goal rhythm counts goals becoming overdue from the viewed day through the next three days', async ({ page }) => {
