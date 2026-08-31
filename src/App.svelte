@@ -2227,9 +2227,11 @@ return rows`
 
     scrollElementToCenter(goalCard)
     highlightedGoalCardId = goalId
+    // Let the highlight layer reach its final transparent frame before removing
+    // the animation trigger.
     setTimeout(() => {
       if (highlightedGoalCardId === goalId) highlightedGoalCardId = null
-    }, 1600)
+    }, 1700)
   }
 
   function scrollElementToCenter(element: HTMLElement) {

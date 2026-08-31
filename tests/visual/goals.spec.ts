@@ -2,6 +2,17 @@ import { expect, test } from '@playwright/test'
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
 
+async function selectDeviceThemeForTest(page: import('@playwright/test').Page, themeId: string) {
+  await page.evaluate((selectedThemeId) => localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
+    version: 1,
+    themeId: selectedThemeId,
+    randomThemeStartDate: '',
+    doneTintColor: '',
+    checkboxColor: '',
+  })), themeId)
+  await page.reload()
+}
+
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1150,6 +1161,8 @@ test('goal rhythm keeps its name column aligned while scrolling both axes', asyn
 })
 
 test('clicking a plan item goal badge reveals that goal in the rhythm panel', async ({ page }) => {
+  await selectDeviceThemeForTest(page, 'iridescent')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await createGoal(page, 'Exercise', 1, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
@@ -1200,31 +1213,31 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   await expect(page.locator('.goal-history-panel')).toHaveCount(0)
   await page.evaluate(() => {
     const testWindow = window as Window & {
-      goalHighlightTransitionRuns?: number
-      goalHighlightTransitionEnds?: number
+      goalHighlightAnimationStarts?: number
+      goalHighlightAnimationEnds?: number
     }
-    testWindow.goalHighlightTransitionRuns = 0
-    testWindow.goalHighlightTransitionEnds = 0
-    document.addEventListener('transitionrun', (event) => {
+    testWindow.goalHighlightAnimationStarts = 0
+    testWindow.goalHighlightAnimationEnds = 0
+    document.addEventListener('animationstart', (event) => {
       const target = event.target
       if (
-        event.propertyName === 'background-color'
+        event.animationName === 'goal-reveal-highlight-fade'
         && target instanceof HTMLElement
         && target.matches('.goal-history-name[data-goal-id]')
         && target.textContent?.includes('Exercise')
       ) {
-        testWindow.goalHighlightTransitionRuns = (testWindow.goalHighlightTransitionRuns ?? 0) + 1
+        testWindow.goalHighlightAnimationStarts = (testWindow.goalHighlightAnimationStarts ?? 0) + 1
       }
     })
-    document.addEventListener('transitionend', (event) => {
+    document.addEventListener('animationend', (event) => {
       const target = event.target
       if (
-        event.propertyName === 'background-color'
+        event.animationName === 'goal-reveal-highlight-fade'
         && target instanceof HTMLElement
         && target.matches('.goal-history-name[data-goal-id]')
         && target.textContent?.includes('Exercise')
       ) {
-        testWindow.goalHighlightTransitionEnds = (testWindow.goalHighlightTransitionEnds ?? 0) + 1
+        testWindow.goalHighlightAnimationEnds = (testWindow.goalHighlightAnimationEnds ?? 0) + 1
       }
     })
   })
@@ -1234,9 +1247,13 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   await expect(goalRow).toHaveClass(/goal-row-focus/)
   await expect.poll(() => goalRhythmRowCenterOffset(page, 'Exercise')).toBeLessThanOrEqual(1)
   expect(await goalRhythmScrollTopDifference(page)).toBe(0)
-  await expect.poll(() => goalHighlightTransitionRuns(page)).toBe(1)
+  await expect.poll(() => goalHighlightAnimationStarts(page)).toBe(1)
+  await page.waitForTimeout(1100)
+  const fadingRowOpacity = await goalRevealHighlightOpacity(goalRow)
+  expect(fadingRowOpacity).toBeGreaterThan(0)
+  expect(fadingRowOpacity).toBeLessThan(1)
   await expect(goalRow).not.toHaveClass(/goal-row-focus/)
-  await expect.poll(() => goalHighlightTransitionEnds(page)).toBe(1)
+  await expect.poll(() => goalHighlightAnimationEnds(page)).toBe(1)
 
   await page.locator('.goal-history-name-scroll').evaluate((element) => { element.scrollTop = 0 })
   await page.locator('.goal-history-scroll').evaluate((element) => { element.scrollTop = 0 })
@@ -1302,6 +1319,8 @@ test('clicking a goal card background reveals it without making field labels foc
 })
 
 test('clicking a goal rhythm row scrolls to that goal on the goals page', async ({ page }) => {
+  await selectDeviceThemeForTest(page, 'graphite')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
   const targetGoal = 'Goal 18'
 
   for (let index = 1; index <= 28; index += 1) {
@@ -1316,6 +1335,11 @@ test('clicking a goal rhythm row scrolls to that goal on the goals page', async 
   await expect(page.getByRole('button', { name: 'Goals', exact: true })).toHaveClass(/active/)
   await expect(targetCard).toHaveClass(/goal-card-focus/)
   await expect.poll(() => goalCardCenterOffset(page, targetGoal)).toBeLessThanOrEqual(1)
+  await page.waitForTimeout(1100)
+  const fadingCardOpacity = await goalRevealHighlightOpacity(targetCard)
+  expect(fadingCardOpacity).toBeGreaterThan(0)
+  expect(fadingCardOpacity).toBeLessThan(1)
+  await expect(targetCard).not.toHaveClass(/goal-card-focus/)
 
   await resetActiveScrollTop(page)
   await targetRow.click()
@@ -1527,14 +1551,18 @@ async function goalRhythmRowCenterOffset(page: import('@playwright/test').Page, 
   }, goalName)
 }
 
-async function goalHighlightTransitionRuns(page: import('@playwright/test').Page) {
+async function goalHighlightAnimationStarts(page: import('@playwright/test').Page) {
   return page.evaluate(() => (
-    window as Window & { goalHighlightTransitionRuns?: number }
-  ).goalHighlightTransitionRuns ?? 0)
+    window as Window & { goalHighlightAnimationStarts?: number }
+  ).goalHighlightAnimationStarts ?? 0)
 }
 
-async function goalHighlightTransitionEnds(page: import('@playwright/test').Page) {
+async function goalHighlightAnimationEnds(page: import('@playwright/test').Page) {
   return page.evaluate(() => (
-    window as Window & { goalHighlightTransitionEnds?: number }
-  ).goalHighlightTransitionEnds ?? 0)
+    window as Window & { goalHighlightAnimationEnds?: number }
+  ).goalHighlightAnimationEnds ?? 0)
+}
+
+async function goalRevealHighlightOpacity(locator: import('@playwright/test').Locator) {
+  return locator.evaluate((element) => Number(getComputedStyle(element, '::after').opacity))
 }

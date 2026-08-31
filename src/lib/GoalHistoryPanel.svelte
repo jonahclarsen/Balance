@@ -36,7 +36,9 @@
   let highlightResetTimer: ReturnType<typeof setTimeout> | undefined
   let lastHandledScrollNonce = -1
   let wasVisible = visible
-  const GOAL_REVEAL_HOLD_MS = 900
+  // Clear the trigger just after the CSS animation ends so its final transparent
+  // frame is painted before the class is removed.
+  const GOAL_REVEAL_CLEAR_MS = 1700
   // Profiling under CPU contention found 48 days to be the best balance: large
   // enough to avoid delayed paints while scrolling, but still small enough for
   // content-visibility to skip most of the offscreen timeline.
@@ -107,7 +109,7 @@
     highlightedGoalId = goalId
     highlightResetTimer = setTimeout(() => {
       if (lastHandledScrollNonce === nonce && highlightedGoalId === goalId) highlightedGoalId = null
-    }, GOAL_REVEAL_HOLD_MS)
+    }, GOAL_REVEAL_CLEAR_MS)
   }
 
   function centerGoalRow(row: HTMLElement) {
