@@ -241,6 +241,7 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
         let tenPercentMs: number | null = null
         let halfwayMs: number | null = null
         let settleMs: number | null = null
+        let settleWatchStarted = false
         const sample = (now: number) => {
           intervals.push(now - previous)
           previous = now
@@ -250,16 +251,18 @@ test('profiles repeated mobile hamburger drawer openings', async ({ page }, test
           if (firstMovementMs == null && actionProgress >= 0.01) firstMovementMs = now - started
           if (tenPercentMs == null && actionProgress >= 0.1) tenPercentMs = now - started
           if (halfwayMs == null && actionProgress >= 0.5) halfwayMs = now - started
-          if (frameCount === 1) {
+          if (!settleWatchStarted) {
             const transitions = [drawer, backdrop]
               .flatMap((element) => element.getAnimations())
               .filter((animation) => Number.isFinite(Number(animation.effect?.getComputedTiming().iterations)))
-            if (transitions.length === 0) {
-              settleMs = now - started
-            } else {
+            if (transitions.length > 0) {
+              settleWatchStarted = true
               void Promise.allSettled(transitions.map((animation) => animation.finished)).then(() => {
                 settleMs = performance.now() - started
               })
+            } else if (actionProgress >= 1) {
+              settleWatchStarted = true
+              settleMs = now - started
             }
           }
           if (frameCount === 2) firstPaintMs = now - started
