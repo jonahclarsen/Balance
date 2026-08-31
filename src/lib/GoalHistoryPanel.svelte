@@ -96,6 +96,17 @@
     const row = nameScrollEl?.querySelector<HTMLElement>(`[data-goal-id="${CSS.escape(goalId)}"]`)
     if (!row || !scrollEl || !nameScrollEl) return
 
+    highlightedGoalId = goalId
+    highlightResetTimer = setTimeout(() => {
+      if (lastHandledScrollNonce === nonce && highlightedGoalId === goalId) highlightedGoalId = null
+    }, GOAL_REVEAL_CLEAR_MS)
+    // Paint the highlight at the row's current position before moving it. Two
+    // frames let the class flush and render once before the centering jump.
+    await tick()
+    await nextAnimationFrame()
+    await nextAnimationFrame()
+    if (lastHandledScrollNonce !== nonce) return
+
     centerGoalRow(row)
     await nextAnimationFrame()
     if (lastHandledScrollNonce !== nonce) return
@@ -106,10 +117,6 @@
 
     await nextAnimationFrame()
     if (lastHandledScrollNonce !== nonce) return
-    highlightedGoalId = goalId
-    highlightResetTimer = setTimeout(() => {
-      if (lastHandledScrollNonce === nonce && highlightedGoalId === goalId) highlightedGoalId = null
-    }, GOAL_REVEAL_CLEAR_MS)
   }
 
   function centerGoalRow(row: HTMLElement) {

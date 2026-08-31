@@ -1304,9 +1304,20 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
     const testWindow = window as Window & {
       goalHighlightAnimationStarts?: number
       goalHighlightAnimationEnds?: number
+      goalRevealEventOrder?: string[]
     }
     testWindow.goalHighlightAnimationStarts = 0
     testWindow.goalHighlightAnimationEnds = 0
+    testWindow.goalRevealEventOrder = []
+    document.addEventListener('scroll', (event) => {
+      if (
+        event.target instanceof HTMLElement
+        && event.target.matches('.goal-history-name-scroll')
+        && !testWindow.goalRevealEventOrder?.includes('scroll')
+      ) {
+        testWindow.goalRevealEventOrder?.push('scroll')
+      }
+    }, true)
     document.addEventListener('animationstart', (event) => {
       const target = event.target
       if (
@@ -1316,6 +1327,7 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
         && target.textContent?.includes('Exercise')
       ) {
         testWindow.goalHighlightAnimationStarts = (testWindow.goalHighlightAnimationStarts ?? 0) + 1
+        if (!testWindow.goalRevealEventOrder?.includes('highlight')) testWindow.goalRevealEventOrder?.push('highlight')
       }
     })
     document.addEventListener('animationend', (event) => {
@@ -1347,9 +1359,14 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   await page.locator('.goal-history-name-scroll').evaluate((element) => { element.scrollTop = 0 })
   await page.locator('.goal-history-scroll').evaluate((element) => { element.scrollTop = 0 })
   await expect.poll(() => goalRhythmRowIsFullyVisible(page, 'Exercise')).toBe(false)
+  await page.evaluate(() => {
+    const testWindow = window as Window & { goalRevealEventOrder?: string[] }
+    testWindow.goalRevealEventOrder = []
+  })
   await badge.click()
   await expect(goalRow).toHaveClass(/goal-row-focus/)
   await expect.poll(() => goalRhythmRowCenterOffset(page, 'Exercise')).toBeLessThanOrEqual(1)
+  await expect.poll(() => goalRevealEventOrder(page)).toEqual(['highlight', 'scroll'])
   expect(await goalRhythmScrollTopDifference(page)).toBe(0)
 
   const rhythmSearch = page.getByRole('searchbox', { name: 'Search goals' })
@@ -1666,6 +1683,12 @@ async function goalHighlightAnimationEnds(page: import('@playwright/test').Page)
   return page.evaluate(() => (
     window as Window & { goalHighlightAnimationEnds?: number }
   ).goalHighlightAnimationEnds ?? 0)
+}
+
+async function goalRevealEventOrder(page: import('@playwright/test').Page) {
+  return page.evaluate(() => (
+    window as Window & { goalRevealEventOrder?: string[] }
+  ).goalRevealEventOrder ?? [])
 }
 
 async function goalRevealHighlightOpacity(locator: import('@playwright/test').Locator) {
