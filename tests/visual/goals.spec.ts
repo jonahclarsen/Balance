@@ -53,6 +53,21 @@ test('the mobile goal search stays compact without goal color controls', async (
   await expect(page.getByLabel('Color for Exercise')).toHaveCount(0)
 })
 
+test('the goal rhythm search clear button remains visible without focus on mobile', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'Mobile-only interaction')
+
+  const search = page.getByRole('searchbox', { name: 'Search goals' })
+  const clearSearch = page.getByRole('button', { name: 'Clear goal search' })
+
+  await search.fill('exercise')
+  await search.blur()
+  await expect(clearSearch).toBeVisible()
+
+  await clearSearch.click()
+  await expect(search).toHaveValue('')
+  await expect(clearSearch).toHaveCount(0)
+})
+
 test('goal matching terms preserve rich text and turn a pasted URL into a link', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 

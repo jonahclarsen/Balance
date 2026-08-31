@@ -4016,13 +4016,38 @@ body.mobile-checkbox-dragging {
   font-size: 11px;
 }
 
-.goal-history-search {
+.goal-history-search-field {
+  position: relative;
   flex: 0 1 200px;
   min-width: 0;
-  padding-block: 5px;
 }
 
-.goal-history-toolbar button {
+.goal-history-search {
+  width: 100%;
+  min-width: 0;
+  padding: 5px 30px 5px 10px;
+}
+
+.goal-history-search::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.goal-history-toolbar .goal-history-search-clear {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  transform: translateY(-50%);
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  padding: 0;
+  font-size: 19px;
+  line-height: 1;
+}
+
+.goal-history-toolbar > button {
   padding-block: 5px;
 }
 
@@ -4784,11 +4809,11 @@ body.mobile-checkbox-dragging {
     display: none;
   }
 
-  .goal-history-search {
+  .goal-history-search-field {
     flex-basis: 120px;
   }
 
-  .goal-history-toolbar button {
+  .goal-history-toolbar > button {
     padding-inline: 7px;
     font-size: 12px;
     white-space: nowrap;

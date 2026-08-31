@@ -275,13 +275,24 @@
       <strong>Goal rhythm</strong>
       <span>{upcomingGoalCount} upcoming in the next 3 days</span>
     </div>
-    <input
-      class="goal-history-search"
-      type="search"
-      aria-label="Search goals"
-      placeholder="Search goals…"
-      bind:value={search}
-    />
+    <div class="goal-history-search-field">
+      <input
+        class="goal-history-search"
+        type="search"
+        aria-label="Search goals"
+        placeholder="Search goals…"
+        bind:value={search}
+      />
+      {#if search}
+        <button
+          class="goal-history-search-clear"
+          type="button"
+          aria-label="Clear goal search"
+          title="Clear search"
+          on:click={() => (search = '')}
+        >×</button>
+      {/if}
+    </div>
     <button type="button" on:click={() => onOpenGoals()}>Manage goals</button>
   </header>
 
