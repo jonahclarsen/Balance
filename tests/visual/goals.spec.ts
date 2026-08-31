@@ -68,6 +68,76 @@ test('the goal rhythm search clear button remains visible without focus on mobil
   await expect(clearSearch).toHaveCount(0)
 })
 
+test('goal cards show completion history for the most recent 14 days', async ({ page }, testInfo) => {
+  const currentDate = todayISO()
+  const timestamp = new Date().toISOString()
+  const completionDates = [addDays(currentDate, -10), addDays(currentDate, -4), currentDate]
+
+  await page.evaluate(
+    ({ currentDate, timestamp, completionDates }) => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      state.goals = [{
+        id: 'goal_recent_history',
+        name: 'Exercise',
+        nameHtml: 'Exercise',
+        cadenceDays: 3,
+        matchTerms: ['exercise'],
+        matchTermsHtml: 'exercise',
+        hue: 165,
+        lightness: 50,
+        activityPeriods: [{ startDate: addDaysInBrowser(currentDate, -20), endDate: null }],
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      }]
+      state.goalCompletions = completionDates.map((date) => ({
+        goalId: 'goal_recent_history',
+        date,
+        itemIds: [`item_${date}`],
+        matchedTerms: ['exercise'],
+        computedAt: timestamp,
+      }))
+      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+
+      function addDaysInBrowser(date: string, days: number) {
+        const parsed = new Date(`${date}T12:00:00`)
+        parsed.setDate(parsed.getDate() + days)
+        const year = parsed.getFullYear()
+        const month = String(parsed.getMonth() + 1).padStart(2, '0')
+        const day = String(parsed.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+      }
+    },
+    { currentDate, timestamp, completionDates },
+  )
+  await page.reload()
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    await page
+      .getByRole('complementary', { name: 'Primary navigation drawer' })
+      .getByRole('button', { name: 'Goals', exact: true })
+      .click()
+  } else {
+    await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  }
+
+  const history = page.getByRole('region', {
+    name: 'Recent 14-day history for Exercise: 3 completions',
+  })
+  const days = history.locator('.goal-recent-days li')
+  await expect(history).toBeVisible()
+  await expect(days).toHaveCount(14)
+  await expect(days.first()).toHaveAttribute('data-goal-date', addDays(currentDate, -13))
+  await expect(days.last()).toHaveAttribute('data-goal-date', currentDate)
+  for (const date of completionDates) {
+    await expect(history.locator(`[data-goal-date="${date}"]`)).toHaveClass(/completed/)
+  }
+  await expect(history.locator(`[data-goal-date="${currentDate}"]`)).toHaveClass(/today/)
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-goal-recent-history.png`,
+    fullPage: true,
+  })
+})
+
 test('goal matching terms preserve rich text and turn a pasted URL into a link', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 

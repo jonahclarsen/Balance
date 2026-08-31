@@ -7,6 +7,7 @@
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import IridescentGradientSettings from './lib/IridescentGradientSettings.svelte'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
+  import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
   import TemplateTabs from './lib/TemplateTabs.svelte'
@@ -6178,7 +6179,8 @@ return rows`
       <div class="goal-list">
         {#each groupedFilteredGoals as goal (goal.id)}
           {@const active = isGoalActiveOnDate(goal, currentDay)}
-          {@const completionCount = goalCompletions.filter((completion) => completion.goalId === goal.id).length}
+          {@const goalCompletionHistory = goalCompletions.filter((completion) => completion.goalId === goal.id)}
+          {@const completionCount = goalCompletionHistory.length}
           {@const firstPeriod = goal.activityPeriods[0]}
           {#if !active && goal.id === archivedFilteredGoals[0]?.id}
             <h3 class="goal-archive-title">Archive</h3>
@@ -6210,6 +6212,11 @@ return rows`
                 />
                 <span class:active class="goal-state">{active ? 'Active' : 'Archived'}</span>
               </div>
+              <GoalRecentHistory
+                {goal}
+                completions={goalCompletionHistory}
+                currentDate={currentDay}
+              />
               <div class="goal-card-fields">
                 <div class="goal-field goal-cadence-field">
                   <span>Complete every</span>
