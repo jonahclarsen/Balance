@@ -3879,8 +3879,12 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-name-input:focus {
+  overflow: visible;
   border-color: hsl(var(--goal-hue) 48% calc(48% + var(--goal-lightness-shift, 0%)));
   background: var(--paper-strong);
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
 
 .goal-name-input a {
@@ -4156,6 +4160,9 @@ body.mobile-checkbox-dragging {
   padding: 0 9px;
   color: var(--ink);
   text-align: left;
+  transition:
+    background-color 700ms ease-out,
+    box-shadow 700ms ease-out;
 }
 
 .goal-history-name > span:nth-child(2) {
@@ -4217,22 +4224,11 @@ body.mobile-checkbox-dragging {
   color: var(--danger);
 }
 
-/* Brief pulse when a plan item's goal badge scrolls this row into view. */
+/* Reveal immediately, then let removing the class fade the row to rest. */
 .goal-history-name.goal-row-focus {
-  animation: goal-row-focus-pulse 1.6s ease-out;
-}
-
-@keyframes goal-row-focus-pulse {
-  0%,
-  45% {
-    background: var(--active-nav);
-    box-shadow: inset 3px 0 0 var(--accent);
-  }
-
-  100% {
-    background: var(--paper);
-    box-shadow: none;
-  }
+  background: var(--active-nav);
+  box-shadow: inset 3px 0 0 var(--accent);
+  transition: none;
 }
 
 .goal-color-dot {

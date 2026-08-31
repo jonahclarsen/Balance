@@ -36,6 +36,7 @@
   let highlightResetTimer: ReturnType<typeof setTimeout> | undefined
   let lastHandledScrollNonce = -1
   let wasVisible = visible
+  const GOAL_REVEAL_HOLD_MS = 900
   // Profiling under CPU contention found 48 days to be the best balance: large
   // enough to avoid delayed paints while scrolling, but still small enough for
   // content-visibility to skip most of the offscreen timeline.
@@ -80,46 +81,55 @@
   }
 
   async function revealGoal(goalId: string, nonce: number) {
-    await tick()
-    // When the badge also opens Goal Rhythm, its grid row is still changing
-    // from 0px during this tick. Wait for that layout before measuring the
-    // viewport, otherwise the target scroll is calculated against no height.
-    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    if (lastHandledScrollNonce !== nonce) return
-    const row = nameScrollEl?.querySelector<HTMLElement>(`[data-goal-id="${goalId}"]`)
-    if (!row || !scrollEl || !nameScrollEl) return
-
-    const visibleHeight = nameScrollEl.clientHeight
-    const visibleTop = nameScrollEl.scrollTop
-    const rowTop = row.offsetTop
-    const rowBottom = rowTop + row.offsetHeight
-    let targetTop: number | null = null
-    if (rowTop < visibleTop) {
-      targetTop = rowTop
-    } else if (rowBottom > visibleTop + visibleHeight) {
-      targetTop = rowBottom - visibleHeight
-    }
-    if (targetTop !== null) {
-      // Set both synchronized panes to the destination in the same turn. A
-      // smooth scroll fires intermediate events from each pane, causing their
-      // reciprocal handlers to cancel the animation after only a small nudge.
-      nameScrollEl.scrollTop = targetTop
-      scrollEl.scrollTop = targetTop
-    }
-
-    // Paint the final scroll position before starting the pulse. Clearing the
-    // class first also makes another click restart an in-progress animation.
+    search = ''
     highlightedGoalId = null
     if (highlightResetTimer) clearTimeout(highlightResetTimer)
+
     await tick()
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-    )
+    // Opening Goal Rhythm changes its shell row from 0px to its saved height.
+    // Measure only after that layout and the synchronized pane sizes settle.
+    await nextAnimationFrame()
+    await nextAnimationFrame()
+    if (lastHandledScrollNonce !== nonce) return
+    const row = nameScrollEl?.querySelector<HTMLElement>(`[data-goal-id="${CSS.escape(goalId)}"]`)
+    if (!row || !scrollEl || !nameScrollEl) return
+
+    centerGoalRow(row)
+    await nextAnimationFrame()
+    if (lastHandledScrollNonce !== nonce) return
+    // Recalculate from rendered rectangles once after scrolling. This absorbs
+    // scrollbar sizing and content-visibility realization without relying on
+    // offsetParent geometry.
+    centerGoalRow(row)
+
+    await nextAnimationFrame()
     if (lastHandledScrollNonce !== nonce) return
     highlightedGoalId = goalId
     highlightResetTimer = setTimeout(() => {
       if (lastHandledScrollNonce === nonce && highlightedGoalId === goalId) highlightedGoalId = null
-    }, 1600)
+    }, GOAL_REVEAL_HOLD_MS)
+  }
+
+  function centerGoalRow(row: HTMLElement) {
+    if (!scrollEl || !nameScrollEl) return
+
+    const viewportRect = nameScrollEl.getBoundingClientRect()
+    const rowRect = row.getBoundingClientRect()
+    const centeredTop = nameScrollEl.scrollTop
+      + rowRect.top
+      - viewportRect.top
+      - (nameScrollEl.clientHeight - rowRect.height) / 2
+    const maxTop = Math.max(0, nameScrollEl.scrollHeight - nameScrollEl.clientHeight)
+    const targetTop = Math.max(0, Math.min(maxTop, Math.round(centeredTop)))
+
+    // Move both panes together. Letting their reciprocal scroll handlers drive
+    // this jump can leave one pane at an intermediate position.
+    nameScrollEl.scrollTop = targetTop
+    scrollEl.scrollTop = targetTop
+  }
+
+  function nextAnimationFrame() {
+    return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   }
 
   // Track Balance's 3am day boundary reactively so the grid keeps the current
