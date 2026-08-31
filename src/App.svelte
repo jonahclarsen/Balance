@@ -29,8 +29,18 @@
   import Celebration from './lib/Celebration.svelte'
   import CelebrationSettings from './lib/CelebrationSettings.svelte'
   import GoalBurst from './lib/GoalBurst.svelte'
+  import GoalDoabilityModal from './lib/GoalDoabilityModal.svelte'
   import { randomIridescentSelectionAnimationDelay, restartElementAnimations } from './lib/iridescentSelectionAnimation'
-  import { filterGoalsByPhrase, goalLightnessShift, goalsMatchingItemText, isGoalActiveOnDate, parseMatchTerms, sortGoalsByUrgency } from './lib/goals'
+  import {
+    filterGoalsByPhrase,
+    goalLightnessShift,
+    goalsMatchingItemText,
+    goalsNeedingDoabilityReview,
+    isGoalActiveOnDate,
+    parseMatchTerms,
+    sortGoalsByUrgency,
+    type GoalDoabilityReview,
+  } from './lib/goals'
   import {
     compactDatabase,
     completeDatabaseMaintenanceStartup,
@@ -259,6 +269,7 @@
   let celebrationPreviewAnnouncement = ''
   let celebrationPreviewAnnouncementTimer: number | null = null
   let goalBurst: GoalBurst | null = null
+  let goalDoabilityReviews: GoalDoabilityReview[] = []
   // Tracks each plan item's done state so we can fire a goal burst the moment an
   // item that contributes to a goal transitions to done (via any completion path).
   let goalItemDoneById = new Map<Id, boolean>()
@@ -2754,10 +2765,17 @@ return rows`
       return
     }
 
+    const doabilityReviews = goalsNeedingDoabilityReview(
+      $plannerStore.goals,
+      $plannerStore.goalCompletions,
+      $plannerStore.plans,
+      todayISO(),
+    )
     plannerStore.generatePlan(template.id, date, replaceExisting, forDate ? $plannerStore.activePlanDate : date)
     const { [date]: _generatedDate, ...remainingSelections } = emptyDayTemplateSelections
     emptyDayTemplateSelections = remainingSelections
     view = 'today'
+    if (doabilityReviews.length > 0) goalDoabilityReviews = doabilityReviews
   }
 
   async function generateSelectedDay(forDate?: string) {
@@ -6796,6 +6814,13 @@ return rows`
         state={$plannerStore}
         onClose={() => (searchOpen = false)}
         onSelect={(result) => { void openSearchResult(result) }}
+      />
+    {/if}
+
+    {#if goalDoabilityReviews.length > 0}
+      <GoalDoabilityModal
+        reviews={goalDoabilityReviews}
+        onClose={() => (goalDoabilityReviews = [])}
       />
     {/if}
 

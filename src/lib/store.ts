@@ -714,10 +714,16 @@ function createPlannerStore() {
 
       commit('generate_plan', { templateId, date, replaceExisting, activePlanDate, generatedPlan: generated }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans
+        const goals = state.goals.some((goal) => !goal.presentationTrackingStartedAt)
+          ? state.goals.map((goal) => goal.presentationTrackingStartedAt
+            ? goal
+            : { ...goal, presentationTrackingStartedAt: generated.createdAt })
+          : state.goals
 
         return {
           ...state,
           activePlanDate,
+          goals,
           plans: [...plans, generated].sort((a, b) => b.date.localeCompare(a.date)),
         }
       })
@@ -3086,6 +3092,11 @@ function normalizeState(state: AppState): AppState {
     plans: state.plans.map((plan) => ({
       ...plan,
       dailyReminder: plan.dailyReminder ?? DEFAULT_DAILY_REMINDER,
+      generatedGoalIds: Array.isArray(plan.generatedGoalIds)
+        ? [...new Set(plan.generatedGoalIds.filter(
+          (goalId): goalId is Id => typeof goalId === 'string' && goalId.length > 0,
+        ))]
+        : undefined,
       items: normalizePlanItems(plan.items),
     })),
     listTemplates: (state.listTemplates ?? []).map((template) => ({
@@ -3175,6 +3186,8 @@ function normalizePlanItems(items: PlanItem[]): PlanItem[] {
       ...item,
       text: item.text ?? htmlToPlainText(html),
       html,
+      generatedGoalId:
+        typeof item.generatedGoalId === 'string' && item.generatedGoalId ? item.generatedGoalId : undefined,
       startMinutes: item.startMinutes ?? null,
       endMinutes: item.endMinutes ?? null,
       timeHidden: item.timeHidden === true || undefined,

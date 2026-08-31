@@ -1079,6 +1079,77 @@ test('n goals template items use goal names instead of matching terms', async ({
   await expect(page.getByRole('listitem', { name: 'Plan item: beat' })).toHaveCount(0)
 })
 
+test('day generation opens the goal doability review for legacy overdue and repeatedly missed goals', async ({ page }, testInfo) => {
+  await page.clock.install({ time: new Date('2026-08-31T12:00:00') })
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const timestamp = '2026-08-01T12:00:00.000Z'
+    const baseGoal = {
+      nameHtml: '',
+      cadenceDays: 1,
+      matchTerms: ['goal'],
+      matchTermsHtml: 'goal',
+      hue: 165,
+      lightness: 50,
+      activityPeriods: [{ startDate: '2026-08-26', endDate: null }],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }
+    state.goals = [
+      { ...baseGoal, id: 'goal_legacy', name: 'Call someone', nameHtml: 'Call someone' },
+      {
+        ...baseGoal,
+        id: 'goal_tracked',
+        name: 'Draw briefly',
+        nameHtml: 'Draw briefly',
+        presentationTrackingStartedAt: timestamp,
+      },
+    ]
+    state.goalCompletions = []
+    state.plans = ['2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29'].map((date) => ({
+      id: `plan_${date}`,
+      date,
+      title: date,
+      dailyReminder: '',
+      generatedFromTemplateId: state.templates[0].id,
+      generatedGoalIds: ['goal_tracked'],
+      createdAt: `${date}T08:00:00.000Z`,
+      items: [],
+    }))
+    state.activePlanDate = '2026-08-31'
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+
+  if (testInfo.project.name === 'mobile') {
+    const emptyState = page.locator('.empty-state')
+    await emptyState.getByRole('radio', { name: 'Default day' }).check()
+    await emptyState.getByRole('button', { name: 'Generate today' }).click()
+  } else {
+    await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  }
+
+  const modal = page.getByRole('dialog', { name: 'Are your goals doable?' })
+  await expect(modal).toBeVisible()
+  await expect(modal.getByRole('heading', { name: 'Are your goals doable?' })).toBeVisible()
+  await expect(modal.getByText('Call someone').locator('..')).toContainText('5 days overdue')
+  await expect(modal.getByText('Draw briefly').locator('..')).toContainText('4 days missed')
+  await expect(modal.locator('.mascot img')).toBeVisible()
+
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.goals.every((goal: { presentationTrackingStartedAt?: string }) => Boolean(goal.presentationTrackingStartedAt))
+  })).toBe(true)
+
+  await page.screenshot({
+    path: `artifacts/visual-smoke/${testInfo.project.name}-goal-doability-review.png`,
+    fullPage: true,
+  })
+})
+
 test('goal rhythm hover text includes match keywords', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()

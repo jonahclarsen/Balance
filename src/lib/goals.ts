@@ -3,6 +3,13 @@ import type { AppState, DailyPlan, Goal, GoalActivityPeriod, GoalCompletion, Id,
 
 export const GOAL_FUTURE_DAYS = 6
 export const GOAL_RECALCULATION_AGE_DAYS = 2
+export const GOAL_DOABILITY_MISSED_DAY_THRESHOLD = 4
+
+export type GoalDoabilityReview = {
+  goal: Goal
+  days: number
+  reason: 'missed-presentations' | 'legacy-overdue'
+}
 
 type GoalRecalculationOptions = {
   force?: boolean
@@ -61,6 +68,11 @@ export function normalizeGoal(goal: Goal): Goal {
     hue: normalizeHue(goal.hue ?? 165),
     lightness: normalizeLightness(goal.lightness),
     activityPeriods: normalizeActivityPeriods(goal.activityPeriods ?? []),
+    presentationTrackingStartedAt:
+      typeof goal.presentationTrackingStartedAt === 'string' &&
+      Number.isFinite(Date.parse(goal.presentationTrackingStartedAt))
+        ? goal.presentationTrackingStartedAt
+        : undefined,
     createdAt: goal.createdAt ?? nowISO(),
     updatedAt: goal.updatedAt ?? goal.createdAt ?? nowISO(),
   }
@@ -296,7 +308,7 @@ export function goalsMatchingItemText(item: PlanItem, goals: Goal[], date: strin
   return goals.filter(
     (goal) =>
       isGoalActiveOnDate(goal, date) &&
-      goal.matchTerms.some((term) => textMatchesGoalTerm(normalizedText, term)),
+      (item.generatedGoalId === goal.id || goal.matchTerms.some((term) => textMatchesGoalTerm(normalizedText, term))),
   )
 }
 
@@ -432,6 +444,54 @@ export function goalDaysUntilLapse(
 }
 
 /**
+ * Goals worth reviewing after a day template is generated.
+ *
+ * Older goals get a one-time compatibility path based on how many calendar
+ * days overdue they are. Once template generation has initialized tracking on
+ * a goal, only distinct past days on which it was explicitly presented and
+ * not completed count. Any later completion resets that missed-day run.
+ */
+export function goalsNeedingDoabilityReview(
+  goals: Goal[],
+  completions: GoalCompletion[],
+  plans: DailyPlan[],
+  currentDate = todayISO(),
+): GoalDoabilityReview[] {
+  const completionDatesByGoal = new Map<Id, Set<string>>()
+  for (const completion of completions) {
+    if (completion.date > currentDate) continue
+    const dates = completionDatesByGoal.get(completion.goalId) ?? new Set<string>()
+    dates.add(completion.date)
+    completionDatesByGoal.set(completion.goalId, dates)
+  }
+
+  return goals.flatMap<GoalDoabilityReview>((goal) => {
+    if (!isGoalActiveOnDate(goal, currentDate)) return []
+
+    if (!goal.presentationTrackingStartedAt) {
+      const daysUntilLapse = goalDaysUntilLapse(goal, completions, currentDate)
+      return daysUntilLapse !== null && daysUntilLapse < 0
+        ? [{ goal, days: Math.abs(daysUntilLapse), reason: 'legacy-overdue' as const }]
+        : []
+    }
+
+    const completionDates = completionDatesByGoal.get(goal.id) ?? new Set<string>()
+    const latestCompletion = [...completionDates].sort().at(-1)
+    const missedDates = new Set(
+      plans.flatMap((plan) => {
+        if (plan.date >= currentDate || (latestCompletion && plan.date <= latestCompletion)) return []
+        if (!plan.generatedGoalIds?.includes(goal.id) || completionDates.has(plan.date)) return []
+        return [plan.date]
+      }),
+    )
+
+    return missedDates.size >= GOAL_DOABILITY_MISSED_DAY_THRESHOLD
+      ? [{ goal, days: missedDates.size, reason: 'missed-presentations' as const }]
+      : []
+  }).sort((left, right) => right.days - left.days || left.goal.name.localeCompare(right.goal.name))
+}
+
+/**
  * Sorts a copy of `goals` by urgency. Daily goals always come first. Other
  * goals sort by the closest lapse date (including overdue/negative values),
  * then by shortest cadence. Goals with no current segment
@@ -500,7 +560,7 @@ function matchingPlanItems(plan: DailyPlan, goal: Goal): { itemIds: Id[]; matche
       if (item.done) {
         const normalizedText = item.text.toLocaleLowerCase()
         const terms = goal.matchTerms.filter((term) => textMatchesGoalTerm(normalizedText, term))
-        if (terms.length > 0) {
+        if (item.generatedGoalId === goal.id || terms.length > 0) {
           itemIds.push(item.id)
           terms.forEach((term) => matchedTerms.add(term))
         }
@@ -517,7 +577,8 @@ function matchingTermsForItem(item: PlanItem, goal: Goal): string[] {
   if (!item.done) return []
 
   const normalizedText = item.text.toLocaleLowerCase()
-  return goal.matchTerms.filter((term) => textMatchesGoalTerm(normalizedText, term))
+  const terms = goal.matchTerms.filter((term) => textMatchesGoalTerm(normalizedText, term))
+  return item.generatedGoalId === goal.id ? ['generated-goal-source', ...terms] : terms
 }
 
 // A one-word term must stand on its own so a short keyword such as "dj" does

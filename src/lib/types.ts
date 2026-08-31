@@ -23,6 +23,10 @@ export type PlanItem = {
   text: string
   html: string
   done: boolean
+  // Set when an "n goals" day-template row expands into this item. Keeping the
+  // source on the item lets checking it complete the intended goal even when
+  // the goal name does not contain one of its matching terms.
+  generatedGoalId?: Id
   startMinutes: number | null
   endMinutes: number | null
   timeHidden?: boolean | null
@@ -135,6 +139,9 @@ export type DailyPlan = {
   title: string
   dailyReminder: string
   generatedFromTemplateId: Id | null
+  // Goal IDs presented by an "n goals" expansion. This plan-level snapshot
+  // survives item edits/deletion and is used to count skipped presentation days.
+  generatedGoalIds?: Id[]
   createdAt: string
   items: PlanItem[]
 }
@@ -164,6 +171,9 @@ export type Goal = {
   // designed colors). Renders as a ±25pp shift applied to every goal color.
   lightness: number
   activityPeriods: GoalActivityPeriod[]
+  // Missing on pre-feature goals. The first template generation gives legacy
+  // overdue goals one review, then future reviews use tracked presentations.
+  presentationTrackingStartedAt?: string
   createdAt: string
   updatedAt: string
 }

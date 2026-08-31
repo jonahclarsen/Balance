@@ -329,14 +329,17 @@ export function generatePlanFromTemplate(
   goals: Goal[] = [],
   goalCompletions: GoalCompletion[] = [],
 ): DailyPlan {
+  const generatedGoalIds = new Set<Id>()
+  const items = generatePlanItems(template.items, date, goals, goalCompletions, generatedGoalIds)
   return {
     id: createId('plan'),
     date,
     title: formatPlanTitle(date),
     dailyReminder,
     generatedFromTemplateId: template.id,
+    generatedGoalIds: [...generatedGoalIds],
     createdAt: nowISO(),
-    items: generatePlanItems(template.items, date, goals, goalCompletions),
+    items,
   }
 }
 
@@ -347,6 +350,7 @@ function generatePlanItems(
   date: string,
   goals: Goal[],
   goalCompletions: GoalCompletion[],
+  generatedGoalIds: Set<Id>,
 ): PlanItem[] {
   return items.flatMap((item) => {
     const option = pickOption(item.options)
@@ -357,12 +361,16 @@ function generatePlanItems(
 
     const nGoalsMatch = N_GOALS_PATTERN.exec(text)
     if (nGoalsMatch) {
-      return selectGoalsForExpansion(goals, goalCompletions, date, Number(nGoalsMatch[1])).map((goal) => ({
-        ...createPlanItem(goal.name),
-        startMinutes: item.startMinutes,
-        endMinutes: item.endMinutes,
-        timeHidden: item.timeHidden,
-      }))
+      return selectGoalsForExpansion(goals, goalCompletions, date, Number(nGoalsMatch[1])).map((goal) => {
+        generatedGoalIds.add(goal.id)
+        return {
+          ...createPlanItem(goal.name),
+          generatedGoalId: goal.id,
+          startMinutes: item.startMinutes,
+          endMinutes: item.endMinutes,
+          timeHidden: item.timeHidden,
+        }
+      })
     }
 
     return [
@@ -372,7 +380,7 @@ function generatePlanItems(
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
         timeHidden: item.timeHidden,
-        children: generatePlanItems(item.children, date, goals, goalCompletions),
+        children: generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds),
       },
     ]
   })
@@ -788,8 +796,9 @@ function isPlanItemTextEmpty(item: PlanItem): boolean {
 }
 
 function clonePlanItemForPaste(item: PlanItem): PlanItem {
+  const { generatedGoalId: _generatedGoalId, ...copy } = item
   return {
-    ...item,
+    ...copy,
     id: createId('plan_item'),
     children: item.children.map(clonePlanItemForPaste),
   }
