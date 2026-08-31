@@ -512,7 +512,7 @@ test('task typing only rescans goals when its match result changes', async ({ pa
   await expect.poll(() => unrelatedGoalIncludes(page)).toBe(1)
 })
 
-test('old goal snapshots survive rule edits and permanent deletion is only available from the archive', async ({ page }, testInfo) => {
+test('old goal snapshots survive rule edits and archived goals leave rhythm', async ({ page }, testInfo) => {
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
@@ -552,7 +552,8 @@ test('old goal snapshots survive rule edits and permanent deletion is only avail
   await page.getByRole('button', { name: 'Archive', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible()
   await expect(page.getByText('Archived', { exact: true })).toBeVisible()
-  await expect(page.locator(`.goal-day-cell[title="Exercise · ${oldDate} · completed"]`)).toBeVisible()
+  await expect(page.locator('.goal-history-name', { hasText: 'Exercise' })).toHaveCount(0)
+  await expect(page.locator(`.goal-day-cell[title="Exercise · ${oldDate} · completed"]`)).toHaveCount(0)
 
   const dialogMessages: string[] = []
   page.on('dialog', async (dialog) => {
@@ -802,7 +803,6 @@ test('goals put daily intervals first, then order by days until lapse and shorte
   await page.reload()
 
   await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual([
-    'Archived daily',
     'Sooner',
     'Short tie',
     'Long tie',

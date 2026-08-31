@@ -6,7 +6,7 @@
     GOAL_FUTURE_DAYS,
     goalDaysUntilLapse,
     goalLightnessShift,
-    goalWasActiveInRange,
+    isGoalActiveOnDate,
     isoDateDiffDays,
     shiftISODate,
     sortGoalsByUrgency,
@@ -126,7 +126,8 @@
   // day highlighted after the date rolls over while the app stays open.
   let today = todayISO()
 
-  $: firstGoalDate = goals.reduce<string | null>((earliest, goal) => {
+  $: activeGoals = goals.filter((goal) => isGoalActiveOnDate(goal, today))
+  $: firstGoalDate = activeGoals.reduce<string | null>((earliest, goal) => {
     for (const period of goal.activityPeriods) {
       if (!earliest || period.startDate < earliest) earliest = period.startDate
     }
@@ -141,13 +142,13 @@
   $: futureDates = Array.from({ length: futureDayCount }, (_, index) => shiftISODate(today, index + 1))
   $: dates = [...pastDates, ...futureDates]
   $: dateChunks = chunksOf(dates)
-  $: upcomingGoalCount = goals.filter((goal) => {
+  $: upcomingGoalCount = activeGoals.filter((goal) => {
     const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)
     return daysUntilLapse !== null && daysUntilLapse <= 3
   }).length
   $: visibleGoals = filterGoalsByPhrase(
     sortGoalsByUrgency(
-      goals.filter((goal) => goalWasActiveInRange(goal, dates)),
+      activeGoals,
       completions,
       viewedDate,
     ),
