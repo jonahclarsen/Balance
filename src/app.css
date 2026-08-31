@@ -3822,7 +3822,6 @@ body.mobile-checkbox-dragging {
 
 .goal-card {
   position: relative;
-  isolation: isolate;
   display: grid;
   grid-template-columns: 6px minmax(0, 1fr) auto;
   gap: 16px;
@@ -3834,25 +3833,29 @@ body.mobile-checkbox-dragging {
   opacity: 0.72;
 }
 
-.goal-card.goal-card-focus::after {
-  position: absolute;
-  z-index: 0;
-  inset: 0;
-  background: var(--active-nav);
-  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
-  content: '';
-  opacity: 0;
-  pointer-events: none;
+.goal-card.goal-card-focus {
+  animation: goal-card-reveal-highlight-fade 1.6s ease-out;
 }
 
-.goal-card > * {
-  position: relative;
-  z-index: 1;
-}
-
-.goal-card.goal-card-focus::after,
 .goal-history-name.goal-row-focus::after {
   animation: goal-reveal-highlight-fade 1.6s ease-out;
+}
+
+@keyframes goal-card-reveal-highlight-fade {
+  0%,
+  55% {
+    background-color: color-mix(in srgb, var(--accent) 34%, var(--paper));
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent),
+      var(--shadow);
+  }
+
+  100% {
+    background-color: var(--paper);
+    box-shadow:
+      0 0 0 2px transparent,
+      var(--shadow);
+  }
 }
 
 @keyframes goal-reveal-highlight-fade {
