@@ -303,6 +303,44 @@ test('sidebar has no standalone hide control', async ({ page }, testInfo) => {
   expect(Math.abs((templateSelectBox?.width ?? 0) - (generateButtonBox?.width ?? 0))).toBeLessThan(1)
 })
 
+test('macOS window dragging is limited to empty workspace background', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'macOS desktop titlebar behavior')
+  await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const workspace = page.locator('.workspace')
+  await expect(workspace).toHaveAttribute('data-tauri-drag-region', '')
+  await expect(page.locator('.macos-titlebar-drag-region')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('First list')
+  await page.getByRole('button', { name: 'New list', exact: true }).click()
+  await page.getByLabel('List name').fill('Second list')
+
+  const addItem = page.getByRole('button', { name: '+ Add list item' })
+  for (let index = 0; index < 20; index += 1) await addItem.click()
+  await workspace.evaluate((element) => element.scrollTo(0, element.scrollHeight))
+  await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+
+  const firstTab = page.getByRole('button', { name: 'First list', exact: true })
+  const firstTabBox = await firstTab.boundingBox()
+  expect(firstTabBox).not.toBeNull()
+  const tabCenter = {
+    x: (firstTabBox?.x ?? 0) + (firstTabBox?.width ?? 0) / 2,
+    y: (firstTabBox?.y ?? 0) + (firstTabBox?.height ?? 0) / 2,
+  }
+  expect(await page.evaluate(({ x, y }) => {
+    const target = document.elementFromPoint(x, y)
+    return target?.closest('[data-list-template-tab-id]')?.textContent?.trim()
+  }, tabCenter)).toBe('First list')
+
+  await page.mouse.click(tabCenter.x, tabCenter.y)
+  await expect(firstTab).toHaveAttribute('aria-current', 'true')
+})
+
 test('IMAX mode maximizes Today and restores its surrounding panels', async ({ page }, testInfo) => {
   if (testInfo.project.name === 'desktop') {
     await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))

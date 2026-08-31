@@ -971,15 +971,6 @@ h3 {
   padding-top: 56px;
 }
 
-.macos-titlebar-drag-region {
-  position: absolute;
-  z-index: 30;
-  top: 0;
-  left: 84px;
-  right: 0;
-  height: 28px;
-}
-
 .app-shell.macos-titlebar-overlay.sidebar-hidden .workspace {
   padding-top: 56px;
 }
