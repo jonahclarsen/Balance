@@ -6295,9 +6295,6 @@ return rows`
                   />
                 </label>
               </div>
-              <p class="goal-card-meta">
-                {completionCount} saved completion{completionCount === 1 ? '' : 's'}
-              </p>
             </div>
             <div class="goal-card-actions">
               <button
@@ -6310,11 +6307,16 @@ return rows`
                 <button class="danger-text" type="button" on:click={() => { void confirmDeleteArchivedGoal(goal.id, goal.name) }}>Delete</button>
               {/if}
             </div>
-            <GoalRecentHistory
-              {goal}
-              completions={goalCompletionHistory}
-              currentDate={currentDay}
-            />
+            <div class="goal-card-footer">
+              <p class="goal-card-meta">
+                {completionCount} saved completion{completionCount === 1 ? '' : 's'}
+              </p>
+              <GoalRecentHistory
+                {goal}
+                completions={goalCompletionHistory}
+                currentDate={currentDay}
+              />
+            </div>
           </article>
         {:else}
           <div class="empty-state">

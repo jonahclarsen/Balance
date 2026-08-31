@@ -3898,7 +3898,8 @@ body.mobile-checkbox-dragging {
   grid-template-columns: 6px minmax(0, 1fr) auto;
   grid-template-areas:
     'accent main actions'
-    'accent history history';
+    'accent footer footer';
+  container: goal-card / inline-size;
   gap: 16px;
   overflow: hidden;
   padding: 16px 16px 16px 0;
@@ -3995,9 +3996,29 @@ body.mobile-checkbox-dragging {
   gap: 4px;
 }
 
-.goal-card > .goal-recent-history {
-  grid-area: history;
+.goal-card-footer {
+  display: grid;
+  grid-area: footer;
+  align-items: center;
+  gap: 12px;
+}
+
+.goal-card-footer > .goal-recent-history {
   justify-self: center;
+}
+
+@container goal-card (min-width: 760px) {
+  .goal-card-footer {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 420px) minmax(0, 1fr);
+  }
+
+  .goal-card-footer > .goal-card-meta {
+    grid-column: 1;
+  }
+
+  .goal-card-footer > .goal-recent-history {
+    grid-column: 2;
+  }
 }
 
 .goal-recent-history-header,
@@ -4956,7 +4977,7 @@ body.mobile-checkbox-dragging {
       'accent'
       'main'
       'actions'
-      'history';
+      'footer';
   }
 
   .goal-create-panel > label,

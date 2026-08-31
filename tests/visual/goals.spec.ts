@@ -132,6 +132,17 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
     await expect(history.locator(`[data-goal-date="${date}"]`)).toHaveClass(/completed/)
   }
   await expect(history.locator(`[data-goal-date="${currentDate}"]`)).toHaveClass(/today/)
+  const historyBox = await history.boundingBox()
+  const savedCompletionBox = await page.locator('.goal-card-meta').boundingBox()
+  expect(historyBox).not.toBeNull()
+  expect(savedCompletionBox).not.toBeNull()
+  if (testInfo.project.name === 'desktop') {
+    const historyCenter = historyBox!.y + historyBox!.height / 2
+    const savedCompletionCenter = savedCompletionBox!.y + savedCompletionBox!.height / 2
+    expect(Math.abs(historyCenter - savedCompletionCenter)).toBeLessThanOrEqual(2)
+  } else {
+    expect(historyBox!.y).toBeGreaterThan(savedCompletionBox!.y + savedCompletionBox!.height)
+  }
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-goal-recent-history.png`,
     fullPage: true,
