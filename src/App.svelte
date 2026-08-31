@@ -2197,6 +2197,12 @@ return rows`
     goalRhythmScrollRequest = { goalId, nonce: (goalRhythmScrollRequest?.nonce ?? 0) + 1 }
   }
 
+  function handleGoalCardBackgroundClick(event: MouseEvent, goalId: Id, active: boolean) {
+    if (!active || !(event.target instanceof Element)) return
+    if (event.target.closest('button, input, textarea, select, a, [contenteditable="true"], [role="button"]')) return
+    focusGoalInRhythm(goalId)
+  }
+
   function applyGoalOrder(goals: Goal[], order: Id[]): Goal[] {
     const positions = new Map(order.map((goalId, index) => [goalId, index]))
     return [...goals].sort(
@@ -6148,12 +6154,15 @@ return rows`
           {#if !active && goal.id === archivedFilteredGoals[0]?.id}
             <h3 class="goal-archive-title">Archive</h3>
           {/if}
+          <!-- The card's pointer-only background action complements its accessible child controls. -->
+          <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
           <article
             class="goal-card"
             class:archived={!active}
             class:goal-card-focus={highlightedGoalCardId === goal.id}
             data-goal-id={goal.id}
             style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
+            on:click={(event) => handleGoalCardBackgroundClick(event, goal.id, active)}
           >
             <div class="goal-card-accent"></div>
             <div class="goal-card-main">
@@ -6173,7 +6182,7 @@ return rows`
                 <span class:active class="goal-state">{active ? 'Active' : 'Archived'}</span>
               </div>
               <div class="goal-card-fields">
-                <label class="goal-cadence-field">
+                <div class="goal-field goal-cadence-field">
                   <span>Complete every</span>
                   <div>
                     <input
@@ -6186,9 +6195,9 @@ return rows`
                     />
                     <span>days</span>
                   </div>
-                </label>
+                </div>
                 {#if firstPeriod}
-                  <label class="goal-start-field">
+                  <div class="goal-field goal-start-field">
                     <span>Started on</span>
                     <input
                       aria-label={`Start date for ${goal.name}`}
@@ -6201,9 +6210,9 @@ return rows`
                         else event.currentTarget.value = firstPeriod.startDate
                       }}
                     />
-                  </label>
+                  </div>
                 {/if}
-                <label class="goal-rules-field">
+                <label class="goal-field goal-rules-field">
                   <span>A checked item matches any of</span>
                   <RichTextEditor
                     className="goal-rules-editor"

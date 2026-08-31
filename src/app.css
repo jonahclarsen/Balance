@@ -3723,7 +3723,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-create-panel label,
-.goal-card-fields label {
+.goal-card-fields .goal-field {
   display: grid;
   align-content: end;
   gap: 6px;
@@ -3731,7 +3731,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-create-panel label > span,
-.goal-card-fields label > span {
+.goal-card-fields .goal-field > span {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;

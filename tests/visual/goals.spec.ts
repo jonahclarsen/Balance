@@ -1230,6 +1230,30 @@ test('clicking an unchecked goal preview reveals that goal in the rhythm panel',
   await expect(goalRow).toHaveClass(/goal-row-focus/)
 })
 
+test('clicking a goal card background reveals it without making field labels focus inputs', async ({ page }) => {
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+
+  const card = page.locator('.goal-card', { has: page.getByLabel('Goal name: Exercise') })
+  const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
+  await expect(card).toHaveCSS('cursor', 'auto')
+  await expect(goalRow).not.toHaveClass(/goal-row-focus/)
+
+  await card.locator('.goal-card-accent').click()
+  await expect(goalRow).toHaveClass(/goal-row-focus/)
+
+  const cadenceInput = page.getByLabel('Cadence days for Exercise')
+  await card.getByText('Complete every', { exact: true }).click()
+  await expect(cadenceInput).not.toBeFocused()
+  await cadenceInput.click()
+  await expect(cadenceInput).toBeFocused()
+
+  const startInput = page.getByLabel('Start date for Exercise')
+  await card.getByText('Started on', { exact: true }).click()
+  await expect(startInput).not.toBeFocused()
+  await startInput.click()
+  await expect(startInput).toBeFocused()
+})
+
 test('clicking a goal rhythm row scrolls to that goal on the goals page', async ({ page }) => {
   const targetGoal = 'Goal 18'
 
