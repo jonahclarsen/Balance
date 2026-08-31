@@ -68,6 +68,37 @@ test('the goal rhythm search clear button remains visible without focus on mobil
   await expect(clearSearch).toHaveCount(0)
 })
 
+test('goal rhythm offers five persistent visual modes', async ({ page }) => {
+  const rhythm = page.getByRole('region', { name: 'Goal history' })
+  const modePicker = page.getByRole('combobox', { name: 'Goal rhythm style' })
+
+  await expect(modePicker.locator('option')).toHaveCount(5)
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow')
+
+  await modePicker.selectOption('aurora')
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'aurora')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('aurora')
+
+  await page.reload()
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'aurora')
+})
+
+test('goal rhythm modes allocate the mobile split to match their visual focus', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'Mobile-only layout treatment')
+  await page.setViewportSize({ width: 360, height: 760 })
+
+  const modePicker = page.getByRole('combobox', { name: 'Goal rhythm style' })
+  const namePane = page.locator('.goal-history-name-pane')
+
+  await modePicker.selectOption('signal')
+  const signalWidth = (await namePane.boundingBox())?.width ?? 0
+  await modePicker.selectOption('ledger')
+  const ledgerWidth = (await namePane.boundingBox())?.width ?? 0
+
+  expect(signalWidth).toBeGreaterThan(0)
+  expect(ledgerWidth - signalWidth).toBeGreaterThanOrEqual(70)
+})
+
 test('goal cards show completion history for the most recent 14 days', async ({ page }, testInfo) => {
   const currentDate = todayISO()
   const timestamp = new Date().toISOString()

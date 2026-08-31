@@ -14,6 +14,17 @@
   import { todayISO } from './planner'
   import type { Goal, GoalCompletion } from './types'
 
+  type GoalRhythmMode = 'flow' | 'mosaic' | 'signal' | 'ledger' | 'aurora'
+
+  const GOAL_RHYTHM_MODE_KEY = 'balance.goalRhythmMode.v1'
+  const GOAL_RHYTHM_MODES: Array<{ id: GoalRhythmMode; label: string; glyph: string }> = [
+    { id: 'flow', label: 'Flow', glyph: '≋' },
+    { id: 'mosaic', label: 'Mosaic', glyph: '▦' },
+    { id: 'signal', label: 'Signal', glyph: '•—' },
+    { id: 'ledger', label: 'Ledger', glyph: '≡' },
+    { id: 'aurora', label: 'Aurora', glyph: '✦' },
+  ]
+
   export let goals: Goal[]
   export let completions: GoalCompletion[]
   export let viewedDate: string = todayISO()
@@ -25,6 +36,7 @@
   export let scrollRequest: { goalId: string; nonce: number } | null = null
 
   let search = ''
+  let rhythmMode: GoalRhythmMode = 'flow'
   let scrollEl: HTMLDivElement | undefined
   let nameScrollEl: HTMLDivElement | undefined
   let namePaneEl: HTMLDivElement | undefined
@@ -216,6 +228,11 @@
   onMount(() => {
     mounted = true
 
+    const storedRhythmMode = localStorage.getItem(GOAL_RHYTHM_MODE_KEY)
+    if (GOAL_RHYTHM_MODES.some((mode) => mode.id === storedRhythmMode)) {
+      rhythmMode = storedRhythmMode as GoalRhythmMode
+    }
+
     const dayTimer = setInterval(refreshDay, 60_000)
     window.addEventListener('focus', refreshDay)
     document.addEventListener('visibilitychange', refreshDay)
@@ -227,6 +244,13 @@
       document.removeEventListener('visibilitychange', refreshDay)
     }
   })
+
+  function changeRhythmMode(event: Event) {
+    const nextMode = (event.currentTarget as HTMLSelectElement).value
+    if (!GOAL_RHYTHM_MODES.some((mode) => mode.id === nextMode)) return
+    rhythmMode = nextMode as GoalRhythmMode
+    localStorage.setItem(GOAL_RHYTHM_MODE_KEY, rhythmMode)
+  }
 
   async function copyGoalName(event: MouseEvent, goal: Goal) {
     event.stopPropagation()
@@ -267,7 +291,12 @@
   }
 </script>
 
-<section class="goal-history-panel" aria-label="Goal history" hidden={!visible}>
+<section
+  class="goal-history-panel"
+  aria-label="Goal history"
+  data-rhythm-mode={rhythmMode}
+  hidden={!visible}
+>
   {#if onResizeStart}
     <div
       class="goal-history-resize-handle"
@@ -278,7 +307,17 @@
     ></div>
   {/if}
   <header class="goal-history-toolbar">
-    <div>
+    <label class="goal-rhythm-mode-pill" title="Change Goal Rhythm style">
+      <span class="goal-rhythm-mode-glyph" aria-hidden="true">
+        {GOAL_RHYTHM_MODES.find((mode) => mode.id === rhythmMode)?.glyph}
+      </span>
+      <select aria-label="Goal rhythm style" value={rhythmMode} on:change={changeRhythmMode}>
+        {#each GOAL_RHYTHM_MODES as mode (mode.id)}
+          <option value={mode.id}>{mode.label}</option>
+        {/each}
+      </select>
+    </label>
+    <div class="goal-history-title">
       <strong>Goal rhythm</strong>
       <span>{upcomingGoalCount} upcoming in the next 3 days</span>
     </div>
