@@ -3886,27 +3886,52 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-card.goal-card-focus {
-  animation: goal-card-reveal-highlight-fade 1.6s ease-out;
+  isolation: isolate;
+  animation: goal-card-focus-ring-fade 1.6s ease-out;
+}
+
+.goal-card.goal-card-focus::before {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  background: var(--active-nav);
+  content: '';
+  opacity: 0;
+  pointer-events: none;
+}
+
+.goal-card.goal-card-focus > * {
+  position: relative;
+  z-index: 2;
+}
+
+.goal-card.goal-card-focus::before {
+  animation: goal-card-highlight-fade 1.6s ease-out;
 }
 
 .goal-history-name.goal-row-focus::after {
   animation: goal-reveal-highlight-fade 1.6s ease-out;
 }
 
-@keyframes goal-card-reveal-highlight-fade {
+@keyframes goal-card-focus-ring-fade {
   0%,
-  55% {
-    background-color: color-mix(in srgb, var(--accent) 34%, var(--paper));
-    box-shadow:
-      0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent),
-      var(--shadow);
+  45% {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
   }
 
   100% {
-    background-color: var(--paper);
-    box-shadow:
-      0 0 0 2px transparent,
-      var(--shadow);
+    box-shadow: var(--shadow);
+  }
+}
+
+@keyframes goal-card-highlight-fade {
+  0%,
+  45% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
   }
 }
 

@@ -1404,8 +1404,8 @@ test('clicking a goal card background reveals it without making field labels foc
 })
 
 test('clicking a goal rhythm row scrolls to that goal on the goals page', async ({ page }) => {
-  await selectDeviceThemeForTest(page, 'graphite')
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
+  await selectDeviceThemeForTest(page, 'iridescent')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
   const targetGoal = 'Goal 18'
 
   for (let index = 1; index <= 28; index += 1) {
@@ -1420,14 +1420,20 @@ test('clicking a goal rhythm row scrolls to that goal on the goals page', async 
   await expect(page.getByRole('button', { name: 'Goals', exact: true })).toHaveClass(/active/)
   await expect(targetCard).toHaveClass(/goal-card-focus/)
   await expect.poll(() => goalCardCenterOffset(page, targetGoal)).toBeLessThanOrEqual(1)
-  const highlightedCardBackground = await targetCard.evaluate((element) => getComputedStyle(element).backgroundColor)
-  await page.waitForTimeout(1100)
-  const fadingCardBackground = await targetCard.evaluate((element) => getComputedStyle(element).backgroundColor)
+  const highlightedCard = await targetCard.evaluate((element) => {
+    const highlight = getComputedStyle(element, '::before')
+    return {
+      animationDuration: highlight.animationDuration,
+      animationName: highlight.animationName,
+      backgroundImage: highlight.backgroundImage,
+      opacity: Number(highlight.opacity),
+    }
+  })
+  expect(highlightedCard.animationName).toBe('goal-card-highlight-fade')
+  expect(highlightedCard.animationDuration).toBe('1.6s')
+  expect(highlightedCard.backgroundImage).toContain('linear-gradient')
+  expect(highlightedCard.opacity).toBe(1)
   await expect(targetCard).not.toHaveClass(/goal-card-focus/)
-  const restingCardBackground = await targetCard.evaluate((element) => getComputedStyle(element).backgroundColor)
-  expect(highlightedCardBackground).not.toBe(restingCardBackground)
-  expect(fadingCardBackground).not.toBe(highlightedCardBackground)
-  expect(fadingCardBackground).not.toBe(restingCardBackground)
 
   await resetActiveScrollTop(page)
   await targetRow.click()
