@@ -2750,7 +2750,7 @@ body.mobile-checkbox-dragging {
 
 .color-scheme-option {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   min-height: 63px;
@@ -2773,7 +2773,27 @@ body.mobile-checkbox-dragging {
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
-.color-scheme-option > span:first-child {
+.color-scheme-swatch {
+  width: 26px;
+  height: 26px;
+  border: 1px solid #8d9290;
+  border-radius: 50%;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--paper-strong) 75%, transparent);
+}
+
+.color-scheme-swatch.system {
+  background: linear-gradient(90deg, #fff 0 50%, #111 50% 100%);
+}
+
+.color-scheme-swatch.light {
+  background: #fff;
+}
+
+.color-scheme-swatch.dark {
+  background: #111;
+}
+
+.color-scheme-option-copy {
   display: grid;
   gap: 2px;
 }

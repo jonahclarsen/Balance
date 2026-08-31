@@ -6412,7 +6412,8 @@ return rows`
                 aria-pressed={deviceAppearance.colorScheme === option.id}
                 on:click={() => updateColorScheme(option.id)}
               >
-                <span>
+                <span class={`color-scheme-swatch ${option.id}`} aria-hidden="true"></span>
+                <span class="color-scheme-option-copy">
                   <strong>{option.name}</strong>
                   <small>{option.description}</small>
                 </span>
