@@ -3997,6 +3997,7 @@ body.mobile-checkbox-dragging {
 
 .goal-card > .goal-recent-history {
   grid-area: history;
+  justify-self: center;
 }
 
 .goal-recent-history-header,
