@@ -1297,6 +1297,41 @@ test('goal cards show their saved completion count without frozen-history text',
   await expect(page.getByText(/history before .* is frozen/i)).toHaveCount(0)
 })
 
+test('long goal names truncate without overlapping status or archive actions', async ({ page }) => {
+  const name = 'Build a thoughtful and sustainable creative practice that supports every ambitious project without losing sight of rest and reflection'
+  await createGoal(page, name, 3, 'creative')
+  await page.getByRole('button', { name: 'Archive', exact: true }).click()
+
+  const card = page.locator('.goal-card', { has: page.getByLabel(`Goal name: ${name}`) })
+  const layout = await card.evaluate((element) => {
+    const nameEditor = element.querySelector<HTMLElement>('.goal-name-input')
+    const status = element.querySelector<HTMLElement>('.goal-state')
+    const actions = element.querySelector<HTMLElement>('.goal-card-actions')
+    if (!nameEditor || !status || !actions) throw new Error('Expected complete goal card')
+
+    const overlaps = (left: DOMRect, right: DOMRect) => !(
+      left.right <= right.left || right.right <= left.left || left.bottom <= right.top || right.bottom <= left.top
+    )
+    const nameRect = nameEditor.getBoundingClientRect()
+    const statusRect = status.getBoundingClientRect()
+    const actionsRect = actions.getBoundingClientRect()
+    return {
+      truncated: nameEditor.scrollWidth > nameEditor.clientWidth,
+      nameOverlapsStatus: overlaps(nameRect, statusRect),
+      nameOverlapsActions: overlaps(nameRect, actionsRect),
+      statusOverlapsActions: overlaps(statusRect, actionsRect),
+    }
+  })
+
+  expect(layout).toEqual({
+    truncated: true,
+    nameOverlapsStatus: false,
+    nameOverlapsActions: false,
+    statusOverlapsActions: false,
+  })
+  await expect(card.locator('.goal-name-input')).toHaveCSS('text-overflow', 'ellipsis')
+})
+
 async function createGoal(page: import('@playwright/test').Page, name: string, cadenceDays: number, terms: string) {
   if (!(await page.getByLabel('New goal name').isVisible())) {
     await page.getByRole('button', { name: 'Manage goals' }).click()

@@ -3851,6 +3851,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-card-main {
+  grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   gap: 12px;
 }
@@ -3859,11 +3860,12 @@ body.mobile-checkbox-dragging {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-width: 0;
 }
 
 .goal-name-input {
   min-width: 0;
-  flex: 1;
+  flex: 1 1 0;
   padding: 3px 4px;
   overflow: hidden;
   border: 1px solid transparent;
@@ -3872,6 +3874,7 @@ body.mobile-checkbox-dragging {
   outline: none;
   font-size: 18px;
   font-weight: 700;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -3887,6 +3890,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-state {
+  flex: 0 0 auto;
   border-radius: 999px;
   background: var(--sidebar);
   padding: 4px 8px;
