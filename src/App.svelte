@@ -577,6 +577,7 @@ return rows`
   $: selectedItemIdSet = new Set(selectedItemIds)
   $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
   $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
+  $: lockGoalOrderForCurrentVisit(view, sortedGoals)
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
   $: filteredGoals = filterGoalsByPhrase(displayedGoals, goalSearch)
   $: activeFilteredGoals = filteredGoals.filter((goal) => isGoalActiveOnDate(goal, currentDay))
@@ -2238,8 +2239,13 @@ return rows`
     )
   }
 
-  function setGoalMatchTermsFocus(focused: boolean) {
-    lockedGoalOrder = focused ? sortedGoals.map((goal) => goal.id) : null
+  function lockGoalOrderForCurrentVisit(currentView: View, currentOrder: Goal[]) {
+    if (currentView !== 'goals') {
+      lockedGoalOrder = null
+      return
+    }
+
+    if (lockedGoalOrder === null) lockedGoalOrder = currentOrder.map((goal) => goal.id)
   }
 
   async function openGoals(goalId?: Id) {
@@ -6258,7 +6264,6 @@ return rows`
                     text={goal.matchTerms.join(', ')}
                     ariaLabel={`Matching terms for ${goal.name}`}
                     revision={$plannerStore.historyRevision}
-                    onFocusChange={setGoalMatchTermsFocus}
                     onChange={(html, text) => plannerStore.patchGoal(goal.id, {
                       matchTerms: parseMatchTerms(text),
                       matchTermsHtml: html,

@@ -179,7 +179,7 @@ test('goal matching terms preserve rich text and turn a pasted URL into a link',
   await expect(page.getByRole('textbox', { name: 'Matching terms for Exercise' }).getByRole('link', { name: 'lift' })).toBeVisible()
 })
 
-test('a goal stays in place while its matching terms are being edited', async ({ page }) => {
+test('goal urgency order updates on the next Goals page visit', async ({ page }) => {
   const currentDate = todayISO()
   const timestamp = new Date().toISOString()
 
@@ -249,7 +249,7 @@ test('a goal stays in place while its matching terms are being edited', async ({
     { currentDate, timestamp },
   )
   await page.reload()
-  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  await navigateTo(page, 'Goals')
 
   const cards = page.locator('.goal-card')
   const goalCardOrder = () => cards.evaluateAll((elements) => elements.map((element) => element.dataset.goalId))
@@ -262,6 +262,10 @@ test('a goal stays in place while its matching terms are being edited', async ({
   await expect.poll(goalCardOrder).toEqual(['goal_other', 'goal_edit'])
 
   await editor.press('Tab')
+  await expect.poll(goalCardOrder).toEqual(['goal_other', 'goal_edit'])
+
+  await navigateTo(page, 'Today')
+  await navigateTo(page, 'Goals')
   await expect.poll(goalCardOrder).toEqual(['goal_edit', 'goal_other'])
 })
 
@@ -1549,6 +1553,13 @@ async function createGoal(page: import('@playwright/test').Page, name: string, c
   await page.getByLabel('New goal matching terms').fill(terms)
   await page.getByRole('button', { name: 'Add goal', exact: true }).click()
   await expect(page.getByLabel(`Goal name: ${name}`)).toBeVisible()
+}
+
+async function navigateTo(page: import('@playwright/test').Page, view: 'Goals' | 'Today') {
+  const viewButton = page.getByRole('button', { name: view, exact: true })
+  const openNavigationButton = page.getByRole('button', { name: 'Open navigation' })
+  if (await openNavigationButton.isVisible()) await openNavigationButton.click()
+  await viewButton.click()
 }
 
 function todayISO() {
