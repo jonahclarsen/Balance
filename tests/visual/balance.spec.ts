@@ -915,6 +915,35 @@ test('Cmd or Ctrl+F searches the current document instead of opening overall sea
   await expect.poll(() => page.evaluate(() => CSS.highlights.has('balance-document-find-match'))).toBe(false)
 })
 
+test('Cmd or Ctrl+F scrolls an off-screen Today match into view', async ({ page }) => {
+  await seedPlanItems(
+    page,
+    Array.from({ length: 40 }, (_, index) =>
+      index === 38 ? 'Hidden target phrase' : `Filler task ${index + 1}`,
+    ),
+  )
+
+  const target = page
+    .getByRole('listitem', { name: 'Plan item: Hidden target phrase' })
+    .locator('[data-plan-text-input]')
+  await expect(target).not.toBeInViewport()
+
+  await page.keyboard.press('Meta+f')
+  const find = page.getByRole('search', { name: 'Find in current document' })
+  const findInput = find.getByLabel('Find text')
+  await findInput.fill('hidden target')
+
+  await expect(find.locator('.find-status')).toHaveText('Match')
+  await expect(target).toBeInViewport()
+  await expect(findInput).toBeFocused()
+  await expect.poll(() => page.evaluate(() => {
+    const highlight = CSS.highlights.get('balance-document-find-match')
+    return highlight
+      ? Array.from(highlight, (range) => range instanceof Range ? range.toString().toLowerCase() : '').join('')
+      : ''
+  })).toBe('hidden target')
+})
+
 test('Cmd or Ctrl+F focuses goal search on the Goals page', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Goals', exact: true }).click()

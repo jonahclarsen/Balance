@@ -35,6 +35,30 @@
     CSS.highlights.delete(highlightName)
   }
 
+  function scrollRangeIntoView(range: Range) {
+    const matchElement = range.startContainer instanceof Element
+      ? range.startContainer
+      : range.startContainer.parentElement
+    if (!matchElement) return
+
+    let scrollContainer = matchElement.parentElement
+    let scrolledContainer = false
+    while (scrollContainer) {
+      const overflowY = window.getComputedStyle(scrollContainer).overflowY
+      if (/(auto|scroll|overlay)/.test(overflowY) && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
+        const matchRect = range.getBoundingClientRect()
+        const containerRect = scrollContainer.getBoundingClientRect()
+        scrollContainer.scrollTop += matchRect.top
+          - containerRect.top
+          - (scrollContainer.clientHeight - matchRect.height) / 2
+        scrolledContainer = true
+      }
+      scrollContainer = scrollContainer.parentElement
+    }
+
+    if (!scrolledContainer) matchElement.scrollIntoView({ block: 'center', inline: 'nearest' })
+  }
+
   function scheduleFind(event: Event) {
     const nextQuery = event.currentTarget instanceof HTMLInputElement
       ? event.currentTarget.value
@@ -95,7 +119,10 @@
       : null
     highlightedQuery = highlightedRange ? query : ''
     CSS.highlights.delete(highlightName)
-    if (highlightedRange) CSS.highlights.set(highlightName, new Highlight(highlightedRange))
+    if (highlightedRange) {
+      CSS.highlights.set(highlightName, new Highlight(highlightedRange))
+      scrollRangeIntoView(highlightedRange)
+    }
 
     if (focusTimeout !== null) window.clearTimeout(focusTimeout)
     focusTimeout = window.setTimeout(() => {
