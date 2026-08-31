@@ -6340,33 +6340,8 @@ return rows`
       <div class="settings-panel">
         <section class="settings-section">
           <div>
-            <h3>Appearance</h3>
-            <p>Choose how Balance looks on this device.</p>
-          </div>
-
-          <div class="color-scheme-grid" role="group" aria-label="Appearance">
-            {#each COLOR_SCHEME_OPTIONS as option (option.id)}
-              <button
-                type="button"
-                class="color-scheme-option"
-                class:active={deviceAppearance.colorScheme === option.id}
-                aria-pressed={deviceAppearance.colorScheme === option.id}
-                on:click={() => updateColorScheme(option.id)}
-              >
-                <span>
-                  <strong>{option.name}</strong>
-                  <small>{option.description}</small>
-                </span>
-                <span class="theme-selected-mark" aria-hidden="true">✓</span>
-              </button>
-            {/each}
-          </div>
-        </section>
-
-        <section class="settings-section">
-          <div>
             <h3>Color theme</h3>
-            <p>Pick a theme based on your mood. Each theme adapts to the appearance selected above.</p>
+            <p>Pick a theme based on your mood. Each theme adapts to the appearance selected below.</p>
           </div>
 
           <div class="theme-options-stack">
@@ -6419,6 +6394,31 @@ return rows`
                 onCommit={commitIridescentGradient}
               />
             {/if}
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div>
+            <h3>Appearance</h3>
+            <p>Choose how Balance looks on this device.</p>
+          </div>
+
+          <div class="color-scheme-grid" role="group" aria-label="Appearance">
+            {#each COLOR_SCHEME_OPTIONS as option (option.id)}
+              <button
+                type="button"
+                class="color-scheme-option"
+                class:active={deviceAppearance.colorScheme === option.id}
+                aria-pressed={deviceAppearance.colorScheme === option.id}
+                on:click={() => updateColorScheme(option.id)}
+              >
+                <span>
+                  <strong>{option.name}</strong>
+                  <small>{option.description}</small>
+                </span>
+                <span class="theme-selected-mark" aria-hidden="true">✓</span>
+              </button>
+            {/each}
           </div>
         </section>
 
