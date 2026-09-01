@@ -4389,7 +4389,7 @@ body.mobile-checkbox-dragging {
   text-align: left;
 }
 
-.goal-rhythm-mode-menu button:hover,
+.goal-rhythm-mode-menu:not(.suppress-hover) button:hover,
 .goal-rhythm-mode-menu button:focus-visible {
   border-color: var(--line);
   background: var(--active-nav);

@@ -269,6 +269,7 @@
   })
 
   async function chooseRhythmMode(nextMode: GoalRhythmMode) {
+    rhythmModeMenuEl?.classList.add('suppress-hover')
     rhythmMode = nextMode
     localStorage.setItem(GOAL_RHYTHM_MODE_KEY, rhythmMode)
     rhythmModeMenuOpen = false
@@ -358,6 +359,7 @@
       aria-label="Goal Rhythm style picker"
       style={`--goal-rhythm-menu-offset: ${-3.5 - GOAL_RHYTHM_MODES.findIndex((mode) => mode.id === rhythmMode) * 27}px`}
       bind:this={rhythmModePickerEl}
+      on:pointermove={() => rhythmModeMenuEl?.classList.remove('suppress-hover')}
     >
       <button
         class="goal-rhythm-mode-trigger"

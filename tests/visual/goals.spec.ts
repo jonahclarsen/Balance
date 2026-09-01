@@ -122,6 +122,11 @@ test('goal rhythm offers nine persistent visual modes', async ({ page }) => {
   }
 
   expect(await selectedRowAlignment('Flow')).toEqual({ centersAlign: true, horizontalCentersAlign: true })
+  await page.getByRole('menuitemradio', { name: 'Mosaic' }).click()
+  expect(await page.getByRole('menuitemradio').evaluateAll((options) => options
+    .filter((option) => getComputedStyle(option).backgroundColor !== 'rgba(0, 0, 0, 0)')
+    .map((option) => option.textContent?.trim().replace(/^\S+\s+/, '')),
+  )).toEqual(['Mosaic'])
   await page.getByRole('menuitemradio', { name: 'Constellation' }).click()
   await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'constellation')
 
