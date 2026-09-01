@@ -972,17 +972,17 @@ test('notes save adjustable breathing room and follow the final caret to the bot
 
   await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
   const spacingControl = page.locator('.note-scroll-space-control')
-  await expect(spacingControl).toHaveCSS('opacity', '1')
-  await expect(spacingControl).toHaveCSS('visibility', 'visible')
-  await expect(spacingControl).toHaveCSS('transition-duration', '0s')
+  await expect(spacingControl).toHaveCSS('opacity', '0')
+  await expect(spacingControl).toHaveCSS('visibility', 'hidden')
+  await expect(spacingControl).toHaveCSS('transition-property', /opacity.*visibility/)
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   await expect(spacingControl).toHaveCSS('opacity', '1')
   await expect(spacingControl).toHaveCSS('visibility', 'visible')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollTop - 20 }))
-  await expect(spacingControl).toHaveCSS('opacity', '1')
-  await expect(spacingControl).toHaveCSS('visibility', 'visible')
+  await expect(spacingControl).toHaveCSS('opacity', '0')
+  await expect(spacingControl).toHaveCSS('visibility', 'hidden')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   await expect(spacingControl).toHaveCSS('opacity', '1')
@@ -1023,6 +1023,7 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     input.dispatchEvent(new InputEvent('input', { bubbles: true }))
   })
   await expect(spacingSlider).toHaveValue('100')
+  await expect(spacingControl).toHaveClass(/visible/)
   await expect(spacingControl).toHaveCSS('opacity', '1')
   await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })))
   await expect.poll(() => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(4)
@@ -1056,8 +1057,8 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   expect(pillGeometry?.thumbLeft).toBeGreaterThanOrEqual(pillGeometry?.controlLeft ?? Number.POSITIVE_INFINITY)
   expect(pillGeometry?.thumbRight).toBeLessThanOrEqual(pillGeometry?.controlRight ?? Number.NEGATIVE_INFINITY)
   const maximumSpaceHeight = await page.locator('.note-scroll-space').evaluate((element) => element.getBoundingClientRect().height)
-  expect(maximumSpaceHeight).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.59)
-  expect(maximumSpaceHeight).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.61)
+  expect(maximumSpaceHeight).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.49)
+  expect(maximumSpaceHeight).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.5)
   await page.screenshot({ path: testInfo.outputPath('note-spacing-slider-at-bottom.png'), fullPage: false })
   const visibleNoteHeight = await page.evaluate(() => {
     const scroller = document.querySelector('.workspace')?.getBoundingClientRect()

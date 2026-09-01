@@ -19,7 +19,8 @@
   // Keep the existing default height stable while giving the upper 40% of the
   // slider more range for lifting the final lines higher in the viewport.
   const DEFAULT_NOTE_SCROLL_SPACE_VH = 31.2
-  const MAX_NOTE_SCROLL_SPACE_VH = 60
+  // Pull the former 60vh ceiling 20% toward the 6vh minimum.
+  const MAX_NOTE_SCROLL_SPACE_VH = 49.2
 
   export let notes: Note[]
   export let selectedNoteId: Id
@@ -56,6 +57,7 @@
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
   let noteScrollSpacePercent = DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+  let noteScrollSpaceControlVisible = false
   let noteScrollSpaceAdjustmentActive = false
   $: noteScrollSpaceVh = noteScrollSpaceVhForPercent(noteScrollSpacePercent)
   let toolbarSelection: Range | null = null
@@ -274,6 +276,38 @@
     return scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop <= 4
   }
 
+  function trackNoteScrollSpace(node: HTMLDivElement) {
+    const scroller = noteScrollContainer()
+    if (!scroller) return {}
+
+    let frame: number | null = null
+    const scrollEventTarget: HTMLElement | Document = scroller === document.scrollingElement ? document : scroller
+    const updateVisibility = () => {
+      frame = null
+      noteScrollSpaceControlVisible = noteScrollSpaceAdjustmentActive || isAtNoteBottom(scroller)
+    }
+    const scheduleVisibilityUpdate = () => {
+      if (frame !== null) return
+      frame = window.requestAnimationFrame(updateVisibility)
+    }
+    const resizeObserver = new ResizeObserver(scheduleVisibilityUpdate)
+
+    scrollEventTarget.addEventListener('scroll', scheduleVisibilityUpdate, { passive: true })
+    resizeObserver.observe(scroller)
+    resizeObserver.observe(node)
+    if (noteBlocksElement) resizeObserver.observe(noteBlocksElement)
+    scheduleVisibilityUpdate()
+
+    return {
+      destroy() {
+        scrollEventTarget.removeEventListener('scroll', scheduleVisibilityUpdate)
+        resizeObserver.disconnect()
+        if (frame !== null) window.cancelAnimationFrame(frame)
+        noteScrollSpaceControlVisible = false
+      },
+    }
+  }
+
   async function scrollNoteToBottomAfterLayout(scroller: HTMLElement) {
     const request = ++bottomFollowRequest
     await tick()
@@ -367,6 +401,7 @@
   function beginNoteScrollSpaceAdjustment(event: PointerEvent) {
     if (event.pointerType === 'mouse' && event.button !== 0) return
     noteScrollSpaceAdjustmentActive = true
+    noteScrollSpaceControlVisible = true
   }
 
   async function finishNoteScrollSpaceAdjustment() {
@@ -374,7 +409,13 @@
 
     const scroller = noteScrollContainer()
     if (scroller) await scrollNoteToBottomAfterLayout(scroller)
-    noteScrollSpaceAdjustmentActive = false
+    await tick()
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        noteScrollSpaceAdjustmentActive = false
+        noteScrollSpaceControlVisible = Boolean(scroller && isAtNoteBottom(scroller))
+      })
+    })
   }
 
   function handleEditorKeydownCapture(event: KeyboardEvent) {
@@ -811,8 +852,9 @@
   <div
     class="note-scroll-space"
     style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh; --note-scroll-space-progress: ${noteScrollSpacePercent}%`}
+    use:trackNoteScrollSpace
   >
-    <label class="note-scroll-space-control">
+    <label class="note-scroll-space-control" class:visible={noteScrollSpaceControlVisible}>
       <span class="note-scroll-space-slider">
         <input
           class="note-scroll-space-native-slider"
