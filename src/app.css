@@ -4296,7 +4296,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-rhythm-mode-trigger {
-  display: inline-flex;
+  display: flex;
   width: 138px;
   height: 28px;
   align-items: center;
@@ -5111,93 +5111,6 @@ body.mobile-checkbox-dragging {
   transform: rotate(45deg) scale(0.75);
 }
 
-/* Terrace — raised contour bands step gently through the calendar, making a
-   long cadence feel like a tiny landscape. The 3-day pattern divides the
-   48-day paint chunks evenly, so the contour never jumps at chunk boundaries. */
-.goal-history-panel[data-rhythm-mode='terrace'] .goal-day-cell.active {
-  height: 20px;
-  align-self: center;
-  border-block: 1px solid hsl(var(--goal-hue) 45% calc(var(--goal-segment-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.45);
-  border-radius: 4px;
-  background:
-    linear-gradient(to bottom, transparent 0 55%, hsl(var(--goal-hue) 54% 45% / 0.1) 55% 60%, transparent 60%),
-    hsl(var(--goal-hue) 54% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%)));
-  box-shadow: inset 0 -3px 0 hsl(var(--goal-hue) 55% 42% / 0.1);
-}
-
-.goal-history-panel[data-rhythm-mode='terrace'] .goal-day-cell.active:nth-child(3n + 1) {
-  transform: translateY(3px);
-}
-
-.goal-history-panel[data-rhythm-mode='terrace'] .goal-day-cell.active:nth-child(3n + 2) {
-  transform: translateY(0);
-}
-
-.goal-history-panel[data-rhythm-mode='terrace'] .goal-day-cell.active:nth-child(3n) {
-  transform: translateY(-3px);
-}
-
-.goal-history-panel[data-rhythm-mode='terrace'] .goal-day-cell.completed,
-.goal-history-panel[data-rhythm-mode='terrace'] .goal-day-cell.relieved {
-  background:
-    linear-gradient(to bottom, transparent 0 55%, hsl(var(--goal-hue) 58% 35% / 0.14) 55% 60%, transparent 60%),
-    hsl(var(--goal-hue) 58% calc(var(--goal-segment-completed-bg-lightness) + var(--goal-lightness-shift, 0%)));
-}
-
-.goal-history-panel[data-rhythm-mode='terrace'] .goal-cell-mark {
-  width: 11px;
-  height: 11px;
-  font-size: 8px;
-}
-
-.goal-history-panel[data-rhythm-mode='terrace'] .goal-color-dot {
-  width: 10px;
-  height: 6px;
-  border-radius: 2px;
-  box-shadow: 0 3px 0 hsl(var(--goal-hue) 58% 48% / 0.2);
-}
-
-/* Pulse — a crisp cardiograph line with completions drawn as heartbeat peaks. */
-.goal-history-panel[data-rhythm-mode='pulse'] .goal-day-cell.active {
-  border: 0;
-  border-bottom: 1px solid var(--row-border);
-  border-radius: 0;
-  background: linear-gradient(
-    to bottom,
-    transparent calc(50% - 1px),
-    hsl(var(--goal-hue) 62% calc(45% + var(--goal-lightness-shift, 0%)) / 0.62) calc(50% - 1px),
-    hsl(var(--goal-hue) 62% calc(45% + var(--goal-lightness-shift, 0%)) / 0.62) calc(50% + 1px),
-    transparent calc(50% + 1px)
-  );
-}
-
-.goal-history-panel[data-rhythm-mode='pulse'] .goal-cell-mark.open {
-  width: 9px;
-  height: 9px;
-  border-radius: 2px;
-  transform: rotate(45deg);
-}
-
-.goal-history-panel[data-rhythm-mode='pulse'] .goal-cell-mark.checked {
-  width: 22px;
-  height: 17px;
-  border: 0;
-  border-radius: 0;
-  background: hsl(var(--goal-hue) 65% calc(42% + var(--goal-lightness-shift, 0%)));
-  clip-path: polygon(0 45%, 25% 45%, 36% 8%, 53% 88%, 67% 38%, 100% 38%, 100% 56%, 74% 56%, 51% 100%, 35% 38%, 29% 62%, 0 62%);
-  color: transparent;
-}
-
-.goal-history-panel[data-rhythm-mode='pulse'] .goal-history-name {
-  border-bottom-style: dotted;
-}
-
-.goal-history-panel[data-rhythm-mode='pulse'] .goal-color-dot {
-  width: 12px;
-  height: 3px;
-  border-radius: 999px;
-}
-
 @media (max-width: 760px) {
   .app-shell {
     grid-template-columns: 1fr;
@@ -5618,14 +5531,6 @@ body.mobile-checkbox-dragging {
 
   .goal-history-panel[data-rhythm-mode='constellation'] .goal-history-body {
     grid-template-columns: min(44vw, 160px) minmax(0, 1fr);
-  }
-
-  .goal-history-panel[data-rhythm-mode='terrace'] .goal-history-body {
-    grid-template-columns: min(50vw, 180px) minmax(0, 1fr);
-  }
-
-  .goal-history-panel[data-rhythm-mode='pulse'] .goal-history-body {
-    grid-template-columns: min(42vw, 154px) minmax(0, 1fr);
   }
 }
 

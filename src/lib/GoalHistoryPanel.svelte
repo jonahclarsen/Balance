@@ -22,8 +22,6 @@
     | 'ledger'
     | 'aurora'
     | 'constellation'
-    | 'terrace'
-    | 'pulse'
 
   const GOAL_RHYTHM_MODE_KEY = 'balance.goalRhythmMode.v1'
   const GOAL_RHYTHM_MODES: Array<{ id: GoalRhythmMode; label: string; glyph: string }> = [
@@ -34,8 +32,6 @@
     { id: 'ledger', label: 'Ledger', glyph: '≡' },
     { id: 'aurora', label: 'Aurora', glyph: '✦' },
     { id: 'constellation', label: 'Constellation', glyph: '✷' },
-    { id: 'terrace', label: 'Terrace', glyph: '◱' },
-    { id: 'pulse', label: 'Pulse', glyph: '⌁' },
   ]
 
   export let goals: Goal[]
