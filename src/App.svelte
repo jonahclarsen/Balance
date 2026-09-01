@@ -3036,6 +3036,19 @@ return rows`
       return
     }
 
+    if (
+      view === 'notes' &&
+      primaryModifier &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.code === 'KeyN'
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      if (!event.repeat) notesPanel?.createNote()
+      return
+    }
+
     if (primaryModifier && event.shiftKey && !event.altKey && event.code === 'KeyG') {
       event.preventDefault()
       if (!event.repeat) void generateSelectedDay()

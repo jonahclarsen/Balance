@@ -19,6 +19,10 @@
   // The slider scales against the actual note viewport, excluding Goal Rhythm.
   const DEFAULT_NOTE_SCROLL_SPACE_SHARE = 31.2
   const MAX_NOTE_SCROLL_SPACE_SHARE = 49.2
+  const isMac = /Mac|iPhone|iPad|iPod/.test(
+    (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '',
+  )
+  const newNoteShortcutLabel = `${isMac ? '⌘' : 'Ctrl+'}N`
 
   export let notes: Note[]
   export let selectedNoteId: Id
@@ -112,7 +116,7 @@
     return null
   }
 
-  function createAndSelect() {
+  export function createNote() {
     trashOpen = false
     const id = onCreate()
     onSelect(id)
@@ -854,7 +858,17 @@
       </div>
     {/if}
     <div class="notes-filter-row">
-      {#if !trashOpen}<button class="note-new" type="button" on:click={createAndSelect}>New</button>{/if}
+      {#if !trashOpen}
+        <button
+          class="note-new"
+          type="button"
+          title={`New note (${newNoteShortcutLabel})`}
+          aria-keyshortcuts="Control+N Meta+N"
+          on:click={createNote}
+        >
+          <span>New</span><kbd class="note-new-shortcut" aria-hidden="true">{newNoteShortcutLabel}</kbd>
+        </button>
+      {/if}
       <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
     </div>
     <div class="notes-list">
@@ -966,7 +980,15 @@
         {:else}
           <h3>{activeNotes.length === 0 ? 'Your notes live here' : 'Choose a note'}</h3>
           <p>Keep reference material, lists, and ideas separate from any particular day.</p>
-          <button class="primary" type="button" on:click={createAndSelect}>+ New note</button>
+          <button
+            class="primary note-empty-new"
+            type="button"
+            title={`New note (${newNoteShortcutLabel})`}
+            aria-keyshortcuts="Control+N Meta+N"
+            on:click={createNote}
+          >
+            <span>+ New note</span><kbd class="note-new-shortcut" aria-hidden="true">{newNoteShortcutLabel}</kbd>
+          </button>
         {/if}
       </div>
     {/if}

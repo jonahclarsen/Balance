@@ -287,6 +287,31 @@ test('the Notes sidebar list scrolls independently and keeps New beside the filt
   await page.screenshot({ path: testInfo.outputPath('notes-sidebar.png') })
 })
 
+test('the Notes new-note command creates and selects a note', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+
+  const newNoteButton = page.locator('.note-new')
+  await expect(newNoteButton).toHaveAttribute('aria-keyshortcuts', 'Control+N Meta+N')
+  await expect(newNoteButton.locator('kbd')).toHaveText(/^(Ctrl\+|⌘)N$/)
+
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await expect(page.getByLabel('Note title')).toBeFocused()
+  await page.keyboard.press('Control+n')
+
+  await expect(page.getByLabel('Note title')).toBeFocused()
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.notes?.length ?? 0
+  })).toBe(2)
+
+  await page.keyboard.press('Alt+/')
+  const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+  await expect(shortcuts.getByText('Create note (while in Notes)', { exact: true })).toBeVisible()
+})
+
 test('note style menu stays visible inside the note scroller and viewport', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop popup placement is covered here')
   await page.goto('/')
