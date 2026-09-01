@@ -14,12 +14,13 @@
   import { todayISO } from './planner'
   import type { Goal, GoalCompletion } from './types'
 
-  type GoalRhythmMode = 'flow' | 'mosaic' | 'signal' | 'ledger' | 'aurora'
+  type GoalRhythmMode = 'flow' | 'mosaic' | 'columns' | 'signal' | 'ledger' | 'aurora'
 
   const GOAL_RHYTHM_MODE_KEY = 'balance.goalRhythmMode.v1'
   const GOAL_RHYTHM_MODES: Array<{ id: GoalRhythmMode; label: string; glyph: string }> = [
     { id: 'flow', label: 'Flow', glyph: '≋' },
     { id: 'mosaic', label: 'Mosaic', glyph: '▦' },
+    { id: 'columns', label: 'Columns', glyph: '▥' },
     { id: 'signal', label: 'Signal', glyph: '•—' },
     { id: 'ledger', label: 'Ledger', glyph: '≡' },
     { id: 'aurora', label: 'Aurora', glyph: '✦' },

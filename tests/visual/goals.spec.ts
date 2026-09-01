@@ -68,11 +68,11 @@ test('the goal rhythm search clear button remains visible without focus on mobil
   await expect(clearSearch).toHaveCount(0)
 })
 
-test('goal rhythm offers five persistent visual modes', async ({ page }) => {
+test('goal rhythm offers six persistent visual modes', async ({ page }) => {
   const rhythm = page.getByRole('region', { name: 'Goal history' })
   const modePicker = page.getByRole('combobox', { name: 'Goal rhythm style' })
 
-  await expect(modePicker.locator('option')).toHaveCount(5)
+  await expect(modePicker.locator('option')).toHaveCount(6)
   await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow')
 
   await modePicker.selectOption('aurora')
@@ -81,6 +81,37 @@ test('goal rhythm offers five persistent visual modes', async ({ page }) => {
 
   await page.reload()
   await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'aurora')
+})
+
+test('columns mode joins mosaic tiles vertically by calendar day', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Desktop geometry provides stable pixel measurements')
+  await createGoal(page, 'Exercise', 3, 'exercise')
+  await createGoal(page, 'Read', 2, 'read')
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+
+  const modePicker = page.getByRole('combobox', { name: 'Goal rhythm style' })
+  const todayCells = page.locator(`.goal-day-cell[title*=" · ${todayISO()} · "]`)
+  await expect(todayCells).toHaveCount(2)
+
+  const verticalGap = () => todayCells.evaluateAll((cells) => {
+    const rectangles = cells
+      .map((cell) => cell.getBoundingClientRect())
+      .sort((left, right) => left.top - right.top)
+    return Math.round(rectangles[1].top - rectangles[0].bottom)
+  })
+
+  await modePicker.selectOption('mosaic')
+  expect(await verticalGap()).toBe(6)
+
+  await modePicker.selectOption('columns')
+  expect(await verticalGap()).toBe(0)
+  await expect.poll(() => todayCells.evaluateAll((cells) => cells.map((cell) => {
+    const style = getComputedStyle(cell)
+    return { width: style.width, height: style.height }
+  }))).toEqual([
+    { width: '24px', height: '30px' },
+    { width: '24px', height: '30px' },
+  ])
 })
 
 test('goal rhythm modes allocate the mobile split to match their visual focus', async ({ page }, testInfo) => {

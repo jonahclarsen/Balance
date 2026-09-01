@@ -4809,6 +4809,54 @@ body.mobile-checkbox-dragging {
   border-radius: 3px;
 }
 
+/* Columns — Mosaic's separated days, but each day becomes one uninterrupted
+   vertical stack across the visible goals. */
+.goal-history-panel[data-rhythm-mode='columns'] .goal-day-cell {
+  width: 24px;
+  height: 30px;
+  align-self: stretch;
+  justify-self: center;
+  border: 0;
+  border-right: 1px solid color-mix(in srgb, var(--line-strong) 52%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--line-strong) 52%, transparent);
+  border-radius: 0;
+  background: color-mix(in srgb, var(--sidebar) 42%, var(--paper));
+}
+
+.goal-history-panel[data-rhythm-mode='columns'] .goal-day-cell.active {
+  border-right-color: hsl(var(--goal-hue) 42% calc(var(--goal-segment-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.42);
+  border-left-color: hsl(var(--goal-hue) 42% calc(var(--goal-segment-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.42);
+  background: hsl(var(--goal-hue) 52% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%)));
+}
+
+.goal-history-panel[data-rhythm-mode='columns'] .goal-day-cell.completed,
+.goal-history-panel[data-rhythm-mode='columns'] .goal-day-cell.relieved {
+  background: hsl(var(--goal-hue) 58% calc(var(--goal-segment-completed-bg-lightness) + var(--goal-lightness-shift, 0%)));
+}
+
+.goal-history-panel[data-rhythm-mode='columns'] .goal-history-date-row + .goal-history-day-row .goal-day-cell {
+  border-top: 1px solid var(--line-strong);
+  border-radius: 7px 7px 0 0;
+}
+
+.goal-history-panel[data-rhythm-mode='columns'] .goal-history-day-row:last-child .goal-day-cell {
+  border-bottom: 1px solid var(--line-strong);
+  border-radius: 0 0 7px 7px;
+}
+
+.goal-history-panel[data-rhythm-mode='columns'] .goal-history-name {
+  margin: 2px 4px;
+  width: calc(100% - 8px);
+  height: 26px;
+  border: 1px solid var(--row-border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--paper) 90%, var(--sidebar));
+}
+
+.goal-history-panel[data-rhythm-mode='columns'] .goal-color-dot {
+  border-radius: 3px;
+}
+
 /* Signal — a low-ink timeline where cadence is the wire and state is the bead. */
 .goal-history-panel[data-rhythm-mode='signal'] .goal-day-cell.active {
   border: 0;
@@ -5303,7 +5351,7 @@ body.mobile-checkbox-dragging {
   }
 
   .goal-rhythm-mode-pill select {
-    width: 62px;
+    width: 68px;
   }
 
   .goal-history-search-field {
@@ -5324,6 +5372,10 @@ body.mobile-checkbox-dragging {
   }
 
   .goal-history-panel[data-rhythm-mode='mosaic'] .goal-history-body {
+    grid-template-columns: min(48vw, 174px) minmax(0, 1fr);
+  }
+
+  .goal-history-panel[data-rhythm-mode='columns'] .goal-history-body {
     grid-template-columns: min(48vw, 174px) minmax(0, 1fr);
   }
 
