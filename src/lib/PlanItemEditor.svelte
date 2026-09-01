@@ -132,6 +132,8 @@
   let mobileTaskMenuPosition: { left: number; top: number; maxHeight: number } | null = null
   let suppressCheckboxClick = false
   let mobileTaskMenuPositionFrame: number | null = null
+  let suppressMobileMenuClick = false
+  let suppressMobileMenuClickTimer: ReturnType<typeof setTimeout> | null = null
 
   type MobileCheckboxDrag = {
     pointerId: number
@@ -210,6 +212,32 @@
     dismissActiveTaskEditor()
     await tick()
     positionMobileTaskMenu()
+  }
+
+  function handleMobileMenuPointerDown(event: PointerEvent) {
+    if (event.pointerType !== 'touch' || !event.isPrimary || event.button !== 0) return
+
+    // Android can resize the visual viewport while dismissing the software
+    // keyboard between pointerdown and click. That movement cancels or
+    // retargets the compatibility click, so open on the stable initial press.
+    suppressMobileMenuClick = true
+    if (suppressMobileMenuClickTimer !== null) clearTimeout(suppressMobileMenuClickTimer)
+    suppressMobileMenuClickTimer = setTimeout(() => {
+      suppressMobileMenuClick = false
+      suppressMobileMenuClickTimer = null
+    }, 750)
+    void toggleMobileMenu()
+  }
+
+  function handleMobileMenuClick() {
+    if (suppressMobileMenuClick) {
+      suppressMobileMenuClick = false
+      if (suppressMobileMenuClickTimer !== null) clearTimeout(suppressMobileMenuClickTimer)
+      suppressMobileMenuClickTimer = null
+      return
+    }
+
+    void toggleMobileMenu()
   }
 
   function mountMobileTaskMenu(node: HTMLDivElement) {
@@ -454,7 +482,10 @@
     if (!mobile) void focusTaskBelow(planId, itemIds)
   }
 
-  onDestroy(cancelMobileCheckboxDrag)
+  onDestroy(() => {
+    cancelMobileCheckboxDrag()
+    if (suppressMobileMenuClickTimer !== null) clearTimeout(suppressMobileMenuClickTimer)
+  })
 
   function removeTime() {
     mobileMenuOpen = false
@@ -968,7 +999,8 @@
           aria-label={`Task options for ${item.text || 'untitled task'}`}
           aria-haspopup="menu"
           aria-expanded={mobileMenuOpen}
-          on:click|stopPropagation={toggleMobileMenu}
+          on:pointerdown={handleMobileMenuPointerDown}
+          on:click|stopPropagation={handleMobileMenuClick}
         >⋮</button>
         {#if mobileMenuOpen}
           <div

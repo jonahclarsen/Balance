@@ -507,6 +507,54 @@ test('mobile task options stay inside the viewport at the top and bottom of the 
   expect(bottomBounds.menuBottom).toBeLessThanOrEqual(bottomBounds.viewportBottom - 7)
 })
 
+test('mobile task options open on touch press before a keyboard resize can cancel the click', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The task overflow interactions are mobile-only')
+
+  const taskText = 'Parent task with a scheduled time'
+  const row = page.getByRole('listitem', { name: `Plan item: ${taskText}` })
+  const editor = row.locator('[data-plan-text-input]')
+  const menuButton = row.getByRole('button', { name: `Task options for ${taskText}` })
+  await editor.focus()
+
+  const menuButtonBox = await menuButton.boundingBox()
+  if (!menuButtonBox) throw new Error('Missing mobile task options button geometry')
+  const cdp = await page.context().newCDPSession(page)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{
+      x: menuButtonBox.x + menuButtonBox.width / 2,
+      y: menuButtonBox.y + menuButtonBox.height / 2,
+    }],
+  })
+
+  await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toBeVisible()
+  await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(0)
+  await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toBeVisible()
+  await page.screenshot({ path: 'artifacts/visual-smoke/mobile-task-menu-touch-open.png', fullPage: false })
+
+  await page.touchscreen.tap(
+    menuButtonBox.x + menuButtonBox.width / 2,
+    menuButtonBox.y + menuButtonBox.height / 2,
+  )
+  await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toHaveCount(0)
+
+  await menuButton.press('Enter')
+  await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toHaveCount(0)
+
+  await page.touchscreen.tap(
+    menuButtonBox.x + menuButtonBox.width / 2,
+    menuButtonBox.y + menuButtonBox.height / 2,
+  )
+  await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toBeVisible()
+  const headerBox = await page.locator('.mobile-app-header').boundingBox()
+  if (!headerBox) throw new Error('Missing mobile app header geometry')
+  await page.touchscreen.tap(headerBox.x + headerBox.width / 2, headerBox.y + headerBox.height / 2)
+  await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toHaveCount(0)
+})
+
 test('holding and dragging a checkbox does not bulk-check tasks on desktop', async ({ page }, testInfo) => {
   test.skip(isMobileProject(testInfo.project.name), 'Desktop-only mobile gesture guard')
 
@@ -527,6 +575,36 @@ test('holding and dragging a checkbox does not bulk-check tasks on desktop', asy
 
   await expect(target).not.toBeChecked()
   await expect(page.locator('.plan-row.mobile-checkbox-drag-preview')).toHaveCount(0)
+})
+
+test('mobile task options edit, add, and remove time and start task selection', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The task overflow interactions are mobile-only')
+
+  const parentText = 'Parent task with a scheduled time'
+  const parentRow = page.getByRole('listitem', { name: `Plan item: ${parentText}` })
+  await parentRow.getByRole('button', { name: `Task options for ${parentText}` }).click()
+  await page.getByRole('menuitem', { name: 'Edit time' }).click()
+  await expect(page.getByRole('dialog', { name: `Edit time for ${parentText}` })).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  await parentRow.getByRole('button', { name: `Task options for ${parentText}` }).click()
+  await page.getByRole('menuitem', { name: 'Remove time' }).click()
+  await expect(parentRow.locator('.mobile-time-summary')).toHaveCount(0)
+
+  const trailingText = 'Another task used to verify mobile drag selection'
+  const trailingRow = page.getByRole('listitem', { name: `Plan item: ${trailingText}` })
+  await trailingRow.getByRole('button', { name: `Task options for ${trailingText}` }).click()
+  await page.getByRole('menuitem', { name: 'Add time' }).click()
+  await expect(page.getByRole('dialog', { name: `Edit time for ${trailingText}` })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(trailingRow.locator('.mobile-time-summary')).toBeVisible()
+
+  const selectableText = 'Filler task 1'
+  const selectableRow = page.getByRole('listitem', { name: `Plan item: ${selectableText}`, exact: true })
+  await selectableRow.getByRole('button', { name: `Task options for ${selectableText}`, exact: true }).click()
+  await page.getByRole('menuitem', { name: 'Select tasks' }).click()
+  await expect(selectableRow.getByRole('button', { name: `Deselect ${selectableText}`, exact: true })).toBeVisible()
+  await expect(page.locator('.mobile-task-menu-button')).toHaveCount(0)
 })
 
 test('mobile task options copy and cut whole task trees and remove tasks', async ({ page }, testInfo) => {
