@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
   import peacockTalking from '../assets/peacock-talking.png'
   import type { GoalDoabilityReview } from './goals'
   import type { Id } from './types'
@@ -9,140 +8,24 @@
   export let onClose: () => void
   export let onSelectGoal: (goalId: Id) => void
 
-  let mascotPanel: HTMLDivElement
-  let guidancePanel: HTMLElement
-  let goalsPanel: HTMLElement
-  let columnShares: [number, number] = [639 / 1046, 407 / 1046]
-  let mascotHeight = 320
-  let renderedMascotHeight = 0
-  let modalSize = { width: 1096, height: 730 }
-  let panelWidths: [number, number] = [0, 0]
-  let panelResizeObserver: ResizeObserver | null = null
-  let stopColumnResize: (() => void) | null = null
-  let stopMascotResize: (() => void) | null = null
-  let copied = false
-  let copiedResetTimer: ReturnType<typeof setTimeout> | null = null
-
-  const PANEL_MIN_WIDTHS: [number, number] = [360, 180]
-
-  $: sizingSummary = `Goal review sizing: modal=${modalSize.width}x${modalSize.height}px; panels=${panelWidths[0]}/${panelWidths[1]}px (guidance/goals); peacock=${renderedMascotHeight}px high`
-
-  onMount(() => {
-    panelResizeObserver = new ResizeObserver(() => {
-      panelWidths = [guidancePanel, goalsPanel].map((panel) => (
-        Math.round(panel.getBoundingClientRect().width)
-      )) as [number, number]
-      renderedMascotHeight = Math.round(mascotPanel.getBoundingClientRect().height)
-    })
-    panelResizeObserver.observe(mascotPanel)
-    panelResizeObserver.observe(guidancePanel)
-    panelResizeObserver.observe(goalsPanel)
-  })
-
-  onDestroy(() => {
-    panelResizeObserver?.disconnect()
-    stopColumnResize?.()
-    stopMascotResize?.()
-    if (copiedResetTimer) clearTimeout(copiedResetTimer)
-  })
-
-  function startColumnResize(event: PointerEvent) {
-    event.preventDefault()
-    event.stopPropagation()
-    stopColumnResize?.()
-
-    const panels = [guidancePanel, goalsPanel]
-    const startingWidths = panels.map((panel) => panel.getBoundingClientRect().width)
-    const totalPanelWidth = startingWidths.reduce((sum, width) => sum + width, 0)
-    const startX = event.clientX
-    const pairWidth = startingWidths[0] + startingWidths[1]
-
-    const handleMove = (moveEvent: PointerEvent) => {
-      const delta = moveEvent.clientX - startX
-      const nextLeft = Math.min(
-        pairWidth - PANEL_MIN_WIDTHS[1],
-        Math.max(PANEL_MIN_WIDTHS[0], startingWidths[0] + delta),
-      )
-      columnShares = [nextLeft / totalPanelWidth, (pairWidth - nextLeft) / totalPanelWidth]
-    }
-    const handleUp = () => stopColumnResize?.()
-
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp, { once: true })
-    window.addEventListener('pointercancel', handleUp, { once: true })
-    stopColumnResize = () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-      window.removeEventListener('pointercancel', handleUp)
-      stopColumnResize = null
-    }
-  }
-
-  function startMascotResize(event: PointerEvent) {
-    event.preventDefault()
-    event.stopPropagation()
-    stopMascotResize?.()
-
-    const startY = event.clientY
-    const startHeight = mascotPanel.getBoundingClientRect().height
-    const maximumHeight = Math.max(140, Math.min(600, guidancePanel.clientHeight - 90))
-    const handleMove = (moveEvent: PointerEvent) => {
-      mascotHeight = Math.min(maximumHeight, Math.max(80, startHeight + moveEvent.clientY - startY))
-    }
-    const handleUp = () => stopMascotResize?.()
-
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp, { once: true })
-    window.addEventListener('pointercancel', handleUp, { once: true })
-    stopMascotResize = () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-      window.removeEventListener('pointercancel', handleUp)
-      stopMascotResize = null
-    }
-  }
-
-  async function copySizingSummary() {
-    try {
-      await navigator.clipboard.writeText(sizingSummary)
-      copied = true
-      if (copiedResetTimer) clearTimeout(copiedResetTimer)
-      copiedResetTimer = setTimeout(() => (copied = false), 1800)
-    } catch {
-      copied = false
-    }
-  }
 </script>
 
 <OverlayModal
   ariaLabel="Are your goals attainable?"
   z={85}
   maxWidth={1096}
-  initialHeight={730}
-  minWidth={660}
+  height={705}
   bodyOverflow="hidden"
   headerless
-  resizable
-  onResize={(size) => (modalSize = size)}
   {onClose}
 >
   <div class="doability-review">
-    <div
-      class="review-layout"
-      style={`grid-template-columns: minmax(${PANEL_MIN_WIDTHS[0]}px, ${columnShares[0]}fr) 12px minmax(${PANEL_MIN_WIDTHS[1]}px, ${columnShares[1]}fr)`}
-    >
-      <section bind:this={guidancePanel} class="guidance">
+    <div class="review-layout">
+      <section class="guidance">
         <div class="mascot-stack">
-          <div bind:this={mascotPanel} class="mascot" style={`height: ${mascotHeight}px`} aria-hidden="true">
+          <div class="mascot" aria-hidden="true">
             <img src={peacockTalking} alt="" />
           </div>
-          <button
-            class="mascot-resize-handle"
-            type="button"
-            aria-label="Resize peacock height"
-            title="Drag to resize peacock height"
-            on:pointerdown={startMascotResize}
-          ><span></span></button>
         </div>
         <h2>Are your goals attainable?</h2>
         <p>It's easy for the goal system to get clogged. From our experience, goals work best when they are:</p>
@@ -153,15 +36,7 @@
         </ul>
       </section>
 
-      <button
-        class="column-resize-handle"
-        type="button"
-        aria-label="Resize guidance and goals sections"
-        title="Drag to resize these sections"
-        on:pointerdown={startColumnResize}
-      ><span></span></button>
-
-      <section bind:this={goalsPanel} class="goals-to-review" aria-label="Goals to review">
+      <section class="goals-to-review" aria-label="Goals to review">
         <ul>
           {#each reviews as review (review.goal.id)}
             <li>
@@ -181,31 +56,27 @@
         </ul>
       </section>
     </div>
-
-    <div class="sizing-readout">
-      <code data-testid="goal-review-sizing">{sizingSummary}</code>
-      <button type="button" on:click={copySizingSummary}>{copied ? 'Copied' : 'Copy sizes'}</button>
-    </div>
   </div>
 </OverlayModal>
 
 <style>
   .doability-review {
     height: 100%;
-    display: grid;
-    grid-template-rows: minmax(0, 1fr) auto;
-    gap: 10px;
     min-height: 0;
   }
 
   .review-layout {
     display: grid;
+    grid-template-columns: minmax(360px, 639fr) minmax(180px, 407fr);
     align-items: stretch;
+    gap: 12px;
+    height: 100%;
     min-width: 0;
     min-height: 0;
   }
 
   .mascot {
+    height: 393px;
     max-width: 100%;
   }
 
@@ -222,32 +93,6 @@
     display: grid;
     justify-items: center;
     margin: 0 auto 6px;
-  }
-
-  .mascot-resize-handle {
-    position: relative;
-    width: min(130px, 70%);
-    height: 14px;
-    margin: 1px 0 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    cursor: ns-resize;
-    touch-action: none;
-  }
-
-  .mascot-resize-handle span {
-    position: absolute;
-    inset: 5px 12%;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--ink) 24%, transparent);
-    transition: background 120ms ease, transform 120ms ease;
-  }
-
-  .mascot-resize-handle:hover span,
-  .mascot-resize-handle:focus-visible span {
-    background: color-mix(in srgb, var(--ink) 58%, transparent);
-    transform: scaleY(1.4);
   }
 
   .guidance h2 {
@@ -345,55 +190,6 @@
     font-weight: 550;
   }
 
-  .column-resize-handle {
-    position: relative;
-    min-width: 12px;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    cursor: ew-resize;
-    touch-action: none;
-  }
-
-  .column-resize-handle span {
-    position: absolute;
-    inset: 18% 4px;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--ink) 24%, transparent);
-    transition: background 120ms ease, transform 120ms ease;
-  }
-
-  .column-resize-handle:hover span,
-  .column-resize-handle:focus-visible span {
-    background: color-mix(in srgb, var(--ink) 58%, transparent);
-    transform: scaleX(1.4);
-  }
-
-  .sizing-readout {
-    min-width: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    color: var(--muted);
-  }
-
-  .sizing-readout code {
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    user-select: text;
-    font-size: 10.5px;
-  }
-
-  .sizing-readout button {
-    flex: 0 0 auto;
-    padding: 3px 7px;
-    font-size: 10.5px;
-  }
-
   @media (max-width: 760px) {
     .doability-review {
       gap: 8px;
@@ -414,13 +210,6 @@
       padding-top: 14px;
     }
 
-    .column-resize-handle {
-      display: none;
-    }
-
-    .sizing-readout {
-      justify-content: flex-start;
-    }
   }
 
   @media (max-width: 420px) {

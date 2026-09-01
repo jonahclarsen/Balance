@@ -1275,9 +1275,10 @@ test('day generation opens the goal doability review for legacy overdue and repe
     const heading = await modal.getByRole('heading', { name: 'Are your goals attainable?' }).boundingBox()
     return Boolean(mascot && heading && mascot.y + mascot.height <= heading.y)
   }).toBe(true)
-  await expect(modal.getByTestId('goal-review-sizing')).toContainText(/modal=\d+x\d+px; panels=\d+\/\d+px.*peacock=\d+px high/)
-  await expect(modal).toHaveCSS('--overlay-card-width', '1096px')
-  await expect(modal).toHaveCSS('--overlay-card-height', '730px')
+  await expect(modal.getByTestId('goal-review-sizing')).toHaveCount(0)
+  await expect(modal).toHaveCSS('--overlay-max-width', '1096px')
+  await expect(modal).toHaveCSS('--overlay-height', '705px')
+  await expect(modal.locator('.modal-resize-handle, .column-resize-handle, .mascot-resize-handle')).toHaveCount(0)
   await expect.poll(() => modal.locator('.goals-to-review ul').evaluate(
     (element) => element.scrollHeight > element.clientHeight,
   )).toBe(true)
@@ -1291,56 +1292,18 @@ test('day generation opens the goal doability review for legacy overdue and repe
   })).toBe(true)
 
   if (testInfo.project.name === 'desktop') {
-    const beforeModal = await modal.evaluate((element) => {
-      const rect = element.getBoundingClientRect()
-      return { width: rect.width, height: rect.height, centerX: rect.x + rect.width / 2, centerY: rect.y + rect.height / 2 }
+    const panels = await modal.locator('.review-layout').evaluate((element) => {
+      const guidance = element.querySelector<HTMLElement>('.guidance')!
+      const goals = element.querySelector<HTMLElement>('.goals-to-review')!
+      return [guidance.getBoundingClientRect().width, goals.getBoundingClientRect().width]
     })
-    const cornerHandle = modal.getByRole('button', { name: 'Resize modal width and height' })
-    const cornerBox = await cornerHandle.boundingBox()
-    expect(cornerBox).not.toBeNull()
-    await page.mouse.move(cornerBox!.x + cornerBox!.width / 2, cornerBox!.y + cornerBox!.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(cornerBox!.x + cornerBox!.width / 2 - 20, cornerBox!.y + cornerBox!.height / 2 - 28)
-    await page.mouse.up()
-    const afterModal = await modal.evaluate((element) => {
-      const rect = element.getBoundingClientRect()
-      return { width: rect.width, height: rect.height, centerX: rect.x + rect.width / 2, centerY: rect.y + rect.height / 2 }
-    })
-    expect(afterModal.width).toBeLessThan(beforeModal.width)
-    expect(afterModal.height).toBeLessThan(beforeModal.height)
-    expect(Math.abs(afterModal.centerX - beforeModal.centerX)).toBeLessThanOrEqual(1)
-    expect(Math.abs(afterModal.centerY - beforeModal.centerY)).toBeLessThanOrEqual(1)
-
-    const guidanceBefore = await modal.locator('.guidance').evaluate((element) => element.getBoundingClientRect().width)
-    const columnHandle = modal.getByRole('button', { name: 'Resize guidance and goals sections' })
-    const columnHandleBox = await columnHandle.boundingBox()
-    expect(columnHandleBox).not.toBeNull()
-    await page.mouse.move(columnHandleBox!.x + columnHandleBox!.width / 2, columnHandleBox!.y + columnHandleBox!.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(columnHandleBox!.x + columnHandleBox!.width / 2 + 24, columnHandleBox!.y + columnHandleBox!.height / 2)
-    await page.mouse.up()
-    await expect.poll(() => modal.locator('.guidance').evaluate(
-      (element) => element.getBoundingClientRect().width,
-    )).toBeGreaterThan(guidanceBefore + 10)
-
-    const mascotBefore = await modal.locator('.mascot').evaluate((element) => element.getBoundingClientRect().height)
-    const mascotHandle = modal.getByRole('button', { name: 'Resize peacock height' })
-    const mascotHandleBox = await mascotHandle.boundingBox()
-    expect(mascotHandleBox).not.toBeNull()
-    await page.mouse.move(mascotHandleBox!.x + mascotHandleBox!.width / 2, mascotHandleBox!.y + mascotHandleBox!.height / 2)
-    await page.mouse.down()
-    await page.mouse.move(mascotHandleBox!.x + mascotHandleBox!.width / 2, mascotHandleBox!.y + mascotHandleBox!.height / 2 - 24)
-    await page.mouse.up()
-    await expect.poll(() => modal.locator('.mascot').evaluate(
-      (element) => element.getBoundingClientRect().height,
-    )).toBeLessThan(mascotBefore - 10)
+    expect(Math.abs(panels[0] / panels[1] - 639 / 407)).toBeLessThan(0.01)
+    await expect(modal.locator('.mascot')).toHaveCSS('height', '393px')
 
     await page.getByRole('button', { name: 'Goals', exact: true }).click()
     await expect(modal).toHaveCount(0)
     await page.getByRole('button', { name: 'Today', exact: true }).click()
     await expect(modal).toBeVisible()
-  } else {
-    await expect(modal.getByRole('button', { name: 'Resize modal width and height' })).toBeHidden()
   }
 
   await page.screenshot({

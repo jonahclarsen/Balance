@@ -1,6 +1,4 @@
 <script lang="ts">
-  import { onDestroy, onMount } from 'svelte'
-
   export let onClose: () => void
   export let title = ''
   export let ariaLabel = title || 'Dialog'
@@ -8,35 +6,9 @@
   export let maxWidth = 720
   export let bodyOverflow: 'auto' | 'hidden' = 'auto'
   export let headerless = false
-  export let resizable = false
-  export let initialHeight = 500
-  export let minWidth = 640
-  export let minHeight = 360
-  export let onResize: (size: { width: number; height: number }) => void = () => {}
+  export let height: number | null = null
   let backdrop: HTMLDivElement
-  let card: HTMLDivElement
   let mobileViewportTop = 0
-  let cardWidth = maxWidth
-  let cardHeight = initialHeight
-  let resizeObserver: ResizeObserver | null = null
-  let stopActiveResize: (() => void) | null = null
-
-  const clamp = (value: number, minimum: number, maximum: number) => Math.min(maximum, Math.max(minimum, value))
-
-  onMount(() => {
-    if (!resizable) return
-    resizeObserver = new ResizeObserver(([entry]) => {
-      if (!entry) return
-      const rect = card.getBoundingClientRect()
-      onResize({ width: Math.round(rect.width), height: Math.round(rect.height) })
-    })
-    resizeObserver.observe(card)
-  })
-
-  onDestroy(() => {
-    resizeObserver?.disconnect()
-    stopActiveResize?.()
-  })
 
   function isTopmostOverlay() {
     if (!backdrop) return false
@@ -59,44 +31,6 @@
     }
   }
 
-  function startResize(event: PointerEvent, axis: 'horizontal' | 'vertical' | 'both') {
-    if (!resizable || !card || !backdrop) return
-
-    event.preventDefault()
-    event.stopPropagation()
-    stopActiveResize?.()
-
-    const cardRect = card.getBoundingClientRect()
-    const backdropStyle = window.getComputedStyle(backdrop)
-    const availableWidth = backdrop.clientWidth
-      - Number.parseFloat(backdropStyle.paddingLeft)
-      - Number.parseFloat(backdropStyle.paddingRight)
-    const availableHeight = backdrop.clientHeight
-      - Number.parseFloat(backdropStyle.paddingTop)
-      - Number.parseFloat(backdropStyle.paddingBottom)
-    const startX = event.clientX
-    const startY = event.clientY
-
-    const handleMove = (moveEvent: PointerEvent) => {
-      if (axis !== 'vertical') {
-        cardWidth = clamp(cardRect.width + (moveEvent.clientX - startX) * 2, Math.min(minWidth, availableWidth), availableWidth)
-      }
-      if (axis !== 'horizontal') {
-        cardHeight = clamp(cardRect.height + (moveEvent.clientY - startY) * 2, Math.min(minHeight, availableHeight), availableHeight)
-      }
-    }
-    const handleUp = () => stopActiveResize?.()
-
-    window.addEventListener('pointermove', handleMove)
-    window.addEventListener('pointerup', handleUp, { once: true })
-    window.addEventListener('pointercancel', handleUp, { once: true })
-    stopActiveResize = () => {
-      window.removeEventListener('pointermove', handleMove)
-      window.removeEventListener('pointerup', handleUp)
-      window.removeEventListener('pointercancel', handleUp)
-      stopActiveResize = null
-    }
-  }
 </script>
 
 <svelte:window
@@ -109,19 +43,17 @@
   bind:this={backdrop}
   class="overlay-backdrop"
   role="presentation"
-  style={`z-index: ${z}; --mobile-overlay-top: ${mobileViewportTop}px; --overlay-max-width: ${maxWidth}px; --overlay-body-overflow: ${bodyOverflow}`}
+  style={`z-index: ${z}; --mobile-overlay-top: ${mobileViewportTop}px; --overlay-max-width: ${maxWidth}px; --overlay-height: ${height === null ? 'auto' : `${height}px`}; --overlay-body-overflow: ${bodyOverflow}`}
   on:click|self={onClose}
   on:keydown={handleEscape}
 >
   <div
-    bind:this={card}
     class="overlay-card"
     class:headerless
-    class:resizable
+    class:fixed-height={height !== null}
     role="dialog"
     aria-modal="true"
     aria-label={ariaLabel}
-    style={`--overlay-card-width: ${cardWidth}px; --overlay-card-height: ${cardHeight}px; --overlay-min-width: ${minWidth}px; --overlay-min-height: ${minHeight}px`}
   >
     {#if headerless}
       <button class="icon-button quiet overlay-floating-close" type="button" title="Close (Esc)" aria-label="Close" on:click={onClose}>✕</button>
@@ -139,29 +71,6 @@
     <div class="overlay-body">
       <slot />
     </div>
-    {#if resizable}
-      <button
-        class="modal-resize-handle modal-resize-handle-horizontal"
-        type="button"
-        aria-label="Resize modal width"
-        title="Drag to resize modal width"
-        on:pointerdown={(event) => startResize(event, 'horizontal')}
-      ></button>
-      <button
-        class="modal-resize-handle modal-resize-handle-vertical"
-        type="button"
-        aria-label="Resize modal height"
-        title="Drag to resize modal height"
-        on:pointerdown={(event) => startResize(event, 'vertical')}
-      ></button>
-      <button
-        class="modal-resize-handle modal-resize-handle-both"
-        type="button"
-        aria-label="Resize modal width and height"
-        title="Drag to resize modal width and height"
-        on:pointerdown={(event) => startResize(event, 'both')}
-      ></button>
-    {/if}
   </div>
 </div>
 
@@ -181,7 +90,7 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    width: min(var(--overlay-card-width), 100%);
+    width: min(var(--overlay-max-width), 100%);
     max-height: calc(min(82vh, 100%) - var(--overlay-bottom-collapse, 0px));
     transform: translateY(calc(0px - var(--overlay-bottom-lift, 0px)));
     background: var(--paper-strong);
@@ -191,13 +100,11 @@
     overflow: hidden;
   }
 
-  .overlay-card.resizable {
+  .overlay-card.fixed-height {
     height: min(
-      var(--overlay-card-height),
+      var(--overlay-height),
       calc(min(82vh, 100%) - var(--overlay-bottom-collapse, 0px))
     );
-    min-width: min(var(--overlay-min-width), 100%);
-    min-height: min(var(--overlay-min-height), 100%);
   }
 
   .overlay-header {
@@ -239,71 +146,6 @@
     right: 10px;
   }
 
-  .modal-resize-handle {
-    position: absolute;
-    z-index: 4;
-    margin: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-  }
-
-  .modal-resize-handle::after {
-    content: '';
-    position: absolute;
-    border-radius: 999px;
-    background: color-mix(in srgb, var(--ink) 28%, transparent);
-    transition: background 120ms ease;
-  }
-
-  .modal-resize-handle:hover::after,
-  .modal-resize-handle:focus-visible::after {
-    background: color-mix(in srgb, var(--ink) 58%, transparent);
-  }
-
-  .modal-resize-handle-horizontal {
-    top: 25%;
-    right: 0;
-    width: 10px;
-    height: 50%;
-    cursor: ew-resize;
-  }
-
-  .modal-resize-handle-horizontal::after {
-    inset: 30% 3px;
-  }
-
-  .modal-resize-handle-vertical {
-    right: 25%;
-    bottom: 0;
-    width: 50%;
-    height: 10px;
-    cursor: ns-resize;
-  }
-
-  .modal-resize-handle-vertical::after {
-    inset: 3px 30%;
-  }
-
-  .modal-resize-handle-both {
-    right: 0;
-    bottom: 0;
-    width: 18px;
-    height: 18px;
-    cursor: nwse-resize;
-  }
-
-  .modal-resize-handle-both::after {
-    right: 3px;
-    bottom: 3px;
-    width: 9px;
-    height: 9px;
-    border: solid color-mix(in srgb, var(--ink) 42%, transparent);
-    border-width: 0 2px 2px 0;
-    border-radius: 0;
-    background: transparent;
-  }
-
   @media (max-width: 760px) {
     .overlay-backdrop {
       position: fixed;
@@ -319,11 +161,6 @@
       );
     }
 
-    .overlay-card.resizable {
-      min-width: 0;
-      min-height: min(360px, 100%);
-    }
-
     .overlay-header {
       padding: 10px 12px;
     }
@@ -332,8 +169,5 @@
       padding: 12px;
     }
 
-    .modal-resize-handle {
-      display: none;
-    }
   }
 </style>
