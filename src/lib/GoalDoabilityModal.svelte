@@ -1,13 +1,22 @@
 <script lang="ts">
   import peacockTalking from '../assets/peacock-talking.png'
   import type { GoalDoabilityReview } from './goals'
+  import type { Id } from './types'
   import OverlayModal from './OverlayModal.svelte'
 
   export let reviews: GoalDoabilityReview[]
   export let onClose: () => void
+  export let onSelectGoal: (goalId: Id) => void
 </script>
 
-<OverlayModal title="Goal check-in" ariaLabel="Are your goals doable?" z={85} {onClose}>
+<OverlayModal
+  title="Goal check-in"
+  ariaLabel="Are your goals doable?"
+  z={85}
+  maxWidth={940}
+  bodyOverflow="hidden"
+  {onClose}
+>
   <div class="doability-review">
     <div class="mascot" aria-hidden="true">
       <img src={peacockTalking} alt="" />
@@ -28,11 +37,17 @@
       <ul>
         {#each reviews as review (review.goal.id)}
           <li>
-            <span>{review.goal.name}</span>
-            <strong>
-              {review.days} {review.days === 1 ? 'day' : 'days'}
-              {review.reason === 'missed-presentations' ? ' missed' : ' overdue'}
-            </strong>
+            <button
+              type="button"
+              aria-label={`Review ${review.goal.name}: ${review.days} ${review.days === 1 ? 'day' : 'days'} ${review.reason === 'missed-presentations' ? 'missed' : 'overdue'}`}
+              on:click={() => onSelectGoal(review.goal.id)}
+            >
+              <span>{review.goal.name}</span>
+              <strong>
+                {review.days} {review.days === 1 ? 'day' : 'days'}
+                {review.reason === 'missed-presentations' ? ' missed' : ' overdue'}
+              </strong>
+            </button>
           </li>
         {/each}
       </ul>
@@ -43,17 +58,15 @@
 <style>
   .doability-review {
     display: grid;
-    grid-template-columns: minmax(110px, 0.7fr) minmax(260px, 1.55fr) minmax(165px, 0.9fr);
-    align-items: start;
-    gap: 22px;
+    grid-template-columns: minmax(185px, 0.9fr) minmax(330px, 1.65fr) minmax(220px, 1fr);
+    align-items: stretch;
+    gap: 24px;
+    height: clamp(380px, 50vh, 470px);
+    min-height: 0;
   }
 
   .mascot {
     align-self: center;
-    overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-    border-radius: 18px;
-    background: #faf8f2;
   }
 
   .mascot img {
@@ -86,7 +99,10 @@
   }
 
   .goals-to-review {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
+    min-height: 0;
     padding: 14px;
     border: 1px solid var(--line);
     border-radius: 12px;
@@ -102,16 +118,19 @@
   }
 
   .goals-to-review ul {
+    min-height: 0;
     margin: 0;
     padding: 0;
     display: grid;
+    align-content: start;
     gap: 9px;
     list-style: none;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
   }
 
   .goals-to-review li {
-    display: grid;
-    gap: 2px;
     min-width: 0;
     padding-bottom: 9px;
     border-bottom: 1px solid var(--line);
@@ -120,6 +139,22 @@
   .goals-to-review li:last-child {
     padding-bottom: 0;
     border-bottom: 0;
+  }
+
+  .goals-to-review button {
+    width: 100%;
+    padding: 2px 4px;
+    display: grid;
+    gap: 2px;
+    border: 0;
+    border-radius: 7px;
+    background: transparent;
+    text-align: left;
+  }
+
+  .goals-to-review button:hover,
+  .goals-to-review button:focus-visible {
+    background: var(--active-nav);
   }
 
   .goals-to-review span {
@@ -137,8 +172,10 @@
 
   @media (max-width: 760px) {
     .doability-review {
-      grid-template-columns: 88px 1fr;
+      grid-template-columns: 112px 1fr;
+      grid-template-rows: auto minmax(120px, 1fr);
       gap: 16px;
+      height: min(680px, calc(100dvh - max(env(safe-area-inset-top), var(--mobile-overlay-top)) - 100px));
     }
 
     .mascot {
@@ -152,7 +189,7 @@
 
   @media (max-width: 420px) {
     .doability-review {
-      grid-template-columns: 70px 1fr;
+      grid-template-columns: 96px 1fr;
       gap: 12px;
     }
 

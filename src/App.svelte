@@ -6821,6 +6821,10 @@ return rows`
       <GoalDoabilityModal
         reviews={goalDoabilityReviews}
         onClose={() => (goalDoabilityReviews = [])}
+        onSelectGoal={(goalId) => {
+          goalDoabilityReviews = []
+          void openGoals(goalId)
+        }}
       />
     {/if}
 

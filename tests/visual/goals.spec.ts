@@ -1098,6 +1098,12 @@ test('day generation opens the goal doability review for legacy overdue and repe
       createdAt: timestamp,
       updatedAt: timestamp,
     }
+    const extraGoals = Array.from({ length: 12 }, (_, index) => ({
+      ...baseGoal,
+      id: `goal_extra_${index}`,
+      name: `Review goal ${index + 1}`,
+      nameHtml: `Review goal ${index + 1}`,
+    }))
     state.goals = [
       { ...baseGoal, id: 'goal_legacy', name: 'Call someone', nameHtml: 'Call someone' },
       {
@@ -1107,6 +1113,7 @@ test('day generation opens the goal doability review for legacy overdue and repe
         nameHtml: 'Draw briefly',
         presentationTrackingStartedAt: timestamp,
       },
+      ...extraGoals,
     ]
     state.goalCompletions = []
     state.plans = ['2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29'].map((date) => ({
@@ -1138,6 +1145,12 @@ test('day generation opens the goal doability review for legacy overdue and repe
   await expect(modal.getByText('Call someone').locator('..')).toContainText('5 days overdue')
   await expect(modal.getByText('Draw briefly').locator('..')).toContainText('4 days missed')
   await expect(modal.locator('.mascot img')).toBeVisible()
+  await expect.poll(() => modal.locator('.goals-to-review ul').evaluate(
+    (element) => element.scrollHeight > element.clientHeight,
+  )).toBe(true)
+  await expect.poll(() => modal.locator('.overlay-body').evaluate(
+    (element) => element.scrollHeight <= element.clientHeight + 1,
+  )).toBe(true)
 
   await expect.poll(() => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -1148,6 +1161,13 @@ test('day generation opens the goal doability review for legacy overdue and repe
     path: `artifacts/visual-smoke/${testInfo.project.name}-goal-doability-review.png`,
     fullPage: true,
   })
+
+  await modal.getByRole('button', { name: 'Review Call someone: 5 days overdue' }).click()
+  await expect(modal).toHaveCount(0)
+  if (testInfo.project.name === 'desktop') {
+    await expect(page.getByRole('button', { name: 'Goals', exact: true })).toHaveClass(/active/)
+  }
+  await expect(page.locator('.goal-card[data-goal-id="goal_legacy"]')).toHaveClass(/goal-card-focus/)
 })
 
 test('goal rhythm hover text includes match keywords', async ({ page }) => {

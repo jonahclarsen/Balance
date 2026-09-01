@@ -3,6 +3,8 @@
   export let title = ''
   export let ariaLabel = title || 'Dialog'
   export let z = 60
+  export let maxWidth = 720
+  export let bodyOverflow: 'auto' | 'hidden' = 'auto'
   let backdrop: HTMLDivElement
   let mobileViewportTop = 0
 
@@ -38,7 +40,7 @@
   bind:this={backdrop}
   class="overlay-backdrop"
   role="presentation"
-  style={`z-index: ${z}; --mobile-overlay-top: ${mobileViewportTop}px`}
+  style={`z-index: ${z}; --mobile-overlay-top: ${mobileViewportTop}px; --overlay-max-width: ${maxWidth}px; --overlay-body-overflow: ${bodyOverflow}`}
   on:click|self={onClose}
   on:keydown={handleEscape}
 >
@@ -73,7 +75,7 @@
   .overlay-card {
     display: flex;
     flex-direction: column;
-    width: min(720px, 100%);
+    width: min(var(--overlay-max-width), 100%);
     max-height: calc(min(82vh, 100%) - var(--overlay-bottom-collapse, 0px));
     transform: translateY(calc(0px - var(--overlay-bottom-lift, 0px)));
     background: var(--paper-strong);
@@ -109,8 +111,9 @@
   }
 
   .overlay-body {
+    min-height: 0;
     padding: 18px;
-    overflow-y: auto;
+    overflow-y: var(--overlay-body-overflow);
   }
 
   @media (max-width: 760px) {
