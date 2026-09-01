@@ -1206,7 +1206,12 @@ test('day generation opens the goal doability review for legacy overdue and repe
   await expect(modal.getByText('Call someone').locator('..')).toContainText('5 days overdue')
   await expect(modal.getByText('Draw briefly').locator('..')).toContainText('4 days missed')
   await expect(modal.locator('.mascot img')).toBeVisible()
-  await expect(modal.getByTestId('goal-review-sizing')).toContainText(/modal=\d+x\d+px; panels=\d+\/\d+\/\d+px/)
+  await expect.poll(async () => {
+    const mascot = await modal.locator('.mascot').boundingBox()
+    const heading = await modal.getByRole('heading', { name: 'Are your goals doable?' }).boundingBox()
+    return Boolean(mascot && heading && mascot.y + mascot.height <= heading.y)
+  }).toBe(true)
+  await expect(modal.getByTestId('goal-review-sizing')).toContainText(/modal=\d+x\d+px; panels=\d+\/\d+px/)
   await expect.poll(() => modal.locator('.goals-to-review ul').evaluate(
     (element) => element.scrollHeight > element.clientHeight,
   )).toBe(true)
@@ -1240,17 +1245,17 @@ test('day generation opens the goal doability review for legacy overdue and repe
     expect(Math.abs(afterModal.centerX - beforeModal.centerX)).toBeLessThanOrEqual(1)
     expect(Math.abs(afterModal.centerY - beforeModal.centerY)).toBeLessThanOrEqual(1)
 
-    const mascotBefore = await modal.locator('.mascot').evaluate((element) => element.getBoundingClientRect().width)
-    const columnHandle = modal.getByRole('button', { name: 'Resize peacock and guidance sections' })
+    const guidanceBefore = await modal.locator('.guidance').evaluate((element) => element.getBoundingClientRect().width)
+    const columnHandle = modal.getByRole('button', { name: 'Resize guidance and goals sections' })
     const columnHandleBox = await columnHandle.boundingBox()
     expect(columnHandleBox).not.toBeNull()
     await page.mouse.move(columnHandleBox!.x + columnHandleBox!.width / 2, columnHandleBox!.y + columnHandleBox!.height / 2)
     await page.mouse.down()
     await page.mouse.move(columnHandleBox!.x + columnHandleBox!.width / 2 + 24, columnHandleBox!.y + columnHandleBox!.height / 2)
     await page.mouse.up()
-    await expect.poll(() => modal.locator('.mascot').evaluate(
+    await expect.poll(() => modal.locator('.guidance').evaluate(
       (element) => element.getBoundingClientRect().width,
-    )).toBeGreaterThan(mascotBefore + 10)
+    )).toBeGreaterThan(guidanceBefore + 10)
 
     await page.getByRole('button', { name: 'Goals', exact: true }).click()
     await expect(modal).toHaveCount(0)

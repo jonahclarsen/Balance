@@ -9,28 +9,26 @@
   export let onClose: () => void
   export let onSelectGoal: (goalId: Id) => void
 
-  let mascotPanel: HTMLDivElement
   let guidancePanel: HTMLElement
   let goalsPanel: HTMLElement
-  let columnShares: [number, number, number] = [0.254, 0.465, 0.281]
+  let columnShares: [number, number] = [0.68, 0.32]
   let modalSize = { width: 940, height: 500 }
-  let panelWidths: [number, number, number] = [0, 0, 0]
+  let panelWidths: [number, number] = [0, 0]
   let panelResizeObserver: ResizeObserver | null = null
   let stopColumnResize: (() => void) | null = null
   let copied = false
   let copiedResetTimer: ReturnType<typeof setTimeout> | null = null
 
-  const PANEL_MIN_WIDTHS: [number, number, number] = [120, 240, 180]
+  const PANEL_MIN_WIDTHS: [number, number] = [360, 180]
 
-  $: sizingSummary = `Goal review sizing: modal=${modalSize.width}x${modalSize.height}px; panels=${panelWidths[0]}/${panelWidths[1]}/${panelWidths[2]}px (peacock/guidance/goals)`
+  $: sizingSummary = `Goal review sizing: modal=${modalSize.width}x${modalSize.height}px; panels=${panelWidths[0]}/${panelWidths[1]}px (guidance/goals)`
 
   onMount(() => {
     panelResizeObserver = new ResizeObserver(() => {
-      panelWidths = [mascotPanel, guidancePanel, goalsPanel].map((panel) => (
+      panelWidths = [guidancePanel, goalsPanel].map((panel) => (
         Math.round(panel.getBoundingClientRect().width)
-      )) as [number, number, number]
+      )) as [number, number]
     })
-    panelResizeObserver.observe(mascotPanel)
     panelResizeObserver.observe(guidancePanel)
     panelResizeObserver.observe(goalsPanel)
   })
@@ -41,29 +39,24 @@
     if (copiedResetTimer) clearTimeout(copiedResetTimer)
   })
 
-  function startColumnResize(event: PointerEvent, dividerIndex: 0 | 1) {
+  function startColumnResize(event: PointerEvent) {
     event.preventDefault()
     event.stopPropagation()
     stopColumnResize?.()
 
-    const panels = [mascotPanel, guidancePanel, goalsPanel]
+    const panels = [guidancePanel, goalsPanel]
     const startingWidths = panels.map((panel) => panel.getBoundingClientRect().width)
     const totalPanelWidth = startingWidths.reduce((sum, width) => sum + width, 0)
     const startX = event.clientX
-    const leftIndex = dividerIndex
-    const rightIndex = dividerIndex + 1
-    const pairWidth = startingWidths[leftIndex] + startingWidths[rightIndex]
+    const pairWidth = startingWidths[0] + startingWidths[1]
 
     const handleMove = (moveEvent: PointerEvent) => {
       const delta = moveEvent.clientX - startX
       const nextLeft = Math.min(
-        pairWidth - PANEL_MIN_WIDTHS[rightIndex],
-        Math.max(PANEL_MIN_WIDTHS[leftIndex], startingWidths[leftIndex] + delta),
+        pairWidth - PANEL_MIN_WIDTHS[1],
+        Math.max(PANEL_MIN_WIDTHS[0], startingWidths[0] + delta),
       )
-      const nextWidths = [...startingWidths]
-      nextWidths[leftIndex] = nextLeft
-      nextWidths[rightIndex] = pairWidth - nextLeft
-      columnShares = nextWidths.map((width) => width / totalPanelWidth) as [number, number, number]
+      columnShares = [nextLeft / totalPanelWidth, (pairWidth - nextLeft) / totalPanelWidth]
     }
     const handleUp = () => stopColumnResize?.()
 
@@ -105,21 +98,12 @@
   <div class="doability-review">
     <div
       class="review-layout"
-      style={`grid-template-columns: minmax(${PANEL_MIN_WIDTHS[0]}px, ${columnShares[0]}fr) 12px minmax(${PANEL_MIN_WIDTHS[1]}px, ${columnShares[1]}fr) 12px minmax(${PANEL_MIN_WIDTHS[2]}px, ${columnShares[2]}fr)`}
+      style={`grid-template-columns: minmax(${PANEL_MIN_WIDTHS[0]}px, ${columnShares[0]}fr) 12px minmax(${PANEL_MIN_WIDTHS[1]}px, ${columnShares[1]}fr)`}
     >
-      <div bind:this={mascotPanel} class="mascot" aria-hidden="true">
-        <img src={peacockTalking} alt="" />
-      </div>
-
-      <button
-        class="column-resize-handle"
-        type="button"
-        aria-label="Resize peacock and guidance sections"
-        title="Drag to resize these sections"
-        on:pointerdown={(event) => startColumnResize(event, 0)}
-      ><span></span></button>
-
       <section bind:this={guidancePanel} class="guidance">
+        <div class="mascot" aria-hidden="true">
+          <img src={peacockTalking} alt="" />
+        </div>
         <h2>Are your goals doable?</h2>
         <p>It's easy for the goal system to get clogged. From our experience, goals work best if they are typically:</p>
         <ul>
@@ -134,7 +118,7 @@
         type="button"
         aria-label="Resize guidance and goals sections"
         title="Drag to resize these sections"
-        on:pointerdown={(event) => startColumnResize(event, 1)}
+        on:pointerdown={startColumnResize}
       ><span></span></button>
 
       <section bind:this={goalsPanel} class="goals-to-review" aria-label="Goals to review">
@@ -182,8 +166,8 @@
   }
 
   .mascot {
-    align-self: center;
-    min-width: 0;
+    width: clamp(130px, 36%, 180px);
+    margin: 0 auto 8px;
   }
 
   .mascot img {
@@ -202,6 +186,7 @@
   .guidance {
     min-width: 0;
     min-height: 0;
+    padding: 0 18px;
     overflow-y: auto;
   }
 
@@ -340,18 +325,17 @@
     }
 
     .review-layout {
-      grid-template-columns: 112px 1fr !important;
-      grid-template-rows: auto minmax(120px, 1fr);
+      grid-template-columns: 1fr !important;
+      grid-template-rows: minmax(0, auto) minmax(120px, 1fr);
       gap: 16px;
       padding-top: 24px;
     }
 
     .mascot {
-      align-self: start;
+      width: clamp(108px, 32%, 150px);
     }
 
     .goals-to-review {
-      grid-column: 1 / -1;
       padding-top: 14px;
     }
 
@@ -366,7 +350,6 @@
 
   @media (max-width: 420px) {
     .review-layout {
-      grid-template-columns: 96px 1fr;
       gap: 12px;
     }
 
