@@ -106,6 +106,20 @@ test('goal rhythm offers seven persistent visual modes with one highlighted sele
     await expect(page.getByRole('menuitemradio', { name: mode })).toHaveCount(1)
   }
 
+  const storedModeBeforePreview = await page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))
+  const flowOption = page.getByRole('menuitemradio', { name: 'Flow' })
+  const mosaicOption = page.getByRole('menuitemradio', { name: 'Mosaic' })
+  await mosaicOption.hover()
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'mosaic')
+  await expect(flowOption).toHaveAttribute('aria-checked', 'true')
+  await expect(mosaicOption).toHaveAttribute('aria-checked', 'false')
+  expect(await page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe(storedModeBeforePreview)
+
+  await page.mouse.move(1, 1)
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow')
+  await modeTrigger.hover({ force: true })
+  await expect(modeMenu).toBeVisible()
+
   const selectedRowAlignment = async (name: string) => {
     const [triggerBox, optionBox] = await Promise.all([
       modeTrigger.boundingBox(),
@@ -142,6 +156,16 @@ test('goal rhythm offers seven persistent visual modes with one highlighted sele
   await modeTrigger.hover({ force: true })
   await expect(modeMenu).toBeVisible()
   expect(await selectedRowAlignment('Signal')).toEqual({ centersAlign: true, horizontalCentersAlign: true })
+
+  const auroraOption = page.getByRole('menuitemradio', { name: 'Aurora' })
+  await auroraOption.hover()
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'aurora')
+  await expect(page.getByRole('menuitemradio', { name: 'Signal' })).toHaveAttribute('aria-checked', 'true')
+  await expect(auroraOption).toHaveAttribute('aria-checked', 'false')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('signal')
+
+  await page.mouse.move(1, 1)
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'signal')
 })
 
 test('columns mode joins mosaic tiles vertically by calendar day', async ({ page }, testInfo) => {
