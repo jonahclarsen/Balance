@@ -1341,6 +1341,20 @@ test('day generation opens the goal doability review for legacy overdue and repe
   await expect(modal).toHaveCSS('--overlay-max-width', '1096px')
   await expect(modal).toHaveCSS('--overlay-height', '705px')
   await expect(modal.locator('.modal-resize-handle, .column-resize-handle, .mascot-resize-handle')).toHaveCount(0)
+  const closePlacement = await modal.evaluate((element) => {
+    const modalBounds = element.getBoundingClientRect()
+    const closeBounds = element.querySelector<HTMLElement>('.overlay-floating-close')?.getBoundingClientRect()
+    return closeBounds
+      ? {
+          leftGap: closeBounds.left - modalBounds.left,
+          rightGap: modalBounds.right - closeBounds.right,
+        }
+      : null
+  })
+  expect(closePlacement).not.toBeNull()
+  expect(closePlacement?.leftGap).toBeGreaterThanOrEqual(10)
+  expect(closePlacement?.leftGap).toBeLessThanOrEqual(12)
+  expect(closePlacement?.rightGap).toBeGreaterThan(100)
   await expect.poll(() => modal.locator('.goals-to-review ul').evaluate(
     (element) => element.scrollHeight > element.clientHeight,
   )).toBe(true)

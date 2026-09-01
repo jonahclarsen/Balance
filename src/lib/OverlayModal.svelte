@@ -6,6 +6,7 @@
   export let maxWidth = 720
   export let bodyOverflow: 'auto' | 'hidden' = 'auto'
   export let headerless = false
+  export let floatingCloseSide: 'left' | 'right' = 'right'
   export let height: number | null = null
   let backdrop: HTMLDivElement
   let mobileViewportTop = 0
@@ -56,7 +57,14 @@
     aria-label={ariaLabel}
   >
     {#if headerless}
-      <button class="icon-button quiet overlay-floating-close" type="button" title="Close (Esc)" aria-label="Close" on:click={onClose}>✕</button>
+      <button
+        class="icon-button quiet overlay-floating-close"
+        class:left={floatingCloseSide === 'left'}
+        type="button"
+        title="Close (Esc)"
+        aria-label="Close"
+        on:click={onClose}
+      >✕</button>
     {:else}
       <header class="overlay-header">
         <div class="overlay-title">
@@ -144,6 +152,11 @@
     z-index: 3;
     top: 10px;
     right: 10px;
+  }
+
+  .overlay-floating-close.left {
+    right: auto;
+    left: 10px;
   }
 
   @media (max-width: 760px) {

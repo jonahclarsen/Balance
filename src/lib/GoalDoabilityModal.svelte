@@ -17,6 +17,7 @@
   height={705}
   bodyOverflow="hidden"
   headerless
+  floatingCloseSide="left"
   {onClose}
 >
   <div class="doability-review">
