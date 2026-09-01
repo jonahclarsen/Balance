@@ -196,19 +196,23 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
   }
   await expect(history.locator(`[data-goal-date="${currentDate}"]`)).toHaveClass(/today/)
   const historyBox = await history.boundingBox()
+  const rulesBox = await page.getByLabel('Matching terms for Exercise').boundingBox()
   const savedCompletionBox = await page.locator('.goal-card-meta').boundingBox()
   const footerBox = await page.locator('.goal-card-footer').boundingBox()
   expect(historyBox).not.toBeNull()
+  expect(rulesBox).not.toBeNull()
   expect(savedCompletionBox).not.toBeNull()
   expect(footerBox).not.toBeNull()
   expect(Math.abs(savedCompletionBox!.x - footerBox!.x)).toBeLessThanOrEqual(2)
   if (testInfo.project.name === 'desktop') {
+    expect(historyBox!.x).toBeGreaterThan(rulesBox!.x + rulesBox!.width)
+    const rulesBottom = rulesBox!.y + rulesBox!.height
     const historyBottom = historyBox!.y + historyBox!.height
-    const savedCompletionBottom = savedCompletionBox!.y + savedCompletionBox!.height
-    expect(Math.abs(historyBottom - savedCompletionBottom)).toBeLessThanOrEqual(2)
+    expect(Math.abs(historyBottom - rulesBottom)).toBeLessThanOrEqual(2)
   } else {
-    expect(savedCompletionBox!.y).toBeGreaterThan(historyBox!.y + historyBox!.height)
+    expect(historyBox!.y).toBeGreaterThan(rulesBox!.y + rulesBox!.height)
   }
+  expect(savedCompletionBox!.y).toBeGreaterThan(historyBox!.y + historyBox!.height)
   const targetDate = addDays(currentDate, -4)
   const targetDay = history.locator(`[data-goal-date="${targetDate}"]`)
   await targetDay.hover()

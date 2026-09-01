@@ -3999,32 +3999,12 @@ body.mobile-checkbox-dragging {
   display: grid;
   grid-area: footer;
   align-items: center;
-  gap: 12px;
-}
-
-.goal-card-footer > .goal-recent-history {
-  justify-self: center;
 }
 
 .goal-card-footer > .goal-card-meta {
   align-self: end;
   justify-self: start;
   text-align: left;
-}
-
-@container goal-card (min-width: 760px) {
-  .goal-card-footer {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 420px) minmax(0, 1fr);
-  }
-
-  .goal-card-footer > .goal-card-meta {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .goal-card-footer > .goal-recent-history {
-    grid-column: 2;
-  }
 }
 
 .goal-recent-history-header,
@@ -4205,6 +4185,24 @@ body.mobile-checkbox-dragging {
   display: grid;
   grid-template-columns: 160px 150px minmax(220px, 1fr);
   gap: 12px;
+}
+
+.goal-card-fields > .goal-recent-history {
+  grid-column: 1 / -1;
+  align-self: end;
+  justify-self: center;
+}
+
+@container goal-card (min-width: 900px) {
+  .goal-card-fields {
+    grid-template-columns: 135px 145px minmax(180px, 1fr) minmax(260px, 360px);
+    align-items: end;
+  }
+
+  .goal-card-fields > .goal-recent-history {
+    grid-column: auto;
+    width: 100%;
+  }
 }
 
 .goal-rules-editor,

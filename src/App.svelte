@@ -6312,6 +6312,12 @@ return rows`
                     })}
                   />
                 </label>
+                <GoalRecentHistory
+                  {goal}
+                  completions={goalCompletionHistory}
+                  currentDate={currentDay}
+                  onOpenDate={openDateInToday}
+                />
               </div>
             </div>
             <div class="goal-card-actions">
@@ -6326,12 +6332,6 @@ return rows`
               {/if}
             </div>
             <div class="goal-card-footer">
-              <GoalRecentHistory
-                {goal}
-                completions={goalCompletionHistory}
-                currentDate={currentDay}
-                onOpenDate={openDateInToday}
-              />
               <p class="goal-card-meta">
                 {completionCount} saved completion{completionCount === 1 ? '' : 's'}
               </p>
