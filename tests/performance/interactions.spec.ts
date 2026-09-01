@@ -389,8 +389,6 @@ async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAM
   return page.locator('.goal-history-scroll').evaluate(
     async (element, frameCount) => {
       const timeline = element as HTMLElement
-      const names = document.querySelector<HTMLElement>('.goal-history-name-scroll')
-      if (!names) throw new Error('Could not find Goal Rhythm name scroller')
 
       timeline.scrollTop = 0
       timeline.scrollLeft = 0
@@ -399,14 +397,12 @@ async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAM
       const intervals: number[] = []
       const verticalMax = Math.max(0, timeline.scrollHeight - timeline.clientHeight)
       const horizontalMax = Math.max(0, timeline.scrollWidth - timeline.clientWidth)
-      let maximumPaneGap = 0
       let previous = performance.now()
 
       for (let frame = 0; frame < frameCount; frame += 1) {
         await new Promise<void>((resolve) => requestAnimationFrame((now) => {
           intervals.push(now - previous)
           previous = now
-          maximumPaneGap = Math.max(maximumPaneGap, Math.abs(timeline.scrollTop - names.scrollTop))
           const progress = frame / Math.max(1, frameCount - 1)
           const sweep = progress <= 0.5 ? progress * 2 : (1 - progress) * 2
           timeline.scrollTop = Math.round(verticalMax * sweep)
@@ -416,8 +412,7 @@ async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAM
       }
 
       await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-      maximumPaneGap = Math.max(maximumPaneGap, Math.abs(timeline.scrollTop - names.scrollTop))
-      return { intervals: intervals.slice(1), maximumPaneGap, verticalMax, horizontalMax }
+      return { intervals: intervals.slice(1), verticalMax, horizontalMax }
     },
     frameCount,
   )
@@ -556,7 +551,6 @@ test('profiles Goal Rhythm scrolling', async ({ page }, testInfo) => {
     goals: GOAL_COUNT,
     themeId: THEME_ID,
     frameIntervals: summarizeDurations(scroll.intervals),
-    maximumPaneGap: scroll.maximumPaneGap,
     verticalRange: scroll.verticalMax,
     horizontalRange: scroll.horizontalMax,
   }
@@ -566,7 +560,6 @@ test('profiles Goal Rhythm scrolling', async ({ page }, testInfo) => {
     body: JSON.stringify(profile, null, 2),
     contentType: 'application/json',
   })
-  expect(profile.maximumPaneGap).toBeLessThanOrEqual(1)
 })
 
 test('profiles entering and exiting IMAX mode', async ({ page }, testInfo) => {

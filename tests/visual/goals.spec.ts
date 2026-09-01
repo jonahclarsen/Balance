@@ -1581,7 +1581,7 @@ test('long tasks use a vertical desktop goal stack and a wrapping mobile goal ro
   })
 })
 
-test('goal rhythm keeps its name column aligned while scrolling both axes', async ({ page }, testInfo) => {
+test('goal rhythm uses one smooth scroll surface across its name and timeline panes', async ({ page }, testInfo) => {
   const historyStart = addDays(todayISO(), -120)
 
   await page.evaluate((historyStart) => {
@@ -1603,47 +1603,73 @@ test('goal rhythm keeps its name column aligned while scrolling both axes', asyn
   await page.reload()
 
   const timeline = page.locator('.goal-history-scroll')
-  const names = page.locator('.goal-history-name-scroll')
+  const names = page.locator('.goal-history-name-pane')
   const firstName = page.locator('.goal-history-name').first()
   await expect(page.locator('.goal-day-cell.overdue').first()).toBeVisible()
   await expect(firstName).toHaveCSS('position', 'static')
   await expect.poll(() => goalRhythmPaneGap(page)).toBe(0)
 
-  const scrollbarHeightWrites = await timeline.evaluate(async (element) => {
-    const namePane = document.querySelector<HTMLElement>('.goal-history-name-pane')
-    if (!namePane) throw new Error('Could not find Goal Rhythm name pane')
-
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-
-    const writes: string[] = []
-    const originalSetProperty = CSSStyleDeclaration.prototype.setProperty
-    CSSStyleDeclaration.prototype.setProperty = function (property, value, priority) {
-      if (this === namePane.style && property === '--goal-scrollbar-height') {
-        writes.push(`${this.getPropertyValue(property)} -> ${value}`)
-      }
-      originalSetProperty.call(this, property, value, priority)
-    }
-
-    try {
-      const horizontalMax = element.scrollWidth - element.clientWidth
-      for (let step = 1; step <= 12; step += 1) {
-        element.scrollLeft = Math.round(horizontalMax * step / 12)
-        element.scrollTop = step * 5
-        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-      }
-      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
-      return writes
-    } finally {
-      CSSStyleDeclaration.prototype.setProperty = originalSetProperty
+  const scrollOwnership = await page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>('.goal-history-scroll')
+    const nameList = document.querySelector<HTMLElement>('.goal-history-name-scroll')
+    const timelinePane = document.querySelector<HTMLElement>('.goal-history-timeline')
+    if (!scroller || !nameList || !timelinePane) throw new Error('Could not find Goal Rhythm panes')
+    return {
+      scrollerOverflowY: getComputedStyle(scroller).overflowY,
+      nameOverflowY: getComputedStyle(nameList).overflowY,
+      timelineOverflowY: getComputedStyle(timelinePane).overflowY,
     }
   })
-  expect(scrollbarHeightWrites).toHaveLength(0)
+  expect(scrollOwnership).toEqual({
+    scrollerOverflowY: 'auto',
+    nameOverflowY: 'visible',
+    timelineOverflowY: 'visible',
+  })
+
+  const nameBox = await names.boundingBox()
+  const scrollBox = await timeline.boundingBox()
+  if (!nameBox || !scrollBox) throw new Error('Could not measure Goal Rhythm panes')
+
+  await timeline.evaluate((element) => {
+    element.scrollLeft = 0
+    element.scrollTop = 0
+  })
+  await page.mouse.move(nameBox.x + nameBox.width / 2, nameBox.y + Math.min(70, nameBox.height / 2))
+  await page.mouse.wheel(0, 180)
+  await expect.poll(() => timeline.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
   await expect.poll(() => goalRhythmScrollTopDifference(page)).toBe(0)
 
-  await names.evaluate((element) => {
-    element.scrollTop += 120
-  })
+  const afterNameScroll = await timeline.evaluate((element) => element.scrollTop)
+  await page.mouse.move(
+    scrollBox.x + nameBox.width + Math.min(60, Math.max(1, scrollBox.width - nameBox.width) / 2),
+    scrollBox.y + Math.min(70, scrollBox.height / 2),
+  )
+  await page.mouse.wheel(0, 180)
+  await expect.poll(() => timeline.evaluate((element) => element.scrollTop)).toBeGreaterThan(afterNameScroll)
   await expect.poll(() => goalRhythmScrollTopDifference(page)).toBe(0)
+
+  const beforeReverse = await timeline.evaluate((element) => element.scrollTop)
+  await page.mouse.move(nameBox.x + nameBox.width / 2, nameBox.y + Math.min(70, nameBox.height / 2))
+  await page.mouse.wheel(0, -90)
+  await expect.poll(() => timeline.evaluate((element) => element.scrollTop)).toBeLessThan(beforeReverse)
+  await expect.poll(() => goalRhythmScrollTopDifference(page)).toBe(0)
+  const stickyHeaderOffsets = await page.evaluate(() => {
+    const scroller = document.querySelector<HTMLElement>('.goal-history-scroll')
+    const corner = document.querySelector<HTMLElement>('.goal-history-corner')
+    const dates = document.querySelector<HTMLElement>('.goal-history-date-row')
+    if (!scroller || !corner || !dates) throw new Error('Could not find Goal Rhythm headers')
+    const scrollerTop = scroller.getBoundingClientRect().top
+    return {
+      corner: Math.round(corner.getBoundingClientRect().top - scrollerTop),
+      dates: Math.round(dates.getBoundingClientRect().top - scrollerTop),
+    }
+  })
+  expect(stickyHeaderOffsets).toEqual({ corner: 0, dates: 0 })
+
+  await timeline.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth - element.clientWidth
+  })
+  await expect.poll(() => goalRhythmPaneGap(page)).toBe(0)
 
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-goal-rhythm-split-scroll.png`,
@@ -1670,6 +1696,10 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   const badge = row.locator('.plan-goal-badge', { hasText: 'Exercise' })
   await expect(badge).toBeVisible()
 
+  const currentDate = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.activePlanDate as string
+  })
   await page.evaluate(({ currentDate, overdueStart }) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     const exercise = state.goals?.find((goal: { name: string }) => goal.name === 'Exercise')
@@ -1691,12 +1721,13 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
     }))
     state.goals = [...decoys.slice(0, 20), exercise, ...decoys.slice(20)]
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
-  }, { currentDate: todayISO(), overdueStart: addDays(todayISO(), -5) })
+  }, { currentDate, overdueStart: addDays(currentDate, -5) })
   await page.reload()
   await page.getByRole('button', { name: 'Today', exact: true }).click()
 
   const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
   await expect(goalRow).toHaveCount(1)
+  await scrollGoalRhythmAwayFromRow(page, 'Exercise')
   await expect.poll(() => goalRhythmRowIsFullyVisible(page, 'Exercise')).toBe(false)
   await expect(goalRow).not.toHaveClass(/goal-row-focus/)
 
@@ -1714,7 +1745,7 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
     document.addEventListener('scroll', (event) => {
       if (
         event.target instanceof HTMLElement
-        && event.target.matches('.goal-history-name-scroll')
+        && event.target.matches('.goal-history-scroll')
         && !testWindow.goalRevealEventOrder?.includes('scroll')
       ) {
         testWindow.goalRevealEventOrder?.push('scroll')
@@ -1758,8 +1789,7 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   await expect(goalRow).not.toHaveClass(/goal-row-focus/)
   await expect.poll(() => goalHighlightAnimationEnds(page)).toBe(1)
 
-  await page.locator('.goal-history-name-scroll').evaluate((element) => { element.scrollTop = 0 })
-  await page.locator('.goal-history-scroll').evaluate((element) => { element.scrollTop = 0 })
+  await scrollGoalRhythmAwayFromRow(page, 'Exercise')
   await expect.poll(() => goalRhythmRowIsFullyVisible(page, 'Exercise')).toBe(false)
   await page.evaluate(() => {
     const testWindow = window as Window & { goalRevealEventOrder?: string[] }
@@ -2044,43 +2074,59 @@ async function goalRhythmPaneGap(page: import('@playwright/test').Page) {
     const timeline = document.querySelector<HTMLElement>('.goal-history-scroll')
     const names = document.querySelector<HTMLElement>('.goal-history-name-pane')
     if (!timeline || !names) return null
-    return Math.round(timeline.getBoundingClientRect().left - names.getBoundingClientRect().right)
+    return Math.round(names.getBoundingClientRect().left - timeline.getBoundingClientRect().left)
   })
 }
 
 async function goalRhythmScrollTopDifference(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
-    const timeline = document.querySelector<HTMLElement>('.goal-history-scroll')
-    const names = document.querySelector<HTMLElement>('.goal-history-name-scroll')
-    if (!timeline || !names) return null
-    return Math.round(timeline.scrollTop - names.scrollTop)
+    const dayRow = document.querySelector<HTMLElement>('.goal-history-day-row')
+    const nameRow = document.querySelector<HTMLElement>('.goal-history-name')
+    if (!dayRow || !nameRow) return null
+    return Math.round(dayRow.getBoundingClientRect().top - nameRow.getBoundingClientRect().top)
   })
 }
 
 async function goalRhythmRowIsFullyVisible(page: import('@playwright/test').Page, goalName: string) {
   return page.evaluate((name) => {
-    const viewport = document.querySelector<HTMLElement>('.goal-history-name-scroll')
+    const viewport = document.querySelector<HTMLElement>('.goal-history-scroll')
     const row = [...document.querySelectorAll<HTMLElement>('.goal-history-name')].find((candidate) =>
       candidate.textContent?.includes(name),
     )
     if (!viewport || !row) return null
     const viewportRect = viewport.getBoundingClientRect()
     const rowRect = row.getBoundingClientRect()
-    return rowRect.top >= viewportRect.top && rowRect.bottom <= viewportRect.bottom
+    return rowRect.top >= viewportRect.top + 30 && rowRect.bottom <= viewportRect.bottom
+  }, goalName)
+}
+
+async function scrollGoalRhythmAwayFromRow(page: import('@playwright/test').Page, goalName: string) {
+  await page.evaluate((name) => {
+    const viewport = document.querySelector<HTMLElement>('.goal-history-scroll')
+    const row = [...document.querySelectorAll<HTMLElement>('.goal-history-name')].find((candidate) =>
+      candidate.textContent?.includes(name),
+    )
+    if (!viewport || !row) throw new Error(`Could not find Goal Rhythm row for ${name}`)
+
+    const rowTop = viewport.scrollTop + row.getBoundingClientRect().top - viewport.getBoundingClientRect().top
+    const maxTop = Math.max(0, viewport.scrollHeight - viewport.clientHeight)
+    viewport.scrollTop = rowTop < maxTop / 2 ? maxTop : 0
   }, goalName)
 }
 
 async function goalRhythmRowCenterOffset(page: import('@playwright/test').Page, goalName: string) {
   return page.evaluate((name) => {
-    const viewport = document.querySelector<HTMLElement>('.goal-history-name-scroll')
+    const viewport = document.querySelector<HTMLElement>('.goal-history-scroll')
     const row = [...document.querySelectorAll<HTMLElement>('.goal-history-name')].find((candidate) =>
       candidate.textContent?.includes(name),
     )
     if (!viewport || !row) return null
     const viewportRect = viewport.getBoundingClientRect()
     const rowRect = row.getBoundingClientRect()
+    const contentTop = viewportRect.top + 30
+    const contentHeight = viewportRect.height - 30
     return Math.abs(Math.round(
-      rowRect.top + rowRect.height / 2 - (viewportRect.top + viewportRect.height / 2),
+      rowRect.top + rowRect.height / 2 - (contentTop + contentHeight / 2),
     ))
   }, goalName)
 }

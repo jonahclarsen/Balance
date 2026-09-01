@@ -51,7 +51,6 @@
   let rhythmModeTriggerEl: HTMLButtonElement | undefined
   let rhythmModeMenuEl: HTMLDivElement | undefined
   let scrollEl: HTMLDivElement | undefined
-  let nameScrollEl: HTMLDivElement | undefined
   let namePaneEl: HTMLDivElement | undefined
   let mounted = false
   let lastCenteredStartDate: string | null = null
@@ -98,7 +97,6 @@
         scrollEl.scrollLeft = 0
         scrollEl.scrollTop = 0
       }
-      if (nameScrollEl) nameScrollEl.scrollTop = 0
     }
   }
 
@@ -118,8 +116,8 @@
     await nextAnimationFrame()
     await nextAnimationFrame()
     if (lastHandledScrollNonce !== nonce) return
-    const row = nameScrollEl?.querySelector<HTMLElement>(`[data-goal-id="${CSS.escape(goalId)}"]`)
-    if (!row || !scrollEl || !nameScrollEl) return
+    const row = namePaneEl?.querySelector<HTMLElement>(`[data-goal-id="${CSS.escape(goalId)}"]`)
+    if (!row || !scrollEl) return
 
     highlightedGoalId = goalId
     highlightResetTimer = setTimeout(() => {
@@ -145,20 +143,19 @@
   }
 
   function centerGoalRow(row: HTMLElement) {
-    if (!scrollEl || !nameScrollEl) return
+    if (!scrollEl) return
 
-    const viewportRect = nameScrollEl.getBoundingClientRect()
+    const viewportRect = scrollEl.getBoundingClientRect()
     const rowRect = row.getBoundingClientRect()
-    const centeredTop = nameScrollEl.scrollTop
+    const contentTop = viewportRect.top + 30
+    const contentHeight = Math.max(0, scrollEl.clientHeight - 30)
+    const centeredTop = scrollEl.scrollTop
       + rowRect.top
-      - viewportRect.top
-      - (nameScrollEl.clientHeight - rowRect.height) / 2
-    const maxTop = Math.max(0, nameScrollEl.scrollHeight - nameScrollEl.clientHeight)
+      - contentTop
+      - (contentHeight - rowRect.height) / 2
+    const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
     const targetTop = Math.max(0, Math.min(maxTop, Math.round(centeredTop)))
 
-    // Move both panes together. Letting their reciprocal scroll handlers drive
-    // this jump can leave one pane at an intermediate position.
-    nameScrollEl.scrollTop = targetTop
     scrollEl.scrollTop = targetTop
   }
 
@@ -213,32 +210,10 @@
 
     const scrollRect = scrollEl.getBoundingClientRect()
     const currentDayRect = currentDayHead.getBoundingClientRect()
+    const namePaneWidth = namePaneEl?.getBoundingClientRect().width ?? 0
+    const timelineViewportWidth = Math.max(0, scrollEl.clientWidth - namePaneWidth)
     const currentDayCenter = currentDayRect.left - scrollRect.left + scrollEl.scrollLeft + currentDayRect.width / 2
-    scrollEl.scrollLeft = currentDayCenter - scrollEl.clientWidth / 2
-    syncTimelineScroll()
-  }
-
-  function syncTimelineScroll() {
-    if (!scrollEl || !nameScrollEl) return
-    if (nameScrollEl.scrollTop !== scrollEl.scrollTop) nameScrollEl.scrollTop = scrollEl.scrollTop
-  }
-
-  function updateScrollbarHeight() {
-    if (!scrollEl || !namePaneEl) return
-    // Keep both vertical viewports the same height when a classic horizontal
-    // scrollbar consumes space in the timeline pane. This is deliberately kept
-    // out of the scroll handler: reading layout and changing an inherited custom
-    // property on every scroll frame makes the full goal-name list restyle.
-    const scrollbarHeight = scrollEl.offsetHeight - scrollEl.clientHeight
-    const value = `${scrollbarHeight}px`
-    if (namePaneEl.style.getPropertyValue('--goal-scrollbar-height') !== value) {
-      namePaneEl.style.setProperty('--goal-scrollbar-height', value)
-    }
-  }
-
-  function syncNameScroll() {
-    if (!scrollEl || !nameScrollEl || scrollEl.scrollTop === nameScrollEl.scrollTop) return
-    scrollEl.scrollTop = nameScrollEl.scrollTop
+    scrollEl.scrollLeft = currentDayCenter - namePaneWidth - timelineViewportWidth / 2
   }
 
   function refreshDay() {
@@ -248,10 +223,6 @@
 
   onMount(() => {
     mounted = true
-
-    const scrollbarResizeObserver = new ResizeObserver(updateScrollbarHeight)
-    if (scrollEl) scrollbarResizeObserver.observe(scrollEl)
-    updateScrollbarHeight()
 
     const storedRhythmMode = localStorage.getItem(GOAL_RHYTHM_MODE_KEY)
     if (GOAL_RHYTHM_MODES.some((mode) => mode.id === storedRhythmMode)) {
@@ -273,7 +244,6 @@
       window.removeEventListener('focus', refreshDay)
       document.removeEventListener('visibilitychange', refreshDay)
       document.removeEventListener('pointerdown', closeRhythmModeMenu)
-      scrollbarResizeObserver.disconnect()
     }
   })
 
@@ -436,10 +406,10 @@
     <button type="button" on:click={() => onOpenGoals()}>Manage goals</button>
   </header>
 
-  <div class="goal-history-body">
+  <div class="goal-history-body goal-history-scroll" bind:this={scrollEl}>
+    <div class="goal-history-corner">Goal</div>
     <div class="goal-history-name-pane" bind:this={namePaneEl}>
-      <div class="goal-history-corner">Goal</div>
-      <div class="goal-history-name-scroll" bind:this={nameScrollEl} on:scroll={syncNameScroll}>
+      <div class="goal-history-name-scroll">
         <div class="goal-history-name-list">
           {#each visibleGoals as goal (goal.id)}
             {@const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)}
@@ -494,7 +464,7 @@
       </div>
     </div>
 
-    <div class="goal-history-scroll" bind:this={scrollEl} on:scroll={syncTimelineScroll}>
+    <div class="goal-history-timeline">
       <div class="goal-history-grid">
         <div class="goal-history-date-row">
           {#each dateChunks as dateChunk (dateChunk[0])}

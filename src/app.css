@@ -4454,32 +4454,36 @@ body.mobile-checkbox-dragging {
   padding-block: 5px;
 }
 
+/* Names and day cells deliberately share this one native scroll owner. Splitting
+   vertical overflow between the two panes makes their scroll events fight each
+   other during trackpad momentum and leaves the non-native pane visibly behind. */
 .goal-history-body {
+  --goal-name-pane-width: min(450px, 60vw);
   display: grid;
-  grid-template-columns: min(450px, 60vw) minmax(0, 1fr);
+  grid-template-columns:
+    var(--goal-name-pane-width)
+    minmax(calc(100% - var(--goal-name-pane-width)), max-content);
   min-width: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: auto;
+  overscroll-behavior: contain;
 }
 
 .goal-history-name-pane {
-  display: grid;
-  grid-template-rows: 30px minmax(0, 1fr);
+  position: sticky;
+  left: 0;
+  z-index: 4;
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
-  padding-bottom: var(--goal-scrollbar-height, 0px);
+  padding-top: 30px;
   background: var(--paper);
 }
 
 .goal-history-name-scroll {
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-width: none;
-}
-
-.goal-history-name-scroll::-webkit-scrollbar {
-  display: none;
+  overflow: visible;
 }
 
 .goal-history-name-list {
@@ -4487,11 +4491,11 @@ body.mobile-checkbox-dragging {
   padding-bottom: 8px;
 }
 
-.goal-history-scroll {
+.goal-history-timeline {
+  grid-column: 2;
+  grid-row: 1;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
-  overscroll-behavior: contain;
 }
 
 .goal-history-grid {
@@ -4546,6 +4550,13 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-history-corner {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
   display: flex;
   align-items: center;
   border-right: 1px solid var(--line);
@@ -5506,31 +5517,31 @@ body.mobile-checkbox-dragging {
      goal names versus the timeline: overview modes expose more days, while
      reading-oriented modes preserve more of each name. */
   .goal-history-panel[data-rhythm-mode='flow'] .goal-history-body {
-    grid-template-columns: min(58vw, 210px) minmax(0, 1fr);
+    --goal-name-pane-width: min(58vw, 210px);
   }
 
   .goal-history-panel[data-rhythm-mode='mosaic'] .goal-history-body {
-    grid-template-columns: min(48vw, 174px) minmax(0, 1fr);
+    --goal-name-pane-width: min(48vw, 174px);
   }
 
   .goal-history-panel[data-rhythm-mode='columns'] .goal-history-body {
-    grid-template-columns: min(48vw, 174px) minmax(0, 1fr);
+    --goal-name-pane-width: min(48vw, 174px);
   }
 
   .goal-history-panel[data-rhythm-mode='signal'] .goal-history-body {
-    grid-template-columns: min(40vw, 150px) minmax(0, 1fr);
+    --goal-name-pane-width: min(40vw, 150px);
   }
 
   .goal-history-panel[data-rhythm-mode='ledger'] .goal-history-body {
-    grid-template-columns: min(62vw, 224px) minmax(0, 1fr);
+    --goal-name-pane-width: min(62vw, 224px);
   }
 
   .goal-history-panel[data-rhythm-mode='aurora'] .goal-history-body {
-    grid-template-columns: min(52vw, 188px) minmax(0, 1fr);
+    --goal-name-pane-width: min(52vw, 188px);
   }
 
   .goal-history-panel[data-rhythm-mode='constellation'] .goal-history-body {
-    grid-template-columns: min(44vw, 160px) minmax(0, 1fr);
+    --goal-name-pane-width: min(44vw, 160px);
   }
 }
 
