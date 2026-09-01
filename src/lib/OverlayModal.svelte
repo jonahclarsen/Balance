@@ -159,6 +159,13 @@
     left: 10px;
   }
 
+  .overlay-floating-close:hover,
+  .overlay-floating-close:focus-visible {
+    border-color: var(--line-strong);
+    background: var(--paper-strong);
+    color: var(--ink);
+  }
+
   @media (max-width: 760px) {
     .overlay-backdrop {
       position: fixed;
