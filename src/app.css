@@ -4878,6 +4878,8 @@ body.mobile-checkbox-dragging {
    in place. */
 .goal-history-panel:is(
   [data-rhythm-mode='flow'],
+  [data-rhythm-mode='flow-tint'],
+  [data-rhythm-mode='flow-line'],
   [data-rhythm-mode='flow-dots'],
   [data-rhythm-mode='flow-tide']
 ) .goal-day-cell.active {
@@ -4890,18 +4892,39 @@ body.mobile-checkbox-dragging {
 
 .goal-history-panel:is(
   [data-rhythm-mode='flow'],
+  [data-rhythm-mode='flow-tint'],
+  [data-rhythm-mode='flow-line'],
   [data-rhythm-mode='flow-dots'],
   [data-rhythm-mode='flow-tide']
 ) .goal-history-name:nth-child(even),
 .goal-history-panel:is(
   [data-rhythm-mode='flow'],
+  [data-rhythm-mode='flow-tint'],
+  [data-rhythm-mode='flow-line'],
   [data-rhythm-mode='flow-dots'],
   [data-rhythm-mode='flow-tide']
 ) .goal-history-day-row:nth-child(odd) {
   background: color-mix(in srgb, var(--sidebar) 28%, transparent);
 }
 
-/* Flow Dots — overdue days become a stippled danger field. */
+/* Flow Tint — a quiet wash distinguishes overdue days without a pattern. */
+.goal-history-panel[data-rhythm-mode='flow-tint'] .goal-day-cell.overdue::before {
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent);
+  background-image: none;
+}
+
+/* Flow Line — a fine baseline leaves almost all of the goal band untouched. */
+.goal-history-panel[data-rhythm-mode='flow-line'] .goal-day-cell.overdue::before {
+  background-color: transparent;
+  background-image: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--danger) 58%, transparent) 0 2px,
+    transparent 2px 100%
+  );
+}
+
+/* Retired Goal Rhythm renderers stay intact because saved mode IDs may outlive
+   their picker entries. Do not reuse these IDs for another visual treatment. */
 .goal-history-panel[data-rhythm-mode='flow-dots'] .goal-day-cell.overdue::before {
   background-color: color-mix(in srgb, var(--danger) 11%, var(--paper));
   background-image: radial-gradient(
@@ -5579,6 +5602,8 @@ body.mobile-checkbox-dragging {
      reading-oriented modes preserve more of each name. */
   .goal-history-panel:is(
     [data-rhythm-mode='flow'],
+    [data-rhythm-mode='flow-tint'],
+    [data-rhythm-mode='flow-line'],
     [data-rhythm-mode='flow-dots'],
     [data-rhythm-mode='flow-tide']
   ) .goal-history-body {

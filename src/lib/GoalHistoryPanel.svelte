@@ -16,6 +16,8 @@
 
   type GoalRhythmMode =
     | 'flow'
+    | 'flow-tint'
+    | 'flow-line'
     | 'flow-dots'
     | 'flow-tide'
     | 'mosaic'
@@ -26,10 +28,13 @@
     | 'constellation'
 
   const GOAL_RHYTHM_MODE_KEY = 'balance.goalRhythmMode.v1'
+  // Goal Rhythm choices are saved in localStorage. Never reuse retired IDs:
+  // keep their type and CSS renderer available for compatibility, but leave
+  // them out of this active picker catalog so old selections fall back to Flow.
   const GOAL_RHYTHM_MODES: Array<{ id: GoalRhythmMode; label: string; glyph: string }> = [
     { id: 'flow', label: 'Flow', glyph: '≋' },
-    { id: 'flow-dots', label: 'Flow Dots', glyph: '⡇' },
-    { id: 'flow-tide', label: 'Flow Tide', glyph: '▂' },
+    { id: 'flow-tint', label: 'Flow Tint', glyph: '◌' },
+    { id: 'flow-line', label: 'Flow Line', glyph: '―' },
     { id: 'mosaic', label: 'Mosaic', glyph: '▦' },
     { id: 'columns', label: 'Columns', glyph: '▥' },
     { id: 'signal', label: 'Signal', glyph: '•—' },
