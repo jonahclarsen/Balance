@@ -442,6 +442,36 @@ test('typing the next number resumes a numbered list after outdenting a bulleted
   await expect(continuation).toHaveText('')
 })
 
+test('a bullet indented below a heading keeps ordinary body typography', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop Tab indentation is covered here')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const editors = page.locator('[data-note-text-input]')
+  const heading = editors.first()
+  await heading.fill('/h1')
+  await heading.press('Enter')
+  await heading.fill('Section heading')
+  await placeCaretAtEnd(heading)
+  await heading.press('Enter')
+
+  const bullet = editors.nth(1)
+  await bullet.type('- ')
+  await bullet.type('Nested bullet')
+  await bullet.press('Tab')
+
+  const bulletRow = bullet.locator('xpath=ancestor::*[@data-note-item-id][1]')
+  await expect(bulletRow).toHaveClass(/note-bullet/)
+  await expect(bulletRow).toHaveAttribute('data-note-item-depth', '1')
+  await expect(heading).toHaveCSS('font-size', '25px')
+  await expect(bullet).toHaveCSS('font-size', '15px')
+  await expect(bullet).toHaveCSS('min-height', '30px')
+  await expect(bullet).toHaveCSS('line-height', '25.5px')
+})
+
 test('notes select all blocks and copy plain text plus semantic HTML lists', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop keyboard and rich clipboard behavior is covered here')
   await page.goto('/')

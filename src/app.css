@@ -6578,7 +6578,7 @@ body.mobile-checkbox-dragging {
   padding-top: 0;
 }
 
-.note-heading .note-text {
+.note-heading > .note-block > .note-text {
   min-height: 40px;
   font-size: clamp(20px, 2.5vw, 25px);
   font-weight: 720;
