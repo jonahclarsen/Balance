@@ -10415,7 +10415,36 @@ async fn sync_p2p_sync(app: tauri::AppHandle, address: String) -> Result<Option<
 pub fn run() {
     disable_automatic_text_substitutions();
 
-    let app = tauri::Builder::default()
+    // Register every plugin on the builder so Tauri initializes the complete
+    // plugin store before the runtime reaches Ready and starts setup. Registering
+    // a mobile plugin through AppHandle::plugin during setup holds Tauri's
+    // PluginStore mutex while synchronously dispatching initialization to the
+    // Android UI thread. WebView navigation on that thread also reads the plugin
+    // store, creating a lock inversion that leaves the app on a blank window.
+    let mut builder = tauri::Builder::default();
+
+    if cfg!(debug_assertions) {
+        builder = builder.plugin(
+            tauri_plugin_log::Builder::default()
+                .level(log::LevelFilter::Info)
+                .build(),
+        );
+    }
+
+    builder = builder.plugin(tauri_plugin_dialog::init()).plugin(
+        tauri_plugin_opener::Builder::new()
+            .open_js_links_on_click(false)
+            .build(),
+    );
+
+    #[cfg(mobile)]
+    {
+        builder = builder
+            .plugin(tauri_plugin_barcode_scanner::init())
+            .plugin(tauri_plugin_haptics::init());
+    }
+
+    let app = builder
         .setup(|app| {
             #[cfg(target_os = "macos")]
             {
@@ -10425,26 +10454,6 @@ pub fn run() {
                 #[cfg(debug_assertions)]
                 install_siri_request_handler(app.handle());
             }
-
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
-            }
-            app.handle().plugin(tauri_plugin_dialog::init())?;
-            app.handle().plugin(
-                tauri_plugin_opener::Builder::new()
-                    .open_js_links_on_click(false)
-                    .build(),
-            )?;
-
-            // Mobile-native camera and haptic integrations.
-            #[cfg(mobile)]
-            app.handle().plugin(tauri_plugin_barcode_scanner::init())?;
-            #[cfg(mobile)]
-            app.handle().plugin(tauri_plugin_haptics::init())?;
 
             // On Android debug builds, run the real two-database pairing and
             // transport flow on-device. CI greps logcat for the marker below.

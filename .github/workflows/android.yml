@@ -36,6 +36,16 @@ on:
         required: false
         default: false
         type: boolean
+      run_startup_deadlock_stress:
+        description: Force-stop and relaunch from Notes 300 times to check Android plugin startup
+        required: false
+        default: false
+        type: boolean
+      run_list_history_stress:
+        description: Open and close List History 300 times while checking Android responsiveness
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -377,6 +387,138 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: android-interaction-stress-${{ matrix.seed }}
+          path: |
+            android-interaction-stress-*.json
+            android-interaction-logcat-*.txt
+            android-interaction-meminfo-*.txt
+            android-interaction-gfxinfo-*.txt
+            android-interaction-activity-*.txt
+            android-interaction-window-*.txt
+            android-interaction-failure-*.png
+            android-interaction-bugreport-*.zip
+          if-no-files-found: ignore
+
+  startup-deadlock-stress:
+    name: Android startup deadlock stress (seed ${{ matrix.seed }})
+    if: github.event_name == 'workflow_dispatch' && inputs.run_startup_deadlock_stress
+    needs: build-debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [1701, 2947, 4813]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-debug
+
+      - name: Relaunch repeatedly from Notes
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          BALANCE_INTERACTION_STRESS_SEED: ${{ matrix.seed }}
+          BALANCE_INTERACTION_STRESS_SECONDS: "30"
+          BALANCE_INTERACTION_STRESS_RELAUNCHES: "100"
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          enable-hw-keyboard: true
+          script: timeout --foreground --kill-after=30s 20m node .github/scripts/android-interaction-stress.mjs
+
+      - name: Upload startup deadlock diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-startup-deadlock-stress-${{ matrix.seed }}
+          path: |
+            android-interaction-stress-*.json
+            android-interaction-logcat-*.txt
+            android-interaction-meminfo-*.txt
+            android-interaction-gfxinfo-*.txt
+            android-interaction-activity-*.txt
+            android-interaction-window-*.txt
+            android-interaction-failure-*.png
+            android-interaction-bugreport-*.zip
+          if-no-files-found: ignore
+
+  list-history-stress:
+    name: Android List History stress (seed ${{ matrix.seed }})
+    if: github.event_name == 'workflow_dispatch' && inputs.run_list_history_stress
+    needs: build-debug
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    strategy:
+      fail-fast: false
+      matrix:
+        seed: [1701, 2947, 4813]
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Download APK artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: Balance-android-debug
+
+      - name: Exercise List History transitions
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          BALANCE_INTERACTION_STRESS_SEED: ${{ matrix.seed }}
+          BALANCE_INTERACTION_STRESS_SECONDS: "30"
+          BALANCE_INTERACTION_STRESS_LIST_HISTORY_TRANSITIONS: "100"
+        with:
+          api-level: 34
+          arch: x86_64
+          target: default
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          disable-animations: true
+          enable-hw-keyboard: true
+          script: timeout --foreground --kill-after=30s 15m node .github/scripts/android-interaction-stress.mjs
+
+      - name: Upload List History diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-list-history-stress-${{ matrix.seed }}
           path: |
             android-interaction-stress-*.json
             android-interaction-logcat-*.txt

@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
+import { createWriteStream } from 'node:fs'
 import { writeFile } from 'node:fs/promises'
 
 const packageName = 'app.balance.local.debug'
 const seed = Number.parseInt(process.env.BALANCE_INTERACTION_STRESS_SEED ?? '1701', 10)
 const durationSeconds = Number.parseInt(process.env.BALANCE_INTERACTION_STRESS_SECONDS ?? '600', 10)
+const startupRelaunches = Number.parseInt(process.env.BALANCE_INTERACTION_STRESS_RELAUNCHES ?? '0', 10)
+const listHistoryTransitions = Number.parseInt(
+  process.env.BALANCE_INTERACTION_STRESS_LIST_HISTORY_TRANSITIONS ?? '0',
+  10,
+)
 const commandTimeoutMs = 30_000
 const devToolsPort = 9224
 const actionTimeoutMs = 10_000
@@ -19,6 +25,8 @@ let randomState = seed >>> 0
 let client
 let expectedPid = ''
 let cycle = 0
+let liveLogcat
+let liveLogcatOutput
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -51,6 +59,24 @@ function adb(args, options = {}) {
   }
   if (encoding === null) return result.stdout ?? Buffer.alloc(0)
   return String(result.stdout ?? '').replaceAll('\r', '')
+}
+
+function startLiveLogcat() {
+  liveLogcatOutput = createWriteStream(`android-interaction-logcat-live-${seed}.txt`)
+  liveLogcat = spawn('adb', ['logcat', '-v', 'threadtime'], { stdio: ['ignore', 'pipe', 'pipe'] })
+  liveLogcat.stdout.pipe(liveLogcatOutput, { end: false })
+  liveLogcat.stderr.pipe(liveLogcatOutput, { end: false })
+}
+
+async function stopLiveLogcat() {
+  if (liveLogcat && liveLogcat.exitCode === null) {
+    liveLogcat.kill('SIGTERM')
+    await Promise.race([
+      new Promise((resolve) => liveLogcat.once('close', resolve)),
+      sleep(2_000),
+    ])
+  }
+  liveLogcatOutput?.end()
 }
 
 async function waitFor(check, description, timeoutMs = 25_000, intervalMs = 100) {
@@ -473,12 +499,24 @@ async function collectDiagnostics(failed) {
 let failure = null
 let diagnostics = null
 try {
-  if (!Number.isFinite(seed) || !Number.isFinite(durationSeconds) || durationSeconds < 30) {
-    throw new Error('Stress seed and duration must be finite; duration must be at least 30 seconds')
+  if (
+    !Number.isFinite(seed)
+    || !Number.isFinite(durationSeconds)
+    || durationSeconds < 30
+    || !Number.isFinite(startupRelaunches)
+    || startupRelaunches < 0
+    || !Number.isFinite(listHistoryTransitions)
+    || listHistoryTransitions < 0
+    || (startupRelaunches > 0 && listHistoryTransitions > 0)
+  ) {
+    throw new Error(
+      'Stress seed and counts must be finite and non-negative; duration must be at least 30 seconds; select at most one focused mode',
+    )
   }
   console.log(`[interaction-stress] seed ${seed}; target duration ${durationSeconds}s`)
   adb(['install', '-r', 'balance-debug.apk'])
   adb(['logcat', '-c'])
+  startLiveLogcat()
   adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
   expectedPid = await waitFor(() => appPid(), 'the running Balance process')
   client = await connectDevTools(expectedPid)
@@ -495,20 +533,39 @@ try {
   // Debug APK startup intentionally runs large synthetic native sync and
   // database profiles before the frontend can read state. Start the requested
   // interaction duration only after those one-time diagnostics release the DB.
-  deadline = Date.now() + durationSeconds * 1_000
-
-  while (Date.now() < deadline || cycle < 3) {
-    cycle += 1
-    console.log(`[interaction-stress] cycle ${cycle}; ${Math.max(0, Math.round((deadline - Date.now()) / 1000))}s remaining`)
-    await exerciseNotes()
-    for (const page of shuffle(['Today', 'Day Templates', 'Lists', 'Metrics', 'Goals', 'Settings'])) {
-      await exercisePageFeature(page)
-      if (Date.now() >= deadline && cycle >= 3) break
-    }
+  if (startupRelaunches > 0) {
     await openPage('Notes')
-    await backgroundResume()
-    if (cycle % 2 === 0) await rotateAndTrimMemory()
-    if (cycle % 3 === 0) await forceStopRelaunch()
+    for (cycle = 1; cycle <= startupRelaunches; cycle += 1) {
+      console.log(`[interaction-stress] startup relaunch ${cycle}/${startupRelaunches}`)
+      await forceStopRelaunch()
+    }
+    cycle = startupRelaunches
+  } else if (listHistoryTransitions > 0) {
+    await openPage('Lists')
+    const hasList = await client.evaluate(`Boolean(document.querySelector('#list-template-name'))`)
+    if (!hasList) await tap('.empty-state button.primary', 'create first list')
+    for (cycle = 1; cycle <= listHistoryTransitions; cycle += 1) {
+      console.log(`[interaction-stress] list history transition ${cycle}/${listHistoryTransitions}`)
+      await tap('.page-header button.primary', 'open list history')
+      await tap('.list-history-back', 'return from list history')
+    }
+    cycle = listHistoryTransitions
+  } else {
+    deadline = Date.now() + durationSeconds * 1_000
+
+    while (Date.now() < deadline || cycle < 3) {
+      cycle += 1
+      console.log(`[interaction-stress] cycle ${cycle}; ${Math.max(0, Math.round((deadline - Date.now()) / 1000))}s remaining`)
+      await exerciseNotes()
+      for (const page of shuffle(['Today', 'Day Templates', 'Lists', 'Metrics', 'Goals', 'Settings'])) {
+        await exercisePageFeature(page)
+        if (Date.now() >= deadline && cycle >= 3) break
+      }
+      await openPage('Notes')
+      await backgroundResume()
+      if (cycle % 2 === 0) await rotateAndTrimMemory()
+      if (cycle % 3 === 0) await forceStopRelaunch()
+    }
   }
 } catch (error) {
   failure = error
@@ -519,6 +576,7 @@ try {
   adb(['forward', '--remove', `tcp:${devToolsPort}`], { allowFailure: true })
   adb(['shell', 'settings', 'put', 'system', 'user_rotation', '0'], { allowFailure: true })
   adb(['shell', 'settings', 'put', 'system', 'accelerometer_rotation', '1'], { allowFailure: true })
+  await stopLiveLogcat()
 }
 
 const slowActions = actions.filter((action) => (
@@ -534,6 +592,8 @@ const fatalLogLines = diagnostics.logcat.split('\n').filter((line) => (
 const report = {
   seed,
   requestedDurationSeconds: durationSeconds,
+  requestedStartupRelaunches: startupRelaunches,
+  requestedListHistoryTransitions: listHistoryTransitions,
   elapsedSeconds: Math.round((Date.now() - startedAt) / 1000),
   cycles: cycle,
   actionCount: actions.length,
