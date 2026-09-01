@@ -911,6 +911,68 @@ test('a completion resets a rolling deadline and late days stay overdue', async 
   })
 })
 
+test('editing cadence preserves the old Goal Rhythm schedule after reload', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Goal Rhythm is desktop-only')
+  const today = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.activePlanDate as string
+  })
+  const historyStart = addDays(today, -2)
+  const completionDate = addDays(today, -1)
+  const tomorrow = addDays(today, 1)
+
+  await page.evaluate(
+    ({ historyStart, completionDate }) => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      const timestamp = new Date().toISOString()
+      state.goals = [
+        {
+          id: 'goal_read',
+          name: 'Read',
+          nameHtml: 'Read',
+          cadenceDays: 1,
+          matchTerms: ['read'],
+          matchTermsHtml: 'read',
+          hue: 200,
+          lightness: 50,
+          activityPeriods: [{ startDate: historyStart, endDate: null }],
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        },
+      ]
+      state.goalCompletions = [
+        {
+          goalId: 'goal_read',
+          date: completionDate,
+          itemIds: ['item_read'],
+          matchedTerms: ['read'],
+          computedAt: timestamp,
+        },
+      ]
+      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    },
+    { historyStart, completionDate },
+  )
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Manage goals' }).click()
+  await page.getByLabel('Cadence days for Read').fill('2')
+  await page.getByLabel('Cadence days for Read').press('Tab')
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.goals?.[0]?.cadenceHistory
+  })).toEqual([
+    { startDate: historyStart, cadenceDays: 1 },
+    { startDate: today, cadenceDays: 2 },
+  ])
+
+  await page.reload()
+  await expect(page.locator(`.goal-day-cell[title="Read · ${completionDate} · completed"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${today} · active"]`)).toHaveClass(/segment-start/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${today} · active"]`)).not.toHaveClass(/relieved/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${tomorrow} · active"]`)).toHaveClass(/segment-end/)
+})
+
 test('an unmet rolling deadline stays overdue until a completion resets it', async ({ page }) => {
   const start = addDays(todayISO(), -7)
   const deadline = addDays(start, 2)

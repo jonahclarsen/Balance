@@ -127,6 +127,7 @@ fn safe_schema_key(key: &str) -> bool {
             | "matchedTerms"
             | "computedAt"
             | "cadenceDays"
+            | "cadenceHistory"
             | "matchTerms"
             | "matchTermsHtml"
             | "hue"
@@ -1192,6 +1193,7 @@ mod tests {
     #[test]
     fn schema_keys_are_preserved_but_dynamic_keys_are_not() {
         assert!(safe_schema_key("completedParentIds"));
+        assert!(safe_schema_key("cadenceHistory"));
         assert!(!safe_schema_key("dayTheme:2026-08-27"));
         assert!(!safe_schema_key("2026-08-27"));
     }

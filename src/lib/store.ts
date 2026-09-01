@@ -92,6 +92,7 @@ import {
   reconcileGoalCompletionsForDate,
   reconcileRecentGoalCompletions,
   setGoalActiveOnDate,
+  setGoalCadence,
   setGoalStartDate,
 } from './goals'
 import type {
@@ -1176,9 +1177,13 @@ function createPlannerStore() {
           const goals = state.goals.map((goal) => {
             if (goal.id !== goalId) return goal
 
+            const cadencePatchedGoal = patch.cadenceDays == null
+              ? goal
+              : setGoalCadence(goal, patch.cadenceDays)
             const next = normalizeGoal({
-              ...goal,
+              ...cadencePatchedGoal,
               ...patch,
+              cadenceHistory: cadencePatchedGoal.cadenceHistory,
               nameHtml: patch.nameHtml ?? (patch.name != null ? escapeHTML(patch.name.trim()) : goal.nameHtml),
               matchTerms: patch.matchTerms ? normalizeMatchTerms(patch.matchTerms) : goal.matchTerms,
               matchTermsHtml:

@@ -1,5 +1,14 @@
 import { escapeHTML, nowISO, sanitizeInlineHTML, todayISO } from './planner'
-import type { AppState, DailyPlan, Goal, GoalActivityPeriod, GoalCompletion, Id, PlanItem } from './types'
+import type {
+  AppState,
+  DailyPlan,
+  Goal,
+  GoalActivityPeriod,
+  GoalCadencePeriod,
+  GoalCompletion,
+  Id,
+  PlanItem,
+} from './types'
 
 export const GOAL_FUTURE_DAYS = 6
 export const GOAL_RECALCULATION_AGE_DAYS = 2
@@ -39,17 +48,19 @@ export function createGoal(
 ): Goal {
   const timestamp = nowISO()
   const normalizedMatchTerms = normalizeMatchTerms(matchTerms)
+  const normalizedCadenceDays = normalizeCadenceDays(cadenceDays)
 
   return {
     id,
     name: name.trim(),
     nameHtml: escapeHTML(name.trim()),
-    cadenceDays: normalizeCadenceDays(cadenceDays),
+    cadenceDays: normalizedCadenceDays,
     matchTerms: normalizedMatchTerms,
     matchTermsHtml: normalizeMatchTermsHtml(matchTermsHtml, normalizedMatchTerms),
     hue: normalizeHue(hue),
     lightness: normalizeLightness(lightness),
     activityPeriods: [{ startDate, endDate: null }],
+    cadenceHistory: [{ startDate, cadenceDays: normalizedCadenceDays }],
     presentationTrackingStartedAt: timestamp,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -59,16 +70,23 @@ export function createGoal(
 export function normalizeGoal(goal: Goal): Goal {
   const matchTerms = normalizeMatchTerms(goal.matchTerms ?? [])
   const name = goal.name?.trim() ?? ''
+  const cadenceDays = normalizeCadenceDays(goal.cadenceDays)
+  const activityPeriods = normalizeActivityPeriods(goal.activityPeriods ?? [])
   return {
     ...goal,
     name,
     nameHtml: normalizeGoalNameHtml(goal.nameHtml, name),
-    cadenceDays: normalizeCadenceDays(goal.cadenceDays),
+    cadenceDays,
     matchTerms,
     matchTermsHtml: normalizeMatchTermsHtml(goal.matchTermsHtml, matchTerms),
     hue: normalizeHue(goal.hue ?? 165),
     lightness: normalizeLightness(goal.lightness),
-    activityPeriods: normalizeActivityPeriods(goal.activityPeriods ?? []),
+    activityPeriods,
+    cadenceHistory: normalizeCadenceHistory(
+      goal.cadenceHistory,
+      cadenceDays,
+      activityPeriods[0]?.startDate ?? goal.createdAt?.slice(0, 10) ?? todayISO(),
+    ),
     presentationTrackingStartedAt:
       typeof goal.presentationTrackingStartedAt === 'string' &&
       Number.isFinite(Date.parse(goal.presentationTrackingStartedAt))
@@ -90,6 +108,32 @@ export function normalizeGoalCompletion(completion: GoalCompletion): GoalComplet
 
 export function normalizeCadenceDays(value: number): number {
   return Math.max(1, Math.min(3650, Math.round(Number(value) || 1)))
+}
+
+/** Returns the cadence that was effective on a calendar date. */
+export function cadenceDaysOnDate(goal: Goal, date: string): number {
+  const history = cadenceHistoryForRead(goal)
+  let cadenceDays = history[0]?.cadenceDays ?? normalizeCadenceDays(goal.cadenceDays)
+
+  for (const period of history) {
+    if (period.startDate > date) break
+    cadenceDays = period.cadenceDays
+  }
+
+  return cadenceDays
+}
+
+/** Starts a new cadence schedule on `date`, preserving every earlier regime. */
+export function setGoalCadence(goal: Goal, cadenceDays: number, date = todayISO()): Goal {
+  const normalizedCadenceDays = normalizeCadenceDays(cadenceDays)
+  if (normalizedCadenceDays === goal.cadenceDays) return goal
+
+  return {
+    ...goal,
+    cadenceDays: normalizedCadenceDays,
+    cadenceHistory: upsertCadenceHistory(cadenceHistoryForRead(goal), date, normalizedCadenceDays),
+    updatedAt: nowISO(),
+  }
 }
 
 export function normalizeHue(value: number): number {
@@ -361,48 +405,55 @@ export function buildGoalDayCells(
   }))
   const indexesByDate = new Map(dates.map((date, index) => [date, index]))
 
-  for (const period of goal.activityPeriods) {
+  for (const activityPeriod of goal.activityPeriods) {
     const visibleStart = dates[0]
     const visibleEnd = dates.at(-1)
-    if (!visibleStart || !visibleEnd || period.startDate > visibleEnd || (period.endDate && period.endDate < visibleStart)) {
+    if (
+      !visibleStart ||
+      !visibleEnd ||
+      activityPeriod.startDate > visibleEnd ||
+      (activityPeriod.endDate && activityPeriod.endDate < visibleStart)
+    ) {
       continue
     }
 
-    let segmentStart = period.startDate
-    const periodEnd = period.endDate ?? visibleEnd
-    let deadline = minISODate(shiftISODate(segmentStart, goal.cadenceDays - 1), periodEnd)
+    for (const period of cadencePeriodsWithinActivity(goal, activityPeriod, visibleEnd)) {
+      let segmentStart = period.startDate
+      const periodEnd = period.endDate
+      let deadline = minISODate(shiftISODate(segmentStart, period.cadenceDays - 1), periodEnd)
 
-    while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
-      const nextCompletion = sortedCompletions.find((date) => date >= segmentStart && date <= periodEnd)
-      if (!nextCompletion) {
-        const openEnd = minISODate(maxISODate(deadline, currentDate), periodEnd)
-        markSegment(cells, indexesByDate, segmentStart, openEnd, deadline, false, currentDate)
-        break
-      }
+      while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
+        const nextCompletion = sortedCompletions.find((date) => date >= segmentStart && date <= periodEnd)
+        if (!nextCompletion) {
+          const openEnd = minISODate(maxISODate(deadline, currentDate), periodEnd)
+          markSegment(cells, indexesByDate, segmentStart, openEnd, deadline, false, currentDate)
+          break
+        }
 
-      if (nextCompletion > segmentStart) {
-        const completedOnTime = nextCompletion <= deadline
-        markSegment(
-          cells,
-          indexesByDate,
-          segmentStart,
-          shiftISODate(nextCompletion, -1),
-          deadline,
-          completedOnTime,
-          currentDate,
+        if (nextCompletion > segmentStart) {
+          const completedOnTime = nextCompletion <= deadline
+          markSegment(
+            cells,
+            indexesByDate,
+            segmentStart,
+            shiftISODate(nextCompletion, -1),
+            deadline,
+            completedOnTime,
+            currentDate,
+          )
+        }
+
+        const coverageEnd = minISODate(shiftISODate(nextCompletion, period.cadenceDays - 1), periodEnd)
+        const followingCompletion = sortedCompletions.find(
+          (date) => date > nextCompletion && date <= coverageEnd,
         )
+        const segmentEnd = followingCompletion ? shiftISODate(followingCompletion, -1) : coverageEnd
+        markSegment(cells, indexesByDate, nextCompletion, segmentEnd, coverageEnd, true, currentDate)
+
+        segmentStart = followingCompletion ?? shiftISODate(segmentEnd, 1)
+        // Once coverage from a real completion ends, the following day is due.
+        deadline = segmentStart
       }
-
-      const coverageEnd = minISODate(shiftISODate(nextCompletion, goal.cadenceDays - 1), periodEnd)
-      const followingCompletion = sortedCompletions.find(
-        (date) => date > nextCompletion && date <= coverageEnd,
-      )
-      const segmentEnd = followingCompletion ? shiftISODate(followingCompletion, -1) : coverageEnd
-      markSegment(cells, indexesByDate, nextCompletion, segmentEnd, coverageEnd, true, currentDate)
-
-      segmentStart = followingCompletion ?? shiftISODate(segmentEnd, 1)
-      // Once coverage from a real completion ends, the following day is due.
-      deadline = segmentStart
     }
   }
 
@@ -413,7 +464,7 @@ export function buildGoalDayCells(
  * Days from `currentDate` until the goal is defaulted on (or, when negative,
  * since it defaulted). Uses the same rolling logic as `buildGoalDayCells`.
  * Before the first completion, the initial deadline is the last day of the
- * first cadence window. After a completion, `cadenceDays - 1` empty days are
+ * current cadence window. After a completion, `cadenceDays - 1` empty days are
  * allowed and the following day is due; any later completion resets that
  * rolling deadline.
  *
@@ -438,15 +489,18 @@ export function goalDaysUntilLapse(
   )
   if (!period) return null
 
+  const cadencePeriod = cadencePeriodsWithinActivity(goal, period, currentDate).at(-1)
+  if (!cadencePeriod) return null
+
   const sortedCompletions = [
     ...new Set(completions.filter((completion) => completion.goalId === goal.id).map((completion) => completion.date)),
   ]
-    .filter((date) => date >= period.startDate && date <= currentDate)
+    .filter((date) => date >= cadencePeriod.startDate && date <= currentDate)
     .sort()
   const latestCompletion = sortedCompletions.at(-1)
   const deadline = latestCompletion
-    ? shiftISODate(latestCompletion, goal.cadenceDays)
-    : shiftISODate(period.startDate, goal.cadenceDays - 1)
+    ? shiftISODate(latestCompletion, cadencePeriod.cadenceDays)
+    : shiftISODate(cadencePeriod.startDate, cadencePeriod.cadenceDays - 1)
 
   if (period.endDate && deadline > period.endDate) return null
   return isoDateDiffDays(currentDate, deadline)
@@ -679,6 +733,89 @@ function normalizeActivityPeriods(periods: GoalActivityPeriod[]): GoalActivityPe
         : maxISODate(previous.endDate, period.endDate)
     return merged
   }, [])
+}
+
+type BoundedGoalCadencePeriod = GoalCadencePeriod & { endDate: string }
+
+function normalizeCadenceHistory(
+  history: GoalCadencePeriod[] | undefined,
+  currentCadenceDays: number,
+  fallbackStartDate: string,
+): GoalCadencePeriod[] {
+  let normalized = upsertCadenceHistory(
+    (history ?? [])
+      .filter((period) => /^\d{4}-\d{2}-\d{2}$/.test(period?.startDate ?? ''))
+      .map((period) => ({
+        startDate: period.startDate,
+        cadenceDays: normalizeCadenceDays(period.cadenceDays),
+      })),
+  )
+  if (normalized.length === 0) {
+    normalized = [{ startDate: fallbackStartDate, cadenceDays: currentCadenceDays }]
+  }
+
+  if (normalized.at(-1)?.cadenceDays === currentCadenceDays) return normalized
+  return upsertCadenceHistory(normalized, todayISO(), currentCadenceDays)
+}
+
+function cadenceHistoryForRead(goal: Goal): GoalCadencePeriod[] {
+  const history = (goal.cadenceHistory ?? [])
+    .filter((period) => /^\d{4}-\d{2}-\d{2}$/.test(period?.startDate ?? ''))
+    .map((period) => ({
+      startDate: period.startDate,
+      cadenceDays: normalizeCadenceDays(period.cadenceDays),
+    }))
+  if (history.length > 0) return upsertCadenceHistory(history)
+
+  return [{
+    startDate: goal.activityPeriods[0]?.startDate ?? goal.createdAt?.slice(0, 10) ?? todayISO(),
+    cadenceDays: normalizeCadenceDays(goal.cadenceDays),
+  }]
+}
+
+function upsertCadenceHistory(
+  history: GoalCadencePeriod[],
+  startDate?: string,
+  cadenceDays?: number,
+): GoalCadencePeriod[] {
+  const byDate = new Map(history.map((period) => [period.startDate, period]))
+  if (startDate && cadenceDays != null) {
+    const period = { startDate, cadenceDays: normalizeCadenceDays(cadenceDays) }
+    byDate.set(startDate, period)
+  }
+
+  const sorted = [...byDate.values()].sort((left, right) => left.startDate.localeCompare(right.startDate))
+  return sorted.filter((period, index) => index === 0 || period.cadenceDays !== sorted[index - 1].cadenceDays)
+}
+
+function cadencePeriodsWithinActivity(
+  goal: Goal,
+  activityPeriod: GoalActivityPeriod,
+  rangeEnd: string,
+): BoundedGoalCadencePeriod[] {
+  const periodEnd = minISODate(activityPeriod.endDate ?? rangeEnd, rangeEnd)
+  if (periodEnd < activityPeriod.startDate) return []
+
+  const history = cadenceHistoryForRead(goal)
+  const changes = history.filter(
+    (period) => period.startDate > activityPeriod.startDate && period.startDate <= periodEnd,
+  )
+  const periods: BoundedGoalCadencePeriod[] = []
+  let startDate = activityPeriod.startDate
+  let cadenceDays = history[0]?.cadenceDays ?? normalizeCadenceDays(goal.cadenceDays)
+  for (const period of history) {
+    if (period.startDate > startDate) break
+    cadenceDays = period.cadenceDays
+  }
+
+  for (const change of changes) {
+    periods.push({ startDate, endDate: shiftISODate(change.startDate, -1), cadenceDays })
+    startDate = change.startDate
+    cadenceDays = change.cadenceDays
+  }
+
+  periods.push({ startDate, endDate: periodEnd, cadenceDays })
+  return periods
 }
 
 function compareGoalCompletions(left: GoalCompletion, right: GoalCompletion): number {

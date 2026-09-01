@@ -159,6 +159,11 @@ export type GoalActivityPeriod = {
   endDate: string | null
 }
 
+export type GoalCadencePeriod = {
+  startDate: string
+  cadenceDays: number
+}
+
 export type Goal = {
   id: Id
   name: string
@@ -171,6 +176,9 @@ export type Goal = {
   // designed colors). Renders as a ±25pp shift applied to every goal color.
   lightness: number
   activityPeriods: GoalActivityPeriod[]
+  // Optional so states written before cadence history remain valid. Normalized
+  // and newly created goals always populate it.
+  cadenceHistory?: GoalCadencePeriod[]
   // Missing on pre-feature goals. The first template generation gives legacy
   // overdue goals one review, then future reviews use tracked presentations.
   presentationTrackingStartedAt?: string
