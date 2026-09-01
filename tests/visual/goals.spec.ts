@@ -1211,7 +1211,7 @@ test('day generation opens the goal doability review for legacy overdue and repe
     const heading = await modal.getByRole('heading', { name: 'Are your goals doable?' }).boundingBox()
     return Boolean(mascot && heading && mascot.y + mascot.height <= heading.y)
   }).toBe(true)
-  await expect(modal.getByTestId('goal-review-sizing')).toContainText(/modal=\d+x\d+px; panels=\d+\/\d+px/)
+  await expect(modal.getByTestId('goal-review-sizing')).toContainText(/modal=\d+x\d+px; panels=\d+\/\d+px.*peacock=\d+px high/)
   await expect.poll(() => modal.locator('.goals-to-review ul').evaluate(
     (element) => element.scrollHeight > element.clientHeight,
   )).toBe(true)
@@ -1256,6 +1256,18 @@ test('day generation opens the goal doability review for legacy overdue and repe
     await expect.poll(() => modal.locator('.guidance').evaluate(
       (element) => element.getBoundingClientRect().width,
     )).toBeGreaterThan(guidanceBefore + 10)
+
+    const mascotBefore = await modal.locator('.mascot').evaluate((element) => element.getBoundingClientRect().height)
+    const mascotHandle = modal.getByRole('button', { name: 'Resize peacock height' })
+    const mascotHandleBox = await mascotHandle.boundingBox()
+    expect(mascotHandleBox).not.toBeNull()
+    await page.mouse.move(mascotHandleBox!.x + mascotHandleBox!.width / 2, mascotHandleBox!.y + mascotHandleBox!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(mascotHandleBox!.x + mascotHandleBox!.width / 2, mascotHandleBox!.y + mascotHandleBox!.height / 2 + 24)
+    await page.mouse.up()
+    await expect.poll(() => modal.locator('.mascot').evaluate(
+      (element) => element.getBoundingClientRect().height,
+    )).toBeGreaterThan(mascotBefore + 10)
 
     await page.getByRole('button', { name: 'Goals', exact: true }).click()
     await expect(modal).toHaveCount(0)

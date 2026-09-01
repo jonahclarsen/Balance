@@ -9,26 +9,32 @@
   export let onClose: () => void
   export let onSelectGoal: (goalId: Id) => void
 
+  let mascotPanel: HTMLDivElement
   let guidancePanel: HTMLElement
   let goalsPanel: HTMLElement
   let columnShares: [number, number] = [0.68, 0.32]
+  let mascotHeight = 166
+  let renderedMascotHeight = 0
   let modalSize = { width: 940, height: 500 }
   let panelWidths: [number, number] = [0, 0]
   let panelResizeObserver: ResizeObserver | null = null
   let stopColumnResize: (() => void) | null = null
+  let stopMascotResize: (() => void) | null = null
   let copied = false
   let copiedResetTimer: ReturnType<typeof setTimeout> | null = null
 
   const PANEL_MIN_WIDTHS: [number, number] = [360, 180]
 
-  $: sizingSummary = `Goal review sizing: modal=${modalSize.width}x${modalSize.height}px; panels=${panelWidths[0]}/${panelWidths[1]}px (guidance/goals)`
+  $: sizingSummary = `Goal review sizing: modal=${modalSize.width}x${modalSize.height}px; panels=${panelWidths[0]}/${panelWidths[1]}px (guidance/goals); peacock=${renderedMascotHeight}px high`
 
   onMount(() => {
     panelResizeObserver = new ResizeObserver(() => {
       panelWidths = [guidancePanel, goalsPanel].map((panel) => (
         Math.round(panel.getBoundingClientRect().width)
       )) as [number, number]
+      renderedMascotHeight = Math.round(mascotPanel.getBoundingClientRect().height)
     })
+    panelResizeObserver.observe(mascotPanel)
     panelResizeObserver.observe(guidancePanel)
     panelResizeObserver.observe(goalsPanel)
   })
@@ -36,6 +42,7 @@
   onDestroy(() => {
     panelResizeObserver?.disconnect()
     stopColumnResize?.()
+    stopMascotResize?.()
     if (copiedResetTimer) clearTimeout(copiedResetTimer)
   })
 
@@ -71,6 +78,30 @@
     }
   }
 
+  function startMascotResize(event: PointerEvent) {
+    event.preventDefault()
+    event.stopPropagation()
+    stopMascotResize?.()
+
+    const startY = event.clientY
+    const startHeight = mascotPanel.getBoundingClientRect().height
+    const maximumHeight = Math.max(140, Math.min(320, guidancePanel.clientHeight - 90))
+    const handleMove = (moveEvent: PointerEvent) => {
+      mascotHeight = Math.min(maximumHeight, Math.max(80, startHeight + moveEvent.clientY - startY))
+    }
+    const handleUp = () => stopMascotResize?.()
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleUp, { once: true })
+    window.addEventListener('pointercancel', handleUp, { once: true })
+    stopMascotResize = () => {
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleUp)
+      window.removeEventListener('pointercancel', handleUp)
+      stopMascotResize = null
+    }
+  }
+
   async function copySizingSummary() {
     try {
       await navigator.clipboard.writeText(sizingSummary)
@@ -101,8 +132,17 @@
       style={`grid-template-columns: minmax(${PANEL_MIN_WIDTHS[0]}px, ${columnShares[0]}fr) 12px minmax(${PANEL_MIN_WIDTHS[1]}px, ${columnShares[1]}fr)`}
     >
       <section bind:this={guidancePanel} class="guidance">
-        <div class="mascot" aria-hidden="true">
-          <img src={peacockTalking} alt="" />
+        <div class="mascot-stack">
+          <div bind:this={mascotPanel} class="mascot" style={`height: ${mascotHeight}px`} aria-hidden="true">
+            <img src={peacockTalking} alt="" />
+          </div>
+          <button
+            class="mascot-resize-handle"
+            type="button"
+            aria-label="Resize peacock height"
+            title="Drag to resize peacock height"
+            on:pointerdown={startMascotResize}
+          ><span></span></button>
         </div>
         <h2>Are your goals doable?</h2>
         <p>It's easy for the goal system to get clogged. From our experience, goals work best if they are typically:</p>
@@ -166,14 +206,48 @@
   }
 
   .mascot {
-    width: clamp(130px, 36%, 180px);
-    margin: 0 auto 8px;
+    max-width: 100%;
   }
 
   .mascot img {
     display: block;
-    width: 100%;
-    height: auto;
+    width: auto;
+    max-width: 100%;
+    height: 100%;
+    margin: 0 auto;
+    object-fit: contain;
+  }
+
+  .mascot-stack {
+    display: grid;
+    justify-items: center;
+    margin: 0 auto 6px;
+  }
+
+  .mascot-resize-handle {
+    position: relative;
+    width: min(130px, 70%);
+    height: 14px;
+    margin: 1px 0 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    cursor: ns-resize;
+    touch-action: none;
+  }
+
+  .mascot-resize-handle span {
+    position: absolute;
+    inset: 5px 12%;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 24%, transparent);
+    transition: background 120ms ease, transform 120ms ease;
+  }
+
+  .mascot-resize-handle:hover span,
+  .mascot-resize-handle:focus-visible span {
+    background: color-mix(in srgb, var(--ink) 58%, transparent);
+    transform: scaleY(1.4);
   }
 
   .guidance h2 {
@@ -332,7 +406,7 @@
     }
 
     .mascot {
-      width: clamp(108px, 32%, 150px);
+      max-height: 180px;
     }
 
     .goals-to-review {
