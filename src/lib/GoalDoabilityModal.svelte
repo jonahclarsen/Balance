@@ -85,7 +85,7 @@
 
     const startY = event.clientY
     const startHeight = mascotPanel.getBoundingClientRect().height
-    const maximumHeight = Math.max(140, Math.min(320, guidancePanel.clientHeight - 90))
+    const maximumHeight = Math.max(140, Math.min(600, guidancePanel.clientHeight - 90))
     const handleMove = (moveEvent: PointerEvent) => {
       mascotHeight = Math.min(maximumHeight, Math.max(80, startHeight + moveEvent.clientY - startY))
     }
