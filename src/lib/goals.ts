@@ -117,6 +117,14 @@ export function parseMatchTerms(value: string): string[] {
   return normalizeMatchTerms(value.split(/[\n,]+/))
 }
 
+// Goal templates insert the goal's name into the day, so this intentionally
+// uses the same matching rules as checked plan items rather than a looser
+// substring check used only by the Goals-page search.
+export function goalNameMatchesAnyTerm(name: string, matchTerms: string[]): boolean {
+  const normalizedName = name.toLocaleLowerCase()
+  return normalizeMatchTerms(matchTerms).some((term) => textMatchesGoalTerm(normalizedName, term))
+}
+
 function normalizeGoalNameHtml(value: string | undefined, name: string): string {
   const fallback = escapeHTML(name)
   return value == null ? fallback : sanitizeInlineHTML(value)

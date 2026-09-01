@@ -34,6 +34,7 @@
   import {
     filterGoalsByPhrase,
     goalLightnessShift,
+    goalNameMatchesAnyTerm,
     goalsMatchingItemText,
     goalsNeedingDoabilityReview,
     isGoalActiveOnDate,
@@ -455,6 +456,7 @@ return rows`
   let newGoalTermsHtml = ''
   let newGoalHue = randomGoalHue()
   let goalFormStatus = ''
+  let newGoalNameMismatch = false
   let goalSearch = ''
   let goalSearchInput: HTMLInputElement | null = null
   let highlightedGoalCardId: Id | null = null
@@ -485,6 +487,12 @@ return rows`
   }
   $: if (goals !== $plannerStore.goals) goals = $plannerStore.goals
   $: if (goalCompletions !== $plannerStore.goalCompletions) goalCompletions = $plannerStore.goalCompletions
+  $: {
+    const matchTerms = parseMatchTerms(newGoalTerms)
+    newGoalNameMismatch = Boolean(
+      newGoalName.trim() && matchTerms.length > 0 && !goalNameMatchesAnyTerm(newGoalName, matchTerms),
+    )
+  }
   $: if (goals !== goalHistoryGoals) scheduleGoalHistoryUpdate()
   $: displayedPlanDate = celebrationPreview?.previewDate ?? $plannerStore.activePlanDate
   $: displayedCompareDayOpen = compareDayOpen && !celebrationPreview
@@ -6204,7 +6212,7 @@ return rows`
         <label class="goal-terms-field">
           <span>Matches any</span>
           <RichTextEditor
-            className="goal-rules-editor"
+            className={`goal-rules-editor${newGoalNameMismatch ? ' goal-rules-editor-mismatch' : ''}`}
             kind="goal-match-terms"
             inputId="new-goal-match-terms"
             placeholder="lift, swim, bike"
@@ -6217,6 +6225,9 @@ return rows`
               newGoalTerms = text
             }}
           />
+          {#if newGoalNameMismatch}
+            <small class="goal-name-match-warning" role="status">Goal name doesn’t match any term, so its inserted item won’t match.</small>
+          {/if}
         </label>
         <button
           class="primary goal-add-button"
@@ -6299,7 +6310,7 @@ return rows`
                 <label class="goal-field goal-rules-field">
                   <span>A checked item matches any of</span>
                   <RichTextEditor
-                    className="goal-rules-editor"
+                    className={`goal-rules-editor${!goalNameMatchesAnyTerm(goal.name, goal.matchTerms) ? ' goal-rules-editor-mismatch' : ''}`}
                     kind="goal-match-terms"
                     inputId={`goal-match-terms:${goal.id}`}
                     html={goal.matchTermsHtml}
@@ -6311,6 +6322,9 @@ return rows`
                       matchTermsHtml: html,
                     })}
                   />
+                  {#if !goalNameMatchesAnyTerm(goal.name, goal.matchTerms)}
+                    <small class="goal-name-match-warning" role="status">Goal name doesn’t match any term, so its inserted item won’t match.</small>
+                  {/if}
                 </label>
                 <GoalRecentHistory
                   {goal}

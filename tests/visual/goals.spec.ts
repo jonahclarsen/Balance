@@ -19,6 +19,29 @@ test.beforeEach(async ({ page }) => {
   await page.reload()
 })
 
+test('goals warn when their inserted name does not match any configured term', async ({ page }) => {
+  await page.getByRole('button', { name: 'Manage goals' }).click()
+  const warning = page.getByText('Goal name doesn’t match any term, so its inserted item won’t match.')
+  const newTerms = page.getByLabel('New goal matching terms')
+
+  await page.getByLabel('New goal name').fill('Write music')
+  await newTerms.fill('beat')
+  await expect(warning).toBeVisible()
+  await expect(newTerms).toHaveClass(/goal-rules-editor-mismatch/)
+
+  await newTerms.fill('music, beat')
+  await expect(warning).toHaveCount(0)
+  await page.getByRole('button', { name: 'Add goal', exact: true }).click()
+
+  const savedTerms = page.getByLabel('Matching terms for Write music')
+  await savedTerms.fill('beat')
+  await expect(warning).toBeVisible()
+  await expect(savedTerms).toHaveClass(/goal-rules-editor-mismatch/)
+
+  await page.getByLabel('Goal name: Write music').fill('Write beat')
+  await expect(warning).toHaveCount(0)
+})
+
 test('a new goal receives the color previewed by the add button and has no color editor', async ({ page }) => {
   await page.getByRole('button', { name: 'Manage goals' }).click()
   const addButton = page.getByRole('button', { name: 'Add goal', exact: true })

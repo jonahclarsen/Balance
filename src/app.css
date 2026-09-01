@@ -3856,6 +3856,18 @@ body.mobile-checkbox-dragging {
   box-shadow: 0 0 0 3px var(--focus-ring);
 }
 
+.goal-rules-editor-mismatch,
+.goal-rules-editor-mismatch:focus {
+  border-color: var(--danger);
+}
+
+.goal-name-match-warning {
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .goal-rules-editor:empty::before {
   content: attr(data-placeholder);
   color: var(--muted);
