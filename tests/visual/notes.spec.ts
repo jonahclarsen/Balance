@@ -13,16 +13,40 @@ async function placeCaretAtEnd(editor: Locator) {
   })
 }
 
-async function openNotesView(page: Page) {
+async function openPrimaryView(page: Page, name: 'Notes' | 'Day Templates') {
   const mobileMenu = page.locator('.mobile-app-header').getByRole('button', { name: 'Open navigation' })
   if (await mobileMenu.isVisible()) {
     await mobileMenu.click()
     await page.getByRole('complementary', { name: 'Primary navigation drawer' })
-      .getByRole('button', { name: 'Notes', exact: true })
+      .getByRole('button', { name, exact: true })
       .click()
     return
   }
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name, exact: true }).click()
+}
+
+async function openNotesView(page: Page) {
+  await openPrimaryView(page, 'Notes')
+}
+
+async function setNoteScrollTop(page: Page, scrollTop: number) {
+  return page.evaluate((top) => {
+    const noteDocument = document.querySelector<HTMLElement>('.note-document')
+    const noteDocumentScrolls = noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)
+    const scroller = noteDocumentScrolls ? noteDocument : document.scrollingElement
+    if (!(scroller instanceof HTMLElement)) return 0
+    scroller.scrollTop = top
+    return scroller.scrollTop
+  }, scrollTop)
+}
+
+async function noteScrollTop(page: Page) {
+  return page.evaluate(() => {
+    const noteDocument = document.querySelector<HTMLElement>('.note-document')
+    const noteDocumentScrolls = noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)
+    const scroller = noteDocumentScrolls ? noteDocument : document.scrollingElement
+    return scroller?.scrollTop ?? 0
+  })
 }
 
 async function placeCaretAtOffset(editor: Locator, offset: number) {
@@ -1289,6 +1313,37 @@ test('note text restores the caret after tabbing away mid-edit', async ({ page }
       }),
     )
     .toBe(6)
+})
+
+test('notes restores its caret and scroll position after visiting another page', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const noteText = page.locator('[data-note-text-input]').first()
+  const content = Array.from({ length: 100 }, (_, index) => `Return to this exact note line ${index + 1}`).join(' ')
+  await noteText.fill(content)
+  await placeCaretAtOffset(noteText, 17)
+  await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')))
+  const savedScrollTop = await setNoteScrollTop(page, 240)
+  expect(savedScrollTop).toBeGreaterThan(0)
+  await expect.poll(() => noteSelectionEndpoints(page)).toMatchObject({
+    anchor: { offset: 17 },
+    focus: { offset: 17 },
+  })
+
+  await openPrimaryView(page, 'Day Templates')
+  await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await openNotesView(page)
+
+  await expect(noteText).toBeFocused()
+  await expect.poll(() => noteSelectionEndpoints(page)).toMatchObject({
+    anchor: { offset: 17 },
+    focus: { offset: 17 },
+  })
+  await expect.poll(() => noteScrollTop(page)).toBe(savedScrollTop)
 })
 
 test('binning a note happens immediately and remains undoable', async ({ page }) => {

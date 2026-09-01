@@ -63,7 +63,7 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, PlanItem, TemplateItem } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem } from './lib/types'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
@@ -287,6 +287,7 @@
   let overlayListPanel: ListPanel | null = null
   let notesPanel: NotesPanel | null = null
   let notesTrashOpen = false
+  const noteViewStatesById = new Map<Id, NoteViewState>()
   let wordCapUnlocked = false
   let wordCapUnlockTimer: number | null = null
   let selectedMetricId = ''
@@ -578,6 +579,10 @@ return rows`
   // ---- Notes ----
   $: if (!selectedNoteId && notes[0]) selectedNoteId = notes[0].id
   $: if (selectedNoteId && !allNotes.some((note) => note.id === selectedNoteId)) selectedNoteId = notes[0]?.id ?? ''
+
+  function rememberNoteViewState(noteId: Id, state: NoteViewState) {
+    noteViewStatesById.set(noteId, state)
+  }
 
   // ---- Overlays: auto-close a list toast once every box is checked ----
   // Only auto-close when the list *transitions* to complete while open, so
@@ -6079,6 +6084,8 @@ return rows`
         {listTemplates}
         {metrics}
         historyRevision={$plannerStore.historyRevision}
+        viewStatesByNote={noteViewStatesById}
+        onViewStateChange={rememberNoteViewState}
         onSelect={(noteId) => (selectedNoteId = noteId)}
         onCreate={plannerStore.addNote}
         onTrash={binNote}

@@ -7,7 +7,7 @@
   import { htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
   import { noteClipboardHTML, noteClipboardPlainText, type NoteClipboardBlock } from './noteClipboard'
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
-  import type { Id, ListTemplate, Metric, Note, NoteItemKind } from './types'
+  import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from './types'
 
   type InlineFormatCommand = 'bold' | 'italic' | 'underline'
   type InlineFormatState = Record<InlineFormatCommand, boolean>
@@ -43,6 +43,8 @@
   export let outdentItem: typeof import('./store').plannerStore.outdentNoteItem
   export let onOpenLink: (link: ItemLink) => void
   export let trashOpen = false
+  export let viewStatesByNote: ReadonlyMap<Id, NoteViewState> = new Map()
+  export let onViewStateChange: (noteId: Id, state: NoteViewState) => void = () => {}
 
   let filter = ''
   let lastActiveNoteId: Id | null = null
@@ -51,6 +53,8 @@
   let copyButtonResetTimer: number | undefined
   let activeItemId: Id | null = null
   let activeNoteId: Id | null = null
+  let noteViewRestoreRequest = 0
+  let restoringNoteViewState = false
   let noteBlocksElement: HTMLDivElement
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
@@ -80,10 +84,12 @@
   $: if (!trashOpen && selectedNote) lastActiveNoteId = selectedNote.id
   $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
   $: if (selectedNoteId !== activeNoteId) {
+    rememberActiveNoteScroll()
     activeNoteId = selectedNoteId
     activeItemId = selectedNote?.items[0]?.id ?? null
     clearItemSelection()
     inlineFormats = { bold: false, italic: false, underline: false }
+    void restoreActiveNoteViewState(selectedNoteId)
   }
   $: activeItem = selectedNote && activeItemId ? findItem(selectedNote.items, activeItemId) : null
   $: filteredNotes = [...visibleNotes]
@@ -262,10 +268,114 @@
     selection?.addRange(range)
   }
 
+  function rememberNoteViewState(noteId: Id, patch: Partial<NoteViewState>) {
+    const previous = viewStatesByNote.get(noteId)
+    onViewStateChange(noteId, {
+      scrollTop: previous?.scrollTop ?? 0,
+      caret: previous?.caret ?? null,
+      ...patch,
+    })
+  }
+
+  function rememberActiveNoteScroll(scroller = noteScrollContainer()) {
+    if (!activeNoteId || restoringNoteViewState || !scroller) return
+    rememberNoteViewState(activeNoteId, { scrollTop: scroller.scrollTop })
+  }
+
+  function rememberActiveNoteCaret() {
+    if (!selectedNote || restoringNoteViewState) return
+
+    const selection = document.getSelection()
+    if (!selection || selection.rangeCount === 0) return
+
+    const range = selection.getRangeAt(0)
+    const editor = range.startContainer instanceof Element
+      ? range.startContainer.closest<HTMLDivElement>('[data-note-text-input]')
+      : range.startContainer.parentElement?.closest<HTMLDivElement>('[data-note-text-input]') ?? null
+    const itemId = editor?.dataset.noteTextInputId
+    if (!editor || !itemId || !findItem(selectedNote.items, itemId)) return
+    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return
+
+    rememberNoteViewState(selectedNote.id, {
+      caret: {
+        itemId,
+        start: textOffsetAtPoint(editor, range.startContainer, range.startOffset),
+        end: textOffsetAtPoint(editor, range.endContainer, range.endOffset),
+      },
+    })
+  }
+
+  function textOffsetAtPoint(editor: HTMLDivElement, node: Node, offset: number) {
+    const range = document.createRange()
+    range.selectNodeContents(editor)
+    range.setEnd(node, offset)
+    return range.toString().length
+  }
+
+  function pointAtTextOffset(editor: HTMLDivElement, requestedOffset: number) {
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+    let remaining = requestedOffset
+    let node = walker.nextNode()
+
+    while (node) {
+      const length = node.textContent?.length ?? 0
+      if (remaining <= length) return { node, offset: remaining }
+      remaining -= length
+      node = walker.nextNode()
+    }
+
+    return { node: editor as Node, offset: requestedOffset <= 0 ? 0 : editor.childNodes.length }
+  }
+
+  async function restoreActiveNoteViewState(noteId: Id) {
+    const request = ++noteViewRestoreRequest
+    restoringNoteViewState = true
+    await tick()
+    if (request !== noteViewRestoreRequest || activeNoteId !== noteId) return
+
+    const state = viewStatesByNote.get(noteId)
+    if (!state) {
+      const scroller = noteScrollContainer()
+      if (scroller) scroller.scrollTop = 0
+      restoringNoteViewState = false
+      return
+    }
+
+    const editor = state?.caret
+      ? noteInputs().find((candidate) => candidate.dataset.noteTextInputId === state.caret?.itemId)
+      : null
+    if (editor && state?.caret) {
+      activeItemId = state.caret.itemId
+      editor.focus()
+      const range = document.createRange()
+      const start = pointAtTextOffset(editor, state.caret.start)
+      const end = pointAtTextOffset(editor, state.caret.end)
+      range.setStart(start.node, start.offset)
+      range.setEnd(end.node, end.offset)
+      const selection = document.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+      updateInlineFormatState()
+    }
+
+    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
+    if (request !== noteViewRestoreRequest || activeNoteId !== noteId) return
+
+    const scroller = noteScrollContainer()
+    if (scroller) scroller.scrollTop = state.scrollTop
+    window.requestAnimationFrame(() => {
+      if (request === noteViewRestoreRequest) restoringNoteViewState = false
+    })
+  }
+
   function noteScrollContainer() {
     const noteDocument = noteBlocksElement?.closest<HTMLElement>('.note-document') ?? null
     if (noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)) {
       return noteDocument
+    }
+
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      return document.scrollingElement as HTMLElement | null
     }
 
     const workspace = noteBlocksElement?.closest<HTMLElement>('.workspace') ?? null
@@ -292,6 +402,7 @@
       frame = null
       noteScrollViewportHeight = scroller.clientHeight
       noteScrollSpaceControlVisible = noteScrollSpaceAdjustmentActive || isAtNoteBottom(scroller)
+      rememberActiveNoteScroll(scroller)
     }
     const scheduleVisibilityUpdate = () => {
       if (frame !== null) return
@@ -337,6 +448,9 @@
 
   function handleNoteSelectionChange() {
     updateInlineFormatState()
+    rememberActiveNoteCaret()
+
+    if (restoringNoteViewState) return
 
     const selection = document.getSelection()
     const inputs = noteInputs()
@@ -706,6 +820,9 @@
   })
 
   onDestroy(() => {
+    rememberActiveNoteScroll()
+    rememberActiveNoteCaret()
+    noteViewRestoreRequest += 1
     bottomFollowRequest += 1
     if (bottomFollowFrame !== null) window.cancelAnimationFrame(bottomFollowFrame)
     noteScrollSpaceAdjustmentActive = false

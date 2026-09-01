@@ -52,6 +52,15 @@ export type Note = {
   deletedAt?: string | null
 }
 
+export type NoteViewState = {
+  scrollTop: number
+  caret: {
+    itemId: Id
+    start: number
+    end: number
+  } | null
+}
+
 export type MovePlacement = 'before' | 'after' | 'inside'
 
 export type MoveDirection = 'up' | 'down'
