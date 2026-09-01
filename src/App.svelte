@@ -6836,7 +6836,6 @@ return rows`
         reviews={goalDoabilityReviews}
         onClose={() => (goalDoabilityReviews = [])}
         onSelectGoal={(goalId) => {
-          goalDoabilityReviews = []
           void openGoals(goalId)
         }}
       />

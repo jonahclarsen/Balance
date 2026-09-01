@@ -1317,6 +1317,17 @@ test('day generation opens the goal doability review for legacy overdue and repe
     await expect(page.getByRole('button', { name: 'Goals', exact: true })).toHaveClass(/active/)
   }
   await expect(page.locator('.goal-card[data-goal-id="goal_legacy"]')).toHaveClass(/goal-card-focus/)
+
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+    await page.getByRole('complementary', { name: 'Primary navigation drawer' })
+      .getByRole('button', { name: 'Today', exact: true })
+      .click()
+  } else {
+    await page.getByRole('button', { name: 'Today', exact: true }).click()
+  }
+  await expect(modal).toBeVisible()
+  await expect(modal.getByRole('button', { name: 'Review Call someone: 5 days overdue' })).toBeVisible()
 })
 
 test('goal rhythm hover text includes match keywords', async ({ page }) => {
