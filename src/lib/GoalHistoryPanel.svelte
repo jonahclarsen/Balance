@@ -407,7 +407,8 @@
   </header>
 
   <div class="goal-history-body goal-history-scroll" bind:this={scrollEl}>
-    <div class="goal-history-corner">Goal</div>
+    <div class="goal-history-name-backdrop" aria-hidden="true"></div>
+    <div class="goal-history-name-header" aria-hidden="true"></div>
     <div class="goal-history-name-pane" bind:this={namePaneEl}>
       <div class="goal-history-name-scroll">
         <div class="goal-history-name-list">

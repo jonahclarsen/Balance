@@ -1582,6 +1582,8 @@ test('long tasks use a vertical desktop goal stack and a wrapping mobile goal ro
 })
 
 test('goal rhythm uses one smooth scroll surface across its name and timeline panes', async ({ page }, testInfo) => {
+  await selectDeviceThemeForTest(page, 'iridescent')
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
   const historyStart = addDays(todayISO(), -120)
 
   await page.evaluate((historyStart) => {
@@ -1625,6 +1627,46 @@ test('goal rhythm uses one smooth scroll surface across its name and timeline pa
     nameOverflowY: 'visible',
     timelineOverflowY: 'visible',
   })
+  await expect(page.locator('.goal-history-corner')).toHaveCount(0)
+  await expect(page.locator('.goal-history-name-backdrop')).toHaveCount(1)
+  await expect(page.locator('.goal-history-name-header')).toHaveCount(1)
+
+  const modeGeometry = await page.evaluate((modes) => {
+    const rhythm = document.querySelector<HTMLElement>('.goal-history-panel')
+    if (!rhythm) throw new Error('Could not find Goal Rhythm')
+
+    const measurements = modes.map((mode) => {
+      rhythm.dataset.rhythmMode = mode
+      const nameRows = [...document.querySelectorAll<HTMLElement>('.goal-history-name')]
+      const dayRows = [...document.querySelectorAll<HTMLElement>('.goal-history-day-row')]
+      const deltas = nameRows.slice(0, 12).map((nameRow, index) => {
+        const activeCell = dayRows[index]?.querySelector<HTMLElement>('.goal-day-cell.active')
+        if (!activeCell) throw new Error(`Could not find active cell for row ${index}`)
+        const nameRect = nameRow.getBoundingClientRect()
+        const cellRect = activeCell.getBoundingClientRect()
+        return {
+          top: Math.abs(Math.round(nameRect.top - cellRect.top)),
+          height: Math.abs(Math.round(nameRect.height - cellRect.height)),
+        }
+      })
+      return {
+        mode,
+        maximumTopDifference: Math.max(...deltas.map((delta) => delta.top)),
+        maximumHeightDifference: Math.max(...deltas.map((delta) => delta.height)),
+      }
+    })
+    rhythm.dataset.rhythmMode = 'flow'
+    return measurements
+  }, ['flow', 'mosaic', 'columns', 'signal', 'ledger', 'aurora', 'constellation'])
+  expect(modeGeometry).toEqual([
+    { mode: 'flow', maximumTopDifference: 0, maximumHeightDifference: 0 },
+    { mode: 'mosaic', maximumTopDifference: 0, maximumHeightDifference: 0 },
+    { mode: 'columns', maximumTopDifference: 0, maximumHeightDifference: 0 },
+    { mode: 'signal', maximumTopDifference: 0, maximumHeightDifference: 0 },
+    { mode: 'ledger', maximumTopDifference: 0, maximumHeightDifference: 0 },
+    { mode: 'aurora', maximumTopDifference: 0, maximumHeightDifference: 0 },
+    { mode: 'constellation', maximumTopDifference: 0, maximumHeightDifference: 0 },
+  ])
 
   const nameBox = await names.boundingBox()
   const scrollBox = await timeline.boundingBox()
@@ -1655,21 +1697,37 @@ test('goal rhythm uses one smooth scroll surface across its name and timeline pa
   await expect.poll(() => goalRhythmScrollTopDifference(page)).toBe(0)
   const stickyHeaderOffsets = await page.evaluate(() => {
     const scroller = document.querySelector<HTMLElement>('.goal-history-scroll')
-    const corner = document.querySelector<HTMLElement>('.goal-history-corner')
+    const names = document.querySelector<HTMLElement>('.goal-history-name-header')
     const dates = document.querySelector<HTMLElement>('.goal-history-date-row')
-    if (!scroller || !corner || !dates) throw new Error('Could not find Goal Rhythm headers')
+    if (!scroller || !names || !dates) throw new Error('Could not find Goal Rhythm headers')
     const scrollerTop = scroller.getBoundingClientRect().top
     return {
-      corner: Math.round(corner.getBoundingClientRect().top - scrollerTop),
+      names: Math.round(names.getBoundingClientRect().top - scrollerTop),
       dates: Math.round(dates.getBoundingClientRect().top - scrollerTop),
     }
   })
-  expect(stickyHeaderOffsets).toEqual({ corner: 0, dates: 0 })
+  expect(stickyHeaderOffsets).toEqual({ names: 0, dates: 0 })
 
   await timeline.evaluate((element) => {
     element.scrollLeft = element.scrollWidth - element.clientWidth
   })
   await expect.poll(() => goalRhythmPaneGap(page)).toBe(0)
+  const namePaneCoverage = await timeline.evaluate((element) => {
+    element.scrollTop = element.scrollHeight - element.clientHeight
+    const pane = document.querySelector<HTMLElement>('.goal-history-name-backdrop')
+    if (!pane) throw new Error('Could not find Goal Rhythm name backdrop')
+    const paneStyle = getComputedStyle(pane)
+    const paneRect = pane.getBoundingClientRect()
+    const scrollRect = element.getBoundingClientRect()
+    return {
+      topDifference: Math.round(paneRect.top - scrollRect.top),
+      bottomDifference: Math.round(paneRect.bottom - scrollRect.bottom),
+      backgroundColor: paneStyle.backgroundColor,
+    }
+  })
+  expect(namePaneCoverage.topDifference).toBe(0)
+  expect(namePaneCoverage.bottomDifference).toBe(0)
+  expect(namePaneCoverage.backgroundColor).not.toMatch(/^rgba\(/)
 
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-goal-rhythm-split-scroll.png`,

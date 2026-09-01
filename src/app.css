@@ -4478,7 +4478,37 @@ body.mobile-checkbox-dragging {
   min-width: 0;
   min-height: 0;
   padding-top: 30px;
-  background: var(--paper);
+}
+
+/* Keep the covered timeline out of the final paint without turning the entire
+   (potentially thousands-of-pixels-tall) name list into one expensive layer. */
+.goal-history-name-backdrop {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 3;
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  width: 100%;
+  height: 100%;
+  background: var(--paper-strong);
+  pointer-events: none;
+}
+
+.goal-history-name-header {
+  position: sticky;
+  left: 0;
+  top: 0;
+  z-index: 6;
+  grid-column: 1;
+  grid-row: 1;
+  align-self: start;
+  height: 30px;
+  border-right: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  background: var(--paper-strong);
+  contain: paint;
 }
 
 .goal-history-name-scroll {
@@ -4487,7 +4517,9 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-history-name-list {
-  min-height: 100%;
+  display: grid;
+  grid-auto-rows: 30px;
+  align-content: start;
   padding-bottom: 8px;
 }
 
@@ -4537,7 +4569,6 @@ body.mobile-checkbox-dragging {
   contain-intrinsic-inline-size: calc(var(--goal-chunk-day-count) * 30px);
 }
 
-.goal-history-corner,
 .goal-date-head,
 .goal-history-name {
   border: 0;
@@ -4547,25 +4578,6 @@ body.mobile-checkbox-dragging {
 
 .goal-date-head {
   position: relative;
-}
-
-.goal-history-corner {
-  position: sticky;
-  left: 0;
-  top: 0;
-  z-index: 6;
-  grid-column: 1;
-  grid-row: 1;
-  align-self: start;
-  display: flex;
-  align-items: center;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  padding: 0 12px;
-  color: var(--muted);
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
 }
 
 .goal-date-head {
@@ -4894,9 +4906,9 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-history-panel[data-rhythm-mode='mosaic'] .goal-history-name {
-  margin: 2px 4px;
+  margin: 3px 4px;
   width: calc(100% - 8px);
-  height: 26px;
+  height: 24px;
   border: 1px solid var(--row-border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--paper) 90%, var(--sidebar));
@@ -4942,9 +4954,9 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-history-panel[data-rhythm-mode='columns'] .goal-history-name {
-  margin: 2px 4px;
+  margin: 0 4px;
   width: calc(100% - 8px);
-  height: 26px;
+  height: 30px;
   border: 1px solid var(--row-border);
   border-radius: 8px;
   background: color-mix(in srgb, var(--paper) 90%, var(--sidebar));
@@ -4994,8 +5006,7 @@ body.mobile-checkbox-dragging {
 
 /* Ledger — dense ruled rows and square status stamps for a logbook feel. */
 .goal-history-panel[data-rhythm-mode='ledger'] .goal-history-name,
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-date-head,
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-history-corner {
+.goal-history-panel[data-rhythm-mode='ledger'] .goal-date-head {
   font-family: var(--font-mono);
 }
 
@@ -5037,8 +5048,15 @@ body.mobile-checkbox-dragging {
   background: color-mix(in srgb, var(--paper) 94%, var(--accent-soft));
 }
 
-.goal-history-panel[data-rhythm-mode='aurora'] .goal-history-name-pane,
-.goal-history-panel[data-rhythm-mode='aurora'] :is(.goal-history-corner, .goal-date-head, .goal-history-name) {
+.goal-history-panel[data-rhythm-mode='aurora'] .goal-history-name-backdrop {
+  background-color: color-mix(in srgb, var(--paper-strong) 94%, var(--accent));
+}
+
+.goal-history-panel[data-rhythm-mode='aurora'] .goal-history-name-header {
+  background-color: color-mix(in srgb, var(--paper-strong) 94%, var(--accent));
+}
+
+.goal-history-panel[data-rhythm-mode='aurora'] :is(.goal-date-head, .goal-history-name) {
   background-color: color-mix(in srgb, var(--paper) 91%, var(--accent-soft));
 }
 
@@ -5074,8 +5092,15 @@ body.mobile-checkbox-dragging {
   background: color-mix(in srgb, var(--paper) 94%, var(--ink));
 }
 
-.goal-history-panel[data-rhythm-mode='constellation'] .goal-history-name-pane,
-.goal-history-panel[data-rhythm-mode='constellation'] :is(.goal-history-corner, .goal-date-head, .goal-history-name) {
+.goal-history-panel[data-rhythm-mode='constellation'] .goal-history-name-backdrop {
+  background-color: color-mix(in srgb, var(--paper-strong) 96%, var(--ink));
+}
+
+.goal-history-panel[data-rhythm-mode='constellation'] .goal-history-name-header {
+  background-color: color-mix(in srgb, var(--paper-strong) 96%, var(--ink));
+}
+
+.goal-history-panel[data-rhythm-mode='constellation'] :is(.goal-date-head, .goal-history-name) {
   background-color: color-mix(in srgb, var(--paper) 96%, var(--ink));
 }
 
