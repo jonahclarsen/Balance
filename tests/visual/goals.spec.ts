@@ -1690,6 +1690,7 @@ test('goal rhythm uses dark segment and open-circle colors in dark mode', async 
 test('goal cards show their saved completion count without frozen-history text', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await expect(page.locator('.goal-card-meta')).toHaveText('0 saved completions')
+  await expect(page.getByLabel('Matching terms for Exercise')).toHaveCSS('cursor', 'text')
   await expect(page.getByText(/history before .* is frozen/i)).toHaveCount(0)
 })
 

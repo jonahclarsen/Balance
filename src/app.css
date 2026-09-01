@@ -3846,6 +3846,7 @@ body.mobile-checkbox-dragging {
   border: 1px solid var(--line);
   border-radius: 6px;
   background: var(--paper-strong);
+  cursor: text;
   outline: none;
   white-space: pre-wrap;
 }
