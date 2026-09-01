@@ -70,12 +70,16 @@ test('the goal rhythm search clear button remains visible without focus on mobil
 
 test('goal rhythm offers six persistent visual modes', async ({ page }) => {
   const rhythm = page.getByRole('region', { name: 'Goal history' })
-  const modePicker = page.getByRole('combobox', { name: 'Goal rhythm style' })
+  const modeTrigger = page.getByRole('button', { name: 'Choose Goal Rhythm style' })
+  const modeMenu = page.getByRole('menu', { name: 'Goal Rhythm style options' })
 
-  await expect(modePicker.locator('option')).toHaveCount(6)
+  await expect(modeMenu).toBeHidden()
   await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow')
 
-  await modePicker.selectOption('aurora')
+  await modeTrigger.hover()
+  await expect(modeMenu).toBeVisible()
+  await expect(page.getByRole('menuitemradio')).toHaveCount(6)
+  await page.getByRole('menuitemradio', { name: 'Aurora' }).click()
   await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'aurora')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('aurora')
 
@@ -89,7 +93,7 @@ test('columns mode joins mosaic tiles vertically by calendar day', async ({ page
   await createGoal(page, 'Read', 2, 'read')
   await page.getByRole('button', { name: 'Today', exact: true }).click()
 
-  const modePicker = page.getByRole('combobox', { name: 'Goal rhythm style' })
+  const modeTrigger = page.getByRole('button', { name: 'Choose Goal Rhythm style' })
   const todayCells = page.locator(`.goal-day-cell[title*=" · ${todayISO()} · "]`)
   await expect(todayCells).toHaveCount(2)
 
@@ -100,10 +104,12 @@ test('columns mode joins mosaic tiles vertically by calendar day', async ({ page
     return Math.round(rectangles[1].top - rectangles[0].bottom)
   })
 
-  await modePicker.selectOption('mosaic')
+  await modeTrigger.click()
+  await page.getByRole('menuitemradio', { name: 'Mosaic' }).click()
   expect(await verticalGap()).toBe(6)
 
-  await modePicker.selectOption('columns')
+  await modeTrigger.click()
+  await page.getByRole('menuitemradio', { name: 'Columns' }).click()
   expect(await verticalGap()).toBe(0)
   await expect.poll(() => todayCells.evaluateAll((cells) => cells.map((cell) => {
     const style = getComputedStyle(cell)
@@ -118,12 +124,14 @@ test('goal rhythm modes allocate the mobile split to match their visual focus', 
   test.skip(testInfo.project.name !== 'mobile', 'Mobile-only layout treatment')
   await page.setViewportSize({ width: 360, height: 760 })
 
-  const modePicker = page.getByRole('combobox', { name: 'Goal rhythm style' })
+  const modeTrigger = page.getByRole('button', { name: 'Choose Goal Rhythm style' })
   const namePane = page.locator('.goal-history-name-pane')
 
-  await modePicker.selectOption('signal')
+  await modeTrigger.click()
+  await page.getByRole('menuitemradio', { name: 'Signal' }).click()
   const signalWidth = (await namePane.boundingBox())?.width ?? 0
-  await modePicker.selectOption('ledger')
+  await modeTrigger.click()
+  await page.getByRole('menuitemradio', { name: 'Ledger' }).click()
   const ledgerWidth = (await namePane.boundingBox())?.width ?? 0
 
   expect(signalWidth).toBeGreaterThan(0)

@@ -38,6 +38,10 @@
 
   let search = ''
   let rhythmMode: GoalRhythmMode = 'flow'
+  let rhythmModeMenuOpen = false
+  let rhythmModePickerEl: HTMLDivElement | undefined
+  let rhythmModeTriggerEl: HTMLButtonElement | undefined
+  let rhythmModeMenuEl: HTMLDivElement | undefined
   let scrollEl: HTMLDivElement | undefined
   let nameScrollEl: HTMLDivElement | undefined
   let namePaneEl: HTMLDivElement | undefined
@@ -235,22 +239,49 @@
     }
 
     const dayTimer = setInterval(refreshDay, 60_000)
+    const closeRhythmModeMenu = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && !rhythmModePickerEl?.contains(target)) rhythmModeMenuOpen = false
+    }
     window.addEventListener('focus', refreshDay)
     document.addEventListener('visibilitychange', refreshDay)
+    document.addEventListener('pointerdown', closeRhythmModeMenu)
     return () => {
       clearInterval(dayTimer)
       if (copyResetTimer) clearTimeout(copyResetTimer)
       if (highlightResetTimer) clearTimeout(highlightResetTimer)
       window.removeEventListener('focus', refreshDay)
       document.removeEventListener('visibilitychange', refreshDay)
+      document.removeEventListener('pointerdown', closeRhythmModeMenu)
     }
   })
 
-  function changeRhythmMode(event: Event) {
-    const nextMode = (event.currentTarget as HTMLSelectElement).value
-    if (!GOAL_RHYTHM_MODES.some((mode) => mode.id === nextMode)) return
-    rhythmMode = nextMode as GoalRhythmMode
+  async function chooseRhythmMode(nextMode: GoalRhythmMode) {
+    rhythmMode = nextMode
     localStorage.setItem(GOAL_RHYTHM_MODE_KEY, rhythmMode)
+    rhythmModeMenuOpen = false
+    await tick()
+    rhythmModeTriggerEl?.focus()
+  }
+
+  async function handleRhythmModeTriggerKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      rhythmModeMenuOpen = false
+      return
+    }
+    if (event.key !== 'ArrowDown') return
+    event.preventDefault()
+    rhythmModeMenuOpen = true
+    await tick()
+    rhythmModeMenuEl?.querySelector<HTMLButtonElement>('button')?.focus()
+  }
+
+  function handleRhythmModeMenuKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Escape') return
+    event.preventDefault()
+    rhythmModeMenuOpen = false
+    rhythmModeTriggerEl?.focus()
   }
 
   async function copyGoalName(event: MouseEvent, goal: Goal) {
@@ -308,16 +339,54 @@
     ></div>
   {/if}
   <header class="goal-history-toolbar">
-    <label class="goal-rhythm-mode-pill" title="Change Goal Rhythm style">
-      <span class="goal-rhythm-mode-glyph" aria-hidden="true">
-        {GOAL_RHYTHM_MODES.find((mode) => mode.id === rhythmMode)?.glyph}
-      </span>
-      <select aria-label="Goal rhythm style" value={rhythmMode} on:change={changeRhythmMode}>
+    <div
+      class="goal-rhythm-mode-pill"
+      class:open={rhythmModeMenuOpen}
+      role="group"
+      aria-label="Goal Rhythm style picker"
+      bind:this={rhythmModePickerEl}
+    >
+      <button
+        class="goal-rhythm-mode-trigger"
+        type="button"
+        aria-label="Choose Goal Rhythm style"
+        aria-haspopup="menu"
+        aria-expanded={rhythmModeMenuOpen}
+        title="Hover to change Goal Rhythm style"
+        bind:this={rhythmModeTriggerEl}
+        on:click={() => (rhythmModeMenuOpen = !rhythmModeMenuOpen)}
+        on:keydown={handleRhythmModeTriggerKeydown}
+      >
+        <span class="goal-rhythm-mode-glyph" aria-hidden="true">
+          {GOAL_RHYTHM_MODES.find((mode) => mode.id === rhythmMode)?.glyph}
+        </span>
+        <span class="goal-rhythm-mode-label">
+          {GOAL_RHYTHM_MODES.find((mode) => mode.id === rhythmMode)?.label}
+        </span>
+        <span class="goal-rhythm-mode-arrow" aria-hidden="true">⌄</span>
+      </button>
+      <div
+        class="goal-rhythm-mode-menu"
+        role="menu"
+        aria-label="Goal Rhythm style options"
+        tabindex="-1"
+        bind:this={rhythmModeMenuEl}
+        on:keydown={handleRhythmModeMenuKeydown}
+      >
         {#each GOAL_RHYTHM_MODES as mode (mode.id)}
-          <option value={mode.id}>{mode.label}</option>
+          <button
+            type="button"
+            role="menuitemradio"
+            aria-checked={rhythmMode === mode.id}
+            class:selected={rhythmMode === mode.id}
+            on:click={() => chooseRhythmMode(mode.id)}
+          >
+            <span aria-hidden="true">{mode.glyph}</span>
+            {mode.label}
+          </button>
         {/each}
-      </select>
-    </label>
+      </div>
+    </div>
     <div class="goal-history-title">
       <strong>Goal rhythm</strong>
       <span>{upcomingGoalCount} upcoming in the next 3 days</span>
