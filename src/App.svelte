@@ -6817,7 +6817,7 @@ return rows`
       />
     {/if}
 
-    {#if goalDoabilityReviews.length > 0}
+    {#if view === 'today' && goalDoabilityReviews.length > 0}
       <GoalDoabilityModal
         reviews={goalDoabilityReviews}
         onClose={() => (goalDoabilityReviews = [])}

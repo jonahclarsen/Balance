@@ -1201,9 +1201,12 @@ test('day generation opens the goal doability review for legacy overdue and repe
   const modal = page.getByRole('dialog', { name: 'Are your goals doable?' })
   await expect(modal).toBeVisible()
   await expect(modal.getByRole('heading', { name: 'Are your goals doable?' })).toBeVisible()
+  await expect(modal.getByRole('heading', { name: 'Goal check-in' })).toHaveCount(0)
+  await expect(modal.getByRole('heading', { name: 'Goals to review' })).toHaveCount(0)
   await expect(modal.getByText('Call someone').locator('..')).toContainText('5 days overdue')
   await expect(modal.getByText('Draw briefly').locator('..')).toContainText('4 days missed')
   await expect(modal.locator('.mascot img')).toBeVisible()
+  await expect(modal.getByTestId('goal-review-sizing')).toContainText(/modal=\d+x\d+px; panels=\d+\/\d+\/\d+px/)
   await expect.poll(() => modal.locator('.goals-to-review ul').evaluate(
     (element) => element.scrollHeight > element.clientHeight,
   )).toBe(true)
@@ -1215,6 +1218,47 @@ test('day generation opens the goal doability review for legacy overdue and repe
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return state.goals.every((goal: { presentationTrackingStartedAt?: string }) => Boolean(goal.presentationTrackingStartedAt))
   })).toBe(true)
+
+  if (testInfo.project.name === 'desktop') {
+    const beforeModal = await modal.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return { width: rect.width, height: rect.height, centerX: rect.x + rect.width / 2, centerY: rect.y + rect.height / 2 }
+    })
+    const cornerHandle = modal.getByRole('button', { name: 'Resize modal width and height' })
+    const cornerBox = await cornerHandle.boundingBox()
+    expect(cornerBox).not.toBeNull()
+    await page.mouse.move(cornerBox!.x + cornerBox!.width / 2, cornerBox!.y + cornerBox!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(cornerBox!.x + cornerBox!.width / 2 + 20, cornerBox!.y + cornerBox!.height / 2 + 28)
+    await page.mouse.up()
+    const afterModal = await modal.evaluate((element) => {
+      const rect = element.getBoundingClientRect()
+      return { width: rect.width, height: rect.height, centerX: rect.x + rect.width / 2, centerY: rect.y + rect.height / 2 }
+    })
+    expect(afterModal.width).toBeGreaterThan(beforeModal.width)
+    expect(afterModal.height).toBeGreaterThan(beforeModal.height)
+    expect(Math.abs(afterModal.centerX - beforeModal.centerX)).toBeLessThanOrEqual(1)
+    expect(Math.abs(afterModal.centerY - beforeModal.centerY)).toBeLessThanOrEqual(1)
+
+    const mascotBefore = await modal.locator('.mascot').evaluate((element) => element.getBoundingClientRect().width)
+    const columnHandle = modal.getByRole('button', { name: 'Resize peacock and guidance sections' })
+    const columnHandleBox = await columnHandle.boundingBox()
+    expect(columnHandleBox).not.toBeNull()
+    await page.mouse.move(columnHandleBox!.x + columnHandleBox!.width / 2, columnHandleBox!.y + columnHandleBox!.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(columnHandleBox!.x + columnHandleBox!.width / 2 + 24, columnHandleBox!.y + columnHandleBox!.height / 2)
+    await page.mouse.up()
+    await expect.poll(() => modal.locator('.mascot').evaluate(
+      (element) => element.getBoundingClientRect().width,
+    )).toBeGreaterThan(mascotBefore + 10)
+
+    await page.getByRole('button', { name: 'Goals', exact: true }).click()
+    await expect(modal).toHaveCount(0)
+    await page.getByRole('button', { name: 'Today', exact: true }).click()
+    await expect(modal).toBeVisible()
+  } else {
+    await expect(modal.getByRole('button', { name: 'Resize modal width and height' })).toBeHidden()
+  }
 
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-goal-doability-review.png`,
