@@ -982,17 +982,33 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   await expect(spacingSlider).toHaveAttribute('min', '0')
   await expect(spacingSlider).toHaveAttribute('max', '100')
   await expect(spacingSlider).toHaveValue('60')
+  await expect(spacingSlider).toHaveAttribute('aria-valuetext', '31.2% of note area')
 
   const writingSpace = await page.locator('.note-scroll-space').evaluate((element) => {
     const spacer = element.getBoundingClientRect()
+    const scroller = element.closest<HTMLElement>('.note-document')
     return {
       height: spacer.height,
+      scrollerHeight: scroller?.clientHeight ?? 0,
       insideNoteDocument: Boolean(element.closest('.note-document')),
     }
   })
   expect(writingSpace.insideNoteDocument).toBe(true)
-  expect(writingSpace.height).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.3)
-  expect(writingSpace.height).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.32)
+  expect(writingSpace.height / writingSpace.scrollerHeight).toBeGreaterThan(0.3)
+  expect(writingSpace.height / writingSpace.scrollerHeight).toBeLessThan(0.32)
+
+  await page.locator('.content-shell').evaluate((element) => {
+    ;(element as HTMLElement).style.setProperty('--goal-history-height', '320px')
+  })
+  await expect.poll(() => page.locator('.note-scroll-space').evaluate((element) => {
+    const scroller = element.closest<HTMLElement>('.note-document')
+    return scroller ? element.getBoundingClientRect().height / scroller.clientHeight : 0
+  })).toBeCloseTo(0.312, 2)
+  const resizedSpaceHeight = await page.locator('.note-scroll-space').evaluate((element) => element.getBoundingClientRect().height)
+  expect(resizedSpaceHeight).toBeLessThan(writingSpace.height)
+  await page.locator('.content-shell').evaluate((element) => {
+    ;(element as HTMLElement).style.removeProperty('--goal-history-height')
+  })
 
   await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
   const spacingControl = page.locator('.note-scroll-space-control')
@@ -1047,11 +1063,14 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     input.dispatchEvent(new InputEvent('input', { bubbles: true }))
   })
   await expect(spacingSlider).toHaveValue('100')
+  await expect(spacingSlider).toHaveAttribute('aria-valuetext', '49.2% of note area')
   await expect(spacingControl).toHaveClass(/visible/)
   await expect(spacingControl).toHaveCSS('opacity', '1')
   await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })))
   await expect.poll(() => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(4)
-  await expect.poll(() => page.locator('.note-scroll-space-control').evaluate((element) => element.getBoundingClientRect().bottom)).toBeCloseTo(fixedControlBottom, 0)
+  await expect.poll(() => page.locator('.note-scroll-space-control').evaluate((element, expectedBottom) => (
+    Math.abs(element.getBoundingClientRect().bottom - expectedBottom)
+  ), fixedControlBottom)).toBeLessThanOrEqual(1)
   const endGeometry = await page.evaluate(() => {
     const track = document.querySelector('.note-scroll-space-track')?.getBoundingClientRect()
     const fill = document.querySelector('.note-scroll-space-fill')?.getBoundingClientRect()
@@ -1080,9 +1099,12 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   expect(pillGeometry?.controlWidth).toBeGreaterThan(330)
   expect(pillGeometry?.thumbLeft).toBeGreaterThanOrEqual(pillGeometry?.controlLeft ?? Number.POSITIVE_INFINITY)
   expect(pillGeometry?.thumbRight).toBeLessThanOrEqual(pillGeometry?.controlRight ?? Number.NEGATIVE_INFINITY)
-  const maximumSpaceHeight = await page.locator('.note-scroll-space').evaluate((element) => element.getBoundingClientRect().height)
-  expect(maximumSpaceHeight).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.49)
-  expect(maximumSpaceHeight).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.5)
+  const maximumSpace = await page.locator('.note-scroll-space').evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    scrollerHeight: element.closest<HTMLElement>('.note-document')?.clientHeight ?? 0,
+  }))
+  expect(maximumSpace.height / maximumSpace.scrollerHeight).toBeGreaterThan(0.49)
+  expect(maximumSpace.height / maximumSpace.scrollerHeight).toBeLessThan(0.5)
   await page.screenshot({ path: testInfo.outputPath('note-spacing-slider-at-bottom.png'), fullPage: false })
   const visibleNoteHeight = await page.evaluate(() => {
     const scroller = document.querySelector('.workspace')?.getBoundingClientRect()

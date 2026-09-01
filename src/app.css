@@ -6624,8 +6624,7 @@ body.mobile-checkbox-dragging {
 .note-scroll-space {
   display: flex;
   flex-direction: column;
-  height: max(56px, var(--note-scroll-space-height, 32vh));
-  height: max(56px, var(--note-scroll-space-dynamic-height, 32dvh));
+  height: max(56px, var(--note-scroll-space-height, 56px));
   align-items: center;
   justify-content: flex-end;
   padding-bottom: 8px;

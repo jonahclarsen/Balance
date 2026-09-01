@@ -15,12 +15,10 @@
   const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
   const LEGACY_NOTE_SCROLL_SPACE_VH_KEY = 'balance:noteScrollSpaceVh'
   const DEFAULT_NOTE_SCROLL_SPACE_PERCENT = 60
-  const MIN_NOTE_SCROLL_SPACE_VH = 6
-  // Keep the existing default height stable while giving the upper 40% of the
-  // slider more range for lifting the final lines higher in the viewport.
-  const DEFAULT_NOTE_SCROLL_SPACE_VH = 31.2
-  // Pull the former 60vh ceiling 20% toward the 6vh minimum.
-  const MAX_NOTE_SCROLL_SPACE_VH = 49.2
+  const MIN_NOTE_SCROLL_SPACE_SHARE = 6
+  // The slider scales against the actual note viewport, excluding Goal Rhythm.
+  const DEFAULT_NOTE_SCROLL_SPACE_SHARE = 31.2
+  const MAX_NOTE_SCROLL_SPACE_SHARE = 49.2
 
   export let notes: Note[]
   export let selectedNoteId: Id
@@ -57,9 +55,11 @@
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
   let noteScrollSpacePercent = DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+  let noteScrollViewportHeight = 0
   let noteScrollSpaceControlVisible = false
   let noteScrollSpaceAdjustmentActive = false
-  $: noteScrollSpaceVh = noteScrollSpaceVhForPercent(noteScrollSpacePercent)
+  $: noteScrollSpaceShare = noteScrollSpaceShareForPercent(noteScrollSpacePercent)
+  $: noteScrollSpaceHeight = noteScrollViewportHeight * noteScrollSpaceShare / 100
   let toolbarSelection: Range | null = null
   let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
   let pointerSelectionFocus: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
@@ -284,11 +284,13 @@
   function trackNoteScrollSpace(node: HTMLDivElement) {
     const scroller = noteScrollContainer()
     if (!scroller) return {}
+    noteScrollViewportHeight = scroller.clientHeight
 
     let frame: number | null = null
     const scrollEventTarget: HTMLElement | Document = scroller === document.scrollingElement ? document : scroller
     const updateVisibility = () => {
       frame = null
+      noteScrollViewportHeight = scroller.clientHeight
       noteScrollSpaceControlVisible = noteScrollSpaceAdjustmentActive || isAtNoteBottom(scroller)
     }
     const scheduleVisibilityUpdate = () => {
@@ -364,31 +366,31 @@
       : DEFAULT_NOTE_SCROLL_SPACE_PERCENT
   }
 
-  function noteScrollSpaceVhForPercent(percent: number) {
+  function noteScrollSpaceShareForPercent(percent: number) {
     if (percent <= DEFAULT_NOTE_SCROLL_SPACE_PERCENT) {
-      return MIN_NOTE_SCROLL_SPACE_VH
-        + (DEFAULT_NOTE_SCROLL_SPACE_VH - MIN_NOTE_SCROLL_SPACE_VH) * percent / DEFAULT_NOTE_SCROLL_SPACE_PERCENT
+      return MIN_NOTE_SCROLL_SPACE_SHARE
+        + (DEFAULT_NOTE_SCROLL_SPACE_SHARE - MIN_NOTE_SCROLL_SPACE_SHARE) * percent / DEFAULT_NOTE_SCROLL_SPACE_PERCENT
     }
 
-    return DEFAULT_NOTE_SCROLL_SPACE_VH
-      + (MAX_NOTE_SCROLL_SPACE_VH - DEFAULT_NOTE_SCROLL_SPACE_VH)
+    return DEFAULT_NOTE_SCROLL_SPACE_SHARE
+      + (MAX_NOTE_SCROLL_SPACE_SHARE - DEFAULT_NOTE_SCROLL_SPACE_SHARE)
         * (percent - DEFAULT_NOTE_SCROLL_SPACE_PERCENT) / (100 - DEFAULT_NOTE_SCROLL_SPACE_PERCENT)
   }
 
-  function noteScrollSpacePercentForVh(value: number) {
+  function noteScrollSpacePercentForLegacyVh(value: number) {
     if (!Number.isFinite(value)) return DEFAULT_NOTE_SCROLL_SPACE_PERCENT
-    const clamped = Math.max(MIN_NOTE_SCROLL_SPACE_VH, Math.min(MAX_NOTE_SCROLL_SPACE_VH, value))
-    if (clamped <= DEFAULT_NOTE_SCROLL_SPACE_VH) {
+    const clamped = Math.max(MIN_NOTE_SCROLL_SPACE_SHARE, Math.min(MAX_NOTE_SCROLL_SPACE_SHARE, value))
+    if (clamped <= DEFAULT_NOTE_SCROLL_SPACE_SHARE) {
       return normalizeNoteScrollSpacePercent(
-        (clamped - MIN_NOTE_SCROLL_SPACE_VH)
-          / (DEFAULT_NOTE_SCROLL_SPACE_VH - MIN_NOTE_SCROLL_SPACE_VH) * DEFAULT_NOTE_SCROLL_SPACE_PERCENT,
+        (clamped - MIN_NOTE_SCROLL_SPACE_SHARE)
+          / (DEFAULT_NOTE_SCROLL_SPACE_SHARE - MIN_NOTE_SCROLL_SPACE_SHARE) * DEFAULT_NOTE_SCROLL_SPACE_PERCENT,
       )
     }
 
     return normalizeNoteScrollSpacePercent(
       DEFAULT_NOTE_SCROLL_SPACE_PERCENT
-        + (clamped - DEFAULT_NOTE_SCROLL_SPACE_VH)
-          / (MAX_NOTE_SCROLL_SPACE_VH - DEFAULT_NOTE_SCROLL_SPACE_VH)
+        + (clamped - DEFAULT_NOTE_SCROLL_SPACE_SHARE)
+          / (MAX_NOTE_SCROLL_SPACE_SHARE - DEFAULT_NOTE_SCROLL_SPACE_SHARE)
           * (100 - DEFAULT_NOTE_SCROLL_SPACE_PERCENT),
     )
   }
@@ -697,7 +699,7 @@
     noteScrollSpacePercent = storedPercent === null
       ? legacyVh === null
         ? DEFAULT_NOTE_SCROLL_SPACE_PERCENT
-        : noteScrollSpacePercentForVh(Number(legacyVh))
+        : noteScrollSpacePercentForLegacyVh(Number(legacyVh))
       : normalizeNoteScrollSpacePercent(Number(storedPercent))
     localStorage.setItem(NOTE_SCROLL_SPACE_PERCENT_KEY, String(noteScrollSpacePercent))
     localStorage.removeItem(LEGACY_NOTE_SCROLL_SPACE_VH_KEY)
@@ -854,7 +856,7 @@
     {#if selectedNote && !trashOpen}
       <div
         class="note-scroll-space"
-        style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh; --note-scroll-space-progress: ${noteScrollSpacePercent}%`}
+        style={`--note-scroll-space-height: ${noteScrollSpaceHeight}px; --note-scroll-space-progress: ${noteScrollSpacePercent}%`}
         use:trackNoteScrollSpace
       >
         <label class="note-scroll-space-control" class:visible={noteScrollSpaceControlVisible}>
@@ -867,6 +869,7 @@
               step="1"
               value={noteScrollSpacePercent}
               aria-label="Bottom writing space"
+              aria-valuetext={`${noteScrollSpaceShare.toFixed(1)}% of note area`}
               on:input={updateNoteScrollSpace}
               on:pointerdown={beginNoteScrollSpaceAdjustment}
             />
