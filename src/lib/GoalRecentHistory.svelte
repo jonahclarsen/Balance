@@ -31,6 +31,14 @@
     }).format(new Date(`${date}T12:00:00`))
   }
 
+  function tooltipDateLabel(date: string): string {
+    return new Intl.DateTimeFormat(undefined, {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+    }).format(new Date(`${date}T12:00:00`))
+  }
+
   function completionSummary(count: number): string {
     if (count === 0) return 'No completions'
     return `${count} completion${count === 1 ? '' : 's'}`
@@ -60,7 +68,7 @@
           aria-label={`Open ${fullDateLabel(date)} in Today view: ${completed ? 'completed' : active ? 'no completion' : 'inactive'}`}
           on:click={() => onOpenDate(date)}
         >
-          <span class="goal-recent-day-tooltip" aria-hidden="true">{fullDateLabel(date)}</span>
+          <span class="goal-recent-day-tooltip" aria-hidden="true">{tooltipDateLabel(date)}</span>
           {#if completed}<span aria-hidden="true">✓</span>{/if}
         </button>
       </li>
