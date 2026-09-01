@@ -54,16 +54,24 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (!question) return
-    if (question.type === 'boolean') {
-      const key = event.key.toLowerCase()
-      if (key === 'y') {
-        event.preventDefault()
-        setBoolean('y')
-      } else if (key === 'n') {
-        event.preventDefault()
-        setBoolean('n')
-      }
+    if (!question || question.type !== 'boolean' || event.altKey || event.ctrlKey || event.metaKey) return
+    const key = event.key.toLowerCase()
+    if (key === 'b') {
+      event.preventDefault()
+      if (!event.repeat) goBack()
+      return
+    }
+    if (key === 's') {
+      event.preventDefault()
+      if (!event.repeat) advance()
+      return
+    }
+    if (key === 'y') {
+      event.preventDefault()
+      setBoolean('y')
+    } else if (key === 'n') {
+      event.preventDefault()
+      setBoolean('n')
     }
   }
 </script>
@@ -105,13 +113,16 @@
     {/if}
 
     <div class="metric-quiz-nav">
-      <button type="button" on:click={goBack} disabled={index === 0}>← Back</button>
+      <button type="button" on:click={goBack} disabled={index === 0}>
+        ← Back
+        {#if question.type === 'boolean'}<kbd>B</kbd>{/if}
+      </button>
       {#if question.type !== 'boolean'}
         <button class="primary" type="button" on:click={submitText}>
           {index >= total - 1 ? 'Finish' : 'Next →'}
         </button>
       {:else}
-        <button type="button" on:click={advance}>Skip →</button>
+        <button type="button" on:click={advance}>Skip <kbd>S</kbd> →</button>
       {/if}
     </div>
   {:else}
@@ -167,7 +178,7 @@
     color: var(--accent-strong);
   }
 
-  .metric-bool-button kbd {
+  .metric-quiz kbd {
     padding: 1px 6px;
     border: 1px solid var(--line-strong);
     border-radius: 4px;

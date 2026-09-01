@@ -25,6 +25,9 @@
   // Modal list panels show the E hint beneath each edit button. The page version
   // omits it because the plain-key shortcut is modal-only.
   export let showEditShortcutHint = false
+  // In the overlay, arrowing onto a metric-linked row starts its survey. Keep
+  // this opt-in so keyboard navigation on the full Lists page stays unchanged.
+  export let openMetricOnArrowSelection = false
 
   let panel: HTMLDivElement
   let scrollContainer: HTMLElement | null = null
@@ -72,8 +75,8 @@
     }
   })
 
-  function flattenIds(items: PlanItem[]): Id[] {
-    return items.flatMap((item) => [item.id, ...flattenIds(item.children)])
+  function flattenItems(items: PlanItem[]): PlanItem[] {
+    return items.flatMap((item) => [item, ...flattenItems(item.children)])
   }
 
   // Selecting a row also moves DOM focus onto it (keeping focus inside the panel
@@ -270,18 +273,27 @@
   // travel: down completes the row being left (including the final row), while
   // up reopens both the row being left and the row being selected.
   export function moveSelection(direction: -1 | 1) {
-    const ids = flattenIds(instance.items)
-    if (ids.length === 0) return
+    const items = flattenItems(instance.items)
+    if (items.length === 0) return
 
-    const currentIndex = selectedItemId ? ids.indexOf(selectedItemId) : -1
+    const currentIndex = selectedItemId ? items.findIndex((item) => item.id === selectedItemId) : -1
     const nextIndex =
       currentIndex === -1
         ? direction === 1
           ? 0
-          : ids.length - 1
-        : Math.min(ids.length - 1, Math.max(0, currentIndex + direction))
+          : items.length - 1
+        : Math.min(items.length - 1, Math.max(0, currentIndex + direction))
+    const nextItem = items[nextIndex]
+    const selectionChanged = nextItem.id !== selectedItemId
 
-    selectItem(ids[nextIndex], direction === 1, true)
+    selectItem(nextItem.id, direction === 1, true)
+    if (!openMetricOnArrowSelection || !selectionChanged) return
+
+    // Resolve only the row reached by this keypress. This avoids maintaining a
+    // reactive full-list link index while adding only the existing bounded
+    // metric-name lookup to an actual selection change.
+    const metricLink = itemMetricLink(nextItem.text, listTemplates, metrics)
+    if (metricLink) onOpenLink(metricLink, nextItem.id)
   }
 
   export function toggleSelectedDone() {

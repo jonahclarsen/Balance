@@ -182,6 +182,80 @@ test('Alt+F opens the metric linked by the selected list item', async ({ page })
   await expect(listDialog).toBeHidden()
 })
 
+test('arrowing onto a metric-linked list item opens its metric', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Metrics', exact: true }).click()
+  await page.getByRole('button', { name: '+ New metric' }).first().click()
+  await page.getByLabel('Metric name').fill('Mood')
+  await page.getByLabel('Question prompt').first().fill('Score')
+  await page.getByRole('group', { name: 'Question type' }).getByRole('button', { name: 'Yes / no' }).click()
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  const listItems = page.locator('[data-list-template-text-input]')
+  await listItems.first().fill('Milk')
+  await page.getByRole('button', { name: '+ Add list item' }).click()
+  await listItems.nth(1).fill('Record Mood')
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const taskInput = page.locator('[data-plan-text-input]').first()
+  await taskInput.fill('Groceries')
+  await taskInput.blur()
+  await page.getByTitle('Open Groceries').first().click()
+
+  const listDialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(listDialog.locator('.plan-row.selected')).toContainText('Milk')
+  await page.keyboard.press('ArrowDown')
+
+  const metricDialog = page.getByRole('dialog', { name: 'Mood' })
+  await expect(metricDialog).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(metricDialog).toBeHidden()
+  await expect(listDialog.locator('.plan-row.selected')).toContainText('Record Mood')
+
+  // Pressing at the boundary is not a new selection and should not repeatedly
+  // reopen the selected row's metric.
+  await page.keyboard.press('ArrowDown')
+  await expect(metricDialog).toBeHidden()
+})
+
+test('B goes back and S skips on yes-no metric questions', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Metrics', exact: true }).click()
+  await page.getByRole('button', { name: '+ New metric' }).first().click()
+  await page.getByLabel('Metric name').fill('Mood')
+  await page.getByLabel('Question prompt').first().fill('Morning')
+  await page.getByRole('group', { name: 'Question type' }).getByRole('button', { name: 'Yes / no' }).click()
+  await page.getByRole('button', { name: '+ Add question' }).click()
+  await page.getByLabel('Question prompt').nth(1).fill('Evening')
+  await page.getByRole('group', { name: 'Question type' }).nth(1).getByRole('button', { name: 'Yes / no' }).click()
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const firstItem = page.locator('[data-plan-text-input]').first()
+  await firstItem.fill('Record Mood')
+  await firstItem.blur()
+  await page.getByTitle('Open Mood').first().click()
+
+  const metricDialog = page.getByRole('dialog', { name: 'Mood' })
+  await expect(metricDialog).toContainText('Question 1 of 2')
+  await expect(metricDialog.getByRole('button', { name: /Back B/ })).toBeVisible()
+  await expect(metricDialog.getByRole('button', { name: /Skip S/ })).toBeVisible()
+
+  await page.keyboard.press('s')
+  await expect(metricDialog).toContainText('Question 2 of 2')
+  await page.keyboard.press('b')
+  await expect(metricDialog).toContainText('Question 1 of 2')
+})
+
 test('list overlay header progress fills as items are checked off', async ({ page }) => {
   const dialog = await openTwoItemGroceriesOverlay(page)
   const progress = dialog.getByRole('progressbar', { name: 'List completion' })

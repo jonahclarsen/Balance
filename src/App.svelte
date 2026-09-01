@@ -6783,6 +6783,7 @@ return rows`
           onOpenLink={(link, itemId) => openLink(link, { container: 'list', containerId: instance.id, itemId })}
           onEditTemplate={(itemId) => editListItemInTemplate(instance, itemId)}
           showEditShortcutHint
+          openMetricOnArrowSelection
         />
       </OverlayModal>
     {/if}
