@@ -91,7 +91,7 @@ test('the goal rhythm search clear button remains visible without focus on mobil
   await expect(clearSearch).toHaveCount(0)
 })
 
-test('goal rhythm offers six persistent visual modes', async ({ page }) => {
+test('goal rhythm offers nine persistent visual modes', async ({ page }) => {
   const rhythm = page.getByRole('region', { name: 'Goal history' })
   const modeTrigger = page.getByRole('button', { name: 'Choose Goal Rhythm style' })
   const modeMenu = page.getByRole('menu', { name: 'Goal Rhythm style options' })
@@ -101,7 +101,10 @@ test('goal rhythm offers six persistent visual modes', async ({ page }) => {
 
   await modeTrigger.hover({ force: true })
   await expect(modeMenu).toBeVisible()
-  await expect(page.getByRole('menuitemradio')).toHaveCount(6)
+  await expect(page.getByRole('menuitemradio')).toHaveCount(9)
+  for (const mode of ['Flow', 'Mosaic', 'Columns', 'Signal', 'Ledger', 'Aurora', 'Constellation', 'Terrace', 'Pulse']) {
+    await expect(page.getByRole('menuitemradio', { name: mode })).toHaveCount(1)
+  }
 
   const selectedRowAlignment = async (name: string) => {
     const [triggerBox, optionBox] = await Promise.all([
@@ -119,15 +122,25 @@ test('goal rhythm offers six persistent visual modes', async ({ page }) => {
   }
 
   expect(await selectedRowAlignment('Flow')).toEqual({ centersAlign: true, horizontalCentersAlign: true })
-  await page.getByRole('menuitemradio', { name: 'Aurora' }).click()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'aurora')
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('aurora')
+  await page.getByRole('menuitemradio', { name: 'Constellation' }).click()
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'constellation')
+
+  await page.mouse.move(1, 1)
+  await modeTrigger.hover({ force: true })
+  await page.getByRole('menuitemradio', { name: 'Terrace' }).click()
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'terrace')
+
+  await page.mouse.move(1, 1)
+  await modeTrigger.hover({ force: true })
+  await page.getByRole('menuitemradio', { name: 'Pulse' }).click()
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'pulse')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('pulse')
 
   await page.reload()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'aurora')
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'pulse')
   await modeTrigger.hover({ force: true })
   await expect(modeMenu).toBeVisible()
-  expect(await selectedRowAlignment('Aurora')).toEqual({ centersAlign: true, horizontalCentersAlign: true })
+  expect(await selectedRowAlignment('Pulse')).toEqual({ centersAlign: true, horizontalCentersAlign: true })
 })
 
 test('columns mode joins mosaic tiles vertically by calendar day', async ({ page }, testInfo) => {
