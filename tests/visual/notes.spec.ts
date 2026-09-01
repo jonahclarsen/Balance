@@ -1033,9 +1033,7 @@ test('note formatting toolbar uses a complete static pink stroke on Iridescent',
     document.body.append(probe)
     const styles = getComputedStyle(element)
     const afterStyles = getComputedStyle(element, '::after')
-    const effectiveZoom = element.offsetWidth > 0
-      ? element.getBoundingClientRect().width / element.offsetWidth
-      : 1
+    const effectiveZoom = element.currentCSSZoom || 1
     const result = {
       borderColors: [styles.borderTopColor, styles.borderRightColor, styles.borderBottomColor, styles.borderLeftColor],
       visualBorderWidths: [styles.borderTopWidth, styles.borderRightWidth, styles.borderBottomWidth, styles.borderLeftWidth]

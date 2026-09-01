@@ -531,6 +531,37 @@ test('page shortcuts preserve IMAX between Today and Notes', async ({ page }, te
   await expect(sidebar).toBeVisible()
 })
 
+test('Today and Notes share the same IMAX header geometry', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'IMAX is desktop-only')
+  await page.setViewportSize({ width: 1600, height: 900 })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const headerGeometry = (header: import('@playwright/test').Locator) => header.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    const titleBounds = element.querySelector('h2')?.getBoundingClientRect()
+    const buttonBounds = element.querySelector('.imax-button')?.getBoundingClientRect()
+    return {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      titleHeight: titleBounds?.height ?? 0,
+      buttonWidth: buttonBounds?.width ?? 0,
+      buttonHeight: buttonBounds?.height ?? 0,
+    }
+  })
+  const todayGeometry = await headerGeometry(page.getByRole('region', { name: 'Daily plan' }).locator('.page-header'))
+
+  await page.keyboard.press('Alt+N')
+  const notesGeometry = await headerGeometry(page.locator('.notes-page-header'))
+
+  for (const key of Object.keys(todayGeometry) as Array<keyof typeof todayGeometry>) {
+    expect(notesGeometry[key], key).toBeCloseTo(todayGeometry[key], 0)
+  }
+})
+
 test('sidebar shows the task time shortcut legend above the template selector', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

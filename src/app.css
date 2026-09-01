@@ -937,6 +937,9 @@ h3 {
 
 .app-shell {
   --app-default-zoom: 1.1;
+  --notes-page-zoom: 1.1;
+  --notes-page-zoom-inverse: 0.9090909091;
+  --imax-page-header-min-height: 51px;
   position: relative;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
@@ -1436,6 +1439,12 @@ nav button.active {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 20px;
+}
+
+@media (min-width: 761px) {
+  .imax-page-header {
+    min-height: var(--imax-page-header-min-height);
+  }
 }
 
 .goal-search-input {
@@ -6320,10 +6329,6 @@ body.mobile-checkbox-dragging {
 }
 
 /* Notes */
-.notes-page-header {
-  margin-bottom: 14px;
-}
-
 .notes-page-actions {
   display: flex;
   align-items: center;
@@ -6337,7 +6342,24 @@ body.mobile-checkbox-dragging {
 }
 
 :root[data-balance-css-zoom] .notes-view-workspace {
-  zoom: 1.1;
+  zoom: var(--notes-page-zoom);
+}
+
+@media (min-width: 761px) {
+  .notes-page-header {
+    min-height: calc(var(--imax-page-header-min-height) * var(--notes-page-zoom-inverse));
+    margin-bottom: calc(20px * var(--notes-page-zoom-inverse));
+  }
+
+  .notes-page-header > * {
+    zoom: var(--notes-page-zoom-inverse);
+  }
+
+  .notes-view-workspace {
+    border-right-width: calc(6px * var(--notes-page-zoom-inverse));
+    border-left-width: calc(6px * var(--notes-page-zoom-inverse));
+    padding: calc(28px * var(--notes-page-zoom-inverse)) calc(22px * var(--notes-page-zoom-inverse));
+  }
 }
 
 .notes-trash-header-button {

@@ -5578,7 +5578,7 @@ return rows`
             on:pointerdown|capture={() => focusPane(plan?.id)}
             on:focusin={() => focusPane(plan?.id)}
           >
-            <header class="page-header">
+            <header class="page-header imax-page-header">
               <div class="day-pane-heading">
                 <p class="eyebrow day-pane-context">
                   <span>{pane.key === 'compare' ? 'Compared day' : 'Daily plan'}</span>
@@ -6119,7 +6119,7 @@ return rows`
     {/if}
 
     {#if view === 'notes'}
-      <header class="page-header notes-page-header">
+      <header class="page-header imax-page-header notes-page-header">
         <div>
           <h2>Notes</h2>
         </div>
