@@ -267,6 +267,7 @@
   .guidance p {
     margin: 0 0 12px;
     color: var(--muted);
+    font-size: 17px;
     line-height: 1.45;
   }
 
@@ -276,7 +277,7 @@
     display: grid;
     gap: 9px;
     color: var(--ink);
-    font-size: 13.5px;
+    font-size: 15.5px;
     line-height: 1.4;
   }
 
@@ -428,7 +429,7 @@
     }
 
     .guidance ul {
-      font-size: 13px;
+      font-size: 15px;
     }
   }
 </style>
