@@ -617,7 +617,7 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   await page.getByLabel('Note title').fill('Project Brain')
 
   const firstBlock = page.locator('[data-note-text-input]').first()
-  await firstBlock.fill('/hea')
+  await firstBlock.fill('/h1')
   await expect(page.getByRole('listbox', { name: 'Note styles' })).toBeVisible()
   await firstBlock.press('Enter')
   await firstBlock.fill('Reference material')
@@ -755,7 +755,8 @@ test('note inline formatting shortcuts and toolbar buttons are true toggles', as
   await expect(underline).toHaveAttribute('aria-pressed', 'true')
 })
 
-test('note formatting toolbar stays visible while scrolling a long note', async ({ page }) => {
+test('note formatting toolbar stays visible in a wide centered workspace while scrolling', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop workspace geometry is covered here')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -767,9 +768,9 @@ test('note formatting toolbar stays visible while scrolling a long note', async 
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
   const formatHint = toolbar.locator('.note-format-hint')
   const slashKey = toolbar.locator('.note-format-hint kbd')
-  const zoomedNotes = page.locator('.notes-workspace')
+  const notesWorkspace = page.locator('.notes-workspace')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
-  await expect(zoomedNotes).toHaveCSS('zoom', '1.1')
+  await expect(notesWorkspace).toHaveCSS('zoom', '1')
   await expect(formatHint).toHaveCSS('display', 'flex')
   await expect(formatHint).toHaveCSS('align-items', 'center')
   await expect(formatHint).toHaveCSS('font-size', '12px')
@@ -786,15 +787,20 @@ test('note formatting toolbar stays visible while scrolling a long note', async 
   })
   expect(hintAlignment).not.toBeNull()
   expect(Math.abs((hintAlignment?.keyCenter ?? 0) - (hintAlignment?.hintCenter ?? 0))).toBeLessThan(1)
-  const zoomGeometry = await page.evaluate(() => {
+  const workspaceGeometry = await page.evaluate(() => {
     const workspaceBounds = document.querySelector('.workspace')?.getBoundingClientRect()
     const notesBounds = document.querySelector('.notes-workspace')?.getBoundingClientRect()
     return workspaceBounds && notesBounds
-      ? { workspaceRight: workspaceBounds.right, notesRight: notesBounds.right }
+      ? {
+          widthRatio: notesBounds.width / workspaceBounds.width,
+          leftGap: notesBounds.left - workspaceBounds.left,
+          rightGap: workspaceBounds.right - notesBounds.right,
+        }
       : null
   })
-  expect(zoomGeometry).not.toBeNull()
-  expect(zoomGeometry?.notesRight).toBeLessThanOrEqual((zoomGeometry?.workspaceRight ?? 0) + 1)
+  expect(workspaceGeometry).not.toBeNull()
+  expect(workspaceGeometry?.widthRatio).toBeGreaterThan(0.94)
+  expect(Math.abs((workspaceGeometry?.leftGap ?? 0) - (workspaceGeometry?.rightGap ?? 0))).toBeLessThan(1)
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
 
   await expect.poll(async () => {
@@ -807,6 +813,47 @@ test('note formatting toolbar stays visible while scrolling a long note', async 
       && top >= 8
       && top <= 48
   }).toBe(true)
+})
+
+test('note formatting toolbar uses a complete static pink stroke on Iridescent', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop toolbar styling is covered here')
+  await page.goto('/')
+  await page.evaluate(() => {
+    localStorage.clear()
+    localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
+      version: 1,
+      themeId: 'iridescent',
+      randomThemeStartDate: '',
+      doneTintColor: '',
+      checkboxColor: '',
+    }))
+  })
+  await page.reload()
+  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  const toolbarStroke = await toolbar.evaluate((element) => {
+    const probe = document.createElement('span')
+    probe.style.color = 'var(--iridescent-border-pink)'
+    document.body.append(probe)
+    const styles = getComputedStyle(element)
+    const afterStyles = getComputedStyle(element, '::after')
+    const result = {
+      borderColors: [styles.borderTopColor, styles.borderRightColor, styles.borderBottomColor, styles.borderLeftColor],
+      borderWidths: [styles.borderTopWidth, styles.borderRightWidth, styles.borderBottomWidth, styles.borderLeftWidth],
+      expectedColor: getComputedStyle(probe).color,
+      afterContent: afterStyles.content,
+      afterAnimation: afterStyles.animationName,
+    }
+    probe.remove()
+    return result
+  })
+  expect(new Set(toolbarStroke.borderColors)).toEqual(new Set([toolbarStroke.expectedColor]))
+  expect(new Set(toolbarStroke.borderWidths)).toEqual(new Set(['1px']))
+  expect(toolbarStroke.afterContent).toBe('none')
+  expect(toolbarStroke.afterAnimation).toBe('none')
+  await page.screenshot({ path: testInfo.outputPath('notes-iridescent-toolbar.png'), fullPage: false })
 })
 
 test('moving the caret onto the final visual line scrolls fully to the page bottom', async ({ page }, testInfo) => {
@@ -1159,7 +1206,7 @@ test('binning a note happens immediately and remains undoable', async ({ page })
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByLabel('Note title').fill('Temporary note')
 
-  await page.locator('.note-actions').getByRole('button', { name: 'Bin it.', exact: true }).click()
+  await page.locator('.note-actions').getByRole('button', { name: 'Bin it', exact: true }).click()
   await expect(page.getByLabel('Note title')).toHaveCount(0)
   await expect(page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true })).toBeVisible()
 
@@ -1176,7 +1223,7 @@ test('Bin keeps notes read-only, restores them, and supports immediate deletion'
   await page.getByLabel('Note title').fill('Recoverable thought')
   await page.getByLabel('Note text').fill('Worth keeping after all')
 
-  await page.locator('.note-actions').getByRole('button', { name: 'Bin it.', exact: true }).click()
+  await page.locator('.note-actions').getByRole('button', { name: 'Bin it', exact: true }).click()
   await page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true }).click()
 
   await expect(page.getByRole('heading', { name: 'Recoverable thought' })).toBeVisible()
@@ -1188,7 +1235,7 @@ test('Bin keeps notes read-only, restores them, and supports immediate deletion'
   await expect(page.getByLabel('Note title')).toHaveValue('Recoverable thought')
   await expect(page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true })).toBeVisible()
 
-  await page.locator('.note-actions').getByRole('button', { name: 'Bin it.', exact: true }).click()
+  await page.locator('.note-actions').getByRole('button', { name: 'Bin it', exact: true }).click()
   await page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true }).click()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Delete now' }).click()
@@ -1212,7 +1259,7 @@ test('notes expire from Bin after 30 days', async ({ page }) => {
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByLabel('Note title').fill('Old discarded note')
 
-  await page.locator('.note-actions').getByRole('button', { name: 'Bin it.', exact: true }).click()
+  await page.locator('.note-actions').getByRole('button', { name: 'Bin it', exact: true }).click()
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     state.notes[0].deletedAt = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000).toISOString()

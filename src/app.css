@@ -695,7 +695,6 @@
   .metric-card,
   .notes-workspace,
   .note-trash-notice,
-  .note-format-toolbar,
   .note-scroll-space-control,
   .note-slash-icon
 ) {
@@ -734,7 +733,6 @@
   .metric-card,
   .notes-workspace,
   .note-trash-notice,
-  .note-format-toolbar,
   .note-scroll-space-control,
   .note-slash-icon
 )::after {
@@ -774,10 +772,13 @@
   .recovery-dialog,
   .paste-review,
   .recovery-json,
-  .notes-workspace,
-  .note-format-toolbar
+  .notes-workspace
 )::after {
   inset: 0;
+}
+
+:root[data-theme='iridescent'] .note-format-toolbar {
+  border-color: var(--iridescent-border-pink);
 }
 
 :root[data-theme='iridescent'] :is(
@@ -5992,12 +5993,10 @@ body.mobile-checkbox-dragging {
   box-shadow: var(--shadow);
 }
 
-@media (min-width: 761px) {
-  .notes-view-workspace > .notes-page-header,
-  .notes-view-workspace > .notes-workspace {
-    width: 90.9091%;
-    zoom: 1.1;
-  }
+.notes-view-workspace > .notes-page-header,
+.notes-view-workspace > .notes-workspace {
+  width: 100%;
+  margin-inline: auto;
 }
 
 .notes-sidebar {
@@ -6005,8 +6004,8 @@ body.mobile-checkbox-dragging {
   top: 8px;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  max-height: calc((100vh - 100px) / 1.1);
-  max-height: calc((100dvh - 100px) / 1.1);
+  max-height: calc(100vh - 100px);
+  max-height: calc(100dvh - 100px);
   gap: 10px;
   min-width: 0;
   padding: 14px;

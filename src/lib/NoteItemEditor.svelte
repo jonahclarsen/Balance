@@ -34,9 +34,9 @@
   let slashQuery: string | null = null
   let slashIndex = 0
   let noteBlockElement: HTMLDivElement
-  const blockCommands: { kind: NoteItemKind; label: string; hint: string }[] = [
+  const blockCommands: { kind: NoteItemKind; label: string; hint: string; aliases?: string[] }[] = [
     { kind: 'paragraph', label: 'Text', hint: 'Plain body text' },
-    { kind: 'heading', label: 'Heading', hint: 'Large section heading' },
+    { kind: 'heading', label: 'Heading', hint: 'Large section heading', aliases: ['h1', 'header'] },
     { kind: 'bullet', label: 'Bulleted list', hint: 'Start a simple list' },
     { kind: 'numbered', label: 'Numbered list', hint: 'Start an ordered list' },
     { kind: 'checklist', label: 'Checklist', hint: 'Track something to do' },
@@ -45,7 +45,8 @@
   $: itemNumber = numberedPosition(siblings, item.id)
   $: slashCommands = slashQuery === null
     ? []
-    : blockCommands.filter((command) => command.label.toLocaleLowerCase().includes(slashQuery ?? ''))
+    : blockCommands.filter((command) => [command.label, ...(command.aliases ?? [])]
+      .some((term) => term.toLocaleLowerCase().includes(slashQuery ?? '')))
   $: if (slashIndex >= slashCommands.length) slashIndex = 0
 
   function positionSlashMenu(node: HTMLDivElement) {
