@@ -35,6 +35,7 @@
         { keys: ['mod', 'Z'], label: 'Undo' },
         { keys: ['mod', 'shift', 'Z'], label: 'Redo', alt: ['mod', 'shift', 'C'] },
         { keys: ['mod', 'shift', 'P'], label: 'Open recovery panel' },
+        { keys: ['mod', 'shift', 'G'], label: 'Generate selected day' },
         { keys: ['alt', 'A'], label: 'Toggle goal rhythm' },
         { keys: ['alt', 'I'], label: 'Toggle IMAX mode' },
         { keys: ['?'], label: 'Show this shortcuts reference' },

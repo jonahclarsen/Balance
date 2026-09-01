@@ -3031,6 +3031,12 @@ return rows`
       return
     }
 
+    if (primaryModifier && event.shiftKey && !event.altKey && event.code === 'KeyG') {
+      event.preventDefault()
+      if (!event.repeat) void generateSelectedDay()
+      return
+    }
+
     if (event.altKey && !primaryModifier && !event.shiftKey) {
       if (event.code === 'KeyI' && (view === 'today' || view === 'notes')) {
         event.preventDefault()

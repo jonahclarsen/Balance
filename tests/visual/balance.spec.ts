@@ -4585,6 +4585,18 @@ test('generating from a future date uses the selected date and latest template e
     .toBe('Future plan item')
 })
 
+test('Cmd+Shift+G generates the selected day', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.locator('input[type="date"]').fill('2030-01-15')
+  await page.keyboard.press('Meta+Shift+G')
+
+  await expect(page.locator('input[type="date"]')).toHaveValue('2030-01-15')
+  await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Wake up' })).toBeVisible()
+})
+
 test('blank template options show skip placeholder and skip generated plan item', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
