@@ -2244,6 +2244,22 @@ return rows`
     goalRhythmVisible = goalRhythmVisibleBeforeMaximize
   }
 
+  function viewSupportsImax(targetView: View) {
+    return targetView === 'today' || targetView === 'notes'
+  }
+
+  function switchViewFromShortcut(nextView: View) {
+    if (maximizedView) {
+      if (viewSupportsImax(view) && viewSupportsImax(nextView)) {
+        maximizeClickHandoff = null
+        maximizedView = nextView
+      } else {
+        leaveViewMaximized()
+      }
+    }
+    view = nextView
+  }
+
   function toggleViewMaximized(targetView: View, event?: MouseEvent) {
     if (maximizedView === targetView) {
       leaveViewMaximized()
@@ -3099,7 +3115,7 @@ return rows`
       if (sidebarView) {
         event.preventDefault()
         if (sidebarView === 'settings' && view === 'today') captureRenderedPlanSnapshot()
-        view = sidebarView
+        switchViewFromShortcut(sidebarView)
         return
       }
 
@@ -3118,7 +3134,7 @@ return rows`
       if (event.code === 'KeyT') {
         event.preventDefault()
         if (view === 'today') plannerStore.setActivePlanDate(todayISO())
-        else view = 'today'
+        else switchViewFromShortcut('today')
         return
       }
 
@@ -3130,7 +3146,7 @@ return rows`
 
       if (event.code === 'KeyB') {
         event.preventDefault()
-        view = 'today'
+        switchViewFromShortcut('today')
         toggleCompareDay()
         return
       }

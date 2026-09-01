@@ -482,6 +482,40 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   await expect(dateInput).toHaveValue(originalDate)
 })
 
+test('page shortcuts preserve IMAX between Today and Notes', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'IMAX is desktop-only')
+  await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const appShell = page.locator('.app-shell')
+  const sidebar = page.locator('.sidebar')
+  const exitImaxButton = page.locator('.imax-exit-control').getByRole('button', { name: 'Exit IMAX mode' })
+
+  await page.getByRole('region', { name: 'Daily plan' }).getByRole('button', { name: 'Enter IMAX mode' }).click()
+  await expect(appShell).toHaveClass(/page-maximized/)
+  await expect(page.locator('.imax-click-handoff')).toHaveCount(1)
+
+  await page.keyboard.press('Alt+N')
+  await expect(page.locator('.notes-workspace')).toBeVisible()
+  await expect(appShell).toHaveClass(/page-maximized/)
+  await expect(exitImaxButton).toBeVisible()
+  await expect(sidebar).toBeHidden()
+  await expect(page.locator('.imax-click-handoff')).toHaveCount(0)
+
+  await page.keyboard.press('Alt+T')
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
+  await expect(appShell).toHaveClass(/page-maximized/)
+  await expect(exitImaxButton).toBeVisible()
+  await expect(sidebar).toBeHidden()
+
+  await page.keyboard.press('Alt+D')
+  await expect(appShell).not.toHaveClass(/page-maximized/)
+  await expect(exitImaxButton).toHaveCount(0)
+  await expect(sidebar).toBeVisible()
+})
+
 test('sidebar shows the task time shortcut legend above the template selector', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
