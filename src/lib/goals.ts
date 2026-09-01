@@ -699,8 +699,11 @@ function markSegment(
     cell.segmentStart = index === startIndex
     cell.segmentEnd = index === endIndex
     cell.relieved = satisfied && !cell.completed
-    cell.missed = failed && !cell.completed && cell.date <= deadline
-    cell.overdue = !satisfied && !cell.completed && cell.date > deadline && cell.date <= currentDate
+    // Once a cadence window fails, put the X on the closed deadline and every
+    // subsequently elapsed day. The current day stays open because it is still
+    // actionable, even though the goal itself is already overdue.
+    cell.missed = failed && !cell.completed && cell.date < deadline
+    cell.overdue = !satisfied && !cell.completed && cell.date >= deadline && cell.date < currentDate
     cell.current = isCurrentSegment
   }
 }

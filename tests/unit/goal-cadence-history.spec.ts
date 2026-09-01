@@ -65,11 +65,32 @@ test('Goal Rhythm preserves old cadence cells and starts a fresh window at the c
   const cells = buildGoalDayCells(changed, [completion('2026-08-30')], dates, '2026-09-02')
   const byDate = new Map(cells.map((cell) => [cell.date, cell]))
 
-  expect(byDate.get('2026-08-29')).toEqual(expect.objectContaining({ missed: true, segmentEnd: true }))
+  expect(byDate.get('2026-08-29')).toEqual(expect.objectContaining({ overdue: true, segmentEnd: true }))
   expect(byDate.get('2026-08-30')).toEqual(expect.objectContaining({ completed: true, segmentStart: true, segmentEnd: true }))
   expect(byDate.get('2026-08-31')).toEqual(expect.objectContaining({ missed: true, segmentStart: true }))
-  expect(byDate.get('2026-09-01')).toEqual(expect.objectContaining({ missed: true }))
-  expect(byDate.get('2026-09-02')).toEqual(expect.objectContaining({ overdue: true, segmentEnd: true }))
+  expect(byDate.get('2026-09-01')).toEqual(expect.objectContaining({ overdue: true }))
+  expect(byDate.get('2026-09-02')).toEqual(expect.objectContaining({ missed: false, overdue: false, segmentEnd: true }))
+})
+
+test('a daily goal marks the closed missed day rather than the actionable current day', () => {
+  const daily = normalizeGoal(goal({
+    cadenceDays: 1,
+    activityPeriods: [{ startDate: '2026-08-31', endDate: null }],
+  }))
+  const cells = buildGoalDayCells(daily, [], ['2026-08-31', '2026-09-01'], '2026-09-01')
+  const byDate = new Map(cells.map((cell) => [cell.date, cell]))
+
+  expect(byDate.get('2026-08-31')).toEqual(expect.objectContaining({ overdue: true, segmentStart: true }))
+  expect(byDate.get('2026-09-01')).toEqual(expect.objectContaining({
+    active: true,
+    missed: false,
+    overdue: false,
+    segmentEnd: true,
+  }))
+  expect(goalDaysUntilLapse(daily, [], '2026-09-01')).toBe(-1)
+
+  const stillDueToday = buildGoalDayCells(daily, [], ['2026-08-31'], '2026-08-31')[0]
+  expect(stillDueToday).toEqual(expect.objectContaining({ missed: false, overdue: false }))
 })
 
 test('current urgency is measured from the latest cadence boundary', () => {
