@@ -4285,7 +4285,7 @@ body.mobile-checkbox-dragging {
 
 .goal-rhythm-mode-trigger {
   display: inline-flex;
-  min-width: 100px;
+  width: 138px;
   height: 28px;
   align-items: center;
   gap: 4px;
@@ -4301,6 +4301,7 @@ body.mobile-checkbox-dragging {
 .goal-rhythm-mode-pill.open .goal-rhythm-mode-trigger {
   border-color: var(--accent);
   background: var(--active-nav);
+  opacity: 0;
 }
 
 .goal-rhythm-mode-trigger:focus-visible {
@@ -4337,44 +4338,33 @@ body.mobile-checkbox-dragging {
 
 .goal-rhythm-mode-menu {
   position: absolute;
-  bottom: calc(100% + 5px);
+  top: var(--goal-rhythm-menu-offset);
   left: 0;
   display: grid;
   width: 138px;
-  gap: 2px;
+  gap: 1px;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   background: var(--paper);
   box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 18%, transparent);
-  padding: 5px;
+  padding: 4px;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-4px);
   visibility: hidden;
-  transition: opacity 100ms ease, transform 100ms ease, visibility 100ms;
-}
-
-.goal-rhythm-mode-menu::before {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  left: 0;
-  height: 6px;
-  content: '';
+  transition: opacity 100ms ease, visibility 100ms;
 }
 
 .goal-rhythm-mode-pill:hover .goal-rhythm-mode-menu,
 .goal-rhythm-mode-pill.open .goal-rhythm-mode-menu {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
   visibility: visible;
 }
 
 .goal-rhythm-mode-menu button {
   display: grid;
   min-width: 0;
-  height: 30px;
+  height: 26px;
   grid-template-columns: 18px minmax(0, 1fr);
   align-items: center;
   gap: 6px;

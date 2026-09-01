@@ -344,6 +344,7 @@
       class:open={rhythmModeMenuOpen}
       role="group"
       aria-label="Goal Rhythm style picker"
+      style={`--goal-rhythm-menu-offset: ${-3.5 - GOAL_RHYTHM_MODES.findIndex((mode) => mode.id === rhythmMode) * 27}px`}
       bind:this={rhythmModePickerEl}
     >
       <button
