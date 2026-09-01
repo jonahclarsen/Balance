@@ -91,7 +91,7 @@ test('the goal rhythm search clear button remains visible without focus on mobil
   await expect(clearSearch).toHaveCount(0)
 })
 
-test('goal rhythm offers seven persistent visual modes with one highlighted selection', async ({ page }) => {
+test('goal rhythm offers nine persistent visual modes with one highlighted selection', async ({ page }) => {
   const rhythm = page.getByRole('region', { name: 'Goal history' })
   const modeTrigger = page.getByRole('button', { name: 'Choose Goal Rhythm style' })
   const modeMenu = page.getByRole('menu', { name: 'Goal Rhythm style options' })
@@ -101,13 +101,23 @@ test('goal rhythm offers seven persistent visual modes with one highlighted sele
 
   await modeTrigger.hover({ force: true })
   await expect(modeMenu).toBeVisible()
-  await expect(page.getByRole('menuitemradio')).toHaveCount(7)
-  for (const mode of ['Flow', 'Mosaic', 'Columns', 'Signal', 'Ledger', 'Aurora', 'Constellation']) {
-    await expect(page.getByRole('menuitemradio', { name: mode })).toHaveCount(1)
+  await expect(page.getByRole('menuitemradio')).toHaveCount(9)
+  for (const mode of [
+    'Flow',
+    'Flow Dots',
+    'Flow Tide',
+    'Mosaic',
+    'Columns',
+    'Signal',
+    'Ledger',
+    'Aurora',
+    'Constellation',
+  ]) {
+    await expect(page.getByRole('menuitemradio', { name: mode, exact: true })).toHaveCount(1)
   }
 
   const storedModeBeforePreview = await page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))
-  const flowOption = page.getByRole('menuitemradio', { name: 'Flow' })
+  const flowOption = page.getByRole('menuitemradio', { name: 'Flow', exact: true })
   const mosaicOption = page.getByRole('menuitemradio', { name: 'Mosaic' })
   await mosaicOption.hover()
   await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'mosaic')
@@ -123,7 +133,7 @@ test('goal rhythm offers seven persistent visual modes with one highlighted sele
   const selectedRowAlignment = async (name: string) => {
     const [triggerBox, optionBox] = await Promise.all([
       modeTrigger.boundingBox(),
-      page.getByRole('menuitemradio', { name }).boundingBox(),
+      page.getByRole('menuitemradio', { name, exact: true }).boundingBox(),
     ])
     if (!triggerBox || !optionBox) return null
     const triggerCenterX = triggerBox.x + triggerBox.width / 2
@@ -141,6 +151,13 @@ test('goal rhythm offers seven persistent visual modes with one highlighted sele
   )
 
   expect(await selectedRowAlignment('Flow')).toEqual({ centersAlign: true, horizontalCentersAlign: true })
+  await page.getByRole('menuitemradio', { name: 'Flow Dots', exact: true }).click()
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-dots')
+  expect(await highlightedOptions()).toEqual(['Flow Dots'])
+  await page.getByRole('menuitemradio', { name: 'Flow Tide', exact: true }).click()
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-tide')
+  expect(await highlightedOptions()).toEqual(['Flow Tide'])
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('flow-tide')
   await page.getByRole('menuitemradio', { name: 'Mosaic' }).click()
   expect(await highlightedOptions()).toEqual(['Mosaic'])
   await page.getByRole('menuitemradio', { name: 'Columns' }).click()
@@ -166,6 +183,53 @@ test('goal rhythm offers seven persistent visual modes with one highlighted sele
 
   await page.mouse.move(1, 1)
   await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'signal')
+})
+
+test('flow variants preserve the cadence band and distinguish overdue days', async ({ page }) => {
+  const historyStart = addDays(todayISO(), -6)
+  await page.evaluate((historyStart) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const timestamp = new Date().toISOString()
+    state.goals = [{
+      id: 'goal_flow_patterns',
+      name: 'Flow patterns',
+      cadenceDays: 2,
+      matchTerms: ['flow'],
+      hue: 205,
+      activityPeriods: [{ startDate: historyStart, endDate: null }],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }]
+    state.goalCompletions = []
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, historyStart)
+  await page.reload()
+
+  const appearances = await page.evaluate(() => {
+    const rhythm = document.querySelector<HTMLElement>('.goal-history-panel')
+    const activeCell = document.querySelector<HTMLElement>('.goal-day-cell.active:not(.overdue)')
+    const overdueCell = document.querySelector<HTMLElement>('.goal-day-cell.overdue')
+    if (!rhythm || !activeCell || !overdueCell) throw new Error('Could not find Flow pattern cells')
+
+    return ['flow', 'flow-dots', 'flow-tide'].map((mode) => {
+      rhythm.dataset.rhythmMode = mode
+      return {
+        mode,
+        activeBackground: getComputedStyle(activeCell).backgroundImage,
+        overdueOverlay: getComputedStyle(overdueCell, '::before').backgroundImage,
+      }
+    })
+  })
+
+  expect(appearances.map(({ activeBackground }) => activeBackground)).toEqual([
+    appearances[0].activeBackground,
+    appearances[0].activeBackground,
+    appearances[0].activeBackground,
+  ])
+  expect(appearances[0].overdueOverlay).toContain('repeating-linear-gradient')
+  expect(appearances[1].overdueOverlay).toContain('radial-gradient')
+  expect(appearances[2].overdueOverlay).toContain('linear-gradient(to top')
+  expect(new Set(appearances.map(({ overdueOverlay }) => overdueOverlay)).size).toBe(3)
 })
 
 test('columns mode joins mosaic tiles vertically by calendar day', async ({ page }, testInfo) => {
@@ -1681,9 +1745,11 @@ test('goal rhythm uses one smooth scroll surface across its name and timeline pa
     })
     rhythm.dataset.rhythmMode = 'flow'
     return measurements
-  }, ['flow', 'mosaic', 'columns', 'signal', 'ledger', 'aurora', 'constellation'])
+  }, ['flow', 'flow-dots', 'flow-tide', 'mosaic', 'columns', 'signal', 'ledger', 'aurora', 'constellation'])
   expect(modeGeometry).toEqual([
     { mode: 'flow', maximumTopDifference: 0, maximumHeightDifference: 0 },
+    { mode: 'flow-dots', maximumTopDifference: 0, maximumHeightDifference: 0 },
+    { mode: 'flow-tide', maximumTopDifference: 0, maximumHeightDifference: 0 },
     { mode: 'mosaic', maximumTopDifference: 0, maximumHeightDifference: 0 },
     { mode: 'columns', maximumTopDifference: 0, maximumHeightDifference: 0 },
     { mode: 'signal', maximumTopDifference: 0, maximumHeightDifference: 0 },

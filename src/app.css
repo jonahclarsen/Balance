@@ -4873,9 +4873,14 @@ body.mobile-checkbox-dragging {
   padding-block: 5px;
 }
 
-/* Flow — connected cadence bands, with a little more direction and depth than
-   the original Goal Rhythm treatment. */
-.goal-history-panel[data-rhythm-mode='flow'] .goal-day-cell.active {
+/* The Flow family shares one connected cadence band. Its variants change only
+   the overdue overlay so switching between them keeps every other visual cue
+   in place. */
+.goal-history-panel:is(
+  [data-rhythm-mode='flow'],
+  [data-rhythm-mode='flow-dots'],
+  [data-rhythm-mode='flow-tide']
+) .goal-day-cell.active {
   background-image: linear-gradient(
     105deg,
     hsl(var(--goal-hue) 55% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%))),
@@ -4883,9 +4888,40 @@ body.mobile-checkbox-dragging {
   );
 }
 
-.goal-history-panel[data-rhythm-mode='flow'] .goal-history-name:nth-child(even),
-.goal-history-panel[data-rhythm-mode='flow'] .goal-history-day-row:nth-child(odd) {
+.goal-history-panel:is(
+  [data-rhythm-mode='flow'],
+  [data-rhythm-mode='flow-dots'],
+  [data-rhythm-mode='flow-tide']
+) .goal-history-name:nth-child(even),
+.goal-history-panel:is(
+  [data-rhythm-mode='flow'],
+  [data-rhythm-mode='flow-dots'],
+  [data-rhythm-mode='flow-tide']
+) .goal-history-day-row:nth-child(odd) {
   background: color-mix(in srgb, var(--sidebar) 28%, transparent);
+}
+
+/* Flow Dots — overdue days become a stippled danger field. */
+.goal-history-panel[data-rhythm-mode='flow-dots'] .goal-day-cell.overdue::before {
+  background-color: color-mix(in srgb, var(--danger) 11%, var(--paper));
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--danger) 62%, transparent) 0 1.25px,
+    transparent 1.5px
+  );
+  background-position: 1px 1px;
+  background-size: 6px 6px;
+}
+
+/* Flow Tide — overdue days carry a low, continuous danger-waterline. */
+.goal-history-panel[data-rhythm-mode='flow-tide'] .goal-day-cell.overdue::before {
+  background-color: color-mix(in srgb, var(--danger) 7%, transparent);
+  background-image: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--danger) 31%, var(--paper)) 0 34%,
+    color-mix(in srgb, var(--danger) 68%, transparent) 34% 38%,
+    transparent 38% 100%
+  );
 }
 
 /* Mosaic — each day is a tactile tile instead of part of a continuous band. */
@@ -5541,7 +5577,11 @@ body.mobile-checkbox-dragging {
   /* On phones, each visual language also chooses how much space belongs to
      goal names versus the timeline: overview modes expose more days, while
      reading-oriented modes preserve more of each name. */
-  .goal-history-panel[data-rhythm-mode='flow'] .goal-history-body {
+  .goal-history-panel:is(
+    [data-rhythm-mode='flow'],
+    [data-rhythm-mode='flow-dots'],
+    [data-rhythm-mode='flow-tide']
+  ) .goal-history-body {
     --goal-name-pane-width: min(58vw, 210px);
   }
 

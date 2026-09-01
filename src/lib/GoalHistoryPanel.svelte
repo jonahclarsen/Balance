@@ -16,6 +16,8 @@
 
   type GoalRhythmMode =
     | 'flow'
+    | 'flow-dots'
+    | 'flow-tide'
     | 'mosaic'
     | 'columns'
     | 'signal'
@@ -26,6 +28,8 @@
   const GOAL_RHYTHM_MODE_KEY = 'balance.goalRhythmMode.v1'
   const GOAL_RHYTHM_MODES: Array<{ id: GoalRhythmMode; label: string; glyph: string }> = [
     { id: 'flow', label: 'Flow', glyph: '≋' },
+    { id: 'flow-dots', label: 'Flow Dots', glyph: '⡇' },
+    { id: 'flow-tide', label: 'Flow Tide', glyph: '▂' },
     { id: 'mosaic', label: 'Mosaic', glyph: '▦' },
     { id: 'columns', label: 'Columns', glyph: '▥' },
     { id: 'signal', label: 'Signal', glyph: '•—' },
