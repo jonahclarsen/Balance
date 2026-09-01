@@ -234,7 +234,21 @@ test('the Notes sidebar list scrolls independently and keeps New beside the filt
   )).toBeLessThanOrEqual(2)
 
   const workspace = page.locator('.workspace')
+  const noteDocument = page.locator('.note-document')
   const notesList = sidebar.locator('.notes-list')
+  const noteEditor = page.locator('[data-note-text-input]').first()
+  await noteEditor.fill(Array.from({ length: 80 }, (_, index) => `Pinned sidebar line ${index + 1}`).join('\n'))
+  const sidebarBeforeNoteScroll = await sidebar.boundingBox()
+  await noteDocument.evaluate((element) => { element.scrollTop = element.scrollHeight })
+  await expect.poll(() => noteDocument.evaluate((element) => element.scrollTop)).toBeGreaterThan(0)
+  const sidebarAfterNoteScroll = await sidebar.boundingBox()
+  expect(sidebarBeforeNoteScroll).not.toBeNull()
+  expect(sidebarAfterNoteScroll).not.toBeNull()
+  expect(sidebarAfterNoteScroll?.x).toBeCloseTo(sidebarBeforeNoteScroll?.x ?? 0, 0)
+  expect(sidebarAfterNoteScroll?.y).toBeCloseTo(sidebarBeforeNoteScroll?.y ?? 0, 0)
+  expect(sidebarAfterNoteScroll?.height).toBeCloseTo(sidebarBeforeNoteScroll?.height ?? 0, 0)
+  await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBe(0)
+
   const before = await page.evaluate(() => ({
     workspace: document.querySelector<HTMLElement>('.workspace')?.scrollTop ?? -1,
     listClientHeight: document.querySelector<HTMLElement>('.notes-list')?.clientHeight ?? -1,
@@ -249,7 +263,7 @@ test('the Notes sidebar list scrolls independently and keeps New beside the filt
   await page.screenshot({ path: testInfo.outputPath('notes-sidebar.png') })
 })
 
-test('note style menu escapes the note card and stays inside the viewport', async ({ page }, testInfo) => {
+test('note style menu stays visible inside the note scroller and viewport', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop popup placement is covered here')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -285,7 +299,7 @@ test('note style menu escapes the note card and stays inside the viewport', asyn
   expect(geometry).not.toBeNull()
   expect(geometry?.menuTop).toBeGreaterThanOrEqual(8)
   expect(geometry?.menuBottom).toBeLessThanOrEqual((geometry?.viewportHeight ?? 0) - 8)
-  expect(geometry?.menuBottom).toBeGreaterThan(geometry?.noteBottom ?? Number.POSITIVE_INFINITY)
+  expect(geometry?.menuBottom).toBeLessThanOrEqual(geometry?.noteBottom ?? 0)
 })
 
 test('shift arrow keys extend note selection to the matching position on an adjacent block', async ({ page }) => {
@@ -795,6 +809,7 @@ test('note formatting toolbar stays visible in a wide centered workspace while s
 
   const editor = page.locator('[data-note-text-input]').first()
   const workspace = page.locator('.workspace')
+  const noteDocument = page.locator('.note-document')
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
   const formatHint = toolbar.locator('.note-format-hint')
   const slashKey = toolbar.locator('.note-format-hint kbd')
@@ -831,10 +846,10 @@ test('note formatting toolbar stays visible in a wide centered workspace while s
   expect(workspaceGeometry).not.toBeNull()
   expect(workspaceGeometry?.widthRatio).toBeGreaterThan(0.94)
   expect(Math.abs((workspaceGeometry?.leftGap ?? 0) - (workspaceGeometry?.rightGap ?? 0))).toBeLessThan(1)
-  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await noteDocument.evaluate((element) => element.scrollTo({ top: element.scrollHeight / 2 }))
 
   await expect.poll(async () => {
-    const workspaceBox = await workspace.boundingBox()
+    const workspaceBox = await noteDocument.boundingBox()
     const toolbarBox = await toolbar.boundingBox()
     if (!workspaceBox || !toolbarBox) return false
     const top = toolbarBox.y - workspaceBox.y
@@ -843,6 +858,19 @@ test('note formatting toolbar stays visible in a wide centered workspace while s
       && top >= 8
       && top <= 48
   }).toBe(true)
+
+  const stickyOffsets = await noteDocument.evaluate((scroller) => {
+    const toolbarElement = scroller.querySelector<HTMLElement>('.note-format-toolbar')
+    if (!toolbarElement) return []
+    return [0.5, 0.75, 1].map((progress) => {
+      scroller.scrollTop = (scroller.scrollHeight - scroller.clientHeight) * progress
+      return toolbarElement.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    })
+  })
+  expect(stickyOffsets).toHaveLength(3)
+  expect(Math.max(...stickyOffsets) - Math.min(...stickyOffsets)).toBeLessThanOrEqual(1)
+  await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBe(0)
+  await page.screenshot({ path: testInfo.outputPath('notes-toolbar-sticky.png'), fullPage: false })
 })
 
 test('note formatting toolbar uses a complete static pink stroke on Iridescent', async ({ page }, testInfo) => {
@@ -895,7 +923,7 @@ test('moving the caret onto the final visual line scrolls fully to the page bott
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const editor = page.locator('[data-note-text-input]').first()
-  const workspace = page.locator('.workspace')
+  const workspace = page.locator('.note-document')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Caret scroll line ${index + 1}`).join('\n'))
   await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
   await placeCaretOnLastLine(editor)
@@ -913,7 +941,7 @@ test('Enter moves the caret into the newly created note line', async ({ page }) 
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const firstEditor = page.locator('[data-note-text-input]').first()
-  const workspace = page.locator('.workspace')
+  const workspace = page.locator('.note-document')
   await firstEditor.fill(Array.from({ length: 80 }, (_, index) => `Enter focus line ${index + 1}`).join('\n'))
   await placeCaretAtEnd(firstEditor)
   await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
@@ -946,7 +974,7 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const editor = page.locator('[data-note-text-input]').first()
-  const workspace = page.locator('.workspace')
+  const workspace = page.locator('.note-document')
   const spacingSlider = page.getByLabel('Bottom writing space')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
   await expect(editor).toHaveCSS('line-height', '25.5px')
@@ -957,16 +985,12 @@ test('notes save adjustable breathing room and follow the final caret to the bot
 
   const writingSpace = await page.locator('.note-scroll-space').evaluate((element) => {
     const spacer = element.getBoundingClientRect()
-    const notesWorkspace = element.previousElementSibling
-    const workspaceBounds = notesWorkspace?.getBoundingClientRect()
     return {
       height: spacer.height,
-      outsideNotesWorkspace: notesWorkspace?.classList.contains('notes-workspace') && !notesWorkspace.contains(element),
-      startsAfterNotesWorkspace: workspaceBounds ? spacer.top >= workspaceBounds.bottom : false,
+      insideNoteDocument: Boolean(element.closest('.note-document')),
     }
   })
-  expect(writingSpace.outsideNotesWorkspace).toBe(true)
-  expect(writingSpace.startsAfterNotesWorkspace).toBe(true)
+  expect(writingSpace.insideNoteDocument).toBe(true)
   expect(writingSpace.height).toBeGreaterThan((page.viewportSize()?.height ?? 0) * 0.3)
   expect(writingSpace.height).toBeLessThan((page.viewportSize()?.height ?? 0) * 0.32)
 
@@ -1104,15 +1128,32 @@ test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   await openNotesView(page)
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByLabel('Note title').fill('Pocket note')
-  await page.locator('[data-note-text-input]').first().fill('Readable on a phone')
+  await page.locator('[data-note-text-input]').first().fill(
+    Array.from({ length: 80 }, (_, index) => `Mobile note line ${index + 1}`).join('\n'),
+  )
 
   const viewport = page.viewportSize()
   const documentBox = await page.locator('.note-document').boundingBox()
   expect(documentBox?.x).toBeGreaterThanOrEqual(0)
   expect((documentBox?.x ?? 0) + (documentBox?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
   expect(documentBox?.width ?? 0).toBeGreaterThan((viewport?.width ?? 0) - 30)
+  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  const mobileHeader = page.locator('.mobile-app-header')
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight / 2))
+  await expect.poll(async () => {
+    const headerBox = await mobileHeader.boundingBox()
+    const toolbarBox = await toolbar.boundingBox()
+    return headerBox && toolbarBox
+      ? toolbarBox.y >= headerBox.y + headerBox.height + 3
+        && toolbarBox.y + toolbarBox.height <= (page.viewportSize()?.height ?? 0)
+      : false
+  }).toBe(true)
+  const mobileToolbarTop = (await toolbar.boundingBox())?.y ?? -1
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight * 0.75))
+  await expect.poll(async () => (await toolbar.boundingBox())?.y ?? -1).toBeCloseTo(mobileToolbarTop, 0)
   await expect(page.locator('.note-scroll-space-control')).toHaveCSS('display', 'none')
   await expect(page.locator('.goal-history-panel')).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath('notes-mobile-toolbar.png'), fullPage: false })
   await page.screenshot({ path: testInfo.outputPath('notes-mobile.png'), fullPage: true })
 
   await page.getByRole('button', { name: 'Open navigation' }).click()

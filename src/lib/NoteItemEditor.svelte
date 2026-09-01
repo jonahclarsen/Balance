@@ -52,6 +52,7 @@
   function positionSlashMenu(node: HTMLDivElement) {
     let frame: number | null = null
     const workspace = node.closest<HTMLElement>('.workspace')
+    const noteDocument = node.closest<HTMLElement>('.note-document')
     const update = () => {
       frame = null
       if (!noteBlockElement.isConnected || !node.isConnected) return
@@ -79,7 +80,9 @@
     const resizeObserver = new ResizeObserver(scheduleUpdate)
 
     window.addEventListener('resize', scheduleUpdate)
+    window.addEventListener('scroll', scheduleUpdate, { passive: true })
     workspace?.addEventListener('scroll', scheduleUpdate, { passive: true })
+    noteDocument?.addEventListener('scroll', scheduleUpdate, { passive: true })
     resizeObserver.observe(node)
     resizeObserver.observe(noteBlockElement)
     scheduleUpdate()
@@ -87,7 +90,9 @@
     return {
       destroy() {
         window.removeEventListener('resize', scheduleUpdate)
+        window.removeEventListener('scroll', scheduleUpdate)
         workspace?.removeEventListener('scroll', scheduleUpdate)
+        noteDocument?.removeEventListener('scroll', scheduleUpdate)
         resizeObserver.disconnect()
         if (frame !== null) window.cancelAnimationFrame(frame)
       },

@@ -263,6 +263,11 @@
   }
 
   function noteScrollContainer() {
+    const noteDocument = noteBlocksElement?.closest<HTMLElement>('.note-document') ?? null
+    if (noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)) {
+      return noteDocument
+    }
+
     const workspace = noteBlocksElement?.closest<HTMLElement>('.workspace') ?? null
     if (!workspace) return null
 
@@ -846,31 +851,31 @@
         {/if}
       </div>
     {/if}
+    {#if selectedNote && !trashOpen}
+      <div
+        class="note-scroll-space"
+        style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh; --note-scroll-space-progress: ${noteScrollSpacePercent}%`}
+        use:trackNoteScrollSpace
+      >
+        <label class="note-scroll-space-control" class:visible={noteScrollSpaceControlVisible}>
+          <span class="note-scroll-space-slider">
+            <input
+              class="note-scroll-space-native-slider"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={noteScrollSpacePercent}
+              aria-label="Bottom writing space"
+              on:input={updateNoteScrollSpace}
+              on:pointerdown={beginNoteScrollSpaceAdjustment}
+            />
+            <span class="note-scroll-space-track" aria-hidden="true"></span>
+            <span class="note-scroll-space-fill" aria-hidden="true"></span>
+            <span class="note-scroll-space-thumb" aria-hidden="true"></span>
+          </span>
+        </label>
+      </div>
+    {/if}
   </section>
 </div>
-{#if selectedNote && !trashOpen}
-  <div
-    class="note-scroll-space"
-    style={`--note-scroll-space-height: ${noteScrollSpaceVh}vh; --note-scroll-space-dynamic-height: ${noteScrollSpaceVh}dvh; --note-scroll-space-progress: ${noteScrollSpacePercent}%`}
-    use:trackNoteScrollSpace
-  >
-    <label class="note-scroll-space-control" class:visible={noteScrollSpaceControlVisible}>
-      <span class="note-scroll-space-slider">
-        <input
-          class="note-scroll-space-native-slider"
-          type="range"
-          min="0"
-          max="100"
-          step="1"
-          value={noteScrollSpacePercent}
-          aria-label="Bottom writing space"
-          on:input={updateNoteScrollSpace}
-          on:pointerdown={beginNoteScrollSpaceAdjustment}
-        />
-        <span class="note-scroll-space-track" aria-hidden="true"></span>
-        <span class="note-scroll-space-fill" aria-hidden="true"></span>
-        <span class="note-scroll-space-thumb" aria-hidden="true"></span>
-      </span>
-    </label>
-  </div>
-{/if}

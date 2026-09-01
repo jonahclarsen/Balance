@@ -6096,6 +6096,12 @@ body.mobile-checkbox-dragging {
   gap: 8px;
 }
 
+.notes-view-workspace {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
 .notes-trash-header-button {
   border-color: transparent;
   background: transparent;
@@ -6125,9 +6131,9 @@ body.mobile-checkbox-dragging {
   grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
   border: 1px solid var(--line);
   border-radius: 12px;
-  /* Popovers such as the slash-command menu may extend beyond the note card.
-     The outer workspace remains the actual scroller. */
-  overflow: visible;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   background: var(--paper);
   box-shadow: var(--shadow);
 }
@@ -6139,12 +6145,11 @@ body.mobile-checkbox-dragging {
 }
 
 .notes-sidebar {
-  position: sticky;
-  top: 8px;
+  position: static;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  max-height: calc(100vh - 100px);
-  max-height: calc(100dvh - 100px);
+  height: 100%;
+  min-height: 0;
   gap: 10px;
   min-width: 0;
   padding: 14px;
@@ -6279,16 +6284,18 @@ body.mobile-checkbox-dragging {
 
 .note-document {
   min-width: 0;
-  padding: clamp(18px, 4vw, 48px) clamp(18px, 6vw, 80px);
-  /* `hidden` would make this the toolbar's sticky scroll container. */
+  min-height: 0;
+  padding: 0 clamp(18px, 6vw, 80px) clamp(18px, 4vw, 48px);
   overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 .note-document-head {
   position: relative;
   align-items: flex-start;
   justify-content: space-between;
-  padding-bottom: 12px;
+  padding: clamp(18px, 4vw, 48px) 0 12px;
 }
 
 .note-title {
@@ -6387,6 +6394,7 @@ body.mobile-checkbox-dragging {
   box-shadow: 0 5px 18px rgba(38, 35, 27, 0.08);
   overflow-x: auto;
   backdrop-filter: blur(12px);
+  transform: translateZ(0);
 }
 
 .note-format-group {
@@ -6754,17 +6762,26 @@ body.mobile-checkbox-dragging {
 
 .note-empty {
   min-height: 420px;
+  margin-top: clamp(18px, 4vw, 48px);
 }
 
 @media (max-width: 760px) {
+  .notes-view-workspace {
+    display: block;
+    overflow: visible;
+  }
+
   .notes-workspace {
     grid-template-columns: 1fr;
+    height: auto;
     min-height: 0;
+    overflow: visible;
   }
 
   .notes-sidebar {
     position: static;
     grid-template-rows: auto auto auto auto;
+    height: auto;
     max-height: none;
     border-right: 0;
     border-bottom: 1px solid var(--line);
@@ -6778,11 +6795,14 @@ body.mobile-checkbox-dragging {
   }
 
   .note-document {
-    padding: 18px 12px 28px;
+    padding: 0 12px 28px;
+    overflow: visible;
+    overscroll-behavior-y: auto;
   }
 
   .note-document-head {
     display: grid;
+    padding-top: 18px;
   }
 
   .note-actions {
@@ -6790,7 +6810,7 @@ body.mobile-checkbox-dragging {
   }
 
   .note-format-toolbar {
-    top: 4px;
+    top: calc(var(--mobile-header-height) + 4px);
     width: 100%;
   }
 
@@ -6804,6 +6824,10 @@ body.mobile-checkbox-dragging {
 
   .note-children > .note-item {
     margin-left: 18px;
+  }
+
+  .note-empty {
+    margin-top: 18px;
   }
 }
 
