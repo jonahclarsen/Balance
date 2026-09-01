@@ -371,7 +371,7 @@ test('sidebar has no standalone hide control', async ({ page }, testInfo) => {
   expect(Math.abs((templateSelectBox?.width ?? 0) - (generateButtonBox?.width ?? 0))).toBeLessThan(1)
 })
 
-test('macOS window dragging is limited to empty workspace background', async ({ page }, testInfo) => {
+test('macOS window dragging is limited to the top strip without covering sticky controls', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'macOS desktop titlebar behavior')
   await page.addInitScript(() => Object.defineProperty(navigator, 'platform', { get: () => 'MacIntel' }))
   await page.goto('/')
@@ -379,8 +379,23 @@ test('macOS window dragging is limited to empty workspace background', async ({ 
   await page.reload()
 
   const workspace = page.locator('.workspace')
-  await expect(workspace).toHaveAttribute('data-tauri-drag-region', '')
-  await expect(page.locator('.macos-titlebar-drag-region')).toHaveCount(0)
+  await expect(workspace).not.toHaveAttribute('data-tauri-drag-region', '')
+
+  const dragRegion = page.locator('.macos-titlebar-drag-region')
+  await expect(dragRegion).toHaveAttribute('data-tauri-drag-region', '')
+  const dragRegionBox = await dragRegion.boundingBox()
+  const viewport = page.viewportSize()
+  expect(dragRegionBox).not.toBeNull()
+  expect(dragRegionBox?.x).toBeCloseTo(84, 0)
+  expect(dragRegionBox?.y).toBeCloseTo(0, 0)
+  expect(dragRegionBox?.height).toBeCloseTo(28, 0)
+  expect(dragRegionBox?.width).toBeCloseTo((viewport?.width ?? 0) - 84, 0)
+
+  expect(await page.evaluate(() => {
+    const sidebarTarget = document.elementFromPoint(100, 14)
+    const workspaceTarget = document.elementFromPoint(300, 14)
+    return [sidebarTarget?.className, workspaceTarget?.className]
+  })).toEqual(['macos-titlebar-drag-region', 'macos-titlebar-drag-region'])
 
   await page.getByRole('button', { name: 'Lists', exact: true }).click()
   await page.getByRole('button', { name: '+ New list' }).click()

@@ -5330,6 +5330,10 @@ return rows`
   inert={$databaseLoadPending || Boolean($databaseLoadError) || Boolean(celebrationPreview)}
   aria-hidden={$databaseLoadPending || $databaseLoadError || celebrationPreview ? 'true' : undefined}
 >
+  {#if isMac && !isMobile}
+    <div class="macos-titlebar-drag-region" data-tauri-drag-region aria-hidden="true"></div>
+  {/if}
+
   {#if maximizeClickHandoff}
     <button
       class="imax-click-handoff"
@@ -5547,7 +5551,6 @@ return rows`
   ></button>
 
   <div class="content-shell" style={contentShellStyle}>
-    <!-- Tauri applies dragging only to the marked element, so child controls remain interactive. -->
     <section
       class="workspace"
       class:notes-view-workspace={view === 'notes'}
@@ -5556,7 +5559,6 @@ return rows`
       class:before-current-day-workspace={view === 'today' && !displayedCompareDayOpen && displayedPlanDate < currentDay}
       class:current-day-workspace={view === 'today' && !displayedCompareDayOpen && displayedPlanDate === currentDay}
       class:after-current-day-workspace={view === 'today' && !displayedCompareDayOpen && displayedPlanDate > currentDay}
-      data-tauri-drag-region={isMac && !isMobile ? '' : undefined}
       bind:this={workspaceEl}
       on:scroll={handleWorkspaceScroll}
     >
