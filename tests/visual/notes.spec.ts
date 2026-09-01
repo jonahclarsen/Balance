@@ -972,17 +972,17 @@ test('notes save adjustable breathing room and follow the final caret to the bot
 
   await workspace.evaluate((element) => element.scrollTo({ top: 0 }))
   const spacingControl = page.locator('.note-scroll-space-control')
-  await expect(spacingControl).toHaveCSS('opacity', '0')
-  await expect(spacingControl).toHaveCSS('visibility', 'hidden')
-  await expect(spacingControl).toHaveCSS('transition-property', /opacity.*visibility/)
+  await expect(spacingControl).toHaveCSS('opacity', '1')
+  await expect(spacingControl).toHaveCSS('visibility', 'visible')
+  await expect(spacingControl).toHaveCSS('transition-duration', '0s')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   await expect(spacingControl).toHaveCSS('opacity', '1')
   await expect(spacingControl).toHaveCSS('visibility', 'visible')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollTop - 20 }))
-  await expect(spacingControl).toHaveCSS('opacity', '0')
-  await expect(spacingControl).toHaveCSS('visibility', 'hidden')
+  await expect(spacingControl).toHaveCSS('opacity', '1')
+  await expect(spacingControl).toHaveCSS('visibility', 'visible')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   await expect(spacingControl).toHaveCSS('opacity', '1')
@@ -1023,7 +1023,6 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     input.dispatchEvent(new InputEvent('input', { bubbles: true }))
   })
   await expect(spacingSlider).toHaveValue('100')
-  await expect(spacingControl).toHaveClass(/visible/)
   await expect(spacingControl).toHaveCSS('opacity', '1')
   await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })))
   await expect.poll(() => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop)).toBeLessThanOrEqual(4)

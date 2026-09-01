@@ -6401,19 +6401,6 @@ body.mobile-checkbox-dragging {
   color: var(--muted);
   font-size: 11px;
   backdrop-filter: blur(8px);
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transition:
-    opacity 180ms ease,
-    visibility 0s linear 180ms;
-}
-
-.note-scroll-space-control.visible {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transition-delay: 0s;
 }
 
 .note-scroll-space-slider {
