@@ -9,6 +9,7 @@ const EXISTING_OPERATION_COUNT = performanceSize('BALANCE_INTERACTION_PERF_OPERA
 const EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_EDITS', 24)
 const GOAL_EDIT_COUNT = performanceSize('BALANCE_INTERACTION_PERF_GOAL_EDITS', 8)
 const IMAX_TOGGLE_COUNT = performanceSize('BALANCE_IMAX_PERF_TOGGLES', 10)
+const GOAL_SCROLL_FRAME_COUNT = performanceSize('BALANCE_GOAL_SCROLL_FRAMES', 120)
 const THEME_ID = process.env.BALANCE_INTERACTION_PERF_THEME ?? 'iridescent'
 const IRIDESCENT_MOTION_PROFILE = process.env.BALANCE_INTERACTION_PERF_IRIDESCENT_MOTION ?? 'full'
 const CLICK_COUNT = performanceSize('BALANCE_INTERACTION_PERF_CLICKS', 12)
@@ -384,6 +385,44 @@ async function profileImaxToggles(page: Page, toggleCount = 10) {
   )
 }
 
+async function profileGoalRhythmScroll(page: Page, frameCount = GOAL_SCROLL_FRAME_COUNT) {
+  return page.locator('.goal-history-scroll').evaluate(
+    async (element, frameCount) => {
+      const timeline = element as HTMLElement
+      const names = document.querySelector<HTMLElement>('.goal-history-name-scroll')
+      if (!names) throw new Error('Could not find Goal Rhythm name scroller')
+
+      timeline.scrollTop = 0
+      timeline.scrollLeft = 0
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+
+      const intervals: number[] = []
+      const verticalMax = Math.max(0, timeline.scrollHeight - timeline.clientHeight)
+      const horizontalMax = Math.max(0, timeline.scrollWidth - timeline.clientWidth)
+      let maximumPaneGap = 0
+      let previous = performance.now()
+
+      for (let frame = 0; frame < frameCount; frame += 1) {
+        await new Promise<void>((resolve) => requestAnimationFrame((now) => {
+          intervals.push(now - previous)
+          previous = now
+          maximumPaneGap = Math.max(maximumPaneGap, Math.abs(timeline.scrollTop - names.scrollTop))
+          const progress = frame / Math.max(1, frameCount - 1)
+          const sweep = progress <= 0.5 ? progress * 2 : (1 - progress) * 2
+          timeline.scrollTop = Math.round(verticalMax * sweep)
+          timeline.scrollLeft = Math.round(horizontalMax * sweep)
+          resolve()
+        }))
+      }
+
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+      maximumPaneGap = Math.max(maximumPaneGap, Math.abs(timeline.scrollTop - names.scrollTop))
+      return { intervals: intervals.slice(1), maximumPaneGap, verticalMax, horizontalMax }
+    },
+    frameCount,
+  )
+}
+
 test.beforeEach(async ({ page }, testInfo) => {
   await installSyntheticWorkspace(page)
   if (testInfo.project.name.includes('6x-cpu')) {
@@ -506,6 +545,28 @@ test('profiles goal-name edits that legitimately change the goal collection', as
     expect(profile.typing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
     expect(profile.backspacing.paint.p95Ms).toBeLessThan(paintP95BudgetMs)
   }
+})
+
+test('profiles Goal Rhythm scrolling', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name.includes('android-like'), 'Goal Rhythm scroll profile is desktop-only')
+
+  const scroll = await profileGoalRhythmScroll(page)
+  const profile = {
+    project: testInfo.project.name,
+    goals: GOAL_COUNT,
+    themeId: THEME_ID,
+    frameIntervals: summarizeDurations(scroll.intervals),
+    maximumPaneGap: scroll.maximumPaneGap,
+    verticalRange: scroll.verticalMax,
+    horizontalRange: scroll.horizontalMax,
+  }
+
+  console.log(`GOAL_SCROLL_PERF ${JSON.stringify(profile)}`)
+  await testInfo.attach(`goal-scroll-performance-${testInfo.project.name}.json`, {
+    body: JSON.stringify(profile, null, 2),
+    contentType: 'application/json',
+  })
+  expect(profile.maximumPaneGap).toBeLessThanOrEqual(1)
 })
 
 test('profiles entering and exiting IMAX mode', async ({ page }, testInfo) => {

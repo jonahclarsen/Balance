@@ -1609,10 +1609,35 @@ test('goal rhythm keeps its name column aligned while scrolling both axes', asyn
   await expect(firstName).toHaveCSS('position', 'static')
   await expect.poll(() => goalRhythmPaneGap(page)).toBe(0)
 
-  await timeline.evaluate((element) => {
-    element.scrollLeft = element.scrollWidth - element.clientWidth
-    element.scrollTop = 60
+  const scrollbarHeightWrites = await timeline.evaluate(async (element) => {
+    const namePane = document.querySelector<HTMLElement>('.goal-history-name-pane')
+    if (!namePane) throw new Error('Could not find Goal Rhythm name pane')
+
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+
+    const writes: string[] = []
+    const originalSetProperty = CSSStyleDeclaration.prototype.setProperty
+    CSSStyleDeclaration.prototype.setProperty = function (property, value, priority) {
+      if (this === namePane.style && property === '--goal-scrollbar-height') {
+        writes.push(`${this.getPropertyValue(property)} -> ${value}`)
+      }
+      originalSetProperty.call(this, property, value, priority)
+    }
+
+    try {
+      const horizontalMax = element.scrollWidth - element.clientWidth
+      for (let step = 1; step <= 12; step += 1) {
+        element.scrollLeft = Math.round(horizontalMax * step / 12)
+        element.scrollTop = step * 5
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      }
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+      return writes
+    } finally {
+      CSSStyleDeclaration.prototype.setProperty = originalSetProperty
+    }
   })
+  expect(scrollbarHeightWrites).toHaveLength(0)
   await expect.poll(() => goalRhythmScrollTopDifference(page)).toBe(0)
 
   await names.evaluate((element) => {

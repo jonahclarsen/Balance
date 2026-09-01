@@ -221,11 +221,19 @@
   function syncTimelineScroll() {
     if (!scrollEl || !nameScrollEl) return
     if (nameScrollEl.scrollTop !== scrollEl.scrollTop) nameScrollEl.scrollTop = scrollEl.scrollTop
+  }
 
+  function updateScrollbarHeight() {
+    if (!scrollEl || !namePaneEl) return
     // Keep both vertical viewports the same height when a classic horizontal
-    // scrollbar consumes space in the timeline pane.
+    // scrollbar consumes space in the timeline pane. This is deliberately kept
+    // out of the scroll handler: reading layout and changing an inherited custom
+    // property on every scroll frame makes the full goal-name list restyle.
     const scrollbarHeight = scrollEl.offsetHeight - scrollEl.clientHeight
-    namePaneEl?.style.setProperty('--goal-scrollbar-height', `${scrollbarHeight}px`)
+    const value = `${scrollbarHeight}px`
+    if (namePaneEl.style.getPropertyValue('--goal-scrollbar-height') !== value) {
+      namePaneEl.style.setProperty('--goal-scrollbar-height', value)
+    }
   }
 
   function syncNameScroll() {
@@ -240,6 +248,10 @@
 
   onMount(() => {
     mounted = true
+
+    const scrollbarResizeObserver = new ResizeObserver(updateScrollbarHeight)
+    if (scrollEl) scrollbarResizeObserver.observe(scrollEl)
+    updateScrollbarHeight()
 
     const storedRhythmMode = localStorage.getItem(GOAL_RHYTHM_MODE_KEY)
     if (GOAL_RHYTHM_MODES.some((mode) => mode.id === storedRhythmMode)) {
@@ -261,6 +273,7 @@
       window.removeEventListener('focus', refreshDay)
       document.removeEventListener('visibilitychange', refreshDay)
       document.removeEventListener('pointerdown', closeRhythmModeMenu)
+      scrollbarResizeObserver.disconnect()
     }
   })
 
