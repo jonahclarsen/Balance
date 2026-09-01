@@ -38,8 +38,6 @@
     { id: 'flow', label: 'Flow', glyph: '≋' },
     { id: 'flow-tint', label: 'Flow Tint', glyph: '◌' },
     { id: 'flow-halo', label: 'Flow Halo', glyph: '⊙' },
-    { id: 'flow-ghost', label: 'Flow Ghost', glyph: '◐' },
-    { id: 'flow-orbit', label: 'Flow Orbit', glyph: '◎' },
     { id: 'mosaic', label: 'Mosaic', glyph: '▦' },
     { id: 'columns', label: 'Columns', glyph: '▥' },
     { id: 'signal', label: 'Signal', glyph: '•—' },

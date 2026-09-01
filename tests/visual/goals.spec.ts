@@ -91,7 +91,7 @@ test('the goal rhythm search clear button remains visible without focus on mobil
   await expect(clearSearch).toHaveCount(0)
 })
 
-test('goal rhythm offers eleven persistent visual modes with one highlighted selection', async ({ page }) => {
+test('goal rhythm offers nine persistent visual modes with one highlighted selection', async ({ page }) => {
   const rhythm = page.getByRole('region', { name: 'Goal history' })
   const modeTrigger = page.getByRole('button', { name: 'Choose Goal Rhythm style' })
   const modeMenu = page.getByRole('menu', { name: 'Goal Rhythm style options' })
@@ -101,13 +101,11 @@ test('goal rhythm offers eleven persistent visual modes with one highlighted sel
 
   await modeTrigger.hover({ force: true })
   await expect(modeMenu).toBeVisible()
-  await expect(page.getByRole('menuitemradio')).toHaveCount(11)
+  await expect(page.getByRole('menuitemradio')).toHaveCount(9)
   for (const mode of [
     'Flow',
     'Flow Tint',
     'Flow Halo',
-    'Flow Ghost',
-    'Flow Orbit',
     'Mosaic',
     'Columns',
     'Signal',
@@ -120,6 +118,8 @@ test('goal rhythm offers eleven persistent visual modes with one highlighted sel
   await expect(page.getByRole('menuitemradio', { name: 'Flow Dots', exact: true })).toHaveCount(0)
   await expect(page.getByRole('menuitemradio', { name: 'Flow Tide', exact: true })).toHaveCount(0)
   await expect(page.getByRole('menuitemradio', { name: 'Flow Line', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('menuitemradio', { name: 'Flow Ghost', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('menuitemradio', { name: 'Flow Orbit', exact: true })).toHaveCount(0)
 
   const storedModeBeforePreview = await page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))
   const flowOption = page.getByRole('menuitemradio', { name: 'Flow', exact: true })
@@ -162,13 +162,7 @@ test('goal rhythm offers eleven persistent visual modes with one highlighted sel
   await page.getByRole('menuitemradio', { name: 'Flow Halo', exact: true }).click()
   await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-halo')
   expect(await highlightedOptions()).toEqual(['Flow Halo'])
-  await page.getByRole('menuitemradio', { name: 'Flow Ghost', exact: true }).click()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-ghost')
-  expect(await highlightedOptions()).toEqual(['Flow Ghost'])
-  await page.getByRole('menuitemradio', { name: 'Flow Orbit', exact: true }).click()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-orbit')
-  expect(await highlightedOptions()).toEqual(['Flow Orbit'])
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('flow-orbit')
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('flow-halo')
   await page.getByRole('menuitemradio', { name: 'Mosaic' }).click()
   expect(await highlightedOptions()).toEqual(['Mosaic'])
   await page.getByRole('menuitemradio', { name: 'Columns' }).click()
@@ -261,7 +255,7 @@ test('active and retired flow variants preserve the cadence band with a safe fut
 test('retired and unknown saved rhythm modes fall back to Flow without rewriting the saved ID', async ({ page }) => {
   const rhythm = page.getByRole('region', { name: 'Goal history' })
 
-  for (const storedMode of ['flow-line', 'flow-dots', 'flow-tide', 'future-flow']) {
+  for (const storedMode of ['flow-line', 'flow-dots', 'flow-tide', 'flow-ghost', 'flow-orbit', 'future-flow']) {
     await page.evaluate((mode) => localStorage.setItem('balance.goalRhythmMode.v1', mode), storedMode)
     await page.reload()
     await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow')
