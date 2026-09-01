@@ -152,6 +152,12 @@
     z-index: 3;
     top: 10px;
     right: 10px;
+    opacity: 0.72;
+    transition:
+      opacity 160ms ease,
+      border-color 160ms ease,
+      background-color 160ms ease,
+      color 160ms ease;
   }
 
   .overlay-floating-close.left {
@@ -164,6 +170,7 @@
     border-color: var(--line-strong);
     background: var(--paper-strong);
     color: var(--ink);
+    opacity: 1;
   }
 
   @media (max-width: 760px) {
