@@ -270,6 +270,7 @@
     if (!target) return
 
     const sourceX = collapsedCaretClientX(current)
+    const sourceIsEmpty = !(current.textContent?.length ?? 0)
     const targetId = target?.dataset.noteTextInputId
     const sourceOffset = caretOffset(current)
     if (sourceX === null) {
@@ -298,6 +299,15 @@
     const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
+    // The left edge of a soft-wrapped line shares a DOM offset with the end of
+    // the line above. Nudge downstream when Chromium gives that point the
+    // upstream visual affinity, so Up still enters the actual last line.
+    if (sourceIsEmpty && direction === 'up' && selection?.modify && selection.rangeCount > 0) {
+      const placedRect = selection.getRangeAt(0).getBoundingClientRect()
+      if (placedRect.height > 0 && placedRect.bottom < targetY) {
+        selection.modify('move', 'forward', 'character')
+      }
+    }
   }
 
   function focusInput(itemId: Id, position: 'start' | 'end' = 'end') {

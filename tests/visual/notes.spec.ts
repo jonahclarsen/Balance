@@ -134,6 +134,17 @@ async function noteCaretVisualPosition(page: Page) {
   })
 }
 
+async function noteInputContentLeft(editor: Locator) {
+  return editor.evaluate((element) => {
+    const input = element as HTMLElement
+    const rect = input.getBoundingClientRect()
+    const style = getComputedStyle(input)
+    return rect.left
+      + (Number.parseFloat(style.borderLeftWidth) || 0)
+      + (Number.parseFloat(style.paddingLeft) || 0)
+  })
+}
+
 async function copyNoteSelection(page: Page) {
   return page.evaluate(() => {
     const target = document.activeElement
@@ -378,6 +389,57 @@ test('shift arrow keys extend note selection to the matching position on an adja
     anchor: { text: 'First line', offset: 4 },
     focus: { text: 'Second line', offset: 4 },
   })
+})
+
+test('ArrowUp from a new empty note paragraph enters the line directly above', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.locator('.note-blocks').evaluate((element) => (element.style.width = '420px'))
+
+  const first = page.locator('[data-note-text-input]').first()
+  await first.fill('This first paragraph is deliberately long enough to wrap across multiple visual lines before the new empty paragraph')
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+
+  const second = page.locator('[data-note-text-input]').nth(1)
+  await expect(second).toBeFocused()
+  const sourceLeft = await noteInputContentLeft(second)
+  await second.press('ArrowUp')
+
+  const movedUp = await noteCaretVisualPosition(page)
+  expect(movedUp?.inputIndex).toBe(0)
+  expect(movedUp?.lineCount).toBeGreaterThan(1)
+  expect(movedUp?.caretTop).toBeCloseTo(movedUp?.lastLineTop ?? -1, 0)
+  expect(Math.abs((movedUp?.caretLeft ?? 0) - sourceLeft)).toBeLessThan(12)
+})
+
+test('ArrowUp from an empty bullet preserves its indented visual column', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.locator('.note-blocks').evaluate((element) => (element.style.width = '420px'))
+
+  const first = page.locator('[data-note-text-input]').first()
+  await first.fill('This first paragraph is deliberately long enough to wrap across multiple visual lines before the new empty bullet')
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+
+  const second = page.locator('[data-note-text-input]').nth(1)
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Bulleted list' }).click()
+  await expect(second).toBeFocused()
+  const sourceLeft = await noteInputContentLeft(second)
+  await second.press('ArrowUp')
+
+  const movedUp = await noteCaretVisualPosition(page)
+  expect(movedUp?.inputIndex).toBe(0)
+  expect(movedUp?.lineCount).toBeGreaterThan(1)
+  expect(movedUp?.caretTop).toBeCloseTo(movedUp?.lastLineTop ?? -1, 0)
+  expect(Math.abs((movedUp?.caretLeft ?? 0) - sourceLeft)).toBeLessThan(6)
 })
 
 test('arrow keys keep the visual caret column when moving between numbered note items', async ({ page }) => {

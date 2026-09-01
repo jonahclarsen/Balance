@@ -28,6 +28,16 @@ export function collapsedCaretClientX(root: HTMLElement): number | null {
   const direct = caret.getBoundingClientRect()
   if (direct.height > 0) return direct.left
 
+  // Empty contenteditables have no text range to measure. Their content-box
+  // edge is the visible caret column, including indentation applied by lists.
+  if (!(root.textContent?.length ?? 0)) {
+    const rect = root.getBoundingClientRect()
+    const style = getComputedStyle(root)
+    const borderLeft = Number.parseFloat(style.borderLeftWidth) || 0
+    const paddingLeft = Number.parseFloat(style.paddingLeft) || 0
+    return rect.left + borderLeft + paddingLeft
+  }
+
   const node = caret.startContainer
   const offset = caret.startOffset
   if (node.nodeType !== Node.TEXT_NODE || !node.textContent?.length) return null
