@@ -1110,7 +1110,13 @@ test('day generation opens the goal doability review for legacy overdue and repe
       nameHtml: `Review goal ${index + 1}`,
     }))
     state.goals = [
-      { ...baseGoal, id: 'goal_legacy', name: 'Call someone', nameHtml: 'Call someone' },
+      {
+        ...baseGoal,
+        id: 'goal_legacy',
+        name: 'Call someone',
+        nameHtml: 'Call someone',
+        presentationTrackingStartedAt: '2026-08-29T08:00:00.000Z',
+      },
       {
         ...baseGoal,
         id: 'goal_tracked',

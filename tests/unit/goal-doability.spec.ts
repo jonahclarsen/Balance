@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test'
 import {
+  createGoal,
   goalsNeedingDoabilityReview,
   reconcileGoalCompletionsForDate,
 } from '../../src/lib/goals'
@@ -62,6 +63,27 @@ test('legacy goals use overdue calendar days until presentation tracking starts'
   ])
 })
 
+test('existing overdue goals keep the legacy fallback until tracked history has a completion baseline', () => {
+  const existingGoal = goal({
+    presentationTrackingStartedAt: '2026-08-25T08:00:00.000Z',
+  })
+  const plans = [
+    presentedPlan('2026-08-25'),
+    presentedPlan('2026-08-26'),
+    presentedPlan('2026-08-27'),
+  ]
+
+  expect(goalsNeedingDoabilityReview([existingGoal], [], plans, CURRENT_DATE)).toEqual([
+    expect.objectContaining({ days: 30, reason: 'legacy-overdue' }),
+  ])
+  expect(goalsNeedingDoabilityReview(
+    [existingGoal],
+    [completion('2026-08-27')],
+    [...plans, presentedPlan('2026-08-28'), presentedPlan('2026-08-29')],
+    CURRENT_DATE,
+  )).toEqual([])
+})
+
 test('tracked goals appear after four distinct missed presentation days', () => {
   const trackedGoal = goal({ presentationTrackingStartedAt: TIMESTAMP })
   const plans = [
@@ -116,4 +138,19 @@ test('goal template expansion records provenance and checking the row completes 
   expect(completions).toEqual([
     expect.objectContaining({ goalId: sourceGoal.id, itemIds: [generated.items[0].id] }),
   ])
+})
+
+test('new goals start with presentation tracking enabled', () => {
+  const newGoal = goal()
+  const created = createGoal(
+    newGoal.name,
+    newGoal.cadenceDays,
+    newGoal.matchTerms,
+    newGoal.hue,
+    newGoal.lightness,
+    CURRENT_DATE,
+    newGoal.id,
+  )
+
+  expect(created.presentationTrackingStartedAt).toBe(created.createdAt)
 })

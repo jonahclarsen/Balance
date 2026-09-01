@@ -50,6 +50,7 @@ export function createGoal(
     hue: normalizeHue(hue),
     lightness: normalizeLightness(lightness),
     activityPeriods: [{ startDate, endDate: null }],
+    presentationTrackingStartedAt: timestamp,
     createdAt: timestamp,
     updatedAt: timestamp,
   }
@@ -446,10 +447,11 @@ export function goalDaysUntilLapse(
 /**
  * Goals worth reviewing after a day template is generated.
  *
- * Older goals get a one-time compatibility path based on how many calendar
- * days overdue they are. Once template generation has initialized tracking on
- * a goal, only distinct past days on which it was explicitly presented and
- * not completed count. Any later completion resets that missed-day run.
+ * Older goals use a compatibility path based on how many calendar days overdue
+ * they are until tracking has a trustworthy baseline: either the goal has been
+ * completed since tracking began, or four missed presentations have actually
+ * been recorded. Goals created with tracking already enabled use presentation
+ * history immediately. Any later completion resets the missed-day run.
  */
 export function goalsNeedingDoabilityReview(
   goals: Goal[],
@@ -468,22 +470,29 @@ export function goalsNeedingDoabilityReview(
   return goals.flatMap<GoalDoabilityReview>((goal) => {
     if (!isGoalActiveOnDate(goal, currentDate)) return []
 
-    if (!goal.presentationTrackingStartedAt) {
+    const completionDates = completionDatesByGoal.get(goal.id) ?? new Set<string>()
+    const latestCompletion = [...completionDates].sort().at(-1)
+    const trackingStartDate = goal.presentationTrackingStartedAt?.slice(0, 10)
+    const missedDates = new Set(
+      plans.flatMap((plan) => {
+        if (plan.date >= currentDate || (latestCompletion && plan.date <= latestCompletion)) return []
+        if (trackingStartDate && plan.date < trackingStartDate) return []
+        if (!plan.generatedGoalIds?.includes(goal.id) || completionDates.has(plan.date)) return []
+        return [plan.date]
+      }),
+    )
+    const trackingStartedAtCreation = goal.presentationTrackingStartedAt === goal.createdAt
+    const completedSinceTracking = Boolean(
+      trackingStartDate && [...completionDates].some((date) => date >= trackingStartDate),
+    )
+    const needsLegacyFallback = !trackingStartDate || (!trackingStartedAtCreation && !completedSinceTracking)
+
+    if (needsLegacyFallback && missedDates.size < GOAL_DOABILITY_MISSED_DAY_THRESHOLD) {
       const daysUntilLapse = goalDaysUntilLapse(goal, completions, currentDate)
       return daysUntilLapse !== null && daysUntilLapse < 0
         ? [{ goal, days: Math.abs(daysUntilLapse), reason: 'legacy-overdue' as const }]
         : []
     }
-
-    const completionDates = completionDatesByGoal.get(goal.id) ?? new Set<string>()
-    const latestCompletion = [...completionDates].sort().at(-1)
-    const missedDates = new Set(
-      plans.flatMap((plan) => {
-        if (plan.date >= currentDate || (latestCompletion && plan.date <= latestCompletion)) return []
-        if (!plan.generatedGoalIds?.includes(goal.id) || completionDates.has(plan.date)) return []
-        return [plan.date]
-      }),
-    )
 
     return missedDates.size >= GOAL_DOABILITY_MISSED_DAY_THRESHOLD
       ? [{ goal, days: missedDates.size, reason: 'missed-presentations' as const }]
