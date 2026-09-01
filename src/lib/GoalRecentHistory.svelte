@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { isGoalActiveOnDate, shiftISODate } from './goals'
+  import { buildGoalDayCells, shiftISODate } from './goals'
   import type { Goal, GoalCompletion } from './types'
 
   export let goal: Goal
@@ -13,8 +13,8 @@
     { length: RECENT_DAY_COUNT },
     (_, index) => shiftISODate(currentDate, index - (RECENT_DAY_COUNT - 1)),
   )
-  $: completionDates = new Set(completions.map((completion) => completion.date))
-  $: recentCompletionCount = dates.filter((date) => completionDates.has(date)).length
+  $: cells = buildGoalDayCells(goal, completions, dates, currentDate)
+  $: recentCompletionCount = cells.filter((cell) => cell.completed).length
 
   function dateLabel(date: string): string {
     return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(
@@ -43,6 +43,13 @@
     if (count === 0) return 'No completions'
     return `${count} completion${count === 1 ? '' : 's'}`
   }
+
+  function cellStatus(cell: (typeof cells)[number]): string {
+    if (cell.completed) return 'completed'
+    if (cell.overdue) return 'overdue'
+    if (cell.missed) return 'missed'
+    return cell.active ? 'no completion' : 'inactive'
+  }
 </script>
 
 <section
@@ -54,22 +61,28 @@
     <small>{completionSummary(recentCompletionCount)}</small>
   </div>
   <ol class="goal-recent-days">
-    {#each dates as date (date)}
-      {@const active = isGoalActiveOnDate(goal, date)}
-      {@const completed = completionDates.has(date)}
-      <li>
+    {#each cells as cell (cell.date)}
+      <li class:overdue={cell.overdue}>
         <button
           type="button"
           class="goal-recent-day"
-          class:active
-          class:completed
-          class:today={date === currentDate}
-          data-goal-date={date}
-          aria-label={`Open ${fullDateLabel(date)} in Today view: ${completed ? 'completed' : active ? 'no completion' : 'inactive'}`}
-          on:click={() => onOpenDate(date)}
+          class:active={cell.active}
+          class:completed={cell.completed}
+          class:missed={cell.missed}
+          class:overdue={cell.overdue}
+          class:today={cell.date === currentDate}
+          data-goal-date={cell.date}
+          aria-label={`Open ${fullDateLabel(cell.date)} in Today view: ${cellStatus(cell)}`}
+          on:click={() => onOpenDate(cell.date)}
         >
-          <span class="goal-recent-day-tooltip" aria-hidden="true">{tooltipDateLabel(date)}</span>
-          {#if completed}<span aria-hidden="true">✓</span>{/if}
+          <span class="goal-recent-day-tooltip" aria-hidden="true">{tooltipDateLabel(cell.date)}</span>
+          {#if cell.completed}
+            <span aria-hidden="true">✓</span>
+          {:else if cell.overdue}
+            <span class="goal-cell-mark overdue-mark" aria-hidden="true">×</span>
+          {:else if cell.missed}
+            <span class="goal-cell-mark open" aria-hidden="true"></span>
+          {/if}
         </button>
       </li>
     {/each}

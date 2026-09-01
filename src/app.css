@@ -4688,7 +4688,8 @@ body.mobile-checkbox-dragging {
    whole cell a loud solid red. Both live in one ::before overlay (above the
    cell's normal background, behind the open-circle mark) so the run's edges can
    be feathered into the surrounding cells with a mask. */
-.goal-day-cell.overdue::before {
+.goal-day-cell.overdue::before,
+.goal-recent-day.overdue::before {
   position: absolute;
   inset: 0;
   border-radius: inherit;
@@ -4704,6 +4705,11 @@ body.mobile-checkbox-dragging {
    over ~7px instead of butting hard against the day before it. The right end
    keeps a crisp edge so the hatch fills cleanly to the rounded segment cap. */
 .goal-day-cell:not(.overdue) + .goal-day-cell.overdue::before {
+  -webkit-mask-image: linear-gradient(to right, transparent, #000 7px);
+  mask-image: linear-gradient(to right, transparent, #000 7px);
+}
+
+.goal-recent-days li:not(.overdue) + li.overdue .goal-recent-day::before {
   -webkit-mask-image: linear-gradient(to right, transparent, #000 7px);
   mask-image: linear-gradient(to right, transparent, #000 7px);
 }

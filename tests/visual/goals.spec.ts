@@ -194,6 +194,13 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
   for (const date of completionDates) {
     await expect(history.locator(`[data-goal-date="${date}"]`)).toHaveClass(/completed/)
   }
+  const missedDay = history.locator(`[data-goal-date="${addDays(currentDate, -7)}"]`)
+  await expect(missedDay).toHaveClass(/missed/)
+  await expect(missedDay).not.toHaveClass(/overdue/)
+  await expect(missedDay.locator('.goal-cell-mark.open')).toBeVisible()
+  const overdueDay = history.locator(`[data-goal-date="${addDays(currentDate, -6)}"]`)
+  await expect(overdueDay).toHaveClass(/overdue/)
+  await expect(overdueDay.locator('.goal-cell-mark.overdue-mark')).toHaveText('×')
   await expect(history.locator(`[data-goal-date="${currentDate}"]`)).toHaveClass(/today/)
   const historyBox = await history.boundingBox()
   const rulesBox = await page.getByLabel('Matching terms for Exercise').boundingBox()
