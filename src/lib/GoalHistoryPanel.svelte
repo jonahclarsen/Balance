@@ -163,12 +163,11 @@
 
     const viewportRect = scrollEl.getBoundingClientRect()
     const rowRect = row.getBoundingClientRect()
-    const contentTop = viewportRect.top + 30
-    const contentHeight = Math.max(0, scrollEl.clientHeight - 30)
+    const effectiveZoom = row.currentCSSZoom || 1
+    const contentTop = viewportRect.top + 30 * effectiveZoom
+    const contentHeight = Math.max(0, viewportRect.height - 30 * effectiveZoom)
     const centeredTop = scrollEl.scrollTop
-      + rowRect.top
-      - contentTop
-      - (contentHeight - rowRect.height) / 2
+      + (rowRect.top - contentTop - (contentHeight - rowRect.height) / 2) / effectiveZoom
     const maxTop = Math.max(0, scrollEl.scrollHeight - scrollEl.clientHeight)
     const targetTop = Math.max(0, Math.min(maxTop, Math.round(centeredTop)))
 
@@ -226,10 +225,12 @@
 
     const scrollRect = scrollEl.getBoundingClientRect()
     const currentDayRect = currentDayHead.getBoundingClientRect()
+    const effectiveZoom = currentDayHead.currentCSSZoom || 1
     const namePaneWidth = namePaneEl?.getBoundingClientRect().width ?? 0
-    const timelineViewportWidth = Math.max(0, scrollEl.clientWidth - namePaneWidth)
-    const currentDayCenter = currentDayRect.left - scrollRect.left + scrollEl.scrollLeft + currentDayRect.width / 2
-    scrollEl.scrollLeft = currentDayCenter - namePaneWidth - timelineViewportWidth / 2
+    const timelineViewportWidth = Math.max(0, scrollRect.width - namePaneWidth)
+    const currentDayCenter = scrollEl.scrollLeft
+      + (currentDayRect.left - scrollRect.left + currentDayRect.width / 2) / effectiveZoom
+    scrollEl.scrollLeft = currentDayCenter - (namePaneWidth + timelineViewportWidth / 2) / effectiveZoom
   }
 
   function refreshDay() {

@@ -474,7 +474,7 @@
 
     const caretRect = caret.getBoundingClientRect()
     const lastLineTop = Math.max(...lineRects.map((rect) => rect.top))
-    const lineHeight = Number.parseFloat(getComputedStyle(input).lineHeight) || 20
+    const lineHeight = (Number.parseFloat(getComputedStyle(input).lineHeight) || 20) * (input.currentCSSZoom || 1)
     return caretRect.bottom > lastLineTop && caretRect.top < lastLineTop + lineHeight
   }
 

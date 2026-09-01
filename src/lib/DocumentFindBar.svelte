@@ -149,9 +149,10 @@
       if (/(auto|scroll|overlay)/.test(overflowY) && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
         const matchRect = range.getBoundingClientRect()
         const containerRect = scrollContainer.getBoundingClientRect()
-        scrollContainer.scrollTop += matchRect.top
-          - containerRect.top
-          - (scrollContainer.clientHeight - matchRect.height) / 2
+        const effectiveZoom = matchElement.currentCSSZoom || 1
+        scrollContainer.scrollTop += (
+          matchRect.top - containerRect.top - (containerRect.height - matchRect.height) / 2
+        ) / effectiveZoom
         scrolledContainer = true
       }
       scrollContainer = scrollContainer.parentElement

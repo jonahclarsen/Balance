@@ -308,7 +308,12 @@
       viewportRight - viewportInset - menuRect.width,
     )
 
-    mobileTaskMenuPosition = { left, top, maxHeight }
+    const effectiveZoom = mobileTaskMenu.currentCSSZoom || 1
+    mobileTaskMenuPosition = {
+      left: left / effectiveZoom,
+      top: top / effectiveZoom,
+      maxHeight: maxHeight / effectiveZoom,
+    }
   }
 
   function openMobileTimeEditor() {

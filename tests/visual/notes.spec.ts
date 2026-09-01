@@ -225,6 +225,24 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await expect(notesSidebar).toBeVisible()
 })
 
+test('the entire Notes page adds another 10% to the app zoom', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+
+  const notesPage = page.locator('.notes-view-workspace')
+  await expect.poll(() => notesPage.evaluate((element) => ({
+    ownZoom: Number.parseFloat(getComputedStyle(element).zoom),
+    effectiveZoom: element.currentCSSZoom,
+  }))).toEqual({ ownZoom: 1.1, effectiveZoom: expect.closeTo(1.21, 5) })
+
+  const bounds = await notesPage.boundingBox()
+  expect(bounds).not.toBeNull()
+  expect(bounds!.x).toBeGreaterThanOrEqual(0)
+  expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth))
+})
+
 test('the Notes sidebar list scrolls independently and keeps New beside the filter', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'the mobile note picker remains horizontal')
   await page.goto('/')
@@ -932,8 +950,15 @@ test('note formatting toolbar stays visible in a wide centered workspace while s
   await expect(formatHint).toHaveCSS('font-size', '12px')
   await expect(slashKey).toHaveCSS('display', 'grid')
   await expect(slashKey).toHaveCSS('place-items', 'center')
-  await expect(slashKey).toHaveCSS('width', '15px')
-  await expect(slashKey).toHaveCSS('height', '15px')
+  const slashKeySize = await slashKey.evaluate((element) => {
+    const bounds = element.getBoundingClientRect()
+    return {
+      logicalWidth: bounds.width / element.currentCSSZoom,
+      logicalHeight: bounds.height / element.currentCSSZoom,
+    }
+  })
+  expect(slashKeySize.logicalWidth).toBeCloseTo(15, 1)
+  expect(slashKeySize.logicalHeight).toBeCloseTo(15, 1)
   const hintAlignment = await slashKey.evaluate((element) => {
     const keyBounds = element.getBoundingClientRect()
     const hintBounds = element.parentElement?.getBoundingClientRect()
@@ -955,7 +980,7 @@ test('note formatting toolbar stays visible in a wide centered workspace while s
       : null
   })
   expect(workspaceGeometry).not.toBeNull()
-  expect(workspaceGeometry?.widthRatio).toBeGreaterThan(0.94)
+  expect(workspaceGeometry?.widthRatio).toBeGreaterThan(0.93)
   expect(Math.abs((workspaceGeometry?.leftGap ?? 0) - (workspaceGeometry?.rightGap ?? 0))).toBeLessThan(1)
   await noteDocument.evaluate((element) => element.scrollTo({ top: element.scrollHeight / 2 }))
 
@@ -1008,9 +1033,13 @@ test('note formatting toolbar uses a complete static pink stroke on Iridescent',
     document.body.append(probe)
     const styles = getComputedStyle(element)
     const afterStyles = getComputedStyle(element, '::after')
+    const effectiveZoom = element.offsetWidth > 0
+      ? element.getBoundingClientRect().width / element.offsetWidth
+      : 1
     const result = {
       borderColors: [styles.borderTopColor, styles.borderRightColor, styles.borderBottomColor, styles.borderLeftColor],
-      borderWidths: [styles.borderTopWidth, styles.borderRightWidth, styles.borderBottomWidth, styles.borderLeftWidth],
+      visualBorderWidths: [styles.borderTopWidth, styles.borderRightWidth, styles.borderBottomWidth, styles.borderLeftWidth]
+        .map((width) => Number.parseFloat(width) * effectiveZoom),
       expectedColor: getComputedStyle(probe).color,
       afterContent: afterStyles.content,
       afterAnimation: afterStyles.animationName,
@@ -1019,7 +1048,7 @@ test('note formatting toolbar uses a complete static pink stroke on Iridescent',
     return result
   })
   expect(new Set(toolbarStroke.borderColors)).toEqual(new Set([toolbarStroke.expectedColor]))
-  expect(new Set(toolbarStroke.borderWidths)).toEqual(new Set(['1px']))
+  for (const width of toolbarStroke.visualBorderWidths) expect(width).toBeCloseTo(1, 3)
   expect(toolbarStroke.afterContent).toBe('none')
   expect(toolbarStroke.afterAnimation).toBe('none')
   await page.screenshot({ path: testInfo.outputPath('notes-iridescent-toolbar.png'), fullPage: false })
@@ -1100,7 +1129,7 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     const scroller = element.closest<HTMLElement>('.note-document')
     return {
       height: spacer.height,
-      scrollerHeight: scroller?.clientHeight ?? 0,
+      scrollerHeight: scroller?.getBoundingClientRect().height ?? 0,
       insideNoteDocument: Boolean(element.closest('.note-document')),
     }
   })
@@ -1113,7 +1142,7 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   })
   await expect.poll(() => page.locator('.note-scroll-space').evaluate((element) => {
     const scroller = element.closest<HTMLElement>('.note-document')
-    return scroller ? element.getBoundingClientRect().height / scroller.clientHeight : 0
+    return scroller ? element.getBoundingClientRect().height / scroller.getBoundingClientRect().height : 0
   })).toBeCloseTo(0.312, 2)
   const resizedSpaceHeight = await page.locator('.note-scroll-space').evaluate((element) => element.getBoundingClientRect().height)
   expect(resizedSpaceHeight).toBeLessThan(writingSpace.height)
@@ -1212,7 +1241,7 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   expect(pillGeometry?.thumbRight).toBeLessThanOrEqual(pillGeometry?.controlRight ?? Number.NEGATIVE_INFINITY)
   const maximumSpace = await page.locator('.note-scroll-space').evaluate((element) => ({
     height: element.getBoundingClientRect().height,
-    scrollerHeight: element.closest<HTMLElement>('.note-document')?.clientHeight ?? 0,
+    scrollerHeight: element.closest<HTMLElement>('.note-document')?.getBoundingClientRect().height ?? 0,
   }))
   expect(maximumSpace.height / maximumSpace.scrollerHeight).toBeGreaterThan(0.49)
   expect(maximumSpace.height / maximumSpace.scrollerHeight).toBeLessThan(0.5)
@@ -1266,10 +1295,12 @@ test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   )
 
   const viewport = page.viewportSize()
-  const documentBox = await page.locator('.note-document').boundingBox()
+  const noteDocument = page.locator('.note-document')
+  const documentBox = await noteDocument.boundingBox()
+  const documentZoom = await noteDocument.evaluate((element) => element.currentCSSZoom)
   expect(documentBox?.x).toBeGreaterThanOrEqual(0)
   expect((documentBox?.x ?? 0) + (documentBox?.width ?? 0)).toBeLessThanOrEqual(viewport?.width ?? 0)
-  expect(documentBox?.width ?? 0).toBeGreaterThan((viewport?.width ?? 0) - 30)
+  expect(documentBox?.width ?? 0).toBeGreaterThan((viewport?.width ?? 0) - 30 * documentZoom)
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
   const mobileHeader = page.locator('.mobile-app-header')
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight / 2))

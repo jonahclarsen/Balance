@@ -2,6 +2,7 @@
   import { onBackButtonPress } from '@tauri-apps/api/app'
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
+  import { getCurrentWebview } from '@tauri-apps/api/webview'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
@@ -151,6 +152,8 @@
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
   const WORD_CAP_UNLOCK_MS = 10_000
+  const APP_DEFAULT_ZOOM = 1.1
+  const NOTES_DEFAULT_ZOOM = APP_DEFAULT_ZOOM * 1.1
   const DESKTOP_INACTIVITY_CLOSE_MS = 2 * 60 * 60 * 1000
   const isAndroid = /android/i.test(navigator.userAgent)
   const DAY_TEMPLATE_SELECTION_KEY = 'balance:selectedDayTemplateId'
@@ -181,6 +184,25 @@
   }
 
   let view: View = 'today'
+  let appliedDefaultZoom: number | null = null
+
+  function applyDefaultZoom(currentView: View) {
+    const zoom = currentView === 'notes' ? NOTES_DEFAULT_ZOOM : APP_DEFAULT_ZOOM
+    if (zoom === appliedDefaultZoom) return
+    appliedDefaultZoom = zoom
+
+    if (!isTauri()) {
+      document.documentElement.dataset.balanceCssZoom = 'true'
+      return
+    }
+
+    delete document.documentElement.dataset.balanceCssZoom
+    void getCurrentWebview().setZoom(zoom).catch((error) => {
+      console.error('Could not set the default app zoom', error)
+    })
+  }
+
+  $: applyDefaultZoom(view)
   let currentDay = todayISO()
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
@@ -2319,7 +2341,10 @@ return rows`
     const elementRect = element.getBoundingClientRect()
     if (scrollContainer) {
       const containerRect = scrollContainer.getBoundingClientRect()
-      scrollContainer.scrollTop += elementRect.top - containerRect.top - (scrollContainer.clientHeight - elementRect.height) / 2
+      const effectiveZoom = element.currentCSSZoom || 1
+      scrollContainer.scrollTop += (
+        elementRect.top - containerRect.top - (containerRect.height - elementRect.height) / 2
+      ) / effectiveZoom
       return
     }
 
@@ -2344,8 +2369,9 @@ return rows`
     const handle = event.currentTarget as HTMLElement | null
     const panel = handle?.closest('.goal-history-panel') as HTMLElement | null
     const shell = handle?.closest('.content-shell') as HTMLElement | null
+    const effectiveZoom = panel?.currentCSSZoom || 1
     const startY = event.clientY
-    const startHeight = goalHistoryHeight ?? panel?.getBoundingClientRect().height ?? 230
+    const startHeight = goalHistoryHeight ?? (panel ? panel.getBoundingClientRect().height / effectiveZoom : 230)
     let nextHeight = startHeight
     let frame = 0
 
@@ -2356,7 +2382,7 @@ return rows`
     // mutating the reactive `goalHistoryHeight`, which would re-render the whole App component on
     // every pointermove. We commit to reactive state + persist only once on pointerup.
     const onMove = (move: PointerEvent) => {
-      nextHeight = clampGoalHistoryHeight(startHeight + (startY - move.clientY))
+      nextHeight = clampGoalHistoryHeight(startHeight + (startY - move.clientY) / effectiveZoom)
       if (frame === 0) {
         frame = requestAnimationFrame(() => {
           frame = 0
@@ -4359,7 +4385,9 @@ return rows`
 
     const listRect = pasteReviewList.getBoundingClientRect()
     const currentRect = current.getBoundingClientRect()
-    const top = pasteReviewList.scrollTop + currentRect.top - listRect.top - pasteReviewList.clientHeight * 0.3
+    const effectiveZoom = current.currentCSSZoom || 1
+    const top = pasteReviewList.scrollTop
+      + (currentRect.top - listRect.top - listRect.height * 0.3) / effectiveZoom
     pasteReviewList.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }
 

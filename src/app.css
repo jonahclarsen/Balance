@@ -936,6 +936,7 @@ h3 {
 }
 
 .app-shell {
+  --app-default-zoom: 1.1;
   position: relative;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
@@ -944,6 +945,26 @@ h3 {
   height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   min-height: calc(100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom));
   overflow: hidden;
+}
+
+/* Native builds use webview zoom. Browser-only development scales the visible
+   top-level surfaces while leaving the viewport-sized shell and invisible
+   pointer handoff helpers in screen coordinates. */
+:root[data-balance-css-zoom] .app-shell > .mobile-app-header,
+:root[data-balance-css-zoom] .app-shell > .sidebar,
+:root[data-balance-css-zoom] .app-shell > .mobile-drawer-backdrop,
+:root[data-balance-css-zoom] .app-shell > .content-shell {
+  zoom: var(--app-default-zoom);
+}
+
+@media (min-width: 761px) {
+  :root[data-balance-css-zoom] .app-shell > .sidebar,
+  :root[data-balance-css-zoom] .app-shell > .content-shell {
+    height: calc(
+      (100vh - env(safe-area-inset-top) - env(safe-area-inset-bottom))
+      / var(--app-default-zoom)
+    );
+  }
 }
 
 .app-shell.sidebar-hidden {
@@ -6302,6 +6323,10 @@ body.mobile-checkbox-dragging {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
+}
+
+:root[data-balance-css-zoom] .notes-view-workspace {
+  zoom: 1.1;
 }
 
 .notes-trash-header-button {

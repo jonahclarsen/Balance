@@ -2245,8 +2245,9 @@ async function goalCardCenterOffset(page: import('@playwright/test').Page, goalN
     )
     if (!workspace || !card) return null
     const workspaceScrolls = workspace.scrollHeight > workspace.clientHeight
-    const containerTop = workspaceScrolls ? workspace.getBoundingClientRect().top : 0
-    const containerHeight = workspaceScrolls ? workspace.clientHeight : window.innerHeight
+    const workspaceRect = workspace.getBoundingClientRect()
+    const containerTop = workspaceScrolls ? workspaceRect.top : 0
+    const containerHeight = workspaceScrolls ? workspaceRect.height : window.innerHeight
     const cardRect = card.getBoundingClientRect()
     const cardCenter = cardRect.top + cardRect.height / 2
     return Math.abs(Math.round(cardCenter - (containerTop + containerHeight / 2)))

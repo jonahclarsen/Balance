@@ -44,6 +44,23 @@ async function expectDayRail(
   }
 }
 
+test('the entire app is 10% larger by default without overflowing its viewport', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const contentShell = page.locator('.content-shell')
+  await expect.poll(() => contentShell.evaluate((element) => element.currentCSSZoom)).toBeCloseTo(1.1, 5)
+
+  const contentBounds = await contentShell.boundingBox()
+  expect(contentBounds).not.toBeNull()
+  expect(contentBounds!.x).toBeGreaterThanOrEqual(0)
+  expect(contentBounds!.x + contentBounds!.width).toBeLessThanOrEqual(await page.evaluate(() => innerWidth))
+  if (testInfo.project.name === 'desktop') {
+    expect(contentBounds!.y + contentBounds!.height).toBeCloseTo(await page.evaluate(() => innerHeight), 0)
+  }
+})
+
 test('day rail points toward today and disappears on today', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -414,7 +431,8 @@ test('IMAX mode maximizes Today and restores its surrounding panels', async ({ p
   expect(imaxBox).not.toBeNull()
   expect(dateBox).not.toBeNull()
   expect(imaxBox?.x ?? Number.MAX_SAFE_INTEGER).toBeLessThan(dateBox?.x ?? 0)
-  expect(dateBox?.width ?? Number.MAX_SAFE_INTEGER).toBeLessThanOrEqual(130)
+  const dateZoom = await dateInput.evaluate((element) => element.currentCSSZoom)
+  expect((dateBox?.width ?? Number.MAX_SAFE_INTEGER) / dateZoom).toBeLessThanOrEqual(130)
   await expect(goalRhythm).toBeVisible()
 
   const imaxCenter = {

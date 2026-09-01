@@ -61,17 +61,29 @@
       node.style.left = '0px'
       const blockBounds = noteBlockElement.getBoundingClientRect()
       const menuBounds = node.getBoundingClientRect()
+      const noteBounds = noteDocument?.getBoundingClientRect()
+      const effectiveZoom = node.offsetWidth > 0 ? menuBounds.width / node.offsetWidth : 1
       const viewportGap = 8
+      const topEdge = Math.max(viewportGap, noteBounds?.top ?? viewportGap)
+      const bottomEdge = Math.min(
+        window.innerHeight - viewportGap,
+        (noteBounds?.bottom ?? window.innerHeight) - viewportGap,
+      )
+      const leftEdge = Math.max(viewportGap, noteBounds?.left ?? viewportGap)
+      const rightEdge = Math.min(
+        window.innerWidth - viewportGap,
+        (noteBounds?.right ?? window.innerWidth) - viewportGap,
+      )
       const top = Math.max(
-        viewportGap,
-        Math.min(blockBounds.bottom + 4, window.innerHeight - viewportGap - menuBounds.height),
+        topEdge,
+        Math.min(blockBounds.bottom + 4, bottomEdge - menuBounds.height),
       )
       const left = Math.max(
-        viewportGap,
-        Math.min(blockBounds.left, window.innerWidth - viewportGap - menuBounds.width),
+        leftEdge,
+        Math.min(blockBounds.left, rightEdge - menuBounds.width),
       )
-      node.style.top = `${top - blockBounds.top}px`
-      node.style.left = `${left - blockBounds.left}px`
+      node.style.top = `${(top - blockBounds.top) / effectiveZoom}px`
+      node.style.left = `${(left - blockBounds.left) / effectiveZoom}px`
     }
     const scheduleUpdate = () => {
       if (frame !== null) return
@@ -85,7 +97,7 @@
     noteDocument?.addEventListener('scroll', scheduleUpdate, { passive: true })
     resizeObserver.observe(node)
     resizeObserver.observe(noteBlockElement)
-    scheduleUpdate()
+    update()
 
     return {
       destroy() {

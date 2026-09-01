@@ -455,9 +455,14 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   await page.waitForTimeout(300)
 
   const before = await body.evaluate(modalGeometry)
+  const expectWithinVisualPixel = (actual: number, expected: number) => {
+    expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1)
+  }
   const expectedFirstCollapse = Math.max(
     0,
-    before.nextTop - before.selectedTop - (before.maxScrollTop - before.scrollTop),
+    before.nextTop
+      - before.selectedTop
+      - (before.maxScrollTop - before.scrollTop) * before.effectiveZoom,
   )
   expect(expectedFirstCollapse).toBeGreaterThan(2)
 
@@ -469,30 +474,30 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
 
   expect(midHeight).toBeLessThan(before.cardHeight)
   expect(midHeight).toBeGreaterThan(afterFirst.cardHeight)
-  expect(afterFirst.cardTop).toBeCloseTo(before.cardTop, 0)
+  expectWithinVisualPixel(afterFirst.cardTop, before.cardTop)
   expect(before.cardHeight - afterFirst.cardHeight).toBeCloseTo(expectedFirstCollapse, 0)
-  expect(afterFirst.selectedTop).toBeCloseTo(before.selectedTop, 0)
+  expectWithinVisualPixel(afterFirst.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowDown')
   await page.waitForTimeout(300)
   const afterSecond = await body.evaluate(modalGeometry)
 
   expect(afterSecond.cardHeight).toBeLessThan(afterFirst.cardHeight)
-  expect(afterSecond.cardTop).toBeCloseTo(before.cardTop, 0)
-  expect(afterSecond.selectedTop).toBeCloseTo(before.selectedTop, 0)
+  expectWithinVisualPixel(afterSecond.cardTop, before.cardTop)
+  expectWithinVisualPixel(afterSecond.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowUp')
   await page.waitForTimeout(300)
   const afterFirstReverse = await body.evaluate(modalGeometry)
   expect(afterFirstReverse.cardHeight).toBeCloseTo(afterFirst.cardHeight, 0)
-  expect(afterFirstReverse.selectedTop).toBeCloseTo(before.selectedTop, 0)
+  expectWithinVisualPixel(afterFirstReverse.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowUp')
   await page.waitForTimeout(300)
   const restored = await body.evaluate(modalGeometry)
   expect(restored.cardHeight).toBeCloseTo(before.cardHeight, 0)
-  expect(restored.cardTop).toBeCloseTo(before.cardTop, 0)
-  expect(restored.selectedTop).toBeCloseTo(before.selectedTop, 0)
+  expectWithinVisualPixel(restored.cardTop, before.cardTop)
+  expectWithinVisualPixel(restored.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowDown')
   await page.waitForTimeout(300)
@@ -509,14 +514,14 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   expect(wheelMidHeight).toBeGreaterThan(recollapsed.cardHeight)
   expect(wheelMidHeight).toBeLessThan(before.cardHeight)
   expect(afterWheel.cardHeight).toBeCloseTo(before.cardHeight, 0)
-  expect(afterWheel.cardTop).toBeCloseTo(before.cardTop, 0)
+  expectWithinVisualPixel(afterWheel.cardTop, before.cardTop)
 
   await page.keyboard.press('ArrowDown')
   await page.waitForTimeout(300)
   const afterKeyboardResume = await body.evaluate(modalGeometry)
   expect(afterKeyboardResume.cardHeight).toBeLessThan(afterWheel.cardHeight)
-  expect(afterKeyboardResume.cardTop).toBeCloseTo(before.cardTop, 0)
-  expect(afterKeyboardResume.selectedTop).toBeCloseTo(before.selectedTop, 0)
+  expectWithinVisualPixel(afterKeyboardResume.cardTop, before.cardTop)
+  expectWithinVisualPixel(afterKeyboardResume.selectedTop, before.selectedTop)
 })
 
 function modalGeometry(element: Element) {
@@ -536,6 +541,7 @@ function modalGeometry(element: Element) {
     nextTop: next.getBoundingClientRect().top,
     scrollTop: element.scrollTop,
     maxScrollTop: element.scrollHeight - element.clientHeight,
+    effectiveZoom: card.currentCSSZoom,
   }
 }
 

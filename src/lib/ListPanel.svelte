@@ -143,7 +143,11 @@
     const scrollContainer = findScrollContainer(row)
     const rowRect = row.getBoundingClientRect()
     if (scrollContainer) {
-      const targetTop = Math.max(0, scrollContainer.scrollTop + rowRect.top - window.innerHeight / 3)
+      const effectiveZoom = row.currentCSSZoom || 1
+      const targetTop = Math.max(
+        0,
+        scrollContainer.scrollTop + (rowRect.top - window.innerHeight / 3) / effectiveZoom,
+      )
       const expandedMaxScrollTop = Math.max(
         0,
         scrollContainer.scrollHeight - scrollContainer.clientHeight - bottomCollapse,
@@ -249,7 +253,7 @@
       return
     }
     if (expandedModalHeight === null) {
-      expandedModalHeight = modalCard.getBoundingClientRect().height
+      expandedModalHeight = modalCard.getBoundingClientRect().height / (modalCard.currentCSSZoom || 1)
     }
     const maxCollapse = expandedModalHeight === null ? 0 : Math.max(0, expandedModalHeight - 160)
     bottomCollapse = Math.min(requestedCollapse, maxCollapse)
