@@ -306,6 +306,58 @@ test('random theme can be scheduled for the next day boundary while changing tod
   })).toEqual(['random', ''])
 })
 
+test('theme options preview on hover without changing the selected theme', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Touch devices do not have hover previews')
+  await page.clock.install({ time: new Date('2026-08-18T10:00:00') })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+
+  const root = page.locator('html')
+  const themeGroup = page.getByRole('group', { name: 'Color theme' })
+  const graphiteTheme = themeGroup.getByRole('button', {
+    name: 'Graphite Charcoal, silver, and clean gray',
+  })
+  const pinkTheme = themeGroup.getByRole('button', {
+    name: 'Pink Bright pink and petal white',
+  })
+  const randomTheme = themeGroup.getByRole('button', {
+    name: 'Random Different every day',
+  })
+
+  await graphiteTheme.click()
+  await expect(root).toHaveAttribute('data-theme', 'graphite')
+  const storedAppearance = await page.evaluate(() => localStorage.getItem('balance:deviceAppearance.v1'))
+
+  await pinkTheme.hover()
+  await expect(root).toHaveAttribute('data-theme', 'pink')
+  await expect(graphiteTheme).toHaveAttribute('aria-pressed', 'true')
+  await expect(pinkTheme).toHaveAttribute('aria-pressed', 'false')
+  expect(await page.evaluate(() => localStorage.getItem('balance:deviceAppearance.v1'))).toBe(storedAppearance)
+
+  await page.getByRole('heading', { name: 'Color theme' }).hover()
+  await expect(root).toHaveAttribute('data-theme', 'graphite')
+
+  await randomTheme.hover()
+  await expect(root).toHaveAttribute('data-theme', 'iridescent')
+  await expect(randomTheme).toHaveAttribute('aria-pressed', 'false')
+  expect(await page.evaluate(() => localStorage.getItem('balance:deviceAppearance.v1'))).toBe(storedAppearance)
+
+  await page.getByRole('heading', { name: 'Color theme' }).hover()
+  await expect(root).toHaveAttribute('data-theme', 'graphite')
+
+  await pinkTheme.hover()
+  await pinkTheme.click()
+  await page.getByRole('heading', { name: 'Color theme' }).hover()
+  await expect(root).toHaveAttribute('data-theme', 'pink')
+  await expect(pinkTheme).toHaveAttribute('aria-pressed', 'true')
+  await expect.poll(() => page.evaluate(() => {
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return appearance?.themeId
+  })).toBe('pink')
+})
+
 test('day navigation buttons live in the fixed mobile header', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -1434,7 +1486,7 @@ test('color themes update the whole palette, persist, and adapt to dark mode', a
     expect(Math.abs(settingsLayout.leftGap - settingsLayout.rightGap)).toBeLessThan(1)
   }
   await expect(page.getByText(
-    'Pick a theme based on your mood. Each theme adapts automatically to light and dark mode.',
+    'Pick a theme based on your mood. Each theme adapts to the appearance selected below.',
     { exact: true },
   )).toBeVisible()
   await expect(themeGroup.locator('.theme-option-copy strong')).toHaveText([

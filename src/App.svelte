@@ -88,6 +88,7 @@
     DEFAULT_PRESET_THEME_ID,
     DEFAULT_THEME_ID,
     normalizePresetThemeId,
+    randomThemeForDate,
     THEME_OPTIONS,
     THEME_PRESETS,
     type PresetThemeId,
@@ -246,6 +247,7 @@
   $: updateActiveNavAnimationDelay(searchOpen ? 'search' : view)
   let themeId: ThemeId = DEFAULT_THEME_ID
   let effectiveThemeId: PresetThemeId = DEFAULT_PRESET_THEME_ID
+  let previewedThemeId: PresetThemeId | null = null
   let preferencesReady = false
   let randomThemeScheduled = false
   let deviceAppearance: DeviceAppearancePreferences = readDeviceAppearanceBootstrap()
@@ -628,7 +630,9 @@ return rows`
     : null
   $: displayedThemeId = historicalThemeId
     ? normalizePresetThemeId(historicalThemeId)
-    : effectiveThemeId
+    : previewedThemeId ?? effectiveThemeId
+  $: themePreviewActive = previewedThemeId !== null
+  $: if (view !== 'settings' && previewedThemeId !== null) previewedThemeId = null
   $: document.documentElement.dataset.colorScheme = effectiveColorScheme(
     deviceAppearance.colorScheme,
     systemPrefersDark,
@@ -650,16 +654,16 @@ return rows`
     if (!editingDatabaseLoadingMessages) databaseLoadingMessagesDraft = databaseLoadingMessages.join('\n')
   }
   $: activeTheme = THEME_PRESETS.find((theme) => theme.id === displayedThemeId) ?? THEME_PRESETS[0]
-  $: doneTintHex = doneTintColor || activeTheme.doneColor
-  $: checkboxColorHex = checkboxColor || activeTheme.checkboxColor
+  $: doneTintHex = (themePreviewActive ? '' : doneTintColor) || activeTheme.doneColor
+  $: checkboxColorHex = (themePreviewActive ? '' : checkboxColor) || activeTheme.checkboxColor
   $: doneTintPickerColor = hexToPickerColor(doneTintHex)
   $: checkboxPickerColor = hexToPickerColor(checkboxColorHex)
   // Blend the chosen color in lightly so the row reads as a tint, not a fill.
   $: doneTintValue = `color-mix(in srgb, ${doneTintHex} 14%, transparent)`
   $: appShellStyle = [
-    doneTintColor ? `--done-tint: ${doneTintValue}` : '',
-    checkboxColor ? `--checkbox-checked: ${checkboxColorHex}` : '',
-    checkboxColor
+    !themePreviewActive && doneTintColor ? `--done-tint: ${doneTintValue}` : '',
+    !themePreviewActive && checkboxColor ? `--checkbox-checked: ${checkboxColorHex}` : '',
+    !themePreviewActive && checkboxColor
       ? `--checkbox-checked-hover: color-mix(in srgb, ${checkboxColorHex} 88%, black)`
       : '',
   ]
@@ -2097,6 +2101,17 @@ return rows`
       doneTintColor: '',
       checkboxColor: '',
     })
+  }
+
+  function previewTheme(nextThemeId: ThemeId, event: PointerEvent) {
+    if (event.pointerType === 'touch') return
+    previewedThemeId = nextThemeId === 'random'
+      ? randomThemeForDate(currentDay)
+      : nextThemeId
+  }
+
+  function clearThemePreview() {
+    previewedThemeId = null
   }
 
   function updateColorScheme(colorScheme: ColorSchemePreference) {
@@ -6397,6 +6412,8 @@ return rows`
                     type="button"
                     class="theme-option-select"
                     aria-pressed={themeId === theme.id}
+                    on:pointerenter={(event) => previewTheme(theme.id, event)}
+                    on:pointerleave={clearThemePreview}
                     on:click={() => updateTheme(theme.id)}
                   >
                     <span class="theme-swatches" aria-hidden="true">
