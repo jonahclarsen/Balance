@@ -4880,6 +4880,8 @@ body.mobile-checkbox-dragging {
   [data-rhythm-mode='flow'],
   [data-rhythm-mode='flow-tint'],
   [data-rhythm-mode='flow-halo'],
+  [data-rhythm-mode='flow-ghost'],
+  [data-rhythm-mode='flow-orbit'],
   [data-rhythm-mode='flow-line'],
   [data-rhythm-mode='flow-dots'],
   [data-rhythm-mode='flow-tide']
@@ -4895,6 +4897,8 @@ body.mobile-checkbox-dragging {
   [data-rhythm-mode='flow'],
   [data-rhythm-mode='flow-tint'],
   [data-rhythm-mode='flow-halo'],
+  [data-rhythm-mode='flow-ghost'],
+  [data-rhythm-mode='flow-orbit'],
   [data-rhythm-mode='flow-line'],
   [data-rhythm-mode='flow-dots'],
   [data-rhythm-mode='flow-tide']
@@ -4903,6 +4907,8 @@ body.mobile-checkbox-dragging {
   [data-rhythm-mode='flow'],
   [data-rhythm-mode='flow-tint'],
   [data-rhythm-mode='flow-halo'],
+  [data-rhythm-mode='flow-ghost'],
+  [data-rhythm-mode='flow-orbit'],
   [data-rhythm-mode='flow-line'],
   [data-rhythm-mode='flow-dots'],
   [data-rhythm-mode='flow-tide']
@@ -4925,6 +4931,25 @@ body.mobile-checkbox-dragging {
     color-mix(in srgb, var(--danger) 18%, transparent) 0 6px,
     color-mix(in srgb, var(--danger) 8%, transparent) 7px 10px,
     transparent 13px
+  );
+}
+
+/* Flow Ghost — overdue days recede toward the paper while their marks stay
+   crisp, showing a broken rhythm without adding another danger texture. */
+.goal-history-panel[data-rhythm-mode='flow-ghost'] .goal-day-cell.overdue::before {
+  background-color: color-mix(in srgb, var(--paper) 48%, transparent);
+  background-image: none;
+}
+
+/* Flow Orbit — a fine danger ring circles each overdue mark while leaving both
+   the mark itself and the surrounding goal band open. */
+.goal-history-panel[data-rhythm-mode='flow-orbit'] .goal-day-cell.overdue::before {
+  background-color: transparent;
+  background-image: radial-gradient(
+    circle at center,
+    transparent 0 7.5px,
+    color-mix(in srgb, var(--danger) 24%, transparent) 8px 8.75px,
+    transparent 9.25px 100%
   );
 }
 
@@ -5618,6 +5643,8 @@ body.mobile-checkbox-dragging {
     [data-rhythm-mode='flow'],
     [data-rhythm-mode='flow-tint'],
     [data-rhythm-mode='flow-halo'],
+    [data-rhythm-mode='flow-ghost'],
+    [data-rhythm-mode='flow-orbit'],
     [data-rhythm-mode='flow-line'],
     [data-rhythm-mode='flow-dots'],
     [data-rhythm-mode='flow-tide']
