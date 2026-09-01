@@ -105,7 +105,7 @@ test('goal rhythm offers nine persistent visual modes with one highlighted selec
   for (const mode of [
     'Flow',
     'Flow Tint',
-    'Flow Line',
+    'Flow Halo',
     'Mosaic',
     'Columns',
     'Signal',
@@ -117,6 +117,7 @@ test('goal rhythm offers nine persistent visual modes with one highlighted selec
   }
   await expect(page.getByRole('menuitemradio', { name: 'Flow Dots', exact: true })).toHaveCount(0)
   await expect(page.getByRole('menuitemradio', { name: 'Flow Tide', exact: true })).toHaveCount(0)
+  await expect(page.getByRole('menuitemradio', { name: 'Flow Line', exact: true })).toHaveCount(0)
 
   const storedModeBeforePreview = await page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))
   const flowOption = page.getByRole('menuitemradio', { name: 'Flow', exact: true })
@@ -156,10 +157,10 @@ test('goal rhythm offers nine persistent visual modes with one highlighted selec
   await page.getByRole('menuitemradio', { name: 'Flow Tint', exact: true }).click()
   await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-tint')
   expect(await highlightedOptions()).toEqual(['Flow Tint'])
-  await page.getByRole('menuitemradio', { name: 'Flow Line', exact: true }).click()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-line')
-  expect(await highlightedOptions()).toEqual(['Flow Line'])
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('flow-line')
+  await page.getByRole('menuitemradio', { name: 'Flow Halo', exact: true }).click()
+  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-halo')
+  expect(await highlightedOptions()).toEqual(['Flow Halo'])
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('flow-halo')
   await page.getByRole('menuitemradio', { name: 'Mosaic' }).click()
   expect(await highlightedOptions()).toEqual(['Mosaic'])
   await page.getByRole('menuitemradio', { name: 'Columns' }).click()
@@ -213,7 +214,7 @@ test('active and retired flow variants preserve the cadence band with a safe fut
     const overdueCell = document.querySelector<HTMLElement>('.goal-day-cell.overdue')
     if (!rhythm || !activeCell || !overdueCell) throw new Error('Could not find Flow pattern cells')
 
-    return ['flow', 'flow-tint', 'flow-line', 'flow-dots', 'flow-tide', 'future-flow'].map((mode) => {
+    return ['flow', 'flow-tint', 'flow-halo', 'flow-line', 'flow-dots', 'flow-tide', 'future-flow'].map((mode) => {
       rhythm.dataset.rhythmMode = mode
       return {
         mode,
@@ -230,21 +231,23 @@ test('active and retired flow variants preserve the cadence band with a safe fut
     appearances[0].activeBackground,
     appearances[0].activeBackground,
     appearances[0].activeBackground,
+    appearances[0].activeBackground,
     'none',
   ])
   expect(appearances[0].overdueOverlay).toContain('repeating-linear-gradient')
   expect(appearances[1].overdueOverlay).toBe('none')
-  expect(appearances[2].overdueOverlay).toContain('linear-gradient(to top')
-  expect(appearances[3].overdueOverlay).toContain('radial-gradient')
-  expect(appearances[4].overdueOverlay).toContain('linear-gradient(to top')
-  expect(appearances[5].overdueOverlay).toContain('repeating-linear-gradient')
-  expect(appearances[5].activeBackgroundColor).not.toBe('rgba(0, 0, 0, 0)')
+  expect(appearances[2].overdueOverlay).toContain('radial-gradient')
+  expect(appearances[3].overdueOverlay).toContain('linear-gradient(to top')
+  expect(appearances[4].overdueOverlay).toContain('radial-gradient')
+  expect(appearances[5].overdueOverlay).toContain('linear-gradient(to top')
+  expect(appearances[6].overdueOverlay).toContain('repeating-linear-gradient')
+  expect(appearances[6].activeBackgroundColor).not.toBe('rgba(0, 0, 0, 0)')
 })
 
 test('retired and unknown saved rhythm modes fall back to Flow without rewriting the saved ID', async ({ page }) => {
   const rhythm = page.getByRole('region', { name: 'Goal history' })
 
-  for (const storedMode of ['flow-dots', 'flow-tide', 'future-flow']) {
+  for (const storedMode of ['flow-line', 'flow-dots', 'flow-tide', 'future-flow']) {
     await page.evaluate((mode) => localStorage.setItem('balance.goalRhythmMode.v1', mode), storedMode)
     await page.reload()
     await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow')
@@ -1765,10 +1768,11 @@ test('goal rhythm uses one smooth scroll surface across its name and timeline pa
     })
     rhythm.dataset.rhythmMode = 'flow'
     return measurements
-  }, ['flow', 'flow-tint', 'flow-line', 'flow-dots', 'flow-tide', 'mosaic', 'columns', 'signal', 'ledger', 'aurora', 'constellation'])
+  }, ['flow', 'flow-tint', 'flow-halo', 'flow-line', 'flow-dots', 'flow-tide', 'mosaic', 'columns', 'signal', 'ledger', 'aurora', 'constellation'])
   expect(modeGeometry).toEqual([
     { mode: 'flow', maximumTopDifference: 0, maximumHeightDifference: 0 },
     { mode: 'flow-tint', maximumTopDifference: 0, maximumHeightDifference: 0 },
+    { mode: 'flow-halo', maximumTopDifference: 0, maximumHeightDifference: 0 },
     { mode: 'flow-line', maximumTopDifference: 0, maximumHeightDifference: 0 },
     { mode: 'flow-dots', maximumTopDifference: 0, maximumHeightDifference: 0 },
     { mode: 'flow-tide', maximumTopDifference: 0, maximumHeightDifference: 0 },

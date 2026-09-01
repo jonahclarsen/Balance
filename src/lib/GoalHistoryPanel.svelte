@@ -17,6 +17,7 @@
   type GoalRhythmMode =
     | 'flow'
     | 'flow-tint'
+    | 'flow-halo'
     | 'flow-line'
     | 'flow-dots'
     | 'flow-tide'
@@ -34,7 +35,7 @@
   const GOAL_RHYTHM_MODES: Array<{ id: GoalRhythmMode; label: string; glyph: string }> = [
     { id: 'flow', label: 'Flow', glyph: '≋' },
     { id: 'flow-tint', label: 'Flow Tint', glyph: '◌' },
-    { id: 'flow-line', label: 'Flow Line', glyph: '―' },
+    { id: 'flow-halo', label: 'Flow Halo', glyph: '⊙' },
     { id: 'mosaic', label: 'Mosaic', glyph: '▦' },
     { id: 'columns', label: 'Columns', glyph: '▥' },
     { id: 'signal', label: 'Signal', glyph: '•—' },
