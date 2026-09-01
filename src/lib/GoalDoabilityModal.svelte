@@ -12,10 +12,10 @@
   let mascotPanel: HTMLDivElement
   let guidancePanel: HTMLElement
   let goalsPanel: HTMLElement
-  let columnShares: [number, number] = [0.68, 0.32]
-  let mascotHeight = 166
+  let columnShares: [number, number] = [639 / 1046, 407 / 1046]
+  let mascotHeight = 320
   let renderedMascotHeight = 0
-  let modalSize = { width: 940, height: 500 }
+  let modalSize = { width: 1096, height: 730 }
   let panelWidths: [number, number] = [0, 0]
   let panelResizeObserver: ResizeObserver | null = null
   let stopColumnResize: (() => void) | null = null
@@ -115,10 +115,10 @@
 </script>
 
 <OverlayModal
-  ariaLabel="Are your goals doable?"
+  ariaLabel="Are your goals attainable?"
   z={85}
-  maxWidth={940}
-  initialHeight={500}
+  maxWidth={1096}
+  initialHeight={730}
   minWidth={660}
   bodyOverflow="hidden"
   headerless
@@ -144,8 +144,8 @@
             on:pointerdown={startMascotResize}
           ><span></span></button>
         </div>
-        <h2>Are your goals doable?</h2>
-        <p>It's easy for the goal system to get clogged. From our experience, goals work best if they are typically:</p>
+        <h2>Are your goals attainable?</h2>
+        <p>It's easy for the goal system to get clogged. From our experience, goals work best when they are:</p>
         <ul>
           <li>Able to be completed in 2–3 minutes (and can optionally go longer), unless it's a longer daily habit like a morning routine list</li>
           <li>Not dependent on someone else (“reach out to a friend to game” instead of “game with a friend”)</li>

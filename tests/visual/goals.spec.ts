@@ -1243,9 +1243,10 @@ test('day generation opens the goal doability review for legacy overdue and repe
     await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   }
 
-  const modal = page.getByRole('dialog', { name: 'Are your goals doable?' })
+  const modal = page.getByRole('dialog', { name: 'Are your goals attainable?' })
   await expect(modal).toBeVisible()
-  await expect(modal.getByRole('heading', { name: 'Are your goals doable?' })).toBeVisible()
+  await expect(modal.getByRole('heading', { name: 'Are your goals attainable?' })).toBeVisible()
+  await expect(modal.getByText("It's easy for the goal system to get clogged. From our experience, goals work best when they are:")).toBeVisible()
   await expect(modal.getByRole('heading', { name: 'Goal check-in' })).toHaveCount(0)
   await expect(modal.getByRole('heading', { name: 'Goals to review' })).toHaveCount(0)
   await expect(modal.getByText('Call someone').locator('..')).toContainText('5 days overdue')
@@ -1253,10 +1254,12 @@ test('day generation opens the goal doability review for legacy overdue and repe
   await expect(modal.locator('.mascot img')).toBeVisible()
   await expect.poll(async () => {
     const mascot = await modal.locator('.mascot').boundingBox()
-    const heading = await modal.getByRole('heading', { name: 'Are your goals doable?' }).boundingBox()
+    const heading = await modal.getByRole('heading', { name: 'Are your goals attainable?' }).boundingBox()
     return Boolean(mascot && heading && mascot.y + mascot.height <= heading.y)
   }).toBe(true)
   await expect(modal.getByTestId('goal-review-sizing')).toContainText(/modal=\d+x\d+px; panels=\d+\/\d+px.*peacock=\d+px high/)
+  await expect(modal).toHaveCSS('--overlay-card-width', '1096px')
+  await expect(modal).toHaveCSS('--overlay-card-height', '730px')
   await expect.poll(() => modal.locator('.goals-to-review ul').evaluate(
     (element) => element.scrollHeight > element.clientHeight,
   )).toBe(true)
@@ -1279,14 +1282,14 @@ test('day generation opens the goal doability review for legacy overdue and repe
     expect(cornerBox).not.toBeNull()
     await page.mouse.move(cornerBox!.x + cornerBox!.width / 2, cornerBox!.y + cornerBox!.height / 2)
     await page.mouse.down()
-    await page.mouse.move(cornerBox!.x + cornerBox!.width / 2 + 20, cornerBox!.y + cornerBox!.height / 2 + 28)
+    await page.mouse.move(cornerBox!.x + cornerBox!.width / 2 - 20, cornerBox!.y + cornerBox!.height / 2 - 28)
     await page.mouse.up()
     const afterModal = await modal.evaluate((element) => {
       const rect = element.getBoundingClientRect()
       return { width: rect.width, height: rect.height, centerX: rect.x + rect.width / 2, centerY: rect.y + rect.height / 2 }
     })
-    expect(afterModal.width).toBeGreaterThan(beforeModal.width)
-    expect(afterModal.height).toBeGreaterThan(beforeModal.height)
+    expect(afterModal.width).toBeLessThan(beforeModal.width)
+    expect(afterModal.height).toBeLessThan(beforeModal.height)
     expect(Math.abs(afterModal.centerX - beforeModal.centerX)).toBeLessThanOrEqual(1)
     expect(Math.abs(afterModal.centerY - beforeModal.centerY)).toBeLessThanOrEqual(1)
 
@@ -1308,11 +1311,11 @@ test('day generation opens the goal doability review for legacy overdue and repe
     expect(mascotHandleBox).not.toBeNull()
     await page.mouse.move(mascotHandleBox!.x + mascotHandleBox!.width / 2, mascotHandleBox!.y + mascotHandleBox!.height / 2)
     await page.mouse.down()
-    await page.mouse.move(mascotHandleBox!.x + mascotHandleBox!.width / 2, mascotHandleBox!.y + mascotHandleBox!.height / 2 + 24)
+    await page.mouse.move(mascotHandleBox!.x + mascotHandleBox!.width / 2, mascotHandleBox!.y + mascotHandleBox!.height / 2 - 24)
     await page.mouse.up()
     await expect.poll(() => modal.locator('.mascot').evaluate(
       (element) => element.getBoundingClientRect().height,
-    )).toBeGreaterThan(mascotBefore + 10)
+    )).toBeLessThan(mascotBefore - 10)
 
     await page.getByRole('button', { name: 'Goals', exact: true }).click()
     await expect(modal).toHaveCount(0)
