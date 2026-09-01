@@ -690,7 +690,6 @@
   .recovery-row,
   .recovery-json,
   .goal-create-panel,
-  .goal-card,
   .segmented,
   .metric-card,
   .notes-workspace,
@@ -728,7 +727,6 @@
   .recovery-row,
   .recovery-json,
   .goal-create-panel,
-  .goal-card,
   .segmented,
   .metric-card,
   .notes-workspace,
@@ -4008,13 +4006,19 @@ body.mobile-checkbox-dragging {
   justify-self: center;
 }
 
+.goal-card-footer > .goal-card-meta {
+  align-self: end;
+  justify-self: end;
+  text-align: right;
+}
+
 @container goal-card (min-width: 760px) {
   .goal-card-footer {
     grid-template-columns: minmax(0, 1fr) minmax(0, 420px) minmax(0, 1fr);
   }
 
   .goal-card-footer > .goal-card-meta {
-    grid-column: 1;
+    grid-column: 3;
   }
 
   .goal-card-footer > .goal-recent-history {

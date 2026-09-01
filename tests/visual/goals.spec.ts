@@ -166,14 +166,19 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
   await expect(history.locator(`[data-goal-date="${currentDate}"]`)).toHaveClass(/today/)
   const historyBox = await history.boundingBox()
   const savedCompletionBox = await page.locator('.goal-card-meta').boundingBox()
+  const footerBox = await page.locator('.goal-card-footer').boundingBox()
   expect(historyBox).not.toBeNull()
   expect(savedCompletionBox).not.toBeNull()
+  expect(footerBox).not.toBeNull()
+  const savedCompletionRight = savedCompletionBox!.x + savedCompletionBox!.width
+  const footerRight = footerBox!.x + footerBox!.width
+  expect(Math.abs(savedCompletionRight - footerRight)).toBeLessThanOrEqual(2)
   if (testInfo.project.name === 'desktop') {
-    const historyCenter = historyBox!.y + historyBox!.height / 2
-    const savedCompletionCenter = savedCompletionBox!.y + savedCompletionBox!.height / 2
-    expect(Math.abs(historyCenter - savedCompletionCenter)).toBeLessThanOrEqual(2)
+    const historyBottom = historyBox!.y + historyBox!.height
+    const savedCompletionBottom = savedCompletionBox!.y + savedCompletionBox!.height
+    expect(Math.abs(historyBottom - savedCompletionBottom)).toBeLessThanOrEqual(2)
   } else {
-    expect(historyBox!.y).toBeGreaterThan(savedCompletionBox!.y + savedCompletionBox!.height)
+    expect(savedCompletionBox!.y).toBeGreaterThan(historyBox!.y + historyBox!.height)
   }
   const targetDate = addDays(currentDate, -4)
   const targetDay = history.locator(`[data-goal-date="${targetDate}"]`)
@@ -1647,6 +1652,15 @@ test('goal cards show their saved completion count without frozen-history text',
   await createGoal(page, 'Exercise', 3, 'lift, swim')
   await expect(page.locator('.goal-card-meta')).toHaveText('0 saved completions')
   await expect(page.getByText(/history before .* is frozen/i)).toHaveCount(0)
+})
+
+test('iridescent goal cards do not draw a decorative corner outline', async ({ page }) => {
+  await selectDeviceThemeForTest(page, 'iridescent')
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+
+  const card = page.locator('.goal-card')
+  await expect(card).toHaveCSS('border-color', 'rgb(221, 211, 230)')
+  await expect.poll(() => card.evaluate((element) => getComputedStyle(element, '::after').content)).toBe('none')
 })
 
 test('long goal names truncate without overlapping status or archive actions', async ({ page }) => {

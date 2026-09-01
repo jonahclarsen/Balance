@@ -6326,15 +6326,15 @@ return rows`
               {/if}
             </div>
             <div class="goal-card-footer">
-              <p class="goal-card-meta">
-                {completionCount} saved completion{completionCount === 1 ? '' : 's'}
-              </p>
               <GoalRecentHistory
                 {goal}
                 completions={goalCompletionHistory}
                 currentDate={currentDay}
                 onOpenDate={openDateInToday}
               />
+              <p class="goal-card-meta">
+                {completionCount} saved completion{completionCount === 1 ? '' : 's'}
+              </p>
             </div>
           </article>
         {:else}
