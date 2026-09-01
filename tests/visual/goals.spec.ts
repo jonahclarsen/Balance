@@ -201,9 +201,7 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
   expect(historyBox).not.toBeNull()
   expect(savedCompletionBox).not.toBeNull()
   expect(footerBox).not.toBeNull()
-  const savedCompletionRight = savedCompletionBox!.x + savedCompletionBox!.width
-  const footerRight = footerBox!.x + footerBox!.width
-  expect(Math.abs(savedCompletionRight - footerRight)).toBeLessThanOrEqual(2)
+  expect(Math.abs(savedCompletionBox!.x - footerBox!.x)).toBeLessThanOrEqual(2)
   if (testInfo.project.name === 'desktop') {
     const historyBottom = historyBox!.y + historyBox!.height
     const savedCompletionBottom = savedCompletionBox!.y + savedCompletionBox!.height

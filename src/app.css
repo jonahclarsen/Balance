@@ -4008,8 +4008,8 @@ body.mobile-checkbox-dragging {
 
 .goal-card-footer > .goal-card-meta {
   align-self: end;
-  justify-self: end;
-  text-align: right;
+  justify-self: start;
+  text-align: left;
 }
 
 @container goal-card (min-width: 760px) {
@@ -4018,7 +4018,8 @@ body.mobile-checkbox-dragging {
   }
 
   .goal-card-footer > .goal-card-meta {
-    grid-column: 3;
+    grid-column: 1;
+    grid-row: 1;
   }
 
   .goal-card-footer > .goal-recent-history {
