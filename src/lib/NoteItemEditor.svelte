@@ -212,7 +212,24 @@
       outdentItem(noteId, item.id)
       await tick()
       focusInputAtOffset(item.id, offset)
+      return
     }
+    if (item.kind !== 'checklist') return
+
+    if (item.text.trim()) {
+      patchItem(noteId, item.id, { kind: 'paragraph', done: false })
+      await tick()
+      focusInputAtOffset(item.id, offset)
+      return
+    }
+
+    const inputs = noteInputs()
+    const index = inputs.findIndex((input) => input.dataset.noteTextInputId === item.id)
+    deleteItemPreservingChildren(noteId, item.id)
+    await tick()
+    const next = noteInputs()
+    const target = next[Math.max(0, index - 1)] ?? next[0]
+    if (target) focusElement(target)
   }
 
   async function handleBackspaceEmpty() {

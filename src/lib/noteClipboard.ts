@@ -1,3 +1,4 @@
+import { htmlToPlainText, sanitizeInlineHTML } from './planner'
 import type { NoteItemKind } from './types'
 
 export type NoteClipboardBlock = {
@@ -11,6 +12,14 @@ export type NoteClipboardBlock = {
 
 type NoteClipboardNode = NoteClipboardBlock & {
   children: NoteClipboardNode[]
+}
+
+export type ParsedNoteClipboardItem = {
+  kind: NoteItemKind
+  html: string
+  text: string
+  done: boolean
+  children: ParsedNoteClipboardItem[]
 }
 
 export function noteClipboardPlainText(blocks: NoteClipboardBlock[]): string {
@@ -28,6 +37,61 @@ export function noteClipboardPlainText(blocks: NoteClipboardBlock[]): string {
 
 export function noteClipboardHTML(blocks: NoteClipboardBlock[]): string {
   return renderNodes(buildForest(blocks))
+}
+
+export function parseNoteClipboardHTML(html: string): ParsedNoteClipboardItem[] {
+  if (!html.trim() || typeof DOMParser === 'undefined') return []
+
+  const document = new DOMParser().parseFromString(html, 'text/html')
+  return parseClipboardContainer(document.body)
+}
+
+function parseClipboardContainer(container: Element): ParsedNoteClipboardItem[] {
+  return Array.from(container.children).flatMap((element) => {
+    if (element.matches('ul, ol')) return parseClipboardList(element)
+    if (!element.matches('p, div, h1, h2, h3, h4, h5, h6')) return []
+
+    const html = sanitizeInlineHTML(element.innerHTML)
+    return [{
+      kind: element.matches('h1, h2, h3, h4, h5, h6') ? 'heading' : 'paragraph',
+      html,
+      text: htmlToPlainText(html),
+      done: false,
+      children: [],
+    } satisfies ParsedNoteClipboardItem]
+  })
+}
+
+function parseClipboardList(list: Element): ParsedNoteClipboardItem[] {
+  return Array.from(list.children)
+    .filter((element) => element.matches('li'))
+    .map((element) => {
+      const nestedLists = Array.from(element.children).filter((child) => child.matches('ul, ol'))
+      const inline = element.cloneNode(true) as HTMLElement
+      Array.from(inline.children).filter((child) => child.matches('ul, ol')).forEach((child) => child.remove())
+
+      let kind: NoteItemKind = list.matches('ol') ? 'numbered' : 'bullet'
+      let done = false
+      if (list.matches('ul')) {
+        const walker = document.createTreeWalker(inline, NodeFilter.SHOW_TEXT)
+        const firstText = walker.nextNode() as Text | null
+        const checkbox = firstText?.data.match(/^([☐☑])\s*/)
+        if (firstText && checkbox) {
+          kind = 'checklist'
+          done = checkbox[1] === '☑'
+          firstText.data = firstText.data.slice(checkbox[0].length)
+        }
+      }
+
+      const html = sanitizeInlineHTML(inline.innerHTML)
+      return {
+        kind,
+        html,
+        text: htmlToPlainText(html),
+        done,
+        children: nestedLists.flatMap(parseClipboardList),
+      }
+    })
 }
 
 function plainTextMarker(block: NoteClipboardBlock): string {

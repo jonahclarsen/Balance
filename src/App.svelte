@@ -6155,6 +6155,7 @@ return rows`
         onAddItem={plannerStore.addRootNoteItem}
         patchItem={plannerStore.patchNoteItem}
         splitItem={plannerStore.splitNoteItem}
+        pasteItems={plannerStore.pasteNoteItems}
         backspaceItemAtStart={plannerStore.backspaceNoteItemAtStart}
         deleteItem={plannerStore.deleteNoteItem}
         deleteItemPreservingChildren={plannerStore.deleteNoteItemPreservingChildren}

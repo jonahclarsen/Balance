@@ -82,6 +82,7 @@ import {
   createNoteItem,
   shiftCalendarDateISO,
 } from './planner'
+import type { ParsedNoteClipboardItem } from './noteClipboard'
 import {
   createGoal,
   goalCompletionsEqual,
@@ -1681,11 +1682,8 @@ function createPlannerStore() {
     splitNoteItem(noteId: Id, itemId: Id, before: { html: string; text: string }, after: { html: string; text: string }) {
       const note = get(store).notes.find((candidate) => candidate.id === noteId)
       const source = note ? findPlanItem(note.items, itemId) as NoteItem | null : null
-      const emptyListItem =
-        (source?.kind === 'bullet' || source?.kind === 'numbered') &&
-        !before.text.trim() &&
-        !after.text.trim()
-      const placement = emptyListItem ? 'after' : splitPlacementForBeforeText(before)
+      const emptyItem = !before.text.trim() && !after.text.trim()
+      const placement = emptyItem ? 'after' : splitPlacementForBeforeText(before)
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
       const nextKind = source?.kind === 'heading' && placement === 'after' ? 'paragraph' : (source?.kind ?? 'paragraph')
@@ -1698,6 +1696,31 @@ function createPlannerStore() {
         })),
       )
       return newItem.id
+    },
+
+    pasteNoteItems(
+      noteId: Id,
+      itemsToPaste: ParsedNoteClipboardItem[],
+      targetId: Id,
+      placement: 'after' | 'replace',
+    ) {
+      const createPastedItem = (item: ParsedNoteClipboardItem): NoteItem => ({
+        ...createNoteItem(item.text, item.kind),
+        html: item.html,
+        done: item.done,
+        children: item.children.map(createPastedItem),
+      })
+      const pastedItems = itemsToPaste.map(createPastedItem)
+      if (pastedItems.length === 0) return []
+
+      commit('paste_note_items', { noteId, targetId, placement, items: pastedItems }, (state) =>
+        updateNote(state, noteId, (note) => {
+          const items = pastePlanItemsIntoTree(note.items, pastedItems, targetId, placement) as NoteItem[]
+          return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
+        }),
+      )
+
+      return pastedItems.map((item) => item.id)
     },
 
     deleteNoteItem(noteId: Id, itemId: Id) {

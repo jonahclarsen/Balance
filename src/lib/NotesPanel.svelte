@@ -5,7 +5,13 @@
   import NoteItemEditor from './NoteItemEditor.svelte'
   import ReadOnlyNoteItem from './ReadOnlyNoteItem.svelte'
   import { htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
-  import { noteClipboardHTML, noteClipboardPlainText, type NoteClipboardBlock } from './noteClipboard'
+  import {
+    noteClipboardHTML,
+    noteClipboardPlainText,
+    parseNoteClipboardHTML,
+    type NoteClipboardBlock,
+    type ParsedNoteClipboardItem,
+  } from './noteClipboard'
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from './types'
 
@@ -39,6 +45,7 @@
   export let onAddItem: (noteId: Id, kind?: NoteItemKind) => Id
   export let patchItem: typeof import('./store').plannerStore.patchNoteItem
   export let splitItem: typeof import('./store').plannerStore.splitNoteItem
+  export let pasteItems: typeof import('./store').plannerStore.pasteNoteItems
   export let backspaceItemAtStart: typeof import('./store').plannerStore.backspaceNoteItemAtStart
   export let deleteItem: typeof import('./store').plannerStore.deleteNoteItem
   export let deleteItemPreservingChildren: typeof import('./store').plannerStore.deleteNoteItemPreservingChildren
@@ -628,6 +635,33 @@
     }
   }
 
+  async function handleNotePaste(event: ClipboardEvent) {
+    if (!selectedNote || !event.clipboardData) return
+
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLDivElement>('[data-note-text-input]')
+      : null
+    const targetId = target?.dataset.noteTextInputId
+    const targetItem = targetId ? findItem(selectedNote.items, targetId) : null
+    if (!target || !targetId || !targetItem) return
+
+    const items = parseNoteClipboardHTML(event.clipboardData.getData('text/html'))
+    const flattenedItems = flattenParsedClipboardItems(items)
+    if (flattenedItems.length < 2 || flattenedItems.some((item) => item.kind !== 'checklist')) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    const placement = targetItem.text.trim() === '' ? 'replace' : 'after'
+    const pastedIds = pasteItems(selectedNote.id, items, targetId, placement)
+    activeItemId = pastedIds.at(-1) ?? null
+    await tick()
+    focusActiveEditor()
+  }
+
+  function flattenParsedClipboardItems(items: ParsedNoteClipboardItem[]): ParsedNoteClipboardItem[] {
+    return items.flatMap((item) => [item, ...flattenParsedClipboardItems(item.children)])
+  }
+
   function numberedMarker(row: HTMLElement) {
     const value = Number.parseInt(row.dataset.noteItemNumber ?? '1', 10)
     return Number.isFinite(value) ? value : 1
@@ -939,7 +973,7 @@
         <span class="note-format-hint">Type <kbd>/</kbd> for more</span>
         </div>
 
-        <div class="note-blocks" bind:this={noteBlocksElement}>
+        <div class="note-blocks" bind:this={noteBlocksElement} on:paste|capture={handleNotePaste}>
         {#if selectedNote.items.length === 0}
           <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
         {:else}

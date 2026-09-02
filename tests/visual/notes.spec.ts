@@ -780,6 +780,109 @@ test('empty bulleted and numbered note items remain list items on Enter', async 
   await expect(newNumbered.locator('[data-note-text-input]')).toBeFocused()
 })
 
+test('Enter on an empty note paragraph moves the caret to the new paragraph below', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const first = page.locator('.note-item').first()
+  const firstId = await first.getAttribute('data-note-item-id')
+  expect(firstId).not.toBeNull()
+  const firstEditor = first.locator('[data-note-text-input]')
+  await firstEditor.focus()
+  await firstEditor.press('Enter')
+
+  await expect(page.locator('.note-item')).toHaveCount(2)
+  await expect(page.locator('.note-item').first()).toHaveAttribute('data-note-item-id', firstId!)
+  const newEditor = page.locator('.note-item').nth(1).locator('[data-note-text-input]')
+  await expect(newEditor).toBeFocused()
+  await expect.poll(() => newEditor.evaluate((element) => {
+    const selection = document.getSelection()
+    return Boolean(selection?.isCollapsed && selection.anchorNode && element.contains(selection.anchorNode))
+  })).toBe(true)
+})
+
+test('pasting copied checklist blocks recreates separate checklist items', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  await toolbar.getByRole('button', { name: 'Checklist' }).click()
+  const first = page.locator('[data-note-text-input]').first()
+  await first.fill('First check')
+  await page.getByLabel('Mark checked').check()
+  await placeCaretAtEnd(first)
+  await first.press('Enter')
+  const second = page.locator('[data-note-text-input]').nth(1)
+  await second.fill('Second check')
+  await second.press('Meta+A')
+  await second.press('Meta+A')
+  const clipboard = await copyNoteSelection(page)
+  expect(clipboard?.handled).toBe(true)
+
+  await second.click()
+  await placeCaretAtEnd(second)
+  await second.press('Enter')
+  const destination = page.locator('[data-note-text-input]').nth(2)
+  await destination.evaluate((element, copied) => {
+    element.focus()
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', copied?.plainText ?? '')
+    clipboardData.setData('text/html', copied?.html ?? '')
+    element.dispatchEvent(new ClipboardEvent('paste', {
+      bubbles: true,
+      cancelable: true,
+      clipboardData,
+    }))
+  }, clipboard)
+
+  const pastedItems = page.locator('.note-item')
+  await expect(pastedItems).toHaveCount(4)
+  await expect(pastedItems.nth(2)).toHaveClass(/note-list-item/)
+  await expect(pastedItems.nth(3)).toHaveClass(/note-list-item/)
+  await expect(pastedItems.nth(2).locator('[data-note-text-input]')).toHaveText('First check')
+  await expect(pastedItems.nth(3).locator('[data-note-text-input]')).toHaveText('Second check')
+  await expect(pastedItems.nth(2).getByRole('checkbox')).toBeChecked()
+  await expect(pastedItems.nth(3).getByRole('checkbox')).not.toBeChecked()
+})
+
+test('Shift+Tab removes a top-level checklist block or its empty item', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+  await toolbar.getByRole('button', { name: 'Checklist' }).click()
+  const editor = page.locator('[data-note-text-input]').first()
+  const item = page.locator('.note-item').first()
+  const itemId = await item.getAttribute('data-note-item-id')
+  await editor.fill('Keep this text')
+  await placeCaretAtOffset(editor, 4)
+  await editor.press('Shift+Tab')
+
+  await expect(item).toHaveAttribute('data-note-item-id', itemId!)
+  await expect(item).not.toHaveClass(/note-list-item/)
+  await expect(editor).toHaveText('Keep this text')
+  await expect(editor).toBeFocused()
+  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+    anchor: { text: 'Keep this text', offset: 4 },
+    focus: { text: 'Keep this text', offset: 4 },
+  })
+
+  await toolbar.getByRole('button', { name: 'Checklist' }).click()
+  await editor.fill('')
+  await editor.press('Shift+Tab')
+  await expect(page.locator('.note-item')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Start writing…' })).toBeVisible()
+})
+
 test('notes support a seamless editor, natural formatting, persistence, search, and app links', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
