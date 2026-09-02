@@ -1,4 +1,4 @@
-import { htmlToPlainText, sanitizeInlineHTML } from './planner'
+import { escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
 import type { NoteItemKind } from './types'
 
 export type NoteClipboardBlock = {
@@ -44,6 +44,56 @@ export function parseNoteClipboardHTML(html: string): ParsedNoteClipboardItem[] 
 
   const document = new DOMParser().parseFromString(html, 'text/html')
   return parseClipboardContainer(document.body)
+}
+
+export function parseNoteChecklistClipboard(plainText: string, html: string): ParsedNoteClipboardItem[] {
+  const htmlItems = parseNoteClipboardHTML(html)
+  const flattenedHTMLItems = flattenParsedItems(htmlItems)
+  if (flattenedHTMLItems.length >= 2 && flattenedHTMLItems.every((item) => item.kind === 'checklist')) {
+    return htmlItems
+  }
+
+  const roots: ParsedNoteClipboardItem[] = []
+  const stack: { depth: number; item: ParsedNoteClipboardItem }[] = []
+  let current: ParsedNoteClipboardItem | null = null
+
+  for (const line of plainText.split(/\r?\n/)) {
+    const match = line.match(/^(\s*)([☐☑])(?:\s+|$)(.*)$/)
+    if (!match) {
+      if (current && line.trim()) {
+        const continuation = line.trimStart()
+        current.html += `<br>${escapeHTML(continuation)}`
+        current.text += `\n${continuation}`
+      }
+      continue
+    }
+
+    const depth = indentationWidth(match[1])
+    const text = match[3]
+    const item: ParsedNoteClipboardItem = {
+      kind: 'checklist',
+      html: escapeHTML(text),
+      text,
+      done: match[2] === '☑',
+      children: [],
+    }
+    while (stack.length > 0 && stack[stack.length - 1].depth >= depth) stack.pop()
+    const parent = stack[stack.length - 1]
+    if (parent) parent.item.children.push(item)
+    else roots.push(item)
+    stack.push({ depth, item })
+    current = item
+  }
+
+  return flattenParsedItems(roots).length >= 2 ? roots : []
+}
+
+function flattenParsedItems(items: ParsedNoteClipboardItem[]): ParsedNoteClipboardItem[] {
+  return items.flatMap((item) => [item, ...flattenParsedItems(item.children)])
+}
+
+function indentationWidth(indentation: string) {
+  return Array.from(indentation).reduce((width, character) => width + (character === '\t' ? 2 : 1), 0)
 }
 
 function parseClipboardContainer(container: Element): ParsedNoteClipboardItem[] {

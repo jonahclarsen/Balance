@@ -8,7 +8,7 @@
   import {
     noteClipboardHTML,
     noteClipboardPlainText,
-    parseNoteClipboardHTML,
+    parseNoteChecklistClipboard,
     type NoteClipboardBlock,
     type ParsedNoteClipboardItem,
   } from './noteClipboard'
@@ -551,6 +551,20 @@
   }
 
   function handleEditorKeydownCapture(event: KeyboardEvent) {
+    if (event.key === 'Tab' && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      const row = event.target instanceof Element
+        ? event.target.closest<HTMLElement>('[data-note-item-id]')
+        : null
+      const itemId = row?.dataset.noteItemId
+      const item = selectedNote && itemId ? findItem(selectedNote.items, itemId) : null
+      if (row?.dataset.noteItemDepth === '0' && item?.kind === 'checklist') {
+        event.preventDefault()
+        event.stopPropagation()
+        void removeTopLevelChecklist(item, row)
+        return
+      }
+    }
+
     const primaryModifier = event.metaKey || event.ctrlKey
     if (selectedItemIds.length > 0) {
       if (event.key === 'Escape') {
@@ -568,6 +582,47 @@
       }
     }
     if (['Enter', 'Backspace', 'Delete', 'Tab'].includes(event.key)) void followNoteBottomAfterEdit(event)
+  }
+
+  async function removeTopLevelChecklist(item: Note['items'][number], row: HTMLElement) {
+    if (!selectedNote) return
+
+    const editor = row.querySelector<HTMLDivElement>('[data-note-text-input]')
+    if (item.text.trim()) {
+      let offset = editor?.textContent?.length ?? item.text.length
+      const selection = document.getSelection()
+      if (editor && editor === document.activeElement && selection?.focusNode && editor.contains(selection.focusNode)) {
+        offset = textOffsetAtPoint(editor, selection.focusNode, selection.focusOffset)
+      }
+      patchItem(selectedNote.id, item.id, { kind: 'paragraph', done: false })
+      activeItemId = item.id
+      await tick()
+      const nextEditor = activeEditor()
+      if (nextEditor) placeCaretAtTextOffset(nextEditor, offset)
+      return
+    }
+
+    const inputs = noteInputs()
+    const index = inputs.findIndex((input) => input.dataset.noteTextInputId === item.id)
+    deleteItemPreservingChildren(selectedNote.id, item.id)
+    await tick()
+    const next = noteInputs()
+    const target = next[Math.max(0, index - 1)] ?? next[0]
+    if (target) {
+      activeItemId = target.dataset.noteTextInputId ?? null
+      placeCaretAtTextOffset(target, target.textContent?.length ?? 0)
+    }
+  }
+
+  function placeCaretAtTextOffset(editor: HTMLDivElement, offset: number) {
+    editor.focus()
+    const point = pointAtTextOffset(editor, offset)
+    const range = document.createRange()
+    range.setStart(point.node, point.offset)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
   }
 
   function noteInputs() {
@@ -645,7 +700,10 @@
     const targetItem = targetId ? findItem(selectedNote.items, targetId) : null
     if (!target || !targetId || !targetItem) return
 
-    const items = parseNoteClipboardHTML(event.clipboardData.getData('text/html'))
+    const items = parseNoteChecklistClipboard(
+      event.clipboardData.getData('text/plain'),
+      event.clipboardData.getData('text/html'),
+    )
     const flattenedItems = flattenParsedClipboardItems(items)
     if (flattenedItems.length < 2 || flattenedItems.some((item) => item.kind !== 'checklist')) return
 

@@ -804,7 +804,7 @@ test('Enter on an empty note paragraph moves the caret to the new paragraph belo
   })).toBe(true)
 })
 
-test('pasting copied checklist blocks recreates separate checklist items', async ({ page }) => {
+test('pasting copied checklist HTML or plain text recreates separate checklist items', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -833,7 +833,6 @@ test('pasting copied checklist blocks recreates separate checklist items', async
     element.focus()
     const clipboardData = new DataTransfer()
     clipboardData.setData('text/plain', copied?.plainText ?? '')
-    clipboardData.setData('text/html', copied?.html ?? '')
     element.dispatchEvent(new ClipboardEvent('paste', {
       bubbles: true,
       cancelable: true,
@@ -849,9 +848,31 @@ test('pasting copied checklist blocks recreates separate checklist items', async
   await expect(pastedItems.nth(3).locator('[data-note-text-input]')).toHaveText('Second check')
   await expect(pastedItems.nth(2).getByRole('checkbox')).toBeChecked()
   await expect(pastedItems.nth(3).getByRole('checkbox')).not.toBeChecked()
+
+  const fourthEditor = pastedItems.nth(3).locator('[data-note-text-input]')
+  await placeCaretAtEnd(fourthEditor)
+  await fourthEditor.press('Enter')
+  const htmlDestination = page.locator('[data-note-text-input]').nth(4)
+  await htmlDestination.evaluate((element, copied) => {
+    element.focus()
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/plain', copied?.plainText ?? '')
+    clipboardData.setData('text/html', copied?.html ?? '')
+    element.dispatchEvent(new ClipboardEvent('paste', {
+      bubbles: true,
+      cancelable: true,
+      clipboardData,
+    }))
+  }, clipboard)
+
+  await expect(pastedItems).toHaveCount(6)
+  await expect(pastedItems.nth(4).locator('[data-note-text-input]')).toHaveText('First check')
+  await expect(pastedItems.nth(5).locator('[data-note-text-input]')).toHaveText('Second check')
+  await expect(pastedItems.nth(4).getByRole('checkbox')).toBeChecked()
+  await expect(pastedItems.nth(5).getByRole('checkbox')).not.toBeChecked()
 })
 
-test('Shift+Tab removes a top-level checklist block or its empty item', async ({ page }) => {
+test('Shift+Tab from a top-level checkbox removes its checklist block or its empty item', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -864,21 +885,22 @@ test('Shift+Tab removes a top-level checklist block or its empty item', async ({
   const item = page.locator('.note-item').first()
   const itemId = await item.getAttribute('data-note-item-id')
   await editor.fill('Keep this text')
-  await placeCaretAtOffset(editor, 4)
-  await editor.press('Shift+Tab')
+  await item.getByRole('checkbox').focus()
+  await item.getByRole('checkbox').press('Shift+Tab')
 
   await expect(item).toHaveAttribute('data-note-item-id', itemId!)
   await expect(item).not.toHaveClass(/note-list-item/)
   await expect(editor).toHaveText('Keep this text')
   await expect(editor).toBeFocused()
   await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
-    anchor: { text: 'Keep this text', offset: 4 },
-    focus: { text: 'Keep this text', offset: 4 },
+    anchor: { text: 'Keep this text', offset: 14 },
+    focus: { text: 'Keep this text', offset: 14 },
   })
 
   await toolbar.getByRole('button', { name: 'Checklist' }).click()
   await editor.fill('')
-  await editor.press('Shift+Tab')
+  await item.getByRole('checkbox').focus()
+  await item.getByRole('checkbox').press('Shift+Tab')
   await expect(page.locator('.note-item')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Start writing…' })).toBeVisible()
 })
