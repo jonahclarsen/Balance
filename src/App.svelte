@@ -6154,10 +6154,12 @@ return rows`
         onRename={plannerStore.renameNote}
         onAddItem={plannerStore.addRootNoteItem}
         patchItem={plannerStore.patchNoteItem}
+        patchItemsDone={plannerStore.patchNoteItemsDone}
         splitItem={plannerStore.splitNoteItem}
         pasteItems={plannerStore.pasteNoteItems}
         backspaceItemAtStart={plannerStore.backspaceNoteItemAtStart}
         deleteItem={plannerStore.deleteNoteItem}
+        deleteItems={plannerStore.deleteNoteItems}
         deleteItemPreservingChildren={plannerStore.deleteNoteItemPreservingChildren}
         moveItem={plannerStore.moveNoteItem}
         moveItemWithinLevel={plannerStore.moveNoteItemWithinLevel}

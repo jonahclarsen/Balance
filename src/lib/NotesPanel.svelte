@@ -44,10 +44,12 @@
   export let onRename: (noteId: Id, title: string) => void
   export let onAddItem: (noteId: Id, kind?: NoteItemKind) => Id
   export let patchItem: typeof import('./store').plannerStore.patchNoteItem
+  export let patchItemsDone: typeof import('./store').plannerStore.patchNoteItemsDone
   export let splitItem: typeof import('./store').plannerStore.splitNoteItem
   export let pasteItems: typeof import('./store').plannerStore.pasteNoteItems
   export let backspaceItemAtStart: typeof import('./store').plannerStore.backspaceNoteItemAtStart
   export let deleteItem: typeof import('./store').plannerStore.deleteNoteItem
+  export let deleteItems: typeof import('./store').plannerStore.deleteNoteItems
   export let deleteItemPreservingChildren: typeof import('./store').plannerStore.deleteNoteItemPreservingChildren
   export let moveItem: typeof import('./store').plannerStore.moveNoteItem
   export let moveItemWithinLevel: typeof import('./store').plannerStore.moveNoteItemWithinLevel
@@ -557,16 +559,26 @@
         : null
       const itemId = row?.dataset.noteItemId
       const item = selectedNote && itemId ? findItem(selectedNote.items, itemId) : null
-      if (row?.dataset.noteItemDepth === '0' && item?.kind === 'checklist') {
+      if (
+        row?.dataset.noteItemDepth === '0' &&
+        item &&
+        ['bullet', 'numbered', 'checklist'].includes(item.kind)
+      ) {
         event.preventDefault()
         event.stopPropagation()
-        void removeTopLevelChecklist(item, row)
+        void convertTopLevelListItemToParagraph(item, row)
         return
       }
     }
 
     const primaryModifier = event.metaKey || event.ctrlKey
     if (selectedItemIds.length > 0) {
+      if (event.key === 'Backspace' && !primaryModifier && !event.altKey && !event.shiftKey) {
+        event.preventDefault()
+        event.stopPropagation()
+        void deleteSelectedItems()
+        return
+      }
       if (event.key === 'Escape') {
         event.preventDefault()
         clearItemSelection()
@@ -584,30 +596,33 @@
     if (['Enter', 'Backspace', 'Delete', 'Tab'].includes(event.key)) void followNoteBottomAfterEdit(event)
   }
 
-  async function removeTopLevelChecklist(item: Note['items'][number], row: HTMLElement) {
+  async function convertTopLevelListItemToParagraph(item: Note['items'][number], row: HTMLElement) {
     if (!selectedNote) return
 
     const editor = row.querySelector<HTMLDivElement>('[data-note-text-input]')
-    if (item.text.trim()) {
-      let offset = editor?.textContent?.length ?? item.text.length
-      const selection = document.getSelection()
-      if (editor && editor === document.activeElement && selection?.focusNode && editor.contains(selection.focusNode)) {
-        offset = textOffsetAtPoint(editor, selection.focusNode, selection.focusOffset)
-      }
-      patchItem(selectedNote.id, item.id, { kind: 'paragraph', done: false })
-      activeItemId = item.id
-      await tick()
-      const nextEditor = activeEditor()
-      if (nextEditor) placeCaretAtTextOffset(nextEditor, offset)
-      return
+    let offset = editor?.textContent?.length ?? item.text.length
+    const selection = document.getSelection()
+    if (editor && editor === document.activeElement && selection?.focusNode && editor.contains(selection.focusNode)) {
+      offset = textOffsetAtPoint(editor, selection.focusNode, selection.focusOffset)
     }
+    patchItem(selectedNote.id, item.id, { kind: 'paragraph', done: false })
+    activeItemId = item.id
+    await tick()
+    const nextEditor = activeEditor()
+    if (nextEditor) placeCaretAtTextOffset(nextEditor, offset)
+  }
 
+  async function deleteSelectedItems() {
+    if (!selectedNote || selectedItemIds.length === 0) return
     const inputs = noteInputs()
-    const index = inputs.findIndex((input) => input.dataset.noteTextInputId === item.id)
-    deleteItemPreservingChildren(selectedNote.id, item.id)
+    const selectedIds = [...selectedItemIds]
+    const selected = new Set(selectedIds)
+    const index = inputs.findIndex((input) => selected.has(input.dataset.noteTextInputId ?? ''))
+    deleteItems(selectedNote.id, selectedIds)
+    clearItemSelection()
     await tick()
     const next = noteInputs()
-    const target = next[Math.max(0, index - 1)] ?? next[0]
+    const target = next[Math.min(Math.max(0, index), next.length - 1)] ?? next.at(-1)
     if (target) {
       activeItemId = target.dataset.noteTextInputId ?? null
       placeCaretAtTextOffset(target, target.textContent?.length ?? 0)
@@ -728,6 +743,15 @@
   function handleNotePointerDown(event: PointerEvent) {
     if (event.button !== 0 || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) return
     const target = event.target instanceof Element ? event.target : null
+    const checkboxRow = target?.closest<HTMLInputElement>('input.note-check')
+      ?.closest<HTMLElement>('[data-note-item-id]') ?? null
+    const checkboxItemId = checkboxRow?.dataset.noteItemId
+    if (checkboxItemId && selectedItemIds.includes(checkboxItemId)) {
+      pointerSelectionAnchor = null
+      pointerSelectionFocus = null
+      pointerUsesItemSelection = false
+      return
+    }
     const editor = target?.closest<HTMLDivElement>('[data-note-text-input]') ?? null
     const point = editor ? caretPointFromCoordinates(editor, event.clientX, event.clientY) : null
     const itemId = editor?.dataset.noteTextInputId
@@ -879,6 +903,12 @@
     selectedItemIds = []
     selectionAnchorItemId = null
     selectionFocusItemId = null
+  }
+
+  function toggleChecklist(itemId: Id, done: boolean) {
+    if (!selectedNote) return
+    const itemIds = selectedItemIds.includes(itemId) ? selectedItemIds : [itemId]
+    patchItemsDone(selectedNote.id, itemIds, done)
   }
 
   function isListEditor(editor: HTMLDivElement) {
@@ -1056,6 +1086,7 @@
               {selectedItemIds}
               onExtendItemSelection={extendItemSelection}
               onSelectAllItems={selectAllItems}
+              onToggleChecklist={toggleChecklist}
               onFocusItem={(itemId) => (activeItemId = itemId)}
             />
           {/each}

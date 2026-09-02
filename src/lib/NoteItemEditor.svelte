@@ -29,6 +29,7 @@
   export let selectedItemIds: Id[] = []
   export let onExtendItemSelection: (itemId: Id, direction: MoveDirection) => boolean = () => false
   export let onSelectAllItems: () => void = () => {}
+  export let onToggleChecklist: (itemId: Id, done: boolean) => void = () => {}
 
   let linkSegments: ItemTextSegment[] = [{ text: item.text, link: null }]
   let slashQuery: string | null = null
@@ -487,7 +488,7 @@
         type="checkbox"
         checked={item.done}
         aria-label={item.done ? 'Mark unchecked' : 'Mark checked'}
-        on:change={(event) => patchItem(noteId, item.id, { done: event.currentTarget.checked })}
+        on:change={(event) => onToggleChecklist(item.id, event.currentTarget.checked)}
       />
     {/if}
 
@@ -562,6 +563,7 @@
           {selectedItemIds}
           {onExtendItemSelection}
           {onSelectAllItems}
+          {onToggleChecklist}
         />
       {/each}
     </div>

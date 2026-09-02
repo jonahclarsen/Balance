@@ -14,6 +14,7 @@ import type {
   MetricQuestionType,
   MoveDirection,
   MovePlacement,
+  NoteItem,
   PlanItem,
   TemplateItem,
   TemplateOption,
@@ -591,6 +592,49 @@ export function completePlanItemDescendants(
     items: completeDescendants(items, false),
     completedDescendantIds,
   }
+}
+
+export function reconcileNoteChecklistItems(items: NoteItem[]): NoteItem[] {
+  return updateNoteChecklistItems(items, new Set(), false)
+}
+
+export function patchNoteChecklistItemsDone(items: NoteItem[], itemIds: Id[], done: boolean): NoteItem[] {
+  return updateNoteChecklistItems(items, new Set(itemIds), done)
+}
+
+function updateNoteChecklistItems(items: NoteItem[], selectedIds: Set<Id>, done: boolean): NoteItem[] {
+  type ChecklistResult = { items: NoteItem[]; checklistFrontier: NoteItem[] }
+
+  function update(nodes: NoteItem[], cascade: boolean): ChecklistResult {
+    let changed = false
+    const checklistFrontier: NoteItem[] = []
+    const nextItems = nodes.map((item) => {
+      const nextCascade = cascade || (item.kind === 'checklist' && selectedIds.has(item.id))
+      const childResult = update(item.children, nextCascade)
+      let nextDone = item.done
+
+      if (item.kind === 'checklist') {
+        if (nextCascade) {
+          nextDone = done
+        } else if (childResult.checklistFrontier.length > 0) {
+          nextDone = childResult.checklistFrontier.every((child) => child.done)
+        }
+      }
+
+      const nextItem = childResult.items === item.children && nextDone === item.done
+        ? item
+        : { ...item, done: nextDone, children: childResult.items }
+      if (nextItem !== item) changed = true
+
+      if (item.kind === 'checklist') checklistFrontier.push(nextItem)
+      else checklistFrontier.push(...childResult.checklistFrontier)
+      return nextItem
+    })
+
+    return { items: changed ? nextItems : nodes, checklistFrontier }
+  }
+
+  return update(items, false).items
 }
 
 export function addPlanItem(items: PlanItem[], parentId: Id | null, item = createPlanItem()): PlanItem[] {

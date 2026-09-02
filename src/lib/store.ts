@@ -45,6 +45,8 @@ import {
   completePlanItemAncestors,
   completePlanItemAncestorsAfterRemoval,
   completePlanItemDescendants,
+  patchNoteChecklistItemsDone,
+  reconcileNoteChecklistItems,
   copyPlanItems as copyPlanItemsFromTree,
   pastePlanItems as pastePlanItemsIntoTree,
   sanitizeInlineHTML,
@@ -1674,9 +1676,20 @@ function createPlannerStore() {
           : {}
       commit('patch_note_item', { noteId, itemId, patch }, (state) =>
         updateNote(state, noteId, (note) => {
-          const items = updatePlanItem(note.items, itemId, (item) => applyPatch(item, patch)) as NoteItem[]
+          let items = updatePlanItem(note.items, itemId, (item) => applyPatch(item, patch)) as NoteItem[]
+          if ('kind' in patch || 'done' in patch) items = reconcileNoteChecklistItems(items)
           return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
         }), mergeOptions)
+    },
+
+    patchNoteItemsDone(noteId: Id, itemIds: Id[], done: boolean) {
+      if (itemIds.length === 0) return
+      commit('patch_note_items_done', { noteId, itemIds, done }, (state) =>
+        updateNote(state, noteId, (note) => {
+          const items = patchNoteChecklistItemsDone(note.items, itemIds, done)
+          return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
+        }),
+      )
     },
 
     splitNoteItem(noteId: Id, itemId: Id, before: { html: string; text: string }, after: { html: string; text: string }) {
@@ -1692,7 +1705,9 @@ function createPlannerStore() {
         updateNote(state, noteId, (candidate) => ({
           ...candidate,
           updatedAt: nowISO(),
-          items: splitPlanItem(candidate.items, itemId, patch, newItem, placement) as NoteItem[],
+          items: reconcileNoteChecklistItems(
+            splitPlanItem(candidate.items, itemId, patch, newItem, placement) as NoteItem[],
+          ),
         })),
       )
       return newItem.id
@@ -1715,7 +1730,9 @@ function createPlannerStore() {
 
       commit('paste_note_items', { noteId, targetId, placement, items: pastedItems }, (state) =>
         updateNote(state, noteId, (note) => {
-          const items = pastePlanItemsIntoTree(note.items, pastedItems, targetId, placement) as NoteItem[]
+          const items = reconcileNoteChecklistItems(
+            pastePlanItemsIntoTree(note.items, pastedItems, targetId, placement) as NoteItem[],
+          )
           return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
         }),
       )
@@ -1728,7 +1745,18 @@ function createPlannerStore() {
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
-          items: deletePlanItem(note.items, itemId) as NoteItem[],
+          items: reconcileNoteChecklistItems(deletePlanItem(note.items, itemId) as NoteItem[]),
+        })),
+      )
+    },
+
+    deleteNoteItems(noteId: Id, itemIds: Id[]) {
+      if (itemIds.length === 0) return
+      commit('delete_note_items', { noteId, itemIds }, (state) =>
+        updateNote(state, noteId, (note) => ({
+          ...note,
+          updatedAt: nowISO(),
+          items: reconcileNoteChecklistItems(deletePlanItems(note.items, itemIds) as NoteItem[]),
         })),
       )
     },
@@ -1738,7 +1766,9 @@ function createPlannerStore() {
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
-          items: deletePlanItemPreservingChildren(note.items, itemId) as NoteItem[],
+          items: reconcileNoteChecklistItems(
+            deletePlanItemPreservingChildren(note.items, itemId) as NoteItem[],
+          ),
         })),
       )
     },
@@ -1752,7 +1782,7 @@ function createPlannerStore() {
         updateNote(state, noteId, (candidate) => ({
           ...candidate,
           updatedAt: nowISO(),
-          items: result.items as NoteItem[],
+          items: reconcileNoteChecklistItems(result.items as NoteItem[]),
         })),
       )
       return { focusItemId: result.focusItemId, focusOffset: result.focusOffset }
@@ -1763,7 +1793,9 @@ function createPlannerStore() {
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
-          items: movePlanItem(note.items, sourceId, targetId, placement) as NoteItem[],
+          items: reconcileNoteChecklistItems(
+            movePlanItem(note.items, sourceId, targetId, placement) as NoteItem[],
+          ),
         })),
       )
     },
@@ -1773,7 +1805,9 @@ function createPlannerStore() {
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
-          items: movePlanItemWithinLevel(note.items, itemId, direction) as NoteItem[],
+          items: reconcileNoteChecklistItems(
+            movePlanItemWithinLevel(note.items, itemId, direction) as NoteItem[],
+          ),
         })),
       )
     },
@@ -1783,7 +1817,9 @@ function createPlannerStore() {
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
-          items: outdentPlanItemInTree(note.items, itemId) as NoteItem[],
+          items: reconcileNoteChecklistItems(
+            outdentPlanItemInTree(note.items, itemId) as NoteItem[],
+          ),
         })),
       )
     },

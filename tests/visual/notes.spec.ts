@@ -872,7 +872,8 @@ test('pasting copied checklist HTML or plain text recreates separate checklist i
   await expect(pastedItems.nth(5).getByRole('checkbox')).not.toBeChecked()
 })
 
-test('Shift+Tab from a top-level checkbox removes its checklist block or its empty item', async ({ page }) => {
+test('Shift+Tab turns every top-level list type into a paragraph and preserves its caret', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop list keyboard behavior is covered here')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -880,29 +881,164 @@ test('Shift+Tab from a top-level checkbox removes its checklist block or its emp
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
-  await toolbar.getByRole('button', { name: 'Checklist' }).click()
-  const editor = page.locator('[data-note-text-input]').first()
-  const item = page.locator('.note-item').first()
-  const itemId = await item.getAttribute('data-note-item-id')
-  await editor.fill('Keep this text')
-  await item.getByRole('checkbox').focus()
-  await item.getByRole('checkbox').press('Shift+Tab')
+  const listTypes = [
+    { button: 'Bulleted list', rowClass: /note-bullet/ },
+    { button: 'Numbered list', rowClass: /note-numbered/ },
+    { button: 'Checklist', rowClass: /note-list-item/ },
+  ]
 
-  await expect(item).toHaveAttribute('data-note-item-id', itemId!)
-  await expect(item).not.toHaveClass(/note-list-item/)
-  await expect(editor).toHaveText('Keep this text')
-  await expect(editor).toBeFocused()
+  for (const [index, listType] of listTypes.entries()) {
+    const editor = page.locator('[data-note-text-input]').nth(index)
+    const item = page.locator('.note-item').nth(index)
+    await toolbar.getByRole('button', { name: listType.button }).click()
+    await editor.fill(`Keep ${listType.button}`)
+    await placeCaretAtOffset(editor, 4)
+    await expect(item).toHaveClass(listType.rowClass)
+    await editor.press('Shift+Tab')
+
+    await expect(item).not.toHaveClass(/note-list-item/)
+    await expect(editor).toBeFocused()
+    await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+      anchor: { text: `Keep ${listType.button}`, offset: 4 },
+      focus: { text: `Keep ${listType.button}`, offset: 4 },
+    })
+
+    if (index < listTypes.length - 1) {
+      await placeCaretAtEnd(editor)
+      await editor.press('Enter')
+    }
+  }
+
+  const finalEditor = page.locator('[data-note-text-input]').last()
+  const finalItem = page.locator('.note-item').last()
+  await toolbar.getByRole('button', { name: 'Checklist' }).click()
+  await finalEditor.fill('')
+  await finalItem.getByRole('checkbox').focus()
+  await finalItem.getByRole('checkbox').press('Shift+Tab')
+  await expect(finalItem).not.toHaveClass(/note-list-item/)
+  await expect(finalEditor).toBeFocused()
   await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
-    anchor: { text: 'Keep this text', offset: 14 },
-    focus: { text: 'Keep this text', offset: 14 },
+    anchor: { text: '', offset: 0 },
+    focus: { text: '', offset: 0 },
   })
+})
 
-  await toolbar.getByRole('button', { name: 'Checklist' }).click()
-  await editor.fill('')
-  await item.getByRole('checkbox').focus()
-  await item.getByRole('checkbox').press('Shift+Tab')
+test('all three note list types support arbitrary nested indentation', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop Tab indentation is covered here')
+  const listTypes = ['Bulleted list', 'Numbered list', 'Checklist'] as const
+
+  for (const listType of listTypes) {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await openNotesView(page)
+    await page.getByRole('button', { name: '+ New note' }).click()
+    await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: listType }).click()
+
+    const editors = page.locator('[data-note-text-input]')
+    for (let index = 0; index < 4; index += 1) {
+      const editor = editors.nth(index)
+      await editor.fill(`${listType} ${index}`)
+      if (index < 3) {
+        await placeCaretAtEnd(editor)
+        await editor.press('Enter')
+      }
+    }
+
+    for (let index = 1; index < 4; index += 1) {
+      for (let depth = 0; depth < index; depth += 1) await editors.nth(index).press('Tab')
+    }
+
+    await expect(page.locator('.note-item')).toHaveCount(4)
+    for (let depth = 0; depth < 4; depth += 1) {
+      await expect(page.locator('.note-item').nth(depth)).toHaveAttribute('data-note-item-depth', String(depth))
+    }
+  }
+})
+
+test('note checklist state cascades through descendants and reconciles ancestors', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop checklist indentation is covered here')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Checklist' }).click()
+
+  const editors = page.locator('[data-note-text-input]')
+  for (const [index, text] of ['Parent', 'Child group', 'Grandchild', 'Direct child'].entries()) {
+    const editor = editors.nth(index)
+    await editor.fill(text)
+    if (index < 3) {
+      await placeCaretAtEnd(editor)
+      await editor.press('Enter')
+    }
+  }
+  await editors.nth(1).press('Tab')
+  await editors.nth(2).press('Tab')
+  await editors.nth(2).press('Tab')
+  await editors.nth(3).press('Tab')
+
+  const checkbox = (text: string) => page.locator(
+    `.note-item[aria-label="Note block: ${text}"] > .note-block > .note-check`,
+  )
+  await checkbox('Parent').check()
+  for (const text of ['Parent', 'Child group', 'Grandchild', 'Direct child']) {
+    await expect(checkbox(text)).toBeChecked()
+  }
+
+  await checkbox('Child group').uncheck()
+  await expect(checkbox('Parent')).not.toBeChecked()
+  await expect(checkbox('Child group')).not.toBeChecked()
+  await expect(checkbox('Grandchild')).not.toBeChecked()
+  await expect(checkbox('Direct child')).toBeChecked()
+
+  await checkbox('Grandchild').check()
+  await expect(checkbox('Child group')).toBeChecked()
+  await expect(checkbox('Parent')).toBeChecked()
+
+  await checkbox('Grandchild').uncheck()
+  await expect(checkbox('Child group')).not.toBeChecked()
+  await expect(checkbox('Parent')).not.toBeChecked()
+})
+
+test('selected note checkboxes toggle together without losing selection and Backspace deletes them', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'desktop multi-block keyboard selection is covered here')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Checklist' }).click()
+
+  const editors = page.locator('[data-note-text-input]')
+  for (const [index, text] of ['Alpha', 'Beta', 'Gamma'].entries()) {
+    const editor = editors.nth(index)
+    await editor.fill(text)
+    if (index < 2) {
+      await placeCaretAtEnd(editor)
+      await editor.press('Enter')
+    }
+  }
+  await editors.last().press('Meta+A')
+  await editors.last().press('Meta+A')
+  await expect(page.locator('.note-multi-selected')).toHaveCount(3)
+
+  const checkboxes = page.locator('.note-check')
+  await checkboxes.first().check()
+  for (let index = 0; index < 3; index += 1) await expect(checkboxes.nth(index)).toBeChecked()
+  await expect(page.locator('.note-multi-selected')).toHaveCount(3)
+
+  await checkboxes.nth(1).uncheck()
+  for (let index = 0; index < 3; index += 1) await expect(checkboxes.nth(index)).not.toBeChecked()
+  await expect(page.locator('.note-multi-selected')).toHaveCount(3)
+
+  await page.keyboard.press('Backspace')
   await expect(page.locator('.note-item')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Start writing…' })).toBeVisible()
+
+  await page.keyboard.press('Meta+Z')
+  await expect(page.locator('.note-item')).toHaveCount(3)
 })
 
 test('notes support a seamless editor, natural formatting, persistence, search, and app links', async ({ page }, testInfo) => {

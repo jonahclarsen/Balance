@@ -220,7 +220,6 @@ test('pasting bulleted-list HTML creates separate bulleted blocks', async ({ pag
 })
 
 test('Shift+Tab removes a top-level bulleted-list marker and keeps its text', async ({ page }) => {
-  test.fail(true, 'Audit: root bulleted blocks currently ignore Shift+Tab')
   await openFreshNote(page)
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
   await toolbar.getByRole('button', { name: 'Bulleted list' }).click()
@@ -234,7 +233,6 @@ test('Shift+Tab removes a top-level bulleted-list marker and keeps its text', as
 })
 
 test('Shift+Tab removes a top-level numbered-list marker and keeps its text', async ({ page }) => {
-  test.fail(true, 'Audit: root numbered blocks currently ignore Shift+Tab')
   await openFreshNote(page)
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
   await toolbar.getByRole('button', { name: 'Numbered list' }).click()
