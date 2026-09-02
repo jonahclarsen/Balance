@@ -555,6 +555,42 @@ test('mobile task options open on touch press before a keyboard resize can cance
   await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toHaveCount(0)
 })
 
+test('mobile task options stay open when the compatibility click is delayed by keyboard dismissal', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'The task overflow interactions are mobile-only')
+
+  const taskText = 'Parent task with a scheduled time'
+  const row = page.getByRole('listitem', { name: `Plan item: ${taskText}` })
+  const editor = row.locator('[data-plan-text-input]')
+  const menuButton = row.getByRole('button', { name: `Task options for ${taskText}` })
+  const menu = page.getByRole('menu', { name: `Options for ${taskText}` })
+  await editor.focus()
+
+  await menuButton.dispatchEvent('pointerdown', {
+    button: 0,
+    buttons: 1,
+    isPrimary: true,
+    pointerId: 7,
+    pointerType: 'touch',
+  })
+  await expect(menu).toBeVisible()
+  await menuButton.dispatchEvent('pointerup', {
+    button: 0,
+    buttons: 0,
+    isPrimary: true,
+    pointerId: 7,
+    pointerType: 'touch',
+  })
+
+  // Android can hold the compatibility click while its software keyboard and
+  // visual viewport settle. That click belongs to the press that already
+  // opened the menu, however late it arrives, and must not toggle it closed.
+  await page.waitForTimeout(800)
+  await menuButton.evaluate((button) => {
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0, detail: 1 }))
+  })
+  await expect(menu).toBeVisible()
+})
+
 test('holding and dragging a checkbox does not bulk-check tasks on desktop', async ({ page }, testInfo) => {
   test.skip(isMobileProject(testInfo.project.name), 'Desktop-only mobile gesture guard')
 

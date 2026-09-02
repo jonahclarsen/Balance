@@ -133,7 +133,6 @@
   let suppressCheckboxClick = false
   let mobileTaskMenuPositionFrame: number | null = null
   let suppressMobileMenuClick = false
-  let suppressMobileMenuClickTimer: ReturnType<typeof setTimeout> | null = null
 
   type MobileCheckboxDrag = {
     pointerId: number
@@ -215,28 +214,26 @@
   }
 
   function handleMobileMenuPointerDown(event: PointerEvent) {
-    if (event.pointerType !== 'touch' || !event.isPrimary || event.button !== 0) return
+    if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) return
 
     // Android can resize the visual viewport while dismissing the software
     // keyboard between pointerdown and click. That movement cancels or
     // retargets the compatibility click, so open on the stable initial press.
+    // Keep suppressing that same press's click until it actually arrives: the
+    // keyboard transition can delay it beyond an arbitrary timeout.
     suppressMobileMenuClick = true
-    if (suppressMobileMenuClickTimer !== null) clearTimeout(suppressMobileMenuClickTimer)
-    suppressMobileMenuClickTimer = setTimeout(() => {
-      suppressMobileMenuClick = false
-      suppressMobileMenuClickTimer = null
-    }, 750)
     void toggleMobileMenu()
   }
 
-  function handleMobileMenuClick() {
-    if (suppressMobileMenuClick) {
+  function handleMobileMenuClick(event: MouseEvent) {
+    if (suppressMobileMenuClick && event.detail > 0) {
       suppressMobileMenuClick = false
-      if (suppressMobileMenuClickTimer !== null) clearTimeout(suppressMobileMenuClickTimer)
-      suppressMobileMenuClickTimer = null
       return
     }
 
+    // Keyboard and programmatic activation have no preceding physical click
+    // count, so they remain usable even if a prior touch's click was canceled.
+    suppressMobileMenuClick = false
     void toggleMobileMenu()
   }
 
@@ -487,10 +484,7 @@
     if (!mobile) void focusTaskBelow(planId, itemIds)
   }
 
-  onDestroy(() => {
-    cancelMobileCheckboxDrag()
-    if (suppressMobileMenuClickTimer !== null) clearTimeout(suppressMobileMenuClickTimer)
-  })
+  onDestroy(cancelMobileCheckboxDrag)
 
   function removeTime() {
     mobileMenuOpen = false
