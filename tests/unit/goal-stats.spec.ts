@@ -63,14 +63,14 @@ test('goal stats summarize current health and historical overdue counts', () => 
   expect(stats.daily.map((day) => day.completedGoals)).toEqual([0, 0, 1, 1, 0])
   expect(stats.deadlineOutlook).toEqual([
     { label: 'Overdue', count: 1 },
-    { label: '2026-09-03', count: 0 },
-    { label: '2026-09-04', count: 0 },
-    { label: '2026-09-05', count: 0 },
-    { label: '2026-09-06', count: 0 },
-    { label: '2026-09-07', count: 0 },
-    { label: '2026-09-08', count: 0 },
-    { label: '2026-09-09', count: 1 },
-    { label: '2026-09-10', count: 0 },
+    { label: 'Today', count: 0 },
+    { label: '1 day', count: 0 },
+    { label: '2 days', count: 0 },
+    { label: '3 days', count: 0 },
+    { label: '4 days', count: 0 },
+    { label: '5 days', count: 0 },
+    { label: '6 days', count: 1 },
+    { label: '7 days', count: 0 },
     { label: 'Later', count: 0 },
   ])
   expect(stats.weekdayCompletions).toEqual([

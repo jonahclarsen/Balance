@@ -2,7 +2,6 @@
   type GoalStatsBarItem = {
     label: string
     value: number
-    axisLabel?: string
   }
 
   export let items: GoalStatsBarItem[]
@@ -58,7 +57,7 @@
   </div>
   <div class="chart-x-axis" class:categories={showCategoryLabels} aria-hidden="true">
     {#if showCategoryLabels}
-      {#each items as item}<span>{item.axisLabel ?? item.label}</span>{/each}
+      {#each items as item}<span>{item.label}</span>{/each}
     {:else}
       <span>{startLabel}</span>
       <span>{endLabel}</span>

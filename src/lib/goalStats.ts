@@ -72,7 +72,9 @@ export function buildGoalStats(
   const deadlineOutlook: GoalStatsCategory[] = [
     { label: 'Overdue', count: overdueGoals },
     ...Array.from({ length: 8 }, (_, daysFromToday) => ({
-      label: shiftISODate(currentDate, daysFromToday),
+      label: daysFromToday === 0
+        ? 'Today'
+        : `${daysFromToday} ${daysFromToday === 1 ? 'day' : 'days'}`,
       count: activeDeadlines.filter((daysUntilLapse) => daysUntilLapse === daysFromToday).length,
     })),
     {

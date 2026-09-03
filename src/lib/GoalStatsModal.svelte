@@ -12,7 +12,6 @@
   type GoalStatsBarItem = {
     label: string
     value: number
-    axisLabel?: string
   }
 
   const lineWidth = 1000
@@ -38,8 +37,7 @@
     value: day.completedGoals,
   }))
   $: deadlineItems = stats.deadlineOutlook.map<GoalStatsBarItem>((category) => ({
-    label: /^\d{4}-\d{2}-\d{2}$/.test(category.label) ? formatLongDate(category.label) : category.label,
-    axisLabel: /^\d{4}-\d{2}-\d{2}$/.test(category.label) ? formatDate(category.label) : category.label,
+    label: category.label,
     value: category.count,
   }))
   $: weekdayItems = stats.weekdayCompletions.map<GoalStatsBarItem>((category) => ({
