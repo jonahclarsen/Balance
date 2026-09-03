@@ -3035,6 +3035,18 @@ return rows`
     }
 
     if (
+      view === 'goals' &&
+      primaryModifier &&
+      !event.altKey &&
+      !event.shiftKey &&
+      event.code === 'KeyS'
+    ) {
+      event.preventDefault()
+      if (!event.repeat) goalStatsOpen = true
+      return
+    }
+
+    if (
       view === 'notes' &&
       primaryModifier &&
       !event.altKey &&
@@ -6269,7 +6281,15 @@ return rows`
           <h2>Goals</h2>
         </div>
         <div class="goals-header-actions">
-          <button class="goal-stats-button" type="button" on:click={() => (goalStatsOpen = true)}>Stats</button>
+          <button
+            class="goal-stats-button"
+            type="button"
+            title={`Stats (${primaryShortcutLabel('S')})`}
+            aria-keyshortcuts={isMac ? 'Meta+S' : 'Control+S'}
+            on:click={() => (goalStatsOpen = true)}
+          >
+            <span>Stats</span><kbd class="nav-shortcut" aria-hidden="true">{primaryShortcutLabel('S')}</kbd>
+          </button>
           <input
             class="goal-search-input"
             type="search"

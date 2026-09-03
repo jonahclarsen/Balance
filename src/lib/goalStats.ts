@@ -11,13 +11,6 @@ export type GoalStatsDay = {
   completedGoals: number
 }
 
-export type GoalStatsGoal = {
-  goal: Goal
-  completionsInRange: number
-  latestCompletionDate: string | null
-  daysUntilLapse: number | null
-}
-
 export type GoalStatsCategory = {
   label: string
   count: number
@@ -32,8 +25,6 @@ export type GoalStats = {
   completionDays: number
   averageOverdueGoals: number
   daily: GoalStatsDay[]
-  needsAttention: GoalStatsGoal[]
-  mostCompleted: GoalStatsGoal[]
   deadlineOutlook: GoalStatsCategory[]
   weekdayCompletions: GoalStatsCategory[]
 }
@@ -67,14 +58,6 @@ export function buildGoalStats(
   )
   const completionsByDate = countUniqueGoalCompletionsByDate(relevantCompletions)
   const rangeCompletions = relevantCompletions.filter((completion) => completion.date >= rangeStart)
-  const completionDatesByGoal = new Map<Id, string[]>()
-
-  for (const completion of relevantCompletions) {
-    const datesForGoal = completionDatesByGoal.get(completion.goalId) ?? []
-    datesForGoal.push(completion.date)
-    completionDatesByGoal.set(completion.goalId, datesForGoal)
-  }
-
   const daily = dates.map((date) => ({
     date,
     overdueGoals: goals.filter(
@@ -82,48 +65,19 @@ export function buildGoalStats(
     ).length,
     completedGoals: completionsByDate.get(date)?.size ?? 0,
   }))
-  const goalRows = goals.map<GoalStatsGoal>((goal) => {
-    const completionDates = completionDatesByGoal.get(goal.id) ?? []
-    return {
-      goal,
-      completionsInRange: new Set(
-        completionDates.filter((date) => date >= rangeStart && date <= currentDate),
-      ).size,
-      latestCompletionDate: [...completionDates].sort().at(-1) ?? null,
-      daysUntilLapse: goalDaysUntilLapse(goal, completionsByGoal.get(goal.id) ?? [], currentDate),
-    }
-  })
-  const needsAttention = goalRows
-    .filter((row) => row.daysUntilLapse !== null && row.daysUntilLapse < 0)
-    .sort(
-      (left, right) =>
-        (left.daysUntilLapse ?? 0) - (right.daysUntilLapse ?? 0) ||
-        left.goal.name.localeCompare(right.goal.name),
-    )
-  const mostCompleted = goalRows
-    .filter((row) => row.completionsInRange > 0)
-    .sort(
-      (left, right) =>
-        right.completionsInRange - left.completionsInRange ||
-        (right.latestCompletionDate ?? '').localeCompare(left.latestCompletionDate ?? '') ||
-        left.goal.name.localeCompare(right.goal.name),
-    )
-  const overdueGoals = needsAttention.length
-  const activeRows = goalRows.filter((row) => isGoalActiveOnDate(row.goal, currentDate))
+  const activeDeadlines = goals
+    .filter((goal) => isGoalActiveOnDate(goal, currentDate))
+    .map((goal) => goalDaysUntilLapse(goal, completionsByGoal.get(goal.id) ?? [], currentDate))
+  const overdueGoals = activeDeadlines.filter((daysUntilLapse) => (daysUntilLapse ?? 0) < 0).length
   const deadlineOutlook: GoalStatsCategory[] = [
-    { label: 'Overdue', count: activeRows.filter((row) => (row.daysUntilLapse ?? 0) < 0).length },
-    { label: 'Due today', count: activeRows.filter((row) => row.daysUntilLapse === 0).length },
-    {
-      label: 'Next 7 days',
-      count: activeRows.filter(
-        (row) => row.daysUntilLapse !== null && row.daysUntilLapse > 0 && row.daysUntilLapse <= 7,
-      ).length,
-    },
+    { label: 'Overdue', count: overdueGoals },
+    ...Array.from({ length: 8 }, (_, daysFromToday) => ({
+      label: shiftISODate(currentDate, daysFromToday),
+      count: activeDeadlines.filter((daysUntilLapse) => daysUntilLapse === daysFromToday).length,
+    })),
     {
       label: 'Later',
-      count: activeRows.filter(
-        (row) => row.daysUntilLapse === null || row.daysUntilLapse > 7,
-      ).length,
+      count: activeDeadlines.filter((daysUntilLapse) => daysUntilLapse === null || daysUntilLapse > 7).length,
     },
   ]
   const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -142,8 +96,6 @@ export function buildGoalStats(
     averageOverdueGoals:
       daily.reduce((total, day) => total + day.overdueGoals, 0) / normalizedRangeDays,
     daily,
-    needsAttention,
-    mostCompleted,
     deadlineOutlook,
     weekdayCompletions,
   }

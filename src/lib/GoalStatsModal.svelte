@@ -12,6 +12,7 @@
   type GoalStatsBarItem = {
     label: string
     value: number
+    axisLabel?: string
   }
 
   const lineWidth = 1000
@@ -32,14 +33,13 @@
   $: areaPath = linePoints.length > 0
     ? `${linePath} L ${linePoints.at(-1)?.x ?? 0} ${lineHeight} L ${linePoints[0]?.x ?? 0} ${lineHeight} Z`
     : ''
-  $: attentionPreview = stats.needsAttention.slice(0, 6)
-  $: completedPreview = stats.mostCompleted.slice(0, 6)
   $: completionItems = stats.daily.map<GoalStatsBarItem>((day) => ({
     label: formatLongDate(day.date),
     value: day.completedGoals,
   }))
   $: deadlineItems = stats.deadlineOutlook.map<GoalStatsBarItem>((category) => ({
-    label: category.label,
+    label: /^\d{4}-\d{2}-\d{2}$/.test(category.label) ? formatLongDate(category.label) : category.label,
+    axisLabel: /^\d{4}-\d{2}-\d{2}$/.test(category.label) ? formatDate(category.label) : category.label,
     value: category.count,
   }))
   $: weekdayItems = stats.weekdayCompletions.map<GoalStatsBarItem>((category) => ({
@@ -64,11 +64,6 @@
   function formatLongDate(date: string | null): string {
     if (!date) return 'Never'
     return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' }).format(parseISODate(date))
-  }
-
-  function overdueLabel(daysUntilLapse: number | null): string {
-    const days = Math.abs(daysUntilLapse ?? 0)
-    return `${days} ${days === 1 ? 'day' : 'days'} overdue`
   }
 
   function completionValueLabel(value: number): string {
@@ -117,9 +112,7 @@
                 type="button"
                 tabindex="-1"
                 class:active={hoveredOverdueIndex === index}
-                class:first={index === 0}
-                class:last={index === linePoints.length - 1}
-                class:tooltip-below={point.y / lineHeight < 0.28}
+                class:tooltip-left={index >= linePoints.length / 2}
                 style={`--point-y: ${(point.y / lineHeight) * 100}%`}
                 on:mouseenter={() => (hoveredOverdueIndex = index)}
                 on:mouseleave={() => (hoveredOverdueIndex = null)}
@@ -154,67 +147,22 @@
 
     <div class="new-charts-grid">
       <section class="chart-card">
-        <div class="section-heading"><div><h4>Deadline outlook</h4><p>When active goals next come due</p></div></div>
+        <div class="section-heading"><div><h4>When goals are next due</h4></div></div>
         <GoalStatsBarChart
           items={deadlineItems}
-          ariaLabel={`Active goal deadline outlook. ${deadlineSummary}.`}
+          ariaLabel={`Goal deadline outlook. ${deadlineSummary}.`}
           valueLabel={goalValueLabel}
           showCategoryLabels
         />
       </section>
       <section class="chart-card">
-        <div class="section-heading"><div><h4>Completion rhythm</h4><p>Progress by day of the week</p></div></div>
+        <div class="section-heading"><div><h4>Goal completion by day of the week</h4></div></div>
         <GoalStatsBarChart
           items={weekdayItems}
           ariaLabel={`Goal completions by weekday. ${weekdaySummary}.`}
           valueLabel={completionCountLabel}
           showCategoryLabels
         />
-      </section>
-    </div>
-
-    <div class="details-grid">
-      <section class="detail-card">
-        <div class="section-heading"><div><h4>Needs attention</h4><p>Active goals currently overdue</p></div></div>
-        {#if attentionPreview.length > 0}
-          <ol class="stat-list attention-list">
-            {#each attentionPreview as row}
-              <li>
-                <span class="goal-dot" style={`--goal-hue: ${row.goal.hue}`}></span>
-                <div>
-                  <strong>{row.goal.name}</strong>
-                  <small>Last completed {formatLongDate(row.latestCompletionDate)}</small>
-                </div>
-                <b>{overdueLabel(row.daysUntilLapse)}</b>
-              </li>
-            {/each}
-          </ol>
-          {#if stats.needsAttention.length > attentionPreview.length}
-            <p class="more-note">+{stats.needsAttention.length - attentionPreview.length} more overdue</p>
-          {/if}
-        {:else}
-          <div class="detail-empty"><strong>Everything is on track</strong><span>No active goals are overdue today.</span></div>
-        {/if}
-      </section>
-
-      <section class="detail-card">
-        <div class="section-heading"><div><h4>Most completions</h4><p>During the selected {stats.rangeDays}-day period</p></div></div>
-        {#if completedPreview.length > 0}
-          <ol class="stat-list">
-            {#each completedPreview as row}
-              <li>
-                <span class="goal-dot" style={`--goal-hue: ${row.goal.hue}`}></span>
-                <div>
-                  <strong>{row.goal.name}</strong>
-                  <small>Last completed {formatLongDate(row.latestCompletionDate)}</small>
-                </div>
-                <b>{row.completionsInRange}</b>
-              </li>
-            {/each}
-          </ol>
-        {:else}
-          <div class="detail-empty"><strong>No completions yet</strong><span>Completed goals will show up here.</span></div>
-        {/if}
       </section>
     </div>
   </div>
@@ -228,9 +176,7 @@
 
   .stats-toolbar,
   .section-heading,
-  .section-heading > div,
-  .stat-list li,
-  .stat-list li > div {
+  .section-heading > div {
     min-width: 0;
   }
 
@@ -246,8 +192,7 @@
     justify-content: flex-end;
   }
 
-  .section-heading p,
-  .more-note {
+  .section-heading p {
     margin: 0;
     color: var(--muted);
     font-size: 12px;
@@ -275,8 +220,7 @@
     color: var(--ink);
   }
 
-  .chart-card,
-  .detail-card {
+  .chart-card {
     padding: 13px 14px;
     border: 1px solid var(--line);
     border-radius: 10px;
@@ -293,8 +237,7 @@
     font-size: 13px;
   }
 
-  .warning-text,
-  .attention-list b {
+  .warning-text {
     color: var(--danger);
   }
 
@@ -407,8 +350,8 @@
   .chart-tooltip {
     position: absolute;
     z-index: 5;
-    top: var(--point-y);
-    left: 50%;
+    top: clamp(4px, calc(var(--point-y) - 18px), calc(100% - 40px));
+    left: calc(50% + 8px);
     display: grid;
     width: max-content;
     max-width: 150px;
@@ -421,31 +364,12 @@
     font-size: 10px;
     line-height: 1.25;
     text-align: left;
-    transform: translate(-50%, calc(-100% - 8px));
     pointer-events: none;
   }
 
-  .tooltip-below .chart-tooltip {
-    transform: translate(-50%, 8px);
-  }
-
-  .first .chart-tooltip {
-    left: 0;
-    transform: translate(0, calc(-100% - 8px));
-  }
-
-  .first.tooltip-below .chart-tooltip {
-    transform: translate(0, 8px);
-  }
-
-  .last .chart-tooltip {
-    right: 0;
+  .tooltip-left .chart-tooltip {
+    right: calc(50% + 8px);
     left: auto;
-    transform: translate(0, calc(-100% - 8px));
-  }
-
-  .last.tooltip-below .chart-tooltip {
-    transform: translate(0, 8px);
   }
 
   .chart-tooltip strong {
@@ -466,84 +390,14 @@
     font-size: 10px;
   }
 
-  .new-charts-grid,
-  .details-grid {
+  .new-charts-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 14px;
   }
 
-  .stat-list {
-    display: grid;
-    gap: 0;
-    margin: 8px 0 0;
-    padding: 0;
-    list-style: none;
-  }
-
-  .stat-list li {
-    display: grid;
-    grid-template-columns: 8px minmax(0, 1fr) auto;
-    align-items: center;
-    gap: 8px;
-    padding: 7px 0;
-    border-top: 1px solid var(--line);
-  }
-
-  .stat-list li > div {
-    display: grid;
-  }
-
-  .stat-list strong {
-    overflow: hidden;
-    color: var(--ink);
-    font-size: 12px;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .stat-list small {
-    color: var(--muted);
-    font-size: 10px;
-  }
-
-  .stat-list b {
-    font-size: 11px;
-    white-space: nowrap;
-  }
-
-  .goal-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: hsl(var(--goal-hue) 58% 48%);
-  }
-
-  .more-note {
-    padding-top: 4px;
-    text-align: right;
-  }
-
-  .detail-empty {
-    display: grid;
-    place-content: center;
-    min-height: 96px;
-    color: var(--muted);
-    text-align: center;
-  }
-
-  .detail-empty strong {
-    color: var(--ink);
-    font-size: 13px;
-  }
-
-  .detail-empty span {
-    font-size: 11px;
-  }
-
   @media (max-width: 760px) {
-    .new-charts-grid,
-    .details-grid {
+    .new-charts-grid {
       grid-template-columns: 1fr;
     }
 

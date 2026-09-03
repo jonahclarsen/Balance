@@ -2,6 +2,7 @@
   type GoalStatsBarItem = {
     label: string
     value: number
+    axisLabel?: string
   }
 
   export let items: GoalStatsBarItem[]
@@ -39,9 +40,7 @@
           type="button"
           tabindex="-1"
           class:active={hoveredIndex === index}
-          class:first={index === 0}
-          class:last={index === items.length - 1}
-          class:tooltip-below={valuePercent(item.value) >= 72}
+          class:tooltip-left={index >= items.length / 2}
           style={`--bar-height: ${valuePercent(item.value)}%`}
           on:mouseenter={() => (hoveredIndex = index)}
           on:mouseleave={() => (hoveredIndex = null)}
@@ -59,7 +58,7 @@
   </div>
   <div class="chart-x-axis" class:categories={showCategoryLabels} aria-hidden="true">
     {#if showCategoryLabels}
-      {#each items as item}<span>{item.label}</span>{/each}
+      {#each items as item}<span>{item.axisLabel ?? item.label}</span>{/each}
     {:else}
       <span>{startLabel}</span>
       <span>{endLabel}</span>
@@ -159,8 +158,8 @@
   .chart-tooltip {
     position: absolute;
     z-index: 5;
-    bottom: calc(var(--bar-height) + 7px);
-    left: 50%;
+    top: clamp(4px, calc(100% - var(--bar-height) - 18px), calc(100% - 40px));
+    left: calc(50% + 8px);
     display: grid;
     width: max-content;
     max-width: 150px;
@@ -173,24 +172,12 @@
     font-size: 10px;
     line-height: 1.25;
     text-align: left;
-    transform: translateX(-50%);
     pointer-events: none;
   }
 
-  .tooltip-below .chart-tooltip {
-    top: calc(100% - var(--bar-height) + 7px);
-    bottom: auto;
-  }
-
-  .first .chart-tooltip {
-    left: 0;
-    transform: none;
-  }
-
-  .last .chart-tooltip {
-    right: 0;
+  .tooltip-left .chart-tooltip {
+    right: calc(50% + 8px);
     left: auto;
-    transform: none;
   }
 
   .chart-tooltip strong {
@@ -219,7 +206,7 @@
   }
 
   .chart-x-axis.categories span {
-    overflow-wrap: anywhere;
+    white-space: nowrap;
   }
 
   @media (max-width: 520px) {

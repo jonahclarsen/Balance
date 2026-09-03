@@ -88,14 +88,23 @@ test('goal stats open beside search and adapt their date range', async ({ page }
   expect(statsBounds).not.toBeNull()
   expect(searchBounds).not.toBeNull()
   expect(statsBounds!.x + statsBounds!.width).toBeLessThanOrEqual(searchBounds!.x)
+  await expect(statsButton.locator('kbd')).toBeVisible()
+  await expect(statsButton.locator('kbd')).toContainText('S')
+  await expect(statsButton).toHaveAttribute('aria-keyshortcuts', /S/)
 
   await statsButton.click()
   const dialog = page.getByRole('dialog', { name: 'Goal statistics' })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByRole('button', { name: '90 days' })).toHaveAttribute('aria-pressed', 'true')
   await expect(dialog.getByRole('img', { name: /90-day overdue history/ })).toBeVisible()
-  await expect(dialog.getByRole('img', { name: /Active goal deadline outlook/ })).toBeVisible()
+  await expect(dialog.getByRole('img', { name: /Goal deadline outlook/ })).toBeVisible()
   await expect(dialog.getByRole('img', { name: /Goal completions by weekday/ })).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: 'When goals are next due' })).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: 'Goal completion by day of the week' })).toBeVisible()
+  await expect(dialog.getByText('When active goals next come due')).toHaveCount(0)
+  await expect(dialog.getByText('Progress by day of the week')).toHaveCount(0)
+  await expect(dialog.getByText('Needs attention')).toHaveCount(0)
+  await expect(dialog.getByText('Most completions')).toHaveCount(0)
   await expect(dialog.locator('.summary-grid')).toHaveCount(0)
   await expect(dialog.getByText('Health and progress across all goals.')).toHaveCount(0)
   await expect(dialog.getByText('Active goal cadence')).toHaveCount(0)
@@ -108,16 +117,36 @@ test('goal stats open beside search and adapt their date range', async ({ page }
   await expect(dialog.getByRole('img', { name: /30-day overdue history/ })).toBeVisible()
 
   await dialog.locator('.line-hit-targets button').nth(15).hover()
-  await expect(dialog.locator('.line-chart .chart-tooltip')).toContainText('goals overdue')
+  const overdueTooltip = dialog.locator('.line-chart .chart-tooltip')
+  await expect(overdueTooltip).toContainText('goals overdue')
+  const [overdueTooltipBounds, overdueMarkerBounds] = await Promise.all([
+    overdueTooltip.boundingBox(),
+    dialog.locator('.line-chart .point-marker').boundingBox(),
+  ])
+  expect(overdueTooltipBounds).not.toBeNull()
+  expect(overdueMarkerBounds).not.toBeNull()
+  expect(
+    overdueTooltipBounds!.x >= overdueMarkerBounds!.x + overdueMarkerBounds!.width ||
+    overdueTooltipBounds!.x + overdueTooltipBounds!.width <= overdueMarkerBounds!.x,
+  ).toBe(true)
   const completionChart = dialog.locator('.chart-card').filter({ hasText: 'Completion activity' })
   await completionChart.locator('.bars button').nth(15).hover()
   await expect(completionChart.locator('.chart-tooltip')).toContainText('goals completed')
-  const deadlineChart = dialog.locator('.chart-card').filter({ hasText: 'Deadline outlook' })
+  const deadlineChart = dialog.locator('.chart-card').filter({ hasText: 'When goals are next due' })
+  await expect(deadlineChart.locator('.bars button')).toHaveCount(10)
   await deadlineChart.locator('.bars button').nth(1).hover()
   await expect(deadlineChart.locator('.chart-tooltip')).toContainText(/goal/)
 
   await page.keyboard.press('Escape')
   await expect(dialog).toHaveCount(0)
+
+  await page.keyboard.press('Meta+S')
+  await expect(dialog).toBeVisible()
+  await page.keyboard.press('Escape')
+
+  await page.keyboard.press('Shift+/')
+  const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+  await expect(shortcuts.getByText('Open Goal Stats (while in Goals)', { exact: true })).toBeVisible()
 })
 
 test('the goal rhythm search clear button remains visible without focus on mobile', async ({ page }, testInfo) => {

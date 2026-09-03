@@ -1459,7 +1459,10 @@ nav button.active {
 }
 
 .goal-stats-button {
+  display: inline-flex;
+  align-items: center;
   flex: 0 0 auto;
+  gap: 8px;
   min-height: 38px;
 }
 
@@ -5527,6 +5530,10 @@ body.mobile-checkbox-dragging {
   .goals-header-actions .goal-search-input {
     width: auto;
     flex: 1 1 auto;
+  }
+
+  .goals-header-actions .goal-stats-button .nav-shortcut {
+    display: inline-block;
   }
 
   .template-panel,
