@@ -416,6 +416,12 @@ return rows`
     end: number | null
     completedCaret: TaskCaretOffsets | null
   }
+  type PlanKeyboardMoveSession = {
+    planId: Id
+    itemId: Id
+    direction: MoveDirection
+    stopBeforeChecked: boolean
+  }
   let selectedItemIds: Id[] = []
   let selectionAnchorId: Id | null = null
   let selectionFocusId: Id | null = null
@@ -425,6 +431,7 @@ return rows`
   const itemSelectionsByContext: Record<string, ItemSelectionState> = {}
   const itemCaretsByContext: Record<string, ItemCaretState> = {}
   let completionUndoCaret: CompletionUndoCaret | null = null
+  let planKeyboardMoveSession: PlanKeyboardMoveSession | null = null
   let selectingItems = false
   type PlanItemClipboard = { items: PlanItem[]; cut: boolean; sourceDate: string }
   type TemplateItemClipboard =
@@ -3446,6 +3453,16 @@ return rows`
     }
   }
 
+  function handleGlobalKeyup(event: KeyboardEvent) {
+    if (
+      event.key === 'Alt' ||
+      (event.key === 'ArrowUp' && planKeyboardMoveSession?.direction === 'up') ||
+      (event.key === 'ArrowDown' && planKeyboardMoveSession?.direction === 'down')
+    ) {
+      planKeyboardMoveSession = null
+    }
+  }
+
   function dispatchMacosAltShortcut(shortcut: MacosAltShortcut) {
     const key = shortcut.code.startsWith('Key')
       ? shortcut.code.slice(3)
@@ -4187,12 +4204,63 @@ return rows`
     }
   }
 
+  function previousPlanItemSibling(items: PlanItem[], itemId: Id): PlanItem | null | undefined {
+    const index = items.findIndex((item) => item.id === itemId)
+    if (index >= 0) return items[index - 1] ?? null
+
+    for (const item of items) {
+      const previousSibling = previousPlanItemSibling(item.children, itemId)
+      if (previousSibling !== undefined) return previousSibling
+    }
+
+    return undefined
+  }
+
+  function canMovePlanItemFromKeyboard(
+    planId: Id,
+    itemId: Id,
+    direction: MoveDirection,
+  ) {
+    const plan = $plannerStore.plans.find((candidate) => candidate.id === planId)
+    if (!plan) return false
+
+    const previousSibling = direction === 'up' ? previousPlanItemSibling(plan.items, itemId) : null
+    if (
+      !planKeyboardMoveSession ||
+      planKeyboardMoveSession.planId !== planId ||
+      planKeyboardMoveSession.itemId !== itemId ||
+      planKeyboardMoveSession.direction !== direction
+    ) {
+      planKeyboardMoveSession = {
+        planId,
+        itemId,
+        direction,
+        stopBeforeChecked: direction === 'up' && previousSibling != null && !previousSibling.done,
+      }
+    }
+
+    return !(direction === 'up' && planKeyboardMoveSession.stopBeforeChecked && previousSibling?.done)
+  }
+
+  function movePlanItemWithinLevelFromKeyboard(
+    planId: Id,
+    itemId: Id,
+    direction: MoveDirection,
+  ) {
+    if (!canMovePlanItemFromKeyboard(planId, itemId, direction)) return false
+    plannerStore.movePlanItemWithinLevel(planId, itemId, direction)
+    return true
+  }
+
   async function moveSelectedItems(rootIds: Id[], direction: MoveDirection) {
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
     if (!surface || !containerId) return
-    if (surface === 'plan') plannerStore.movePlanItemsWithinLevel(containerId, rootIds, direction)
-    else if (surface === 'day-template') plannerStore.moveTemplateItemsWithinLevel(containerId, rootIds, direction)
+    if (surface === 'plan' && rootIds.length === 1) {
+      if (!movePlanItemWithinLevelFromKeyboard(containerId, rootIds[0], direction)) return
+    } else if (surface === 'plan') {
+      plannerStore.movePlanItemsWithinLevel(containerId, rootIds, direction)
+    } else if (surface === 'day-template') plannerStore.moveTemplateItemsWithinLevel(containerId, rootIds, direction)
     else plannerStore.moveListTemplateItemsWithinLevel(containerId, rootIds, direction)
     await tick()
     scrollMovedItemsIntoView(surface satisfies ItemRowKind, rootIds, direction)
@@ -5151,6 +5219,7 @@ return rows`
 
 <svelte:window
   on:keydown|capture={handleGlobalKeydown}
+  on:keyup|capture={handleGlobalKeyup}
   on:focusin={handleGlobalFocusIn}
   on:scroll={handleWindowScroll}
   on:pointerdown|capture={handleGlobalPointerDown}
@@ -5649,7 +5718,7 @@ return rows`
                     deleteItemPreservingChildren={plannerStore.deletePlanItemPreservingChildren}
                     moveItem={plannerStore.movePlanItem}
                     moveItemAcrossContainers={displayedCompareDayOpen ? movePlanItemAcrossDays : null}
-                    moveItemWithinLevel={plannerStore.movePlanItemWithinLevel}
+                    moveItemWithinLevel={movePlanItemWithinLevelFromKeyboard}
                     outdentItem={plannerStore.outdentPlanItem}
                     historyRevision={$plannerStore.historyRevision}
                     selectedItemIds={selectedItemIdSet}

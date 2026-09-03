@@ -50,7 +50,11 @@
   export let moveItemAcrossContainers:
     | ((sourcePlanId: Id, sourceId: Id, targetPlanId: Id, targetId: Id | null, placement: MovePlacement) => void)
     | null = null
-  export let moveItemWithinLevel: (planId: Id, itemId: Id, direction: MoveDirection) => void
+  export let moveItemWithinLevel: (
+    planId: Id,
+    itemId: Id,
+    direction: MoveDirection,
+  ) => boolean | void
   export let outdentItem: (planId: Id, itemId: Id) => void
   export let historyRevision: number
   export let goals: Goal[] = []
@@ -588,7 +592,8 @@
 
   async function handleTextArrowKey(direction: MoveDirection, current: HTMLDivElement, event: KeyboardEvent) {
     if (event.altKey) {
-      moveItemWithinLevel(planId, item.id, direction)
+      const moved = moveItemWithinLevel(planId, item.id, direction)
+      if (moved === false) return
       await tick()
       focusItemTextInput(item.id)
       scrollMovedItemsIntoView('plan', [item.id], direction)

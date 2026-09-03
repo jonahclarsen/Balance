@@ -2903,6 +2903,60 @@ test('plan item text fields support arrow focus and option-arrow sibling moves',
     .toEqual({ workIndex: 1, childCount: 2 })
 })
 
+test('holding option-arrow rapidly moves a task and option-up pauses once before checked siblings', async ({ page }) => {
+  await seedPlanTree(page, [
+    { id: 'done_1', text: 'Earlier done', done: true, children: [] },
+    { id: 'done_2', text: 'Latest done', done: true, children: [] },
+    { id: 'next_1', text: 'Next one', children: [] },
+    { id: 'next_2', text: 'Next two', children: [] },
+    { id: 'moving', text: 'Just completed', children: [] },
+  ])
+  await focusInputByValue(page, 'Just completed')
+
+  await page.keyboard.down('Alt')
+  await page.keyboard.down('ArrowUp')
+  await page.keyboard.down('ArrowUp')
+  await page.keyboard.down('ArrowUp')
+
+  await expect.poll(() => topLevelPlanItemTexts(page)).toEqual([
+    'Earlier done',
+    'Latest done',
+    'Just completed',
+    'Next one',
+    'Next two',
+  ])
+
+  await page.keyboard.up('ArrowUp')
+  await page.keyboard.down('ArrowUp')
+  await page.keyboard.down('ArrowUp')
+  await page.keyboard.up('ArrowUp')
+  await page.keyboard.up('Alt')
+
+  await expect.poll(() => topLevelPlanItemTexts(page)).toEqual([
+    'Just completed',
+    'Earlier done',
+    'Latest done',
+    'Next one',
+    'Next two',
+  ])
+
+  await page.keyboard.down('Alt')
+  await page.keyboard.down('ArrowDown')
+  await page.keyboard.down('ArrowDown')
+  await page.keyboard.down('ArrowDown')
+  await page.keyboard.down('ArrowDown')
+  await page.keyboard.up('ArrowDown')
+  await page.keyboard.up('Alt')
+
+  await expect.poll(() => topLevelPlanItemTexts(page)).toEqual([
+    'Earlier done',
+    'Latest done',
+    'Next one',
+    'Next two',
+    'Just completed',
+  ])
+})
+
 test('option-arrow keeps a moved item and two surrounding rows visible', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Desktop workspace scrolling is covered separately from window scrolling')
 
@@ -5725,6 +5779,13 @@ test('deleting a list template requires confirmation', async ({ page }) => {
   await page.getByRole('button', { name: 'Delete list' }).click()
   await expect(page.getByRole('heading', { name: 'No lists yet' })).toBeVisible()
 })
+
+async function topLevelPlanItemTexts(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return (state.plans?.[0]?.items ?? []).map((item: { text: string }) => item.text)
+  })
+}
 
 async function seedPlanItems(page: import('@playwright/test').Page, texts: string[]) {
   await page.goto('/')

@@ -86,7 +86,7 @@
         { keys: ['alt', '['], label: 'Move task start earlier / later', alt: ['alt', ']'] },
         { keys: ['mod', '['], label: 'Move task end earlier / later', alt: ['mod', ']'] },
         { keys: ['altOrMod', 'shift', '[ / ]'], label: 'Shift task time earlier / later' },
-        { keys: ['alt', 'up'], label: 'Move item up / down', alt: ['alt', 'down'] },
+        { keys: ['alt', 'up'], label: 'Move item; hold to repeat (↑ pauses once before checked)', alt: ['alt', 'down'] },
         { keys: ['tab'], label: 'Indent', alt: ['shift', 'tab'] },
         { keys: ['mod', 'C'], label: 'Copy items' },
         { keys: ['mod', 'X'], label: 'Cut items' },
