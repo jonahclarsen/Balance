@@ -2270,6 +2270,7 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await expect(page.getByRole('heading', { name: 'Some Shortcuts' })).toHaveCount(0)
 
   await focusInputByValue(page, 'Pick the first useful task')
 
@@ -2283,6 +2284,12 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
   await expect.poll(async () => activeInputValue(page)).toBe('Pick the first useful task')
 
   await page.keyboard.press('Alt+[')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([525, 600])
+
+  await page.keyboard.press('ControlOrMeta+Shift+]')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 615])
+
+  await page.keyboard.press('ControlOrMeta+Shift+[')
   await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([525, 600])
 
   await page.keyboard.press('ControlOrMeta+]')

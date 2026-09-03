@@ -12,6 +12,7 @@
   const tokenLabels: Record<string, string> = {
     mod: isMac ? '⌘' : 'Ctrl',
     alt: isMac ? '⌥' : 'Alt',
+    altOrMod: isMac ? '⌥ / ⌘' : 'Alt / Ctrl',
     shift: isMac ? '⇧' : 'Shift',
     up: '↑',
     down: '↓',
@@ -84,7 +85,7 @@
         { keys: ['alt', 'shift', 'T'], label: 'Add / remove task time' },
         { keys: ['alt', '['], label: 'Move task start earlier / later', alt: ['alt', ']'] },
         { keys: ['mod', '['], label: 'Move task end earlier / later', alt: ['mod', ']'] },
-        { keys: ['alt', 'shift', '['], label: 'Shift task time earlier / later', alt: ['alt', 'shift', ']'] },
+        { keys: ['altOrMod', 'shift', '[ / ]'], label: 'Shift task time earlier / later' },
         { keys: ['alt', 'up'], label: 'Move item up / down', alt: ['alt', 'down'] },
         { keys: ['tab'], label: 'Indent', alt: ['shift', 'tab'] },
         { keys: ['mod', 'C'], label: 'Copy items' },

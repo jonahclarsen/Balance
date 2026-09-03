@@ -3248,8 +3248,8 @@ return rows`
     }
 
     if (
-      event.altKey &&
-      !primaryModifier &&
+      ((event.altKey && !primaryModifier) ||
+        (primaryModifier && !event.altKey && event.shiftKey)) &&
       (event.code === 'BracketLeft' || event.code === 'BracketRight')
     ) {
       const itemIds = activeTimeTargetIds()
@@ -5478,8 +5478,7 @@ return rows`
 
     <div class="sidebar-footer">
       {#if view === 'today' || view === 'templates'}
-        <section class="time-shortcut-legend" aria-labelledby="time-shortcut-legend-title">
-          <h2 id="time-shortcut-legend-title">Some Shortcuts</h2>
+        <section class="time-shortcut-legend" aria-label="Time shortcuts">
           <table>
             <thead>
               <tr>
