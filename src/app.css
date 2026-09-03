@@ -4968,6 +4968,10 @@ body.mobile-checkbox-dragging {
 }
 
 /* Flow Tint — a quiet wash distinguishes overdue days without a pattern. */
+.goal-history-panel[data-rhythm-mode='flow-tint'] .goal-cell-mark.overdue-mark {
+  font-size: 12px;
+}
+
 .goal-history-panel[data-rhythm-mode='flow-tint'] .goal-day-cell.overdue::before {
   background-color: color-mix(in srgb, var(--danger) 10%, transparent);
   background-image: none;
