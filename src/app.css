@@ -1445,6 +1445,24 @@ nav button.active {
   min-height: 38px;
 }
 
+.goals-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 1 340px;
+  gap: 8px;
+  min-width: 0;
+}
+
+.goals-header-actions .goal-search-input {
+  flex: 1 1 260px;
+}
+
+.goal-stats-button {
+  flex: 0 0 auto;
+  min-height: 38px;
+}
+
 .eyebrow {
   margin-bottom: 5px;
   color: var(--accent-strong);
@@ -5495,6 +5513,16 @@ body.mobile-checkbox-dragging {
     width: 100%;
     min-height: 38px;
     flex: 0 0 auto;
+  }
+
+  .goals-header-actions {
+    width: 100%;
+    flex: 0 0 auto;
+  }
+
+  .goals-header-actions .goal-search-input {
+    width: auto;
+    flex: 1 1 auto;
   }
 
   .template-panel,

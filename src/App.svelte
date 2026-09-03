@@ -31,6 +31,7 @@
   import CelebrationSettings from './lib/CelebrationSettings.svelte'
   import GoalBurst from './lib/GoalBurst.svelte'
   import GoalDoabilityModal from './lib/GoalDoabilityModal.svelte'
+  import GoalStatsModal from './lib/GoalStatsModal.svelte'
   import { randomIridescentSelectionAnimationDelay, restartElementAnimations } from './lib/iridescentSelectionAnimation'
   import {
     filterGoalsByPhrase,
@@ -475,6 +476,7 @@ return rows`
   let newGoalNameMismatch = false
   let goalSearch = ''
   let goalSearchInput: HTMLInputElement | null = null
+  let goalStatsOpen = false
   let highlightedGoalCardId: Id | null = null
   let lockedGoalOrder: Id[] | null = null
 
@@ -616,6 +618,7 @@ return rows`
   $: generateButtonLabel = displayedPlanDate === currentDay ? 'Generate today' : 'Generate selected day'
   $: selectedItemIdSet = new Set(selectedItemIds)
   $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
+  $: if (view !== 'goals' && goalStatsOpen) goalStatsOpen = false
   $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
   $: lockGoalOrderForCurrentVisit(view, sortedGoals)
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
@@ -6196,14 +6199,17 @@ return rows`
         <div>
           <h2>Goals</h2>
         </div>
-        <input
-          class="goal-search-input"
-          type="search"
-          aria-label="Search goals"
-          placeholder={`Search goals… (${isMac ? '⌘F' : 'Ctrl+F'})`}
-          bind:this={goalSearchInput}
-          bind:value={goalSearch}
-        />
+        <div class="goals-header-actions">
+          <button class="goal-stats-button" type="button" on:click={() => (goalStatsOpen = true)}>Stats</button>
+          <input
+            class="goal-search-input"
+            type="search"
+            aria-label="Search goals"
+            placeholder={`Search goals… (${isMac ? '⌘F' : 'Ctrl+F'})`}
+            bind:this={goalSearchInput}
+            bind:value={goalSearch}
+          />
+        </div>
       </header>
 
       <div class="goal-create-panel">
@@ -6849,6 +6855,15 @@ return rows`
         state={$plannerStore}
         onClose={() => (searchOpen = false)}
         onSelect={(result) => { void openSearchResult(result) }}
+      />
+    {/if}
+
+    {#if goalStatsOpen && view === 'goals'}
+      <GoalStatsModal
+        {goals}
+        completions={goalCompletions}
+        currentDate={currentDay}
+        onClose={() => (goalStatsOpen = false)}
       />
     {/if}
 

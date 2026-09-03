@@ -76,6 +76,34 @@ test('the mobile goal search stays compact without goal color controls', async (
   await expect(page.getByLabel('Color for Exercise')).toHaveCount(0)
 })
 
+test('goal stats open beside search and adapt their date range', async ({ page }) => {
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+
+  const statsButton = page.getByRole('button', { name: 'Stats', exact: true })
+  const search = page.locator('.goal-search-input')
+  const [statsBounds, searchBounds] = await Promise.all([
+    statsButton.boundingBox(),
+    search.boundingBox(),
+  ])
+  expect(statsBounds).not.toBeNull()
+  expect(searchBounds).not.toBeNull()
+  expect(statsBounds!.x + statsBounds!.width).toBeLessThanOrEqual(searchBounds!.x)
+
+  await statsButton.click()
+  const dialog = page.getByRole('dialog', { name: 'Goal statistics' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '90 days' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(dialog.locator('.summary-grid article').filter({ hasText: /^Active/ })).toContainText('1')
+  await expect(dialog.getByRole('img', { name: /90-day overdue history/ })).toBeVisible()
+
+  await dialog.getByRole('button', { name: '30 days' }).click()
+  await expect(dialog.getByRole('button', { name: '30 days' })).toHaveAttribute('aria-pressed', 'true')
+  await expect(dialog.getByRole('img', { name: /30-day overdue history/ })).toBeVisible()
+
+  await page.keyboard.press('Escape')
+  await expect(dialog).toHaveCount(0)
+})
+
 test('the goal rhythm search clear button remains visible without focus on mobile', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'Mobile-only interaction')
 
