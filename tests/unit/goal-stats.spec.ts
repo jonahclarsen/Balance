@@ -55,26 +55,37 @@ test('goal stats summarize current health and historical overdue counts', () => 
 
   expect(stats.rangeStart).toBe('2026-08-30')
   expect(stats.rangeEnd).toBe('2026-09-03')
-  expect(stats.activeGoals).toBe(2)
-  expect(stats.archivedGoals).toBe(1)
   expect(stats.overdueGoals).toBe(1)
-  expect(stats.onTrackGoals).toBe(1)
   expect(stats.completionsInRange).toBe(2)
   expect(stats.completionDays).toBe(2)
-  expect(stats.completedGoalsInRange).toBe(2)
   expect(stats.averageOverdueGoals).toBeCloseTo(0.6)
   expect(stats.daily.map((day) => day.overdueGoals)).toEqual([1, 1, 0, 0, 1])
   expect(stats.daily.map((day) => day.completedGoals)).toEqual([0, 0, 1, 1, 0])
   expect(stats.needsAttention.map((row) => row.goal.id)).toEqual(['daily'])
   expect(stats.mostCompleted.map((row) => row.goal.id)).toEqual(['weekly', 'daily'])
-  expect(stats.cadence).toEqual({ daily: 1, weekly: 1, longer: 0 })
+  expect(stats.deadlineOutlook).toEqual([
+    { label: 'Overdue', count: 1 },
+    { label: 'Due today', count: 0 },
+    { label: 'Next 7 days', count: 1 },
+    { label: 'Later', count: 0 },
+  ])
+  expect(stats.weekdayCompletions).toEqual([
+    { label: 'Mon', count: 0 },
+    { label: 'Tue', count: 1 },
+    { label: 'Wed', count: 1 },
+    { label: 'Thu', count: 0 },
+    { label: 'Fri', count: 0 },
+    { label: 'Sat', count: 0 },
+    { label: 'Sun', count: 0 },
+  ])
 })
 
 test('goal stats handle an empty collection without invalid percentages', () => {
   const stats = buildGoalStats([], [], '2026-09-03', 30)
 
-  expect(stats.activeGoals).toBe(0)
   expect(stats.averageOverdueGoals).toBe(0)
   expect(stats.daily).toHaveLength(30)
   expect(stats.daily.every((day) => day.overdueGoals === 0 && day.completedGoals === 0)).toBe(true)
+  expect(stats.deadlineOutlook.every((category) => category.count === 0)).toBe(true)
+  expect(stats.weekdayCompletions.every((category) => category.count === 0)).toBe(true)
 })

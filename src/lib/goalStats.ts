@@ -18,26 +18,24 @@ export type GoalStatsGoal = {
   daysUntilLapse: number | null
 }
 
+export type GoalStatsCategory = {
+  label: string
+  count: number
+}
+
 export type GoalStats = {
   rangeDays: number
   rangeStart: string
   rangeEnd: string
-  activeGoals: number
-  archivedGoals: number
   overdueGoals: number
-  onTrackGoals: number
   completionsInRange: number
   completionDays: number
-  completedGoalsInRange: number
   averageOverdueGoals: number
   daily: GoalStatsDay[]
   needsAttention: GoalStatsGoal[]
   mostCompleted: GoalStatsGoal[]
-  cadence: {
-    daily: number
-    weekly: number
-    longer: number
-  }
+  deadlineOutlook: GoalStatsCategory[]
+  weekdayCompletions: GoalStatsCategory[]
 }
 
 /**
@@ -84,7 +82,6 @@ export function buildGoalStats(
     ).length,
     completedGoals: completionsByDate.get(date)?.size ?? 0,
   }))
-  const active = goals.filter((goal) => isGoalActiveOnDate(goal, currentDate))
   const goalRows = goals.map<GoalStatsGoal>((goal) => {
     const completionDates = completionDatesByGoal.get(goal.id) ?? []
     return {
@@ -111,35 +108,52 @@ export function buildGoalStats(
         (right.latestCompletionDate ?? '').localeCompare(left.latestCompletionDate ?? '') ||
         left.goal.name.localeCompare(right.goal.name),
     )
-  const cadence = active.reduce(
-    (summary, goal) => {
-      if (goal.cadenceDays === 1) summary.daily += 1
-      else if (goal.cadenceDays <= 7) summary.weekly += 1
-      else summary.longer += 1
-      return summary
-    },
-    { daily: 0, weekly: 0, longer: 0 },
-  )
   const overdueGoals = needsAttention.length
+  const activeRows = goalRows.filter((row) => isGoalActiveOnDate(row.goal, currentDate))
+  const deadlineOutlook: GoalStatsCategory[] = [
+    { label: 'Overdue', count: activeRows.filter((row) => (row.daysUntilLapse ?? 0) < 0).length },
+    { label: 'Due today', count: activeRows.filter((row) => row.daysUntilLapse === 0).length },
+    {
+      label: 'Next 7 days',
+      count: activeRows.filter(
+        (row) => row.daysUntilLapse !== null && row.daysUntilLapse > 0 && row.daysUntilLapse <= 7,
+      ).length,
+    },
+    {
+      label: 'Later',
+      count: activeRows.filter(
+        (row) => row.daysUntilLapse === null || row.daysUntilLapse > 7,
+      ).length,
+    },
+  ]
+  const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+  const weekdayCompletions = weekdayLabels.map<GoalStatsCategory>((label) => ({ label, count: 0 }))
+  for (const completion of rangeCompletions) {
+    weekdayCompletions[weekdayIndex(completion.date)].count += 1
+  }
 
   return {
     rangeDays: normalizedRangeDays,
     rangeStart,
     rangeEnd: currentDate,
-    activeGoals: active.length,
-    archivedGoals: goals.length - active.length,
     overdueGoals,
-    onTrackGoals: active.length - overdueGoals,
     completionsInRange: rangeCompletions.length,
     completionDays: new Set(rangeCompletions.map((completion) => completion.date)).size,
-    completedGoalsInRange: new Set(rangeCompletions.map((completion) => completion.goalId)).size,
     averageOverdueGoals:
       daily.reduce((total, day) => total + day.overdueGoals, 0) / normalizedRangeDays,
     daily,
     needsAttention,
     mostCompleted,
-    cadence,
+    deadlineOutlook,
+    weekdayCompletions,
   }
+}
+
+function weekdayIndex(date: string): number {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date)
+  if (!match) return 0
+  const sundayFirst = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]))).getUTCDay()
+  return (sundayFirst + 6) % 7
 }
 
 function countUniqueGoalCompletionsByDate(
