@@ -1764,11 +1764,6 @@ fn available_update(
 }
 
 #[tauri::command]
-fn exit_after_inactivity(app: tauri::AppHandle) {
-    app.exit(0);
-}
-
-#[tauri::command]
 fn get_macos_widget_settings() -> Result<MacosWidgetSettings, String> {
     #[cfg(target_os = "macos")]
     {
@@ -10561,7 +10556,6 @@ pub fn run() {
             rotate_database_recovery_key,
             recover_database_with_key,
             build_info,
-            exit_after_inactivity,
             get_macos_widget_settings,
             set_macos_widget_hide_content_after_close,
             check_for_update,
