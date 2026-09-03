@@ -1276,8 +1276,8 @@ test('goal rhythm puts overdue goals last while the goals page keeps urgency ord
   await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible()
 })
 
-test('goal rhythm counts goals becoming overdue from the viewed day through the next three days', async ({ page }) => {
-  const today = todayISO()
+test('goal rhythm separately counts overdue and upcoming goals for the viewed day', async ({ page }) => {
+  const today = await page.locator('.date-input').inputValue()
   const yesterday = addDays(today, -1)
 
   await page.evaluate(({ today, yesterday }) => {
@@ -1330,12 +1330,12 @@ test('goal rhythm counts goals becoming overdue from the viewed day through the 
   }, { today, yesterday })
   await page.reload()
 
-  const upcomingSummary = page.locator('.goal-history-toolbar > div > span')
-  await expect(upcomingSummary).toHaveText('3 upcoming in the next 3 days')
+  const goalSummary = page.locator('.goal-history-toolbar > div > span')
+  await expect(goalSummary).toHaveText('1 overdue, 2 upcoming in the next 3 days')
 
-  await page.getByRole('button', { name: 'Previous day' }).click()
+  await page.getByRole('button', { name: `Open ${yesterday} in Today view` }).click()
 
-  await expect(upcomingSummary).toHaveText('1 upcoming in the next 3 days')
+  await expect(goalSummary).toHaveText('0 overdue, 1 upcoming in the next 3 days')
 })
 
 test('n goals template items use goal names instead of matching terms', async ({ page }) => {

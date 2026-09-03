@@ -198,10 +198,13 @@
   $: futureDates = Array.from({ length: futureDayCount }, (_, index) => shiftISODate(today, index + 1))
   $: dates = [...pastDates, ...futureDates]
   $: dateChunks = chunksOf(dates)
-  $: upcomingGoalCount = activeGoals.filter((goal) => {
+  $: goalDeadlineSummary = activeGoals.reduce((summary, goal) => {
     const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)
-    return daysUntilLapse !== null && daysUntilLapse <= 3
-  }).length
+    if (daysUntilLapse === null) return summary
+    if (daysUntilLapse < 0) summary.overdue += 1
+    else if (daysUntilLapse <= 3) summary.upcoming += 1
+    return summary
+  }, { overdue: 0, upcoming: 0 })
   $: visibleGoals = filterGoalsByPhrase(
     sortGoalsForRhythm(
       activeGoals,
@@ -419,7 +422,7 @@
     </div>
     <div class="goal-history-title">
       <strong>Goal rhythm</strong>
-      <span>{upcomingGoalCount} upcoming in the next 3 days</span>
+      <span>{goalDeadlineSummary.overdue} overdue, {goalDeadlineSummary.upcoming} upcoming in the next 3 days</span>
     </div>
     <div class="goal-history-search-field">
       <input
