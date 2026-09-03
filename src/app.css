@@ -6335,13 +6335,12 @@ body.mobile-checkbox-dragging {
   gap: 8px;
 }
 
+/* Keep Notes' extra magnification local so navigation and Goal Rhythm retain
+   the app-wide zoom in native webviews too. */
 .notes-view-workspace {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
-}
-
-:root[data-balance-css-zoom] .notes-view-workspace {
   zoom: var(--notes-page-zoom);
 }
 

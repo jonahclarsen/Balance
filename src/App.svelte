@@ -153,7 +153,6 @@
   const DATABASE_LOADING_MESSAGE_INTERVAL_MS = 10_000
   const WORD_CAP_UNLOCK_MS = 10_000
   const APP_DEFAULT_ZOOM = 1.1
-  const NOTES_DEFAULT_ZOOM = APP_DEFAULT_ZOOM * 1.1
   const DESKTOP_INACTIVITY_CLOSE_MS = 2 * 60 * 60 * 1000
   const isAndroid = /android/i.test(navigator.userAgent)
   const DAY_TEMPLATE_SELECTION_KEY = 'balance:selectedDayTemplateId'
@@ -184,25 +183,20 @@
   }
 
   let view: View = 'today'
-  let appliedDefaultZoom: number | null = null
 
-  function applyDefaultZoom(currentView: View) {
-    const zoom = currentView === 'notes' ? NOTES_DEFAULT_ZOOM : APP_DEFAULT_ZOOM
-    if (zoom === appliedDefaultZoom) return
-    appliedDefaultZoom = zoom
-
+  function applyDefaultZoom() {
     if (!isTauri()) {
       document.documentElement.dataset.balanceCssZoom = 'true'
       return
     }
 
     delete document.documentElement.dataset.balanceCssZoom
-    void getCurrentWebview().setZoom(zoom).catch((error) => {
+    void getCurrentWebview().setZoom(APP_DEFAULT_ZOOM).catch((error) => {
       console.error('Could not set the default app zoom', error)
     })
   }
 
-  $: applyDefaultZoom(view)
+  applyDefaultZoom()
   let currentDay = todayISO()
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false

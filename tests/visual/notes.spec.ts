@@ -225,17 +225,23 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await expect(notesSidebar).toBeVisible()
 })
 
-test('the entire Notes page adds another 10% to the app zoom', async ({ page }) => {
+test('the Notes pane adds another 10% zoom without scaling its surrounding panels', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await openNotesView(page)
 
   const notesPage = page.locator('.notes-view-workspace')
+  const navigationSidebar = page.getByRole('complementary', { name: 'Primary navigation drawer' })
+  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
   await expect.poll(() => notesPage.evaluate((element) => ({
     ownZoom: Number.parseFloat(getComputedStyle(element).zoom),
     effectiveZoom: element.currentCSSZoom,
   }))).toEqual({ ownZoom: 1.1, effectiveZoom: expect.closeTo(1.21, 5) })
+  await expect.poll(() => navigationSidebar.evaluate((element) => element.currentCSSZoom)).toBeCloseTo(1.1, 5)
+  if (testInfo.project.name !== 'mobile') {
+    await expect.poll(() => goalRhythm.evaluate((element) => element.currentCSSZoom)).toBeCloseTo(1.1, 5)
+  }
 
   const bounds = await notesPage.boundingBox()
   expect(bounds).not.toBeNull()
