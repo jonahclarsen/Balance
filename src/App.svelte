@@ -69,7 +69,7 @@
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
-  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
@@ -98,6 +98,7 @@
   import { isNoteTrashed } from './lib/noteTrash'
   import { BALANCE_DEEP_LINK_EVENT, parseBalanceDeepLink } from './lib/deepLinks'
   import { captureRenderedPlanSnapshot } from './lib/renderedPlanDiagnostics'
+  import { openExternalURL } from './lib/externalLinks'
   import {
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
@@ -1274,7 +1275,7 @@ return rows`
     }
   }
 
-  function openLinkedListForActiveTask(): boolean {
+  function openLinkedDestinationForActiveTask(): boolean {
     if (activeItemSurface() !== 'plan' || !focusedPlan) return false
 
     const itemId = selectedItemIds.length > 0
@@ -1285,9 +1286,19 @@ return rows`
 
     const listLink = linkifyItemText(item.text, listTemplates, metrics, notes)
       .find((segment) => segment.link?.kind === 'list')?.link
-    if (!listLink || listLink.kind !== 'list') return false
+    if (listLink?.kind === 'list') {
+      openLink(listLink, { container: 'plan', containerId: focusedPlan.id, itemId })
+      return true
+    }
 
-    openLink(listLink, { container: 'plan', containerId: focusedPlan.id, itemId })
+    const template = document.createElement('template')
+    template.innerHTML = item.html
+    const externalURL = Array.from(template.content.querySelectorAll<HTMLAnchorElement>('a[href]'))
+      .map((anchor) => anchor.getAttribute('href')?.trim() ?? '')
+      .find(isURL)
+    if (!externalURL) return false
+
+    void openExternalURL(externalURL)
     return true
   }
 
@@ -3129,7 +3140,7 @@ return rows`
     ) {
       const openedLink = listOverlayVisible && overlayListPanel
         ? overlayListPanel.openSelectedMetric()
-        : openLinkedListForActiveTask()
+        : openLinkedDestinationForActiveTask()
       if (openedLink) {
         event.preventDefault()
         event.stopPropagation()

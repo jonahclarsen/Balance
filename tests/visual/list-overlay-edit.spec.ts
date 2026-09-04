@@ -140,7 +140,33 @@ test('Alt+F opens a task linked list from either its caret or item selection', a
   await dialog.getByRole('button', { name: 'Close' }).click()
   await page.keyboard.press('Alt+/')
   await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' }))
-    .toContainText('Open linked list / metric')
+    .toContainText('Open linked list / URL / metric')
+})
+
+test('Alt+F opens the first URL linked from the active Today task', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const taskInput = page.locator('[data-plan-text-input]').first()
+  await taskInput.fill('Visit example')
+  await pasteLinkOverText(taskInput, 'https://example.com/docs', 6, 13)
+  await expect(taskInput.getByRole('link', { name: 'example' })).toHaveAttribute('href', 'https://example.com/docs')
+
+  await page.evaluate(() => {
+    ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = ''
+    window.open = ((url?: string | URL) => {
+      ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = String(url)
+      return null
+    }) as typeof window.open
+  })
+
+  await taskInput.focus()
+  await page.keyboard.press('Alt+f')
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { openedExternalURL?: string }).openedExternalURL))
+    .toBe('https://example.com/docs')
 })
 
 test('Alt+F opens the metric linked by the selected list item', async ({ page }) => {
