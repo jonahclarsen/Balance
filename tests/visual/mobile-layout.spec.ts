@@ -171,10 +171,31 @@ test('task rows stay readable on mobile without changing the desktop arrangement
       .getByRole('listitem', { name: 'Plan item: Parent task with a scheduled time' })
       .getByRole('checkbox')
     await checkbox.check()
-    const undo = page.locator('.mobile-app-header').getByRole('button', { name: 'Undo' })
+    const header = page.locator('.mobile-app-header')
+    const undo = header.getByRole('button', { name: 'Undo' })
+    const redo = page.getByRole('button', { name: 'Redo' })
+    const fixedButtonCentersBeforeUndo = await header.locator('button').evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const rect = button.getBoundingClientRect()
+        return { label: button.getAttribute('aria-label'), x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+      }),
+    )
     await expect(undo).toBeVisible()
+    await expect(redo).toHaveCount(0)
+    expect(new Set(fixedButtonCentersBeforeUndo.map(({ y }) => y)).size).toBe(1)
     await undo.click()
     await expect(checkbox).not.toBeChecked()
+    await expect(redo).toBeVisible()
+    const fixedButtonCentersAfterUndo = await header.locator('button').evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const rect = button.getBoundingClientRect()
+        return { label: button.getAttribute('aria-label'), x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
+      }),
+    )
+    expect(fixedButtonCentersAfterUndo).toEqual(fixedButtonCentersBeforeUndo)
+    await redo.click()
+    await expect(checkbox).toBeChecked()
+    await expect(redo).toHaveCount(0)
 
     await dragAcross(
       page,

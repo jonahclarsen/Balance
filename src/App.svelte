@@ -60,6 +60,7 @@
     listRecoveryEntries,
     persistenceError,
     plannerStore,
+    redoAvailable,
     recoverDatabaseWithKey,
     rotateDatabaseRecoveryKey,
     runDatabaseMaintenanceIfNeeded,
@@ -5447,7 +5448,7 @@ return rows`
           </button>
         {/if}
         <button class="mobile-header-undo-button" data-completion-undo-trigger type="button" title="Undo" aria-label="Undo" on:click={() => { void undoAndOpenDestination() }}>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 7-4 4 4 4" /><path d="M5 11h8a6 6 0 1 1-4.2 10.3" /></svg>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 14-5-5 5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H12" /></svg>
         </button>
       {/if}
       <button class="mobile-search-button" type="button" title="Search" aria-label="Search" on:click={openMobileDrawerSearch}>
@@ -5455,6 +5456,13 @@ return rows`
       </button>
     </div>
   </header>
+
+  {#if isMobile && $redoAvailable}
+    <div class="mobile-redo-toast" aria-live="polite">
+      <span>Change undone</span>
+      <button type="button" on:click={() => { void plannerStore.redo() }}>Redo</button>
+    </div>
+  {/if}
 
   <aside
     id="primary-sidebar"

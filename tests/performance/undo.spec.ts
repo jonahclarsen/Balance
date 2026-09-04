@@ -203,6 +203,7 @@ test('native undo uses a matching in-memory snapshot and preserves redo', async 
               operationId: operation.id,
               localSequence: operation.sequence + runtime.__historyCalls.length,
               state: null,
+              canRedo: command === 'undo_last_operation',
             })
           }
           case 'get_recovery_key_status':

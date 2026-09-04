@@ -171,6 +171,7 @@ type BackendHistoryResult = {
   operationId: string
   localSequence: number
   state: AppState | null
+  canRedo: boolean
 }
 
 export type RecoveryKeyStatus = {
@@ -262,6 +263,7 @@ export type DatabaseMaintenanceStatus = {
 
 let undoStack: HistoryEntry[] = []
 let redoStack: HistoryEntry[] = []
+const redoAvailableState = writable(false)
 let persistenceTarget: 'tauri' | 'localStorage' | null = null
 let persistenceReady = false
 let pendingOperations = new Map<string, Operation>()
@@ -276,6 +278,7 @@ const persistedOperationListeners = new Set<() => void>()
 export const persistenceError = writable('')
 export const databaseLoadError = writable('')
 export const databaseLoadPending = writable(isTauri())
+export const redoAvailable = { subscribe: redoAvailableState.subscribe }
 export const databaseLoadProgress = writable<DatabaseLoadProgress>({
   percent: 0,
   stage: 'Starting Balance',
@@ -293,8 +296,10 @@ function notifyPersistedOperation(): void {
 function parseStoredState(raw: string | null): AppState | null {
   if (!raw) return null
   try {
-    const parsed = JSON.parse(raw) as AppState
-    if (parsed.schemaVersion !== 1) return null
+    const stored = JSON.parse(raw) as AppState & { canRedo?: unknown }
+    if (stored.schemaVersion !== 1) return null
+    redoAvailableState.set(stored.canRedo === true)
+    const { canRedo: _canRedo, ...parsed } = stored
     return normalizeState({
       ...parsed,
       historyRevision: parsed.historyRevision || 0,
@@ -2409,6 +2414,7 @@ function createPlannerStore() {
         if (!result) {
           undoStack = []
           redoStack = []
+          redoAvailableState.set(false)
           return null
         }
 
@@ -2428,6 +2434,7 @@ function createPlannerStore() {
             store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
           }
         }
+        redoAvailableState.set(result.canRedo)
         notifyPersistedOperation()
         return operationType
       }
@@ -2448,6 +2455,7 @@ function createPlannerStore() {
       })
 
       if (operationToPersist) queueOperationPersistence(operationToPersist)
+      redoAvailableState.set(redoStack.length > 0)
       return operationType
     },
 
@@ -2462,6 +2470,7 @@ function createPlannerStore() {
         if (!result) {
           undoStack = []
           redoStack = []
+          redoAvailableState.set(false)
           return
         }
 
@@ -2478,6 +2487,7 @@ function createPlannerStore() {
             store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
           }
         }
+        redoAvailableState.set(result.canRedo)
         notifyPersistedOperation()
         return
       }
@@ -2496,6 +2506,7 @@ function createPlannerStore() {
       })
 
       if (operationToPersist) queueOperationPersistence(operationToPersist)
+      redoAvailableState.set(redoStack.length > 0)
     },
 
     async restoreRecoveryEntry(historyId: string): Promise<boolean> {
@@ -2509,6 +2520,7 @@ function createPlannerStore() {
       lastOperationMergeKey = null
       undoStack = []
       redoStack = []
+      redoAvailableState.set(false)
       store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
       notifyPersistedOperation()
       return true
@@ -2534,6 +2546,7 @@ function parseBackendHistoryResult(raw: string | null): BackendHistoryResult | n
       typeof result.operationId !== 'string' ||
       typeof result.localSequence !== 'number' ||
       !Number.isSafeInteger(result.localSequence) ||
+      typeof result.canRedo !== 'boolean' ||
       (result.state !== null && (typeof result.state !== 'object' || result.state === undefined))
     ) {
       return null
@@ -2615,6 +2628,7 @@ function recordHistory(
   }
 
   redoStack = []
+  redoAvailableState.set(false)
 }
 
 function updatePlan(state: AppState, planId: Id, updater: (plan: DailyPlan) => DailyPlan): AppState {

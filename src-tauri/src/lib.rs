@@ -1334,8 +1334,16 @@ struct DatabaseMaintenanceStatus {
 async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String> {
     run_startup_database_task(move || {
         let startup = take_startup_database_connection(&app, StartupDatabaseRead::AppState)?;
-        let result = read_app_state_from_database(&startup.connection)
-            .map(|state| state.map(|value| value.to_string()));
+        let result = read_app_state_from_database(&startup.connection).and_then(|state| {
+            state
+                .map(|mut value| {
+                    value["canRedo"] = latest_redoable_history_entry(&startup.connection)?
+                        .is_some()
+                        .into();
+                    Ok(value.to_string())
+                })
+                .transpose()
+        });
         if result.is_ok() {
             #[cfg(target_os = "macos")]
             if let Err(error) = macos_widget::publish_snapshot(&startup.connection) {
@@ -3870,10 +3878,12 @@ fn history_result_for_ui(
     let local_sequence = metadata_value(connection, "local_sequence")?
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(0);
+    let can_redo = latest_redoable_history_entry(connection)?.is_some();
     Ok(json!({
         "operationId": history.operation_id,
         "localSequence": local_sequence,
         "state": state,
+        "canRedo": can_redo,
     }))
 }
 
@@ -13529,6 +13539,7 @@ mod tests {
         assert_eq!(undo["operationId"], "op_device_test_2");
         assert_eq!(undo["localSequence"], 3);
         assert!(undo["state"].is_null());
+        assert_eq!(undo["canRedo"], true);
         let stored = read_app_state_from_database(&connection).unwrap().unwrap();
         assert_eq!(stored["plans"][0]["items"][0]["text"], "Wake up");
 
@@ -13538,6 +13549,7 @@ mod tests {
         assert_eq!(redo["operationId"], "op_device_test_2");
         assert_eq!(redo["localSequence"], 4);
         assert!(redo["state"].is_null());
+        assert_eq!(redo["canRedo"], false);
         let stored = read_app_state_from_database(&connection).unwrap().unwrap();
         assert_eq!(stored["plans"][0]["items"][0]["text"], "Changed once");
 
