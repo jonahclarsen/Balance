@@ -281,6 +281,30 @@
     selection?.addRange(range)
   }
 
+  async function handleTitleKeydown(event: KeyboardEvent) {
+    if (
+      event.key !== 'Enter' ||
+      event.isComposing ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey ||
+      !selectedNote
+    ) return
+
+    event.preventDefault()
+    let editor = noteInputs().at(-1)
+    if (!editor) {
+      activeItemId = onAddItem(selectedNote.id)
+      await tick()
+      editor = activeEditor() ?? undefined
+    }
+    if (!editor) return
+
+    activeItemId = editor.dataset.noteTextInputId ?? null
+    placeCaretAtTextOffset(editor, editor.textContent?.length ?? 0)
+  }
+
   function rememberNoteViewState(noteId: Id, patch: Partial<NoteViewState>) {
     const previous = viewStatesByNote.get(noteId)
     onViewStateChange(noteId, {
@@ -1012,7 +1036,7 @@
         {#if trashOpen}
           <h1 class="note-title note-trashed-title">{selectedNote.title.trim() || 'Untitled note'}</h1>
         {:else}
-          <input id="note-title" class="note-title" value={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} />
+          <input id="note-title" class="note-title" value={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown} />
         {/if}
         <div class="note-actions">
           {#if trashOpen}

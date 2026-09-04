@@ -347,6 +347,29 @@ test('the Notes new-note command creates and selects a note', async ({ page }) =
   await expect(shortcuts.getByText('Create note (while in Notes)', { exact: true })).toBeVisible()
 })
 
+test('Enter in a note title moves the caret to the end of the note', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const editors = page.locator('[data-note-text-input]')
+  const firstEditor = editors.first()
+  await firstEditor.fill('Opening')
+  await placeCaretAtEnd(firstEditor)
+  await firstEditor.press('Enter')
+  await editors.nth(1).fill('The end')
+
+  await page.getByLabel('Note title').press('Enter')
+
+  await expect(editors.nth(1)).toBeFocused()
+  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+    anchor: { text: 'The end', offset: 7 },
+    focus: { text: 'The end', offset: 7 },
+  })
+})
+
 test('note style menu stays visible inside the note scroller and viewport', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop popup placement is covered here')
   await page.goto('/')
