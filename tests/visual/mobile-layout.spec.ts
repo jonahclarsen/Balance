@@ -576,7 +576,7 @@ test('mobile task options open on touch press before a keyboard resize can cance
   await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toHaveCount(0)
 })
 
-test('mobile task options stay open when the compatibility click is delayed by keyboard dismissal', async ({ page }, testInfo) => {
+test('mobile task options stay open when Android sends a zero-detail click after keyboard dismissal', async ({ page }, testInfo) => {
   test.skip(!isMobileProject(testInfo.project.name), 'The task overflow interactions are mobile-only')
 
   const taskText = 'Parent task with a scheduled time'
@@ -603,11 +603,19 @@ test('mobile task options stay open when the compatibility click is delayed by k
   })
 
   // Android can hold the compatibility click while its software keyboard and
-  // visual viewport settle. That click belongs to the press that already
-  // opened the menu, however late it arrives, and must not toggle it closed.
+  // visual viewport settle, and WebView can report that touch-generated click
+  // with detail 0. It still belongs to the press that already opened the menu
+  // and must not toggle it closed.
   await page.waitForTimeout(800)
   await menuButton.evaluate((button) => {
-    button.dispatchEvent(new MouseEvent('click', { bubbles: true, button: 0, detail: 1 }))
+    const rect = button.getBoundingClientRect()
+    button.dispatchEvent(new MouseEvent('click', {
+      bubbles: true,
+      button: 0,
+      clientX: rect.x + rect.width / 2,
+      clientY: rect.y + rect.height / 2,
+      detail: 0,
+    }))
   })
   await expect(menu).toBeVisible()
 })

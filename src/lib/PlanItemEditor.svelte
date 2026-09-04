@@ -230,13 +230,16 @@
   }
 
   function handleMobileMenuClick(event: MouseEvent) {
-    if (suppressMobileMenuClick && event.detail > 0) {
+    const hasPointerCoordinates = event.clientX !== 0 || event.clientY !== 0
+    if (suppressMobileMenuClick && (event.detail > 0 || hasPointerCoordinates)) {
       suppressMobileMenuClick = false
       return
     }
 
-    // Keyboard and programmatic activation have no preceding physical click
-    // count, so they remain usable even if a prior touch's click was canceled.
+    // Keyboard and programmatic activation have neither a physical click count
+    // nor pointer coordinates, so they remain usable even if a prior touch's
+    // click was canceled. Android WebView can report a real touch click with a
+    // zero detail count, but it still carries the touch coordinates.
     suppressMobileMenuClick = false
     void toggleMobileMenu()
   }
@@ -1003,7 +1006,7 @@
           aria-label={`Task options for ${item.text || 'untitled task'}`}
           aria-haspopup="menu"
           aria-expanded={mobileMenuOpen}
-          on:pointerdown={handleMobileMenuPointerDown}
+          on:pointerdown|stopPropagation={handleMobileMenuPointerDown}
           on:click|stopPropagation={handleMobileMenuClick}
         >⋮</button>
         {#if mobileMenuOpen}
