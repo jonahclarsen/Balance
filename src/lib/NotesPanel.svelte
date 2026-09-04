@@ -9,6 +9,7 @@
     noteClipboardHTML,
     noteClipboardPlainText,
     parseNoteChecklistClipboard,
+    parseNotePlainTextClipboard,
     type NoteClipboardBlock,
     type ParsedNoteClipboardItem,
   } from './noteClipboard'
@@ -863,12 +864,15 @@
     const targetItem = targetId ? findItem(selectedNote.items, targetId) : null
     if (!target || !targetId || !targetItem) return
 
-    const items = parseNoteChecklistClipboard(
-      event.clipboardData.getData('text/plain'),
-      event.clipboardData.getData('text/html'),
-    )
+    const plainText = event.clipboardData.getData('text/plain')
+    const clipboardHTML = event.clipboardData.getData('text/html')
+    let items = parseNoteChecklistClipboard(plainText, clipboardHTML)
+    if (items.length === 0 && !clipboardHTML.trim()) items = parseNotePlainTextClipboard(plainText)
     const flattenedItems = flattenParsedClipboardItems(items)
-    if (flattenedItems.length < 2 || flattenedItems.some((item) => item.kind !== 'checklist')) return
+    if (
+      flattenedItems.length < 2 ||
+      flattenedItems.some((item) => item.kind !== 'checklist' && item.kind !== 'paragraph')
+    ) return
 
     event.preventDefault()
     event.stopPropagation()

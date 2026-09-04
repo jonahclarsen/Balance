@@ -88,6 +88,18 @@ export function parseNoteChecklistClipboard(plainText: string, html: string): Pa
   return flattenParsedItems(roots).length >= 2 ? roots : []
 }
 
+export function parseNotePlainTextClipboard(plainText: string): ParsedNoteClipboardItem[] {
+  const lines = plainText.split(/\r?\n/)
+  if (lines.length < 2) return []
+  return lines.map((text) => ({
+    kind: 'paragraph',
+    html: escapeHTML(text),
+    text,
+    done: false,
+    children: [],
+  }))
+}
+
 function flattenParsedItems(items: ParsedNoteClipboardItem[]): ParsedNoteClipboardItem[] {
   return items.flatMap((item) => [item, ...flattenParsedItems(item.children)])
 }

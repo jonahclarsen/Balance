@@ -192,7 +192,6 @@ test('deleting a selection across two paragraphs merges the remaining text', asy
 })
 
 test('pasting plain text lines creates separate paragraphs', async ({ page }) => {
-  test.fail(true, 'Audit: plain-text lines are inserted as soft lines in one block')
   await openFreshNote(page)
   const editor = page.locator('[data-note-text-input]').first()
   await paste(editor, 'Alpha\nBeta')
