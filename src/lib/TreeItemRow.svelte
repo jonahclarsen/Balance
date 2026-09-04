@@ -180,11 +180,14 @@
 
   function nearestScrollContainer(start: HTMLElement) {
     let candidate = start.parentElement
-    while (candidate) {
+    while (candidate && candidate !== document.body && candidate !== document.documentElement) {
       const overflowY = getComputedStyle(candidate).overflowY
       if (/(auto|scroll|overlay)/.test(overflowY) && candidate.scrollHeight > candidate.clientHeight) return candidate
       candidate = candidate.parentElement
     }
+    // Root overflow can be propagated from body to the viewport. In that case
+    // body reports `overflow-y: auto`, but changing body.scrollTop does nothing;
+    // scroll the browser's actual root scroller instead.
     return document.scrollingElement as HTMLElement | null
   }
 
