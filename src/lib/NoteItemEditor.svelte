@@ -262,23 +262,6 @@
     focusInputAtOffset(result.focusItemId, result.focusOffset)
   }
 
-  async function handleMetaBackspaceEnd(current: HTMLDivElement) {
-    const inputs = noteInputs()
-    if (inputs.length === 1) {
-      current.innerHTML = ''
-      patchItem(noteId, item.id, { kind: 'paragraph', done: false, html: '', text: '' })
-      await tick()
-      focusInput(item.id, 'start')
-      return
-    }
-    const index = inputs.findIndex((input) => input.dataset.noteTextInputId === item.id)
-    deleteItemPreservingChildren(noteId, item.id)
-    await tick()
-    const next = noteInputs()
-    const target = next[Math.max(0, index - 1)] ?? next[0]
-    if (target) focusElement(target)
-  }
-
   function noteInputs() {
     return Array.from(document.querySelectorAll<HTMLDivElement>('[data-note-text-input]'))
   }
@@ -524,7 +507,6 @@
       onBackspaceEmpty={handleBackspaceEmpty}
       onBackspaceStart={handleBackspaceStart}
       onDeleteEnd={handleDeleteEnd}
-      onMetaBackspaceEnd={handleMetaBackspaceEnd}
       onHorizontalBoundaryKey={(direction, editor) => focusAdjacent(editor, direction === 'left' ? 'up' : 'down', direction === 'left' ? 'end' : 'start')}
       onFocusChange={(focused) => {
         if (focused) onFocusItem(item.id)

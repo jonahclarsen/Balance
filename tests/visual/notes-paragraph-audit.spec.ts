@@ -145,7 +145,6 @@ test('Delete at the end of a paragraph merges the following paragraph', async ({
 })
 
 test('Meta+Backspace deletes to the start of the paragraph without removing the block', async ({ page }) => {
-  test.fail(true, 'Audit: Meta+Backspace currently removes the entire note block')
   await openFreshNote(page)
   const first = page.locator('[data-note-text-input]').first()
   await first.fill('Previous')
