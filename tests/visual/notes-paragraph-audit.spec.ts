@@ -245,7 +245,6 @@ test('Shift+Tab removes a top-level numbered-list marker and keeps its text', as
 })
 
 test('cutting selected checklist blocks removes them and writes their structured text', async ({ page }) => {
-  test.fail(true, 'Audit: note block selection has copy handling but no matching cut handling')
   await openFreshNote(page)
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
   await toolbar.getByRole('button', { name: 'Checklist' }).click()

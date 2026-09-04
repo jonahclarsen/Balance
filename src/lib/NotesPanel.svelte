@@ -855,6 +855,12 @@
     }
   }
 
+  function handleNoteCut(event: ClipboardEvent) {
+    if (selectedItemIds.length < 2) return
+    handleNoteCopy(event)
+    if (event.defaultPrevented) void deleteSelectedItems()
+  }
+
   async function handleNotePaste(event: ClipboardEvent) {
     if (!selectedNote || !event.clipboardData) return
 
@@ -1129,6 +1135,7 @@
   on:beforeinput|capture={followNoteBottomAfterEdit}
   on:keydown|capture={handleEditorKeydownCapture}
   on:copy={handleNoteCopy}
+  on:cut={handleNoteCut}
   on:pointerdown|capture={handleNotePointerDown}
   on:pointermove|capture={handleNotePointerMove}
   on:pointerup|capture={finishNotePointerSelection}
