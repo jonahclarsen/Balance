@@ -47,6 +47,7 @@
     | null = null
   export let onBackspaceEmpty: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
   export let onBackspaceStart: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
+  export let onDeleteEnd: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
   export let onMetaBackspaceEnd: ((editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>) | null = null
   export let onHorizontalBoundaryKey:
     | ((direction: HorizontalBoundaryDirection, editor: HTMLDivElement, event: KeyboardEvent) => void | Promise<void>)
@@ -113,6 +114,20 @@
     if (onKeyDown) {
       onKeyDown(activeEditor, event)
       if (event.defaultPrevented) return
+    }
+
+    if (
+      event.key === 'Delete' &&
+      !event.metaKey &&
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.shiftKey &&
+      onDeleteEnd &&
+      isCaretAtEnd(activeEditor)
+    ) {
+      event.preventDefault()
+      await onDeleteEnd(activeEditor, event)
+      return
     }
 
     if (

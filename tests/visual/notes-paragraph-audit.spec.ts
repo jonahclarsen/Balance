@@ -131,7 +131,6 @@ test('Backspace at the start of a paragraph merges it into the previous paragrap
 })
 
 test('Delete at the end of a paragraph merges the following paragraph', async ({ page }) => {
-  test.fail(true, 'Audit: forward deletion does not cross note block boundaries yet')
   await openFreshNote(page)
   const first = page.locator('[data-note-text-input]').first()
   await first.fill('Alpha')

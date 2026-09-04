@@ -1,7 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { caretPointFromCoordinates, collapsedCaretClientX } from './caretGeometry'
-  import { escapeHTML, linkifyItemText, type ItemLink, type ItemTextSegment } from './planner'
+  import { escapeHTML, linkifyItemText, sanitizeInlineHTML, type ItemLink, type ItemTextSegment } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, NoteItem, NoteItemKind } from './types'
 
@@ -244,6 +244,20 @@
       if (!item.text.trim()) await handleBackspaceEmpty()
       return
     }
+    await tick()
+    focusInputAtOffset(result.focusItemId, result.focusOffset)
+  }
+
+  async function handleDeleteEnd(current: HTMLDivElement) {
+    const inputs = noteInputs()
+    const index = inputs.findIndex((input) => input.dataset.noteTextInputId === item.id)
+    const nextInput = inputs[index + 1]
+    const nextItemId = nextInput?.dataset.noteTextInputId
+    if (!nextItemId) return
+
+    current.innerHTML = sanitizeInlineHTML(`${current.innerHTML}${nextInput.innerHTML}`)
+    const result = backspaceItemAtStart(noteId, nextItemId)
+    if (!result) return
     await tick()
     focusInputAtOffset(result.focusItemId, result.focusOffset)
   }
@@ -509,6 +523,7 @@
       onTabKey={handleTab}
       onBackspaceEmpty={handleBackspaceEmpty}
       onBackspaceStart={handleBackspaceStart}
+      onDeleteEnd={handleDeleteEnd}
       onMetaBackspaceEnd={handleMetaBackspaceEnd}
       onHorizontalBoundaryKey={(direction, editor) => focusAdjacent(editor, direction === 'left' ? 'up' : 'down', direction === 'left' ? 'end' : 'start')}
       onFocusChange={(focused) => {
