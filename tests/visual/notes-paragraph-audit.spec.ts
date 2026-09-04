@@ -208,7 +208,6 @@ test('pasting paragraph HTML creates separate paragraphs', async ({ page }) => {
 })
 
 test('pasting bulleted-list HTML creates separate bulleted blocks', async ({ page }) => {
-  test.fail(true, 'Audit: non-checklist list HTML is flattened into one block')
   await openFreshNote(page)
   const editor = page.locator('[data-note-text-input]').first()
   await paste(editor, '- Alpha\n- Beta', '<ul><li>Alpha</li><li>Beta</li></ul>')

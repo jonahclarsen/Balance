@@ -872,15 +872,10 @@
     if (items.length === 0 && clipboardHTML.trim()) {
       const htmlItems = parseNoteClipboardHTML(clipboardHTML)
       const flattenedHTMLItems = flattenParsedClipboardItems(htmlItems)
-      if (flattenedHTMLItems.length >= 2 && flattenedHTMLItems.every((item) => item.kind === 'paragraph')) {
-        items = htmlItems
-      }
+      if (flattenedHTMLItems.length >= 2) items = htmlItems
     }
     const flattenedItems = flattenParsedClipboardItems(items)
-    if (
-      flattenedItems.length < 2 ||
-      flattenedItems.some((item) => item.kind !== 'checklist' && item.kind !== 'paragraph')
-    ) return
+    if (flattenedItems.length < 2) return
 
     event.preventDefault()
     event.stopPropagation()
