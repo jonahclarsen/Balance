@@ -3598,6 +3598,28 @@ test('enter splits plan items and shift-enter inserts a line break', async ({ pa
   await expect.poll(async () => topLevelTexts(page).then((texts) => texts.length)).toBe(4)
 })
 
+test('a trailing soft line break survives leaving and returning to a plan item', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+  }
+
+  await focusInputByValue(page, 'Wake up')
+  await setCaretOffsetInFocusedEditor(page, 'Wake up'.length)
+  await page.keyboard.press('Shift+Enter')
+  await expect.poll(async () => storedHTMLForFocusedItem(page)).toBe('Wake up<br>')
+
+  await focusInputByValue(page, 'Breakfast')
+  await page.reload()
+  await focusInputByValue(page, 'Wake up')
+  await expect.poll(async () => storedHTMLForFocusedItem(page)).toBe('Wake up<br>')
+  await expect(page.locator('[data-plan-text-input]:focus')).toHaveJSProperty('innerHTML', 'Wake up<br><br>')
+})
+
 test('enter on an empty plan item focuses a new blank sibling below it', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

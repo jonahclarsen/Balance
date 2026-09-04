@@ -1505,7 +1505,7 @@ export function sanitizeInlineHTML(value: string): string {
   const template = document.createElement('template')
   template.innerHTML = value
   const sanitized = Array.from(template.content.childNodes).map(sanitizeNode).join('')
-  return stripTrailingLineBreaks(sanitized)
+  return cleanTrailingLineBreaks(sanitized)
 }
 
 // Converts bare web URLs in pasted content to anchors while preserving its
@@ -1557,21 +1557,20 @@ export function linkifyExternalURLs(value: string): string {
   return Array.from(template.content.childNodes).map(sanitizeNode).join('')
 }
 
-// Removes line breaks at the rendered end of the content. A flat regex isn't
-// enough: when the last formatted line of an item is deleted, WebKit (and
-// Chromium) keep the caret placeholder inside the formatting wrapper — e.g.
-// `<b><br></b>` — so an item that looks empty would otherwise persist as a
-// phantom newline. Descends through trailing inline wrappers, drops the breaks
-// (including raw trailing "\n" text pasted from pretty-printed HTML), and
-// removes wrappers the pruning left empty.
-function stripTrailingLineBreaks(html: string): string {
+// Keeps intentional trailing <br> elements on non-empty text while still
+// removing raw trailing newlines from pretty-printed HTML. If the whole value
+// is only caret-placeholder breaks (possibly inside formatting wrappers), all
+// of them are removed so backspacing formatted text cannot persist a phantom
+// newline-only item.
+function cleanTrailingLineBreaks(html: string): string {
   const template = document.createElement('template')
   template.innerHTML = html
-  if (!pruneTrailingLineBreaks(template.content)) return html
+  const removeBreaks = (template.content.textContent ?? '').trim() === ''
+  if (!pruneTrailingLineBreaks(template.content, removeBreaks)) return html
   return Array.from(template.content.childNodes).map(sanitizeNode).join('')
 }
 
-function pruneTrailingLineBreaks(parent: ParentNode): boolean {
+function pruneTrailingLineBreaks(parent: ParentNode, removeBreaks: boolean): boolean {
   let pruned = false
 
   for (let last = parent.lastChild; last; last = parent.lastChild) {
@@ -1589,13 +1588,14 @@ function pruneTrailingLineBreaks(parent: ParentNode): boolean {
     }
 
     if (last.nodeName === 'BR') {
+      if (!removeBreaks) return pruned
       last.remove()
       pruned = true
       continue
     }
 
     if (last.nodeType === Node.ELEMENT_NODE) {
-      const childPruned = pruneTrailingLineBreaks(last as unknown as ParentNode)
+      const childPruned = pruneTrailingLineBreaks(last as unknown as ParentNode, removeBreaks)
       if (!last.hasChildNodes()) {
         last.remove()
         pruned = true

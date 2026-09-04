@@ -61,7 +61,7 @@
   export let onInternalLinkClick: ((link: ItemLink, event: MouseEvent) => void | Promise<void>) | null = null
 
   let editor: HTMLDivElement
-  let renderedHTML = renderItemDisplayHTML(html, text, internalLinkSegments)
+  let renderedHTML = renderEditorHTML(html, text, internalLinkSegments)
   let lastRevision = revision
   let lastInternalLinkKey = internalLinkKey(internalLinkSegments)
   let savedSelection: SavedSelection | null = null
@@ -85,7 +85,7 @@
 
   $: {
     const nextInternalLinkKey = internalLinkKey(internalLinkSegments)
-    const nextHTML = renderItemDisplayHTML(html, text, internalLinkSegments)
+    const nextHTML = renderEditorHTML(html, text, internalLinkSegments)
     const revisionWasApplied = revision !== lastRevision
 
     if (revisionWasApplied) {
@@ -580,7 +580,7 @@
   }
 
   function persistEditor(activeEditor: HTMLDivElement, syncRenderedHTML = true, options: TextChangeOptions = {}) {
-    const sanitizedHTML = sanitizeInlineHTML(activeEditor.innerHTML)
+    const sanitizedHTML = sanitizeInlineHTMLWithoutCaretPlaceholder(activeEditor)
     const nextHTML = sanitizedHTML.trim() === '' ? '' : sanitizedHTML
     if (activeEditor.innerHTML !== nextHTML && (syncRenderedHTML || nextHTML === '')) {
       activeEditor.innerHTML = nextHTML
@@ -588,10 +588,53 @@
     }
     const nextText = htmlToPlainText(nextHTML)
     if (syncRenderedHTML) {
-      renderedHTML = renderItemDisplayHTML(nextHTML, nextText, internalLinkSegments)
+      renderedHTML = renderEditorHTML(nextHTML, nextText, internalLinkSegments)
       if (activeEditor.innerHTML !== renderedHTML) activeEditor.innerHTML = renderedHTML
     }
     onChange(nextHTML, nextText, options, activeEditor)
+  }
+
+  function renderEditorHTML(sourceHTML: string, sourceText: string, segments: ItemTextSegment[]) {
+    const displayHTML = renderItemDisplayHTML(sourceHTML, sourceText, segments)
+    if (!displayHTML || !endsWithLineBreak(displayHTML)) return displayHTML
+
+    // A final semantic <br> needs one additional contenteditable-only <br> so
+    // the browser gives its empty line height and a caret position. This extra
+    // break is removed again before persistence.
+    return `${displayHTML}<br>`
+  }
+
+  function sanitizeInlineHTMLWithoutCaretPlaceholder(activeEditor: HTMLDivElement) {
+    const clone = activeEditor.cloneNode(true) as HTMLDivElement
+    if ((clone.textContent ?? '').trim() !== '') removeLastLineBreak(clone)
+    return sanitizeInlineHTML(clone.innerHTML)
+  }
+
+  function endsWithLineBreak(value: string) {
+    const template = document.createElement('template')
+    template.innerHTML = value
+    return lastRenderedNodeIsLineBreak(template.content)
+  }
+
+  function lastRenderedNodeIsLineBreak(parent: ParentNode): boolean {
+    for (let node = parent.lastChild; node; node = node.previousSibling) {
+      if (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '') === '') continue
+      if (node.nodeName === 'BR') return true
+      return node.nodeType === Node.ELEMENT_NODE && lastRenderedNodeIsLineBreak(node as unknown as ParentNode)
+    }
+    return false
+  }
+
+  function removeLastLineBreak(parent: ParentNode): boolean {
+    for (let node = parent.lastChild; node; node = node.previousSibling) {
+      if (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '') === '') continue
+      if (node.nodeName === 'BR') {
+        node.remove()
+        return true
+      }
+      return node.nodeType === Node.ELEMENT_NODE && removeLastLineBreak(node as unknown as ParentNode)
+    }
+    return false
   }
 
   function internalLinkKey(segments: ItemTextSegment[]) {
