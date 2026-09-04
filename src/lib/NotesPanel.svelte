@@ -9,6 +9,7 @@
     noteClipboardHTML,
     noteClipboardPlainText,
     parseNoteChecklistClipboard,
+    parseNoteClipboardHTML,
     parseNotePlainTextClipboard,
     type NoteClipboardBlock,
     type ParsedNoteClipboardItem,
@@ -868,6 +869,13 @@
     const clipboardHTML = event.clipboardData.getData('text/html')
     let items = parseNoteChecklistClipboard(plainText, clipboardHTML)
     if (items.length === 0 && !clipboardHTML.trim()) items = parseNotePlainTextClipboard(plainText)
+    if (items.length === 0 && clipboardHTML.trim()) {
+      const htmlItems = parseNoteClipboardHTML(clipboardHTML)
+      const flattenedHTMLItems = flattenParsedClipboardItems(htmlItems)
+      if (flattenedHTMLItems.length >= 2 && flattenedHTMLItems.every((item) => item.kind === 'paragraph')) {
+        items = htmlItems
+      }
+    }
     const flattenedItems = flattenParsedClipboardItems(items)
     if (
       flattenedItems.length < 2 ||

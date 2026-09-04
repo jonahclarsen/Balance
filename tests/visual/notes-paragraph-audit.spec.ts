@@ -200,7 +200,6 @@ test('pasting plain text lines creates separate paragraphs', async ({ page }) =>
 })
 
 test('pasting paragraph HTML creates separate paragraphs', async ({ page }) => {
-  test.fail(true, 'Audit: paragraph HTML is flattened into one block')
   await openFreshNote(page)
   const editor = page.locator('[data-note-text-input]').first()
   await paste(editor, 'Alpha\nBeta', '<p>Alpha</p><p>Beta</p>')
