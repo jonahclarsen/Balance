@@ -51,6 +51,18 @@ async function selectText(editor: Locator, start: number, end: number) {
   }, { start, end })
 }
 
+async function caretCoordinates(editor: Locator, offset: number) {
+  return editor.evaluate((element, caretOffset) => {
+    const node = element.firstChild
+    if (!node) throw new Error('Editor has no text node')
+    const range = document.createRange()
+    range.setStart(node, caretOffset)
+    range.collapse(true)
+    const bounds = range.getBoundingClientRect()
+    return { x: bounds.x, y: bounds.y + bounds.height / 2 }
+  }, offset)
+}
+
 async function paste(editor: Locator, plainText: string, html = '') {
   await editor.evaluate((element, clipboard) => {
     element.focus()
@@ -160,7 +172,6 @@ test('Meta+Backspace deletes to the start of the paragraph without removing the 
 })
 
 test('deleting a selection across two paragraphs merges the remaining text', async ({ page }) => {
-  test.fail(true, 'Audit: cross-block deletion merges blocks without deleting the selected characters')
   await openFreshNote(page)
   const first = page.locator('[data-note-text-input]').first()
   await first.fill('Alpha')
@@ -168,20 +179,13 @@ test('deleting a selection across two paragraphs merges the remaining text', asy
   await first.press('Enter')
   const second = page.locator('[data-note-text-input]').nth(1)
   await second.fill('Beta')
-  await second.evaluate((element) => {
-    const editors = Array.from(document.querySelectorAll<HTMLElement>('[data-note-text-input]'))
-    const firstNode = editors[0].firstChild
-    const secondNode = editors[1].firstChild
-    if (!firstNode || !secondNode) return
-    element.focus()
-    const range = document.createRange()
-    range.setStart(firstNode, 2)
-    range.setEnd(secondNode, 2)
-    const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-  })
-  await second.press('Backspace')
+  const start = await caretCoordinates(first, 2)
+  const end = await caretCoordinates(second, 2)
+  await page.mouse.move(start.x, start.y)
+  await page.mouse.down()
+  await page.mouse.move(end.x, end.y, { steps: 5 })
+  await page.mouse.up()
+  await page.keyboard.press('Backspace')
 
   await auditExpect(page.locator('[data-note-text-input]')).toHaveText(['Alta'])
   await expect.poll(() => caretState(page)).toEqual({ index: 0, offset: 2 })

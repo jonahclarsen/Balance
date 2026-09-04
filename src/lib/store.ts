@@ -1766,6 +1766,28 @@ function createPlannerStore() {
       )
     },
 
+    replaceNoteItemRange(
+      noteId: Id,
+      itemId: Id,
+      itemIds: Id[],
+      replacement: { html: string; text: string },
+    ) {
+      const removedIds = itemIds.filter((candidateId) => candidateId !== itemId)
+      commit('replace_note_item_range', { noteId, itemId, itemIds, replacement }, (state) =>
+        updateNote(state, noteId, (note) => {
+          let items = updatePlanItem(note.items, itemId, (item) => ({ ...item, ...replacement }))
+          for (const removedId of removedIds) {
+            items = deletePlanItemPreservingChildren(items, removedId)
+          }
+          return {
+            ...note,
+            updatedAt: nowISO(),
+            items: reconcileNoteChecklistItems(items as NoteItem[]),
+          }
+        }),
+      )
+    },
+
     deleteNoteItemPreservingChildren(noteId: Id, itemId: Id) {
       commit('delete_note_item_preserving_children', { noteId, itemId }, (state) =>
         updateNote(state, noteId, (note) => ({

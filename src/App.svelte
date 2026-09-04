@@ -6224,6 +6224,7 @@ return rows`
         backspaceItemAtStart={plannerStore.backspaceNoteItemAtStart}
         deleteItem={plannerStore.deleteNoteItem}
         deleteItems={plannerStore.deleteNoteItems}
+        replaceItemRange={plannerStore.replaceNoteItemRange}
         deleteItemPreservingChildren={plannerStore.deleteNoteItemPreservingChildren}
         moveItem={plannerStore.moveNoteItem}
         moveItemWithinLevel={plannerStore.moveNoteItemWithinLevel}

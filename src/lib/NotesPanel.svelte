@@ -50,6 +50,7 @@
   export let backspaceItemAtStart: typeof import('./store').plannerStore.backspaceNoteItemAtStart
   export let deleteItem: typeof import('./store').plannerStore.deleteNoteItem
   export let deleteItems: typeof import('./store').plannerStore.deleteNoteItems
+  export let replaceItemRange: typeof import('./store').plannerStore.replaceNoteItemRange
   export let deleteItemPreservingChildren: typeof import('./store').plannerStore.deleteNoteItemPreservingChildren
   export let moveItem: typeof import('./store').plannerStore.moveNoteItem
   export let moveItemWithinLevel: typeof import('./store').plannerStore.moveNoteItemWithinLevel
@@ -80,6 +81,17 @@
   let toolbarSelection: Range | null = null
   let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
   let pointerSelectionFocus: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
+  type CrossBlockSelection = {
+    startEditor: HTMLDivElement
+    endEditor: HTMLDivElement
+    selectedIds: Id[]
+    beforeHTML: string
+    afterHTML: string
+    caretOffset: number
+    selectedCharacterCount: number
+    savedAt: number
+  }
+  let recentCrossBlockSelection: CrossBlockSelection | null = null
   // WKWebView clamps a DOM Selection at contenteditable boundaries when list
   // decoration sits between the editors. Keep a real row selection for lists;
   // it drives both the visible highlight and the clipboard independently.
@@ -490,6 +502,17 @@
     if (restoringNoteViewState) return
 
     const selection = document.getSelection()
+    if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
+      const candidate = crossBlockSelectionForRange(selection.getRangeAt(0))
+      if (
+        candidate &&
+        (!recentCrossBlockSelection ||
+          candidate.startEditor !== recentCrossBlockSelection.startEditor ||
+          candidate.endEditor !== recentCrossBlockSelection.endEditor ||
+          Date.now() - recentCrossBlockSelection.savedAt >= 1000 ||
+          candidate.selectedCharacterCount >= recentCrossBlockSelection.selectedCharacterCount)
+      ) recentCrossBlockSelection = candidate
+    }
     const inputs = noteInputs()
     const lastInput = inputs.at(-1)
     if (!selection?.isCollapsed || !selection.focusNode || !lastInput?.contains(selection.focusNode)) return
@@ -577,6 +600,9 @@
   }
 
   function handleEditorKeydownCapture(event: KeyboardEvent) {
+    if (!['Backspace', 'Delete'].includes(event.key)) recentCrossBlockSelection = null
+    if (handleCrossBlockDeletion(event)) return
+
     if (event.key === 'Tab' && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
       const row = event.target instanceof Element
         ? event.target.closest<HTMLElement>('[data-note-item-id]')
@@ -618,6 +644,104 @@
       }
     }
     if (['Enter', 'Backspace', 'Delete', 'Tab'].includes(event.key)) void followNoteBottomAfterEdit(event)
+  }
+
+  function handleCrossBlockDeletion(event: KeyboardEvent) {
+    if (
+      !['Backspace', 'Delete'].includes(event.key) ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.shiftKey ||
+      !selectedNote
+    ) return false
+
+    const selection = document.getSelection()
+    const liveSelection = selection && !selection.isCollapsed && selection.rangeCount > 0
+      ? crossBlockSelectionForRange(selection.getRangeAt(0))
+      : null
+    const eventEditor = event.target instanceof Node ? noteEditorForNode(event.target) : null
+    const savedSelection = recentCrossBlockSelection &&
+      Date.now() - recentCrossBlockSelection.savedAt < 1000 &&
+      eventEditor === recentCrossBlockSelection.endEditor
+      ? recentCrossBlockSelection
+      : null
+    const blockSelection = savedSelection &&
+      (!liveSelection || savedSelection.selectedCharacterCount > liveSelection.selectedCharacterCount)
+      ? savedSelection
+      : liveSelection
+    recentCrossBlockSelection = null
+    if (!blockSelection) return false
+    const { startEditor, selectedIds, beforeHTML, afterHTML, caretOffset } = blockSelection
+    const startId = startEditor.dataset.noteTextInputId
+    if (!startId) return false
+    const replacementHTML = sanitizeInlineHTML(`${beforeHTML}${afterHTML}`)
+
+    event.preventDefault()
+    event.stopPropagation()
+    startEditor.innerHTML = replacementHTML
+    replaceItemRange(selectedNote.id, startId, selectedIds, {
+      html: replacementHTML,
+      text: htmlToPlainTextWithBreaks(replacementHTML),
+    })
+    clearItemSelection()
+    activeItemId = startId
+    void tick().then(() => {
+      const editor = noteInputs().find((input) => input.dataset.noteTextInputId === startId)
+      if (editor) placeCaretAtTextOffset(editor, caretOffset)
+    })
+    return true
+  }
+
+  function crossBlockSelectionForRange(range: Range): CrossBlockSelection | null {
+    const startEditor = noteEditorForNode(range.startContainer)
+    const endEditor = noteEditorForNode(range.endContainer)
+    if (!startEditor || !endEditor || startEditor === endEditor) return null
+
+    const inputs = noteInputs()
+    const startIndex = inputs.indexOf(startEditor)
+    const endIndex = inputs.indexOf(endEditor)
+    if (startIndex < 0 || endIndex <= startIndex) return null
+    const selectedIds = inputs
+      .slice(startIndex, endIndex + 1)
+      .flatMap((input) => input.dataset.noteTextInputId ?? [])
+    if (selectedIds.length < 2) return null
+
+    const beforeRange = document.createRange()
+    beforeRange.selectNodeContents(startEditor)
+    beforeRange.setEnd(range.startContainer, range.startOffset)
+    const afterRange = document.createRange()
+    afterRange.selectNodeContents(endEditor)
+    afterRange.setStart(range.endContainer, range.endOffset)
+    const beforeHTML = sanitizedRangeHTML(beforeRange)
+    const afterHTML = sanitizedRangeHTML(afterRange)
+    const beforeLength = htmlToPlainTextWithBreaks(beforeHTML).length
+    const afterLength = htmlToPlainTextWithBreaks(afterHTML).length
+    const selectedCharacterCount = (startEditor.textContent?.length ?? 0) - beforeLength
+      + (endEditor.textContent?.length ?? 0) - afterLength
+      + inputs.slice(startIndex + 1, endIndex)
+        .reduce((total, input) => total + (input.textContent?.length ?? 0), 0)
+    return {
+      startEditor,
+      endEditor,
+      selectedIds,
+      beforeHTML,
+      afterHTML,
+      caretOffset: beforeLength,
+      selectedCharacterCount,
+      savedAt: Date.now(),
+    }
+  }
+
+  function noteEditorForNode(node: Node) {
+    const element = node instanceof Element ? node : node.parentElement
+    return element?.closest<HTMLDivElement>('[data-note-text-input]') ?? null
+  }
+
+  function sanitizedRangeHTML(range: Range) {
+    const container = document.createElement('div')
+    container.append(range.cloneContents())
+    return sanitizeInlineHTML(container.innerHTML)
   }
 
   async function convertTopLevelListItemToParagraph(item: Note['items'][number], row: HTMLElement) {
@@ -954,6 +1078,19 @@
     focus: { node: Node; offset: number },
   ) {
     if (!anchor.node.isConnected || !focus.node.isConnected) return
+    const anchorRange = document.createRange()
+    anchorRange.setStart(anchor.node, anchor.offset)
+    anchorRange.collapse(true)
+    const focusRange = document.createRange()
+    focusRange.setStart(focus.node, focus.offset)
+    focusRange.collapse(true)
+    const anchorComesFirst = anchorRange.compareBoundaryPoints(Range.START_TO_START, focusRange) <= 0
+    const logicalRange = document.createRange()
+    const start = anchorComesFirst ? anchor : focus
+    const end = anchorComesFirst ? focus : anchor
+    logicalRange.setStart(start.node, start.offset)
+    logicalRange.setEnd(end.node, end.offset)
+    recentCrossBlockSelection = crossBlockSelectionForRange(logicalRange)
     document.getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
   }
 
