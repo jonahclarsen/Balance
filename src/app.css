@@ -7371,6 +7371,11 @@ body.mobile-checkbox-dragging {
     stroke-linecap: round;
   }
 
+  .mobile-drawer-close-button:disabled {
+    cursor: default;
+    opacity: 1;
+  }
+
   .sidebar .primary-nav {
     display: grid;
     flex-wrap: nowrap;

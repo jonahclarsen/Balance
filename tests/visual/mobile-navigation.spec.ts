@@ -48,6 +48,10 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
   await expect(drawer).toBeVisible()
   await expect(drawer.getByRole('button', { name: 'Undo' })).toHaveCount(0)
   await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+  await expect(closeButton).toBeDisabled()
+  await closeButton.evaluate((button) => button.click())
+  await expect(drawer).toBeVisible()
+  await expect(closeButton).toBeEnabled()
   await expect.poll(() => menuButton.evaluate((element) => {
     const styles = getComputedStyle(element)
     return { backgroundColor: styles.backgroundColor, borderColor: styles.borderColor }

@@ -115,6 +115,7 @@
   const MACOS_ALT_SHORTCUT_EVENT = 'balance-macos-alt-shortcut'
   const TIME_KEYBOARD_STEP_MINUTES = 15
   const TIME_KEYBOARD_MERGE_WINDOW_MS = 1500
+  const MOBILE_DRAWER_CLOSE_GUARD_MS = 150
   const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
     id: ColorSchemePreference
     name: string
@@ -202,6 +203,8 @@
   let currentDay = todayISO()
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
+  let mobileDrawerCloseReady = false
+  let mobileDrawerCloseGuardTimer: number | null = null
   let mobileDrawerDragging = false
   let mobileDrawerEl: HTMLElement | null = null
   let mobileDrawerBackdropEl: HTMLButtonElement | null = null
@@ -772,6 +775,12 @@ return rows`
   function finishMobileDrawerPress() {
     mobileDrawerOpen = true
     mobileDrawerPressing = false
+    mobileDrawerCloseReady = false
+    if (mobileDrawerCloseGuardTimer !== null) window.clearTimeout(mobileDrawerCloseGuardTimer)
+    mobileDrawerCloseGuardTimer = window.setTimeout(() => {
+      mobileDrawerCloseGuardTimer = null
+      if (mobileDrawerOpen) mobileDrawerCloseReady = true
+    }, MOBILE_DRAWER_CLOSE_GUARD_MS)
   }
 
   function releaseMobileDrawerPress() {
@@ -787,6 +796,11 @@ return rows`
   function closeMobileDrawer() {
     mobileDrawerOpen = false
     mobileDrawerPressing = false
+    mobileDrawerCloseReady = false
+    if (mobileDrawerCloseGuardTimer !== null) {
+      window.clearTimeout(mobileDrawerCloseGuardTimer)
+      mobileDrawerCloseGuardTimer = null
+    }
     finishMobileDrawerGesture()
   }
 
@@ -1931,6 +1945,7 @@ return rows`
         window.clearTimeout(celebrationPreviewAnnouncementTimer)
       }
       if (wordCapUnlockTimer !== null) window.clearTimeout(wordCapUnlockTimer)
+      if (mobileDrawerCloseGuardTimer !== null) window.clearTimeout(mobileDrawerCloseGuardTimer)
       celebrationPreviewToken += 1
       celebrationPreview = null
       clearGoalRhythmAutoShowTimer()
@@ -5490,6 +5505,7 @@ return rows`
       type="button"
       title="Close navigation"
       aria-label="Close navigation"
+      disabled={!mobileDrawerCloseReady}
       on:click={closeMobileDrawer}
     >
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>
