@@ -397,7 +397,7 @@
 
   function handleTextChange(html: string, text: string, options?: TextChangeOptions, editor?: HTMLDivElement) {
     const shortcut = markdownKind(text)
-    if (shortcut) {
+    if (shortcut && !(item.kind === 'heading' && shortcut.kind === 'numbered')) {
       const nextHTML = shortcut.content ? escapeHTML(shortcut.content) : ''
       patchItem(noteId, item.id, { kind: shortcut.kind, done: false, html: nextHTML, text: shortcut.content }, options)
       slashQuery = null

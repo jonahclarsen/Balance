@@ -644,6 +644,25 @@ test('a bullet indented below a heading keeps ordinary body typography', async (
   await expect(bullet).toHaveCSS('line-height', '25.5px')
 })
 
+test('typing a numbered-list marker in a heading keeps it as heading text', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const heading = page.locator('[data-note-text-input]').first()
+  await heading.fill('/h1')
+  await heading.press('Enter')
+  const headingRow = page.locator('.note-item').first()
+  await expect(headingRow).toHaveClass(/note-heading/)
+  await heading.type('1. ')
+
+  await expect(headingRow).toHaveClass(/note-heading/)
+  await expect(headingRow).not.toHaveClass(/note-numbered/)
+  await expect(heading).toHaveText('1. ')
+})
+
 test('notes select all blocks and copy plain text plus semantic HTML lists', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'desktop keyboard and rich clipboard behavior is covered here')
   await page.goto('/')
