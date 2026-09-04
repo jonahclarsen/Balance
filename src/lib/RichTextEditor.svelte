@@ -707,8 +707,8 @@
     if (!rangeIsInside(activeEditor, range)) return null
 
     const nextSelection = {
-      start: textOffsetForRangeBoundary(activeEditor, range.startContainer, range.startOffset),
-      end: textOffsetForRangeBoundary(activeEditor, range.endContainer, range.endOffset),
+      start: selectionOffsetForRangeBoundary(activeEditor, range.startContainer, range.startOffset),
+      end: selectionOffsetForRangeBoundary(activeEditor, range.endContainer, range.endOffset),
     }
     savedSelection = nextSelection
     return nextSelection
@@ -723,8 +723,8 @@
     if (!savedSelection) return
 
     const range = document.createRange()
-    const start = domPositionForTextOffset(activeEditor, savedSelection.start)
-    const end = domPositionForTextOffset(activeEditor, savedSelection.end)
+    const start = domPositionForSelectionOffset(activeEditor, savedSelection.start)
+    const end = domPositionForSelectionOffset(activeEditor, savedSelection.end)
     range.setStart(start.node, start.offset)
     range.setEnd(end.node, end.offset)
 
@@ -751,27 +751,56 @@
     if (finalAttempt) restoreSelectionOnNextFocus = false
   }
 
-  function textOffsetForRangeBoundary(activeEditor: HTMLDivElement, boundaryNode: Node, boundaryOffset: number) {
+  function selectionOffsetForRangeBoundary(activeEditor: HTMLDivElement, boundaryNode: Node, boundaryOffset: number) {
     const range = document.createRange()
     range.selectNodeContents(activeEditor)
     range.setEnd(boundaryNode, boundaryOffset)
-    return range.toString().length
+    return selectionLength(range.cloneContents())
   }
 
-  function domPositionForTextOffset(activeEditor: HTMLDivElement, offset: number) {
-    const walker = document.createTreeWalker(activeEditor, NodeFilter.SHOW_TEXT)
-    let remaining = offset
-    let node = walker.nextNode()
+  function selectionLength(parent: Node & ParentNode): number {
+    let length = 0
+    for (const node of parent.childNodes) {
+      if (node.nodeType === Node.TEXT_NODE) length += node.textContent?.length ?? 0
+      else if (node.nodeName === 'BR') length += 1
+      else if (node.nodeType === Node.ELEMENT_NODE) length += selectionLength(node as Element)
+    }
+    return length
+  }
 
-    while (node) {
-      const length = node.textContent?.length ?? 0
-      if (remaining <= length) return { node, offset: remaining }
+  function domPositionForSelectionOffset(activeEditor: HTMLDivElement, offset: number) {
+    let remaining = Math.max(0, offset)
 
-      remaining -= length
-      node = walker.nextNode()
+    function findPosition(parent: Node & ParentNode): { node: Node; offset: number } | null {
+      for (let index = 0; index < parent.childNodes.length; index += 1) {
+        const node = parent.childNodes[index]
+        if (node.nodeType === Node.TEXT_NODE) {
+          const length = node.textContent?.length ?? 0
+          if (remaining <= length) return { node, offset: remaining }
+          remaining -= length
+          continue
+        }
+
+        if (node.nodeName === 'BR') {
+          if (remaining === 0) return { node: parent, offset: index }
+          remaining -= 1
+          if (remaining === 0) return { node: parent, offset: index + 1 }
+          continue
+        }
+
+        if (node.nodeType !== Node.ELEMENT_NODE) continue
+        const length = selectionLength(node as Element)
+        if (remaining <= length) {
+          const position = findPosition(node as Element)
+          if (position) return position
+        }
+        remaining -= length
+      }
+
+      return null
     }
 
-    return { node: activeEditor, offset: activeEditor.childNodes.length }
+    return findPosition(activeEditor) ?? { node: activeEditor, offset: activeEditor.childNodes.length }
   }
 
   function focusTextInput(input: HTMLDivElement) {

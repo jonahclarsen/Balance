@@ -3598,7 +3598,7 @@ test('enter splits plan items and shift-enter inserts a line break', async ({ pa
   await expect.poll(async () => topLevelTexts(page).then((texts) => texts.length)).toBe(4)
 })
 
-test('a trailing soft line break survives leaving and returning to a plan item', async ({ page }, testInfo) => {
+test('a trailing soft line break restores its caret after tabbing away', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -3612,12 +3612,32 @@ test('a trailing soft line break survives leaving and returning to a plan item',
   await setCaretOffsetInFocusedEditor(page, 'Wake up'.length)
   await page.keyboard.press('Shift+Enter')
   await expect.poll(async () => storedHTMLForFocusedItem(page)).toBe('Wake up<br>')
+  await expect.poll(async () => lineBreaksBeforeFocusedCaret(page)).toBe(1)
 
-  await focusInputByValue(page, 'Breakfast')
-  await page.reload()
-  await focusInputByValue(page, 'Wake up')
+  await page.evaluate(async () => {
+    const input = document.activeElement
+    if (!(input instanceof HTMLElement) || !input.matches('[data-plan-text-input]')) return
+
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    document.dispatchEvent(new Event('selectionchange'))
+
+    input.blur()
+    await new Promise((resolve) => window.setTimeout(resolve, 25))
+    window.dispatchEvent(new FocusEvent('blur'))
+
+    input.focus()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    window.dispatchEvent(new FocusEvent('focus'))
+  })
+
   await expect.poll(async () => storedHTMLForFocusedItem(page)).toBe('Wake up<br>')
-  await expect(page.locator('[data-plan-text-input]:focus')).toHaveJSProperty('innerHTML', 'Wake up<br><br>')
+  await expect.poll(async () => lineBreaksBeforeFocusedCaret(page)).toBe(1)
 })
 
 test('enter on an empty plan item focuses a new blank sibling below it', async ({ page }, testInfo) => {
@@ -6280,6 +6300,19 @@ async function caretOffsetInFocusedEditor(page: import('@playwright/test').Page)
     range.selectNodeContents(active)
     range.setEnd(selection.anchorNode ?? active, selection.anchorOffset)
     return range.toString().length
+  })
+}
+
+async function lineBreaksBeforeFocusedCaret(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement
+    const selection = document.getSelection()
+    if (!(active instanceof HTMLElement) || !active.matches('[data-plan-text-input]') || !selection?.rangeCount) return null
+
+    const range = document.createRange()
+    range.selectNodeContents(active)
+    range.setEnd(selection.focusNode ?? active, selection.focusOffset)
+    return range.cloneContents().querySelectorAll('br').length
   })
 }
 
