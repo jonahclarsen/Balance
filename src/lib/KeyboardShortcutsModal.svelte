@@ -42,6 +42,7 @@
         { keys: ['mod', 'Z'], label: 'Undo and reveal change' },
         { keys: ['mod', 'shift', 'Z'], label: 'Redo and reveal change', alt: ['mod', 'shift', 'C'] },
         { keys: ['mod', 'shift', 'P'], label: 'Open recovery panel' },
+        { keys: ['esc'], label: 'Close backup browser (workspace shortcuts pause while browsing)' },
         { keys: ['mod', 'shift', 'G'], label: 'Generate selected day' },
         { keys: ['mod', 'N'], label: 'Create note (while in Notes)' },
         { keys: ['alt', 'A'], label: 'Toggle goal rhythm' },

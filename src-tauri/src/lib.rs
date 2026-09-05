@@ -24,6 +24,7 @@ use tauri_plugin_opener::OpenerExt;
 #[cfg(target_os = "android")]
 mod android_widget;
 mod database_keys;
+mod backup_browser;
 mod images;
 #[cfg(target_os = "macos")]
 mod macos_widget;
@@ -10514,6 +10515,8 @@ pub fn run() {
             undo_last_operation,
             redo_last_operation,
             list_recovery_entries,
+            backup_browser::list_database_backups,
+            backup_browser::read_database_backup,
             search_recovery_history,
             list_metadata,
             inspect_database,
@@ -10581,6 +10584,131 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backup_browser_reads_deleted_content_without_changing_any_files() {
+        let database = TestDatabaseAt::new("backup-browser-read-only");
+        let key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &key).unwrap();
+        replace_app_state(&mut connection, &test_state("Before accidental deletion")).unwrap();
+        set_metadata(
+            &connection,
+            "private_test_metadata",
+            "synthetic-private-value",
+        )
+        .unwrap();
+        let expected = read_app_state_from_database(&connection).unwrap().unwrap();
+        let backup =
+            create_daily_database_backup_if_due(&connection, &database.path, &key, 1_800_000_000_000)
+                .unwrap()
+                .unwrap();
+        replace_app_state(&mut connection, &test_state("After deletion")).unwrap();
+        drop(connection);
+        let live_bytes = fs::read(&database.path).unwrap();
+        let backup_bytes = fs::read(&backup).unwrap();
+        let directory_entries = || {
+            let mut names = fs::read_dir(backup.parent().unwrap())
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect::<Vec<_>>();
+            names.sort();
+            names
+        };
+        let before_names = directory_entries();
+        let filename = backup.file_name().unwrap().to_str().unwrap();
+        let content = backup_browser::read_at(&database.path, filename, &key).unwrap();
+        assert_eq!(content["plans"], expected["plans"]);
+        assert_eq!(content["templates"], expected["templates"]);
+        assert_eq!(content.as_object().unwrap().len(), 8);
+        assert!(!content.to_string().contains("synthetic-private-value"));
+        assert!(!backup_bytes
+            .windows(b"Before accidental deletion".len())
+            .any(|bytes| bytes == b"Before accidental deletion"));
+        assert_eq!(fs::read(&database.path).unwrap(), live_bytes);
+        assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+        assert_eq!(directory_entries(), before_names);
+
+        assert!(backup_browser::read_at(&database.path, filename, &generate_recovery_key()).is_err());
+        // An old key remains usable without changing the live database key.
+        assert!(backup_browser::read_at(&database.path, filename, &key).is_ok());
+        assert_eq!(fs::read(&backup).unwrap(), backup_bytes);
+    }
+
+    #[test]
+    fn backup_browser_lists_only_final_files_and_rejects_unsafe_paths() {
+        let database = TestDatabaseAt::new("backup-browser-paths");
+        assert!(backup_browser::list_at(&database.path).unwrap().is_empty());
+        let directory = database.directory.join("backups");
+        fs::create_dir(&directory).unwrap();
+        for name in [
+            "balance-daily-1-100.sqlite3",
+            "balance-pre-compact-200.sqlite3",
+            "balance-post-compact-300.sqlite3",
+            ".balance-daily-1-400.tmp.sqlite3",
+            "unrelated.sqlite3",
+        ] {
+            fs::write(directory.join(name), b"synthetic damaged file").unwrap();
+        }
+        let entries = serde_json::to_value(backup_browser::list_at(&database.path).unwrap()).unwrap();
+        assert_eq!(entries.as_array().unwrap().len(), 3);
+        assert_eq!(entries[0]["createdAtMs"], 300);
+        assert_eq!(entries[2]["createdAtMs"], 100);
+        let key = generate_recovery_key();
+        for name in [
+            "../balance.sqlite3",
+            "/tmp/balance-daily-1-100.sqlite3",
+            "..\\balance-daily-1-100.sqlite3",
+            ".balance-daily-1-400.tmp.sqlite3",
+            "balance-daily-1-999.sqlite3",
+            "balance-daily-1-100.sqlite3",
+        ] {
+            assert!(
+                backup_browser::read_at(&database.path, name, &key).is_err(),
+                "{name}"
+            );
+        }
+        #[cfg(unix)]
+        {
+            let linked_name = "balance-daily-1-500.sqlite3";
+            std::os::unix::fs::symlink(
+                directory.join("balance-daily-1-100.sqlite3"),
+                directory.join(linked_name),
+            )
+            .unwrap();
+            assert!(backup_browser::read_at(&database.path, linked_name, &key).is_err());
+            assert_eq!(backup_browser::list_at(&database.path).unwrap().len(), 3);
+            fs::rename(&directory, database.directory.join("original-backups")).unwrap();
+            std::os::unix::fs::symlink(database.directory.join("original-backups"), &directory)
+                .unwrap();
+            assert!(backup_browser::list_at(&database.path).is_err());
+            assert!(
+                backup_browser::read_at(&database.path, "balance-daily-1-100.sqlite3", &key).is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn backup_browser_does_not_initialize_unsupported_schemas() {
+        let database = TestDatabaseAt::new("backup-browser-unsupported");
+        let directory = database.directory.join("backups");
+        fs::create_dir(&directory).unwrap();
+        let filename = "balance-daily-1-100.sqlite3";
+        let path = directory.join(filename);
+        let key = generate_recovery_key();
+        let connection = Connection::open(&path).unwrap();
+        apply_raw_database_key(&connection, &key).unwrap();
+        connection
+            .execute_batch(
+                "create table unsupported (value text); insert into unsupported values ('synthetic');",
+            )
+            .unwrap();
+        drop(connection);
+        let before = fs::read(&path).unwrap();
+        assert!(backup_browser::read_at(&database.path, filename, &key)
+            .unwrap_err()
+            .contains("unsupported schema"));
+        assert_eq!(fs::read(&path).unwrap(), before);
+    }
 
     #[cfg(target_os = "macos")]
     #[test]

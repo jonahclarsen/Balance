@@ -1,5 +1,6 @@
 <script lang="ts">
   import ImageLayer from './lib/ImageLayer.svelte'
+  import BackupBrowser from './lib/BackupBrowser.svelte'
   import { blobDataURL, selectedImage } from './lib/imageService'
   import { clipboardHasDirectImage, IMAGE_CLIPBOARD_TYPE } from './lib/imageMarkup'
   import { onBackButtonPress } from '@tauri-apps/api/app'
@@ -375,6 +376,7 @@ return rows`
   let recoveryStatusIsError = false
   let recoveryExpandedId: string | null = null
   let recoveryListOpen = false
+  let backupBrowserOpen = false
   let metadataEntries: MetadataEntry[] = []
   let databaseInspection: DatabaseInspection | null = null
   let databaseInspectionBusy = false
@@ -3016,6 +3018,15 @@ return rows`
     // shortcut mutate it while SQLCipher is still opening the real database.
     if ($databaseLoadPending || $databaseLoadError) return
 
+    // Reading a backup must not send editing shortcuts to the live workspace.
+    if (recoveryPanelOpen && backupBrowserOpen) {
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        closeRecoveryPanel()
+      }
+      return
+    }
+
     if (celebrationPreview) {
       if (event.key === 'Escape') {
         event.preventDefault()
@@ -4804,6 +4815,7 @@ return rows`
   function closeRecoveryPanel() {
     if (databaseCompactionBusy) return
     recoveryPanelOpen = false
+    backupBrowserOpen = false
   }
 
   async function refreshRecoveryEntries() {
@@ -7290,6 +7302,7 @@ return rows`
         </div>
         <button type="button" class="ghost" on:click={closeRecoveryPanel} disabled={databaseCompactionBusy}>Close</button>
       </div>
+      {#if !backupBrowserOpen}
       <p class="recovery-copy">
         Each entry is a saved undo snapshot. It can restore removed content or an earlier version of edited text.
       </p>
@@ -7319,8 +7332,15 @@ return rows`
         Optimization only returns unused pages to the filesystem. It does not remove sync operations or undo/recovery
         entries. Balance performs logical history cleanup and encrypted daily backups independently.
       </p>
+      {/if}
 
       <div class="recovery-scroll">
+      {#if isTauri()}
+        <details class="metadata-section" bind:open={backupBrowserOpen}>
+          <summary>Browse encrypted backups</summary>
+          {#if backupBrowserOpen}<BackupBrowser />{/if}
+        </details>
+      {/if}
       <details class="metadata-section" bind:open={recoveryListOpen}>
         <summary>Saved states ({recoveryEntries.length})</summary>
         <ul class="recovery-list">
