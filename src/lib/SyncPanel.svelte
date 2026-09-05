@@ -235,7 +235,7 @@
     try {
       await persistServer()
       const result = await requestSync('relay-configured')
-      setStatus(result ? 'Connected to sync server.' : 'Server address saved. Connection has not succeeded; Balance will retry automatically.', !result)
+      setStatus(result ? 'Connected to sync server.' : 'Server address saved. Sync has not completed; Balance will retry automatically.', !result)
     } catch (err) {
       setStatus(`Could not save sync server: ${err}`, true)
     } finally {
@@ -351,7 +351,7 @@
             {#if !configured}Setup incomplete
             {:else if $automaticSyncStatus.offline}You’re offline
             {:else if $automaticSyncStatus.running}Syncing…
-            {:else if $automaticSyncStatus.lastError}Could not connect to sync server
+            {:else if $automaticSyncStatus.lastError}Sync needs attention
             {:else if $automaticSyncStatus.pending}Changes waiting to sync
             {:else if $automaticSyncStatus.lastSuccessAt}Connected to sync server
             {:else}Waiting for first sync{/if}

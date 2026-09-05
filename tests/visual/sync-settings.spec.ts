@@ -111,7 +111,7 @@ test('a server failure never claims that setup succeeded', async ({ page }) => {
   await panel.getByRole('button', { name: 'Set up sync from this device' }).click()
   await panel.getByLabel('Sync server address').fill('https://sync.invalid/synthetic-room')
   await panel.getByRole('button', { name: 'Set up sync', exact: true }).click()
-  await expect(panel.getByText('Could not connect to sync server', { exact: true })).toBeVisible()
+  await expect(panel.getByText('Sync needs attention', { exact: true })).toBeVisible()
   await expect(panel.getByText(/The first sync has not completed/)).toBeVisible()
   await expect(panel.getByText('Connected to sync server', { exact: true })).toHaveCount(0)
 })
