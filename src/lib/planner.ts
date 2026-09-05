@@ -828,7 +828,7 @@ export function defaultPlanItemTimeRange(
       + (planDate === calendarDateISO(now) ? 0 : 24 * 60)
     fallbackStartMinutes = Math.max(fallbackStartMinutes, Math.floor(elapsedMinutes / 15) * 15)
   }
-  return defaultTimeRangeAfterPreviousTimedItem(items, itemId, fallbackStartMinutes)
+  return defaultTimeRangeFromNearbyTimedItem(items, itemId, fallbackStartMinutes)
 }
 
 export function findPlanItem(items: PlanItem[], itemId: Id): PlanItem | null {
@@ -1187,7 +1187,7 @@ export function outdentTemplateItem(items: TemplateItem[], itemId: Id): Template
 }
 
 export function defaultTemplateItemTimeRange(items: TemplateItem[], itemId: Id): { startMinutes: number; endMinutes: number } {
-  return defaultTimeRangeAfterPreviousTimedItem(items, itemId)
+  return defaultTimeRangeFromNearbyTimedItem(items, itemId)
 }
 
 function findTemplateItem(items: TemplateItem[], itemId: Id): TemplateItem | null {
@@ -1319,7 +1319,7 @@ function outdentItem<T extends { id: Id; children: T[] }>(items: T[], itemId: Id
 const DEFAULT_TIME_START_MINUTES = 9 * 60
 const DEFAULT_TIME_DURATION_MINUTES = 60
 
-function defaultTimeRangeAfterPreviousTimedItem<T extends {
+function defaultTimeRangeFromNearbyTimedItem<T extends {
   id: Id
   startMinutes: number | null
   endMinutes: number | null
@@ -1328,6 +1328,14 @@ function defaultTimeRangeAfterPreviousTimedItem<T extends {
 }>(items: T[], itemId: Id, fallbackStartMinutes = DEFAULT_TIME_START_MINUTES): { startMinutes: number; endMinutes: number } {
   const previousResult = previousTimedItem(items, itemId)
   const previous = previousResult.found ? previousResult.previous : null
+  if (previousResult.found && !previous) {
+    const next = nextTimedItem(items, itemId)
+    if (next) {
+      // Shorten the range near midnight; at midnight itself, use the first hour.
+      const endMinutes = next.startMinutes || DEFAULT_TIME_DURATION_MINUTES
+      return { startMinutes: Math.max(0, endMinutes - DEFAULT_TIME_DURATION_MINUTES), endMinutes }
+    }
+  }
   const startMinutes = previous
     ? previousResult.depth > previous.depth
       ? previous.startMinutes
@@ -1341,6 +1349,30 @@ function defaultTimeRangeAfterPreviousTimedItem<T extends {
     startMinutes: Math.max(0, MAX_TIMELINE_MINUTES - DEFAULT_TIME_DURATION_MINUTES),
     endMinutes: MAX_TIMELINE_MINUTES,
   }
+}
+
+function nextTimedItem<T extends {
+  id: Id
+  startMinutes: number | null
+  endMinutes: number | null
+  timeHidden?: boolean | null
+  children: T[]
+}>(items: T[], itemId: Id): (T & { startMinutes: number; endMinutes: number }) | null {
+  let found = false
+  const visit = (siblings: T[]): (T & { startMinutes: number; endMinutes: number }) | null => {
+    for (const item of siblings) {
+      if (item.id === itemId) {
+        found = true
+        // A parent's time should not be placed before its own children.
+        continue
+      }
+      if (found && hasActiveTimeRange(item)) return item
+      const next = visit(item.children)
+      if (next) return next
+    }
+    return null
+  }
+  return visit(items)
 }
 
 type TimedItemPosition = {

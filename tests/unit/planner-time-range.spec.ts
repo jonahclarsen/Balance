@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
-import { defaultPlanItemTimeRange } from '../../src/lib/planner'
-import type { PlanItem } from '../../src/lib/types'
+import { defaultPlanItemTimeRange, defaultTemplateItemTimeRange } from '../../src/lib/planner'
+import type { PlanItem, TemplateItem } from '../../src/lib/types'
 
 function item(
   id: string,
@@ -60,12 +60,12 @@ test('other dates and undated plans retain the 9 a.m. default', () => {
   }
 })
 
-test('existing times anywhere in the tree preserve the previous defaults', () => {
+test('existing times supply boundaries before and after untimed tasks', () => {
   const task = item('task')
-  const timed = item('timed', 600, 660)
+  const timed = item('timed', 780, 840)
   const now = new Date(2026, 8, 5, 14, 38)
-  expect(defaultPlanItemTimeRange([timed, task], task.id, '2026-09-05', now)).toEqual({ startMinutes: 660, endMinutes: 720 })
-  expect(defaultPlanItemTimeRange([task, item('parent', null, null, [timed])], task.id, '2026-09-05', now)).toEqual({ startMinutes: 540, endMinutes: 600 })
+  expect(defaultPlanItemTimeRange([timed, task], task.id, '2026-09-05', now)).toEqual({ startMinutes: 840, endMinutes: 900 })
+  expect(defaultPlanItemTimeRange([task, item('parent', null, null, [timed])], task.id, '2026-09-05', now)).toEqual({ startMinutes: 720, endMinutes: 780 })
 })
 
 test('hidden times do not prevent the first visible time from using the current quarter-hour', () => {
@@ -79,4 +79,51 @@ test('after midnight before rollover, the current quarter-hour belongs to the pr
   const task = item('task')
   expect(defaultPlanItemTimeRange([task], task.id, '2026-09-05', new Date(2026, 8, 6, 1, 38)))
     .toEqual({ startMinutes: 1530, endMinutes: 1590 })
+})
+
+for (const date of ['2026-09-05', '2026-09-06', '']) {
+  test(`a task before the first timed task works backward on ${date || 'an undated plan'}`, () => {
+    const task = item('task')
+    const items = [task, item('untimed'), item('timed', 780, 840), item('later', 900, 960)]
+    expect(defaultPlanItemTimeRange(items, task.id, date, new Date(2026, 8, 5, 14, 38)))
+      .toEqual({ startMinutes: 720, endMinutes: 780 })
+  })
+}
+
+test('a task between timed tasks still follows the previous time', () => {
+  const task = item('task')
+  expect(defaultPlanItemTimeRange([item('previous', 600, 660), task, item('next', 900, 960)], task.id))
+    .toEqual({ startMinutes: 660, endMinutes: 720 })
+})
+
+test('hidden times are skipped when looking forward', () => {
+  const task = item('task')
+  const hidden = { ...item('hidden', 600, 660), timeHidden: true }
+  expect(defaultPlanItemTimeRange([task, hidden, item('timed', 780, 840)], task.id))
+    .toEqual({ startMinutes: 720, endMinutes: 780 })
+})
+
+test('an untimed child can work backward from a later task outside its parent', () => {
+  const child = item('child')
+  expect(defaultPlanItemTimeRange([item('parent', null, null, [child]), item('timed', 780, 840)], child.id))
+    .toEqual({ startMinutes: 720, endMinutes: 780 })
+})
+
+test('a parent does not work backward from its own timed child', () => {
+  const parent = item('parent', null, null, [item('child', 600, 660)])
+  expect(defaultPlanItemTimeRange([parent], parent.id)).toEqual({ startMinutes: 540, endMinutes: 600 })
+})
+
+for (const [nextStart, startMinutes, endMinutes] of [[480, 420, 480], [30, 0, 30], [0, 0, 60], [1500, 1440, 1500]]) {
+  test(`working backward from minute ${nextStart} stays within the timeline`, () => {
+    const task = item('task')
+    expect(defaultPlanItemTimeRange([task, item('next', nextStart, nextStart + 60)], task.id))
+      .toEqual({ startMinutes, endMinutes })
+  })
+}
+
+test('template tasks also work backward from the first timed task', () => {
+  const task: TemplateItem = { id: 'task', startMinutes: null, endMinutes: null, options: [], children: [] }
+  const timed: TemplateItem = { id: 'timed', startMinutes: 780, endMinutes: 840, options: [], children: [] }
+  expect(defaultTemplateItemTimeRange([task, timed], task.id)).toEqual({ startMinutes: 720, endMinutes: 780 })
 })
