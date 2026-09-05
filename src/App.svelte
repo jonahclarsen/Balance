@@ -3499,17 +3499,8 @@ return rows`
     if (!primaryModifier || event.altKey) return
 
     if (activeItemSurface() === 'plan' && focusedPlan && key === 'd' && !event.shiftKey && selectedItemIds.length > 0) {
-      const selectedItems = selectedPlanItems()
-      if (selectedItems.length === 0) return
-
       event.preventDefault()
-      const done = !selectedItems.every((item) => item.done)
-      const completedItemIds = selectedItems.map((item) => item.id)
-      plannerStore.patchPlanItemsDone(
-        focusedPlan.id,
-        completedItemIds,
-        done,
-      )
+      toggleSelectedPlanItemsDone(focusedPlan.id)
       return
     }
 
@@ -4068,6 +4059,9 @@ return rows`
     const probabilityItemId = probabilityRow ? rowItemId(probabilityRow) : null
     if (probabilityItemId && selectedItemIds.includes(probabilityItemId)) return
 
+    const checkboxRow = target.closest('input.check[type="checkbox"]')?.closest<HTMLElement>('[data-plan-item-id]')
+    if (checkboxRow?.dataset.planItemId && selectedItemIds.includes(checkboxRow.dataset.planItemId)) return
+
     if (selectedItemIds.length > 0 && (selectingItems || Date.now() < preserveSelectionFocusUntil)) {
       releaseTextEditingFocus()
       return
@@ -4183,6 +4177,15 @@ return rows`
     return selectedItemIds
       .map((itemId) => findPlanItem(plan.items, itemId))
       .filter((item): item is PlanItem => item !== null)
+  }
+
+  function toggleSelectedPlanItemsDone(planId: Id): boolean | null {
+    if (activeItemSurface() !== 'plan' || focusedPlan?.id !== planId) return null
+    const items = selectedPlanItems()
+    if (items.length === 0) return null
+    const done = !items.every((item) => item.done)
+    plannerStore.patchPlanItemsDone(planId, items.map((item) => item.id), done)
+    return done
   }
 
   function focusSelectedItemBoundary(position: 'start' | 'end') {
@@ -5853,6 +5856,7 @@ return rows`
                     planId={plan.id}
                     patchItem={plannerStore.patchPlanItem}
                     patchItemsDone={plannerStore.patchPlanItemsDone}
+                    toggleSelectedDone={toggleSelectedPlanItemsDone}
                     splitItem={plannerStore.splitPlanItem}
                     backspaceItemAtStart={plannerStore.backspacePlanItemAtStart}
                     deleteItem={plannerStore.deletePlanItem}

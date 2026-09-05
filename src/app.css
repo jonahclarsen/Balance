@@ -1616,6 +1616,7 @@ nav button.active {
 }
 
 .plan-row.whole-row-selection > .drag-handle,
+.plan-row.whole-row-selection.selected > .check-target,
 .template-main.whole-row-selection > .drag-handle {
   position: relative;
   z-index: 22;

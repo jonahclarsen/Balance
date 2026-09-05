@@ -32,6 +32,7 @@
     options?: TextChangeOptions,
   ) => void
   export let patchItemsDone: ((planId: Id, itemIds: Id[], done: boolean) => void) | null = null
+  export let toggleSelectedDone: ((planId: Id) => boolean | null) | null = null
   export let splitItem: (
     planId: Id,
     itemId: Id,
@@ -327,6 +328,7 @@
 
   function beginMobileCheckboxDrag(event: PointerEvent) {
     if (mobile && event.isPrimary && event.button === 0) dismissActiveTaskEditor()
+    if (mobileSelectionMode) return
 
     if (
       !mobile ||
@@ -473,6 +475,14 @@
 
   function handleCheckboxChange(event: Event & { currentTarget: HTMLInputElement }) {
     if (suppressCheckboxClick) return
+    if (selected && toggleSelectedDone) {
+      const done = toggleSelectedDone(planId)
+      if (done !== null) {
+        // A mixed selection is completed even when its checked box was clicked.
+        event.currentTarget.checked = done
+        return
+      }
+    }
     const done = event.currentTarget.checked
     patchItem(planId, item.id, { done })
     if (done) focusBelowAfterCheckboxCompletion([item.id])
@@ -1070,6 +1080,7 @@
             parentId={item.id}
             {patchItem}
             {patchItemsDone}
+            {toggleSelectedDone}
             {splitItem}
             {backspaceItemAtStart}
             {deleteItem}
