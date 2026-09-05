@@ -1,3 +1,4 @@
+import { sanitizeImage } from './imageMarkup'
 import type {
   AppState,
   DailyPlan,
@@ -151,6 +152,7 @@ export function createInitialState(): AppState {
     metrics: [],
     metricEntries: [],
     notes: [],
+    images: [],
     goals: [],
     goalCompletions: [],
     operations: [],
@@ -356,7 +358,7 @@ function generatePlanItems(
   return items.flatMap((item) => {
     const option = pickOption(item.options)
     const text = option?.text.trim() ?? ''
-    if (!option || text === '' || text.toLowerCase() === '(skip)') {
+    if (!option || (text === '' && !option.html.includes('data-balance-image=')) || text.toLowerCase() === '(skip)') {
       return []
     }
 
@@ -848,7 +850,7 @@ function flattenPlanItems(items: PlanItem[]): PlanItem[] {
 }
 
 function isPlanItemTextEmpty(item: PlanItem): boolean {
-  return item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
+  return !item.html.includes('data-balance-image=') && item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
 }
 
 function clonePlanItemForPaste(item: PlanItem): PlanItem {
@@ -1090,7 +1092,7 @@ function flattenTemplateOptions(items: TemplateItem[]): Array<{ item: TemplateIt
 }
 
 function isTemplateOptionTextEmpty(option: TemplateOption): boolean {
-  return option.text.trim() === '' && htmlToPlainText(option.html).trim() === ''
+  return !option.html.includes('data-balance-image=') && option.text.trim() === '' && htmlToPlainText(option.html).trim() === ''
 }
 
 export function copyTemplateItems(items: TemplateItem[], itemIds: Id[]): TemplateItem[] {
@@ -1577,7 +1579,7 @@ export function linkifyExternalURLs(value: string): string {
 function cleanTrailingLineBreaks(html: string): string {
   const template = document.createElement('template')
   template.innerHTML = html
-  const removeBreaks = (template.content.textContent ?? '').trim() === ''
+  const removeBreaks = !template.content.querySelector('img[data-balance-image]') && (template.content.textContent ?? '').trim() === ''
   if (!pruneTrailingLineBreaks(template.content, removeBreaks)) return html
   return Array.from(template.content.childNodes).map(sanitizeNode).join('')
 }
@@ -1598,6 +1600,8 @@ function pruneTrailingLineBreaks(parent: ParentNode, removeBreaks: boolean): boo
       last.textContent = stripped
       return true
     }
+
+    if (last.nodeName === 'IMG') return pruned
 
     if (last.nodeName === 'BR') {
       if (!removeBreaks) return pruned
@@ -1669,6 +1673,7 @@ function sanitizeNode(node: Node): string {
   const children = Array.from(element.childNodes).map(sanitizeNode).join('')
   const tag = element.tagName.toLowerCase()
 
+  if (tag === 'img') return sanitizeImage(element)
   if (tag === 'br') return '<br>'
   if (tag === 'b' || tag === 'strong') return `<strong>${children}</strong>`
   if (tag === 'i' || tag === 'em') return `<em>${children}</em>`
@@ -2026,7 +2031,7 @@ export function backspaceListTemplateItemAtStart(
 }
 
 function isListTemplateItemTextEmpty(item: ListTemplateItem): boolean {
-  return item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
+  return !item.html.includes('data-balance-image=') && item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
 }
 
 export function copyListTemplateItems(items: ListTemplateItem[], itemIds: Id[]): ListTemplateItem[] {

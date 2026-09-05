@@ -28,6 +28,11 @@
   type Group = { title: string; shortcuts: Shortcut[] }
 
   const groups: Group[] = [
+    { title: 'Images', shortcuts: [
+      { keys: ['enter'], label: 'Paste current compression preview' },
+      { keys: ['mod', 'enter'], label: 'Paste original image (in compression dialog)' },
+      { keys: ['esc'], label: 'Close image viewer / cancel image paste' },
+    ] },
     {
       title: 'General',
       shortcuts: [

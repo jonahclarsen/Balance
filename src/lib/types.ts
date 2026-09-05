@@ -255,7 +255,16 @@ export type IridescentGradientPreferences = {
   colors: [IridescentGradientColor, IridescentGradientColor, IridescentGradientColor]
 }
 
+export type ImageAsset = {
+  id: string
+  dataURL: string
+  width: number
+  height: number
+  bytes: number
+}
+
 export type AppState = {
+  images: ImageAsset[]
   schemaVersion: 1
   deviceId: Id
   localSequence: number

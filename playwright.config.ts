@@ -20,6 +20,7 @@ export default defineConfig({
     stderr: 'pipe',
   },
   projects: [
+    { name: 'webkit-images', testMatch: /images\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
     {
       name: 'desktop',
       use: {

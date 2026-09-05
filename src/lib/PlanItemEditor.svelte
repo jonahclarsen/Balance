@@ -634,7 +634,7 @@
     const result = backspaceItemAtStart(planId, item.id)
 
     if (!result) {
-      if (item.text.trim() === '') await handleBackspaceEmpty(current)
+      if (item.text.trim() === '' && !item.html.includes('data-balance-image=')) await handleBackspaceEmpty(current)
       return
     }
 

@@ -4,6 +4,8 @@ import { svelte } from '@sveltejs/vite-plugin-svelte'
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [svelte()],
+  worker: { format: 'es' },
+  optimizeDeps: { exclude: ['@jsquash/webp'] },
   server: {
     host: '127.0.0.1',
     port: 5123,

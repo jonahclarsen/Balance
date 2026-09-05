@@ -34,6 +34,8 @@ use super::{Error, Op, Result, SyncInventory, SyncStore, PROTOCOL_VERSION};
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const IO_TIMEOUT: Duration = Duration::from_secs(60);
 const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
+const CONTINUATION: u32 = 1 << 31;
+const MAX_MESSAGE_BYTES: usize = 512 * 1024 * 1024;
 
 pub(crate) const TIMEOUT_MESSAGE: &str =
     "timed out waiting for the other device — is Balance open there?";
@@ -61,30 +63,46 @@ fn io(e: std::io::Error) -> Error {
 }
 
 fn write_frame(stream: &mut TcpStream, bytes: &[u8]) -> Result<()> {
-    if bytes.len() > MAX_FRAME_BYTES {
+    if bytes.len() > MAX_MESSAGE_BYTES {
         return Err(Error::Codec(
-            "direct-sync frame exceeds 16 MiB; use the relay for this backlog".into(),
+            "direct-sync message exceeds the 512 MiB safety limit".into(),
         ));
     }
-    stream
-        .write_all(&(bytes.len() as u32).to_be_bytes())
-        .map_err(io)?;
-    stream.write_all(bytes).map_err(io)?;
+    // Preserve the original single-frame wire format for ordinary exchanges.
+    // Large encrypted envelopes travel in bounded continuation frames. The
+    // AEAD authenticates the complete envelope before any operations are used.
+    for (index, chunk) in bytes.chunks(MAX_FRAME_BYTES).enumerate() {
+        let more = (index + 1) * MAX_FRAME_BYTES < bytes.len();
+        let length = chunk.len() as u32 | if more { CONTINUATION } else { 0 };
+        stream.write_all(&length.to_be_bytes()).map_err(io)?;
+        stream.write_all(chunk).map_err(io)?;
+    }
     stream.flush().map_err(io)?;
     Ok(())
 }
 
 fn read_frame(stream: &mut TcpStream) -> Result<Vec<u8>> {
-    let mut len = [0u8; 4];
-    stream.read_exact(&mut len).map_err(io)?;
-    let length = u32::from_be_bytes(len) as usize;
-    if length > MAX_FRAME_BYTES {
-        return Err(Error::Codec(
-            "direct-sync frame exceeds the 16 MiB safety limit".into(),
-        ));
+    let mut buf = Vec::new();
+    loop {
+        let mut len = [0u8; 4];
+        stream.read_exact(&mut len).map_err(io)?;
+        let header = u32::from_be_bytes(len);
+        let length = (header & !CONTINUATION) as usize;
+        if length == 0
+            || length > MAX_FRAME_BYTES
+            || buf.len().saturating_add(length) > MAX_MESSAGE_BYTES
+        {
+            return Err(Error::Codec(
+                "invalid or oversized direct-sync frame; update both devices if necessary".into(),
+            ));
+        }
+        let start = buf.len();
+        buf.resize(start + length, 0);
+        stream.read_exact(&mut buf[start..]).map_err(io)?;
+        if header & CONTINUATION == 0 {
+            break;
+        }
     }
-    let mut buf = vec![0u8; length];
-    stream.read_exact(&mut buf).map_err(io)?;
     Ok(buf)
 }
 
@@ -127,8 +145,18 @@ fn send(stream: &mut TcpStream, key: &SyncKey, message: &Message) -> Result<()> 
 fn recv(stream: &mut TcpStream, key: &SyncKey) -> Result<Message> {
     let sealed = read_frame(stream)?;
     let compressed = key.open(&sealed)?;
-    let plaintext = zstd::stream::decode_all(Cursor::new(compressed))
+    let decoder = zstd::stream::read::Decoder::new(Cursor::new(compressed))
         .map_err(|error| Error::Codec(format!("decompression: {error}")))?;
+    let mut plaintext = Vec::new();
+    decoder
+        .take(MAX_MESSAGE_BYTES as u64 + 1)
+        .read_to_end(&mut plaintext)
+        .map_err(io)?;
+    if plaintext.len() > MAX_MESSAGE_BYTES {
+        return Err(Error::Codec(
+            "decoded direct-sync message exceeds the safety limit".into(),
+        ));
+    }
     serde_json::from_slice(&plaintext).map_err(|e| Error::Codec(e.to_string()))
 }
 
@@ -210,6 +238,38 @@ pub fn sync_accept_stream(
 mod tests {
     use super::*;
     use std::time::Instant;
+
+    #[test]
+    fn large_encrypted_envelopes_cross_multiple_bounded_frames() {
+        use rand::RngCore;
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let mut bytes = vec![0u8; MAX_FRAME_BYTES + 4096];
+        rand::thread_rng().fill_bytes(&mut bytes);
+        let key = SyncKey::generate();
+        let sealed = key.seal(&bytes).unwrap();
+        let sender = std::thread::spawn(move || {
+            let mut stream = TcpStream::connect(address).unwrap();
+            write_frame(&mut stream, &sealed).unwrap();
+        });
+        let (mut stream, _) = listener.accept().unwrap();
+        let received = read_frame(&mut stream).unwrap();
+        assert_eq!(key.open(&received).unwrap(), bytes);
+        sender.join().unwrap();
+    }
+
+    #[test]
+    fn oversized_continuation_frames_are_rejected_before_allocation() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (mut stream, _) = listener.accept().unwrap();
+        peer.write_all(&((MAX_FRAME_BYTES as u32 + 1) | CONTINUATION).to_be_bytes())
+            .unwrap();
+        assert!(read_frame(&mut stream)
+            .unwrap_err()
+            .to_string()
+            .contains("oversized"));
+    }
 
     #[test]
     fn stalled_socket_read_reports_a_human_timeout_message() {

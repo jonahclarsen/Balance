@@ -135,7 +135,21 @@ function localActivePlanDate(): string {
 const TEXT_MERGE_WINDOW_MS = 1200
 const MAX_HISTORY_ENTRIES = 200
 const PERSIST_DEBOUNCE_MS = 500
+const pendingImages = new Map<string, import('./types').ImageAsset>()
+const imageReferenceCache = new WeakMap<object, Set<string>>()
+function imageReferences(value: unknown): Set<string> {
+  if (typeof value === 'string') return new Set(Array.from(value.matchAll(/data-balance-image="([a-f0-9]{64})"/g), (match) => match[1]))
+  if (!value || typeof value !== 'object') return new Set()
+  const cached = imageReferenceCache.get(value)
+  if (cached) return cached
+  const ids = new Set<string>()
+  const children = Array.isArray(value) ? value : Object.entries(value).filter(([key]) => key !== 'images' && key !== 'operations').map(([, item]) => item)
+  for (const child of children) for (const id of imageReferences(child)) ids.add(id)
+  imageReferenceCache.set(value, ids)
+  return ids
+}
 const ENTITY_COLLECTIONS = [
+  'images',
   'goals',
   'goalCompletions',
   'listTemplates',
@@ -615,12 +629,22 @@ function createPlannerStore() {
     return backendReloadPromise
   }
 
+  let imageMoveEdits: { type: string; payload: unknown; mutate: Mutator }[] | null = null
   function commit(type: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
+    if (imageMoveEdits) { imageMoveEdits.push({ type, payload, mutate }); return }
     let operationToPersist: Operation | null = null
 
     store.update((state) => {
       let next = mutate(state)
       if (next === state) return state
+      // Persist the bytes and their first reference in the same operation. A
+      // checkpoint can never observe a half-finished image insertion.
+      const nextImageIds = imageReferences(next)
+      for (const [id, asset] of pendingImages) {
+        if (!nextImageIds.has(id)) continue
+        if (!next.images.some((image) => image.id === id)) next = { ...next, images: [...next.images, asset] }
+        pendingImages.delete(id)
+      }
 
       const shouldReconcileGoals =
         typeof options.reconcileGoals === 'function'
@@ -653,10 +677,21 @@ function createPlannerStore() {
         (persistenceTarget === 'localStorage' || pendingOperations.has(lastOperation.id)) &&
         now - lastOperationMergeUpdatedAt <= (options.mergeWindowMs ?? 0)
       const sequence = canMergeOperation ? lastOperation.sequence : state.localSequence + 1
-      const entityChanges = composeEntityChanges(
+      let entityChanges = composeEntityChanges(
         canMergeOperation ? operationEntityChanges(lastOperation) : null,
         entityChangesBetween(state, next),
       )
+      // Native checkpoint collection can outlive the frontend's cached asset
+      // list. Every newly live id carries its bytes atomically, even if those
+      // bytes were already present in a stale frontend cache.
+      const previousImageIds = imageReferences(state)
+      for (const id of nextImageIds) {
+        if (previousImageIds.has(id)) continue
+        const asset = next.images.find((image) => image.id === id)
+        if (!asset || entityChanges?.upserts.some((upsert) => upsert.collection === 'images' && upsert.key === id)) continue
+        entityChanges ??= { version: 1, upserts: [], deletes: [] }
+        entityChanges.upserts.push({ collection: 'images', key: id, position: next.images.indexOf(asset), value: asset })
+      }
       const operationPayload = entityChanges
         ? {
             ...(payload && typeof payload === 'object' ? payload : { value: payload }),
@@ -695,6 +730,15 @@ function createPlannerStore() {
 
   return {
     subscribe: store.subscribe,
+    moveImage(edit: () => void) {
+      imageMoveEdits = []
+      let edits: NonNullable<typeof imageMoveEdits>
+      try { edit(); edits = imageMoveEdits } finally { imageMoveEdits = null }
+      if (!edits.length) return
+      commit('move_image', { operations: edits.map(({ type, payload }) => ({ type, payload })) },
+        (state) => edits.reduce((next, operation) => operation.mutate(next), state))
+    },
+    stageImage(asset: import('./types').ImageAsset) { pendingImages.set(asset.id, asset) },
     ready,
 
     setActivePlanDate(date: string) {
@@ -2617,6 +2661,7 @@ function parseBackendHistoryResult(raw: string | null): BackendHistoryResult | n
 function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, localSequence: number): AppState {
   return {
     ...snapshot,
+    images: current.images,
     deviceId: current.deviceId,
     localSequence,
     // Preferences are intentionally not undoable and may have changed after
@@ -2638,6 +2683,7 @@ function applyHistorySnapshot(current: AppState, snapshot: AppState, type: strin
 
   return {
     ...snapshot,
+    images: current.images,
     deviceId: current.deviceId,
     localSequence: sequence,
     activePlanDate: current.activePlanDate,
@@ -3187,6 +3233,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       metrics: [],
       metricEntries: [],
       notes: [],
+      images: [],
       goals: [],
       goalCompletions: [],
       operations: [],
@@ -3219,6 +3266,7 @@ export async function completeDatabaseMaintenanceStartup(): Promise<void> {
 function normalizeState(state: AppState): AppState {
   return {
     ...state,
+    images: state.images ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),
     goals: (state.goals ?? []).map(normalizeGoal),
     goalCompletions: (state.goalCompletions ?? []).map(normalizeGoalCompletion),

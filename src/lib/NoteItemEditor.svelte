@@ -113,7 +113,7 @@
   }
 
   async function handleSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
-    if ((item.kind === 'heading' || item.kind === 'checklist') && !before.text.trim() && !after.text.trim()) {
+    if ((item.kind === 'heading' || item.kind === 'checklist') && !before.text.trim() && !after.text.trim() && !`${before.html}${after.html}`.includes('data-balance-image=')) {
       patchItem(noteId, item.id, { kind: 'paragraph', done: false })
       await tick()
       focusInput(item.id, 'start')
@@ -241,7 +241,7 @@
     }
     const result = backspaceItemAtStart(noteId, item.id)
     if (!result) {
-      if (!item.text.trim()) await handleBackspaceEmpty()
+      if (!item.text.trim() && !item.html.includes('data-balance-image=')) await handleBackspaceEmpty()
       return
     }
     await tick()
@@ -393,7 +393,7 @@
   }
 
   function handleTextChange(html: string, text: string, options?: TextChangeOptions, editor?: HTMLDivElement) {
-    const shortcut = markdownKind(text)
+    const shortcut = html.includes('data-balance-image=') ? null : markdownKind(text)
     if (shortcut && !(item.kind === 'heading' && shortcut.kind === 'numbered')) {
       const nextHTML = shortcut.content ? escapeHTML(shortcut.content) : ''
       patchItem(noteId, item.id, { kind: shortcut.kind, done: false, html: nextHTML, text: shortcut.content }, options)

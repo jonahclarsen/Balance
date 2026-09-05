@@ -8,6 +8,7 @@
   import type { Id, ListTemplate, ListTemplateItem, Metric, MoveDirection, MovePlacement, Note } from './types'
 
   type TextChangeOptions = {
+    imageEdit?: boolean
     mergeHistory?: boolean
     mergeKey?: string
     mergeWindowMs?: number
@@ -98,14 +99,14 @@
       return
     }
 
-    const nextIsEmpty = text.trim() === '' && htmlToPlainText(html).trim() === ''
-    const currentIsEmpty = item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
-    if (nextIsEmpty && !currentIsEmpty) {
+    const nextIsEmpty = !html.includes('data-balance-image=') && text.trim() === '' && htmlToPlainText(html).trim() === ''
+    const currentIsEmpty = !item.html.includes('data-balance-image=') && item.text.trim() === '' && htmlToPlainText(item.html).trim() === ''
+    if (nextIsEmpty && !currentIsEmpty && !options?.imageEdit) {
       pendingDeletion = true
       return
     }
 
-    if (!nextIsEmpty) pendingDeletion = false
+    if (!nextIsEmpty || options?.imageEdit) pendingDeletion = false
     patchItem(templateId, item.id, { html, text }, options)
   }
 
@@ -283,7 +284,7 @@
     const result = backspaceItemAtStart(templateId, item.id)
 
     if (!result) {
-      if (item.text.trim() === '') await handleBackspaceEmpty()
+      if (item.text.trim() === '' && !item.html.includes('data-balance-image=')) await handleBackspaceEmpty()
       return
     }
 
