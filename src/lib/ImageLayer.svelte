@@ -259,7 +259,7 @@
   <div class="image-selection" style:left={`${selectionRect.left}px`} style:top={`${selectionRect.top}px`} style:width={`${selectionRect.width}px`} style:height={`${selectionRect.height}px`}>
     {#each ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as corner}<button class={`resize-handle ${corner}`} aria-label={`Resize image ${corner}`} on:pointerdown={(event) => resize(event, corner)}></button>{/each}
     <div tabindex="-1" role="toolbar" aria-label="Image layout" class="image-tools" style:top={selectionRect.top < 48 ? '100%' : '-42px'} on:mousedown|preventDefault>
-      <button class:active={$selectedImage.image.dataset.imageLayout === 'inline'} on:click={() => layout('inline')}>Inline</button><button class:active={$selectedImage.image.dataset.imageLayout === 'left'} on:click={() => layout('left')}>Wrap left</button><button class:active={$selectedImage.image.dataset.imageLayout === 'right'} on:click={() => layout('right')}>Wrap right</button>
+      <button class:active={$selectedImage.image.dataset.imageLayout === 'left'} on:click={() => layout('left')}>Wrap left</button><button class:active={$selectedImage.image.dataset.imageLayout === 'right'} on:click={() => layout('right')}>Wrap right</button><button class:active={$selectedImage.image.dataset.imageLayout === 'inline'} on:click={() => layout('inline')}>Inline</button>
     </div>
   </div>
 {/if}
@@ -297,7 +297,7 @@
   .image-tools { position: absolute; left: 0; display: flex; white-space: nowrap; pointer-events: auto; background: var(--paper); border-radius: 7px; box-shadow: 0 3px 12px #0005; }
   .image-tools button { padding: 6px 9px; font-size: 12px; }
   :global(img[data-balance-image]) { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; object-fit: contain; cursor: grab; border-radius: 3px; }
-  :global(img[data-balance-image][data-image-layout='inline']) { margin: .2em .35em; max-width: calc(100% - .7em); }
+  :global(img[data-balance-image][data-image-layout='inline']) { margin: .14em .245em; max-width: calc(100% - .49em); }
   :global(img[data-image-layout='left']) { float: left; margin: .25em 1em .5em 0; }
   :global(img[data-image-layout='right']) { float: right; margin: .25em 0 .5em 1em; }
   :global([data-rich-text-input]:has(img[data-balance-image])) { display: flow-root; white-space: pre-wrap; }

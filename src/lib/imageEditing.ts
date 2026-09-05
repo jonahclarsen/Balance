@@ -74,7 +74,7 @@ export function imageEditing(editor: HTMLElement, commit: () => void) {
         const asset = await importImage(file)
         if (!asset) continue
         const width = Math.min(asset.width, 480, editor.clientWidth || 480)
-        insert(imageHTML(asset.id, width, width * asset.height / asset.width), range)
+        insert(imageHTML(asset.id, width, width * asset.height / asset.width, 'left'), range)
       }
     } catch (error) { reportImageError(error) }
   }

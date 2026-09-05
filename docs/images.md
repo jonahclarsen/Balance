@@ -5,8 +5,10 @@ items, day-template options, list-template items, and other rich-text content
 share the same behavior. Pasted web passages retain their supported text
 formatting and omit external images. There is no insert button or caption field.
 
-Images start inline. Click an image to select it and reveal corner resize
-handles and Inline / Wrap left / Wrap right controls. Wrapped images remain
+New images start with Wrap left, allowing multiple lines of text beside them.
+Click an image to select it and reveal corner resize handles and
+Wrap left / Wrap right / Inline controls. Inline treats the image as a character
+on one line, with a small margin around it. Wrapped images remain
 anchored to their position in the containing text item, which contains their
 height; they move with that item and text above it. Drag to another text position
 or item to move the anchor; Alt-drag copies it. Display resizing preserves aspect
