@@ -786,7 +786,7 @@ echo "[ui-sync] preparing the source installation with the camera fixture key"
 dismiss_recovery_key_setup
 # A primary snapshot covers the source's pre-sync operation sequence. Starting
 # it as a joiner leaves sequence gaps that a relay checkpoint correctly rejects.
-BALANCE_UI_RELAY_URL="$UI_RELAY_URL" node .github/scripts/seed-android-sync-source.mjs
+BALANCE_UI_RELAY_URL="$UI_RELAY_URL" node .github/scripts/android-sync-ui-driver.mjs seed-source
 sleep 3
 open_mobile_view "Settings"
 wait_for_ui_sync
@@ -848,9 +848,9 @@ open_mobile_view "Settings"
 tap_ui_scrolling_contains text "Connect to an existing setup"
 type_into_ui_after_text_verified "Sync server address" "$UI_RELAY_URL"
 dismiss_soft_keyboard
-tap_ui_scrolling text "Scan QR code"
+BALANCE_UI_PROFILE="$PEER_USER" node .github/scripts/android-sync-ui-driver.mjs click "Scan QR code"
 wait_for_ui_text "Use your existing synced planner?" 30
-tap_ui_scrolling text "Connect and replace this planner"
+BALANCE_UI_PROFILE="$PEER_USER" node .github/scripts/android-sync-ui-driver.mjs click "Connect and replace this planner"
 wait_for_ui_sync
 echo "[ui-sync] camera QR scan connected the isolated joining installation through the relay"
 
