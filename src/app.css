@@ -3471,24 +3471,6 @@ body.mobile-checkbox-dragging {
   100% { transform: translateX(130%) rotate(7deg); opacity: 0; }
 }
 
-.paste-review-status {
-  display: grid;
-  flex: 0 0 24px;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border-radius: 999px;
-  background: var(--line);
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.paste-review-item.kept .paste-review-status {
-  background: var(--done-tint, #3f9d54);
-  color: var(--paper-strong);
-}
-
 .paste-review-card.done {
   background: var(--done-tint);
 }

@@ -13,6 +13,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
+  import TaskCheckbox from './lib/TaskCheckbox.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
   import TemplateTabs from './lib/TemplateTabs.svelte'
   import ListTemplateItemEditor from './lib/ListTemplateItemEditor.svelte'
@@ -7180,19 +7181,11 @@ return rows`
               ></textarea>
             {:else}
               <div class="paste-review-line">
-                {#if isCurrent}
-                  <label class="check-target" title="Complete item">
-                    <input
-                      class="check"
-                      type="checkbox"
-                      checked={node.item.done}
-                      on:change={(event) => togglePasteReviewDone(event.currentTarget.checked)}
-                      aria-label="Complete item"
-                    />
-                  </label>
-                {:else if wasKept}
-                  <span class="paste-review-status" aria-hidden="true">✓</span>
-                {/if}
+                <TaskCheckbox
+                  checked={node.item.done}
+                  disabled={!isCurrent}
+                  onChange={(event) => togglePasteReviewDone(event.currentTarget.checked)}
+                />
                 <!-- Render the saved rich text just like a real task so formatting
                      such as explicit line breaks survives in the review preview. -->
                 <div

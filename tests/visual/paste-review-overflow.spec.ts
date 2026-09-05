@@ -187,6 +187,15 @@ test('review checkbox is centered and matches planner checkbox appearance', asyn
   await expect(checkbox).not.toBeChecked()
   expect(await checkbox.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
 
+  const upcomingCheckboxes = page.locator('.paste-review-item:not(.current) .check')
+  await expect(upcomingCheckboxes).toHaveCount(3)
+  for (const upcoming of await upcomingCheckboxes.all()) {
+    await expect(upcoming).toBeVisible()
+    await expect(upcoming).not.toBeChecked()
+    await expect(upcoming).toBeDisabled()
+    expect(await upcoming.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
+  }
+
   const centerOffset = await checkbox.evaluate((input) => {
     const checkboxRect = input.getBoundingClientRect()
     const cardRect = input.closest('.paste-review-card')!.getBoundingClientRect()
@@ -202,4 +211,15 @@ test('review checkbox is centered and matches planner checkbox appearance', asyn
   expect(await checkbox.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
   await expect(checkbox).toHaveCSS('background-color', 'rgb(161, 35, 188)')
   await expect(page.locator('.paste-review-item.current')).toHaveClass(/done/)
+
+  await page.getByRole('button', { name: 'Keep (→ / Enter)', exact: true }).click()
+  const keptCheckbox = page.locator('.paste-review-item.kept .check')
+  await expect(keptCheckbox).toBeChecked()
+  expect(await keptCheckbox.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
+  await expect(checkbox).not.toBeChecked()
+  await expect(checkbox).toBeEnabled()
+
+  // Keeping an unfinished task must preserve its empty checkbox, too.
+  await page.getByRole('button', { name: 'Keep (→ / Enter)', exact: true }).click()
+  await expect(page.locator('.paste-review-item.kept .check').nth(1)).not.toBeChecked()
 })

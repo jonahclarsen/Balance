@@ -9,6 +9,7 @@
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange, { type TimeShiftTarget } from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
+  import TaskCheckbox from './TaskCheckbox.svelte'
   import type { Goal, GoalCompletion, Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, PlanItem } from './types'
 
   type TextChangeOptions = {
@@ -871,24 +872,16 @@
   onWholeRowSelectionToggle={onMobileSelectionToggle}
   onRowClick={handleLockedRowClick}
 >
-  <label
-    class="check-target"
-    class:mobile-checkbox-drag-enabled={mobile && Boolean(patchItemsDone)}
-    title="Complete item"
-    on:pointerdown={beginMobileCheckboxDrag}
-    on:contextmenu={(event) => {
+  <TaskCheckbox
+    checked={item.done}
+    mobileCheckboxDragEnabled={mobile && Boolean(patchItemsDone)}
+    onPointerDown={beginMobileCheckboxDrag}
+    onContextMenu={(event) => {
       if (mobileCheckboxDrag?.active) event.preventDefault()
     }}
-  >
-    <input
-      class="check"
-      type="checkbox"
-      checked={item.done}
-      on:click={handleCheckboxClick}
-      on:change={handleCheckboxChange}
-      aria-label="Complete item"
-    />
-  </label>
+    onClick={handleCheckboxClick}
+    onChange={handleCheckboxChange}
+  />
 
   <div class="plan-item-main" class:timed={hasActiveTimeRange(item)}>
     {#if hasActiveTimeRange(item)}
