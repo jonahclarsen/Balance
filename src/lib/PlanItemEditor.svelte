@@ -193,7 +193,7 @@
     patchItem(
       planId,
       item.id,
-      { ...defaultPlanItemTimeRange(allItems, item.id), timeHidden: null },
+      { ...defaultPlanItemTimeRange(allItems, item.id, planDate), timeHidden: null },
     )
   }
 

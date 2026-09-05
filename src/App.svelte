@@ -3591,7 +3591,7 @@ return rows`
         patchSelectedTimeItem(item.id, { timeHidden: null })
       } else if (!hasActiveTimeRange(item)) {
         const range = surface === 'plan'
-          ? defaultPlanItemTimeRange(focusedPlan?.items ?? [], item.id)
+          ? defaultPlanItemTimeRange(focusedPlan?.items ?? [], item.id, focusedPlan?.date)
           : defaultTemplateItemTimeRange(selectedTemplate?.items ?? [], item.id)
         patchSelectedTimeItem(item.id, { ...range, timeHidden: null })
       }

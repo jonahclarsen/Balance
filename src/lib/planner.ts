@@ -813,8 +813,20 @@ export function outdentPlanItems(items: PlanItem[], itemIds: Id[]): PlanItem[] {
   return outdentTreeNodes(items, new Set(itemIds))
 }
 
-export function defaultPlanItemTimeRange(items: PlanItem[], itemId: Id): { startMinutes: number; endMinutes: number } {
-  return defaultTimeRangeAfterPreviousTimedItem(items, itemId)
+export function defaultPlanItemTimeRange(
+  items: PlanItem[],
+  itemId: Id,
+  planDate = '',
+  now = new Date(),
+): { startMinutes: number; endMinutes: number } {
+  let fallbackStartMinutes = DEFAULT_TIME_START_MINUTES
+  if (planDate === todayISO(now) && !flattenPlanItems(items).some(hasActiveTimeRange)) {
+    // Before the 3 a.m. rollover, today's plan represents the previous calendar day.
+    const elapsedMinutes = now.getHours() * 60 + now.getMinutes()
+      + (planDate === calendarDateISO(now) ? 0 : 24 * 60)
+    fallbackStartMinutes = Math.max(fallbackStartMinutes, Math.floor(elapsedMinutes / 15) * 15)
+  }
+  return defaultTimeRangeAfterPreviousTimedItem(items, itemId, fallbackStartMinutes)
 }
 
 export function findPlanItem(items: PlanItem[], itemId: Id): PlanItem | null {
@@ -1311,14 +1323,14 @@ function defaultTimeRangeAfterPreviousTimedItem<T extends {
   endMinutes: number | null
   timeHidden?: boolean | null
   children: T[]
-}>(items: T[], itemId: Id): { startMinutes: number; endMinutes: number } {
+}>(items: T[], itemId: Id, fallbackStartMinutes = DEFAULT_TIME_START_MINUTES): { startMinutes: number; endMinutes: number } {
   const previousResult = previousTimedItem(items, itemId)
   const previous = previousResult.found ? previousResult.previous : null
   const startMinutes = previous
     ? previousResult.depth > previous.depth
       ? previous.startMinutes
       : previous.endMinutes
-    : DEFAULT_TIME_START_MINUTES
+    : fallbackStartMinutes
   const endMinutes = Math.min(startMinutes + DEFAULT_TIME_DURATION_MINUTES, MAX_TIMELINE_MINUTES)
 
   if (endMinutes > startMinutes) return { startMinutes, endMinutes }
