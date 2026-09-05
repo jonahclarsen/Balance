@@ -705,9 +705,14 @@ dismiss_recovery_key_setup() {
         # Older APK fixtures used an acknowledgement checkbox instead.
         tap_ui class "android.widget.CheckBox"
       fi
-      # Enabling Continue is asynchronous in the WebView. tap_ui ignores
-      # disabled nodes, so it waits for the confirmed state to render first.
-      tap_ui text "Continue"
+      # The small emulator viewport can report Continue's bounds below the
+      # dialog's scrollable area, where a coordinate tap misses the button.
+      # Submit from the confirmed input using the supported keyboard path.
+      if [ -n "$(find_ui_node resource-id "recovery-key-confirmation" exact)" ]; then
+        adb shell input keyevent KEYCODE_ENTER
+      else
+        tap_ui text "Continue"
+      fi
       for _ in $(seq 1 20); do
         dump_ui
         if [ -z "$(find_ui_node text "Save your recovery key" exact)" ]; then
