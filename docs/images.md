@@ -25,7 +25,10 @@ The large preview and magnified detail show the encoded result. Click the main
 preview to choose a detail; hold Show original to compare at the same position.
 Size, dimensions, and savings update after encoding. Enter pastes the current
 result when ready; Command+Enter (Control+Enter elsewhere) preserves the
-original. Escape cancels. A cancellable worker runs the bundled WebP WASM codec
+original. Imported images must be smaller than 6,000,000 bytes (6 MB).
+At or above that limit, Paste original and its shortcut are unavailable;
+reduce scale or quality until the encoded result is below the limit to paste.
+Escape cancels. A cancellable worker runs the bundled WebP WASM codec
 locally, including on WebKit, whose canvas encoder does not provide WebP.
 Nothing is uploaded for compression. Animated originals retain their animation;
 WebP compression produces a still frame.

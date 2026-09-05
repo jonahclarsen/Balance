@@ -1,5 +1,91 @@
 import { expect, test, type Page } from '@playwright/test'
 
+async function pasteSizeFixture(page: Page, size: number, noise = false) {
+  await page.locator('[data-note-text-input]').first().evaluate(async (editor, { size, noise }) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = noise ? 3200 : 64
+    canvas.height = noise ? 2400 : 64
+    const context = canvas.getContext('2d')!
+    if (noise) {
+      const pixels = context.createImageData(canvas.width, canvas.height)
+      let seed = 123456789
+      for (let offset = 0; offset < pixels.data.length; offset += 4) {
+        for (let channel = 0; channel < 3; channel++) {
+          seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5
+          pixels.data[offset + channel] = seed & 255
+        }
+        pixels.data[offset + 3] = 255
+      }
+      context.putImageData(pixels, 0, 0)
+    } else context.fillRect(0, 0, canvas.width, canvas.height)
+    const png = await new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!), 'image/png'))
+    const file = new File([png, new Uint8Array(Math.max(0, size - png.size))], 'size-fixture.png', { type: 'image/png' })
+    const data = new DataTransfer()
+    data.items.add(file)
+    editor.dispatchEvent(noise
+      ? new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data })
+      : new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }))
+  }, { size, noise })
+}
+
+for (const size of [5_999_999, 6_000_000, 6_000_001]) {
+  test(`image originals respect the strict 6 MB boundary at ${size} bytes`, async ({ page }) => {
+    await notes(page)
+    await pasteSizeFixture(page, size)
+    const dialog = page.getByRole('dialog', { name: 'Paste image', exact: true })
+    await expect(dialog).toBeVisible()
+    const original = dialog.getByRole('button', { name: /^Paste original/ })
+    if (size < 6_000_000) {
+      await expect(original).toBeEnabled()
+    } else {
+      await expect(original).toBeDisabled()
+      await expect(dialog.getByRole('status').filter({ hasText: 'Images must be smaller than 6 MB' })).toBeVisible()
+      await page.keyboard.press('ControlOrMeta+Enter')
+      await expect(dialog).toBeVisible()
+      await expect(page.locator('[data-note-text-input] img')).toHaveCount(0)
+    }
+    await expect(dialog.getByRole('button', { name: /^Paste image(?: Enter)?$/, exact: true })).toBeEnabled()
+    await page.keyboard.press('Enter')
+    await expect(dialog).not.toBeVisible()
+    await expect(page.locator('[data-note-text-input] img')).toBeVisible()
+    const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images[0])
+    expect(asset.bytes).toBeLessThan(6_000_000)
+    expect(asset.dataURL).toMatch(/^data:image\/webp/)
+  })
+}
+
+test('an oversized encoded result stays blocked until compression brings it below 6 MB', async ({ page }) => {
+  test.setTimeout(60_000)
+  await notes(page)
+  await pasteSizeFixture(page, 6_000_001, true)
+  const dialog = page.getByRole('dialog', { name: 'Paste image', exact: true })
+  await expect(dialog).toBeVisible()
+  const paste = dialog.getByRole('button', { name: /^Paste image(?: Enter)?$/, exact: true })
+  await expect(paste).toBeEnabled({ timeout: 20_000 })
+  for (const name of ['Image scale', 'WebP quality']) {
+    await dialog.getByRole('slider', { name }).evaluate((node) => {
+      ;(node as HTMLInputElement).value = '100'
+      node.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+  await expect(dialog.locator('.image-size')).not.toContainText('Updating', { timeout: 20_000 })
+  await expect(paste).toBeDisabled()
+  await page.keyboard.press('Enter')
+  await expect(dialog).toBeVisible()
+  await expect(page.locator('[data-note-text-input] img')).toHaveCount(0)
+  await dialog.getByRole('slider', { name: 'Image scale' }).evaluate((node) => {
+    ;(node as HTMLInputElement).value = '25'
+    node.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await expect(paste).toBeEnabled({ timeout: 20_000 })
+  await paste.click()
+  await expect(dialog).not.toBeVisible()
+  await expect(page.locator('[data-note-text-input] img')).toBeVisible()
+  const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images[0])
+  expect(asset.bytes).toBeLessThan(6_000_000)
+  expect(asset.width).toBe(800)
+})
+
 async function notes(page: Page) {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

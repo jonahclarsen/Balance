@@ -1,6 +1,9 @@
 import { writable } from 'svelte/store'
 import type { ImageAsset } from './types'
 
+export const MAX_IMAGE_BYTES = 6_000_000
+export const IMAGE_SIZE_LIMIT_MESSAGE = 'Images must be smaller than 6 MB. Reduce the scale or WebP quality to continue.'
+
 export type ImageImport = { blob: Blob; resolve: (blob: Blob | null) => void }
 export const imageImport = writable<ImageImport | null>(null)
 export const imageViewer = writable<string | null>(null)
@@ -40,6 +43,7 @@ export function importImage(original: Blob): Promise<ImageAsset | null> {
       ? await new Promise<Blob | null>((resolve) => imageImport.set({ blob: original, resolve }))
       : original
     if (!blob) return null
+    if (blob.size >= MAX_IMAGE_BYTES) throw new Error(IMAGE_SIZE_LIMIT_MESSAGE)
     const decoded = await decodeImage(blob)
     const digest = await crypto.subtle.digest('SHA-256', await blob.arrayBuffer())
     const id = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
