@@ -466,6 +466,10 @@
           limited relay status, and fingerprints showing whether the current screen
           and database agree. It also saves a structural inventory of at most 50
           tasks, starting with today and then yesterday, so moved copies can be compared.
+          The file still reveals recent operation types, order, time gaps, numeric
+          task fields, whether opaque values match, occurrence counts for recent IDs,
+          nearby task ordering, nesting, completion state, content equality, and
+          text-free rendered checkbox and row-style state.
         </p>
         <div class="sync-actions">
           <button type="button" on:click={exportAnonymousDiagnostics} disabled={busy || diagnosticBusy}>
@@ -475,12 +479,6 @@
             <span class="sync-state">Saved to {diagnosticPath}</span>
           {/if}
         </div>
-        <p class="sync-disclosure">
-          The file still reveals recent operation types, order, time gaps, numeric
-          task fields, whether opaque values match, occurrence counts for recent IDs,
-          nearby task ordering, nesting, completion state, content equality, and
-          text-free rendered checkbox and row-style state.
-        </p>
       </div>
     {/if}
 
@@ -564,11 +562,6 @@
   .sync-empty {
     font-size: 0.82rem;
     opacity: 0.7;
-    margin: 0;
-  }
-  .sync-disclosure {
-    font-size: 0.78rem;
-    opacity: 0.68;
     margin: 0;
   }
   .sync-actions {
