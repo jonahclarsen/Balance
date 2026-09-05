@@ -126,6 +126,12 @@ import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './prefere
 import { isNoteTrashExpired } from './noteTrash'
 
 const STORAGE_KEY = 'balance.appState.v1'
+const ACTIVE_PLAN_DATE_KEY = 'balance:activePlanDate'
+
+function localActivePlanDate(): string {
+  const date = localStorage.getItem(ACTIVE_PLAN_DATE_KEY)
+  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : todayISO()
+}
 const TEXT_MERGE_WINDOW_MS = 1200
 const MAX_HISTORY_ENTRIES = 200
 const PERSIST_DEBOUNCE_MS = 500
@@ -172,6 +178,7 @@ type BackendHistoryResult = {
   localSequence: number
   state: AppState | null
   canRedo: boolean
+  operationType?: string
 }
 
 export type RecoveryKeyStatus = {
@@ -303,7 +310,8 @@ function parseStoredState(raw: string | null): AppState | null {
     return normalizeState({
       ...parsed,
       historyRevision: parsed.historyRevision || 0,
-      activePlanDate: parsed.activePlanDate || todayISO(),
+      // Browser snapshots are local. Native snapshots can come from any device.
+      activePlanDate: isTauri() ? localActivePlanDate() : parsed.activePlanDate || localActivePlanDate(),
       operations: parsed.operations || [],
     })
   } catch {
@@ -316,7 +324,7 @@ function readLocalState(): AppState {
 }
 
 function readInitialState(): AppState {
-  return isTauri() ? createInitialState() : readLocalState()
+  return isTauri() ? { ...createInitialState(), activePlanDate: localActivePlanDate() } : readLocalState()
 }
 
 async function hydratePersistence(store: Writable<AppState>): Promise<void> {
@@ -333,7 +341,7 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
     if (parsed) {
       store.set(parsed)
     } else {
-      await invoke('initialize_app_state', { stateJson: JSON.stringify(get(store)) })
+      await invoke('initialize_app_state', { stateJson: JSON.stringify({ ...get(store), activePlanDate: '' }) })
     }
     databaseLoadProgress.set({ percent: 100, stage: 'Ready' })
     databaseLoadError.set('')
@@ -359,6 +367,7 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
 }
 
 function persistLocalState(state: AppState): void {
+  // Browser-only storage is device-local too; native persistence uses operations.
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
 }
 
@@ -546,6 +555,7 @@ function createPlannerStore() {
   let backendReloadPromise: Promise<void> | null = null
   let backendReloadRequestRevision = 0
   store.subscribe((state) => {
+    localStorage.setItem(ACTIVE_PLAN_DATE_KEY, state.activePlanDate)
     if (persistenceReady && persistenceTarget === 'localStorage') persistLocalState(state)
   })
   const ready = hydratePersistence(store)
@@ -683,10 +693,8 @@ function createPlannerStore() {
     ready,
 
     setActivePlanDate(date: string) {
-      commit('set_active_plan_date', { date }, (state) => ({
-        ...state,
-        activePlanDate: date,
-      }))
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return
+      store.update((state) => state.activePlanDate === date ? state : { ...state, activePlanDate: date })
     },
 
     patchPreferences(patch: Partial<ReplicatedPreferences>) {
@@ -728,7 +736,8 @@ function createPlannerStore() {
         current.goalCompletions,
       )
 
-      commit('generate_plan', { templateId, date, replaceExisting, activePlanDate, generatedPlan: generated }, (state) => {
+      // Keep the legacy wire field empty; the selected day belongs to this device.
+      commit('generate_plan', { templateId, date, replaceExisting, activePlanDate: '', generatedPlan: generated }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans
         const goals = state.goals.some((goal) => !goal.presentationTrackingStartedAt)
           ? state.goals.map((goal) => goal.presentationTrackingStartedAt
@@ -2449,7 +2458,7 @@ function createPlannerStore() {
 
         const operationType = result.operationId === expected?.operationId
           ? expected.operationType
-          : result.state?.operations.find((operation) => operation.id === result.operationId)?.type ?? null
+          : result.operationType ?? result.state?.operations.find((operation) => operation.id === result.operationId)?.type ?? 'history'
         lastOperationMergeKey = null
         if (expected && result.operationId === expected.operationId && result.state === null) {
           undoStack.pop()
@@ -2488,7 +2497,7 @@ function createPlannerStore() {
       return operationType
     },
 
-    async redo() {
+    async redo(): Promise<boolean> {
       if (isTauri()) {
         await flushOperations()
         const expected = redoStack.at(-1)
@@ -2500,7 +2509,7 @@ function createPlannerStore() {
           undoStack = []
           redoStack = []
           redoAvailableState.set(false)
-          return
+          return false
         }
 
         lastOperationMergeKey = null
@@ -2518,7 +2527,7 @@ function createPlannerStore() {
         }
         redoAvailableState.set(result.canRedo)
         notifyPersistedOperation()
-        return
+        return true
       }
 
       let operationToPersist: Operation | null = null
@@ -2536,6 +2545,7 @@ function createPlannerStore() {
 
       if (operationToPersist) queueOperationPersistence(operationToPersist)
       redoAvailableState.set(redoStack.length > 0)
+      return operationToPersist !== null
     },
 
     async restoreRecoveryEntry(historyId: string): Promise<boolean> {
@@ -2594,6 +2604,7 @@ function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, loca
     // Preferences are intentionally not undoable and may have changed after
     // this history entry was recorded. Native undo never rewinds them.
     preferences: current.preferences,
+    activePlanDate: current.activePlanDate,
     operations: [],
     historyRevision: current.historyRevision + 1,
   }
@@ -2611,6 +2622,7 @@ function applyHistorySnapshot(current: AppState, snapshot: AppState, type: strin
     ...snapshot,
     deviceId: current.deviceId,
     localSequence: sequence,
+    activePlanDate: current.activePlanDate,
     operations: [
       ...current.operations,
       {
@@ -2621,7 +2633,7 @@ function applyHistorySnapshot(current: AppState, snapshot: AppState, type: strin
         timestamp: nowISO(),
         payload: {
           mergeKey: entry.mergeKey,
-          state: snapshot,
+          state: { ...snapshot, activePlanDate: '' },
         },
       },
     ],

@@ -4,6 +4,7 @@
   import type { Id, Metric } from './types'
 
   export let metric: Metric
+  export let revealQuestionId: Id | undefined = undefined
   export let answers: Record<Id, string>
   export let onAnswer: (questionId: Id, value: string) => void
   export let onClose: () => void
@@ -12,6 +13,7 @@
   export let onComplete: () => void = onClose
 
   let index = 0
+  $: if (revealQuestionId) index = Math.max(0, metric.questions.findIndex((question) => question.id === revealQuestionId))
   let draft = ''
   let lastIndex = -1
   let textInput: HTMLInputElement | null = null

@@ -3889,6 +3889,7 @@ fn history_result_for_ui(
     let can_redo = latest_redoable_history_entry(connection)?.is_some();
     Ok(json!({
         "operationId": history.operation_id,
+        "operationType": history.redo_operation.get("type"),
         "localSequence": local_sequence,
         "state": state,
         "canRedo": can_redo,
@@ -6291,6 +6292,7 @@ fn latest_undoable_history_entry(connection: &Connection) -> Result<Option<Histo
           select id, operation_id, undo_operation_json, redo_operation_json
           from history_entries
           where undone = 0
+            and json_extract(redo_operation_json, '$.type') != 'set_active_plan_date'
           order by sequence desc, updated_at_ms desc, id desc
           limit 1
         ",
@@ -6305,6 +6307,7 @@ fn latest_redoable_history_entry(connection: &Connection) -> Result<Option<Histo
           select id, operation_id, undo_operation_json, redo_operation_json
           from history_entries
           where undone != 0
+            and json_extract(redo_operation_json, '$.type') != 'set_active_plan_date'
           order by updated_at_ms desc, sequence desc, id desc
           limit 1
         ",
@@ -13523,6 +13526,50 @@ mod tests {
     }
 
     #[test]
+    fn history_skips_legacy_day_navigation() {
+        let database = TestDatabase::new("history-local-navigation");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &test_state("Navigation history")).unwrap();
+        for (sequence, operation_type, payload) in [
+            (
+                2,
+                "patch_plan_item",
+                json!({
+                    "planId": "plan_today", "itemId": "plan_item_wake",
+                    "patch": { "text": "Edited task", "html": "Edited task" }
+                }),
+            ),
+            (3, "set_active_plan_date", json!({ "date": "2026-05-22" })),
+        ] {
+            persist_operation_to_database(
+                &mut connection,
+                &json!({
+                    "id": format!("op_device_test_{sequence}"), "deviceId": "device_test",
+                    "sequence": sequence, "type": operation_type,
+                    "timestamp": "2026-05-21T00:01:00Z", "payload": payload
+                }),
+            )
+            .unwrap();
+        }
+        let undo = undo_last_operation_for_ui(&mut connection, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(undo["operationId"], "op_device_test_2");
+        assert_eq!(undo["state"]["plans"][0]["items"][0]["text"], "Wake up");
+        assert!(undo_last_operation_for_ui(&mut connection, None)
+            .unwrap()
+            .is_none());
+        let redo = redo_last_operation_for_ui(&mut connection, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(redo["state"]["plans"][0]["items"][0]["text"], "Edited task");
+        assert!(redo_last_operation_for_ui(&mut connection, None)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
     fn native_history_snapshots_match_existing_encrypted_database_state() {
         let database = TestDatabase::new("native-history-snapshot");
         let recovery_key = generate_recovery_key();
@@ -13547,6 +13594,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(undo["operationId"], "op_device_test_2");
+        assert_eq!(undo["operationType"], "patch_plan_item");
         assert_eq!(undo["localSequence"], 3);
         assert!(undo["state"].is_null());
         assert_eq!(undo["canRedo"], true);
@@ -13583,6 +13631,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(fallback["operationId"], "op_device_test_5");
+        assert_eq!(fallback["operationType"], "patch_plan_item");
         assert_eq!(fallback["localSequence"], 6);
         assert_eq!(
             fallback["state"]["plans"][0]["items"][0]["text"],
