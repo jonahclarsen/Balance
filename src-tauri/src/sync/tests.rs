@@ -2702,3 +2702,53 @@ fn a_relay_only_ever_holds_ciphertext_and_never_echoes_a_device_its_own_push() {
         );
     }
 }
+
+/// A later action must win over an observed edit despite wall-clock skew.
+#[test]
+fn causal_completion_edits_converge_across_clock_skew_and_equal_timestamps() {
+    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::seq::SliceRandom;
+    let mut random = StdRng::seed_from_u64(0x5eed_c10c);
+    for case in 0..32 {
+        let sa = Scratch::new("causal-completion-desktop");
+        let sb = Scratch::new("causal-completion-phone");
+        let mut desktop = open_seeded(&sa.path, "clock-a", &cut_paste_state("zz-desktop"));
+        let mut phone = open_seeded(&sb.path, "clock-b", &state("aa-phone", json!([])));
+        enable_primary(&desktop).unwrap();
+        enable_joiner(&phone).unwrap();
+        merge_and_rematerialize(&phone, all_ops(&desktop).unwrap()).unwrap();
+        let completion = |id: &str, device: &str, timestamp: String, done| json!({
+            "id": id, "deviceId": device, "sequence": 1,
+            "type": "patch_plan_item", "timestamp": timestamp,
+            "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": done}}
+        });
+        persist_operation_to_database(&mut desktop, &completion(
+            "desktop-unchecks", "zz-desktop", "2026-09-05T12:00:00.000Z".into(), false,
+        )).unwrap();
+        merge_and_rematerialize(&phone, all_ops(&desktop).unwrap()).unwrap();
+        // Equal milliseconds, one millisecond, and seeded skew up to ten minutes.
+        let skew_ms = match case { 0 => 0, 1 => 1, _ => random.gen_range(1..600_000) };
+        let timestamp = (chrono::DateTime::parse_from_rfc3339("2026-09-05T12:00:00.000Z").unwrap()
+            - chrono::Duration::milliseconds(skew_ms)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+        let edit = completion("phone-checks", "aa-phone", timestamp, true);
+        persist_operation_to_database(&mut phone, &edit).unwrap();
+        let before_retry = all_ops(&phone).unwrap();
+        persist_operation_to_database(&mut phone, &edit).unwrap();
+        assert_eq!(all_ops(&phone).unwrap().iter().map(|op| (&op.id, &op.timestamp)).collect::<Vec<_>>(),
+            before_retry.iter().map(|op| (&op.id, &op.timestamp)).collect::<Vec<_>>());
+        for round in 0..3 {
+            let mut from_phone = all_ops(&phone).unwrap();
+            let mut from_desktop = all_ops(&desktop).unwrap();
+            from_phone.shuffle(&mut random);
+            from_desktop.shuffle(&mut random);
+            merge_and_rematerialize(&desktop, from_phone).unwrap();
+            merge_and_rematerialize(&phone, from_desktop).unwrap();
+            assert_eq!(local_op_ids(&desktop).unwrap(), local_op_ids(&phone).unwrap());
+            let a = read_app_state_from_database(&desktop).unwrap().unwrap();
+            let b = read_app_state_from_database(&phone).unwrap().unwrap();
+            assert_eq!(domain(&a), domain(&b), "case {case}, skew {skew_ms} ms, successful sync round {round}");
+            assert_eq!(a["plans"][0]["items"][0]["children"][0]["done"], true,
+                "the causally later phone completion must survive");
+        }
+    }
+}

@@ -1402,4 +1402,93 @@ mod tests {
             0,
         );
     }
+
+    #[test]
+    fn delayed_parallel_download_failures_never_skip_a_cursor_sequence() {
+        const BATCHES: usize = PARALLEL_BATCH_DOWNLOADS * 2 + 1;
+        for seed in [1_u64, 17, 991] {
+            for failed_sequence in 1..=BATCHES {
+                let connection = relay_database();
+                set_relay_state(&connection, "epoch-1", 0).unwrap();
+                let key = SyncKey::generate();
+                let ciphertext = seal(&key, &RelayEnvelope {
+                    v: PROTOCOL_VERSION,
+                    epoch: "epoch-1".into(),
+                    ops: Vec::new(),
+                }).unwrap();
+                let wrong_epoch = seal(&key, &RelayEnvelope {
+                    v: PROTOCOL_VERSION,
+                    epoch: "stale-epoch".into(),
+                    ops: Vec::new(),
+                }).unwrap();
+                let manifest = Manifest {
+                    epoch: "epoch-1".into(),
+                    latest_sequence: BATCHES as i64,
+                    checkpoint: None,
+                    batches: (1..=BATCHES).map(|sequence| BatchDescriptor {
+                        id: format!("batch-{sequence}"),
+                        sequence: sequence as i64,
+                        chunks: 1,
+                    }).collect(),
+                    compact_recommended: false,
+                };
+                for retry in [false, true] {
+                    let cursor = relay_state(&connection).unwrap().1 as usize;
+                    let requests = if retry { BATCHES - cursor } else {
+                        failed_sequence.div_ceil(PARALLEL_BATCH_DOWNLOADS)
+                            .saturating_mul(PARALLEL_BATCH_DOWNLOADS).min(BATCHES)
+                    };
+                    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+                    let address = listener.local_addr().unwrap();
+                    let ciphertext = ciphertext.clone();
+                    let wrong_epoch = wrong_epoch.clone();
+                    let server = std::thread::spawn(move || {
+                        std::thread::scope(|scope| {
+                            for _ in 0..requests {
+                                let (mut stream, _) = listener.accept().unwrap();
+                                let ciphertext = &ciphertext;
+                                let wrong_epoch = &wrong_epoch;
+                                scope.spawn(move || {
+                                    let mut request = [0_u8; 2048];
+                                    let length = stream.read(&mut request).unwrap();
+                                    let request = String::from_utf8_lossy(&request[..length]);
+                                    let sequence: usize = request.split("/batch-").nth(1)
+                                        .unwrap().split('/').next().unwrap().parse().unwrap();
+                                    // A deterministic seeded delay makes HTTP completion order
+                                    // differ from manifest order, including across group edges.
+                                    let delay = (sequence as u64).wrapping_mul(6364136223846793005)
+                                        .wrapping_add(seed) % 5;
+                                    std::thread::sleep(Duration::from_millis(delay));
+                                    let failed = !retry && sequence == failed_sequence;
+                                    let status = if failed && seed == 1 { "503 Service Unavailable" } else { "200 OK" };
+                                    let bytes = if failed {
+                                        match seed {
+                                            991 => wrong_epoch.as_slice(),
+                                            _ => b"unavailable or corrupted ciphertext".as_slice(),
+                                        }
+                                    } else { ciphertext.as_slice() };
+                                    write!(stream, "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", bytes.len()).unwrap();
+                                    stream.write_all(bytes).unwrap();
+                                });
+                            }
+                        });
+                    });
+                    let result = apply_manifest(&connection, &Client::new(),
+                        &format!("http://{address}"), &key, &manifest, "epoch-1");
+                    server.join().unwrap();
+                    if retry {
+                        result.unwrap();
+                        assert_eq!(relay_state(&connection).unwrap().1, BATCHES as i64);
+                        assert!(checkpoint_safe(&connection).unwrap());
+                    } else {
+                        assert!(result.is_err(), "seed {seed}, failed sequence {failed_sequence}");
+                        assert_eq!(relay_state(&connection).unwrap().1, failed_sequence as i64 - 1,
+                            "seed {seed}: later successful parallel downloads must not hide a hole");
+                        assert!(!checkpoint_safe(&connection).unwrap());
+                    }
+                }
+            }
+        }
+    }
+
 }

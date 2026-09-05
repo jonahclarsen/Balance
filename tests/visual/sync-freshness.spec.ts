@@ -46,6 +46,7 @@ test.beforeEach(async ({ page }) => {
       __storedState: string
       __taskDisappeared: boolean
       __TAURI_INTERNALS__: {
+        metadata: { currentWindow: { label: string }, currentWebview: { label: string } }
         invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
         transformCallback: () => number
       }
@@ -103,6 +104,7 @@ test.beforeEach(async ({ page }) => {
     runtime.__taskDisappeared = false
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       transformCallback: () => 1,
       invoke: async (command: string, args?: Record<string, unknown>) => {
         switch (command) {
@@ -599,4 +601,147 @@ test('a manual sync still uses the subtle syncing status', async ({ page }) => {
     initialSyncComplete: true,
   })
   await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
+})
+
+for (const reason of ['resume', 'focus', 'manual']) {
+  test(`${reason} refreshes task completion already consumed by native background sync`, async ({ page }) => {
+    await page.goto('/?launch-then-hold=1')
+    await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+    const result = await page.evaluate(async (reason) => {
+      const runtime = globalThis as typeof globalThis & {
+        __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+        __storedState: string
+      }
+      const original = runtime.__TAURI_INTERNALS__.invoke
+      const backgroundState = JSON.parse(runtime.__storedState)
+      backgroundState.plans[0].items[0].done = true
+      runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+        if (command === 'read_app_state') return JSON.stringify(backgroundState)
+        if (command === 'sync_relay_once') return {
+          pulledOperations: 0, pushedOperations: 0, stateChanged: false,
+          checkpointCommitted: false, epoch: 'synthetic', latestSequence: 2,
+        }
+        return original(command, args)
+      }
+      const schedulerPath = '/src/lib/syncScheduler.ts'
+      const storePath = '/src/lib/store.ts'
+      const { requestSync } = await import(/* @vite-ignore */ schedulerPath)
+      const { plannerStore } = await import(/* @vite-ignore */ storePath)
+      await requestSync(reason)
+      let done = false
+      plannerStore.subscribe((state: { plans: Array<{ items: Array<{ done: boolean }> }> }) => {
+        done = state.plans[0].items[0].done
+      })()
+      return done
+    }, reason)
+    expect(result).toBe(true)
+  })
+}
+
+for (const failFollowup of [false, true]) {
+  test(`manual sync waits for its queued pass and reports its ${failFollowup ? 'failure' : 'result'}`, async ({ page }) => {
+    await page.goto('/?launch-then-hold=1')
+    await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+    const outcome = await page.evaluate(async (failFollowup) => {
+      const runtime = globalThis as typeof globalThis & {
+        __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+      }
+      const original = runtime.__TAURI_INTERNALS__.invoke
+      const gates: Array<() => void> = []
+      let calls = 0
+      runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+        if (command !== 'sync_relay_once') return original(command, args)
+        const pass = ++calls
+        await new Promise<void>((resolve) => gates.push(resolve))
+        if (pass === 2 && failFollowup) throw new Error('Synthetic queued upload failure')
+        return { pulledOperations: 0, pushedOperations: pass - 1, stateChanged: false,
+          checkpointCommitted: false, epoch: 'synthetic', latestSequence: pass }
+      }
+      const schedulerPath = '/src/lib/syncScheduler.ts'
+      const { requestSync } = await import(/* @vite-ignore */ schedulerPath)
+      const until = async (predicate: () => boolean) => {
+        for (let i = 0; i < 100 && !predicate(); i++) await new Promise((resolve) => setTimeout(resolve, 1))
+        if (!predicate()) throw new Error('Synthetic sync gate was never reached')
+      }
+      const first = requestSync('poll')
+      await until(() => gates.length === 1)
+      let manualSettled = false
+      const manual = requestSync('manual').then((result: unknown) => { manualSettled = true; return result })
+      gates[0]()
+      await first
+      await until(() => gates.length === 2)
+      const settledBeforeFollowup = manualSettled
+      gates[1]()
+      const result = await manual
+      return { settledBeforeFollowup, result }
+    }, failFollowup)
+    expect(outcome.settledBeforeFollowup).toBe(false)
+    if (failFollowup) expect(outcome.result).toBeNull()
+    else expect(outcome.result).toMatchObject({ pushedOperations: 1, latestSequence: 2 })
+  })
+}
+
+test('seeded edit and manual-sync timings converge after an overlapping upload', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+  const failures = await page.evaluate(async () => {
+    const runtime = globalThis as typeof globalThis & {
+      __storedState: string
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+    }
+    const original = runtime.__TAURI_INTERNALS__.invoke
+    const schedulerPath = '/src/lib/syncScheduler.ts'
+    const storePath = '/src/lib/store.ts'
+    const { requestSync } = await import(/* @vite-ignore */ schedulerPath)
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    let random = 0x51c0ffee
+    const next = () => { random = (Math.imul(random, 1664525) + 1013904223) >>> 0; return random }
+    const delay = () => new Promise<void>((resolve) => setTimeout(resolve, next() % 7))
+    const failures: Array<{ seed: number, stage: number, wanted: boolean, uploaded: boolean }> = []
+    let uploaded = false
+    let gate: (() => void) | null = null
+    let holdNext = false
+    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command !== 'sync_relay_once') return original(command, args)
+      const snapshot = JSON.parse(runtime.__storedState).plans[0].items[0].done as boolean
+      if (holdNext) {
+        holdNext = false
+        await new Promise<void>((resolve) => { gate = resolve })
+      }
+      uploaded = snapshot
+      return { pulledOperations: 0, pushedOperations: 1, stateChanged: false,
+        checkpointCommitted: false, epoch: 'synthetic', latestSequence: 1 }
+    }
+    for (let seed = 0; seed < 24; seed++) {
+      const stage = next() % 3
+      const wanted = !uploaded
+      const edit = async () => {
+        plannerStore.patchPlanItem('local-plan', 'visible-item', { done: wanted })
+        await plannerStore.flushPendingOperations()
+      }
+      if (stage === 0) await edit()
+      gate = null
+      holdNext = true
+      const first = requestSync('poll')
+      for (let i = 0; i < 100 && !gate; i++) await delay()
+      if (!gate) throw new Error(`Seed ${seed}: upload did not start`)
+      if (stage === 1) await edit()
+      await delay()
+      if (stage === 2) {
+        ;(gate as () => void)()
+        await first
+        await edit()
+      }
+      const manual = requestSync('manual')
+      const duplicateManual = requestSync('manual')
+      if (stage !== 2) (gate as () => void)()
+      await Promise.all([first, manual, duplicateManual])
+      if (uploaded !== wanted) failures.push({ seed, stage, wanted, uploaded })
+      // Drain any queued pass before the next independent trace, including on
+      // baseline code where manual callers resolve before their pass finishes.
+      await delay()
+    }
+    return failures
+  })
+  expect(failures).toEqual([])
 })

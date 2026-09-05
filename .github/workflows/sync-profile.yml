@@ -1,4 +1,4 @@
-name: Profile sync empty polls
+name: Sync convergence and race tests
 
 on:
   push:
@@ -14,6 +14,7 @@ on:
       - "pnpm-lock.yaml"
       - "src/lib/store.ts"
       - "src/lib/syncScheduler.ts"
+      - "src/lib/SyncPanel.svelte"
       - "src-tauri/src/lib.rs"
       - "src-tauri/src/sync/**"
       - "tests/visual/sync-freshness.spec.ts"
@@ -27,6 +28,7 @@ on:
       - "pnpm-lock.yaml"
       - "src/lib/store.ts"
       - "src/lib/syncScheduler.ts"
+      - "src/lib/SyncPanel.svelte"
       - "src-tauri/src/lib.rs"
       - "src-tauri/src/sync/**"
       - "tests/visual/sync-freshness.spec.ts"
@@ -37,8 +39,9 @@ permissions:
 
 jobs:
   frontend-reload:
-    name: Mobile sync reload races
+    name: Desktop and mobile sync reload races
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -64,12 +67,20 @@ jobs:
       - name: Check frontend types
         run: pnpm check
 
-      - name: Test mobile sync reload behavior
-        run: pnpm exec playwright test tests/visual/sync-freshness.spec.ts --project=mobile
+      - name: Test sync reload and manual completion races repeatedly
+        run: pnpm exec playwright test tests/visual/sync-freshness.spec.ts --repeat-each=3
+
+      - name: Upload failing browser traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: sync-freshness-traces
+          path: artifacts/playwright
 
   empty-poll:
     name: Empty manifest poll
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Check out repository
@@ -105,8 +116,9 @@ jobs:
             empty-poll-profile.txt
 
   large-task-sync:
-    name: Large workspace + two long tasks
+    name: Native convergence and large workspace
     runs-on: macos-15
+    timeout-minutes: 35
 
     steps:
       - name: Check out repository
