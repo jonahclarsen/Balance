@@ -1,6 +1,7 @@
 <script lang="ts">
   import ImageLayer from './lib/ImageLayer.svelte'
   import { blobDataURL, selectedImage } from './lib/imageService'
+  import { clipboardHasDirectImage, IMAGE_CLIPBOARD_TYPE } from './lib/imageMarkup'
   import { onBackButtonPress } from '@tauri-apps/api/app'
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
@@ -3513,6 +3514,9 @@ return rows`
       }
 
       if (key === 'v' && !event.shiftKey) {
+        // Let the installed WebView deliver its actual clipboard representations
+        // to the editor. Whole-item paste is handled from that paste event below.
+        if (isTauri() && isRichTextActive()) return
         event.preventDefault()
         if (activeItemSurface() === 'plan') void pasteSystemClipboard()
         else void pasteTemplateSystemClipboard()
@@ -4376,8 +4380,31 @@ return rows`
     scrollMovedItemsIntoView(surface satisfies ItemRowKind, rootIds, direction)
   }
 
-  async function pasteTemplateSystemClipboard() {
-    const clipboard = await readSystemClipboard()
+  async function handleNativeEditorPaste(event: ClipboardEvent) {
+    if (!isTauri() || !activeItemSurface() || !isRichTextActive() || hasActiveRichTextSelection() || !event.clipboardData || event.defaultPrevented) return
+    // Images go straight to the shared editor, just as they do in Notes. A
+    // separate pasteboard read can omit the raster representation WebKit offers.
+    if (clipboardHasDirectImage(event.clipboardData) || event.clipboardData.getData(IMAGE_CLIPBOARD_TYPE)) return
+    const editor = document.activeElement as HTMLElement
+    const context = activeItemContextKey()
+    const selection = document.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
+    const fallback: ClipboardContents = { structuredPayload: null, plainText: event.clipboardData.getData('text/plain'), html: event.clipboardData.getData('text/html') }
+    event.preventDefault()
+    event.stopImmediatePropagation()
+    let clipboard = await readSystemClipboard().catch(() => fallback)
+    // Preserve the event's rich text when there are no Balance rows to paste.
+    if (!clipboard.structuredPayload && (fallback.plainText || fallback.html)) clipboard = { ...clipboard, ...fallback }
+    if (document.activeElement !== editor || activeItemContextKey() !== context) return
+    if (range && editor.contains(range.commonAncestorContainer)) {
+      selection?.removeAllRanges(); selection?.addRange(range)
+    }
+    if (activeItemSurface() === 'plan') await pasteSystemClipboard(clipboard)
+    else await pasteTemplateSystemClipboard(clipboard)
+  }
+
+  async function pasteTemplateSystemClipboard(contents?: ClipboardContents) {
+    const clipboard = contents ?? await readSystemClipboard()
     const structured = parseTemplateItemClipboard(clipboard.structuredPayload)
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
@@ -4403,11 +4430,11 @@ return rows`
     if (structured.cut) writeTemplateItemsToSystemClipboard({ ...structured, cut: false })
   }
 
-  async function pasteSystemClipboard() {
+  async function pasteSystemClipboard(contents?: ClipboardContents) {
     // Read this before the asynchronous clipboard request: native pasteboard access can
     // briefly disturb the DOM selection even though the user has not moved the caret.
     const pasteBeforeItemId = planItemIdWithCaretAtStart()
-    const clipboard = await readSystemClipboard()
+    const clipboard = contents ?? await readSystemClipboard()
     const structured = parsePlanItemClipboard(clipboard.structuredPayload)
     if (structured) {
       pastePlanItemClipboard(structured, pasteBeforeItemId)
@@ -5355,6 +5382,7 @@ return rows`
 
 <svelte:window
   on:keydown|capture={handleGlobalKeydown}
+  on:paste|capture={handleNativeEditorPaste}
   on:keyup|capture={handleGlobalKeyup}
   on:focusin={handleGlobalFocusIn}
   on:scroll={handleWindowScroll}
