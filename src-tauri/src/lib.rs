@@ -3780,13 +3780,6 @@ fn persist_operation_once(
         .transaction()
         .map_err(|error| error.to_string())?;
 
-    if sync::local_operation_is_durable_retry(&tx, operation).map_err(sync::Error::into_string)? {
-        return Ok(());
-    }
-    let causal_operation = sync::local_operation_with_causal_timestamp(&tx, operation)
-        .map_err(sync::Error::into_string)?;
-    let operation = &causal_operation;
-
     let operation_id = required_string(operation, "id")?;
     let operation_type = required_string(operation, "type")?;
     let siri_request = if operation_type == "add_plan_item_from_siri" {
@@ -3798,6 +3791,14 @@ fn persist_operation_once(
         if siri_request_processed(&tx, request_id)? {
             return Ok(false);
         }
+    }
+    if sync::local_operation_is_durable_retry(&tx, operation).map_err(sync::Error::into_string)? {
+        return Ok(true);
+    }
+    let causal_operation = sync::local_operation_with_causal_timestamp(&tx, operation)
+        .map_err(sync::Error::into_string)?;
+    let operation = &causal_operation;
+    if let Some(request_id) = siri_request {
         set_metadata(&tx, &format!("siri_request:{request_id}"), "1")?;
     }
     let existing_history = history_entry_for_operation(&tx, operation_id)?;
@@ -10900,6 +10901,7 @@ mod tests {
         let mut connection = open_database_at(&database.path, &key).unwrap();
         let state = test_state("Synthetic original day");
         replace_app_state(&mut connection, &state).unwrap();
+        set_metadata(&connection, "sync_enabled", "true").unwrap();
         let mut plan = state["plans"][0].clone();
         plan["id"] = json!("siri-next-plan");
         plan["date"] = json!("2026-05-22");
