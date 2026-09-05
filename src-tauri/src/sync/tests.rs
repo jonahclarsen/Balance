@@ -2706,8 +2706,8 @@ fn a_relay_only_ever_holds_ciphertext_and_never_echoes_a_device_its_own_push() {
 /// A later action must win over an observed edit despite wall-clock skew.
 #[test]
 fn causal_completion_edits_converge_across_clock_skew_and_equal_timestamps() {
-    use rand::{rngs::StdRng, Rng, SeedableRng};
     use rand::seq::SliceRandom;
+    use rand::{rngs::StdRng, Rng, SeedableRng};
     let mut random = StdRng::seed_from_u64(0x5eed_c10c);
     for case in 0..32 {
         let sa = Scratch::new("causal-completion-desktop");
@@ -2717,25 +2717,48 @@ fn causal_completion_edits_converge_across_clock_skew_and_equal_timestamps() {
         enable_primary(&desktop).unwrap();
         enable_joiner(&phone).unwrap();
         merge_and_rematerialize(&phone, all_ops(&desktop).unwrap()).unwrap();
-        let completion = |id: &str, device: &str, timestamp: String, done| json!({
-            "id": id, "deviceId": device, "sequence": 1,
-            "type": "patch_plan_item", "timestamp": timestamp,
-            "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": done}}
-        });
-        persist_operation_to_database(&mut desktop, &completion(
-            "desktop-unchecks", "zz-desktop", "2026-09-05T12:00:00.000Z".into(), false,
-        )).unwrap();
+        let completion = |id: &str, device: &str, timestamp: String, done| {
+            json!({
+                "id": id, "deviceId": device, "sequence": 1,
+                "type": "patch_plan_item", "timestamp": timestamp,
+                "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": done}}
+            })
+        };
+        persist_operation_to_database(
+            &mut desktop,
+            &completion(
+                "desktop-unchecks",
+                "zz-desktop",
+                "2026-09-05T12:00:00.000Z".into(),
+                false,
+            ),
+        )
+        .unwrap();
         merge_and_rematerialize(&phone, all_ops(&desktop).unwrap()).unwrap();
         // Equal milliseconds, one millisecond, and seeded skew up to ten minutes.
-        let skew_ms = match case { 0 => 0, 1 => 1, _ => random.gen_range(1..600_000) };
+        let skew_ms = match case {
+            0 => 0,
+            1 => 1,
+            _ => random.gen_range(1..600_000),
+        };
         let timestamp = (chrono::DateTime::parse_from_rfc3339("2026-09-05T12:00:00.000Z").unwrap()
-            - chrono::Duration::milliseconds(skew_ms)).to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            - chrono::Duration::milliseconds(skew_ms))
+        .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let edit = completion("phone-checks", "aa-phone", timestamp, true);
         persist_operation_to_database(&mut phone, &edit).unwrap();
         let before_retry = all_ops(&phone).unwrap();
         persist_operation_to_database(&mut phone, &edit).unwrap();
-        assert_eq!(all_ops(&phone).unwrap().iter().map(|op| (&op.id, &op.timestamp)).collect::<Vec<_>>(),
-            before_retry.iter().map(|op| (&op.id, &op.timestamp)).collect::<Vec<_>>());
+        assert_eq!(
+            all_ops(&phone)
+                .unwrap()
+                .iter()
+                .map(|op| (&op.id, &op.timestamp))
+                .collect::<Vec<_>>(),
+            before_retry
+                .iter()
+                .map(|op| (&op.id, &op.timestamp))
+                .collect::<Vec<_>>()
+        );
         for round in 0..3 {
             let mut from_phone = all_ops(&phone).unwrap();
             let mut from_desktop = all_ops(&desktop).unwrap();
@@ -2743,12 +2766,248 @@ fn causal_completion_edits_converge_across_clock_skew_and_equal_timestamps() {
             from_desktop.shuffle(&mut random);
             merge_and_rematerialize(&desktop, from_phone).unwrap();
             merge_and_rematerialize(&phone, from_desktop).unwrap();
-            assert_eq!(local_op_ids(&desktop).unwrap(), local_op_ids(&phone).unwrap());
+            assert_eq!(
+                local_op_ids(&desktop).unwrap(),
+                local_op_ids(&phone).unwrap()
+            );
             let a = read_app_state_from_database(&desktop).unwrap().unwrap();
             let b = read_app_state_from_database(&phone).unwrap().unwrap();
-            assert_eq!(domain(&a), domain(&b), "case {case}, skew {skew_ms} ms, successful sync round {round}");
-            assert_eq!(a["plans"][0]["items"][0]["children"][0]["done"], true,
-                "the causally later phone completion must survive");
+            assert_eq!(
+                domain(&a),
+                domain(&b),
+                "case {case}, skew {skew_ms} ms, successful sync round {round}"
+            );
+            assert_eq!(
+                a["plans"][0]["items"][0]["children"][0]["done"], true,
+                "the causally later phone completion must survive"
+            );
         }
     }
+}
+
+#[test]
+fn seeded_completion_delivery_schedules_match_full_replay() {
+    use rand::{rngs::StdRng, seq::SliceRandom, Rng, SeedableRng};
+    for seed in 0..16_u64 {
+        let mut rng = StdRng::seed_from_u64(0xd311_0000 + seed);
+        let paths = [
+            Scratch::new("schedule-desktop"),
+            Scratch::new("schedule-phone"),
+        ];
+        let mut devices = [
+            open_seeded(&paths[0].path, "schedule-a", &cut_paste_state("desktop")),
+            open_seeded(&paths[1].path, "schedule-b", &state("phone", json!([]))),
+        ];
+        enable_primary(&devices[0]).unwrap();
+        enable_joiner(&devices[1]).unwrap();
+        merge_and_rematerialize(&devices[1], all_ops(&devices[0]).unwrap()).unwrap();
+        let mut sequences = [0, 0];
+        for step in 0..48 {
+            let writer = rng.gen_range(0..2);
+            sequences[writer] += 1;
+            let clock = chrono::DateTime::parse_from_rfc3339("2026-09-05T12:00:00.000Z").unwrap()
+                + chrono::Duration::milliseconds(rng.gen_range(-300_000..300_000));
+            persist_operation_to_database(&mut devices[writer], &json!({
+                "id": format!("schedule-{seed}-{writer}-{}", sequences[writer]),
+                "deviceId": if writer == 0 { "desktop" } else { "phone" },
+                "sequence": sequences[writer], "type": "patch_plan_item",
+                "timestamp": clock.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                "payload": {"planId": "cut-paste-plan", "itemId": if rng.gen_bool(0.5) { "original-task-a" } else { "original-task-b" },
+                    "patch": {"done": rng.gen_bool(0.5)}}
+            })).unwrap();
+            // Seeded partitions, delayed subsets, reordering, and retransmission.
+            if rng.gen_bool(0.6) {
+                let source = rng.gen_range(0..2);
+                let mut batch = all_ops(&devices[source]).unwrap();
+                batch.shuffle(&mut rng);
+                batch.truncate(rng.gen_range(0..=batch.len()));
+                merge_and_rematerialize(&devices[1 - source], batch.clone()).unwrap();
+                if rng.gen_bool(0.5) {
+                    merge_and_rematerialize(&devices[1 - source], batch).unwrap();
+                }
+            }
+            if step % 12 == 11 {
+                let a = all_ops(&devices[0]).unwrap();
+                let b = all_ops(&devices[1]).unwrap();
+                merge_and_rematerialize(&devices[0], b).unwrap();
+                merge_and_rematerialize(&devices[1], a).unwrap();
+                let expected = domain(&read_app_state_from_database(&devices[0]).unwrap().unwrap());
+                for device in &devices {
+                    assert_eq!(
+                        domain(&read_app_state_from_database(device).unwrap().unwrap()),
+                        expected,
+                        "seed {seed}, step {step}"
+                    );
+                    rematerialize(device).unwrap();
+                    assert_eq!(
+                        domain(&read_app_state_from_database(device).unwrap().unwrap()),
+                        expected,
+                        "full replay seed {seed}, step {step}"
+                    );
+                }
+                checkpoint_operation_log(&devices[0]).unwrap();
+                merge_and_rematerialize(&devices[1], all_ops(&devices[0]).unwrap()).unwrap();
+                assert_eq!(
+                    domain(&read_app_state_from_database(&devices[1]).unwrap().unwrap()),
+                    expected
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn native_undo_redo_follow_the_observed_causal_clock() {
+    let path = Scratch::new("history-causal-clock");
+    let mut db = open_seeded(&path.path, "history-clock", &cut_paste_state("phone"));
+    enable_primary(&db).unwrap();
+    persist_operation_to_database(&mut db, &json!({
+        "id": "future-completion", "deviceId": "phone", "sequence": 1,
+        "timestamp": "2099-01-01T00:00:00.000Z", "type": "patch_plan_item",
+        "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": true}}
+    })).unwrap();
+    for undo in [true, false] {
+        let prior = all_ops(&db)
+            .unwrap()
+            .into_iter()
+            .map(|op| op.timestamp)
+            .max()
+            .unwrap();
+        if undo {
+            crate::undo_last_operation_in_database(&mut db)
+                .unwrap()
+                .unwrap();
+        } else {
+            crate::redo_last_operation_in_database(&mut db)
+                .unwrap()
+                .unwrap();
+        }
+        let last = all_ops(&db)
+            .unwrap()
+            .into_iter()
+            .filter(|op| op.sequence > 1)
+            .max_by_key(|op| op.sequence)
+            .unwrap();
+        assert!(
+            last.timestamp > prior,
+            "native history action must follow the future observed clock"
+        );
+        let expected = domain(&read_app_state_from_database(&db).unwrap().unwrap());
+        rematerialize(&db).unwrap();
+        assert_eq!(
+            domain(&read_app_state_from_database(&db).unwrap().unwrap()),
+            expected
+        );
+    }
+}
+
+#[test]
+fn retrying_an_older_local_completion_cannot_reapply_it_after_a_newer_edit() {
+    let path = Scratch::new("interleaved-completion-retry");
+    let mut db = open_seeded(&path.path, "retry-clock", &cut_paste_state("phone"));
+    enable_primary(&db).unwrap();
+    let first = json!({
+        "id": "first-completion", "deviceId": "phone", "sequence": 1,
+        "timestamp": "2026-09-05T12:00:00.000Z", "type": "patch_plan_item",
+        "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": true}}
+    });
+    let mut second = first.clone();
+    second["id"] = json!("second-completion");
+    second["sequence"] = json!(2);
+    second["payload"]["patch"]["done"] = json!(false);
+    persist_operation_to_database(&mut db, &first).unwrap();
+    persist_operation_to_database(&mut db, &second).unwrap();
+    let expected = read_app_state_from_database(&db).unwrap().unwrap();
+    persist_operation_to_database(&mut db, &first).unwrap();
+    assert_eq!(
+        read_app_state_from_database(&db).unwrap().unwrap(),
+        expected
+    );
+    rematerialize(&db).unwrap();
+    assert_eq!(
+        domain(&read_app_state_from_database(&db).unwrap().unwrap()),
+        domain(&expected)
+    );
+}
+
+#[test]
+fn synced_operation_id_reuse_rejects_changed_content_without_mutation() {
+    let path = Scratch::new("immutable-sync-operation");
+    let mut db = open_seeded(&path.path, "immutable-clock", &cut_paste_state("phone"));
+    enable_primary(&db).unwrap();
+    let mut edit = json!({
+        "id": "immutable-completion", "deviceId": "phone", "sequence": 1,
+        "timestamp": "2026-09-05T12:00:00.000Z", "type": "patch_plan_item",
+        "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": true}}
+    });
+    persist_operation_to_database(&mut db, &edit).unwrap();
+    let before = read_app_state_from_database(&db).unwrap().unwrap();
+    edit["payload"]["patch"]["done"] = json!(false);
+    let error = persist_operation_to_database(&mut db, &edit).unwrap_err();
+    assert!(error.contains("new operation id"), "{error}");
+    assert_eq!(read_app_state_from_database(&db).unwrap().unwrap(), before);
+}
+
+#[test]
+fn causal_timestamps_sort_after_legacy_precision_and_timezone_offsets() {
+    for observed in [
+        "2026-09-05T12:00:00Z",
+        "2026-09-05T12:00:00.999999Z",
+        "2026-09-05T12:00:00.000+02:00",
+        "2026-09-05T12:00:00.000-07:00",
+    ] {
+        let path = Scratch::new("legacy-causal-clock");
+        let mut db = open_seeded(&path.path, "legacy-clock", &cut_paste_state("phone"));
+        enable_primary(&db).unwrap();
+        for (sequence, timestamp, done) in
+            [(1, observed, false), (2, "2026-09-05T11:59:59.000Z", true)]
+        {
+            persist_operation_to_database(&mut db, &json!({
+                "id": format!("legacy-{sequence}"), "deviceId": "phone", "sequence": sequence,
+                "timestamp": timestamp, "type": "patch_plan_item",
+                "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": done}}
+            })).unwrap();
+        }
+        let later = all_ops(&db)
+            .unwrap()
+            .into_iter()
+            .find(|op| op.sequence == 2)
+            .unwrap();
+        assert!(
+            later.timestamp.as_str() > observed,
+            "{} must sort after {observed}",
+            later.timestamp
+        );
+        let expected = domain(&read_app_state_from_database(&db).unwrap().unwrap());
+        rematerialize(&db).unwrap();
+        assert_eq!(
+            domain(&read_app_state_from_database(&db).unwrap().unwrap()),
+            expected
+        );
+    }
+}
+
+#[test]
+fn a_local_retry_after_checkpoint_does_not_resurrect_a_covered_edit() {
+    let path = Scratch::new("checkpoint-local-retry");
+    let mut db = open_seeded(&path.path, "checkpoint-retry", &cut_paste_state("phone"));
+    enable_primary(&db).unwrap();
+    let mut old = Value::Null;
+    for sequence in 1..=2 {
+        let edit = json!({
+            "id": format!("covered-{sequence}"), "deviceId": "phone", "sequence": sequence,
+            "timestamp": "2026-09-05T12:00:00.000Z", "type": "patch_plan_item",
+            "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": sequence == 1}}
+        });
+        persist_operation_to_database(&mut db, &edit).unwrap();
+        if sequence == 1 {
+            old = edit;
+        }
+    }
+    checkpoint_operation_log(&db).unwrap();
+    let before = read_app_state_from_database(&db).unwrap().unwrap();
+    let ids = local_op_ids(&db).unwrap();
+    persist_operation_to_database(&mut db, &old).unwrap();
+    assert_eq!(read_app_state_from_database(&db).unwrap().unwrap(), before);
+    assert_eq!(local_op_ids(&db).unwrap(), ids);
 }

@@ -745,3 +745,169 @@ test('seeded edit and manual-sync timings converge after an overlapping upload',
   })
   expect(failures).toEqual([])
 })
+
+test('partial native apply followed by a relay error still refreshes visible completion', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+  const outcome = await page.evaluate(async () => {
+    const runtime = globalThis as typeof globalThis & {
+      __storedState: string
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+    }
+    const original = runtime.__TAURI_INTERNALS__.invoke
+    let applied = false
+    let reads = 0
+    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === 'read_app_state') {
+        reads++
+        const state = JSON.parse(runtime.__storedState)
+        state.plans[0].items[0].done = applied
+        return JSON.stringify(state)
+      }
+      if (command === 'sync_relay_once') {
+        if (!applied) { applied = true; throw new Error('Synthetic second batch download failed') }
+        return { pulledOperations: 0, pushedOperations: 0, stateChanged: false,
+          checkpointCommitted: false, epoch: 'synthetic', latestSequence: 2 }
+      }
+      return original(command, args)
+    }
+    const schedulerPath = '/src/lib/syncScheduler.ts'
+    const storePath = '/src/lib/store.ts'
+    const { requestSync } = await import(/* @vite-ignore */ schedulerPath)
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    const failure = await requestSync('poll')
+    await requestSync('retry')
+    let done = false
+    plannerStore.subscribe((state: { plans: Array<{ items: Array<{ done: boolean }> }> }) => {
+      done = state.plans[0].items[0].done
+    })()
+    const recoveryReads = reads
+    await requestSync('poll')
+    await requestSync('poll')
+    return { failure, done, recoveryReads, emptyPollReads: reads - recoveryReads }
+  })
+  expect(outcome).toEqual({ failure: null, done: true, recoveryReads: 1, emptyPollReads: 0 })
+})
+
+test('an edit persisted during upload queues another pass before the debounce can be suspended', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+  // Pause browser timers: the persistence and network promises can finish, but
+  // the two-second edit timer cannot rescue a missing followup.
+  await page.clock.install()
+  await page.clock.pauseAt(new Date())
+  const outcome = await page.evaluate(async () => {
+    const runtime = globalThis as typeof globalThis & {
+      __storedState: string
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+    }
+    const original = runtime.__TAURI_INTERNALS__.invoke
+    let release: () => void = () => { throw new Error('Upload never started') }
+    let started: () => void = () => undefined
+    const uploadStarted = new Promise<void>((resolve) => { started = resolve })
+    let finished: () => void = () => undefined
+    const followupFinished = new Promise<void>((resolve) => { finished = resolve })
+    let calls = 0
+    let uploaded = false
+    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command !== 'sync_relay_once') return original(command, args)
+      const pass = ++calls
+      const snapshot = JSON.parse(runtime.__storedState).plans[0].items[0].done
+      if (pass === 1) await new Promise<void>((resolve) => { release = resolve; started() })
+      uploaded = snapshot
+      if (pass === 2) finished()
+      return { pulledOperations: 0, pushedOperations: 1, stateChanged: false,
+        checkpointCommitted: false, epoch: 'synthetic', latestSequence: pass }
+    }
+    const schedulerPath = '/src/lib/syncScheduler.ts'
+    const storePath = '/src/lib/store.ts'
+    const { requestSync, automaticSyncStatus } = await import(/* @vite-ignore */ schedulerPath)
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    const first = requestSync('poll')
+    await uploadStarted
+    plannerStore.patchPlanItem('local-plan', 'visible-item', { done: true })
+    await plannerStore.flushPendingOperations()
+    let pending = false
+    automaticSyncStatus.subscribe((status: { pending: boolean }) => { pending = status.pending })()
+    release()
+    await first
+    if (pending) await followupFinished
+    return { pending, uploaded, calls }
+  })
+  expect(outcome).toEqual({ pending: true, uploaded: true, calls: 2 })
+})
+
+for (const delayAcknowledgement of [false, true]) {
+  test(`text edits preserve immutable operation IDs ${delayAcknowledgement ? 'during' : 'after'} persistence acknowledgement`, async ({ page }) => {
+    await page.goto('/?launch-then-hold=1')
+    await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+    const outcome = await page.evaluate(async (delayAcknowledgement) => {
+      const runtime = globalThis as typeof globalThis & {
+        __storedState: string
+        __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+      }
+      const original = runtime.__TAURI_INTERNALS__.invoke
+      const operations: Array<{ id: string, payload: { patch: { text: string } } }> = []
+      let release: () => void = () => undefined
+      let committed: () => void = () => undefined
+      const firstCommitted = new Promise<void>((resolve) => { committed = resolve })
+      runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+        if (command !== 'persist_operation') return original(command, args)
+        operations.push(JSON.parse(String(args?.operationJson)))
+        const result = await original(command, args)
+        if (operations.length === 1) {
+          if (delayAcknowledgement) await new Promise<void>((resolve) => { release = resolve; committed() })
+          else committed()
+        }
+        return result
+      }
+      const storePath = '/src/lib/store.ts'
+      const { plannerStore } = await import(/* @vite-ignore */ storePath)
+      plannerStore.patchPlanItem('local-plan', 'visible-item', { text: 'First text', html: 'First text' })
+      const firstFlush = plannerStore.flushPendingOperations()
+      await firstCommitted
+      if (!delayAcknowledgement) await firstFlush
+      plannerStore.patchPlanItem('local-plan', 'visible-item', { text: 'Later text', html: 'Later text' })
+      release()
+      await firstFlush
+      await plannerStore.flushPendingOperations()
+      return { ids: operations.map((op) => op.id), texts: operations.map((op) => op.payload.patch.text),
+        storedText: JSON.parse(runtime.__storedState).plans[0].items[0].text }
+    }, delayAcknowledgement)
+    expect(outcome.texts).toEqual(['First text', 'Later text'])
+    expect(new Set(outcome.ids).size).toBe(2)
+    expect(outcome.storedText).toBe('Later text')
+  })
+}
+
+test('a lost persistence acknowledgement retries the original payload and gives later text a new ID', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+  const outcome = await page.evaluate(async () => {
+    const runtime = globalThis as typeof globalThis & {
+      __storedState: string
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+    }
+    const original = runtime.__TAURI_INTERNALS__.invoke
+    const operations: Array<{ id: string, payload: { patch: { text: string } } }> = []
+    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command !== 'persist_operation') return original(command, args)
+      operations.push(JSON.parse(String(args?.operationJson)))
+      const result = await original(command, args)
+      if (operations.length === 1) throw new Error('Synthetic acknowledgement lost after commit')
+      return result
+    }
+    const storePath = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ storePath)
+    plannerStore.patchPlanItem('local-plan', 'visible-item', { text: 'First text', html: 'First text' })
+    await plannerStore.flushPendingOperations().catch(() => undefined)
+    plannerStore.patchPlanItem('local-plan', 'visible-item', { text: 'Later text', html: 'Later text' })
+    await plannerStore.flushPendingOperations()
+    return { ids: operations.map((op) => op.id), texts: operations.map((op) => op.payload.patch.text),
+      storedText: JSON.parse(runtime.__storedState).plans[0].items[0].text }
+  })
+  expect(outcome.texts).toEqual(['First text', 'First text', 'Later text'])
+  expect(outcome.ids[0]).toBe(outcome.ids[1])
+  expect(outcome.ids[2]).not.toBe(outcome.ids[0])
+  expect(outcome.storedText).toBe('Later text')
+})

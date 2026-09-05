@@ -491,6 +491,9 @@ async function flushOperationsNow(): Promise<void> {
     while (pendingOperations.size > 0) {
       const operations = [...pendingOperations.values()].sort((a, b) => a.sequence - b.sequence)
       pendingOperations.clear()
+      // A failed acknowledgement may still follow a committed native write.
+      // Retried IDs must retain the exact payload submitted on this attempt.
+      lastOperationMergeKey = null
 
       for (let index = 0; index < operations.length; index += 1) {
         const operation = operations[index]
@@ -629,6 +632,10 @@ function createPlannerStore() {
         Boolean(options.mergeKey) &&
         lastOperationMergeKey === options.mergeKey &&
         lastOperation !== undefined &&
+        // Native persistence can commit before its IPC acknowledgement returns.
+        // Once flush removes an operation from the pending map, its ID/payload
+        // is immutable, even while that native call is still in flight.
+        (persistenceTarget === 'localStorage' || pendingOperations.has(lastOperation.id)) &&
         now - lastOperationMergeUpdatedAt <= (options.mergeWindowMs ?? 0)
       const sequence = canMergeOperation ? lastOperation.sequence : state.localSequence + 1
       const entityChanges = composeEntityChanges(

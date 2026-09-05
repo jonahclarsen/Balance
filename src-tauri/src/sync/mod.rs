@@ -519,6 +519,101 @@ fn compare_canonical(left: &Op, right: &Op) -> Ordering {
         .then_with(|| left.id.cmp(&right.id))
 }
 
+/// An acknowledged local edit is immutable, including after checkpointing.
+pub(crate) fn local_operation_is_durable_retry(
+    conn: &Connection,
+    operation: &JsonValue,
+) -> Result<bool> {
+    if !is_sync_enabled(conn)? {
+        return Ok(false);
+    }
+    let device_id = crate::required_string(operation, "deviceId").map_err(Error::Codec)?;
+    let sequence = crate::required_i64(operation, "sequence").map_err(Error::Codec)?;
+    let covered: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sync_frontiers WHERE device_id = ?1 AND sequence >= ?2)",
+        params![device_id, sequence],
+        |row| row.get(0),
+    )?;
+    if covered {
+        // A checkpoint can compact a durable edit before its caller retries.
+        // Its frontier is the durable acknowledgement after the row is gone.
+        return Ok(true);
+    }
+    let id = crate::required_string(operation, "id").map_err(Error::Codec)?;
+    let existing = conn.query_row(
+        "SELECT id, device_id, sequence, type, timestamp, payload_json FROM operations WHERE id = ?1",
+        [id], row_to_op,
+    ).optional()?;
+    let Some(existing) = existing else {
+        return Ok(false);
+    };
+    let durable = op_value(&existing)?;
+    if ["deviceId", "sequence", "type", "payload"]
+        .iter()
+        .any(|field| durable[*field] != operation[*field])
+    {
+        return Err(Error::Codec(
+            "cannot change an already persisted sync operation; use a new operation id".into(),
+        ));
+    }
+    // The IPC timestamp can differ from the causal timestamp assigned when the
+    // operation became durable. Equal content is nevertheless the same write.
+    Ok(true)
+}
+
+/// Local edits are applied immediately, so their durable order must follow all
+/// operations the device has already observed. Wall clocks (including equal
+/// milliseconds on different devices) cannot supply that causal guarantee.
+pub(crate) fn local_operation_with_causal_timestamp(
+    conn: &Connection,
+    operation: &JsonValue,
+) -> Result<JsonValue> {
+    let mut operation = operation.clone();
+    if !is_sync_enabled(conn)? {
+        return Ok(operation);
+    }
+    let id = crate::required_string(&operation, "id").map_err(Error::Codec)?;
+    let prior: Option<String> = conn
+        .query_row(
+            "SELECT timestamp FROM operations WHERE id = ?1",
+            [id],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if let Some(timestamp) = prior {
+        // Retrying a durable write must not move it past later operations.
+        operation["timestamp"] = json!(timestamp);
+        return Ok(operation);
+    }
+    let timestamp = crate::required_string(&operation, "timestamp").map_err(Error::Codec)?;
+    let latest: Option<String> = conn.query_row(
+        "SELECT max(timestamp) FROM operations WHERE type != 'replace_full_state'",
+        [],
+        |row| row.get(0),
+    )?;
+    if let Some(last) = latest {
+        if timestamp <= last.as_str() {
+            let observed = chrono::DateTime::parse_from_rfc3339(&last).map_err(|error| {
+                Error::Codec(format!("invalid observed operation timestamp: {error}"))
+            })?;
+            let next = observed
+                .checked_add_signed(chrono::Duration::milliseconds(1))
+                .ok_or_else(|| Error::Codec("operation timestamp overflow".into()))?;
+            let mut next_timestamp = next.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            // Older operations may omit fractional seconds. Their trailing Z
+            // sorts after a decimal point, so move to the next whole second.
+            if next_timestamp <= last {
+                next_timestamp = observed
+                    .checked_add_signed(chrono::Duration::seconds(1))
+                    .ok_or_else(|| Error::Codec("operation timestamp overflow".into()))?
+                    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            }
+            operation["timestamp"] = json!(next_timestamp);
+        }
+    }
+    Ok(operation)
+}
+
 fn last_operation_canonical(conn: &Connection) -> Result<Option<Op>> {
     conn.query_row(
         "SELECT id, device_id, sequence, type, timestamp, payload_json

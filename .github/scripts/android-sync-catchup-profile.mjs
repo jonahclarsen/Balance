@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import http from 'node:http'
+import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
@@ -325,9 +326,11 @@ try {
         deviceId: 'catchup-primary',
         sequence: index,
         timestamp: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString(),
-        type: 'set_active_plan_date',
+        type: 'patch_plan_item',
         payload: {
-          date: '2026-01-' + String((index % 28) + 1).padStart(2, '0'),
+          planId: 'catchup-plan-' + Math.floor(offset / ${itemsPerPlan}),
+          itemId: 'catchup-item-' + Math.floor(offset / ${itemsPerPlan}) + '-' + (offset % ${itemsPerPlan}),
+          patch: { done: (offset % ${itemsPerPlan}) % 3 !== 0 },
         },
       }
     })
@@ -390,6 +393,32 @@ try {
     { reason: 'android-catchup-profile-foreground' },
   )`)
   const foregroundCatchupMs = Math.round(performance.now() - foregroundStarted)
+  // Successful HTTP is insufficient: compare the complete synthetic plan
+  // state after a real WorkManager pass and foreground catch-up. Each of the
+  // 66 distinct batches flips a task, including both check and uncheck edits.
+  const finalState = JSON.parse(await client.evaluate(
+    `window.__TAURI_INTERNALS__.invoke('read_app_state')`,
+  ))
+  const expectedPlans = syntheticState().plans
+  for (let offset = 0; offset < batchCount; offset += 1) {
+    const item = expectedPlans[Math.floor(offset / itemsPerPlan)].items[offset % itemsPerPlan]
+    item.done = !item.done
+  }
+  // Readback normalizes optional fields; compare every seeded field while
+  // allowing the native reader to supply additional schema defaults.
+  for (const expectedPlan of expectedPlans) {
+    const actualPlan = finalState.plans.find((plan) => plan.id === expectedPlan.id)
+    assert(actualPlan, `Missing synthetic plan ${expectedPlan.id}`)
+    assert.equal(actualPlan.items.length, expectedPlan.items.length)
+    for (const expectedItem of expectedPlan.items) {
+      const actualItem = actualPlan.items.find((item) => item.id === expectedItem.id)
+      assert(actualItem, `Missing synthetic task ${expectedItem.id}`)
+      for (const [field, value] of Object.entries(expectedItem)) {
+        assert.deepEqual(actualItem[field], value, `${expectedItem.id}.${field}`)
+      }
+    }
+  }
+  assert.equal(finalState.activePlanDate, '2026-12-31', 'Catch-up erased the joiner local edit')
   const report = {
     batchCount,
     fixturePlans,
@@ -398,9 +427,13 @@ try {
     foregroundCatchupMs,
     foregroundPulledOperations: result.pulledOperations,
     backgroundMadeProgress: result.pulledOperations < batchCount + 1,
+    verifiedTaskCompletions: batchCount,
+    verifiedPlanItems: fixturePlans * itemsPerPlan,
+    joinerLocalEditPreserved: true,
   }
   await writeFile('android-sync-catchup-profile.json', `${JSON.stringify(report, null, 2)}\n`)
   console.log(`[sync-catchup-profile] ${JSON.stringify(report)}`)
+  assert(report.backgroundMadeProgress, 'WorkManager made no progress before foreground catch-up')
 } finally {
   try {
     await writeFile('android-sync-catchup-logcat.txt', adb(['logcat', '-d'], { allowFailure: true }))

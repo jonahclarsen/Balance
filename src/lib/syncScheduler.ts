@@ -38,12 +38,16 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
 
 let running: Promise<SyncPassResult | null> | null = null
 let queuedReason: string | null = null
+let queuedPromise: Promise<SyncPassResult | null> | null = null
+let resolveQueued: ((result: SyncPassResult | null | PromiseLike<SyncPassResult | null>) => void) | null = null
 let editTimer: ReturnType<typeof setTimeout> | null = null
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let retryTimer: ReturnType<typeof setTimeout> | null = null
 let retryMs = 5_000
 let lastChangeAt = 0
 let automaticSyncStarted = false
+let backendRefreshPending = false
+let uploadStarted = false
 
 function pollDelay(): number {
   if (document.visibilityState !== 'visible') return BACKGROUND_POLL_MS
@@ -76,15 +80,19 @@ async function configured(): Promise<boolean> {
 }
 
 function requiresFollowup(reason: string): boolean {
-  return ['edit', 'manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
+  return ['edit', 'manual', 'resume', 'focus', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
 }
 
 function shouldShowActivity(reason: string): boolean {
   return ['launch', 'manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
 }
 
-async function reloadVisibleStateAfterLaunch(reason: string, stateChanged: boolean): Promise<void> {
-  if (reason === 'launch' || stateChanged) await plannerStore.reloadFromBackend()
+function refreshesVisibleState(reason: string): boolean {
+  return ['launch', 'resume', 'focus', 'manual'].includes(reason)
+}
+
+async function reloadVisibleState(reason: string, stateChanged: boolean): Promise<void> {
+  if (refreshesVisibleState(reason) || stateChanged) await plannerStore.reloadFromBackend()
 }
 
 function scheduleRetry(): void {
@@ -99,13 +107,19 @@ function scheduleRetry(): void {
 
 export async function requestSync(reason: string): Promise<SyncPassResult | null> {
   if (running) {
-    if (requiresFollowup(reason)) queuedReason = reason
+    if (requiresFollowup(reason)) {
+      // Keep an explicit refresh when an edit joins the same queued pass.
+      if (!queuedReason || !refreshesVisibleState(queuedReason) || reason === 'manual') queuedReason = reason
+      if (!queuedPromise) {
+        queuedPromise = new Promise((resolve) => { resolveQueued = resolve })
+      }
+    }
     automaticSyncStatus.update((status) => ({
       ...status,
       pending: Boolean(queuedReason),
       showActivity: status.showActivity || shouldShowActivity(reason),
     }))
-    return running
+    return requiresFollowup(reason) ? queuedPromise : running
   }
   running = (async () => {
     // initialSyncComplete is a launch latch. Routine polls, resumes, and edits
@@ -169,11 +183,13 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       // frontend is durable, or an incoming checkpoint can replace its older
       // database state before the pending operation is applied.
       await plannerStore.flushPendingOperations()
+      uploadStarted = true
       const result = await syncRelayOnce(reason)
-      // A due WorkManager pass may have updated the database immediately before
-      // this foreground pass. Reload on launch even when this pass sees no new
-      // operations so the WebView cannot keep showing the pre-sync snapshot.
-      await reloadVisibleStateAfterLaunch(reason, result.stateChanged)
+      // WorkManager or an inbound direct sync can update the database without
+      // this WebView observing it. A no-op relay pass does not imply that the
+      // visible state is current when returning to the app or syncing manually.
+      await reloadVisibleState(reason, result.stateChanged || backendRefreshPending)
+      backendRefreshPending = false
       if (hasActualChanges(result)) {
         lastChangeAt = Date.now()
         schedulePoll()
@@ -193,12 +209,15 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       })
       return result
     } catch (error) {
-      if (reason === 'launch') {
-        try {
-          await plannerStore.reloadFromBackend()
-        } catch (reloadError) {
-          console.error('Could not refresh visible state after launch sync failed', reloadError)
-        }
+      // A failed pass can still have committed earlier incoming batches. Its
+      // error carries no stateChanged flag, so refresh once and retain a latch
+      // if that read fails too. Empty successful polls remain read-free.
+      backendRefreshPending = true
+      try {
+        await plannerStore.reloadFromBackend()
+        backendRefreshPending = false
+      } catch (reloadError) {
+        console.error('Could not refresh visible state after sync failed', reloadError)
       }
       const message = syncErrorMessage(error)
       automaticSyncStatus.update((status) => ({
@@ -217,9 +236,15 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
   const finish = () => {
     if (running !== current) return
     running = null
+    uploadStarted = false
     const followup = queuedReason
+    const settleFollowup = resolveQueued
     queuedReason = null
-    if (followup) void requestSync(followup)
+    queuedPromise = null
+    resolveQueued = null
+    // Manual callers must observe the pass requested after their click, not an
+    // older pass whose upload may already have missed their latest edit.
+    if (followup) settleFollowup?.(requestSync(followup))
   }
   void current.then(finish, finish)
   return current
@@ -239,6 +264,13 @@ export function startAutomaticSync(): () => void {
 
   const triggerEdit = () => {
     if (editTimer) clearTimeout(editTimer)
+    editTimer = null
+    if (running && uploadStarted) {
+      // The active upload may already have captured its outbox. Queue now:
+      // Android can suspend the WebView before a debounce callback runs.
+      void requestSync('edit')
+      return
+    }
     editTimer = setTimeout(() => {
       editTimer = null
       void requestSync('edit')

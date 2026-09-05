@@ -1411,32 +1411,46 @@ mod tests {
                 let connection = relay_database();
                 set_relay_state(&connection, "epoch-1", 0).unwrap();
                 let key = SyncKey::generate();
-                let ciphertext = seal(&key, &RelayEnvelope {
-                    v: PROTOCOL_VERSION,
-                    epoch: "epoch-1".into(),
-                    ops: Vec::new(),
-                }).unwrap();
-                let wrong_epoch = seal(&key, &RelayEnvelope {
-                    v: PROTOCOL_VERSION,
-                    epoch: "stale-epoch".into(),
-                    ops: Vec::new(),
-                }).unwrap();
+                let ciphertext = seal(
+                    &key,
+                    &RelayEnvelope {
+                        v: PROTOCOL_VERSION,
+                        epoch: "epoch-1".into(),
+                        ops: Vec::new(),
+                    },
+                )
+                .unwrap();
+                let wrong_epoch = seal(
+                    &key,
+                    &RelayEnvelope {
+                        v: PROTOCOL_VERSION,
+                        epoch: "stale-epoch".into(),
+                        ops: Vec::new(),
+                    },
+                )
+                .unwrap();
                 let manifest = Manifest {
                     epoch: "epoch-1".into(),
                     latest_sequence: BATCHES as i64,
                     checkpoint: None,
-                    batches: (1..=BATCHES).map(|sequence| BatchDescriptor {
-                        id: format!("batch-{sequence}"),
-                        sequence: sequence as i64,
-                        chunks: 1,
-                    }).collect(),
+                    batches: (1..=BATCHES)
+                        .map(|sequence| BatchDescriptor {
+                            id: format!("batch-{sequence}"),
+                            sequence: sequence as i64,
+                            chunks: 1,
+                        })
+                        .collect(),
                     compact_recommended: false,
                 };
                 for retry in [false, true] {
                     let cursor = relay_state(&connection).unwrap().1 as usize;
-                    let requests = if retry { BATCHES - cursor } else {
-                        failed_sequence.div_ceil(PARALLEL_BATCH_DOWNLOADS)
-                            .saturating_mul(PARALLEL_BATCH_DOWNLOADS).min(BATCHES)
+                    let requests = if retry {
+                        BATCHES - cursor
+                    } else {
+                        failed_sequence
+                            .div_ceil(PARALLEL_BATCH_DOWNLOADS)
+                            .saturating_mul(PARALLEL_BATCH_DOWNLOADS)
+                            .min(BATCHES)
                     };
                     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
                     let address = listener.local_addr().unwrap();
@@ -1473,17 +1487,29 @@ mod tests {
                             }
                         });
                     });
-                    let result = apply_manifest(&connection, &Client::new(),
-                        &format!("http://{address}"), &key, &manifest, "epoch-1");
+                    let result = apply_manifest(
+                        &connection,
+                        &Client::new(),
+                        &format!("http://{address}"),
+                        &key,
+                        &manifest,
+                        "epoch-1",
+                    );
                     server.join().unwrap();
                     if retry {
                         result.unwrap();
                         assert_eq!(relay_state(&connection).unwrap().1, BATCHES as i64);
                         assert!(checkpoint_safe(&connection).unwrap());
                     } else {
-                        assert!(result.is_err(), "seed {seed}, failed sequence {failed_sequence}");
-                        assert_eq!(relay_state(&connection).unwrap().1, failed_sequence as i64 - 1,
-                            "seed {seed}: later successful parallel downloads must not hide a hole");
+                        assert!(
+                            result.is_err(),
+                            "seed {seed}, failed sequence {failed_sequence}"
+                        );
+                        assert_eq!(
+                            relay_state(&connection).unwrap().1,
+                            failed_sequence as i64 - 1,
+                            "seed {seed}: later successful parallel downloads must not hide a hole"
+                        );
                         assert!(!checkpoint_safe(&connection).unwrap());
                     }
                 }
@@ -1491,4 +1517,132 @@ mod tests {
         }
     }
 
+    #[test]
+    fn partial_pull_can_change_task_before_error_then_retry_reports_no_change() {
+        use serde_json::json;
+        let mut connection = Connection::open_in_memory().unwrap();
+        crate::initialize_database(&connection).unwrap();
+        let fixture = json!({
+            "schemaVersion": 1, "deviceId": "desktop", "localSequence": 0,
+            "historyRevision": 0, "activePlanDate": "2026-09-05",
+            "templates": [], "goals": [], "goalCompletions": [],
+            "listTemplates": [], "lists": [], "metrics": [], "metricEntries": [],
+            "notes": [], "operations": [],
+            "plans": [{
+                "id": "plan", "date": "2026-09-05", "title": "Synthetic day",
+                "dailyReminder": "", "generatedFromTemplateId": null,
+                "createdAt": "2026-09-05T00:00:00Z",
+                "items": [{"id": "task", "text": "Synthetic task", "html": "Synthetic task",
+                    "done": false, "startMinutes": null, "endMinutes": null, "children": []}]
+            }]
+        });
+        crate::replace_app_state(&mut connection, &fixture).unwrap();
+        super::super::enable_primary(&connection).unwrap();
+        ensure_relay_tables(&connection).unwrap();
+        set_relay_state(&connection, "epoch-1", 0).unwrap();
+        mark_known(&connection, &all_ops(&connection).unwrap()).unwrap();
+        let completion = Op {
+            id: "phone-completion".into(),
+            device_id: "phone".into(),
+            sequence: 1,
+            op_type: "patch_plan_item".into(),
+            timestamp: "2026-09-05T12:00:00Z".into(),
+            payload_json: json!({"planId": "plan", "itemId": "task", "patch": {"done": true}})
+                .to_string(),
+        };
+        let key = SyncKey::generate();
+        let completion_blob = seal(
+            &key,
+            &RelayEnvelope {
+                v: PROTOCOL_VERSION,
+                epoch: "epoch-1".into(),
+                ops: vec![completion],
+            },
+        )
+        .unwrap();
+        let empty_blob = seal(
+            &key,
+            &RelayEnvelope {
+                v: PROTOCOL_VERSION,
+                epoch: "epoch-1".into(),
+                ops: vec![],
+            },
+        )
+        .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let server = std::thread::spawn(move || {
+            let mut fail_once = true;
+            for _ in 0..6 {
+                let (mut stream, _) = listener.accept().unwrap();
+                let mut request = [0_u8; 2048];
+                let length = stream.read(&mut request).unwrap();
+                let request = String::from_utf8_lossy(&request[..length]);
+                let path = request.split_whitespace().nth(1).unwrap();
+                let (status, bytes) = if path.starts_with("/v3/manifest?") {
+                    let cursor: i64 = path.split("after=").nth(1).unwrap().parse().unwrap();
+                    let batches: Vec<_> = (1..=2).filter(|sequence| *sequence > cursor)
+                        .map(|sequence| json!({"id": format!("batch-{sequence}"), "sequence": sequence, "chunks": 1})).collect();
+                    (
+                        "200 OK",
+                        serde_json::to_vec(&json!({"epoch": "epoch-1", "latestSequence": 2,
+                        "checkpoint": null, "batches": batches, "compactRecommended": false}))
+                        .unwrap(),
+                    )
+                } else if path == "/v3/blobs/batch-1/0" {
+                    ("200 OK", completion_blob.clone())
+                } else if path == "/v3/blobs/batch-2/0" && fail_once {
+                    fail_once = false;
+                    ("503 Service Unavailable", b"retry later".to_vec())
+                } else {
+                    assert_eq!(path, "/v3/blobs/batch-2/0");
+                    ("200 OK", empty_blob.clone())
+                };
+                write!(stream, "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", bytes.len()).unwrap();
+                stream.write_all(&bytes).unwrap();
+            }
+        });
+        let before = crate::read_app_state_from_database(&connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(before["plans"][0]["items"][0]["done"], false);
+        let first = sync_once(
+            &connection,
+            &format!("http://{address}"),
+            &key,
+            SyncOptions::foreground(false),
+        );
+        let error = first.unwrap_err();
+        assert!(error.to_string().contains("503"), "{error}");
+        let after_error = crate::read_app_state_from_database(&connection)
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            after_error["plans"][0]["items"][0]["done"], true,
+            "successful earlier batch already changed the task despite the failed pass"
+        );
+        assert_eq!(relay_state(&connection).unwrap().1, 1);
+        let retry = sync_once(
+            &connection,
+            &format!("http://{address}"),
+            &key,
+            SyncOptions::foreground(false),
+        )
+        .unwrap();
+        server.join().unwrap();
+        assert!(
+            !retry.state_changed,
+            "retry cannot report changes committed by the failed pass"
+        );
+        assert_eq!(retry.pulled_operations, 0);
+        assert_eq!(relay_state(&connection).unwrap().1, 2);
+        assert_eq!(
+            crate::read_app_state_from_database(&connection)
+                .unwrap()
+                .unwrap()["plans"][0]["items"][0]["done"],
+            true
+        );
+        // Callers must refresh after an error: refreshing only when a later
+        // successful pass says state_changed leaves the old unchecked UI stale.
+    }
 }

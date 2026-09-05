@@ -3137,6 +3137,7 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
         create index if not exists idx_template_options_item on template_options(item_id, position);
         create index if not exists idx_plan_items_parent on plan_items(plan_id, parent_id, position);
         create index if not exists idx_operations_sequence on operations(sequence);
+        create index if not exists idx_operations_timestamp on operations(timestamp);
         create index if not exists idx_history_entries_undo on history_entries(undone, sequence, updated_at_ms);
         create index if not exists idx_state_entities_order on state_entities(collection, position, entity_key);
       ",
@@ -3734,6 +3735,13 @@ fn persist_operation_to_database(
     let tx = connection
         .transaction()
         .map_err(|error| error.to_string())?;
+
+    if sync::local_operation_is_durable_retry(&tx, operation).map_err(sync::Error::into_string)? {
+        return Ok(());
+    }
+    let causal_operation = sync::local_operation_with_causal_timestamp(&tx, operation)
+        .map_err(sync::Error::into_string)?;
+    let operation = &causal_operation;
 
     let operation_id = required_string(operation, "id")?;
     let operation_type = required_string(operation, "type")?;
@@ -6462,6 +6470,8 @@ fn append_history_action_operation(
         },
     });
 
+    let operation = sync::local_operation_with_causal_timestamp(connection, &operation)
+        .map_err(sync::Error::into_string)?;
     upsert_operation(connection, &operation)?;
     set_metadata(
         connection,
