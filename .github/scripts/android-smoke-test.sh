@@ -429,6 +429,10 @@ for node in root.iter("node"):
     if x2 <= x1 or y2 <= y1 or node.attrib.get("enabled") != "true":
         continue
     class_name = node.attrib.get("class", "")
+    # WebView reports clipped buttons as enabled even when only a thin strip
+    # is visible. A tap on that strip may miss; let the caller scroll instead.
+    if "Button" in class_name and (x2 - x1 < 30 or y2 - y1 < 30):
+        continue
     score = 0
     if "EditText" in class_name:
         score += 20
