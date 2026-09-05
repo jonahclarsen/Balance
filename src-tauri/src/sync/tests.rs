@@ -2955,6 +2955,11 @@ fn causal_timestamps_sort_after_legacy_precision_and_timezone_offsets() {
         "2026-09-05T12:00:00.999999Z",
         "2026-09-05T12:00:00.000+02:00",
         "2026-09-05T12:00:00.000-07:00",
+        "unix-ms-1788609600000",
+        "unix-ms-9",
+        "unix-ms-18446744073709551615",
+        "previously-accepted-opaque-timestamp",
+        "opaque~ffffffffffffffff",
     ] {
         let path = Scratch::new("legacy-causal-clock");
         let mut db = open_seeded(&path.path, "legacy-clock", &cut_paste_state("phone"));
@@ -2984,6 +2989,81 @@ fn causal_timestamps_sort_after_legacy_precision_and_timezone_offsets() {
             domain(&read_app_state_from_database(&db).unwrap().unwrap()),
             expected
         );
+    }
+}
+
+#[test]
+fn phone_edits_after_native_undo_persist_and_converge() {
+    let a = Scratch::new("native-clock-desktop");
+    let b = Scratch::new("native-clock-phone");
+    let mut desktop = open_seeded(&a.path, "native-clock-a", &cut_paste_state("desktop"));
+    let mut phone = open_seeded(&b.path, "native-clock-b", &state("phone", json!([])));
+    enable_primary(&desktop).unwrap();
+    enable_joiner(&phone).unwrap();
+    persist_operation_to_database(&mut desktop, &json!({
+        "id": "desktop-check", "deviceId": "desktop", "sequence": 1,
+        "timestamp": "2026-09-05T12:00:00.000Z", "type": "patch_plan_item",
+        "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": true}}
+    })).unwrap();
+    crate::undo_last_operation_in_database(&mut desktop)
+        .unwrap()
+        .unwrap();
+    let native = all_ops(&desktop)
+        .unwrap()
+        .into_iter()
+        .find(|op| op.sequence == 2)
+        .unwrap();
+    assert!(native.timestamp.starts_with("unix-ms-"));
+    merge_and_rematerialize(&phone, all_ops(&desktop).unwrap()).unwrap();
+    let edit = json!({
+        "id": "phone-check-after-native-undo", "deviceId": "phone", "sequence": 1,
+        "timestamp": "2026-09-05T12:00:00.001Z", "type": "patch_plan_item",
+        "payload": {"planId": "cut-paste-plan", "itemId": "original-task-a", "patch": {"done": true}}
+    });
+    persist_operation_to_database(&mut phone, &edit).unwrap();
+    persist_operation_to_database(&mut phone, &edit).unwrap();
+    merge_and_rematerialize(&desktop, all_ops(&phone).unwrap()).unwrap();
+    let expected = domain(&read_app_state_from_database(&phone).unwrap().unwrap());
+    assert_eq!(
+        expected["plans"][0]["items"][0]["children"][0]["done"],
+        true
+    );
+    for device in [&desktop, &phone] {
+        assert_eq!(
+            domain(&read_app_state_from_database(device).unwrap().unwrap()),
+            expected
+        );
+        rematerialize(device).unwrap();
+        assert_eq!(
+            domain(&read_app_state_from_database(device).unwrap().unwrap()),
+            expected
+        );
+    }
+}
+
+#[test]
+fn opaque_clock_successors_stay_ordered_and_bounded() {
+    for seed in [
+        "unix-ms-9",
+        "unix-ms-18446744073709551615",
+        "not-a-date",
+        "opaque~ffffffffffffffff",
+        "2099-invalid",
+        "時刻",
+    ] {
+        let mut last = timestamp_after(seed);
+        assert!(last.as_str() > seed);
+        let length = last.len();
+        for _ in 0..1024 {
+            let next = timestamp_after(&last);
+            assert!(next > last);
+            assert_eq!(
+                next.len(),
+                length,
+                "repeated edits must not grow the clock indefinitely"
+            );
+            last = next;
+        }
     }
 }
 
