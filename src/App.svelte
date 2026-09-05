@@ -67,6 +67,7 @@
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem } from './lib/types'
+  import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
@@ -321,7 +322,7 @@
   // The page the list overlay was opened over. Navigating to any other page
   // hides the overlay, then returning shows it again with its state intact.
   let listOverlayView: View | null = null
-  let metricOverlay: { metricId: Id; date: string; opener: Opener | null } | null = null
+  let metricOverlay: { metricId: Id; date: string; opener: Opener | null; questionId?: Id } | null = null
   let importMetricId = ''
   let importOverlayOpen = false
   let importRaw = ''
@@ -824,47 +825,103 @@ return rows`
     searchOpen = true
   }
 
-  function undoViewForOperation(operationType: string): View | null {
-    if (operationType.includes('list_template')) return 'listTemplates'
-    if (operationType === 'generate_list' || operationType.includes('list_item')) return 'lists'
-    if (
-      operationType === 'generate_plan' ||
-      operationType === 'set_active_plan_date' ||
-      operationType.includes('plan_item') ||
-      operationType.includes('plan_daily_reminder')
-    ) return 'today'
-    if (operationType.includes('template')) return 'templates'
-    if (operationType.includes('note')) return 'notes'
-    if (operationType.includes('metric')) return 'metrics'
-    if (operationType.includes('goal')) return 'goals'
-    return null
-  }
+  let historyQueue = Promise.resolve()
+  let historyNotice = ''
+  let historyNoticeTimer: ReturnType<typeof setTimeout> | undefined
 
   async function undoAndOpenDestination() {
-    const latestOperationId = $plannerStore.operations.at(-1)?.id
-    const completionCaret = completionUndoCaret &&
-      completionUndoCaret.operationId === latestOperationId &&
-      completionUndoCaretIsUntouched()
-        ? completionUndoCaret
-        : null
+    historyQueue = historyQueue.then(() => applyHistoryAndReveal('undo'))
+    await historyQueue
+  }
+
+  async function redoAndOpenDestination() {
+    historyQueue = historyQueue.then(() => applyHistoryAndReveal('redo'))
+    await historyQueue
+  }
+
+  async function applyHistoryAndReveal(direction: 'undo' | 'redo') {
+    const before = $plannerStore
+    const latestOperationId = before.operations.at(-1)?.id
+    const completionCaret = direction === 'undo' && completionUndoCaret &&
+      completionUndoCaret.operationId === latestOperationId && completionUndoCaretIsUntouched()
+        ? completionUndoCaret : null
     completionUndoCaret = null
+    try {
+      const changed = direction === 'undo' ? await plannerStore.undo() : await plannerStore.redo()
+      if (!changed) return
+      const destination = historyDestination(before, $plannerStore)
+      if (destination) await revealHistoryDestination(destination)
+      if (completionCaret) {
+        await focusTaskById(completionCaret.containerId, completionCaret.completedItemId, completionCaret.completedCaret ?? undefined)
+      }
+      historyNotice = `${direction === 'undo' ? 'Undid' : 'Redid'} ${destination?.label ?? 'change'}`
+      clearTimeout(historyNoticeTimer)
+      historyNoticeTimer = setTimeout(() => { historyNotice = '' }, 4000)
+    } catch (error) {
+      historyNotice = `Could not ${direction}: ${error instanceof Error ? error.message : String(error)}`
+    }
+  }
 
-    const operationType = await plannerStore.undo()
-    if (!operationType) return
-
-    const destination = undoViewForOperation(operationType)
-    if (!destination) return
-
+  async function revealHistoryDestination(destination: HistoryDestination) {
     searchOpen = false
     documentFindOpen = false
-    openMobileDrawerView(destination)
-    if (completionCaret) {
-      await focusTaskById(
-        completionCaret.containerId,
-        completionCaret.completedItemId,
-        completionCaret.completedCaret ?? undefined,
-      )
+    listOverlay = null
+    metricOverlay = null
+    clearItemSelection()
+    closeMobileDrawer()
+    const { view: nextView, entityId, itemId, date } = destination
+    if (nextView === 'today' || nextView === 'lists') {
+      const alreadyDisplayed = nextView === 'today' && view === 'today' && dayPanes.some((pane) => pane.date === date)
+      if (date && !alreadyDisplayed) plannerStore.setActivePlanDate(date)
+      if (nextView === 'lists') listViewTemplateId = destination.listTemplateId ?? ''
+    } else if (nextView === 'templates') selectedTemplateId = entityId
+    else if (nextView === 'listTemplates') {
+      selectedListTemplateId = entityId
+      listArchiveOpen = false
+    } else if (nextView === 'notes') {
+      selectedNoteId = entityId
+      const note = $plannerStore.notes.find((note) => note.id === entityId)
+      notesTrashOpen = note ? isNoteTrashed(note) : false
+    } else if (nextView === 'metrics') selectedMetricId = entityId
+    else if (nextView === 'goals') goalSearch = ''
+    openMobileDrawerView(nextView)
+    await tick()
+    if (nextView === 'metrics' && date && $plannerStore.metrics.some((metric) => metric.id === entityId)) {
+      metricOverlay = { metricId: entityId, date, opener: null, questionId: itemId }
+      await tick()
     }
+    // Let page and note scroll restoration finish before the explicit reveal.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const attribute = {
+      today: 'data-plan-item-id', lists: 'data-plan-item-id', templates: 'data-template-item-id',
+      listTemplates: 'data-list-template-item-id', notes: 'data-note-item-id',
+      metrics: 'data-metric-question-id', goals: 'data-goal-id',
+    }[nextView]
+    const targetId = nextView === 'goals' ? entityId : itemId
+    const row = targetId ? workspaceEl?.querySelector<HTMLElement>(
+      `[${attribute}="${CSS.escape(targetId)}"]${nextView === 'goals' ? '' : `[data-item-container-id="${CSS.escape(entityId)}"]`}`,
+    ) : null
+    const containerSelector = {
+      today: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, lists: '.list-panel',
+      templates: '.template-panel', listTemplates: '.template-panel',
+      notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
+    }[nextView]
+    const target = (metricOverlay ? document.querySelector<HTMLElement>('.metric-quiz') : row) ??
+      workspaceEl?.querySelector<HTMLElement>(containerSelector) ?? workspaceEl?.querySelector<HTMLElement>('h2')
+    if (!target) return
+    for (let parent = target.parentElement; parent; parent = parent.parentElement) {
+      if (parent instanceof HTMLDetailsElement) parent.open = true
+    }
+    const rect = target.getBoundingClientRect()
+    const scroller = findScrollContainer(target)
+    const bounds = scroller?.getBoundingClientRect()
+    if (rect.top < Math.max(bounds?.top ?? 0, isMobile ? 64 : 0) || rect.bottom > Math.min(bounds?.bottom ?? innerHeight, innerHeight)) {
+      target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
+    }
+    target.classList.remove('search-result-target')
+    void target.offsetWidth
+    target.classList.add('search-result-target')
+    window.setTimeout(() => target.classList.remove('search-result-target'), 1800)
   }
 
   function handleTaskCompletionFocus(event: Event) {
@@ -1924,6 +1981,7 @@ return rows`
     void initialize()
 
     return () => {
+      clearTimeout(historyNoticeTimer)
       rememberWorkspaceScroll()
       mounted = false
       stopAutomaticSync?.()
@@ -3488,7 +3546,7 @@ return rows`
 
     if (event.shiftKey && (key === 'z' || key === 'c')) {
       event.preventDefault()
-      void plannerStore.redo()
+      void redoAndOpenDestination()
     }
   }
 
@@ -5472,10 +5530,10 @@ return rows`
     </div>
   </header>
 
-  {#if isMobile && $redoAvailable}
-    <div class="mobile-redo-toast" aria-live="polite">
-      <span>Change undone</span>
-      <button type="button" on:click={() => { void plannerStore.redo() }}>Redo</button>
+  {#if historyNotice || (isMobile && $redoAvailable)}
+    <div class="history-notice" role="status">
+      <span>{historyNotice || 'Change undone'}</span>
+      {#if $redoAvailable}<button type="button" on:click={() => { void redoAndOpenDestination() }}>Redo</button>{/if}
     </div>
   {/if}
 
@@ -6935,9 +6993,10 @@ return rows`
 
     {#if metricOverlay && metricOverlayMetric}
       {@const overlay = metricOverlay}
-      <OverlayModal title={metricOverlayMetric.name} z={70} onClose={() => (metricOverlay = null)}>
+      <OverlayModal title={`${metricOverlayMetric.name} · ${overlay.date}`} z={70} onClose={() => (metricOverlay = null)}>
         <MetricQuiz
           metric={metricOverlayMetric}
+          revealQuestionId={overlay.questionId}
           answers={metricOverlayAnswers}
           onAnswer={(questionId, value) => plannerStore.upsertMetricAnswer(overlay.metricId, overlay.date, questionId, value)}
           onClose={() => (metricOverlay = null)}

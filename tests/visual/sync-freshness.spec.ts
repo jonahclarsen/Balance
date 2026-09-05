@@ -46,6 +46,7 @@ test.beforeEach(async ({ page }) => {
       __storedState: string
       __taskDisappeared: boolean
       __TAURI_INTERNALS__: {
+        metadata: { currentWindow: { label: string }; currentWebview: { label: string } }
         invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
         transformCallback: () => number
       }
@@ -103,6 +104,7 @@ test.beforeEach(async ({ page }) => {
     runtime.__taskDisappeared = false
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       transformCallback: () => 1,
       invoke: async (command: string, args?: Record<string, unknown>) => {
         switch (command) {
@@ -599,4 +601,25 @@ test('a manual sync still uses the subtle syncing status', async ({ page }) => {
     initialSyncComplete: true,
   })
   await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
+})
+
+test('a backend refresh preserves local day navigation without persisting an operation', async ({ page }) => {
+  await page.goto('/?launch-then-hold=1')
+  await expect.poll(async () => (await readSyncStatus(page)).initialSyncComplete).toBe(true)
+  const result = await page.evaluate(async () => {
+    const modulePath = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ modulePath)
+    await plannerStore.flushPendingOperations()
+    const runtime = globalThis as typeof globalThis & { __persistOperationCount: number }
+    const before = runtime.__persistOperationCount
+    plannerStore.setActivePlanDate('2026-08-20')
+    await plannerStore.reloadFromBackend()
+    await plannerStore.flushPendingOperations()
+    let date = ''
+    const stop = plannerStore.subscribe((state: { activePlanDate: string }) => { date = state.activePlanDate })
+    stop()
+    return { date, persisted: runtime.__persistOperationCount - before }
+  })
+  expect(result).toEqual({ date: '2026-08-20', persisted: 0 })
+  await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-20')
 })

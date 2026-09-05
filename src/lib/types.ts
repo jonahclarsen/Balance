@@ -260,6 +260,7 @@ export type AppState = {
   deviceId: Id
   localSequence: number
   historyRevision: number
+  // Device-local navigation; the legacy persisted/wire field is ignored.
   activePlanDate: string
   preferences: ReplicatedPreferences
   templates: DailyTemplate[]
