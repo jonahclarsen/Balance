@@ -3386,7 +3386,7 @@ test('unchecking a plan item keeps the desktop caret on that task', async ({ pag
   await expect.poll(async () => activeInputValue(page)).toBe('First task')
 })
 
-test('bulk completion moves the caret below the last selected task', async ({ page }) => {
+test('bulk completion preserves selection for repeated toggles', async ({ page }) => {
   await seedPlanItems(page, ['First task', 'Second task', 'Third task'])
   const firstRow = page.getByRole('listitem', { name: 'Plan item: First task' })
   const secondRow = page.getByRole('listitem', { name: 'Plan item: Second task' })
@@ -3397,7 +3397,18 @@ test('bulk completion moves the caret below the last selected task', async ({ pa
 
   await expect(firstRow.getByRole('checkbox')).toBeChecked()
   await expect(secondRow.getByRole('checkbox')).toBeChecked()
-  await expect.poll(async () => activeInputValue(page)).toBe('Third task')
+  await expect(firstRow).toHaveClass(/selected/)
+  await expect(secondRow).toHaveClass(/selected/)
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(2)
+
+  await page.keyboard.press('Meta+D')
+
+  await expect(firstRow.getByRole('checkbox')).not.toBeChecked()
+  await expect(secondRow.getByRole('checkbox')).not.toBeChecked()
+  await expect(firstRow).toHaveClass(/selected/)
+  await expect(secondRow).toHaveClass(/selected/)
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(2)
+  await expect(page.getByRole('listitem', { name: 'Plan item: Third task' }).getByRole('checkbox')).not.toBeChecked()
 })
 
 test('undo returns the untouched completion caret to the unchecked task', async ({ page }) => {

@@ -3506,10 +3506,6 @@ return rows`
         completedItemIds,
         done,
       )
-      if (done) {
-        clearItemSelection()
-        void focusTaskBelow(focusedPlan.id, completedItemIds)
-      }
       return
     }
 
