@@ -625,7 +625,7 @@ import sys
 import xml.etree.ElementTree as ET
 for node in ET.parse(sys.argv[1]).getroot().iter("node"):
     text = node.attrib.get("text", "") or node.attrib.get("content-desc", "")
-    if re.search(r"could not|failed|error|codec|crypto|decrypt|invalid|http", text, re.I):
+    if re.search(r"could not|cannot|failed|error|codec|crypto|decrypt|invalid|http", text, re.I):
         print("[ui-sync] " + text[:500])
 PY_DIAGNOSTICS
   return 1
@@ -778,16 +778,13 @@ for _ in $(seq 1 30); do
 done
 curl --fail --silent "$UI_RELAY_URL/v3/manifest" >/dev/null
 
-echo "[ui-sync] enabling the source installation with the camera fixture key"
+echo "[ui-sync] preparing the source installation with the camera fixture key"
 dismiss_recovery_key_setup
+# A primary snapshot covers the source's pre-sync operation sequence. Starting
+# it as a joiner leaves sequence gaps that a relay checkpoint correctly rejects.
+BALANCE_UI_RELAY_URL="$UI_RELAY_URL" node .github/scripts/seed-android-sync-source.mjs
+sleep 3
 open_mobile_view "Settings"
-tap_ui_scrolling_contains text "Connect to an existing setup"
-type_into_ui_after_text_verified "Sync server address" "$UI_RELAY_URL"
-type_into_ui_after_text "Pairing code" "$PAIRING_CODE"
-dismiss_soft_keyboard
-tap_ui_scrolling text "Continue"
-wait_for_ui_text "Use your existing synced planner?"
-tap_ui_scrolling text "Connect and replace this planner"
 wait_for_ui_sync
 
 echo "[ui-sync] creating recognizable data on the source installation"
