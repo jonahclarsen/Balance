@@ -163,7 +163,7 @@ fi
 
 # Multi-device sync E2E: on debug launch the app creates real primary/joiner
 # Balance databases, pairs them with an encoded key, syncs their operation logs
-# over TCP, and verifies user data reached the joiner. This runs inside the APK,
+# through synthetic encrypted envelopes, and verifies data reached the joiner. This runs inside the APK,
 # so it also proves the Android SQLCipher path works.
 SYNC_OK=0
 for _ in $(seq 1 10); do
@@ -185,7 +185,7 @@ if [ "$SYNC_OK" != 1 ]; then
   grep -iE "UnsatisfiedLink|dlopen|RustStdoutStderr" sync-log.txt | head -20 || true
   exit 1
 fi
-echo "[sync] paired Android databases exchanged E2EE data over TCP and converged."
+echo "[sync] paired synthetic Android databases exchanged E2EE data and converged."
 SYNC_PROFILE_OK=0
 if grep -q "BALANCE_SYNC_E2E_PROFILE:" sync-log.txt; then
   grep "BALANCE_SYNC_E2E_PROFILE:" sync-log.txt \
@@ -343,7 +343,7 @@ fi
 
 # The checks above are the deterministic release gate: a real APK booted twice,
 # exercised SQLCipher + Android Keystore recovery, registered background sync,
-# loaded the home-screen widget provider, and reconciled two encrypted databases over TCP.
+# loaded the home-screen widget provider, and reconciled two synthetic encrypted databases.
 # The remaining camera/WebView journey depends on Android's external
 # accessibility dumper, which can wedge even while the app and emulator remain
 # healthy. Keep it available for deliberate CI debugging without charging every
@@ -361,8 +361,8 @@ fi
 # independent UID, process, Keystore namespace, and app-data directory, so the
 # two installations behave like separate phones while sharing the emulator's
 # network. Drive the visible WebView with UI Automator: create primary data and
-# a key, submit that key on the joining installation with the keyboard's Enter
-# action, connect to the primary's displayed address, then assert the primary's
+# a key, scan that key on the joining installation, connect both to a test
+# HTTP relay, then assert the primary's
 # user-visible goal appears on the joiner.
 
 UI_XML=sync-e2e-ui.xml
@@ -637,25 +637,6 @@ PY
   return 1
 }
 
-read_lan_address() {
-  dump_ui
-  python3 - "$UI_XML" <<'PY'
-import re
-import sys
-import xml.etree.ElementTree as ET
-
-root = ET.parse(sys.argv[1]).getroot()
-pattern = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}:\d+")
-for node in root.iter("node"):
-    for attribute in ("text", "content-desc"):
-        match = pattern.search(node.attrib.get(attribute, ""))
-        if match:
-            print(match.group(0))
-            raise SystemExit(0)
-raise SystemExit(1)
-PY
-}
-
 type_into_ui() {
   attribute="$1"
   query="$2"
@@ -758,35 +739,30 @@ if [[ "$PAIRING_CODE" != BALSYNC1:* ]]; then
   exit 1
 fi
 
+# This relay and its credential exist only for this synthetic CI fixture.
+UI_RELAY_SECRET="$(openssl rand -hex 24)"
+BALANCE_RELAY_SECRET="$UI_RELAY_SECRET" node scripts/relay-server.mjs 8791 > sync-e2e-relay.log 2>&1 &
+UI_RELAY_PID=$!
+trap 'capture_e2e_diagnostics; kill "$UI_RELAY_PID" 2>/dev/null || true' EXIT
+adb reverse tcp:8791 tcp:8791
+UI_RELAY_URL="http://127.0.0.1:8791/$UI_RELAY_SECRET"
+for _ in $(seq 1 30); do
+  if curl --fail --silent "$UI_RELAY_URL/v3/manifest" >/dev/null; then break; fi
+  sleep 1
+done
+curl --fail --silent "$UI_RELAY_URL/v3/manifest" >/dev/null
+
 echo "[ui-sync] enabling the source installation with the camera fixture key"
 dismiss_recovery_key_setup
 open_mobile_view "Settings"
-type_into_ui_after_text "Pair with another device" "$PAIRING_CODE"
-# The emulator injects text through its hardware input path, so no soft keyboard
-# is guaranteed to be visible. Submit with Enter and never send Back here: Back
-# would close Balance when the soft keyboard is absent or already dismissed.
-adb shell input keyevent KEYCODE_ENTER
-for _ in $(seq 1 8); do
-  if wait_for_ui_text "Paired." 1; then
-    break
-  fi
-  adb shell input swipe 300 580 300 180 300
-done
-wait_for_ui_text "Paired." 20
-
-PRIMARY_ADDRESS=""
-for _ in $(seq 1 60); do
-  PRIMARY_ADDRESS="$(read_lan_address 2>/dev/null || true)"
-  if [ -n "$PRIMARY_ADDRESS" ]; then
-    break
-  fi
-  sleep 1
-done
-if [ -z "$PRIMARY_ADDRESS" ]; then
-  echo "[ui-sync] source never exposed a LAN address after pairing"
-  exit 1
-fi
-echo "[ui-sync] source is paired and listening at $PRIMARY_ADDRESS"
+tap_ui_scrolling_contains text "Connect to an existing setup"
+type_into_ui_after_text "Sync server address" "$UI_RELAY_URL"
+type_into_ui_after_text "Pairing code" "$PAIRING_CODE"
+dismiss_soft_keyboard
+tap_ui_scrolling text "Continue"
+wait_for_ui_text "Use your existing synced planner?"
+tap_ui_scrolling text "Connect and replace this planner"
+wait_for_ui_text "Connected. This device now syncs automatically." 30
 
 echo "[ui-sync] creating recognizable data on the source installation"
 open_mobile_view "Goals"
@@ -842,20 +818,14 @@ sleep 8
 echo "[ui-sync] scanning the pairing QR through Android's emulated back camera"
 dismiss_recovery_key_setup
 open_mobile_view "Settings"
+tap_ui_scrolling_contains text "Connect to an existing setup"
+type_into_ui_after_text "Sync server address" "$UI_RELAY_URL"
+dismiss_soft_keyboard
 tap_ui_scrolling text "Scan QR code"
-for _ in $(seq 1 30); do
-  if wait_for_ui_text "Paired." 1; then
-    break
-  fi
-done
-wait_for_ui_text "Paired." 20
-echo "[ui-sync] camera QR scan paired the isolated joining installation"
-
-echo "[ui-sync] connecting the joiner to the primary's manual LAN address"
-type_into_ui_after_text "Direct device-to-device (same Wi-Fi)" "$PRIMARY_ADDRESS"
-adb shell input keyevent KEYCODE_BACK || true
-tap_ui_scrolling text "Sync with address"
-wait_for_ui_text "Synced directly with" 30
+wait_for_ui_text "Use your existing synced planner?" 30
+tap_ui_scrolling text "Connect and replace this planner"
+wait_for_ui_text "Connected. This device now syncs automatically." 30
+echo "[ui-sync] camera QR scan connected the isolated joining installation through the relay"
 
 # A successful sync rehydrates the frontend from the joining profile's encrypted
 # database. The primary-only goal must now be present in that materialized state.
@@ -864,6 +834,7 @@ wait_for_ui_text "CISyncGoal" 30
 echo "[ui-sync] PASS: camera QR pairing transferred source user data to the isolated joiner"
 
 E2E_ACTIVE=0
+kill "$UI_RELAY_PID" 2>/dev/null || true
 trap - EXIT
 adb logcat -d > logcat-sync-e2e.txt 2>/dev/null || true
 

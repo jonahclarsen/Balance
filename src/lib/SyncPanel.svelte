@@ -14,13 +14,9 @@
     syncNewPairingCode,
     syncEnablePrimary,
     syncEnableJoiner,
-    syncP2pServe,
-    syncP2pPeers,
-    syncP2pSync,
     syncAnonymousDiagnostics,
     saveExportFile,
     plannerStore,
-    type SyncPeer,
   } from './store'
   import { automaticSyncStatus, requestSync } from './syncScheduler'
   import { getLastRenderedPlanSnapshot } from './renderedPlanDiagnostics'
@@ -34,10 +30,8 @@
   let qrDataUrl = ''
   let joinInput = ''
   let status = ''
-  let busy = false
   let settingsLoading = true
   let settingsLoadFailed = false
-  let pairing = false
   let isError = false
   let scanning = false
   let copyLabel = 'Copy code'
@@ -45,17 +39,22 @@
   let diagnosticBusy = false
   let diagnosticPath = ''
 
-  let localAddress = ''
-  let peers: SyncPeer[] = []
-  let peerAddress = ''
-  let peerPoll: ReturnType<typeof setInterval> | undefined
+  let flow: 'choose' | 'create' | 'join' | 'review' = 'choose'
+  let savedRelayUrl = ''
+  let showPairing = false
+  let replacementRelayUrl = ''
+  let replaceKey = false
+  let connectionOpen = false
+  $: configured = syncEnabled && Boolean(pairingCode && savedRelayUrl)
+  $: busy = actionBusy || $automaticSyncStatus.running
+  let actionBusy = false
 
   onMount(async () => {
     try {
       const settings = await getSyncSettings()
       syncEnabled = settings.enabled
       pairingCode = settings.pairingCode ?? ''
-      relayUrl = settings.relayUrl
+      savedRelayUrl = relayUrl = settings.relayUrl
     } catch (err) {
       syncEnabled = false
       settingsLoadFailed = true
@@ -63,12 +62,9 @@
     } finally {
       settingsLoading = false
     }
-    if (pairingCode) await renderQr()
-    if (syncEnabled) await startP2p()
   })
 
   onDestroy(() => {
-    if (peerPoll) clearInterval(peerPoll)
     if (copyTimer) clearTimeout(copyTimer)
     // Make sure the camera is released and the UI restored if we unmount mid-scan.
     if (scanning) void stopScan()
@@ -83,6 +79,7 @@
 
   // Open the native camera scanner and pair with whatever pairing code it reads.
   async function scanCode() {
+    if (busy || !validServer()) return
     try {
       let perm = await checkPermissions()
       if (perm !== 'granted') perm = await requestPermissions()
@@ -110,7 +107,7 @@
         return
       }
       joinInput = content
-      await join()
+      reviewJoin()
     } catch (err) {
       await stopScan()
       setStatus(`Could not scan: ${err}`, true)
@@ -133,49 +130,6 @@
     }
   }
 
-  // Start advertising this device on the LAN and begin polling for discovered
-  // peers. Idempotent on the backend, so safe to call on every panel open.
-  async function startP2p() {
-    try {
-      localAddress = (await syncP2pServe()) ?? ''
-      await refreshPeers()
-      if (!peerPoll) peerPoll = setInterval(refreshPeers, 4000)
-    } catch (err) {
-      // P2P is best-effort (e.g. mDNS unavailable); manual address still works.
-      console.warn('P2P start failed', err)
-    }
-  }
-
-  async function refreshPeers() {
-    try {
-      peers = await syncP2pPeers()
-    } catch {
-      // ignore transient discovery errors
-    }
-  }
-
-  // Direct device-to-device sync over the LAN: exchange sealed changesets with a
-  // peer, then reload if our state changed.
-  async function syncWithPeer(address: string) {
-    const addr = address.trim()
-    if (!addr) return
-    if (!pairingCode) {
-      setStatus('Create or paste a pairing code first.', true)
-      return
-    }
-    busy = true
-    try {
-      await syncP2pSync(addr)
-      await plannerStore.reloadFromBackend()
-      syncEnabled = true
-      setStatus(`Synced directly with ${addr}.`)
-    } catch (err) {
-      setStatus(`Direct sync failed: ${err}`, true)
-    } finally {
-      busy = false
-    }
-  }
-
   async function renderQr() {
     try {
       qrDataUrl = await QRCode.toDataURL(pairingCode, { margin: 1, width: 220 })
@@ -189,69 +143,103 @@
     isError = error
   }
 
-  async function generate() {
-    busy = true
+  function choose(next: 'create' | 'join') {
+    flow = next
+    status = ''
+    joinInput = ''
+  }
+
+  function validServer(value = relayUrl): boolean {
     try {
-      const newPairingCode = await syncNewPairingCode()
-      // This device becomes the source of truth; its data is snapshotted into
-      // the synced log (and backed up first).
-      await syncEnablePrimary(newPairingCode)
-      pairingCode = newPairingCode
-      syncEnabled = true
-      await renderQr()
-      await startP2p()
-      if (relayUrl) await requestSync('sync-enabled')
-      setStatus('Sync enabled and automatic. Scan or paste this code on your other device to join.')
-    } catch (err) {
-      setStatus(`Could not create a sync key: ${err}`, true)
-    } finally {
-      busy = false
+      const url = new URL(value.trim())
+      if (!['https:', 'http:'].includes(url.protocol)) throw new Error()
+      return true
+    } catch {
+      setStatus('Enter a complete sync server address, starting with https://.', true)
+      return false
     }
   }
 
-  async function join() {
-    const code = joinInput.trim()
-    if (!code.startsWith('BALSYNC1:')) {
+  async function persistServer() {
+    const settings = await setSyncRelayUrl(relayUrl.trim())
+    savedRelayUrl = relayUrl = settings.relayUrl
+  }
+
+  async function revealPairing() {
+    showPairing = !showPairing
+    if (showPairing) await renderQr()
+  }
+
+  async function generate() {
+    const server = replaceKey ? replacementRelayUrl : relayUrl
+    if (busy || !validServer(server)) return
+    if (replaceKey && server.trim().replace(/\/+$/, '') === savedRelayUrl.replace(/\/+$/, '')) {
+      setStatus('Use a new, empty sync server for the new key.', true)
+      return
+    }
+    actionBusy = true
+    try {
+      const newPairingCode = await syncNewPairingCode()
+      const settings = await syncEnablePrimary(newPairingCode, server.trim())
+      savedRelayUrl = relayUrl = settings.relayUrl
+      pairingCode = newPairingCode
+      syncEnabled = true
+      flow = 'choose'
+      replaceKey = false
+      showPairing = true
+      await renderQr()
+      const result = await requestSync('sync-enabled')
+      setStatus(result ? 'Setup complete. You can now connect your other device.' : 'Setup saved. The first sync has not completed; Balance will retry automatically.', !result)
+    } catch (err) {
+      setStatus(`Could not set up sync: ${err}`, true)
+    } finally {
+      actionBusy = false
+    }
+  }
+
+  function reviewJoin() {
+    if (!validServer()) return
+    if (!joinInput.trim().startsWith('BALSYNC1:')) {
       setStatus('That does not look like a Balance pairing code.', true)
       return
     }
-    busy = true
-    pairing = true
-    setStatus('Pairing…')
+    status = ''
+    flow = 'review'
+  }
+
+  async function join() {
+    if (busy || flow !== 'review' || !validServer()) return
+    actionBusy = true
     try {
-      // Joining adopts the other device's data; this device's current data is
-      // backed up and replaced on the next sync.
-      await syncEnableJoiner(code)
+      const code = joinInput.trim()
+      const settings = await syncEnableJoiner(code, relayUrl.trim())
+      savedRelayUrl = relayUrl = settings.relayUrl
       pairingCode = code
       joinInput = ''
       syncEnabled = true
-      await renderQr()
-      await startP2p()
-      if (relayUrl) await requestSync('paired')
-      setStatus(
-        relayUrl
-          ? 'Paired. Relay changes now sync automatically.'
-          : 'Paired. Use a device below to sync directly, or configure a relay.',
-      )
+      flow = 'choose'
+      showPairing = false
+      await plannerStore.reloadFromBackend()
+      const result = await requestSync('paired')
+      setStatus(result ? 'Connected. This device now syncs automatically.' : 'Connection saved. Waiting for the first sync; Balance will retry automatically.', !result)
     } catch (err) {
-      setStatus(`Could not pair: ${err}`, true)
+      setStatus(`Could not connect: ${err}`, true)
     } finally {
-      pairing = false
-      busy = false
+      actionBusy = false
     }
   }
 
   async function saveRelay() {
-    busy = true
+    if (busy || !validServer()) return
+    actionBusy = true
     try {
-      const settings = await setSyncRelayUrl(relayUrl)
-      relayUrl = settings.relayUrl
-      if (relayUrl && pairingCode) await requestSync('relay-configured')
-      setStatus(relayUrl ? 'Relay server saved. Automatic sync is active.' : 'Relay server cleared.')
+      await persistServer()
+      const result = await requestSync('relay-configured')
+      setStatus(result ? 'Connected to sync server.' : 'Server address saved. Connection has not succeeded; Balance will retry automatically.', !result)
     } catch (err) {
-      setStatus(`Could not save relay server: ${err}`, true)
+      setStatus(`Could not save sync server: ${err}`, true)
     } finally {
-      busy = false
+      actionBusy = false
     }
   }
 
@@ -270,27 +258,15 @@
   // One sync pass through the relay server: push our sealed changes, then pull
   // and apply everyone else's. The relay only ever holds ciphertext.
   async function syncNow() {
-    if (!pairingCode) {
-      setStatus('Create or paste a pairing code first.', true)
-      return
-    }
-    if (!relayUrl) {
-      setStatus('Set a relay server URL first.', true)
-      return
-    }
-    busy = true
+    if (busy || !configured) return
+    actionBusy = true
     try {
       const result = await requestSync('manual')
-      if (!result) throw new Error('The relay sync did not complete; it will retry automatically.')
-      syncEnabled = true
-      const checkpoint = result.checkpointCommitted ? ' Relay storage was compacted.' : ''
-      setStatus(
-        `Synced ${result.pushedOperations} outgoing and ${result.pulledOperations} incoming operation(s).${checkpoint}`,
-      )
+      setStatus(result ? 'Sync complete.' : 'Could not sync. Balance will retry automatically.', !result)
     } catch (err) {
-      setStatus(`Sync failed: ${err}`, true)
+      setStatus(`Could not sync: ${err}`, true)
     } finally {
-      busy = false
+      actionBusy = false
     }
   }
 
@@ -316,149 +292,114 @@
 
 <section class="settings-section sync-panel">
   <div>
-    <h3>Multi-device sync</h3>
-    <p>
-      End-to-end encrypted sync across your devices. One device creates a sync
-      key; the others scan or paste its code. Your data is sealed before it
-      leaves the device — the relay server only ever sees ciphertext.
-    </p>
+    <h3>Sync across your devices</h3>
+    <p>Keep your planner in sync over the internet. Your data stays end-to-end encrypted.</p>
   </div>
 
   <div class="sync-body">
-    {#if pairingCode}
-      <div class="sync-pairing">
-        {#if qrDataUrl}
-          <img class="sync-qr" src={qrDataUrl} alt="Pairing QR code" />
-        {/if}
-        <div class="sync-code-block">
-          <label for="sync-code">This device's pairing code</label>
-          <code id="sync-code" class="sync-code">{pairingCode}</code>
-          <div class="sync-actions">
-            <button type="button" on:click={copyCode}>{copyLabel}</button>
-            <button type="button" class="ghost" on:click={generate} disabled={busy}>
-              Replace key…
+    {#if settingsLoading}
+      <p role="status">Loading sync settings…</p>
+    {:else if settingsLoadFailed}
+      <p role="alert">Sync settings are unavailable. Close and reopen Settings to try again.</p>
+    {:else}
+      {#if !syncEnabled || !pairingCode || flow !== 'choose'}
+        {#if flow === 'choose'}
+          <div class="sync-choices">
+            <button type="button" class="sync-choice" on:click={() => choose('create')} disabled={busy}>
+              <strong>Set up sync from this device</strong>
+              <span>Start here on the device with your existing planner.</span>
+            </button>
+            <button type="button" class="sync-choice" on:click={() => choose('join')} disabled={busy}>
+              <strong>Connect to an existing setup</strong>
+              <span>Get a code from a device you already use.</span>
             </button>
           </div>
-        </div>
-      </div>
-    {:else}
-      <button class="primary" type="button" on:click={generate} disabled={busy}>
-        Create a sync key
-      </button>
-    {/if}
-
-    <div class="sync-join">
-      <label for="sync-join-input">Pair with another device</label>
-      <p>
-        {#if isMobile}
-          Scan the QR code shown on your other device, or paste its pairing code.
+          <p class="sync-hosting">Sync is self-hosted for now: you’ll need your own sync server. We’re looking to add a hosted service if enough people request it.</p>
+        {:else if flow === 'review'}
+          <div class="sync-card">
+            <h4>Use your existing synced planner?</h4>
+            <p>This device’s planner will be replaced with the planner from your existing sync setup. Balance backs up this device’s current data first. The two planners won’t be combined.</p>
+            <p>Keep Balance open while the first sync finishes.</p>
+            <div class="sync-actions">
+              <button type="button" class="primary" on:click={join} disabled={busy}>Connect and replace this planner</button>
+              <button type="button" class="ghost" on:click={() => flow = 'join'} disabled={busy}>Back</button>
+            </div>
+          </div>
         {:else}
-          Paste the pairing code shown on your other device.
+          <form class="sync-card" on:submit|preventDefault={flow === 'create' ? generate : reviewJoin}>
+            <h4>{flow === 'create' ? 'Set up sync from this device' : 'Connect to an existing setup'}</h4>
+            <p>{flow === 'create' ? 'This device’s planner will be the starting point for your other devices. Use an empty sync server for a new setup.' : 'On your other device, open Settings → Sync across your devices → Connect another device.'}</p>
+            <label for="sync-setup-server">Sync server address</label>
+            <input id="sync-setup-server" type="url" placeholder="https://sync.example.com/your-server-path" autocomplete="off" spellcheck="false" bind:value={relayUrl} disabled={busy} required />
+            <p class="sync-hosting">{flow === 'join' ? 'Use the same full server address as your other device. The pairing code does not include it.' : 'Sync is self-hosted for now. Enter the full address of your server, including its private path. We’re looking to add a hosted service if enough people request it.'}</p>
+            {#if flow === 'join'}
+              <label for="sync-join-input">Pairing code</label>
+              <input id="sync-join-input" type="text" placeholder="Paste the code from your other device" autocomplete="off" spellcheck="false" bind:value={joinInput} disabled={busy} />
+              {#if isMobile}
+                <button type="button" on:click={scanCode} disabled={busy || scanning || !relayUrl.trim()}>Scan QR code</button>
+              {/if}
+            {/if}
+            <div class="sync-actions">
+              <button type="submit" class="primary" disabled={busy || !relayUrl.trim() || (flow === 'join' && !joinInput.trim())}>{flow === 'create' ? 'Set up sync' : 'Continue'}</button>
+              <button type="button" class="ghost" on:click={() => { flow = 'choose'; status = '' }} disabled={busy}>Back</button>
+            </div>
+          </form>
         {/if}
-      </p>
-      <form class="sync-actions" on:submit|preventDefault={join}>
-        {#if isMobile}
-          <button type="button" on:click={scanCode} disabled={busy || scanning}>
-            Scan QR code
-          </button>
-        {/if}
-        <input
-          id="sync-join-input"
-          type="text"
-          aria-label="Pair with another device"
-          placeholder="BALSYNC1:…"
-          spellcheck="false"
-          bind:value={joinInput}
-        />
-        <button type="submit" disabled={busy || !joinInput.trim()}>
-          {pairing ? 'Pairing…' : 'Pair'}
-        </button>
-      </form>
-    </div>
-
-    {#if syncEnabled}
-      <div class="sync-p2p">
-        <label for="sync-peer-input">Direct device-to-device (same Wi-Fi)</label>
-        <p>
-          No server needed — devices on the same network sync directly. Your data
-          is sealed end-to-end either way.
-        </p>
-        {#if localAddress}
-          <p class="sync-self">
-            This device: <code>{localAddress}</code>
-          </p>
-        {/if}
-
-        {#if peers.length > 0}
-          <ul class="sync-peers">
-            {#each peers as peer (peer.address)}
-              <li>
-                <span class="sync-peer-addr"><code>{peer.address}</code></span>
-                <button type="button" on:click={() => syncWithPeer(peer.address)} disabled={busy}>
-                  Sync
-                </button>
-              </li>
-            {/each}
-          </ul>
-        {:else}
-          <p class="sync-empty">No devices discovered yet. You can enter an address manually.</p>
-        {/if}
-
-        <div class="sync-actions">
-          <input
-            id="sync-peer-input"
-            type="text"
-            aria-label="Direct device-to-device (same Wi-Fi)"
-            placeholder="192.168.1.42:port"
-            spellcheck="false"
-            bind:value={peerAddress}
-          />
-          <button type="button" on:click={() => syncWithPeer(peerAddress)} disabled={busy || !peerAddress.trim()}>
-            Sync with address
-          </button>
-        </div>
-      </div>
-    {/if}
-
-    <div class="sync-relay">
-      <label for="sync-relay-input">Relay server (for server-mediated sync)</label>
-      <p>Leave blank to use only direct device-to-device sync.</p>
-      {#if settingsLoading}
-        <p class="sync-state" role="status" aria-live="polite">Loading sync settings…</p>
-      {:else if settingsLoadFailed}
-        <p class="sync-state">Sync settings are unavailable.</p>
       {:else}
-        <div class="sync-actions">
-          <input
-            id="sync-relay-input"
-            type="url"
-            placeholder="https://relay.example.com"
-            spellcheck="false"
-            bind:value={relayUrl}
-          />
-          <button type="button" on:click={saveRelay} disabled={busy}>Save</button>
+        <div class="sync-card sync-overview" role="status" aria-live="polite">
+          <strong>
+            {#if !configured}Setup incomplete
+            {:else if $automaticSyncStatus.offline}You’re offline
+            {:else if $automaticSyncStatus.running}Syncing…
+            {:else if $automaticSyncStatus.lastError}Could not connect to sync server
+            {:else if $automaticSyncStatus.pending}Changes waiting to sync
+            {:else if $automaticSyncStatus.lastSuccessAt}Connected to sync server
+            {:else}Waiting for first sync{/if}
+          </strong>
+          <p>
+            {#if !configured}Add your sync server address below to finish setup.
+            {:else if $automaticSyncStatus.offline}Your changes are saved on this device. Sync will retry when you’re online.
+            {:else if $automaticSyncStatus.lastError}Your changes are saved on this device. Balance will retry automatically.
+            {:else}Changes sync automatically. Other devices receive them when they connect.{/if}
+          </p>
+          {#if configured && $automaticSyncStatus.lastSuccessAt}
+            <p class="sync-state">Last successful sync: {new Date($automaticSyncStatus.lastSuccessAt).toLocaleString()}.</p>
+          {/if}
         </div>
-      {/if}
-    </div>
-
-    <div class="sync-actions">
-      <button class="primary" type="button" on:click={syncNow} disabled={busy}>
-        {busy ? 'Syncing…' : 'Sync now'}
-      </button>
-      <span class="sync-state" aria-live="polite">
-        {#if $automaticSyncStatus.running}
-          Automatic sync is running…
-        {:else if $automaticSyncStatus.lastError}
-          Automatic sync will retry: {$automaticSyncStatus.lastError}
-        {:else if $automaticSyncStatus.lastSuccessAt}
-          Last automatically synced at {new Date($automaticSyncStatus.lastSuccessAt).toLocaleTimeString()}.
-        {:else}
-          {syncEnabled ? 'Automatic sync is ready on this device.' : 'Not yet synced.'}
+        <div class="sync-actions">
+          <button type="button" class="primary" on:click={revealPairing} disabled={busy || !configured} aria-expanded={showPairing}>Connect another device</button>
+          <button type="button" on:click={syncNow} disabled={busy || !configured}>Sync now</button>
+        </div>
+        {#if showPairing && configured}
+          <div class="sync-card">
+            <h4>Connect your other device</h4>
+            <p>Open Balance on your other device and choose Settings → Sync across your devices → Connect to an existing setup.</p>
+            <p>Enter the same sync server address, then scan this QR code or paste the pairing code.</p>
+            <div class="sync-pairing">
+              {#if qrDataUrl}<img class="sync-qr" src={qrDataUrl} alt="Pairing QR code" />{/if}
+              <div class="sync-code-block">
+                <button type="button" on:click={copyCode}>{copyLabel}</button>
+                <details><summary>Show pairing code</summary><code class="sync-code">{pairingCode}</code></details>
+              </div>
+            </div>
+            <p class="sync-state">Keep this code private. It gives another device access to your synced planner.</p>
+          </div>
         {/if}
-      </span>
-    </div>
-
-    {#if syncEnabled}
+        <details class="sync-details" open={!configured || connectionOpen} on:toggle={(event) => connectionOpen = event.currentTarget.open}>
+          <summary>Connection settings</summary>
+          <form class="sync-card" on:submit|preventDefault={saveRelay}>
+            <label for="sync-relay-input">Sync server address</label>
+            <input id="sync-relay-input" type="url" placeholder="https://sync.example.com/your-server-path" autocomplete="off" spellcheck="false" bind:value={relayUrl} disabled={busy} required />
+            <p class="sync-hosting">Sync is self-hosted for now. Use the same full server address on all your devices. We’re looking to add a hosted service if enough people request it.</p>
+            <button type="submit" disabled={busy || !relayUrl.trim()}>Save and connect</button>
+          </form>
+          <button type="button" class="ghost" on:click={() => choose('join')} disabled={busy}>Connect to a different setup</button>
+        </details>
+        <details class="sync-details">
+          <summary>Troubleshooting</summary>
+          <div class="sync-card">
+            <p>Check that each device uses the same sync server address and pairing code. Keep Balance open during the first sync.</p>
+            {#if $automaticSyncStatus.lastError}<p class="sync-status error">{$automaticSyncStatus.lastError}</p>{/if}
       <div class="sync-diagnostics">
         <strong>Recent anonymous sync diagnostics</strong>
         <p>
@@ -480,12 +421,26 @@
           {/if}
         </div>
       </div>
+            <details>
+              <summary>Advanced: replace sync key</summary>
+              <p>Starts a new sync setup using this device’s current planner. Your other devices will need to connect again with the new code.</p>
+              {#if replaceKey}
+                <p>Use this device’s planner as the starting point for the new setup? First set up a new, empty sync server. The existing server contains data encrypted with the old key.</p>
+                <label for="sync-replacement-server">New sync server address</label>
+                <input id="sync-replacement-server" type="url" placeholder="https://sync.example.com/new-server-path" autocomplete="off" spellcheck="false" bind:value={replacementRelayUrl} disabled={busy} />
+                <div class="sync-actions">
+                  <button type="button" on:click={generate} disabled={busy || !configured || !replacementRelayUrl.trim()}>Replace key and start new setup</button>
+                  <button type="button" class="ghost" on:click={() => replaceKey = false} disabled={busy}>Cancel</button>
+                </div>
+              {:else}
+                <button type="button" on:click={() => replaceKey = true} disabled={busy || !configured}>Replace sync key…</button>
+              {/if}
+            </details>
+          </div>
+        </details>
+      {/if}
     {/if}
-
-    {#if status}
-      <p class="sync-status" class:error={isError} aria-live="polite">{status}</p>
-    {/if}
-
+    {#if status}<p class="sync-status" class:error={isError} role="status" aria-live="polite">{status}</p>{/if}
   </div>
 </section>
 
@@ -518,10 +473,11 @@
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    min-width: 16rem;
+    min-width: 0;
     flex: 1;
   }
   .sync-code {
+    display: block;
     font-family: var(--font-mono);
     font-size: 0.78rem;
     word-break: break-all;
@@ -529,57 +485,40 @@
     border-radius: 6px;
     background: rgba(127, 127, 127, 0.12);
   }
-  .sync-join,
-  .sync-relay,
-  .sync-p2p,
-  .sync-diagnostics {
+  .sync-card, .sync-diagnostics, .sync-choices {
     display: flex;
     flex-direction: column;
-    gap: 0.35rem;
+    gap: 0.75rem;
+    min-width: 0;
   }
-  .sync-self code,
-  .sync-peer-addr code {
-    font-family: var(--font-mono);
-    font-size: 0.8rem;
+  .sync-card, .sync-choice {
+    padding: 1rem;
+    border: 1px solid var(--line);
+    border-radius: 10px;
   }
-  .sync-peers {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 0.35rem;
-  }
-  .sync-peers li {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.5rem;
-    padding: 0.35rem 0.5rem;
-    border-radius: 6px;
-    background: rgba(127, 127, 127, 0.1);
-  }
-  .sync-empty {
-    font-size: 0.82rem;
-    opacity: 0.7;
-    margin: 0;
-  }
+  .sync-choice { display: flex; flex-direction: column; gap: 0.4rem; text-align: left; }
+  .sync-choice span, .sync-hosting { font-size: 0.85rem; line-height: 1.5; opacity: 0.8; }
+  .sync-card h4, .sync-card p { margin: 0; }
+  .sync-card input { width: 100%; min-width: 0; box-sizing: border-box; }
+  .sync-card > button { align-self: flex-start; }
+  .sync-details { border-top: 1px solid var(--line); padding-top: 0.85rem; }
+  summary { cursor: pointer; padding: 0.35rem 0; }
+  details[open] > summary { margin-bottom: 0.65rem; }
+  .sync-overview { background: var(--paper); }
+  .sync-status, .sync-code { overflow-wrap: anywhere; }
+  @media (max-width: 480px) { .sync-pairing { flex-direction: column; align-items: flex-start; } }
   .sync-actions {
     display: flex;
     gap: 0.5rem;
     align-items: center;
     flex-wrap: wrap;
   }
-  .sync-actions input {
-    flex: 1;
-    min-width: 12rem;
-  }
   .sync-status {
     margin: 0;
     font-size: 0.85rem;
   }
   .sync-status.error {
-    color: #c0392b;
+    color: var(--danger);
   }
   .sync-state {
     font-size: 0.8rem;

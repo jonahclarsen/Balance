@@ -6,7 +6,7 @@
 //! without any native extension.
 
 use std::io::{BufRead, BufReader};
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -17,7 +17,6 @@ use rusqlite::Connection;
 use serde_json::{json, Value};
 
 use super::crypto::SyncKey;
-use super::transport::{self, TIMEOUT_MESSAGE};
 use super::*;
 use crate::{
     metadata_value, open_database_at, persist_operation_to_database, read_app_state_from_database,
@@ -199,10 +198,7 @@ const MATERIALIZED_TABLES: [&str; 6] = [
     "state_entities",
 ];
 
-/// A [`SyncStore`] shaped exactly like the app's `p2p::AppStore`: one shared
-/// connection behind a lock that is taken *per call* and released before the
-/// transport touches the socket again. Also counts merged ops, so tests can
-/// assert that a redundant sync inserts nothing.
+/// Synthetic databases plus merge counts for engine convergence tests.
 #[derive(Clone)]
 struct TestStore {
     connection: Arc<Mutex<Connection>>,
@@ -243,19 +239,7 @@ impl TestStore {
     }
 }
 
-impl SyncStore for TestStore {
-    fn inventory(&self) -> Result<SyncInventory> {
-        self.read(sync_inventory)
-    }
-
-    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
-        self.read(|conn| diff_against(conn, peer))
-    }
-
-    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
-        self.read(|conn| ops_by_id(conn, ids))
-    }
-
+impl TestStore {
     fn merge(&self, ops: Vec<Op>) -> Result<usize> {
         let inserted = self.read(|conn| merge_and_rematerialize(conn, ops))?;
         self.merged.fetch_add(inserted, Ordering::SeqCst);
@@ -263,16 +247,19 @@ impl SyncStore for TestStore {
     }
 }
 
-/// Run one complete bidirectional exchange over a real loopback socket.
-fn exchange(initiator: &TestStore, responder: &TestStore, key: &SyncKey) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap().to_string();
-    let responder_key = key.clone();
-    let responder = responder.clone();
-    let accepted =
-        std::thread::spawn(move || transport::sync_accept(&listener, &responder_key, &responder));
-    transport::sync_connect(&address, key, initiator).expect("initiator sync");
-    accepted.join().unwrap().expect("responder sync");
+/// Exercise encrypted operation replication independently of network transport.
+/// HTTP behavior is covered by the reference-relay tests below.
+fn exchange(a: &TestStore, b: &TestStore, key: &SyncKey) {
+    let sealed = |store: &TestStore| {
+        key.seal(&serde_json::to_vec(&store.read(|conn| all_ops(conn).unwrap())).unwrap())
+            .unwrap()
+    };
+    let from_a = sealed(a);
+    let from_b = sealed(b);
+    a.merge(serde_json::from_slice(&key.open(&from_b).unwrap()).unwrap())
+        .unwrap();
+    b.merge(serde_json::from_slice(&key.open(&from_a).unwrap()).unwrap())
+        .unwrap();
 }
 
 fn set_active_plan_date_op(
@@ -2123,7 +2110,7 @@ fn an_incoming_checkpoint_prunes_only_the_local_history_it_covers() {
 // ---------------------------------------------------------------------------
 
 #[test]
-fn frontier_covered_operations_are_neither_wanted_nor_re_accepted() {
+fn frontier_covered_operations_are_not_re_accepted() {
     let scratch = Scratch::new("stale");
     let mut conn = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
     enable_primary(&conn).unwrap();
@@ -2140,36 +2127,11 @@ fn frontier_covered_operations_are_neither_wanted_nor_re_accepted() {
     .unwrap();
 
     let stale_ops = all_ops(&conn).unwrap();
-    let stale_inventory = SyncInventory {
-        items: stale_ops
-            .iter()
-            .map(|op| InventoryItem {
-                id: op.id.clone(),
-                device_id: op.device_id.clone(),
-                sequence: op.sequence,
-                checkpoint: op.op_type == "replace_full_state",
-            })
-            .collect(),
-        frontiers: HashMap::new(),
-    };
     let expected_state = read_app_state_from_database(&conn).unwrap().unwrap();
 
     checkpoint_operation_log(&conn).unwrap();
 
-    // A peer that missed the checkpoint offers the compacted ids back.
-    let (ops, want) = diff_against(&conn, &stale_inventory).unwrap();
-    assert_eq!(
-        want,
-        stale_ops
-            .iter()
-            .filter(|op| op.op_type == "replace_full_state")
-            .map(|op| op.id.clone())
-            .collect::<Vec<_>>(),
-        "covered ordinary ops are never requested; an older checkpoint may be requested and deterministically rejected",
-    );
-    assert_eq!(ops.len(), 1, "the peer is offered the checkpoint instead");
-
-    // Even if handed the raw rows, the merge refuses them.
+    // Compacted operations received again must not resurrect old state.
     assert_eq!(merge_ops(&conn, &stale_ops).unwrap(), 0);
     assert_eq!(local_op_ids(&conn).unwrap().len(), 1);
     rematerialize(&conn).unwrap();
@@ -2249,112 +2211,6 @@ fn retired_checkpoint_and_snapshot_payloads_fail_closed() {
         read_app_state_from_database(&connection).unwrap().unwrap(),
         state_before
     );
-}
-
-// ---------------------------------------------------------------------------
-// 6. Timeouts surface a human message
-// ---------------------------------------------------------------------------
-
-#[test]
-fn a_peer_that_never_speaks_produces_a_readable_timeout() {
-    let scratch = Scratch::new("timeout");
-    let conn = open_seeded(&scratch.path, "key", &state("device-A", json!([])));
-    let store = TestStore::new(conn);
-
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    // Connect but never send an Offer, exactly like a device that went to sleep.
-    let silent = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
-    let (mut stream, _) = listener.accept().unwrap();
-    stream
-        .set_read_timeout(Some(Duration::from_millis(50)))
-        .unwrap();
-
-    let error = transport::run_responder(&mut stream, &SyncKey::generate(), &store).unwrap_err();
-    assert_eq!(error.to_string(), format!("codec: {TIMEOUT_MESSAGE}"));
-    assert!(
-        !error.to_string().contains("os error"),
-        "raw errno must not reach the user: {error}"
-    );
-    drop(silent);
-}
-
-// ---------------------------------------------------------------------------
-// 7. Simultaneous mutual sync
-// ---------------------------------------------------------------------------
-
-#[test]
-fn two_devices_syncing_at_each_other_at_once_converge_without_deadlock() {
-    let sa = Scratch::new("mutual-a");
-    let sb = Scratch::new("mutual-b");
-    let a = open_seeded(&sa.path, "key-a", &state("device-A", json!([])));
-    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
-    enable_primary(&a).unwrap();
-    enable_joiner(&b).unwrap();
-    let a = TestStore::new(a);
-    let b = TestStore::new(b);
-    let key = SyncKey::generate();
-
-    exchange(&b, &a, &key);
-    a.write(|conn| {
-        persist_operation_to_database(
-            conn,
-            &set_active_plan_date_op(
-                "op-a-1",
-                "device-A",
-                1,
-                "2026-06-23T12:00:00.000Z",
-                "2027-01-01",
-            ),
-        )
-        .unwrap()
-    });
-    b.write(|conn| {
-        persist_operation_to_database(
-            conn,
-            &set_active_plan_date_op(
-                "op-b-1",
-                "device-B",
-                1,
-                "2026-06-23T13:00:00.000Z",
-                "2028-02-02",
-            ),
-        )
-        .unwrap()
-    });
-
-    // Both devices listen and both dial the other at the same moment. Under the
-    // old design each side held the global database lock across the whole
-    // exchange, so this pair deadlocked until the 60s read timeout fired.
-    let listener_a = TcpListener::bind("127.0.0.1:0").unwrap();
-    let listener_b = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address_a = listener_a.local_addr().unwrap().to_string();
-    let address_b = listener_b.local_addr().unwrap().to_string();
-
-    let threads = [
-        {
-            let (store, key) = (a.clone(), key.clone());
-            std::thread::spawn(move || transport::sync_accept(&listener_a, &key, &store))
-        },
-        {
-            let (store, key) = (b.clone(), key.clone());
-            std::thread::spawn(move || transport::sync_accept(&listener_b, &key, &store))
-        },
-        {
-            let (store, key) = (a.clone(), key.clone());
-            std::thread::spawn(move || transport::sync_connect(&address_b, &key, &store))
-        },
-        {
-            let (store, key) = (b.clone(), key.clone());
-            std::thread::spawn(move || transport::sync_connect(&address_a, &key, &store))
-        },
-    ];
-    for thread in threads {
-        thread.join().unwrap().expect("simultaneous sync");
-    }
-
-    assert_eq!(a.operation_ids(), b.operation_ids());
-    assert_eq!(domain(&a.state()), domain(&b.state()));
-    assert_eq!(a.state()["activePlanDate"], "2028-02-02");
 }
 
 // ---------------------------------------------------------------------------

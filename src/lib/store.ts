@@ -3087,40 +3087,17 @@ export async function syncNewPairingCode(): Promise<string> {
 }
 
 /** Enable sync as the primary device — keep this device's data as the baseline. */
-export async function syncEnablePrimary(pairingCode: string): Promise<void> {
-  if (!isTauri()) return
+export async function syncEnablePrimary(pairingCode: string, relayUrl: string): Promise<SyncSettings> {
+  if (!isTauri()) throw new Error("Sync is available in the Balance app.")
   await flushOperations()
-  await invoke('sync_enable_primary', { pairingCode })
-  if (cachedSyncSettings) cachedSyncSettings = { ...cachedSyncSettings, enabled: true, pairingCode }
+  return invoke<SyncSettings>('sync_enable_primary', { pairingCode, relayUrl }).then(rememberSyncSettings)
 }
 
 /** Enable sync as a joining device — adopt the primary's data (local is backed up). */
-export async function syncEnableJoiner(pairingCode: string): Promise<void> {
-  if (!isTauri()) return
+export async function syncEnableJoiner(pairingCode: string, relayUrl: string): Promise<SyncSettings> {
+  if (!isTauri()) throw new Error("Sync is available in the Balance app.")
   await flushOperations()
-  await invoke('sync_enable_joiner', { pairingCode })
-  if (cachedSyncSettings) cachedSyncSettings = { ...cachedSyncSettings, enabled: true, pairingCode }
-}
-
-export type SyncPeer = { name: string; address: string }
-
-/** Start the P2P listener + mDNS discovery; returns this device's LAN address. */
-export async function syncP2pServe(): Promise<string | null> {
-  if (!isTauri()) return null
-  return invoke<string | null>('sync_p2p_serve')
-}
-
-/** Balance devices discovered on the local network. */
-export async function syncP2pPeers(): Promise<SyncPeer[]> {
-  if (!isTauri()) return []
-  return invoke<SyncPeer[]>('sync_p2p_peers')
-}
-
-/** Sync directly with a peer at `address` (host:port). Returns new state JSON. */
-export async function syncP2pSync(address: string): Promise<string | null> {
-  if (!isTauri()) return null
-  await flushOperations()
-  return invoke<string | null>('sync_p2p_sync', { address })
+  return invoke<SyncSettings>('sync_enable_joiner', { pairingCode, relayUrl }).then(rememberSyncSettings)
 }
 
 export type SyncPassResult = {

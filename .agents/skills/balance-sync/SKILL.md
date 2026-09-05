@@ -1,6 +1,6 @@
 ---
 name: balance-sync
-description: Develop, debug, deploy, or test Balance's multi-device sync and relay systems. Use for the native Rust op-log engine, device pairing, E2EE envelopes, direct TCP sync, relay protocols, checkpoints and generations, the Cloudflare relay Worker, foreground or Android background scheduling, quarantined batches, relay rollback or reset, and sync CI changes. Do not use for unrelated database or UI work.
+description: Develop, debug, deploy, or test Balance's multi-device sync and relay systems. Use for the native Rust op-log engine, device pairing, E2EE envelopes, relay protocols, checkpoints and generations, the Cloudflare relay Worker, foreground or Android background scheduling, quarantined batches, relay rollback or reset, and sync CI changes. Do not use for unrelated database or UI work.
 ---
 
 # Balance sync
@@ -32,8 +32,8 @@ with the frontend in `src/lib/SyncPanel.svelte` and automatic foreground
 scheduling in `src/lib/syncScheduler.ts`. Devices pair via QR codes and exchange
 compressed E2EE envelopes using XChaCha20-Poly1305.
 
-Relay sync uploads only durable incremental operation batches. Direct TCP sync
-uses an id-set inventory plus compact per-device checkpoint frontiers. No SQLite
+Sync uses only the internet relay and uploads durable incremental operation
+batches. Local-network discovery and direct TCP sync are not supported. No SQLite
 extension is loaded on any platform, so there is nothing sync-specific to
 cross-compile for Android. The Android workflow still needs the NDK because it
 cross-compiles the vendored OpenSSL linked by SQLCipher.

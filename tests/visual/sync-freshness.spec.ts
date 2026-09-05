@@ -355,7 +355,8 @@ test('settings stay available while a launch sync is still running', async ({ pa
   await openSettings(page)
 
   await expect(page.getByText('Loading sync settings…')).toHaveCount(0)
-  await expect(page.getByText('BALSYNC1:synthetic-test-code')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Sync across your devices' })).toBeVisible()
+  await expect(page.getByText('BALSYNC1:synthetic-test-code')).toHaveCount(0)
   await expect.poll(() => page.evaluate(() => {
     const runtime = globalThis as typeof globalThis & { __syncSettingsCount: number }
     return runtime.__syncSettingsCount

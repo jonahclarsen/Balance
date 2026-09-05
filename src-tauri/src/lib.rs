@@ -9676,14 +9676,12 @@ mod android_keystore {
     use std::path::Path;
     use std::sync::OnceLock;
 
-    use jni::objects::{GlobalRef, JByteArray, JClass, JObject, JString, JValue};
+    use jni::objects::{JByteArray, JClass, JObject, JString, JValue};
     use jni::{JNIEnv, JavaVM};
-    use tauri::Manager;
 
     // Tauri/tao keep the JavaVM in their own private Android glue and don't
     // initialize the `ndk-context` crate, so we capture it ourselves when the
-    // JVM loads this library. Keystore calls need only this VM; direct-sync
-    // locks obtain the Activity through Tauri's supported JNI handle.
+    // JVM loads this library. Keystore calls need only this VM.
     static JAVA_VM: OnceLock<JavaVM> = OnceLock::new();
 
     #[no_mangle]
@@ -9720,43 +9718,6 @@ mod android_keystore {
         })
     }
 
-    /// Keep the CPU and Wi-Fi radio awake only while an active direct sync is
-    /// running. Android may otherwise suspend either one when the display goes
-    /// dark, aborting an in-flight TCP connection.
-    pub(crate) fn with_sync_wake_locks<T>(
-        app: &tauri::AppHandle,
-        work: impl FnOnce() -> T,
-    ) -> Result<T, String> {
-        let webview = app
-            .get_webview_window("main")
-            .ok_or_else(|| "The main Android webview is unavailable.".to_string())?;
-        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
-
-        webview
-            .with_webview(move |webview| {
-                webview.jni_handle().exec(move |env, activity, _webview| {
-                    let result = acquire_sync_wake_locks(env, activity);
-                    if result.is_err() && env.exception_check().unwrap_or(false) {
-                        let _ = env.exception_describe();
-                        let _ = env.exception_clear();
-                    }
-                    let _ = sender.send(result);
-                });
-            })
-            .map_err(|error| format!("Could not access the Android activity: {error}"))?;
-
-        let locks = receiver
-            .recv()
-            .map_err(|_| "Android wake-lock setup was interrupted.".to_string())??;
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work));
-        release_sync_wake_locks(&locks);
-
-        match result {
-            Ok(value) => Ok(value),
-            Err(payload) => std::panic::resume_unwind(payload),
-        }
-    }
-
     #[no_mangle]
     pub extern "system" fn Java_app_balance_local_BalanceSyncWorker_runNativeSync(
         mut env: JNIEnv,
@@ -9780,110 +9741,6 @@ mod android_keystore {
                 log::warn!("Android background relay sync panicked and will retry");
                 1
             }
-        }
-    }
-
-    struct SyncWakeLocks {
-        cpu: GlobalRef,
-        wifi: GlobalRef,
-    }
-
-    fn acquire_sync_wake_locks(
-        env: &mut JNIEnv,
-        activity: &JObject,
-    ) -> Result<SyncWakeLocks, String> {
-        let tag = env
-            .new_string("Balance:directSync")
-            .map_err(|error| error.to_string())?;
-        let power_service = env.new_string("power").map_err(|error| error.to_string())?;
-        let power_manager = env
-            .call_method(
-                activity,
-                "getSystemService",
-                "(Ljava/lang/String;)Ljava/lang/Object;",
-                &[(&power_service).into()],
-            )
-            .and_then(|value| value.l())
-            .map_err(|error| format!("Could not get Android PowerManager: {error}"))?;
-        let cpu_lock = env
-            .call_method(
-                &power_manager,
-                "newWakeLock",
-                "(ILjava/lang/String;)Landroid/os/PowerManager$WakeLock;",
-                &[1.into(), (&tag).into()], // PowerManager.PARTIAL_WAKE_LOCK
-            )
-            .and_then(|value| value.l())
-            .map_err(|error| format!("Could not create Android wake lock: {error}"))?;
-
-        let wifi_service = env.new_string("wifi").map_err(|error| error.to_string())?;
-        let wifi_manager = env
-            .call_method(
-                activity,
-                "getSystemService",
-                "(Ljava/lang/String;)Ljava/lang/Object;",
-                &[(&wifi_service).into()],
-            )
-            .and_then(|value| value.l())
-            .map_err(|error| format!("Could not get Android WifiManager: {error}"))?;
-        let wifi_lock = env
-            .call_method(
-                &wifi_manager,
-                "createWifiLock",
-                "(ILjava/lang/String;)Landroid/net/wifi/WifiManager$WifiLock;",
-                &[3.into(), (&tag).into()], // WifiManager.WIFI_MODE_FULL_HIGH_PERF
-            )
-            .and_then(|value| value.l())
-            .map_err(|error| format!("Could not create Android Wi-Fi lock: {error}"))?;
-
-        env.call_method(&cpu_lock, "setReferenceCounted", "(Z)V", &[JValue::Bool(0)])
-            .map_err(|error| format!("Could not configure Android wake lock: {error}"))?;
-        env.call_method(
-            &wifi_lock,
-            "setReferenceCounted",
-            "(Z)V",
-            &[JValue::Bool(0)],
-        )
-        .map_err(|error| format!("Could not configure Android Wi-Fi lock: {error}"))?;
-
-        // The timeout is a last-resort safeguard; both locks are explicitly
-        // released as soon as this sync pass succeeds or fails.
-        env.call_method(
-            &cpu_lock,
-            "acquire",
-            "(J)V",
-            &[JValue::Long(SYNC_WAKE_LOCK_TIMEOUT_MS)],
-        )
-        .map_err(|error| format!("Could not acquire Android wake lock: {error}"))?;
-        if let Err(error) = env.call_method(&wifi_lock, "acquire", "()V", &[]) {
-            let _ = env.call_method(&cpu_lock, "release", "()V", &[]);
-            return Err(format!("Could not acquire Android Wi-Fi lock: {error}"));
-        }
-
-        let cpu = env.new_global_ref(&cpu_lock).map_err(|error| {
-            let _ = env.call_method(&wifi_lock, "release", "()V", &[]);
-            let _ = env.call_method(&cpu_lock, "release", "()V", &[]);
-            format!("Could not retain Android wake lock: {error}")
-        })?;
-        let wifi = env.new_global_ref(&wifi_lock).map_err(|error| {
-            let _ = env.call_method(&wifi_lock, "release", "()V", &[]);
-            let _ = env.call_method(&cpu_lock, "release", "()V", &[]);
-            format!("Could not retain Android Wi-Fi lock: {error}")
-        })?;
-
-        Ok(SyncWakeLocks { cpu, wifi })
-    }
-
-    fn release_sync_wake_locks(locks: &SyncWakeLocks) {
-        if let Err(error) = with_env(|env| {
-            if let Err(error) = env.call_method(locks.wifi.as_obj(), "release", "()V", &[]) {
-                log::warn!("Could not release Android direct-sync Wi-Fi lock: {error}");
-            }
-            if let Err(error) = env.call_method(locks.cpu.as_obj(), "release", "()V", &[]) {
-                log::warn!("Could not release Android direct-sync wake lock: {error}");
-            }
-            Ok(())
-        }) {
-            log::warn!("Could not attach to Android to release direct-sync locks: {error}");
         }
     }
 
@@ -10292,16 +10149,27 @@ fn normalize_sync_pairing_code(pairing_code: &str) -> Result<String, String> {
 
 /// Enable sync as the **primary** device: keep this device's data as the shared
 /// baseline (snapshots it into the synced operation log). Backs up first. The
-/// pairing code is stored (in the encrypted DB) so the P2P listener can use it.
+/// pairing code is stored in the encrypted DB for automatic sync.
 #[tauri::command]
-async fn sync_enable_primary(app: tauri::AppHandle, pairing_code: String) -> Result<(), String> {
+async fn sync_enable_primary(
+    app: tauri::AppHandle,
+    pairing_code: String,
+    relay_url: Option<String>,
+) -> Result<SyncSettings, String> {
     let pairing_code = normalize_sync_pairing_code(&pairing_code)?;
+    let relay_url = relay_url.map(|url| normalize_sync_relay_url(&url)).transpose()?;
     run_database_task(move || {
         let connection = open_database(&app)?;
         backup_state_before_sync(&app, &connection)?;
         sync::enable_primary(&connection).map_err(sync::Error::into_string)?;
         sync::store_pairing_code(&connection, &pairing_code).map_err(sync::Error::into_string)?;
-        set_metadata(&connection, SYNC_COMPACTION_COORDINATOR, "true")
+        set_metadata(&connection, SYNC_COMPACTION_COORDINATOR, "true")?;
+        // Save the endpoint under the same database guard as the key, so an
+        // automatic pass cannot observe a half-configured setup.
+        if let Some(url) = relay_url {
+            set_metadata(&connection, SYNC_RELAY_URL, &url)?;
+        }
+        sync_settings_from_database(&connection)
     })
     .await
 }
@@ -10309,14 +10177,25 @@ async fn sync_enable_primary(app: tauri::AppHandle, pairing_code: String) -> Res
 /// Enable sync as a **joining** device: adopt the primary's data, clearing this
 /// device's local data (which is backed up first).
 #[tauri::command]
-async fn sync_enable_joiner(app: tauri::AppHandle, pairing_code: String) -> Result<(), String> {
+async fn sync_enable_joiner(
+    app: tauri::AppHandle,
+    pairing_code: String,
+    relay_url: Option<String>,
+) -> Result<SyncSettings, String> {
     let pairing_code = normalize_sync_pairing_code(&pairing_code)?;
+    let relay_url = relay_url.map(|url| normalize_sync_relay_url(&url)).transpose()?;
     run_database_task(move || {
         let connection = open_database(&app)?;
         backup_state_before_sync(&app, &connection)?;
         sync::enable_joiner(&connection).map_err(sync::Error::into_string)?;
         sync::store_pairing_code(&connection, &pairing_code).map_err(sync::Error::into_string)?;
-        set_metadata(&connection, SYNC_COMPACTION_COORDINATOR, "false")
+        set_metadata(&connection, SYNC_COMPACTION_COORDINATOR, "false")?;
+        // Save the endpoint under the same database guard as the key, so an
+        // automatic pass cannot observe a half-configured setup.
+        if let Some(url) = relay_url {
+            set_metadata(&connection, SYNC_RELAY_URL, &url)?;
+        }
+        sync_settings_from_database(&connection)
     })
     .await
 }
@@ -10416,73 +10295,6 @@ async fn sync_anonymous_diagnostics(
         .map_err(sync::Error::into_string)
     })
     .await
-}
-
-/// Read the stored pairing code (the E2E key) from the encrypted DB.
-fn stored_sync_key(app: &tauri::AppHandle) -> Result<Option<sync::crypto::SyncKey>, String> {
-    let connection = open_database(app)?;
-    let Some(code) = sync::read_pairing_code(&connection).map_err(sync::Error::into_string)? else {
-        return Ok(None);
-    };
-    sync::crypto::SyncKey::from_pairing_code(&code)
-        .map(Some)
-        .map_err(sync::Error::into_string)
-}
-
-/// Start (idempotently) the P2P listener + mDNS discovery, returning the LAN
-/// address other devices can connect to.
-#[tauri::command]
-async fn sync_p2p_serve(app: tauri::AppHandle) -> Result<Option<String>, String> {
-    run_database_task(move || {
-        let Some(key) = stored_sync_key(&app)? else {
-            return Ok(None); // sync not enabled yet
-        };
-        sync::p2p::ensure_serving(app.clone(), key).map_err(sync::Error::into_string)?;
-        Ok(sync::p2p::local_address())
-    })
-    .await
-}
-
-/// Other Balance devices discovered on the LAN.
-#[tauri::command]
-async fn sync_p2p_peers() -> Result<Vec<sync::p2p::Peer>, String> {
-    Ok(sync::p2p::peers())
-}
-
-/// Sync directly with a peer at `address` (host:port), then return the rebuilt
-/// app state so the UI can refresh.
-///
-/// Deliberately *not* wrapped in `run_database_task`: that would hold
-/// `DATABASE_ACCESS_LOCK` for the entire network exchange, so two devices
-/// syncing at each other would each wait on a socket while owning the lock the
-/// other's responder needs — a distributed deadlock until both time out.
-/// Instead each phase takes the guard on its own and releases it before any
-/// socket I/O (see `sync::p2p::AppStore`).
-#[tauri::command]
-async fn sync_p2p_sync(app: tauri::AppHandle, address: String) -> Result<Option<String>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let key = {
-            let _guard = database_access_guard()?;
-            let connection = open_database(&app)?;
-            maybe_checkpoint_operation_log(&connection)?;
-            stored_sync_key(&app)?
-        }
-        .ok_or_else(|| "Sync is not enabled on this device.".to_string())?;
-
-        // No guard held here; the exchange takes it per database phase.
-        sync::p2p::sync_with(&app, &key, &address).map_err(sync::Error::into_string)?;
-
-        let _guard = database_access_guard()?;
-        let connection = open_database(&app)?;
-        maybe_checkpoint_operation_log(&connection)?;
-        #[cfg(target_os = "macos")]
-        if let Err(error) = macos_widget::publish_snapshot(&connection) {
-            eprintln!("Could not refresh the macOS widget: {error}");
-        }
-        read_app_state_from_database(&connection).map(|state| state.map(|value| value.to_string()))
-    })
-    .await
-    .map_err(|error| error.to_string())?
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -10659,9 +10471,6 @@ pub fn run() {
             sync_enable_joiner,
             sync_relay_once,
             sync_anonymous_diagnostics,
-            sync_p2p_serve,
-            sync_p2p_peers,
-            sync_p2p_sync
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -11976,22 +11785,6 @@ mod tests {
         assert!(
             after.contains(&"op_synced_after_compact".to_string()),
             "post-compaction writes are offered to peers"
-        );
-        // A peer that already holds the checkpoint is offered only the new op.
-        let peer_inventory = sync::SyncInventory {
-            items: vec![sync::InventoryItem {
-                id: checkpoint_ids[0].clone(),
-                device_id: checkpoint.device_id.clone(),
-                sequence: checkpoint.sequence,
-                checkpoint: true,
-            }],
-            frontiers: sync::sync_frontiers(&compacted).unwrap(),
-        };
-        let (ops, want) = sync::diff_against(&compacted, &peer_inventory).unwrap();
-        assert!(want.is_empty());
-        assert_eq!(
-            ops.iter().map(|op| op.id.as_str()).collect::<Vec<_>>(),
-            ["op_synced_after_compact"]
         );
         drop(compacted);
     }

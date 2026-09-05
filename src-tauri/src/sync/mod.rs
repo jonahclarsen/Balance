@@ -6,7 +6,7 @@
 //! of `(timestamp, device_id, sequence)`, and a deterministic materializer
 //! (`apply_operation`, driven by [`rematerialize`]).
 //!
-//! Between checkpoints, globally unique ids make reconciliation an id-set diff.
+//! Globally unique operation ids make repeated relay delivery idempotent.
 //! A checkpoint adds a compact per-device sequence frontier so an offline peer
 //! cannot resurrect removed history. No native SQLite extension is involved.
 //!
@@ -31,10 +31,9 @@ use sha2::{Digest, Sha256};
 
 pub mod crypto;
 pub mod diagnostics;
-pub mod p2p;
+#[cfg(test)]
 pub mod relay;
 pub mod relay_client;
-pub mod transport;
 
 /// Wire-protocol version. Bump only for incompatible framing/semantics changes.
 pub const PROTOCOL_VERSION: u32 = 4;
@@ -79,58 +78,6 @@ pub struct Op {
     pub op_type: String,
     pub timestamp: String,
     pub payload_json: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct InventoryItem {
-    pub id: String,
-    pub device_id: String,
-    pub sequence: i64,
-    pub checkpoint: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
-pub struct SyncInventory {
-    pub items: Vec<InventoryItem>,
-    pub frontiers: HashMap<String, i64>,
-}
-
-/// The database side of a sync exchange. The transport calls these between
-/// socket reads and writes; each implementation decides how it gets a
-/// connection (a borrowed one in tests, a freshly opened + globally guarded one
-/// in the app) so that **no lock and no connection is held across socket I/O**.
-pub trait SyncStore {
-    /// Current post-checkpoint operations plus compact covered frontiers.
-    fn inventory(&self) -> Result<SyncInventory>;
-    /// `(ops the peer is missing, ids this device wants from the peer)`.
-    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)>;
-    /// Full rows for the requested ids (ids this device does not have are
-    /// silently skipped).
-    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>>;
-    /// Merge received ops, rematerializing state if anything was inserted.
-    /// Returns the number of ops actually inserted.
-    fn merge(&self, ops: Vec<Op>) -> Result<usize>;
-}
-
-/// [`SyncStore`] over an already-open connection (tests and [`selftest`]).
-pub struct ConnectionStore<'a>(pub &'a Connection);
-
-impl SyncStore for ConnectionStore<'_> {
-    fn inventory(&self) -> Result<SyncInventory> {
-        sync_inventory(self.0)
-    }
-
-    fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
-        diff_against(self.0, peer)
-    }
-
-    fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
-        ops_by_id(self.0, ids)
-    }
-
-    fn merge(&self, ops: Vec<Op>) -> Result<usize> {
-        merge_and_rematerialize(self.0, ops)
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -231,21 +178,6 @@ fn validate_current_operation(op: &Op) -> Result<JsonValue> {
     Ok(payload)
 }
 
-pub fn sync_inventory(conn: &Connection) -> Result<SyncInventory> {
-    Ok(SyncInventory {
-        items: all_ops(conn)?
-            .into_iter()
-            .map(|op| InventoryItem {
-                id: op.id,
-                device_id: op.device_id,
-                sequence: op.sequence,
-                checkpoint: op.op_type == "replace_full_state",
-            })
-            .collect(),
-        frontiers: sync_frontiers(conn)?,
-    })
-}
-
 /// Full rows for `ids`; unknown ids are skipped.
 pub fn ops_by_id(conn: &Connection, ids: &[String]) -> Result<Vec<Op>> {
     if ids.is_empty() {
@@ -260,42 +192,6 @@ pub fn ops_by_id(conn: &Connection, ids: &[String]) -> Result<Vec<Op>> {
         .into_iter()
         .filter(|op| wanted.contains(op.id.as_str()))
         .collect())
-}
-
-/// The responder's half of reconciliation: what the peer is missing, and what
-/// this device wants back. Checkpoint frontiers suppress compacted operations.
-pub fn diff_against(conn: &Connection, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
-    let mine = local_op_ids(conn)?;
-    let mine_set: HashSet<&str> = mine.iter().map(String::as_str).collect();
-    let peer_set: HashSet<&str> = peer.items.iter().map(|item| item.id.as_str()).collect();
-    let local_frontiers = sync_frontiers(conn)?;
-
-    let want = peer
-        .items
-        .iter()
-        .filter(|item| {
-            !mine_set.contains(item.id.as_str())
-                && (item.checkpoint
-                    || !local_frontiers
-                        .get(&item.device_id)
-                        .is_some_and(|covered| item.sequence <= *covered))
-        })
-        .map(|item| item.id.clone())
-        .collect::<Vec<_>>();
-
-    let ops = all_ops(conn)?
-        .into_iter()
-        .filter(|op| {
-            !peer_set.contains(op.id.as_str())
-                && (op.op_type == "replace_full_state"
-                    || !peer
-                        .frontiers
-                        .get(&op.device_id)
-                        .is_some_and(|covered| op.sequence <= *covered))
-        })
-        .collect::<Vec<_>>();
-
-    Ok((ops, want))
 }
 
 // ---------------------------------------------------------------------------
@@ -688,8 +584,7 @@ fn mark_enabled(conn: &Connection) -> Result<()> {
     Ok(())
 }
 
-/// Persist the pairing code (the E2E key) in the encrypted DB so the background
-/// P2P listener can decrypt incoming frames without UI involvement.
+/// Persist the pairing code (the E2E key) in the encrypted DB for automatic sync.
 pub fn store_pairing_code(conn: &Connection, pairing_code: &str) -> Result<()> {
     conn.execute(
         "INSERT INTO metadata (key, value) VALUES (?1, ?2) \
@@ -710,7 +605,7 @@ pub fn read_pairing_code(conn: &Connection) -> Result<Option<String>> {
         .ok())
 }
 
-/// Enable sync on the device that holds the canonical data ("Create sync key").
+/// Enable sync on the device that holds the canonical data ("Set up sync").
 /// Snapshot the current state into a single baseline op and reset the log to
 /// just that snapshot. The real data tables are not touched.
 pub fn enable_primary(conn: &Connection) -> Result<()> {
@@ -1077,9 +972,10 @@ pub fn hex(bytes: &[u8]) -> String {
 /// databases. This is intentionally broader than an engine smoke test: it uses
 /// the production schema and materializer, creates and parses the pairing code,
 /// enables a primary and joiner, persists the key on both sides, exchanges the
-/// encrypted operation log over a real TCP socket, and verifies that user data
+/// encrypted operation log through a synthetic exchange, and verifies that data
 /// appears on the joining device. CI runs this inside the Android APK so
-/// SQLCipher, pairing, transport, and the bootstrap path are covered together.
+/// SQLCipher, pairing, and the bootstrap path are covered together. HTTP relay
+/// transport is exercised separately against the reference server in CI.
 /// Cleans up after itself.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1090,6 +986,27 @@ pub struct SyncSelftestProfile {
     bootstrap_ms: u128,
     long_task_persist_ms: u128,
     long_task_incremental_sync_ms: u128,
+}
+
+fn exchange_fixture_operations(
+    a: &Connection,
+    b: &Connection,
+    key: &crypto::SyncKey,
+) -> Result<()> {
+    let encode = |conn, recipient| -> Result<Vec<u8>> {
+        let known: HashSet<String> = local_op_ids(recipient)?.into_iter().collect();
+        let missing: Vec<Op> = all_ops(conn)?.into_iter().filter(|op| !known.contains(&op.id)).collect();
+        let bytes = serde_json::to_vec(&missing).map_err(|e| Error::Codec(e.to_string()))?;
+        key.seal(&bytes)
+    };
+    let decode = |sealed: &[u8]| -> Result<Vec<Op>> {
+        serde_json::from_slice(&key.open(sealed)?).map_err(|e| Error::Codec(e.to_string()))
+    };
+    let from_a = encode(a, b)?;
+    let from_b = encode(b, a)?;
+    merge_and_rematerialize(a, decode(&from_b)?)?;
+    merge_and_rematerialize(b, decode(&from_a)?)?;
+    Ok(())
 }
 
 pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
@@ -1231,23 +1148,8 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
         )
         .map_err(Error::Codec)?;
 
-        // Mirror the app's manual-address flow: the primary listens and the
-        // joining device initiates a bidirectional, E2EE P2P sync.
         let bootstrap_started = std::time::Instant::now();
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
-        let address = listener
-            .local_addr()
-            .map_err(|e| Error::Codec(e.to_string()))?
-            .to_string();
-        let primary_thread = std::thread::spawn(move || -> Result<()> {
-            transport::sync_accept(&listener, &primary_sync_key, &ConnectionStore(&primary))
-        });
-
-        transport::sync_connect(&address, &joiner_sync_key, &ConnectionStore(&joiner))?;
-        primary_thread
-            .join()
-            .map_err(|_| Error::Codec("primary sync thread panicked".into()))??;
+        exchange_fixture_operations(&primary, &joiner, &joiner_sync_key)?;
         let bootstrap_ms = bootstrap_started.elapsed().as_millis();
 
         let joined_state = crate::read_app_state_from_database(&joiner)
@@ -1332,20 +1234,7 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
         let incremental_started = std::time::Instant::now();
         let primary =
             crate::open_database_at(&a_path, &primary_recovery_key).map_err(Error::Codec)?;
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
-        let address = listener
-            .local_addr()
-            .map_err(|e| Error::Codec(e.to_string()))?
-            .to_string();
-        let incremental_sync_key = joiner_sync_key.clone();
-        let primary_thread = std::thread::spawn(move || -> Result<()> {
-            transport::sync_accept(&listener, &incremental_sync_key, &ConnectionStore(&primary))
-        });
-        transport::sync_connect(&address, &joiner_sync_key, &ConnectionStore(&joiner))?;
-        primary_thread
-            .join()
-            .map_err(|_| Error::Codec("primary incremental sync thread panicked".into()))??;
+        exchange_fixture_operations(&primary, &joiner, &joiner_sync_key)?;
         let long_task_incremental_sync_ms = incremental_started.elapsed().as_millis();
 
         let primary =
@@ -1426,20 +1315,7 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
         )
         .map_err(Error::Codec)?;
 
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
-        let address = listener
-            .local_addr()
-            .map_err(|e| Error::Codec(e.to_string()))?
-            .to_string();
-        let cut_paste_sync_key = joiner_sync_key.clone();
-        let primary_thread = std::thread::spawn(move || -> Result<()> {
-            transport::sync_accept(&listener, &cut_paste_sync_key, &ConnectionStore(&primary))
-        });
-        transport::sync_connect(&address, &joiner_sync_key, &ConnectionStore(&joiner))?;
-        primary_thread
-            .join()
-            .map_err(|_| Error::Codec("primary cut/paste sync thread panicked".into()))??;
+        exchange_fixture_operations(&primary, &joiner, &joiner_sync_key)?;
 
         drop(joiner);
         let joiner =
@@ -1472,20 +1348,7 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
             }
         }
 
-        let listener =
-            std::net::TcpListener::bind("127.0.0.1:0").map_err(|e| Error::Codec(e.to_string()))?;
-        let address = listener
-            .local_addr()
-            .map_err(|e| Error::Codec(e.to_string()))?
-            .to_string();
-        let restart_sync_key = joiner_sync_key.clone();
-        let primary_thread = std::thread::spawn(move || -> Result<()> {
-            transport::sync_accept(&listener, &restart_sync_key, &ConnectionStore(&primary))
-        });
-        transport::sync_connect(&address, &joiner_sync_key, &ConnectionStore(&joiner))?;
-        primary_thread
-            .join()
-            .map_err(|_| Error::Codec("primary post-restart sync thread panicked".into()))??;
+        exchange_fixture_operations(&primary, &joiner, &joiner_sync_key)?;
 
         drop(joiner);
         let joiner =

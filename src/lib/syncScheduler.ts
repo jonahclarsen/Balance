@@ -185,7 +185,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       await plannerStore.flushPendingOperations()
       uploadStarted = true
       const result = await syncRelayOnce(reason)
-      // WorkManager or an inbound direct sync can update the database without
+      // WorkManager can update the database without
       // this WebView observing it. A no-op relay pass does not imply that the
       // visible state is current when returning to the app or syncing manually.
       await reloadVisibleState(reason, result.stateChanged || backendRefreshPending)
