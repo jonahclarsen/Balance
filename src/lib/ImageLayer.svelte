@@ -297,6 +297,7 @@
   .image-tools { position: absolute; left: 0; display: flex; white-space: nowrap; pointer-events: auto; background: var(--paper); border-radius: 7px; box-shadow: 0 3px 12px #0005; }
   .image-tools button { padding: 6px 9px; font-size: 12px; }
   :global(img[data-balance-image]) { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; object-fit: contain; cursor: grab; border-radius: 3px; }
+  :global(img[data-balance-image][data-image-layout='inline']) { margin: .2em .35em; max-width: calc(100% - .7em); }
   :global(img[data-image-layout='left']) { float: left; margin: .25em 1em .5em 0; }
   :global(img[data-image-layout='right']) { float: right; margin: .25em 0 .5em 1em; }
   :global([data-rich-text-input]:has(img[data-balance-image])) { display: flow-root; white-space: pre-wrap; }
