@@ -9,7 +9,7 @@
   --font-interface: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", sans-serif;
   --font-content: var(--font-interface);
   --font-mono: "Cascadia Mono", "Roboto Mono", "SFMono-Regular", Menlo, Consolas, monospace;
-  --app-background: #f6f4ef;
+  --app-background: #f1f6f2;
   --paper: #fffdf8;
   --paper-strong: #ffffff;
   --ink: #1d2428;
@@ -33,7 +33,7 @@
   --checkbox-checked-hover: color-mix(in srgb, var(--theme-checkbox) 88%, black);
   --danger: #b4453d;
   --shadow: 0 14px 34px rgba(38, 35, 27, 0.09);
-  --sidebar: #ebe7dc;
+  --sidebar: #e0ece4;
   --active-nav: #dfece7;
   --row-border: rgba(216, 212, 202, 0.75);
   --drop-inside: #e8f2ee;

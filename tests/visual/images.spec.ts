@@ -185,6 +185,32 @@ async function pasteImage(page: Page, large = false, mixed = false, selector = '
   }
 }
 
+test('new images wrap multiple text lines and Inline is the last layout option', async ({ page }) => {
+  await notes(page)
+  await pasteImage(page)
+  const editor = page.locator('[data-note-text-input]').first()
+  const image = editor.locator('img')
+  await expect(image).toHaveAttribute('data-image-layout', 'left')
+  await editor.evaluate((node) => {
+    node.append(document.createTextNode('Text wraps beside this image. '.repeat(20)))
+    node.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+  })
+  const besideLines = await editor.evaluate((node) => {
+    const image = node.querySelector('img')!
+    const box = image.getBoundingClientRect()
+    const range = document.createRange()
+    range.setStartAfter(image); range.setEnd(node, node.childNodes.length)
+    const rects = Array.from(range.getClientRects()).filter((rect) => rect.left >= box.right && rect.top >= box.top && rect.bottom <= box.bottom)
+    return new Set(rects.map((rect) => Math.round(rect.top))).size
+  })
+  expect(besideLines).toBeGreaterThanOrEqual(2)
+  await image.click()
+  await expect(page.getByRole('toolbar', { name: 'Image layout' }).getByRole('button')).toHaveText(['Wrap left', 'Wrap right', 'Inline'])
+  await page.getByRole('button', { name: 'Inline', exact: true }).click()
+  await expect(image).toHaveAttribute('data-image-layout', 'inline')
+  await expect(image).toHaveCSS('float', 'none')
+})
+
 test('small images survive text editing, reload, deletion, undo, and a full-window viewer', async ({ page }) => {
   await notes(page)
   const editor = page.locator('[data-note-text-input]').first()
