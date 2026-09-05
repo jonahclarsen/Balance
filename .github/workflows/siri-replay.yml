@@ -1,0 +1,29 @@
+name: Reproduce Siri request replay
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/siri-replay.yml'
+      - 'tests/visual/siri-replay.spec.ts'
+
+permissions:
+  contents: read
+
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Reproduce with synthetic data and native command mocks
+        run: pnpm exec playwright test tests/visual/siri-replay.spec.ts --project=desktop
