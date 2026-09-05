@@ -918,10 +918,6 @@ return rows`
     if (rect.top < Math.max(bounds?.top ?? 0, isMobile ? 64 : 0) || rect.bottom > Math.min(bounds?.bottom ?? innerHeight, innerHeight)) {
       target.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
     }
-    target.classList.remove('search-result-target')
-    void target.offsetWidth
-    target.classList.add('search-result-target')
-    window.setTimeout(() => target.classList.remove('search-result-target'), 1800)
   }
 
   function handleTaskCompletionFocus(event: Event) {
