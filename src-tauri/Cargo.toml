@@ -27,6 +27,7 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 data-encoding = "2.11.0"
 rand = "0.8.5"
+chrono = "0.4.44"
 rusqlite = { version = "0.32.1", features = ["backup", "bundled-sqlcipher-vendored-openssl"] }
 # Multi-device sync (see src/sync): E2E sealing of changesets + convergence hashing.
 chacha20poly1305 = "0.10"
@@ -52,7 +53,6 @@ keyring = { version = "3.6.3", features = ["apple-native"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6.2"
-chrono = "0.4.44"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["block2", "NSEvent", "NSHapticFeedback", "NSPasteboard", "NSScreen", "NSWindow"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSString", "NSUserDefaults"] }

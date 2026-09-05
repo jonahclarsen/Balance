@@ -233,4 +233,129 @@ mod tests {
 
         drop(peer);
     }
+
+    #[test]
+    fn direct_sync_initiator_success_does_not_acknowledge_responder_merge() {
+        use std::sync::Mutex;
+
+        struct SyntheticStore {
+            ops: Mutex<Vec<Op>>,
+            fail_merge: bool,
+            merge_delay: Duration,
+        }
+        impl SyncStore for SyntheticStore {
+            fn inventory(&self) -> Result<SyncInventory> {
+                Ok(SyncInventory {
+                    items: self
+                        .ops
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .map(|op| super::super::InventoryItem {
+                            id: op.id.clone(),
+                            device_id: op.device_id.clone(),
+                            sequence: op.sequence,
+                            checkpoint: false,
+                        })
+                        .collect(),
+                    frontiers: Default::default(),
+                })
+            }
+            fn diff(&self, peer: &SyncInventory) -> Result<(Vec<Op>, Vec<String>)> {
+                let ops = self.ops.lock().unwrap();
+                Ok((
+                    ops.iter()
+                        .filter(|op| !peer.items.iter().any(|item| item.id == op.id))
+                        .cloned()
+                        .collect(),
+                    peer.items
+                        .iter()
+                        .filter(|item| !ops.iter().any(|op| op.id == item.id))
+                        .map(|item| item.id.clone())
+                        .collect(),
+                ))
+            }
+            fn ops_by_id(&self, ids: &[String]) -> Result<Vec<Op>> {
+                Ok(self
+                    .ops
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .filter(|op| ids.contains(&op.id))
+                    .cloned()
+                    .collect())
+            }
+            fn merge(&self, incoming: Vec<Op>) -> Result<usize> {
+                std::thread::sleep(self.merge_delay);
+                if self.fail_merge {
+                    assert_eq!(
+                        incoming.len(),
+                        1,
+                        "the encrypted completion reached the responder"
+                    );
+                    assert_eq!(incoming[0].id, "phone-completion");
+                    return Err(Error::Codec("synthetic receiver transaction failed".into()));
+                }
+                let mut ops = self.ops.lock().unwrap();
+                let before = ops.len();
+                for op in incoming {
+                    if !ops.iter().any(|existing| existing.id == op.id) {
+                        ops.push(op);
+                    }
+                }
+                Ok(ops.len() - before)
+            }
+        }
+        let operation = |id: &str, device: &str| Op {
+            id: id.into(),
+            device_id: device.into(),
+            sequence: 1,
+            op_type: "patch_plan_item".into(),
+            timestamp: "2026-09-05T12:00:00.000Z".into(),
+            payload_json:
+                r#"{"planId":"synthetic-plan","itemId":"synthetic-task","patch":{"done":true}}"#
+                    .into(),
+        };
+        for (initiator_delay, responder_delay) in [(0, 0), (20, 0), (0, 20), (5, 30)] {
+            let initiator = SyntheticStore {
+                ops: Mutex::new(vec![operation("phone-completion", "phone")]),
+                fail_merge: false,
+                merge_delay: Duration::from_millis(initiator_delay),
+            };
+            let responder = SyntheticStore {
+                ops: Mutex::new(vec![operation("desktop-completion", "desktop")]),
+                fail_merge: true,
+                merge_delay: Duration::from_millis(responder_delay),
+            };
+            let key = SyncKey::generate();
+            for attempt in 0..3 {
+                let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+                let address = listener.local_addr().unwrap().to_string();
+                std::thread::scope(|scope| {
+                    let receiver = scope.spawn(|| sync_accept(&listener, &key, &responder));
+                    let sent = sync_connect(&address, &key, &initiator);
+                    assert!(
+                        sent.is_ok(),
+                        "attempt {attempt}, delays {initiator_delay}/{responder_delay}: {sent:?}"
+                    );
+                    let error = receiver.join().unwrap().unwrap_err();
+                    assert!(error
+                        .to_string()
+                        .contains("synthetic receiver transaction failed"));
+                });
+                assert_eq!(
+                    initiator.ops.lock().unwrap().len(),
+                    2,
+                    "initiator successfully receives the peer's operation"
+                );
+                assert_eq!(
+                    responder.ops.lock().unwrap().len(),
+                    1,
+                    "receiver remains missing the phone completion after repeated sender success"
+                );
+            }
+        }
+        // Characterizes protocol v3's three-frame limitation. A sender success
+        // confirms its own merge, but there is no durable receiver acknowledgement.
+    }
 }
