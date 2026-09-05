@@ -7140,9 +7140,6 @@ return rows`
                 >{@html node.item.text?.trim() ? renderItemDisplayHTML(node.item.html, node.item.text, []) : '(empty item)'}</div>
               </div>
             {/if}
-            {#if node.depth}
-              <p class="paste-review-meta">Nested {node.depth} level{node.depth === 1 ? '' : 's'} deep</p>
-            {/if}
           </div>
         {/each}
       </div>
