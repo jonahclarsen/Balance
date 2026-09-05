@@ -54,6 +54,70 @@ async function calls(page: Page) {
   return page.evaluate(() => (window as any).__syncCalls as string[])
 }
 
+async function startBackgroundSync(page: Page, delay: number) {
+  const previousCalls = (await calls(page)).length
+  await page.evaluate(async (delay) => {
+    const runtime = window as any
+    runtime.__syncDelayMs = delay
+    const schedulerPath = '/src/lib/syncScheduler.ts'
+    const { requestSync } = await import(/* @vite-ignore */ schedulerPath)
+    runtime.__backgroundSync = requestSync('poll')
+  }, delay)
+  await expect.poll(async () => (await calls(page)).length).toBeGreaterThan(previousCalls)
+}
+
+test('background sync only disables buttons after one second', async ({ page }) => {
+  const panel = await openSync(page, 'connected')
+  await expect(panel.locator('.sync-overview strong')).toHaveText('Connected to sync server')
+  await page.clock.install()
+  await page.clock.pauseAt(new Date())
+  const syncNow = panel.getByRole('button', { name: 'Sync now', exact: true })
+  const connect = panel.getByRole('button', { name: 'Connect another device' })
+
+  await startBackgroundSync(page, 500)
+  await expect(syncNow).toBeEnabled()
+  await connect.click()
+  await expect(panel.getByRole('img', { name: 'Pairing QR code' })).toBeVisible()
+  await page.clock.runFor(499)
+  await expect(syncNow).toBeEnabled()
+  await expect(connect).toBeEnabled()
+  await page.clock.runFor(501)
+  await page.evaluate(() => (window as any).__backgroundSync)
+  await expect(syncNow).toBeEnabled()
+  await expect(connect).toBeEnabled()
+
+  await startBackgroundSync(page, 1_500)
+  await page.clock.runFor(999)
+  await expect(syncNow).toBeEnabled()
+  await expect(connect).toBeEnabled()
+  await page.clock.runFor(2)
+  await expect(syncNow).toBeDisabled()
+  await expect(connect).toBeDisabled()
+  await page.clock.runFor(499)
+  await page.evaluate(() => (window as any).__backgroundSync)
+  await expect(syncNow).toBeEnabled()
+  await expect(connect).toBeEnabled()
+})
+
+test('saving connection settings waits for an active background sync', async ({ page }) => {
+  const panel = await openSync(page, 'connected')
+  await expect(panel.locator('.sync-overview strong')).toHaveText('Connected to sync server')
+  await panel.getByText('Connection settings', { exact: true }).click()
+  await panel.getByLabel('Sync server address').fill('https://sync.invalid/synthetic-new-room')
+  await page.clock.install()
+  await page.clock.pauseAt(new Date())
+  await startBackgroundSync(page, 500)
+  const save = panel.getByRole('button', { name: 'Save and connect' })
+  await save.click()
+  await expect(save).toBeDisabled()
+  expect(await calls(page)).not.toContain('set_sync_relay_url')
+  await page.clock.runFor(500)
+  await expect.poll(() => calls(page)).toContain('set_sync_relay_url')
+  await page.clock.runFor(500)
+  await expect(save).toBeEnabled()
+  await expect(panel.getByLabel('Sync server address')).toHaveValue('https://sync.invalid/synthetic-new-room')
+})
+
 test('quick syncs keep the connection label and only longer syncs show progress', async ({ page }) => {
   const panel = await openSync(page, 'connected')
   const label = panel.locator('.sync-overview strong')

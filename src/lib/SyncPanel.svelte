@@ -48,7 +48,7 @@
   let replaceKey = false
   let connectionOpen = false
   $: configured = syncEnabled && Boolean(pairingCode && savedRelayUrl)
-  $: busy = actionBusy || $automaticSyncStatus.running
+  $: busy = actionBusy || showSyncing
   $: updateSyncingIndicator($automaticSyncStatus.running)
   let actionBusy = false
 
@@ -180,6 +180,12 @@
     savedRelayUrl = relayUrl = settings.relayUrl
   }
 
+  async function waitForActiveSync() {
+    // Join the active pass before changing its server or key. A poll request
+    // waits for that pass without scheduling another one.
+    if ($automaticSyncStatus.running) await requestSync('poll')
+  }
+
   async function revealPairing() {
     showPairing = !showPairing
     if (showPairing) await renderQr()
@@ -194,6 +200,7 @@
     }
     actionBusy = true
     try {
+      await waitForActiveSync()
       const newPairingCode = await syncNewPairingCode()
       const settings = await syncEnablePrimary(newPairingCode, server.trim())
       savedRelayUrl = relayUrl = settings.relayUrl
@@ -226,6 +233,7 @@
     if (busy || flow !== 'review' || !validServer()) return
     actionBusy = true
     try {
+      await waitForActiveSync()
       const code = joinInput.trim()
       const settings = await syncEnableJoiner(code, relayUrl.trim())
       savedRelayUrl = relayUrl = settings.relayUrl
@@ -248,6 +256,7 @@
     if (busy || !validServer()) return
     actionBusy = true
     try {
+      await waitForActiveSync()
       await persistServer()
       const result = await requestSync('relay-configured')
       setStatus(result ? 'Connected to sync server.' : 'Server address saved. Sync has not completed; Balance will retry automatically.', !result)
