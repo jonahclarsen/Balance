@@ -466,14 +466,6 @@
           limited relay status, and fingerprints showing whether the current screen
           and database agree. It also saves a structural inventory of at most 50
           tasks, starting with today and then yesterday, so moved copies can be compared.
-          Up to 50 recent task mutations associated with today or yesterday are read
-          separately from encrypted undo history, which survives sync checkpoint
-          compaction and may preserve an earlier cut/paste.
-          The last visible planner screen is compared separately using only row order,
-          nesting, checkbox state, and completion styling—never task text.
-          It does not include a full copy of either state. Task text, dates, URLs,
-          keys, and every other data string are replaced with one-way account-keyed
-          tokens.
         </p>
         <div class="sync-actions">
           <button type="button" on:click={exportAnonymousDiagnostics} disabled={busy || diagnosticBusy}>
