@@ -1089,7 +1089,7 @@ return rows`
     const wasComplete = planCompletionById.get(plan.id)
     planCompletionById.set(plan.id, complete)
 
-    if (wasComplete === false && complete && currentView === 'today' && plan.date >= shiftISODate(todayISO(), -1)) {
+    if (wasComplete === false && complete && currentView === 'today' && plan.date === todayISO()) {
       celebrationDate = plan.date
       celebrationListId = null
       celebrationKind = 'day'
