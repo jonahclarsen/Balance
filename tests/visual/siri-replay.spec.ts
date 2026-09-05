@@ -86,7 +86,7 @@ for (const scenario of ['same-session', 'reload', 'native-race'] as const) {
     expect(result.firstAdded).toBe(true)
     expect(result.operationsBeforeReplay).toBe(scenario === 'same-session' ? 1 : 0)
     expect(result.persistedRequests).toEqual(['synthetic-replay-001'])
-    expect(result.replayAdded).toBe(scenario === 'native-race')
+    expect(result.replayAdded).toBe(false)
     expect(result.dates).toEqual(['2026-09-05'])
   })
 }

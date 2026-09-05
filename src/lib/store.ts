@@ -840,6 +840,13 @@ function createPlannerStore() {
           plans: [...state.plans, createdPlan].sort((a, b) => b.date.localeCompare(a.date)),
         }
       })
+      if (added && isTauri()) {
+        await flushOperations()
+        if (backendReloadPromise) await backendReloadPromise
+        // Native rejection reconciles the optimistic insertion. Report whether
+        // this particular item survived, so a replay cannot navigate the UI.
+        return get(store).plans.some((plan) => Boolean(findPlanItem(plan.items, insertion.item.id)))
+      }
       return added
     },
 
