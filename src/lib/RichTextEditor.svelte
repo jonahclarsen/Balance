@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { imageEditing } from './imageEditing'
+  import { IMAGE_SELECTOR } from './imageMarkup'
   import { onMount } from 'svelte'
   import { openExternalURL } from './externalLinks'
   import {
@@ -23,6 +25,7 @@
     end: number
   }
   type TextChangeOptions = {
+    imageEdit?: boolean
     mergeHistory?: boolean
   }
 
@@ -405,7 +408,7 @@
   }
 
   function isEditorEmpty(activeEditor: HTMLDivElement) {
-    return htmlToPlainText(sanitizeInlineHTML(activeEditor.innerHTML)).trim() === ''
+    return !activeEditor.querySelector(IMAGE_SELECTOR) && htmlToPlainText(sanitizeInlineHTML(activeEditor.innerHTML)).trim() === ''
   }
 
   function isCaretAtStart(activeEditor: HTMLDivElement) {
@@ -418,7 +421,8 @@
     const beforeRange = document.createRange()
     beforeRange.selectNodeContents(activeEditor)
     beforeRange.setEnd(range.startContainer, range.startOffset)
-    return htmlToPlainText(sanitizeFragment(beforeRange.cloneContents())) === ''
+    const fragment = beforeRange.cloneContents()
+    return !fragment.querySelector(IMAGE_SELECTOR) && htmlToPlainText(sanitizeFragment(fragment)) === ''
   }
 
   function isCaretAtEnd(activeEditor: HTMLDivElement) {
@@ -431,7 +435,8 @@
     const afterRange = document.createRange()
     afterRange.selectNodeContents(activeEditor)
     afterRange.setStart(range.startContainer, range.startOffset)
-    return htmlToPlainText(sanitizeFragment(afterRange.cloneContents())) === ''
+    const fragment = afterRange.cloneContents()
+    return !fragment.querySelector(IMAGE_SELECTOR) && htmlToPlainText(sanitizeFragment(fragment)) === ''
   }
 
   function handleInput(event: Event) {
@@ -777,7 +782,7 @@
     let length = 0
     for (const node of parent.childNodes) {
       if (node.nodeType === Node.TEXT_NODE) length += node.textContent?.length ?? 0
-      else if (node.nodeName === 'BR') length += 1
+      else if (node.nodeName === 'BR' || node.nodeName === 'IMG') length += 1
       else if (node.nodeType === Node.ELEMENT_NODE) length += selectionLength(node as Element)
     }
     return length
@@ -796,7 +801,7 @@
           continue
         }
 
-        if (node.nodeName === 'BR') {
+        if (node.nodeName === 'BR' || node.nodeName === 'IMG') {
           if (remaining === 0) return { node: parent, offset: index }
           remaining -= 1
           if (remaining === 0) return { node: parent, offset: index + 1 }
@@ -844,6 +849,7 @@
   class={className}
   class:done
   data-rich-text-input
+  use:imageEditing={() => persistEditor(editor, false, { mergeHistory: false, imageEdit: true })}
   data-rich-text-kind={kind}
   data-rich-text-input-id={inputId}
   data-plan-text-input={kind === 'plan' ? '' : undefined}

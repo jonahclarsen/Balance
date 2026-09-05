@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { stageClipboardImages } from './imageService'
+  import { clipboardHasDirectImage, IMAGE_CLIPBOARD_TYPE } from './imageMarkup'
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { onDestroy, onMount, tick } from 'svelte'
   import { caretPointFromCoordinates } from './caretGeometry'
@@ -863,6 +865,7 @@
 
   async function handleNotePaste(event: ClipboardEvent) {
     if (!selectedNote || !event.clipboardData) return
+    if (clipboardHasDirectImage(event.clipboardData) || event.clipboardData.getData(IMAGE_CLIPBOARD_TYPE)) return
 
     const target = event.target instanceof Element
       ? event.target.closest<HTMLDivElement>('[data-note-text-input]')
@@ -873,6 +876,7 @@
 
     const plainText = event.clipboardData.getData('text/plain')
     const clipboardHTML = event.clipboardData.getData('text/html')
+    stageClipboardImages(clipboardHTML)
     let items = parseNoteChecklistClipboard(plainText, clipboardHTML)
     if (items.length === 0 && !clipboardHTML.trim()) items = parseNotePlainTextClipboard(plainText)
     if (items.length === 0 && clipboardHTML.trim()) {

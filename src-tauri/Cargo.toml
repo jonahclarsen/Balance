@@ -51,8 +51,8 @@ keyring = { version = "3.6.3", features = ["apple-native"] }
 [target.'cfg(target_os = "macos")'.dependencies]
 block2 = "0.6.2"
 objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", default-features = false, features = ["block2", "NSEvent", "NSHapticFeedback", "NSPasteboard", "NSScreen", "NSWindow"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSString", "NSUserDefaults"] }
+objc2-app-kit = { version = "0.3.2", default-features = false, features = ["block2", "NSEvent", "NSHapticFeedback", "NSPasteboard", "NSBitmapImageRep", "NSImageRep", "NSScreen", "NSWindow"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["NSString", "NSUserDefaults", "NSData", "NSDictionary"] }
 
 # Used to wrap the database recovery key with a hardware-backed Android Keystore
 # key over JNI (see android_keystore in lib.rs).

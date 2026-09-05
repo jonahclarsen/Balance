@@ -315,6 +315,13 @@ impl DownloadBudget {
             return true;
         };
         if chunks > *remaining {
+            // A checkpoint is indivisible. Permit one large checkpoint at the
+            // start of a background pass so an image can never leave a device
+            // permanently stuck behind the ordinary delta budget.
+            if *remaining == BACKGROUND_MAX_DOWNLOAD_CHUNKS {
+                *remaining = 0;
+                return true;
+            }
             return false;
         }
         *remaining -= chunks;
@@ -415,7 +422,9 @@ fn apply_ciphertext(
 
 fn decode_ciphertext(key: &SyncKey, epoch: &str, ciphertext: &[u8]) -> Result<Vec<Op>> {
     let envelope: RelayEnvelope = open(key, ciphertext)?;
-    if envelope.v != PROTOCOL_VERSION || envelope.epoch != epoch {
+    // Read existing v4 rooms during upgrade; new v5 envelopes stop older
+    // clients from checkpointing state they cannot fully represent.
+    if ![4, PROTOCOL_VERSION].contains(&envelope.v) || envelope.epoch != epoch {
         return Err(Error::Codec(
             "relay blob has incompatible protocol metadata".into(),
         ));
@@ -1109,7 +1118,7 @@ mod tests {
         let ciphertext = seal(
             &key,
             &RelayEnvelope {
-                v: PROTOCOL_VERSION - 1,
+                v: 3,
                 epoch: "epoch-1".into(),
                 ops: Vec::new(),
             },
@@ -1118,6 +1127,13 @@ mod tests {
 
         let error = apply_ciphertext(&connection, &key, "epoch-1", &ciphertext).unwrap_err();
         assert!(error.to_string().contains("incompatible protocol metadata"));
+    }
+
+    #[test]
+    fn background_download_can_make_progress_on_one_large_image_checkpoint() {
+        let mut budget = DownloadBudget { remaining_chunks: Some(BACKGROUND_MAX_DOWNLOAD_CHUNKS) };
+        assert!(budget.reserve(BACKGROUND_MAX_DOWNLOAD_CHUNKS * 3));
+        assert!(!budget.reserve(1));
     }
 
     #[test]

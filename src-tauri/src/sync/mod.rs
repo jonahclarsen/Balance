@@ -36,7 +36,9 @@ pub mod relay;
 pub mod relay_client;
 
 /// Wire-protocol version. Bump only for incompatible framing/semantics changes.
-pub const PROTOCOL_VERSION: u32 = 4;
+// v5 adds shared image entities. Older writers must
+// not create checkpoints that silently omit image bytes.
+pub const PROTOCOL_VERSION: u32 = 5;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -801,9 +803,10 @@ fn install_checkpoint_with_history_policy(
 
 /// Collapse all replay history into one verified `replace_full_state` baseline.
 pub fn checkpoint_operation_log(conn: &Connection) -> Result<CheckpointStats> {
-    let state = crate::read_app_state_from_database(conn)
+    let mut state = crate::read_app_state_from_database(conn)
         .map_err(Error::Codec)?
         .ok_or_else(|| Error::Codec("database has no app state to checkpoint".into()))?;
+    crate::images::collect_for_checkpoint(conn, &mut state, false).map_err(Error::Codec)?;
     let snapshot = snapshot_state_op(conn, &state)?;
     install_checkpoint(conn, &state, &snapshot)
 }
@@ -814,9 +817,10 @@ pub fn checkpoint_operation_log(conn: &Connection) -> Result<CheckpointStats> {
 pub(crate) fn checkpoint_operation_log_preserving_history(
     conn: &Connection,
 ) -> Result<CheckpointStats> {
-    let state = crate::read_app_state_from_database(conn)
+    let mut state = crate::read_app_state_from_database(conn)
         .map_err(Error::Codec)?
         .ok_or_else(|| Error::Codec("database has no app state to checkpoint".into()))?;
+    crate::images::collect_for_checkpoint(conn, &mut state, true).map_err(Error::Codec)?;
     let snapshot = snapshot_state_op(conn, &state)?;
     install_checkpoint_with_history_policy(conn, &state, &snapshot, false)
 }
@@ -868,6 +872,7 @@ pub fn rematerialize(conn: &Connection) -> Result<()> {
 
 fn rematerialize_uncommitted(tx: &rusqlite::Transaction<'_>) -> Result<()> {
     let ops = read_operations_canonical(tx)?;
+    let previous_images = crate::read_entity_collection(tx, "images").map_err(Error::Codec)?;
     tx.execute_batch(
         "DELETE FROM plan_items; DELETE FROM plans;
          DELETE FROM template_options; DELETE FROM template_items; DELETE FROM templates;
@@ -890,6 +895,7 @@ fn rematerialize_uncommitted(tx: &rusqlite::Transaction<'_>) -> Result<()> {
             ))
         })?;
     }
+    crate::images::restore_offline_references(tx, &previous_images).map_err(Error::Codec)?;
     Ok(())
 }
 

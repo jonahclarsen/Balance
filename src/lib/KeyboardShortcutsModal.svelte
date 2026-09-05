@@ -28,6 +28,11 @@
   type Group = { title: string; shortcuts: Shortcut[] }
 
   const groups: Group[] = [
+    { title: 'Images', shortcuts: [
+      { keys: ['enter'], label: 'Paste current compression preview' },
+      { keys: ['mod', 'enter'], label: 'Paste original image (in compression dialog)' },
+      { keys: ['esc'], label: 'Close image viewer / cancel image paste' },
+    ] },
     {
       title: 'General',
       shortcuts: [
@@ -77,7 +82,7 @@
     {
       title: 'Editing items',
       shortcuts: [
-        { keys: ['mod', 'D'], label: 'Toggle done' },
+        { keys: ['mod', 'D'], label: 'Toggle done (keeps selected items selected)' },
         { keys: ['alt', 'F'], label: 'Open linked list / URL / metric' },
         { keys: ['E'], label: 'Edit selected list item (overlay)' },
         { keys: ['T'], label: 'Add / remove time from selected items' },

@@ -1,3 +1,4 @@
+import { imageClipboardHTML } from './imageService'
 import { escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
 import type { NoteItemKind } from './types'
 
@@ -36,7 +37,7 @@ export function noteClipboardPlainText(blocks: NoteClipboardBlock[]): string {
 }
 
 export function noteClipboardHTML(blocks: NoteClipboardBlock[]): string {
-  return renderNodes(buildForest(blocks))
+  return imageClipboardHTML(renderNodes(buildForest(blocks)))
 }
 
 export function parseNoteClipboardHTML(html: string): ParsedNoteClipboardItem[] {

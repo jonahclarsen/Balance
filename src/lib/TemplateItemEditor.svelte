@@ -225,7 +225,7 @@
     const result = backspaceOptionAtStart(templateId, item.id, option.id)
 
     if (!result) {
-      if (option.text.trim() === '') await handleBackspaceEmpty(option, index, current)
+      if (option.text.trim() === '' && !option.html.includes('data-balance-image=')) await handleBackspaceEmpty(option, index, current)
       return
     }
 

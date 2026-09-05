@@ -1,4 +1,6 @@
 <script lang="ts">
+  import ImageLayer from './lib/ImageLayer.svelte'
+  import { blobDataURL, selectedImage } from './lib/imageService'
   import { onBackButtonPress } from '@tauri-apps/api/app'
   import { invoke, isTauri } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
@@ -444,7 +446,7 @@ return rows`
     | { kind: 'day-template'; items: TemplateItem[]; cut: boolean }
     | { kind: 'list-template'; items: ListTemplateItem[]; cut: boolean }
   type ItemClipboard = PlanItemClipboard | TemplateItemClipboard
-  type ClipboardContents = { structuredPayload: string | null; plainText: string | null; html: string | null }
+  type ClipboardContents = { imageDataURL?: string | null; structuredPayload: string | null; plainText: string | null; html: string | null }
   // Browser-only fallback for Vite/Playwright, where native pasteboard commands do
   // not exist. It is accepted only while its plain text still matches the real clipboard.
   let browserItemClipboard: ItemClipboard | null = null
@@ -3006,6 +3008,8 @@ return rows`
   // When you add/remove/change a shortcut here, also update the user-facing
   // reference in src/lib/KeyboardShortcutsModal.svelte (opened with `?`).
   function handleGlobalKeydown(event: KeyboardEvent) {
+    if (document.querySelector('dialog[data-image-dialog][open]')) return
+    if ($selectedImage && event.target === $selectedImage.editor && (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Escape' || event.key.startsWith('Arrow'))) return
     // The native store begins with a disposable bootstrap state. Do not let a
     // shortcut mutate it while SQLCipher is still opening the real database.
     if ($databaseLoadPending || $databaseLoadError) return
@@ -3495,21 +3499,8 @@ return rows`
     if (!primaryModifier || event.altKey) return
 
     if (activeItemSurface() === 'plan' && focusedPlan && key === 'd' && !event.shiftKey && selectedItemIds.length > 0) {
-      const selectedItems = selectedPlanItems()
-      if (selectedItems.length === 0) return
-
       event.preventDefault()
-      const done = !selectedItems.every((item) => item.done)
-      const completedItemIds = selectedItems.map((item) => item.id)
-      plannerStore.patchPlanItemsDone(
-        focusedPlan.id,
-        completedItemIds,
-        done,
-      )
-      if (done) {
-        clearItemSelection()
-        void focusTaskBelow(focusedPlan.id, completedItemIds)
-      }
+      toggleSelectedPlanItemsDone(focusedPlan.id)
       return
     }
 
@@ -4068,6 +4059,9 @@ return rows`
     const probabilityItemId = probabilityRow ? rowItemId(probabilityRow) : null
     if (probabilityItemId && selectedItemIds.includes(probabilityItemId)) return
 
+    const checkboxRow = target.closest('input.check[type="checkbox"]')?.closest<HTMLElement>('[data-plan-item-id]')
+    if (checkboxRow?.dataset.planItemId && selectedItemIds.includes(checkboxRow.dataset.planItemId)) return
+
     if (selectedItemIds.length > 0 && (selectingItems || Date.now() < preserveSelectionFocusUntil)) {
       releaseTextEditingFocus()
       return
@@ -4183,6 +4177,15 @@ return rows`
     return selectedItemIds
       .map((itemId) => findPlanItem(plan.items, itemId))
       .filter((item): item is PlanItem => item !== null)
+  }
+
+  function toggleSelectedPlanItemsDone(planId: Id): boolean | null {
+    if (activeItemSurface() !== 'plan' || focusedPlan?.id !== planId) return null
+    const items = selectedPlanItems()
+    if (items.length === 0) return null
+    const done = !items.every((item) => item.done)
+    plannerStore.patchPlanItemsDone(planId, items.map((item) => item.id), done)
+    return done
   }
 
   function focusSelectedItemBoundary(position: 'start' | 'end') {
@@ -4998,9 +5001,33 @@ return rows`
     clipboardWritePending = null
     if (isTauri()) {
       const nativeClipboard = await invoke<ClipboardContents>('read_balance_clipboard')
-      if (nativeClipboard.structuredPayload || nativeClipboard.plainText || nativeClipboard.html) return nativeClipboard
+      if (nativeClipboard.imageDataURL && nativeClipboard.html) {
+        const template = document.createElement('template')
+        template.innerHTML = nativeClipboard.html
+        if (template.content.textContent?.trim()) nativeClipboard.imageDataURL = null
+      }
+      if (nativeClipboard.structuredPayload || nativeClipboard.plainText || nativeClipboard.html || nativeClipboard.imageDataURL) return nativeClipboard
     }
 
+    if (navigator.clipboard?.read) {
+      try {
+        const items = await navigator.clipboard.read()
+        for (const item of items) {
+          if (item.types.includes('text/html')) {
+            const html = await (await item.getType('text/html')).text()
+            if (html.includes('data-balance-image=')) return { structuredPayload: null, plainText: '', html }
+          }
+          const type = item.types.find((type) => type.startsWith('image/'))
+          if (!type) continue
+          if (item.types.includes('text/html')) {
+            const template = document.createElement('template')
+            template.innerHTML = await (await item.getType('text/html')).text()
+            if (template.content.textContent?.trim()) continue
+          }
+          return { imageDataURL: await blobDataURL(await item.getType(type)), structuredPayload: null, plainText: null, html: null }
+        }
+      } catch { /* Text-only clipboard access can still succeed. */ }
+    }
     const plainText = await navigator.clipboard?.readText().catch(() => null) ?? null
     const structuredPayload = browserItemClipboard && (plainText === null || itemClipboardPlainText(browserItemClipboard) === plainText)
       ? JSON.stringify(browserItemClipboard)
@@ -5323,6 +5350,8 @@ return rows`
     }
   }
 </script>
+
+<ImageLayer />
 
 <svelte:window
   on:keydown|capture={handleGlobalKeydown}
@@ -5827,6 +5856,7 @@ return rows`
                     planId={plan.id}
                     patchItem={plannerStore.patchPlanItem}
                     patchItemsDone={plannerStore.patchPlanItemsDone}
+                    toggleSelectedDone={toggleSelectedPlanItemsDone}
                     splitItem={plannerStore.splitPlanItem}
                     backspaceItemAtStart={plannerStore.backspacePlanItemAtStart}
                     deleteItem={plannerStore.deletePlanItem}
@@ -7132,8 +7162,8 @@ return rows`
                       aria-label="Complete item"
                     />
                   </label>
-                {:else}
-                  <span class="paste-review-status" aria-hidden="true">{wasKept ? '✓' : nodeIndex + 1}</span>
+                {:else if wasKept}
+                  <span class="paste-review-status" aria-hidden="true">✓</span>
                 {/if}
                 <!-- Render the saved rich text just like a real task so formatting
                      such as explicit line breaks survives in the review preview. -->
@@ -7143,9 +7173,6 @@ return rows`
                   class:empty={!node.item.text?.trim()}
                 >{@html node.item.text?.trim() ? renderItemDisplayHTML(node.item.html, node.item.text, []) : '(empty item)'}</div>
               </div>
-            {/if}
-            {#if node.depth}
-              <p class="paste-review-meta">Nested {node.depth} level{node.depth === 1 ? '' : 's'} deep</p>
             {/if}
           </div>
         {/each}

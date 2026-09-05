@@ -1132,7 +1132,7 @@ fn a_large_workspace_receives_two_long_duration_tasks_over_the_relay() {
 }
 
 #[test]
-fn a_large_relay_bootstrap_finishes_for_a_foreground_joiner() {
+fn a_large_relay_bootstrap_finishes_in_background_and_foreground() {
     let relay = ReferenceRelay::start();
     let sa = Scratch::new("large-http-a");
     let sb = Scratch::new("large-http-b");
@@ -1173,16 +1173,11 @@ fn a_large_relay_bootstrap_finishes_for_a_foreground_joiner() {
     .unwrap();
     assert!(uploaded.checkpoint_committed);
 
-    let deferred = relay_client::sync_once(
-        &b,
-        &relay.url,
-        &key,
-        relay_client::SyncOptions::background(),
-    )
-    .unwrap_err();
-    assert!(deferred
-        .to_string()
-        .contains("the pending sync is large and will finish next time Balance is open"));
+    let background = relay_client::sync_once(
+        &b, &relay.url, &key, relay_client::SyncOptions::background(),
+    ).unwrap();
+    assert!(background.pulled_operations > 0);
+    assert_eq!(domain(&read_app_state_from_database(&b).unwrap().unwrap()), domain(&read_app_state_from_database(&a).unwrap().unwrap()));
 
     // Foreground status permits both large downloads and safe compare-and-swap
     // relay compaction, regardless of which device originally created the room.
@@ -1193,7 +1188,7 @@ fn a_large_relay_bootstrap_finishes_for_a_foreground_joiner() {
         relay_client::SyncOptions::foreground(true),
     )
     .unwrap();
-    assert!(joined.state_changed);
+    assert_eq!(joined.pulled_operations, 0);
     assert_eq!(
         domain(&read_app_state_from_database(&a).unwrap().unwrap()),
         domain(&read_app_state_from_database(&b).unwrap().unwrap())
@@ -2946,4 +2941,108 @@ fn a_local_retry_after_checkpoint_does_not_resurrect_a_covered_edit() {
     persist_operation_to_database(&mut db, &old).unwrap();
     assert_eq!(read_app_state_from_database(&db).unwrap().unwrap(), before);
     assert_eq!(local_op_ids(&db).unwrap(), ids);
+}
+
+fn image_fixture() -> Value {
+    use sha2::{Digest, Sha256};
+    let bytes = b"synthetic image fixture bytes";
+    json!({ "id": data_encoding::HEXLOWER.encode(&Sha256::digest(bytes)),
+        "dataURL": format!("data:image/png;base64,{}", data_encoding::BASE64.encode(bytes)),
+        "width": 64, "height": 32, "bytes": bytes.len() })
+}
+
+fn image_note(id: &str, asset: &Value) -> Value {
+    json!({ "id": id, "title": "Synthetic illustrated note", "items": [{
+        "id": format!("{id}-item"), "text": "", "html": format!("<img data-balance-image=\"{}\" width=\"64\" height=\"32\">", asset["id"].as_str().unwrap()),
+        "children": [], "kind": "paragraph", "done": false
+    }] })
+}
+
+fn image_note_operation(device: &str, sequence: i64, note: Option<Value>) -> Value {
+    let changes = match note {
+        Some(note) => json!({ "version": 1, "upserts": [{ "collection": "notes", "key": note["id"], "position": 0, "value": note }], "deletes": [] }),
+        None => json!({ "version": 1, "upserts": [], "deletes": [{ "collection": "notes", "key": "original" }] })
+    };
+    json!({ "id": format!("op_{device}_{sequence}"), "deviceId": device, "sequence": sequence,
+        "timestamp": crate::current_timestamp(), "type": "apply_entity_changes", "payload": { "entityChanges": changes } })
+}
+
+#[test]
+fn images_survive_history_and_are_collected_on_all_synced_devices_after_the_last_reference() {
+    let a_path = Scratch::new("image-collection-a");
+    let b_path = Scratch::new("image-collection-b");
+    let asset = image_fixture();
+    let mut initial = state("A", json!([]));
+    initial["images"] = json!([asset.clone()]);
+    initial["notes"] = json!([image_note("original", &asset)]);
+    let mut a = open_seeded(&a_path.path, "image-test-a", &initial);
+    let b = open_seeded(&b_path.path, "image-test-b", &state("B", json!([])));
+    enable_primary(&a).unwrap(); enable_joiner(&b).unwrap();
+    merge_and_rematerialize(&b, all_ops(&a).unwrap()).unwrap();
+    assert_eq!(read_app_state_from_database(&b).unwrap().unwrap()["images"], json!([asset.clone()]));
+    let next = metadata_value(&a, "local_sequence").unwrap().unwrap().parse::<i64>().unwrap() + 1;
+    persist_operation_to_database(&mut a, &image_note_operation("A", next, None)).unwrap();
+    checkpoint_operation_log_preserving_history(&a).unwrap();
+    assert_eq!(read_app_state_from_database(&a).unwrap().unwrap()["images"].as_array().unwrap().len(), 1, "undo still references the image");
+    checkpoint_operation_log(&a).unwrap();
+    assert_eq!(read_app_state_from_database(&a).unwrap().unwrap()["images"], json!([]));
+    merge_and_rematerialize(&b, all_ops(&a).unwrap()).unwrap();
+    assert_eq!(read_app_state_from_database(&b).unwrap().unwrap()["images"], json!([]));
+    assert!(!all_ops(&a).unwrap().iter().any(|op| op.payload_json.contains(asset["dataURL"].as_str().unwrap())));
+}
+
+#[test]
+fn an_offline_image_reference_survives_a_remote_collection_checkpoint_and_resyncs_its_bytes() {
+    let a_path = Scratch::new("image-offline-a");
+    let b_path = Scratch::new("image-offline-b");
+    let asset = image_fixture();
+    let mut initial = state("A", json!([]));
+    initial["images"] = json!([asset.clone()]);
+    initial["notes"] = json!([image_note("original", &asset)]);
+    let mut a = open_seeded(&a_path.path, "image-test-a", &initial);
+    let mut b = open_seeded(&b_path.path, "image-test-b", &state("B", json!([])));
+    enable_primary(&a).unwrap(); enable_joiner(&b).unwrap();
+    merge_and_rematerialize(&b, all_ops(&a).unwrap()).unwrap();
+    persist_operation_to_database(&mut b, &image_note_operation("B", 1, Some(image_note("offline-copy", &asset)))).unwrap();
+    let next = metadata_value(&a, "local_sequence").unwrap().unwrap().parse::<i64>().unwrap() + 1;
+    persist_operation_to_database(&mut a, &image_note_operation("A", next, None)).unwrap();
+    checkpoint_operation_log(&a).unwrap();
+    merge_and_rematerialize(&b, all_ops(&a).unwrap()).unwrap();
+    let b_state = read_app_state_from_database(&b).unwrap().unwrap();
+    assert_eq!(b_state["images"], json!([asset.clone()]));
+    assert_eq!(b_state["notes"][0]["id"], "offline-copy");
+    merge_and_rematerialize(&a, all_ops(&b).unwrap()).unwrap();
+    assert_eq!(read_app_state_from_database(&a).unwrap().unwrap()["images"], b_state["images"]);
+    checkpoint_operation_log_preserving_history(&a).unwrap();
+    assert_eq!(read_app_state_from_database(&a).unwrap().unwrap()["images"], b_state["images"]);
+}
+
+#[test]
+fn corrupted_image_bytes_are_rejected_without_mutating_state() {
+    let path = Scratch::new("image-integrity");
+    let mut conn = open_seeded(&path.path, "image-integrity", &state("A", json!([])));
+    let mut asset = image_fixture();
+    asset["dataURL"] = json!("data:image/png;base64,AAAA");
+    let operation = json!({ "id": "op_A_1", "deviceId": "A", "sequence": 1, "timestamp": crate::current_timestamp(), "type": "add_image", "payload": {
+        "entityChanges": { "version": 1, "upserts": [{ "collection": "images", "key": asset["id"], "position": 0, "value": asset }], "deletes": [] }
+    } });
+    assert!(persist_operation_to_database(&mut conn, &operation).unwrap_err().contains("does not match"));
+    assert_eq!(read_app_state_from_database(&conn).unwrap().unwrap()["images"], json!([]));
+}
+
+#[test]
+fn first_image_reference_and_bytes_are_atomic_and_undo_retains_redo_bytes() {
+    let path = Scratch::new("image-atomic");
+    let mut conn = open_seeded(&path.path, "image-atomic", &state("A", json!([])));
+    let asset = image_fixture();
+    let mut operation = image_note_operation("A", 1, Some(image_note("original", &asset)));
+    operation["payload"]["entityChanges"]["upserts"].as_array_mut().unwrap().push(json!({ "collection": "images", "key": asset["id"], "position": 0, "value": asset }));
+    persist_operation_to_database(&mut conn, &operation).unwrap();
+    checkpoint_operation_log_preserving_history(&conn).unwrap();
+    crate::undo_last_operation_in_database(&mut conn).unwrap();
+    let undone = read_app_state_from_database(&conn).unwrap().unwrap();
+    assert_eq!(undone["notes"], json!([]));
+    assert_eq!(undone["images"].as_array().unwrap().len(), 1);
+    checkpoint_operation_log_preserving_history(&conn).unwrap();
+    assert_eq!(read_app_state_from_database(&conn).unwrap().unwrap()["images"].as_array().unwrap().len(), 1);
 }

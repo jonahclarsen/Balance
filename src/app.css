@@ -1616,6 +1616,7 @@ nav button.active {
 }
 
 .plan-row.whole-row-selection > .drag-handle,
+.plan-row.whole-row-selection.selected > .check-target,
 .template-main.whole-row-selection > .drag-handle {
   position: relative;
   z-index: 22;
@@ -3413,12 +3414,10 @@ body.mobile-checkbox-dragging {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 8px;
-  min-height: 64px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--paper-strong);
-  padding: 18px;
+  padding: 8px 12px;
 }
 
 .paste-review-list {
@@ -3512,12 +3511,6 @@ body.mobile-checkbox-dragging {
 .paste-review-text.empty {
   color: var(--muted);
   font-style: italic;
-}
-
-.paste-review-meta {
-  margin: 0;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .paste-review-edit {

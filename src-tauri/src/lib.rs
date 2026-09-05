@@ -24,6 +24,7 @@ use tauri_plugin_opener::OpenerExt;
 #[cfg(target_os = "android")]
 mod android_widget;
 mod database_keys;
+mod images;
 #[cfg(target_os = "macos")]
 mod macos_widget;
 #[cfg(target_os = "macos")]
@@ -153,7 +154,8 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 7] = [
+const ENTITY_COLLECTIONS: [&str; 8] = [
+    "images",
     "goals",
     "goalCompletions",
     "listTemplates",
@@ -877,6 +879,7 @@ struct ClipboardContents {
     structured_payload: Option<String>,
     plain_text: Option<String>,
     html: Option<String>,
+    image_data_url: Option<String>,
 }
 
 #[tauri::command]
@@ -981,6 +984,24 @@ fn write_note_clipboard(_plain_text: String, _html: String) -> Result<(), String
 }
 
 #[cfg(target_os = "macos")]
+fn read_macos_image_clipboard(pasteboard: &objc2_app_kit::NSPasteboard) -> Option<String> {
+    use objc2_app_kit::{NSBitmapImageFileType, NSBitmapImageRep};
+    use objc2_foundation::{NSDictionary, NSString};
+    // Prefer original bytes. TIFF is a common macOS clipboard-only representation;
+    // turn it into lossless PNG when no web-decodable representation is offered.
+    for (uti, mime) in [("public.png", "image/png"), ("public.jpeg", "image/jpeg"), ("org.webmproject.webp", "image/webp"), ("com.compuserve.gif", "image/gif")] {
+        if let Some(data) = pasteboard.dataForType(&NSString::from_str(uti)) {
+            return Some(format!("data:{mime};base64,{}", data_encoding::BASE64.encode(&data.to_vec())));
+        }
+    }
+    let data = pasteboard.dataForType(&NSString::from_str("public.tiff"))?;
+    let bitmap = NSBitmapImageRep::imageRepWithData(&data)?;
+    // Empty properties use AppKit's lossless PNG defaults.
+    let png = unsafe { bitmap.representationUsingType_properties(NSBitmapImageFileType::PNG, &NSDictionary::new()) }?;
+    Some(format!("data:image/png;base64,{}", data_encoding::BASE64.encode(&png.to_vec())))
+}
+
+#[cfg(target_os = "macos")]
 #[tauri::command]
 fn read_balance_clipboard() -> ClipboardContents {
     use objc2_app_kit::{NSPasteboard, NSPasteboardTypeHTML, NSPasteboardTypeString};
@@ -989,6 +1010,7 @@ fn read_balance_clipboard() -> ClipboardContents {
     let pasteboard = NSPasteboard::generalPasteboard();
     let payload_type = NSString::from_str(BALANCE_PLAN_ITEMS_PASTEBOARD_TYPE);
     ClipboardContents {
+        image_data_url: read_macos_image_clipboard(&pasteboard),
         structured_payload: pasteboard
             .stringForType(&payload_type)
             .map(|value| value.to_string()),
@@ -1007,6 +1029,7 @@ fn read_balance_clipboard(app: tauri::AppHandle) -> ClipboardContents {
     android_clipboard::read(&app).unwrap_or_else(|error| {
         log::warn!("Could not read the Android clipboard: {error}");
         ClipboardContents {
+            image_data_url: None,
             structured_payload: None,
             plain_text: None,
             html: None,
@@ -1018,6 +1041,7 @@ fn read_balance_clipboard(app: tauri::AppHandle) -> ClipboardContents {
 #[tauri::command]
 fn read_balance_clipboard() -> ClipboardContents {
     ClipboardContents {
+        image_data_url: None,
         structured_payload: None,
         plain_text: None,
         html: None,
@@ -1167,13 +1191,39 @@ mod android_clipboard {
                 .map_err(jni_error)
                 .and_then(|value| java_string(env, value))?;
             let structured_payload = structured_payload(env, &item)?;
+            let image_data_url = read_image_uri(env, activity, &item)?;
 
             Ok(ClipboardContents {
+                image_data_url,
                 structured_payload,
                 plain_text,
                 html,
             })
         })
+    }
+
+    fn read_image_uri(env: &mut JNIEnv, activity: &JObject, item: &JObject) -> Result<Option<String>, String> {
+        let uri = env.call_method(item, "getUri", "()Landroid/net/Uri;", &[]).and_then(|value| value.l()).map_err(jni_error)?;
+        if uri.is_null() { return Ok(None); }
+        let resolver = env.call_method(activity, "getContentResolver", "()Landroid/content/ContentResolver;", &[]).and_then(|value| value.l()).map_err(jni_error)?;
+        let mime = env.call_method(&resolver, "getType", "(Landroid/net/Uri;)Ljava/lang/String;", &[(&uri).into()]).and_then(|value| value.l()).map_err(jni_error).and_then(|value| java_string(env, value))?;
+        let Some(mime) = mime.filter(|mime| mime.starts_with("image/")) else { return Ok(None); };
+        let stream = env.call_method(&resolver, "openInputStream", "(Landroid/net/Uri;)Ljava/io/InputStream;", &[(&uri).into()]).and_then(|value| value.l()).map_err(jni_error)?;
+        if stream.is_null() { return Ok(None); }
+        let result = (|| {
+            let buffer = env.new_byte_array(64 * 1024).map_err(jni_error)?;
+            let mut bytes = Vec::new();
+            loop {
+                let count = env.call_method(&stream, "read", "([B)I", &[(&buffer).into()]).and_then(|value| value.i()).map_err(jni_error)?;
+                if count < 0 { break; }
+                if bytes.len() + count as usize > 128 * 1024 * 1024 { return Err("This clipboard image exceeds the 128 MiB import limit".into()); }
+                let chunk = env.convert_byte_array(&buffer).map_err(jni_error)?;
+                bytes.extend_from_slice(&chunk[..count as usize]);
+            }
+            Ok(Some(format!("data:{mime};base64,{}", data_encoding::BASE64.encode(&bytes))))
+        })();
+        let _ = env.call_method(&stream, "close", "()V", &[]);
+        result
     }
 
     fn structured_payload(env: &mut JNIEnv, item: &JObject) -> Result<Option<String>, String> {
@@ -1246,6 +1296,7 @@ mod android_clipboard {
 
     fn empty_contents() -> ClipboardContents {
         ClipboardContents {
+            image_data_url: None,
             structured_payload: None,
             plain_text: None,
             html: None,
@@ -2904,6 +2955,7 @@ fn read_app_state_from_database_with_progress(
         "metrics": lists_metrics_data["metrics"].clone(),
         "metricEntries": lists_metrics_data["metricEntries"].clone(),
         "notes": lists_metrics_data["notes"].clone(),
+        "images": read_entity_collection(connection, "images")?,
         "goals": goal_data["goals"].clone(),
         "goalCompletions": goal_data["goalCompletions"].clone(),
         "operations": [],
@@ -3488,6 +3540,9 @@ fn replace_state_entities_from_state(connection: &Connection, state: &Value) -> 
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
+        if collection == "images" {
+            for asset in &values { images::validate(asset, required_string(asset, "id")?)?; }
+        }
         replace_entity_collection(connection, collection, &values)?;
     }
     Ok(())
@@ -3537,6 +3592,9 @@ fn apply_entity_changes(connection: &Connection, changes: &Value) -> Result<(), 
         let collection = required_string(item, "collection")?;
         if !valid_entity_collection(collection) {
             return Err(format!("Unsupported entity collection: {collection}"));
+        }
+        if collection == "images" {
+            images::validate(required_value(item, "value")?, required_string(item, "key")?)?;
         }
         upsert
             .execute(params![
@@ -3802,7 +3860,7 @@ fn persist_operation_once(
         set_metadata(&tx, &format!("siri_request:{request_id}"), "1")?;
     }
     let existing_history = history_entry_for_operation(&tx, operation_id)?;
-    let undo_operation = if is_history_operation(operation_type) {
+    let undo_operation = if is_history_operation(operation_type) || operation_type == "add_image" {
         None
     } else if let Some(existing) = existing_history.as_ref() {
         Some(existing.undo_operation.clone())
@@ -4801,7 +4859,11 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
                 format!("history operation ({ty}) failed: {error}")
             })
         }
-        "apply_entity_changes" => Ok(()),
+        "move_image" => {
+            for nested in required_array(payload, "operations")? { apply_operation(tx, nested)?; }
+            Ok(())
+        }
+        "apply_entity_changes" | "add_image" => Ok(()),
         other if is_lists_metrics_operation(other) => Ok(()),
         other => Err(format!("Unsupported operation type: {other}")),
     };
@@ -4875,6 +4937,9 @@ fn inverse_entity_changes(connection: &Connection, changes: &Value) -> Result<Va
     let mut deletes = Vec::new();
     for item in required_array(changes, "upserts")? {
         let collection = required_string(item, "collection")?;
+        // Undo removes an occurrence, never immutable bytes another occurrence
+        // or redo entry can still need. Checkpoint collection owns byte deletion.
+        if collection == "images" { continue; }
         let key = required_string(item, "key")?;
         if !valid_entity_collection(collection) {
             return Err(format!("Unsupported entity collection: {collection}"));
@@ -4891,6 +4956,9 @@ fn inverse_entity_changes(connection: &Connection, changes: &Value) -> Result<Va
     }
     for item in required_array(changes, "deletes")? {
         let collection = required_string(item, "collection")?;
+        // Undo removes an occurrence, never immutable bytes another occurrence
+        // or redo entry can still need. Checkpoint collection owns byte deletion.
+        if collection == "images" { continue; }
         let key = required_string(item, "key")?;
         if !valid_entity_collection(collection) {
             return Err(format!("Unsupported entity collection: {collection}"));
@@ -4940,6 +5008,16 @@ fn build_domain_undo_operation(
     let payload = required_value(operation, "payload")?;
 
     match operation_type {
+        "move_image" => {
+            // A move patches two distinct image occurrences. Capture both
+            // original fields before applying either edit, then reverse them.
+            let mut undo = Vec::new();
+            for nested in required_array(payload, "operations")?.iter().rev() {
+                if let Some(operation) = build_domain_undo_operation(connection, nested)? { undo.push(operation); }
+            }
+            Ok(Some(storage_operation("batch", json!({ "operations": undo }))))
+        }
+        "add_image" => Ok(None),
         "patch_preferences" => Ok(None),
         "set_active_plan_date" => Ok(Some(storage_operation(
             "set_active_plan_date",

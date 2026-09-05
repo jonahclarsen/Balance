@@ -3386,7 +3386,7 @@ test('unchecking a plan item keeps the desktop caret on that task', async ({ pag
   await expect.poll(async () => activeInputValue(page)).toBe('First task')
 })
 
-test('bulk completion moves the caret below the last selected task', async ({ page }) => {
+test('bulk completion preserves selection for repeated toggles', async ({ page }) => {
   await seedPlanItems(page, ['First task', 'Second task', 'Third task'])
   const firstRow = page.getByRole('listitem', { name: 'Plan item: First task' })
   const secondRow = page.getByRole('listitem', { name: 'Plan item: Second task' })
@@ -3397,7 +3397,85 @@ test('bulk completion moves the caret below the last selected task', async ({ pa
 
   await expect(firstRow.getByRole('checkbox')).toBeChecked()
   await expect(secondRow.getByRole('checkbox')).toBeChecked()
-  await expect.poll(async () => activeInputValue(page)).toBe('Third task')
+  await expect(firstRow).toHaveClass(/selected/)
+  await expect(secondRow).toHaveClass(/selected/)
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(2)
+
+  await page.keyboard.press('Meta+D')
+
+  await expect(firstRow.getByRole('checkbox')).not.toBeChecked()
+  await expect(secondRow.getByRole('checkbox')).not.toBeChecked()
+  await expect(firstRow).toHaveClass(/selected/)
+  await expect(secondRow).toHaveClass(/selected/)
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(2)
+  await expect(page.getByRole('listitem', { name: 'Plan item: Third task' }).getByRole('checkbox')).not.toBeChecked()
+})
+
+for (const initial of [
+  { name: 'unchecked', firstDone: false, secondDone: false },
+  { name: 'checked', firstDone: true, secondDone: true },
+  { name: 'mixed', firstDone: true, secondDone: false },
+]) {
+  test(`clicking a selected checkbox toggles the ${initial.name} group and preserves selection`, async ({ page }, testInfo) => {
+    await seedPlanTree(page, [
+      { id: 'first', text: 'First task', done: initial.firstDone, children: [] },
+      { id: 'parent', text: 'Parent task', children: [
+        { id: 'second', text: 'Second task', done: initial.secondDone, children: [] },
+        { id: 'sibling', text: 'Sibling task', children: [] },
+      ] },
+      { id: 'third', text: 'Third task', children: [] },
+    ])
+    const firstRow = page.getByRole('listitem', { name: 'Plan item: First task', exact: true })
+    const secondRow = page.getByRole('listitem', { name: 'Plan item: Second task', exact: true })
+    const firstCheckbox = firstRow.getByRole('checkbox')
+    const secondCheckbox = secondRow.getByRole('checkbox')
+
+    if (testInfo.project.name === 'mobile') {
+      await firstRow.getByRole('button', { name: 'Task options for First task' }).click()
+      await page.getByRole('menuitem', { name: 'Select tasks' }).click()
+      await secondRow.getByRole('button', { name: 'Select Second task', exact: true }).click()
+    } else {
+      await firstRow.getByRole('button', { name: 'Select item' }).click()
+      await secondRow.getByRole('button', { name: 'Select item' }).click({ modifiers: ['Meta'] })
+    }
+    // Let the pointer-selection focus guard expire before focusing the checkbox.
+    await page.waitForTimeout(350)
+    if (testInfo.project.name === 'mobile') await firstCheckbox.tap()
+    else await firstCheckbox.click()
+
+    const done = !(initial.firstDone && initial.secondDone)
+    await expect(firstCheckbox).toBeChecked({ checked: done })
+    await expect(secondCheckbox).toBeChecked({ checked: done })
+    await expect(firstRow).toHaveClass(/selected/)
+    await expect(secondRow).toHaveClass(/selected/)
+    await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(2)
+
+    if (testInfo.project.name === 'mobile') await secondCheckbox.tap()
+    else await secondCheckbox.click()
+
+    await expect(firstCheckbox).toBeChecked({ checked: !done })
+    await expect(secondCheckbox).toBeChecked({ checked: !done })
+    await expect(firstRow).toHaveClass(/selected/)
+    await expect(secondRow).toHaveClass(/selected/)
+    await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(2)
+    await expect(page.locator('[data-plan-item-id="parent"] > .check-target input')).not.toBeChecked()
+    await expect(page.getByRole('listitem', { name: 'Plan item: Sibling task' }).getByRole('checkbox')).not.toBeChecked()
+    await expect(page.getByRole('listitem', { name: 'Plan item: Third task' }).getByRole('checkbox')).not.toBeChecked()
+  })
+}
+
+test('clicking an unselected checkbox only completes that task', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Tapping an unselected mobile row extends the selection')
+  await seedPlanItems(page, ['First task', 'Second task', 'Third task'])
+  const firstRow = page.getByRole('listitem', { name: 'Plan item: First task' })
+  const secondRow = page.getByRole('listitem', { name: 'Plan item: Second task' })
+  const thirdRow = page.getByRole('listitem', { name: 'Plan item: Third task' })
+  await firstRow.getByRole('button', { name: 'Select item' }).click()
+  await secondRow.getByRole('button', { name: 'Select item' }).click({ modifiers: ['Meta'] })
+  await thirdRow.getByRole('checkbox').click()
+  await expect(thirdRow.getByRole('checkbox')).toBeChecked()
+  await expect(firstRow.getByRole('checkbox')).not.toBeChecked()
+  await expect(secondRow.getByRole('checkbox')).not.toBeChecked()
 })
 
 test('undo returns the untouched completion caret to the unchecked task', async ({ page }) => {
