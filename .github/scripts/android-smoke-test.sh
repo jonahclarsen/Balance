@@ -610,6 +610,27 @@ PY
   return 1
 }
 
+# Check the live connection state: an initial failed attempt can recover
+# automatically while the one-time setup message still describes that attempt.
+wait_for_ui_sync() {
+  if wait_for_ui_text "Connected to sync server" 15; then
+    return 0
+  fi
+  tap_ui_scrolling text "Troubleshooting" || true
+  dump_ui || true
+  cp "$UI_XML" sync-e2e-sync-error.xml
+  python3 - "$UI_XML" <<'PY_DIAGNOSTICS'
+import re
+import sys
+import xml.etree.ElementTree as ET
+for node in ET.parse(sys.argv[1]).getroot().iter("node"):
+    text = node.attrib.get("text", "") or node.attrib.get("content-desc", "")
+    if re.search(r"could not|failed|error|codec|crypto|decrypt|invalid|http", text, re.I):
+        print("[ui-sync] " + text[:500])
+PY_DIAGNOSTICS
+  return 1
+}
+
 wait_for_ui_text_gone() {
   query="$1"
   attempts="${2:-30}"
@@ -761,13 +782,13 @@ echo "[ui-sync] enabling the source installation with the camera fixture key"
 dismiss_recovery_key_setup
 open_mobile_view "Settings"
 tap_ui_scrolling_contains text "Connect to an existing setup"
-type_into_ui_after_text "Sync server address" "$UI_RELAY_URL"
+type_into_ui_after_text_verified "Sync server address" "$UI_RELAY_URL"
 type_into_ui_after_text "Pairing code" "$PAIRING_CODE"
 dismiss_soft_keyboard
 tap_ui_scrolling text "Continue"
 wait_for_ui_text "Use your existing synced planner?"
 tap_ui_scrolling text "Connect and replace this planner"
-wait_for_ui_text "Connected. This device now syncs automatically." 30
+wait_for_ui_sync
 
 echo "[ui-sync] creating recognizable data on the source installation"
 open_mobile_view "Goals"
@@ -824,12 +845,12 @@ echo "[ui-sync] scanning the pairing QR through Android's emulated back camera"
 dismiss_recovery_key_setup
 open_mobile_view "Settings"
 tap_ui_scrolling_contains text "Connect to an existing setup"
-type_into_ui_after_text "Sync server address" "$UI_RELAY_URL"
+type_into_ui_after_text_verified "Sync server address" "$UI_RELAY_URL"
 dismiss_soft_keyboard
 tap_ui_scrolling text "Scan QR code"
 wait_for_ui_text "Use your existing synced planner?" 30
 tap_ui_scrolling text "Connect and replace this planner"
-wait_for_ui_text "Connected. This device now syncs automatically." 30
+wait_for_ui_sync
 echo "[ui-sync] camera QR scan connected the isolated joining installation through the relay"
 
 # A successful sync rehydrates the frontend from the joining profile's encrypted
