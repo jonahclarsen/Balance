@@ -7117,7 +7117,7 @@ return rows`
 <GoalBurst bind:this={goalBurst} />
 
 {#if pasteReview}
-  <div class="paste-review-backdrop">
+  <div class="paste-review-backdrop" style={appShellStyle}>
     <div class="paste-review" role="dialog" aria-modal="true" aria-labelledby="paste-review-title">
       <div class="paste-review-head">
         <div>
