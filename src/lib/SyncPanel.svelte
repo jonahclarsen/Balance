@@ -462,14 +462,9 @@
       <div class="sync-diagnostics">
         <strong>Recent anonymous sync diagnostics</strong>
         <p>
-          Saves only the newest 300 changes, their ordering and relative timing,
-          limited relay status, and fingerprints showing whether the current screen
-          and database agree. It also saves a structural inventory of at most 50
-          tasks, starting with today and then yesterday, so moved copies can be compared.
-          The file still reveals recent operation types, order, time gaps, numeric
-          task fields, whether opaque values match, occurrence counts for recent IDs,
-          nearby task ordering, nesting, completion state, content equality, and
-          text-free rendered checkbox and row-style state.
+          Exports recent sync activity and anonymous task details to help troubleshoot
+          differences between devices. Includes task order, nesting, completion state,
+          and whether content matches, without revealing task text.
         </p>
         <div class="sync-actions">
           <button type="button" on:click={exportAnonymousDiagnostics} disabled={busy || diagnosticBusy}>
