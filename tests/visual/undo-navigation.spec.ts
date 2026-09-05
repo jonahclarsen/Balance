@@ -113,7 +113,7 @@ test('undo and redo return to the changed date and reveal the item without highl
   await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-20')
   const row = page.locator(`[data-plan-item-id="${firstItem}"]`)
   await expect(row).toBeInViewport()
-  await expect(page.locator('.history-notice')).toContainText('Undid item change · 2026-08-20')
+  await expect(page.locator('.history-notice > span')).toHaveText('Undid item change')
   await expect(page.locator('.search-result-target')).toHaveCount(0)
   await storeAction(page, 'navigate')
   await openPage(page, 'Notes')
@@ -121,7 +121,14 @@ test('undo and redo return to the changed date and reveal the item without highl
   await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-20')
   await expect(row).toContainText('History target')
   await expect(row).toBeInViewport()
-  await expect(page.locator('.history-notice')).toContainText('Redid item change')
+  await expect(page.locator('.history-notice > span')).toHaveText('Redid item change')
+  await expect(page.locator('.history-notice button')).toHaveCount(0)
+  const centeringError = await page.locator('.history-notice').evaluate((notice) => {
+    const box = notice.getBoundingClientRect()
+    const text = notice.querySelector('span')!.getBoundingClientRect()
+    return Math.abs((text.left + text.right) / 2 - (box.left + box.right) / 2)
+  })
+  expect(centeringError).toBeLessThan(1)
   await expect(page.locator('.search-result-target')).toHaveCount(0)
 })
 
@@ -180,7 +187,7 @@ for (const surface of ['notes', 'lists', 'metrics'] as const) {
       await expect(page.locator('.metric-text-input')).toHaveValue('')
       await dispatchRedo(page)
       await expect(page.locator('.metric-text-input')).toHaveValue('Saved answer')
-      await expect(page.locator('.history-notice')).toContainText('2026-08-19')
+      await expect(page.locator('.history-notice')).not.toContainText('2026-08-19')
     }
   })
 }

@@ -15,7 +15,7 @@ test('finds a nested completion on its actual date without highlighting its pare
   const before = fixture()
   const after = structuredClone(before)
   after.plans[0].items[0].children[0].done = true
-  expect(historyDestination(before, after)).toMatchObject({ view: 'today', date: '2026-08-20', itemId: 'child', label: 'completion · 2026-08-20' })
+  expect(historyDestination(before, after)).toMatchObject({ view: 'today', date: '2026-08-20', itemId: 'child', label: 'completion' })
 })
 
 test('reveals a surviving parent when undo removes a nested item', () => {

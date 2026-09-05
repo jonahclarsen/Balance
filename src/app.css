@@ -7469,6 +7469,12 @@ body.mobile-checkbox-dragging {
   backdrop-filter: blur(14px);
 }
 
+.history-notice:not(:has(button)) {
+  padding-inline: 16px;
+  justify-content: center;
+  text-align: center;
+}
+
 .history-notice button {
   min-width: 44px;
   min-height: 44px;

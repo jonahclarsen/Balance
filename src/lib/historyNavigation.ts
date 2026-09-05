@@ -88,11 +88,11 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
       const change = changedItem(old?.items ?? old?.questions ?? [], current?.items ?? current?.questions ?? [])
       const name = entity.title || entity.name
       const subject = change?.completion ? 'completion' : change ? 'item change' : 'change'
-      const context = entity.date ?? name ?? ({ today: 'Today', templates: 'Day Templates', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', metrics: 'Metrics', goals: 'Goals' }[view])
+      const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Day Templates', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', metrics: 'Metrics', goals: 'Goals' }[view])
       destinations.push({
         view, entityId: id, itemId: change?.itemId, date: entity.date,
         listTemplateId: entity.listTemplateId,
-        label: `${subject} · ${context}`,
+        label: context ? `${subject} · ${context}` : subject,
         removed: !b || (change?.removed ?? false),
       })
     }
@@ -109,7 +109,7 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
     )?.questionId
     return {
       view: 'metrics', entityId: entry.metricId, itemId: questionId, date: entry.date,
-      label: `answer · ${metric?.name || 'Metric'} · ${entry.date}`, removed: !b,
+      label: `answer · ${metric?.name || 'Metric'}`, removed: !b,
     }
   }
   return null
