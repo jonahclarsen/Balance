@@ -5526,7 +5526,7 @@ return rows`
     </div>
   </header>
 
-  {#if historyNotice || (isMobile && $redoAvailable)}
+  {#if isMobile && (historyNotice || $redoAvailable)}
     <div class="history-notice" role="status">
       <span>{historyNotice || 'Change undone'}</span>
       {#if $redoAvailable}<button type="button" on:click={() => { void redoAndOpenDestination() }}>Redo</button>{/if}

@@ -103,7 +103,7 @@ test('day navigation stays local, preserves redo, and survives reload', async ({
   await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-21')
 })
 
-test('undo and redo return to the changed date and reveal the item without highlighting it', async ({ page }) => {
+test('undo and redo reveal the item and show notices only on mobile', async ({ page }, testInfo) => {
   await page.goto('/')
   const { firstItem } = await storeAction(page, 'seed')
   await storeAction(page, 'edit')
@@ -113,7 +113,12 @@ test('undo and redo return to the changed date and reveal the item without highl
   await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-20')
   const row = page.locator(`[data-plan-item-id="${firstItem}"]`)
   await expect(row).toBeInViewport()
-  await expect(page.locator('.history-notice > span')).toHaveText('Undid item change')
+  if (testInfo.project.name === 'mobile') {
+    await expect(page.locator('.history-notice > span')).toHaveText('Undid item change')
+    await expect(page.locator('.history-notice').getByRole('button', { name: 'Redo' })).toBeVisible()
+  } else {
+    await expect(page.locator('.history-notice')).toHaveCount(0)
+  }
   await expect(page.locator('.search-result-target')).toHaveCount(0)
   await storeAction(page, 'navigate')
   await openPage(page, 'Notes')
@@ -121,14 +126,18 @@ test('undo and redo return to the changed date and reveal the item without highl
   await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-20')
   await expect(row).toContainText('History target')
   await expect(row).toBeInViewport()
-  await expect(page.locator('.history-notice > span')).toHaveText('Redid item change')
-  await expect(page.locator('.history-notice button')).toHaveCount(0)
-  const centeringError = await page.locator('.history-notice').evaluate((notice) => {
-    const box = notice.getBoundingClientRect()
-    const text = notice.querySelector('span')!.getBoundingClientRect()
-    return Math.abs((text.left + text.right) / 2 - (box.left + box.right) / 2)
-  })
-  expect(centeringError).toBeLessThan(1)
+  if (testInfo.project.name === 'mobile') {
+    await expect(page.locator('.history-notice > span')).toHaveText('Redid item change')
+    await expect(page.locator('.history-notice button')).toHaveCount(0)
+    const centeringError = await page.locator('.history-notice').evaluate((notice) => {
+      const box = notice.getBoundingClientRect()
+      const text = notice.querySelector('span')!.getBoundingClientRect()
+      return Math.abs((text.left + text.right) / 2 - (box.left + box.right) / 2)
+    })
+    expect(centeringError).toBeLessThan(1)
+  } else {
+    await expect(page.locator('.history-notice')).toHaveCount(0)
+  }
   await expect(page.locator('.search-result-target')).toHaveCount(0)
 })
 
@@ -149,7 +158,7 @@ test('undo reveals an offscreen row and a nearby row when an added row disappear
 })
 
 for (const surface of ['notes', 'lists', 'metrics'] as const) {
-  test(`undo reveals the changed ${surface} document or dated answer`, async ({ page }) => {
+  test(`undo reveals the changed ${surface} document or dated answer`, async ({ page }, testInfo) => {
     await page.goto('/')
     await page.evaluate(async (surface) => {
       const modulePath = '/src/lib/store.ts'
@@ -187,7 +196,11 @@ for (const surface of ['notes', 'lists', 'metrics'] as const) {
       await expect(page.locator('.metric-text-input')).toHaveValue('')
       await dispatchRedo(page)
       await expect(page.locator('.metric-text-input')).toHaveValue('Saved answer')
-      await expect(page.locator('.history-notice')).not.toContainText('2026-08-19')
+      if (testInfo.project.name === 'mobile') {
+        await expect(page.locator('.history-notice')).not.toContainText('2026-08-19')
+      } else {
+        await expect(page.locator('.history-notice')).toHaveCount(0)
+      }
     }
   })
 }
