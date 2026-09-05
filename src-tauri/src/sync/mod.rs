@@ -593,25 +593,57 @@ pub(crate) fn local_operation_with_causal_timestamp(
     )?;
     if let Some(last) = latest {
         if timestamp <= last.as_str() {
-            let observed = chrono::DateTime::parse_from_rfc3339(&last).map_err(|error| {
-                Error::Codec(format!("invalid observed operation timestamp: {error}"))
-            })?;
-            let next = observed
-                .checked_add_signed(chrono::Duration::milliseconds(1))
-                .ok_or_else(|| Error::Codec("operation timestamp overflow".into()))?;
-            let mut next_timestamp = next.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-            // Older operations may omit fractional seconds. Their trailing Z
-            // sorts after a decimal point, so move to the next whole second.
-            if next_timestamp <= last {
-                next_timestamp = observed
-                    .checked_add_signed(chrono::Duration::seconds(1))
-                    .ok_or_else(|| Error::Codec("operation timestamp overflow".into()))?
-                    .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-            }
-            operation["timestamp"] = json!(next_timestamp);
+            operation["timestamp"] = json!(timestamp_after(&last));
         }
     }
     Ok(operation)
+}
+
+/// Replay orders timestamps as opaque strings, including the `unix-ms-...`
+/// format produced by native history actions. Never rewrite observed rows or
+/// reject a new edit merely because older accepted text is not RFC3339.
+fn timestamp_after(last: &str) -> String {
+    if let Ok(observed) = chrono::DateTime::parse_from_rfc3339(last) {
+        // A timestamp without fractional seconds needs the whole-second step
+        // because its trailing Z sorts after a decimal point.
+        for step in [
+            chrono::Duration::milliseconds(1),
+            chrono::Duration::seconds(1),
+        ] {
+            if let Some(next) = observed.checked_add_signed(step) {
+                let candidate = next.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+                if candidate.as_str() > last {
+                    return candidate;
+                }
+            }
+        }
+    }
+    if let Some(next) = last
+        .strip_prefix("unix-ms-")
+        .and_then(|value| value.parse::<u64>().ok())
+        .and_then(|value| value.checked_add(1))
+    {
+        let candidate = format!("unix-ms-{next}");
+        if candidate.as_str() > last {
+            return candidate;
+        }
+    }
+    // Preserve ordering even for opaque legacy values, numeric-width changes,
+    // and overflow. A fixed-width suffix avoids growing the string per edit.
+    if let Some((prefix, counter)) = last.rsplit_once('~') {
+        if counter.len() == 16 {
+            if let Some(next) = u64::from_str_radix(counter, 16)
+                .ok()
+                .and_then(|n| n.checked_add(1))
+            {
+                let candidate = format!("{prefix}~{next:016x}");
+                if candidate.as_str() > last {
+                    return candidate;
+                }
+            }
+        }
+    }
+    format!("{last}~0000000000000000")
 }
 
 fn last_operation_canonical(conn: &Connection) -> Result<Option<Op>> {

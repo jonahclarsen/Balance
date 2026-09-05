@@ -116,3 +116,17 @@ user's intended winner from an already misordered historical log.
 Seeded schedules provide repeatable counterexamples and regression coverage,
 not exhaustive exploration of every possible interleaving. A forced Android
 job proves background progress, not an exact five-minute scheduling guarantee.
+
+## Follow-up: native timestamp compatibility
+
+The initial causal-clock fix incorrectly assumed observed timestamps were
+RFC3339. Native `current_timestamp()` emits `unix-ms-<milliseconds>` for
+undo/redo. A later ISO-timestamped edit then failed with `invalid observed
+operation timestamp: input contains invalid characters`. A synthetic native
+undo followed by a phone edit reproduces this without personal data.
+
+Clock successors now support both formats and always preserve the existing
+lexicographic replay order. Opaque previously accepted values and overflow use
+a bounded hexadecimal suffix instead of blocking writes or rewriting history.
+Tests cover native undo followed by a replicated edit, duplicate persistence,
+full replay, numeric-width changes, overflow, and 6,144 opaque-clock advances.
