@@ -3495,7 +3495,7 @@ body.mobile-checkbox-dragging {
 
 .paste-review-line {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   min-width: 0;
   gap: 6px;
 }

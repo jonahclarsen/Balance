@@ -1,5 +1,156 @@
 import { expect, test, type Page } from '@playwright/test'
 
+test('Mac Cmd+V delivers the clipboard image to a list-template editor', async ({ page }) => {
+  await notes(page)
+  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
+  if (await menu.isVisible()) await menu.click()
+  await page.getByRole('button', { name: 'Lists', exact: true }).filter({ visible: true }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  const editor = page.locator('[data-list-template-text-input]').first()
+  await editor.click()
+  const delivered = await editor.evaluate(async (node) => {
+    // WebKit can expose a raster image in the paste event even when a separate
+    // native pasteboard read supplies no web-decodable image representation.
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Balance macOS synthetic test' })
+    Object.assign(window, { isTauri: true, __TAURI_INTERNALS__: { transformCallback: () => 1, invoke: async () => ({ structuredPayload: null, plainText: null, html: null, imageDataURL: null }) } })
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { read: async () => [], readText: async () => '' } })
+    const canvas = document.createElement('canvas'); canvas.width = 100; canvas.height = 60
+    canvas.getContext('2d')!.fillRect(0, 0, 100, 60)
+    const png = await new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!), 'image/png'))
+    const data = new DataTransfer(); data.items.add(new File([png], 'synthetic.png', { type: 'image/png' }))
+    const allowed = node.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', code: 'KeyV', metaKey: true, bubbles: true, cancelable: true }))
+    if (allowed) node.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+    return allowed
+  })
+  expect(delivered).toBe(true)
+  await expect(editor.locator('img')).toBeVisible()
+  await page.evaluate(() => Object.assign(window, { isTauri: false }))
+  await page.getByLabel('List name').click()
+  await expect(editor.locator('img')).toBeVisible()
+  const state = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!))
+  expect(state.images).toHaveLength(1)
+  expect(state.listTemplates.at(-1).items[0].html).toContain('data-balance-image=')
+})
+
+test('Mac list-template paste keeps whole rows and formatted text working', async ({ page }) => {
+  await notes(page)
+  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
+  if (await menu.isVisible()) await menu.click()
+  await page.getByRole('button', { name: 'Lists', exact: true }).filter({ visible: true }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  const editors = page.locator('[data-list-template-text-input]')
+  await editors.first().fill('Original row')
+  await editors.first().press('End')
+  await editors.first().evaluate((node) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    const item = state.listTemplates.at(-1).items[0]
+    const structuredPayload = JSON.stringify({ kind: 'list-template', cut: false, items: [{ ...item, text: 'Copied row', html: 'Copied row' }] })
+    Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Balance macOS synthetic test' })
+    Object.assign(window, { isTauri: true, __TAURI_INTERNALS__: { transformCallback: () => 1, invoke: async () => ({ structuredPayload, plainText: 'Copied row', html: null }) } })
+    const data = new DataTransfer(); data.setData('text/plain', 'Copied row')
+    node.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  })
+  await expect(editors).toHaveCount(2)
+  await expect(editors.nth(1)).toHaveText('Copied row')
+  await editors.first().click()
+  await editors.first().press('End')
+  await editors.first().evaluate((node) => {
+    Object.assign(window, { __TAURI_INTERNALS__: { transformCallback: () => 1, invoke: async () => ({ structuredPayload: null, plainText: ' appended', html: null }) } })
+    const data = new DataTransfer(); data.setData('text/plain', ' appended'); data.setData('text/html', '<strong> appended</strong>')
+    node.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  })
+  await expect(editors).toHaveCount(2)
+  await expect(editors.first()).toHaveText('Original row appended')
+  await expect(editors.first().locator('strong, b')).toHaveText(' appended')
+  await page.evaluate(() => Object.assign(window, { isTauri: false }))
+})
+
+async function pasteSizeFixture(page: Page, size: number, noise = false) {
+  await page.locator('[data-note-text-input]').first().evaluate(async (editor, { size, noise }) => {
+    const canvas = document.createElement('canvas')
+    canvas.width = noise ? 3200 : 64
+    canvas.height = noise ? 2400 : 64
+    const context = canvas.getContext('2d')!
+    if (noise) {
+      const pixels = context.createImageData(canvas.width, canvas.height)
+      let seed = 123456789
+      for (let offset = 0; offset < pixels.data.length; offset += 4) {
+        for (let channel = 0; channel < 3; channel++) {
+          seed ^= seed << 13; seed ^= seed >>> 17; seed ^= seed << 5
+          pixels.data[offset + channel] = seed & 255
+        }
+        pixels.data[offset + 3] = 255
+      }
+      context.putImageData(pixels, 0, 0)
+    } else context.fillRect(0, 0, canvas.width, canvas.height)
+    const png = await new Promise<Blob>((resolve) => canvas.toBlob((blob) => resolve(blob!), 'image/png'))
+    const file = new File([png, new Uint8Array(Math.max(0, size - png.size))], 'size-fixture.png', { type: 'image/png' })
+    const data = new DataTransfer()
+    data.items.add(file)
+    editor.dispatchEvent(noise
+      ? new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data })
+      : new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }))
+  }, { size, noise })
+}
+
+for (const size of [5_999_999, 6_000_000, 6_000_001]) {
+  test(`image originals respect the strict 6 MB boundary at ${size} bytes`, async ({ page }) => {
+    await notes(page)
+    await pasteSizeFixture(page, size)
+    const dialog = page.getByRole('dialog', { name: 'Paste image', exact: true })
+    await expect(dialog).toBeVisible()
+    const original = dialog.getByRole('button', { name: /^Paste original/ })
+    if (size < 6_000_000) {
+      await expect(original).toBeEnabled()
+    } else {
+      await expect(original).toBeDisabled()
+      await expect(dialog.getByRole('status').filter({ hasText: 'Images must be smaller than 6 MB' })).toBeVisible()
+      await page.keyboard.press('ControlOrMeta+Enter')
+      await expect(dialog).toBeVisible()
+      await expect(page.locator('[data-note-text-input] img')).toHaveCount(0)
+    }
+    await expect(dialog.getByRole('button', { name: /^Paste image(?: Enter)?$/, exact: true })).toBeEnabled()
+    await page.keyboard.press('Enter')
+    await expect(dialog).not.toBeVisible()
+    await expect(page.locator('[data-note-text-input] img')).toBeVisible()
+    const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images[0])
+    expect(asset.bytes).toBeLessThan(6_000_000)
+    expect(asset.dataURL).toMatch(/^data:image\/webp/)
+  })
+}
+
+test('an oversized encoded result stays blocked until compression brings it below 6 MB', async ({ page }) => {
+  test.setTimeout(60_000)
+  await notes(page)
+  await pasteSizeFixture(page, 6_000_001, true)
+  const dialog = page.getByRole('dialog', { name: 'Paste image', exact: true })
+  await expect(dialog).toBeVisible()
+  const paste = dialog.getByRole('button', { name: /^Paste image(?: Enter)?$/, exact: true })
+  await expect(paste).toBeEnabled({ timeout: 20_000 })
+  for (const name of ['Image scale', 'WebP quality']) {
+    await dialog.getByRole('slider', { name }).evaluate((node) => {
+      ;(node as HTMLInputElement).value = '100'
+      node.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+  await expect(dialog.locator('.image-size')).not.toContainText('Updating', { timeout: 20_000 })
+  await expect(paste).toBeDisabled()
+  await page.keyboard.press('Enter')
+  await expect(dialog).toBeVisible()
+  await expect(page.locator('[data-note-text-input] img')).toHaveCount(0)
+  await dialog.getByRole('slider', { name: 'Image scale' }).evaluate((node) => {
+    ;(node as HTMLInputElement).value = '25'
+    node.dispatchEvent(new Event('input', { bubbles: true }))
+  })
+  await expect(paste).toBeEnabled({ timeout: 20_000 })
+  await paste.click()
+  await expect(dialog).not.toBeVisible()
+  await expect(page.locator('[data-note-text-input] img')).toBeVisible()
+  const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images[0])
+  expect(asset.bytes).toBeLessThan(6_000_000)
+  expect(asset.width).toBe(800)
+})
+
 async function notes(page: Page) {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

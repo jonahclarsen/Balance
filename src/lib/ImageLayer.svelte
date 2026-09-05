@@ -4,7 +4,7 @@
   import { encodeWebP } from './imageCompression'
   import { hydrateImages } from './imageEditing'
   import { IMAGE_SELECTOR, initialImageScale, type ImageLayout } from './imageMarkup'
-  import { decodeImage, imageAssets, imageError, imageImport, imageSources, imageViewer, selectedImage, setImageSaver, type ImageImport } from './imageService'
+  import { decodeImage, imageAssets, imageError, imageImport, imageSources, imageViewer, selectedImage, setImageSaver, MAX_IMAGE_BYTES, IMAGE_SIZE_LIMIT_MESSAGE, type ImageImport } from './imageService'
 
   let dialog: HTMLDialogElement
   let active: ImageImport | null = null
@@ -158,6 +158,7 @@
     context.drawImage(source, left * factor, top * factor, cropWidth * factor, cropHeight * factor, 0, 0, 360, 360)
   }
   function finish(blob: Blob | null) {
+    if (blob && blob.size >= MAX_IMAGE_BYTES) return
     const request = active
     ++generation; ++cropGeneration; clearTimeout(encodeTimer)
     active = null; original = null
@@ -247,8 +248,9 @@
       </div>
       <div class="image-size" aria-live="polite">{bytes(active.blob.size)} → {processing ? 'Updating…' : result ? bytes(result.size) : '—'}{#if result && !processing} · {outputWidth} × {outputHeight} · {Math.round((1 - result.size / active.blob.size) * 100)}% smaller{/if}</div>
       {#if original}<div class="original-dimensions">Original: {original.naturalWidth} × {original.naturalHeight}</div>{/if}
+      {#if active.blob.size >= MAX_IMAGE_BYTES || (result && !processing && result.size >= MAX_IMAGE_BYTES)}<p role="status">{IMAGE_SIZE_LIMIT_MESSAGE}</p>{/if}
       {#if modalError}<p role="alert">{modalError}</p>{/if}
-      <footer><button on:click={() => finish(null)}>Cancel <kbd>Esc</kbd></button><div><button on:click={() => active && finish(active.blob)}>Paste original <kbd>{mod}Enter</kbd></button><button class="primary" disabled={processing || !result} on:click={() => result && finish(result)}>Paste image <kbd>Enter</kbd></button></div></footer>
+      <footer><button on:click={() => finish(null)}>Cancel <kbd>Esc</kbd></button><div><button disabled={active.blob.size >= MAX_IMAGE_BYTES} on:click={() => active && finish(active.blob)}>Paste original <kbd>{mod}Enter</kbd></button><button class="primary" disabled={processing || !result || result.size >= MAX_IMAGE_BYTES} on:click={() => result && finish(result)}>Paste image <kbd>Enter</kbd></button></div></footer>
     </div>
   {/if}
 </dialog>
@@ -295,6 +297,7 @@
   .image-tools { position: absolute; left: 0; display: flex; white-space: nowrap; pointer-events: auto; background: var(--paper); border-radius: 7px; box-shadow: 0 3px 12px #0005; }
   .image-tools button { padding: 6px 9px; font-size: 12px; }
   :global(img[data-balance-image]) { display: inline-block; max-width: 100%; height: auto; vertical-align: middle; object-fit: contain; cursor: grab; border-radius: 3px; }
+  :global(img[data-balance-image][data-image-layout='inline']) { margin: .2em .35em; max-width: calc(100% - .7em); }
   :global(img[data-image-layout='left']) { float: left; margin: .25em 1em .5em 0; }
   :global(img[data-image-layout='right']) { float: right; margin: .25em 0 .5em 1em; }
   :global([data-rich-text-input]:has(img[data-balance-image])) { display: flow-root; white-space: pre-wrap; }

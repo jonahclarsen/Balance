@@ -45,6 +45,12 @@ async function openReviewWithLongItems(page: import('@playwright/test').Page) {
       operations: [],
     }
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
+      version: 1,
+      themeId: 'graphite',
+      checkboxColor: '#a123bc',
+      doneTintColor: '#a123bc',
+    }))
   }, LONG_ITEMS)
   await page.reload()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
@@ -69,7 +75,13 @@ async function openReviewWithLongItems(page: import('@playwright/test').Page) {
 
   // Move to the next (pre-seeded) day and paste — 4+ items onto a different day
   // opens the review queue.
-  await page.getByRole('button', { name: 'Next day' }).click()
+  const nextDay = page.getByRole('button', { name: 'Next day', exact: true })
+  if (await nextDay.isVisible()) {
+    await nextDay.click()
+  } else {
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)
+    await page.getByRole('button', { name: `Open ${tomorrow} in Today view`, exact: true }).click()
+  }
   await page.locator('[data-plan-text-input]').first().focus()
   await page.keyboard.press('Meta+V')
 
@@ -150,4 +162,44 @@ test('pasted item previews preserve saved line breaks', async ({ page }) => {
     }
   })
   expect(metrics.height).toBeGreaterThan(metrics.lineHeight * 1.5)
+})
+
+test('review checkbox is centered and matches planner checkbox appearance', async ({ page }) => {
+  await openReviewWithLongItems(page)
+
+  const checkbox = page.locator('.paste-review-item.current .check')
+  const plannerCheckbox = page.locator('.plan-row .check').first()
+  const appearance = (input: HTMLElement) => {
+    const style = getComputedStyle(input)
+    return {
+      appearance: style.appearance,
+      // Planner zoom can round CSS dimensions to fractional pixels.
+      width: Math.round(Number.parseFloat(style.width)),
+      height: Math.round(Number.parseFloat(style.height)),
+      borderWidth: Math.round(Number.parseFloat(style.borderWidth)),
+      borderColor: style.borderColor,
+      borderStyle: style.borderStyle,
+      borderRadius: style.borderRadius,
+      backgroundColor: style.backgroundColor,
+      backgroundImage: style.backgroundImage,
+    }
+  }
+  await expect(checkbox).not.toBeChecked()
+  expect(await checkbox.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
+
+  const centerOffset = await checkbox.evaluate((input) => {
+    const checkboxRect = input.getBoundingClientRect()
+    const cardRect = input.closest('.paste-review-card')!.getBoundingClientRect()
+    return Math.abs(checkboxRect.y + checkboxRect.height / 2 - cardRect.y - cardRect.height / 2)
+  })
+  expect(centerOffset).toBeLessThan(1)
+
+  await checkbox.check()
+  await expect(checkbox).toBeChecked()
+  await page.mouse.move(0, 0)
+  // Set only the synthetic background control's visual state for comparison.
+  await plannerCheckbox.evaluate((input: HTMLInputElement) => { input.checked = true })
+  expect(await checkbox.evaluate(appearance)).toEqual(await plannerCheckbox.evaluate(appearance))
+  await expect(checkbox).toHaveCSS('background-color', 'rgb(161, 35, 188)')
+  await expect(page.locator('.paste-review-item.current')).toHaveClass(/done/)
 })
