@@ -6766,8 +6766,7 @@ return rows`
             <div>
               <h3>Widget visibility</h3>
               <p>
-                When enabled, Balance reloads WidgetKit when the app quits normally and hides your tasks after a
-                15-minute grace period. A crash or force-quit can prevent the hide timer from being scheduled.
+                When enabled, Balance hides your tasks on the widget after 15 minutes, to help you focus on life outside of day planning.
               </p>
             </div>
 
@@ -6780,7 +6779,6 @@ return rows`
               />
               <span>
                 <strong>Hide widget content 15 minutes after Balance closes</strong>
-                <small>Enabled by default. Reopening Balance during the grace period cancels the pending hide.</small>
               </span>
             </label>
 
