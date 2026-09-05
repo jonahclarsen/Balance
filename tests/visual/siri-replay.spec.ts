@@ -1,14 +1,15 @@
 import { expect, test } from '@playwright/test'
 
-for (const reload of [false, true]) {
-  test(`Siri request replay on the next day ${reload ? 'after' : 'without'} backend reload`, async ({ page }) => {
+for (const scenario of ['same-session', 'reload', 'native-race'] as const) {
+  test(`Siri request replay on the next day: ${scenario}`, async ({ page }) => {
     // Import the real store in a blank browser document: no app, sync scheduler,
     // installed database, screenshots, or platform integration is involved.
     await page.route('**/siri-replay-harness', (route) => route.fulfill({
       contentType: 'text/html', body: '<!doctype html><title>Synthetic Siri replay</title>',
     }))
     await page.goto('/siri-replay-harness')
-    const result = await page.evaluate(async (reload) => {
+    const result = await page.evaluate(async (scenario) => {
+      const reload = scenario !== 'same-session'
       const plannerPath = '/src/lib/planner.ts'
       const storePath = '/src/lib/store.ts'
       const linksPath = '/src/lib/deepLinks.ts'
@@ -31,7 +32,10 @@ for (const reload of [false, true]) {
         __TAURI_INTERNALS__: {
           invoke: async (command: string, args?: { operationJson?: string }) => {
             if (command === 'read_app_state') return persisted
-            if (command === 'has_processed_siri_request') return receipts.has((args as { requestId: string }).requestId)
+            if (command === 'has_processed_siri_request') {
+              // Model a stale preflight result: persistence remains authoritative.
+              return scenario === 'native-race' ? false : receipts.has((args as { requestId: string }).requestId)
+            }
             if (command === 'persist_operation') {
               const operation = JSON.parse(args!.operationJson!)
               if (receipts.has(operation.payload.requestId)) return false
@@ -59,18 +63,30 @@ for (const reload of [false, true]) {
       const operationsBeforeReplay = snapshot!.operations.length
       const replayAdded = await plannerStore.addPlanItemFromSiri(request.text, request.requestId, '2026-09-06')
       await plannerStore.flushPendingOperations()
+      if (scenario === 'native-race') {
+        // Wait for the automatic reconciliation triggered by native rejection,
+        // without calling reloadFromBackend from the test to hide a missing reload.
+        await new Promise<void>((resolve) => {
+          let stop: (() => void) | undefined
+          stop = plannerStore.subscribe((state: typeof initial) => {
+            if (state.operations.length === 0) {
+              queueMicrotask(() => { stop?.(); resolve() })
+            }
+          })
+        })
+      }
       const dates = snapshot!.plans.filter((plan: typeof initial.plans[number]) =>
         JSON.stringify(plan.items).includes(request.text),
       ).map((plan: typeof initial.plans[number]) => plan.date).sort()
       unsubscribe()
       return { firstAdded, replayAdded, dates, operationsBeforeReplay, persistedRequests }
-    }, reload)
+    }, scenario)
 
-    console.log(JSON.stringify({ backendReload: reload, ...result }))
+    console.log(JSON.stringify({ scenario, ...result }))
     expect(result.firstAdded).toBe(true)
-    expect(result.operationsBeforeReplay).toBe(reload ? 0 : 1)
+    expect(result.operationsBeforeReplay).toBe(scenario === 'same-session' ? 1 : 0)
     expect(result.persistedRequests).toEqual(['synthetic-replay-001'])
-    expect(result.replayAdded, 'The same request ID must never insert a second task').toBe(false)
+    expect(result.replayAdded).toBe(scenario === 'native-race')
     expect(result.dates).toEqual(['2026-09-05'])
   })
 }
