@@ -7158,8 +7158,8 @@ return rows`
                       aria-label="Complete item"
                     />
                   </label>
-                {:else}
-                  <span class="paste-review-status" aria-hidden="true">{wasKept ? '✓' : nodeIndex + 1}</span>
+                {:else if wasKept}
+                  <span class="paste-review-status" aria-hidden="true">✓</span>
                 {/if}
                 <!-- Render the saved rich text just like a real task so formatting
                      such as explicit line breaks survives in the review preview. -->
