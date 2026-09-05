@@ -66,8 +66,8 @@ export const THEME_PRESETS = [
   {
     id: 'forest',
     name: 'Forest',
-    description: 'Teal and warm paper',
-    swatches: ['#2f6f68', '#ebe7dc', '#3f9d54'],
+    description: 'Teal and soft green',
+    swatches: ['#2f6f68', '#e0ece4', '#3f9d54'],
     checkboxColor: '#2f6f68',
     doneColor: '#3f9d54',
   },
