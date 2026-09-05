@@ -103,7 +103,7 @@ test('day navigation stays local, preserves redo, and survives reload', async ({
   await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-21')
 })
 
-test('undo and redo return to the changed date and highlight the exact item across pages', async ({ page }) => {
+test('undo and redo return to the changed date and reveal the item without highlighting it', async ({ page }) => {
   await page.goto('/')
   const { firstItem } = await storeAction(page, 'seed')
   await storeAction(page, 'edit')
@@ -112,9 +112,9 @@ test('undo and redo return to the changed date and highlight the exact item acro
   await dispatchUndo(page)
   await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-20')
   const row = page.locator(`[data-plan-item-id="${firstItem}"]`)
-  await expect(row).toHaveClass(/search-result-target/)
   await expect(row).toBeInViewport()
   await expect(page.locator('.history-notice')).toContainText('Undid item change · 2026-08-20')
+  await expect(page.locator('.search-result-target')).toHaveCount(0)
   await storeAction(page, 'navigate')
   await openPage(page, 'Notes')
   await dispatchRedo(page)
@@ -122,9 +122,10 @@ test('undo and redo return to the changed date and highlight the exact item acro
   await expect(row).toContainText('History target')
   await expect(row).toBeInViewport()
   await expect(page.locator('.history-notice')).toContainText('Redid item change')
+  await expect(page.locator('.search-result-target')).toHaveCount(0)
 })
 
-test('undo reveals an offscreen row and highlights the list when an added row disappears', async ({ page }) => {
+test('undo reveals an offscreen row and a nearby row when an added row disappears', async ({ page }) => {
   await page.goto('/')
   const { firstItem } = await storeAction(page, 'seed')
   await storeAction(page, 'edit')
@@ -133,12 +134,11 @@ test('undo reveals an offscreen row and highlights the list when an added row di
   await expect(row).not.toBeInViewport()
   await dispatchUndo(page)
   await expect(row).toBeInViewport()
-  await expect(row).toHaveClass(/search-result-target/)
   await storeAction(page, 'add')
   const count = await page.locator('[data-plan-item-id]').count()
   await dispatchUndo(page)
   await expect(page.locator('[data-plan-item-id]')).toHaveCount(count - 1)
-  await expect(page.locator('.search-result-target').last()).toBeInViewport()
+  await expect(page.locator('[data-plan-item-id]').last()).toBeInViewport()
 })
 
 for (const surface of ['notes', 'lists', 'metrics'] as const) {
@@ -170,12 +170,12 @@ for (const surface of ['notes', 'lists', 'metrics'] as const) {
     await dispatchUndo(page)
     if (surface === 'notes') {
       await expect(page.getByLabel('Note title')).toBeVisible()
-      await expect(page.locator('.note-document')).toHaveClass(/search-result-target/)
+      await expect(page.locator('.note-document')).toBeInViewport()
     } else if (surface === 'lists') {
       await expect(page.getByLabel('List name')).toHaveValue('New list')
-      await expect(page.locator('.template-panel')).toHaveClass(/search-result-target/)
+      await expect(page.locator('.template-panel')).toBeInViewport()
     } else {
-      await expect(page.locator('.metric-quiz')).toHaveClass(/search-result-target/)
+      await expect(page.locator('.metric-quiz')).toBeInViewport()
       await expect(page.locator('.metric-prompt')).toHaveText('Second question')
       await expect(page.locator('.metric-text-input')).toHaveValue('')
       await dispatchRedo(page)

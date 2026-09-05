@@ -292,7 +292,7 @@ for (const reloaded of [false, true]) {
     })).toBe(reloaded ? null : 'op_device_native_test_2')
     await expect(editor).toHaveText('Original text')
     await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-16')
-    await expect(page.locator('[data-plan-item-id]').first()).toHaveClass(/search-result-target/)
+    await expect(page.locator('[data-plan-item-id]').first()).toBeInViewport()
     await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'z',
       code: 'KeyZ',
