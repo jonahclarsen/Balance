@@ -1768,15 +1768,29 @@ return rows`
       if (deepLinksReady) drainDeepLinks()
     }
 
-    function drainDeepLinks() {
-      if (!deepLinksReady || $databaseLoadError) return
-      for (const raw of pendingDeepLinks.splice(0)) {
-        const deepLink = parseBalanceDeepLink(raw)
-        if (!deepLink) continue
-        plannerStore.addPlanItemFromSiri(deepLink.text, deepLink.requestId, todayISO())
-        closeCompareDay()
-        closeMobileDrawer()
-        view = 'today'
+    let drainingDeepLinks = false
+    async function drainDeepLinks() {
+      if (!deepLinksReady || $databaseLoadError || drainingDeepLinks) return
+      drainingDeepLinks = true
+      try {
+        while (mounted && pendingDeepLinks.length > 0) {
+          const raw = pendingDeepLinks[0]
+          const deepLink = parseBalanceDeepLink(raw)
+          const added = deepLink
+            ? await plannerStore.addPlanItemFromSiri(deepLink.text, deepLink.requestId, todayISO())
+            : false
+          await plannerStore.flushPendingOperations()
+          await invoke('acknowledge_deep_link', { url: raw })
+          pendingDeepLinks.shift()
+          if (!added || !mounted) continue
+          closeCompareDay()
+          closeMobileDrawer()
+          view = 'today'
+        }
+      } catch (error) {
+        console.error('Could not process Balance deep link', error)
+      } finally {
+        drainingDeepLinks = false
       }
     }
 
@@ -1789,7 +1803,7 @@ return rows`
           return
         }
         stopDeepLinkListener = stopListening
-        const queued = await invoke<string[]>('take_pending_deep_links')
+        const queued = await invoke<string[]>('pending_deep_links')
         for (const raw of queued) receiveDeepLink(raw)
       }).catch((error) => {
         console.error('Could not listen for Balance deep links', error)

@@ -1,4 +1,4 @@
-name: Reproduce Siri request replay
+name: Test Siri request delivery
 
 on:
   workflow_dispatch:
@@ -6,14 +6,17 @@ on:
     paths:
       - '.github/workflows/siri-replay.yml'
       - 'tests/visual/siri-replay.spec.ts'
+      - 'src/lib/store.ts'
+      - 'src/App.svelte'
+      - 'src-tauri/src/lib.rs'
 
 permissions:
   contents: read
 
 jobs:
   reproduce:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+    runs-on: macos-15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
@@ -23,7 +26,20 @@ jobs:
         with:
           node-version: 24
           cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-siri-tests-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-siri-tests-
       - run: pnpm install --frozen-lockfile
+      - run: pnpm check
+      - name: Test encrypted native Siri persistence and delivery
+        run: cargo test --manifest-path src-tauri/Cargo.toml siri_
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Reproduce with synthetic data and native command mocks
+      - name: Verify replay protection with synthetic data and native command mocks
         run: pnpm exec playwright test tests/visual/siri-replay.spec.ts --project=desktop

@@ -507,7 +507,12 @@ async function flushOperationsNow(): Promise<void> {
       for (let index = 0; index < operations.length; index += 1) {
         const operation = operations[index]
         try {
-          await invoke('persist_operation', { operationJson: JSON.stringify(operation) })
+          const accepted = await invoke<boolean | undefined>('persist_operation', { operationJson: JSON.stringify(operation) })
+          // A second frontend can race the preflight check. Native persistence
+          // rejects it atomically; reconcile the optimistic state after flushing.
+          if (accepted === false) void plannerStore.reloadFromBackend().catch((error) => {
+            console.error('Could not reload after duplicate Siri delivery', error)
+          })
           persistenceError.set('')
           // Once an id has reached the database it is immutable for sync. Text
           // coalescing may continue only while an operation is still pending.
@@ -771,8 +776,14 @@ function createPlannerStore() {
       })))
     },
 
-    addPlanItemFromSiri(text: string, requestId: string, date = todayISO()): boolean {
+    async addPlanItemFromSiri(text: string, requestId: string, date = todayISO()): Promise<boolean> {
       if (!text.trim() || !requestId) return false
+      await ready
+      if (get(databaseLoadError)) throw new Error(get(databaseLoadError))
+      if (isTauri()) {
+        await flushOperations()
+        if (await invoke<boolean>('has_processed_siri_request', { requestId })) return false
+      }
 
       const current = get(store)
       const currentPlan = current.plans.find((plan) => plan.date === date)

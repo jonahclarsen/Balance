@@ -60,7 +60,11 @@ the recognized text, but test the behavior on that supported platform.
   When a development Balance process is running, the installed app must receive
   the initial URL through AppKit, relay it in memory to development Balance, and
   exit before Tauri or database initialization. The request identifier prevents
-  repeated delivery from inserting the same task twice.
+  repeated delivery from inserting the same task twice. Check the durable native
+  receipt before insertion, and write that receipt atomically with the operation.
+  Receipts are device-local metadata, independent of undo and compactable logs.
+  Keep pending URLs until the frontend acknowledges them after persistence; a
+  duplicate delivery must not navigate to another day.
 - `src/lib/deepLinks.ts` validates the URL. Reject blank or oversized input, but
   do not trim or otherwise rewrite accepted task text.
 - `src/App.svelte` receives the deep link and calls the planner store.

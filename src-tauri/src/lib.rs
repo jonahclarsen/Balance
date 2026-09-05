@@ -241,11 +241,30 @@ static PENDING_DEEP_LINKS: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static MACOS_APP_HANDLE: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
 
 #[tauri::command]
-fn take_pending_deep_links() -> Vec<String> {
+fn pending_deep_links() -> Vec<String> {
     PENDING_DEEP_LINKS
         .lock()
-        .map(|mut links| std::mem::take(&mut *links))
+        .map(|links| links.clone())
         .unwrap_or_default()
+}
+
+#[tauri::command]
+fn acknowledge_deep_link(url: String) {
+    if let Ok(mut links) = PENDING_DEEP_LINKS.lock() {
+        links.retain(|pending| pending != &url);
+    }
+}
+
+#[tauri::command]
+async fn has_processed_siri_request(app: tauri::AppHandle, request_id: String) -> Result<bool, String> {
+    run_database_task(move || {
+        with_database(&app, |connection| siri_request_processed(connection, &request_id))
+    })
+    .await
+}
+
+fn siri_request_processed(connection: &Connection, request_id: &str) -> Result<bool, String> {
+    Ok(metadata_value(connection, &format!("siri_request:{request_id}"))?.is_some())
 }
 
 #[cfg(target_os = "macos")]
@@ -257,7 +276,9 @@ fn deliver_balance_deep_link(app: &tauri::AppHandle, url: String) {
         if links.len() >= 32 {
             links.remove(0);
         }
-        links.push(url.clone());
+        if !links.contains(&url) {
+            links.push(url.clone());
+        }
     }
     let _ = app.emit(BALANCE_DEEP_LINK_EVENT, url);
 }
@@ -1373,15 +1394,15 @@ async fn initialize_app_state(app: tauri::AppHandle, state_json: String) -> Resu
 }
 
 #[tauri::command]
-async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Result<(), String> {
+async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Result<bool, String> {
     run_database_task(move || {
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
         let operation = parse_json(&operation_json)?;
-        persist_operation_to_database(&mut connection, &operation)?;
+        let accepted = persist_operation_once(&mut connection, &operation)?;
         finish_meaningful_database_write(&connection, &database_path, &recovery_key);
-        Ok(())
+        Ok(accepted)
     })
     .await
 }
@@ -3144,9 +3165,26 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
 
+    migrate_siri_request_receipts(connection)?;
+
     sync::relay_client::ensure_relay_tables(connection).map_err(sync::Error::into_string)?;
 
     Ok(())
+}
+
+// Remove this upgrade once installations predating durable Siri receipts are
+// retired. Only request IDs are retained; no spoken text enters metadata.
+fn migrate_siri_request_receipts(connection: &Connection) -> Result<(), String> {
+    if metadata_value(connection, "siri_receipts_migrated")?.is_some() {
+        return Ok(());
+    }
+    connection.execute_batch("
+        insert or ignore into metadata (key, value)
+        select 'siri_request:' || json_extract(payload_json, '$.requestId'), '1'
+        from operations where type = 'add_plan_item_from_siri'
+          and json_type(payload_json, '$.requestId') = 'text';
+        insert or ignore into metadata (key, value) values ('siri_receipts_migrated', '1');
+    ").map_err(|error| error.to_string())
 }
 
 fn metadata_value(connection: &Connection, key: &str) -> Result<Option<String>, String> {
@@ -3728,10 +3766,16 @@ fn replace_domain_state(connection: &Connection, state: &Value) -> Result<(), St
     Ok(())
 }
 
-fn persist_operation_to_database(
+fn persist_operation_to_database(connection: &mut Connection, operation: &Value) -> Result<(), String> {
+    persist_operation_once(connection, operation).map(|_| ())
+}
+
+// The receipt and task commit together. Receipts are device-local metadata:
+// URL delivery is local, and undo/checkpoints must never erase an acceptance.
+fn persist_operation_once(
     connection: &mut Connection,
     operation: &Value,
-) -> Result<(), String> {
+) -> Result<bool, String> {
     let tx = connection
         .transaction()
         .map_err(|error| error.to_string())?;
@@ -3745,6 +3789,17 @@ fn persist_operation_to_database(
 
     let operation_id = required_string(operation, "id")?;
     let operation_type = required_string(operation, "type")?;
+    let siri_request = if operation_type == "add_plan_item_from_siri" {
+        Some(required_string(required_value(operation, "payload")?, "requestId")?)
+    } else {
+        None
+    };
+    if let Some(request_id) = siri_request {
+        if siri_request_processed(&tx, request_id)? {
+            return Ok(false);
+        }
+        set_metadata(&tx, &format!("siri_request:{request_id}"), "1")?;
+    }
     let existing_history = history_entry_for_operation(&tx, operation_id)?;
     let undo_operation = if is_history_operation(operation_type) {
         None
@@ -3784,7 +3839,7 @@ fn persist_operation_to_database(
     // The user edit is already durable. Housekeeping must never turn that
     // successful write into a retry that could reinsert a covered operation.
     let _ = maybe_checkpoint_operation_log(connection);
-    Ok(())
+    Ok(true)
 }
 
 fn operation_log_stats(connection: &Connection) -> Result<(i64, i64), String> {
@@ -10557,7 +10612,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_app_state,
-            take_pending_deep_links,
+            pending_deep_links,
+            acknowledge_deep_link,
+            has_processed_siri_request,
             get_device_appearance,
             set_device_appearance,
             initialize_app_state,
@@ -10821,6 +10878,85 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn siri_queue_retains_unacknowledged_urls_only() {
+        let first = "balance://add?text=Synthetic&request=queue-first".to_string();
+        let second = "balance://add?text=Synthetic&request=queue-second".to_string();
+        PENDING_DEEP_LINKS.lock().unwrap().extend([first.clone(), second.clone()]);
+        assert_eq!(pending_deep_links(), vec![first.clone(), second.clone()]);
+        assert_eq!(pending_deep_links(), vec![first.clone(), second.clone()]);
+        acknowledge_deep_link(first);
+        assert_eq!(pending_deep_links(), vec![second.clone()]);
+        acknowledge_deep_link(second);
+        assert!(pending_deep_links().is_empty());
+    }
+
+    #[test]
+    fn siri_receipt_is_atomic_and_survives_restart_undo_and_compaction() {
+        let key = generate_recovery_key();
+        let database = TestDatabase::new("siri-durable-receipt");
+        let mut connection = open_database_at(&database.path, &key).unwrap();
+        let state = test_state("Synthetic original day");
+        replace_app_state(&mut connection, &state).unwrap();
+        let mut plan = state["plans"][0].clone();
+        plan["id"] = json!("siri-next-plan");
+        plan["date"] = json!("2026-05-22");
+        plan["items"][0]["id"] = json!("siri-synthetic-item");
+        let mut operation = json!({
+            "id": "op_device_test_2", "deviceId": "device_test", "sequence": 2,
+            "type": "add_plan_item_from_siri", "timestamp": "2026-05-21T12:00:00Z",
+            "payload": {
+                "requestId": "durable-request", "date": "2026-05-22",
+                "createdPlan": plan, "item": plan["items"][0], "heading": null,
+                "headingId": "unused", "parentId": null, "position": 0,
+                "reactivatedItemIds": []
+            }
+        });
+        let mut invalid = operation.clone();
+        invalid["payload"]["createdPlan"] = Value::Null;
+        assert!(persist_operation_once(&mut connection, &invalid).is_err());
+        assert!(!siri_request_processed(&connection, "durable-request").unwrap());
+        assert!(persist_operation_once(&mut connection, &operation).unwrap());
+        let added = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert!(added["operations"].as_array().unwrap().is_empty());
+        drop(connection);
+        let mut connection = open_database_at(&database.path, &key).unwrap();
+        // Even a new operation ID and target date cannot replay this request.
+        operation["id"] = json!("op_device_test_3");
+        operation["sequence"] = json!(3);
+        operation["payload"]["date"] = json!("2026-05-23");
+        assert!(!persist_operation_once(&mut connection, &operation).unwrap());
+        assert_eq!(read_app_state_from_database(&connection).unwrap().unwrap(), added);
+        undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert!(siri_request_processed(&connection, "durable-request").unwrap());
+        assert!(!persist_operation_once(&mut connection, &operation).unwrap());
+        redo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
+        assert!(siri_request_processed(&connection, "durable-request").unwrap());
+        assert!(!persist_operation_once(&mut connection, &operation).unwrap());
+        assert_eq!(read_app_state_from_database(&connection).unwrap().unwrap()["plans"], added["plans"]);
+    }
+
+    #[test]
+    fn siri_receipt_upgrade_preserves_existing_request_ids() {
+        let key = generate_recovery_key();
+        let database = TestDatabase::new("siri-receipt-upgrade");
+        let mut connection = open_database_at(&database.path, &key).unwrap();
+        replace_app_state(&mut connection, &test_state("Synthetic legacy state")).unwrap();
+        upsert_operation(&connection, &json!({
+            "id": "legacy-siri", "deviceId": "device_test", "sequence": 2,
+            "type": "add_plan_item_from_siri", "timestamp": "2026-05-21T12:00:00Z",
+            "payload": { "requestId": "legacy-request", "text": "Synthetic text" }
+        })).unwrap();
+        delete_metadata(&connection, "siri_receipts_migrated").unwrap();
+        drop(connection);
+        let connection = open_database_at(&database.path, &key).unwrap();
+        assert!(siri_request_processed(&connection, "legacy-request").unwrap());
+        assert_eq!(metadata_value(&connection, "siri_request:legacy-request").unwrap().as_deref(), Some("1"));
+        sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
+        assert!(siri_request_processed(&connection, "legacy-request").unwrap());
     }
 
     #[test]
