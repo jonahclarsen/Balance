@@ -36,6 +36,8 @@
   let scanning = false
   let copyLabel = 'Copy code'
   let copyTimer: ReturnType<typeof setTimeout> | undefined
+  let syncingTimer: ReturnType<typeof setTimeout> | undefined
+  let showSyncing = false
   let diagnosticBusy = false
   let diagnosticPath = ''
 
@@ -47,7 +49,19 @@
   let connectionOpen = false
   $: configured = syncEnabled && Boolean(pairingCode && savedRelayUrl)
   $: busy = actionBusy || $automaticSyncStatus.running
+  $: updateSyncingIndicator($automaticSyncStatus.running)
   let actionBusy = false
+
+  function updateSyncingIndicator(running: boolean) {
+    if (!running) {
+      clearTimeout(syncingTimer)
+      syncingTimer = undefined
+      showSyncing = false
+    } else if (syncingTimer === undefined && !showSyncing) {
+      // Quick background syncs should only update the last-success time.
+      syncingTimer = setTimeout(() => { showSyncing = true }, 1_000)
+    }
+  }
 
   onMount(async () => {
     try {
@@ -66,6 +80,7 @@
 
   onDestroy(() => {
     if (copyTimer) clearTimeout(copyTimer)
+    clearTimeout(syncingTimer)
     // Make sure the camera is released and the UI restored if we unmount mid-scan.
     if (scanning) void stopScan()
   })
@@ -350,7 +365,7 @@
           <strong>
             {#if !configured}Setup incomplete
             {:else if $automaticSyncStatus.offline}You’re offline
-            {:else if $automaticSyncStatus.running}Syncing…
+            {:else if showSyncing}Syncing…
             {:else if $automaticSyncStatus.lastError}Sync needs attention
             {:else if $automaticSyncStatus.pending}Changes waiting to sync
             {:else if $automaticSyncStatus.lastSuccessAt}Connected to sync server

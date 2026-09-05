@@ -27,6 +27,7 @@ async function openSync(page: Page, mode = 'new') {
           case 'sync_enable_joiner': settings.enabled = true; settings.pairingCode = args.pairingCode; settings.relayUrl = args.relayUrl; return { ...settings }
           case 'sync_relay_once':
             if (mode === 'failed' || mode === 'new-failed') throw new Error('Synthetic server unavailable')
+            if (runtime.__syncDelayMs) await new Promise((resolve) => setTimeout(resolve, runtime.__syncDelayMs))
             return { pulledOperations: 0, pushedOperations: 0, stateChanged: false, checkpointCommitted: false }
           case 'plugin:barcode-scanner|check_permissions':
           case 'plugin:barcode-scanner|request_permissions': return { camera: 'granted' }
@@ -52,6 +53,50 @@ async function openSync(page: Page, mode = 'new') {
 async function calls(page: Page) {
   return page.evaluate(() => (window as any).__syncCalls as string[])
 }
+
+test('quick syncs keep the connection label and only longer syncs show progress', async ({ page }) => {
+  const panel = await openSync(page, 'connected')
+  const label = panel.locator('.sync-overview strong')
+  const lastSync = panel.locator('.sync-overview .sync-state')
+  const syncNow = panel.getByRole('button', { name: 'Sync now', exact: true })
+  await expect(label).toHaveText('Connected to sync server')
+  const originalTime = await lastSync.textContent()
+  await page.clock.install()
+  await page.clock.pauseAt(new Date())
+
+  await page.evaluate(() => { (window as any).__syncDelayMs = 500 })
+  await syncNow.click()
+  await expect(syncNow).toBeDisabled()
+  await page.clock.runFor(499)
+  await expect(label).toHaveText('Connected to sync server')
+  await page.clock.runFor(1)
+  await expect(syncNow).toBeEnabled()
+  await expect(label).toHaveText('Connected to sync server')
+  // A completed pass must cancel its pending indicator.
+  await page.clock.runFor(600)
+  await expect(label).toHaveText('Connected to sync server')
+
+  await page.evaluate(() => { (window as any).__syncDelayMs = 1_500 })
+  await syncNow.click()
+  await expect(syncNow).toBeDisabled()
+  await page.clock.runFor(999)
+  await expect(label).toHaveText('Connected to sync server')
+  await page.clock.runFor(2)
+  await expect(label).toHaveText('Syncing…')
+  await page.clock.runFor(499)
+  await expect(syncNow).toBeEnabled()
+  await expect(label).toHaveText('Connected to sync server')
+  await expect(lastSync).not.toHaveText(originalTime!)
+
+  // The delay starts fresh after a slow pass, too.
+  await page.evaluate(() => { (window as any).__syncDelayMs = 500 })
+  await syncNow.click()
+  await page.clock.runFor(499)
+  await expect(label).toHaveText('Connected to sync server')
+  await page.clock.runFor(501)
+  await expect(syncNow).toBeEnabled()
+  await expect(label).toHaveText('Connected to sync server')
+})
 
 test('new setup requires a server, then shows the connection and pairing instructions', async ({ page }, info) => {
   const panel = await openSync(page)
