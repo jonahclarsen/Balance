@@ -273,10 +273,10 @@ fn deliver_balance_deep_link(app: &tauri::AppHandle, url: String) {
         return;
     }
     if let Ok(mut links) = PENDING_DEEP_LINKS.lock() {
-        if links.len() >= 32 {
-            links.remove(0);
-        }
         if !links.contains(&url) {
+            if links.len() >= 32 {
+                links.remove(0);
+            }
             links.push(url.clone());
         }
     }
