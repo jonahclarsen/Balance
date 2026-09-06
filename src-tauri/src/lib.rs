@@ -25,6 +25,8 @@ use tauri_plugin_opener::OpenerExt;
 mod android_widget;
 mod database_keys;
 mod backup_browser;
+#[cfg(not(target_os = "android"))]
+mod desktop_recovery_key;
 mod images;
 #[cfg(target_os = "macos")]
 mod macos_widget;
@@ -210,6 +212,9 @@ pub fn redirect_to_development_app() -> bool {
     false
 }
 static STARTUP_DATABASE_CONNECTION: Mutex<Option<StartupDatabaseConnection>> = Mutex::new(None);
+#[cfg(not(target_os = "android"))]
+static DESKTOP_DATABASE_RECOVERY_KEY: desktop_recovery_key::RecoveryKeyCache =
+    desktop_recovery_key::RecoveryKeyCache::new();
 #[cfg(target_os = "android")]
 static ANDROID_DATABASE_RECOVERY_KEY: Mutex<Option<String>> = Mutex::new(None);
 #[cfg(target_os = "android")]
@@ -1704,6 +1709,13 @@ async fn rotate_database_recovery_key(
         }
         let archived_key_account = archived_recovery_key_account();
         let mut key_store = KeychainRecoveryKeyRotationStore;
+        // Invalidate before any credential changes: failures can leave pending
+        // rotation state that the next read must recover through Keychain.
+        DESKTOP_DATABASE_RECOVERY_KEY.clear()?;
+        STARTUP_DATABASE_CONNECTION
+            .lock()
+            .map_err(|_| "Startup database connection is poisoned".to_string())?
+            .take();
         rotate_database_key_at(
             &database_path,
             &old_key,
@@ -1713,6 +1725,7 @@ async fn rotate_database_recovery_key(
         )?;
 
         let connection = open_database_at(&database_path, &new_key)?;
+        DESKTOP_DATABASE_RECOVERY_KEY.get_or_load(&database_path, || Ok(new_key.clone()))?;
         let recovery_key_status = recovery_key_status(&connection, &database_path, Some(new_key))?;
         if recovery_key_status.confirmed || recovery_key_status.recovery_key.is_none() {
             return Err("The rotated recovery key was not prepared for confirmation.".to_string());
@@ -9599,6 +9612,13 @@ fn recover_interrupted_key_rotation(
 
 #[cfg(not(target_os = "android"))]
 fn database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
+    DESKTOP_DATABASE_RECOVERY_KEY.get_or_load(database_path, || {
+        load_desktop_database_recovery_key(database_path)
+    })
+}
+
+#[cfg(not(target_os = "android"))]
+fn load_desktop_database_recovery_key(database_path: &PathBuf) -> Result<String, String> {
     let active_key = optional_keychain_password(KEYCHAIN_RAW_ACCOUNT)?;
     let (working_path, rollback_path) = key_rotation_paths(database_path)?;
     let has_raw_rotation_state = optional_keychain_password(KEYCHAIN_RAW_ROTATION_PENDING_ACCOUNT)?
