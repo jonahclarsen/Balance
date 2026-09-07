@@ -157,6 +157,8 @@ const ENTITY_COLLECTIONS = [
   'metrics',
   'metricEntries',
   'notes',
+  'projects',
+  'projectCheckIns',
 ] as const
 type EntityCollection = (typeof ENTITY_COLLECTIONS)[number]
 type EntityUpsert = { collection: EntityCollection; key: string; position: number; value: unknown }
@@ -1676,6 +1678,29 @@ function createPlannerStore() {
         if (listTemplates === state.listTemplates) return state
         return { ...state, listTemplates }
       })
+    },
+
+    addProject(name: string) {
+      if (!name.trim()) return null
+      const timestamp = nowISO()
+      const project = { id: createId('project'), name: name.trim(), description: '', color: ['#709dce', '#b191cf', '#cc9473', '#73ad98', '#c18fa5'][get(store).projects.length % 5], archived: false, createdAt: timestamp, updatedAt: timestamp }
+      commit('add_project', { projectId: project.id }, (state) => ({ ...state, projects: [...state.projects, project] }))
+      return project.id
+    },
+
+    updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'description' | 'color' | 'archived'>>) {
+      if (patch.name !== undefined && !patch.name.trim()) return
+      commit('update_project', { projectId }, (state) => ({
+        ...state,
+        projects: state.projects.map((project) => project.id === projectId ? { ...project, ...patch, updatedAt: nowISO() } : project),
+      }))
+    },
+
+    checkInProject(projectId: Id, progress: number, heart: number) {
+      if (![progress, heart].every((value) => Number.isFinite(value) && value >= 0 && value <= 100)) return
+      const entry = { id: createId('project_checkin'), projectId, progress: Math.round(progress), heart: Math.round(heart), createdAt: nowISO() }
+      commit('check_in_project', { projectId }, (state) => state.projects.some((project) => project.id === projectId && !project.archived)
+        ? { ...state, projectCheckIns: [...state.projectCheckIns, entry] } : state)
     },
 
     // ---- Notes (reuse the plan-item tree and shared rich-text editor) ----
@@ -3209,6 +3234,8 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       lists: [],
       metrics: [],
       metricEntries: [],
+      projects: [],
+      projectCheckIns: [],
       notes: [],
       images: [],
       goals: [],
@@ -3244,6 +3271,8 @@ function normalizeState(state: AppState): AppState {
   return {
     ...state,
     images: state.images ?? [],
+    projects: state.projects ?? [],
+    projectCheckIns: state.projectCheckIns ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),
     goals: (state.goals ?? []).map(normalizeGoal),
     goalCompletions: (state.goalCompletions ?? []).map(normalizeGoalCompletion),

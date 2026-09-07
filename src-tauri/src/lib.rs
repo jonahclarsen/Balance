@@ -157,7 +157,7 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 8] = [
+const ENTITY_COLLECTIONS: [&str; 10] = [
     "images",
     "goals",
     "goalCompletions",
@@ -166,6 +166,8 @@ const ENTITY_COLLECTIONS: [&str; 8] = [
     "metrics",
     "metricEntries",
     "notes",
+    "projects",
+    "projectCheckIns",
 ];
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 const GITHUB_LATEST_RELEASE_API: &str =
@@ -2970,6 +2972,8 @@ fn read_app_state_from_database_with_progress(
         "metricEntries": lists_metrics_data["metricEntries"].clone(),
         "notes": lists_metrics_data["notes"].clone(),
         "images": read_entity_collection(connection, "images")?,
+        "projects": lists_metrics_data["projects"].clone(),
+        "projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),
         "goals": goal_data["goals"].clone(),
         "goalCompletions": goal_data["goalCompletions"].clone(),
         "operations": [],
@@ -3447,12 +3451,14 @@ async fn set_device_appearance(app: tauri::AppHandle, appearance: Value) -> Resu
     })
     .await
 }
-const LISTS_METRICS_KEYS: [&str; 5] = [
+const LISTS_METRICS_KEYS: [&str; 7] = [
     "listTemplates",
     "lists",
     "metrics",
     "metricEntries",
     "notes",
+    "projects",
+    "projectCheckIns",
 ];
 
 fn entity_key(collection: &str, value: &Value, index: usize, occurrence: usize) -> String {
@@ -3578,11 +3584,12 @@ fn read_lists_metrics_data(connection: &Connection) -> Result<Value, String> {
 }
 
 fn is_lists_metrics_operation(operation_type: &str) -> bool {
-    // All Lists/Metrics/Notes operation types contain "list", "metric", or "note"; no existing
+    // List, metric, note, and project operations use entity changes; no existing
     // plan/template/goal operation type does.
     operation_type.contains("list")
         || operation_type.contains("metric")
         || operation_type.contains("note")
+        || operation_type.contains("project")
 }
 
 fn valid_entity_collection(collection: &str) -> bool {
@@ -11707,6 +11714,36 @@ mod tests {
             ]
         );
         assert!(reported.windows(2).all(|pair| pair[0].0 < pair[1].0));
+    }
+
+    #[test]
+    fn project_check_ins_persist_and_round_trip_undo_redo() {
+        let database = TestDatabase::new("project-check-ins");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Synthetic projects");
+        state["projects"] = json!([{"id": "project-test", "name": "Synthetic garden", "archived": false}]);
+        state["projectCheckIns"] = json!([]);
+        replace_app_state(&mut connection, &state).unwrap();
+        let entry = json!({"id": "checkin-test", "projectId": "project-test", "progress": 35, "heart": 80, "createdAt": "2026-09-07T12:00:00Z"});
+        let operation = json!({
+            "id": "project-checkin-op", "deviceId": "device_test", "sequence": 2,
+            "type": "check_in_project", "timestamp": "2026-09-07T12:00:00Z",
+            "payload": {"projectId": "project-test", "entityChanges": {
+                "version": 1, "upserts": [{"collection": "projectCheckIns", "key": "checkin-test", "position": 0, "value": entry}], "deletes": []
+            }}
+        });
+        persist_operation_to_database(&mut connection, &operation).unwrap();
+        drop(connection);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let loaded = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(loaded["projects"], state["projects"]);
+        assert_eq!(loaded["projectCheckIns"], json!([entry]));
+        let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(undone["projectCheckIns"], json!([]));
+        assert_eq!(undone["projects"], state["projects"]);
+        let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(redone["projectCheckIns"], json!([entry]));
     }
 
     #[test]

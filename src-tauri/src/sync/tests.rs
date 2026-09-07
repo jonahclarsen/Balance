@@ -1486,6 +1486,34 @@ fn first_sync_converges_and_the_joiner_keeps_its_own_device_id() {
 }
 
 #[test]
+fn project_check_ins_converge_between_devices() {
+    let sa = Scratch::new("projects-a");
+    let sb = Scratch::new("projects-b");
+    let mut initial = state("device-A", json!([]));
+    initial["projects"] = json!([{"id": "project-test", "name": "Synthetic garden"}]);
+    initial["projectCheckIns"] = json!([]);
+    let a = open_seeded(&sa.path, "key-a", &initial);
+    let b = open_seeded(&sb.path, "key-b", &state("device-B", json!([])));
+    enable_primary(&a).unwrap();
+    enable_joiner(&b).unwrap();
+    let entry = json!({"id": "checkin-test", "projectId": "project-test", "progress": 35, "heart": 80, "createdAt": "2026-09-07T12:00:00Z"});
+    let mut connection = open_database_at(&sa.path, &test_database_key("key-a")).unwrap();
+    persist_operation_to_database(&mut connection, &json!({
+        "id": "project-checkin-op", "deviceId": "device-A", "sequence": 1,
+        "type": "check_in_project", "timestamp": "2026-09-07T12:00:00Z",
+        "payload": {"projectId": "project-test", "entityChanges": {
+            "version": 1, "upserts": [{"collection": "projectCheckIns", "key": "checkin-test", "position": 0, "value": entry}], "deletes": []
+        }}
+    })).unwrap();
+    drop(connection);
+    let a = TestStore::new(open_database_at(&sa.path, &test_database_key("key-a")).unwrap());
+    let b = TestStore::new(b);
+    exchange(&b, &a, &SyncKey::generate());
+    assert_eq!(b.state()["projects"], initial["projects"]);
+    assert_eq!(b.state()["projectCheckIns"], json!([entry]));
+}
+
+#[test]
 fn v4_entity_delta_converges_without_replicating_unrelated_entities() {
     let sa = Scratch::new("entity-delta-a");
     let sb = Scratch::new("entity-delta-b");

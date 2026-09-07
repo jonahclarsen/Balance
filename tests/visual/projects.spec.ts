@@ -1,0 +1,63 @@
+import { expect, test, type Page } from '@playwright/test'
+
+async function openView(page: Page, name: string) {
+  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
+  if (await menu.isVisible()) await menu.click()
+  await page.getByRole('button', { name, exact: true }).click()
+}
+
+test('project check-ins retain history, survive reload, and open from a planner link', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openView(page, 'Projects')
+  await page.getByRole('textbox', { name: 'New project name' }).fill('Synthetic garden')
+  await page.getByRole('button', { name: 'Add project', exact: true }).click()
+  const card = page.locator('.project-card')
+  await expect(card).toHaveCount(1)
+  await page.getByRole('slider', { name: 'Work complete for Synthetic garden' }).fill('35')
+  await page.getByRole('slider', { name: 'Heart in it for Synthetic garden' }).fill('80')
+  await page.getByRole('button', { name: 'Save check-in' }).click()
+  await expect(card.locator('summary')).toContainText('1 check-in')
+  await page.getByRole('slider', { name: 'Work complete for Synthetic garden' }).fill('50')
+  await page.getByRole('slider', { name: 'Heart in it for Synthetic garden' }).fill('60')
+  await page.getByRole('button', { name: 'Save check-in' }).click()
+  await card.locator('summary').click()
+  await expect(card.locator('tbody tr')).toHaveCount(2)
+  await expect(card.locator('tbody tr').last()).toContainText('35%')
+  await expect(card.locator('tbody tr').last()).toContainText('80%')
+  await page.reload()
+  await openView(page, 'Projects')
+  await expect(page.getByRole('slider', { name: 'Work complete for Synthetic garden' })).toHaveValue('50')
+  await expect(page.getByRole('slider', { name: 'Heart in it for Synthetic garden' })).toHaveValue('60')
+  await page.screenshot({ path: test.info().outputPath('project-vibes.png'), fullPage: true, animations: 'disabled' })
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.getByRole('button', { name: 'Copy page link' }).click()
+  await expect(page.locator('.projects-panel .status')).toContainText(/Link copied|balance:\/\/projects/)
+  await page.getByRole('button', { name: 'Edit details' }).click()
+  await page.getByRole('button', { name: 'Archive project', exact: true }).click()
+  await page.getByRole('checkbox', { name: 'Show archived' }).check()
+  await expect(card).toContainText('Archived')
+  // Reload with a synthetic linked task; no installed application data is used.
+  await page.evaluate(() => {
+    const key = 'balance.appState.v1'
+    const state = JSON.parse(localStorage.getItem(key)!)
+    const projectId = state.projects[0].id
+    const now = new Date()
+    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const plan = { id: 'project-link-plan', date, title: 'Synthetic day', dailyReminder: '', generatedFromTemplateId: null, createdAt: now.toISOString(), items: [] as unknown[] }
+    state.plans = [plan]
+    plan.items = [{ id: 'project-link-test', text: `balance://projects/${projectId}`, html: `balance://projects/${projectId}`, done: false, children: [], time: '', endTime: '' }]
+    localStorage.setItem(key, JSON.stringify(state))
+  })
+  await page.reload()
+  const link = page.locator('[data-internal-link-kind="projects"]').first()
+  await expect(link).toBeVisible()
+  await link.click()
+  await expect(page.getByRole('heading', { name: 'Project vibes' })).toBeVisible()
+  await expect(card).toHaveClass(/highlighted/)
+  await expect(card).toContainText('Archived')
+  await page.getByRole('button', { name: 'Edit details' }).click()
+  await page.getByRole('button', { name: 'Restore project' }).click()
+  await expect(page.getByRole('slider', { name: 'Work complete for Synthetic garden' })).toHaveValue('50')
+})

@@ -19,6 +19,7 @@
   import TemplateTabs from './lib/TemplateTabs.svelte'
   import ListTemplateItemEditor from './lib/ListTemplateItemEditor.svelte'
   import ListPanel from './lib/ListPanel.svelte'
+  import ProjectsPanel from './lib/ProjectsPanel.svelte'
   import NotesPanel from './lib/NotesPanel.svelte'
   import ImaxButton from './lib/ImaxButton.svelte'
   import OverlayModal from './lib/OverlayModal.svelte'
@@ -132,7 +133,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'metrics' | 'goals' | 'settings'
+  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals' | 'settings'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -192,6 +193,7 @@
   }
 
   let view: View = 'today'
+  let linkedProjectId = ''
 
   function applyDefaultZoom() {
     if (!isTauri()) {
@@ -890,6 +892,7 @@ return rows`
       notesTrashOpen = note ? isNoteTrashed(note) : false
     } else if (nextView === 'metrics') selectedMetricId = entityId
     else if (nextView === 'goals') goalSearch = ''
+    else if (nextView === 'projects') linkedProjectId = entityId
     openMobileDrawerView(nextView)
     await tick()
     if (nextView === 'metrics' && date && $plannerStore.metrics.some((metric) => metric.id === entityId)) {
@@ -901,7 +904,7 @@ return rows`
     const attribute = {
       today: 'data-plan-item-id', lists: 'data-plan-item-id', templates: 'data-template-item-id',
       listTemplates: 'data-list-template-item-id', notes: 'data-note-item-id',
-      metrics: 'data-metric-question-id', goals: 'data-goal-id',
+      projects: 'data-project-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
     }[nextView]
     const targetId = nextView === 'goals' ? entityId : itemId
     const row = targetId ? workspaceEl?.querySelector<HTMLElement>(
@@ -910,7 +913,7 @@ return rows`
     const containerSelector = {
       today: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, lists: '.list-panel',
       templates: '.template-panel', listTemplates: '.template-panel',
-      notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
+      projects: `#project-${CSS.escape(entityId)}`, notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
     }[nextView]
     const target = (metricOverlay ? document.querySelector<HTMLElement>('.metric-quiz') : row) ??
       workspaceEl?.querySelector<HTMLElement>(containerSelector) ?? workspaceEl?.querySelector<HTMLElement>('h2')
@@ -1323,7 +1326,10 @@ return rows`
 
   function openLink(link: ItemLink, opener: Opener | null) {
     const date = $plannerStore.activePlanDate
-    if (link.kind === 'note') {
+    if (link.kind === 'projects') {
+      linkedProjectId = link.projectId
+      view = 'projects'
+    } else if (link.kind === 'note') {
       if (notes.some((note) => note.id === link.noteId)) {
         selectedNoteId = link.noteId
         view = 'notes'
@@ -2683,6 +2689,7 @@ return rows`
       value === 'templates' ||
       value === 'listTemplates' ||
       value === 'lists' ||
+      value === 'projects' ||
       value === 'metrics' ||
       value === 'goals' ||
       value === 'settings'
@@ -5691,6 +5698,7 @@ return rows`
         <button class="nav-child" class:active={view === 'lists'} type="button" title="List History (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => openMobileDrawerView('lists')}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       {/if}
       <button class:active={view === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => openMobileDrawerView('notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
+      <button class:active={view === 'projects'} type="button" on:click={() => { linkedProjectId = ''; openMobileDrawerView('projects') }}><span>Projects</span></button>
       <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => openMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => openMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
@@ -6469,6 +6477,10 @@ return rows`
           </div>
         </div>
       {/if}
+    {/if}
+
+    {#if view === 'projects'}
+      <ProjectsPanel projects={$plannerStore.projects} checkIns={$plannerStore.projectCheckIns} {linkedProjectId} />
     {/if}
 
     {#if view === 'goals'}

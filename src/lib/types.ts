@@ -263,6 +263,24 @@ export type ImageAsset = {
   bytes: number
 }
 
+export type Project = {
+  id: Id
+  name: string
+  description: string
+  color: string
+  archived: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export type ProjectCheckIn = {
+  id: Id
+  projectId: Id
+  progress: number
+  heart: number
+  createdAt: string
+}
+
 export type AppState = {
   images: ImageAsset[]
   schemaVersion: 1
@@ -278,6 +296,8 @@ export type AppState = {
   lists: ListInstance[]
   metrics: Metric[]
   metricEntries: MetricEntry[]
+  projects: Project[]
+  projectCheckIns: ProjectCheckIn[]
   notes: Note[]
   goals: Goal[]
   goalCompletions: GoalCompletion[]

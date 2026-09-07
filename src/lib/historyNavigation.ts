@@ -1,7 +1,7 @@
 import type { AppState } from './types'
 
 export type HistoryDestination = {
-  view: 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'metrics' | 'goals'
+  view: 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals'
   entityId: string
   itemId?: string
   date?: string
@@ -66,7 +66,7 @@ function changedItem(before: Item[], after: Item[]) {
 export function historyDestination(before: AppState, after: AppState): HistoryDestination | null {
   const collections = [
     ['plans', 'today'], ['templates', 'templates'], ['listTemplates', 'listTemplates'],
-    ['lists', 'lists'], ['notes', 'notes'], ['metrics', 'metrics'], ['goals', 'goals'],
+    ['projects', 'projects'], ['lists', 'lists'], ['notes', 'notes'], ['metrics', 'metrics'], ['goals', 'goals'],
   ] as const
   for (const [collection, view] of collections) {
     if (before[collection] === after[collection]) continue
@@ -88,7 +88,7 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
       const change = changedItem(old?.items ?? old?.questions ?? [], current?.items ?? current?.questions ?? [])
       const name = entity.title || entity.name
       const subject = change?.completion ? 'completion' : change ? 'item change' : 'change'
-      const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Day Templates', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', metrics: 'Metrics', goals: 'Goals' }[view])
+      const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Day Templates', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', projects: 'Projects', metrics: 'Metrics', goals: 'Goals' }[view])
       destinations.push({
         view, entityId: id, itemId: change?.itemId, date: entity.date,
         listTemplateId: entity.listTemplateId,
@@ -111,6 +111,13 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
       view: 'metrics', entityId: entry.metricId, itemId: questionId, date: entry.date,
       label: `answer · ${metric?.name || 'Metric'}`, removed: !b,
     }
+  }
+  if (before.projectCheckIns !== after.projectCheckIns) {
+    const beforeIds = new Set((before.projectCheckIns ?? []).map((entry) => entry.id))
+    const afterIds = new Set((after.projectCheckIns ?? []).map((entry) => entry.id))
+    const entry = (after.projectCheckIns ?? []).find((entry) => !beforeIds.has(entry.id))
+      ?? (before.projectCheckIns ?? []).find((entry) => !afterIds.has(entry.id))
+    if (entry) return { view: 'projects', entityId: entry.projectId, label: 'project check-in', removed: !afterIds.has(entry.id) }
   }
   return null
 }

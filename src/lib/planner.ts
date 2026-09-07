@@ -151,6 +151,8 @@ export function createInitialState(): AppState {
     lists: [],
     metrics: [],
     metricEntries: [],
+    projects: [],
+    projectCheckIns: [],
     notes: [],
     images: [],
     goals: [],
@@ -1714,7 +1716,7 @@ function sanitizeNode(node: Node): string {
 
   if (tag === 'a') {
     const href = element.getAttribute('href') ?? ''
-    if (noteIdFromURL(href)) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
+    if (noteIdFromURL(href) || /^balance:\/\/projects(?:\/[a-zA-Z0-9_-]+)?$/.test(href.trim())) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
     if (!isURL(href)) return children
     return `<a href="${escapeHTML(href.trim())}" target="_blank" rel="noreferrer">${children}</a>`
   }
@@ -2251,6 +2253,7 @@ export type ItemLink =
   | { kind: 'list'; listTemplateId: Id; label: string }
   | { kind: 'metric'; metricId: Id; label: string }
   | { kind: 'note'; noteId: Id; label: string }
+  | { kind: 'projects'; projectId: Id; label: string }
 
 export function resolveItemLinks(text: string, listTemplates: ListTemplate[], metrics: Metric[], notes: import('./types').Note[] = []): ItemLink[] {
   const trimmed = text.trim()
@@ -2278,6 +2281,9 @@ export function resolveItemLinks(text: string, listTemplates: ListTemplate[], me
     if (note) links.push({ kind: 'note', noteId: note.id, label: note.title.trim() || 'Untitled note' })
   }
 
+  for (const match of trimmed.matchAll(/balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?(?![a-zA-Z0-9_/-])/g)) {
+    links.push({ kind: 'projects', projectId: match[1] ?? '', label: 'Project vibes' })
+  }
   return links
 }
 
@@ -2335,6 +2341,9 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
     })
   }
 
+  for (const match of text.matchAll(/balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?(?![a-zA-Z0-9_/-])/g)) {
+    matches.push({ start: match.index!, end: match.index! + match[0].length, link: { kind: 'projects', projectId: match[1] ?? '', label: 'Project vibes' } })
+  }
   if (matches.length === 0) return [{ text, link: null }]
 
   // Earliest start first, longest match wins on ties; skip overlaps.
@@ -2352,6 +2361,7 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
 }
 
 export function internalLinkId(link: ItemLink): string {
+  if (link.kind === 'projects') return link.projectId || 'all'
   if (link.kind === 'list') return link.listTemplateId
   if (link.kind === 'metric') return link.metricId
   return link.noteId
@@ -2416,6 +2426,9 @@ export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
   const id = anchor.dataset.internalLinkId
   const label = anchor.dataset.internalLinkLabel ?? anchor.textContent ?? ''
 
+  if (kind === 'projects') return { kind, projectId: id === 'all' ? '' : id ?? '', label }
+  const projectURL = /^balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?$/.exec(anchor.getAttribute('href') ?? '')
+  if (projectURL) return { kind: 'projects', projectId: projectURL[1] ?? '', label }
   if (kind === 'list' && id) return { kind, listTemplateId: id, label }
   if (kind === 'metric' && id) return { kind, metricId: id, label }
   if (kind === 'note' && id) return { kind, noteId: id, label }
