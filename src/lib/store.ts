@@ -1696,6 +1696,17 @@ function createPlannerStore() {
       }))
     },
 
+    permanentlyDeleteArchivedProject(projectId: Id) {
+      commit('delete_archived_project', { projectId }, (state) => {
+        if (!state.projects.some((project) => project.id === projectId && project.archived)) return state
+        return {
+          ...state,
+          projects: state.projects.filter((project) => project.id !== projectId),
+          projectCheckIns: state.projectCheckIns.filter((entry) => entry.projectId !== projectId),
+        }
+      })
+    },
+
     checkInProject(projectId: Id, progress: number, heart: number) {
       if (![progress, heart].every((value) => Number.isFinite(value) && value >= 0 && value <= 100)) return
       const entry = { id: createId('project_checkin'), projectId, progress: Math.round(progress), heart: Math.round(heart), createdAt: nowISO() }

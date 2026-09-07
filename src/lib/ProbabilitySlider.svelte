@@ -11,6 +11,7 @@
   // When true the readout becomes an editable number box for typing a precise
   // percentage; otherwise it stays a plain readout.
   export let editable = false
+  export let unset = false
   // Expands the transparent native control around the visible thumb while
   // keeping the slider's visual size and surrounding row spacing unchanged.
   export let generousHitbox = false
@@ -111,8 +112,8 @@
 <div class="probability-slider" data-item-probability-control="">
   <div class="track-wrap" class:generous-hitbox={generousHitbox}>
     <div class="track"></div>
-    <div class="fill" style={`width: ${pct}%`}></div>
-    <div class="thumb" style={`left: ${pct}%`}></div>
+    <div class="fill" class:unset style={`width: ${pct}%`}></div>
+    <div class="thumb" class:unset style={`left: ${pct}%`}></div>
     <input
       class="native"
       type="range"
@@ -121,6 +122,7 @@
       {step}
       value={value}
       aria-label={ariaLabel}
+      aria-valuetext={unset ? 'Not set' : undefined}
       on:input={handleInput}
       on:pointerdown={handlePointerDown}
       on:pointermove={handlePointerMove}
@@ -143,11 +145,13 @@
       <span class="probability-suffix" aria-hidden="true">%</span>
     </label>
   {:else}
-    <span class="probability-readout">{Math.round(value)}%</span>
+    <span class="probability-readout" class:unset-value={unset}>{unset ? 'Not set' : `${Math.round(value)}%`}</span>
   {/if}
 </div>
 
 <style>
+  .unset { visibility: hidden; }
+  .unset-value { min-width: 44px; white-space: nowrap; }
   .probability-slider {
     display: flex;
     align-items: center;

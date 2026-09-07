@@ -4715,6 +4715,8 @@ test('day template probabilities snap to five-percent increments', async ({ page
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
+  if (await menu.isVisible()) await menu.click()
   await page.getByRole('button', { name: 'Day Templates' }).click()
 
   const probability = page.getByLabel('Probability percent').first()

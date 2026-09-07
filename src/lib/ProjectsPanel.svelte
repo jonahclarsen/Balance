@@ -1,4 +1,6 @@
 <script lang="ts">
+  import { isTauri } from '@tauri-apps/api/core'
+  import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog'
   import { tick } from 'svelte'
   import type { Project, ProjectCheckIn } from './types'
   import { plannerStore } from './store'
@@ -7,10 +9,11 @@
   export let checkIns: ProjectCheckIn[] = []
   export let linkedProjectId = ''
   let name = ''
-  let showArchived = false
+  let archiveOpen = false
+  let archivedDetailId = ''
   let message = ''
   $: active = projects.filter((project) => !project.archived)
-  $: visible = projects.filter((project) => showArchived || !project.archived || project.id === linkedProjectId)
+  $: archived = projects.filter((project) => project.archived)
   $: histories = groupHistory(checkIns)
   function groupHistory(entries: ProjectCheckIn[]) {
     const grouped = new Map<string, ProjectCheckIn[]>()
@@ -23,12 +26,20 @@
   }
   $: if (linkedProjectId) reveal(linkedProjectId)
   async function reveal(id: string) {
+    if (projects.some((project) => project.id === id && project.archived)) { archiveOpen = true; archivedDetailId = id }
     await tick()
     document.getElementById(`project-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
   function add() {
     const id = plannerStore.addProject(name)
     if (id) { name = ''; linkedProjectId = id }
+  }
+  async function deleteForever(project: Project) {
+    const prompt = `Delete “${project.name}” and its check-in history from the archive forever? You can still undo this action.`
+    const confirmed = isTauri()
+      ? await confirmDialog(prompt, { title: 'Delete archived project?', kind: 'warning' })
+      : window.confirm(prompt)
+    if (confirmed) plannerStore.permanentlyDeleteArchivedProject(project.id)
   }
   async function copyLink(id = '') {
     const link = `balance://projects${id ? '/' + id : ''}`
@@ -38,24 +49,40 @@
 </script>
 
 <section class="projects-panel" aria-label="Project vibes">
-  <header><div><p class="eyebrow">THE BIG PICTURE</p><h1>Project vibes</h1><p>How far along. How much you care. How it changes.</p></div><button type="button" on:click={() => copyLink()}>Copy page link</button></header>
-  <div class="overview"><strong>{active.length}</strong><span>{active.length === 1 ? 'project' : 'projects'} on the go</span><label><input type="checkbox" bind:checked={showArchived} /> Show archived</label></div>
-  <form on:submit|preventDefault={add}><input aria-label="New project name" placeholder="What are you working on?" bind:value={name} maxlength="160" /><button type="submit" disabled={!name.trim()}>Add project</button></form>
-  <p class="template-tip">For an occasional check-in, paste the page or project link into a day or list template item, then lower that item’s probability.</p>
-  <p class="status" role="status">{message}</p>
-  {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p>This project is no longer available. Your other projects are below.</p>{/if}
-  {#if visible.length === 0}<div class="empty"><h2>A little perspective on everything you’re making.</h2><p>Add your first project, set the sliders, and save a check-in. The ring shows work complete; the heart shows how much you’re feeling it.</p></div>{/if}
-  <div class="project-grid">{#each visible as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {copyLink} />{/each}</div>
+  <header class="page-header"><h2>Projects</h2><button type="button" on:click={() => copyLink()}>Copy page link</button></header>
+  <form class="project-add" on:submit|preventDefault={add}><input aria-label="New project name" placeholder="Project name" bind:value={name} maxlength="160" /><button class="primary" type="submit" disabled={!name.trim()}>Add project</button></form>
+  {#if message}<p class="status muted" role="status">{message}</p>{/if}
+  {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
+  <div class="project-grid">{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {copyLink} />{/each}</div>
+  <div class="template-panel-actions"><button class="ghost" class:active={archiveOpen} type="button" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = !archiveOpen}>View Archive</button></div>
+  {#if archiveOpen}
+    <section id="project-archive" class="list-item-archive" aria-labelledby="project-archive-title">
+      <div class="list-item-archive-header"><h3 id="project-archive-title">Archive</h3><span>{archived.length} saved</span></div>
+      {#if !archived.length}<p class="list-item-archive-empty">No archived projects.</p>{/if}
+      <ul class="list-item-archive-list">
+        {#each archived as project (project.id)}
+          <li>
+            <div class="list-item-archive-row">
+              <div class="list-item-archive-copy"><strong>{project.name}</strong><span>{histories.get(project.id)?.length ?? 0} check-ins</span></div>
+              <div class="list-item-archive-actions">
+                <button class="ghost" type="button" aria-expanded={archivedDetailId === project.id} on:click={() => archivedDetailId = archivedDetailId === project.id ? '' : project.id}>View</button>
+                <button type="button" on:click={() => plannerStore.updateProject(project.id, { archived: false })}>Restore</button>
+                <button class="ghost danger" type="button" on:click={() => deleteForever(project)}>Delete forever</button>
+              </div>
+            </div>
+            {#if archivedDetailId === project.id}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {copyLink} />{/if}
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
 </section>
 
 <style>
-  .projects-panel { max-width: 1200px; width: 100%; box-sizing: border-box; padding: 32px; margin: 0 auto; }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 20px; } h1 { margin: 5px 0; font-size: 2rem; letter-spacing: -.04em; } header p { opacity: .65; } .eyebrow { font-size: .7rem; letter-spacing: .15em; }
-  button { font: inherit; font-size: .85rem; padding: 10px 14px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; cursor: pointer; } button:disabled { opacity: .4; cursor: default; }
-  .overview { display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px; margin: 24px 0; }.overview strong { font-size: 2rem; }.overview span { opacity: .65; }.overview label { margin-left: auto; font-size: .85rem; }
-  form { display: flex; gap: 10px; } form input { flex: 1; min-width: 0; padding: 12px; font: inherit; border: 1px solid var(--line); border-radius: 8px; color: inherit; background: transparent; }
-  .template-tip, .status { font-size: .8rem; opacity: .7; line-height: 1.5; overflow-wrap: anywhere; }.status:empty { display: none; }
-  .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 310px), 1fr)); gap: 20px; margin-top: 28px; align-items: start; }
-  .empty { padding: 48px 16px; max-width: 500px; margin: auto; text-align: center; }.empty h2 { font-size: 1.2rem; }.empty p { opacity: .65; line-height: 1.6; }
-  @media (max-width: 600px) { .projects-panel { padding: 20px 14px; } header { align-items: start; flex-direction: column; gap: 6px; } h1 { font-size: 1.75rem; } }
+  .projects-panel { min-width: 0; }
+  .page-header h2 { margin: 0; }
+  .project-add { display: flex; gap: 8px; margin-bottom: 16px; }
+  .project-add input { flex: 1; min-width: 0; }
+  .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
+  .status { overflow-wrap: anywhere; }
 </style>

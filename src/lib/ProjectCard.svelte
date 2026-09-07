@@ -1,44 +1,57 @@
 <script lang="ts">
   import type { Project, ProjectCheckIn } from './types'
+  import ProbabilitySlider from './ProbabilitySlider.svelte'
   import { plannerStore } from './store'
   export let project: Project
   export let entries: ProjectCheckIn[] = []
   export let highlighted = false
   export let copyLink: (id?: string) => void
-  let progress = 0
-  let heart = 50
+  let progress: number | null = null
+  let heart: number | null = null
+  let checkingIn = false
   let editing = false
   let saved = ''
   $: history = [...entries].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
   $: latest = history.at(-1)
-  $: { progress = latest?.progress ?? 0; heart = latest?.heart ?? 50 }
+  function openCheckIn() {
+    progress = latest?.progress ?? null
+    heart = latest?.heart ?? null
+    saved = ''
+    checkingIn = true
+  }
   $: start = Date.parse(history[0]?.createdAt ?? '')
   $: end = Date.parse(latest?.createdAt ?? '')
   $: points = history.map((entry) => ({ ...entry, x: end > start ? 10 + (Date.parse(entry.createdAt) - start) / (end - start) * 280 : 150 }))
   $: progressLine = points.map((point) => `${point.x},${110 - point.progress}`).join(' ')
   $: heartLine = points.map((point) => `${point.x},${110 - point.heart}`).join(' ')
   function save() {
+    if (progress === null || heart === null) return
     plannerStore.checkInProject(project.id, progress, heart)
+    checkingIn = false
     saved = 'Check-in saved'
   }
 </script>
 
-<article class:highlighted class="project-card" id={'project-' + project.id} style:--project-color={project.color}>
+<article class:highlighted class="project-card metric-card" id={'project-' + project.id} style:--project-color={project.color}>
   <header>
-    <svg class="project-visual" viewBox="0 0 100 100" role="img" aria-label={`${progress}% work complete; ${heart}% heart in it`}>
+    <svg class="project-visual" viewBox="0 0 100 100" role="img" aria-label={latest ? `${latest.progress}% work complete; ${latest.heart}% heart in it` : 'No check-in yet'}>
       <circle class="ring-track" cx="50" cy="50" r="41" />
-      <circle class="ring-progress" cx="50" cy="50" r="41" stroke-dasharray={`${progress * 2.576} 257.6`} transform="rotate(-90 50 50)" />
-      <path d="M50 69 30 49C17 35 36 23 50 38 64 23 83 35 70 49Z" fill="currentColor" fill-opacity={0.15 + heart / 118} />
+      <circle class="ring-progress" cx="50" cy="50" r="41" stroke-dasharray={`${(latest?.progress ?? 0) * 2.576} 257.6`} transform="rotate(-90 50 50)" />
+      <path d="M50 69 30 49C17 35 36 23 50 38 64 23 83 35 70 49Z" fill="currentColor" fill-opacity={latest ? 0.15 + latest.heart / 118 : 0} stroke="currentColor" stroke-opacity={latest ? 0 : 0.3} />
     </svg>
-    <div class="project-heading"><h2>{project.name}</h2><p>{project.archived ? 'Archived' : latest ? `Last check-in ${new Date(latest.createdAt).toLocaleDateString()}` : 'Ready for your first check-in'}</p></div>
+    <div class="project-heading"><h2>{project.name}</h2><p>{project.archived ? 'Archived' : latest ? `Last check-in ${new Date(latest.createdAt).toLocaleDateString()}` : 'No check-in yet'}</p></div>
   </header>
   {#if project.description}<p class="description">{project.description}</p>{/if}
+  <dl class="ratings"><div><dt>Work complete</dt><dd>{latest ? `${latest.progress}%` : 'Not set'}</dd></div><div><dt>Heart in it</dt><dd>{latest ? `${latest.heart}%` : 'Not set'}</dd></div></dl>
   {#if !project.archived}
-    <label>Work complete <output>{progress}%</output><input aria-label={`Work complete for ${project.name}`} type="range" min="0" max="100" step="1" bind:value={progress} on:input={() => saved = ''} /></label>
-    <div class="endpoints"><span>Just starting</span><span>Finished</span></div>
-    <label>Heart in it <output>{heart}%</output><input aria-label={`Heart in it for ${project.name}`} type="range" min="0" max="100" step="1" bind:value={heart} on:input={() => saved = ''} /></label>
-    <div class="endpoints"><span>Not feeling it</span><span>All in</span></div>
-    <div class="save-row"><button type="button" on:click={save}>Save check-in</button><span role="status">{saved}</span></div>
+    {#if checkingIn}
+      <form class="check-in" on:submit|preventDefault={save}>
+        <div class="rating-control"><span>Work complete</span><ProbabilitySlider value={progress ?? 0} unset={progress === null} ariaLabel={`Work complete for ${project.name}`} onChange={(value) => progress = value} generousHitbox /></div>
+        <div class="rating-control"><span>Heart in it</span><ProbabilitySlider value={heart ?? 0} unset={heart === null} ariaLabel={`Heart in it for ${project.name}`} onChange={(value) => heart = value} generousHitbox /></div>
+        <div class="actions"><button class="primary" type="submit" disabled={progress === null || heart === null}>Save check-in</button><button class="ghost" type="button" on:click={() => checkingIn = false}>Cancel</button></div>
+      </form>
+    {:else}<button class="check-in-button" type="button" on:click={openCheckIn}>Check in</button>{/if}
+    {#if saved}<span class="muted" role="status">{saved}</span>{/if}
   {/if}
   {#if history.length}
     <details>
@@ -56,8 +69,8 @@
       <div class="endpoints"><span>{new Date(history[0].createdAt).toLocaleDateString()}</span><span>{new Date(latest!.createdAt).toLocaleDateString()}</span></div>
       <div class="history-table"><table><thead><tr><th>Check-in</th><th>Work</th><th>Heart</th></tr></thead><tbody>{#each [...history].reverse() as entry}<tr><td>{new Date(entry.createdAt).toLocaleString()}</td><td>{entry.progress}%</td><td>{entry.heart}%</td></tr>{/each}</tbody></table></div>
     </details>
-  {:else}<p class="history-hint">Save a check-in to start your history. Ratings can go up or down.</p>{/if}
-  <footer><button type="button" on:click={() => copyLink(project.id)}>Copy project link</button><button type="button" on:click={() => editing = !editing}>{editing ? 'Close details' : 'Edit details'}</button></footer>
+  {/if}
+  <footer><button class="ghost" type="button" on:click={() => copyLink(project.id)}>Copy project link</button><button class="ghost" type="button" on:click={() => editing = !editing}>{editing ? 'Close details' : 'Edit details'}</button></footer>
   {#if editing}
     <div class="edit-details">
       <label>Name<input aria-label="Project name" value={project.name} on:change={(event) => plannerStore.updateProject(project.id, { name: event.currentTarget.value.trim() || project.name })} /></label>
@@ -69,23 +82,31 @@
 </article>
 
 <style>
-  .project-card { border: 1px solid var(--line); border-radius: 18px; padding: 22px; min-width: 0; background: var(--paper); }
-  .highlighted { outline: 2px solid var(--project-color); outline-offset: 3px; }
-  header { display: flex; gap: 16px; align-items: center; margin-bottom: 18px; }
-  .project-visual { width: 80px; height: 80px; flex: 0 0 80px; color: var(--project-color); }
+  .highlighted { outline: 2px solid var(--accent); outline-offset: 2px; }
+  header { display: flex; gap: 12px; align-items: center; }
+  .project-visual { width: 48px; height: 48px; flex: 0 0 48px; color: var(--project-color); }
   .ring-track, .ring-progress { fill: none; stroke-width: 5; }
-  .ring-track { stroke: currentColor; opacity: .18; }.ring-progress { stroke: currentColor; stroke-linecap: round; }
-  .project-heading { min-width: 0; } h2 { margin: 0; font-size: 1.25rem; overflow-wrap: anywhere; }
-  p { margin: 6px 0; opacity: .7; font-size: .85rem; } .description { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 18px; }
-  label { display: block; font-size: .9rem; margin-top: 18px; } output { float: right; font-variant-numeric: tabular-nums; }
-  input[type=range] { display: block; width: 100%; margin: 12px 0 6px; accent-color: var(--project-color); cursor: pointer; }
-  .endpoints, .legend { display: flex; justify-content: space-between; gap: 8px; font-size: .72rem; opacity: .65; }
-  .save-row, footer { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 20px; } .save-row span { font-size: .8rem; }
-  button { font: inherit; font-size: .8rem; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; color: inherit; background: transparent; cursor: pointer; }
-  button:hover { border-color: var(--project-color); } .save-row button { background: var(--project-color); color: #101820; border-color: transparent; }
-  details { margin-top: 20px; } summary { cursor: pointer; font-size: .85rem; } .legend { margin-top: 16px; }
-  .history-chart { width: 100%; color: var(--project-color); }.grid { stroke: var(--line); fill: none; }
-  .history-table { max-height: 180px; overflow: auto; margin-top: 12px; } table { width: 100%; border-collapse: collapse; font-size: .72rem; } th, td { text-align: left; padding: 6px 3px; border-bottom: 1px solid var(--line); }
-  .history-hint { margin-top: 18px; } .edit-details { border-top: 1px solid var(--line); margin-top: 16px; }
-  input:not([type=range]):not([type=color]), textarea { display: block; box-sizing: border-box; width: 100%; margin: 6px 0 12px; padding: 8px; font: inherit; background: transparent; color: inherit; border: 1px solid var(--line); border-radius: 6px; } textarea { resize: vertical; } input[type=color] { display: block; margin: 8px 0 16px; }
+  .ring-track { stroke: currentColor; opacity: .18; }
+  .ring-progress { stroke: currentColor; stroke-linecap: round; }
+  .project-heading { min-width: 0; }
+  h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+  p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .description { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .ratings { display: flex; flex-wrap: wrap; gap: 24px; margin: 0; font-size: 13px; }
+  .ratings div { display: flex; gap: 8px; } dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .check-in-button { justify-self: start; }
+  .check-in { display: grid; gap: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .rating-control { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; font-size: 13px; }
+  .actions, footer { display: flex; flex-wrap: wrap; gap: 8px; }
+  summary { cursor: pointer; font-size: 13px; }
+  .endpoints, .legend { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
+  .legend { margin-top: 12px; }
+  .history-chart { width: 100%; max-height: 160px; color: var(--project-color); }
+  .grid { stroke: var(--line); fill: none; }
+  .history-table { max-height: 180px; overflow: auto; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { text-align: left; padding: 6px 3px; border-bottom: 1px solid var(--line); }
+  .edit-details { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .edit-details label { display: grid; gap: 6px; font-size: 13px; }
+  textarea { width: 100%; box-sizing: border-box; resize: vertical; background: var(--paper-strong); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 </style>
