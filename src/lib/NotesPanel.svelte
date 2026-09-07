@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { mobileNoteToolbar } from './mobileNoteToolbar'
   import { stageClipboardImages } from './imageService'
   import { clipboardHasDirectImage, IMAGE_CLIPBOARD_TYPE } from './imageMarkup'
   import { invoke, isTauri } from '@tauri-apps/api/core'
@@ -1222,7 +1223,7 @@
           {/if}
         </div>
       {:else}
-        <div class="note-format-toolbar" role="toolbar" aria-label="Note formatting">
+        <div use:mobileNoteToolbar class="note-format-toolbar" role="toolbar" aria-label="Note formatting">
         <div class="note-format-group" aria-label="Text style">
           <button type="button" class:active={activeItem?.kind === 'paragraph'} aria-label="Text" title="Text" on:click={() => applyBlockKind('paragraph')}>Aa</button>
           <button type="button" class:active={activeItem?.kind === 'heading'} aria-label="Heading" title="Heading (# then Space)" on:click={() => applyBlockKind('heading')}>H1</button>

@@ -530,6 +530,16 @@ try {
   await sleep(500)
   await reconnect()
   await heartbeat('initial launch')
+  await openPage('Today')
+  for (const open of [true, false, true, false]) {
+    await recordAction('native-back', open ? 'open navigation' : 'close navigation', async () => {
+      adb(['shell', 'input', 'keyevent', 'KEYCODE_BACK'])
+      await waitFor(() => client.evaluate(`
+        Boolean(document.querySelector('.sidebar.mobile-drawer-open')) === ${open}
+      `), `Android Back to ${open ? 'open' : 'close'} navigation`)
+    })
+    await heartbeat('after native Back')
+  }
   // Debug APK startup intentionally runs large synthetic native sync and
   // database profiles before the frontend can read state. Start the requested
   // interaction duration only after those one-time diagnostics release the DB.

@@ -456,9 +456,9 @@ return rows`
   let browserItemClipboard: ItemClipboard | null = null
   let clipboardWritePending: Promise<unknown> | null = null
   type AndroidBackListener = Awaited<ReturnType<typeof onBackButtonPress>>
-  let androidSelectionBackListener: AndroidBackListener | null = null
-  let androidSelectionBackRegistration: Promise<AndroidBackListener> | null = null
-  let androidSelectionBackWanted = false
+  let androidBackListener: AndroidBackListener | null = null
+  let androidBackRegistration: Promise<AndroidBackListener> | null = null
+  let androidBackWanted = false
   // Each pasted node — parent or child — is reviewed on its own, so the queue is a
   // flat list annotated with the node's original depth. Kept nodes are re-nested from
   // those depths once the queue empties.
@@ -485,7 +485,7 @@ return rows`
   let pasteReviewCooldownFrame: number | null = null
   let itemTextDragOrigin: { itemId: Id; input: HTMLElement } | null = null
   let preserveSelectionFocusUntil = 0
-  $: syncAndroidSelectionBackListener(isAndroid && isTauri() && selectedItemIds.length > 0)
+  $: syncAndroidBackListener(isAndroid && isTauri())
   let newGoalName = ''
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
@@ -2004,7 +2004,7 @@ return rows`
       stopPasteMatchStyleListener?.()
       stopMacosAltShortcutListener?.()
       stopDeepLinkListener?.()
-      stopAndroidSelectionBackListener()
+      stopAndroidBackListener()
       window.removeEventListener(TASK_COMPLETION_FOCUS_EVENT, handleTaskCompletionFocus)
       colorSchemeMedia.removeEventListener('change', handleSystemColorSchemeChange)
       window.clearInterval(databaseLoadingMessageTimer)
@@ -4131,34 +4131,55 @@ return rows`
     selectingItems = false
   }
 
-  function syncAndroidSelectionBackListener(wanted: boolean) {
-    androidSelectionBackWanted = wanted
+  function handleAndroidBack() {
+    // Give the topmost dialog its usual dismissal before navigating the page.
+    const nativeDialog = document.querySelector<HTMLDialogElement>('dialog[open]')
+    if (nativeDialog) {
+      if (nativeDialog.dispatchEvent(new Event('cancel', { cancelable: true }))) nativeDialog.close()
+      return
+    }
+    const overlays = Array.from(document.querySelectorAll<HTMLElement>('.overlay-backdrop'))
+    const topOverlay = overlays.sort((a, b) =>
+      (Number.parseInt(getComputedStyle(b).zIndex, 10) || 0) - (Number.parseInt(getComputedStyle(a).zIndex, 10) || 0),
+    )[0]
+    const escape = new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true, cancelable: true })
+    if (topOverlay) {
+      topOverlay.dispatchEvent(escape)
+      return
+    }
+    // Reuse Escape handling for menus, search, editing and task selection.
+    const target = document.activeElement ?? document.body
+    if (!target.dispatchEvent(escape)) return
+    if ($databaseLoadPending || $databaseLoadError) return
+    finishMobileDrawerPress()
+  }
+
+  function syncAndroidBackListener(wanted: boolean) {
+    androidBackWanted = wanted
     if (!wanted) {
-      const listener = androidSelectionBackListener
-      androidSelectionBackListener = null
+      const listener = androidBackListener
+      androidBackListener = null
       if (listener) void listener.unregister()
       return
     }
-    if (androidSelectionBackListener || androidSelectionBackRegistration) return
+    if (androidBackListener || androidBackRegistration) return
 
-    const registration = onBackButtonPress(() => {
-      if (selectedItemIds.length > 0) clearItemSelection()
-    })
-    androidSelectionBackRegistration = registration
+    const registration = onBackButtonPress(handleAndroidBack)
+    androidBackRegistration = registration
     void registration.then((listener) => {
-      if (androidSelectionBackRegistration === registration) androidSelectionBackRegistration = null
-      if (androidSelectionBackWanted) androidSelectionBackListener = listener
+      if (androidBackRegistration === registration) androidBackRegistration = null
+      if (androidBackWanted) androidBackListener = listener
       else void listener.unregister()
     }).catch((error) => {
-      if (androidSelectionBackRegistration === registration) androidSelectionBackRegistration = null
+      if (androidBackRegistration === registration) androidBackRegistration = null
       console.error('Could not listen for the Android back button', error)
     })
   }
 
-  function stopAndroidSelectionBackListener() {
-    androidSelectionBackWanted = false
-    const listener = androidSelectionBackListener
-    androidSelectionBackListener = null
+  function stopAndroidBackListener() {
+    androidBackWanted = false
+    const listener = androidBackListener
+    androidBackListener = null
     if (listener) void listener.unregister()
   }
 

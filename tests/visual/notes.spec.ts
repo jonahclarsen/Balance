@@ -1845,3 +1845,53 @@ test('notes expire from Bin after 30 days', async ({ page }) => {
   await page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Bin is empty' })).toBeVisible()
 })
+
+test('mobile note formatting follows the keyboard viewport and preserves editing focus', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+  const editor = page.locator('[data-note-text-input]').first()
+  await editor.fill('Keyboard formatting fixture')
+  await placeCaretAtEnd(editor)
+  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
+
+  // Desktop automation has no IME; simulate both keyboard shrink and panning.
+  await page.evaluate(() => {
+    const viewport = window.visualViewport!
+    Object.defineProperty(viewport, 'height', { configurable: true, get: () => 350 })
+    Object.defineProperty(viewport, 'offsetTop', { configurable: true, get: () => 120 })
+    viewport.dispatchEvent(new Event('resize'))
+    viewport.dispatchEvent(new Event('scroll'))
+  })
+  await expect(toolbar).toHaveCSS('position', 'fixed')
+  await expect.poll(async () => {
+    const box = await toolbar.boundingBox()
+    return !!box && box.y >= 120 && box.y + box.height <= 470
+  }).toBe(true)
+  await toolbar.getByRole('button', { name: 'Bold', exact: true }).tap()
+  await expect(editor).toBeFocused()
+  await editor.press('x')
+  await expect(editor.locator('b, strong')).toHaveText('x')
+
+  await page.evaluate(() => {
+    const viewport = window.visualViewport!
+    Object.defineProperty(viewport, 'offsetTop', { configurable: true, get: () => 210 })
+    viewport.dispatchEvent(new Event('scroll'))
+  })
+  await expect.poll(async () => {
+    const box = await toolbar.boundingBox()
+    return Math.round((box?.y ?? 0) + (box?.height ?? 0))
+  }).toBe(552)
+
+  await page.evaluate(() => {
+    const viewport = window.visualViewport!
+    Reflect.deleteProperty(viewport, 'height')
+    Reflect.deleteProperty(viewport, 'offsetTop')
+    viewport.dispatchEvent(new Event('resize'))
+  })
+  await expect(toolbar).toHaveCSS('position', 'sticky')
+  await expect(page.locator('.note-document .note-format-toolbar')).toHaveCount(1)
+})
