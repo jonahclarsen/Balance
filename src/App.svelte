@@ -3240,7 +3240,7 @@ return rows`
       !metricOverlay
     ) {
       const openedLink = listOverlayVisible && overlayListPanel
-        ? overlayListPanel.openSelectedMetric()
+        ? overlayListPanel.openSelectedLink()
         : openLinkedDestinationForActiveTask()
       if (openedLink) {
         event.preventDefault()

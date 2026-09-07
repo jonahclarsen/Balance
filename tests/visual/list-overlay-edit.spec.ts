@@ -169,6 +169,51 @@ test('Alt+F opens the first URL linked from the active Today task', async ({ pag
     .toBe('https://example.com/docs')
 })
 
+test('Alt+F opens only the first URL in the selected list modal task', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  const listItem = page.locator('[data-list-template-text-input]').first()
+  await listItem.fill('First Second')
+  await pasteLinkOverText(listItem, 'https://example.com/second', 6, 12)
+  await pasteLinkOverText(listItem, 'https://example.com/first', 0, 5)
+  await page.getByRole('button', { name: '+ Add list item' }).click()
+  await page.locator('[data-list-template-text-input]').nth(1).fill('No link')
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const taskInput = page.locator('[data-plan-text-input]').first()
+  await taskInput.fill('Groceries')
+  await taskInput.blur()
+  await page.getByTitle('Open Groceries').first().click()
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog.locator('.plan-row.selected')).toContainText('First Second')
+  await expect(dialog.getByRole('link', { name: 'First', exact: true })).toHaveAttribute('href', 'https://example.com/first')
+  await page.evaluate(() => {
+    const opened: string[] = []
+    ;(window as typeof window & { openedURLs?: string[] }).openedURLs = opened
+    window.open = ((url?: string | URL) => {
+      opened.push(String(url))
+      return null
+    }) as typeof window.open
+  })
+  // macOS Option+F produces ƒ; the shortcut must use the physical key code.
+  await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'ƒ', code: 'KeyF', altKey: true, bubbles: true, cancelable: true,
+  })))
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { openedURLs?: string[] }).openedURLs))
+    .toEqual(['https://example.com/first'])
+  await expect(dialog).toBeVisible()
+  await page.keyboard.press('ArrowDown')
+  await expect(dialog.locator('.plan-row.selected')).toContainText('No link')
+  await page.keyboard.press('Alt+f')
+  expect(await page.evaluate(() => (window as typeof window & { openedURLs?: string[] }).openedURLs))
+    .toEqual(['https://example.com/first'])
+})
+
 test('Alt+F opens the metric linked by the selected list item', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
