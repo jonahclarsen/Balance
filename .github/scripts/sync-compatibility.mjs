@@ -23,7 +23,7 @@ function run(binary, database, command, extra = {}, allowError = false) {
   if (!allowError) assert.equal(response.error, null, `${database}: ${command}: ${response.error}`)
   return response
 }
-const state = (deviceId) => ({ schemaVersion: 1, deviceId, localSequence: 0, historyRevision: 0, activePlanDate: '', templates: [], plans: [], goals: [], goalCompletions: [], listTemplates: [], lists: [], metrics: [], metricEntries: [], notes: [], images: [], projects: [], projectCheckIns: [], operations: [] })
+const state = (deviceId) => ({ schemaVersion: 1, deviceId, localSequence: 0, historyRevision: 0, activePlanDate: '', templates: [], plans: [], goals: [], goalCompletions: [], listTemplates: [], lists: [], metrics: [], metricEntries: [], notes: [], images: [], projects: [], projectCheckIns: [], uneditedPlanItems: [], operations: [] })
 const operation = (device, sequence, type, payload) => ({ id: `${device}-${sequence}`, deviceId: device, sequence, type, timestamp: `2026-09-08T12:00:${String(sequence).padStart(2, '0')}.000Z`, payload })
 const record = (collection, key, value, patches = []) => ({ collection, key, position: 0, value, patches })
 const generic = (device, seq, upserts, deletes = []) => operation(device, seq, 'apply_entity_changes', { action: 'future_feature_action', entityChanges: { version: 2, upserts, deletes } })
@@ -48,6 +48,7 @@ assert.deepEqual(upgraded.entities, legacy.entities)
 run(futureBinary, 'future', 'init', { state: state('future-device') })
 let future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 1, [
   record('futureHabitCheckIns', 'f', { id: 'f', amount: 7 }),
+  record('uneditedPlanItems', 'synthetic-generated-task', { id: 'synthetic-generated-task', futureRetention: { enabled: true } }),
   record('notes', 'n', { id: 'n', title: 'Before', futureColor: 'blue', items: [{ id: 'task', text: 'Synthetic task', done: false, futureLink: 'f' }] }),
 ]) })
 assert.deepEqual(future.state.futureHabitCheckIns, [{ id: 'f', amount: 7 }])
@@ -61,6 +62,7 @@ let note = blind.entities.find((row) => row.key === 'n').value
 assert.equal(note.futureColor, 'blue')
 assert.equal(note.items[0].futureLink, 'f')
 assert.equal(note.items[0].done, true)
+assert.deepEqual(blind.entities.find((row) => row.collection === 'uneditedPlanItems').value, { id: 'synthetic-generated-task', futureRetention: { enabled: true } })
 run(blindBinary, 'blind', 'undo')
 blind = run(blindBinary, 'blind', 'redo')
 const beforeCompact = blind.entities
@@ -73,17 +75,26 @@ assert.deepEqual(future.entities, blind.entities)
 // edit and checkpoint rather than being resurrected from a stale whole record.
 future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 2, [record('notes', 'n', { id: 'n' }, [
   { kind: 'object', fields: {}, remove: ['futureColor'] },
-])], [{ collection: 'futureHabitCheckIns', key: 'f' }]) })
+])], [{ collection: 'futureHabitCheckIns', key: 'f' }, { collection: 'uneditedPlanItems', key: 'synthetic-generated-task' }]) })
 blind = run(blindBinary, 'blind', 'merge', { operations: future.operations })
 assert(!blind.entities.some((row) => row.collection === 'futureHabitCheckIns'))
+assert(!blind.entities.some((row) => row.collection === 'uneditedPlanItems'))
 assert(!Object.hasOwn(blind.entities.find((row) => row.key === 'n').value, 'futureColor'))
+
+future = run(futureBinary, 'future', 'undo')
+assert(future.entities.some((row) => row.collection === 'uneditedPlanItems'))
+blind = run(blindBinary, 'blind', 'merge', { operations: future.operations })
+assert.deepEqual(blind.entities, future.entities)
+future = run(futureBinary, 'future', 'redo')
+blind = run(blindBinary, 'blind', 'merge', { operations: future.operations })
+assert(!blind.entities.some((row) => row.collection === 'uneditedPlanItems'))
 blind = run(blindBinary, 'blind', 'checkpoint')
 future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
 assert.deepEqual(future.entities, blind.entities)
 
 // Unsupported primitives roll back the entire incoming transaction; the failed
 // operation is never acknowledged or compacted away.
-const bad = structuredClone(generic('future-device', 3, [record('futureHabitCheckIns', 'f', { id: 'f' }, [{ kind: 'future_primitive' }])]))
+const bad = structuredClone(generic('future-device', 10, [record('futureHabitCheckIns', 'f', { id: 'f' }, [{ kind: 'future_primitive' }])]))
 const envelope = { id: bad.id, device_id: bad.deviceId, sequence: bad.sequence, type: bad.type, timestamp: bad.timestamp, payload_json: JSON.stringify(bad.payload) }
 const failed = run(blindBinary, 'blind', 'merge', { operations: [envelope] }, true)
 assert.match(failed.error, /Update required/)
@@ -123,20 +134,29 @@ try {
   await once(relay, 'exit')
 }
 
+function comparable(collection, values) {
+  if (collection === 'uneditedPlanItems') return [...values].sort((a, b) => a.id.localeCompare(b.id))
+  if (collection !== 'plans') return values
+  // SQL rows normalize optional time visibility and do not expose the existing
+  // frontend-only generation diagnostics. Compare all persisted planner data.
+  const items = (rows) => rows.map(({ id, text, html, done, startMinutes, endMinutes, timeHidden, children }) =>
+    ({ id, text, html, done, startMinutes, endMinutes, timeHidden: timeHidden === true, children: items(children) }))
+  return values.map(({ generatedGoalIds, items: rows, ...plan }) => ({ ...plan, items: items(rows) }))
+}
 if (frontendFixtures) {
-  const collections = ['notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'goalCompletions', 'projects', 'projectCheckIns']
+  const collections = ['notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'goalCompletions', 'projects', 'projectCheckIns', 'uneditedPlanItems', 'plans']
   for (const [index, filename] of readdirSync(frontendFixtures).filter((name) => name.endsWith('.json')).entries()) {
     const fixture = JSON.parse(readFileSync(join(frontendFixtures, filename), 'utf8'))
     const database = `frontend-${index}`
     const baseline = run(currentBinary, database, 'init', { state: fixture.initial })
     let applied
     for (const operation of fixture.operations) applied = run(currentBinary, database, 'write', { operation })
-    for (const collection of collections) assert.deepEqual(applied.state[collection], fixture.expected[collection], `${filename}: ${collection} replay`)
+    for (const collection of collections) assert.deepEqual(comparable(collection, applied.state[collection]), comparable(collection, fixture.expected[collection]), `${filename}: ${collection} replay`)
     for (const operation of fixture.operations) applied = run(currentBinary, database, 'undo')
-    for (const collection of collections) assert.deepEqual(applied.state[collection], baseline.state[collection], `${filename}: ${collection} undo`)
+    for (const collection of collections) assert.deepEqual(comparable(collection, applied.state[collection]), comparable(collection, baseline.state[collection]), `${filename}: ${collection} undo`)
     for (const operation of fixture.operations) applied = run(currentBinary, database, 'redo')
     const compacted = run(currentBinary, database, 'checkpoint')
-    for (const collection of collections) assert.deepEqual(compacted.state[collection], fixture.expected[collection], `${filename}: ${collection} redo/checkpoint`)
+    for (const collection of collections) assert.deepEqual(comparable(collection, compacted.state[collection]), comparable(collection, fixture.expected[collection]), `${filename}: ${collection} redo/checkpoint`)
     console.log(`PASS: ${filename} frontend-generated operations replay, undo, redo and compact in SQLCipher`)
   }
 }

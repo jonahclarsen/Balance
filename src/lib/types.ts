@@ -142,6 +142,9 @@ export type MetricEntry = {
   updatedAt: string
 }
 
+// Presence alone marks a generated task as untouched; delete the record on edit.
+export type UneditedPlanItem = { id: Id }
+
 export type DailyPlan = {
   id: Id
   date: string
@@ -292,6 +295,7 @@ export type AppState = {
   preferences: ReplicatedPreferences
   templates: DailyTemplate[]
   plans: DailyPlan[]
+  uneditedPlanItems: UneditedPlanItem[]
   listTemplates: ListTemplate[]
   lists: ListInstance[]
   metrics: Metric[]

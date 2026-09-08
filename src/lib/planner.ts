@@ -147,6 +147,7 @@ export function createInitialState(): AppState {
     preferences: createDefaultReplicatedPreferences(),
     templates: [createDefaultTemplate()],
     plans: [],
+    uneditedPlanItems: [],
     listTemplates: [],
     lists: [],
     metrics: [],

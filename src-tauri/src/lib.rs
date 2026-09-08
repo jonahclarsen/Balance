@@ -157,8 +157,9 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 10] = [
+const ENTITY_COLLECTIONS: [&str; 11] = [
     "images",
+    "uneditedPlanItems",
     "goals",
     "goalCompletions",
     "listTemplates",
@@ -2972,6 +2973,7 @@ fn read_app_state_from_database_with_progress(
         "metricEntries": lists_metrics_data["metricEntries"].clone(),
         "notes": lists_metrics_data["notes"].clone(),
         "images": read_entity_collection(connection, "images")?,
+        "uneditedPlanItems": read_entity_collection(connection, "uneditedPlanItems")?,
         "projects": lists_metrics_data["projects"].clone(),
         "projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),
         "goals": goal_data["goals"].clone(),

@@ -75,7 +75,7 @@ jobs:
           python3 - <<'PYTHON'
           from pathlib import Path
           path = Path('../future/src-tauri/src/lib.rs')
-          source = path.read_text().replace('const ENTITY_COLLECTIONS: [&str; 10]', 'const ENTITY_COLLECTIONS: [&str; 11]')
+          source = path.read_text().replace('const ENTITY_COLLECTIONS: [&str; 11]', 'const ENTITY_COLLECTIONS: [&str; 12]')
           source = source.replace('const LISTS_METRICS_KEYS: [&str; 7]', 'const LISTS_METRICS_KEYS: [&str; 8]')
           source = source.replace('    "projectCheckIns",', '    "projectCheckIns",\n    "futureHabitCheckIns",')
           source = source.replace('"projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),', '"projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),\n        "futureHabitCheckIns": lists_metrics_data["futureHabitCheckIns"].clone(),')

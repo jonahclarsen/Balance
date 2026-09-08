@@ -2865,10 +2865,10 @@ return rows`
   }
 
   async function confirmReplaceExistingPlan(): Promise<boolean> {
-    const message = 'This date already has a plan. Replace it with a freshly generated one?'
+    const message = 'Generate a fresh day below your added or modified tasks? Untouched generated tasks will be replaced.'
 
     if (isTauri()) {
-      return confirmDialog(message, { title: 'Replace existing plan?', kind: 'warning' })
+      return confirmDialog(message, { title: 'Regenerate day?', kind: 'warning' })
     }
 
     return window.confirm(message)

@@ -1,4 +1,5 @@
 import { entityPatch, type EntityPatch } from './entityPatch'
+import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } from './planGeneration'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { pickerColorToHex } from './colors'
 import { get, writable, type Writable } from 'svelte/store'
@@ -161,6 +162,7 @@ const ENTITY_COLLECTIONS = [
   'notes',
   'projects',
   'projectCheckIns',
+  'uneditedPlanItems',
 ] as const
 type EntityCollection = (typeof ENTITY_COLLECTIONS)[number]
 type EntityUpsert = { collection: EntityCollection; key: string; position: number | null; value: unknown; patches: EntityPatch[] }
@@ -449,12 +451,16 @@ function entityChangesBetween(before: AppState, after: AppState): EntityChanges 
     afterValues.forEach((value, position) => {
       const key = afterKeys[position]
       const previous = beforeByKey.get(key)
+      // Markers are a set: deleting one must not rewrite the positions of all
+      // remaining records (and inflate the operation log).
+      const moved = collection !== 'uneditedPlanItems' && previous?.position !== position
       if (
         !previous ||
-        previous.position !== position ||
+        moved ||
         (previous.value !== value && JSON.stringify(previous.value) !== JSON.stringify(value))
       ) {
-        upserts.push({ collection, key, position: !previous || previous.position !== position ? position : null, value, patches: [entityPatch(previous?.value, value)] })
+        const storedPosition = collection === 'uneditedPlanItems' ? (previous ? null : 0) : (!previous || moved ? position : null)
+        upserts.push({ collection, key, position: storedPosition, value, patches: [entityPatch(previous?.value, value)] })
       }
     })
     beforeKeys.forEach((key) => {
@@ -660,6 +666,7 @@ function createPlannerStore() {
     store.update((state) => {
       let next = mutate(state)
       if (next === state) return state
+      next = reconcileUneditedPlanItems(state, next)
       // Persist the bytes and their first reference in the same operation. A
       // checkpoint can never observe a half-finished image insertion.
       const nextImageIds = imageReferences(next)
@@ -808,6 +815,11 @@ function createPlannerStore() {
         current.goalCompletions,
       )
 
+      const freshMarkers = generatedItemMarkers(generated.items)
+      const previous = replaceExisting ? current.plans.find((plan) => plan.date === date) : undefined
+      const previousIds = new Set(previous ? generatedItemMarkers(previous.items).map(({ id }) => id) : [])
+      if (previous) generated.items = [...preservedPlanItems(previous, current.uneditedPlanItems), ...generated.items]
+
       // Keep the legacy wire field empty; the selected day belongs to this device.
       commit('generate_plan', { templateId, date, replaceExisting, activePlanDate: '', generatedPlan: generated }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans
@@ -822,6 +834,7 @@ function createPlannerStore() {
           activePlanDate,
           goals,
           plans: [...plans, generated].sort((a, b) => b.date.localeCompare(a.date)),
+          uneditedPlanItems: [...state.uneditedPlanItems.filter(({ id }) => !previousIds.has(id)), ...freshMarkers],
         }
       })
     },
@@ -3262,6 +3275,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       preferences: normalizeReplicatedPreferences(null),
       templates: [],
       plans: parsed.plans ?? [],
+      uneditedPlanItems: [],
       listTemplates: [],
       lists: [],
       metrics: [],
@@ -3303,6 +3317,7 @@ function normalizeState(state: AppState): AppState {
   return {
     ...state,
     images: state.images ?? [],
+    uneditedPlanItems: state.uneditedPlanItems ?? [],
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),
