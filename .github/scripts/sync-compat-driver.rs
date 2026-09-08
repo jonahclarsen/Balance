@@ -60,7 +60,7 @@ fn compatibility_process_driver() {
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .unwrap();
     let result = json!({
-        "error": outcome.err(), "state": crate::read_app_state_from_database(&conn).unwrap(),
+        "protocolVersion": crate::sync::PROTOCOL_VERSION, "error": outcome.err(), "state": crate::read_app_state_from_database(&conn).unwrap(),
         "entities": entities, "operations": crate::sync::all_ops(&conn).unwrap(), "integrity": integrity,
     });
     fs::write(

@@ -4,6 +4,7 @@ on:
   workflow_run:
     workflows:
       - Build Android
+      - Sync version compatibility
       - Build Linux app
       - Build macOS arm64 app
     types:
@@ -50,6 +51,7 @@ jobs:
           }
 
           ANDROID_RUN="$(find_run android.yml)"
+          COMPATIBILITY_RUN="$(find_run sync-compatibility.yml)"
 
           require_successful_run() {
             local platform="$1"
@@ -66,6 +68,7 @@ jobs:
           }
 
           require_successful_run "Android" "$ANDROID_RUN"
+          require_successful_run "Sync compatibility" "$COMPATIBILITY_RUN"
 
           read -r android_run_id _ <<< "$ANDROID_RUN"
           echo "android_run_id=$android_run_id" >> "$GITHUB_OUTPUT"

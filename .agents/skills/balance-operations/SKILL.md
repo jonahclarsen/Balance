@@ -86,7 +86,9 @@ working is a release contract, not something compaction repairs.
 - Run `.github/workflows/sync-compatibility.yml`: it builds real released engines
   with the same synthetic fixture driver and opens their generated encrypted
   databases with the new engine. Keep old-version fixtures independent of new
-  initialization code.
+  initialization code. Once a foundation release exists, the workflow also
+  automatically includes its oldest tagged reader as the feature-blind peer;
+  preserve this baseline when later releases add features.
 - Extend the future-schema fixture when introducing a new data shape: an older
   foundation client must receive it, edit supported fields, undo/redo, compact,
   reopen, and send it back without losing unknown collections or nested fields.

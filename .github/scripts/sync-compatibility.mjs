@@ -32,6 +32,7 @@ const generic = (device, seq, upserts, deletes = []) => operation(device, seq, '
 // log. The new executable opens the same bytes, replays, edits, undoes and compacts.
 run(oldBinary, 'legacy', 'init', { state: state('old-device') })
 const legacy = run(oldBinary, 'legacy', 'write', { operation: operation('old-device', 1, 'add_note', { entityChanges: { version: 1, upserts: [{ collection: 'notes', key: 'n', position: 0, value: { id: 'n', title: 'Synthetic old note', items: [] } }], deletes: [] } }) })
+const blindBinary = legacy.protocolVersion >= 6 ? oldBinary : currentBinary
 copyFileSync(join(root, 'legacy.sqlite3'), join(root, 'upgrade.sqlite3'))
 let upgraded = run(currentBinary, 'upgrade', 'read')
 assert.deepEqual(upgraded.entities, legacy.entities)
@@ -50,20 +51,20 @@ let future = run(futureBinary, 'future', 'write', { operation: generic('future-d
   record('notes', 'n', { id: 'n', title: 'Before', futureColor: 'blue', items: [{ id: 'task', text: 'Synthetic task', done: false, futureLink: 'f' }] }),
 ]) })
 assert.deepEqual(future.state.futureHabitCheckIns, [{ id: 'f', amount: 7 }])
-run(currentBinary, 'blind', 'init', { state: state('blind-device') })
-const blindView = run(currentBinary, 'blind', 'merge', { operations: future.operations })
+run(blindBinary, 'blind', 'init', { state: state('blind-device') })
+const blindView = run(blindBinary, 'blind', 'merge', { operations: future.operations })
 assert(!Object.hasOwn(blindView.state, 'futureHabitCheckIns'))
-let blind = run(currentBinary, 'blind', 'write', { operation: generic('blind-device', 1, [record('notes', 'n', { id: 'n', title: 'After', items: [] }, [
+let blind = run(blindBinary, 'blind', 'write', { operation: generic('blind-device', 1, [record('notes', 'n', { id: 'n', title: 'After', items: [] }, [
   { kind: 'object', fields: { title: { kind: 'replace', value: 'After' }, items: { kind: 'records', entries: { task: { kind: 'object', fields: { done: { kind: 'replace', value: true } }, remove: [] } }, remove: [] } }, remove: [] },
 ])]) })
 let note = blind.entities.find((row) => row.key === 'n').value
 assert.equal(note.futureColor, 'blue')
 assert.equal(note.items[0].futureLink, 'f')
 assert.equal(note.items[0].done, true)
-run(currentBinary, 'blind', 'undo')
-blind = run(currentBinary, 'blind', 'redo')
+run(blindBinary, 'blind', 'undo')
+blind = run(blindBinary, 'blind', 'redo')
 const beforeCompact = blind.entities
-blind = run(currentBinary, 'blind', 'checkpoint')
+blind = run(blindBinary, 'blind', 'checkpoint')
 assert.deepEqual(blind.entities, beforeCompact)
 future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
 assert.deepEqual(future.entities, blind.entities)
@@ -73,10 +74,10 @@ assert.deepEqual(future.entities, blind.entities)
 future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 2, [record('notes', 'n', { id: 'n' }, [
   { kind: 'object', fields: {}, remove: ['futureColor'] },
 ])], [{ collection: 'futureHabitCheckIns', key: 'f' }]) })
-blind = run(currentBinary, 'blind', 'merge', { operations: future.operations })
+blind = run(blindBinary, 'blind', 'merge', { operations: future.operations })
 assert(!blind.entities.some((row) => row.collection === 'futureHabitCheckIns'))
 assert(!Object.hasOwn(blind.entities.find((row) => row.key === 'n').value, 'futureColor'))
-blind = run(currentBinary, 'blind', 'checkpoint')
+blind = run(blindBinary, 'blind', 'checkpoint')
 future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
 assert.deepEqual(future.entities, blind.entities)
 
@@ -84,7 +85,7 @@ assert.deepEqual(future.entities, blind.entities)
 // operation is never acknowledged or compacted away.
 const bad = structuredClone(generic('future-device', 3, [record('futureHabitCheckIns', 'f', { id: 'f' }, [{ kind: 'future_primitive' }])]))
 const envelope = { id: bad.id, device_id: bad.deviceId, sequence: bad.sequence, type: bad.type, timestamp: bad.timestamp, payload_json: JSON.stringify(bad.payload) }
-const failed = run(currentBinary, 'blind', 'merge', { operations: [envelope] }, true)
+const failed = run(blindBinary, 'blind', 'merge', { operations: [envelope] }, true)
 assert.match(failed.error, /Update required/)
 assert.deepEqual(failed.entities, blind.entities)
 assert.deepEqual(failed.operations, blind.operations)
@@ -107,11 +108,16 @@ try {
   run(currentBinary, 'network', 'write', { operation: generic('network-device', 1, [record('futureNetworkCollection', 'network-row', { id: 'network-row', value: 19 })]) })
   run(currentBinary, 'network', 'relay', { url })
   const incompatible = run(oldBinary, 'legacy', 'relay', { url }, true)
-  assert.match(incompatible.error, /incompatible protocol/)
-  assert.deepEqual(incompatible.entities, legacy.entities)
+  if (legacy.protocolVersion < downloaded.protocolVersion) {
+    assert.match(incompatible.error, /incompatible protocol|Update required/)
+    assert.deepEqual(incompatible.entities, legacy.entities)
+  } else {
+    assert.equal(incompatible.error, null)
+    assert(incompatible.entities.some((row) => row.collection === 'futureNetworkCollection'))
+  }
   const recovered = run(currentBinary, 'legacy', 'relay', { url })
   assert(recovered.entities.some((row) => row.collection === 'futureNetworkCollection'))
-  console.log('PASS: v5 encrypted relay download, safe old-client refusal, in-place upgrade recovery')
+  console.log(`PASS: protocol ${legacy.protocolVersion} encrypted relay download, compatibility boundary, in-place upgrade recovery`)
 } finally {
   relay.kill()
   await once(relay, 'exit')
