@@ -78,6 +78,9 @@
   let pendingPasteInput = false
 
   onMount(() => {
+    // Own the editable DOM here. A reactive {@html} block would replace it a
+    // second time after a backend revision, discarding the live selection.
+    editor.innerHTML = renderedHTML
     const pasteListener = (event: Event) => handleProgrammaticPaste(event as CustomEvent<{ plainText: string | null; html: string | null }>)
     const formatListener = (event: Event) => handleProgrammaticFormat(event as CustomEvent<{ command: InlineFormatCommand }>)
     editor.addEventListener('balancepaste', pasteListener)
@@ -97,7 +100,12 @@
       lastRevision = revision
       lastInternalLinkKey = nextInternalLinkKey
       renderedHTML = nextHTML
-      if (editor) {
+      // Background reads also advance revision. Keep a focused editor's DOM
+      // when only browser markup differs (for example <b> versus <strong>).
+      if (
+        editor && editor.innerHTML !== nextHTML &&
+        (editor !== document.activeElement || sanitizeInlineHTML(editor.innerHTML) !== sanitizeInlineHTML(nextHTML))
+      ) {
         editor.innerHTML = nextHTML
         if (editor === document.activeElement) focusTextInput(editor)
       }
@@ -879,4 +887,4 @@
   on:input={handleInput}
   on:paste={handlePaste}
   on:pointerup={handlePointerup}
->{@html renderedHTML}</div>
+></div>

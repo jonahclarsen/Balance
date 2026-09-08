@@ -2,7 +2,7 @@
 
 import { spawn, spawnSync } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
-import { writeFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 
 const packageName = 'app.balance.local.debug'
 const seed = Number.parseInt(process.env.BALANCE_INTERACTION_STRESS_SEED ?? '1701', 10)
@@ -12,6 +12,8 @@ const listHistoryTransitions = Number.parseInt(
   process.env.BALANCE_INTERACTION_STRESS_LIST_HISTORY_TRANSITIONS ?? '0',
   10,
 )
+const caretCheck = process.env.BALANCE_CARET_CHECK === '1'
+const caretChecks = []
 const commandTimeoutMs = 30_000
 const devToolsPort = 9224
 const actionTimeoutMs = 10_000
@@ -357,6 +359,87 @@ async function openPage(page) {
   await waitForSelector(expectedHeading, `${page} heading`)
 }
 
+async function checkTodayCaret(syncFailure = false) {
+  // This installation was created by the CI emulator; only synthetic text is used.
+  const hasPlan = await client.evaluate(`Boolean(document.querySelector('.day-pane .add-row'))`)
+  if (!hasPlan) {
+    await openPage('Day Templates')
+    const hasTemplate = await client.evaluate(`Boolean(document.querySelector('.template-panel-actions .add-row'))`)
+    if (!hasTemplate) await tap('.empty-state button.primary', 'create synthetic day template')
+    await openPage('Today')
+    await tap('.day-pane .day-template-option input', 'select synthetic day template')
+    await tap('.day-pane .empty-state button', 'create synthetic day')
+  }
+  await tap('.day-pane .add-row', 'add synthetic caret task')
+  await client.evaluate(`(() => {
+    const editors = document.querySelectorAll('[data-plan-text-input]')
+    window.caretEditor = editors[editors.length - 1]
+    window.caretEvents = []
+    for (const kind of ['focus', 'blur', 'input', 'compositionstart', 'compositionend']) {
+      window.caretEditor.addEventListener(kind, (event) => window.caretEvents.push({
+        kind, inputType: event.inputType, at: performance.now(),
+      }))
+    }
+    new MutationObserver(() => window.caretEvents.push({kind: 'mutation', at: performance.now()}))
+      .observe(window.caretEditor, {childList: true, characterData: true, subtree: true})
+    window.readCaret = () => {
+      const editor = window.caretEditor
+      const selection = getSelection()
+      const offset = (node, offset) => {
+        if (!node || !editor.contains(node)) return null
+        const range = document.createRange()
+        range.selectNodeContents(editor)
+        range.setEnd(node, offset)
+        return range.toString().length
+      }
+      return {
+        focused: document.activeElement === editor,
+        connected: editor.isConnected,
+        start: offset(selection.anchorNode, selection.anchorOffset),
+        end: offset(selection.focusNode, selection.focusOffset),
+        text: editor.textContent,
+        html: editor.innerHTML,
+      }
+    }
+  })()`)
+  for (const mode of ['idle', 'typing', 'composition', 'formatted']) {
+    await client.evaluate(`(() => {
+      const editor = window.caretEditor
+      editor.focus()
+      document.execCommand('selectAll')
+      document.execCommand('insertText', false, 'Synthetic Today task with enough text to place the caret in the middle')
+      if (${JSON.stringify(mode)} === 'formatted') {
+        document.execCommand('selectAll')
+        document.execCommand('bold')
+      }
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
+      const text = walker.nextNode()
+      getSelection().setBaseAndExtent(text, 19, text, 19)
+      window.caretEvents.length = 0
+    })()`)
+    if (mode === 'typing' || mode === 'formatted') await client.send('Input.insertText', {text: 'added '})
+    if (mode === 'composition') {
+      await client.send('Input.imeSetComposition', {text: 'mobile', selectionStart: 6, selectionEnd: 6})
+      await client.send('Input.insertText', {text: 'mobile '})
+    }
+    const before = await client.evaluate('window.readCaret()')
+    const samples = []
+    for (let index = 0; index < 30; index += 1) {
+      await sleep(100)
+      samples.push(await client.evaluate('window.readCaret()'))
+    }
+    const events = await client.evaluate('window.caretEvents')
+    const stable = before.start > 0 && samples.every((sample) => (
+      sample.focused && sample.connected && sample.start === before.start && sample.end === before.end
+      && sample.text === before.text
+    ))
+    const result = {mode, syncFailure, stable, before, samples, events}
+    caretChecks.push(result)
+    console.log('[caret-check] ' + JSON.stringify(result))
+  }
+  if (caretChecks.some((check) => !check.stable)) throw new Error('Today task caret moved during idle')
+}
+
 async function exerciseNotes() {
   await openPage('Notes')
   const hasNote = await client.evaluate(`Boolean(document.querySelector('.note-card'))`)
@@ -543,7 +626,22 @@ try {
   // Debug APK startup intentionally runs large synthetic native sync and
   // database profiles before the frontend can read state. Start the requested
   // interaction duration only after those one-time diagnostics release the DB.
-  if (startupRelaunches > 0) {
+  if (caretCheck) {
+    await checkTodayCaret()
+    // Enable only this generated CI database against the existing test relay
+    // port with no server running, reproducing a disconnected sync setup.
+    const pairingCode = (await readFile('sync-e2e-pairing-code.txt', 'utf8')).trim()
+    if (!pairingCode.startsWith('BALSYNC1:')) throw new Error('Missing synthetic pairing fixture')
+    await client.evaluate(`window.__TAURI_INTERNALS__.invoke('sync_enable_primary', ${JSON.stringify({
+      pairingCode, relayUrl: 'http://127.0.0.1:8791/caret-unavailable-relay',
+    })})`)
+    await client.evaluate(`(() => { setTimeout(() => location.reload(), 0); return true })()`)
+    await sleep(500)
+    await reconnect()
+    await sleep(2000)
+    await openPage('Today')
+    await checkTodayCaret(true)
+  } else if (startupRelaunches > 0) {
     await openPage('Notes')
     for (cycle = 1; cycle <= startupRelaunches; cycle += 1) {
       console.log(`[interaction-stress] startup relaunch ${cycle}/${startupRelaunches}`)
@@ -602,6 +700,7 @@ const fatalLogLines = diagnostics.logcat.split('\n').filter((line) => (
 const report = {
   seed,
   requestedDurationSeconds: durationSeconds,
+  caretChecks,
   requestedStartupRelaunches: startupRelaunches,
   requestedListHistoryTransitions: listHistoryTransitions,
   elapsedSeconds: Math.round((Date.now() - startedAt) / 1000),

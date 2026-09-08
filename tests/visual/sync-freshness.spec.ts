@@ -256,8 +256,8 @@ test.beforeEach(async ({ page }) => {
                 latestSequence: 12,
               }
             }
-            if (new URLSearchParams(location.search).has('launch-then-hold')) {
-              if (runtime.__syncAttemptCount > 1) return new Promise(() => undefined)
+            if (new URLSearchParams(location.search).has('launch-then-hold') || new URLSearchParams(location.search).has('caret-refresh')) {
+              if (runtime.__syncAttemptCount > 1 && !new URLSearchParams(location.search).has('caret-refresh')) return new Promise(() => undefined)
               return {
                 pulledOperations: 0,
                 pushedOperations: 0,
@@ -938,3 +938,44 @@ test('a backend refresh preserves local day navigation without persisting an ope
   expect(result).toEqual({ date: '2026-08-20', persisted: 0 })
   await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-20')
 })
+
+for (const formatted of [false, true]) {
+  test(`a failed background sync preserves the ${formatted ? 'formatted' : 'plain'} task caret after typing pauses`, async ({ page }) => {
+    await page.goto('/?caret-refresh=1')
+    await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+    await page.getByLabel('Day date', { exact: true }).fill(await page.evaluate(() => new Date().toISOString().slice(0, 10)))
+    await page.evaluate(() => {
+      const runtime = globalThis as typeof globalThis & {
+        __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+      }
+      const original = runtime.__TAURI_INTERNALS__.invoke
+      runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+        if (command === 'sync_relay_once') throw new Error('Synthetic disconnected relay')
+        return original(command, args)
+      }
+    })
+    const editor = page.locator('[data-plan-text-input-id="visible-item"]')
+    await editor.fill('Synthetic task text')
+    await editor.evaluate((element, formatted) => {
+      if (formatted) {
+        document.execCommand('selectAll')
+        document.execCommand('bold')
+      }
+      const node = document.createTreeWalker(element, NodeFilter.SHOW_TEXT).nextNode()!
+      getSelection()!.setBaseAndExtent(node, 10, node, 10)
+    }, formatted)
+    await page.keyboard.insertText('new ')
+    const readCaret = () => editor.evaluate((element) => {
+      const selection = getSelection()!
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      range.setEnd(selection.focusNode!, selection.focusOffset)
+      return { focused: document.activeElement === element, offset: range.toString().length }
+    })
+    expect(await readCaret()).toEqual({ focused: true, offset: 14 })
+    // The normal persistence + automatic edit debounce triggers this refresh.
+    await expect(page.getByRole('button', { name: 'Sync error: open settings' }).filter({ visible: true })).toBeVisible()
+    expect(await readCaret()).toEqual({ focused: true, offset: 14 })
+    await expect(editor).toHaveText('Synthetic new task text')
+  })
+}

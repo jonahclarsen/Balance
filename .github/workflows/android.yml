@@ -31,6 +31,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_caret_check:
+        description: Check Today task caret stability after idle and Android composition
+        required: false
+        default: false
+        type: boolean
       run_interaction_stress:
         description: Run three seeded real-WebView navigation and Notes stress journeys
         required: false
@@ -335,7 +340,7 @@ jobs:
 
   interaction-stress:
     name: Android interaction stress (seed ${{ matrix.seed }})
-    if: github.event_name == 'workflow_dispatch' && inputs.run_interaction_stress
+    if: github.event_name == 'workflow_dispatch' && (inputs.run_interaction_stress || inputs.run_caret_check)
     needs: build-debug
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -343,7 +348,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        seed: [1701, 2947, 4813]
+        seed: ${{ inputs.run_caret_check && fromJSON('[1701]') || fromJSON('[1701,2947,4813]') }}
 
     steps:
       - name: Check out repository
@@ -372,6 +377,7 @@ jobs:
         env:
           BALANCE_INTERACTION_STRESS_SEED: ${{ matrix.seed }}
           BALANCE_INTERACTION_STRESS_SECONDS: "600"
+          BALANCE_CARET_CHECK: ${{ inputs.run_caret_check && '1' || '0' }}
         with:
           api-level: 34
           arch: x86_64
