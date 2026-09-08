@@ -23,7 +23,7 @@ function run(binary, database, command, extra = {}, allowError = false) {
   if (!allowError) assert.equal(response.error, null, `${database}: ${command}: ${response.error}`)
   return response
 }
-const state = (deviceId) => ({ schemaVersion: 1, deviceId, localSequence: 0, historyRevision: 0, activePlanDate: '', preferences: { themeId: 'graphite', doneTintColor: '', checkboxColor: '' }, templates: [], plans: [], goals: [], goalCompletions: [], listTemplates: [], lists: [], metrics: [], metricEntries: [], notes: [], images: [], projects: [], projectCheckIns: [], operations: [] })
+const state = (deviceId) => ({ schemaVersion: 1, deviceId, localSequence: 0, historyRevision: 0, activePlanDate: '', templates: [], plans: [], goals: [], goalCompletions: [], listTemplates: [], lists: [], metrics: [], metricEntries: [], notes: [], images: [], projects: [], projectCheckIns: [], operations: [] })
 const operation = (device, sequence, type, payload) => ({ id: `${device}-${sequence}`, deviceId: device, sequence, type, timestamp: `2026-09-08T12:00:${String(sequence).padStart(2, '0')}.000Z`, payload })
 const record = (collection, key, value, patches = []) => ({ collection, key, position: 0, value, patches })
 const generic = (device, seq, upserts, deletes = []) => operation(device, seq, 'apply_entity_changes', { action: 'future_feature_action', entityChanges: { version: 2, upserts, deletes } })

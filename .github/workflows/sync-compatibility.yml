@@ -65,6 +65,15 @@ jobs:
             fi
             node -e 'const fs = require("fs"); const rows = fs.readFileSync("build-messages.json", "utf8").trim().split("\n").map(JSON.parse); const executable = rows.findLast(r => r.reason === "compiler-artifact" && r.profile.test && r.executable)?.executable; if (!executable) throw Error("Missing test executable"); fs.copyFileSync(executable, process.argv[1]); fs.chmodSync(process.argv[1], 0o755)' "$engine_output"
           done
+      - name: Upload standalone synthetic fixture engines
+        uses: actions/upload-artifact@v7
+        with:
+          name: sync-compat-engines-${{ matrix.previous }}
+          path: |
+            previous-engine
+            current-engine
+            future-engine
+          retention-days: 7
       - name: Verify upgrades and future-feature interoperability
         run: node .github/scripts/sync-compatibility.mjs "$PWD/previous-engine" "$PWD/current-engine" "$PWD/future-engine"
       - name: Test current encrypted database and reconciliation engine
