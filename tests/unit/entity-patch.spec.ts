@@ -13,3 +13,9 @@ test('field deletion, null, record deletion and reordering have distinct meaning
   expect(entityPatch({ a: 1, b: 2 }, { b: null })).toEqual({ kind: 'object', fields: { b: { kind: 'replace', value: null } }, remove: ['a'] })
   expect(entityPatch([{ id: 'a' }, { id: 'b' }, { id: 'c' }], [{ id: 'c' }, { id: 'a' }])).toEqual({ kind: 'records', entries: {}, remove: ['b'], order: ['c', 'a'] })
 })
+
+test('optional properties becoming undefined serialize as explicit removals', () => {
+  const patch = entityPatch({ id: 'a', optional: 'old' }, { id: 'a', optional: undefined })
+  expect(JSON.parse(JSON.stringify(patch))).toEqual({ kind: 'object', fields: {}, remove: ['optional'] })
+  expect(entityPatch({ id: 'a' }, { id: 'a', optional: undefined })).toEqual({ kind: 'object', fields: {}, remove: [] })
+})

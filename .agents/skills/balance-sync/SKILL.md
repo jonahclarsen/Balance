@@ -46,9 +46,15 @@ a best-effort five-minute cadence, because periodic WorkManager requests have a
 `.github/scripts/configure-android-background-sync.mjs`; never generate or build
 that Android project locally.
 
-Malformed delta batches are quarantined locally so one damaged blob does not
-prevent later batches from syncing. Preserve that forward-progress behavior
-when changing validation or ingestion.
+For new persisted actions or record schemas, read
+[balance-operations](../balance-operations/SKILL.md). Version 6 envelopes carry
+generic record patches and preserve unfamiliar collections in checkpoints;
+versions 4 and 5 remain readable for upgrades.
+
+Unreadable batches are quarantined and retried without acknowledging past the
+failed sequence. Never silently skip them or promote a partial checkpoint.
+Well-formed additive feature data uses the generic storage path and should not
+need a feature-specific handler on the receiving device.
 
 ## Run the reference relay safely
 

@@ -20,6 +20,16 @@ fn compatibility_process_driver() {
                 crate::replace_app_state(&mut conn, &request["state"])?;
                 crate::sync::enable_primary(&conn).map_err(|e| e.to_string())?;
             }
+            "relay" => {
+                let key = crate::sync::crypto::SyncKey::from_bytes([17; 32]);
+                crate::sync::relay_client::sync_once(
+                    &conn,
+                    request["url"].as_str().unwrap(),
+                    &key,
+                    crate::sync::relay_client::SyncOptions::foreground(true),
+                )
+                .map_err(|e| e.to_string())?;
+            }
             "write" => crate::persist_operation_to_database(&mut conn, &request["operation"])?,
             "checkpoint" => {
                 crate::sync::checkpoint_operation_log_preserving_history(&conn)

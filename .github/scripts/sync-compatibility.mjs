@@ -1,10 +1,12 @@
 import { mkdtempSync, writeFileSync, readFileSync, copyFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import assert from 'node:assert/strict'
+import { randomInt } from 'node:crypto'
+import { once } from 'node:events'
 
-const [oldBinary, currentBinary] = process.argv.slice(2)
+const [oldBinary, currentBinary, futureBinary = currentBinary] = process.argv.slice(2)
 assert(oldBinary && currentBinary, 'Provide old and current test executables')
 const root = mkdtempSync(join(tmpdir(), 'balance-version-compat-'))
 writeFileSync(join(root, 'SYNTHETIC_FIXTURES_ONLY'), 'Generated synthetic data; public test-only key')
@@ -21,7 +23,7 @@ function run(binary, database, command, extra = {}, allowError = false) {
   if (!allowError) assert.equal(response.error, null)
   return response
 }
-const state = (deviceId) => ({ schemaVersion: 1, deviceId, localSequence: 0, historyRevision: 0, activePlanDate: '', preferences: {}, templates: [], plans: [], goals: [], goalCompletions: [], listTemplates: [], lists: [], metrics: [], metricEntries: [], notes: [], images: [], projects: [], projectCheckIns: [], operations: [] })
+const state = (deviceId) => ({ schemaVersion: 1, deviceId, localSequence: 0, historyRevision: 0, activePlanDate: '', preferences: { themeId: 'graphite', doneTintColor: '', checkboxColor: '' }, templates: [], plans: [], goals: [], goalCompletions: [], listTemplates: [], lists: [], metrics: [], metricEntries: [], notes: [], images: [], projects: [], projectCheckIns: [], operations: [] })
 const operation = (device, sequence, type, payload) => ({ id: `${device}-${sequence}`, deviceId: device, sequence, type, timestamp: `2026-09-08T12:00:${String(sequence).padStart(2, '0')}.000Z`, payload })
 const record = (collection, key, value, patches = []) => ({ collection, key, position: 0, value, patches })
 const generic = (device, seq, upserts, deletes = []) => operation(device, seq, 'apply_entity_changes', { action: 'future_feature_action', entityChanges: { version: 2, upserts, deletes } })
@@ -42,8 +44,8 @@ assert.deepEqual(upgraded.entities, legacy.entities)
 
 // A future producer uses only this release's generic storage contract. This
 // executable has no schema/UI for the future collection or nested field.
-run(currentBinary, 'future', 'init', { state: state('future-device') })
-let future = run(currentBinary, 'future', 'write', { operation: generic('future-device', 1, [
+run(futureBinary, 'future', 'init', { state: state('future-device') })
+let future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 1, [
   record('futureHabitCheckIns', 'f', { id: 'f', amount: 7 }),
   record('notes', 'n', { id: 'n', title: 'Before', futureColor: 'blue', items: [{ id: 'task', text: 'Synthetic task', done: false, futureLink: 'f' }] }),
 ]) })
@@ -61,7 +63,7 @@ blind = run(currentBinary, 'blind', 'redo')
 const beforeCompact = blind.entities
 blind = run(currentBinary, 'blind', 'checkpoint')
 assert.deepEqual(blind.entities, beforeCompact)
-future = run(currentBinary, 'future', 'merge', { operations: blind.operations })
+future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
 assert.deepEqual(future.entities, blind.entities)
 
 // Unsupported primitives roll back the entire incoming transaction; the failed
@@ -73,3 +75,30 @@ assert.match(failed.error, /Update required/)
 assert.deepEqual(failed.entities, blind.entities)
 assert.deepEqual(failed.operations, blind.operations)
 console.log(`PASS: released database upgrade, legacy undo/redo, unknown features, nested fields, two-way edits, compaction, rollback (${requests} real-engine process calls)`)
+
+// Exercise real encrypted relay envelopes as well as the merge/materializer.
+// The port is randomly assigned once for this isolated fixture server.
+const relayPort = randomInt(20_000, 60_000)
+const relaySecret = 'synthetic_compatibility_relay_only'
+const relay = spawn(process.execPath, ['scripts/relay-server.mjs', String(relayPort)], {
+  env: { ...process.env, BALANCE_RELAY_SECRET: relaySecret }, stdio: ['ignore', 'pipe', 'inherit'],
+})
+try {
+  await Promise.race([once(relay.stdout, 'data'), once(relay, 'exit').then(() => { throw Error('Fixture relay exited before startup') })])
+  const url = `http://127.0.0.1:${relayPort}/${relaySecret}`
+  run(oldBinary, 'legacy', 'relay', { url })
+  run(currentBinary, 'network', 'init', { state: state('network-device') })
+  const downloaded = run(currentBinary, 'network', 'relay', { url })
+  assert.deepEqual(downloaded.entities, legacy.entities)
+  run(currentBinary, 'network', 'write', { operation: generic('network-device', 1, [record('futureNetworkCollection', 'network-row', { id: 'network-row', value: 19 })]) })
+  run(currentBinary, 'network', 'relay', { url })
+  const incompatible = run(oldBinary, 'legacy', 'relay', { url }, true)
+  assert.match(incompatible.error, /incompatible protocol/)
+  assert.deepEqual(incompatible.entities, legacy.entities)
+  const recovered = run(currentBinary, 'legacy', 'relay', { url })
+  assert(recovered.entities.some((row) => row.collection === 'futureNetworkCollection'))
+  console.log('PASS: v5 encrypted relay download, safe old-client refusal, in-place upgrade recovery')
+} finally {
+  relay.kill()
+  await once(relay, 'exit')
+}

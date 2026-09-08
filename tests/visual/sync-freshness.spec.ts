@@ -1,4 +1,8 @@
 import { expect, test, type Page } from '@playwright/test'
+import { DAY_ROLLOVER_HOUR } from '../../src/lib/planner'
+
+// Fixture dates use UTC days with Balance's overnight rollover.
+test.use({ timezoneId: 'UTC' })
 
 type SyncStatusSnapshot = {
   running: boolean
@@ -29,7 +33,7 @@ async function openSettings(page: Page) {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => {
+  await page.addInitScript((rolloverHour) => {
     type TestRuntime = typeof globalThis & {
       isTauri: boolean
       __syncAttemptCount: number
@@ -55,7 +59,7 @@ test.beforeEach(async ({ page }) => {
       }
     }
     const runtime = globalThis as TestRuntime
-    const date = new Date().toISOString().slice(0, 10)
+    const date = new Date(Date.now() - rolloverHour * 60 * 60 * 1000).toISOString().slice(0, 10)
     const stateWithItem = (text: string) => JSON.stringify({
       schemaVersion: 1,
       deviceId: 'stale-state-test',
@@ -310,7 +314,7 @@ test.beforeEach(async ({ page }) => {
         }
       },
     }
-  })
+  }, DAY_ROLLOVER_HOUR)
 })
 
 test('a slow settings read does not cover the app with sync progress', async ({ page }) => {

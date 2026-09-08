@@ -92,3 +92,11 @@ time and risks the environment.
 All Android verification happens in CI: `.github/workflows/android.yml` builds the
 debug APK (arm64 + x86_64) and runs an emulator smoke test. To validate Android
 changes, push the branch and let that workflow run.
+
+## Preserve operation compatibility
+
+When adding or changing persisted actions, record fields, or collections, read
+[the balance-operations skill](.agents/skills/balance-operations/SKILL.md).
+Feature actions must use the stable storage vocabulary and preserve data from
+newer clients through edits, undo and checkpoints. Verify changes with the
+synthetic database and mixed-version CI before releasing.

@@ -147,7 +147,8 @@ fn contains_retired_snapshot_field(value: &JsonValue) -> bool {
         JsonValue::Object(object) => {
             object.contains_key("goalData")
                 || object.contains_key("listsMetricsData")
-                || object.values().any(contains_retired_snapshot_field)
+                || object.iter().filter(|(key, _)| !matches!(key.as_str(), "entityChanges" | "replicatedEntities" | "state"))
+                    .any(|(_, value)| contains_retired_snapshot_field(value))
         }
         JsonValue::Array(values) => values.iter().any(contains_retired_snapshot_field),
         _ => false,
@@ -726,6 +727,10 @@ fn snapshot_state_op(conn: &Connection, state: &JsonValue) -> Result<JsonValue> 
         upserts.retain(|row| row["collection"] != "images" || state["images"].as_array().is_some_and(|assets|
             assets.iter().any(|asset| asset["id"] == row["key"])));
     }
+    let mut relational_state = state.clone();
+    if let Some(object) = relational_state.as_object_mut() {
+        for collection in crate::ENTITY_COLLECTIONS { object.remove(collection); }
+    }
     Ok(json!({
         "id": random_id(),
         "deviceId": device_id,
@@ -733,10 +738,10 @@ fn snapshot_state_op(conn: &Connection, state: &JsonValue) -> Result<JsonValue> 
         // Sorts before any real ISO-8601 timestamp, so it's the replay baseline.
         "timestamp": "0000-00-00T00:00:00.000Z",
         "type": "replace_full_state",
-        // `apply_operation` reads only `payload.state`; frontier metadata is
-        // inert during replay and consulted only by reconciliation.
+        // Relational state and opaque entity rows are replayed together.
+        // Frontier metadata is consulted only by reconciliation.
         "payload": {
-            "state": state.clone(),
+            "state": relational_state,
             "replicatedEntities": replicated_entities,
             "generation": generation,
             "frontiers": frontiers

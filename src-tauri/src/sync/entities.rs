@@ -66,9 +66,11 @@ impl Patch {
                 for (id, patch) in entries {
                     if let Some((_, value)) = values.iter_mut().find(|(key, _)| key == id) {
                         *value = patch.apply(value)?;
-                    } else {
+                    } else if matches!(patch, Self::Replace { .. }) {
                         values.push((id.clone(), patch.apply(&Value::Null)?));
                     }
+                    // A field edit cannot resurrect an already-deleted nested
+                    // record. Explicit insertions carry a complete replace value.
                 }
                 for (id, value) in &values {
                     if value.get("id").and_then(Value::as_str) != Some(id) {

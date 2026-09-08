@@ -4027,7 +4027,7 @@ fn history_result_for_ui(
     let can_redo = latest_redoable_history_entry(connection)?.is_some();
     Ok(json!({
         "operationId": history.operation_id,
-        "operationType": history.redo_operation.get("type"),
+        "operationType": operation_action(&history.redo_operation),
         "localSequence": local_sequence,
         "state": state,
         "canRedo": can_redo,
@@ -4172,7 +4172,7 @@ fn inspect_history_entries_from_database(
             "
           select h.id, h.operation_id, h.sequence, h.undone, h.created_at_ms,
                  h.updated_at_ms, h.undo_operation_json, h.redo_operation_json,
-                 o.type, o.timestamp
+                 coalesce(json_extract(h.redo_operation_json, '$.payload.action'), o.type), o.timestamp
           from history_entries h
           left join operations o on o.id = h.operation_id
           order by h.sequence desc, h.updated_at_ms desc, h.id desc
@@ -4213,7 +4213,7 @@ fn list_recovery_entries_from_database(connection: &Connection) -> Result<Value,
         .prepare(
             "
           select h.id, h.operation_id, h.sequence, h.undone, h.created_at_ms,
-                 h.undo_operation_json, h.redo_operation_json, o.type, o.timestamp
+                 h.undo_operation_json, h.redo_operation_json, coalesce(json_extract(h.redo_operation_json, '$.payload.action'), o.type), o.timestamp
           from history_entries h
           left join operations o on o.id = h.operation_id
           order by h.created_at_ms desc, h.sequence desc
@@ -4254,10 +4254,7 @@ fn list_recovery_entries_from_database(connection: &Connection) -> Result<Value,
         if op_type.is_none() || timestamp.is_none() {
             if let Ok(redo_operation) = serde_json::from_str::<Value>(&redo_json) {
                 op_type = op_type.or_else(|| {
-                    redo_operation
-                        .get("type")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
+                    Some(operation_action(&redo_operation).to_string())
                 });
                 timestamp = timestamp.or_else(|| {
                     redo_operation
@@ -4306,7 +4303,7 @@ fn search_recovery_history_from_database(
         .prepare(
             "
           select h.id, h.created_at_ms, h.undo_operation_json,
-                 h.redo_operation_json, o.type, o.timestamp
+                 h.redo_operation_json, coalesce(json_extract(h.redo_operation_json, '$.payload.action'), o.type), o.timestamp
           from history_entries h
           left join operations o on o.id = h.operation_id
           order by h.created_at_ms desc, h.sequence desc
@@ -4343,10 +4340,7 @@ fn search_recovery_history_from_database(
         if operation_type.is_none() || timestamp.is_none() {
             if let Ok(redo_operation) = serde_json::from_str::<Value>(&redo_json) {
                 operation_type = operation_type.or_else(|| {
-                    redo_operation
-                        .get("type")
-                        .and_then(Value::as_str)
-                        .map(str::to_string)
+                    Some(operation_action(&redo_operation).to_string())
                 });
                 timestamp = timestamp.or_else(|| {
                     redo_operation
@@ -6551,11 +6545,15 @@ fn upsert_history_entry(
     Ok(())
 }
 
+fn operation_action(operation: &Value) -> &str {
+    let kind = operation.get("type").and_then(Value::as_str).unwrap_or_default();
+    if kind == "apply_entity_changes" {
+        operation.get("payload").and_then(|payload| payload.get("action")).and_then(Value::as_str).unwrap_or(kind)
+    } else { kind }
+}
+
 fn destructive_history_operation(operation: &Value) -> bool {
-    let operation_type = operation
-        .get("type")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
+    let operation_type = operation_action(operation);
     operation_type.starts_with("delete_")
         || operation_type.starts_with("backspace_")
         || operation_type.starts_with("paste_")

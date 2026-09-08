@@ -10,7 +10,7 @@ permissions:
 jobs:
   compatibility:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -39,13 +39,25 @@ jobs:
         run: |
           set -euo pipefail
           git worktree add --detach ../previous "$PREVIOUS_VERSION"
-          for checkout in ../previous .; do
+          git worktree add --detach ../future HEAD
+          # Model an additive next release: it knows a collection that the
+          # foundation reader deliberately does not include in its UI schema.
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          path = Path('../future/src-tauri/src/lib.rs')
+          source = path.read_text().replace('const ENTITY_COLLECTIONS: [&str; 10]', 'const ENTITY_COLLECTIONS: [&str; 11]')
+          source = source.replace('const LISTS_METRICS_KEYS: [&str; 7]', 'const LISTS_METRICS_KEYS: [&str; 8]')
+          source = source.replace('    "projectCheckIns",', '    "projectCheckIns",\n    "futureHabitCheckIns",')
+          source = source.replace('"projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),', '"projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),\n        "futureHabitCheckIns": lists_metrics_data["futureHabitCheckIns"].clone(),')
+          path.write_text(source)
+          PYTHON
+          for checkout in ../previous ../future .; do
             cp .github/scripts/sync-compat-driver.rs "$checkout/src-tauri/src/sync_compat_driver.rs"
             printf '\n#[cfg(test)]\nmod sync_compat_driver;\n' >> "$checkout/src-tauri/src/lib.rs"
             cargo test --manifest-path "$checkout/src-tauri/Cargo.toml" --lib --no-run --message-format=json > build-messages.json
-            node -e 'const fs = require("fs"); const rows = fs.readFileSync("build-messages.json", "utf8").trim().split("\n").map(JSON.parse); const executable = rows.findLast(r => r.reason === "compiler-artifact" && r.profile.test && r.executable)?.executable; if (!executable) throw Error("Missing test executable"); fs.copyFileSync(executable, process.argv[1]); fs.chmodSync(process.argv[1], 0o755)' "$([[ "$checkout" == . ]] && echo current-engine || echo previous-engine)"
+            node -e 'const fs = require("fs"); const rows = fs.readFileSync("build-messages.json", "utf8").trim().split("\n").map(JSON.parse); const executable = rows.findLast(r => r.reason === "compiler-artifact" && r.profile.test && r.executable)?.executable; if (!executable) throw Error("Missing test executable"); fs.copyFileSync(executable, process.argv[1]); fs.chmodSync(process.argv[1], 0o755)' "$(case "$checkout" in .) echo current-engine;; ../future) echo future-engine;; *) echo previous-engine;; esac)"
           done
       - name: Verify upgrades and future-feature interoperability
-        run: node .github/scripts/sync-compatibility.mjs "$PWD/previous-engine" "$PWD/current-engine"
+        run: node .github/scripts/sync-compatibility.mjs "$PWD/previous-engine" "$PWD/current-engine" "$PWD/future-engine"
       - name: Test current encrypted database and reconciliation engine
         run: ./current-engine --skip compatibility_process_driver
