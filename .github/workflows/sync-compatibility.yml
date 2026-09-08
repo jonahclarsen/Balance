@@ -1,0 +1,51 @@
+name: Sync version compatibility
+on:
+  push:
+    branches: [main, 'feat/forward-compatible-sync']
+    paths: ['src-tauri/**', 'src/lib/store.ts', 'src/lib/entityPatch.ts', '.github/scripts/sync-compat*', '.github/workflows/sync-compatibility.yml']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compatibility:
+    runs-on: macos-15
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        previous: [v0.6.8, v0.6.7]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            compat-target
+          key: ${{ runner.os }}-sync-compat-${{ matrix.previous }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-sync-compat-${{ matrix.previous }}-
+      - name: Build real current and released engines with the same synthetic fixture driver
+        env:
+          PREVIOUS_VERSION: ${{ matrix.previous }}
+          CARGO_TARGET_DIR: ${{ github.workspace }}/compat-target
+        run: |
+          set -euo pipefail
+          git worktree add --detach ../previous "$PREVIOUS_VERSION"
+          for checkout in ../previous .; do
+            cp .github/scripts/sync-compat-driver.rs "$checkout/src-tauri/src/sync_compat_driver.rs"
+            printf '\n#[cfg(test)]\nmod sync_compat_driver;\n' >> "$checkout/src-tauri/src/lib.rs"
+            cargo test --manifest-path "$checkout/src-tauri/Cargo.toml" --lib --no-run --message-format=json > build-messages.json
+            node -e 'const fs = require("fs"); const rows = fs.readFileSync("build-messages.json", "utf8").trim().split("\n").map(JSON.parse); const executable = rows.findLast(r => r.reason === "compiler-artifact" && r.profile.test && r.executable)?.executable; if (!executable) throw Error("Missing test executable"); fs.copyFileSync(executable, process.argv[1]); fs.chmodSync(process.argv[1], 0o755)' "$([[ "$checkout" == . ]] && echo current-engine || echo previous-engine)"
+          done
+      - name: Verify upgrades and future-feature interoperability
+        run: node .github/scripts/sync-compatibility.mjs "$PWD/previous-engine" "$PWD/current-engine"
+      - name: Test current encrypted database and reconciliation engine
+        run: ./current-engine --skip compatibility_process_driver

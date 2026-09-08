@@ -30,15 +30,16 @@ use serde_json::{json, Value as JsonValue};
 use sha2::{Digest, Sha256};
 
 pub mod crypto;
+pub mod entities;
 pub mod diagnostics;
 #[cfg(test)]
 pub mod relay;
 pub mod relay_client;
 
 /// Wire-protocol version. Bump only for incompatible framing/semantics changes.
-// v5 adds shared image entities. Older writers must
-// not create checkpoints that silently omit image bytes.
-pub const PROTOCOL_VERSION: u32 = 5;
+// v6 stores generic record patches and checkpoints every collection. Older
+// writers cannot safely compact this state; v4/v5 remain readable for upgrades.
+pub const PROTOCOL_VERSION: u32 = 6;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
@@ -718,6 +719,13 @@ fn snapshot_state_op(conn: &Connection, state: &JsonValue) -> Result<JsonValue> 
     let generation = current_checkpoint(conn)?
         .map(|value| value.0 + 1)
         .unwrap_or(1);
+    let mut replicated_entities = entities::snapshot(conn).map_err(Error::Codec)?;
+    // Image collection is the one deliberate checkpoint GC. Keep its canonical
+    // rows aligned with the retained assets in the supplied state.
+    if let Some(upserts) = replicated_entities["upserts"].as_array_mut() {
+        upserts.retain(|row| row["collection"] != "images" || state["images"].as_array().is_some_and(|assets|
+            assets.iter().any(|asset| asset["id"] == row["key"])));
+    }
     Ok(json!({
         "id": random_id(),
         "deviceId": device_id,
@@ -729,6 +737,7 @@ fn snapshot_state_op(conn: &Connection, state: &JsonValue) -> Result<JsonValue> 
         // inert during replay and consulted only by reconciliation.
         "payload": {
             "state": state.clone(),
+            "replicatedEntities": replicated_entities,
             "generation": generation,
             "frontiers": frontiers
         },
@@ -785,6 +794,11 @@ fn install_checkpoint_with_history_policy(
         }
     }
 
+    if let Some(expected_entities) = snapshot.get("payload").and_then(|p| p.get("replicatedEntities")) {
+        if entities::snapshot(&tx).map_err(Error::Codec)? != *expected_entities {
+            return Err(Error::Codec("checkpoint would discard replicated records".into()));
+        }
+    }
     let replayed_state = crate::read_app_state_from_database(&tx)
         .map_err(Error::Codec)?
         .ok_or_else(|| Error::Codec("checkpoint replay produced no app state".into()))?;

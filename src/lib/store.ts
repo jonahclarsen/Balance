@@ -1,3 +1,4 @@
+import { entityPatch, type EntityPatch } from './entityPatch'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { pickerColorToHex } from './colors'
 import { get, writable, type Writable } from 'svelte/store'
@@ -162,13 +163,14 @@ const ENTITY_COLLECTIONS = [
   'projectCheckIns',
 ] as const
 type EntityCollection = (typeof ENTITY_COLLECTIONS)[number]
-type EntityUpsert = { collection: EntityCollection; key: string; position: number; value: unknown }
+type EntityUpsert = { collection: EntityCollection; key: string; position: number | null; value: unknown; patches: EntityPatch[] }
 type EntityDelete = { collection: EntityCollection; key: string }
-type EntityChanges = { version: 1; upserts: EntityUpsert[]; deletes: EntityDelete[] }
+type EntityChanges = { version: 2; upserts: EntityUpsert[]; deletes: EntityDelete[] }
 type SplitPlacement = 'before' | 'after' | 'firstChild'
 
 type Mutator = (state: AppState) => AppState
 type CommitOptions = {
+  entityOnly?: boolean
   undoable?: boolean
   mergeKey?: string
   mergeWindowMs?: number
@@ -452,7 +454,7 @@ function entityChangesBetween(before: AppState, after: AppState): EntityChanges 
         previous.position !== position ||
         (previous.value !== value && JSON.stringify(previous.value) !== JSON.stringify(value))
       ) {
-        upserts.push({ collection, key, position, value })
+        upserts.push({ collection, key, position: !previous || previous.position !== position ? position : null, value, patches: [entityPatch(previous?.value, value)] })
       }
     })
     beforeKeys.forEach((key) => {
@@ -460,7 +462,7 @@ function entityChangesBetween(before: AppState, after: AppState): EntityChanges 
     })
   }
 
-  return upserts.length > 0 || deletes.length > 0 ? { version: 1, upserts, deletes } : null
+  return upserts.length > 0 || deletes.length > 0 ? { version: 2, upserts, deletes } : null
 }
 
 function operationEntityChanges(operation: Operation | undefined): EntityChanges | null {
@@ -468,7 +470,7 @@ function operationEntityChanges(operation: Operation | undefined): EntityChanges
   const changes = (operation.payload as Record<string, unknown>).entityChanges
   if (!changes || typeof changes !== 'object') return null
   const candidate = changes as Partial<EntityChanges>
-  return candidate.version === 1 && Array.isArray(candidate.upserts) && Array.isArray(candidate.deletes)
+  return candidate.version === 2 && Array.isArray(candidate.upserts) && Array.isArray(candidate.deletes)
     ? candidate as EntityChanges
     : null
 }
@@ -481,7 +483,11 @@ function composeEntityChanges(previous: EntityChanges | null, latest: EntityChan
   const actionKey = (collection: EntityCollection, key: string) => `${collection}\u0000${key}`
   for (const upsert of previous.upserts) actions.set(actionKey(upsert.collection, upsert.key), { upsert })
   for (const deletion of previous.deletes) actions.set(actionKey(deletion.collection, deletion.key), { deletion })
-  for (const upsert of latest.upserts) actions.set(actionKey(upsert.collection, upsert.key), { upsert })
+  for (const upsert of latest.upserts) {
+    const key = actionKey(upsert.collection, upsert.key)
+    const prior = actions.get(key)?.upsert
+    actions.set(key, { upsert: prior ? { ...upsert, position: upsert.position ?? prior.position, patches: [...prior.patches, ...upsert.patches] } : upsert })
+  }
   for (const deletion of latest.deletes) actions.set(actionKey(deletion.collection, deletion.key), { deletion })
 
   const upserts: EntityUpsert[] = []
@@ -490,7 +496,7 @@ function composeEntityChanges(previous: EntityChanges | null, latest: EntityChan
     if (action.upsert) upserts.push(action.upsert)
     if (action.deletion) deletes.push(action.deletion)
   }
-  return { version: 1, upserts, deletes }
+  return { version: 2, upserts, deletes }
 }
 
 function scheduleOperationFlush(): void {
@@ -632,6 +638,12 @@ function createPlannerStore() {
     return backendReloadPromise
   }
 
+  // New feature actions that only change entity collections use this stable
+  // storage operation; their human action name never selects a native handler.
+  function commitEntities(action: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
+    commit(action, payload, mutate, { ...options, entityOnly: true })
+  }
+
   let imageMoveEdits: { type: string; payload: unknown; mutate: Mutator }[] | null = null
   function commit(type: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
     if (imageMoveEdits) { imageMoveEdits.push({ type, payload, mutate }); return }
@@ -667,6 +679,9 @@ function createPlannerStore() {
         next = { ...next, goalCompletions: reconciledGoalCompletions }
       }
 
+      if (options.entityOnly && (state.plans !== next.plans || state.templates !== next.templates || state.preferences !== next.preferences || state.activePlanDate !== next.activePlanDate)) {
+        throw new Error('Entity actions must not mutate relational planner state or preferences')
+      }
       const now = Date.now()
       const timestamp = nowISO()
       const lastOperation = state.operations.at(-1)
@@ -692,13 +707,14 @@ function createPlannerStore() {
         if (previousImageIds.has(id)) continue
         const asset = next.images.find((image) => image.id === id)
         if (!asset || entityChanges?.upserts.some((upsert) => upsert.collection === 'images' && upsert.key === id)) continue
-        entityChanges ??= { version: 1, upserts: [], deletes: [] }
-        entityChanges.upserts.push({ collection: 'images', key: id, position: next.images.indexOf(asset), value: asset })
+        entityChanges ??= { version: 2, upserts: [], deletes: [] }
+        entityChanges.upserts.push({ collection: 'images', key: id, position: next.images.indexOf(asset), value: asset, patches: [] })
       }
       const operationPayload = entityChanges
         ? {
             ...(payload && typeof payload === 'object' ? payload : { value: payload }),
             entityChanges,
+            ...(options.entityOnly ? { action: type } : {}),
           }
         : payload
       const operation: Operation = canMergeOperation
@@ -707,7 +723,7 @@ function createPlannerStore() {
             id: `op_${state.deviceId}_${sequence}`,
             deviceId: state.deviceId,
             sequence,
-            type,
+            type: options.entityOnly ? 'apply_entity_changes' : type,
             timestamp,
             payload: operationPayload,
           }
@@ -722,7 +738,7 @@ function createPlannerStore() {
       lastOperationMergeUpdatedAt = now
 
       if (options.undoable !== false) {
-        recordHistory(state, committed, operation.id, operation.type, options)
+        recordHistory(state, committed, operation.id, type, options)
       }
 
       return committed
@@ -1250,7 +1266,7 @@ function createPlannerStore() {
 
     addGoal(name: string, cadenceDays: number, matchTerms: string[], hue: number, lightness = 50, matchTermsHtml?: string) {
       const goal = createGoal(name, cadenceDays, matchTerms, hue, lightness, todayISO(), createId('goal'), matchTermsHtml)
-      commit('replace_goal_data', { action: 'add_goal', goalId: goal.id }, (state) => ({
+      commitEntities('replace_goal_data', { action: 'add_goal', goalId: goal.id }, (state) => ({
         ...state,
         goals: [...state.goals, goal],
       }))
@@ -1258,7 +1274,7 @@ function createPlannerStore() {
     },
 
     patchGoal(goalId: Id, patch: Partial<Pick<Goal, 'name' | 'nameHtml' | 'cadenceDays' | 'matchTerms' | 'matchTermsHtml' | 'hue' | 'lightness'>>) {
-      commit(
+      commitEntities(
         'replace_goal_data',
         { action: 'patch_goal', goalId, patch },
         (state) => {
@@ -1298,7 +1314,7 @@ function createPlannerStore() {
     },
 
     setGoalStartDate(goalId: Id, date: string) {
-      commit('replace_goal_data', { action: 'set_goal_start_date', goalId, date }, (state) => {
+      commitEntities('replace_goal_data', { action: 'set_goal_start_date', goalId, date }, (state) => {
         let changed = false
         const goals = state.goals.map((goal) => {
           if (goal.id !== goalId) return goal
@@ -1311,7 +1327,7 @@ function createPlannerStore() {
     },
 
     setGoalActive(goalId: Id, active: boolean, date = todayISO()) {
-      commit('replace_goal_data', { action: 'set_goal_active', goalId, active, date }, (state) => {
+      commitEntities('replace_goal_data', { action: 'set_goal_active', goalId, active, date }, (state) => {
         let changed = false
         const goals = state.goals.map((goal) => {
           if (goal.id !== goalId) return goal
@@ -1324,7 +1340,7 @@ function createPlannerStore() {
     },
 
     deleteGoal(goalId: Id) {
-      commit('replace_goal_data', { action: 'delete_goal', goalId }, (state) => ({
+      commitEntities('replace_goal_data', { action: 'delete_goal', goalId }, (state) => ({
         ...state,
         goals: state.goals.filter((goal) => goal.id !== goalId),
         goalCompletions: state.goalCompletions.filter((completion) => completion.goalId !== goalId),
@@ -1656,7 +1672,7 @@ function createPlannerStore() {
 
     addListTemplate() {
       const template = createListTemplate()
-      commit('add_list_template', { templateId: template.id }, (state) => ({
+      commitEntities('add_list_template', { templateId: template.id }, (state) => ({
         ...state,
         listTemplates: [...state.listTemplates, template],
       }))
@@ -1664,7 +1680,7 @@ function createPlannerStore() {
     },
 
     deleteListTemplate(templateId: Id) {
-      commit('delete_list_template', { templateId }, (state) => ({
+      commitEntities('delete_list_template', { templateId }, (state) => ({
         ...state,
         listTemplates: state.listTemplates.filter((template) => template.id !== templateId),
         lists: state.lists.filter((list) => list.listTemplateId !== templateId),
@@ -1674,7 +1690,7 @@ function createPlannerStore() {
     moveListTemplate(sourceId: Id, targetId: Id, placement: 'before' | 'after') {
       if (sourceId === targetId) return
 
-      commit('move_list_template', { sourceId, targetId, placement }, (state) => {
+      commitEntities('move_list_template', { sourceId, targetId, placement }, (state) => {
         const listTemplates = moveById(state.listTemplates, sourceId, targetId, placement)
         if (listTemplates === state.listTemplates) return state
         return { ...state, listTemplates }
@@ -1685,20 +1701,20 @@ function createPlannerStore() {
       if (!name.trim()) return null
       const timestamp = nowISO()
       const project = { id: createId('project'), name: name.trim(), description: '', color: pickerColorToHex({ hue: Math.floor(Math.random() * 360), lightness: 50 }), archived: false, createdAt: timestamp, updatedAt: timestamp }
-      commit('add_project', { projectId: project.id }, (state) => ({ ...state, projects: [...state.projects, project] }))
+      commitEntities('add_project', { projectId: project.id }, (state) => ({ ...state, projects: [...state.projects, project] }))
       return project.id
     },
 
     updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'description' | 'archived'>>) {
       if (patch.name !== undefined && !patch.name.trim()) return
-      commit('update_project', { projectId }, (state) => ({
+      commitEntities('update_project', { projectId }, (state) => ({
         ...state,
         projects: state.projects.map((project) => project.id === projectId ? { ...project, ...patch, updatedAt: nowISO() } : project),
       }))
     },
 
     permanentlyDeleteArchivedProject(projectId: Id) {
-      commit('delete_archived_project', { projectId }, (state) => {
+      commitEntities('delete_archived_project', { projectId }, (state) => {
         if (!state.projects.some((project) => project.id === projectId && project.archived)) return state
         return {
           ...state,
@@ -1711,7 +1727,7 @@ function createPlannerStore() {
     checkInProject(projectId: Id, progress: number, heart: number) {
       if (![progress, heart].every((value) => Number.isFinite(value) && value >= 0 && value <= 100)) return
       const entry = { id: createId('project_checkin'), projectId, progress: Math.round(progress), heart: Math.round(heart), createdAt: nowISO() }
-      commit('check_in_project', { projectId }, (state) => state.projects.some((project) => project.id === projectId && !project.archived)
+      commitEntities('check_in_project', { projectId }, (state) => state.projects.some((project) => project.id === projectId && !project.archived)
         ? { ...state, projectCheckIns: [...state.projectCheckIns, entry] } : state)
     },
 
@@ -1719,25 +1735,25 @@ function createPlannerStore() {
 
     addNote() {
       const note = createNote()
-      commit('add_note', { noteId: note.id }, (state) => ({ ...state, notes: [note, ...state.notes] }))
+      commitEntities('add_note', { noteId: note.id }, (state) => ({ ...state, notes: [note, ...state.notes] }))
       return note.id
     },
 
     trashNote(noteId: Id) {
       const deletedAt = nowISO()
-      commit('trash_note', { noteId, deletedAt }, (state) =>
+      commitEntities('trash_note', { noteId, deletedAt }, (state) =>
         updateNote(state, noteId, (note) => note.deletedAt ? note : { ...note, deletedAt }),
       )
     },
 
     restoreNote(noteId: Id) {
-      commit('restore_note', { noteId }, (state) =>
+      commitEntities('restore_note', { noteId }, (state) =>
         updateNote(state, noteId, (note) => note.deletedAt ? { ...note, deletedAt: null } : note),
       )
     },
 
     permanentlyDeleteNote(noteId: Id) {
-      commit(
+      commitEntities(
         'permanently_delete_note',
         { noteId },
         (state) => ({ ...state, notes: state.notes.filter((note) => note.id !== noteId) }),
@@ -1745,7 +1761,7 @@ function createPlannerStore() {
     },
 
     emptyNoteTrash() {
-      commit(
+      commitEntities(
         'empty_note_trash',
         {},
         (state) => {
@@ -1756,7 +1772,7 @@ function createPlannerStore() {
     },
 
     purgeExpiredNotes(now = Date.now()) {
-      commit(
+      commitEntities(
         'purge_expired_notes',
         { now },
         (state) => {
@@ -1768,7 +1784,7 @@ function createPlannerStore() {
     },
 
     renameNote(noteId: Id, title: string) {
-      commit(
+      commitEntities(
         'rename_note',
         { noteId, title },
         (state) => updateNote(state, noteId, (note) => ({ ...note, title, updatedAt: nowISO() })),
@@ -1778,7 +1794,7 @@ function createPlannerStore() {
 
     addRootNoteItem(noteId: Id, kind: NoteItemKind = 'paragraph') {
       const item = createNoteItem('', kind)
-      commit('add_note_item', { noteId, item }, (state) =>
+      commitEntities('add_note_item', { noteId, item }, (state) =>
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
@@ -1794,7 +1810,7 @@ function createPlannerStore() {
         isTextPatch && options.mergeHistory !== false
           ? { mergeKey: `note-item-text:${noteId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
           : {}
-      commit('patch_note_item', { noteId, itemId, patch }, (state) =>
+      commitEntities('patch_note_item', { noteId, itemId, patch }, (state) =>
         updateNote(state, noteId, (note) => {
           let items = updatePlanItem(note.items, itemId, (item) => applyPatch(item, patch)) as NoteItem[]
           if ('kind' in patch || 'done' in patch) items = reconcileNoteChecklistItems(items)
@@ -1804,7 +1820,7 @@ function createPlannerStore() {
 
     patchNoteItemsDone(noteId: Id, itemIds: Id[], done: boolean) {
       if (itemIds.length === 0) return
-      commit('patch_note_items_done', { noteId, itemIds, done }, (state) =>
+      commitEntities('patch_note_items_done', { noteId, itemIds, done }, (state) =>
         updateNote(state, noteId, (note) => {
           const items = patchNoteChecklistItemsDone(note.items, itemIds, done)
           return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
@@ -1821,7 +1837,7 @@ function createPlannerStore() {
       const inserted = placement === 'before' ? before : after
       const nextKind = source?.kind === 'heading' && placement === 'after' ? 'paragraph' : (source?.kind ?? 'paragraph')
       const newItem = { ...createNoteItem(inserted.text, nextKind), html: inserted.html }
-      commit('split_note_item', { noteId, itemId, patch, newItem, placement }, (state) =>
+      commitEntities('split_note_item', { noteId, itemId, patch, newItem, placement }, (state) =>
         updateNote(state, noteId, (candidate) => ({
           ...candidate,
           updatedAt: nowISO(),
@@ -1848,7 +1864,7 @@ function createPlannerStore() {
       const pastedItems = itemsToPaste.map(createPastedItem)
       if (pastedItems.length === 0) return []
 
-      commit('paste_note_items', { noteId, targetId, placement, items: pastedItems }, (state) =>
+      commitEntities('paste_note_items', { noteId, targetId, placement, items: pastedItems }, (state) =>
         updateNote(state, noteId, (note) => {
           const items = reconcileNoteChecklistItems(
             pastePlanItemsIntoTree(note.items, pastedItems, targetId, placement) as NoteItem[],
@@ -1861,7 +1877,7 @@ function createPlannerStore() {
     },
 
     deleteNoteItem(noteId: Id, itemId: Id) {
-      commit('delete_note_item', { noteId, itemId }, (state) =>
+      commitEntities('delete_note_item', { noteId, itemId }, (state) =>
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
@@ -1872,7 +1888,7 @@ function createPlannerStore() {
 
     deleteNoteItems(noteId: Id, itemIds: Id[]) {
       if (itemIds.length === 0) return
-      commit('delete_note_items', { noteId, itemIds }, (state) =>
+      commitEntities('delete_note_items', { noteId, itemIds }, (state) =>
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
@@ -1888,7 +1904,7 @@ function createPlannerStore() {
       replacement: { html: string; text: string },
     ) {
       const removedIds = itemIds.filter((candidateId) => candidateId !== itemId)
-      commit('replace_note_item_range', { noteId, itemId, itemIds, replacement }, (state) =>
+      commitEntities('replace_note_item_range', { noteId, itemId, itemIds, replacement }, (state) =>
         updateNote(state, noteId, (note) => {
           let items = updatePlanItem(note.items, itemId, (item) => ({ ...item, ...replacement }))
           for (const removedId of removedIds) {
@@ -1904,7 +1920,7 @@ function createPlannerStore() {
     },
 
     deleteNoteItemPreservingChildren(noteId: Id, itemId: Id) {
-      commit('delete_note_item_preserving_children', { noteId, itemId }, (state) =>
+      commitEntities('delete_note_item_preserving_children', { noteId, itemId }, (state) =>
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
@@ -1920,7 +1936,7 @@ function createPlannerStore() {
       if (!note) return null
       const result = backspacePlanItemAtStartInTree(note.items, itemId)
       if (!result) return null
-      commit('backspace_note_item_at_start', { noteId, itemId, ...result.operation }, (state) =>
+      commitEntities('backspace_note_item_at_start', { noteId, itemId, ...result.operation }, (state) =>
         updateNote(state, noteId, (candidate) => ({
           ...candidate,
           updatedAt: nowISO(),
@@ -1931,7 +1947,7 @@ function createPlannerStore() {
     },
 
     moveNoteItem(noteId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) {
-      commit('move_note_item', { noteId, sourceId, targetId, placement }, (state) =>
+      commitEntities('move_note_item', { noteId, sourceId, targetId, placement }, (state) =>
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
@@ -1943,7 +1959,7 @@ function createPlannerStore() {
     },
 
     moveNoteItemWithinLevel(noteId: Id, itemId: Id, direction: MoveDirection) {
-      commit('move_note_item_within_level', { noteId, itemId, direction }, (state) =>
+      commitEntities('move_note_item_within_level', { noteId, itemId, direction }, (state) =>
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
@@ -1955,7 +1971,7 @@ function createPlannerStore() {
     },
 
     outdentNoteItem(noteId: Id, itemId: Id) {
-      commit('outdent_note_item', { noteId, itemId }, (state) =>
+      commitEntities('outdent_note_item', { noteId, itemId }, (state) =>
         updateNote(state, noteId, (note) => ({
           ...note,
           updatedAt: nowISO(),
@@ -1967,7 +1983,7 @@ function createPlannerStore() {
     },
 
     renameListTemplate(templateId: Id, name: string) {
-      commit(
+      commitEntities(
         'rename_list_template',
         { templateId, name },
         (state) => updateListTemplate(state, templateId, (template) => ({ ...template, name, updatedAt: nowISO() })),
@@ -1977,7 +1993,7 @@ function createPlannerStore() {
 
     setListTemplateMaxWords(templateId: Id, maxExpectedWords: number) {
       const normalized = Math.max(0, Math.round(maxExpectedWords) || 0)
-      commit('set_list_template_max_words', { templateId, maxExpectedWords: normalized }, (state) =>
+      commitEntities('set_list_template_max_words', { templateId, maxExpectedWords: normalized }, (state) =>
         updateListTemplate(state, templateId, (template) =>
           template.maxExpectedWords === normalized
             ? template
@@ -1988,7 +2004,7 @@ function createPlannerStore() {
 
     addRootListTemplateItem(templateId: Id) {
       const item = createListTemplateItem()
-      commit('add_list_template_item', { templateId, parentId: null, item }, (state) =>
+      commitEntities('add_list_template_item', { templateId, parentId: null, item }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
           ...template,
           updatedAt: nowISO(),
@@ -1999,7 +2015,7 @@ function createPlannerStore() {
 
     addListTemplateChild(templateId: Id, parentId: Id) {
       const item = createListTemplateItem()
-      commit('add_list_template_item', { templateId, parentId, item }, (state) =>
+      commitEntities('add_list_template_item', { templateId, parentId, item }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
           ...template,
           updatedAt: nowISO(),
@@ -2020,7 +2036,7 @@ function createPlannerStore() {
           : isTextPatch && options.mergeHistory !== false
             ? { mergeKey: `list-template-item-text:${templateId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
             : {}
-      commit('patch_list_template_item', { templateId, itemId, patch: normalizedPatch }, (state) =>
+      commitEntities('patch_list_template_item', { templateId, itemId, patch: normalizedPatch }, (state) =>
         updateListTemplate(state, templateId, (template) => {
           const items = updateListTemplateItem(template.items, itemId, (item) => applyPatch(item, normalizedPatch))
           return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
@@ -2047,7 +2063,7 @@ function createPlannerStore() {
         probability: insertedProbability,
       }
 
-      commit('split_list_template_item', { templateId, itemId, patch, newItem, placement }, (state) =>
+      commitEntities('split_list_template_item', { templateId, itemId, patch, newItem, placement }, (state) =>
         updateListTemplate(state, templateId, (template) => {
           const items = splitListTemplateItem(template.items, itemId, patch, newItem, placement)
           return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
@@ -2061,7 +2077,7 @@ function createPlannerStore() {
       const archivedAt = nowISO()
       const archivedDate = calendarDateISO()
       const archiveId = createId('archived_list_item')
-      commit('delete_list_template_item', { templateId, itemId, archiveId, archivedAt, archivedDate }, (state) =>
+      commitEntities('delete_list_template_item', { templateId, itemId, archiveId, archivedAt, archivedDate }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
           ...archiveListTemplateItem(template, itemId, false, archiveId, archivedAt, archivedDate),
           updatedAt: archivedAt,
@@ -2073,7 +2089,7 @@ function createPlannerStore() {
       const archivedAt = nowISO()
       const archivedDate = calendarDateISO()
       const archiveId = createId('archived_list_item')
-      commit('delete_list_template_item_preserving_children', { templateId, itemId, archiveId, archivedAt, archivedDate }, (state) =>
+      commitEntities('delete_list_template_item_preserving_children', { templateId, itemId, archiveId, archivedAt, archivedDate }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
           ...archiveListTemplateItem(template, itemId, true, archiveId, archivedAt, archivedDate),
           updatedAt: archivedAt,
@@ -2088,7 +2104,7 @@ function createPlannerStore() {
       const result = backspaceListTemplateItemAtStartInTree(template.items, itemId)
       if (!result) return null
 
-      commit('backspace_list_template_item_at_start', { templateId, itemId, ...result.operation }, (state) =>
+      commitEntities('backspace_list_template_item_at_start', { templateId, itemId, ...result.operation }, (state) =>
         updateListTemplate(state, templateId, (candidate) =>
           candidate.id === template.id
             ? { ...candidate, updatedAt: nowISO(), items: result.items }
@@ -2110,7 +2126,7 @@ function createPlannerStore() {
       if (copiedItems.length === 0) return []
 
       const rootIds = copiedItems.map((item) => item.id)
-      commit('cut_list_template_items', { templateId, itemIds: rootIds }, (state) =>
+      commitEntities('cut_list_template_items', { templateId, itemIds: rootIds }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
           ...template,
           updatedAt: nowISO(),
@@ -2128,7 +2144,7 @@ function createPlannerStore() {
       const archivedAt = nowISO()
       const archivedDate = calendarDateISO()
       const archiveIds = rootIds.map(() => createId('archived_list_item'))
-      commit('delete_list_template_items', { templateId, itemIds: rootIds, archiveIds, archivedAt, archivedDate }, (state) =>
+      commitEntities('delete_list_template_items', { templateId, itemIds: rootIds, archiveIds, archivedAt, archivedDate }, (state) =>
         updateListTemplate(state, templateId, (template) => {
           const archivedItems = rootIds.flatMap((itemId, index) => {
             const location = findListTemplateItemLocation(template.items, itemId)
@@ -2159,7 +2175,7 @@ function createPlannerStore() {
       const archivedAt = nowISO()
       const archivedDate = calendarDateISO()
       const archiveId = createId('archived_list_item')
-      commit('paste_list_template_items', { templateId, targetId, placement, items: pastedItems, archiveId, archivedAt, archivedDate }, (state) =>
+      commitEntities('paste_list_template_items', { templateId, targetId, placement, items: pastedItems, archiveId, archivedAt, archivedDate }, (state) =>
         updateListTemplate(state, templateId, (template) => {
           const archivedTemplate = placement === 'replace' && targetId
             ? archiveListTemplateItemSnapshot(template, targetId, archiveId, archivedAt, archivedDate)
@@ -2175,7 +2191,7 @@ function createPlannerStore() {
     },
 
     restoreArchivedListTemplateItem(templateId: Id, archiveId: Id) {
-      commit('restore_archived_list_template_item', { templateId, archiveId }, (state) =>
+      commitEntities('restore_archived_list_template_item', { templateId, archiveId }, (state) =>
         updateListTemplate(state, templateId, (template) => {
           const archived = template.archivedItems.find((entry) => entry.id === archiveId)
           if (!archived) return template
@@ -2200,7 +2216,7 @@ function createPlannerStore() {
     },
 
     permanentlyDeleteArchivedListTemplateItem(templateId: Id, archiveId: Id) {
-      commit('delete_archived_list_template_item', { templateId, archiveId }, (state) =>
+      commitEntities('delete_archived_list_template_item', { templateId, archiveId }, (state) =>
         updateListTemplate(state, templateId, (template) => {
           if (!template.archivedItems.some((entry) => entry.id === archiveId)) return template
           return {
@@ -2213,7 +2229,7 @@ function createPlannerStore() {
     },
 
     moveListTemplateItemsWithinLevel(templateId: Id, itemIds: Id[], direction: 'up' | 'down') {
-      commit('move_list_template_items_within_level', { templateId, itemIds, direction }, (state) =>
+      commitEntities('move_list_template_items_within_level', { templateId, itemIds, direction }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
           ...template,
           updatedAt: nowISO(),
@@ -2223,7 +2239,7 @@ function createPlannerStore() {
     },
 
     indentListTemplateItems(templateId: Id, itemIds: Id[]) {
-      commit('indent_list_template_items', { templateId, itemIds }, (state) =>
+      commitEntities('indent_list_template_items', { templateId, itemIds }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
           ...template,
           updatedAt: nowISO(),
@@ -2233,7 +2249,7 @@ function createPlannerStore() {
     },
 
     outdentListTemplateItems(templateId: Id, itemIds: Id[]) {
-      commit('outdent_list_template_items', { templateId, itemIds }, (state) =>
+      commitEntities('outdent_list_template_items', { templateId, itemIds }, (state) =>
         updateListTemplate(state, templateId, (template) => ({
           ...template,
           updatedAt: nowISO(),
@@ -2243,7 +2259,7 @@ function createPlannerStore() {
     },
 
     moveListTemplateItem(templateId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
-      commit('move_list_template_item', { templateId, sourceId, targetId, placement }, (state) =>
+      commitEntities('move_list_template_item', { templateId, sourceId, targetId, placement }, (state) =>
         updateListTemplate(state, templateId, (template) => {
           const items = moveListTemplateItem(template.items, sourceId, targetId, placement)
           return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
@@ -2252,7 +2268,7 @@ function createPlannerStore() {
     },
 
     moveListTemplateItemWithinLevel(templateId: Id, itemId: Id, direction: 'up' | 'down') {
-      commit('move_list_template_item_within_level', { templateId, itemId, direction }, (state) =>
+      commitEntities('move_list_template_item_within_level', { templateId, itemId, direction }, (state) =>
         updateListTemplate(state, templateId, (template) => {
           const items = moveListTemplateItemWithinLevel(template.items, itemId, direction)
           return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
@@ -2261,7 +2277,7 @@ function createPlannerStore() {
     },
 
     outdentListTemplateItem(templateId: Id, itemId: Id) {
-      commit('outdent_list_template_item', { templateId, itemId }, (state) =>
+      commitEntities('outdent_list_template_item', { templateId, itemId }, (state) =>
         updateListTemplate(state, templateId, (template) => {
           const items = outdentListTemplateItemInTree(template.items, itemId)
           return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
@@ -2280,7 +2296,7 @@ function createPlannerStore() {
       if (!template) return null
 
       const generated = generateListFromTemplate(template, date)
-      commit('generate_list', { listTemplateId, date, generated }, (state) => {
+      commitEntities('generate_list', { listTemplateId, date, generated }, (state) => {
         if (state.lists.some((list) => list.listTemplateId === listTemplateId && list.date === date)) return state
         return { ...state, lists: [...state.lists, generated] }
       })
@@ -2290,7 +2306,7 @@ function createPlannerStore() {
 
     addRootListItem(listId: Id) {
       const item = createPlanItem()
-      commit('add_list_item', { listId, parentId: null, item }, (state) =>
+      commitEntities('add_list_item', { listId, parentId: null, item }, (state) =>
         updateList(state, listId, (list) => ({ ...list, items: addPlanItem(list.items, null, item) })),
       )
     },
@@ -2303,7 +2319,7 @@ function createPlannerStore() {
           : isTextPatch && options.mergeHistory !== false
             ? { mergeKey: `list-item-text:${listId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
             : {}
-      commit('patch_list_item', { listId, itemId, patch }, (state) =>
+      commitEntities('patch_list_item', { listId, itemId, patch }, (state) =>
         updateList(state, listId, (list) => {
           const items = updatePlanItem(list.items, itemId, (item) => applyPatch(item, patch))
           return items === list.items ? list : { ...list, items }
@@ -2325,7 +2341,7 @@ function createPlannerStore() {
 
       const newItem = { ...createPlanItem(inserted.text ?? ''), html: inserted.html ?? '' }
 
-      commit('split_list_item', { listId, itemId, patch, newItem, placement, moveChildrenToNewItem }, (state) =>
+      commitEntities('split_list_item', { listId, itemId, patch, newItem, placement, moveChildrenToNewItem }, (state) =>
         updateList(state, listId, (list) => {
           const items = splitPlanItem(list.items, itemId, patch, newItem, placement, moveChildrenToNewItem)
           return items === list.items ? list : { ...list, items }
@@ -2336,13 +2352,13 @@ function createPlannerStore() {
     },
 
     deleteListItem(listId: Id, itemId: Id) {
-      commit('delete_list_item', { listId, itemId }, (state) =>
+      commitEntities('delete_list_item', { listId, itemId }, (state) =>
         updateList(state, listId, (list) => ({ ...list, items: deletePlanItem(list.items, itemId) })),
       )
     },
 
     deleteListItemPreservingChildren(listId: Id, itemId: Id) {
-      commit('delete_list_item_preserving_children', { listId, itemId }, (state) =>
+      commitEntities('delete_list_item_preserving_children', { listId, itemId }, (state) =>
         updateList(state, listId, (list) => ({
           ...list,
           items: deletePlanItemPreservingChildren(list.items, itemId),
@@ -2357,7 +2373,7 @@ function createPlannerStore() {
       const result = backspacePlanItemAtStartInTree(list.items, itemId)
       if (!result) return null
 
-      commit('backspace_list_item_at_start', { listId, itemId, ...result.operation }, (state) =>
+      commitEntities('backspace_list_item_at_start', { listId, itemId, ...result.operation }, (state) =>
         updateList(state, listId, (candidate) =>
           candidate.id === list.id ? { ...candidate, items: result.items } : candidate,
         ),
@@ -2367,19 +2383,19 @@ function createPlannerStore() {
     },
 
     moveListItem(listId: Id, sourceId: Id, targetId: Id, placement: 'before' | 'after' | 'inside') {
-      commit('move_list_item', { listId, sourceId, targetId, placement }, (state) =>
+      commitEntities('move_list_item', { listId, sourceId, targetId, placement }, (state) =>
         updateList(state, listId, (list) => ({ ...list, items: movePlanItem(list.items, sourceId, targetId, placement) })),
       )
     },
 
     moveListItemWithinLevel(listId: Id, itemId: Id, direction: 'up' | 'down') {
-      commit('move_list_item_within_level', { listId, itemId, direction }, (state) =>
+      commitEntities('move_list_item_within_level', { listId, itemId, direction }, (state) =>
         updateList(state, listId, (list) => ({ ...list, items: movePlanItemWithinLevel(list.items, itemId, direction) })),
       )
     },
 
     outdentListItem(listId: Id, itemId: Id) {
-      commit('outdent_list_item', { listId, itemId }, (state) =>
+      commitEntities('outdent_list_item', { listId, itemId }, (state) =>
         updateList(state, listId, (list) => {
           const items = outdentPlanItemInTree(list.items, itemId)
           return items === list.items ? list : { ...list, items }
@@ -2391,12 +2407,12 @@ function createPlannerStore() {
 
     addMetric() {
       const metric = createMetric()
-      commit('add_metric', { metricId: metric.id }, (state) => ({ ...state, metrics: [...state.metrics, metric] }))
+      commitEntities('add_metric', { metricId: metric.id }, (state) => ({ ...state, metrics: [...state.metrics, metric] }))
       return metric.id
     },
 
     deleteMetric(metricId: Id) {
-      commit('delete_metric', { metricId }, (state) => ({
+      commitEntities('delete_metric', { metricId }, (state) => ({
         ...state,
         metrics: state.metrics.filter((metric) => metric.id !== metricId),
         metricEntries: state.metricEntries.filter((entry) => entry.metricId !== metricId),
@@ -2404,7 +2420,7 @@ function createPlannerStore() {
     },
 
     renameMetric(metricId: Id, name: string) {
-      commit(
+      commitEntities(
         'rename_metric',
         { metricId, name },
         (state) => updateMetric(state, metricId, (metric) => ({ ...metric, name, updatedAt: nowISO() })),
@@ -2414,7 +2430,7 @@ function createPlannerStore() {
 
     addMetricQuestion(metricId: Id) {
       const question = createMetricQuestion('')
-      commit('add_metric_question', { metricId, question }, (state) =>
+      commitEntities('add_metric_question', { metricId, question }, (state) =>
         updateMetric(state, metricId, (metric) => ({
           ...metric,
           updatedAt: nowISO(),
@@ -2439,7 +2455,7 @@ function createPlannerStore() {
         ...createMetricQuestion(after.prompt, currentQuestion.type),
         html: after.html,
       }
-      commit('split_metric_question', { metricId, questionId, before, question }, (state) =>
+      commitEntities('split_metric_question', { metricId, questionId, before, question }, (state) =>
         updateMetric(state, metricId, (metric) => {
           const index = metric.questions.findIndex((candidate) => candidate.id === questionId)
           if (index === -1) return metric
@@ -2453,7 +2469,7 @@ function createPlannerStore() {
 
     patchMetricQuestion(metricId: Id, questionId: Id, patch: Partial<Pick<MetricQuestion, 'prompt' | 'html' | 'type'>>) {
       const isTextPatch = 'prompt' in patch
-      commit(
+      commitEntities(
         'patch_metric_question',
         { metricId, questionId, patch },
         (state) =>
@@ -2472,7 +2488,7 @@ function createPlannerStore() {
     },
 
     deleteMetricQuestion(metricId: Id, questionId: Id) {
-      commit('delete_metric_question', { metricId, questionId }, (state) =>
+      commitEntities('delete_metric_question', { metricId, questionId }, (state) =>
         updateMetric(state, metricId, (metric) => ({
           ...metric,
           updatedAt: nowISO(),
@@ -2482,7 +2498,7 @@ function createPlannerStore() {
     },
 
     moveMetricQuestion(metricId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) {
-      commit('move_metric_question', { metricId, sourceId, targetId, placement }, (state) =>
+      commitEntities('move_metric_question', { metricId, sourceId, targetId, placement }, (state) =>
         updateMetric(state, metricId, (metric) => {
           if (sourceId === targetId) return metric
           const source = metric.questions.find((question) => question.id === sourceId)
@@ -2497,7 +2513,7 @@ function createPlannerStore() {
     },
 
     upsertMetricAnswer(metricId: Id, date: string, questionId: Id, value: string) {
-      commit(
+      commitEntities(
         'upsert_metric_answer',
         { metricId, date, questionId, value },
         (state) => {
@@ -2518,7 +2534,7 @@ function createPlannerStore() {
 
     bulkImportMetricEntries(metricId: Id, rows: { date: string; answers: { questionId: Id; value: string }[] }[]) {
       if (rows.length === 0) return
-      commit('bulk_import_metric_entries', { metricId, count: rows.length }, (state) => {
+      commitEntities('bulk_import_metric_entries', { metricId, count: rows.length }, (state) => {
         let metricEntries = state.metricEntries
         for (const row of rows) {
           const existing = metricEntries.find((entry) => entry.metricId === metricId && entry.date === row.date)

@@ -1,0 +1,15 @@
+import { expect, test } from '@playwright/test'
+import { entityPatch } from '../../src/lib/entityPatch'
+
+test('an old editor only addresses changed fields, including nested records by ID', () => {
+  const before = { id: 'note', title: 'Before', items: [{ id: 'task', text: 'Before', done: false }] }
+  const after = { ...before, items: [{ ...before.items[0], done: true }] }
+  expect(entityPatch(before, after)).toEqual({ kind: 'object', fields: {
+    items: { kind: 'records', entries: { task: { kind: 'object', fields: { done: { kind: 'replace', value: true } }, remove: [] } }, remove: [] },
+  }, remove: [] })
+})
+
+test('field deletion, null, record deletion and reordering have distinct meanings', () => {
+  expect(entityPatch({ a: 1, b: 2 }, { b: null })).toEqual({ kind: 'object', fields: { b: { kind: 'replace', value: null } }, remove: ['a'] })
+  expect(entityPatch([{ id: 'a' }, { id: 'b' }, { id: 'c' }], [{ id: 'c' }, { id: 'a' }])).toEqual({ kind: 'records', entries: {}, remove: ['b'], order: ['c', 'a'] })
+})

@@ -424,7 +424,10 @@ fn decode_ciphertext(key: &SyncKey, epoch: &str, ciphertext: &[u8]) -> Result<Ve
     let envelope: RelayEnvelope = open(key, ciphertext)?;
     // Read existing v4 rooms during upgrade; new v5 envelopes stop older
     // clients from checkpointing state they cannot fully represent.
-    if ![4, PROTOCOL_VERSION].contains(&envelope.v) || envelope.epoch != epoch {
+    if ![4, 5, PROTOCOL_VERSION].contains(&envelope.v) {
+        return Err(Error::Codec("Update required: this sync data uses a newer storage protocol".into()));
+    }
+    if envelope.epoch != epoch {
         return Err(Error::Codec(
             "relay blob has incompatible protocol metadata".into(),
         ));

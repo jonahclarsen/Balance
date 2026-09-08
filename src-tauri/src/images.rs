@@ -72,6 +72,14 @@ fn retained_references(
 ) -> Result<HashSet<String>, String> {
     let mut ids = HashSet::new();
     references(state, &mut ids);
+    // Feature-blind clients must retain image references in opaque collections.
+    let mut entities = conn.prepare("SELECT value_json FROM state_entities WHERE collection != 'images'")
+        .map_err(|error| error.to_string())?;
+    let rows = entities.query_map([], |row| row.get::<_, String>(0)).map_err(|error| error.to_string())?;
+    for row in rows {
+        let value: Value = serde_json::from_str(&row.map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+        references(&value, &mut ids);
+    }
     if history {
         let mut statement = conn
             .prepare("SELECT undo_operation_json, redo_operation_json FROM history_entries")

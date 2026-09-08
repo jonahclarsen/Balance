@@ -3597,8 +3597,11 @@ fn valid_entity_collection(collection: &str) -> bool {
 }
 
 fn apply_entity_changes(connection: &Connection, changes: &Value) -> Result<(), String> {
+    if changes.get("version").and_then(Value::as_i64) == Some(2) {
+        return sync::entities::apply(connection, changes);
+    }
     if required_i64(changes, "version")? != 1 {
-        return Err("Unsupported entity change version".to_string());
+        return Err("Update required: unsupported entity change version".to_string());
     }
     let mut upsert = connection
         .prepare(
@@ -4863,7 +4866,13 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         // device (and as the replay baseline). Restores the entire domain state
         // from the payload via the same path as a wholesale state replace, but
         // leaves device-local metadata (device_id, local_sequence) untouched.
-        "replace_full_state" => replace_domain_state(tx, required_value(payload, "state")?),
+        "replace_full_state" => {
+            replace_domain_state(tx, required_value(payload, "state")?)?;
+            if let Some(entities) = payload.get("replicatedEntities") {
+                sync::entities::restore(tx, entities)?;
+            }
+            Ok(())
+        },
         "insert_template_option_at" => insert_template_option(
             tx,
             required_string(payload, "itemId")?,
@@ -4886,7 +4895,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         }
         "apply_entity_changes" | "add_image" => Ok(()),
         other if is_lists_metrics_operation(other) => Ok(()),
-        other => Err(format!("Unsupported operation type: {other}")),
+        other => Err(format!("Update required: unsupported operation type: {other}")),
     };
 
     result?;
@@ -4951,8 +4960,11 @@ fn current_entity(
 }
 
 fn inverse_entity_changes(connection: &Connection, changes: &Value) -> Result<Value, String> {
+    if changes.get("version").and_then(Value::as_i64) == Some(2) {
+        return sync::entities::inverse(connection, changes);
+    }
     if required_i64(changes, "version")? != 1 {
-        return Err("Unsupported entity change version".to_string());
+        return Err("Update required: unsupported entity change version".to_string());
     }
     let mut upserts = Vec::new();
     let mut deletes = Vec::new();
