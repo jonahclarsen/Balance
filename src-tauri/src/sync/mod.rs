@@ -155,9 +155,32 @@ fn contains_retired_snapshot_field(value: &JsonValue) -> bool {
     }
 }
 
+fn validate_storage_payload(payload: &JsonValue) -> Result<()> {
+    if let Some(changes) = payload.get("entityChanges") {
+        match changes.get("version").and_then(JsonValue::as_i64) {
+            Some(1) => (), // Existing immutable operation/history format.
+            Some(2) => entities::validate(changes).map_err(Error::Codec)?,
+            _ => return Err(Error::Codec("Update required: unsupported entity change version".into())),
+        }
+    }
+    if let Some(snapshot) = payload.get("replicatedEntities") {
+        entities::validate(snapshot).map_err(Error::Codec)?;
+    }
+    if let Some(operations) = payload.get("operations").and_then(JsonValue::as_array) {
+        for operation in operations {
+            if let Some(nested) = operation.get("payload") { validate_storage_payload(nested)?; }
+        }
+    }
+    if let Some(nested) = payload.get("operation").and_then(|operation| operation.get("payload")) {
+        validate_storage_payload(nested)?;
+    }
+    Ok(())
+}
+
 fn validate_current_operation(op: &Op) -> Result<JsonValue> {
     let payload: JsonValue = serde_json::from_str(&op.payload_json)
         .map_err(|error| Error::Codec(format!("invalid operation payload: {error}")))?;
+    validate_storage_payload(&payload)?;
     if contains_retired_snapshot_field(&payload) {
         return Err(Error::Codec(
             "operation contains retired full-state entity fields".into(),

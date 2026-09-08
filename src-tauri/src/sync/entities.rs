@@ -195,6 +195,10 @@ fn decode(changes: &Value) -> Result<Changes, String> {
     Ok(changes)
 }
 
+pub fn validate(changes: &Value) -> Result<(), String> {
+    decode(changes).map(|_| ())
+}
+
 pub fn apply(conn: &Connection, changes: &Value) -> Result<(), String> {
     let changes = decode(changes)?;
     for item in changes.upserts {
