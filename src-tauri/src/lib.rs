@@ -10659,7 +10659,11 @@ mod tests {
         let content = backup_browser::read_at(&database.path, filename, &key).unwrap();
         assert_eq!(content["plans"], expected["plans"]);
         assert_eq!(content["templates"], expected["templates"]);
-        assert_eq!(content.as_object().unwrap().len(), 8);
+        assert_eq!(
+            content.as_object().unwrap().keys().map(String::as_str).collect::<std::collections::BTreeSet<_>>(),
+            ["plans", "templates", "goals", "listTemplates", "lists", "metrics", "metricEntries", "notes", "projects", "projectCheckIns"]
+                .into_iter().collect::<std::collections::BTreeSet<_>>()
+        );
         assert!(!content.to_string().contains("synthetic-private-value"));
         assert!(!backup_bytes
             .windows(b"Before accidental deletion".len())

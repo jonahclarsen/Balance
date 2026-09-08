@@ -38,9 +38,22 @@ test('project check-ins retain history, survive reload, and open from a planner 
   await page.getByRole('slider', { name: 'Heart in it for Synthetic garden' }).fill('80')
   await page.getByRole('button', { name: 'Save check-in' }).click()
   await expect(card.locator('summary')).toContainText('1 check-in')
+  const persistedAction = await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let operation: any
+    const unsubscribe = plannerStore.subscribe((state: any) => { operation = state.operations.at(-1) })
+    unsubscribe()
+    return operation
+  })
+  expect(persistedAction.type).toBe('apply_entity_changes')
+  expect(persistedAction.payload.action).toBe('check_in_project')
+  expect(persistedAction.payload.entityChanges.version).toBe(2)
+  expect(persistedAction.payload.entityChanges.upserts.some((row: any) => row.collection === 'projectCheckIns')).toBe(true)
+
   await expect(card.getByRole('slider')).toHaveCount(0)
   await page.getByRole('button', { name: 'Check in', exact: true }).click()
-  await page.getByRole('slider', { name: 'Work complete for Synthetic garden' }).fill('99')
+  await page.getByRole('slider', { name: 'Work complete for Synthetic garden' }).fill('95')
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(card.locator('dd')).toHaveText(['35%', '80%'])
   await page.getByRole('button', { name: 'Check in', exact: true }).click()

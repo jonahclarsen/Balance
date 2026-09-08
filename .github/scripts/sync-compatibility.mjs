@@ -49,8 +49,10 @@ let future = run(futureBinary, 'future', 'write', { operation: generic('future-d
   record('futureHabitCheckIns', 'f', { id: 'f', amount: 7 }),
   record('notes', 'n', { id: 'n', title: 'Before', futureColor: 'blue', items: [{ id: 'task', text: 'Synthetic task', done: false, futureLink: 'f' }] }),
 ]) })
+assert.deepEqual(future.state.futureHabitCheckIns, [{ id: 'f', amount: 7 }])
 run(currentBinary, 'blind', 'init', { state: state('blind-device') })
-run(currentBinary, 'blind', 'merge', { operations: future.operations })
+const blindView = run(currentBinary, 'blind', 'merge', { operations: future.operations })
+assert(!Object.hasOwn(blindView.state, 'futureHabitCheckIns'))
 let blind = run(currentBinary, 'blind', 'write', { operation: generic('blind-device', 1, [record('notes', 'n', { id: 'n', title: 'After', items: [] }, [
   { kind: 'object', fields: { title: { kind: 'replace', value: 'After' }, items: { kind: 'records', entries: { task: { kind: 'object', fields: { done: { kind: 'replace', value: true } }, remove: [] } }, remove: [] } }, remove: [] },
 ])]) })

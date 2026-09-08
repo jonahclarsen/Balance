@@ -848,6 +848,9 @@ fn diagnostic_payload(operation: &Op, payload: &Value, tokenizer: &Tokenizer<'_>
         "generation": payload.get("generation"),
         "frontiers": payload.get("frontiers").map(|value| anonymize_json(value, tokenizer)),
         "stateToken": state_token,
+        "replicatedEntitiesToken": payload.get("replicatedEntities").map(|entities| {
+            tokenizer.opaque_token("checkpoint-entities", &entities.to_string())
+        }),
     })
 }
 
@@ -1279,6 +1282,7 @@ mod tests {
         let payload = json!({
             "state": {"plans": [{"title": "private checkpoint canary"}]},
             "generation": 4,
+            "replicatedEntities": {"futureRecords": [{"privateField": "synthetic opaque canary"}]},
             "frontiers": {"private-device": 12}
         });
         let trace = diagnostic_payload(&operation, &payload, &tokenizer);
@@ -1289,6 +1293,11 @@ mod tests {
         assert_eq!(trace["generation"], 4);
         assert!(trace["stateToken"].as_str().unwrap().starts_with("x_"));
         assert!(trace.get("state").is_none());
+        assert!(!serialized.contains("synthetic opaque canary"));
+        assert!(trace["replicatedEntitiesToken"].as_str().unwrap().starts_with("x_"));
+        let mut changed = payload.clone();
+        changed["replicatedEntities"] = json!({"futureRecords": []});
+        assert_ne!(trace["replicatedEntitiesToken"], diagnostic_payload(&operation, &changed, &tokenizer)["replicatedEntitiesToken"]);
     }
 
     #[test]

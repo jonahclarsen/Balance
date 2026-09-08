@@ -3126,7 +3126,12 @@ fn unknown_collection_survives_checkpoint_reopen_and_a_failed_batch_rolls_back()
     let before_ops = all_ops(&conn).unwrap();
     let valid = Op { id: "valid-part".into(), device_id: "peer".into(), sequence: 1, op_type: "apply_entity_changes".into(),
         timestamp: "2099-01-01T00:00:00Z".into(), payload_json: json!({"entityChanges": {"version": 2, "upserts": [], "deletes": [{"collection": "futureFeatureRecords", "key": "future-row"}]}}).to_string() };
-    let invalid = Op { id: "invalid-part".into(), sequence: 2, payload_json: json!({"entityChanges": {"version": 77, "upserts": [], "deletes": []}}).to_string(), ..valid.clone() };
+    let covered_unsupported = Op { id: "covered-unsupported".into(), device_id: "foundation".into(), sequence: 1,
+        payload_json: json!({"entityChanges": {"version": 77, "upserts": [], "deletes": []}}).to_string(), ..valid.clone() };
+    assert!(merge_and_rematerialize(&conn, vec![covered_unsupported]).unwrap_err().to_string().contains("Update required"));
+    let invalid = Op { id: "invalid-part".into(), sequence: 2, payload_json: json!({"entityChanges": {"version": 2,
+        "upserts": [{"collection": "futureFeatureRecords", "key": "bad-row", "position": 0, "value": {"id": "bad-row"},
+            "patches": [{"kind": "records", "entries": {}, "remove": []}]}], "deletes": []}}).to_string(), ..valid.clone() };
     assert!(merge_and_rematerialize(&conn, vec![valid, invalid]).unwrap_err().to_string().contains("Update required"));
     assert_eq!(entities::snapshot(&conn).unwrap(), before);
     assert_eq!(all_ops(&conn).unwrap(), before_ops);
