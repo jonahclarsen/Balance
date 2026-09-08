@@ -4004,8 +4004,10 @@ fn apply_latest_history_entry(
         HistoryDirection::Redo => ("history_redo", &history.redo_operation, false),
     };
 
-    append_history_action_operation(&tx, operation_type, &history.id, operation)?;
-    apply_operation(&tx, operation)?;
+    let opposite = if undone { &history.redo_operation } else { &history.undo_operation };
+    let replay = sync::entities::history_replay(operation, opposite)?;
+    append_history_action_operation(&tx, operation_type, &history.id, &replay)?;
+    apply_operation(&tx, &replay)?;
     set_history_undone(&tx, &history.id, undone)?;
     tx.commit().map_err(|error| error.to_string())?;
     Ok(Some(history))
@@ -4078,8 +4080,9 @@ fn restore_recovery_entry_in_database(
             return Ok(None);
         };
 
-        append_history_action_operation(&tx, "history_undo", &history.id, &history.undo_operation)?;
-        apply_operation(&tx, &history.undo_operation)?;
+        let replay = sync::entities::history_replay(&history.undo_operation, &history.redo_operation)?;
+        append_history_action_operation(&tx, "history_undo", &history.id, &replay)?;
+        apply_operation(&tx, &replay)?;
         set_history_undone(&tx, &history.id, true)?;
         tx.commit().map_err(|error| error.to_string())?;
         true

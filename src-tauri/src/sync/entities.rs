@@ -316,3 +316,61 @@ mod tests {
         assert!(decode(&json!({"version": 2, "upserts": [], "deletes": [{"collection": "future", "key": "x"}, {"collection": "future", "key": "x"}]})).is_err());
     }
 }
+
+/// Translate an old undo/redo entry at the moment it is invoked. Historical log
+/// rows remain immutable. Comparing the saved opposite state identifies exactly
+/// which fields the old action owned, preserving newer fields added since then.
+pub fn history_replay(operation: &Value, opposite: &Value) -> Result<Value, String> {
+    fn find_value<'a>(operation: &'a Value, collection: &Value, key: &Value) -> Option<&'a Value> {
+        let payload = operation.get("payload")?;
+        if let Some(upserts) = payload
+            .get("entityChanges")
+            .and_then(|c| c.get("upserts"))
+            .and_then(Value::as_array)
+        {
+            if let Some(item) = upserts
+                .iter()
+                .find(|item| &item["collection"] == collection && &item["key"] == key)
+            {
+                return item.get("value");
+            }
+        }
+        if let Some(nested) = payload.get("operations").and_then(Value::as_array) {
+            for item in nested {
+                if let Some(value) = find_value(item, collection, key) {
+                    return Some(value);
+                }
+            }
+        }
+        None
+    }
+    let mut replay = operation.clone();
+    if let Some(payload) = replay.get_mut("payload").and_then(Value::as_object_mut) {
+        if let Some(changes) = payload.get_mut("entityChanges") {
+            if changes["version"] == 1 {
+                let upserts = changes
+                    .get_mut("upserts")
+                    .and_then(Value::as_array_mut)
+                    .ok_or("Invalid legacy history upserts")?;
+                for item in upserts {
+                    let target = item
+                        .get("value")
+                        .ok_or("Invalid legacy history record")?
+                        .clone();
+                    let patch = match find_value(opposite, &item["collection"], &item["key"]) {
+                        Some(previous) => diff(previous, &target),
+                        None => Patch::Replace { value: target },
+                    };
+                    item["patches"] = json!([patch]);
+                }
+                changes["version"] = json!(2);
+            }
+        }
+        if let Some(operations) = payload.get_mut("operations").and_then(Value::as_array_mut) {
+            for nested in operations {
+                *nested = history_replay(nested, opposite)?;
+            }
+        }
+    }
+    Ok(replay)
+}

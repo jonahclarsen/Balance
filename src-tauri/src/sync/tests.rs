@@ -3074,3 +3074,60 @@ fn first_image_reference_and_bytes_are_atomic_and_undo_retains_redo_bytes() {
     checkpoint_operation_log_preserving_history(&conn).unwrap();
     assert_eq!(read_app_state_from_database(&conn).unwrap().unwrap()["images"].as_array().unwrap().len(), 1);
 }
+
+#[test]
+fn legacy_history_preserves_fields_added_by_a_future_peer() {
+    let scratch = Scratch::new("legacy-history-future-fields");
+    let mut conn = open_seeded(&scratch.path, "legacy-history-test", &state("old-editor", json!([])));
+    enable_primary(&conn).unwrap();
+    for (sequence, title) in [(1, "Before"), (2, "After")] {
+        persist_operation_to_database(&mut conn, &json!({
+            "id": format!("legacy-note-{sequence}"), "deviceId": "old-editor", "sequence": sequence,
+            "type": "patch_note", "timestamp": format!("2026-09-08T12:00:0{sequence}Z"),
+            "payload": {"entityChanges": {"version": 1, "upserts": [{"collection": "notes", "key": "n", "position": 0,
+                "value": {"id": "n", "title": title, "items": []}}], "deletes": []}}
+        })).unwrap();
+    }
+    let payload = json!({"action": "future_note_link", "entityChanges": {"version": 2, "upserts": [{
+        "collection": "notes", "key": "n", "position": null, "value": {"id": "n"},
+        "patches": [{"kind": "object", "fields": {"futureLink": {"kind": "replace", "value": "future-project"}}, "remove": []}]
+    }], "deletes": []}});
+    merge_and_rematerialize(&conn, vec![Op { id: "future-note-link".into(), device_id: "future-writer".into(), sequence: 1,
+        op_type: "apply_entity_changes".into(), timestamp: "2099-01-01T00:00:00Z".into(), payload_json: payload.to_string() }]).unwrap();
+    crate::undo_last_operation_in_database(&mut conn).unwrap().unwrap();
+    let note = crate::current_entity(&conn, "notes", "n").unwrap().unwrap().1;
+    assert_eq!(note["title"], "Before");
+    assert_eq!(note["futureLink"], "future-project");
+    crate::redo_last_operation_in_database(&mut conn).unwrap().unwrap();
+    let expected = entities::snapshot(&conn).unwrap();
+    assert_eq!(crate::current_entity(&conn, "notes", "n").unwrap().unwrap().1["title"], "After");
+    checkpoint_operation_log_preserving_history(&conn).unwrap();
+    rematerialize(&conn).unwrap();
+    assert_eq!(entities::snapshot(&conn).unwrap(), expected);
+}
+
+#[test]
+fn unknown_collection_survives_checkpoint_reopen_and_a_failed_batch_rolls_back() {
+    let scratch = Scratch::new("unknown-collections");
+    let mut conn = open_seeded(&scratch.path, "unknown-test", &state("foundation", json!([])));
+    enable_primary(&conn).unwrap();
+    let value = json!({"id": "future-row", "goalData": {"arbitraryFutureField": true}, "nested": {"unknown": 42}});
+    let payload = json!({"action": "future_operation_name", "entityChanges": {"version": 2, "upserts": [{
+        "collection": "futureFeatureRecords", "key": "future-row", "position": 17, "value": value, "patches": []
+    }], "deletes": []}});
+    persist_operation_to_database(&mut conn, &json!({"id": "future-record", "deviceId": "foundation", "sequence": 1,
+        "type": "apply_entity_changes", "timestamp": "2026-09-08T12:00:01Z", "payload": payload})).unwrap();
+    let before = entities::snapshot(&conn).unwrap();
+    checkpoint_operation_log_preserving_history(&conn).unwrap();
+    drop(conn);
+    let conn = open_database_at(&scratch.path, &test_database_key("unknown-test")).unwrap();
+    rematerialize(&conn).unwrap();
+    assert_eq!(entities::snapshot(&conn).unwrap(), before);
+    let before_ops = all_ops(&conn).unwrap();
+    let valid = Op { id: "valid-part".into(), device_id: "peer".into(), sequence: 1, op_type: "apply_entity_changes".into(),
+        timestamp: "2099-01-01T00:00:00Z".into(), payload_json: json!({"entityChanges": {"version": 2, "upserts": [], "deletes": [{"collection": "futureFeatureRecords", "key": "future-row"}]}}).to_string() };
+    let invalid = Op { id: "invalid-part".into(), sequence: 2, payload_json: json!({"entityChanges": {"version": 77, "upserts": [], "deletes": []}}).to_string(), ..valid.clone() };
+    assert!(merge_and_rematerialize(&conn, vec![valid, invalid]).unwrap_err().to_string().contains("Update required"));
+    assert_eq!(entities::snapshot(&conn).unwrap(), before);
+    assert_eq!(all_ops(&conn).unwrap(), before_ops);
+}
