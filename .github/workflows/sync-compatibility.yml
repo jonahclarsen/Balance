@@ -34,6 +34,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-sync-compat-${{ matrix.previous }}-
       - name: Build real current and released engines with the same synthetic fixture driver
+        id: engines
         env:
           PREVIOUS_VERSION: ${{ matrix.previous }}
           CARGO_TARGET_DIR: ${{ github.workspace }}/compat-target
@@ -67,6 +68,7 @@ jobs:
       - name: Verify upgrades and future-feature interoperability
         run: node .github/scripts/sync-compatibility.mjs "$PWD/previous-engine" "$PWD/current-engine" "$PWD/future-engine"
       - name: Test current encrypted database and reconciliation engine
+        if: always() && steps.engines.outcome == 'success'
         run: ./current-engine --skip compatibility_process_driver
       - name: Save compiled engine dependencies
         if: always() && steps.cargo-cache.outputs.cache-hit != 'true'

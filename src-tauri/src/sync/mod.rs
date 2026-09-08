@@ -1395,6 +1395,38 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
             ));
         }
 
+        // Runs inside the Android emulator too: feature-blind record handling
+        // must preserve unknown nested fields through editing and compaction.
+        let mut primary = primary;
+        let mut joiner = joiner;
+        let write_record = |conn: &mut Connection, action: &str, patches: JsonValue| -> Result<()> {
+            let device = crate::metadata_value(conn, "device_id").map_err(Error::Codec)?.unwrap();
+            let sequence = crate::metadata_value(conn, "local_sequence").map_err(Error::Codec)?
+                .and_then(|value| value.parse::<i64>().ok()).unwrap_or(0) + 1;
+            crate::persist_operation_to_database(conn, &json!({
+                "id": format!("{device}-compat-{sequence}"), "deviceId": device, "sequence": sequence,
+                "timestamp": crate::current_timestamp(), "type": "apply_entity_changes",
+                "payload": {"action": action, "entityChanges": {"version": 2, "upserts": [{
+                    "collection": "futureSmokeRecords", "key": "future", "position": 0,
+                    "value": {"id": "future", "done": false, "unknown": {"kept": 42}}, "patches": patches
+                }], "deletes": []}}
+            })).map_err(Error::Codec)
+        };
+        write_record(&mut primary, "future_feature_create", json!([]))?;
+        exchange_fixture_operations(&primary, &joiner, &joiner_sync_key)?;
+        write_record(&mut joiner, "old_feature_edit", json!([{
+            "kind": "object", "fields": {"done": {"kind": "replace", "value": true}}, "remove": []
+        }]))?;
+        checkpoint_operation_log_preserving_history(&joiner)?;
+        exchange_fixture_operations(&primary, &joiner, &joiner_sync_key)?;
+        for conn in [&primary, &joiner] {
+            let record = crate::current_entity(conn, "futureSmokeRecords", "future").map_err(Error::Codec)?
+                .ok_or_else(|| Error::Codec("Android compatibility fixture lost its opaque record".into()))?.1;
+            if record["done"] != true || record["unknown"]["kept"] != 42 {
+                return Err(Error::Codec("Android compatibility fixture lost a changed or unknown field".into()));
+            }
+        }
+
         Ok(SyncSelftestProfile {
             fixture_plans: FIXTURE_PLANS,
             fixture_plan_items,

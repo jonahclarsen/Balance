@@ -20,7 +20,7 @@ function run(binary, database, command, extra = {}, allowError = false) {
   assert.equal(result.status, 0, result.stdout + result.stderr)
   const response = JSON.parse(readFileSync(join(root, 'response.json'), 'utf8'))
   assert.equal(response.integrity, 'ok')
-  if (!allowError) assert.equal(response.error, null)
+  if (!allowError) assert.equal(response.error, null, `${database}: ${command}: ${response.error}`)
   return response
 }
 const state = (deviceId) => ({ schemaVersion: 1, deviceId, localSequence: 0, historyRevision: 0, activePlanDate: '', preferences: { themeId: 'graphite', doneTintColor: '', checkboxColor: '' }, templates: [], plans: [], goals: [], goalCompletions: [], listTemplates: [], lists: [], metrics: [], metricEntries: [], notes: [], images: [], projects: [], projectCheckIns: [], operations: [] })
@@ -66,9 +66,21 @@ assert.deepEqual(blind.entities, beforeCompact)
 future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
 assert.deepEqual(future.entities, blind.entities)
 
+// Deleting unfamiliar records/fields must survive an older client's next
+// edit and checkpoint rather than being resurrected from a stale whole record.
+future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 2, [record('notes', 'n', { id: 'n' }, [
+  { kind: 'object', fields: {}, remove: ['futureColor'] },
+])], [{ collection: 'futureHabitCheckIns', key: 'f' }]) })
+blind = run(currentBinary, 'blind', 'merge', { operations: future.operations })
+assert(!blind.entities.some((row) => row.collection === 'futureHabitCheckIns'))
+assert(!Object.hasOwn(blind.entities.find((row) => row.key === 'n').value, 'futureColor'))
+blind = run(currentBinary, 'blind', 'checkpoint')
+future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
+assert.deepEqual(future.entities, blind.entities)
+
 // Unsupported primitives roll back the entire incoming transaction; the failed
 // operation is never acknowledged or compacted away.
-const bad = structuredClone(generic('future-device', 2, [record('futureHabitCheckIns', 'f', { id: 'f' }, [{ kind: 'future_primitive' }])]))
+const bad = structuredClone(generic('future-device', 3, [record('futureHabitCheckIns', 'f', { id: 'f' }, [{ kind: 'future_primitive' }])]))
 const envelope = { id: bad.id, device_id: bad.deviceId, sequence: bad.sequence, type: bad.type, timestamp: bad.timestamp, payload_json: JSON.stringify(bad.payload) }
 const failed = run(currentBinary, 'blind', 'merge', { operations: [envelope] }, true)
 assert.match(failed.error, /Update required/)
