@@ -1,4 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
+import { pickerColorToHex } from './colors'
 import { get, writable, type Writable } from 'svelte/store'
 import {
   addPlanItem,
@@ -1683,12 +1684,12 @@ function createPlannerStore() {
     addProject(name: string) {
       if (!name.trim()) return null
       const timestamp = nowISO()
-      const project = { id: createId('project'), name: name.trim(), description: '', color: ['#709dce', '#b191cf', '#cc9473', '#73ad98', '#c18fa5'][get(store).projects.length % 5], archived: false, createdAt: timestamp, updatedAt: timestamp }
+      const project = { id: createId('project'), name: name.trim(), description: '', color: pickerColorToHex({ hue: Math.floor(Math.random() * 360), lightness: 50 }), archived: false, createdAt: timestamp, updatedAt: timestamp }
       commit('add_project', { projectId: project.id }, (state) => ({ ...state, projects: [...state.projects, project] }))
       return project.id
     },
 
-    updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'description' | 'color' | 'archived'>>) {
+    updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'description' | 'archived'>>) {
       if (patch.name !== undefined && !patch.name.trim()) return
       commit('update_project', { projectId }, (state) => ({
         ...state,

@@ -42,7 +42,7 @@
     <div class="project-heading"><h2>{project.name}</h2><p>{project.archived ? 'Archived' : latest ? `Last check-in ${new Date(latest.createdAt).toLocaleDateString()}` : 'No check-in yet'}</p></div>
   </header>
   {#if project.description}<p class="description">{project.description}</p>{/if}
-  <dl class="ratings"><div><dt>Work complete</dt><dd>{latest ? `${latest.progress}%` : 'Not set'}</dd></div><div><dt>Heart in it</dt><dd>{latest ? `${latest.heart}%` : 'Not set'}</dd></div></dl>
+  {#if !checkingIn}<dl class="ratings"><div><dt>Work complete</dt><dd>{latest ? `${latest.progress}%` : 'Not set'}</dd></div><div><dt>Heart in it</dt><dd>{latest ? `${latest.heart}%` : 'Not set'}</dd></div></dl>{/if}
   {#if !project.archived}
     {#if checkingIn}
       <form class="check-in" on:submit|preventDefault={save}>
@@ -75,7 +75,6 @@
     <div class="edit-details">
       <label>Name<input aria-label="Project name" value={project.name} on:change={(event) => plannerStore.updateProject(project.id, { name: event.currentTarget.value.trim() || project.name })} /></label>
       <label>Description<textarea value={project.description} on:change={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
-      <label>Project color<input type="color" value={project.color} on:change={(event) => plannerStore.updateProject(project.id, { color: event.currentTarget.value })} /></label>
       <button type="button" on:click={() => plannerStore.updateProject(project.id, { archived: !project.archived })}>{project.archived ? 'Restore project' : 'Archive project'}</button>
     </div>
   {/if}
@@ -92,11 +91,15 @@
   h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
   p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
   .description { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .ratings { display: flex; flex-wrap: wrap; gap: 24px; margin: 0; font-size: 13px; }
-  .ratings div { display: flex; gap: 8px; } dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .ratings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; font-size: 13px; }
+  .ratings div { display: grid; gap: 6px; } dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
   .check-in-button { justify-self: start; }
-  .check-in { display: grid; gap: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
-  .rating-control { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; font-size: 13px; }
+  .check-in { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .rating-control { display: grid; gap: 8px; min-width: 0; font-size: 13px; --slider-readout-width: 44px; }
+  .rating-control :global(.probability-slider) { min-width: 0; gap: 8px; }
+  .rating-control :global(.track-wrap) { flex: 1; width: auto; min-width: 0; }
+  .rating-control :global(.probability-readout) { flex: 0 0 44px; }
+  .check-in .actions { grid-column: 1 / -1; }
   .actions, footer { display: flex; flex-wrap: wrap; gap: 8px; }
   summary { cursor: pointer; font-size: 13px; }
   .endpoints, .legend { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }

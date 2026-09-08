@@ -83,6 +83,6 @@
   .page-header h2 { margin: 0; }
   .project-add { display: flex; gap: 8px; margin-bottom: 16px; }
   .project-add input { flex: 1; min-width: 0; }
-  .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; align-items: start; }
+  .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
   .status { overflow-wrap: anywhere; }
 </style>

@@ -215,7 +215,7 @@
   }
 
   .probability-readout {
-    width: 32px;
+    width: var(--slider-readout-width, 32px);
     text-align: right;
     color: var(--muted);
     font-size: 12px;

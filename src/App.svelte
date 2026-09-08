@@ -3194,6 +3194,7 @@ return rows`
       const sidebarViewByCode: Partial<Record<string, View>> = {
         KeyD: 'templates',
         KeyN: 'notes',
+        KeyP: 'projects',
         KeyV: 'metrics',
         KeyS: 'settings',
       }
@@ -3201,6 +3202,7 @@ return rows`
 
       if (sidebarView) {
         event.preventDefault()
+        if (sidebarView === 'projects') linkedProjectId = ''
         if (sidebarView === 'settings' && view === 'today') captureRenderedPlanSnapshot()
         switchViewFromShortcut(sidebarView)
         return
@@ -5698,7 +5700,7 @@ return rows`
         <button class="nav-child" class:active={view === 'lists'} type="button" title="List History (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => openMobileDrawerView('lists')}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       {/if}
       <button class:active={view === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => openMobileDrawerView('notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
-      <button class:active={view === 'projects'} type="button" on:click={() => { linkedProjectId = ''; openMobileDrawerView('projects') }}><span>Projects</span></button>
+      <button class:active={view === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; openMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
       <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => openMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => openMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
