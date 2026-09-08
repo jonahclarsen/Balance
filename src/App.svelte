@@ -830,6 +830,9 @@ return rows`
   async function openSyncError() {
     openMobileDrawerView('settings')
     await tick()
+    // Let the page's saved scroll position restore before targeting the error.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    if (view !== 'settings') return
     const error = document.getElementById('sync-error')
     error?.focus({ preventScroll: true })
     error?.scrollIntoView({ block: 'center' })
@@ -6706,7 +6709,6 @@ return rows`
       </header>
 
       <div class="settings-panel">
-        <SyncPanel />
         <section class="settings-section">
           <div>
             <h3>Color theme</h3>
@@ -6845,6 +6847,8 @@ return rows`
             {/if}
           </section>
         {/if}
+
+        <SyncPanel />
 
         <section class="settings-section">
           <div>
