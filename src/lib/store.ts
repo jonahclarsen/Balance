@@ -641,12 +641,20 @@ function createPlannerStore() {
   // New feature actions that only change entity collections use this stable
   // storage operation; their human action name never selects a native handler.
   function commitEntities(action: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
-    commit(action, payload, mutate, { ...options, entityOnly: true })
+    const data = payload && typeof payload === 'object' ? payload : { value: payload }
+    const metadata = { ...data, action: 'action' in data && typeof data.action === 'string' ? data.action : action }
+    commit(action, metadata, (state) => {
+      const next = mutate(state)
+      if (state.plans !== next.plans || state.templates !== next.templates || state.preferences !== next.preferences || state.activePlanDate !== next.activePlanDate) {
+        throw new Error('Entity actions must not mutate relational planner state or preferences')
+      }
+      return next
+    }, { ...options, entityOnly: true })
   }
 
   let imageMoveEdits: { type: string; payload: unknown; mutate: Mutator }[] | null = null
   function commit(type: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
-    if (imageMoveEdits) { imageMoveEdits.push({ type, payload, mutate }); return }
+    if (imageMoveEdits) { imageMoveEdits.push({ type: options.entityOnly ? 'apply_entity_changes' : type, payload, mutate }); return }
     let operationToPersist: Operation | null = null
 
     store.update((state) => {
@@ -679,9 +687,6 @@ function createPlannerStore() {
         next = { ...next, goalCompletions: reconciledGoalCompletions }
       }
 
-      if (options.entityOnly && (state.plans !== next.plans || state.templates !== next.templates || state.preferences !== next.preferences || state.activePlanDate !== next.activePlanDate)) {
-        throw new Error('Entity actions must not mutate relational planner state or preferences')
-      }
       const now = Date.now()
       const timestamp = nowISO()
       const lastOperation = state.operations.at(-1)
@@ -714,7 +719,6 @@ function createPlannerStore() {
         ? {
             ...(payload && typeof payload === 'object' ? payload : { value: payload }),
             entityChanges,
-            ...(options.entityOnly ? { action: payload && typeof payload === 'object' && 'action' in payload && typeof payload.action === 'string' ? payload.action : type } : {}),
           }
         : payload
       const operation: Operation = canMergeOperation

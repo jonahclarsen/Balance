@@ -35,15 +35,23 @@ test('feature actions emit generic patches that replay in the native database', 
     store.patchGoal(goal, { name: 'Synthetic renamed goal' })
     const project = store.addProject('Synthetic project')
     store.checkInProject(project, 35, 80)
+    store.moveImage(() => {
+      store.renameNote(note, 'Synthetic compound note edit')
+      store.renameMetric(metric, 'Synthetic compound metric edit')
+    })
     const result = { initial, operations: structuredClone(live.operations.slice(start)), expected: structuredClone(live) }
     unsubscribe()
     return result
   })
   expect(fixture.operations.length).toBeGreaterThan(15)
   for (const operation of fixture.operations) {
-    expect(operation.type).toBe('apply_entity_changes')
     expect(operation.payload.entityChanges.version).toBe(2)
-    expect(operation.payload.action).toEqual(expect.any(String))
+    if (operation.type === 'move_image') {
+      expect(operation.payload.operations.every((nested: any) => nested.type === 'apply_entity_changes')).toBe(true)
+    } else {
+      expect(operation.type).toBe('apply_entity_changes')
+      expect(operation.payload.action).toEqual(expect.any(String))
+    }
   }
   for (const collection of ['notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'projects', 'projectCheckIns']) {
     expect(fixture.operations.some((operation: any) => operation.payload.entityChanges.upserts.some((upsert: any) => upsert.collection === collection))).toBe(true)
