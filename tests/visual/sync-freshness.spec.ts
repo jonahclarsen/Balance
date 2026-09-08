@@ -947,7 +947,6 @@ for (const formatted of [false, true]) {
   test(`a failed background sync preserves the ${formatted ? 'formatted' : 'plain'} task caret after typing pauses`, async ({ page }) => {
     await page.goto('/?caret-refresh=1')
     await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
-    await page.getByLabel('Day date', { exact: true }).fill(await page.evaluate(() => new Date().toISOString().slice(0, 10)))
     await page.evaluate(() => {
       const runtime = globalThis as typeof globalThis & {
         __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }

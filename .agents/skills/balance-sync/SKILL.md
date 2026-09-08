@@ -38,9 +38,10 @@ extension is loaded on any platform, so there is nothing sync-specific to
 cross-compile for Android. The Android workflow still needs the NDK because it
 cross-compiles the vendored OpenSSL linked by SQLCipher.
 
-The app syncs after persisted edits with a two-second debounce, at launch,
-resume, and online events, and on a five-minute foreground safety interval.
-Android additionally chains network-constrained one-time WorkManager passes at
+The app syncs after persisted edits with a two-second debounce and at launch,
+resume, focus, and online events. Visible polling runs every two seconds after
+recent changes and every eight seconds when quiet; hidden polling is every five
+minutes. Android additionally chains network-constrained one-time WorkManager passes at
 a best-effort five-minute cadence, because periodic WorkManager requests have a
 15-minute minimum. The CI-only generator is
 `.github/scripts/configure-android-background-sync.mjs`; never generate or build
