@@ -374,10 +374,10 @@ test('settings no longer expose retired migration cleanup controls', async ({ pa
   await expect(page.getByRole('button', { name: 'Finalize cleanup now' })).toHaveCount(0)
 })
 
-test('an unsuccessful launch sync retries with a subtle status cue', async ({ page }, testInfo) => {
+test('an unsuccessful launch sync links directly to the visible error', async ({ page }, testInfo) => {
   await page.goto('/')
 
-  await expect(page.getByRole('status', { name: 'Sync status: Retrying' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Sync status: Error' })).toBeVisible()
   await expect(page.getByRole('alert')).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Retry now' })).toHaveCount(0)
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
@@ -388,9 +388,14 @@ test('an unsuccessful launch sync retries with a subtle status cue', async ({ pa
   })).toBe(1)
 
   await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-sync-retrying-status.png`,
+    path: `artifacts/visual-smoke/${testInfo.project.name}-sync-error-status.png`,
     fullPage: false,
   })
+  await page.getByRole('button', { name: 'Sync error: open settings' }).filter({ visible: true }).click()
+  await expect(page.locator('#sync-error')).toBeInViewport()
+  await expect(page.locator('#sync-error')).toBeFocused()
+  await expect(page.locator('#sync-error .error')).not.toBeEmpty()
+  await page.screenshot({ path: `artifacts/visual-smoke/${testInfo.project.name}-sync-error-settings.png` })
 })
 
 test('an offline device shows a quiet offline status', async ({ page }) => {

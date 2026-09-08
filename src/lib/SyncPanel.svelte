@@ -321,6 +321,13 @@
   </div>
 
   <div class="sync-body">
+    {#if $automaticSyncStatus.lastError}
+      <div id="sync-error" class="sync-card sync-error" tabindex="-1" role="alert">
+        <strong>Sync error</strong>
+        <p class="sync-status error">{$automaticSyncStatus.lastError}</p>
+        <p>Your changes are saved on this device. Sync has not completed successfully.</p>
+      </div>
+    {/if}
     {#if settingsLoading}
       <p role="status">Loading sync settings…</p>
     {:else if settingsLoadFailed}
@@ -374,8 +381,8 @@
           <strong>
             {#if !configured}Setup incomplete
             {:else if $automaticSyncStatus.offline}You’re offline
-            {:else if showSyncing}Syncing…
             {:else if $automaticSyncStatus.lastError}Sync needs attention
+            {:else if showSyncing}Syncing…
             {:else if $automaticSyncStatus.pending}Changes waiting to sync
             {:else if $automaticSyncStatus.lastSuccessAt}Connected to sync server
             {:else}Waiting for first sync{/if}
@@ -423,7 +430,6 @@
           <summary>Troubleshooting</summary>
           <div class="sync-card">
             <p>Check that each device uses the same sync server address and pairing code. Keep Balance open during the first sync.</p>
-            {#if $automaticSyncStatus.lastError}<p class="sync-status error">{$automaticSyncStatus.lastError}</p>{/if}
       <div class="sync-diagnostics">
         <strong>Recent anonymous sync diagnostics</strong>
         <p>
@@ -524,6 +530,10 @@
   summary { cursor: pointer; padding: 0.35rem 0; }
   details[open] > summary { margin-bottom: 0.65rem; }
   .sync-overview { background: var(--paper); }
+  .sync-error {
+    border-color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 8%, var(--paper));
+  }
   .sync-status, .sync-code { overflow-wrap: anywhere; }
   @media (max-width: 480px) { .sync-pairing { flex-direction: column; align-items: flex-start; } }
   .sync-actions {

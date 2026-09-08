@@ -1136,8 +1136,23 @@ nav button.active {
   animation: sync-status-pulse 1.4s ease-in-out infinite;
 }
 
-.sync-status-indicator.retrying .sync-status-dot {
-  animation-duration: 2.2s;
+.sync-status-indicator button.sync-error-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: auto;
+  height: 32px;
+  padding: 4px 6px;
+  border-color: transparent;
+  background: transparent;
+  font: inherit;
+  color: var(--danger);
+}
+
+.sync-status-indicator .sync-error-button svg {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
 }
 
 .sync-status-indicator.offline .sync-status-dot {

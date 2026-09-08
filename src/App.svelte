@@ -827,6 +827,14 @@ return rows`
     }
   }
 
+  async function openSyncError() {
+    openMobileDrawerView('settings')
+    await tick()
+    const error = document.getElementById('sync-error')
+    error?.focus({ preventScroll: true })
+    error?.scrollIntoView({ block: 'center' })
+  }
+
   function openMobileDrawerSearch() {
     closeMobileDrawer()
     documentFindOpen = false
@@ -5594,7 +5602,7 @@ return rows`
     <div class="mobile-app-title">
       <strong>Balance</strong>
       {#if isTauri() && !$databaseLoadPending && !$databaseLoadError}
-        <SyncStatusIndicator />
+        <SyncStatusIndicator onOpenError={openSyncError} />
       {/if}
     </div>
     <div class="mobile-header-actions">
@@ -5662,7 +5670,7 @@ return rows`
       <div class="sidebar-brand-heading">
         <h1>Balance</h1>
         {#if isTauri() && !$databaseLoadPending && !$databaseLoadError}
-          <SyncStatusIndicator />
+          <SyncStatusIndicator onOpenError={openSyncError} />
         {/if}
       </div>
       <p class="muted">Focus on what matters today</p>
@@ -6698,6 +6706,7 @@ return rows`
       </header>
 
       <div class="settings-panel">
+        <SyncPanel />
         <section class="settings-section">
           <div>
             <h3>Color theme</h3>
@@ -6836,8 +6845,6 @@ return rows`
             {/if}
           </section>
         {/if}
-
-        <SyncPanel />
 
         <section class="settings-section">
           <div>
