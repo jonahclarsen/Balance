@@ -714,7 +714,7 @@ function createPlannerStore() {
         ? {
             ...(payload && typeof payload === 'object' ? payload : { value: payload }),
             entityChanges,
-            ...(options.entityOnly ? { action: type } : {}),
+            ...(options.entityOnly ? { action: payload && typeof payload === 'object' && 'action' in payload && typeof payload.action === 'string' ? payload.action : type } : {}),
           }
         : payload
       const operation: Operation = canMergeOperation

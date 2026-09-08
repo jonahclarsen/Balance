@@ -19,3 +19,9 @@ test('optional properties becoming undefined serialize as explicit removals', ()
   expect(JSON.parse(JSON.stringify(patch))).toEqual({ kind: 'object', fields: {}, remove: ['optional'] })
   expect(entityPatch({ id: 'a' }, { id: 'a', optional: undefined })).toEqual({ kind: 'object', fields: {}, remove: [] })
 })
+
+test('JSON field names do not inherit object prototype properties', () => {
+  expect(entityPatch(JSON.parse('{"constructor":"old","__proto__":"old"}'), {})).toEqual({
+    kind: 'object', fields: {}, remove: ['constructor', '__proto__'],
+  })
+})

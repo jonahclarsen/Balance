@@ -88,3 +88,27 @@ jobs:
             ~/.cargo/git
             compat-target
           key: ${{ steps.cargo-cache.outputs.cache-primary-key }}
+  record-ui:
+    name: Generic record UI and patch behavior
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm check && pnpm test:unit
+      - name: Exercise entity features and undo on desktop and mobile
+        run: pnpm exec playwright test tests/visual/projects.spec.ts tests/visual/lists-metrics.smoke.spec.ts tests/visual/notes.spec.ts tests/visual/goals.spec.ts tests/visual/metrics.spec.ts tests/visual/undo-navigation.spec.ts --workers=2
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: record-ui-failure-traces
+          path: artifacts/playwright
+          retention-days: 7
