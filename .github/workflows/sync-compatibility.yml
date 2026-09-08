@@ -3,7 +3,7 @@ on:
   push:
     branches: [main, 'feat/forward-compatible-sync']
     tags: ['v*.*.*']
-    paths: ['src-tauri/**', 'src/lib/store.ts', 'src/lib/entityPatch.ts', '.github/scripts/sync-compat*', '.github/workflows/sync-compatibility.yml']
+    paths: ['src-tauri/**', 'src/lib/store.ts', 'src/lib/entityPatch.ts', 'src/lib/types.ts', 'src/lib/planner.ts', 'tests/visual/entity-storage.spec.ts', 'tests/visual/projects.spec.ts', 'tests/unit/entity-patch.spec.ts', '.github/scripts/sync-compat*', '.github/workflows/sync-compatibility.yml']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -36,7 +36,7 @@ jobs:
               output.write('versions=' + json.dumps(versions) + '\n')
           PYTHON
   compatibility:
-    needs: baselines
+    needs: [baselines, record-ui]
     runs-on: macos-15
     timeout-minutes: 60
     strategy:
@@ -102,8 +102,12 @@ jobs:
             current-engine
             future-engine
           retention-days: 7
+      - uses: actions/download-artifact@v7
+        with:
+          name: frontend-entity-fixtures
+          path: frontend-entity-fixtures
       - name: Verify upgrades and future-feature interoperability
-        run: node .github/scripts/sync-compatibility.mjs "$PWD/previous-engine" "$PWD/current-engine" "$PWD/future-engine"
+        run: node .github/scripts/sync-compatibility.mjs "$PWD/previous-engine" "$PWD/current-engine" "$PWD/future-engine" "$PWD/frontend-entity-fixtures"
       - name: Test current encrypted database and reconciliation engine
         if: always() && steps.engines.outcome == 'success'
         run: ./current-engine --skip compatibility_process_driver
@@ -133,7 +137,12 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm check && pnpm test:unit
       - name: Exercise entity features and undo on desktop and mobile
-        run: pnpm exec playwright test tests/visual/projects.spec.ts tests/visual/lists-metrics.smoke.spec.ts tests/visual/notes.spec.ts tests/visual/goals.spec.ts tests/visual/metrics.spec.ts tests/visual/undo-navigation.spec.ts --workers=2
+        run: pnpm exec playwright test tests/visual/entity-storage.spec.ts tests/visual/projects.spec.ts --workers=2
+      - uses: actions/upload-artifact@v7
+        with:
+          name: frontend-entity-fixtures
+          path: artifacts/entity-fixtures
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7
         if: failure()
         with:

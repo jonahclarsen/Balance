@@ -2523,7 +2523,7 @@ function createPlannerStore() {
             return { ...state, metricEntries: [...state.metricEntries, entry] }
           }
           const answers = existing.answers.some((answer) => answer.questionId === questionId)
-            ? existing.answers.map((answer) => (answer.questionId === questionId ? { questionId, value } : answer))
+            ? existing.answers.map((answer) => (answer.questionId === questionId ? { ...answer, value } : answer))
             : [...existing.answers, { questionId, value }]
           const nextEntry = { ...existing, answers, updatedAt: nowISO() }
           return { ...state, metricEntries: state.metricEntries.map((entry) => (entry === existing ? nextEntry : entry)) }

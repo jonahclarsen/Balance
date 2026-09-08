@@ -1,4 +1,4 @@
-import { mkdtempSync, writeFileSync, readFileSync, copyFileSync } from 'node:fs'
+import { mkdtempSync, writeFileSync, readFileSync, copyFileSync, readdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { spawn, spawnSync } from 'node:child_process'
@@ -6,7 +6,7 @@ import assert from 'node:assert/strict'
 import { randomInt } from 'node:crypto'
 import { once } from 'node:events'
 
-const [oldBinary, currentBinary, futureBinary = currentBinary] = process.argv.slice(2)
+const [oldBinary, currentBinary, futureBinary = currentBinary, frontendFixtures] = process.argv.slice(2)
 assert(oldBinary && currentBinary, 'Provide old and current test executables')
 const root = mkdtempSync(join(tmpdir(), 'balance-version-compat-'))
 writeFileSync(join(root, 'SYNTHETIC_FIXTURES_ONLY'), 'Generated synthetic data; public test-only key')
@@ -121,4 +121,22 @@ try {
 } finally {
   relay.kill()
   await once(relay, 'exit')
+}
+
+if (frontendFixtures) {
+  const collections = ['notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'goalCompletions', 'projects', 'projectCheckIns']
+  for (const [index, filename] of readdirSync(frontendFixtures).filter((name) => name.endsWith('.json')).entries()) {
+    const fixture = JSON.parse(readFileSync(join(frontendFixtures, filename), 'utf8'))
+    const database = `frontend-${index}`
+    const baseline = run(currentBinary, database, 'init', { state: fixture.initial })
+    let applied
+    for (const operation of fixture.operations) applied = run(currentBinary, database, 'write', { operation })
+    for (const collection of collections) assert.deepEqual(applied.state[collection], fixture.expected[collection], `${filename}: ${collection} replay`)
+    for (const operation of fixture.operations) applied = run(currentBinary, database, 'undo')
+    for (const collection of collections) assert.deepEqual(applied.state[collection], baseline.state[collection], `${filename}: ${collection} undo`)
+    for (const operation of fixture.operations) applied = run(currentBinary, database, 'redo')
+    const compacted = run(currentBinary, database, 'checkpoint')
+    for (const collection of collections) assert.deepEqual(compacted.state[collection], fixture.expected[collection], `${filename}: ${collection} redo/checkpoint`)
+    console.log(`PASS: ${filename} frontend-generated operations replay, undo, redo and compact in SQLCipher`)
+  }
 }

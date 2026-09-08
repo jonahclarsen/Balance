@@ -3,14 +3,14 @@
 export type EntityPatch =
   | { kind: 'replace'; value: unknown }
   | { kind: 'object'; fields: Record<string, EntityPatch>; remove: string[] }
-  | { kind: 'records'; entries: Record<string, EntityPatch>; remove: string[]; order?: string[] }
+  | { kind: 'records'; keyField?: string; entries: Record<string, EntityPatch>; remove: string[]; order?: string[] }
 
 function object(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
 }
-function records(value: unknown): value is (Record<string, unknown> & { id: string })[] {
-  return Array.isArray(value) && value.every((item) => object(item) && typeof item.id === 'string') &&
-    new Set(value.map((item) => item.id)).size === value.length
+function records(value: unknown, keyField: string): value is Record<string, unknown>[] {
+  return Array.isArray(value) && value.every((item) => object(item) && typeof item[keyField] === 'string') &&
+    new Set(value.map((item) => item[keyField])).size === value.length
 }
 export function entityPatch(before: unknown, after: unknown): EntityPatch {
   return diff(before, after)
@@ -28,16 +28,19 @@ function diff(before: unknown, after: unknown): EntityPatch {
     }
     return { kind: 'object', fields, remove: Object.keys(before).filter((key) => before[key] !== undefined && (!Object.hasOwn(after, key) || after[key] === undefined)) }
   }
-  if (records(before) && records(after)) {
-    const previous = new Map(before.map((item) => [item.id, item]))
-    const entries: Record<string, EntityPatch> = Object.create(null)
-    for (const item of after) {
-      const prior = previous.get(item.id)
-      if (prior !== item && JSON.stringify(prior) !== JSON.stringify(item)) entries[item.id] = diff(prior, item)
+  for (const keyField of ['id', 'questionId']) {
+    if (records(before, keyField) && records(after, keyField)) {
+      const key = (item: Record<string, unknown>) => item[keyField] as string
+      const previous = new Map(before.map((item) => [key(item), item]))
+      const entries: Record<string, EntityPatch> = Object.create(null)
+      for (const item of after) {
+        const prior = previous.get(key(item))
+        if (prior !== item && JSON.stringify(prior) !== JSON.stringify(item)) entries[key(item)] = diff(prior, item)
+      }
+      const ids = after.map(key)
+      const remove = before.filter((item) => !ids.includes(key(item))).map(key)
+      return { kind: 'records', ...(keyField === 'id' ? {} : { keyField }), entries, remove, ...(JSON.stringify(before.map(key)) === JSON.stringify(ids) ? {} : { order: ids }) }
     }
-    const ids = after.map((item) => item.id)
-    const remove = before.filter((item) => !ids.includes(item.id)).map((item) => item.id)
-    return { kind: 'records', entries, remove, ...(JSON.stringify(before.map((item) => item.id)) === JSON.stringify(ids) ? {} : { order: ids }) }
   }
   return { kind: 'replace', value: after ?? null }
 }

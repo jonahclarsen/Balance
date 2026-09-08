@@ -45,7 +45,8 @@ storage primitives or changed conflict rules require an explicit protocol rollou
   mean explicit removal.
 - Object patches preserve fields absent from the author's view. Arrays of
   objects with unique string `id` fields use ID-addressed patches and explicit
-  order/removal. Keep IDs stable. Primitive arrays and arrays without unique IDs
+  order/removal. Metric answers use their stable `questionId` through the same
+  primitive’s `keyField` parameter. Keep IDs stable. Primitive arrays and arrays without unique IDs
   are atomic replacement values; do not put extensible records in them.
 - `position: null` means preserve the stored position. A numeric position means
   an intentional insertion/reorder. Upsert `value` is a fallback for a missing

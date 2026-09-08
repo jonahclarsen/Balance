@@ -84,7 +84,7 @@ test('project check-ins retain history, survive reload, and open from a planner 
     const state = JSON.parse(localStorage.getItem(key)!)
     const projectId = state.projects[0].id
     const now = new Date()
-    const date = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+    const date = state.activePlanDate
     const plan = { id: 'project-link-plan', date, title: 'Synthetic day', dailyReminder: '', generatedFromTemplateId: null, createdAt: now.toISOString(), items: [] as unknown[] }
     state.plans = [plan]
     plan.items = [{ id: 'project-link-test', text: `balance://projects/${projectId}`, html: `balance://projects/${projectId}`, done: false, children: [], time: '', endTime: '' }]

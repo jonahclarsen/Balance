@@ -15,19 +15,25 @@ pub enum Patch {
         remove: Vec<String>,
     },
     Records {
+        #[serde(default = "default_record_key", rename = "keyField")]
+        key_field: String,
         entries: BTreeMap<String, Patch>,
         remove: Vec<String>,
         order: Option<Vec<String>>,
     },
 }
 
-fn records(value: &Value) -> Option<Vec<(String, Value)>> {
+fn default_record_key() -> String {
+    "id".into()
+}
+
+fn records(value: &Value, key_field: &str) -> Option<Vec<(String, Value)>> {
     let array = value.as_array()?;
     let mut ids = HashSet::new();
     array
         .iter()
         .map(|item| {
-            let id = item.get("id")?.as_str()?.to_string();
+            let id = item.get(key_field)?.as_str()?.to_string();
             if !ids.insert(id.clone()) {
                 return None;
             }
@@ -52,6 +58,7 @@ impl Patch {
                 Ok(Value::Object(result))
             }
             Self::Records {
+                key_field,
                 entries,
                 remove,
                 order,
@@ -59,7 +66,7 @@ impl Patch {
                 let mut values = if current.is_null() {
                     Vec::new()
                 } else {
-                    records(current)
+                    records(current, key_field)
                         .ok_or("Update required: record patches require unique string IDs")?
                 };
                 values.retain(|(id, _)| !remove.contains(id));
@@ -73,7 +80,7 @@ impl Patch {
                     // record. Explicit insertions carry a complete replace value.
                 }
                 for (id, value) in &values {
-                    if value.get("id").and_then(Value::as_str) != Some(id) {
+                    if value.get(key_field).and_then(Value::as_str) != Some(id) {
                         return Err(
                             "Invalid record patch: an element's ID must remain stable".into()
                         );
@@ -116,28 +123,32 @@ pub fn diff(before: &Value, after: &Value) -> Patch {
                 .collect(),
         };
     }
-    if let (Some(before), Some(after)) = (records(before), records(after)) {
-        let before_ids: Vec<_> = before.iter().map(|(id, _)| id.clone()).collect();
-        let after_ids: Vec<_> = after.iter().map(|(id, _)| id.clone()).collect();
-        return Patch::Records {
-            entries: after
-                .iter()
-                .filter_map(|(id, value)| {
-                    let old = before
-                        .iter()
-                        .find(|(key, _)| key == id)
-                        .map(|(_, value)| value)
-                        .unwrap_or(&Value::Null);
-                    (old != value).then(|| (id.clone(), diff(old, value)))
-                })
-                .collect(),
-            remove: before_ids
-                .iter()
-                .filter(|id| !after_ids.contains(id))
-                .cloned()
-                .collect(),
-            order: (before_ids != after_ids).then_some(after_ids),
-        };
+    for key_field in ["id", "questionId"] {
+        if let (Some(before), Some(after)) = (records(before, key_field), records(after, key_field))
+        {
+            let before_ids: Vec<_> = before.iter().map(|(id, _)| id.clone()).collect();
+            let after_ids: Vec<_> = after.iter().map(|(id, _)| id.clone()).collect();
+            return Patch::Records {
+                key_field: key_field.into(),
+                entries: after
+                    .iter()
+                    .filter_map(|(id, value)| {
+                        let old = before
+                            .iter()
+                            .find(|(key, _)| key == id)
+                            .map(|(_, value)| value)
+                            .unwrap_or(&Value::Null);
+                        (old != value).then(|| (id.clone(), diff(old, value)))
+                    })
+                    .collect(),
+                remove: before_ids
+                    .iter()
+                    .filter(|id| !after_ids.contains(id))
+                    .cloned()
+                    .collect(),
+                order: (before_ids != after_ids).then_some(after_ids),
+            };
+        }
     }
     Patch::Replace {
         value: after.clone(),
@@ -308,6 +319,18 @@ mod tests {
         let restored = undo.apply(&later).unwrap();
         assert_eq!(restored["items"], current["items"]);
         assert_eq!(restored["anotherFutureField"], 42);
+    }
+
+    #[test]
+    fn metric_answer_patches_preserve_newer_fields() {
+        let before = json!([{"questionId": "q", "value": "3"}]);
+        let after = json!([{"questionId": "q", "value": "5"}]);
+        let current = json!([{"questionId": "q", "value": "3", "futureUnit": "hours"}]);
+        let patched = diff(&before, &after).apply(&current).unwrap();
+        assert_eq!(
+            patched,
+            json!([{"questionId": "q", "value": "5", "futureUnit": "hours"}])
+        );
     }
 
     #[test]

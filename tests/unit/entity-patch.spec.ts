@@ -25,3 +25,9 @@ test('JSON field names do not inherit object prototype properties', () => {
     kind: 'object', fields: {}, remove: ['constructor', '__proto__'],
   })
 })
+
+test('metric answers patch their stable question identity instead of replacing the array', () => {
+  expect(entityPatch([{ questionId: 'q', value: '3' }], [{ questionId: 'q', value: '5' }])).toEqual({
+    kind: 'records', keyField: 'questionId', entries: { q: { kind: 'object', fields: { value: { kind: 'replace', value: '5' } }, remove: [] } }, remove: [],
+  })
+})
