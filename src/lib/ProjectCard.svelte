@@ -46,8 +46,8 @@
   {#if !project.archived}
     {#if checkingIn}
       <form class="check-in" on:submit|preventDefault={save}>
-        <div class="rating-control"><span>Work complete</span><ProbabilitySlider value={progress ?? 0} unset={progress === null} ariaLabel={`Work complete for ${project.name}`} onChange={(value) => progress = value} generousHitbox /></div>
-        <div class="rating-control"><span>Heart in it</span><ProbabilitySlider value={heart ?? 0} unset={heart === null} ariaLabel={`Heart in it for ${project.name}`} onChange={(value) => heart = value} generousHitbox /></div>
+        <div class="rating-control"><span>Work complete</span><ProbabilitySlider step={5} value={progress ?? 0} unset={progress === null} ariaLabel={`Work complete for ${project.name}`} onChange={(value) => progress = value} generousHitbox /></div>
+        <div class="rating-control"><span>Heart in it</span><ProbabilitySlider step={5} value={heart ?? 0} unset={heart === null} ariaLabel={`Heart in it for ${project.name}`} onChange={(value) => heart = value} generousHitbox /></div>
         <div class="actions"><button class="primary" type="submit" disabled={progress === null || heart === null}>Save check-in</button><button class="ghost" type="button" on:click={() => checkingIn = false}>Cancel</button></div>
       </form>
     {:else}<button class="check-in-button" type="button" on:click={openCheckIn}>Check in</button>{/if}
