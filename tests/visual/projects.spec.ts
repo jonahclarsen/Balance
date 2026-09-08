@@ -99,3 +99,43 @@ test('project check-ins retain history, survive reload, and open from a planner 
   expect(persisted.projects).toEqual([])
   expect(persisted.projectCheckIns).toEqual([])
 })
+
+for (const destination of ['page', 'project'] as const) {
+  test(`pasting a ${destination} link over selected template text preserves the label`, async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await openView(page, 'Projects')
+    await page.getByRole('textbox', { name: 'New project name' }).fill('Synthetic garden')
+    await page.getByRole('button', { name: 'Add project', exact: true }).click()
+    const projectId = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).projects[0].id)
+    const url = destination === 'page' ? 'balance://projects' : `balance://projects/${projectId}`
+    await openView(page, 'Lists')
+    await page.getByRole('button', { name: '+ New list', exact: true }).click()
+    const editor = page.locator('[data-list-template-text-input]').first()
+    await editor.fill('Review my projects today')
+    await editor.evaluate((element, link) => {
+      element.focus()
+      const range = document.createRange()
+      range.setStart(element.firstChild!, 7)
+      range.setEnd(element.firstChild!, 18)
+      const selection = document.getSelection()!
+      selection.removeAllRanges()
+      selection.addRange(range)
+      const clipboard = new DataTransfer()
+      clipboard.setData('text/plain', link)
+      element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }))
+    }, url)
+    await editor.blur()
+    await expect(editor).toHaveText('Review my projects today')
+    await expect(editor.getByRole('link', { name: 'my projects' })).toHaveAttribute('href', url)
+    await page.reload()
+    await openView(page, 'Lists')
+    await expect(editor).toHaveText('Review my projects today')
+    const link = editor.getByRole('link', { name: 'my projects' })
+    await expect(link).toHaveAttribute('href', url)
+    await link.click()
+    await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
+    if (destination === 'project') await expect(page.locator('.project-card')).toHaveClass(/highlighted/)
+  })
+}

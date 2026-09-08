@@ -1694,6 +1694,12 @@ export function isURL(value: string): boolean {
   }
 }
 
+// An empty id targets the project overview; null means this is not a project link.
+export function projectIdFromURL(value: string): Id | null {
+  const match = /^balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?$/.exec(value.trim())
+  return match ? match[1] ?? '' : null
+}
+
 export function noteIdFromURL(value: string): Id | null {
   const match = value.trim().match(/^balance:\/\/note\/([a-zA-Z0-9_-]+)$/)
   return match?.[1] ?? null
@@ -1716,7 +1722,7 @@ function sanitizeNode(node: Node): string {
 
   if (tag === 'a') {
     const href = element.getAttribute('href') ?? ''
-    if (noteIdFromURL(href) || /^balance:\/\/projects(?:\/[a-zA-Z0-9_-]+)?$/.test(href.trim())) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
+    if (noteIdFromURL(href) || projectIdFromURL(href) !== null) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
     if (!isURL(href)) return children
     return `<a href="${escapeHTML(href.trim())}" target="_blank" rel="noreferrer">${children}</a>`
   }
@@ -2427,8 +2433,8 @@ export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
   const label = anchor.dataset.internalLinkLabel ?? anchor.textContent ?? ''
 
   if (kind === 'projects') return { kind, projectId: id === 'all' ? '' : id ?? '', label }
-  const projectURL = /^balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?$/.exec(anchor.getAttribute('href') ?? '')
-  if (projectURL) return { kind: 'projects', projectId: projectURL[1] ?? '', label }
+  const projectId = projectIdFromURL(anchor.getAttribute('href') ?? '')
+  if (projectId !== null) return { kind: 'projects', projectId, label }
   if (kind === 'list' && id) return { kind, listTemplateId: id, label }
   if (kind === 'metric' && id) return { kind, metricId: id, label }
   if (kind === 'note' && id) return { kind, noteId: id, label }

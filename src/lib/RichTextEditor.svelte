@@ -11,6 +11,7 @@
     itemLinkFromAnchor,
     linkifyExternalURLs,
     noteIdFromURL,
+    projectIdFromURL,
     renderItemDisplayHTML,
     sanitizeInlineHTML,
     type ItemLink,
@@ -548,7 +549,7 @@
 
   function insertClipboardContents(activeEditor: HTMLDivElement, clipboardText: string, clipboardHTML: string) {
 
-    if (clipboardText && (isURL(clipboardText) || noteIdFromURL(clipboardText)) && hasNonCollapsedSelectionInside(activeEditor)) {
+    if (clipboardText && (isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
       pendingPasteInput = true
       document.execCommand('createLink', false, clipboardText.trim())
       persistPasteIfInputDidNotFire(activeEditor)
