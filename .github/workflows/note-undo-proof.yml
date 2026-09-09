@@ -1,0 +1,108 @@
+name: Verify note undo before and after
+
+on:
+  push:
+    branches: ['test/note-undo-*']
+    paths: ['.github/workflows/note-undo-proof.yml', '.github/scripts/assert-note-undo-proof.mjs', 'tests/ci/note-undo*', 'playwright.note-undo-ci.config.ts']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Real frontend store and encrypted database, offline
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-note-undo-proof-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-note-undo-proof-
+            ${{ runner.os }}-undo-profile-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium
+      - name: Prepare the original code and identical test harness
+        run: |
+          git worktree add --detach ../note-undo-before b50298b42da190742542d89c6b6b1a09160b41e3
+          mkdir -p ../note-undo-before/tests/ci
+          cp tests/ci/note-undo.spec.ts ../note-undo-before/tests/ci/
+          cp playwright.note-undo-ci.config.ts ../note-undo-before/
+          pnpm --dir ../note-undo-before install --frozen-lockfile
+          python3 - <<'PY'
+          from pathlib import Path
+          for checkout in [Path('../note-undo-before'), Path('.')]:
+              source = checkout / 'src-tauri/src/lib.rs'
+              text = source.read_text()
+              assert text.count('mod tests {') == 1
+              source.write_text(text.replace('mod tests {', 'mod tests {\n    include!("note-undo-driver.rs");', 1))
+              (checkout / 'src-tauri/src/note-undo-driver.rs').write_text(Path('tests/ci/note-undo-driver.rs').read_text())
+          PY
+      - name: Build both real native engines
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
+        run: |
+          for version in before after; do
+            checkout=.
+            if [[ "$version" == before ]]; then checkout=../note-undo-before; fi
+            cargo test --manifest-path "$checkout/src-tauri/Cargo.toml" --lib \
+              tests::note_undo_ci_driver --no-run --message-format=json > "$RUNNER_TEMP/build-$version.jsonl"
+            node --input-type=module - "$RUNNER_TEMP/build-$version.jsonl" "$RUNNER_TEMP/note-undo-$version-engine" <<'JS'
+          import { readFileSync, copyFileSync, chmodSync } from 'node:fs'
+          const rows = readFileSync(process.argv[2], 'utf8').trim().split('\n').map(JSON.parse)
+          const executable = rows.findLast(row => row.reason === 'compiler-artifact' && row.profile.test && row.executable)?.executable
+          if (!executable) throw new Error('No compiled test engine')
+          copyFileSync(executable, process.argv[3])
+          chmodSync(process.argv[3], 0o755)
+          JS
+          done
+      - name: Run the same offline regression test against both versions
+        run: |
+          mkdir -p artifacts/note-undo-comparison
+          output="$PWD/artifacts/note-undo-comparison"
+          load_pids=()
+          for worker in 1 2 3 4; do
+            yes > /dev/null &
+            load_pids+=("$!")
+          done
+          trap 'kill "${load_pids[@]}" 2>/dev/null || true' EXIT
+          for version in before after; do
+            checkout=.
+            if [[ "$version" == before ]]; then checkout=../note-undo-before; fi
+            set +e
+            (
+              cd "$checkout"
+              BALANCE_NOTE_UNDO_ENGINE="$RUNNER_TEMP/note-undo-$version-engine" \
+              BALANCE_NOTE_UNDO_REPORT="$output/$version.json" \
+              BALANCE_NOTE_UNDO_REVISION="$(git rev-parse HEAD)" \
+                pnpm exec playwright test --config playwright.note-undo-ci.config.ts
+            ) > "$output/$version.log" 2>&1
+            result=$?
+            set -e
+            cat "$output/$version.log"
+            echo "$result" > "$output/$version.exit"
+          done
+      - name: Require a reproduced baseline failure and a passing fix
+        run: node .github/scripts/assert-note-undo-proof.mjs artifacts/note-undo-comparison
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: note-undo-before-after
+          path: artifacts/note-undo-comparison
+          if-no-files-found: error
