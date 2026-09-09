@@ -152,8 +152,17 @@ function imageReferences(value: unknown): ReadonlySet<string> {
   const cached = imageReferenceCache.get(value)
   if (cached) return cached
   const ids = new Set<string>()
-  const children = Array.isArray(value) ? value : Object.entries(value).filter(([key]) => key !== 'images' && key !== 'operations').map(([, item]) => item)
-  for (const child of children) for (const id of imageReferences(child)) ids.add(id)
+  if (Array.isArray(value)) {
+    for (const child of value) for (const id of imageReferences(child)) ids.add(id)
+  } else {
+    // Walk fields directly instead of allocating entry pairs and two more
+    // arrays for large objects such as the historical theme preferences.
+    const record = value as Record<string, unknown>
+    for (const key of Object.keys(record)) {
+      if (key === 'images' || key === 'operations') continue
+      for (const id of imageReferences(record[key])) ids.add(id)
+    }
+  }
   imageReferenceCache.set(value, ids)
   return ids
 }
