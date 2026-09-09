@@ -81,6 +81,27 @@ Released-engine compatibility tests check the upgrade and refusal boundary.
 Regeneration remains a separate, deferred issue. This fallback requires the
 original day or template to exist.
 
+## Verification after the fix
+
+[Android run 34328740821](https://github.com/jonahclarsen/Balance/actions/runs/34328740821)
+passed all twelve scenarios on production-code commit `40967ad`. Every new task
+retained its text, appeared exactly once after catch-up and cold restart, and
+stayed in the original day. The two source-conflict cases that lost tasks in the
+historical run below now pass. The run also passed the six browser checks for
+Enter placement, child transfer and template probabilities.
+
+[Native convergence run 34329175370](https://github.com/jonahclarsen/Balance/actions/runs/34329175370)
+passed after updating stale no-op expectations and numeric probability assertions
+in the test fixtures. It also passed the large-workspace relay profile and
+repeated desktop/mobile reload-race checks. No production code changed between
+these two runs.
+
+[Version compatibility run 34329178359](https://github.com/jonahclarsen/Balance/actions/runs/34329178359)
+passed against released v0.6.7, v0.6.8 and v0.6.9 engines. Each matrix entry checks
+synthetic database upgrades, preserved split creation after a released-client
+move, undo/redo and checkpoints. The encrypted relay checks also require an old
+reader to stop at the protocol boundary and resume after an in-place upgrade.
+
 ## Ordinary catch-up result before the fix
 
 [Android run 34316856550](https://github.com/jonahclarsen/Balance/actions/runs/34316856550)
