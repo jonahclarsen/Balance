@@ -6567,6 +6567,18 @@ body.mobile-checkbox-dragging {
 .note-card span {
   min-width: 0;
   overflow: hidden;
+}
+
+.note-card strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.note-card span {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6600,19 +6612,41 @@ body.mobile-checkbox-dragging {
 
 .note-document-head {
   position: relative;
+  flex-wrap: wrap;
   align-items: flex-start;
   justify-content: space-between;
   padding: clamp(18px, 4vw, 48px) 0 12px;
 }
 
+@media (min-width: 761px) {
+  .app-shell:not(.page-maximized) .note-document {
+    padding: 0 clamp(12px, 2vw, 24px) 24px;
+  }
+
+  .app-shell:not(.page-maximized) .note-document-head {
+    padding-top: 20px;
+  }
+}
+
 .note-title {
+  flex: 1 1 320px;
   min-width: 0;
   width: 100%;
-  border-color: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
   background: transparent;
+  color: var(--ink);
   padding: 4px 2px;
-  font-size: clamp(24px, 4vw, 36px);
+  font-size: clamp(22px, 3vw, 28px);
   font-weight: 720;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+textarea.note-title {
+  display: block;
+  resize: none;
+  overflow: hidden;
 }
 
 .note-trashed-title {

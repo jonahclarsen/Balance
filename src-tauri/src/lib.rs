@@ -6522,6 +6522,32 @@ fn upsert_history_entry(
     undo_operation: &Value,
 ) -> Result<(), String> {
     let now = current_timestamp_ms();
+    // Only the local undo record is combined. Authored operation rows remain
+    // immutable, and replay uses the existing batch primitive on every client.
+    if let Some(group) = operation["payload"]["historyGroup"].as_str() {
+        if let Some(previous) = latest_undoable_history_entry(connection)? {
+            if previous.redo_operation["payload"]["historyGroup"].as_str() == Some(group)
+                && previous.redo_operation["deviceId"] == operation["deviceId"]
+                && previous.redo_operation["sequence"].as_i64()
+                    == required_i64(operation, "sequence")?.checked_sub(1)
+            {
+                let undo = history_batch(undo_operation, &previous.undo_operation);
+                let mut redo = operation.clone();
+                redo["type"] = json!("batch");
+                redo["payload"] = history_batch(&previous.redo_operation, operation)["payload"].clone();
+                redo["payload"]["historyGroup"] = json!(group);
+                redo["payload"]["action"] = json!(operation_action(operation));
+                connection.execute(
+                    "update history_entries set operation_id = ?1, sequence = ?2,
+                     undo_operation_json = ?3, redo_operation_json = ?4, updated_at_ms = ?5
+                     where id = ?6",
+                    params![required_string(operation, "id")?, required_i64(operation, "sequence")?,
+                        undo.to_string(), redo.to_string(), now, previous.id],
+                ).map_err(|error| error.to_string())?;
+                return Ok(());
+            }
+        }
+    }
     connection
         .execute(
             "
@@ -6550,9 +6576,23 @@ fn upsert_history_entry(
     Ok(())
 }
 
+fn history_batch(first: &Value, second: &Value) -> Value {
+    let mut operations = Vec::new();
+    for operation in [first, second] {
+        if operation["type"] == "batch" && operation["payload"].get("entityChanges").is_none() {
+            if let Some(nested) = operation["payload"]["operations"].as_array() {
+                operations.extend(nested.iter().cloned());
+                continue;
+            }
+        }
+        operations.push(operation.clone());
+    }
+    storage_operation("batch", json!({ "operations": operations }))
+}
+
 fn operation_action(operation: &Value) -> &str {
     let kind = operation.get("type").and_then(Value::as_str).unwrap_or_default();
-    if kind == "apply_entity_changes" {
+    if kind == "apply_entity_changes" || kind == "batch" {
         operation.get("payload").and_then(|payload| payload.get("action")).and_then(Value::as_str).unwrap_or(kind)
     } else { kind }
 }
@@ -13780,6 +13820,60 @@ mod tests {
         assert!(redo_last_operation_for_ui(&mut connection, None)
             .unwrap()
             .is_none());
+    }
+
+    #[test]
+    fn note_typing_history_survives_flush_retry_checkpoint_and_reopen() {
+        let database = TestDatabase::new("note-typing-history");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let mut state = test_state("Note history");
+        let mut note = json!({"id": "note_test", "title": "Synthetic note",
+            "createdAt": "2026-05-21T00:00:00Z", "updatedAt": "2026-05-21T00:00:00Z",
+            "items": [{"id": "note_item", "kind": "paragraph", "text": "", "html": "", "done": false, "children": []}]});
+        state["notes"] = json!([note]);
+        replace_app_state(&mut connection, &state).unwrap();
+        let mut authored = Vec::new();
+        for (sequence, text, group) in [(2, "a", "typing"), (3, "ab", "typing"), (4, "abc", "typing"), (5, "abc pasted", "paste")] {
+            let before = note.clone();
+            note["items"][0]["text"] = json!(text);
+            note["items"][0]["html"] = json!(text);
+            let operation = json!({"id": format!("op_device_test_{sequence}"), "deviceId": "device_test",
+                "sequence": sequence, "type": "apply_entity_changes", "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {"action": "patch_note_item", "historyGroup": group,
+                    "entityChanges": {"version": 2, "deletes": [], "upserts": [{"collection": "notes", "key": "note_test",
+                        "position": null, "value": note, "patches": [sync::entities::diff(&before, &note)]}]}}});
+            persist_operation_to_database(&mut connection, &operation).unwrap();
+            // A lost acknowledgement retries an immutable row, never another history fragment.
+            persist_operation_to_database(&mut connection, &operation).unwrap();
+            authored.push(operation);
+        }
+        let retained = read_operations(&connection).unwrap();
+        for operation in &authored {
+            let saved = retained.iter().find(|saved| saved["id"] == operation["id"]).unwrap();
+            assert_eq!(saved["payload"], operation["payload"]);
+        }
+        assert_eq!(inspect_history_entries_from_database(&connection, 100).unwrap().as_array().unwrap().len(), 2);
+        // Model a field supplied by a newer client after the edits were authored.
+        note["items"][0]["futureColor"] = json!("blue");
+        replace_entity_collection(&connection, "notes", &[note.clone()]).unwrap();
+        sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
+        drop(connection);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let pasted = undo_last_operation_for_ui(&mut connection, Some("op_device_test_5")).unwrap().unwrap();
+        assert!(pasted["state"].is_null());
+        assert_eq!(current_entity(&connection, "notes", "note_test").unwrap().unwrap().1["items"][0]["text"], "abc");
+        let typing = undo_last_operation_for_ui(&mut connection, Some("op_device_test_4")).unwrap().unwrap();
+        assert!(typing["state"].is_null());
+        assert_eq!(typing["operationType"], "patch_note_item");
+        let undone = current_entity(&connection, "notes", "note_test").unwrap().unwrap().1;
+        assert_eq!(undone["items"][0]["text"], "");
+        assert_eq!(undone["items"][0]["futureColor"], "blue");
+        // An empty frontend cache reads the grouped result correctly after restart too.
+        let redone = redo_last_operation_for_ui(&mut connection, None).unwrap().unwrap();
+        assert_eq!(redone["state"]["notes"][0]["items"][0]["text"], "abc");
+        redo_last_operation_for_ui(&mut connection, Some("op_device_test_5")).unwrap().unwrap();
+        assert_eq!(current_entity(&connection, "notes", "note_test").unwrap().unwrap().1, note);
     }
 
     #[test]

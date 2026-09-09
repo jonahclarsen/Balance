@@ -146,7 +146,7 @@
     trashOpen = false
     const id = onCreate()
     onSelect(id)
-    void tick().then(() => document.querySelector<HTMLInputElement>('#note-title')?.select())
+    void tick().then(() => document.querySelector<HTMLTextAreaElement>('#note-title')?.select())
   }
 
   export function showNotes() {
@@ -176,7 +176,7 @@
     filter = ''
     onSelect(noteId)
     await tick()
-    document.querySelector<HTMLInputElement>('#note-title')?.focus()
+    document.querySelector<HTMLTextAreaElement>('#note-title')?.focus()
   }
 
   async function permanentlyDelete(noteId: Id) {
@@ -296,6 +296,35 @@
     const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
+  }
+
+  function autoSizeTitle(node: HTMLTextAreaElement, _title: string) {
+    function resize() {
+      if (!node.isConnected) return
+      node.style.height = '0px'
+      const style = getComputedStyle(node)
+      // Leave a pixel for WebKit's fractional rounding under the Notes zoom.
+      node.style.height = `${Math.ceil(node.scrollHeight + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)) + 1}px`
+    }
+
+    let width = -1
+    let resizeFrame = 0
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === width) return
+      width = entry.contentRect.width
+      cancelAnimationFrame(resizeFrame)
+      resizeFrame = requestAnimationFrame(resize)
+    })
+    observer.observe(node)
+    void tick().then(resize)
+
+    return {
+      update(_title: string) { void tick().then(resize) },
+      destroy() {
+        observer.disconnect()
+        cancelAnimationFrame(resizeFrame)
+      },
+    }
   }
 
   async function handleTitleKeydown(event: KeyboardEvent) {
@@ -1192,7 +1221,7 @@
         {#if trashOpen}
           <h1 class="note-title note-trashed-title">{selectedNote.title.trim() || 'Untitled note'}</h1>
         {:else}
-          <input id="note-title" class="note-title" value={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown} />
+          <textarea id="note-title" class="note-title" rows="1" value={selectedNote.title} use:autoSizeTitle={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown}></textarea>
         {/if}
         <div class="note-actions">
           {#if trashOpen}
