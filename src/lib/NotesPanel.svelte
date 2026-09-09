@@ -1238,7 +1238,7 @@
           <button type="button" class:active={inlineFormats.italic} aria-label="Italic" aria-pressed={inlineFormats.italic ? 'true' : 'false'} title="Italic (⌘I)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('italic')}><em>I</em></button>
           <button type="button" class:active={inlineFormats.underline} aria-label="Underline" aria-pressed={inlineFormats.underline ? 'true' : 'false'} title="Underline (⌘U)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('underline')}><u>U</u></button>
         </div>
-        <span class="note-format-hint">Type <kbd>/</kbd> for more</span>
+        <span class="note-format-hint">Type <kbd><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" role="img" aria-label="Slash"><path d="M8 2 4 10" /></svg></kbd> for more</span>
         </div>
 
         <div class="note-blocks" bind:this={noteBlocksElement} on:paste|capture={handleNotePaste}>
