@@ -13856,7 +13856,7 @@ mod tests {
         assert_eq!(inspect_history_entries_from_database(&connection, 100).unwrap().as_array().unwrap().len(), 2);
         // Model a field supplied by a newer client after the edits were authored.
         note["items"][0]["futureColor"] = json!("blue");
-        replace_entity_collection(&connection, "notes", &vec![note.clone()]).unwrap();
+        replace_entity_collection(&connection, "notes", &[note.clone()]).unwrap();
         sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
         drop(connection);
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
