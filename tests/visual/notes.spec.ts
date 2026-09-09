@@ -347,6 +347,52 @@ test('the Notes new-note command creates and selects a note', async ({ page }) =
   await expect(shortcuts.getByText('Create note (while in Notes)', { exact: true })).toBeVisible()
 })
 
+test('note titles wrap fully in the document and stop at two lines in the sidebar', async ({ page }, testInfo) => {
+  const errors: string[] = []
+  page.on('pageerror', (error) => errors.push(error.message))
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.locator('.notes-sidebar .note-new').click()
+
+  const title = page.getByLabel('Note title')
+  const longTitle = 'A long note title with enough detail to wrap across several lines in the document '.repeat(4)
+  await title.fill(longTitle)
+  const sidebarTitle = page.locator('.note-card.active strong')
+  await expect(sidebarTitle).toHaveText(longTitle.trim())
+  await expect.poll(() => sidebarTitle.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return Math.round(element.clientHeight / parseFloat(style.lineHeight))
+  })).toBe(2)
+
+  async function expectTitleFits() {
+    // WebKit rounds scroll and client dimensions differently under CSS zoom.
+    await expect.poll(() => title.evaluate((element) => element.scrollHeight - element.clientHeight)).toBeLessThanOrEqual(1)
+    await expect(title).toHaveValue(longTitle)
+  }
+
+  await expectTitleFits()
+  const wrappedHeight = await title.evaluate((element) => element.clientHeight)
+  await title.fill('Short title')
+  await expect.poll(() => title.evaluate((element) => element.clientHeight)).toBeLessThan(wrappedHeight)
+  await page.locator('.notes-sidebar .note-new').click()
+  await page.locator('.note-card').filter({ hasText: 'Short title' }).click()
+  await expect(title).toHaveValue('Short title')
+  await title.fill(longTitle)
+  await expectTitleFits()
+
+  if (testInfo.project.name !== 'mobile') {
+    await page.getByRole('button', { name: 'Enter IMAX mode' }).click()
+    await expectTitleFits()
+    await page.getByRole('button', { name: 'Exit IMAX mode' }).click()
+    await page.setViewportSize({ width: 1100, height: 820 })
+    await expectTitleFits()
+  }
+  await page.screenshot({ path: testInfo.outputPath('wrapped-note-title.png') })
+  expect(errors).toEqual([])
+})
+
 test('Enter in a note title moves the caret to the end of the note', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

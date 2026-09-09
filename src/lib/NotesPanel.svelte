@@ -146,7 +146,7 @@
     trashOpen = false
     const id = onCreate()
     onSelect(id)
-    void tick().then(() => document.querySelector<HTMLInputElement>('#note-title')?.select())
+    void tick().then(() => document.querySelector<HTMLTextAreaElement>('#note-title')?.select())
   }
 
   export function showNotes() {
@@ -176,7 +176,7 @@
     filter = ''
     onSelect(noteId)
     await tick()
-    document.querySelector<HTMLInputElement>('#note-title')?.focus()
+    document.querySelector<HTMLTextAreaElement>('#note-title')?.focus()
   }
 
   async function permanentlyDelete(noteId: Id) {
@@ -296,6 +296,35 @@
     const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
+  }
+
+  function autoSizeTitle(node: HTMLTextAreaElement, _title: string) {
+    function resize() {
+      if (!node.isConnected) return
+      node.style.height = '0px'
+      const style = getComputedStyle(node)
+      // Leave a pixel for WebKit's fractional rounding under the Notes zoom.
+      node.style.height = `${Math.ceil(node.scrollHeight + parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)) + 1}px`
+    }
+
+    let width = -1
+    let resizeFrame = 0
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === width) return
+      width = entry.contentRect.width
+      cancelAnimationFrame(resizeFrame)
+      resizeFrame = requestAnimationFrame(resize)
+    })
+    observer.observe(node)
+    void tick().then(resize)
+
+    return {
+      update(_title: string) { void tick().then(resize) },
+      destroy() {
+        observer.disconnect()
+        cancelAnimationFrame(resizeFrame)
+      },
+    }
   }
 
   async function handleTitleKeydown(event: KeyboardEvent) {
@@ -1192,7 +1221,7 @@
         {#if trashOpen}
           <h1 class="note-title note-trashed-title">{selectedNote.title.trim() || 'Untitled note'}</h1>
         {:else}
-          <input id="note-title" class="note-title" value={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown} />
+          <textarea id="note-title" class="note-title" rows="1" value={selectedNote.title} use:autoSizeTitle={selectedNote.title} placeholder="Untitled note" aria-label="Note title" on:input={(event) => onRename(selectedNote!.id, event.currentTarget.value)} on:keydown={handleTitleKeydown}></textarea>
         {/if}
         <div class="note-actions">
           {#if trashOpen}
@@ -1238,7 +1267,7 @@
           <button type="button" class:active={inlineFormats.italic} aria-label="Italic" aria-pressed={inlineFormats.italic ? 'true' : 'false'} title="Italic (⌘I)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('italic')}><em>I</em></button>
           <button type="button" class:active={inlineFormats.underline} aria-label="Underline" aria-pressed={inlineFormats.underline ? 'true' : 'false'} title="Underline (⌘U)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('underline')}><u>U</u></button>
         </div>
-        <span class="note-format-hint">Type <kbd>/</kbd> for more</span>
+        <span class="note-format-hint">Type <kbd><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" role="img" aria-label="Slash"><path d="M8 2 4 10" /></svg></kbd> for more</span>
         </div>
 
         <div class="note-blocks" bind:this={noteBlocksElement} on:paste|capture={handleNotePaste}>
