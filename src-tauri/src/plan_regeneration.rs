@@ -8,7 +8,7 @@ const RETIRED: &str = "regeneratedPlanItems";
 
 fn put(conn: &Connection, collection: &str, id: &str, value: &Value) -> Result<(), String> {
     conn.execute("insert into state_entities (collection, entity_key, position, value_json)
-        values (?1, ?2, 0, ?3) on conflict(collection, entity_key) do update set value_json = excluded.value_json",
+        values (?1, ?2, 0, ?3) on conflict(collection, entity_key) do update set value_json = json_patch(state_entities.value_json, excluded.value_json)",
         params![collection, id, value.to_string()]).map_err(|e| e.to_string())?;
     Ok(())
 }

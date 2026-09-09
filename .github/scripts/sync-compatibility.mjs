@@ -106,6 +106,9 @@ console.log('PASS: released day replacement/checkpoint preserves an offline addi
 run(futureBinary, 'future', 'init', { state: state('future-device') })
 let future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 1, [
   record('futureHabitCheckIns', 'f', { id: 'f', amount: 7 }),
+  record('planDateAliases', 'future-day-alias', { id: 'future-day-alias', date: '2026-09-08', futureRouting: { enabled: true } }),
+  record('regeneratedPlanItems', 'future-retired-item', { id: 'future-retired-item', date: '2026-09-08', parentId: null,
+    item: { ...splitItem('future-retired-item', 'Synthetic archived item'), futureTaskField: 9 }, futureRetention: { enabled: true } }),
   record('uneditedPlanItems', 'synthetic-generated-task', { id: 'synthetic-generated-task', futureRetention: { enabled: true } }),
   record('notes', 'n', { id: 'n', title: 'Before', futureColor: 'blue', items: [{ id: 'task', text: 'Synthetic task', done: false, futureLink: 'f' }] }),
 ]) })

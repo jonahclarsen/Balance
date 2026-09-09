@@ -3415,3 +3415,27 @@ fn regeneration_legacy_undo_merges_the_previous_day_without_deleting_offline_wor
     assert!(crate::read_plan_item_snapshot(&conn, "template-task").unwrap().is_some());
     assert_eq!(crate::read_plans(&conn).unwrap().len(), 1);
 }
+
+#[test]
+fn regeneration_preserves_future_fields_in_native_checkpoint_records() {
+    let scratch = Scratch::new("regeneration-future-records");
+    let mut conn = open_seeded(&scratch.path, "regeneration-test", &regeneration_state("desktop"));
+    enable_primary(&conn).unwrap();
+    let tx = conn.transaction().unwrap();
+    crate::apply_entity_changes(&tx, &json!({"version":2,"deletes":[],"upserts":[
+        {"collection":"planDateAliases","key":"original-day","position":0,"patches":[],
+            "value":{"id":"original-day","date":"2026-09-09","futureRouting":{"enabled":true}}},
+        {"collection":"regeneratedPlanItems","key":"template-task","position":0,"patches":[],
+            "value":{"id":"template-task","date":"2026-09-09","item":{"futureTaskField":9},"futureRetention":{"enabled":true}}}
+    ]})).unwrap();
+    tx.commit().unwrap();
+    checkpoint_operation_log_preserving_history(&conn).unwrap();
+    let mut generation = regeneration_operation(false);
+    generation["sequence"] = json!(metadata_value(&conn, "local_sequence").unwrap().unwrap().parse::<i64>().unwrap() + 1);
+    persist_operation_to_database(&mut conn, &generation).unwrap();
+    checkpoint_operation_log_preserving_history(&conn).unwrap(); rematerialize(&conn).unwrap();
+    assert_eq!(crate::current_entity(&conn,"planDateAliases","original-day").unwrap().unwrap().1["futureRouting"]["enabled"], true);
+    let archived = crate::current_entity(&conn,"regeneratedPlanItems","template-task").unwrap().unwrap().1;
+    assert_eq!(archived["futureRetention"]["enabled"], true);
+    assert_eq!(archived["item"]["futureTaskField"], 9);
+}
