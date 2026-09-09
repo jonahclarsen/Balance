@@ -140,9 +140,15 @@ const MAX_HISTORY_ENTRIES = 200
 const PERSIST_DEBOUNCE_MS = 500
 const pendingImages = new Map<string, import('./types').ImageAsset>()
 const imageReferenceCache = new WeakMap<object, Set<string>>()
-function imageReferences(value: unknown): Set<string> {
-  if (typeof value === 'string') return new Set(Array.from(value.matchAll(/data-balance-image="([a-f0-9]{64})"/g), (match) => match[1]))
-  if (!value || typeof value !== 'object') return new Set()
+const EMPTY_IMAGE_REFERENCES: ReadonlySet<string> = new Set()
+function imageReferences(value: unknown): ReadonlySet<string> {
+  if (typeof value === 'string') {
+    // Most strings, including historical theme IDs, cannot contain an image.
+    // Avoid a regex iterator and an empty Set allocation for every one.
+    if (!value.includes('data-balance-image="')) return EMPTY_IMAGE_REFERENCES
+    return new Set(Array.from(value.matchAll(/data-balance-image="([a-f0-9]{64})"/g), (match) => match[1]))
+  }
+  if (!value || typeof value !== 'object') return EMPTY_IMAGE_REFERENCES
   const cached = imageReferenceCache.get(value)
   if (cached) return cached
   const ids = new Set<string>()
