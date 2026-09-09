@@ -4066,6 +4066,26 @@ fn restore_recovery_entry_in_database(
     connection: &mut Connection,
     history_id: &str,
 ) -> Result<Option<Value>, String> {
+    // A missing creation is recovered as a new, independently undoable edit.
+    // Reversing its original add would delete the task on a second click, and
+    // redoing that old add could overwrite its subsequently saved text.
+    if let Some(history) = read_history_entry(connection,
+        "select id, operation_id, undo_operation_json, redo_operation_json from history_entries where id = ?1",
+        params![history_id])? {
+        if let Some(recovery) = plan_regeneration::recover_missing_task(connection, &history.redo_operation)? {
+            let device_id = metadata_value(connection, "device_id")?.unwrap_or_else(|| "device_local".into());
+            let sequence = metadata_value(connection, "local_sequence")?.and_then(|value| value.parse::<i64>().ok()).unwrap_or(0) + 1;
+            persist_operation_to_database(connection, &json!({
+                "id": format!("op_{device_id}_{sequence}"), "deviceId": device_id, "sequence": sequence,
+                "timestamp": current_timestamp(), "type": "add_plan_item",
+                "payload": recovery["payload"],
+            }))?;
+            return read_app_state_from_database(connection);
+        }
+        if matches!(history.redo_operation["type"].as_str(), Some("add_plan_item" | "split_plan_item")) {
+            return Ok(None);
+        }
+    }
     let changed = {
         let tx = connection
             .transaction()
@@ -4083,10 +4103,7 @@ fn restore_recovery_entry_in_database(
             return Ok(None);
         };
 
-        let replay = match plan_regeneration::recover_missing_task(&tx, &history.redo_operation)? {
-            Some(recovery) => recovery,
-            None => sync::entities::history_replay(&history.undo_operation, &history.redo_operation)?,
-        };
+        let replay = sync::entities::history_replay(&history.undo_operation, &history.redo_operation)?;
         append_history_action_operation(&tx, "history_undo", &history.id, &replay)?;
         apply_operation(&tx, &replay)?;
         set_history_undone(&tx, &history.id, true)?;

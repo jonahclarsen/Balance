@@ -3359,6 +3359,11 @@ fn regeneration_recovery_restores_saved_text_without_replacing_the_current_day()
     let restored = crate::read_plan_item_snapshot(&conn, "lost-task").unwrap().unwrap();
     assert_eq!(restored.plan_id, "old-client-replacement");
     assert_eq!(restored.item["text"], "Synthetic final saved text");
+    assert!(crate::restore_recovery_entry_in_database(&mut conn, entry["historyId"].as_str().unwrap()).unwrap().is_none());
+    crate::undo_last_operation_in_database(&mut conn).unwrap().unwrap();
+    assert!(crate::read_plan_item_snapshot(&conn, "lost-task").unwrap().is_none());
+    crate::redo_last_operation_in_database(&mut conn).unwrap().unwrap();
+    assert_eq!(crate::read_plan_item_snapshot(&conn, "lost-task").unwrap().unwrap().item, restored.item);
     assert!(crate::read_plan_item_snapshot(&conn, "current-task").unwrap().is_some());
     rematerialize(&conn).unwrap();
     assert_eq!(crate::read_plan_item_snapshot(&conn, "lost-task").unwrap().unwrap().item, restored.item);
