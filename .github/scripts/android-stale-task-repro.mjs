@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 // Diagnostic only: real WebView input + native encrypted relay reconciliation.
 // A successful run reports whether loss occurred; it does not assert that loss
-// is desirable. The ordinary catch-up control must preserve the task.
+// is desirable. All scenarios use ordinary edits and preserve the day ID.
 import http from 'node:http'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
 import {
-  packageName, sleep, adb, waitFor, appPid, launchApp, connectDevTools,
+  packageName, forceBackgroundJob, sleep, adb, waitFor, appPid, launchApp, connectDevTools,
   waitForDatabaseReady, syntheticState,
 } from './android-sync-profile-helpers.mjs'
 
@@ -19,12 +19,25 @@ const proxyPort = 8790
 const relaySecret = randomBytes(24).toString('base64url')
 const relayUrl = `http://127.0.0.1:${proxyPort}/${relaySecret}/`
 const backlogCount = 66
-const report = { backlogCount, scenarios: [] }
+const report = { backlogCount, regenerations: 0, scenarios: [] }
 const relayLog = []
 let client
 let manifestLimit = Infinity
 let offline = false
-const proxy = http.createServer((request, response) => {
+let holdBlobs = false
+let releaseDownloads = []
+let heldDownloads = 0
+let manifestRequests = 0
+const releaseBlobs = () => {
+  holdBlobs = false
+  for (const release of releaseDownloads.splice(0)) release()
+}
+const proxy = http.createServer(async (request, response) => {
+  if (request.url?.includes('/v3/manifest')) manifestRequests++
+  if (holdBlobs && request.url?.includes('/v3/blobs/')) {
+    heldDownloads++
+    await new Promise((resolve) => releaseDownloads.push(resolve))
+  }
   if (offline) {
     response.writeHead(503)
     response.end('Synthetic offline interval')
@@ -64,6 +77,11 @@ async function invoke(command, args = {}) {
   return client.evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)})`)
 }
 async function readState() { return JSON.parse(await invoke('read_app_state')) }
+async function readOperations() {
+  // This process only ever connects to the CI installation seeded below.
+  const inspected = JSON.parse(await invoke('inspect_database'))
+  return inspected.operations.map((op) => ({ ...op, payload: JSON.parse(op.payloadJson) }))
+}
 async function manifest() {
   const response = await fetch(`http://127.0.0.1:${relayPort}/${relaySecret}/v3/manifest`)
   assert(response.ok)
@@ -102,86 +120,156 @@ async function resetJoiner(pairingCode) {
   await waitFor(() => client.evaluate(`Boolean(document.querySelector('.day-pane .add-row'))`), 'the existing synthetic day')
   await waitFor(() => client.evaluate(`Boolean(document.querySelector('.sync-status-indicator.error'))`), 'the scheduler to observe the offline relay', 60_000)
 }
-async function typeTask(text) {
+async function typeTask(text, { method = 'add', durable = true, composing = false } = {}) {
   const count = await client.evaluate(`document.querySelectorAll('[data-plan-text-input]').length`)
-  await client.evaluate(`document.querySelector('.day-pane .add-row').click()`)
+  if (method === 'add') {
+    await client.evaluate(`document.querySelector('.day-pane .add-row').click()`)
+  } else {
+    await client.evaluate(`(() => {
+      const editor = document.querySelector('[data-plan-text-input-id="catchup-item-0-19"]')
+      editor.focus()
+      const range = document.createRange()
+      range.selectNodeContents(editor)
+      range.collapse(false)
+      getSelection().removeAllRanges()
+      getSelection().addRange(range)
+    })()`)
+    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+  }
   await waitFor(() => client.evaluate(`document.querySelectorAll('[data-plan-text-input]').length === ${count + 1}`), 'the new bottom task')
-  await client.evaluate(`(() => {
+  const id = await client.evaluate(`(() => {
     const editors = document.querySelectorAll('[data-plan-text-input]')
     const editor = editors[editors.length - 1]
     editor.scrollIntoView({ block: 'center' })
     editor.focus()
+    return editor.dataset.planTextInputId
   })()`)
-  await client.send('Input.insertText', { text })
-  const state = await waitFor(async () => {
-    const state = await readState()
-    const task = state.plans.find((plan) => plan.id === 'catchup-plan-0')?.items.at(-1)
-    return task?.text === text ? state : null
-  }, 'the typed task to be durable before reconnecting', 60_000)
-  const task = state.plans.find((plan) => plan.id === 'catchup-plan-0').items.at(-1)
+  if (composing) {
+    await client.send('Input.imeSetComposition', { text, selectionStart: text.length, selectionEnd: text.length })
+  } else {
+    await client.send('Input.insertText', { text })
+  }
   assert(await visible(text), 'Task must be visible before catch-up')
-  return task
+  if (durable) {
+    await waitFor(async () => findTask(await readState(), id)?.item.text === text,
+      'the typed task to be durable before catch-up', 60_000)
+  }
+  return { id, text }
+}
+function findTask(state, id) {
+  const walk = (items) => {
+    for (const item of items) {
+      if (item.id === id) return item
+      const nested = walk(item.children ?? [])
+      if (nested) return nested
+    }
+  }
+  for (const plan of state.plans) {
+    const item = walk(plan.items)
+    if (item) return { planId: plan.id, item }
+  }
+  return null
+}
+function creationOperation(state, id) {
+  const op = state.operations.find((op) => op.payload?.newItem?.id === id || op.payload?.item?.id === id)
+  return op ? { type: op.type, id: op.id, sequence: op.sequence, planId: op.payload.planId, sourceId: op.payload.itemId } : null
 }
 async function visible(text) {
   return client.evaluate(`[...document.querySelectorAll('[data-plan-text-input]')].some((editor) => editor.textContent === ${JSON.stringify(text)})`)
 }
-async function runScenario(name, limit, pairingCode) {
-  console.log(`[stale-task-repro] ${name}: bootstrap a stale device, then type at the bottom of the day`)
+async function runScenario(scenario, pairingCode) {
+  const { name, limit, method, timing = 'before', changedSource = false, checkpoint = false } = scenario
+  console.log(`[stale-task-repro] starting ${name}`)
   offline = false
   manifestLimit = 1
   await resetJoiner(pairingCode)
   const text = `Synthetic unsynced bottom task ${name}`
-  const task = await typeTask(text)
+  const started = performance.now()
+  let forcedJobId
+  if (timing === 'during-download' || timing === 'pending-composition') {
+    holdBlobs = true
+    heldDownloads = 0
+    manifestLimit = limit
+    offline = false
+    await client.evaluate(`window.dispatchEvent(new Event('focus'))`)
+    await waitFor(() => heldDownloads > 0, 'the real catch-up download to be in flight')
+  }
+  const task = await typeTask(text, { method,
+    durable: timing !== 'pending-composition', composing: timing === 'pending-composition' })
+  const beforeState = await readState()
+  beforeState.operations = await readOperations()
+  const beforeTask = findTask(beforeState, task.id)
+  const result = {
+    name, method, timing, checkpoint, changedSource,
+    before: { planId: 'catchup-plan-0', taskId: task.id, visible: true,
+      durable: beforeTask?.item.text === text, bottomOfDay: true,
+      creationOperation: creationOperation(beforeState, task.id) },
+  }
+  report.scenarios.push(result)
+  if (timing !== 'pending-composition') assert(result.before.durable)
+  if (result.before.creationOperation) assert.equal(result.before.creationOperation.type, method === 'enter' ? 'split_plan_item' : 'add_plan_item')
   manifestLimit = limit
   offline = false
-  const started = performance.now()
+  if (timing === 'background') {
+    holdBlobs = true
+    heldDownloads = 0
+    forcedJobId = await forceBackgroundJob({ get manifestRequests() { return manifestRequests } })
+    await waitFor(() => heldDownloads > 0, 'WorkManager to begin downloading the backlog')
+    releaseBlobs()
+    await waitFor(async () => findTask(await readState(), 'catchup-item-0-0')?.item.done === false,
+      'WorkManager to materialize remote edits', 60_000)
+    launchApp()
+  }
+  releaseBlobs()
   await client.evaluate(`window.dispatchEvent(new Event('focus'))`)
-  // Tauri's invoke property is immutable. Observe persisted incoming data and
-  // the real scheduler's error-to-success UI transition instead of patching IPC.
   await waitFor(async () => {
     const state = await readState()
-    const lastBacklogItem = state.plans.find((plan) => plan.id === 'catchup-plan-3')?.items.find((item) => item.id === 'catchup-item-3-5')
-    return lastBacklogItem?.done === true
-      && (name === 'ordinary-backlog' || state.plans.some((plan) => plan.id === 'stale-task-regenerated-plan'))
+    const lastBacklogItem = findTask(state, 'catchup-item-3-5')
+    const movedSource = findTask(state, 'catchup-item-0-19')
+    return lastBacklogItem?.item.done === true
+      && (!changedSource || (changedSource === 'moved' ? movedSource?.planId === 'catchup-plan-4' : !movedSource))
   }, 'the foreground scheduler to materialize the remote backlog', 120_000, 250)
   await waitFor(() => client.evaluate(`!document.querySelector('.sync-status-indicator')`), 'the production scheduler to finish refreshing the UI', 60_000)
   await client.evaluate('new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
-  const catchupMs = Math.round(performance.now() - started)
-  const state = await readState()
-  const day = state.plans.find((plan) => plan.date === '2026-01-01')
-  assert(day, 'The synthetic day itself must still exist')
-  const inDatabase = state.plans.some((plan) => plan.items.some((item) => item.id === task.id && item.text === text))
-  const inUi = await visible(text)
-  const result = {
-    name, before: { planId: 'catchup-plan-0', taskId: task.id, visible: true, durable: true, bottomOfDay: true },
-    after: { planId: day.id, taskInDatabase: inDatabase, taskVisible: inUi },
-    catchupMs, reproduced: !inDatabase && !inUi,
+  if (timing === 'pending-composition') {
+    await client.send('Input.insertText', { text })
+    await sleep(750)
   }
-  report.scenarios.push(result)
+  const state = await readState()
+  state.operations = await readOperations()
+  const day = state.plans.find((plan) => plan.date === '2026-01-01')
+  assert.equal(day?.id, 'catchup-plan-0', 'Ordinary catch-up must not replace the day')
+  const storedTask = findTask(state, task.id)
+  const inDatabase = storedTask?.item.text === text
+  const inUi = await visible(text)
+  result.after = {
+    planId: day.id, taskInDatabase: inDatabase, taskVisible: inUi,
+    taskLocation: storedTask?.planId ?? null, taskText: storedTask?.item.text ?? null,
+    creationOperation: creationOperation(state, task.id),
+  }
+  result.catchupMs = Math.round(performance.now() - started)
+  result.forcedJobId = forcedJobId
+  result.reproduced = !storedTask && !inUi
+  result.textLost = Boolean(storedTask && !inDatabase)
   result.verificationSync = await invoke('sync_relay_once', { reason: 'stale-task-verify-already-caught-up' })
   assert.equal(result.verificationSync.pulledOperations, 0, 'The scheduler must finish catch-up before verification')
-  console.log(`[stale-task-repro] ${JSON.stringify(result)}`)
-  if (name === 'ordinary-backlog') {
-    assert.equal(day.id, 'catchup-plan-0')
-    assert(inDatabase && inUi, 'Ordinary catch-up erased the new task')
-    for (let offset = 0; offset < backlogCount; offset++) {
-      const item = state.plans.find((plan) => plan.id === `catchup-plan-${Math.floor(offset / 20)}`).items[offset % 20]
-      assert.equal(item.done, (offset % 20) % 3 !== 0, 'Remote backlog did not fully arrive')
-    }
-  } else {
-    assert.equal(day.id, 'stale-task-regenerated-plan', 'The remote day replacement was not delivered')
+  // Every remote completion edit is checked by ID, including moved tasks.
+  for (let offset = 0; offset < backlogCount; offset++) {
+    const id = `catchup-item-${Math.floor(offset / 20)}-${offset % 20}`
+    if (changedSource === 'deleted' && id === 'catchup-item-0-19') continue
+    assert.equal(findTask(state, id)?.item.done, (offset % 20) % 3 !== 0, `Missing remote edit ${id}`)
   }
-  // Cold reopening distinguishes a transient display refresh from persisted loss.
   adb(['shell', 'am', 'force-stop', packageName])
   client.close()
   launchApp()
   client = await connectDevTools(await waitFor(appPid, 'the reopened synthetic process'))
   assert(!(await waitForDatabaseReady(client)).failed)
-  result.afterRestart = {
-    taskInDatabase: (await readState()).plans.some((plan) => plan.items.some((item) => item.id === task.id)),
-    taskVisible: await visible(text),
-  }
+  const reopenedTask = findTask(await readState(), task.id)
+  result.afterRestart = { taskInDatabase: reopenedTask?.item.text === text, taskVisible: await visible(text) }
   assert.equal(result.afterRestart.taskInDatabase, inDatabase)
+  console.log(`[stale-task-repro] ${JSON.stringify(result)}`)
+  await writeFile('android-stale-task-repro.json', `${JSON.stringify(report, null, 2)}\n`)
 }
 
 try {
@@ -205,21 +293,50 @@ try {
   await invoke('sync_relay_once', { reason: 'stale-task-seed-backlog' })
   const backlogSequence = (await manifest()).latestSequence
   assert.equal(backlogSequence, backlogCount + 1)
-  // Model regeneration after the phone's last sync. Preserve every task the
-  // primary knows about, just as current frontend regeneration does. The only
-  // missing task is the one Android will subsequently create while stale.
-  const priorDay = (await readState()).plans.find((plan) => plan.id === 'catchup-plan-0')
+  // Snapshot the ordinary edits using the real native checkpoint builder.
+  // This creates a newer replace_full_state operation with the SAME day IDs;
+  // it is delivered as an incremental encrypted batch, without regeneration.
+  await invoke('sync_enable_primary', { pairingCode })
+  await invoke('sync_relay_once', { reason: 'stale-task-seed-checkpoint' })
+  const checkpointSequence = (await manifest()).latestSequence
+  assert.equal(checkpointSequence, backlogSequence + 1)
+  const checkpointState = await readState()
+  const nativeCheckpoint = (await readOperations()).find((op) => op.type === 'replace_full_state')
+  assert(nativeCheckpoint?.payload.generation >= 2)
+  assert.equal(nativeCheckpoint.payload.frontiers['catchup-primary'], backlogCount)
+  const source = findTask(checkpointState, 'catchup-item-0-19').item
   await invoke('persist_operations_for_android_ci', { operationsJson: JSON.stringify([{
-    id: 'stale-task-regenerate', deviceId: 'catchup-primary', sequence: backlogCount + 1,
-    timestamp: '2026-01-02T00:00:00.000Z', type: 'generate_plan',
-    payload: { templateId: 'synthetic-template', date: priorDay.date, replaceExisting: true, activePlanDate: '',
-      generatedPlan: { ...priorDay, id: 'stale-task-regenerated-plan', createdAt: '2026-01-02T00:00:00.000Z' } },
+    id: 'stale-task-move-source', deviceId: 'catchup-primary', sequence: backlogCount + 1,
+    timestamp: '2026-01-02T00:00:00.000Z', type: 'move_plan_item_to_plan',
+    payload: { sourcePlanId: 'catchup-plan-0', targetPlanId: 'catchup-plan-4', itemId: source.id,
+      targetId: null, placement: 'after', item: source },
   }]) })
-  await invoke('sync_relay_once', { reason: 'stale-task-seed-regeneration' })
-  const regenerationSequence = (await manifest()).latestSequence
-  assert.equal(regenerationSequence, backlogSequence + 1)
-  await runScenario('ordinary-backlog', backlogSequence, pairingCode)
-  await runScenario('regenerated-day', regenerationSequence, pairingCode)
+  await invoke('sync_relay_once', { reason: 'stale-task-seed-source-move' })
+  const movedSequence = (await manifest()).latestSequence
+  assert.equal(movedSequence, checkpointSequence + 1)
+  await invoke('persist_operations_for_android_ci', { operationsJson: JSON.stringify([{
+    id: 'stale-task-delete-source', deviceId: 'catchup-primary', sequence: backlogCount + 2,
+    timestamp: '2026-01-02T00:00:01.000Z', type: 'delete_plan_item',
+    payload: { planId: 'catchup-plan-4', itemId: source.id, completedParentIds: [] },
+  }]) })
+  await invoke('sync_relay_once', { reason: 'stale-task-seed-source-delete' })
+  const deletedSequence = (await manifest()).latestSequence
+  assert.equal(deletedSequence, movedSequence + 1)
+  const scenarios = [
+    { name: 'add-ordinary', method: 'add', limit: backlogSequence },
+    { name: 'enter-ordinary', method: 'enter', limit: backlogSequence },
+    { name: 'add-checkpoint', method: 'add', limit: checkpointSequence, checkpoint: true },
+    { name: 'enter-checkpoint', method: 'enter', limit: checkpointSequence, checkpoint: true },
+    { name: 'add-during-download', method: 'add', limit: backlogSequence, timing: 'during-download' },
+    { name: 'enter-during-download', method: 'enter', limit: backlogSequence, timing: 'during-download' },
+    { name: 'enter-composing-checkpoint', method: 'enter', limit: checkpointSequence, timing: 'pending-composition', checkpoint: true },
+    { name: 'add-background', method: 'add', limit: backlogSequence, timing: 'background' },
+    { name: 'enter-background', method: 'enter', limit: backlogSequence, timing: 'background' },
+    { name: 'add-source-moved', method: 'add', limit: movedSequence, changedSource: 'moved', checkpoint: true },
+    { name: 'enter-source-moved', method: 'enter', limit: movedSequence, changedSource: 'moved', checkpoint: true },
+    { name: 'enter-source-deleted', method: 'enter', limit: deletedSequence, changedSource: 'deleted', checkpoint: true },
+  ]
+  for (const scenario of scenarios) await runScenario(scenario, pairingCode)
   report.completed = true
 } catch (error) {
   report.error = error.stack ?? String(error)
@@ -232,6 +349,7 @@ try {
   }
   process.exitCode = 1
 } finally {
+  releaseBlobs()
   await writeFile('android-stale-task-repro.json', `${JSON.stringify(report, null, 2)}\n`)
   await writeFile('android-stale-task-repro-logcat.txt', adb(['logcat', '-d'], { allowFailure: true }))
   client?.close()

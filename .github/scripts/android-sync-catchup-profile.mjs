@@ -2,11 +2,11 @@
 
 import http from 'node:http'
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { writeFile } from 'node:fs/promises'
 
-import { packageName, findWorkManagerJobIds, sleep, adb, waitFor, appPid, launchApp, connectDevTools, waitForDatabaseReady, syntheticState } from './android-sync-profile-helpers.mjs'
+import { packageName, forceBackgroundJob, sleep, adb, waitFor, appPid, launchApp, connectDevTools, waitForDatabaseReady, syntheticState } from './android-sync-profile-helpers.mjs'
 const relayPort = 8791
 const proxyPort = 8790
 const relaySecret = randomBytes(24).toString('base64url')
@@ -14,52 +14,6 @@ const relayUrl = `http://127.0.0.1:${proxyPort}/${relaySecret}/`
 const batchCount = 66
 const fixturePlans = 30
 const itemsPerPlan = 20
-const commandTimeoutMs = 30_000
-
-async function forceBackgroundJob(proxy) {
-  adb(['shell', 'input', 'keyevent', 'KEYCODE_HOME'])
-  await sleep(1_000)
-  const ids = await waitFor(() => {
-    const candidates = findWorkManagerJobIds()
-    return candidates.length > 0 ? candidates : null
-  }, 'the Balance WorkManager job')
-  const failures = []
-  for (const id of ids) {
-    const variants = [
-      ['-n', 'androidx.work.systemjobscheduler'],
-      [],
-    ]
-    for (const namespaceArgs of variants) {
-      const requestsBefore = proxy.manifestRequests
-      const result = spawnSync(
-        'adb',
-        ['shell', 'cmd', 'jobscheduler', 'run', '-f', ...namespaceArgs, packageName, id],
-        { encoding: 'utf8', timeout: commandTimeoutMs },
-      )
-      if (result.error || result.status !== 0) {
-        failures.push(
-          `${id}${namespaceArgs.length > 0 ? ' namespaced' : ''}: `
-            + `${result.error?.message ?? result.stderr ?? result.stdout}`.trim(),
-        )
-        continue
-      }
-      try {
-        await waitFor(
-          () => proxy.manifestRequests > requestsBefore,
-          `background relay request from WorkManager job ${id}`,
-          5_000,
-        )
-        return id
-      } catch {
-        // WorkManager also owns widget jobs. Try the next namespace or job id.
-      }
-    }
-  }
-  throw new Error(
-    `No Balance JobScheduler candidate ran background relay sync: ${ids.join(', ')}`
-      + (failures.length > 0 ? ` (${failures.join('; ')})` : ''),
-  )
-}
 
 function createCountingProxy() {
   let manifestRequests = 0
