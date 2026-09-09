@@ -74,7 +74,9 @@ relay.stdout.on('data', (chunk) => relayLog.push(String(chunk)))
 relay.stderr.on('data', (chunk) => relayLog.push(String(chunk)))
 
 async function invoke(command, args = {}) {
-  return client.evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)})`)
+  const result = await client.evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)}).then(value => ({ ok: true, value }), error => ({ ok: false, error: String(error) }))`)
+  if (!result.ok) throw new Error(`${command}: ${result.error}`)
+  return result.value
 }
 async function readState() { return JSON.parse(await invoke('read_app_state')) }
 async function readOperations() {
@@ -350,7 +352,8 @@ try {
   }]) })
   await invoke('sync_relay_once', { reason: 'stale-task-seed-regeneration' })
   const regenerationSequence = (await manifest()).latestSequence
-  await invoke('sync_enable_primary', { pairingCode })
+  // Compact normally: re-enabling a primary resets its covered frontiers.
+  await invoke('persist_operations_for_android_ci', { operationsJson: '[]', checkpointAfter: true })
   await invoke('sync_relay_once', { reason: 'stale-task-seed-regeneration-checkpoint' })
   const regenerationCheckpointSequence = (await manifest()).latestSequence
   const scenarios = [

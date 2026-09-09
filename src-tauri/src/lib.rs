@@ -1474,6 +1474,7 @@ async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Res
 async fn persist_operations_for_android_ci(
     app: tauri::AppHandle,
     operations_json: String,
+    checkpoint_after: Option<bool>,
 ) -> Result<(), String> {
     if !cfg!(all(target_os = "android", debug_assertions)) {
         return Err("Android CI fixture setup is unavailable in this build.".to_string());
@@ -1507,6 +1508,9 @@ async fn persist_operations_for_android_ci(
                 sync::ops_by_id(&connection, &operation_ids).map_err(sync::Error::into_string)?;
             sync::relay_client::stage_android_ci_outbox_batches(&connection, &key, &operations)
                 .map_err(sync::Error::into_string)?;
+        }
+        if checkpoint_after.unwrap_or(false) {
+            sync::checkpoint_operation_log_preserving_history(&connection).map_err(sync::Error::into_string)?;
         }
         Ok(())
     })
