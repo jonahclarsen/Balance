@@ -100,6 +100,7 @@ async function resetJoiner(pairingCode) {
   offline = true
   await reload()
   await waitFor(() => client.evaluate(`Boolean(document.querySelector('.day-pane .add-row'))`), 'the existing synthetic day')
+  await waitFor(() => client.evaluate(`Boolean(document.querySelector('.sync-status-indicator.error'))`), 'the scheduler to observe the offline relay', 60_000)
 }
 async function typeTask(text) {
   const count = await client.evaluate(`document.querySelectorAll('[data-plan-text-input]').length`)
@@ -131,24 +132,21 @@ async function runScenario(name, limit, pairingCode) {
   await resetJoiner(pairingCode)
   const text = `Synthetic unsynced bottom task ${name}`
   const task = await typeTask(text)
-  // Observe the production scheduler without replacing its implementation.
-  await client.evaluate(`(() => {
-    const original = window.__TAURI_INTERNALS__.invoke
-    window.reproSyncPasses = []
-    window.reproRefreshes = 0
-    window.__TAURI_INTERNALS__.invoke = async function(command, ...args) {
-      const result = await original.call(this, command, ...args)
-      if (command === 'sync_relay_once') window.reproSyncPasses.push(result)
-      if (command === 'read_app_state' && window.reproSyncPasses.length) window.reproRefreshes++
-      return result
-    }
-  })()`)
   manifestLimit = limit
   offline = false
+  const started = performance.now()
   await client.evaluate(`window.dispatchEvent(new Event('focus'))`)
-  const pass = await waitFor(() => client.evaluate(`window.reproSyncPasses.find((pass) => pass.latestSequence >= ${limit})`), 'the foreground catch-up pass', 120_000)
-  await waitFor(() => client.evaluate('window.reproRefreshes > 0'), 'the production scheduler to refresh the UI', 60_000)
+  // Tauri's invoke property is immutable. Observe persisted incoming data and
+  // the real scheduler's error-to-success UI transition instead of patching IPC.
+  await waitFor(async () => {
+    const state = await readState()
+    const lastBacklogItem = state.plans.find((plan) => plan.id === 'catchup-plan-3')?.items.find((item) => item.id === 'catchup-item-3-5')
+    return lastBacklogItem?.done === true
+      && (name === 'ordinary-backlog' || state.plans.some((plan) => plan.id === 'stale-task-regenerated-plan'))
+  }, 'the foreground scheduler to materialize the remote backlog', 120_000, 250)
+  await waitFor(() => client.evaluate(`!document.querySelector('.sync-status-indicator')`), 'the production scheduler to finish refreshing the UI', 60_000)
   await client.evaluate('new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+  const catchupMs = Math.round(performance.now() - started)
   const state = await readState()
   const day = state.plans.find((plan) => plan.date === '2026-01-01')
   assert(day, 'The synthetic day itself must still exist')
@@ -157,9 +155,11 @@ async function runScenario(name, limit, pairingCode) {
   const result = {
     name, before: { planId: 'catchup-plan-0', taskId: task.id, visible: true, durable: true, bottomOfDay: true },
     after: { planId: day.id, taskInDatabase: inDatabase, taskVisible: inUi },
-    sync: pass, reproduced: !inDatabase && !inUi,
+    catchupMs, reproduced: !inDatabase && !inUi,
   }
   report.scenarios.push(result)
+  result.verificationSync = await invoke('sync_relay_once', { reason: 'stale-task-verify-already-caught-up' })
+  assert.equal(result.verificationSync.pulledOperations, 0, 'The scheduler must finish catch-up before verification')
   console.log(`[stale-task-repro] ${JSON.stringify(result)}`)
   if (name === 'ordinary-backlog') {
     assert.equal(day.id, 'catchup-plan-0')
@@ -223,6 +223,13 @@ try {
   report.completed = true
 } catch (error) {
   report.error = error.stack ?? String(error)
+  if (client) {
+    report.uiAtFailure = await client.evaluate(`({
+      syncStatus: document.querySelector('.sync-status-indicator')?.outerHTML ?? null,
+      heading: document.querySelector('.day-pane h2')?.textContent ?? null,
+      tasks: [...document.querySelectorAll('[data-plan-text-input]')].map((editor) => editor.textContent),
+    })`).catch(() => null)
+  }
   process.exitCode = 1
 } finally {
   await writeFile('android-stale-task-repro.json', `${JSON.stringify(report, null, 2)}\n`)
