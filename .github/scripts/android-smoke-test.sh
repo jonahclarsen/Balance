@@ -341,6 +341,11 @@ if [ "${BALANCE_RUN_SYNC_CATCHUP_PROFILE:-0}" = 1 ]; then
   node .github/scripts/android-sync-catchup-profile.mjs
 fi
 
+# Opt-in stale-day task-loss diagnostic, using only this emulator's fixtures.
+if [ "${BALANCE_RUN_STALE_TASK_REPRO:-0}" = 1 ]; then
+  node .github/scripts/android-stale-task-repro.mjs
+fi
+
 # The checks above are the deterministic release gate: a real APK booted twice,
 # exercised SQLCipher + Android Keystore recovery, registered background sync,
 # loaded the home-screen widget provider, and reconciled two synthetic encrypted databases.

@@ -31,6 +31,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_stale_task_repro:
+        description: Reproduce a task typed on Android before stale-day sync catch-up
+        required: false
+        default: false
+        type: boolean
       run_caret_check:
         description: Check Today task caret stability after idle and Android composition
         required: false
@@ -297,6 +302,7 @@ jobs:
           # but is too flaky and expensive to remain a release gate.
           BALANCE_RUN_UI_PAIRING_E2E: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_pairing && '1' || '0' }}
           BALANCE_RUN_RESUME_STRESS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_resume_stress && '1' || '0' }}
+          BALANCE_RUN_STALE_TASK_REPRO: ${{ github.event_name == 'workflow_dispatch' && inputs.run_stale_task_repro && '1' || '0' }}
           BALANCE_RUN_SYNC_CATCHUP_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_sync_catchup_profile && '1' || '0' }}
         with:
           api-level: 34
@@ -329,6 +335,7 @@ jobs:
             sync-e2e-large-task-profile.json
             android-resume-stress.json
             android-resume-relay.log
+            android-stale-task-repro*
             android-sync-catchup-profile.json
             android-sync-catchup-relay.log
             android-sync-catchup-logcat.txt
