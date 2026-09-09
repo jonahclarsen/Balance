@@ -103,6 +103,13 @@ test('regeneration preserves touched tasks above fresh tasks through reload and 
     unsubscribe()
     return result
   })
+  expect(fixture.afterSecondPlan.id).toBe(fixture.afterFirst.id)
+  expect(fixture.checkOperation.payload.planDate).toBe('2026-09-08')
+  const regeneration = fixture.operations.at(-1)
+  expect(regeneration.type).toBe('regenerate_plan')
+  expect(regeneration.payload.generatedPlan.items).toHaveLength(1)
+  expect(regeneration.payload.replaceItems).toHaveLength(1)
+  expect(regeneration.payload.replaceItems[0].id).toBe(fixture.afterFirst.items[1].id)
   expect(fixture.firstMarkerCount).toBe(1)
   expect(fixture.markerCountAfterCheck).toBe(0)
   expect(fixture.checkOperation.payload.entityChanges).toEqual({ version: 2, upserts: [], deletes: [{ collection: 'uneditedPlanItems', key: fixture.originalId }] })

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { assertTaskPreservation, expectedScenarios } from './android-task-preservation-gate.mjs'
 
 const passingReport = () => ({
-  completed: true, regenerations: 0,
+  completed: true, regenerations: 1,
   scenarios: expectedScenarios.map((name) => ({
     name, before: { visible: true, durable: true, planId: 'synthetic-day' },
     after: { planId: 'synthetic-day', taskInDatabase: true, taskVisible: true, matchingTaskCount: 1 },
@@ -11,7 +11,7 @@ const passingReport = () => ({
     reproduced: false, textLost: false, verificationSync: { pulledOperations: 0 },
   })),
 })
-test('accepts all twelve completed preservation scenarios', () => assertTaskPreservation(passingReport()))
+test('accepts all sixteen completed preservation scenarios', () => assertTaskPreservation(passingReport()))
 for (const [name, mutate] of [
   ['missing scenario', (r) => r.scenarios.pop()],
   ['duplicate scenario', (r) => { r.scenarios[1].name = r.scenarios[0].name }],

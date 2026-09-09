@@ -3225,3 +3225,167 @@ fn split_creation_survives_anchor_conflicts_undo_checkpoint_and_later_deletion()
         }
     }
 }
+
+fn regeneration_item(id: &str) -> Value {
+    json!({"id":id,"text":id,"html":id,"done":false,"startMinutes":null,"endMinutes":null,"children":[]})
+}
+fn regeneration_state(device: &str) -> Value {
+    let mut initial = state(device, json!([]));
+    initial["plans"] = json!([{"id":"original-day","date":"2026-09-09","title":"Synthetic day","dailyReminder":"",
+        "createdAt":"2026-09-09T00:00:00Z","items":[regeneration_item("template-task")]}]);
+    initial["uneditedPlanItems"] = json!([{"id":"template-task"}]);
+    initial
+}
+fn regeneration_operation(legacy: bool) -> Value {
+    json!({"id":"desktop-regenerate","deviceId":"desktop","sequence":1,"timestamp":"2026-09-09T11:00:00Z",
+        "type":if legacy {"generate_plan"} else {"regenerate_plan"},"payload":{
+            "date":"2026-09-09","replaceExisting":true,"requireUntouched":true,"replaceItems":[regeneration_item("template-task")],
+            "generatedPlan":{"id":if legacy {"replacement-day"} else {"original-day"},"date":"2026-09-09","title":"Regenerated day",
+                "dailyReminder":"","createdAt":"2026-09-09T11:00:00Z","items":[regeneration_item("fresh-task")]}}})
+}
+
+#[test]
+fn regeneration_preserves_offline_creation_and_edits_in_both_orders() {
+    for legacy in [false, true] {
+        for before in [false, true] {
+            for method in ["add", "child", "split", "paste", "edit"] {
+                let sa = Scratch::new("regeneration-desktop");
+                let sb = Scratch::new("regeneration-phone");
+                let mut desktop = open_seeded(&sa.path, "regeneration-test", &regeneration_state("desktop"));
+                let mut phone = open_seeded(&sb.path, "regeneration-test", &state("phone", json!([])));
+                enable_primary(&desktop).unwrap(); enable_joiner(&phone).unwrap();
+                merge_and_rematerialize(&phone, all_ops(&desktop).unwrap()).unwrap();
+                persist_operation_to_database(&mut desktop, &regeneration_operation(legacy)).unwrap();
+                let (ty, payload) = match method {
+                    "add" | "child" => ("add_plan_item", json!({"planId":"original-day","parentId":if method == "child" {json!("template-task")} else {Value::Null},"item":regeneration_item("offline-task")})),
+                    "split" => ("split_plan_item", json!({"planId":"original-day","itemId":"template-task","patch":{"text":"Edited anchor"},"newItem":regeneration_item("offline-task"),"placement":"after"})),
+                    "paste" => ("paste_plan_items", json!({"planId":"original-day","targetId":"template-task","placement":"after","items":[regeneration_item("offline-task")]})),
+                    _ => ("patch_plan_item", json!({"planId":"original-day","itemId":"template-task","patch":{"text":"Offline edit","html":"Offline edit"}})),
+                };
+                persist_operation_to_database(&mut phone, &json!({"id":"phone-edit","deviceId":"phone","sequence":1,
+                    "timestamp": if before {"2026-09-09T10:00:00Z"} else {"2026-09-09T12:00:00Z"},"type":ty,"payload":payload})).unwrap();
+                for _ in 0..2 {
+                    merge_and_rematerialize(&phone, all_ops(&desktop).unwrap()).unwrap();
+                    merge_and_rematerialize(&desktop, all_ops(&phone).unwrap()).unwrap();
+                }
+                let verify = |conn: &Connection| {
+                    let current = read_app_state_from_database(conn).unwrap().unwrap();
+                    assert_eq!(current["plans"].as_array().unwrap().len(), 1);
+                    let plan = &current["plans"][0];
+                    assert_eq!(plan["id"], "original-day");
+                    let target = if method == "edit" {"template-task"} else {"offline-task"};
+                    let item = crate::read_plan_item_snapshot(conn, target).unwrap().unwrap_or_else(|| panic!("{legacy} {before} {method}: missing {target}"));
+                    assert_eq!(item.plan_id, "original-day");
+                    if method == "edit" { assert_eq!(item.item["text"], "Offline edit"); }
+                };
+                verify(&desktop); verify(&phone);
+                checkpoint_operation_log_preserving_history(&desktop).unwrap();
+                merge_and_rematerialize(&phone, all_ops(&desktop).unwrap()).unwrap();
+                rematerialize(&phone).unwrap(); verify(&phone);
+                let reopened = open_database_at(&sb.path, &test_database_key("regeneration-test")).unwrap();
+                verify(&reopened);
+                assert_eq!(domain(&read_app_state_from_database(&desktop).unwrap().unwrap()), domain(&read_app_state_from_database(&phone).unwrap().unwrap()));
+            }
+        }
+    }
+}
+
+#[test]
+fn regeneration_aliases_survive_checkpoint_and_date_context_handles_old_checkpoints() {
+    let scratch = Scratch::new("regeneration-aliases");
+    let mut conn = open_seeded(&scratch.path, "regeneration-test", &regeneration_state("desktop"));
+    enable_primary(&conn).unwrap();
+    persist_operation_to_database(&mut conn, &regeneration_operation(true)).unwrap();
+    checkpoint_operation_log_preserving_history(&conn).unwrap();
+    for (index, id) in ["replacement-day", "pre-upgrade-day"].iter().enumerate() {
+        persist_operation_to_database(&mut conn, &json!({"id":format!("late-{index}"),"deviceId":"phone","sequence":index+1,
+            "timestamp":"2099-01-01T00:00:00Z","type":"add_plan_item","payload":{"planId":id,"planDate":"2026-09-09",
+            "parentId":null,"item":regeneration_item(&format!("late-{index}"))}})).unwrap();
+    }
+    rematerialize(&conn).unwrap();
+    assert_eq!(crate::read_plan_item_snapshot(&conn, "late-0").unwrap().unwrap().plan_id, "original-day");
+    assert_eq!(crate::read_plan_item_snapshot(&conn, "late-1").unwrap().unwrap().plan_id, "original-day");
+}
+
+#[test]
+fn regeneration_undo_and_explicit_deletion_preserve_independent_work() {
+    let scratch = Scratch::new("regeneration-undo");
+    let mut conn = open_seeded(&scratch.path, "regeneration-test", &regeneration_state("desktop"));
+    enable_primary(&conn).unwrap();
+    persist_operation_to_database(&mut conn, &regeneration_operation(false)).unwrap();
+    merge_and_rematerialize(&conn, vec![Op {id:"offline-add".into(),device_id:"phone".into(),sequence:1,
+        timestamp:"2026-09-09T12:00:00Z".into(),op_type:"add_plan_item".into(),payload_json:json!({"planId":"original-day","parentId":null,"item":regeneration_item("offline-task")}).to_string()}]).unwrap();
+    crate::undo_last_operation_in_database(&mut conn).unwrap().unwrap();
+    assert!(crate::read_plan_item_snapshot(&conn, "offline-task").unwrap().is_some());
+    assert!(crate::read_plan_item_snapshot(&conn, "template-task").unwrap().is_some());
+    assert!(crate::read_plan_item_snapshot(&conn, "fresh-task").unwrap().is_none());
+    crate::redo_last_operation_in_database(&mut conn).unwrap().unwrap();
+    assert!(crate::read_plan_item_snapshot(&conn, "offline-task").unwrap().is_some());
+    assert!(crate::read_plan_item_snapshot(&conn, "fresh-task").unwrap().is_some());
+    for (seq, ty, payload) in [
+        (4, "delete_plan_item", json!({"itemId":"template-task"})),
+        (5, "patch_plan_item", json!({"itemId":"template-task","patch":{"text":"Stale edit after explicit deletion"}})),
+        (6, "delete_plan_item", json!({"itemId":"offline-task"})),
+    ] {
+        persist_operation_to_database(&mut conn, &json!({"id":format!("delete-{seq}"),"deviceId":"desktop","sequence":seq,
+            "timestamp":format!("2099-01-01T00:00:{seq}Z"),"type":ty,"payload":payload})).unwrap();
+    }
+    checkpoint_operation_log_preserving_history(&conn).unwrap(); rematerialize(&conn).unwrap();
+    assert!(crate::read_plan_item_snapshot(&conn, "template-task").unwrap().is_none());
+    assert!(crate::read_plan_item_snapshot(&conn, "offline-task").unwrap().is_none());
+}
+
+#[test]
+fn regeneration_recovery_restores_saved_text_without_replacing_the_current_day() {
+    let scratch = Scratch::new("regeneration-recovery");
+    let mut conn = open_seeded(&scratch.path, "regeneration-test", &regeneration_state("phone"));
+    enable_primary(&conn).unwrap();
+    let creation = json!({"id":"phone-add","deviceId":"phone","sequence":1,"timestamp":"2026-09-09T10:00:00Z",
+        "type":"add_plan_item","payload":{"planId":"original-day","planDate":"2026-09-09","parentId":null,"item":regeneration_item("lost-task")}});
+    persist_operation_to_database(&mut conn, &creation).unwrap();
+    persist_operation_to_database(&mut conn, &json!({"id":"phone-save","deviceId":"phone","sequence":2,"timestamp":"2026-09-09T10:01:00Z",
+        "type":"patch_plan_item","payload":{"planId":"original-day","itemId":"lost-task","patch":{"text":"Synthetic final saved text","html":"<b>Synthetic final saved text</b>"}}})).unwrap();
+    // Model the materialized output of a pre-fix replacement, then compact it.
+    // Retained local history is the only remaining copy of this task.
+    conn.execute("delete from plans where id = 'original-day'", []).unwrap();
+    crate::insert_plan(&conn, &json!({"id":"old-client-replacement","date":"2026-09-09","title":"Current day","dailyReminder":"",
+        "createdAt":"2026-09-09T11:00:00Z","items":[regeneration_item("current-task")]})).unwrap();
+    checkpoint_operation_log_preserving_history(&conn).unwrap();
+    let entries = crate::list_recovery_entries_from_database(&conn).unwrap();
+    let entry = entries["entries"].as_array().unwrap().iter().find(|entry| entry["operationId"] == "phone-add").unwrap();
+    assert_eq!(entry["restoredItemCount"], 1);
+    assert_eq!(entry["preview"], "Synthetic final saved text");
+    crate::restore_recovery_entry_in_database(&mut conn, entry["historyId"].as_str().unwrap()).unwrap();
+    let restored = crate::read_plan_item_snapshot(&conn, "lost-task").unwrap().unwrap();
+    assert_eq!(restored.plan_id, "old-client-replacement");
+    assert_eq!(restored.item["text"], "Synthetic final saved text");
+    assert!(crate::read_plan_item_snapshot(&conn, "current-task").unwrap().is_some());
+    rematerialize(&conn).unwrap();
+    assert_eq!(crate::read_plan_item_snapshot(&conn, "lost-task").unwrap().unwrap().item, restored.item);
+}
+
+#[test]
+fn regeneration_edit_and_alias_survive_repeated_replacement_before_offline_sync() {
+    let scratch = Scratch::new("regeneration-repeated");
+    let mut conn = open_seeded(&scratch.path, "regeneration-test", &regeneration_state("desktop"));
+    enable_primary(&conn).unwrap();
+    persist_operation_to_database(&mut conn, &regeneration_operation(true)).unwrap();
+    let mut second = regeneration_operation(false);
+    second["id"] = json!("regenerate-again"); second["sequence"] = json!(2);
+    second["timestamp"] = json!("2026-09-09T12:00:00Z");
+    second["payload"]["replaceItems"] = json!([regeneration_item("fresh-task")]);
+    second["payload"]["requireUntouched"] = json!(false);
+    second["payload"]["generatedPlan"]["items"] = json!([regeneration_item("second-fresh-task")]);
+    persist_operation_to_database(&mut conn, &second).unwrap();
+    checkpoint_operation_log_preserving_history(&conn).unwrap();
+    for (sequence, ty, payload) in [
+        (1, "patch_plan_item", json!({"planId":"replacement-day","itemId":"template-task","patch":{"text":"Late saved edit"}})),
+        (2, "add_plan_item", json!({"planId":"replacement-day","parentId":"fresh-task","item":regeneration_item("late-child")})),
+    ] {
+        persist_operation_to_database(&mut conn, &json!({"id":format!("late-{sequence}"),"deviceId":"phone","sequence":sequence,
+            "timestamp":"2099-01-01T00:00:00Z","type":ty,"payload":payload})).unwrap();
+    }
+    checkpoint_operation_log_preserving_history(&conn).unwrap(); rematerialize(&conn).unwrap();
+    assert_eq!(crate::read_plan_item_snapshot(&conn, "template-task").unwrap().unwrap().item["text"], "Late saved edit");
+    assert_eq!(crate::read_plan_item_snapshot(&conn, "late-child").unwrap().unwrap().parent_id, None);
+}

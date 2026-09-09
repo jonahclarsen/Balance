@@ -727,6 +727,16 @@ function createPlannerStore() {
         entityChanges ??= { version: 2, upserts: [], deletes: [] }
         entityChanges.upserts.push({ collection: 'images', key: id, position: next.images.indexOf(asset), value: asset, patches: [] })
       }
+      // Persist calendar context with every relational target; the frontend
+      // may still be editing a day ID replaced by an older offline client.
+      if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+        payload = { ...payload }
+        for (const [field, dateField] of [['planId', 'planDate'], ['sourcePlanId', 'sourcePlanDate'], ['targetPlanId', 'targetPlanDate']]) {
+          const id = (payload as Record<string, unknown>)[field]
+          const plan = state.plans.find((candidate) => candidate.id === id)
+          if (plan) (payload as Record<string, unknown>)[dateField] = plan.date
+        }
+      }
       const operationPayload = entityChanges
         ? {
             ...(payload && typeof payload === 'object' ? payload : { value: payload }),
@@ -829,10 +839,17 @@ function createPlannerStore() {
       const freshMarkers = generatedItemMarkers(generated.items)
       const previous = replaceExisting ? current.plans.find((plan) => plan.date === date) : undefined
       const previousIds = new Set(previous ? generatedItemMarkers(previous.items).map(({ id }) => id) : [])
-      if (previous) generated.items = [...preservedPlanItems(previous, current.uneditedPlanItems), ...generated.items]
+      const preserved = previous ? preservedPlanItems(previous, current.uneditedPlanItems) : []
+      const preservedIds = new Set(preserved.map(({ id }) => id))
+      const replaceItems = previous?.items.filter(({ id }) => !preservedIds.has(id)) ?? []
+      if (previous) {
+        generated.id = previous.id
+        generated.createdAt = previous.createdAt
+      }
+      const visiblePlan = { ...generated, items: [...preserved, ...generated.items] }
 
       // Keep the legacy wire field empty; the selected day belongs to this device.
-      commit('generate_plan', { templateId, date, replaceExisting, activePlanDate: '', generatedPlan: generated }, (state) => {
+      commit('regenerate_plan', { templateId, date, replaceExisting, activePlanDate: '', generatedPlan: generated, replaceItems, requireUntouched: true }, (state) => {
         const plans = replaceExisting ? state.plans.filter((plan) => plan.date !== date) : state.plans
         const goals = state.goals.some((goal) => !goal.presentationTrackingStartedAt)
           ? state.goals.map((goal) => goal.presentationTrackingStartedAt
@@ -844,7 +861,7 @@ function createPlannerStore() {
           ...state,
           activePlanDate,
           goals,
-          plans: [...plans, generated].sort((a, b) => b.date.localeCompare(a.date)),
+          plans: [...plans, visiblePlan].sort((a, b) => b.date.localeCompare(a.date)),
           uneditedPlanItems: [...state.uneditedPlanItems.filter(({ id }) => !previousIds.has(id)), ...freshMarkers],
         }
       })

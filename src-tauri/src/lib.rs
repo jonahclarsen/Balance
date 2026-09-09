@@ -24,6 +24,7 @@ use tauri_plugin_opener::OpenerExt;
 #[cfg(target_os = "android")]
 mod android_widget;
 mod database_keys;
+mod plan_regeneration;
 mod backup_browser;
 #[cfg(not(target_os = "android"))]
 mod desktop_recovery_key;
@@ -4082,7 +4083,10 @@ fn restore_recovery_entry_in_database(
             return Ok(None);
         };
 
-        let replay = sync::entities::history_replay(&history.undo_operation, &history.redo_operation)?;
+        let replay = match plan_regeneration::recover_missing_task(&tx, &history.redo_operation)? {
+            Some(recovery) => recovery,
+            None => sync::entities::history_replay(&history.undo_operation, &history.redo_operation)?,
+        };
         append_history_action_operation(&tx, "history_undo", &history.id, &replay)?;
         apply_operation(&tx, &replay)?;
         set_history_undone(&tx, &history.id, true)?;
@@ -4269,7 +4273,9 @@ fn list_recovery_entries_from_database(connection: &Connection) -> Result<Value,
                 });
             }
         }
-        let (restored_item_count, preview) = summarize_undo_operation(&undo_operation);
+        let redo_operation = serde_json::from_str::<Value>(&redo_json).unwrap_or(Value::Null);
+        let recovery = plan_regeneration::recover_missing_task(connection, &redo_operation)?;
+        let (restored_item_count, preview) = summarize_undo_operation(recovery.as_ref().unwrap_or(&undo_operation));
 
         entries.push(json!({
             "historyId": id,
@@ -4337,6 +4343,9 @@ fn search_recovery_history_from_database(
         };
         let mut values = Vec::new();
         collect_history_search_values(&undo_operation, &mut values);
+        if let Ok(redo_operation) = serde_json::from_str::<Value>(&redo_json) {
+            collect_history_search_values(&redo_operation, &mut values);
+        }
         let haystack = values.join(" ").to_lowercase();
         if !terms.iter().all(|term| haystack.contains(term)) {
             continue;
@@ -4481,7 +4490,8 @@ fn count_plan_item_subtree(item: &Value, count: &mut i64, preview: &mut String) 
 
 fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String> {
     let operation_type = required_string(operation, "type")?;
-    let payload = required_value(operation, "payload")?;
+    let resolved_payload = plan_regeneration::resolve_payload(tx, required_value(operation, "payload")?)?;
+    let payload = &resolved_payload;
 
     let result = match operation_type {
         "batch" => {
@@ -4504,6 +4514,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         "patch_preferences" => patch_replicated_preferences(tx, required_value(payload, "patch")?),
         "insert_plan" => insert_plan(tx, required_value(payload, "plan")?),
         "delete_plan" => {
+            plan_regeneration::forget_day(tx, required_string(payload, "planId")?)?;
             tx.execute(
                 "delete from plans where id = ?1",
                 params![required_string(payload, "planId")?],
@@ -4511,25 +4522,8 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             .map_err(|error| error.to_string())?;
             Ok(())
         }
-        "generate_plan" => {
-            if bool_value(payload, "replaceExisting")? {
-                tx.execute(
-                    "delete from plans where date = ?1",
-                    params![required_string(payload, "date")?],
-                )
-                .map_err(|error| error.to_string())?;
-            }
-            let plan = required_value(payload, "generatedPlan")?;
-            insert_plan(tx, plan)?;
-            // Generating from the side-by-side comparison fills the second pane
-            // without moving the app off the day it is on; older operations have
-            // no `activePlanDate` and still land on the generated day.
-            let active_plan_date = match optional_string(payload, "activePlanDate")? {
-                Some(date) => date,
-                None => required_string(payload, "date")?.to_string(),
-            };
-            set_metadata(tx, "active_plan_date", &active_plan_date)
-        }
+        "generate_plan" => plan_regeneration::apply(tx, payload, true),
+        "regenerate_plan" => plan_regeneration::apply(tx, payload, false),
         "add_plan_item" => insert_plan_item(
             tx,
             required_string(payload, "planId")?,
@@ -4600,6 +4594,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         "patch_plan_item" => patch_plan_item(tx, payload),
         "patch_plan_items_done" => {
             for item_id in required_array(payload, "itemIds")? {
+                plan_regeneration::restore_edited(tx, item_id.as_str().ok_or("Expected item id")?)?;
                 tx.execute(
                     "update plan_items set done = ?1 where id = ?2",
                     params![
@@ -4627,6 +4622,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         }
         "split_plan_item" => split_plan_item_row(tx, payload),
         "undo_split_plan_item" => {
+            plan_regeneration::forget_deleted(tx, required_string(payload, "newItemId")?)?;
             tx.execute("delete from plan_items where id = ?1", params![required_string(payload, "newItemId")?])
                 .map_err(|error| error.to_string())?;
             if plan_item_plan_id_if_exists(tx, required_string(payload, "itemId")?)?.as_deref()
@@ -4645,6 +4641,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             complete_plan_item_parents(tx, payload)
         }
         "delete_plan_item" => {
+            plan_regeneration::forget_deleted(tx, required_string(payload, "itemId")?)?;
             tx.execute(
                 "delete from plan_items where id = ?1",
                 params![required_string(payload, "itemId")?],
@@ -4654,6 +4651,7 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         }
         "delete_plan_items" => {
             for item_id in required_array(payload, "itemIds")? {
+                plan_regeneration::forget_deleted(tx, item_id.as_str().ok_or("Expected item id")?)?;
                 tx.execute(
                     "delete from plan_items where id = ?1",
                     params![item_id
@@ -5057,7 +5055,8 @@ fn build_domain_undo_operation(
     operation: &Value,
 ) -> Result<Option<Value>, String> {
     let operation_type = required_string(operation, "type")?;
-    let payload = required_value(operation, "payload")?;
+    let resolved_payload = plan_regeneration::resolve_payload(connection, required_value(operation, "payload")?)?;
+    let payload = &resolved_payload;
 
     match operation_type {
         "move_image" => {
@@ -5075,36 +5074,8 @@ fn build_domain_undo_operation(
             "set_active_plan_date",
             json!({ "date": metadata_value(connection, "active_plan_date")?.unwrap_or_default() }),
         ))),
-        "generate_plan" => {
-            let previous_active_date =
-                metadata_value(connection, "active_plan_date")?.unwrap_or_default();
-            let generated_plan = required_value(payload, "generatedPlan")?;
-            let mut operations = vec![storage_operation(
-                "delete_plan",
-                json!({ "planId": required_string(generated_plan, "id")? }),
-            )];
-
-            if bool_value(payload, "replaceExisting")? {
-                if let Some(previous_plan) =
-                    read_plan_by_date(connection, required_string(payload, "date")?)?
-                {
-                    operations.push(storage_operation(
-                        "insert_plan",
-                        json!({ "plan": previous_plan }),
-                    ));
-                }
-            }
-
-            operations.push(storage_operation(
-                "set_active_plan_date",
-                json!({ "date": previous_active_date }),
-            ));
-
-            Ok(Some(storage_operation(
-                "batch",
-                json!({ "operations": operations }),
-            )))
-        }
+        "regenerate_plan" => Ok(Some(plan_regeneration::undo(connection, payload)?)),
+        "generate_plan" => Ok(Some(plan_regeneration::legacy_undo(connection, payload)?)),
         "add_plan_item" => Ok(Some(storage_operation(
             "delete_plan_item",
             json!({ "itemId": required_string(required_value(payload, "item")?, "id")? }),
@@ -6624,7 +6595,7 @@ fn destructive_history_operation(operation: &Value) -> bool {
     operation_type.starts_with("delete_")
         || operation_type.starts_with("backspace_")
         || operation_type.starts_with("paste_")
-        || matches!(operation_type, "generate_plan" | "generate_list")
+        || matches!(operation_type, "generate_plan" | "regenerate_plan" | "generate_list")
 }
 
 fn prune_history_entries(connection: &Connection, now_ms: i64) -> Result<i64, String> {
@@ -7025,23 +6996,12 @@ fn insert_plan_item(
     item: &Value,
     position: i64,
 ) -> Result<(), String> {
-    let plan_exists = connection
-        .query_row(
-            "select 1 from plans where id = ?1",
-            params![plan_id],
-            |_| Ok(()),
-        )
-        .optional()
-        .map_err(|error| error.to_string())?
-        .is_some();
-    if !plan_exists {
-        return Ok(());
-    }
-    if let Some(parent_id) = parent_id {
-        if plan_item_plan_id_if_exists(connection, parent_id)?.as_deref() != Some(plan_id) {
-            return Ok(());
-        }
-    }
+    let Some(resolved) = plan_regeneration::resolve(connection, plan_id, None)? else { return Ok(()); };
+    let plan_id = resolved.as_str();
+    let parent_id = match parent_id {
+        Some(parent) if plan_item_plan_id_if_exists(connection, parent)?.as_deref() == Some(plan_id) => Some(parent),
+        _ => None,
+    };
 
     let item_id = required_string(item, "id")?;
     connection
@@ -7092,6 +7052,9 @@ fn insert_plan_item(
 
 fn patch_plan_item(connection: &Connection, payload: &Value) -> Result<(), String> {
     let item_id = required_string(payload, "itemId")?;
+    plan_regeneration::restore_edited(connection, item_id)?;
+    connection.execute("delete from state_entities where collection = 'uneditedPlanItems' and entity_key = ?1", [item_id])
+        .map_err(|e| e.to_string())?;
     let patch = required_value(payload, "patch")?;
 
     if let Some(text) = optional_string(patch, "text")? {
@@ -7272,6 +7235,7 @@ fn backspace_plan_item_at_start_row(
 ) -> Result<(), String> {
     match required_string(payload, "action")? {
         "delete_previous" => {
+            plan_regeneration::forget_deleted(connection, required_string(payload, "previousId")?)?;
             connection
                 .execute(
                     "delete from plan_items where id = ?1",
@@ -7309,6 +7273,7 @@ fn backspace_plan_item_at_start_row(
                     .map_err(|error| error.to_string())?;
             }
 
+            plan_regeneration::forget_row(connection, item_id)?;
             connection
                 .execute("delete from plan_items where id = ?1", params![item_id])
                 .map_err(|error| error.to_string())?;
@@ -7322,6 +7287,7 @@ fn delete_plan_item_preserving_children_row(
     connection: &Connection,
     item_id: &str,
 ) -> Result<(), String> {
+    plan_regeneration::forget_row(connection, item_id)?;
     let Some(plan_id) = plan_item_plan_id_if_exists(connection, item_id)? else {
         return Ok(());
     };
@@ -7447,11 +7413,10 @@ fn paste_plan_items_row(
     if items.is_empty() {
         return Ok(());
     }
-    if let Some(target_id) = target_id {
-        if plan_item_plan_id_if_exists(connection, target_id)?.as_deref() != Some(plan_id) {
-            return Ok(());
-        }
-    }
+    let target_id = match target_id {
+        Some(id) if plan_item_plan_id_if_exists(connection, id)?.as_deref() == Some(plan_id) => Some(id),
+        _ => None,
+    };
 
     let parent_id = if placement == "inside" {
         target_id.map(|id| id.to_string())
@@ -7496,6 +7461,7 @@ fn paste_plan_items_row(
 
     if placement == "replace" {
         if let Some(target_id) = target_id {
+            plan_regeneration::forget_deleted(connection, target_id)?;
             connection
                 .execute("delete from plan_items where id = ?1", params![target_id])
                 .map_err(|error| error.to_string())?;
@@ -15638,7 +15604,7 @@ mod tests {
     }
 
     #[test]
-    fn stale_plan_tree_operations_are_noops_during_sync_replay() {
+    fn stale_plan_tree_moves_are_noops_but_independent_creations_survive() {
         let database = TestDatabase::new("stale-sync-operations");
         let recovery_key = generate_recovery_key();
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
@@ -15711,7 +15677,11 @@ mod tests {
         }
         tx.commit().unwrap();
 
-        assert_eq!(read_app_state_from_database(&connection).unwrap(), before);
+        let mut after = read_app_state_from_database(&connection).unwrap().unwrap();
+        let items = after["plans"][0]["items"].as_array_mut().unwrap();
+        assert_eq!(items.iter().filter(|item| item["id"] == "stale_new_item").count(), 1);
+        items.retain(|item| item["id"] != "stale_new_item");
+        assert_eq!(Some(after), before);
     }
 
     #[test]

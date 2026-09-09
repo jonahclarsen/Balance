@@ -50,7 +50,10 @@ that Android project locally.
 For new persisted actions or record schemas, read
 [balance-operations](../balance-operations/SKILL.md). Version 6 envelopes carry
 generic record patches and preserve unfamiliar collections in checkpoints;
-versions 4 and 5 remain readable for upgrades.
+versions 4 and 5 remain readable for upgrades. Protocol 8 adds durable day
+identity and observed template regeneration; protocols 6 and 7 remain readable.
+See [day regeneration](../../../docs/day-regeneration-sync.md) for the rollout
+and retained-history recovery contract.
 
 Unreadable batches are quarantined and retried without acknowledging past the
 failed sequence. Never silently skip them or promote a partial checkpoint.

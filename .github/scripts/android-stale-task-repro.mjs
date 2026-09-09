@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Release correctness gate: real WebView input and native encrypted relay.
-// All scenarios use ordinary edits and preserve the day ID.
+// Ordinary edits and template regeneration must preserve independently saved tasks.
 import http from 'node:http'
 import { assertTaskPreservation } from './android-task-preservation-gate.mjs'
 import assert from 'node:assert/strict'
@@ -19,7 +19,7 @@ const proxyPort = 8790
 const relaySecret = randomBytes(24).toString('base64url')
 const relayUrl = `http://127.0.0.1:${proxyPort}/${relaySecret}/`
 const backlogCount = 66
-const report = { backlogCount, regenerations: 0, scenarios: [] }
+const report = { backlogCount, regenerations: 1, scenarios: [] }
 const relayLog = []
 let client
 let manifestLimit = Infinity
@@ -184,7 +184,7 @@ async function visible(text) {
   return client.evaluate(`[...document.querySelectorAll('[data-plan-text-input]')].some((editor) => editor.textContent === ${JSON.stringify(text)})`)
 }
 async function runScenario(scenario, pairingCode) {
-  const { name, limit, method, timing = 'before', changedSource = false, checkpoint = false } = scenario
+  const { name, limit, method, timing = 'before', changedSource = false, checkpoint = false, regeneration = false } = scenario
   console.log(`[stale-task-repro] starting ${name}`)
   offline = false
   manifestLimit = 1
@@ -206,7 +206,7 @@ async function runScenario(scenario, pairingCode) {
   beforeState.operations = await readOperations()
   const beforeTask = findTask(beforeState, task.id)
   const result = {
-    name, method, timing, checkpoint, changedSource,
+    name, method, timing, checkpoint, changedSource, regeneration,
     before: { planId: 'catchup-plan-0', taskId: task.id, visible: true,
       durable: beforeTask?.item.text === text, bottomOfDay: true,
       creationOperation: creationOperation(beforeState, task.id) },
@@ -234,6 +234,7 @@ async function runScenario(scenario, pairingCode) {
     const movedSource = findTask(state, 'catchup-item-0-19')
     return lastBacklogItem?.item.done === true
       && (!changedSource || (changedSource === 'moved' ? movedSource?.planId === 'catchup-plan-4' : !movedSource))
+      && (!regeneration || Boolean(findTask(state, 'regenerated-template-task')))
   }, 'the foreground scheduler to materialize the remote backlog', 120_000, 250)
   await waitFor(() => client.evaluate(`!document.querySelector('.sync-status-indicator')`), 'the production scheduler to finish refreshing the UI', 60_000)
   await client.evaluate('new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
@@ -247,7 +248,8 @@ async function runScenario(scenario, pairingCode) {
   assert.equal(day?.id, 'catchup-plan-0', 'Ordinary catch-up must not replace the day')
   const incomingCheckpoint = state.operations.some((op) => op.type === 'replace_full_state' && op.payload.generation >= 2)
   assert.equal(incomingCheckpoint, checkpoint, 'Scenario must receive exactly the intended checkpoint coverage')
-  assert(!state.operations.some((op) => op.type === 'generate_plan'), 'No regeneration is allowed')
+  assert.equal(state.operations.some((op) => op.type === 'regenerate_plan'), regeneration && !name.endsWith('-checkpoint'), 'Expected regeneration coverage')
+  assert(!state.operations.some((op) => op.type === 'generate_plan'), 'This fixture uses protocol 8 regeneration')
   const storedTask = findTask(state, task.id)
   const inDatabase = storedTask?.item.text === text
   const inUi = await visible(text)
@@ -265,7 +267,7 @@ async function runScenario(scenario, pairingCode) {
   // Every remote completion edit is checked by ID, including moved tasks.
   for (let offset = 0; offset < backlogCount; offset++) {
     const id = `catchup-item-${Math.floor(offset / 20)}-${offset % 20}`
-    if (changedSource === 'deleted' && id === 'catchup-item-0-19') continue
+    if ((changedSource === 'deleted' || regeneration) && id === 'catchup-item-0-19') continue
     assert.equal(findTask(state, id)?.item.done, (offset % 20) % 3 !== 0, `Missing remote edit ${id}`)
   }
   adb(['shell', 'am', 'force-stop', packageName])
@@ -336,6 +338,21 @@ try {
   const nativeCheckpoint = (await readOperations()).find((op) => op.type === 'replace_full_state')
   assert(nativeCheckpoint?.payload.generation >= 2)
   assert.equal(nativeCheckpoint.payload.frontiers['catchup-primary'], backlogCount + 3)
+  // Replace the observed template anchor before the phone saves its task.
+  // Its new item must survive even when Enter still targets that removed row.
+  const regenerationState = await readState()
+  const regenerationDay = regenerationState.plans.find((plan) => plan.id === 'catchup-plan-0')
+  const generatedTask = { ...source, id: 'regenerated-template-task', text: 'Synthetic regenerated template', html: 'Synthetic regenerated template', children: [] }
+  await invoke('persist_operations_for_android_ci', { operationsJson: JSON.stringify([{
+    id: 'stale-task-regeneration', deviceId: 'catchup-primary', sequence: regenerationState.localSequence + 1,
+    timestamp: '2026-01-02T00:00:03.000Z', type: 'regenerate_plan',
+    payload: { generatedPlan: { ...regenerationDay, items: [generatedTask] }, replaceItems: [source] },
+  }]) })
+  await invoke('sync_relay_once', { reason: 'stale-task-seed-regeneration' })
+  const regenerationSequence = (await manifest()).latestSequence
+  await invoke('sync_enable_primary', { pairingCode })
+  await invoke('sync_relay_once', { reason: 'stale-task-seed-regeneration-checkpoint' })
+  const regenerationCheckpointSequence = (await manifest()).latestSequence
   const scenarios = [
     { name: 'add-ordinary', method: 'add', limit: backlogSequence },
     { name: 'enter-ordinary', method: 'enter', limit: backlogSequence },
@@ -349,6 +366,10 @@ try {
     { name: 'add-source-moved', method: 'add', limit: movedSequence, changedSource: 'moved' },
     { name: 'enter-source-moved', method: 'enter', limit: movedSequence, changedSource: 'moved' },
     { name: 'enter-source-deleted', method: 'enter', limit: deletedSequence, changedSource: 'deleted' },
+    { name: 'add-regeneration', method: 'add', limit: regenerationSequence, regeneration: true, checkpoint: true },
+    { name: 'enter-regeneration', method: 'enter', limit: regenerationSequence, regeneration: true, checkpoint: true },
+    { name: 'add-regeneration-checkpoint', method: 'add', limit: regenerationCheckpointSequence, regeneration: true, checkpoint: true },
+    { name: 'enter-regeneration-checkpoint', method: 'enter', limit: regenerationCheckpointSequence, regeneration: true, checkpoint: true },
   ]
   for (const scenario of scenarios) await runScenario(scenario, pairingCode)
   report.completed = true

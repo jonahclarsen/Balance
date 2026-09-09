@@ -424,7 +424,7 @@ fn decode_ciphertext(key: &SyncKey, epoch: &str, ciphertext: &[u8]) -> Result<Ve
     let envelope: RelayEnvelope = open(key, ciphertext)?;
     // Read existing rooms during upgrade. New envelopes require peers to use
     // the same split replay rule before they can reconcile or checkpoint edits.
-    if ![4, 5, 6, PROTOCOL_VERSION].contains(&envelope.v) {
+    if ![4, 5, 6, 7, PROTOCOL_VERSION].contains(&envelope.v) {
         return Err(Error::Codec("Update required: this sync data uses a newer storage protocol".into()));
     }
     if envelope.epoch != epoch {
@@ -1429,7 +1429,7 @@ mod tests {
     #[test]
     fn protocol_upgrade_reads_existing_envelopes_but_rejects_future_rules() {
         let key = SyncKey::generate();
-        for version in [4, 5, 6, PROTOCOL_VERSION, PROTOCOL_VERSION + 1] {
+        for version in [4, 5, 6, 7, PROTOCOL_VERSION, PROTOCOL_VERSION + 1] {
             let bytes = seal(&key, &RelayEnvelope { v: version, epoch: "upgrade".into(), ops: vec![] }).unwrap();
             let result = decode_ciphertext(&key, "upgrade", &bytes);
             assert_eq!(result.is_ok(), version <= PROTOCOL_VERSION);

@@ -74,6 +74,33 @@ verifySplit(run(currentBinary, 'split-phone', 'read'), true)
 verifySplit(run(currentBinary, 'split-desktop', 'merge', { operations: splitCheckpoint.operations }), true)
 console.log('PASS: released anchor move, preserved split, guarded undo/redo and checkpoint after upgrade')
 
+// A real released engine replaces a day with a new ID. A newer offline
+// phone adds a task using its old ID, then both engines upgrade and converge.
+const dayInitial = state('day-desktop')
+dayInitial.plans = [{ id: 'old-day', date: '2026-09-08', title: 'Synthetic day', dailyReminder: '',
+  createdAt: '2026-09-08T00:00:00Z', items: [splitItem('old-template-task', 'Old template')] }]
+run(oldBinary, 'day-desktop', 'init', { state: dayInitial })
+run(currentBinary, 'day-phone', 'init', { state: { ...dayInitial, deviceId: 'day-phone' } })
+const replacedDay = run(oldBinary, 'day-desktop', 'write', { operation: operation('day-desktop', 1, 'generate_plan', {
+  date: '2026-09-08', replaceExisting: true, generatedPlan: { ...dayInitial.plans[0], id: 'replacement-day', items: [splitItem('fresh-template-task', 'Fresh template')] },
+}) })
+assert.equal(replacedDay.state.plans[0].id, 'replacement-day')
+const replacementCheckpoint = run(oldBinary, 'day-desktop', 'checkpoint')
+run(currentBinary, 'day-phone', 'write', { operation: { ...operation('day-phone', 1, 'add_plan_item', {
+  planId: 'old-day', planDate: '2026-09-08', parentId: null, item: splitItem('offline-day-task', 'Saved offline'),
+}), timestamp: '2026-09-08T12:00:02.000Z' } })
+// Exercise both a retained legacy generation and an already compacted old checkpoint.
+for (const incoming of [replacedDay.operations, replacementCheckpoint.operations]) {
+  const merged = run(currentBinary, 'day-phone', 'merge', { operations: incoming })
+  assert.equal(merged.state.plans.length, 1)
+  assert.equal(merged.state.plans[0].items.filter(item => item.id === 'offline-day-task').length, 1)
+}
+const dayCompact = run(currentBinary, 'day-phone', 'checkpoint')
+const dayDesktop = run(currentBinary, 'day-desktop', 'merge', { operations: dayCompact.operations })
+assert.deepEqual(dayDesktop.state.plans, dayCompact.state.plans)
+assert.deepEqual(run(currentBinary, 'day-phone', 'read').state.plans, dayCompact.state.plans)
+console.log('PASS: released day replacement/checkpoint preserves an offline addition after upgrade')
+
 // A future producer uses only this release's generic storage contract. This
 // executable has no schema/UI for the future collection or nested field.
 run(futureBinary, 'future', 'init', { state: state('future-device') })

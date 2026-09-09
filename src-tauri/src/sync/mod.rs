@@ -41,7 +41,7 @@ pub mod relay_client;
 // writers cannot safely compact this state; v4/v5 remain readable for upgrades.
 // v7 preserves split-created tasks when their placement anchor moved/deleted.
 // Older replay engines must stop before applying or checkpointing v7 edits.
-pub const PROTOCOL_VERSION: u32 = 7;
+pub const PROTOCOL_VERSION: u32 = 8;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

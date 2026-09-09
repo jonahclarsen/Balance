@@ -6,14 +6,15 @@ export const expectedScenarios = [
   'add-ordinary', 'enter-ordinary', 'add-checkpoint', 'enter-checkpoint',
   'add-during-download', 'enter-during-download', 'enter-composing-checkpoint',
   'add-background', 'enter-background', 'add-source-moved', 'enter-source-moved', 'enter-source-deleted',
+  'add-regeneration', 'enter-regeneration', 'add-regeneration-checkpoint', 'enter-regeneration-checkpoint',
 ]
 
 export function assertTaskPreservation(report) {
   assert.equal(report.completed, true, 'Android task scenarios did not finish')
   assert.equal(report.error, undefined, 'Android task scenarios reported an error')
-  assert.equal(report.regenerations, 0)
+  assert.equal(report.regenerations, 1)
   assert.deepEqual(report.scenarios.map((scenario) => scenario.name).sort(), [...expectedScenarios].sort(),
-    'All twelve distinct Android scenarios must execute')
+    'All sixteen distinct Android scenarios must execute')
   for (const scenario of report.scenarios) {
     assert.equal(scenario.before.visible, true, `${scenario.name}: task was never visible`)
     if (scenario.name !== 'enter-composing-checkpoint') {
@@ -33,5 +34,5 @@ export function assertTaskPreservation(report) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   assertTaskPreservation(JSON.parse(readFileSync(process.argv[2], 'utf8')))
-  console.log('PASS: all 12 Android task preservation scenarios completed without loss or duplication')
+  console.log('PASS: all 16 Android task preservation scenarios completed without loss or duplication')
 }
