@@ -188,6 +188,7 @@ type TextChangeOptions = {
 type HistoryEntry = {
   operationId: string
   operationType: string
+  historyGroup: string
   before: AppState
   after: AppState
   mergeKey: string | null
@@ -706,6 +707,10 @@ function createPlannerStore() {
         // is immutable, even while that native call is still in flight.
         (persistenceTarget === 'localStorage' || pendingOperations.has(lastOperation.id)) &&
         now - lastOperationMergeUpdatedAt <= (options.mergeWindowMs ?? 0)
+      const lastHistory = undoStack.at(-1)
+      const canMergeHistory = Boolean(options.mergeKey) && lastHistory &&
+        lastHistory.mergeKey === options.mergeKey && lastHistory.operationId === lastOperation?.id &&
+        now - lastHistory.updatedAt <= (options.mergeWindowMs ?? 0)
       const sequence = canMergeOperation ? lastOperation.sequence : state.localSequence + 1
       let entityChanges = composeEntityChanges(
         canMergeOperation ? operationEntityChanges(lastOperation) : null,
@@ -739,6 +744,12 @@ function createPlannerStore() {
             payload: operationPayload,
           }
 
+      // History grouping outlives a persistence flush; operation IDs do not.
+      const historyGroup = canMergeHistory ? lastHistory.historyGroup : operation.id
+      if (options.mergeKey && options.undoable !== false) {
+        operation.payload = { ...(operation.payload as Record<string, unknown>), historyGroup }
+      }
+
       const committed = {
         ...next,
         localSequence: sequence,
@@ -749,7 +760,7 @@ function createPlannerStore() {
       lastOperationMergeUpdatedAt = now
 
       if (options.undoable !== false) {
-        recordHistory(state, committed, operation.id, type, options)
+        recordHistory(state, committed, operation.id, type, options, historyGroup, now)
       }
 
       return committed
@@ -2781,10 +2792,10 @@ function recordHistory(
   operationId: string,
   operationType: string,
   options: CommitOptions,
+  historyGroup: string,
+  now: number,
 ): void {
-  const now = Date.now()
   const mergeKey = options.mergeKey ?? null
-  const mergeWindowMs = options.mergeWindowMs ?? 0
   const last = undoStack.at(-1)
   // Native history operations are already durable in SQLite. Keeping their
   // ever-growing in-memory operation arrays would turn the snapshot cache into
@@ -2792,13 +2803,13 @@ function recordHistory(
   const historyBefore = isTauri() ? { ...before, operations: [] } : before
   const historyAfter = isTauri() ? { ...after, operations: [] } : after
 
-  if (last && mergeKey && last.mergeKey === mergeKey && now - last.updatedAt <= mergeWindowMs) {
+  if (last && last.historyGroup === historyGroup) {
     last.after = historyAfter
     last.operationId = operationId
     last.operationType = operationType
     last.updatedAt = now
   } else {
-    undoStack.push({ operationId, operationType, before: historyBefore, after: historyAfter, mergeKey, updatedAt: now })
+    undoStack.push({ operationId, operationType, historyGroup, before: historyBefore, after: historyAfter, mergeKey, updatedAt: now })
     if (undoStack.length > MAX_HISTORY_ENTRIES) undoStack = undoStack.slice(-MAX_HISTORY_ENTRIES)
   }
 

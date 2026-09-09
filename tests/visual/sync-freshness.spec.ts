@@ -982,3 +982,80 @@ for (const formatted of [false, true]) {
     await expect(editor).toHaveText('Synthetic new task text')
   })
 }
+
+for (const delayAcknowledgement of [false, true]) {
+  test(`offline note typing keeps one undo group across ${delayAcknowledgement ? 'in-flight' : 'completed'} saves`, async ({ page }) => {
+    await page.goto('/?launch-then-hold=1')
+    await expect.poll(() => readSyncStatus(page)).toEqual({ running: false, initialSyncComplete: true })
+    await page.evaluate(async () => { await import(/* @vite-ignore */ '/src/lib/store.ts') })
+    await page.context().setOffline(true)
+    const result = await page.evaluate(async (delayAcknowledgement) => {
+      const path = '/src/lib/store.ts'
+      const { plannerStore: store } = await import(/* @vite-ignore */ path)
+      const runtime = globalThis as any
+      const original = runtime.__TAURI_INTERNALS__.invoke
+      const persisted: any[] = []
+      const historyCalls: string[] = []
+      let live: any
+      const unsubscribe = store.subscribe((state: any) => { live = state })
+      const noteId = store.addNote()
+      await store.flushPendingOperations()
+      const itemId = live.notes.find((note: any) => note.id === noteId).items[0].id
+      const text = () => live.notes.find((note: any) => note.id === noteId).items[0].text
+      let release = () => {}
+      let started = () => {}
+      const saving = new Promise<void>((resolve) => { started = resolve })
+      runtime.__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
+        if (command === 'persist_operation') {
+          persisted.push(JSON.parse(args.operationJson))
+          if (persisted.length === 1) {
+            if (delayAcknowledgement) await new Promise<void>((resolve) => { release = resolve; started() })
+            else started()
+          }
+          return true
+        }
+        if (command === 'undo_last_operation' || command === 'redo_last_operation') {
+          historyCalls.push(command)
+          return JSON.stringify({ operationId: args.expectedOperationId, state: null,
+            localSequence: live.localSequence + 1, canRedo: command === 'undo_last_operation' })
+        }
+        return original(command, args)
+      }
+      store.patchNoteItem(noteId, itemId, { text: 'a', html: 'a' })
+      const first = store.flushPendingOperations()
+      await saving
+      if (!delayAcknowledgement) await first
+      store.patchNoteItem(noteId, itemId, { text: 'ab', html: 'ab' })
+      release()
+      await first
+      await store.flushPendingOperations()
+      store.patchNoteItem(noteId, itemId, { text: 'abc', html: 'abc' })
+      await store.flushPendingOperations()
+      await store.undo()
+      const undone = text()
+      await store.redo()
+      const redone = text()
+      // Typing after redo and pasting each start a fresh group.
+      store.patchNoteItem(noteId, itemId, { text: 'abcd', html: 'abcd' })
+      await store.flushPendingOperations()
+      store.patchNoteItem(noteId, itemId, { text: 'abcd paste', html: 'abcd paste' }, { mergeHistory: false })
+      await store.flushPendingOperations()
+      store.patchNoteItem(noteId, itemId, { text: 'abcd paste!', html: 'abcd paste!' })
+      await store.flushPendingOperations()
+      await store.undo()
+      const afterLastUndo = text()
+      unsubscribe()
+      return { persisted, undone, redone, historyCalls, afterLastUndo }
+    }, delayAcknowledgement)
+    expect(new Set(result.persisted.map((operation: any) => operation.id)).size).toBe(6)
+    expect(new Set(result.persisted.slice(0, 3).map((operation: any) => operation.payload.historyGroup)).size).toBe(1)
+    expect(result.persisted[0].payload.historyGroup).toBe(result.persisted[0].id)
+    expect(result.persisted[3].payload.historyGroup).toBe(result.persisted[3].id)
+    expect(result.persisted[4].payload.historyGroup).toBeUndefined()
+    expect(result.persisted[5].payload.historyGroup).toBe(result.persisted[5].id)
+    expect(result.undone).toBe('')
+    expect(result.redone).toBe('abc')
+    expect(result.afterLastUndo).toBe('abcd paste')
+    expect(result.historyCalls).toEqual(['undo_last_operation', 'redo_last_operation', 'undo_last_operation'])
+  })
+}
