@@ -39,3 +39,33 @@ replacement. It does not establish that regeneration happened in a particular
 user incident, nor cover every checkpoint, typing/composition, or background
 scheduling race. The separate `run_sync_catchup_profile=true` option exercises
 the existing real WorkManager catch-up profile.
+
+## Confirmed CI result
+
+[Android run 34301740059](https://github.com/jonahclarsen/Balance/actions/runs/34301740059)
+completed successfully on harness commit `653f84c`, with unchanged application
+code from `f69b4ac`:
+
+| Scenario | Before catch-up | After catch-up | After app restart |
+| --- | --- | --- | --- |
+| 66 ordinary edit batches | Task visible and durable | Task visible and durable | Task visible and durable |
+| Same backlog plus day regeneration | Task visible and durable | Task absent from planner state and UI | Task still absent |
+
+The report records `reproduced: true` for `regenerated-day`. The follow-up native
+sync pulled zero operations in both cases, confirming that the foreground
+scheduler had already completed catch-up before the verification call.
+
+The existing WorkManager profile also passed in
+[run 34300998216](https://github.com/jonahclarsen/Balance/actions/runs/34300998216),
+verifying all 600 seeded tasks, all 66 completion changes, and its joiner-local
+edit. That run's new diagnostic subsequently timed out because its original
+observation hook tried to replace Tauri's immutable `invoke` property. The final
+harness observes persisted state and scheduler UI instead.
+
+The native `generate_plan` handler deletes the previous plan for the date and
+inserts the replacement under its new ID. The later Android `add_plan_item`
+operation still targets the original ID. `insert_plan_item` returns success
+without inserting when that plan no longer exists. Canonical replay therefore
+loses the new task from the materialized planner, even though Android had saved
+it locally before catch-up. This change adds the reproduction only; it does not
+change those application behaviors.
