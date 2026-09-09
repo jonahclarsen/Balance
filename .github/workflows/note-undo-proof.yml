@@ -1,6 +1,9 @@
 name: Verify note undo before and after
 
 on:
+  push:
+    branches: ['test/note-undo-*']
+    paths: ['.github/workflows/note-undo-proof.yml', '.github/scripts/assert-note-undo-proof.mjs', 'tests/ci/note-undo*', 'playwright.note-undo-ci.config.ts']
   workflow_dispatch:
 
 permissions:
