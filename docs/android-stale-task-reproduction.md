@@ -48,7 +48,49 @@ a particular user incident. The original regeneration experiment below is a
 separate confirmed defect and does not explain a report that rules out
 regeneration.
 
-## Confirmed CI result
+## Ordinary catch-up result
+
+[Android run 34316856550](https://github.com/jonahclarsen/Balance/actions/runs/34316856550)
+passed on harness commit `c589413`. All 12 scenarios completed with unchanged
+application code, and the report confirms zero regenerations:
+
+| Cases | Count | Result after catch-up and cold restart |
+| --- | --- | --- |
+| Add / Enter, ordinary completion backlog | 2 | Task and text preserved |
+| Add / Enter, incoming checkpoint | 2 | Task and text preserved |
+| Add / Enter, typing during download | 2 | Task and text preserved |
+| Enter, active IME composition during checkpoint download | 1 | Task and text preserved |
+| Add / Enter, real WorkManager pass followed by resume | 2 | Task and text preserved |
+| Add, preceding task moved to another day | 1 | Task and text preserved |
+| Enter, preceding task moved to another day | 1 | New task disappeared |
+| Enter, preceding task moved and deleted | 1 | New task disappeared |
+
+The two failing scenarios receive no newer checkpoint. Both verify the new task
+was visible and durable before catch-up, retain the exact same day ID, and find
+the new task absent from every plan afterward. Its `split_plan_item` creation
+operation is still present with the same ID and sequence. A follow-up sync
+pulls zero operations, and a cold restart does not restore the task.
+
+The native `split_plan_item_row` handler returns success immediately when its
+source task is missing or belongs to another day. Pressing Enter stores the new
+task inside that split operation. Ordinary catch-up replays the remote move or
+deletion before the local split, so the guard also skips inserting the new task.
+Subsequent text patches target an item that no longer exists. The matching
+**Add item** control survives the same move because its `add_plan_item`
+operation depends only on the unchanged day.
+
+This establishes a non-regeneration failure path; it does not establish that
+the user used Enter or that the preceding task was moved/deleted in their
+incident. No production fix is included.
+
+The earlier expanded run
+[34316143220](https://github.com/jonahclarsen/Balance/actions/runs/34316143220)
+completed the same 12 cases with the same two losses, then failed during logcat
+collection because Node's default output buffer was exceeded. The final harness
+raises that collection limit and still cleans up if collection fails. That
+first run also passed the existing 600-task WorkManager catch-up profile.
+
+## Earlier regeneration result
 
 [Android run 34301740059](https://github.com/jonahclarsen/Balance/actions/runs/34301740059)
 completed successfully on harness commit `653f84c`, with unchanged application
