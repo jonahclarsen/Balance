@@ -11,34 +11,42 @@ synthetic relay log, and Android logcat. No installed database or personal
 account is used. The workflow builds and runs the actual Android debug APK;
 Android setup and execution remain CI-only.
 
-The fixture stages a baseline with 600 tasks, followed by 66 separate encrypted
-edit batches and one day-regeneration batch. A proxy exposes only the baseline
-while each fresh joining installation bootstraps, then returns HTTP 503 while
-the test clicks **Add item** and enters text through WebView DevTools input.
-It checks that the new bottom task is both visible and durable before
-reconnecting. The normal foreground scheduler performs catch-up and refreshes
-the screen.
+The current diagnostic keeps every day ID unchanged and performs no day
+regeneration. A baseline contains 600 tasks, followed by 66 separate encrypted
+completion edits. Later batches move the previous bottom task to another day, delete it, and
+restore it. A newer checkpoint is then built by the real native snapshot
+builder, preserving the day IDs. The move and deletion scenarios stop at earlier
+relay cursors and never receive that checkpoint.
 
-Two independently reset joining installations exercise:
+Each scenario resets the joining installation, syncs only the baseline, and
+loads the stale day in the real WebView. Input uses **Add item** or a real Enter
+key followed by DevTools text input. Cases cover:
 
-- **ordinary-backlog:** deliver all 66 ordinary edit batches. All changed task
-  completions and the new Android task must survive.
-- **regenerated-day:** also deliver a regeneration of that same date, with a new
-  plan ID. The regeneration preserves every task known to the primary. Android
-  creates its task afterward, against its still-stale original plan ID.
+- Add and Enter before ordinary incremental catch-up.
+- Add and Enter before an incoming checkpoint.
+- Add and Enter while a real relay download is held in flight.
+- Active Android IME composition while the checkpoint arrives.
+- Add and Enter before real WorkManager background catch-up and app resume.
+- Add and Enter when catch-up moves the previous bottom task to another day.
+- Enter when catch-up deletes that previous task.
 
-The report records the task and plan IDs before and after catch-up, database
-and UI presence, native sync results, and presence after a cold app restart.
-`reproduced: true` means a task verified durable and visible before catch-up is
-absent from both afterward. Diagnostic success means the experiment completed;
-it does not mean task loss is correct. A future fix can make the regeneration
-case report `reproduced: false` without breaking the diagnostic.
+The proxy controls when encrypted batches become visible and when downloads
+finish. The app's production scheduler performs reconciliation and UI refresh.
+A follow-up native sync must pull zero remaining operations. Every remote
+completion is checked by task ID, including tasks moved to a different day.
 
-This experiment tests incremental foreground catch-up and remote day
-replacement. It does not establish that regeneration happened in a particular
-user incident, nor cover every checkpoint, typing/composition, or background
-scheduling race. The separate `run_sync_catchup_profile=true` option exercises
-the existing real WorkManager catch-up profile.
+The report records creation method, timing, whether the typed task was already
+durable, its actual persisted creation operation, database and UI presence,
+and presence after a cold restart. `reproduced: true` means the new task is absent
+from every plan and the UI after catch-up; `textLost` separately captures a row
+that remains but loses the entered text. Diagnostic success means the experiment
+completed, not that losing a task is acceptable. Each before/after result is
+written immediately so later harness failures do not erase earlier evidence.
+
+These controlled scenarios do not establish which edits or timing occurred in
+a particular user incident. The original regeneration experiment below is a
+separate confirmed defect and does not explain a report that rules out
+regeneration.
 
 ## Confirmed CI result
 

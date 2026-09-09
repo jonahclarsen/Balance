@@ -240,6 +240,9 @@ async function runScenario(scenario, pairingCode) {
   state.operations = await readOperations()
   const day = state.plans.find((plan) => plan.date === '2026-01-01')
   assert.equal(day?.id, 'catchup-plan-0', 'Ordinary catch-up must not replace the day')
+  const incomingCheckpoint = state.operations.some((op) => op.type === 'replace_full_state' && op.payload.generation >= 2)
+  assert.equal(incomingCheckpoint, checkpoint, 'Scenario must receive exactly the intended checkpoint coverage')
+  assert(!state.operations.some((op) => op.type === 'generate_plan'), 'No regeneration is allowed')
   const storedTask = findTask(state, task.id)
   const inDatabase = storedTask?.item.text === text
   const inUi = await visible(text)
@@ -293,18 +296,7 @@ try {
   await invoke('sync_relay_once', { reason: 'stale-task-seed-backlog' })
   const backlogSequence = (await manifest()).latestSequence
   assert.equal(backlogSequence, backlogCount + 1)
-  // Snapshot the ordinary edits using the real native checkpoint builder.
-  // This creates a newer replace_full_state operation with the SAME day IDs;
-  // it is delivered as an incremental encrypted batch, without regeneration.
-  await invoke('sync_enable_primary', { pairingCode })
-  await invoke('sync_relay_once', { reason: 'stale-task-seed-checkpoint' })
-  const checkpointSequence = (await manifest()).latestSequence
-  assert.equal(checkpointSequence, backlogSequence + 1)
-  const checkpointState = await readState()
-  const nativeCheckpoint = (await readOperations()).find((op) => op.type === 'replace_full_state')
-  assert(nativeCheckpoint?.payload.generation >= 2)
-  assert.equal(nativeCheckpoint.payload.frontiers['catchup-primary'], backlogCount)
-  const source = findTask(checkpointState, 'catchup-item-0-19').item
+  const source = findTask(await readState(), 'catchup-item-0-19').item
   await invoke('persist_operations_for_android_ci', { operationsJson: JSON.stringify([{
     id: 'stale-task-move-source', deviceId: 'catchup-primary', sequence: backlogCount + 1,
     timestamp: '2026-01-02T00:00:00.000Z', type: 'move_plan_item_to_plan',
@@ -313,7 +305,7 @@ try {
   }]) })
   await invoke('sync_relay_once', { reason: 'stale-task-seed-source-move' })
   const movedSequence = (await manifest()).latestSequence
-  assert.equal(movedSequence, checkpointSequence + 1)
+  assert.equal(movedSequence, backlogSequence + 1)
   await invoke('persist_operations_for_android_ci', { operationsJson: JSON.stringify([{
     id: 'stale-task-delete-source', deviceId: 'catchup-primary', sequence: backlogCount + 2,
     timestamp: '2026-01-02T00:00:01.000Z', type: 'delete_plan_item',
@@ -322,6 +314,21 @@ try {
   await invoke('sync_relay_once', { reason: 'stale-task-seed-source-delete' })
   const deletedSequence = (await manifest()).latestSequence
   assert.equal(deletedSequence, movedSequence + 1)
+  // Restore the old anchor before building the checkpoint control. The move
+  // and deletion repros stop at earlier cursors and NEVER receive a checkpoint.
+  await invoke('persist_operations_for_android_ci', { operationsJson: JSON.stringify([{
+    id: 'stale-task-restore-source', deviceId: 'catchup-primary', sequence: backlogCount + 3,
+    timestamp: '2026-01-02T00:00:02.000Z', type: 'insert_plan_item_at',
+    payload: { planId: 'catchup-plan-0', parentId: null, item: source, position: 19 },
+  }]) })
+  await invoke('sync_relay_once', { reason: 'stale-task-seed-source-restore' })
+  await invoke('sync_enable_primary', { pairingCode })
+  await invoke('sync_relay_once', { reason: 'stale-task-seed-checkpoint' })
+  const checkpointSequence = (await manifest()).latestSequence
+  assert.equal(checkpointSequence, deletedSequence + 2)
+  const nativeCheckpoint = (await readOperations()).find((op) => op.type === 'replace_full_state')
+  assert(nativeCheckpoint?.payload.generation >= 2)
+  assert.equal(nativeCheckpoint.payload.frontiers['catchup-primary'], backlogCount + 3)
   const scenarios = [
     { name: 'add-ordinary', method: 'add', limit: backlogSequence },
     { name: 'enter-ordinary', method: 'enter', limit: backlogSequence },
@@ -332,9 +339,9 @@ try {
     { name: 'enter-composing-checkpoint', method: 'enter', limit: checkpointSequence, timing: 'pending-composition', checkpoint: true },
     { name: 'add-background', method: 'add', limit: backlogSequence, timing: 'background' },
     { name: 'enter-background', method: 'enter', limit: backlogSequence, timing: 'background' },
-    { name: 'add-source-moved', method: 'add', limit: movedSequence, changedSource: 'moved', checkpoint: true },
-    { name: 'enter-source-moved', method: 'enter', limit: movedSequence, changedSource: 'moved', checkpoint: true },
-    { name: 'enter-source-deleted', method: 'enter', limit: deletedSequence, changedSource: 'deleted', checkpoint: true },
+    { name: 'add-source-moved', method: 'add', limit: movedSequence, changedSource: 'moved' },
+    { name: 'enter-source-moved', method: 'enter', limit: movedSequence, changedSource: 'moved' },
+    { name: 'enter-source-deleted', method: 'enter', limit: deletedSequence, changedSource: 'deleted' },
   ]
   for (const scenario of scenarios) await runScenario(scenario, pairingCode)
   report.completed = true
@@ -351,7 +358,14 @@ try {
 } finally {
   releaseBlobs()
   await writeFile('android-stale-task-repro.json', `${JSON.stringify(report, null, 2)}\n`)
-  await writeFile('android-stale-task-repro-logcat.txt', adb(['logcat', '-d'], { allowFailure: true }))
+  try {
+    await writeFile('android-stale-task-repro-logcat.txt', adb(['logcat', '-d'], {
+      allowFailure: true, maxBuffer: 32 * 1024 * 1024,
+    }))
+  } catch (error) {
+    relayLog.push(`Could not collect logcat: ${error}\n`)
+    process.exitCode = 1
+  }
   client?.close()
   adb(['forward', '--remove', 'tcp:9223'], { allowFailure: true })
   adb(['reverse', '--remove', `tcp:${proxyPort}`], { allowFailure: true })
