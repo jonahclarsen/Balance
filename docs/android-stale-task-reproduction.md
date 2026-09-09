@@ -1,6 +1,9 @@
-# Android task loss during stale-day catch-up
+# Android task preservation during stale-day catch-up
 
-Run the opt-in diagnostic against a pushed branch:
+All twelve scenarios are mandatory for release tags and coordinated nightly
+releases. A failed or incomplete report blocks Android publication. The same
+release gate also checks Enter behavior and template split probabilities in
+desktop and mobile browsers. Run it against a pushed branch without publishing:
 
 ```sh
 gh workflow run android.yml --ref <branch> -f run_stale_task_repro=true
@@ -11,7 +14,7 @@ synthetic relay log, and Android logcat. No installed database or personal
 account is used. The workflow builds and runs the actual Android debug APK;
 Android setup and execution remain CI-only.
 
-The current diagnostic keeps every day ID unchanged and performs no day
+The current gate keeps every day ID unchanged and performs no day
 regeneration. A baseline contains 600 tasks, followed by 66 separate encrypted
 completion edits. Later batches move the previous bottom task to another day, delete it, and
 restore it. A newer checkpoint is then built by the real native snapshot
@@ -39,16 +42,46 @@ The report records creation method, timing, whether the typed task was already
 durable, its actual persisted creation operation, database and UI presence,
 and presence after a cold restart. `reproduced: true` means the new task is absent
 from every plan and the UI after catch-up; `textLost` separately captures a row
-that remains but loses the entered text. Diagnostic success means the experiment
-completed, not that losing a task is acceptable. Each before/after result is
-written immediately so later harness failures do not erase earlier evidence.
+that remains but loses the entered text. Success requires every expected scenario
+exactly once, zero remaining operations, and exactly one matching task with its
+text intact in the database and UI, both before and after cold restart. Missing
+reports, missing assertions, duplicate tasks and incomplete runs fail the gate.
+Each before/after result is written immediately so later harness failures do not
+erase earlier evidence.
 
 These controlled scenarios do not establish which edits or timing occurred in
 a particular user incident. The original regeneration experiment below is a
 separate confirmed defect and does not explain a report that rules out
 regeneration.
 
-## Ordinary catch-up result
+## Fix and upgrade boundary
+
+A split creates its new task even if its source task has moved to another day or
+been deleted. With the original source available, splitting behaves as before.
+With the source unavailable, the new task is appended as a root in the original
+day. Template splitting uses the same fallback and preserves the probability
+stored in the new item. Both nonempty halves retain their template probability;
+the existing empty-row default remains 100%.
+
+Undo removes the created task but restores source fields and children only while
+the source still belongs to the original day or template. This prevents undo
+from resurrecting a deleted source or overwriting a source moved elsewhere.
+Native tests cover conflict ordering, placements, child transfer, undo/redo,
+checkpoints, restarts and a later intentional deletion.
+
+These changed replay rules and guarded undo operations use sync protocol 7.
+Update every paired installation before resuming cross-device sync: older
+engines reject the new envelopes instead of replaying them with the old rules.
+The new engine reads protocol 4–6 data for upgrades. No planner database migration
+or operation-history rewrite is needed. On the first upgraded sync, derived
+outbox ciphertext is discarded and rebuilt using protocol 7; durable operation
+IDs remain unchanged, including when an earlier upload lost its acknowledgement.
+Released-engine compatibility tests check the upgrade and refusal boundary.
+
+Regeneration remains a separate, deferred issue. This fallback requires the
+original day or template to exist.
+
+## Ordinary catch-up result before the fix
 
 [Android run 34316856550](https://github.com/jonahclarsen/Balance/actions/runs/34316856550)
 passed on harness commit `c589413`. All 12 scenarios completed with unchanged
@@ -71,7 +104,7 @@ the new task absent from every plan afterward. Its `split_plan_item` creation
 operation is still present with the same ID and sequence. A follow-up sync
 pulls zero operations, and a cold restart does not restore the task.
 
-The native `split_plan_item_row` handler returns success immediately when its
+Before the fix, the native `split_plan_item_row` handler returned success immediately when its
 source task is missing or belongs to another day. Pressing Enter stores the new
 task inside that split operation. Ordinary catch-up replays the remote move or
 deletion before the local split, so the guard also skips inserting the new task.
@@ -81,7 +114,8 @@ operation depends only on the unchanged day.
 
 This establishes a non-regeneration failure path; it does not establish that
 the user used Enter or that the preceding task was moved/deleted in their
-incident. No production fix is included.
+incident. This historical run deliberately used the original application code;
+the gate now rejects either loss.
 
 The earlier expanded run
 [34316143220](https://github.com/jonahclarsen/Balance/actions/runs/34316143220)
@@ -117,5 +151,4 @@ inserts the replacement under its new ID. The later Android `add_plan_item`
 operation still targets the original ID. `insert_plan_item` returns success
 without inserting when that plan no longer exists. Canonical replay therefore
 loses the new task from the materialized planner, even though Android had saved
-it locally before catch-up. This change adds the reproduction only; it does not
-change those application behaviors.
+it locally before catch-up. The split fix does not change these regeneration behaviors.

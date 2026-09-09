@@ -14650,7 +14650,7 @@ mod tests {
         );
 
         for item in saved["templates"][0]["items"].as_array().unwrap() {
-            assert_eq!(item["options"][0]["probability"], 65);
+            assert_eq!(item["options"][0]["probability"], 65.0);
         }
         let undone = undo_last_operation_in_database(&mut connection)
             .unwrap()
@@ -14661,7 +14661,7 @@ mod tests {
             "Wake up"
         );
 
-        assert_eq!(undone["templates"][0]["items"][0]["options"][0]["probability"], 65);
+        assert_eq!(undone["templates"][0]["items"][0]["options"][0]["probability"], 65.0);
         let redone = redo_last_operation_in_database(&mut connection)
             .unwrap()
             .unwrap();
@@ -14674,7 +14674,7 @@ mod tests {
             "Wake"
         );
         for item in redone["templates"][0]["items"].as_array().unwrap() {
-            assert_eq!(item["options"][0]["probability"], 65);
+            assert_eq!(item["options"][0]["probability"], 65.0);
         }
     }
 
@@ -14706,15 +14706,15 @@ mod tests {
             })).unwrap();
             if !deleted_before_split { sync::merge_and_rematerialize(&connection, vec![deletion]).unwrap(); }
             let read = |conn: &Connection| read_app_state_from_database(conn).unwrap().unwrap()["templates"][0]["items"].clone();
-            assert_eq!(read(&connection)[0]["options"][0]["probability"], 65);
+            assert_eq!(read(&connection)[0]["options"][0]["probability"], 65.0);
             undo_last_operation_in_database(&mut connection).unwrap().unwrap();
             assert_eq!(read(&connection), json!([]), "undo must not resurrect the deleted anchor");
             redo_last_operation_in_database(&mut connection).unwrap().unwrap();
-            assert_eq!(read(&connection)[0]["options"][0]["probability"], 65);
+            assert_eq!(read(&connection)[0]["options"][0]["probability"], 65.0);
             sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
             drop(connection);
             let reopened = open_database_at(&database.path, &key).unwrap();
-            assert_eq!(read(&reopened)[0]["options"][0]["probability"], 65);
+            assert_eq!(read(&reopened)[0]["options"][0]["probability"], 65.0);
         }
     }
 
@@ -15660,16 +15660,6 @@ mod tests {
                 "payload": { "planId": "plan_today", "itemIds": ["missing_item"] }
             }),
             json!({
-                "type": "split_plan_item",
-                "payload": {
-                    "planId": "plan_today",
-                    "itemId": "missing_item",
-                    "patch": { "text": "Ignored" },
-                    "newItem": stale_item,
-                    "placement": "after"
-                }
-            }),
-            json!({
                 "type": "move_plan_item",
                 "payload": {
                     "sourceId": "missing_item",
@@ -15754,17 +15744,6 @@ mod tests {
                 "payload": {
                     "templateId": "template_default",
                     "itemIds": ["missing_template_item"]
-                }
-            }),
-            json!({
-                "type": "split_template_item",
-                "payload": {
-                    "templateId": "template_default",
-                    "itemId": "missing_template_item",
-                    "optionId": "missing_template_option",
-                    "patch": { "text": "Ignored" },
-                    "newItem": stale_item,
-                    "placement": "after"
                 }
             }),
             json!({
