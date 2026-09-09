@@ -4512,6 +4512,11 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
 
     let result = match operation_type {
         "batch" => {
+            if let Some(replay) = plan_regeneration::legacy_undo_batch(tx, payload)? {
+                apply_operation(tx, &replay)?;
+                if let Some(changes) = payload.get("entityChanges") { apply_entity_changes(tx, changes)?; }
+                return Ok(());
+            }
             for (index, nested_operation) in
                 required_array(payload, "operations")?.iter().enumerate()
             {

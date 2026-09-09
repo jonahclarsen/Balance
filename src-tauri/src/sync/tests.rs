@@ -3394,3 +3394,24 @@ fn regeneration_edit_and_alias_survive_repeated_replacement_before_offline_sync(
     assert_eq!(crate::read_plan_item_snapshot(&conn, "template-task").unwrap().unwrap().item["text"], "Late saved edit");
     assert_eq!(crate::read_plan_item_snapshot(&conn, "late-child").unwrap().unwrap().parent_id, None);
 }
+
+#[test]
+fn regeneration_legacy_undo_merges_the_previous_day_without_deleting_offline_work() {
+    let scratch = Scratch::new("regeneration-legacy-undo");
+    let mut conn = open_seeded(&scratch.path, "regeneration-test", &regeneration_state("desktop"));
+    enable_primary(&conn).unwrap();
+    persist_operation_to_database(&mut conn, &regeneration_operation(true)).unwrap();
+    persist_operation_to_database(&mut conn, &json!({"id":"add-after-legacy","deviceId":"desktop","sequence":2,
+        "timestamp":"2026-09-09T12:00:00Z","type":"add_plan_item","payload":{"planId":"replacement-day","parentId":null,"item":regeneration_item("offline-task")}})).unwrap();
+    let previous = regeneration_state("desktop")["plans"][0].clone();
+    persist_operation_to_database(&mut conn, &json!({"id":"old-history-undo","deviceId":"desktop","sequence":3,
+        "timestamp":"2026-09-09T13:00:00Z","type":"history_undo","payload":{"operation":{"type":"batch","payload":{"operations":[
+            {"type":"delete_plan","payload":{"planId":"replacement-day"}},
+            {"type":"insert_plan","payload":{"plan":previous}},
+            {"type":"set_active_plan_date","payload":{"date":"2026-09-09"}}
+        ]}}}})).unwrap();
+    checkpoint_operation_log_preserving_history(&conn).unwrap(); rematerialize(&conn).unwrap();
+    assert!(crate::read_plan_item_snapshot(&conn, "offline-task").unwrap().is_some());
+    assert!(crate::read_plan_item_snapshot(&conn, "template-task").unwrap().is_some());
+    assert_eq!(crate::read_plans(&conn).unwrap().len(), 1);
+}

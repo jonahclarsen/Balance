@@ -16,7 +16,8 @@ operations also include `planDate` (or source/target dates) so they can cross a
 checkpoint made by an older client that did not record aliases. Legacy
 `generate_plan` operations register both identities and conservatively preserve
 manual or edited rows instead of deleting the day. Immutable operations are not
-rewritten.
+rewritten. Old replacement undo records, which lack an observed removal list,
+merge missing saved tasks conservatively instead of deleting the current day.
 
 Removed untouched tasks are stored in native `regeneratedPlanItems` records.
 A later saved text/formatting/time/completion edit can restore its named task.
@@ -36,7 +37,8 @@ Do not tag a release until version compatibility and Android verification pass.
 Existing loss can be repaired through Settings' Recovery history when its
 creation and saved edits remain. The user selects the entry; recovery rebuilds
 only that missing task with its saved text, using the current day for the known
-date. It does not replace the current day or automatically restore deleted
+date. Recovery is a new undoable addition; repeating a creation recovery does
+not delete the recovered task. It does not replace the current day or automatically restore deleted
 work. Recovery can infer the old date from retained day snapshots when older
 creation operations omitted it. If the creation/text or the ID-to-date evidence
 has been compacted and pruned away, recovery cannot infer it safely. No personal

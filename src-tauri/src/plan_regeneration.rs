@@ -370,6 +370,54 @@ pub(crate) fn legacy_undo(conn: &Connection, payload: &Value) -> Result<Value, S
     undo(conn, &effective)
 }
 
+/// Pre-upgrade undo records deleted and reinserted a whole day. They have no
+/// observed removal list, so replay them as a conservative merge. This also
+/// handles those immutable records inside a history/checkpoint wrapper.
+pub(crate) fn legacy_undo_batch(
+    conn: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let operations = required_array(payload, "operations")?;
+    if operations.first().and_then(|op| op["type"].as_str()) != Some("delete_plan")
+        || !operations.iter().skip(1).all(|op| {
+            matches!(
+                op["type"].as_str(),
+                Some("insert_plan" | "set_active_plan_date")
+            )
+        })
+    {
+        return Ok(None);
+    }
+    let id = required_string(&operations[0]["payload"], "planId")?;
+    let current = match resolve(conn, id, None)? {
+        Some(id) => read_plan_by_id(conn, &id)?,
+        None => None,
+    };
+    let restored = operations
+        .iter()
+        .find(|op| op["type"] == "insert_plan")
+        .map(|op| &op["payload"]["plan"]);
+    let Some(plan) = restored else {
+        return Ok(None);
+    };
+    if let Some(current) = &current {
+        if current["date"] != plan["date"] {
+            return Ok(None);
+        }
+    }
+    let active = operations
+        .iter()
+        .find(|op| op["type"] == "set_active_plan_date")
+        .map(|op| op["payload"]["date"].clone())
+        .unwrap_or(json!(""));
+    Ok(Some(storage_operation(
+        "regenerate_plan",
+        json!({
+            "generatedPlan": plan, "replaceItems": [], "activePlanDate": active,
+        }),
+    )))
+}
+
 /// Explicit Recovery-panel action only. Reconstruct a missing independently
 /// created task from retained local history, including its subsequent saves.
 /// Never guess a date or restore an entire old day over the current one.
