@@ -39,7 +39,9 @@ pub mod relay_client;
 /// Wire-protocol version. Bump only for incompatible framing/semantics changes.
 // v6 stores generic record patches and checkpoints every collection. Older
 // writers cannot safely compact this state; v4/v5 remain readable for upgrades.
-pub const PROTOCOL_VERSION: u32 = 6;
+// v7 preserves split-created tasks when their placement anchor moved/deleted.
+// Older replay engines must stop before applying or checkpointing v7 edits.
+pub const PROTOCOL_VERSION: u32 = 7;
 
 pub type Result<T> = std::result::Result<T, Error>;
 

@@ -32,7 +32,7 @@ on:
         default: false
         type: boolean
       run_stale_task_repro:
-        description: Reproduce a task typed on Android before stale-day sync catch-up
+        description: Run the release task-preservation gate on a test branch
         required: false
         default: false
         type: boolean
@@ -297,12 +297,11 @@ jobs:
       - name: Pair and sync two isolated app installations
         uses: reactivecircus/android-emulator-runner@v2
         env:
-          # Release tags run the deterministic core smoke suite. The WebView
-          # accessibility journey is available deliberately for UI debugging,
-          # but is too flaky and expensive to remain a release gate.
+          # Release tags (including nightly dispatches) always run the task
+          # preservation gate. Camera/accessibility stress remains opt-in.
           BALANCE_RUN_UI_PAIRING_E2E: ${{ github.event_name == 'workflow_dispatch' && inputs.run_ui_pairing && '1' || '0' }}
           BALANCE_RUN_RESUME_STRESS: ${{ github.event_name == 'workflow_dispatch' && inputs.run_resume_stress && '1' || '0' }}
-          BALANCE_RUN_STALE_TASK_REPRO: ${{ github.event_name == 'workflow_dispatch' && inputs.run_stale_task_repro && '1' || '0' }}
+          BALANCE_RUN_STALE_TASK_REPRO: ${{ (github.ref_type == 'tag' || inputs.publish_tag != '' || inputs.run_stale_task_repro) && '1' || '0' }}
           BALANCE_RUN_SYNC_CATCHUP_PROFILE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_sync_catchup_profile && '1' || '0' }}
         with:
           api-level: 34
@@ -324,6 +323,10 @@ jobs:
           # upload below to run before the job-level deadline.
           script: timeout --foreground --kill-after=30s 10m bash .github/scripts/android-smoke-test.sh
 
+      - name: Require all Android task scenarios
+        if: github.ref_type == 'tag' || inputs.publish_tag != '' || inputs.run_stale_task_repro
+        run: node .github/scripts/android-task-preservation-gate.mjs android-stale-task-repro.json
+
       - name: Upload logcat
         if: always()
         uses: actions/upload-artifact@v7
@@ -344,6 +347,31 @@ jobs:
             sync-e2e-*.xml
             sync-e2e-*.png
           if-no-files-found: ignore
+
+  editing-tests:
+    name: Enter behavior and template probabilities
+    if: github.ref_type == 'tag' || inputs.publish_tag != '' || inputs.run_stale_task_repro
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: node --test .github/scripts/android-task-preservation-gate.test.mjs
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Verify task splitting and template probabilities
+        run: pnpm exec playwright test tests/visual/balance.spec.ts --grep 'enter splits plan items|enter in the middle of a parent plan item|template splits preserve probability' --workers=2
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: enter-behavior-traces
+          path: artifacts/playwright
 
   interaction-stress:
     name: Android interaction stress (seed ${{ matrix.seed }})
@@ -548,10 +576,12 @@ jobs:
     needs:
       - build-release
       - smoke-test
+      - editing-tests
     if: >-
       inputs.publish_tag != '' &&
       needs['build-release'].result == 'success' &&
-      needs['smoke-test'].result == 'success'
+      needs['smoke-test'].result == 'success' &&
+      needs['editing-tests'].result == 'success'
     runs-on: ubuntu-latest
 
     permissions:

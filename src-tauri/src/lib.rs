@@ -4626,6 +4626,16 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
             Ok(())
         }
         "split_plan_item" => split_plan_item_row(tx, payload),
+        "undo_split_plan_item" => {
+            tx.execute("delete from plan_items where id = ?1", params![required_string(payload, "newItemId")?])
+                .map_err(|error| error.to_string())?;
+            if plan_item_plan_id_if_exists(tx, required_string(payload, "itemId")?)?.as_deref()
+                == Some(required_string(payload, "planId")?)
+            {
+                for operation in required_array(payload, "operations")? { apply_operation(tx, operation)?; }
+            }
+            Ok(())
+        },
         "backspace_plan_item_at_start" => {
             backspace_plan_item_at_start_row(tx, payload)?;
             complete_plan_item_parents(tx, payload)
@@ -4851,6 +4861,16 @@ fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String
         ),
         "patch_template_option" => patch_template_option(tx, payload),
         "split_template_item" => split_template_item_row(tx, payload),
+        "undo_split_template_item" => {
+            tx.execute("delete from template_items where id = ?1", params![required_string(payload, "newItemId")?])
+                .map_err(|error| error.to_string())?;
+            if template_item_template_id_if_exists(tx, required_string(payload, "itemId")?)?.as_deref()
+                == Some(required_string(payload, "templateId")?)
+            {
+                for operation in required_array(payload, "operations")? { apply_operation(tx, operation)?; }
+            }
+            Ok(())
+        },
         "backspace_template_option_at_start" => backspace_template_option_at_start_row(tx, payload),
         "delete_template_option" => {
             tx.execute(
@@ -5671,16 +5691,18 @@ fn build_split_plan_item_undo(
     payload: &Value,
 ) -> Result<Option<Value>, String> {
     let source_id = required_string(payload, "itemId")?;
+    if plan_item_plan_id_if_exists(connection, source_id)?.as_deref() != Some(required_string(payload, "planId")?) {
+        return Ok(Some(storage_operation("delete_plan_item", json!({
+            "itemId": required_string(required_value(payload, "newItem")?, "id")?
+        }))));
+    }
     let source_snapshot = if optional_bool(payload, "moveChildrenToNewItem")?.unwrap_or(false) {
         read_plan_item_snapshot(connection, source_id)?
     } else {
         None
     };
     let new_item_id = required_string(required_value(payload, "newItem")?, "id")?;
-    let mut operations = vec![storage_operation(
-        "delete_plan_item",
-        json!({ "itemId": new_item_id }),
-    )];
+    let mut operations = Vec::new();
 
     if let Some(patch_undo) = build_plan_item_patch_undo(connection, payload)? {
         operations.push(patch_undo);
@@ -5703,8 +5725,9 @@ fn build_split_plan_item_undo(
     }
 
     Ok(Some(storage_operation(
-        "batch",
-        json!({ "operations": operations }),
+        "undo_split_plan_item",
+        json!({ "planId": required_string(payload, "planId")?, "itemId": source_id,
+            "newItemId": new_item_id, "operations": operations }),
     )))
 }
 
@@ -6188,18 +6211,17 @@ fn build_split_template_item_undo(
     payload: &Value,
 ) -> Result<Option<Value>, String> {
     let new_item_id = required_string(required_value(payload, "newItem")?, "id")?;
-    let mut operations = vec![storage_operation(
-        "delete_template_item",
-        json!({ "itemId": new_item_id }),
-    )];
+    let mut operations = Vec::new();
 
     if let Some(patch_undo) = build_template_option_patch_undo(connection, payload)? {
         operations.push(patch_undo);
     }
 
     Ok(Some(storage_operation(
-        "batch",
-        json!({ "operations": operations }),
+        "undo_split_template_item",
+        json!({ "templateId": required_string(payload, "templateId")?,
+            "itemId": required_string(payload, "itemId")?, "newItemId": new_item_id,
+            "operations": operations }),
     )))
 }
 
@@ -7176,7 +7198,10 @@ fn split_plan_item_row(connection: &Connection, payload: &Value) -> Result<(), S
     let plan_id = required_string(payload, "planId")?;
     let source_id = required_string(payload, "itemId")?;
     if plan_item_plan_id_if_exists(connection, source_id)?.as_deref() != Some(plan_id) {
-        return Ok(());
+        // The anchor determines placement, not whether the independently named
+        // new task exists. Protocol 7 makes this replay rule identical on peers.
+        return insert_plan_item(connection, plan_id, None,
+            required_value(payload, "newItem")?, next_plan_item_position(connection, plan_id, None)?);
     }
     let move_children_to_new_item =
         optional_bool(payload, "moveChildrenToNewItem")?.unwrap_or(false);
@@ -7718,7 +7743,8 @@ fn split_template_item_row(connection: &Connection, payload: &Value) -> Result<(
     let template_id = required_string(payload, "templateId")?;
     let source_id = required_string(payload, "itemId")?;
     if template_item_template_id_if_exists(connection, source_id)?.as_deref() != Some(template_id) {
-        return Ok(());
+        return insert_template_item(connection, template_id, None,
+            required_value(payload, "newItem")?, next_template_item_position(connection, template_id, None)?);
     }
     patch_template_option(connection, payload)?;
 
@@ -14570,7 +14596,9 @@ mod tests {
         let database = TestDatabase::new("split-template-item");
         let recovery_key = generate_recovery_key();
         let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
-        replace_app_state(&mut connection, &test_state("Template split test")).unwrap();
+        let mut initial = test_state("Template split test");
+        initial["templates"][0]["items"][0]["options"][0]["probability"] = json!(65);
+        replace_app_state(&mut connection, &initial).unwrap();
 
         persist_operation_to_database(
             &mut connection,
@@ -14597,7 +14625,7 @@ mod tests {
                                 "id": "template_option_split",
                                 "text": " up",
                                 "html": " up",
-                                "probability": 100
+                                "probability": 65
                             }
                         ],
                         "children": []
@@ -14621,6 +14649,9 @@ mod tests {
             " up"
         );
 
+        for item in saved["templates"][0]["items"].as_array().unwrap() {
+            assert_eq!(item["options"][0]["probability"], 65);
+        }
         let undone = undo_last_operation_in_database(&mut connection)
             .unwrap()
             .unwrap();
@@ -14630,6 +14661,7 @@ mod tests {
             "Wake up"
         );
 
+        assert_eq!(undone["templates"][0]["items"][0]["options"][0]["probability"], 65);
         let redone = redo_last_operation_in_database(&mut connection)
             .unwrap()
             .unwrap();
@@ -14641,6 +14673,49 @@ mod tests {
             redone["templates"][0]["items"][0]["options"][0]["text"],
             "Wake"
         );
+        for item in redone["templates"][0]["items"].as_array().unwrap() {
+            assert_eq!(item["options"][0]["probability"], 65);
+        }
+    }
+
+    #[test]
+    fn template_split_preserves_probability_after_anchor_deletion_and_undo() {
+        for deleted_before_split in [false, true] {
+            let database = TestDatabase::new("split-template-anchor");
+            let key = generate_recovery_key();
+            let mut connection = open_database_at(&database.path, &key).unwrap();
+            let mut initial = test_state("Synthetic split template");
+            initial["operations"] = json!([]);
+            initial["localSequence"] = json!(0);
+            initial["templates"][0]["items"][0]["options"][0]["probability"] = json!(65);
+            replace_app_state(&mut connection, &initial).unwrap();
+            sync::enable_primary(&connection).unwrap();
+            let deletion = sync::Op {
+                id: "peer-delete-anchor".into(), device_id: "peer".into(), sequence: 1,
+                op_type: "delete_template_item".into(),
+                timestamp: if deleted_before_split { "2026-09-09T10:00:00Z" } else { "2026-09-09T12:00:00Z" }.into(),
+                payload_json: json!({"templateId":"template_default", "itemId":"template_item_wake"}).to_string(),
+            };
+            if deleted_before_split { sync::merge_and_rematerialize(&connection, vec![deletion.clone()]).unwrap(); }
+            persist_operation_to_database(&mut connection, &json!({
+                "id":"template-split", "deviceId":"device_test", "sequence":1,
+                "timestamp":"2026-09-09T11:00:00Z", "type":"split_template_item",
+                "payload":{"templateId":"template_default", "itemId":"template_item_wake", "optionId":"template_option_wake",
+                    "patch":{"text":"Wake", "html":"Wake"}, "placement":"after",
+                    "newItem":{"id":"new-template-task", "options":[{"id":"new-option", "text":" up", "html":" up", "probability":65}], "children":[]}}
+            })).unwrap();
+            if !deleted_before_split { sync::merge_and_rematerialize(&connection, vec![deletion]).unwrap(); }
+            let read = |conn: &Connection| read_app_state_from_database(conn).unwrap().unwrap()["templates"][0]["items"].clone();
+            assert_eq!(read(&connection)[0]["options"][0]["probability"], 65);
+            undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+            assert_eq!(read(&connection), json!([]), "undo must not resurrect the deleted anchor");
+            redo_last_operation_in_database(&mut connection).unwrap().unwrap();
+            assert_eq!(read(&connection)[0]["options"][0]["probability"], 65);
+            sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
+            drop(connection);
+            let reopened = open_database_at(&database.path, &key).unwrap();
+            assert_eq!(read(&reopened)[0]["options"][0]["probability"], 65);
+        }
     }
 
     #[test]

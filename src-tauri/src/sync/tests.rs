@@ -3136,3 +3136,92 @@ fn unknown_collection_survives_checkpoint_reopen_and_a_failed_batch_rolls_back()
     assert_eq!(entities::snapshot(&conn).unwrap(), before);
     assert_eq!(all_ops(&conn).unwrap(), before_ops);
 }
+
+#[test]
+fn split_creation_survives_anchor_conflicts_undo_checkpoint_and_later_deletion() {
+    for deleted in [false, true] {
+        for (placement, transfer_children) in [("after", false), ("before", true), ("firstChild", false)] {
+            let sa = Scratch::new("split-anchor-primary");
+            let sb = Scratch::new("split-anchor-phone");
+            let item = |id: &str, text: &str| json!({
+                "id": id, "text": text, "html": text, "done": false,
+                "startMinutes": null, "endMinutes": null, "children": [],
+            });
+            let mut anchor = item("anchor", "Original anchor");
+            anchor["children"] = json!([item("child", "Existing child")]);
+            let mut initial = state("desktop", json!([]));
+            initial["plans"] = json!([
+                {"id":"day", "date":"2026-09-09", "title":"Synthetic day", "dailyReminder":"",
+                 "createdAt":"2026-09-09T00:00:00Z", "items":[anchor]},
+                {"id":"other-day", "date":"2026-09-10", "title":"Synthetic tomorrow", "dailyReminder":"",
+                 "createdAt":"2026-09-09T00:00:00Z", "items":[]}
+            ]);
+            let desktop = open_seeded(&sa.path, "split-desktop-key", &initial);
+            let phone = open_seeded(&sb.path, "split-phone-key", &state("phone", json!([])));
+            enable_primary(&desktop).unwrap();
+            enable_joiner(&phone).unwrap();
+            let desktop = TestStore::new(desktop);
+            let phone = TestStore::new(phone);
+            let key = SyncKey::generate();
+            exchange(&phone, &desktop, &key);
+            let mut moved = anchor.clone();
+            moved["text"] = json!("Remote anchor");
+            moved["html"] = json!("Remote anchor");
+            desktop.write(|conn| persist_operation_to_database(conn, &json!({
+                "id":"remote-change", "deviceId":"desktop", "sequence":1,
+                "timestamp":"2026-09-09T10:00:00Z",
+                "type": if deleted {"delete_plan_item"} else {"move_plan_item_to_plan"},
+                "payload": if deleted { json!({"planId":"day", "itemId":"anchor"}) } else {
+                    json!({"sourcePlanId":"day", "targetPlanId":"other-day", "itemId":"anchor",
+                        "targetId":null, "placement":"after", "item":moved})
+                }
+            })).unwrap());
+            phone.write(|conn| persist_operation_to_database(conn, &json!({
+                "id":"phone-split", "deviceId":"phone", "sequence":1,
+                "timestamp":"2026-09-09T11:00:00Z", "type":"split_plan_item",
+                "payload":{"planId":"day", "itemId":"anchor", "patch":{"text":"Left", "html":"Left"},
+                    "newItem":item("new-task", "Right"), "placement":placement,
+                    "moveChildrenToNewItem":transfer_children}
+            })).unwrap());
+            let verify = |store: &TestStore, expected: bool| {
+                let current = store.state();
+                let day = current["plans"].as_array().unwrap().iter().find(|p| p["id"] == "day").unwrap();
+                let mut ids = Vec::new();
+                for plan in current["plans"].as_array().unwrap() { plan_item_ids(&plan["items"], &mut ids); }
+                assert_eq!(ids.iter().filter(|id| id.as_str() == "new-task").count(), if expected { 1 } else { 0 });
+                if expected { assert_eq!(day["items"][0]["text"], "Right"); }
+                if !deleted {
+                    let other = current["plans"].as_array().unwrap().iter().find(|p| p["id"] == "other-day").unwrap();
+                    assert_eq!(other["items"][0]["text"], "Remote anchor", "undo must not overwrite the moved anchor");
+                    assert_eq!(other["items"][0]["children"][0]["id"], "child");
+                }
+            };
+            for _ in 0..3 { exchange(&phone, &desktop, &key); }
+            verify(&phone, true);
+            verify(&desktop, true);
+            phone.write(|conn| { crate::undo_last_operation_in_database(conn).unwrap().unwrap(); });
+            exchange(&desktop, &phone, &key);
+            verify(&phone, false);
+            verify(&desktop, false);
+            phone.write(|conn| { crate::redo_last_operation_in_database(conn).unwrap().unwrap(); });
+            exchange(&phone, &desktop, &key);
+            verify(&phone, true);
+            verify(&desktop, true);
+            desktop.read(|conn| { checkpoint_operation_log_preserving_history(conn).unwrap(); });
+            exchange(&desktop, &phone, &key);
+            verify(&phone, true);
+            assert_eq!(domain(&phone.state()), domain(&desktop.state()));
+            let reopened = crate::open_database_at(&sb.path, &test_database_key("split-phone-key")).unwrap();
+            assert_eq!(domain(&read_app_state_from_database(&reopened).unwrap().unwrap()), domain(&phone.state()));
+            drop(reopened);
+            desktop.write(|conn| persist_operation_to_database(conn, &json!({
+                "id":"delete-new-task", "deviceId":"desktop", "sequence":2,
+                "timestamp":"2026-09-09T12:00:00Z", "type":"delete_plan_item",
+                "payload":{"planId":"day", "itemId":"new-task"}
+            })).unwrap());
+            for _ in 0..3 { exchange(&phone, &desktop, &key); }
+            verify(&phone, false);
+            verify(&desktop, false);
+        }
+    }
+}

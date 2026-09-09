@@ -43,6 +43,37 @@ assert.deepEqual(upgraded.entities, legacy.entities)
 upgraded = run(currentBinary, 'upgrade', 'checkpoint')
 assert.deepEqual(upgraded.entities, legacy.entities)
 
+// A released engine supplies the baseline and a remote anchor move. Upgrade
+// with a locally saved split, then replay, undo/redo, checkpoint and reopen.
+const splitInitial = state('split-desktop')
+const splitItem = (id, text) => ({ id, text, html: text, done: false, startMinutes: null, endMinutes: null, children: [] })
+splitInitial.plans = [
+  { id: 'split-day', date: '2026-09-08', title: 'Synthetic day', dailyReminder: '', createdAt: '2026-09-08T00:00:00Z', items: [splitItem('anchor', 'Original')] },
+  { id: 'split-other', date: '2026-09-09', title: 'Synthetic tomorrow', dailyReminder: '', createdAt: '2026-09-08T00:00:00Z', items: [] },
+]
+run(oldBinary, 'split-desktop', 'init', { state: splitInitial })
+run(currentBinary, 'split-phone', 'init', { state: { ...splitInitial, deviceId: 'split-phone' } })
+const movedAnchor = run(oldBinary, 'split-desktop', 'write', { operation: operation('split-desktop', 1, 'move_plan_item_to_plan', {
+  sourcePlanId: 'split-day', targetPlanId: 'split-other', itemId: 'anchor', targetId: null, placement: 'after', item: splitItem('anchor', 'Remote edit'),
+}) })
+run(currentBinary, 'split-phone', 'write', { operation: { ...operation('split-phone', 1, 'split_plan_item', {
+  planId: 'split-day', itemId: 'anchor', patch: { text: 'Left', html: 'Left' }, newItem: splitItem('new-task', 'Right'), placement: 'after',
+}), timestamp: '2026-09-08T12:00:02.000Z' } })
+const verifySplit = (response, exists) => {
+  const day = response.state.plans.find(plan => plan.id === 'split-day')
+  assert.equal(day.items.filter(item => item.id === 'new-task' && item.text === 'Right').length, Number(exists))
+  assert.equal(response.state.plans.find(plan => plan.id === 'split-other').items[0].text, 'Remote edit')
+}
+verifySplit(run(currentBinary, 'split-phone', 'merge', { operations: movedAnchor.operations }), true)
+verifySplit(run(currentBinary, 'split-phone', 'undo'), false)
+verifySplit(run(currentBinary, 'split-phone', 'redo'), true)
+const splitCheckpoint = run(currentBinary, 'split-phone', 'checkpoint')
+verifySplit(splitCheckpoint, true)
+verifySplit(run(currentBinary, 'split-phone', 'read'), true)
+// The other device upgrades before it receives the new replay semantics.
+verifySplit(run(currentBinary, 'split-desktop', 'merge', { operations: splitCheckpoint.operations }), true)
+console.log('PASS: released anchor move, preserved split, guarded undo/redo and checkpoint after upgrade')
+
 // A future producer uses only this release's generic storage contract. This
 // executable has no schema/UI for the future collection or nested field.
 run(futureBinary, 'future', 'init', { state: state('future-device') })

@@ -70,6 +70,11 @@ jobs:
       - name: Test sync reload and manual completion races repeatedly
         run: pnpm exec playwright test tests/visual/sync-freshness.spec.ts --repeat-each=3
 
+      - name: Verify Enter behavior, probabilities and Android gate assertions
+        run: |
+          node --test .github/scripts/android-task-preservation-gate.test.mjs
+          pnpm exec playwright test tests/visual/balance.spec.ts --grep 'enter splits plan items|enter in the middle of a parent plan item|template splits preserve probability' --workers=2
+
       - name: Upload failing browser traces
         if: failure()
         uses: actions/upload-artifact@v7

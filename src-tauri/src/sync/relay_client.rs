@@ -422,9 +422,9 @@ fn apply_ciphertext(
 
 fn decode_ciphertext(key: &SyncKey, epoch: &str, ciphertext: &[u8]) -> Result<Vec<Op>> {
     let envelope: RelayEnvelope = open(key, ciphertext)?;
-    // Read v4/v5 rooms during upgrade. New envelopes stop pre-foundation
-    // clients from checkpointing state they cannot fully represent.
-    if ![4, 5, PROTOCOL_VERSION].contains(&envelope.v) {
+    // Read existing rooms during upgrade. New envelopes require peers to use
+    // the same split replay rule before they can reconcile or checkpoint edits.
+    if ![4, 5, 6, PROTOCOL_VERSION].contains(&envelope.v) {
         return Err(Error::Codec("Update required: this sync data uses a newer storage protocol".into()));
     }
     if envelope.epoch != epoch {
@@ -903,6 +903,23 @@ pub fn sync_once(
     sync_once_with_network_gate(conn, relay_url, key, options, &mut gate)
 }
 
+fn ensure_current_outbox_protocol(conn: &Connection) -> Result<()> {
+    let version = PROTOCOL_VERSION.to_string();
+    // Outbox ciphertext is derived from durable operations. An upgraded client
+    // must re-encode unsent envelopes with its current protocol, including a
+    // previous upload whose acknowledgement was lost. Operation IDs remain
+    // immutable, so re-delivery is safe.
+    if crate::metadata_value(conn, "sync_outbox_protocol").map_err(Error::Codec)?.as_deref()
+        != Some(version.as_str())
+    {
+        let tx = conn.unchecked_transaction()?;
+        tx.execute("DELETE FROM sync_relay_outbox", [])?;
+        crate::set_metadata(&tx, "sync_outbox_protocol", &PROTOCOL_VERSION.to_string()).map_err(Error::Codec)?;
+        tx.commit()?;
+    }
+    Ok(())
+}
+
 pub(crate) fn sync_once_with_network_gate(
     conn: &Connection,
     relay_url: &str,
@@ -911,6 +928,7 @@ pub(crate) fn sync_once_with_network_gate(
     gate: &mut impl NetworkDatabaseGate,
 ) -> Result<SyncPassResult> {
     ensure_relay_tables(conn)?;
+    ensure_current_outbox_protocol(conn)?;
     prune_obsolete_relay_rows(conn)?;
     let result = sync_once_inner(conn, relay_url, key, options, gate);
     if let Err(error) = &result {
@@ -1384,6 +1402,38 @@ mod tests {
             0,
             "a successful retry clears its quarantine record"
         );
+    }
+
+    #[test]
+    fn protocol_upgrade_reencodes_cached_outbox_without_changing_operations() {
+        let conn = relay_database();
+        conn.execute_batch("CREATE TABLE metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)").unwrap();
+        let key = SyncKey::generate();
+        insert_op(&conn, "cached-edit", "{}");
+        let operations = all_ops(&conn).unwrap();
+        let legacy = seal(&key, &RelayEnvelope { v: 6, epoch: "epoch-1".into(), ops: operations.clone() }).unwrap();
+        conn.execute("INSERT INTO sync_relay_outbox (batch_id, epoch, ciphertext, op_ids_json) VALUES ('old', 'epoch-1', ?1, '[\"cached-edit\"]')", params![legacy]).unwrap();
+        crate::set_metadata(&conn, "sync_outbox_protocol", "6").unwrap();
+        ensure_current_outbox_protocol(&conn).unwrap();
+        assert_eq!(all_ops(&conn).unwrap(), operations);
+        stage_outbox(&conn, &key, "epoch-1").unwrap();
+        let ciphertext: Vec<u8> = conn.query_row("SELECT ciphertext FROM sync_relay_outbox", [], |r| r.get(0)).unwrap();
+        let envelope: RelayEnvelope = open(&key, &ciphertext).unwrap();
+        assert_eq!(envelope.v, PROTOCOL_VERSION);
+        assert_eq!(envelope.ops, operations);
+        ensure_current_outbox_protocol(&conn).unwrap();
+        let unchanged: Vec<u8> = conn.query_row("SELECT ciphertext FROM sync_relay_outbox", [], |r| r.get(0)).unwrap();
+        assert_eq!(ciphertext, unchanged, "ordinary retries retain the durable envelope");
+    }
+
+    #[test]
+    fn protocol_upgrade_reads_existing_envelopes_but_rejects_future_rules() {
+        let key = SyncKey::generate();
+        for version in [4, 5, 6, PROTOCOL_VERSION, PROTOCOL_VERSION + 1] {
+            let bytes = seal(&key, &RelayEnvelope { v: version, epoch: "upgrade".into(), ops: vec![] }).unwrap();
+            let result = decode_ciphertext(&key, "upgrade", &bytes);
+            assert_eq!(result.is_ok(), version <= PROTOCOL_VERSION);
+        }
     }
 
     #[test]

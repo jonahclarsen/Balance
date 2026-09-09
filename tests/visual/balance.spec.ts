@@ -3656,11 +3656,13 @@ test('deleting the final incomplete child completes each satisfied parent task',
   await expect(checkbox('Parent task')).not.toBeChecked()
 })
 
-test('enter splits plan items and shift-enter inserts a line break', async ({ page }) => {
+test('enter splits plan items and shift-enter inserts a line break', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  if (testInfo.project.name === 'mobile') await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
 
   await focusInputByValue(page, 'Wake up')
   await setFocusedEditorHTML(page, 'AlphaBeta')
@@ -3795,11 +3797,13 @@ test('enter at the start of a parent plan item inserts a blank sibling above it'
     })
 })
 
-test('enter in the middle of a parent plan item moves children to the second split item', async ({ page }) => {
+test('enter in the middle of a parent plan item moves children to the second split item', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  if (testInfo.project.name === 'mobile') await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
 
   await focusInputByValue(page, 'Work block')
   await setCaretOffsetInFocusedEditor(page, 4)

@@ -341,7 +341,7 @@ if [ "${BALANCE_RUN_SYNC_CATCHUP_PROFILE:-0}" = 1 ]; then
   node .github/scripts/android-sync-catchup-profile.mjs
 fi
 
-# Opt-in stale-day task-loss diagnostic, using only this emulator's fixtures.
+# Mandatory on release tags; manually selectable on test branches.
 if [ "${BALANCE_RUN_STALE_TASK_REPRO:-0}" = 1 ]; then
   node .github/scripts/android-stale-task-repro.mjs
 fi

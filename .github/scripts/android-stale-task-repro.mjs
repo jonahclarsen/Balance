@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Diagnostic only: real WebView input + native encrypted relay reconciliation.
-// A successful run reports whether loss occurred; it does not assert that loss
-// is desirable. All scenarios use ordinary edits and preserve the day ID.
+// Release correctness gate: real WebView input and native encrypted relay.
+// All scenarios use ordinary edits and preserve the day ID.
 import http from 'node:http'
+import { assertTaskPreservation } from './android-task-preservation-gate.mjs'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
@@ -171,6 +171,11 @@ function findTask(state, id) {
   }
   return null
 }
+function matchingTaskCount(state, task) {
+  const count = (items) => items.reduce((total, item) => total
+    + Number(item.id === task.id || item.text === task.text) + count(item.children ?? []), 0)
+  return state.plans.reduce((total, plan) => total + count(plan.items), 0)
+}
 function creationOperation(state, id) {
   const op = state.operations.find((op) => op.payload?.newItem?.id === id || op.payload?.item?.id === id)
   return op ? { type: op.type, id: op.id, sequence: op.sequence, planId: op.payload.planId, sourceId: op.payload.itemId } : null
@@ -247,7 +252,7 @@ async function runScenario(scenario, pairingCode) {
   const inDatabase = storedTask?.item.text === text
   const inUi = await visible(text)
   result.after = {
-    planId: day.id, taskInDatabase: inDatabase, taskVisible: inUi,
+    planId: day.id, taskInDatabase: inDatabase, taskVisible: inUi, matchingTaskCount: matchingTaskCount(state, task),
     taskLocation: storedTask?.planId ?? null, taskText: storedTask?.item.text ?? null,
     creationOperation: creationOperation(state, task.id),
   }
@@ -268,8 +273,10 @@ async function runScenario(scenario, pairingCode) {
   launchApp()
   client = await connectDevTools(await waitFor(appPid, 'the reopened synthetic process'))
   assert(!(await waitForDatabaseReady(client)).failed)
-  const reopenedTask = findTask(await readState(), task.id)
-  result.afterRestart = { taskInDatabase: reopenedTask?.item.text === text, taskVisible: await visible(text) }
+  const reopenedState = await readState()
+  const reopenedTask = findTask(reopenedState, task.id)
+  result.afterRestart = { taskInDatabase: reopenedTask?.item.text === text, taskVisible: await visible(text),
+    matchingTaskCount: matchingTaskCount(reopenedState, task) }
   assert.equal(result.afterRestart.taskInDatabase, inDatabase)
   console.log(`[stale-task-repro] ${JSON.stringify(result)}`)
   await writeFile('android-stale-task-repro.json', `${JSON.stringify(report, null, 2)}\n`)
@@ -345,6 +352,7 @@ try {
   ]
   for (const scenario of scenarios) await runScenario(scenario, pairingCode)
   report.completed = true
+  assertTaskPreservation(report)
 } catch (error) {
   report.error = error.stack ?? String(error)
   if (client) {
