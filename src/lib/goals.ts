@@ -123,7 +123,7 @@ export function cadenceDaysOnDate(goal: Goal, date: string): number {
   return cadenceDays
 }
 
-/** Starts a new cadence schedule on `date`, preserving every earlier regime. */
+/** Changes cadence from `date`, preserving earlier rules and the latest completion. */
 export function setGoalCadence(goal: Goal, cadenceDays: number, date = todayISO()): Goal {
   const normalizedCadenceDays = normalizeCadenceDays(cadenceDays)
   if (normalizedCadenceDays === goal.cadenceDays) return goal
@@ -417,16 +417,32 @@ export function buildGoalDayCells(
       continue
     }
 
-    for (const period of cadencePeriodsWithinActivity(goal, activityPeriod, visibleEnd)) {
+    for (const period of cadencePeriodsWithinActivity(goal, activityPeriod, maxISODate(visibleEnd, currentDate))) {
       let segmentStart = period.startDate
       const periodEnd = period.endDate
-      let deadline = minISODate(shiftISODate(segmentStart, period.cadenceDays - 1), periodEnd)
+      // A display/cadence boundary is not a deadline. Freeze closed periods at
+      // their boundary so a later rule cannot retroactively fail earlier days.
+      const evaluationDate = minISODate(currentDate, shiftISODate(periodEnd, 1))
+      const previousCompletion = sortedCompletions.filter(
+        (date) => date >= activityPeriod.startDate && date < period.startDate,
+      ).at(-1)
+      let deadline = cadenceDeadline(period, previousCompletion)
+
+      if (previousCompletion && deadline > segmentStart) {
+        const nextCompletion = sortedCompletions.find((date) => date >= segmentStart && date <= periodEnd)
+        const coverageEnd = minISODate(
+          shiftISODate(deadline, -1),
+          nextCompletion ? shiftISODate(nextCompletion, -1) : periodEnd,
+        )
+        markSegment(cells, indexesByDate, segmentStart, coverageEnd, deadline, true, evaluationDate)
+        segmentStart = shiftISODate(coverageEnd, 1)
+      }
 
       while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
         const nextCompletion = sortedCompletions.find((date) => date >= segmentStart && date <= periodEnd)
         if (!nextCompletion) {
           const openEnd = minISODate(maxISODate(deadline, currentDate), periodEnd)
-          markSegment(cells, indexesByDate, segmentStart, openEnd, deadline, false, currentDate)
+          markSegment(cells, indexesByDate, segmentStart, openEnd, deadline, false, evaluationDate)
           break
         }
 
@@ -439,7 +455,7 @@ export function buildGoalDayCells(
             shiftISODate(nextCompletion, -1),
             deadline,
             completedOnTime,
-            currentDate,
+            evaluationDate,
           )
         }
 
@@ -448,7 +464,7 @@ export function buildGoalDayCells(
           (date) => date > nextCompletion && date <= coverageEnd,
         )
         const segmentEnd = followingCompletion ? shiftISODate(followingCompletion, -1) : coverageEnd
-        markSegment(cells, indexesByDate, nextCompletion, segmentEnd, coverageEnd, true, currentDate)
+        markSegment(cells, indexesByDate, nextCompletion, segmentEnd, coverageEnd, true, evaluationDate)
 
         segmentStart = followingCompletion ?? shiftISODate(segmentEnd, 1)
         // Once coverage from a real completion ends, the following day is due.
@@ -495,15 +511,21 @@ export function goalDaysUntilLapse(
   const sortedCompletions = [
     ...new Set(completions.filter((completion) => completion.goalId === goal.id).map((completion) => completion.date)),
   ]
-    .filter((date) => date >= cadencePeriod.startDate && date <= currentDate)
+    .filter((date) => date >= period.startDate && date <= currentDate)
     .sort()
   const latestCompletion = sortedCompletions.at(-1)
-  const deadline = latestCompletion
-    ? shiftISODate(latestCompletion, cadencePeriod.cadenceDays)
-    : shiftISODate(cadencePeriod.startDate, cadencePeriod.cadenceDays - 1)
+  const deadline = cadenceDeadline(cadencePeriod, latestCompletion)
 
   if (period.endDate && deadline > period.endDate) return null
   return isoDateDiffDays(currentDate, deadline)
+}
+
+// Shortening cadence can make a goal due on the edit date, never before it.
+// Completions remain anchors across cadence edits within one active period.
+function cadenceDeadline(period: GoalCadencePeriod, latestCompletion?: string): string {
+  return latestCompletion
+    ? maxISODate(period.startDate, shiftISODate(latestCompletion, period.cadenceDays))
+    : shiftISODate(period.startDate, period.cadenceDays - 1)
 }
 
 /**

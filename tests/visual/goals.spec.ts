@@ -1161,8 +1161,48 @@ test('editing cadence preserves the old Goal Rhythm schedule after reload', asyn
   await page.reload()
   await expect(page.locator(`.goal-day-cell[title="Read · ${completionDate} · completed"]`)).toHaveClass(/segment-end/)
   await expect(page.locator(`.goal-day-cell[title="Read · ${today} · active"]`)).toHaveClass(/segment-start/)
-  await expect(page.locator(`.goal-day-cell[title="Read · ${today} · active"]`)).not.toHaveClass(/relieved/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${today} · active"]`)).toHaveClass(/relieved/)
   await expect(page.locator(`.goal-day-cell[title="Read · ${tomorrow} · active"]`)).toHaveClass(/segment-end/)
+})
+
+test('cadence edits retain recent completion coverage in both history views after reload', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Goal Rhythm is desktop-only')
+  const today = todayISO()
+  const completionDate = addDays(today, -4)
+  const priorChange = addDays(today, -3)
+  const start = addDays(today, -20)
+  await page.evaluate(({ today, completionDate, priorChange, start }) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const timestamp = new Date().toISOString()
+    state.goals = [{
+      id: 'goal_read', name: 'Read', nameHtml: 'Read', cadenceDays: 10,
+      matchTerms: ['read'], matchTermsHtml: 'read', hue: 200, lightness: 50,
+      activityPeriods: [{ startDate: start, endDate: null }],
+      cadenceHistory: [{ startDate: start, cadenceDays: 7 }, { startDate: priorChange, cadenceDays: 10 }],
+      createdAt: timestamp, updatedAt: timestamp,
+    }]
+    state.goalCompletions = [{ goalId: 'goal_read', date: completionDate, itemIds: ['synthetic_read'], matchedTerms: ['read'], computedAt: timestamp }]
+    state.activePlanDate = today
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, { today, completionDate, priorChange, start })
+  await page.reload()
+  await page.getByRole('button', { name: 'Manage goals' }).click()
+  await page.getByLabel('Cadence days for Read').fill('8')
+  await page.getByLabel('Cadence days for Read').press('Tab')
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1') || '{}').goals[0].cadenceDays)).toBe(8)
+  await page.reload()
+  for (let offset = -3; offset <= 0; offset += 1) {
+    const date = addDays(today, offset)
+    const cell = page.locator(`.goal-day-cell[title="Read · ${date} · active"]`)
+    await expect(cell).toHaveClass(/relieved/)
+    await expect(cell.locator('.open, .overdue-mark')).toHaveCount(0)
+  }
+  await page.getByRole('button', { name: 'Manage goals' }).click()
+  for (let offset = -3; offset <= 0; offset += 1) {
+    const cell = page.locator(`.goal-recent-day[data-goal-date="${addDays(today, offset)}"]`)
+    await expect(cell).not.toHaveClass(/missed|overdue/)
+    await expect(cell.locator('.goal-cell-mark')).toHaveCount(0)
+  }
 })
 
 test('an unmet rolling deadline stays overdue until a completion resets it', async ({ page }) => {
@@ -1194,7 +1234,7 @@ test('an unmet rolling deadline stays overdue until a completion resets it', asy
   const lapsePill = page.locator('.goal-history-name', { hasText: 'Read' }).locator('.goal-lapse')
   await expect(lapsePill).toHaveText('5d over')
   await expect(lapsePill).toHaveClass(/overdue/)
-  await expect(page.locator('.goal-history-toolbar > div > span')).toHaveText('1 upcoming in the next 3 days')
+  await expect(page.locator('.goal-history-toolbar > div > span')).toHaveText('1 overdue, 0 upcoming in the next 3 days')
 
   await expect(page.locator(`.goal-day-cell[title="Read · ${start} · missed"]`)).toHaveClass(/segment-start/)
   await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · overdue"] .overdue-mark`)).toHaveText('×')
