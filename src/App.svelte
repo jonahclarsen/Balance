@@ -10,6 +10,7 @@
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
+  import GoalCopyButton from './lib/GoalCopyButton.svelte'
   import IridescentGradientSettings from './lib/IridescentGradientSettings.svelte'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
@@ -6621,6 +6622,7 @@ return rows`
                   onFocusChange={setGoalNameEditing}
                   onChange={(html, text) => plannerStore.patchGoal(goal.id, { name: text, nameHtml: html })}
                 />
+                <GoalCopyButton name={goal.name} />
                 <span class:active class="goal-state">{active ? 'Active' : 'Archived'}</span>
               </div>
               <div class="goal-card-fields">

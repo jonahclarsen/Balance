@@ -2155,6 +2155,34 @@ test('clicking a goal rhythm row scrolls to that goal on the goals page', async 
   await expect.poll(() => goalCardCenterOffset(page, targetGoal)).toBeLessThanOrEqual(1)
 })
 
+test('goal cards copy their current title outside the editor without navigating', async ({ page }) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: playwrightOrigin })
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  const card = page.locator('.goal-card').filter({ hasText: 'Exercise' })
+  const editor = card.getByRole('textbox', { name: 'Goal name: Exercise', exact: true })
+  const copyButton = card.getByRole('button', { name: 'Copy Exercise', exact: true })
+  const editorBounds = (await editor.boundingBox())!
+  const buttonBounds = (await copyButton.boundingBox())!
+  expect(buttonBounds.x).toBeGreaterThanOrEqual(editorBounds.x + editorBounds.width)
+  expect(buttonBounds.x - editorBounds.x - editorBounds.width).toBeLessThanOrEqual(12)
+  await expect(editor.locator('button')).toHaveCount(0)
+  await copyButton.click()
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('Exercise')
+  await expect(copyButton).toHaveAttribute('title', 'Copied goal name')
+  await expect(copyButton.locator('svg')).toBeVisible()
+  await expect(card).toBeVisible()
+
+  const longName = 'Exercise with a very long goal title that needs to fit on a narrow mobile card'
+  await editor.fill(longName)
+  await page.keyboard.press('Tab')
+  const renamedButton = card.getByRole('button', { name: `Copy ${longName}`, exact: true })
+  await expect(renamedButton).toBeInViewport()
+  await renamedButton.press('Enter')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(longName)
+  expect((await renamedButton.boundingBox())!.width).toBeCloseTo(buttonBounds.width, 1)
+  await expect(card).toBeVisible()
+})
+
 test('goal rhythm copy button copies the goal name without opening the row', async ({ page }) => {
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write'], { origin: playwrightOrigin })
   await createGoal(page, 'Exercise', 3, 'lift, swim')

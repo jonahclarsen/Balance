@@ -4196,7 +4196,7 @@ body.mobile-checkbox-dragging {
 
 .goal-name-input {
   min-width: 0;
-  flex: 1 1 0;
+  flex: 0 1 auto;
   padding: 3px 4px;
   overflow: hidden;
   border: 1px solid transparent;
@@ -4225,6 +4225,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-state {
+  margin-left: auto;
   flex: 0 0 auto;
   border-radius: 999px;
   background: var(--sidebar);
