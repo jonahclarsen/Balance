@@ -54,6 +54,7 @@
 
 <section
   class="goal-recent-history"
+  data-rhythm-mode="flow-tint"
   aria-label={`Recent 14-day history for ${goal.name}: ${completionSummary(recentCompletionCount)}`}
 >
   <div class="goal-recent-history-header">
@@ -65,8 +66,12 @@
       <li class:overdue={cell.overdue}>
         <button
           type="button"
-          class="goal-recent-day"
+          class="goal-recent-day goal-day-cell"
           class:active={cell.active}
+          class:segment-start={cell.segmentStart}
+          class:segment-end={cell.segmentEnd}
+          class:current-period={cell.current}
+          class:relieved={cell.relieved}
           class:completed={cell.completed}
           class:missed={cell.missed}
           class:overdue={cell.overdue}
@@ -77,10 +82,12 @@
         >
           <span class="goal-recent-day-tooltip" aria-hidden="true">{tooltipDateLabel(cell.date)}</span>
           {#if cell.completed}
-            <span aria-hidden="true">✓</span>
+            <span class="goal-cell-mark checked" aria-hidden="true"><svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3 3 7-7" /></svg></span>
+          {:else if cell.relieved}
+            <span class="goal-cell-mark relieved-mark" aria-hidden="true"><svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8 3 3 7-7" /></svg></span>
           {:else if cell.overdue}
-            <span class="goal-cell-mark overdue-mark" aria-hidden="true">×</span>
-          {:else if cell.missed}
+            <span class="goal-cell-mark overdue-mark" aria-hidden="true"><svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="m4 4 8 8M12 4l-8 8" /></svg></span>
+          {:else if cell.active}
             <span class="goal-cell-mark open" aria-hidden="true"></span>
           {/if}
         </button>
