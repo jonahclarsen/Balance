@@ -229,6 +229,8 @@
   // entry available while visiting other pages; returning to Lists dismisses it.
   let listHistoryNavigationVisible = false
   let searchOpen = false
+  let retainedSearchQuery = ''
+  let searchQueryExpiresAt = 0
   let activeNavAnimationTarget: View | 'search' = view
   let activeNavAnimationDelay = randomIridescentSelectionAnimationDelay()
   let activeNavAnimationRevision = 0
@@ -7175,6 +7177,11 @@ return rows`
     {#if searchOpen}
       <SearchModal
         state={$plannerStore}
+        initialQuery={Date.now() < searchQueryExpiresAt ? retainedSearchQuery : ''}
+        onRememberQuery={(query) => {
+          retainedSearchQuery = query
+          searchQueryExpiresAt = Date.now() + 15_000
+        }}
         onClose={() => (searchOpen = false)}
         onSelect={(result) => { void openSearchResult(result) }}
       />

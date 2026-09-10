@@ -6,6 +6,8 @@
   import type { AppState } from './types'
 
   export let state: AppState
+  export let initialQuery = ''
+  export let onRememberQuery: (query: string) => void
   export let onClose: () => void
   export let onSelect: (result: SearchResult) => void
 
@@ -19,8 +21,8 @@
   ]
 
   let searchInput: HTMLInputElement | null = null
-  let query = ''
-  let debouncedQuery = ''
+  let query = initialQuery
+  let debouncedQuery = initialQuery.trim()
   let debounceTimer: number | null = null
   let collapsedGroups = new Set<SearchResult['kind']>()
   let selectedIndex = 0
@@ -46,6 +48,7 @@
   })
 
   onDestroy(() => {
+    onRememberQuery(query)
     clearDebounce()
     historySearchRequest += 1
   })
