@@ -459,19 +459,10 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
   }
   const deadlineDay = history.locator(`[data-goal-date="${addDays(currentDate, -7)}"]`)
   await expect(deadlineDay).toHaveClass(/overdue/)
-  await expect(deadlineDay.locator('.goal-cell-mark.overdue-mark svg')).toBeVisible()
+  await expect(deadlineDay.locator('.goal-cell-mark.overdue-mark')).toHaveText('×')
   const overdueDay = history.locator(`[data-goal-date="${addDays(currentDate, -6)}"]`)
   await expect(overdueDay).toHaveClass(/overdue/)
-  await expect(overdueDay.locator('.goal-cell-mark.overdue-mark svg')).toBeVisible()
-  await expect(history).toHaveAttribute('data-rhythm-mode', 'flow-tint')
-  const flowTint = await overdueDay.evaluate((cell) => ({
-    band: getComputedStyle(cell).backgroundImage,
-    overlay: getComputedStyle(cell, '::before').backgroundImage,
-    gap: getComputedStyle(cell.closest('ol')!).columnGap,
-  }))
-  expect(flowTint.band).toContain('linear-gradient')
-  expect(flowTint.overlay).toBe('none')
-  expect(flowTint.gap).toBe('0px')
+  await expect(overdueDay.locator('.goal-cell-mark.overdue-mark')).toHaveText('×')
   await expect(history.locator(`[data-goal-date="${currentDate}"]`)).toHaveClass(/today/)
   const historyBox = await history.boundingBox()
   const rulesBox = await page.getByLabel('Matching terms for Exercise').boundingBox()
@@ -1211,8 +1202,7 @@ test('cadence edits retain recent completion coverage in both history views afte
   for (let offset = -3; offset <= 0; offset += 1) {
     const cell = page.locator(`.goal-recent-day[data-goal-date="${addDays(today, offset)}"]`)
     await expect(cell).not.toHaveClass(/missed|overdue/)
-    await expect(cell).toHaveClass(/relieved/)
-    await expect(cell.locator('.goal-cell-mark.relieved-mark svg')).toBeVisible()
+    await expect(cell.locator('.goal-cell-mark')).toHaveCount(0)
   }
 })
 

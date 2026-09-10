@@ -4087,8 +4087,9 @@ body.mobile-checkbox-dragging {
 
 .goal-recent-days {
   display: grid;
-  grid-template-columns: repeat(14, minmax(0, 1fr));
-  gap: 0;
+  grid-template-columns: repeat(14, minmax(0, 22px));
+  justify-content: space-between;
+  gap: 3px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -4098,10 +4099,21 @@ body.mobile-checkbox-dragging {
   min-width: 0;
 }
 
-.goal-recent-day.goal-day-cell {
+.goal-recent-day {
+  position: relative;
+  display: grid;
   width: 100%;
   min-width: 0;
-  height: 26px;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px dashed var(--line);
+  border-radius: 5px;
+  background: transparent;
+  color: white;
+  font-size: clamp(8px, 1.5vw, 11px);
+  font-weight: 800;
+  line-height: 1;
+  padding: 0;
   cursor: pointer;
 }
 
@@ -4111,6 +4123,17 @@ body.mobile-checkbox-dragging {
   border-color: var(--accent-strong);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 28%, transparent);
   outline: none;
+}
+
+.goal-recent-day.active {
+  border-style: solid;
+  border-color: hsl(var(--goal-hue) 42% calc(62% + var(--goal-lightness-shift, 0%)) / 0.55);
+  background: hsl(var(--goal-hue) 55% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%)));
+}
+
+.goal-recent-day.completed {
+  border-color: hsl(var(--goal-hue) 58% calc(42% + var(--goal-lightness-shift, 0%)));
+  background: hsl(var(--goal-hue) 58% calc(42% + var(--goal-lightness-shift, 0%)));
 }
 
 .goal-recent-day.today::after {
@@ -4909,8 +4932,7 @@ body.mobile-checkbox-dragging {
   [data-rhythm-mode='flow-line'],
   [data-rhythm-mode='flow-dots'],
   [data-rhythm-mode='flow-tide']
-) .goal-day-cell.active,
-.goal-recent-history[data-rhythm-mode='flow-tint'] .goal-day-cell.active {
+) .goal-day-cell.active {
   background-image: linear-gradient(
     105deg,
     hsl(var(--goal-hue) 55% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%))),
@@ -4953,7 +4975,8 @@ body.mobile-checkbox-dragging {
   font-size: 12px;
 }
 
-:is(.goal-history-panel, .goal-recent-history)[data-rhythm-mode='flow-tint'] .goal-day-cell.overdue::before {
+.goal-history-panel[data-rhythm-mode='flow-tint'] .goal-day-cell.overdue::before,
+.goal-recent-day.overdue::before {
   background-color: color-mix(in srgb, var(--danger) 10%, transparent);
   background-image: none;
 }
