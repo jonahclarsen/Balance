@@ -22,6 +22,7 @@
   let query = ''
   let debouncedQuery = ''
   let debounceTimer: number | null = null
+  let collapsedGroups = new Set<SearchResult['kind']>()
   let selectedIndex = 0
   let historyResults: SearchResult[] = []
   let historyPending = false
@@ -33,6 +34,10 @@
   $: groupedResults = groups
     .map((group) => ({ ...group, results: results.filter((result) => result.kind === group.kind) }))
     .filter((group) => group.results.length > 0)
+  $: visibleResults = groupedResults
+    .filter((group) => !collapsedGroups.has(group.kind))
+    .flatMap((group) => group.results)
+  $: selectedIndex = Math.min(selectedIndex, Math.max(0, visibleResults.length - 1))
   $: pending = query.trim() !== debouncedQuery || historyPending
   $: void updateHistorySearch(debouncedQuery)
 
@@ -90,19 +95,27 @@
     debounceTimer = null
   }
 
+  function toggleGroup(kind: SearchResult['kind']) {
+    const next = new Set(collapsedGroups)
+    if (next.has(kind)) next.delete(kind)
+    else next.add(kind)
+    collapsedGroups = next
+    selectedIndex = 0
+  }
+
   function handleKeydown(event: KeyboardEvent) {
-    if (results.length === 0) return
+    if (visibleResults.length === 0) return
 
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault()
-      selectedIndex = (selectedIndex + (event.key === 'ArrowDown' ? 1 : -1) + results.length) % results.length
+      selectedIndex = (selectedIndex + (event.key === 'ArrowDown' ? 1 : -1) + visibleResults.length) % visibleResults.length
       void scrollSelectedResultIntoView()
       return
     }
 
     if (event.key === 'Enter') {
       event.preventDefault()
-      onSelect(results[selectedIndex])
+      onSelect(visibleResults[selectedIndex])
     }
   }
 
@@ -146,26 +159,41 @@
       <div class="search-results">
         {#each groupedResults as group}
           <section class="search-group" aria-labelledby={`search-group-${group.kind}`}>
-            <h4 id={`search-group-${group.kind}`}>{group.label} <span>{group.results.length}</span></h4>
-            <div class="search-group-results">
-              {#each group.results as result (result.kind + result.id)}
-                {@const resultIndex = results.indexOf(result)}
-                <button
-                  type="button"
-                  class="search-result"
-                  class:selected={selectedIndex === resultIndex}
-                  data-search-result-index={resultIndex}
-                  aria-label={`Open ${result.title}, ${result.meta}`}
-                  on:mouseenter={() => (selectedIndex = resultIndex)}
-                  on:click={() => onSelect(result)}
-                >
-                  <span class="search-result-topline">
-                    <strong>{result.title}</strong>
-                    <span>{result.meta}</span>
-                  </span>
-                  <span class="search-preview">{result.preview}</span>
-                </button>
-              {/each}
+            <h4 id={`search-group-${group.kind}`}>
+              <button
+                type="button"
+                class="search-group-toggle"
+                aria-expanded={!collapsedGroups.has(group.kind)}
+                aria-controls={`search-group-results-${group.kind}`}
+                on:click={() => toggleGroup(group.kind)}
+              >
+                <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" class:collapsed={collapsedGroups.has(group.kind)}>
+                  <path d="m4 6 4 4 4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                {group.label} <span>{group.results.length}</span>
+              </button>
+            </h4>
+            <div id={`search-group-results-${group.kind}`} class="search-group-results">
+              {#if !collapsedGroups.has(group.kind)}
+                {#each group.results as result (result.kind + result.id)}
+                  {@const resultIndex = visibleResults.indexOf(result)}
+                  <button
+                    type="button"
+                    class="search-result"
+                    class:selected={selectedIndex === resultIndex}
+                    data-search-result-index={resultIndex}
+                    aria-label={`Open ${result.title}, ${result.meta}`}
+                    on:mouseenter={() => (selectedIndex = resultIndex)}
+                    on:click={() => onSelect(result)}
+                  >
+                    <span class="search-result-topline">
+                      <strong>{result.title}</strong>
+                      <span>{result.meta}</span>
+                    </span>
+                    <span class="search-preview">{result.preview}</span>
+                  </button>
+                {/each}
+              {/if}
             </div>
           </section>
         {/each}
@@ -243,17 +271,35 @@
   }
 
   .search-group h4 {
+    margin: 0;
+  }
+
+  .search-group-toggle {
     display: flex;
     align-items: center;
     gap: 7px;
-    margin: 0;
+    width: 100%;
+    padding: 3px 0;
+    border: 0;
+    background: transparent;
+    text-align: left;
     color: var(--muted);
     font-size: 12px;
     letter-spacing: 0.06em;
     text-transform: uppercase;
   }
 
-  .search-group h4 span {
+  .search-group-toggle svg {
+    flex: 0 0 16px;
+    width: 16px;
+    height: 16px;
+  }
+
+  .search-group-toggle svg.collapsed {
+    transform: rotate(-90deg);
+  }
+
+  .search-group-toggle span {
     display: inline-grid;
     min-width: 20px;
     min-height: 20px;

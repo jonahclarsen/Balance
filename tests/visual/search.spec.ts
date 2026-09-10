@@ -1,10 +1,11 @@
 import { expect, test } from '@playwright/test'
 
-test('search finds saved days, list history, and editable lists without Enter', async ({ page }) => {
+test('search finds saved days, list history, and editable lists without Enter', async ({ page, isMobile }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
+  if (isMobile) await page.getByRole('button', { name: 'Open navigation', exact: true }).click()
   await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
   await page.evaluate(() => {
     const key = 'balance.appState.v1'
@@ -77,8 +78,35 @@ test('search finds saved days, list history, and editable lists without Enter', 
   await expect(page.getByRole('heading', { name: /List History/ })).toBeVisible()
   await expect(page.locator('#search-group-list-template')).toContainText('Lists')
 
-  await page.getByRole('searchbox', { name: 'Search everything' }).fill('wake up')
+  const historyToggle = page.getByRole('button', { name: 'List History 1', exact: true })
+  const listsToggle = page.getByRole('button', { name: 'Lists 1', exact: true })
+  await historyToggle.click()
+  await expect(historyToggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.locator('#search-group-results-list .search-result')).toHaveCount(0)
+  await search.press('ArrowDown')
+  await expect(page.locator('#search-group-results-list-template .search-result')).toHaveClass(/selected/)
+
+  await listsToggle.click()
+  await search.press('ArrowDown')
+  await search.press('Enter')
+  await expect(page.getByRole('dialog', { name: 'Search Balance' })).toBeVisible()
+  await expect(page.locator('.search-result')).toHaveCount(0)
+
+  await historyToggle.focus()
+  await historyToggle.press('Enter')
+  await expect(historyToggle).toHaveAttribute('aria-expanded', 'true')
+  await expect(page.locator('#search-group-results-list .search-result')).toBeVisible()
+  await historyToggle.press('Space')
+  await expect(historyToggle).toHaveAttribute('aria-expanded', 'false')
+
+  await search.fill('wake up')
   await expect(page.getByRole('heading', { name: /Day templates/ })).toBeVisible()
+  await search.fill('saffron')
+  await expect(historyToggle).toHaveAttribute('aria-expanded', 'false')
+  await listsToggle.click()
+  await search.press('Enter')
+  await expect(page.getByRole('dialog', { name: 'Search Balance' })).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'List name', exact: true })).toHaveValue('Market errands')
 })
 
 test('search finds readable text in retained task history', async ({ page }) => {
