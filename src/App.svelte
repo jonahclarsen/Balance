@@ -122,7 +122,6 @@
   const MACOS_ALT_SHORTCUT_EVENT = 'balance-macos-alt-shortcut'
   const TIME_KEYBOARD_STEP_MINUTES = 15
   const TIME_KEYBOARD_MERGE_WINDOW_MS = 1500
-  const MOBILE_DRAWER_CLOSE_GUARD_MS = 150
   const COLOR_SCHEME_OPTIONS: ReadonlyArray<{
     id: ColorSchemePreference
     name: string
@@ -211,8 +210,8 @@
   let currentDay = todayISO()
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
-  let mobileDrawerCloseReady = false
-  let mobileDrawerCloseGuardTimer: number | null = null
+  let mobileDrawerPressPointerId: number | null = null
+  let mobileDrawerOpeningClickPending = false
   let mobileDrawerDragging = false
   let mobileDrawerEl: HTMLElement | null = null
   let mobileDrawerBackdropEl: HTMLButtonElement | null = null
@@ -777,39 +776,48 @@ return rows`
   }
 
   function previewMobileDrawer(event: PointerEvent) {
-    if (event.button !== 0) return
+    if (event.button !== 0 || !event.isPrimary || mobileDrawerPressPointerId !== null) return
+    // Keep release on the opener, even if the finger drifts or the drawer
+    // moves over it during the press.
+    if (event.isTrusted) (event.currentTarget as HTMLButtonElement).setPointerCapture(event.pointerId)
+    mobileDrawerPressPointerId = event.pointerId
     mobileDrawerPressing = true
   }
 
   function finishMobileDrawerPress() {
+    mobileDrawerPressPointerId = null
     mobileDrawerOpen = true
     mobileDrawerPressing = false
-    mobileDrawerCloseReady = false
-    if (mobileDrawerCloseGuardTimer !== null) window.clearTimeout(mobileDrawerCloseGuardTimer)
-    mobileDrawerCloseGuardTimer = window.setTimeout(() => {
-      mobileDrawerCloseGuardTimer = null
-      if (mobileDrawerOpen) mobileDrawerCloseReady = true
-    }, MOBILE_DRAWER_CLOSE_GUARD_MS)
   }
 
-  function releaseMobileDrawerPress() {
-    window.setTimeout(() => {
-      if (!mobileDrawerOpen) mobileDrawerPressing = false
-    })
+  function releaseMobileDrawerPress(event: PointerEvent) {
+    if (event.pointerId !== mobileDrawerPressPointerId) return
+    // A touch release need not produce a click. Commit before the preview
+    // disappears instead of racing a timer against that optional event.
+    mobileDrawerOpeningClickPending = true
+    finishMobileDrawerPress()
   }
 
-  function cancelMobileDrawerPress() {
+  function consumeMobileDrawerOpeningClick(event: MouseEvent) {
+    if (!mobileDrawerOpeningClickPending || event.detail === 0) return
+    mobileDrawerOpeningClickPending = false
+    // Some WebViews retarget this click to the newly exposed backdrop or
+    // drawer controls. Only a new press may activate them; no timeout is safe.
+    event.preventDefault()
+    event.stopImmediatePropagation()
+  }
+
+  function cancelMobileDrawerPress(event: PointerEvent) {
+    if (event.pointerId !== mobileDrawerPressPointerId) return
+    mobileDrawerPressPointerId = null
     mobileDrawerPressing = false
   }
 
   function closeMobileDrawer() {
     mobileDrawerOpen = false
     mobileDrawerPressing = false
-    mobileDrawerCloseReady = false
-    if (mobileDrawerCloseGuardTimer !== null) {
-      window.clearTimeout(mobileDrawerCloseGuardTimer)
-      mobileDrawerCloseGuardTimer = null
-    }
+    mobileDrawerPressPointerId = null
+    mobileDrawerOpeningClickPending = false
     finishMobileDrawerGesture()
   }
 
@@ -2036,7 +2044,6 @@ return rows`
         window.clearTimeout(celebrationPreviewAnnouncementTimer)
       }
       if (wordCapUnlockTimer !== null) window.clearTimeout(wordCapUnlockTimer)
-      if (mobileDrawerCloseGuardTimer !== null) window.clearTimeout(mobileDrawerCloseGuardTimer)
       celebrationPreviewToken += 1
       celebrationPreview = null
       clearGoalRhythmAutoShowTimer()
@@ -4036,6 +4043,7 @@ return rows`
   }
 
   function handleGlobalPointerDown(event: PointerEvent) {
+    mobileDrawerOpeningClickPending = false
     const pointerTarget = event.target instanceof Element ? event.target : null
     if (
       completionUndoCaret &&
@@ -5441,6 +5449,7 @@ return rows`
   on:focusin={handleGlobalFocusIn}
   on:scroll={handleWindowScroll}
   on:pointerdown|capture={handleGlobalPointerDown}
+  on:click|capture={consumeMobileDrawerOpeningClick}
   on:pointermove={handleSelectionPointerMove}
   on:pointerup={endItemSelection}
   on:pointercancel={endItemSelection}
@@ -5598,6 +5607,7 @@ return rows`
       on:pointerdown={previewMobileDrawer}
       on:pointerup={releaseMobileDrawerPress}
       on:pointercancel={cancelMobileDrawerPress}
+      on:lostpointercapture={cancelMobileDrawerPress}
       on:click={finishMobileDrawerPress}
     >
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
@@ -5684,7 +5694,6 @@ return rows`
       type="button"
       title="Close navigation"
       aria-label="Close navigation"
-      disabled={!mobileDrawerCloseReady}
       on:click={closeMobileDrawer}
     >
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18" /></svg>

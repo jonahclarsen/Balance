@@ -39,18 +39,15 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
 
   const menuButtonBox = await menuButton.boundingBox()
   if (!menuButtonBox) throw new Error('Menu button has no tappable bounds')
-  await menuButton.dispatchEvent('pointerdown', { button: 0, pointerType: 'touch' })
+  await menuButton.dispatchEvent('pointerdown', { button: 0, pointerType: 'touch', isPrimary: true, pointerId: 1 })
   await expect(page.locator('.sidebar')).toBeVisible()
   await expect(drawer).toHaveCount(0)
   await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
-  await menuButton.dispatchEvent('pointerup', { button: 0, pointerType: 'touch' })
+  await menuButton.dispatchEvent('pointerup', { button: 0, pointerType: 'touch', isPrimary: true, pointerId: 1 })
   await menuButton.dispatchEvent('click')
   await expect(drawer).toBeVisible()
   await expect(drawer.getByRole('button', { name: 'Undo' })).toHaveCount(0)
   await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
-  await expect(closeButton).toBeDisabled()
-  await closeButton.evaluate((button) => button.click())
-  await expect(drawer).toBeVisible()
   await expect(closeButton).toBeEnabled()
   await expect.poll(() => menuButton.evaluate((element) => {
     const styles = getComputedStyle(element)
@@ -178,4 +175,64 @@ test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, t
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight))
   await expect.poll(() => header.evaluate((element) => element.getBoundingClientRect().top)).toBe(0)
+})
+
+for (const target of ['backdrop', 'navigation item']) {
+  test(`mobile menu survives a missing click and a delayed click retargeted to the ${target}`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'This navigation only appears in compact layouts')
+    await page.goto('/')
+    const menuButton = page.getByRole('button', { name: 'Open navigation' })
+    const drawer = page.locator('#primary-sidebar')
+    const pointer = { button: 0, pointerType: 'touch', isPrimary: true, pointerId: 1 }
+    // Separate release from click so a browser's ordinary immediate click
+    // cannot hide a dependency on click or an expired close-guard timer.
+    await menuButton.dispatchEvent('pointerdown', pointer)
+    await menuButton.dispatchEvent('pointerup', pointer)
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+    await page.waitForTimeout(400)
+    await expect(drawer).toBeVisible()
+    const clickTarget = target === 'backdrop'
+      ? page.locator('.mobile-drawer-backdrop')
+      : drawer.getByRole('button', { name: 'Notes', exact: true })
+    await clickTarget.dispatchEvent('click', { detail: 1 })
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+    await drawer.getByRole('button', { name: 'Close navigation' }).tap()
+    await expect(drawer).toBeHidden()
+
+    // Keyboard activation has no pointer sequence and must remain usable.
+    await menuButton.focus()
+    await page.keyboard.press('Enter')
+    await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+    await drawer.getByRole('button', { name: 'Close navigation' }).focus()
+    await page.keyboard.press('Enter')
+    await expect(drawer).toBeHidden()
+  })
+}
+
+test('mobile menu retains a held touch with finger drift', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'This navigation only appears in compact layouts')
+  await page.goto('/')
+  const menuButton = page.getByRole('button', { name: 'Open navigation' })
+  const drawer = page.locator('#primary-sidebar')
+  const box = await menuButton.boundingBox()
+  if (!box) throw new Error('Menu button has no tappable bounds')
+  const x = box.x + box.width / 2
+  const y = box.y + box.height / 2
+  const session = await page.context().newCDPSession(page)
+  await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+  await page.waitForTimeout(250)
+  await session.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + 24 }] })
+  await session.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+  await page.waitForTimeout(400)
+  await expect(drawer).toBeVisible()
+  await drawer.getByRole('button', { name: 'Close navigation' }).tap()
+  await expect(drawer).toBeHidden()
+
+  await session.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] })
+  await session.send('Input.dispatchTouchEvent', { type: 'touchCancel', touchPoints: [] })
+  await expect(drawer).toBeHidden()
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
+  await menuButton.tap()
+  await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
 })

@@ -7368,11 +7368,6 @@ textarea.note-title {
     stroke-linecap: round;
   }
 
-  .mobile-drawer-close-button:disabled {
-    cursor: default;
-    opacity: 1;
-  }
-
   .sidebar .primary-nav {
     display: grid;
     flex-wrap: nowrap;
@@ -7435,6 +7430,11 @@ textarea.note-title {
     touch-action: none;
     transition: opacity 180ms ease, visibility 0s linear 180ms;
     will-change: opacity;
+  }
+
+  .mobile-menu-button {
+    /* A small finger movement must not turn this button press into a pan. */
+    touch-action: none;
   }
 
   .mobile-menu-button,
