@@ -2,6 +2,7 @@ import { entityPatch, type EntityPatch } from './entityPatch'
 import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } from './planGeneration'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { pickerColorToHex } from './colors'
+import { projectCheckInForDay } from './projects'
 import { get, writable, type Writable } from 'svelte/store'
 import {
   addPlanItem,
@@ -1787,8 +1788,31 @@ function createPlannerStore() {
     checkInProject(projectId: Id, progress: number, heart: number) {
       if (![progress, heart].every((value) => Number.isFinite(value) && value >= 0 && value <= 100)) return
       const entry = { id: createId('project_checkin'), projectId, progress: Math.round(progress), heart: Math.round(heart), createdAt: nowISO() }
-      commitEntities('check_in_project', { projectId }, (state) => state.projects.some((project) => project.id === projectId && !project.archived)
-        ? { ...state, projectCheckIns: [...state.projectCheckIns, entry] } : state)
+      commitEntities('check_in_project', { projectId }, (state) => {
+        if (!state.projects.some((project) => project.id === projectId && !project.archived)) return state
+        const existing = projectCheckInForDay(state.projectCheckIns, projectId, todayISO(new Date(entry.createdAt)))
+        if (existing?.progress === entry.progress && existing.heart === entry.heart) return state
+        return { ...state, projectCheckIns: existing
+          ? state.projectCheckIns.map((item) => item.id === existing.id ? { ...item, progress: entry.progress, heart: entry.heart } : item)
+          : [...state.projectCheckIns, entry] }
+      })
+    },
+
+    updateProjectCheckIn(checkInId: Id, progress: number, heart: number) {
+      if (![progress, heart].every((value) => Number.isFinite(value) && value >= 0 && value <= 100)) return
+      const ratings = { progress: Math.round(progress), heart: Math.round(heart) }
+      commitEntities('update_project_check_in', { checkInId }, (state) => {
+        const existing = state.projectCheckIns.find((entry) => entry.id === checkInId)
+        if (!existing || (existing.progress === ratings.progress && existing.heart === ratings.heart)) return state
+        return { ...state, projectCheckIns: state.projectCheckIns.map((entry) => entry.id === checkInId ? { ...entry, ...ratings } : entry) }
+      })
+    },
+
+    deleteProjectCheckIn(checkInId: Id) {
+      commitEntities('delete_project_check_in', { checkInId }, (state) => {
+        const projectCheckIns = state.projectCheckIns.filter((entry) => entry.id !== checkInId)
+        return projectCheckIns.length === state.projectCheckIns.length ? state : { ...state, projectCheckIns }
+      })
     },
 
     // ---- Notes (reuse the plan-item tree and shared rich-text editor) ----

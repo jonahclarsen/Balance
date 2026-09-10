@@ -8,6 +8,7 @@
   export let projects: Project[] = []
   export let checkIns: ProjectCheckIn[] = []
   export let linkedProjectId = ''
+  export let currentDay: string
   let name = ''
   let archiveOpen = false
   let archivedDetailId = ''
@@ -41,8 +42,8 @@
       : window.confirm(prompt)
     if (confirmed) plannerStore.permanentlyDeleteArchivedProject(project.id)
   }
-  async function copyLink(id = '') {
-    const link = `balance://projects${id ? '/' + id : ''}`
+  async function copyLink() {
+    const link = 'balance://projects'
     try { await navigator.clipboard.writeText(link); message = 'Link copied' }
     catch { message = `Copy this link: ${link}` }
   }
@@ -53,7 +54,7 @@
   <form class="project-add" on:submit|preventDefault={add}><input aria-label="New project name" placeholder="Project name" bind:value={name} maxlength="160" /><button class="primary" type="submit" disabled={!name.trim()}>Add project</button></form>
   {#if message}<p class="status muted" role="status">{message}</p>{/if}
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
-  <div class="project-grid">{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {copyLink} />{/each}</div>
+  <div class="project-grid">{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {currentDay} />{/each}</div>
   <div class="template-panel-actions"><button class="ghost" class:active={archiveOpen} type="button" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = !archiveOpen}>View Archive</button></div>
   {#if archiveOpen}
     <section id="project-archive" class="list-item-archive" aria-labelledby="project-archive-title">
@@ -70,7 +71,7 @@
                 <button class="ghost danger" type="button" on:click={() => deleteForever(project)}>Delete forever</button>
               </div>
             </div>
-            {#if archivedDetailId === project.id}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {copyLink} />{/if}
+            {#if archivedDetailId === project.id}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {currentDay} />{/if}
           </li>
         {/each}
       </ul>

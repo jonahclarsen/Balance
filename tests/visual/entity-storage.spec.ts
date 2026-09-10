@@ -35,6 +35,11 @@ test('feature actions emit generic patches that replay in the native database', 
     store.patchGoal(goal, { name: 'Synthetic renamed goal' })
     const project = store.addProject('Synthetic project')
     store.checkInProject(project, 35, 80)
+    store.checkInProject(project, 45, 75)
+    const checkIn = live.projectCheckIns.find((entry: any) => entry.projectId === project)
+    store.updateProjectCheckIn(checkIn.id, 55, 70)
+    store.deleteProjectCheckIn(checkIn.id)
+    store.checkInProject(project, 60, 65)
     store.moveImage(() => {
       store.renameNote(note, 'Synthetic compound note edit')
       store.renameMetric(metric, 'Synthetic compound metric edit')

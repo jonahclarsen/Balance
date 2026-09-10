@@ -6493,7 +6493,7 @@ return rows`
     {/if}
 
     {#if view === 'projects'}
-      <ProjectsPanel projects={$plannerStore.projects} checkIns={$plannerStore.projectCheckIns} {linkedProjectId} />
+      <ProjectsPanel projects={$plannerStore.projects} checkIns={$plannerStore.projectCheckIns} {linkedProjectId} {currentDay} />
     {/if}
 
     {#if view === 'goals'}
