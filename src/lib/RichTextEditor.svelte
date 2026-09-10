@@ -10,6 +10,7 @@
     isURL,
     itemLinkFromAnchor,
     linkifyExternalURLs,
+    isGoalStatsURL,
     noteIdFromURL,
     projectIdFromURL,
     renderItemDisplayHTML,
@@ -557,7 +558,7 @@
 
   function insertClipboardContents(activeEditor: HTMLDivElement, clipboardText: string, clipboardHTML: string) {
 
-    if (clipboardText && (isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
+    if (clipboardText && (isGoalStatsURL(clipboardText) || isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
       pendingPasteInput = true
       document.execCommand('createLink', false, clipboardText.trim())
       persistPasteIfInputDidNotFire(activeEditor)

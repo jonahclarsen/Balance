@@ -2416,3 +2416,50 @@ async function goalRevealEventOrder(page: import('@playwright/test').Page) {
 async function goalRevealHighlightOpacity(locator: import('@playwright/test').Locator) {
   return locator.evaluate((element) => Number(getComputedStyle(element, '::after').opacity))
 }
+
+test('goal stats survive navigation and their copied link opens the modal from a task', async ({ page }) => {
+  await page.evaluate(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText: async (value: string) => { (window as any).__copiedStatsLink = value } },
+    })
+  })
+  await page.getByRole('button', { name: 'Manage goals' }).click()
+  await page.getByRole('button', { name: 'Stats', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Goal statistics' })
+  await dialog.getByRole('button', { name: 'Copy stats link' }).click()
+  await expect(dialog.getByRole('status')).toHaveText('Link copied!')
+  const link = await page.evaluate(() => (window as any).__copiedStatsLink as string)
+  expect(link).toBe('balance://goals/stats')
+
+  await page.keyboard.press('Alt+T')
+  await expect(dialog).toHaveCount(0)
+  await page.keyboard.press('Alt+G')
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.keyboard.press('Alt+T')
+  await page.keyboard.press('Alt+G')
+  await expect(dialog).toHaveCount(0)
+
+  await page.evaluate((url) => {
+    const key = 'balance.appState.v1'
+    const state = JSON.parse(localStorage.getItem(key)!)
+    state.plans = [{
+      id: 'stats-link-plan', date: state.activePlanDate, title: 'Synthetic day',
+      dailyReminder: '', generatedFromTemplateId: null, createdAt: new Date().toISOString(),
+      items: [
+        { id: 'stats-link-plain', text: url, html: url, done: false, children: [], time: '', endTime: '' },
+        { id: 'stats-link-rich', text: 'Review stats', html: `<a href="${url}">Review stats</a>`, done: false, children: [], time: '', endTime: '' },
+      ],
+    }]
+    localStorage.setItem(key, JSON.stringify(state))
+  }, link)
+  await page.reload()
+  await page.keyboard.press('Alt+T')
+  await page.locator('[data-internal-link-kind="goalStats"]').first().click()
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close', exact: true }).click()
+  await page.keyboard.press('Alt+T')
+  await page.getByRole('link', { name: 'Review stats', exact: true }).click()
+  await expect(dialog).toBeVisible()
+})

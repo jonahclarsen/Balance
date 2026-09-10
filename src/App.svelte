@@ -638,7 +638,6 @@ return rows`
   $: generateButtonLabel = displayedPlanDate === currentDay ? 'Generate today' : 'Generate selected day'
   $: selectedItemIdSet = new Set(selectedItemIds)
   $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
-  $: if (view !== 'goals' && goalStatsOpen) goalStatsOpen = false
   $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
   $: lockGoalOrderForCurrentVisit(view, sortedGoals)
   $: displayedGoals = lockedGoalOrder ? applyGoalOrder(sortedGoals, lockedGoalOrder) : sortedGoals
@@ -1345,7 +1344,10 @@ return rows`
 
   function openLink(link: ItemLink, opener: Opener | null) {
     const date = $plannerStore.activePlanDate
-    if (link.kind === 'projects') {
+    if (link.kind === 'goalStats') {
+      view = 'goals'
+      goalStatsOpen = true
+    } else if (link.kind === 'projects') {
       linkedProjectId = link.projectId
       view = 'projects'
     } else if (link.kind === 'note') {

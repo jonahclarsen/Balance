@@ -1695,6 +1695,12 @@ export function isURL(value: string): boolean {
   }
 }
 
+export const GOAL_STATS_URL = 'balance://goals/stats'
+
+export function isGoalStatsURL(value: string): boolean {
+  return value.trim() === GOAL_STATS_URL
+}
+
 // An empty id targets the project overview; null means this is not a project link.
 export function projectIdFromURL(value: string): Id | null {
   const match = /^balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?$/.exec(value.trim())
@@ -1723,7 +1729,7 @@ function sanitizeNode(node: Node): string {
 
   if (tag === 'a') {
     const href = element.getAttribute('href') ?? ''
-    if (noteIdFromURL(href) || projectIdFromURL(href) !== null) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
+    if (isGoalStatsURL(href) || noteIdFromURL(href) || projectIdFromURL(href) !== null) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
     if (!isURL(href)) return children
     return `<a href="${escapeHTML(href.trim())}" target="_blank" rel="noreferrer">${children}</a>`
   }
@@ -2257,6 +2263,7 @@ export function createMetricEntry(metricId: Id, date: string): MetricEntry {
 // ---------------------------------------------------------------------------
 
 export type ItemLink =
+  | { kind: 'goalStats'; label: string }
   | { kind: 'list'; listTemplateId: Id; label: string }
   | { kind: 'metric'; metricId: Id; label: string }
   | { kind: 'note'; noteId: Id; label: string }
@@ -2290,6 +2297,9 @@ export function resolveItemLinks(text: string, listTemplates: ListTemplate[], me
 
   for (const match of trimmed.matchAll(/balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?(?![a-zA-Z0-9_/-])/g)) {
     links.push({ kind: 'projects', projectId: match[1] ?? '', label: 'Project vibes' })
+  }
+  for (const _match of trimmed.matchAll(/balance:\/\/goals\/stats(?![a-zA-Z0-9_/?#-])/g)) {
+    links.push({ kind: 'goalStats', label: 'Goal stats' })
   }
   return links
 }
@@ -2351,6 +2361,9 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
   for (const match of text.matchAll(/balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?(?![a-zA-Z0-9_/-])/g)) {
     matches.push({ start: match.index!, end: match.index! + match[0].length, link: { kind: 'projects', projectId: match[1] ?? '', label: 'Project vibes' } })
   }
+  for (const match of text.matchAll(/balance:\/\/goals\/stats(?![a-zA-Z0-9_/?#-])/g)) {
+    matches.push({ start: match.index!, end: match.index! + match[0].length, link: { kind: 'goalStats', label: 'Goal stats' } })
+  }
   if (matches.length === 0) return [{ text, link: null }]
 
   // Earliest start first, longest match wins on ties; skip overlaps.
@@ -2368,6 +2381,7 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
 }
 
 export function internalLinkId(link: ItemLink): string {
+  if (link.kind === 'goalStats') return 'stats'
   if (link.kind === 'projects') return link.projectId || 'all'
   if (link.kind === 'list') return link.listTemplateId
   if (link.kind === 'metric') return link.metricId
@@ -2433,6 +2447,7 @@ export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
   const id = anchor.dataset.internalLinkId
   const label = anchor.dataset.internalLinkLabel ?? anchor.textContent ?? ''
 
+  if (kind === 'goalStats' || isGoalStatsURL(anchor.getAttribute('href') ?? '')) return { kind: 'goalStats', label }
   if (kind === 'projects') return { kind, projectId: id === 'all' ? '' : id ?? '', label }
   const projectId = projectIdFromURL(anchor.getAttribute('href') ?? '')
   if (projectId !== null) return { kind: 'projects', projectId, label }

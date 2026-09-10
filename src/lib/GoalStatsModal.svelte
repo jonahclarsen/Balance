@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { GOAL_STATS_URL } from './planner'
   import GoalStatsBarChart from './GoalStatsBarChart.svelte'
   import { buildGoalStats, GOAL_STATS_RANGES, type GoalStatsRangeDays } from './goalStats'
   import type { Goal, GoalCompletion } from './types'
@@ -17,6 +18,17 @@
   const lineWidth = 1000
   const lineHeight = 164
   let rangeDays: GoalStatsRangeDays = 90
+  let copyStatus = ''
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(GOAL_STATS_URL)
+      copyStatus = 'Link copied!'
+    } catch {
+      copyStatus = `Copy this link: ${GOAL_STATS_URL}`
+    }
+  }
+
   let hoveredOverdueIndex: number | null = null
 
   $: stats = buildGoalStats(goals, completions, currentDate, rangeDays)
@@ -80,12 +92,18 @@
 <OverlayModal title="Goal stats" ariaLabel="Goal statistics" maxWidth={1060} height={700} z={72} {onClose}>
   <div class="goal-stats">
     <div class="stats-toolbar">
+      <button class="copy-link" type="button" on:click={copyLink}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /></svg>
+        Copy stats link
+      </button>
       <div class="range-switcher" role="group" aria-label="Statistics date range">
         {#each GOAL_STATS_RANGES as days}
           <button type="button" class:active={rangeDays === days} aria-pressed={rangeDays === days} on:click={() => (rangeDays = days)}>{days} days</button>
         {/each}
       </div>
     </div>
+
+    {#if copyStatus}<p class="copy-status" role="status">{copyStatus}</p>{/if}
 
     <section class="chart-card">
       <div class="section-heading">
@@ -187,7 +205,19 @@
   }
 
   .stats-toolbar {
-    justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  .copy-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .copy-status {
+    margin: 0;
+    color: var(--muted);
+    overflow-wrap: anywhere;
   }
 
   .section-heading p {
