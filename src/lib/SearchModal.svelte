@@ -173,7 +173,7 @@
                 {group.label} <span>{group.results.length}</span>
               </button>
             </h4>
-            <div id={`search-group-results-${group.kind}`} class="search-group-results">
+            <div id={`search-group-results-${group.kind}`} class="search-group-results" hidden={collapsedGroups.has(group.kind)}>
               {#if !collapsedGroups.has(group.kind)}
                 {#each group.results as result (result.kind + result.id)}
                   {@const resultIndex = visibleResults.indexOf(result)}
@@ -266,8 +266,8 @@
     gap: 8px;
   }
 
-  .search-results {
-    gap: 18px;
+  .search-group-results[hidden] {
+    display: none;
   }
 
   .search-group h4 {
