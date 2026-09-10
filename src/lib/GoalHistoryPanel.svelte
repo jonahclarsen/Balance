@@ -455,6 +455,7 @@
             {@const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)}
             <div
               class="goal-history-name"
+              class:overdue={daysUntilLapse !== null && daysUntilLapse < 0}
               class:goal-row-focus={highlightedGoalId === goal.id}
               data-goal-id={goal.id}
               role="button"
