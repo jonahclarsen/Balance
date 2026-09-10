@@ -43,7 +43,14 @@
 </button>
 
 <style>
-  button {
+  .goal-copy-button {
     flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+  }
+
+  .goal-copy-button svg {
+    width: 18px;
+    height: 18px;
   }
 </style>
