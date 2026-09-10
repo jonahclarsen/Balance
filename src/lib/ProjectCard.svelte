@@ -56,8 +56,8 @@
     <svg class="project-visual" viewBox="0 0 100 100" role="img" aria-label={latest ? `${latest.progress}% work complete; ${latest.heart}% heart in it` : 'No check-in yet'}>
       <circle class="ring-track" cx="50" cy="50" r="41" />
       <circle class="ring-progress" cx="50" cy="50" r="41" stroke-dasharray={`${(latest?.progress ?? 0) * 2.576} 257.6`} transform="rotate(-90 50 50)" />
-      <!-- Cactus's drawHeartPath contour, centered inside the progress ring. -->
-      <path d="M45 84.334 6.802 46.136C2.416 41.75 0 35.918 0 29.716S2.416 17.682 6.802 13.296 17.019 6.494 23.222 6.494 35.256 8.91 39.642 13.296L45 18.654 50.358 13.296C54.744 8.91 60.576 6.494 66.778 6.494S78.812 8.91 83.198 13.296C87.585 17.682 90 23.513 90 29.716S87.585 41.75 83.198 46.136L45 84.334Z" transform="translate(25.25 25.0223) scale(.55)" fill="currentColor" fill-opacity={latest ? 1 : 0} stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-opacity={latest ? 0 : 1} />
+      <!-- Cactus's contour, lowered 2px at 48px size to visually balance its broad top. -->
+      <path d="M45 84.334 6.802 46.136C2.416 41.75 0 35.918 0 29.716S2.416 17.682 6.802 13.296 17.019 6.494 23.222 6.494 35.256 8.91 39.642 13.296L45 18.654 50.358 13.296C54.744 8.91 60.576 6.494 66.778 6.494S78.812 8.91 83.198 13.296C87.585 17.682 90 23.513 90 29.716S87.585 41.75 83.198 46.136L45 84.334Z" transform="translate(25.25 29.189) scale(.55)" fill="currentColor" fill-opacity={latest ? 1 : 0} stroke="currentColor" stroke-width="3" stroke-linejoin="round" stroke-opacity={latest ? 0 : 1} />
     </svg>
     <div class="project-heading"><h2>{project.name}</h2><p>{project.archived ? 'Archived' : latest ? `Last check-in ${new Date(latest.createdAt).toLocaleDateString()}` : 'No check-in yet'}</p></div>
   </header>
