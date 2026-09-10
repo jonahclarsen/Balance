@@ -3781,13 +3781,13 @@ fn reveal_path(path: PathBuf) -> Result<(), String> {
 fn validate_external_url(url: &str) -> Result<&str, String> {
     let url = url.trim();
     let lower = url.to_ascii_lowercase();
-    if (lower.starts_with("http://") || lower.starts_with("https://"))
+    if (lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("file://"))
         && !url.chars().any(char::is_control)
     {
         return Ok(url);
     }
 
-    Err("Only http and https links can be opened".to_string())
+    Err("Only http, https and file links can be opened".to_string())
 }
 
 fn replace_app_state(connection: &mut Connection, state: &Value) -> Result<(), String> {
@@ -15491,7 +15491,7 @@ mod tests {
             .all(|character| character == '-' || matches!(character, 'A'..='Z' | '2'..='7')));
     }
     #[test]
-    fn external_url_validation_allows_only_http_and_https() {
+    fn external_url_validation_allows_only_http_https_and_file() {
         assert_eq!(
             validate_external_url(" https://example.com/path ").unwrap(),
             "https://example.com/path"
@@ -15501,8 +15501,17 @@ mod tests {
             "http://example.com"
         );
         assert!(validate_external_url("ftp://example.com").is_err());
+        assert_eq!(
+            validate_external_url(" file:///tmp/Balance%20test.pdf ").unwrap(),
+            "file:///tmp/Balance%20test.pdf"
+        );
+        assert_eq!(
+            validate_external_url("FILE:///tmp/Balance-test.pdf").unwrap(),
+            "FILE:///tmp/Balance-test.pdf"
+        );
         assert!(validate_external_url("javascript:alert(1)").is_err());
         assert!(validate_external_url("https://example.com\nopen").is_err());
+        assert!(validate_external_url("file:///tmp/test\nopen").is_err());
     }
 
     #[test]

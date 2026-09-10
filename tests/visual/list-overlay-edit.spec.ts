@@ -143,31 +143,43 @@ test('Alt+F opens a task linked list from either its caret or item selection', a
     .toContainText('Open linked list / URL / metric')
 })
 
-test('Alt+F opens the first URL linked from the active Today task', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
+for (const url of ['https://example.com/docs', 'file:///tmp/Balance%20test.pdf']) {
+  test(`pasting ${url} over selected text preserves and opens the link`, async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
-  const taskInput = page.locator('[data-plan-text-input]').first()
-  await taskInput.fill('Visit example')
-  await pasteLinkOverText(taskInput, 'https://example.com/docs', 6, 13)
-  await expect(taskInput.getByRole('link', { name: 'example' })).toHaveAttribute('href', 'https://example.com/docs')
+    await page.getByRole('button', { name: 'Today', exact: true }).click()
+    await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+    const taskInput = page.locator('[data-plan-text-input]').first()
+    await taskInput.fill('Visit example')
+    await pasteLinkOverText(taskInput, url, 6, 13)
+    await expect(taskInput).toHaveText('Visit example')
+    await expect(taskInput.getByRole('link', { name: 'example' })).toHaveAttribute('href', url)
+    await taskInput.blur()
+    await page.reload()
+    await expect(taskInput.getByRole('link', { name: 'example' })).toHaveAttribute('href', url)
 
-  await page.evaluate(() => {
-    ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = ''
-    window.open = ((url?: string | URL) => {
-      ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = String(url)
-      return null
-    }) as typeof window.open
+    await page.evaluate(() => {
+      ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = ''
+      window.open = ((url?: string | URL) => {
+        ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = String(url)
+        return null
+      }) as typeof window.open
+    })
+
+    await taskInput.getByRole('link', { name: 'example' }).click()
+    await expect.poll(() => page.evaluate(() => (window as typeof window & { openedExternalURL?: string }).openedExternalURL))
+      .toBe(url)
+    await page.evaluate(() => {
+      ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = ''
+    })
+    await taskInput.focus()
+    await page.keyboard.press('Alt+f')
+    await expect.poll(() => page.evaluate(() => (window as typeof window & { openedExternalURL?: string }).openedExternalURL))
+      .toBe(url)
   })
-
-  await taskInput.focus()
-  await page.keyboard.press('Alt+f')
-  await expect.poll(() => page.evaluate(() => (window as typeof window & { openedExternalURL?: string }).openedExternalURL))
-    .toBe('https://example.com/docs')
-})
+}
 
 test('Alt+F opens only the first URL in the selected list modal task', async ({ page }) => {
   await page.goto('/')
