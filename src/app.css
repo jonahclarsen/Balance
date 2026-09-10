@@ -4671,6 +4671,7 @@ body.mobile-checkbox-dragging {
 
 .goal-history-name {
   isolation: isolate;
+  cursor: pointer;
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto auto auto;
   height: 30px;
