@@ -64,17 +64,20 @@
   {#if project.description}<p class="description">{project.description}</p>{/if}
   {#if !checkingIn}<dl class="ratings"><div><dt>Work complete</dt><dd>{latest ? `${latest.progress}%` : 'Not set'}</dd></div><div><dt>Heart in it</dt><dd>{latest ? `${latest.heart}%` : 'Not set'}</dd></div></dl>{/if}
   {#if checkingIn}
-      <form class="check-in" bind:this={checkInForm} on:submit|preventDefault={save}>
+      <form class="check-in" id={'project-check-in-' + project.id} bind:this={checkInForm} on:submit|preventDefault={save}>
         {#if editingCheckIn}<p class="check-in-date">Editing check-in from {new Date(editingCheckIn.createdAt).toLocaleString()}</p>{/if}
         <div class="rating-control"><span>Work complete</span><ProbabilitySlider step={5} value={progress ?? 0} unset={progress === null} ariaLabel={`Work complete for ${project.name}`} onChange={(value) => progress = value} generousHitbox /></div>
         <div class="rating-control"><span>Heart in it</span><ProbabilitySlider step={5} value={heart ?? 0} unset={heart === null} ariaLabel={`Heart in it for ${project.name}`} onChange={(value) => heart = value} generousHitbox /></div>
-        <div class="actions"><button class="primary" type="submit" disabled={progress === null || heart === null}>Save check-in</button><button class="ghost" type="button" on:click={() => checkingIn = false}>Cancel</button></div>
       </form>
-  {:else if !project.archived}
-    <button class="check-in-button" type="button" on:click={() => openCheckIn(projectCheckInForDay(history, project.id, todayISO()))}>{todaysCheckIn ? 'Edit check-in' : 'Check in'}</button>
   {/if}
   <footer>
-    <button class="ghost details-toggle" type="button" aria-expanded={detailsOpen} aria-controls={'project-details-' + project.id} on:click={() => detailsOpen = !detailsOpen}>
+    {#if checkingIn}
+      <button class="primary" type="submit" form={'project-check-in-' + project.id} disabled={progress === null || heart === null}>Save check-in</button>
+      <button type="button" on:click={() => checkingIn = false}>Cancel</button>
+    {:else if !project.archived}
+      <button type="button" on:click={() => openCheckIn(projectCheckInForDay(history, project.id, todayISO()))}>{todaysCheckIn ? 'Edit check-in' : 'Check in'}</button>
+    {/if}
+    <button class="details-toggle" type="button" aria-expanded={detailsOpen} aria-controls={'project-details-' + project.id} on:click={() => detailsOpen = !detailsOpen}>
       {detailsOpen ? 'Close details' : 'View details'}
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={detailsOpen ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'} /></svg>
     </button>
@@ -133,14 +136,14 @@
   .description { white-space: pre-wrap; overflow-wrap: anywhere; }
   .ratings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; font-size: 13px; }
   .ratings div { display: grid; gap: 6px; } dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
-  .check-in-button { justify-self: start; }
   .check-in { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
   .rating-control { display: grid; gap: 8px; min-width: 0; font-size: 13px; --slider-readout-width: 44px; }
   .rating-control :global(.probability-slider) { min-width: 0; gap: 8px; }
   .rating-control :global(.track-wrap) { flex: 1; width: auto; min-width: 0; }
   .rating-control :global(.probability-readout) { flex: 0 0 44px; }
-  .check-in .actions, .check-in-date { grid-column: 1 / -1; }
-  .actions, footer { display: flex; flex-wrap: wrap; gap: 8px; }
+  .check-in-date { grid-column: 1 / -1; }
+  footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  footer button { font-size: 14px; padding: 8px 10px; }
   h3 { margin: 0; font-size: 13px; font-weight: 500; }
   .details-toggle { display: inline-flex; align-items: center; gap: 6px; }
   .details-toggle svg, .history-actions svg { flex: 0 0 auto; }

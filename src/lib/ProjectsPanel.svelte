@@ -51,7 +51,11 @@
 
 <section class="projects-panel" aria-label="Project vibes">
   <header class="page-header"><h2>Projects</h2><button type="button" on:click={() => copyLink()}>Copy page link</button></header>
-  <form class="project-add" on:submit|preventDefault={add}><input aria-label="New project name" placeholder="Project name" bind:value={name} maxlength="160" /><button class="primary" type="submit" disabled={!name.trim()}>Add project</button></form>
+  <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>
+    <label for="new-project-name">New project</label>
+    <input id="new-project-name" aria-label="New project name" placeholder="Project name" bind:value={name} maxlength="160" />
+    <button class="primary" type="submit" disabled={!name.trim()}>Add project</button>
+  </form>
   {#if message}<p class="status muted" role="status">{message}</p>{/if}
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
   <div class="project-grid">{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {currentDay} />{/each}</div>
@@ -82,8 +86,10 @@
 <style>
   .projects-panel { min-width: 0; }
   .page-header h2 { margin: 0; }
-  .project-add { display: flex; gap: 8px; margin-bottom: 16px; }
-  .project-add input { flex: 1; min-width: 0; }
+  .project-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 520px; padding: 12px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
+  .project-add label { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
+  .project-add input { width: 100%; min-width: 0; }
+  .project-add button { font-size: 14px; padding: 8px 10px; }
   .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
   .status { overflow-wrap: anywhere; }
 </style>
