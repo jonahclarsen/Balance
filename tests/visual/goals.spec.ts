@@ -1628,7 +1628,7 @@ test('goal rhythm bolds the current day and keeps it bold when another day is se
   const todayDate = (await todayHead.getAttribute('data-goal-date')) ?? todayISO()
   const tomorrow = addDays(todayDate, 1)
 
-  await page.getByRole('button', { name: 'Next day' }).click()
+  await page.getByRole('textbox', { name: 'Day date', exact: true }).fill(tomorrow)
 
   const tomorrowHead = page.locator(`.goal-date-head[data-goal-date="${tomorrow}"]`)
   await expect(tomorrowHead).toHaveClass(/viewed/)
@@ -1987,6 +1987,7 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
 
   const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
   await expect(goalRow).toHaveCount(1)
+  await expect(page.locator('.goal-history-name[data-goal-id]').first()).toContainText('Exercise')
   await scrollGoalRhythmAwayFromRow(page, 'Exercise')
   await expect.poll(() => goalRhythmRowIsFullyVisible(page, 'Exercise')).toBe(false)
   await expect(goalRow).not.toHaveClass(/goal-row-focus/)
@@ -2386,9 +2387,11 @@ async function goalRhythmRowCenterOffset(page: import('@playwright/test').Page, 
     const rowRect = row.getBoundingClientRect()
     const contentTop = viewportRect.top + 30
     const contentHeight = viewportRect.height - 30
-    return Math.abs(Math.round(
-      rowRect.top + rowRect.height / 2 - (contentTop + contentHeight / 2),
-    ))
+    // A completed goal can now be the first row, where centering would require
+    // scrolling past the top edge. Expect the nearest reachable position.
+    const centeredTop = viewport.scrollTop + rowRect.top + rowRect.height / 2 - (contentTop + contentHeight / 2)
+    const targetTop = Math.max(0, Math.min(viewport.scrollHeight - viewport.clientHeight, centeredTop))
+    return Math.abs(Math.round(viewport.scrollTop - targetTop))
   }, goalName)
 }
 

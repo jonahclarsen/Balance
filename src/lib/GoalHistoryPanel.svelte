@@ -210,6 +210,7 @@
       activeGoals,
       completions,
       viewedDate,
+      today,
     ),
     search,
   )
