@@ -47,6 +47,9 @@
     flex: 0 0 auto;
     width: 26px;
     height: 26px;
+    margin-left: -5px;
+    position: relative;
+    top: 1px;
   }
 
   .goal-copy-button svg {
