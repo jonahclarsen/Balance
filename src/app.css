@@ -4830,7 +4830,8 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-day-cell.completed,
-.goal-day-cell.relieved {
+.goal-day-cell.relieved,
+.goal-recent-day.relieved {
   background: hsl(var(--goal-hue) 58% calc(var(--goal-segment-completed-bg-lightness) + var(--goal-lightness-shift, 0%)));
 }
 

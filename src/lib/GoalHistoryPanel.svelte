@@ -557,7 +557,11 @@
                     {:else if cell.relieved}
                       <span class="goal-cell-mark relieved-mark">✓</span>
                     {:else if cell.overdue}
-                      <span class="goal-cell-mark overdue-mark">×</span>
+                      <span class="goal-cell-mark overdue-mark">
+                        <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+                          <path d="m4 4 8 8M12 4l-8 8" />
+                        </svg>
+                      </span>
                     {:else if cell.active}
                       <span class="goal-cell-mark open"></span>
                     {/if}

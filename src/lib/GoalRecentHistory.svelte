@@ -46,6 +46,7 @@
 
   function cellStatus(cell: (typeof cells)[number]): string {
     if (cell.completed) return 'completed'
+    if (cell.relieved) return 'covered by completion'
     if (cell.overdue) return 'overdue'
     if (cell.missed) return 'missed'
     return cell.active ? 'no completion' : 'inactive'
@@ -68,6 +69,7 @@
           class="goal-recent-day"
           class:active={cell.active}
           class:completed={cell.completed}
+          class:relieved={cell.relieved}
           class:missed={cell.missed}
           class:overdue={cell.overdue}
           class:today={cell.date === currentDate}
@@ -78,8 +80,18 @@
           <span class="goal-recent-day-tooltip" aria-hidden="true">{tooltipDateLabel(cell.date)}</span>
           {#if cell.completed}
             <span aria-hidden="true">✓</span>
+          {:else if cell.relieved}
+            <span class="goal-cell-mark relieved-mark" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m3 8 3 3 7-7" />
+              </svg>
+            </span>
           {:else if cell.overdue}
-            <span class="goal-cell-mark overdue-mark" aria-hidden="true">×</span>
+            <span class="goal-cell-mark overdue-mark" aria-hidden="true">
+              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
+                <path d="m4 4 8 8M12 4l-8 8" />
+              </svg>
+            </span>
           {:else if cell.missed}
             <span class="goal-cell-mark open" aria-hidden="true"></span>
           {/if}

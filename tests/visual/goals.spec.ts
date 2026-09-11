@@ -459,10 +459,22 @@ test('goal cards show completion history for the most recent 14 days', async ({ 
   }
   const deadlineDay = history.locator(`[data-goal-date="${addDays(currentDate, -7)}"]`)
   await expect(deadlineDay).toHaveClass(/overdue/)
-  await expect(deadlineDay.locator('.goal-cell-mark.overdue-mark')).toHaveText('×')
+  await expect(deadlineDay.locator('.goal-cell-mark.overdue-mark svg')).toBeVisible()
   const overdueDay = history.locator(`[data-goal-date="${addDays(currentDate, -6)}"]`)
   await expect(overdueDay).toHaveClass(/overdue/)
-  await expect(overdueDay.locator('.goal-cell-mark.overdue-mark')).toHaveText('×')
+  await expect(overdueDay.locator('.goal-cell-mark.overdue-mark svg')).toBeVisible()
+  const markOffsets = await page.locator('.goal-recent-day.overdue, .goal-day-cell.overdue').evaluateAll((cells) =>
+    cells.filter((cell) => cell.getBoundingClientRect().width > 0).map((cell) => {
+      const box = cell.getBoundingClientRect()
+      const mark = cell.querySelector('svg')!.getBoundingClientRect()
+      return Math.max(
+        Math.abs(mark.x + mark.width / 2 - box.x - box.width / 2),
+        Math.abs(mark.y + mark.height / 2 - box.y - box.height / 2),
+      )
+    }),
+  )
+  expect(markOffsets.length).toBeGreaterThan(0)
+  expect(Math.max(...markOffsets)).toBeLessThanOrEqual(1)
   await expect(history.locator(`[data-goal-date="${currentDate}"]`)).toHaveClass(/today/)
   const historyBox = await history.boundingBox()
   const rulesBox = await page.getByLabel('Matching terms for Exercise').boundingBox()
@@ -1092,8 +1104,8 @@ test('a completion resets a rolling deadline and late days stay overdue', async 
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${coverageEnd} · active"]`)).toHaveClass(/segment-end/)
   const missedDeadline = page.locator(`.goal-day-cell[title="Make a beat · ${dueDate} · overdue"]`)
   await expect(missedDeadline).toHaveClass(/segment-start/)
-  await expect(missedDeadline.locator('.overdue-mark')).toHaveText('×')
-  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${firstOverdueDate} · overdue"] .overdue-mark`)).toHaveText('×')
+  await expect(missedDeadline.locator('.overdue-mark svg')).toBeVisible()
+  await expect(page.locator(`.goal-day-cell[title="Make a beat · ${firstOverdueDate} · overdue"] .overdue-mark svg`)).toBeVisible()
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${lastOverdueDate} · overdue"]`)).toHaveClass(/segment-end/)
   await expect(page.locator(`.goal-day-cell[title="Make a beat · ${secondCompletion} · completed"]`)).toHaveClass(/segment-start/)
   await expect(page.locator('.goal-history-name', { hasText: 'Make a beat' }).locator('.goal-lapse')).toHaveText('4d left')
@@ -1202,7 +1214,9 @@ test('cadence edits retain recent completion coverage in both history views afte
   for (let offset = -3; offset <= 0; offset += 1) {
     const cell = page.locator(`.goal-recent-day[data-goal-date="${addDays(today, offset)}"]`)
     await expect(cell).not.toHaveClass(/missed|overdue/)
-    await expect(cell.locator('.goal-cell-mark')).toHaveCount(0)
+    await expect(cell).toHaveClass(/relieved/)
+    await expect(cell.locator('.goal-cell-mark.relieved-mark svg')).toBeVisible()
+    await expect(cell).toHaveAttribute('aria-label', /covered by completion/)
   }
 })
 
@@ -1238,8 +1252,8 @@ test('an unmet rolling deadline stays overdue until a completion resets it', asy
   await expect(page.locator('.goal-history-toolbar > div > span')).toHaveText('1 overdue, 0 upcoming in the next 3 days')
 
   await expect(page.locator(`.goal-day-cell[title="Read · ${start} · missed"]`)).toHaveClass(/segment-start/)
-  await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · overdue"] .overdue-mark`)).toHaveText('×')
-  await expect(page.locator(`.goal-day-cell[title="Read · ${secondStart} · overdue"] .overdue-mark`)).toHaveText('×')
+  await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · overdue"] .overdue-mark svg`)).toBeVisible()
+  await expect(page.locator(`.goal-day-cell[title="Read · ${secondStart} · overdue"] .overdue-mark svg`)).toBeVisible()
   const actionableToday = page.locator(`.goal-day-cell[title="Read · ${todayISO()} · active"]`)
   await expect(actionableToday).toHaveClass(/segment-end/)
   await expect(actionableToday.locator('.goal-cell-mark.open')).toBeVisible()
