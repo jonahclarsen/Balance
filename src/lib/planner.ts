@@ -24,7 +24,7 @@ import { goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
 import { createDefaultReplicatedPreferences } from './preferences'
 
 export const DEFAULT_DAILY_REMINDER = "This shouldn't be aspirational"
-export const DAY_ROLLOVER_HOUR = 3
+export const DAY_ROLLOVER_HOUR = 5
 export const SIRI_REMINDERS_HEADING = 'reminders from siri:'
 
 export type BackspacePlanItemAtStartResult = {
@@ -74,7 +74,7 @@ export function createId(prefix = 'id'): Id {
 
 /**
  * The calendar day Balance considers "today". Match the widgets by keeping
- * midnight–3am attached to the previous day's plan.
+ * midnight–5am attached to the previous day's plan.
  */
 export function todayISO(now = new Date()): string {
   const day = new Date(now)
@@ -826,7 +826,7 @@ export function defaultPlanItemTimeRange(
 ): { startMinutes: number; endMinutes: number } {
   let fallbackStartMinutes = DEFAULT_TIME_START_MINUTES
   if (planDate === todayISO(now) && !flattenPlanItems(items).some(hasActiveTimeRange)) {
-    // Before the 3 a.m. rollover, today's plan represents the previous calendar day.
+    // Before the 5 a.m. rollover, today's plan represents the previous calendar day.
     const elapsedMinutes = now.getHours() * 60 + now.getMinutes()
       + (planDate === calendarDateISO(now) ? 0 : 24 * 60)
     fallbackStartMinutes = Math.max(fallbackStartMinutes, Math.floor(elapsedMinutes / 15) * 15)

@@ -119,8 +119,8 @@ test('day rail points toward today and disappears on today', async ({ page }, te
   })
 })
 
-test('a Random day keeps its recorded theme after the 3am rollover', async ({ page }, testInfo) => {
-  await page.clock.install({ time: new Date('2026-08-18T02:59:00') })
+test('a Random day keeps its recorded theme after the 5am rollover', async ({ page }, testInfo) => {
+  await page.clock.install({ time: new Date('2026-08-18T04:59:00') })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.evaluate(() => localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
@@ -253,7 +253,7 @@ test('appearance can follow the system or stay light or dark on this device', as
 })
 
 test('random theme can be scheduled for the next day boundary while changing today\'s theme', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-08-18T02:59:00') })
+  await page.clock.install({ time: new Date('2026-08-18T04:59:00') })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()

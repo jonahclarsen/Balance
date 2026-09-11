@@ -138,7 +138,7 @@
     return new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
   }
 
-  // Track Balance's 3am day boundary reactively so the grid keeps the current
+  // Track Balance's 5am day boundary reactively so the grid keeps the current
   // day highlighted after the date rolls over while the app stays open.
   let today = todayISO()
 

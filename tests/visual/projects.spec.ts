@@ -8,7 +8,7 @@ async function openView(page: Page, name: string) {
   await page.getByRole('button', { name, exact: true }).click()
 }
 
-test('daily check-ins roll over at 3 a.m. and history supports editing, deletion and undo', async ({ page }) => {
+test('daily check-ins roll over at 5 a.m. and history supports editing, deletion and undo', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-09-09T06:59:00Z') })
   await page.goto('/')
   await openView(page, 'Projects')
@@ -35,7 +35,7 @@ test('daily check-ins roll over at 3 a.m. and history supports editing, deletion
   await expect(card.getByRole('button', { name: 'Edit check-in', exact: true })).toBeVisible()
 
   // Midnight does not begin a new Balance day.
-  await page.clock.setSystemTime(new Date('2026-09-09T09:59:00Z'))
+  await page.clock.setSystemTime(new Date('2026-09-09T11:59:00Z'))
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await card.getByRole('button', { name: 'Edit check-in', exact: true }).click()
   await expect(work).toHaveValue('35')
