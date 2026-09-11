@@ -88,6 +88,10 @@ jobs:
             tests::undo_performance_profile \
             -- --exact --ignored --nocapture 2>&1 | tee undo-profile.txt
 
+          cargo test --manifest-path src-tauri/Cargo.toml \
+            tests::paste_undo_performance_profile \
+            -- --exact --ignored --nocapture 2>&1 | tee paste-undo-profile.txt
+
           grep 'UNDO_PERF backend' undo-profile.txt | sed 's/^.*UNDO_PERF backend //' > undo-profile.json
           {
             echo '## Encrypted undo under CPU contention'
@@ -106,4 +110,5 @@ jobs:
           path: |
             undo-profile.json
             undo-profile.txt
+            paste-undo-profile.txt
           if-no-files-found: error

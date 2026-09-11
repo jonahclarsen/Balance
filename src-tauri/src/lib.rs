@@ -3234,6 +3234,9 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
         create index if not exists idx_template_items_parent on template_items(template_id, parent_id, position);
         create index if not exists idx_template_options_item on template_options(item_id, position);
         create index if not exists idx_plan_items_parent on plan_items(plan_id, parent_id, position);
+        -- Cascading deletes and regeneration archive traversal know only the
+        -- parent ID. The plan-leading sibling index cannot serve those lookups.
+        create index if not exists idx_plan_items_parent_id on plan_items(parent_id);
         create index if not exists idx_operations_sequence on operations(sequence);
         create index if not exists idx_operations_timestamp on operations(timestamp);
         create index if not exists idx_history_entries_undo on history_entries(undone, sequence, updated_at_ms);
@@ -16326,6 +16329,87 @@ mod tests {
                 "goalTitleSnapshot": goal_snapshot_profile,
             })
         );
+    }
+
+    #[test]
+    #[ignore = "synthetic paste profile; run explicitly with --ignored --nocapture"]
+    fn paste_undo_performance_profile() {
+        let database = TestDatabase::new("paste-undo-performance");
+        let key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &key).unwrap();
+        let plans = undo_performance_size("BALANCE_UNDO_PERF_PLANS", 1500);
+        let items = undo_performance_size("BALANCE_UNDO_PERF_ITEMS_PER_PLAN", 60);
+        let mut state = undo_performance_state(plans, items, 0);
+        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+        state["plans"][plans - 1]["date"] = json!(date);
+        state["activePlanDate"] = json!(date);
+        replace_app_state(&mut connection, &state).unwrap();
+        let plan_id = format!("plan_{}", plans - 1);
+        let before = read_plans(&connection).unwrap();
+        let mut profiles = Vec::new();
+        // Compare the old schema with the upgraded schema in the same encrypted
+        // fixture and binary. No installed database or widget/keychain access.
+        connection.execute_batch("drop index idx_plan_items_parent_id").unwrap();
+        for indexed in [false, true] {
+            if indexed {
+                drop(connection);
+                let started = std::time::Instant::now();
+                connection = open_database_at(&database.path, &key).unwrap();
+                eprintln!("PASTE_UNDO_PERF indexUpgradeOpenMs={}", started.elapsed().as_secs_f64() * 1000.0);
+                assert_eq!(read_plans(&connection).unwrap(), before);
+            }
+            for (placement, child_count) in [("after", 0), ("replace", 0), ("replace", 10)] {
+                let item = |id: String| json!({"id": id, "text": "Synthetic pasted task",
+                    "html": "<b>Synthetic pasted task</b>", "done": false,
+                    "startMinutes": 600, "endMinutes": 630, "children": []});
+                let mut pasted = item("pasted".into());
+                pasted["children"] = json!((0..child_count).map(|i| item(format!("pasted_child_{i}"))).collect::<Vec<_>>());
+                let sequence = metadata_value(&connection, "local_sequence").unwrap().unwrap().parse::<i64>().unwrap() + 1;
+                let operation_id = format!("op_device_perf_{sequence}");
+                let operation = json!({
+                    "id": operation_id, "deviceId": "device_perf", "sequence": sequence,
+                    "type": "paste_plan_items", "timestamp": current_timestamp(),
+                    "payload": {"planId": plan_id, "targetId": format!("{plan_id}_item_0"),
+                        "placement": placement, "items": [pasted]}
+                });
+                persist_operation_to_database(&mut connection, &operation).unwrap();
+                let after = read_plans(&connection).unwrap();
+                let mut samples = Vec::new();
+                for _ in 0..5 {
+                    let started = std::time::Instant::now();
+                    let undone = undo_last_operation_for_ui(&mut connection, Some(&operation_id)).unwrap().unwrap();
+                    let undo_ms = started.elapsed().as_secs_f64() * 1000.0;
+                    assert!(undone["state"].is_null());
+                    assert_eq!(read_plans(&connection).unwrap(), before);
+                    let started = std::time::Instant::now();
+                    let redone = redo_last_operation_for_ui(&mut connection, Some(&operation_id)).unwrap().unwrap();
+                    let redo_ms = started.elapsed().as_secs_f64() * 1000.0;
+                    assert!(redone["state"].is_null());
+                    assert_eq!(read_plans(&connection).unwrap(), after);
+                    samples.push(json!({"undoMs": undo_ms, "redoMs": redo_ms}));
+                }
+                undo_last_operation_for_ui(&mut connection, Some(&operation_id)).unwrap().unwrap();
+                profiles.push(json!({"indexed": indexed, "placement": placement, "children": child_count, "samples": samples}));
+            }
+        }
+        eprintln!("PASTE_UNDO_PERF {}", json!({"plans": plans, "items": plans * items, "profiles": profiles}));
+    }
+
+    #[test]
+    fn existing_database_gains_parent_lookup_index_without_changing_tasks() {
+        let database = TestDatabase::new("parent-index-upgrade");
+        let key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &key).unwrap();
+        replace_app_state(&mut connection, &test_state("Synthetic index upgrade")).unwrap();
+        connection.execute_batch("drop index idx_plan_items_parent_id").unwrap();
+        let before = read_app_state_from_database(&connection).unwrap();
+        drop(connection);
+        let connection = open_database_at(&database.path, &key).unwrap();
+        assert_eq!(read_app_state_from_database(&connection).unwrap(), before);
+        let mut statement = connection.prepare("explain query plan select id from plan_items where parent_id = ?1").unwrap();
+        let details = statement.query_map(["plan_item_wake"], |row| row.get::<_, String>(3)).unwrap()
+            .collect::<Result<Vec<_>, _>>().unwrap().join(" ");
+        assert!(details.contains("SEARCH") && details.contains("idx_plan_items_parent_id"), "{details}");
     }
 
     fn undo_performance_size(variable: &str, default: usize) -> usize {
