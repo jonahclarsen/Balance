@@ -167,229 +167,65 @@ test('the goal rhythm search clear button remains visible without focus on mobil
   await expect(clearSearch).toHaveCount(0)
 })
 
-test('goal rhythm offers nine persistent visual modes with one highlighted selection', async ({ page }) => {
-  const rhythm = page.getByRole('region', { name: 'Goal history' })
-  const modeTrigger = page.getByRole('button', { name: 'Choose Goal Rhythm style' })
-  const modeMenu = page.getByRole('menu', { name: 'Goal Rhythm style options' })
-
-  await expect(modeMenu).toBeHidden()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow')
-
-  await modeTrigger.hover({ force: true })
-  await expect(modeMenu).toBeVisible()
-  await expect(page.getByRole('menuitemradio')).toHaveCount(9)
-  for (const mode of [
-    'Flow',
-    'Flow Tint',
-    'Flow Halo',
-    'Mosaic',
-    'Columns',
-    'Signal',
-    'Ledger',
-    'Aurora',
-    'Constellation',
-  ]) {
-    await expect(page.getByRole('menuitemradio', { name: mode, exact: true })).toHaveCount(1)
-  }
-  await expect(page.getByRole('menuitemradio', { name: 'Flow Dots', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('menuitemradio', { name: 'Flow Tide', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('menuitemradio', { name: 'Flow Line', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('menuitemradio', { name: 'Flow Ghost', exact: true })).toHaveCount(0)
-  await expect(page.getByRole('menuitemradio', { name: 'Flow Orbit', exact: true })).toHaveCount(0)
-
-  const storedModeBeforePreview = await page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))
-  const flowOption = page.getByRole('menuitemradio', { name: 'Flow', exact: true })
-  const mosaicOption = page.getByRole('menuitemradio', { name: 'Mosaic' })
-  await mosaicOption.hover()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'mosaic')
-  await expect(flowOption).toHaveAttribute('aria-checked', 'true')
-  await expect(mosaicOption).toHaveAttribute('aria-checked', 'false')
-  expect(await page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe(storedModeBeforePreview)
-
-  await page.mouse.move(1, 1)
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow')
-  await modeTrigger.hover({ force: true })
-  await expect(modeMenu).toBeVisible()
-
-  const selectedRowAlignment = async (name: string) => {
-    const [triggerBox, optionBox] = await Promise.all([
-      modeTrigger.boundingBox(),
-      page.getByRole('menuitemradio', { name, exact: true }).boundingBox(),
-    ])
-    if (!triggerBox || !optionBox) return null
-    const triggerCenterX = triggerBox.x + triggerBox.width / 2
-    const optionCenterX = optionBox.x + optionBox.width / 2
-    const centerDelta = optionBox.y + optionBox.height / 2 - (triggerBox.y + triggerBox.height / 2)
-    return {
-      centersAlign: Math.abs(centerDelta) <= 1,
-      horizontalCentersAlign: Math.abs(optionCenterX - triggerCenterX) <= 1,
-    }
-  }
-
-  const highlightedOptions = () => page.getByRole('menuitemradio').evaluateAll((options) => options
-    .filter((option) => getComputedStyle(option).backgroundColor !== 'rgba(0, 0, 0, 0)')
-    .map((option) => option.textContent?.trim().replace(/^\S+\s+/, '')),
-  )
-
-  expect(await selectedRowAlignment('Flow')).toEqual({ centersAlign: true, horizontalCentersAlign: true })
-  await page.getByRole('menuitemradio', { name: 'Flow Tint', exact: true }).click()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-tint')
-  expect(await highlightedOptions()).toEqual(['Flow Tint'])
-  await page.getByRole('menuitemradio', { name: 'Flow Halo', exact: true }).click()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow-halo')
-  expect(await highlightedOptions()).toEqual(['Flow Halo'])
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('flow-halo')
-  await page.getByRole('menuitemradio', { name: 'Mosaic' }).click()
-  expect(await highlightedOptions()).toEqual(['Mosaic'])
-  await page.getByRole('menuitemradio', { name: 'Columns' }).click()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'columns')
-  expect(await highlightedOptions()).toEqual(['Columns'])
-  await page.getByRole('menuitemradio', { name: 'Signal' }).click()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'signal')
-  expect(await highlightedOptions()).toEqual(['Signal'])
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('signal')
-
-  await page.reload()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'signal')
-  await modeTrigger.hover({ force: true })
-  await expect(modeMenu).toBeVisible()
-  expect(await selectedRowAlignment('Signal')).toEqual({ centersAlign: true, horizontalCentersAlign: true })
-
-  const auroraOption = page.getByRole('menuitemradio', { name: 'Aurora' })
-  await auroraOption.hover()
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'aurora')
-  await expect(page.getByRole('menuitemradio', { name: 'Signal' })).toHaveAttribute('aria-checked', 'true')
-  await expect(auroraOption).toHaveAttribute('aria-checked', 'false')
-  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe('signal')
-
-  await page.mouse.move(1, 1)
-  await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'signal')
-})
-
-test('active and retired flow variants preserve the cadence band with a safe future fallback', async ({ page }) => {
-  const historyStart = addDays(todayISO(), -6)
+test('goal rhythm uses fixed Flow Tint even with an old saved style', async ({ page }, testInfo) => {
+  const historyStart = addDays(todayISO(), -12)
   await page.evaluate((historyStart) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     const timestamp = new Date().toISOString()
     state.goals = [{
-      id: 'goal_flow_patterns',
-      name: 'Flow patterns',
-      cadenceDays: 2,
-      matchTerms: ['flow'],
-      hue: 205,
+      id: 'goal_fixed_rhythm', name: 'Exercise', cadenceDays: 5,
+      matchTerms: ['exercise'], hue: 205,
       activityPeriods: [{ startDate: historyStart, endDate: null }],
-      createdAt: timestamp,
-      updatedAt: timestamp,
+      createdAt: timestamp, updatedAt: timestamp,
     }]
     state.goalCompletions = []
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    localStorage.setItem('balance.goalRhythmMode.v1', 'mosaic')
   }, historyStart)
   await page.reload()
 
-  const appearances = await page.evaluate(() => {
-    const rhythm = document.querySelector<HTMLElement>('.goal-history-panel')
-    const activeCell = document.querySelector<HTMLElement>('.goal-day-cell.active:not(.overdue)')
-    const overdueCell = document.querySelector<HTMLElement>('.goal-day-cell.overdue')
-    if (!rhythm || !activeCell || !overdueCell) throw new Error('Could not find Flow pattern cells')
+  await expect(page.getByRole('button', { name: 'Choose Goal Rhythm style' })).toHaveCount(0)
+  await expect(page.getByRole('menu', { name: 'Goal Rhythm style options' })).toHaveCount(0)
+  const appearance = await page.locator('.goal-day-cell.overdue').first().evaluate((cell) => {
+    const overlay = getComputedStyle(cell, '::before')
+    return {
+      band: getComputedStyle(cell).backgroundImage,
+      overlay: overlay.backgroundImage,
+      tint: overlay.backgroundColor,
+      mask: overlay.maskImage,
+    }
+  })
+  expect(appearance.band).toContain('linear-gradient')
+  expect(appearance.overlay).toBe('none')
+  expect(appearance.tint).not.toBe('rgba(0, 0, 0, 0)')
+  expect(appearance.mask).toBe('none')
 
-    return ['flow', 'flow-tint', 'flow-halo', 'flow-ghost', 'flow-orbit', 'flow-line', 'flow-dots', 'flow-tide', 'future-flow'].map((mode) => {
-      rhythm.dataset.rhythmMode = mode
+  for (const zoom of [1, 1.1, 1.25, 1.5]) {
+    await page.evaluate((zoom) => document.documentElement.style.setProperty('--app-default-zoom', String(zoom)), zoom)
+    const geometry = await page.locator('.goal-history-day-row').first().evaluate((row) => {
+      const cells = [...row.querySelectorAll<HTMLElement>('.goal-day-cell.active')]
+      const start = cells.find((cell) => cell.classList.contains('segment-start'))!
+      const end = cells.find((cell) => cell.classList.contains('segment-end'))!
+      const middle = cells.find((cell) => !cell.classList.contains('segment-start') && !cell.classList.contains('segment-end'))!
+      const boxes = [start, middle, end].map((cell) => cell.getBoundingClientRect())
+      const styles = [start, middle, end].map((cell) => getComputedStyle(cell))
       return {
-        mode,
-        activeBackground: getComputedStyle(activeCell).backgroundImage,
-        activeBackgroundColor: getComputedStyle(activeCell).backgroundColor,
-        overdueOverlay: getComputedStyle(overdueCell, '::before').backgroundImage,
-        overdueOverlayColor: getComputedStyle(overdueCell, '::before').backgroundColor,
+        topDifference: Math.max(...boxes.map((box) => box.top)) - Math.min(...boxes.map((box) => box.top)),
+        bottomDifference: Math.max(...boxes.map((box) => box.bottom)) - Math.min(...boxes.map((box) => box.bottom)),
+        topWidths: styles.map((style) => style.borderTopWidth),
+        bottomWidths: styles.map((style) => style.borderBottomWidth),
+        leftWidth: styles[0].borderLeftWidth,
+        rightWidth: styles[2].borderRightWidth,
+        capRadius: styles[0].borderTopLeftRadius,
       }
     })
-  })
-
-  expect(appearances.map(({ activeBackground }) => activeBackground)).toEqual([
-    appearances[0].activeBackground,
-    appearances[0].activeBackground,
-    appearances[0].activeBackground,
-    appearances[0].activeBackground,
-    appearances[0].activeBackground,
-    appearances[0].activeBackground,
-    appearances[0].activeBackground,
-    appearances[0].activeBackground,
-    'none',
-  ])
-  expect(appearances[0].overdueOverlay).toContain('repeating-linear-gradient')
-  expect(appearances[1].overdueOverlay).toBe('none')
-  expect(appearances[2].overdueOverlay).toContain('radial-gradient')
-  expect(appearances[3].overdueOverlay).toBe('none')
-  expect(appearances[3].overdueOverlayColor).not.toBe(appearances[1].overdueOverlayColor)
-  expect(appearances[4].overdueOverlay).toContain('radial-gradient')
-  expect(appearances[5].overdueOverlay).toContain('linear-gradient(to top')
-  expect(appearances[6].overdueOverlay).toContain('radial-gradient')
-  expect(appearances[7].overdueOverlay).toContain('linear-gradient(to top')
-  expect(appearances[8].overdueOverlay).toContain('repeating-linear-gradient')
-  expect(appearances[8].activeBackgroundColor).not.toBe('rgba(0, 0, 0, 0)')
-})
-
-test('retired and unknown saved rhythm modes fall back to Flow without rewriting the saved ID', async ({ page }) => {
-  const rhythm = page.getByRole('region', { name: 'Goal history' })
-
-  for (const storedMode of ['flow-line', 'flow-dots', 'flow-tide', 'flow-ghost', 'flow-orbit', 'future-flow']) {
-    await page.evaluate((mode) => localStorage.setItem('balance.goalRhythmMode.v1', mode), storedMode)
-    await page.reload()
-    await expect(rhythm).toHaveAttribute('data-rhythm-mode', 'flow')
-    await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.goalRhythmMode.v1'))).toBe(storedMode)
+    expect(geometry.topDifference).toBeLessThan(0.02)
+    expect(geometry.bottomDifference).toBeLessThan(0.02)
+    expect(new Set([...geometry.topWidths, ...geometry.bottomWidths, geometry.leftWidth, geometry.rightWidth]).size).toBe(1)
+    expect(geometry.capRadius).toBe('15px')
   }
-})
-
-test('columns mode joins mosaic tiles vertically by calendar day', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'Desktop geometry provides stable pixel measurements')
-  await createGoal(page, 'Exercise', 3, 'exercise')
-  await createGoal(page, 'Read', 2, 'read')
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-
-  const modeTrigger = page.getByRole('button', { name: 'Choose Goal Rhythm style' })
-  const todayCells = page.locator(`.goal-day-cell[title*=" · ${todayISO()} · "]`)
-  await expect(todayCells).toHaveCount(2)
-
-  const verticalGap = () => todayCells.evaluateAll((cells) => {
-    const rectangles = cells
-      .map((cell) => cell.getBoundingClientRect())
-      .sort((left, right) => left.top - right.top)
-    return Math.round(rectangles[1].top - rectangles[0].bottom)
-  })
-
-  await modeTrigger.hover({ force: true })
-  await page.getByRole('menuitemradio', { name: 'Mosaic' }).click()
-  expect(await verticalGap()).toBe(6)
-
-  await page.mouse.move(1, 1)
-  await modeTrigger.hover({ force: true })
-  await page.getByRole('menuitemradio', { name: 'Columns' }).click()
-  expect(await verticalGap()).toBe(0)
-  await expect.poll(() => todayCells.evaluateAll((cells) => cells.map((cell) => {
-    const style = getComputedStyle(cell)
-    return { width: style.width, height: style.height }
-  }))).toEqual([
-    { width: '24px', height: '30px' },
-    { width: '24px', height: '30px' },
-  ])
-})
-
-test('goal rhythm modes allocate the mobile split to match their visual focus', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile', 'Mobile-only layout treatment')
-  await page.setViewportSize({ width: 360, height: 760 })
-
-  const modeTrigger = page.getByRole('button', { name: 'Choose Goal Rhythm style' })
-  const namePane = page.locator('.goal-history-name-pane')
-
-  await modeTrigger.hover({ force: true })
-  await page.getByRole('menuitemradio', { name: 'Signal' }).click()
-  const signalWidth = (await namePane.boundingBox())?.width ?? 0
-  await page.mouse.move(1, 1)
-  await modeTrigger.hover({ force: true })
-  await page.getByRole('menuitemradio', { name: 'Ledger' }).click()
-  const ledgerWidth = (await namePane.boundingBox())?.width ?? 0
-
-  expect(signalWidth).toBeGreaterThan(0)
-  expect(ledgerWidth - signalWidth).toBeGreaterThanOrEqual(70)
+  await page.evaluate(() => document.documentElement.style.removeProperty('--app-default-zoom'))
+  await page.locator('.goal-history-panel').screenshot({ path: `artifacts/visual-smoke/${testInfo.project.name}-fixed-flow-tint.png` })
 })
 
 test('goal cards show completion history for the most recent 14 days', async ({ page }, testInfo) => {
@@ -1319,7 +1155,7 @@ test('goal rhythm keeps rounded segment ends when saved activity periods overlap
 
   const currentEnd = page.locator(`.goal-day-cell[title="Overlapping history · ${todayISO()} · active"]`)
   await expect(currentEnd).toHaveClass(/segment-end/)
-  await expect(currentEnd).toHaveCSS('border-bottom-right-radius', '999px')
+  await expect(currentEnd).toHaveCSS('border-bottom-right-radius', '15px')
 })
 
 test('goal rhythm puts overdue goals last while the goals page keeps urgency order', async ({ page }) => {
@@ -1881,49 +1717,21 @@ test('goal rhythm uses one smooth scroll surface across its name and timeline pa
   await expect(page.locator('.goal-history-name-backdrop')).toHaveCount(1)
   await expect(page.locator('.goal-history-name-header')).toHaveCount(1)
 
-  const modeGeometry = await page.evaluate((modes) => {
-    const rhythm = document.querySelector<HTMLElement>('.goal-history-panel')
-    if (!rhythm) throw new Error('Could not find Goal Rhythm')
-
-    const measurements = modes.map((mode) => {
-      rhythm.dataset.rhythmMode = mode
-      const nameRows = [...document.querySelectorAll<HTMLElement>('.goal-history-name')]
-      const dayRows = [...document.querySelectorAll<HTMLElement>('.goal-history-day-row')]
-      const deltas = nameRows.slice(0, 12).map((nameRow, index) => {
-        const activeCell = dayRows[index]?.querySelector<HTMLElement>('.goal-day-cell.active')
-        if (!activeCell) throw new Error(`Could not find active cell for row ${index}`)
-        const nameRect = nameRow.getBoundingClientRect()
-        const cellRect = activeCell.getBoundingClientRect()
-        return {
-          top: Math.abs(Math.round(nameRect.top - cellRect.top)),
-          height: Math.abs(Math.round(nameRect.height - cellRect.height)),
-        }
-      })
+  const rowGeometry = await page.evaluate(() => {
+    const nameRows = [...document.querySelectorAll<HTMLElement>('.goal-history-name')]
+    const dayRows = [...document.querySelectorAll<HTMLElement>('.goal-history-day-row')]
+    return nameRows.slice(0, 12).map((nameRow, index) => {
+      const activeCell = dayRows[index]?.querySelector<HTMLElement>('.goal-day-cell.active')
+      if (!activeCell) throw new Error(`Could not find active cell for row ${index}`)
+      const nameRect = nameRow.getBoundingClientRect()
+      const cellRect = activeCell.getBoundingClientRect()
       return {
-        mode,
-        maximumTopDifference: Math.max(...deltas.map((delta) => delta.top)),
-        maximumHeightDifference: Math.max(...deltas.map((delta) => delta.height)),
+        top: Math.abs(Math.round(nameRect.top - cellRect.top)),
+        height: Math.abs(Math.round(nameRect.height - cellRect.height)),
       }
     })
-    rhythm.dataset.rhythmMode = 'flow'
-    return measurements
-  }, ['flow', 'flow-tint', 'flow-halo', 'flow-ghost', 'flow-orbit', 'flow-line', 'flow-dots', 'flow-tide', 'mosaic', 'columns', 'signal', 'ledger', 'aurora', 'constellation'])
-  expect(modeGeometry).toEqual([
-    { mode: 'flow', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'flow-tint', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'flow-halo', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'flow-ghost', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'flow-orbit', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'flow-line', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'flow-dots', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'flow-tide', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'mosaic', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'columns', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'signal', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'ledger', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'aurora', maximumTopDifference: 0, maximumHeightDifference: 0 },
-    { mode: 'constellation', maximumTopDifference: 0, maximumHeightDifference: 0 },
-  ])
+  })
+  expect(rowGeometry.every(({ top, height }) => top === 0 && height === 0)).toBe(true)
 
   const nameBox = await names.boundingBox()
   const scrollBox = await timeline.boundingBox()

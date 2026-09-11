@@ -15,38 +15,6 @@
   import { todayISO } from './planner'
   import type { Goal, GoalCompletion } from './types'
 
-  type GoalRhythmMode =
-    | 'flow'
-    | 'flow-tint'
-    | 'flow-halo'
-    | 'flow-ghost'
-    | 'flow-orbit'
-    | 'flow-line'
-    | 'flow-dots'
-    | 'flow-tide'
-    | 'mosaic'
-    | 'columns'
-    | 'signal'
-    | 'ledger'
-    | 'aurora'
-    | 'constellation'
-
-  const GOAL_RHYTHM_MODE_KEY = 'balance.goalRhythmMode.v1'
-  // Goal Rhythm choices are saved in localStorage. Never reuse retired IDs:
-  // keep their type and CSS renderer available for compatibility, but leave
-  // them out of this active picker catalog so old selections fall back to Flow.
-  const GOAL_RHYTHM_MODES: Array<{ id: GoalRhythmMode; label: string; glyph: string }> = [
-    { id: 'flow', label: 'Flow', glyph: '≋' },
-    { id: 'flow-tint', label: 'Flow Tint', glyph: '◌' },
-    { id: 'flow-halo', label: 'Flow Halo', glyph: '⊙' },
-    { id: 'mosaic', label: 'Mosaic', glyph: '▦' },
-    { id: 'columns', label: 'Columns', glyph: '▥' },
-    { id: 'signal', label: 'Signal', glyph: '•—' },
-    { id: 'ledger', label: 'Ledger', glyph: '≡' },
-    { id: 'aurora', label: 'Aurora', glyph: '✦' },
-    { id: 'constellation', label: 'Constellation', glyph: '✷' },
-  ]
-
   export let goals: Goal[]
   export let completions: GoalCompletion[]
   export let viewedDate: string = todayISO()
@@ -58,12 +26,6 @@
   export let scrollRequest: { goalId: string; nonce: number } | null = null
 
   let search = ''
-  let rhythmMode: GoalRhythmMode = 'flow'
-  let previewedRhythmMode: GoalRhythmMode | null = null
-  let rhythmModeMenuOpen = false
-  let rhythmModePickerEl: HTMLDivElement | undefined
-  let rhythmModeTriggerEl: HTMLButtonElement | undefined
-  let rhythmModeMenuEl: HTMLDivElement | undefined
   let scrollEl: HTMLDivElement | undefined
   let namePaneEl: HTMLDivElement | undefined
   let mounted = false
@@ -81,8 +43,6 @@
   // enough to avoid delayed paints while scrolling, but still small enough for
   // content-visibility to skip most of the offscreen timeline.
   const DAY_CHUNK_SIZE = 48
-
-  $: displayedRhythmMode = previewedRhythmMode ?? rhythmMode
 
   function chunksOf<T>(values: T[]): T[][] {
     const chunks: T[][] = []
@@ -103,7 +63,6 @@
       search = ''
       highlightedGoalId = null
       copiedGoalId = null
-      previewedRhythmMode = null
       lastCenteredStartDate = null
       lastHandledScrollNonce = -1
       if (copyResetTimer) clearTimeout(copyResetTimer)
@@ -246,73 +205,17 @@
   onMount(() => {
     mounted = true
 
-    const storedRhythmMode = localStorage.getItem(GOAL_RHYTHM_MODE_KEY)
-    if (GOAL_RHYTHM_MODES.some((mode) => mode.id === storedRhythmMode)) {
-      rhythmMode = storedRhythmMode as GoalRhythmMode
-    }
-
     const dayTimer = setInterval(refreshDay, 60_000)
-    const closeRhythmModeMenu = (event: PointerEvent) => {
-      const target = event.target
-      if (target instanceof Node && !rhythmModePickerEl?.contains(target)) {
-        previewedRhythmMode = null
-        rhythmModeMenuOpen = false
-      }
-    }
     window.addEventListener('focus', refreshDay)
     document.addEventListener('visibilitychange', refreshDay)
-    document.addEventListener('pointerdown', closeRhythmModeMenu)
     return () => {
       clearInterval(dayTimer)
       if (copyResetTimer) clearTimeout(copyResetTimer)
       if (highlightResetTimer) clearTimeout(highlightResetTimer)
       window.removeEventListener('focus', refreshDay)
       document.removeEventListener('visibilitychange', refreshDay)
-      document.removeEventListener('pointerdown', closeRhythmModeMenu)
     }
   })
-
-  async function chooseRhythmMode(nextMode: GoalRhythmMode) {
-    rhythmModeMenuEl?.classList.add('suppress-hover')
-    previewedRhythmMode = null
-    rhythmMode = nextMode
-    localStorage.setItem(GOAL_RHYTHM_MODE_KEY, rhythmMode)
-    rhythmModeMenuOpen = false
-    await tick()
-    rhythmModeTriggerEl?.focus()
-  }
-
-  function previewRhythmMode(nextMode: GoalRhythmMode, event: PointerEvent) {
-    if (event.pointerType === 'touch') return
-    rhythmModeMenuEl?.classList.remove('suppress-hover')
-    previewedRhythmMode = nextMode
-  }
-
-  function clearRhythmModePreview() {
-    previewedRhythmMode = null
-  }
-
-  async function handleRhythmModeTriggerKeydown(event: KeyboardEvent) {
-    if (event.key === 'Escape') {
-      event.preventDefault()
-      previewedRhythmMode = null
-      rhythmModeMenuOpen = false
-      return
-    }
-    if (event.key !== 'ArrowDown') return
-    event.preventDefault()
-    rhythmModeMenuOpen = true
-    await tick()
-    rhythmModeMenuEl?.querySelector<HTMLButtonElement>('button')?.focus()
-  }
-
-  function handleRhythmModeMenuKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape') return
-    event.preventDefault()
-    previewedRhythmMode = null
-    rhythmModeMenuOpen = false
-    rhythmModeTriggerEl?.focus()
-  }
 
   async function copyGoalName(event: MouseEvent, goal: Goal) {
     event.stopPropagation()
@@ -356,7 +259,6 @@
 <section
   class="goal-history-panel"
   aria-label="Goal history"
-  data-rhythm-mode={displayedRhythmMode}
   hidden={!visible}
 >
   {#if onResizeStart}
@@ -369,59 +271,6 @@
     ></div>
   {/if}
   <header class="goal-history-toolbar">
-    <div
-      class="goal-rhythm-mode-pill"
-      class:open={rhythmModeMenuOpen}
-      role="group"
-      aria-label="Goal Rhythm style picker"
-      style={`--goal-rhythm-menu-offset: ${-3.5 - GOAL_RHYTHM_MODES.findIndex((mode) => mode.id === rhythmMode) * 27}px`}
-      bind:this={rhythmModePickerEl}
-      on:pointermove={() => rhythmModeMenuEl?.classList.remove('suppress-hover')}
-      on:pointerleave={clearRhythmModePreview}
-    >
-      <button
-        class="goal-rhythm-mode-trigger"
-        type="button"
-        aria-label="Choose Goal Rhythm style"
-        aria-haspopup="menu"
-        aria-expanded={rhythmModeMenuOpen}
-        title="Hover to change Goal Rhythm style"
-        bind:this={rhythmModeTriggerEl}
-        on:click={() => (rhythmModeMenuOpen = !rhythmModeMenuOpen)}
-        on:keydown={handleRhythmModeTriggerKeydown}
-      >
-        <span class="goal-rhythm-mode-glyph" aria-hidden="true">
-          {GOAL_RHYTHM_MODES.find((mode) => mode.id === rhythmMode)?.glyph}
-        </span>
-        <span class="goal-rhythm-mode-label">
-          {GOAL_RHYTHM_MODES.find((mode) => mode.id === rhythmMode)?.label}
-        </span>
-        <span class="goal-rhythm-mode-arrow" aria-hidden="true">⌄</span>
-      </button>
-      <div
-        class="goal-rhythm-mode-menu"
-        role="menu"
-        aria-label="Goal Rhythm style options"
-        tabindex="-1"
-        bind:this={rhythmModeMenuEl}
-        on:pointerleave={clearRhythmModePreview}
-        on:keydown={handleRhythmModeMenuKeydown}
-      >
-        {#each GOAL_RHYTHM_MODES as mode (mode.id)}
-          <button
-            type="button"
-            role="menuitemradio"
-            aria-checked={rhythmMode === mode.id}
-            class:selected={rhythmMode === mode.id}
-            on:pointermove={(event) => previewRhythmMode(mode.id, event)}
-            on:click={() => chooseRhythmMode(mode.id)}
-          >
-            <span aria-hidden="true">{mode.glyph}</span>
-            {mode.label}
-          </button>
-        {/each}
-      </div>
-    </div>
     <div class="goal-history-title">
       <strong>Goal rhythm</strong>
       <span>{goalDeadlineSummary.overdue} overdue, {goalDeadlineSummary.upcoming} upcoming in the next 3 days</span>

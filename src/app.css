@@ -4334,119 +4334,6 @@ body.mobile-checkbox-dragging {
   gap: 8px;
 }
 
-.goal-rhythm-mode-pill {
-  position: relative;
-  height: 28px;
-  flex: 0 0 auto;
-  z-index: 12;
-}
-
-.goal-rhythm-mode-trigger {
-  display: flex;
-  width: 138px;
-  height: 28px;
-  align-items: center;
-  gap: 4px;
-  border: 1px solid color-mix(in srgb, var(--line-strong) 80%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--sidebar) 72%, var(--paper));
-  box-shadow: inset 0 1px 0 color-mix(in srgb, white 44%, transparent);
-  padding: 0 6px 0 9px;
-  color: var(--ink);
-}
-
-.goal-rhythm-mode-pill:hover .goal-rhythm-mode-trigger,
-.goal-rhythm-mode-pill.open .goal-rhythm-mode-trigger {
-  border-color: var(--accent);
-  background: var(--active-nav);
-  opacity: 0;
-}
-
-.goal-rhythm-mode-trigger:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.goal-rhythm-mode-glyph {
-  width: 16px;
-  color: var(--accent-strong);
-  font-size: 13px;
-  font-weight: 800;
-  line-height: 1;
-  text-align: center;
-}
-
-.goal-rhythm-mode-label {
-  min-width: 0;
-  flex: 1 1 auto;
-  overflow: hidden;
-  color: var(--ink);
-  font-size: 11px;
-  font-weight: 700;
-  text-align: left;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.goal-rhythm-mode-arrow {
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1;
-}
-
-.goal-rhythm-mode-menu {
-  position: absolute;
-  top: var(--goal-rhythm-menu-offset);
-  left: 0;
-  display: grid;
-  width: 138px;
-  gap: 1px;
-  border: 1px solid var(--line-strong);
-  border-radius: 12px;
-  background: var(--paper);
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--ink) 18%, transparent);
-  padding: 4px;
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-  transition: opacity 100ms ease, visibility 100ms;
-}
-
-.goal-rhythm-mode-pill:hover .goal-rhythm-mode-menu,
-.goal-rhythm-mode-pill.open .goal-rhythm-mode-menu {
-  opacity: 1;
-  pointer-events: auto;
-  visibility: visible;
-}
-
-.goal-rhythm-mode-menu button {
-  display: grid;
-  min-width: 0;
-  height: 26px;
-  grid-template-columns: 18px minmax(0, 1fr);
-  align-items: center;
-  gap: 6px;
-  border-color: transparent;
-  background: transparent;
-  padding: 0 9px;
-  color: var(--ink);
-  font-size: 12px;
-  font-weight: 650;
-  text-align: left;
-}
-
-.goal-rhythm-mode-menu:not(.suppress-hover) button:hover,
-.goal-rhythm-mode-menu button:focus-visible {
-  border-color: var(--line);
-  background: var(--active-nav);
-  outline: 0;
-}
-
-.goal-rhythm-mode-menu button.selected {
-  background: color-mix(in srgb, var(--active-nav) 78%, var(--paper));
-  color: var(--accent-strong);
-}
-
 .goal-history-toolbar > button {
   margin-left: auto;
 }
@@ -4454,15 +4341,6 @@ body.mobile-checkbox-dragging {
 .goal-history-toolbar span {
   color: var(--muted);
   font-size: 11px;
-}
-
-.goal-history-toolbar .goal-rhythm-mode-glyph {
-  color: var(--accent-strong);
-  font-size: 13px;
-}
-
-.goal-history-toolbar .goal-rhythm-mode-label {
-  color: var(--ink);
 }
 
 .goal-history-search-field {
@@ -4798,34 +4676,31 @@ body.mobile-checkbox-dragging {
   background: hsl(var(--goal-hue) 55% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%)));
 }
 
+/* Explicit semicircles keep the cap and straight border geometry aligned. */
 .goal-day-cell.segment-start {
   border-left: 1px solid hsl(var(--goal-hue) 45% calc(var(--goal-segment-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.45);
-  border-radius: 999px 0 0 999px;
+  border-radius: 15px 0 0 15px;
 }
 
 .goal-day-cell.segment-end {
   border-right: 1px solid hsl(var(--goal-hue) 45% calc(var(--goal-segment-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.45);
-  border-radius: 0 999px 999px 0;
+  border-radius: 0 15px 15px 0;
 }
 
 .goal-day-cell.segment-start.segment-end {
-  border-radius: 999px;
+  border-radius: 15px;
 }
 
 .goal-day-cell.active.current-period {
-  border-top-width: 1.5px;
-  border-bottom-width: 1.5px;
   border-top-color: hsl(var(--goal-hue) 48% calc(var(--goal-segment-current-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.7);
   border-bottom-color: hsl(var(--goal-hue) 48% calc(var(--goal-segment-current-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.7);
 }
 
 .goal-day-cell.segment-start.current-period {
-  border-left-width: 1.5px;
   border-left-color: hsl(var(--goal-hue) 48% calc(var(--goal-segment-current-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.7);
 }
 
 .goal-day-cell.segment-end.current-period {
-  border-right-width: 1.5px;
   border-right-color: hsl(var(--goal-hue) 48% calc(var(--goal-segment-current-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.7);
 }
 
@@ -4835,34 +4710,15 @@ body.mobile-checkbox-dragging {
   background: hsl(var(--goal-hue) 58% calc(var(--goal-segment-completed-bg-lightness) + var(--goal-lightness-shift, 0%)));
 }
 
-/* A red tint + cross-hatch makes overdue days unmistakable without painting the
-   whole cell a loud solid red. Both live in one ::before overlay (above the
-   cell's normal background, behind the open-circle mark) so the run's edges can
-   be feathered into the surrounding cells with a mask. */
+/* Tint fills each overdue day uniformly, including the first day of a run. */
 .goal-day-cell.overdue::before,
 .goal-recent-day.overdue::before {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background-color: color-mix(in srgb, var(--danger) 18%, var(--paper));
-  background-image:
-    repeating-linear-gradient(45deg, transparent 0 4px, color-mix(in srgb, var(--danger) 30%, transparent) 4px 5px),
-    repeating-linear-gradient(-45deg, transparent 0 4px, color-mix(in srgb, var(--danger) 30%, transparent) 4px 5px);
+  background-color: color-mix(in srgb, var(--danger) 10%, transparent);
   content: "";
   pointer-events: none;
-}
-
-/* Soften only the left seam where the overdue run begins, so the red fades in
-   over ~7px instead of butting hard against the day before it. The right end
-   keeps a crisp edge so the hatch fills cleanly to the rounded segment cap. */
-.goal-day-cell:not(.overdue) + .goal-day-cell.overdue::before {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 7px);
-  mask-image: linear-gradient(to right, transparent, #000 7px);
-}
-
-.goal-recent-days li:not(.overdue) + li.overdue .goal-recent-day::before {
-  -webkit-mask-image: linear-gradient(to right, transparent, #000 7px);
-  mask-image: linear-gradient(to right, transparent, #000 7px);
 }
 
 .goal-day-cell.viewed::after {
@@ -4921,19 +4777,8 @@ body.mobile-checkbox-dragging {
   padding-block: 5px;
 }
 
-/* The Flow family shares one connected cadence band. Its variants change only
-   the overdue overlay so switching between them keeps every other visual cue
-   in place. */
-.goal-history-panel:is(
-  [data-rhythm-mode='flow'],
-  [data-rhythm-mode='flow-tint'],
-  [data-rhythm-mode='flow-halo'],
-  [data-rhythm-mode='flow-ghost'],
-  [data-rhythm-mode='flow-orbit'],
-  [data-rhythm-mode='flow-line'],
-  [data-rhythm-mode='flow-dots'],
-  [data-rhythm-mode='flow-tide']
-) .goal-day-cell.active {
+/* Goal Rhythm always uses Flow Tint. */
+.goal-history-panel .goal-day-cell.active {
   background-image: linear-gradient(
     105deg,
     hsl(var(--goal-hue) 55% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%))),
@@ -4941,368 +4786,17 @@ body.mobile-checkbox-dragging {
   );
 }
 
-.goal-history-panel:is(
-  [data-rhythm-mode='flow'],
-  [data-rhythm-mode='flow-tint'],
-  [data-rhythm-mode='flow-halo'],
-  [data-rhythm-mode='flow-ghost'],
-  [data-rhythm-mode='flow-orbit'],
-  [data-rhythm-mode='flow-line'],
-  [data-rhythm-mode='flow-dots'],
-  [data-rhythm-mode='flow-tide']
-) .goal-history-name:nth-child(even),
-.goal-history-panel:is(
-  [data-rhythm-mode='flow'],
-  [data-rhythm-mode='flow-tint'],
-  [data-rhythm-mode='flow-halo'],
-  [data-rhythm-mode='flow-ghost'],
-  [data-rhythm-mode='flow-orbit'],
-  [data-rhythm-mode='flow-line'],
-  [data-rhythm-mode='flow-dots'],
-  [data-rhythm-mode='flow-tide']
-) .goal-history-day-row:nth-child(odd) {
+.goal-history-name:nth-child(even),
+.goal-history-day-row:nth-child(odd) {
   background: color-mix(in srgb, var(--sidebar) 28%, transparent);
 }
 
 /* Flow Tint — a quiet wash distinguishes overdue days without a pattern. */
-.goal-history-panel[data-rhythm-mode='flow-tint'] .goal-history-name.overdue {
+.goal-history-name.overdue {
   background-image: linear-gradient(
     color-mix(in srgb, var(--danger) 10%, transparent),
     color-mix(in srgb, var(--danger) 10%, transparent)
   );
-}
-
-.goal-history-panel[data-rhythm-mode='flow-tint'] .goal-cell-mark.overdue-mark {
-  font-size: 12px;
-}
-
-.goal-history-panel[data-rhythm-mode='flow-tint'] .goal-day-cell.overdue::before,
-.goal-recent-day.overdue::before {
-  background-color: color-mix(in srgb, var(--danger) 10%, transparent);
-  background-image: none;
-}
-
-/* Flow Halo — one soft glow gathers around each overdue mark, preserving the
-   open space between days instead of filling the whole overdue run. */
-.goal-history-panel[data-rhythm-mode='flow-halo'] .goal-day-cell.overdue::before {
-  background-color: transparent;
-  background-image: radial-gradient(
-    circle at center,
-    color-mix(in srgb, var(--danger) 18%, transparent) 0 6px,
-    color-mix(in srgb, var(--danger) 8%, transparent) 7px 10px,
-    transparent 13px
-  );
-}
-
-/* Flow Ghost — overdue days recede toward the paper while their marks stay
-   crisp, showing a broken rhythm without adding another danger texture. */
-.goal-history-panel[data-rhythm-mode='flow-ghost'] .goal-day-cell.overdue::before {
-  background-color: color-mix(in srgb, var(--paper) 48%, transparent);
-  background-image: none;
-}
-
-/* Flow Orbit — a fine danger ring circles each overdue mark while leaving both
-   the mark itself and the surrounding goal band open. */
-.goal-history-panel[data-rhythm-mode='flow-orbit'] .goal-day-cell.overdue::before {
-  background-color: transparent;
-  background-image: radial-gradient(
-    circle at center,
-    transparent 0 7.5px,
-    color-mix(in srgb, var(--danger) 24%, transparent) 8px 8.75px,
-    transparent 9.25px 100%
-  );
-}
-
-/* Retired Goal Rhythm renderers stay intact because saved mode IDs may outlive
-   their picker entries. Do not reuse these IDs for another visual treatment. */
-.goal-history-panel[data-rhythm-mode='flow-line'] .goal-day-cell.overdue::before {
-  background-color: transparent;
-  background-image: linear-gradient(
-    to top,
-    color-mix(in srgb, var(--danger) 58%, transparent) 0 2px,
-    transparent 2px 100%
-  );
-}
-
-.goal-history-panel[data-rhythm-mode='flow-dots'] .goal-day-cell.overdue::before {
-  background-color: color-mix(in srgb, var(--danger) 11%, var(--paper));
-  background-image: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--danger) 62%, transparent) 0 1.25px,
-    transparent 1.5px
-  );
-  background-position: 1px 1px;
-  background-size: 6px 6px;
-}
-
-/* Flow Tide — overdue days carry a low, continuous danger-waterline. */
-.goal-history-panel[data-rhythm-mode='flow-tide'] .goal-day-cell.overdue::before {
-  background-color: color-mix(in srgb, var(--danger) 7%, transparent);
-  background-image: linear-gradient(
-    to top,
-    color-mix(in srgb, var(--danger) 31%, var(--paper)) 0 34%,
-    color-mix(in srgb, var(--danger) 68%, transparent) 34% 38%,
-    transparent 38% 100%
-  );
-}
-
-/* Mosaic — each day is a tactile tile instead of part of a continuous band. */
-.goal-history-panel[data-rhythm-mode='mosaic'] .goal-day-cell.active {
-  width: 24px;
-  height: 24px;
-  align-self: center;
-  justify-self: center;
-  border: 1px solid hsl(var(--goal-hue) 42% calc(var(--goal-segment-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.38);
-  border-radius: 7px;
-  background: hsl(var(--goal-hue) 52% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%)));
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 12%, transparent);
-}
-
-.goal-history-panel[data-rhythm-mode='mosaic'] .goal-day-cell.completed,
-.goal-history-panel[data-rhythm-mode='mosaic'] .goal-day-cell.relieved {
-  background: hsl(var(--goal-hue) 58% calc(var(--goal-segment-completed-bg-lightness) + var(--goal-lightness-shift, 0%)));
-}
-
-.goal-history-panel[data-rhythm-mode='mosaic'] .goal-history-name {
-  margin: 3px 4px;
-  width: calc(100% - 8px);
-  height: 24px;
-  border: 1px solid var(--row-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--paper) 90%, var(--sidebar));
-}
-
-.goal-history-panel[data-rhythm-mode='mosaic'] .goal-color-dot {
-  border-radius: 3px;
-}
-
-/* Columns — Mosaic's separated days, but each day becomes one uninterrupted
-   vertical stack across the visible goals. */
-.goal-history-panel[data-rhythm-mode='columns'] .goal-day-cell {
-  width: 24px;
-  height: 30px;
-  align-self: stretch;
-  justify-self: center;
-  border: 0;
-  border-right: 1px solid color-mix(in srgb, var(--line-strong) 52%, transparent);
-  border-left: 1px solid color-mix(in srgb, var(--line-strong) 52%, transparent);
-  border-radius: 0;
-  background: color-mix(in srgb, var(--sidebar) 42%, var(--paper));
-}
-
-.goal-history-panel[data-rhythm-mode='columns'] .goal-day-cell.active {
-  border-right-color: hsl(var(--goal-hue) 42% calc(var(--goal-segment-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.42);
-  border-left-color: hsl(var(--goal-hue) 42% calc(var(--goal-segment-border-lightness) + var(--goal-lightness-shift, 0%)) / 0.42);
-  background: hsl(var(--goal-hue) 52% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%)));
-}
-
-.goal-history-panel[data-rhythm-mode='columns'] .goal-day-cell.completed,
-.goal-history-panel[data-rhythm-mode='columns'] .goal-day-cell.relieved {
-  background: hsl(var(--goal-hue) 58% calc(var(--goal-segment-completed-bg-lightness) + var(--goal-lightness-shift, 0%)));
-}
-
-.goal-history-panel[data-rhythm-mode='columns'] .goal-history-date-row + .goal-history-day-row .goal-day-cell {
-  border-top: 1px solid var(--line-strong);
-  border-radius: 7px 7px 0 0;
-}
-
-.goal-history-panel[data-rhythm-mode='columns'] .goal-history-day-row:last-child .goal-day-cell {
-  border-bottom: 1px solid var(--line-strong);
-  border-radius: 0 0 7px 7px;
-}
-
-.goal-history-panel[data-rhythm-mode='columns'] .goal-history-name {
-  margin: 0 4px;
-  width: calc(100% - 8px);
-  height: 30px;
-  border: 1px solid var(--row-border);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--paper) 90%, var(--sidebar));
-}
-
-.goal-history-panel[data-rhythm-mode='columns'] .goal-color-dot {
-  border-radius: 3px;
-}
-
-/* Signal — a low-ink timeline where cadence is the wire and state is the bead. */
-.goal-history-panel[data-rhythm-mode='signal'] .goal-day-cell.active {
-  border: 0;
-  border-bottom: 1px solid var(--row-border);
-  border-radius: 0;
-  background: linear-gradient(
-    to bottom,
-    transparent calc(50% - 1px),
-    hsl(var(--goal-hue) 48% calc(52% + var(--goal-lightness-shift, 0%)) / 0.5) calc(50% - 1px),
-    hsl(var(--goal-hue) 48% calc(52% + var(--goal-lightness-shift, 0%)) / 0.5) calc(50% + 1px),
-    transparent calc(50% + 1px)
-  );
-}
-
-.goal-history-panel[data-rhythm-mode='signal'] .goal-cell-mark {
-  width: 11px;
-  height: 11px;
-  border-radius: 999px;
-  font-size: 8px;
-}
-
-.goal-history-panel[data-rhythm-mode='signal'] .goal-cell-mark.checked {
-  border: 3px solid var(--paper);
-  background: hsl(var(--goal-hue) 60% calc(43% + var(--goal-lightness-shift, 0%)));
-  box-shadow: 0 0 0 1px hsl(var(--goal-hue) 52% calc(43% + var(--goal-lightness-shift, 0%)));
-  color: transparent;
-}
-
-.goal-history-panel[data-rhythm-mode='signal'] .goal-history-name {
-  border-bottom-style: dotted;
-}
-
-.goal-history-panel[data-rhythm-mode='signal'] .goal-color-dot {
-  width: 3px;
-  height: 18px;
-  border-radius: 999px;
-}
-
-/* Ledger — dense ruled rows and square status stamps for a logbook feel. */
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-history-name,
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-date-head {
-  font-family: var(--font-mono);
-}
-
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-history-name,
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-day-cell {
-  border-bottom-color: color-mix(in srgb, var(--line-strong) 72%, transparent);
-}
-
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-day-cell.active {
-  border-block: 0;
-  border-left: 1px dotted hsl(var(--goal-hue) 42% calc(48% + var(--goal-lightness-shift, 0%)) / 0.45);
-  border-radius: 0;
-  background: color-mix(
-    in srgb,
-    hsl(var(--goal-hue) 62% calc(84% + var(--goal-lightness-shift, 0%))) 62%,
-    var(--paper)
-  );
-}
-
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-cell-mark,
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-cell-mark.open {
-  border-radius: 2px;
-}
-
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-color-dot {
-  border-radius: 1px;
-  transform: rotate(45deg) scale(0.78);
-}
-
-.goal-history-panel[data-rhythm-mode='ledger'] .goal-lapse {
-  border: 1px solid var(--line);
-  border-radius: 3px;
-  background: transparent;
-}
-
-/* Aurora — soft, static pools of color; intentionally animation-free so the
-   panel's thousands of cells remain cheap to style and paint. */
-.goal-history-panel[data-rhythm-mode='aurora'] {
-  background: color-mix(in srgb, var(--paper) 94%, var(--accent-soft));
-}
-
-.goal-history-panel[data-rhythm-mode='aurora'] .goal-history-name-backdrop {
-  background-color: color-mix(in srgb, var(--paper-strong) 94%, var(--accent));
-}
-
-.goal-history-panel[data-rhythm-mode='aurora'] .goal-history-name-header {
-  background-color: color-mix(in srgb, var(--paper-strong) 94%, var(--accent));
-}
-
-.goal-history-panel[data-rhythm-mode='aurora'] :is(.goal-date-head, .goal-history-name) {
-  background-color: color-mix(in srgb, var(--paper) 91%, var(--accent-soft));
-}
-
-.goal-history-panel[data-rhythm-mode='aurora'] .goal-day-cell.active {
-  border-color: transparent;
-  background-image: radial-gradient(
-    circle at 50% 45%,
-    hsl(var(--goal-hue) 70% calc(var(--goal-segment-completed-bg-lightness) + var(--goal-lightness-shift, 0%))) 0,
-    hsl(var(--goal-hue) 55% calc(var(--goal-segment-bg-lightness) + var(--goal-lightness-shift, 0%))) 68%,
-    transparent 72%
-  );
-}
-
-.goal-history-panel[data-rhythm-mode='aurora'] .goal-day-cell.segment-start,
-.goal-history-panel[data-rhythm-mode='aurora'] .goal-day-cell.segment-end {
-  border-color: transparent;
-}
-
-.goal-history-panel[data-rhythm-mode='aurora'] .goal-cell-mark {
-  box-shadow: 0 0 0 3px hsl(var(--goal-hue) 65% 70% / 0.12);
-}
-
-.goal-history-panel[data-rhythm-mode='aurora'] .goal-color-dot {
-  width: 10px;
-  height: 10px;
-  box-shadow: 0 0 0 3px hsl(var(--goal-hue) 65% 60% / 0.14);
-}
-
-/* Constellation — fine zig-zag threads turn completions into bright waypoints.
-   The alternating slopes are static cell backgrounds, keeping the star map
-   cheap even across the full history. */
-.goal-history-panel[data-rhythm-mode='constellation'] {
-  background: color-mix(in srgb, var(--paper) 94%, var(--ink));
-}
-
-.goal-history-panel[data-rhythm-mode='constellation'] .goal-history-name-backdrop {
-  background-color: color-mix(in srgb, var(--paper-strong) 96%, var(--ink));
-}
-
-.goal-history-panel[data-rhythm-mode='constellation'] .goal-history-name-header {
-  background-color: color-mix(in srgb, var(--paper-strong) 96%, var(--ink));
-}
-
-.goal-history-panel[data-rhythm-mode='constellation'] :is(.goal-date-head, .goal-history-name) {
-  background-color: color-mix(in srgb, var(--paper) 96%, var(--ink));
-}
-
-.goal-history-panel[data-rhythm-mode='constellation'] .goal-day-cell.active {
-  border-color: transparent;
-  border-radius: 0;
-  background-color: transparent;
-  background-image: linear-gradient(
-    28deg,
-    transparent calc(50% - 1px),
-    hsl(var(--goal-hue) 58% calc(54% + var(--goal-lightness-shift, 0%)) / 0.44) 50%,
-    transparent calc(50% + 1px)
-  );
-}
-
-.goal-history-panel[data-rhythm-mode='constellation'] .goal-day-cell.active:nth-child(even) {
-  background-image: linear-gradient(
-    -28deg,
-    transparent calc(50% - 1px),
-    hsl(var(--goal-hue) 58% calc(54% + var(--goal-lightness-shift, 0%)) / 0.44) 50%,
-    transparent calc(50% + 1px)
-  );
-}
-
-.goal-history-panel[data-rhythm-mode='constellation'] .goal-cell-mark {
-  width: 12px;
-  height: 12px;
-  border-radius: 2px;
-  transform: rotate(45deg);
-}
-
-.goal-history-panel[data-rhythm-mode='constellation'] .goal-cell-mark.checked {
-  border: 0;
-  border-radius: 0;
-  clip-path: polygon(50% 0, 62% 36%, 100% 50%, 62% 64%, 50% 100%, 38% 64%, 0 50%, 38% 36%);
-  box-shadow: 0 0 0 3px hsl(var(--goal-hue) 68% 65% / 0.16);
-  color: transparent;
-  transform: none;
-}
-
-.goal-history-panel[data-rhythm-mode='constellation'] .goal-color-dot {
-  border-radius: 2px;
-  box-shadow: 0 0 0 3px hsl(var(--goal-hue) 65% 60% / 0.12);
-  transform: rotate(45deg) scale(0.75);
 }
 
 @media (max-width: 760px) {
@@ -5695,11 +5189,6 @@ body.mobile-checkbox-dragging {
     display: none;
   }
 
-  .goal-rhythm-mode-trigger {
-    min-width: 104px;
-    padding-left: 7px;
-  }
-
   .goal-history-search-field {
     flex-basis: 120px;
   }
@@ -5710,45 +5199,10 @@ body.mobile-checkbox-dragging {
     white-space: nowrap;
   }
 
-  /* On phones, each visual language also chooses how much space belongs to
-     goal names versus the timeline: overview modes expose more days, while
-     reading-oriented modes preserve more of each name. */
-  .goal-history-panel:is(
-    [data-rhythm-mode='flow'],
-    [data-rhythm-mode='flow-tint'],
-    [data-rhythm-mode='flow-halo'],
-    [data-rhythm-mode='flow-ghost'],
-    [data-rhythm-mode='flow-orbit'],
-    [data-rhythm-mode='flow-line'],
-    [data-rhythm-mode='flow-dots'],
-    [data-rhythm-mode='flow-tide']
-  ) .goal-history-body {
+  .goal-history-body {
     --goal-name-pane-width: min(58vw, 210px);
   }
 
-  .goal-history-panel[data-rhythm-mode='mosaic'] .goal-history-body {
-    --goal-name-pane-width: min(48vw, 174px);
-  }
-
-  .goal-history-panel[data-rhythm-mode='columns'] .goal-history-body {
-    --goal-name-pane-width: min(48vw, 174px);
-  }
-
-  .goal-history-panel[data-rhythm-mode='signal'] .goal-history-body {
-    --goal-name-pane-width: min(40vw, 150px);
-  }
-
-  .goal-history-panel[data-rhythm-mode='ledger'] .goal-history-body {
-    --goal-name-pane-width: min(62vw, 224px);
-  }
-
-  .goal-history-panel[data-rhythm-mode='aurora'] .goal-history-body {
-    --goal-name-pane-width: min(52vw, 188px);
-  }
-
-  .goal-history-panel[data-rhythm-mode='constellation'] .goal-history-body {
-    --goal-name-pane-width: min(44vw, 160px);
-  }
 }
 
 /* Keep user-authored content on the same Rounded stack as the interface. */
