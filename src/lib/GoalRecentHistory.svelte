@@ -1,4 +1,5 @@
 <script lang="ts">
+  import GoalCheckmark from './GoalCheckmark.svelte'
   import { buildGoalDayCells, shiftISODate } from './goals'
   import type { Goal, GoalCompletion } from './types'
 
@@ -79,12 +80,10 @@
         >
           <span class="goal-recent-day-tooltip" aria-hidden="true">{tooltipDateLabel(cell.date)}</span>
           {#if cell.completed}
-            <span aria-hidden="true">✓</span>
+            <span aria-hidden="true"><GoalCheckmark /></span>
           {:else if cell.relieved}
             <span class="goal-cell-mark relieved-mark" aria-hidden="true">
-              <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="m3 8 3 3 7-7" />
-              </svg>
+              <GoalCheckmark />
             </span>
           {:else if cell.overdue}
             <span class="goal-cell-mark overdue-mark" aria-hidden="true">

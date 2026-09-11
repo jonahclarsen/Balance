@@ -1,4 +1,5 @@
 <script lang="ts">
+  import GoalCheckmark from './GoalCheckmark.svelte'
   import { onMount, tick } from 'svelte'
   import {
     buildGoalDayCells,
@@ -553,9 +554,9 @@
                     title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.overdue ? ' · overdue' : cell.missed ? ' · missed' : cell.active ? ' · active' : ' · inactive'}`}
                   >
                     {#if cell.completed}
-                      <span class="goal-cell-mark checked">✓</span>
+                      <span class="goal-cell-mark checked"><GoalCheckmark /></span>
                     {:else if cell.relieved}
-                      <span class="goal-cell-mark relieved-mark">✓</span>
+                      <span class="goal-cell-mark relieved-mark"><GoalCheckmark /></span>
                     {:else if cell.overdue}
                       <span class="goal-cell-mark overdue-mark">
                         <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true">
