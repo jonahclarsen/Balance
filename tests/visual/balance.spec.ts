@@ -1132,8 +1132,9 @@ test('Cmd or Ctrl+F reports match position and wraps in both directions', async 
   await expect(lastTarget).toBeInViewport()
 })
 
-test('Cmd or Ctrl+F focuses goal search on the Goals page', async ({ page }) => {
+test('Cmd or Ctrl+F focuses goal search on the Goals page', async ({ page, isMobile }) => {
   await page.goto('/')
+  if (isMobile) await page.getByRole('button', { name: 'Open navigation', exact: true }).click()
   await page.getByRole('button', { name: 'Goals', exact: true }).click()
 
   const goalSearch = page.locator('.goal-search-input')

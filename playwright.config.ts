@@ -21,6 +21,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'webkit-images', testMatch: /images\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
+    { name: 'webkit-document-find', testMatch: /document-find\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
     {
       name: 'desktop',
       use: {

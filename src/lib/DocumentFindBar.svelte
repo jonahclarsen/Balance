@@ -8,6 +8,7 @@
   let found: boolean | null = null
   let findTimeout: number | null = null
   let focusTimeout: number | null = null
+  let refreshTimeout: number | null = null
   let highlightedQuery = ''
   let highlightedRange: Range | null = null
   let matchRanges: Range[] = []
@@ -15,12 +16,32 @@
   let highlightRects: Array<{ top: number; left: number; width: number; height: number }> = []
 
   const highlightName = 'balance-document-find-match'
+  const findUISelector = '.document-find, .find-match-overlay'
 
   onMount(() => {
     void focus()
     window.addEventListener('scroll', updateHighlightRects, true)
     window.addEventListener('resize', updateHighlightRects)
+    const observer = new MutationObserver((records) => {
+      if (!query || !records.some(isDocumentChange)) return
+      if (refreshTimeout !== null) return
+      refreshTimeout = window.setTimeout(() => {
+        refreshTimeout = null
+        // A pending query change performs its own search and scroll.
+        if (findTimeout !== null) return
+        refreshMatches()
+        showHighlight()
+      }, 100)
+    })
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'aria-hidden'],
+    })
     return () => {
+      observer.disconnect()
       window.removeEventListener('scroll', updateHighlightRects, true)
       window.removeEventListener('resize', updateHighlightRects)
     }
@@ -35,8 +56,22 @@
   onDestroy(() => {
     if (findTimeout !== null) window.clearTimeout(findTimeout)
     if (focusTimeout !== null) window.clearTimeout(focusTimeout)
+    if (refreshTimeout !== null) window.clearTimeout(refreshTimeout)
     CSS.highlights.delete(highlightName)
   })
+
+  function isDocumentChange(record: MutationRecord): boolean {
+    const target = record.target instanceof Element ? record.target : record.target.parentElement
+    if (target?.closest(findUISelector)) return false
+    if (record.type !== 'childList') return true
+    // The overlay is mounted alongside the document, so ignore its insertion
+    // and removal too; otherwise highlighting would trigger another search.
+    return [...record.addedNodes, ...record.removedNodes].some((node) =>
+      node instanceof Element
+        ? !node.matches(findUISelector)
+        : node instanceof Text && Boolean(node.data.trim()),
+    )
+  }
 
   function clearHighlight() {
     highlightedQuery = ''
@@ -177,6 +212,38 @@
     }, 100)
   }
 
+  function refreshMatches() {
+    if (!query) {
+      found = null
+      clearHighlight()
+      return
+    }
+
+    const previousRange = highlightedQuery === query ? highlightedRange : null
+    matchRanges = findTextRanges(query)
+    const retainedIndex = previousRange ? matchRanges.findIndex((range) =>
+      range.startContainer === previousRange.startContainer
+      && range.startOffset === previousRange.startOffset
+      && range.endContainer === previousRange.endContainer
+      && range.endOffset === previousRange.endOffset,
+    ) : -1
+    activeMatchIndex = matchRanges.length === 0 ? -1
+      : retainedIndex !== -1 ? retainedIndex
+      : Math.min(Math.max(activeMatchIndex, 0), matchRanges.length - 1)
+    highlightedQuery = query
+    found = matchRanges.length > 0
+    highlightedRange = matchRanges[activeMatchIndex] ?? null
+  }
+
+  function showHighlight(scroll = false) {
+    CSS.highlights.delete(highlightName)
+    if (highlightedRange) {
+      CSS.highlights.set(highlightName, new Highlight(highlightedRange))
+      if (scroll) scrollRangeIntoView(highlightedRange)
+    }
+    updateHighlightRects()
+  }
+
   function find(backwards = false) {
     if (findTimeout !== null) {
       window.clearTimeout(findTimeout)
@@ -192,18 +259,12 @@
     const selectionStart = input?.selectionStart ?? query.length
     const selectionEnd = input?.selectionEnd ?? selectionStart
 
-    const canReuseMatches = highlightedQuery === query
-      && matchRanges.length > 0
-      && matchRanges.every((range) => range.startContainer.isConnected && range.endContainer.isConnected)
-    if (!canReuseMatches) {
-      matchRanges = findTextRanges(query)
-      activeMatchIndex = -1
-    }
-
-    found = matchRanges.length > 0
-    highlightedQuery = query
+    const advance = highlightedQuery === query && matchRanges.length > 0
+    // DOM Ranges are live: removing a task can move their endpoints onto a
+    // connected ancestor. isConnected alone cannot validate cached matches.
+    refreshMatches()
     if (found) {
-      activeMatchIndex = activeMatchIndex === -1
+      activeMatchIndex = !advance
         ? (backwards ? matchRanges.length - 1 : 0)
         : (activeMatchIndex + (backwards ? -1 : 1) + matchRanges.length) % matchRanges.length
       highlightedRange = matchRanges[activeMatchIndex]
@@ -213,12 +274,7 @@
       highlightRects = []
     }
 
-    CSS.highlights.delete(highlightName)
-    if (highlightedRange) {
-      CSS.highlights.set(highlightName, new Highlight(highlightedRange))
-      scrollRangeIntoView(highlightedRange)
-      updateHighlightRects()
-    }
+    showHighlight(true)
 
     if (focusTimeout !== null) window.clearTimeout(focusTimeout)
     focusTimeout = window.setTimeout(() => {
