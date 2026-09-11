@@ -4059,6 +4059,33 @@ test('cmd backspace outdents children once when there is no preceding sibling', 
     })
 })
 
+test('adding an item focuses its editor at the caret', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  if (testInfo.project.name === 'mobile') {
+    await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
+  }
+
+  await page.getByRole('button', { name: '+ Add item' }).click()
+
+  await expect.poll(() => page.evaluate(() => {
+    const editor = document.activeElement
+    const selection = document.getSelection()
+    return {
+      id: editor instanceof HTMLElement ? editor.dataset.planTextInputId : null,
+      text: editor?.textContent ?? null,
+      caretAtStart: selection?.isCollapsed && selection.rangeCount > 0 && selection.getRangeAt(0).startOffset === 0,
+    }
+  })).toEqual({
+    id: await page.locator('[data-plan-text-input]').last().getAttribute('data-plan-text-input-id'),
+    text: '',
+    caretAtStart: true,
+  })
+})
+
 test('option backspace clears freshly typed new plan items without leaving newline-only content', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

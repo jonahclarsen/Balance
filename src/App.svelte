@@ -2563,6 +2563,24 @@ return rows`
     focusedPlanId = planId ?? null
   }
 
+  async function addRootPlanItemAndFocus(planId: Id) {
+    focusPane(planId)
+    plannerStore.addRootPlanItem(planId)
+    await tick()
+    const input = Array.from(document.querySelectorAll<HTMLDivElement>(
+      `[data-plan-item-scope="${CSS.escape(planId)}"] [data-plan-text-focus-target]`,
+    )).at(-1)
+    if (!input) return
+
+    input.focus()
+    const range = document.createRange()
+    range.selectNodeContents(input)
+    range.collapse(true)
+    const selection = document.getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+  }
+
   function movePlanItemAcrossDays(
     sourcePlanId: Id,
     sourceItemId: Id,
@@ -5987,7 +6005,7 @@ return rows`
                   />
                 {/each}
 
-                <button class="add-row" type="button" on:click={() => plannerStore.addRootPlanItem(plan.id)}>
+                <button class="add-row" type="button" on:click={() => addRootPlanItemAndFocus(plan.id)}>
                   + Add item
                 </button>
               </div>
