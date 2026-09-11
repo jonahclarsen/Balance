@@ -4758,6 +4758,11 @@ body.mobile-checkbox-dragging {
   color: hsl(var(--goal-hue) 35% calc(48% + var(--goal-lightness-shift, 0%)) / 0.5);
 }
 
+.goal-cell-mark.relieved-mark svg {
+  width: 9px;
+  height: 9px;
+}
+
 .goal-cell-mark.overdue-mark {
   color: var(--danger);
   font-weight: 600;
