@@ -41,6 +41,7 @@ async function storedNavigationAndPlans(page: Page) {
 }
 
 test('Settings hides the preview gallery behind a disclosure with no explanatory blurb', async ({ page }, testInfo) => {
+  if (testInfo.project.name === 'desktop') await page.setViewportSize({ width: 1600, height: 900 })
   await resetBrowserState(page)
   await openSettings(page, testInfo)
 
@@ -82,16 +83,28 @@ test('Settings hides the preview gallery behind a disclosure with no explanatory
 
   const layout = await cards.evaluateAll((buttons) => {
     const firstTop = buttons[0]?.getBoundingClientRect().top
+    const lastTop = buttons.at(-1)?.getBoundingClientRect().top
+    const lastRow = buttons.filter((button) => button.getBoundingClientRect().top === lastTop)
+    const galleryBounds = buttons[0]?.parentElement?.parentElement?.getBoundingClientRect()
+    const firstLastRowBounds = lastRow[0]?.getBoundingClientRect()
+    const finalLastRowBounds = lastRow.at(-1)?.getBoundingClientRect()
     return {
       firstRowCount: buttons.filter((button) => button.getBoundingClientRect().top === firstTop).length,
       firstRowHeight: buttons[0]?.getBoundingClientRect().height,
+      lastRowCount: lastRow.length,
+      lastRowSideGapDifference: Math.abs(
+        (firstLastRowBounds?.left ?? 0) - (galleryBounds?.left ?? 0)
+        - ((galleryBounds?.right ?? 0) - (finalLastRowBounds?.right ?? 0)),
+      ),
       pillCount: document.querySelectorAll(
         '.celebration-intense-badge, .celebration-selected-badge, .celebration-previewing-badge',
       ).length,
     }
   })
-  expect(layout.firstRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 4)
-  if (testInfo.project.name === 'desktop') expect(layout.firstRowHeight).toBeLessThan(250)
+  expect(layout.firstRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 6)
+  expect(layout.lastRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 4)
+  expect(layout.lastRowSideGapDifference).toBeLessThanOrEqual(1)
+  if (testInfo.project.name === 'desktop') expect(layout.firstRowHeight).toBeLessThan(260)
   expect(layout.pillCount).toBe(0)
 })
 

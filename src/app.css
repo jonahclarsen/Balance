@@ -2584,13 +2584,15 @@ body.mobile-checkbox-dragging {
 }
 
 .celebration-options {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 11px;
 }
 
 .celebration-option {
   display: flex;
+  flex: 0 0 calc((100% - 55px) / 6);
   min-width: 0;
 }
 
@@ -2733,26 +2735,26 @@ body.mobile-checkbox-dragging {
 }
 
 @container celebration-picker (max-width: 900px) {
-  .celebration-options {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+  .celebration-option {
+    flex-basis: calc((100% - 33px) / 4);
   }
 }
 
 @container celebration-picker (max-width: 720px) {
-  .celebration-options {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+  .celebration-option {
+    flex-basis: calc((100% - 22px) / 3);
   }
 }
 
 @container celebration-picker (max-width: 560px) {
-  .celebration-options {
-    grid-template-columns: repeat(2, minmax(150px, 1fr));
+  .celebration-option {
+    flex-basis: calc((100% - 11px) / 2);
   }
 }
 
 @container celebration-picker (max-width: 390px) {
-  .celebration-options {
-    grid-template-columns: minmax(0, 1fr);
+  .celebration-option {
+    flex-basis: 100%;
   }
 
   .celebration-option-button {
