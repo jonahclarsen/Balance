@@ -676,7 +676,7 @@
   .mobile-task-menu,
   .mobile-time-editor,
   .export-panel > div,
-  .celebration-option-button:not(.selected),
+  .celebration-option-button,
   .path-row,
   .iridescent-gradient-settings,
   .iridescent-gradient-control:not(.compact),
@@ -713,7 +713,7 @@
   .mobile-task-menu,
   .mobile-time-editor,
   .export-panel > div,
-  .celebration-option-button:not(.selected),
+  .celebration-option-button,
   .path-row,
   .iridescent-gradient-settings,
   .iridescent-gradient-control:not(.compact),
@@ -2588,12 +2588,6 @@ body.mobile-checkbox-dragging {
 .celebration-option-button:focus-visible {
   outline: 2px solid var(--focus-ring, var(--accent));
   outline-offset: 3px;
-}
-
-.celebration-option-button.selected {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--paper-strong) 91%, var(--accent));
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent), var(--shadow);
 }
 
 .celebration-option-art {

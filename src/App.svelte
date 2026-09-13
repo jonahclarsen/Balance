@@ -111,7 +111,6 @@
   import {
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
-    normalizeCompletionCelebrationId,
     type CompletionCelebrationId,
   } from './lib/celebrations'
 
@@ -294,7 +293,6 @@
   let celebrationDate: string | null = null
   let celebrationListId: Id | null = null
   let celebrationKind: 'day' | 'list' | null = null
-  let completionCelebrationId: CompletionCelebrationId = DEFAULT_COMPLETION_CELEBRATION_ID
   let celebrationPreview: CelebrationPreviewSession | null = null
   let celebrationPreviewTimer: number | null = null
   let celebrationPreviewToken = 0
@@ -662,9 +660,6 @@ return rows`
   }
   $: doneTintColor = deviceAppearance.doneTintColor
   $: checkboxColor = deviceAppearance.checkboxColor
-  $: completionCelebrationId = normalizeCompletionCelebrationId(
-    $plannerStore.preferences.completionCelebrationId,
-  )
   $: iridescentGradient = deviceAppearance.iridescentGradient
   $: historicalThemeId = view === 'today'
     && !celebrationPreview
@@ -1121,7 +1116,7 @@ return rows`
       celebrationDate = plan.date
       celebrationListId = null
       celebrationKind = 'day'
-      celebration?.play({ kind: 'day', celebrationId: completionCelebrationId })
+      celebration?.play({ kind: 'day', celebrationId: DEFAULT_COMPLETION_CELEBRATION_ID })
     } else if (wasComplete === true && !complete && celebrationKind === 'day' && celebrationDate === plan.date) {
       dismissCelebration()
     }
@@ -1181,7 +1176,6 @@ return rows`
   }
 
   async function startCelebrationPreview(id: CompletionCelebrationId) {
-    plannerStore.patchPreferences({ completionCelebrationId: id })
     clearCelebrationPreviewTimer()
     dismissCelebration()
     rememberWorkspaceScroll()
@@ -1242,9 +1236,12 @@ return rows`
 
     if (usesWindowScroll()) window.scrollTo(0, preview.settingsScrollTop)
     else if (workspaceEl) workspaceEl.scrollTop = preview.settingsScrollTop
-    document
-      .querySelector<HTMLButtonElement>(`[data-celebration-option="${preview.focusCelebrationId}"]`)
-      ?.focus({ preventScroll: true })
+    const previewButton = document.querySelector<HTMLButtonElement>(
+      `[data-celebration-option="${preview.focusCelebrationId}"]`,
+    )
+    const galleryToggle = document.querySelector<HTMLButtonElement>('[data-celebration-gallery-toggle]')
+    const focusTarget = previewButton ?? galleryToggle
+    focusTarget?.focus({ preventScroll: true })
     celebrationPreviewAnnouncement = 'Preview finished. Settings restored.'
     if (celebrationPreviewAnnouncementTimer !== null) {
       window.clearTimeout(celebrationPreviewAnnouncementTimer)
@@ -6944,8 +6941,7 @@ return rows`
         </section>
 
         <CelebrationSettings
-          selectedId={completionCelebrationId}
-          onSelect={(id) => { void startCelebrationPreview(id) }}
+          onPreview={(id) => { void startCelebrationPreview(id) }}
         />
 
         {#if isMac && !isMobile}

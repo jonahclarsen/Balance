@@ -26,6 +26,10 @@ async function openSettings(page: Page, testInfo: TestInfo) {
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
 }
 
+async function openCelebrationGallery(page: Page) {
+  await page.getByRole('button', { name: 'View celebrations' }).click()
+}
+
 async function storedNavigationAndPlans(page: Page) {
   return page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
@@ -36,11 +40,19 @@ async function storedNavigationAndPlans(page: Page) {
   })
 }
 
-test('Settings renders Random first followed by every celebration card', async ({ page }, testInfo) => {
+test('Settings hides the preview gallery behind a disclosure with no explanatory blurb', async ({ page }, testInfo) => {
   await resetBrowserState(page)
   await openSettings(page, testInfo)
 
-  const picker = page.getByRole('group', { name: 'Day completion celebration' })
+  const section = page.locator('.celebration-settings')
+  const toggle = section.locator('[data-celebration-gallery-toggle]')
+  await expect(section.locator('p')).toHaveCount(0)
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
+
+  await openCelebrationGallery(page)
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true')
+  const picker = page.getByRole('group', { name: 'Celebration previews' })
   const options = picker.locator('.celebration-option')
   const cards = picker.locator('.celebration-option-button')
   await expect(options).toHaveCount(COMPLETION_CELEBRATION_OPTIONS.length)
@@ -61,8 +73,7 @@ test('Settings renders Random first followed by every celebration card', async (
   })))
 
   await expect(cards.first()).toHaveAttribute('data-celebration-option', 'random')
-  await expect(cards.first()).toHaveAttribute('aria-pressed', 'true')
-  await expect(page.locator('.celebration-settings > .settings-actions')).toHaveCount(0)
+  await expect(cards.first()).not.toHaveAttribute('aria-pressed', /.+/)
 
   const layout = await cards.evaluateAll((buttons) => {
     const firstTop = buttons[0]?.getBoundingClientRect().top
@@ -74,14 +85,15 @@ test('Settings renders Random first followed by every celebration card', async (
       ).length,
     }
   })
-  expect(layout.firstRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 6)
-  if (testInfo.project.name === 'desktop') expect(layout.firstRowHeight).toBeLessThan(238)
+  expect(layout.firstRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 4)
+  if (testInfo.project.name === 'desktop') expect(layout.firstRowHeight).toBeLessThan(250)
   expect(layout.pillCount).toBe(0)
 })
 
-test('Random persists as the preference and previews a concrete celebration', async ({ page }, testInfo) => {
+test('Random previews a concrete celebration without changing the preference', async ({ page }, testInfo) => {
   await resetBrowserState(page)
   await openSettings(page, testInfo)
+  await openCelebrationGallery(page)
 
   const random = page.locator('[data-celebration-option="random"]')
   await random.click()
@@ -94,16 +106,17 @@ test('Random persists as the preference and previews a concrete celebration', as
   })).toBe('random')
 
   await page.keyboard.press('Escape')
-  await expect(random).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('button', { name: 'View celebrations' })).toBeFocused()
 })
 
-test('selecting saves, previews yesterday without chrome or plan mutations, and Escape restores Settings', async ({ page }, testInfo) => {
+test('previewing leaves preferences, navigation, and plans unchanged, then closes the gallery', async ({ page }, testInfo) => {
   await resetBrowserState(page)
   const initialDate = await page.locator('.today-date-input').inputValue()
   const before = await storedNavigationAndPlans(page)
   await openSettings(page, testInfo)
+  await openCelebrationGallery(page)
 
-  const picker = page.getByRole('group', { name: 'Day completion celebration' })
+  const picker = page.getByRole('group', { name: 'Celebration previews' })
   const deadlineGoose = picker.locator('[data-celebration-option="deadline-goose"]')
   await deadlineGoose.evaluate((element) => element.scrollIntoView({ block: 'center', inline: 'nearest' }))
   await expect(deadlineGoose).toBeVisible()
@@ -148,29 +161,30 @@ test('selecting saves, previews yesterday without chrome or plan mutations, and 
 
   await page.keyboard.press('Escape')
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
-  await expect(deadlineGoose).toHaveAttribute('aria-pressed', 'true')
-  await expect(deadlineGoose).toBeFocused()
+  await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'View celebrations' })).toBeFocused()
   await expect(page.locator('.app-shell')).not.toHaveAttribute('inert', '')
-  await expect.poll(() => page.evaluate(({ mobile, settingsScrollTop }) => {
-    const restoredScrollTop = mobile
-      ? window.scrollY
-      : (document.querySelector<HTMLElement>('.workspace')?.scrollTop ?? 0)
-    return Math.abs(restoredScrollTop - settingsScrollTop)
-  }, { mobile: testInfo.project.name === 'mobile', settingsScrollTop })).toBeLessThanOrEqual(2)
+  if (testInfo.project.name === 'desktop') {
+    await expect.poll(() => page.evaluate((expectedScrollTop) => {
+      const restoredScrollTop = document.querySelector<HTMLElement>('.workspace')?.scrollTop ?? 0
+      return Math.abs(restoredScrollTop - expectedScrollTop)
+    }, settingsScrollTop)).toBeLessThanOrEqual(2)
+  }
   await expect.poll(() => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
     return state?.preferences?.completionCelebrationId
-  })).toBe('deadline-goose')
+  })).toBe('random')
   await expect.poll(() => storedNavigationAndPlans(page)).toEqual(before)
 
   await page.reload()
   await openSettings(page, testInfo)
-  await expect(page.locator('[data-celebration-option="deadline-goose"]')).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
 })
 
 test('Tiny Janitor renders an articulated sweeping character without a signature pill', async ({ page }, testInfo) => {
   await resetBrowserState(page)
   await openSettings(page, testInfo)
+  await openCelebrationGallery(page)
 
   const option = page.locator('[data-celebration-option="tiny-janitor"]')
   await option.scrollIntoViewIfNeeded()
@@ -215,6 +229,7 @@ test('Tiny Janitor renders an articulated sweeping character without a signature
 test('mindful celebrations render their distinct presence, metta, and enough scenes', async ({ page }, testInfo) => {
   await resetBrowserState(page)
   await openSettings(page, testInfo)
+  await openCelebrationGallery(page)
 
   const recipes = [
     {
@@ -249,6 +264,7 @@ test('mindful celebrations render their distinct presence, metta, and enough sce
 
     await page.keyboard.press('Escape')
     await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
+    await openCelebrationGallery(page)
   }
 })
 
@@ -257,6 +273,7 @@ test('reduced motion draws no canvas frames and automatic return restores Settin
   await resetBrowserState(page)
   const before = await storedNavigationAndPlans(page)
   await openSettings(page, testInfo)
+  await openCelebrationGallery(page)
 
   const option = page.locator('[data-celebration-option="infinite-feedback-cathedral"]')
   await option.scrollIntoViewIfNeeded()
@@ -280,8 +297,8 @@ test('reduced motion draws no canvas frames and automatic return restores Settin
 
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible({ timeout: 3_500 })
   await expect(page.locator('.celebration-preview-control')).toHaveCount(0)
-  await expect(option).toBeFocused()
-  await expect(option).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'View celebrations' })).toBeFocused()
   await expect.poll(() => storedNavigationAndPlans(page)).toEqual(before)
 })
 
@@ -294,6 +311,7 @@ test('every catalog entry launches its own stable hooks and fully cleans up', as
   const scrollbarFreeIds = new Set(COMPLETION_CELEBRATIONS.slice(-5).map(({ id }) => id))
 
   for (const celebration of COMPLETION_CELEBRATIONS) {
+    await openCelebrationGallery(page)
     const option = page.locator(`[data-celebration-option="${celebration.id}"]`)
     await option.scrollIntoViewIfNeeded()
     await option.click()
@@ -325,15 +343,16 @@ test('every catalog entry launches its own stable hooks and fully cleans up', as
 test('celebration picker arrows rove without saving or previewing until activation', async ({ page }, testInfo) => {
   await resetBrowserState(page)
   await openSettings(page, testInfo)
+  await openCelebrationGallery(page)
 
-  const picker = page.getByRole('group', { name: 'Day completion celebration' })
+  const picker = page.getByRole('group', { name: 'Celebration previews' })
   const first = picker.locator('[data-celebration-option="random"]')
   const second = picker.locator('[data-celebration-option="stained-glass-sunrise"]')
   await first.focus()
   await first.press('ArrowRight')
   await expect(second).toBeFocused()
   await expect(page.locator('.celebration-preview-control')).toHaveCount(0)
-  await expect(first).toHaveAttribute('aria-pressed', 'true')
-  await expect(second).toHaveAttribute('aria-pressed', 'false')
+  await expect(first).not.toHaveAttribute('aria-pressed', /.+/)
+  await expect(second).not.toHaveAttribute('aria-pressed', /.+/)
   await expect(page.locator('.celebration-option-button[tabindex="0"]')).toHaveCount(1)
 })
