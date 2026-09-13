@@ -42,19 +42,26 @@
 </script>
 
 <section class="settings-section celebration-settings" aria-labelledby="celebration-settings-title">
-  <h3 id="celebration-settings-title">Day completion celebration</h3>
-
-  <div class="settings-actions">
+  <h3 id="celebration-settings-title">
     <button
       type="button"
+      class="celebration-title-toggle"
       aria-expanded={open}
       aria-controls="celebration-gallery"
       data-celebration-gallery-toggle
       on:click={() => (open = !open)}
     >
-      {open ? 'Hide celebrations' : 'View celebrations'}
+      <span>Day completion celebration</span>
+      <svg
+        class:open
+        class="celebration-title-chevron"
+        viewBox="0 0 16 16"
+        aria-hidden="true"
+      >
+        <path d="m3.5 6 4.5 4 4.5-4" />
+      </svg>
     </button>
-  </div>
+  </h3>
 
   {#if open}
     <div

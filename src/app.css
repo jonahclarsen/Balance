@@ -2550,6 +2550,39 @@ body.mobile-checkbox-dragging {
   container: celebration-picker / inline-size;
 }
 
+.celebration-title-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  line-height: inherit;
+  text-align: left;
+}
+
+.celebration-title-toggle:hover {
+  border-color: transparent;
+}
+
+.celebration-title-chevron {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.75;
+  transition: transform 150ms ease;
+}
+
+.celebration-title-chevron.open {
+  transform: rotate(180deg);
+}
+
 .celebration-options {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2728,6 +2761,7 @@ body.mobile-checkbox-dragging {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .celebration-title-chevron,
   .celebration-option-button {
     transition: none;
   }

@@ -27,7 +27,7 @@ async function openSettings(page: Page, testInfo: TestInfo) {
 }
 
 async function openCelebrationGallery(page: Page) {
-  await page.getByRole('button', { name: 'View celebrations' }).click()
+  await page.getByRole('button', { name: 'Day completion celebration' }).click()
 }
 
 async function storedNavigationAndPlans(page: Page) {
@@ -47,6 +47,10 @@ test('Settings hides the preview gallery behind a disclosure with no explanatory
   const section = page.locator('.celebration-settings')
   const toggle = section.locator('[data-celebration-gallery-toggle]')
   await expect(section.locator('p')).toHaveCount(0)
+  await expect(toggle).toHaveText('Day completion celebration')
+  await expect(toggle.locator('.celebration-title-chevron')).toHaveCount(1)
+  await expect(toggle).toHaveCSS('border-top-width', '0px')
+  await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
 
@@ -106,7 +110,7 @@ test('Random previews a concrete celebration without changing the preference', a
   })).toBe('random')
 
   await page.keyboard.press('Escape')
-  await expect(page.getByRole('button', { name: 'View celebrations' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Day completion celebration' })).toBeFocused()
 })
 
 test('previewing leaves preferences, navigation, and plans unchanged, then closes the gallery', async ({ page }, testInfo) => {
@@ -162,7 +166,7 @@ test('previewing leaves preferences, navigation, and plans unchanged, then close
   await page.keyboard.press('Escape')
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'View celebrations' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Day completion celebration' })).toBeFocused()
   await expect(page.locator('.app-shell')).not.toHaveAttribute('inert', '')
   if (testInfo.project.name === 'desktop') {
     await expect.poll(() => page.evaluate((expectedScrollTop) => {
@@ -298,7 +302,7 @@ test('reduced motion draws no canvas frames and automatic return restores Settin
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible({ timeout: 3_500 })
   await expect(page.locator('.celebration-preview-control')).toHaveCount(0)
   await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'View celebrations' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Day completion celebration' })).toBeFocused()
   await expect.poll(() => storedNavigationAndPlans(page)).toEqual(before)
 })
 
