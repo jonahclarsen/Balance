@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { COMPLETION_CELEBRATION_OPTIONS, type CompletionCelebrationId } from './celebrations'
+  import { COMPLETION_CELEBRATIONS, type CompletionCelebrationId } from './celebrations'
 
   export let onPreview: (id: CompletionCelebrationId) => void
 
   let open = false
   let grid: HTMLDivElement
-  let rovingId: CompletionCelebrationId = COMPLETION_CELEBRATION_OPTIONS[0].id
+  let rovingId: CompletionCelebrationId = COMPLETION_CELEBRATIONS[0].id
 
   function columnCount(): number {
     const buttons = Array.from(grid?.querySelectorAll<HTMLButtonElement>('.celebration-option-button') ?? [])
@@ -16,7 +16,7 @@
   }
 
   function focusAt(index: number) {
-    const celebrations = COMPLETION_CELEBRATION_OPTIONS
+    const celebrations = COMPLETION_CELEBRATIONS
     const boundedIndex = Math.max(0, Math.min(celebrations.length - 1, index))
     rovingId = celebrations[boundedIndex].id
     requestAnimationFrame(() => {
@@ -33,7 +33,7 @@
     else if (event.key === 'ArrowUp') nextIndex = index - columnCount()
     else if (event.key === 'ArrowDown') nextIndex = index + columnCount()
     else if (event.key === 'Home') nextIndex = 0
-    else if (event.key === 'End') nextIndex = COMPLETION_CELEBRATION_OPTIONS.length - 1
+    else if (event.key === 'End') nextIndex = COMPLETION_CELEBRATIONS.length - 1
 
     if (nextIndex === null) return
     event.preventDefault()
@@ -51,7 +51,7 @@
       data-celebration-gallery-toggle
       on:click={() => (open = !open)}
     >
-      <span>Day completion celebration</span>
+      <span>Day completion celebrations</span>
       <svg
         class:open
         class="celebration-title-chevron"
@@ -71,7 +71,7 @@
       aria-label="Celebration previews"
       bind:this={grid}
     >
-      {#each COMPLETION_CELEBRATION_OPTIONS as celebration, index (celebration.id)}
+      {#each COMPLETION_CELEBRATIONS as celebration, index (celebration.id)}
         <div class="celebration-option">
           <button
             type="button"

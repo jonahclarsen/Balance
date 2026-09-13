@@ -1,5 +1,5 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
-import { COMPLETION_CELEBRATIONS, COMPLETION_CELEBRATION_OPTIONS } from '../../src/lib/celebrations'
+import { COMPLETION_CELEBRATIONS } from '../../src/lib/celebrations'
 
 function addDays(date: string, days: number): string {
   const [year, month, day] = date.split('-').map(Number)
@@ -27,7 +27,7 @@ async function openSettings(page: Page, testInfo: TestInfo) {
 }
 
 async function openCelebrationGallery(page: Page) {
-  await page.getByRole('button', { name: 'Day completion celebration' }).click()
+  await page.getByRole('button', { name: 'Day completion celebrations' }).click()
 }
 
 async function storedNavigationAndPlans(page: Page) {
@@ -47,7 +47,7 @@ test('Settings hides the preview gallery behind a disclosure with no explanatory
   const section = page.locator('.celebration-settings')
   const toggle = section.locator('[data-celebration-gallery-toggle]')
   await expect(section.locator('p')).toHaveCount(0)
-  await expect(toggle).toHaveText('Day completion celebration')
+  await expect(toggle).toHaveText('Day completion celebrations')
   await expect(toggle.locator('.celebration-title-chevron')).toHaveCount(1)
   await expect(toggle).toHaveCSS('border-top-width', '0px')
   await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
@@ -59,9 +59,9 @@ test('Settings hides the preview gallery behind a disclosure with no explanatory
   const picker = page.getByRole('group', { name: 'Celebration previews' })
   const options = picker.locator('.celebration-option')
   const cards = picker.locator('.celebration-option-button')
-  await expect(options).toHaveCount(COMPLETION_CELEBRATION_OPTIONS.length)
-  await expect(cards).toHaveCount(COMPLETION_CELEBRATION_OPTIONS.length)
-  await expect(picker.locator('.celebration-option-art')).toHaveCount(COMPLETION_CELEBRATION_OPTIONS.length)
+  await expect(options).toHaveCount(COMPLETION_CELEBRATIONS.length)
+  await expect(cards).toHaveCount(COMPLETION_CELEBRATIONS.length)
+  await expect(picker.locator('.celebration-option-art')).toHaveCount(COMPLETION_CELEBRATIONS.length)
 
   const renderedCatalog = await cards.evaluateAll((buttons) => buttons.map((button) => ({
     id: button.getAttribute('data-celebration-option'),
@@ -69,14 +69,15 @@ test('Settings hides the preview gallery behind a disclosure with no explanatory
     description: button.querySelector('.celebration-option-copy small')?.textContent?.trim(),
     icon: button.querySelector('.celebration-option-icon')?.textContent?.trim(),
   })))
-  expect(renderedCatalog).toEqual(COMPLETION_CELEBRATION_OPTIONS.map(({ id, name, description, icon }) => ({
+  expect(renderedCatalog).toEqual(COMPLETION_CELEBRATIONS.map(({ id, name, description, icon }) => ({
     id,
     name,
     description,
     icon,
   })))
 
-  await expect(cards.first()).toHaveAttribute('data-celebration-option', 'random')
+  await expect(cards.first()).toHaveAttribute('data-celebration-option', 'stained-glass-sunrise')
+  await expect(picker.locator('[data-celebration-option="random"]')).toHaveCount(0)
   await expect(cards.first()).not.toHaveAttribute('aria-pressed', /.+/)
 
   const layout = await cards.evaluateAll((buttons) => {
@@ -92,25 +93,6 @@ test('Settings hides the preview gallery behind a disclosure with no explanatory
   expect(layout.firstRowCount).toBe(testInfo.project.name === 'mobile' ? 1 : 4)
   if (testInfo.project.name === 'desktop') expect(layout.firstRowHeight).toBeLessThan(250)
   expect(layout.pillCount).toBe(0)
-})
-
-test('Random previews a concrete celebration without changing the preference', async ({ page }, testInfo) => {
-  await resetBrowserState(page)
-  await openSettings(page, testInfo)
-  await openCelebrationGallery(page)
-
-  const random = page.locator('[data-celebration-option="random"]')
-  await random.click()
-
-  const stageId = await page.locator('.celebration-stage').getAttribute('data-celebration-id')
-  expect(COMPLETION_CELEBRATIONS.map(({ id }) => id)).toContain(stageId)
-  await expect.poll(() => page.evaluate(() => {
-    const state = JSON.parse(localStorage.getItem('balance.appState.v1') ?? 'null')
-    return state?.preferences?.completionCelebrationId
-  })).toBe('random')
-
-  await page.keyboard.press('Escape')
-  await expect(page.getByRole('button', { name: 'Day completion celebration' })).toBeFocused()
 })
 
 test('previewing leaves preferences, navigation, and plans unchanged, then closes the gallery', async ({ page }, testInfo) => {
@@ -166,7 +148,7 @@ test('previewing leaves preferences, navigation, and plans unchanged, then close
   await page.keyboard.press('Escape')
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
   await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Day completion celebration' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Day completion celebrations' })).toBeFocused()
   await expect(page.locator('.app-shell')).not.toHaveAttribute('inert', '')
   if (testInfo.project.name === 'desktop') {
     await expect.poll(() => page.evaluate((expectedScrollTop) => {
@@ -302,7 +284,7 @@ test('reduced motion draws no canvas frames and automatic return restores Settin
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible({ timeout: 3_500 })
   await expect(page.locator('.celebration-preview-control')).toHaveCount(0)
   await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Day completion celebration' })).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Day completion celebrations' })).toBeFocused()
   await expect.poll(() => storedNavigationAndPlans(page)).toEqual(before)
 })
 
@@ -350,8 +332,8 @@ test('celebration picker arrows rove without saving or previewing until activati
   await openCelebrationGallery(page)
 
   const picker = page.getByRole('group', { name: 'Celebration previews' })
-  const first = picker.locator('[data-celebration-option="random"]')
-  const second = picker.locator('[data-celebration-option="stained-glass-sunrise"]')
+  const first = picker.locator('[data-celebration-option="stained-glass-sunrise"]')
+  const second = picker.locator('[data-celebration-option="bell-of-now"]')
   await first.focus()
   await first.press('ArrowRight')
   await expect(second).toBeFocused()
