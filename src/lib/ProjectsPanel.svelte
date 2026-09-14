@@ -50,7 +50,13 @@
 </script>
 
 <section class="projects-panel" aria-label="Project vibes">
-  <header class="page-header"><h2>Projects</h2><button type="button" on:click={() => copyLink()}>Copy page link</button></header>
+  <header class="page-header">
+    <h2>Projects</h2>
+    <div class="template-panel-actions">
+      <button type="button" on:click={() => copyLink()}>Copy page link</button>
+      <button class="ghost" class:active={archiveOpen} type="button" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = !archiveOpen}>View Archive</button>
+    </div>
+  </header>
   <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>
     <label for="new-project-name">New project</label>
     <input id="new-project-name" aria-label="New project name" placeholder="Project name" bind:value={name} maxlength="160" />
@@ -59,7 +65,6 @@
   {#if message}<p class="status muted" role="status">{message}</p>{/if}
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
   <div class="project-grid">{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {currentDay} />{/each}</div>
-  <div class="template-panel-actions"><button class="ghost" class:active={archiveOpen} type="button" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = !archiveOpen}>View Archive</button></div>
   {#if archiveOpen}
     <section id="project-archive" class="list-item-archive" aria-labelledby="project-archive-title">
       <div class="list-item-archive-header"><h3 id="project-archive-title">Archive</h3><span>{archived.length} saved</span></div>
