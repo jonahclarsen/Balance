@@ -53,8 +53,8 @@
   <header class="page-header">
     <h2>Projects</h2>
     <div class="template-panel-actions">
-      <button type="button" on:click={() => copyLink()}>Copy page link</button>
       <button class="ghost" class:active={archiveOpen} type="button" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = !archiveOpen}>View Archive</button>
+      <button type="button" on:click={() => copyLink()}>Copy page link</button>
     </div>
   </header>
   <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>
