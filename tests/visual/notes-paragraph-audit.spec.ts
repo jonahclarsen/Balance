@@ -313,6 +313,9 @@ async function createParagraphs(page: Page, texts = ['Alpha', 'Middle', 'Beta'])
 }
 
 async function dragParagraphSelection(page: Page, reverse = false) {
+  // The last edit follows the bottom on the next frame. Measure mouse targets
+  // after that layout settles, so a fast run cannot drag from the wrong row.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
   const editors = page.locator('[data-note-text-input]')
   const start = await caretCoordinates(editors.first(), 2)
   const end = await caretCoordinates(editors.last(), 2)
