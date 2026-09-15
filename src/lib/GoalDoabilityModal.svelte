@@ -6,6 +6,8 @@
 
   export let reviews: GoalDoabilityReview[]
   export let onClose: () => void
+  export let canAddToToday: boolean
+  export let onAddToToday: (goalId: Id) => void
   export let onSelectGoal: (goalId: Id) => void
 
 </script>
@@ -42,6 +44,7 @@
           {#each reviews as review (review.goal.id)}
             <li>
               <button
+                class="review-goal"
                 type="button"
                 aria-label={`Review ${review.goal.name}: ${review.days} ${review.days === 1 ? 'day' : 'days'} ${review.reason === 'missed-presentations' ? 'missed' : 'overdue'}`}
                 on:click={() => onSelectGoal(review.goal.id)}
@@ -52,6 +55,14 @@
                   {review.reason === 'missed-presentations' ? ' missed' : ' overdue'}
                 </strong>
               </button>
+              <button
+                class="add-to-today"
+                type="button"
+                disabled={!canAddToToday}
+                aria-label={`Add ${review.goal.name} to today`}
+                title={canAddToToday ? 'Add a task at the start of today' : 'Generate today first to add a task'}
+                on:click={() => onAddToToday(review.goal.id)}
+              >Add to today</button>
             </li>
           {/each}
         </ul>
@@ -152,6 +163,9 @@
   }
 
   .goals-to-review li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
     padding-bottom: 9px;
     border-bottom: 1px solid var(--line);
@@ -162,7 +176,8 @@
     border-bottom: 0;
   }
 
-  .goals-to-review button {
+  .goals-to-review .review-goal {
+    min-width: 0;
     width: 100%;
     padding: 2px 4px;
     display: grid;
@@ -173,7 +188,22 @@
     text-align: left;
   }
 
-  .goals-to-review button:hover,
+  .goals-to-review .add-to-today {
+    flex-shrink: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--line);
+    border-radius: 7px;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 12px;
+  }
+
+  .add-to-today:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+
+  .goals-to-review button:enabled:hover,
   .goals-to-review button:focus-visible {
     background: var(--active-nav);
   }

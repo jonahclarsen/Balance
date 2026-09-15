@@ -79,7 +79,7 @@
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
-  import { buildItemTimeWarnings, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
@@ -7028,6 +7028,13 @@ return rows`
     {#if view === 'today' && goalDoabilityReviews.length > 0}
       <GoalDoabilityModal
         reviews={goalDoabilityReviews}
+        canAddToToday={$plannerStore.plans.some((plan) => plan.date === todayISO())}
+        onAddToToday={(goalId) => {
+          const plan = $plannerStore.plans.find((candidate) => candidate.date === todayISO())
+          const goal = $plannerStore.goals.find((candidate) => candidate.id === goalId)
+          if (!plan || !goal) return
+          plannerStore.pastePlanItems(plan.id, [createPlanItem(goal.name)], plan.items[0]?.id ?? null, 'before')
+        }}
         onClose={() => (goalDoabilityReviews = [])}
         onSelectGoal={(goalId) => {
           void openGoals(goalId)

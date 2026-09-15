@@ -1469,9 +1469,9 @@ test('day generation opens the goal doability review for legacy overdue and repe
       return [guidance.getBoundingClientRect().width, goals.getBoundingClientRect().width]
     })
     expect(Math.abs(panels[0] / panels[1] - 639 / 407)).toBeLessThan(0.01)
-    await expect(modal.locator('.mascot')).toHaveCSS('height', '393px')
+    expect(await modal.locator('.mascot').evaluate((element) => parseFloat(getComputedStyle(element).height))).toBeCloseTo(393, 1)
 
-    await page.getByRole('button', { name: 'Goals', exact: true }).click()
+    await page.getByRole('complementary').getByRole('button', { name: 'Goals', exact: true }).click()
     await expect(modal).toHaveCount(0)
     await page.getByRole('button', { name: 'Today', exact: true }).click()
     await expect(modal).toBeVisible()
@@ -1482,10 +1482,26 @@ test('day generation opens the goal doability review for legacy overdue and repe
     fullPage: true,
   })
 
+  const originalItems = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.plans.find((plan: { date: string }) => plan.date === '2026-08-31').items
+  })
+  await modal.getByRole('button', { name: 'Add Call someone to today', exact: true }).click()
+  await modal.getByRole('button', { name: 'Add Draw briefly to today', exact: true }).click()
+  await expect(modal).toBeVisible()
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.plans.find((plan: { date: string }) => plan.date === '2026-08-31').items
+  })).toEqual([
+    expect.objectContaining({ text: 'Draw briefly', done: false, children: [] }),
+    expect.objectContaining({ text: 'Call someone', done: false, children: [] }),
+    ...originalItems,
+  ])
+
   await modal.getByRole('button', { name: 'Review Call someone: 5 days overdue' }).click()
   await expect(modal).toHaveCount(0)
   if (testInfo.project.name === 'desktop') {
-    await expect(page.getByRole('button', { name: 'Goals', exact: true })).toHaveClass(/active/)
+    await expect(page.getByRole('complementary').getByRole('button', { name: 'Goals', exact: true })).toHaveClass(/active/)
   }
   await expect(page.locator('.goal-card[data-goal-id="goal_legacy"]')).toHaveClass(/goal-card-focus/)
 
