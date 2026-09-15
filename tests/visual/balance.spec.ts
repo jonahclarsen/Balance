@@ -4449,23 +4449,25 @@ test('pasting a moved group again keeps it as structured task items', async ({ p
   await page.keyboard.press('Meta+X')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([])
 
-  await page.getByRole('button', { name: 'Previous day' }).click()
+  await page.keyboard.press('Alt+KeyQ')
   await page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' }).click()
   const priorDayItems = await activePlanTopLevelTexts(page)
   await focusInputByValue(page, priorDayItems.at(-1) as string)
+  await setCaretOffsetInFocusedEditor(page, priorDayItems.at(-1)!.length)
   await page.keyboard.press('Meta+V')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([...priorDayItems, ...movedItems])
 
   // Move the same three tasks back to today.
   await page.keyboard.press('Meta+X')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual(priorDayItems)
-  await page.getByRole('button', { name: 'Next day' }).click()
+  await page.keyboard.press('Alt+KeyW')
   await page.keyboard.press('Meta+V')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual(movedItems)
 
   // A second paste must still use the internal structured clipboard. Previously it
   // fell through to native rich-text paste and merged the three lines into one task.
   await focusInputByValue(page, movedItems.at(-1) as string)
+  await setCaretOffsetInFocusedEditor(page, movedItems.at(-1)!.length)
   await page.keyboard.press('Meta+V')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([...movedItems, ...movedItems])
 })
