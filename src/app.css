@@ -4298,16 +4298,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-history-open-goals {
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  padding: 0;
-  font-weight: 700;
-}
-
-.goal-history-open-goals:hover {
-  color: var(--accent);
-  text-decoration: underline;
+  padding-block: 5px;
 }
 
 .goal-history-search-field {
@@ -5134,6 +5125,12 @@ body.mobile-checkbox-dragging {
 
   .goal-history-search-field {
     flex-basis: 120px;
+  }
+
+  .goal-history-open-goals {
+    padding-inline: 7px;
+    font-size: 12px;
+    white-space: nowrap;
   }
 
   .goal-history-body {
