@@ -7028,12 +7028,14 @@ return rows`
     {#if view === 'today' && goalDoabilityReviews.length > 0}
       <GoalDoabilityModal
         reviews={goalDoabilityReviews}
-        canAddToToday={$plannerStore.plans.some((plan) => plan.date === todayISO())}
-        onAddToToday={(goalId) => {
-          const plan = $plannerStore.plans.find((candidate) => candidate.date === todayISO())
+        canAdd={Boolean(activePlan)}
+        onAddGoal={async (goalId) => {
+          const plan = activePlan
           const goal = $plannerStore.goals.find((candidate) => candidate.id === goalId)
-          if (!plan || !goal) return
-          plannerStore.pastePlanItems(plan.id, [createPlanItem(goal.name)], plan.items[0]?.id ?? null, 'before')
+          if (!plan || !goal) return false
+          const [itemId] = plannerStore.pastePlanItems(plan.id, [createPlanItem(goal.name)], plan.items[0]?.id ?? null, 'before')
+          await plannerStore.flushPendingOperations()
+          return $plannerStore.plans.some((candidate) => candidate.id === plan.id && candidate.items.some((item) => item.id === itemId))
         }}
         onClose={() => (goalDoabilityReviews = [])}
         onSelectGoal={(goalId) => {

@@ -1352,12 +1352,13 @@ test('n goals template items use goal names instead of matching terms', async ({
   await expect(page.getByRole('listitem', { name: 'Plan item: beat' })).toHaveCount(0)
 })
 
-test('day generation opens the goal doability review for legacy overdue and repeatedly missed goals', async ({ page }, testInfo) => {
+for (const selectedDay of ['2026-08-31', '2026-08-30']) {
+test(`day generation opens the goal doability review for legacy overdue and repeatedly missed goals on ${selectedDay}`, async ({ page }, testInfo) => {
   await page.clock.install({ time: new Date('2026-08-31T12:00:00') })
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.evaluate(() => {
+  await page.evaluate((selectedDay) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     const timestamp = '2026-08-01T12:00:00.000Z'
     const baseGoal = {
@@ -1405,17 +1406,17 @@ test('day generation opens the goal doability review for legacy overdue and repe
       createdAt: `${date}T08:00:00.000Z`,
       items: [],
     }))
-    state.activePlanDate = '2026-08-31'
+    state.activePlanDate = selectedDay
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
-  })
+  }, selectedDay)
   await page.reload()
 
   if (testInfo.project.name === 'mobile') {
     const emptyState = page.locator('.empty-state')
     await emptyState.getByRole('radio', { name: 'Default day' }).check()
-    await emptyState.getByRole('button', { name: 'Generate today' }).click()
+    await emptyState.getByRole('button', { name: /Generate (today|selected day)/ }).click()
   } else {
-    await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+    await page.getByRole('complementary').getByRole('button', { name: /Generate (today|selected day)/ }).click()
   }
 
   const modal = page.getByRole('dialog', { name: 'Are your goals attainable?' })
@@ -1482,17 +1483,24 @@ test('day generation opens the goal doability review for legacy overdue and repe
     fullPage: true,
   })
 
-  const originalItems = await page.evaluate(() => {
+  const originalItems = await page.evaluate((selectedDay) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-    return state.plans.find((plan: { date: string }) => plan.date === '2026-08-31').items
-  })
-  await modal.getByRole('button', { name: 'Add Call someone to today', exact: true }).click()
-  await modal.getByRole('button', { name: 'Add Draw briefly to today', exact: true }).click()
+    return state.plans.find((plan: { date: string }) => plan.date === selectedDay).items
+  }, selectedDay)
+  const addButton = modal.getByRole('button', { name: 'Add Call someone to this day', exact: true })
+  await expect(addButton).toHaveText('Add')
+  await addButton.click()
+  await expect(addButton).toHaveText('Added!')
+  await expect(addButton).toBeDisabled()
+  await page.clock.fastForward(2100)
+  await expect(addButton).toHaveText('Add')
+  await expect(addButton).toBeEnabled()
+  await modal.getByRole('button', { name: 'Add Draw briefly to this day', exact: true }).click()
   await expect(modal).toBeVisible()
-  await expect.poll(() => page.evaluate(() => {
+  await expect.poll(() => page.evaluate((selectedDay) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-    return state.plans.find((plan: { date: string }) => plan.date === '2026-08-31').items
-  })).toEqual([
+    return state.plans.find((plan: { date: string }) => plan.date === selectedDay).items
+  }, selectedDay)).toEqual([
     expect.objectContaining({ text: 'Draw briefly', done: false, children: [] }),
     expect.objectContaining({ text: 'Call someone', done: false, children: [] }),
     ...originalItems,
@@ -1516,6 +1524,8 @@ test('day generation opens the goal doability review for legacy overdue and repe
   await expect(modal).toBeVisible()
   await expect(modal.getByRole('button', { name: 'Review Call someone: 5 days overdue' })).toBeVisible()
 })
+
+}
 
 test('goal rhythm hover text includes match keywords', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')

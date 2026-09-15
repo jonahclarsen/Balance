@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte'
   import peacockTalking from '../assets/peacock-talking.png'
   import type { GoalDoabilityReview } from './goals'
   import type { Id } from './types'
@@ -6,10 +7,39 @@
 
   export let reviews: GoalDoabilityReview[]
   export let onClose: () => void
-  export let canAddToToday: boolean
-  export let onAddToToday: (goalId: Id) => void
+  export let canAdd: boolean
+  export let onAddGoal: (goalId: Id) => Promise<boolean>
   export let onSelectGoal: (goalId: Id) => void
 
+  let adding = new Set<Id>()
+  let added = new Set<Id>()
+  let addError = ''
+  const feedbackTimers = new Map<Id, ReturnType<typeof setTimeout>>()
+
+  async function addGoal(goalId: Id) {
+    if (adding.has(goalId) || added.has(goalId)) return
+    adding = new Set([...adding, goalId])
+    addError = ''
+    try {
+      if (!await onAddGoal(goalId)) {
+        addError = 'Could not add this goal. Please try again.'
+        return
+      }
+      added = new Set([...added, goalId])
+      feedbackTimers.set(goalId, setTimeout(() => {
+        added = new Set([...added].filter((id) => id !== goalId))
+        feedbackTimers.delete(goalId)
+      }, 2000))
+    } catch {
+      addError = 'Could not save this task. Please try again.'
+    } finally {
+      adding = new Set([...adding].filter((id) => id !== goalId))
+    }
+  }
+
+  onDestroy(() => {
+    for (const timer of feedbackTimers.values()) clearTimeout(timer)
+  })
 </script>
 
 <OverlayModal
@@ -58,14 +88,15 @@
               <button
                 class="add-to-today"
                 type="button"
-                disabled={!canAddToToday}
-                aria-label={`Add ${review.goal.name} to today`}
-                title={canAddToToday ? 'Add a task at the start of today' : 'Generate today first to add a task'}
-                on:click={() => onAddToToday(review.goal.id)}
-              >Add to today</button>
+                disabled={!canAdd || adding.has(review.goal.id) || added.has(review.goal.id)}
+                aria-label={`Add ${review.goal.name} to this day`}
+                title={canAdd ? 'Add a task at the start of this day' : 'Generate this day first to add a task'}
+                on:click={() => addGoal(review.goal.id)}
+              >{added.has(review.goal.id) ? 'Added!' : 'Add'}</button>
             </li>
           {/each}
         </ul>
+        {#if addError}<p role="alert">{addError}</p>{/if}
       </section>
     </div>
   </div>
@@ -190,6 +221,7 @@
 
   .goals-to-review .add-to-today {
     flex-shrink: 0;
+    min-width: 62px;
     padding: 6px 8px;
     border: 1px solid var(--line);
     border-radius: 7px;
