@@ -19,8 +19,14 @@ test.beforeEach(async ({ page }) => {
   await page.reload()
 })
 
+async function openGoalsFromRhythm(page: import('@playwright/test').Page) {
+  const panel = page.locator('.goal-history-panel')
+  await expect(panel.getByRole('button', { name: 'Manage goals' })).toHaveCount(0)
+  await panel.getByRole('button', { name: 'Goals', exact: true }).click()
+}
+
 test('goals warn when their inserted name does not match any configured term', async ({ page }) => {
-  await page.getByRole('button', { name: 'Manage goals' }).click()
+  await openGoalsFromRhythm(page)
   const warning = page.getByText('Goal name doesn’t match any term, so its inserted item won’t match.')
   const newTerms = page.getByLabel('New goal matching terms')
 
@@ -43,7 +49,7 @@ test('goals warn when their inserted name does not match any configured term', a
 })
 
 test('a new goal receives the color previewed by the add button and has no color editor', async ({ page }) => {
-  await page.getByRole('button', { name: 'Manage goals' }).click()
+  await openGoalsFromRhythm(page)
   const addButton = page.getByRole('button', { name: 'Add goal', exact: true })
   const previewHue = await addButton.evaluate((button) =>
     Number(getComputedStyle(button).getPropertyValue('--goal-hue')),
@@ -996,7 +1002,7 @@ test('editing cadence preserves the old Goal Rhythm schedule after reload', asyn
   )
   await page.reload()
 
-  await page.getByRole('button', { name: 'Manage goals' }).click()
+  await openGoalsFromRhythm(page)
   await page.getByLabel('Cadence days for Read').fill('2')
   await page.getByLabel('Cadence days for Read').press('Tab')
   await expect.poll(() => page.evaluate(() => {
@@ -1035,7 +1041,7 @@ test('cadence edits retain recent completion coverage in both history views afte
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   }, { today, completionDate, priorChange, start })
   await page.reload()
-  await page.getByRole('button', { name: 'Manage goals' }).click()
+  await openGoalsFromRhythm(page)
   await page.getByLabel('Cadence days for Read').fill('8')
   await page.getByLabel('Cadence days for Read').press('Tab')
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1') || '{}').goals[0].cadenceDays)).toBe(8)
@@ -1046,7 +1052,7 @@ test('cadence edits retain recent completion coverage in both history views afte
     await expect(cell).toHaveClass(/relieved/)
     await expect(cell.locator('.open, .overdue-mark')).toHaveCount(0)
   }
-  await page.getByRole('button', { name: 'Manage goals' }).click()
+  await openGoalsFromRhythm(page)
   for (let offset = -3; offset <= 0; offset += 1) {
     const cell = page.locator(`.goal-recent-day[data-goal-date="${addDays(today, offset)}"]`)
     await expect(cell).not.toHaveClass(/missed|overdue/)
@@ -2157,7 +2163,7 @@ test('long goal names truncate without overlapping status or archive actions', a
 
 async function createGoal(page: import('@playwright/test').Page, name: string, cadenceDays: number, terms: string) {
   if (!(await page.getByLabel('New goal name').isVisible())) {
-    await page.getByRole('button', { name: 'Manage goals' }).click()
+    await openGoalsFromRhythm(page)
   }
   await page.getByLabel('New goal name').fill(name)
   await page.getByLabel('New goal cadence days').fill(String(cadenceDays))
@@ -2315,7 +2321,7 @@ test('goal stats survive navigation and their copied link opens the modal from a
       value: { writeText: async (value: string) => { (window as any).__copiedStatsLink = value } },
     })
   })
-  await page.getByRole('button', { name: 'Manage goals' }).click()
+  await openGoalsFromRhythm(page)
   await page.getByRole('button', { name: 'Stats', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: 'Goal statistics' })
   await dialog.getByRole('button', { name: 'Copy stats link' }).click()

@@ -3375,7 +3375,7 @@ return rows`
     }
 
     if (
-      selectedItemIds.length > 0 &&
+      (selectedItemIds.length > 0 || ((event.altKey || primaryModifier) && focusedProbabilityItemId())) &&
       !listOverlayVisible &&
       (activeItemSurface() === 'day-template' || activeItemSurface() === 'list-template') &&
       !(event.altKey && primaryModifier) &&
@@ -3383,7 +3383,7 @@ return rows`
     ) {
       event.preventDefault()
       event.stopPropagation()
-      adjustSelectedItemProbabilities(event.code === 'BracketLeft' ? -5 : 5)
+      adjustItemProbabilities(event.code === 'BracketLeft' ? -5 : 5)
       return
     }
 
@@ -3741,10 +3741,22 @@ return rows`
     }
   }
 
-  function adjustSelectedItemProbabilities(delta: number) {
+  function focusedProbabilityItemId(): Id | null {
+    const active = document.activeElement
+    return active instanceof HTMLElement && active.matches('[data-template-option-text-input], [data-list-template-text-input]')
+      ? activeFocusedItemId()
+      : null
+  }
+
+  function adjustItemProbabilities(delta: number) {
+    const focusedId = focusedProbabilityItemId()
+    const itemIds = selectedItemIds.length > 0 ? selectedItemIds : focusedId ? [focusedId] : []
+    const focusedOptionId = selectedItemIds.length === 0 && document.activeElement instanceof HTMLElement
+      ? document.activeElement.dataset.templateOptionTextInputId
+      : undefined
     if (activeItemSurface() === 'day-template' && selectedTemplate) {
-      for (const item of collectSelectedTimeItems(selectedTemplate.items, new Set(selectedItemIds))) {
-        const option = item.options[0]
+      for (const item of collectSelectedTimeItems(selectedTemplate.items, new Set(itemIds))) {
+        const option = focusedOptionId ? item.options.find((option) => option.id === focusedOptionId) : item.options[0]
         if (!option) continue
         const probability = Math.max(0, Math.min(100, option.probability + delta))
         if (probability !== option.probability) {
@@ -3752,7 +3764,7 @@ return rows`
         }
       }
     } else if (activeItemSurface() === 'list-template' && selectedListTemplate) {
-      for (const itemId of selectedItemIds) {
+      for (const itemId of itemIds) {
         const item = findListTemplateItem(selectedListTemplate.items, (item) => item.id === itemId)
         if (!item) continue
         const probability = Math.max(item.probability < 30 ? 10 : 30, Math.min(100, item.probability + delta))
