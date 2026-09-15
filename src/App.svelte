@@ -108,7 +108,7 @@
   import { isNoteTrashed } from './lib/noteTrash'
   import { BALANCE_DEEP_LINK_EVENT, parseBalanceDeepLink } from './lib/deepLinks'
   import { captureRenderedPlanSnapshot } from './lib/renderedPlanDiagnostics'
-  import { openExternalURL } from './lib/externalLinks'
+  import { openExternalURLFromShortcut } from './lib/externalLinks'
   import {
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
@@ -1360,7 +1360,7 @@ return rows`
       .find(isURL)
     if (!externalURL) return false
 
-    void openExternalURL(externalURL)
+    openExternalURLFromShortcut(externalURL)
     return true
   }
 

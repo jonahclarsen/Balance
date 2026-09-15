@@ -22,7 +22,10 @@ test.beforeEach(async ({ page }) => {
 async function openGoalsFromRhythm(page: import('@playwright/test').Page) {
   const panel = page.locator('.goal-history-panel')
   await expect(panel.getByRole('button', { name: 'Manage goals' })).toHaveCount(0)
-  await panel.getByRole('button', { name: 'Goals', exact: true }).click()
+  const goalsButton = panel.getByRole('button', { name: 'Goals', exact: true })
+  await expect(goalsButton).toHaveCSS('border-top-style', 'solid')
+  await expect(goalsButton).toHaveCSS('padding-top', '5px')
+  await goalsButton.click()
 }
 
 test('goals warn when their inserted name does not match any configured term', async ({ page }) => {
