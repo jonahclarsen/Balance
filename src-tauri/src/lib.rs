@@ -3258,6 +3258,11 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
         create index if not exists idx_operations_sequence on operations(sequence);
         create index if not exists idx_operations_timestamp on operations(timestamp);
         create index if not exists idx_history_entries_undo on history_entries(undone, sequence, updated_at_ms);
+        -- Undo asks whether Redo is available after every edit. Its ordering
+        -- differs from Undo, and `undone != 0` cannot seek the Undo index.
+        create index if not exists idx_history_entries_redo
+          on history_entries(updated_at_ms desc, sequence desc, id desc)
+          where undone != 0;
         create index if not exists idx_state_entities_order on state_entities(collection, position, entity_key);
       ",
         )
@@ -16412,6 +16417,57 @@ mod tests {
             }
         }
         eprintln!("PASTE_UNDO_PERF {}", json!({"plans": plans, "items": plans * items, "profiles": profiles}));
+    }
+
+    #[test]
+    fn existing_database_gains_redo_index_without_changing_history() {
+        let database = TestDatabase::new("redo-index-upgrade");
+        let key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &key).unwrap();
+        replace_app_state(&mut connection, &test_state("Synthetic redo index")).unwrap();
+        for (id, sequence, updated, undone, kind) in [
+            ("applied", 50, 900, 0, "patch_plan_item"),
+            ("older", 10, 100, 1, "patch_plan_item"),
+            ("a", 20, 200, 1, "patch_plan_item"),
+            ("b", 20, 200, 1, "patch_plan_item"),
+            ("navigation", 30, 300, 1, "set_active_plan_date"),
+        ] {
+            let operation = json!({"type": kind, "payload": {}}).to_string();
+            connection.execute("insert into history_entries
+                (id, operation_id, device_id, sequence, undo_operation_json, redo_operation_json, undone, created_at_ms, updated_at_ms)
+                values (?1, ?1, 'device_test', ?2, ?3, ?3, ?4, 0, ?5)",
+                params![id, sequence, operation, undone, updated]).unwrap();
+        }
+        connection.execute_batch("drop index idx_history_entries_redo").unwrap();
+        let before = read_app_state_from_database(&connection).unwrap();
+        let history_before = list_history_entries(&connection);
+        assert_eq!(latest_redoable_history_entry(&connection).unwrap().unwrap().id, "b");
+        drop(connection);
+        let connection = open_database_at(&database.path, &key).unwrap();
+        assert_eq!(read_app_state_from_database(&connection).unwrap(), before);
+        assert_eq!(list_history_entries(&connection), history_before);
+        assert_eq!(latest_redoable_history_entry(&connection).unwrap().unwrap().id, "b");
+        connection.execute("update history_entries set undone = 0 where id = 'b'", []).unwrap();
+        assert_eq!(latest_redoable_history_entry(&connection).unwrap().unwrap().id, "a");
+        connection.execute("update history_entries set undone = 0 where id in ('a', 'older')", []).unwrap();
+        assert!(latest_redoable_history_entry(&connection).unwrap().is_none());
+        let mut statement = connection.prepare("explain query plan
+            select id, operation_id, undo_operation_json, redo_operation_json from history_entries
+            where undone != 0 and json_extract(redo_operation_json, '$.type') != 'set_active_plan_date'
+            order by updated_at_ms desc, sequence desc, id desc limit 1").unwrap();
+        let details = statement.query_map([], |row| row.get::<_, String>(3)).unwrap()
+            .collect::<Result<Vec<_>, _>>().unwrap().join(" ");
+        assert!(details.contains("idx_history_entries_redo"), "{details}");
+        assert!(!details.contains("TEMP B-TREE"), "{details}");
+
+        fn list_history_entries(connection: &Connection) -> Vec<String> {
+            let mut statement = connection.prepare("select json_array(id, operation_id, sequence,
+                undo_operation_json, redo_operation_json, undone, created_at_ms, updated_at_ms)
+                from history_entries order by id").unwrap();
+            let rows = statement.query_map([], |row| row.get(0)).unwrap()
+                .collect::<Result<Vec<_>, _>>().unwrap();
+            rows
+        }
     }
 
     #[test]

@@ -169,7 +169,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
               })
             })
             window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true }))
-            await done
+            await Promise.race([done, new Promise((_, reject) => setTimeout(() => reject(Error('Keyboard undo did not update the store')), 60_000))])
             await new Promise(requestAnimationFrame)
             await new Promise(requestAnimationFrame)
             return { totalMs: performance.now() - start }
