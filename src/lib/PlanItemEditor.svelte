@@ -47,11 +47,6 @@
   export let deleteItem: (planId: Id, itemId: Id) => void
   export let deleteItemPreservingChildren: (planId: Id, itemId: Id) => void = deleteItem
   export let moveItem: (planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
-  // Only the side-by-side day comparison supplies this; elsewhere a drag that
-  // leaves its own plan does nothing.
-  export let moveItemAcrossContainers:
-    | ((sourcePlanId: Id, sourceId: Id, targetPlanId: Id, targetId: Id | null, placement: MovePlacement) => void)
-    | null = null
   export let moveItemWithinLevel: (
     planId: Id,
     itemId: Id,
@@ -670,8 +665,6 @@
     focusAdjacentTextInput(current, direction === 'left' ? 'up' : 'down', direction === 'left' ? 'end' : 'start')
   }
 
-  // Two plans can be on screen at once (side-by-side days), so keyboard traversal
-  // is scoped to the panel the caret is in rather than the whole document.
   function planScopeFor(element: HTMLElement): ParentNode {
     return element.closest<HTMLElement>('[data-plan-item-scope]') ?? document
   }
@@ -865,7 +858,6 @@
   interactive={!locked}
   showSelectionHandle={!mobile}
   {moveItem}
-  {moveItemAcrossContainers}
   {onSelectionPointerDown}
   {onSelectionPointerMove}
   {onSelectionPointerEnter}
@@ -1079,7 +1071,6 @@
             {deleteItem}
             {deleteItemPreservingChildren}
             {moveItem}
-            {moveItemAcrossContainers}
             {moveItemWithinLevel}
             {outdentItem}
             {historyRevision}

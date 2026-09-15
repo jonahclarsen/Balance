@@ -66,7 +66,6 @@
         { keys: ['alt', 'S'], label: 'Open Settings' },
         { keys: ['alt', 'Q'], label: 'Previous day, template, or metric' },
         { keys: ['alt', 'W'], label: 'Next day, template, or metric' },
-        { keys: ['alt', 'B'], label: 'Show two days side by side' },
       ],
     },
     {

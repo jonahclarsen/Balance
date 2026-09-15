@@ -17,20 +17,13 @@
   export let interactive = true
   export let showSelectionHandle = true
   export let moveItem: (containerId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
-  // Set only where dropping into a *different* container is meaningful (the
-  // side-by-side day comparison). Left null everywhere else, so a drag that
-  // wanders outside its own container is simply ignored, as before. `targetId`
-  // is null when the drop lands on a container's empty tail zone.
-  export let moveItemAcrossContainers:
-    | ((sourceContainerId: Id, sourceId: Id, targetContainerId: Id, targetId: Id | null, placement: MovePlacement) => void)
-    | null = null
   export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
   export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
   export let onSelectionPointerEnter: (itemId: Id) => void = () => {}
   export let onWholeRowSelectionToggle: (itemId: Id) => void = () => {}
   export let onRowClick: (event: MouseEvent) => void = () => {}
 
-  type DropTarget = { element: HTMLElement; containerId: Id; targetId: Id | null; placement: MovePlacement }
+  type DropTarget = { element: HTMLElement; containerId: Id; targetId: Id; placement: MovePlacement }
 
   let dragging = false
   let dragPointerId: number | null = null
@@ -65,8 +58,6 @@
     return row.dataset.itemContainerId ?? containerId
   }
 
-  // Resolves what is under the pointer: a row in this or another container, or a
-  // container's tail drop zone (which appends to the end of that container).
   function dropTargetAt(clientX: number, clientY: number): DropTarget | null {
     const hovered = document.elementFromPoint(clientX, clientY)
     if (!(hovered instanceof Element)) return null
@@ -78,11 +69,7 @@
       return { element: row, containerId: rowContainerId(row), targetId, placement: placementForRow(row, clientY) }
     }
 
-    const zone = moveItemAcrossContainers ? hovered.closest<HTMLElement>('[data-item-drop-zone]') : null
-    const zoneContainerId = zone?.dataset.itemDropZone
-    if (!zone || !zoneContainerId || zoneContainerId === containerId) return null
-
-    return { element: zone, containerId: zoneContainerId, targetId: null, placement: 'after' }
+    return null
   }
 
   function placementForRow(row: HTMLElement, clientY: number): MovePlacement {
@@ -95,15 +82,15 @@
   }
 
   function clearDropMarker() {
-    activeDropTarget?.element.classList.remove('drop-before', 'drop-inside', 'drop-after', 'drop-into-container')
+    activeDropTarget?.element.classList.remove('drop-before', 'drop-inside', 'drop-after')
     activeDropTarget = null
   }
 
   function markDropTarget(target: DropTarget) {
     if (activeDropTarget?.element !== target.element) clearDropMarker()
     activeDropTarget = target
-    target.element.classList.remove('drop-before', 'drop-inside', 'drop-after', 'drop-into-container')
-    target.element.classList.add(target.targetId ? `drop-${target.placement}` : 'drop-into-container')
+    target.element.classList.remove('drop-before', 'drop-inside', 'drop-after')
+    target.element.classList.add(`drop-${target.placement}`)
   }
 
   function startPointerDrag(event: PointerEvent) {
@@ -135,7 +122,7 @@
 
   function updateDropTarget(clientX: number, clientY: number) {
     const target = dropTargetAt(clientX, clientY)
-    if (!target || (target.containerId !== containerId && !moveItemAcrossContainers)) {
+    if (!target || target.containerId !== containerId) {
       clearDropMarker()
       return
     }
@@ -225,12 +212,7 @@
     stopAutoScroll()
     if (!target) return
 
-    if (target.containerId !== containerId) {
-      moveItemAcrossContainers?.(containerId, itemId, target.containerId, target.targetId, target.placement)
-      return
-    }
-
-    if (target.targetId && target.targetId !== itemId) {
+    if (target.targetId !== itemId) {
       moveItem(containerId, itemId, target.targetId, target.placement)
     }
   }
