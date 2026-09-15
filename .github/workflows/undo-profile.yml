@@ -66,6 +66,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify cached history through unchanged and changed refreshes
+        run: |
+          pnpm exec playwright install chromium
+          pnpm exec playwright test --config playwright.undo-performance.config.ts --grep 'native undo and redo'
+
       - name: Compile encrypted backend profile
         run: |
           cargo test --manifest-path src-tauri/Cargo.toml \

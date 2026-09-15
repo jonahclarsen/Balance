@@ -2,8 +2,9 @@
 
 `.github/workflows/undo-comparison.yml` runs the same synthetic fixture driver and
 Playwright harness against September 1, September 8, the investigation's
-September 15 baseline (`255b275`), and the workflow's commit. It alternates the
-revision order across two rounds on one macOS runner with four CPU load workers.
+September 15 baseline (`255b275`), and the workflow's commit. For each fixture size, it alternates the revision order across two rounds on
+one macOS runner with four CPU load workers. Different fixture sizes run in
+parallel jobs; compare revisions within a size to hold the machine constant.
 
 The fixtures contain 4,500 / 90,000 / 270,000 tasks, 100 goals, and respectively
 300 / 10,000 / 30,000 metric entries and retained undo records. They are newly
@@ -12,7 +13,8 @@ retained undo rows model recently deleted tasks preserved by the recovery policy
 after an operation-log checkpoint. The harness checks they survive each edit.
 No installed database, recovery key, widget keychain, or personal data is used.
 
-The `undo-comparison` artifact contains `results.jsonl` and logs. Each result
+The `undo-comparison-small`, `undo-comparison-large`, and
+`undo-comparison-xlarge` artifacts contains `results.jsonl` and logs. Each result
 identifies the revision, round, fixture size, scenario, sample, and direction:
 
 - `openMs`: opening the encrypted database and checking its schema.
@@ -46,5 +48,7 @@ operation. Correctness checks query the affected plan, note, and metric entries
 rather than repeatedly reading unrelated task history. Native engines use Cargo's test profile; the UI
 uses Vite and Chromium. The native bridge starts a test process for each command,
 so store/render totals include bridge overhead and are comparative measurements,
-not predictions of installed-app latency. OS Keychain access, widget publication,
+not predictions of installed-app latency. Both undo browser configurations use
+the dedicated port 55338 and refuse to reuse an existing server, so a worktree
+never accidentally tests the main development checkout. OS Keychain access, widget publication,
 network sync, and a due daily backup are outside these measurements.

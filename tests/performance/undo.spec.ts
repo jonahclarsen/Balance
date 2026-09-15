@@ -137,8 +137,10 @@ test('profiles pasted-link undo through the frontend store and renderer', async 
   await expect(editor).toHaveText('Goal 0')
 })
 
-for (const reloaded of [false, true]) {
-  test(`native undo and redo reveal the item ${reloaded ? 'after a backend reload' : 'using cached history'}`, async ({ page }) => {
+for (const reload of ['none', 'unchanged', 'changed', 'sequence'] as const) {
+  const reloaded = reload !== 'none'
+  const changed = reload === 'changed' || reload === 'sequence'
+  test(`native undo and redo reveal the item ${reload} backend refresh`, async ({ page }) => {
     await page.addInitScript(() => {
       type Runtime = typeof globalThis & {
         isTauri: boolean
@@ -195,16 +197,24 @@ for (const reloaded of [false, true]) {
         invoke: async (command, args) => {
           switch (command) {
             case 'read_app_state':
-              return JSON.stringify(state)
+              if (persistedOperation && new URLSearchParams(location.search).has('reload-history')) {
+                if (new URLSearchParams(location.search).has('sequence-only')) state.localSequence += 1
+                else state.plans[0].title = 'Remote title'
+              }
+              return JSON.stringify({ ...state, canRedo: runtime.__historyCalls.at(-1)?.command === 'undo_last_operation' })
             case 'persist_operation':
               persistedOperation = JSON.parse(String(args?.operationJson))
               Object.assign(state.plans[0].items[0], persistedOperation!.payload.patch)
+              state.localSequence = persistedOperation!.sequence
               return null
             case 'undo_last_operation':
             case 'redo_last_operation': {
               const operation = persistedOperation as { id: string; sequence: number } | null
               if (!operation) throw new Error('History command ran before persistence')
               runtime.__historyCalls.push({ command, expectedOperationId: args?.expectedOperationId })
+              const text = command === 'undo_last_operation' ? 'Original text' : 'Changed text'
+              Object.assign(state.plans[0].items[0], { text, html: text })
+              state.localSequence = operation.sequence + runtime.__historyCalls.length
               return JSON.stringify({
                 operationId: operation.id,
                 localSequence: operation.sequence + runtime.__historyCalls.length,
@@ -253,7 +263,7 @@ for (const reloaded of [false, true]) {
       }
     })
 
-    await page.goto(reloaded ? '/?reload-history=1' : '/')
+    await page.goto(reload === 'sequence' ? '/?reload-history=1&sequence-only=1' : changed ? '/?reload-history=1' : '/')
     const editor = page.locator('[data-plan-text-input]').first()
     await expect(editor).toHaveText('Original text')
     await editor.evaluate((element) => {
@@ -289,10 +299,21 @@ for (const reloaded of [false, true]) {
         __historyCalls: Array<{ command: string; expectedOperationId: unknown }>
       }
       return runtime.__historyCalls[0]?.expectedOperationId
-    })).toBe(reloaded ? null : 'op_device_native_test_2')
+    })).toBe(changed ? null : 'op_device_native_test_2')
     await expect(editor).toHaveText('Original text')
     await expect(page.getByLabel('Day date', { exact: true })).toHaveValue('2026-08-16')
     await expect(page.locator('[data-plan-item-id]').first()).toBeInViewport()
+    if (reload === 'unchanged') {
+      const available = await page.evaluate(async () => {
+        const path = '/src/lib/store.ts'
+        const { plannerStore, redoAvailable } = await import(/* @vite-ignore */ path)
+        await plannerStore.reloadFromBackend()
+        let available = false
+        redoAvailable.subscribe((value: boolean) => { available = value })()
+        return available
+      })
+      expect(available).toBe(true)
+    }
     await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'z',
       code: 'KeyZ',
@@ -311,7 +332,7 @@ for (const reloaded of [false, true]) {
     })
     expect(calls).toHaveLength(2)
     expect(calls[0].command).toBe('undo_last_operation')
-    expect(calls[0].expectedOperationId).toBe(reloaded ? null : 'op_device_native_test_2')
+    expect(calls[0].expectedOperationId).toBe(changed ? null : 'op_device_native_test_2')
     expect(calls[1]).toEqual({ command: 'redo_last_operation', expectedOperationId: calls[0].expectedOperationId })
   })
 

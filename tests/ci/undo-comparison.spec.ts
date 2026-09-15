@@ -108,6 +108,9 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
             }, direction)
             expect(result.changed).toBe(true)
             expect(calls.at(-1).retainedHistory).toBeGreaterThanOrEqual(entries)
+            if (process.env.BALANCE_UNDO_REVISION === 'candidate' && scenario === 'plan-after-reload') {
+              expect(calls.at(-1).fullState, 'Unchanged refresh must preserve the fast native history response').toBe(false)
+            }
             expect(await page.evaluate((direction) => {
               const r = window as any
               return r.probe() === (direction === 'undo' ? r.expectedBeforeProbe : r.expectedAfterProbe)

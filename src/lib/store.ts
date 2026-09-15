@@ -338,6 +338,22 @@ function notifyPersistedOperation(): void {
   for (const listener of persistedOperationListeners) listener()
 }
 
+// Compare normalized JSON values without allocating full-workspace strings or
+// depending on object-key order. Missing optional fields match undefined fields.
+function sameStoredValue(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (!left || !right || typeof left !== 'object' || typeof right !== 'object') return false
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return Array.isArray(left) && Array.isArray(right) && left.length === right.length &&
+      left.every((value, index) => sameStoredValue(value, right[index]))
+  }
+  const a = left as Record<string, unknown>
+  const b = right as Record<string, unknown>
+  const keys = Object.keys(a).filter((key) => a[key] !== undefined)
+  return keys.length === Object.keys(b).filter((key) => b[key] !== undefined).length &&
+    keys.every((key) => Object.hasOwn(b, key) && sameStoredValue(a[key], b[key]))
+}
+
 function parseStoredState(raw: string | null): AppState | null {
   if (!raw) return null
   try {
@@ -644,9 +660,22 @@ function createPlannerStore() {
       if (!parsed) return
 
       lastOperationMergeKey = null
-      undoStack = []
-      redoStack = []
-      store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+      store.update((current) => {
+        // Focus/resume can refresh an unchanged database. Keep the validated
+        // history snapshots and their shared collection references in that case;
+        // throwing them away makes the next undo reload the entire workspace.
+        const keys = ['preferences', 'plans', 'templates', ...ENTITY_COLLECTIONS] as const
+        const unchanged = current.deviceId === parsed.deviceId &&
+          current.localSequence === parsed.localSequence &&
+          keys.every((key) => sameStoredValue(current[key], parsed[key]))
+        if (!unchanged) {
+          undoStack = []
+          redoStack = []
+          return { ...parsed, historyRevision: current.historyRevision + 1 }
+        }
+        return { ...current, operations: parsed.operations, activePlanDate: parsed.activePlanDate,
+          historyRevision: current.historyRevision + 1 }
+      })
       return
     }
   }
