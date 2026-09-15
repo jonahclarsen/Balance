@@ -32,7 +32,7 @@ export async function focusTaskBelow(containerId: Id, completedItemIds: Iterable
   const target = targetRow?.querySelector<HTMLElement>(
     '[data-plan-text-focus-target], .item-text-display',
   )
-  if (!target) return false
+  if (!targetRow || !target) return false
 
   const completedItemId = rows[lastCompletedIndex].dataset.planItemId
   const itemId = targetRow.dataset.planItemId
