@@ -50,7 +50,7 @@ jobs:
             esac
             checkout="$RUNNER_TEMP/undo-$version"
             git worktree add --detach "$checkout" "$revision"
-            pnpm --dir "$checkout" install --frozen-lockfile --offline
+            pnpm --dir "$checkout" install --frozen-lockfile --offline || pnpm --dir "$checkout" install --frozen-lockfile
             mkdir -p "$checkout/tests/ci"
             cp tests/ci/undo-comparison.spec.ts "$checkout/tests/ci/"
             cp playwright.undo-comparison.config.ts "$checkout/"

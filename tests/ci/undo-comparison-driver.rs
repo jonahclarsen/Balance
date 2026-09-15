@@ -17,7 +17,9 @@ fn undo_comparison_driver() {
         "seed" => {
             let plans = request["args"]["plans"].as_u64().unwrap() as usize;
             let entries = request["args"]["entries"].as_u64().unwrap() as usize;
-            let mut state = undo_performance_state(plans, 60, 0);
+            let mut state = undo_performance_state(plans, 60, 100);
+            state["plans"][plans - 1]["items"][0]["startMinutes"] = json!(600);
+            state["plans"][plans - 1]["items"][0]["endMinutes"] = json!(630);
             state["metrics"] = json!([{"id": "metric_ci", "name": "Synthetic metric", "questions": [
                 {"id": "question_ci", "prompt": "Value", "html": "Value", "type": "text"}],
                 "createdAt": "2026-01-01T00:00:00Z", "updatedAt": "2026-01-01T00:00:00Z"}]);

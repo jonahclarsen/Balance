@@ -57,3 +57,34 @@ test('reordering documents reveals their page even when their contents are uncha
   const after = { ...before, notes: [...before.notes].reverse() }
   expect(historyDestination(before, after)).toMatchObject({ view: 'notes', entityId: 'b' })
 })
+
+test('finds edits and removals at the end of a large metric history with linear work', () => {
+  const before = fixture()
+  let idReads = 0
+  const count = 2000
+  before.metricEntries = Array.from({ length: count }, (_, index) => ({
+    get id() { idReads++; return `entry_${index}` },
+    metricId: 'metric', date: '2026-08-19',
+    answers: [{ questionId: 'q', value: 'original' }], createdAt: '', updatedAt: '',
+  }))
+  const changed = { ...before.metricEntries.at(-1)!, answers: [{ questionId: 'q', value: 'changed' }] }
+  const after = { ...before, metricEntries: [...before.metricEntries.slice(0, -1), changed] }
+  idReads = 0
+  expect(historyDestination(before, after)).toMatchObject({ view: 'metrics', itemId: 'q', removed: false })
+  expect(idReads).toBeLessThan(count * 10)
+  expect(historyDestination(after, before)).toMatchObject({ view: 'metrics', itemId: 'q', removed: false })
+  const removed = { ...before, metricEntries: before.metricEntries.slice(0, -1) }
+  expect(historyDestination(before, removed)).toMatchObject({ view: 'metrics', itemId: 'q', removed: true })
+  expect(historyDestination(removed, before)).toMatchObject({ view: 'metrics', itemId: 'q', removed: false })
+})
+
+test('skips unchanged metric history and ignores timestamp-only changes after reload', () => {
+  const before = fixture()
+  before.metricEntries = [{ id: 'entry', metricId: 'metric', date: '2026-08-19',
+    answers: [{ questionId: 'q', value: 'original' }], createdAt: '', updatedAt: '' }]
+  const after = structuredClone(before)
+  after.metricEntries[0].updatedAt = 'later'
+  expect(historyDestination(before, after)).toBeNull()
+  Object.defineProperty(before.metricEntries[0], 'id', { get() { throw Error('Unchanged history was scanned') } })
+  expect(historyDestination(before, { ...before, activePlanDate: '2026-09-15' })).toBeNull()
+})

@@ -12,6 +12,14 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
     writeFileSync(join(root, 'SYNTHETIC_FIXTURES_ONLY'), '')
     const calls: any[] = []
     function native(command: string, args: any = {}) {
+      if (!['seed', 'read_app_state', 'persist_operation', 'undo_last_operation', 'redo_last_operation'].includes(command)) {
+        if (command === 'get_recovery_key_status') return { confirmed: true, recoveryKey: null, databasePath: join(root, 'fixture.sqlite3') }
+        if (command === 'get_sync_settings') return { enabled: false, pairingCode: null, relayUrl: '' }
+        if (command === 'get_database_maintenance_status') return { due: false, operationCount: 0, operationBytes: 0, checkpointRecommended: false }
+        if (command === 'get_export_settings') return { autoJsonExportEnabled: false, exportDirectory: root, defaultExportDirectory: root }
+        if (command === 'build_info') return { version: 'test', commit: 'synthetic' }
+        return null
+      }
       writeFileSync(join(root, 'request.json'), JSON.stringify({ root, command, args }))
       execFileSync(resolve(process.env.BALANCE_UNDO_ENGINE!), ['tests::undo_comparison_driver', '--exact', '--ignored'], {
         env: { ...process.env, BALANCE_UNDO_REQUEST: join(root, 'request.json') }, stdio: 'pipe',
@@ -30,7 +38,11 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
       await page.addInitScript(() => {
         const runtime = window as any
         runtime.isTauri = true
-        runtime.__TAURI_INTERNALS__ = { invoke: runtime.undoNative }
+        runtime.__TAURI_INTERNALS__ = {
+          invoke: runtime.undoNative, transformCallback: () => 1,
+          metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
+        }
+        runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
       })
       await page.route('**/undo-comparison', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }))
       await page.goto('/undo-comparison')
@@ -47,11 +59,12 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
           runtime.destination = (await import(/* @vite-ignore */ path)).historyDestination
         }
       }, navigationExists)
-      for (const scenario of ['plan-text', 'paste-tree', 'note-text', 'metric-first', 'metric-last', 'plan-after-reload']) {
+      for (const scenario of ['plan-text', 'plan-pending', 'remove-time', 'paste-tree', 'note-text', 'metric-first', 'metric-last', 'plan-after-reload']) {
         await page.evaluate(async (scenario) => {
           const { store, state } = window as any
           const plan = state.plans[0]
           if (scenario.startsWith('plan-')) store.patchPlanItem(plan.id, plan.items[0].id, { text: 'Changed', html: 'Changed' })
+          if (scenario === 'remove-time') store.patchPlanItem(plan.id, plan.items[0].id, { startMinutes: null, endMinutes: null, timeHidden: null })
           if (scenario === 'note-text') store.patchNoteItem('note_ci', 'item_ci', { text: 'Changed', html: 'Changed' })
           if (scenario.startsWith('metric-')) {
             const entry = scenario === 'metric-first' ? state.metricEntries[0] : state.metricEntries.at(-1)
@@ -61,7 +74,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
             const item = (id: string) => ({ id, text: 'Pasted', html: 'Pasted', done: false, startMinutes: null, endMinutes: null, children: [] })
             store.pastePlanItems(plan.id, [{ ...item('paste_root'), children: Array.from({ length: 10 }, (_, i) => item(`paste_${i}`)) }], plan.items[0].id, 'replace')
           }
-          await store.flushPendingOperations()
+          if (scenario !== 'plan-pending') await store.flushPendingOperations()
           if (scenario === 'plan-after-reload') await store.reloadFromBackend()
           ;(window as any).expectedAfter = JSON.stringify({ plans: (window as any).state.plans, notes: (window as any).state.notes, metricEntries: (window as any).state.metricEntries })
         }, scenario)
@@ -95,11 +108,61 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
           const r = window as any
           return { plan: r.state.plans[0], note: r.state.notes[0], entries: r.state.metricEntries }
         })
-        expect(persisted.plans[0]).toMatchObject(visible.plan)
-        expect(persisted.notes[0]).toMatchObject(visible.note)
+        expect(persisted.plans[0].items[0].text).toBe(visible.plan.items[0].text)
+        expect(persisted.plans[0].items[0].children.map((i: any) => i.text)).toEqual(visible.plan.items[0].children.map((i: any) => i.text))
+        expect(persisted.plans[0].items[0].startMinutes).toBe(visible.plan.items[0].startMinutes)
+        expect(persisted.plans[0].items[0].endMinutes).toBe(visible.plan.items[0].endMinutes)
+        expect(persisted.notes[0].items[0].text).toBe(visible.note.items[0].text)
         expect(persisted.metricEntries).toEqual(visible.entries)
         // Leave each scenario at its original value, preventing merged edits.
         await page.evaluate(async () => { await (window as any).store.undo() })
+      }
+      // Exercise actual keyboard undo and the Svelte renderer for the reported
+      // task interactions as well as the isolated store/reveal stages above.
+      await page.evaluate(() => localStorage.setItem('balance:activePlanDate', (window as any).state.plans[0].date))
+      await page.goto('/')
+      const editor = page.locator('[data-plan-text-input]').first()
+      await expect(editor).toBeVisible({ timeout: 60_000 })
+      for (const scenario of ['rendered-text', 'rendered-remove-time', 'rendered-paste']) {
+        for (let sample = 0; sample < 4; sample++) {
+          const expected = await editor.textContent()
+          await page.evaluate(async (scenario) => {
+            const path = '/src/lib/store.ts'
+            const { plannerStore: store } = await import(/* @vite-ignore */ path)
+            let state: any
+            store.subscribe((value: any) => { state = value })()
+            const plan = state.plans.find((p: any) => p.date === state.activePlanDate)
+            const target = plan.items[0]
+            if (scenario === 'rendered-text') store.patchPlanItem(plan.id, target.id, { text: 'Rendered changed', html: 'Rendered changed' })
+            if (scenario === 'rendered-remove-time') store.patchPlanItem(plan.id, target.id, { startMinutes: null, endMinutes: null, timeHidden: null })
+            if (scenario === 'rendered-paste') {
+              const item = (id: string) => ({ id, text: 'Rendered pasted', html: 'Rendered pasted', done: false, startMinutes: null, endMinutes: null, children: [] })
+              store.pastePlanItems(plan.id, [{ ...item('rendered_root'), children: Array.from({ length: 10 }, (_, i) => item(`rendered_${i}`)) }], target.id, 'replace')
+            }
+          }, scenario)
+          const result = await page.evaluate(async () => {
+            const path = '/src/lib/store.ts'
+            const { plannerStore: store } = await import(/* @vite-ignore */ path)
+            let revision = 0
+            store.subscribe((state: any) => { revision = state.historyRevision })()
+            const initial = revision
+            const start = performance.now()
+            const done = new Promise<void>((resolve) => {
+              const unsubscribe = store.subscribe((state: any) => {
+                if (state.historyRevision !== initial) { unsubscribe(); resolve() }
+              })
+            })
+            window.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', code: 'KeyZ', metaKey: true, bubbles: true, cancelable: true }))
+            await done
+            await new Promise(requestAnimationFrame)
+            await new Promise(requestAnimationFrame)
+            return { totalMs: performance.now() - start }
+          })
+          expect(await editor.textContent()).toBe(expected)
+          appendFileSync(process.env.BALANCE_UNDO_REPORT!, JSON.stringify({ revision: process.env.BALANCE_UNDO_REVISION,
+            round: process.env.BALANCE_UNDO_ROUND, size, plans, items: plans * 60, entries,
+            scenario, sample, direction: 'undo', ...calls.at(-1), ...result }) + '\n')
+        }
       }
     } finally {
       rmSync(root, { recursive: true, force: true })

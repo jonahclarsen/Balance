@@ -98,18 +98,24 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
     }
     if (destinations.length) return destinations.find((target) => !target.removed) ?? destinations[0]
   }
-  for (const entry of [...after.metricEntries, ...before.metricEntries]) {
-    const a = before.metricEntries.find((candidate) => candidate.id === entry.id)
-    const b = after.metricEntries.find((candidate) => candidate.id === entry.id)
-    if (a && b && sameFields(a, b, ['updatedAt'])) continue
-    const metric = after.metrics.find((candidate) => candidate.id === entry.metricId)
-    const questionId = [...(b?.answers ?? []), ...(a?.answers ?? [])].find((answer) =>
-      a?.answers.find((value) => value.questionId === answer.questionId)?.value !==
-      b?.answers.find((value) => value.questionId === answer.questionId)?.value,
-    )?.questionId
-    return {
-      view: 'metrics', entityId: entry.metricId, itemId: questionId, date: entry.date,
-      label: `answer · ${metric?.name || 'Metric'}`, removed: !b,
+  if (before.metricEntries !== after.metricEntries) {
+    const previous = new Map(before.metricEntries.map((entry) => [entry.id, entry]))
+    const next = new Map(after.metricEntries.map((entry) => [entry.id, entry]))
+    for (const id of new Set([...next.keys(), ...previous.keys()])) {
+      const a = previous.get(id)
+      const b = next.get(id)
+      if (a && b && sameFields(a, b, ['updatedAt'])) continue
+      const entry = (b ?? a)!
+      const metric = after.metrics.find((candidate) => candidate.id === entry.metricId)
+      const oldAnswers = new Map(a?.answers.map((answer) => [answer.questionId, answer.value]))
+      const newAnswers = new Map(b?.answers.map((answer) => [answer.questionId, answer.value]))
+      const questionId = [...new Set([...newAnswers.keys(), ...oldAnswers.keys()])].find((id) =>
+        oldAnswers.get(id) !== newAnswers.get(id),
+      )
+      return {
+        view: 'metrics', entityId: entry.metricId, itemId: questionId, date: entry.date,
+        label: `answer · ${metric?.name || 'Metric'}`, removed: !b,
+      }
     }
   }
   if (before.projectCheckIns !== after.projectCheckIns) {
