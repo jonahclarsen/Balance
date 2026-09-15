@@ -24,6 +24,7 @@ async function openGoalsFromRhythm(page: import('@playwright/test').Page) {
   await expect(panel.getByRole('button', { name: 'Manage goals' })).toHaveCount(0)
   const goalsButton = panel.getByRole('button', { name: 'Goals', exact: true })
   await expect(goalsButton).toHaveCSS('border-top-style', 'solid')
+  await expect(goalsButton).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(goalsButton).toHaveCSS('padding-top', '5px')
   await goalsButton.click()
 }

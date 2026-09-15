@@ -4298,6 +4298,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-history-open-goals {
+  background: transparent;
   padding-block: 5px;
 }
 
