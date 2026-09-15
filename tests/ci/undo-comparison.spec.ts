@@ -1,0 +1,108 @@
+import { expect, test } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve } from 'node:path'
+
+// This harness is copied unchanged into every revision. Real store + SQLCipher;
+// the bridge adds process/Playwright overhead, reported separately from native work.
+for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000], ['xlarge', 4500, 30000]] as const) {
+  test(`undo comparison: ${size}`, async ({ page }) => {
+    const root = mkdtempSync(join(tmpdir(), 'balance-undo-comparison-'))
+    writeFileSync(join(root, 'SYNTHETIC_FIXTURES_ONLY'), '')
+    const calls: any[] = []
+    function native(command: string, args: any = {}) {
+      writeFileSync(join(root, 'request.json'), JSON.stringify({ root, command, args }))
+      execFileSync(resolve(process.env.BALANCE_UNDO_ENGINE!), ['tests::undo_comparison_driver', '--exact', '--ignored'], {
+        env: { ...process.env, BALANCE_UNDO_REQUEST: join(root, 'request.json') }, stdio: 'pipe',
+      })
+      const response = JSON.parse(readFileSync(join(root, 'response.json'), 'utf8'))
+      if (command.includes('last_operation')) {
+        const result = JSON.parse(response.result)
+        calls.push({ command, nativeMs: response.commandMs, openMs: response.openMs,
+          fullState: result.state !== null, responseBytes: Buffer.byteLength(response.result) })
+      }
+      return response.result
+    }
+    try {
+      native('seed', { plans, entries })
+      await page.exposeFunction('undoNative', native)
+      await page.addInitScript(() => {
+        const runtime = window as any
+        runtime.isTauri = true
+        runtime.__TAURI_INTERNALS__ = { invoke: runtime.undoNative }
+      })
+      await page.route('**/undo-comparison', route => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }))
+      await page.goto('/undo-comparison')
+      const navigationExists = existsSync('src/lib/historyNavigation.ts')
+      await page.evaluate(async (navigationExists) => {
+        const path = '/src/lib/store.ts'
+        const { plannerStore } = await import(/* @vite-ignore */ path)
+        await plannerStore.ready
+        const runtime = window as any
+        runtime.store = plannerStore
+        plannerStore.subscribe((state: any) => { runtime.state = state })
+        if (navigationExists) {
+          const path = '/src/lib/historyNavigation.ts'
+          runtime.destination = (await import(/* @vite-ignore */ path)).historyDestination
+        }
+      }, navigationExists)
+      for (const scenario of ['plan-text', 'paste-tree', 'note-text', 'metric-first', 'metric-last', 'plan-after-reload']) {
+        await page.evaluate(async (scenario) => {
+          const { store, state } = window as any
+          const plan = state.plans[0]
+          if (scenario.startsWith('plan-')) store.patchPlanItem(plan.id, plan.items[0].id, { text: 'Changed', html: 'Changed' })
+          if (scenario === 'note-text') store.patchNoteItem('note_ci', 'item_ci', { text: 'Changed', html: 'Changed' })
+          if (scenario.startsWith('metric-')) {
+            const entry = scenario === 'metric-first' ? state.metricEntries[0] : state.metricEntries.at(-1)
+            store.upsertMetricAnswer(entry.metricId, entry.date, 'question_ci', 'Changed')
+          }
+          if (scenario === 'paste-tree') {
+            const item = (id: string) => ({ id, text: 'Pasted', html: 'Pasted', done: false, startMinutes: null, endMinutes: null, children: [] })
+            store.pastePlanItems(plan.id, [{ ...item('paste_root'), children: Array.from({ length: 10 }, (_, i) => item(`paste_${i}`)) }], plan.items[0].id, 'replace')
+          }
+          await store.flushPendingOperations()
+          if (scenario === 'plan-after-reload') await store.reloadFromBackend()
+          ;(window as any).expectedAfter = JSON.stringify({ plans: (window as any).state.plans, notes: (window as any).state.notes, metricEntries: (window as any).state.metricEntries })
+        }, scenario)
+        for (let sample = 0; sample < 4; sample++) {
+          for (const direction of ['undo', 'redo']) {
+            const result = await page.evaluate(async (direction) => {
+              const runtime = window as any
+              const before = runtime.state
+              const started = performance.now()
+              const changed = await runtime.store[direction]()
+              const storeMs = performance.now() - started
+              const revealStarted = performance.now()
+              const destination = runtime.destination?.(before, runtime.state)
+              const revealMs = performance.now() - revealStarted
+              return { changed: !!changed, storeMs, revealMs, totalMs: storeMs + revealMs, destination: destination?.view }
+            }, direction)
+            expect(result.changed).toBe(true)
+            const record = { revision: process.env.BALANCE_UNDO_REVISION, round: process.env.BALANCE_UNDO_ROUND,
+              size, plans, items: plans * 60, entries, scenario, sample, direction, navigationExists, ...calls.at(-1), ...result }
+            appendFileSync(process.env.BALANCE_UNDO_REPORT!, JSON.stringify(record) + '\n')
+            if (scenario.startsWith('metric-') && navigationExists) expect(result.destination).toBe('metrics')
+          }
+        }
+        // Correctness is outside timing: restored frontend and persisted data agree.
+        expect(await page.evaluate(() => {
+          const r = window as any
+          return JSON.stringify({ plans: r.state.plans, notes: r.state.notes, metricEntries: r.state.metricEntries }) === r.expectedAfter
+        })).toBe(true)
+        const persisted = JSON.parse(native('read_app_state'))
+        const visible = await page.evaluate(() => {
+          const r = window as any
+          return { plan: r.state.plans[0], note: r.state.notes[0], entries: r.state.metricEntries }
+        })
+        expect(persisted.plans[0]).toMatchObject(visible.plan)
+        expect(persisted.notes[0]).toMatchObject(visible.note)
+        expect(persisted.metricEntries).toEqual(visible.entries)
+        // Leave each scenario at its original value, preventing merged edits.
+        await page.evaluate(async () => { await (window as any).store.undo() })
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+}

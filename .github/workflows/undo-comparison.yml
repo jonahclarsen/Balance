@@ -1,0 +1,103 @@
+name: Compare undo revisions
+on:
+  push:
+    branches: ['codex/undo-regression-profile']
+    paths: ['tests/ci/undo-comparison*', 'playwright.undo-comparison.config.ts', '.github/workflows/undo-comparison.yml', 'src/lib/historyNavigation.ts']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compare:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-undo-comparison-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-undo-comparison-
+            ${{ runner.os }}-note-undo-proof-
+            ${{ runner.os }}-undo-profile-
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium
+      - name: Prepare identical harnesses and compile real engines
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/src-tauri/target
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/undo-comparison
+          for version in two-weeks one-week baseline candidate; do
+            case "$version" in
+              two-weeks) revision=bb8d8bfda03746adf081bbd36373243a67411246 ;;
+              one-week) revision=ae2513446b92b9d61f40e4708876d295c258c915 ;;
+              baseline) revision=255b275 ;;
+              candidate) revision="$GITHUB_SHA" ;;
+            esac
+            checkout="$RUNNER_TEMP/undo-$version"
+            git worktree add --detach "$checkout" "$revision"
+            pnpm --dir "$checkout" install --frozen-lockfile --offline
+            mkdir -p "$checkout/tests/ci"
+            cp tests/ci/undo-comparison.spec.ts "$checkout/tests/ci/"
+            cp playwright.undo-comparison.config.ts "$checkout/"
+            cp tests/ci/undo-comparison-driver.rs "$checkout/src-tauri/src/"
+            python3 - "$checkout" <<'PY'
+          from pathlib import Path
+          import sys
+          source = Path(sys.argv[1]) / 'src-tauri/src/lib.rs'
+          text = source.read_text()
+          assert text.count('mod tests {') == 1
+          source.write_text(text.replace('mod tests {', 'mod tests {\n    include!("undo-comparison-driver.rs");', 1))
+          PY
+            cargo test --manifest-path "$checkout/src-tauri/Cargo.toml" --lib --no-run --message-format=json > "$RUNNER_TEMP/build-$version.jsonl"
+            node --input-type=module - "$RUNNER_TEMP/build-$version.jsonl" "$RUNNER_TEMP/engine-$version" <<'JS'
+          import { readFileSync, copyFileSync, chmodSync } from 'node:fs'
+          const rows = readFileSync(process.argv[2], 'utf8').trim().split('\n').map(JSON.parse)
+          const executable = rows.findLast(row => row.reason === 'compiler-artifact' && row.profile.test && row.executable)?.executable
+          if (!executable) throw Error('Missing test engine')
+          copyFileSync(executable, process.argv[3]); chmodSync(process.argv[3], 0o755)
+          JS
+          done
+      - name: Alternate revisions on the same runner under CPU contention
+        run: |
+          set -euo pipefail
+          output="$PWD/artifacts/undo-comparison"
+          load_pids=()
+          for worker in 1 2 3 4; do
+            yes > /dev/null &
+            load_pids+=("$!")
+          done
+          trap 'kill "${load_pids[@]}" 2>/dev/null || true' EXIT
+          for round in 1 2; do
+            versions='two-weeks one-week baseline candidate'
+            if [[ "$round" == 2 ]]; then versions='candidate baseline one-week two-weeks'; fi
+            for version in $versions; do
+              (
+                cd "$RUNNER_TEMP/undo-$version"
+                BALANCE_UNDO_ENGINE="$RUNNER_TEMP/engine-$version" \
+                BALANCE_UNDO_REPORT="$output/results.jsonl" \
+                BALANCE_UNDO_REVISION="$version" BALANCE_UNDO_ROUND="$round" \
+                  pnpm exec playwright test --config playwright.undo-comparison.config.ts
+              ) 2>&1 | tee "$output/$version-$round.log"
+            done
+          done
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: undo-comparison
+          path: artifacts/undo-comparison
+          if-no-files-found: error
