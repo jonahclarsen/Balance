@@ -162,8 +162,11 @@ for (const url of ['https://example.com/docs', 'file:///tmp/Balance%20test.pdf']
 
     await page.evaluate(() => {
       ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = ''
+      ;(window as typeof window & { openedExternalURLCount?: number }).openedExternalURLCount = 0
       window.open = ((url?: string | URL) => {
         ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = String(url)
+        const testWindow = window as typeof window & { openedExternalURLCount?: number }
+        testWindow.openedExternalURLCount = (testWindow.openedExternalURLCount ?? 0) + 1
         return null
       }) as typeof window.open
     })
@@ -173,11 +176,18 @@ for (const url of ['https://example.com/docs', 'file:///tmp/Balance%20test.pdf']
       .toBe(url)
     await page.evaluate(() => {
       ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = ''
+      ;(window as typeof window & { openedExternalURLCount?: number }).openedExternalURLCount = 0
     })
     await taskInput.focus()
-    await page.keyboard.press('Alt+f')
+    await page.evaluate(() => {
+      const shortcut = { key: 'f', code: 'KeyF', altKey: true, bubbles: true, cancelable: true }
+      window.dispatchEvent(new KeyboardEvent('keydown', shortcut))
+      window.dispatchEvent(new KeyboardEvent('keydown', shortcut))
+    })
     await expect.poll(() => page.evaluate(() => (window as typeof window & { openedExternalURL?: string }).openedExternalURL))
       .toBe(url)
+    await expect.poll(() => page.evaluate(() => (window as typeof window & { openedExternalURLCount?: number }).openedExternalURLCount))
+      .toBe(1)
   })
 }
 
@@ -520,7 +530,8 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
     element.scrollTop = element.scrollHeight - element.clientHeight
   })
   const crossoverIndex = await rows.evaluateAll((elements) => {
-    const targetTop = window.innerHeight / 3
+    const bodyRect = elements[0].closest('.overlay-body')!.getBoundingClientRect()
+    const targetTop = bodyRect.top + bodyRect.height * 0.08
     let closestIndex = -1
     let closestDistance = Number.POSITIVE_INFINITY
     for (const [index, element] of elements.entries()) {
@@ -726,7 +737,7 @@ test('an open list overlay, its selection, and its scroll position survive a rel
   expect(await dialog.locator('.overlay-body').evaluate((element) => element.scrollTop)).toBeLessThanOrEqual(scrollTopBefore + 2)
 })
 
-test('reopening a list overlay selects the first unchecked item near the one-third scroll line', async ({ page }) => {
+test('reopening a list overlay selects the first unchecked item near 8% from the top of the scroll area', async ({ page }) => {
   let dialog = await openLongGroceriesOverlay(page)
 
   const targetText = 'Item 24'
@@ -779,8 +790,9 @@ test('reopening a list overlay selects the first unchecked item near the one-thi
     .poll(async () => {
       return dialog.locator('.plan-row.selected').evaluate((row) => {
         const top = row.getBoundingClientRect().top
-        return Math.abs(top - window.innerHeight / 3)
+        const bodyRect = row.closest('.overlay-body')!.getBoundingClientRect()
+        return Math.abs(top - (bodyRect.top + bodyRect.height * 0.08))
       })
     })
-    .toBeLessThan(72)
+    .toBeLessThan(2)
 })

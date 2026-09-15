@@ -71,6 +71,9 @@ test('day rail points toward today and disappears on today', async ({ page }, te
     await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
   }
   const primaryPane = page.getByRole('region', { name: 'Daily plan' })
+  await expect(page.getByRole('button', { name: 'Compare with another day' })).toHaveCount(0)
+  await page.keyboard.press('Alt+B')
+  await expect(page.locator('.day-pane')).toHaveCount(1)
   const todayDate = await primaryPane.locator('.date-input').inputValue()
   const mobile = testInfo.project.name === 'mobile'
   await expect(page.locator('.workspace')).toHaveClass(/current-day-workspace/)
@@ -88,31 +91,9 @@ test('day rail points toward today and disappears on today', async ({ page }, te
   await expectDayRail(page.locator('.workspace'), 'after', mobile)
 
   await primaryPane.locator('.date-input').fill(todayDate)
-  await primaryPane.getByRole('button', { name: 'Compare with another day' }).click()
-  const comparePane = page.getByRole('region', { name: 'Compared day' })
-  await expect(comparePane).toBeVisible()
-  if (testInfo.project.name === 'desktop') await page.setViewportSize({ width: 1000, height: 450 })
-
-  await expect(page.locator('.workspace')).not.toHaveClass(/current-day-workspace/)
+  await expect(page.locator('.workspace')).toHaveClass(/current-day-workspace/)
   await expectDayRail(page.locator('.workspace'), 'current', mobile)
   await expect(primaryPane).toHaveClass(/current-day-pane/)
-  await expectDayRail(primaryPane, 'current', mobile)
-  await expect(comparePane).toHaveClass(/after-current-day-pane/)
-  await expectDayRail(comparePane, 'after', mobile)
-  if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
-  else await primaryPane.evaluate((pane) => pane.scrollTo(0, 200))
-  await expect(primaryPane).toHaveClass(/current-day-pane/)
-
-  await primaryPane.locator('.date-input').fill(addDays(todayDate, -1))
-  await expect(primaryPane).toHaveClass(/before-current-day-pane/)
-  await expectDayRail(primaryPane, 'before', mobile)
-  await expect(primaryPane).not.toHaveAttribute('aria-current', 'date')
-
-  if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
-  else await comparePane.evaluate((pane) => pane.scrollTo(0, 200))
-  await expect(comparePane).toHaveClass(/after-current-day-pane/)
-  await expectDayRail(comparePane, 'after', mobile)
-  await expect(comparePane).not.toHaveAttribute('aria-current', 'date')
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-directional-day-rails.png`,
     fullPage: false,
@@ -2361,7 +2342,7 @@ test('clicking add time generates a fresh range instead of restoring the keyboar
   await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
 })
 
-test('keyboard time shortcuts also work while editing day-template items', async ({ page }) => {
+test('keyboard probability shortcuts work at the day-template caret without changing time', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -2369,16 +2350,23 @@ test('keyboard time shortcuts also work while editing day-template items', async
 
   await focusTemplateOptionByValue(page, 'Pick the first useful task')
   await page.keyboard.press('Alt+Shift+t')
-  await page.keyboard.press('Alt+Shift+]')
+  const row = page.locator('[data-template-item-id]').filter({ has: page.getByRole('textbox', { name: 'Template item', exact: true }).filter({ hasText: 'Pick the first useful task' }) }).last()
+  const probability = row.locator('input[type="range"]').first()
+  for (const modifier of ['Alt+', 'Alt+Shift+', 'Meta+', 'Meta+Shift+']) {
+    await page.keyboard.press(`${modifier}[`)
+    await expect(probability).toHaveValue('95')
+    await page.keyboard.press(`${modifier}]`)
+    await expect(probability).toHaveValue('100')
+  }
 
-  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([555, 615])
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
 
   await page.keyboard.press('Alt+Shift+t')
   await page.reload()
   await page.getByRole('button', { name: 'Day Templates' }).click()
   await focusTemplateOptionByValue(page, 'Pick the first useful task')
   await page.keyboard.press('Alt+Shift+t')
-  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([555, 615])
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
 })
 
 test('adding time to deeper descendants reuses the previous timed task start', async ({ page }) => {
@@ -3372,6 +3360,32 @@ test('checking a plan item moves the desktop caret to the task beneath it', asyn
 
   await expect(secondCheckbox).toBeChecked()
   await expect.poll(async () => activeInputValue(page)).toBe('Third task')
+})
+
+test('checking a parent moves the desktop caret past all of its descendants', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile checkbox taps deliberately dismiss task editing')
+  await seedPlanTree(page, [
+    {
+      id: 'parent',
+      text: 'Parent task',
+      children: [
+        {
+          id: 'child-group',
+          text: 'Child group',
+          children: [{ id: 'grandchild', text: 'Grandchild', children: [] }],
+        },
+        { id: 'direct-child', text: 'Direct child', children: [] },
+      ],
+    },
+    { id: 'task-below', text: 'Task below parent', children: [] },
+  ])
+
+  await page
+    .getByRole('listitem', { name: 'Plan item: Parent task', exact: true })
+    .getByRole('checkbox')
+    .check()
+
+  await expect.poll(async () => activeInputValue(page)).toBe('Task below parent')
 })
 
 test('unchecking a plan item keeps the desktop caret on that task', async ({ page }, testInfo) => {
@@ -4406,7 +4420,7 @@ test('replacing the system clipboard prevents stale structured task paste', asyn
   await focusInputByValue(page, before[0])
   await page.keyboard.press('Shift+ArrowDown')
   await page.keyboard.press('Meta+C')
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(before.slice(0, 2).join('\n'))
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`<balance>\n${before.slice(0, 2).map((text) => `- ${text}`).join('\n')}\n</balance>`)
 
   await focusInputByValue(page, 'Work block')
   await setCaretOffsetInFocusedEditor(page, 0)
@@ -4442,23 +4456,25 @@ test('pasting a moved group again keeps it as structured task items', async ({ p
   await page.keyboard.press('Meta+X')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([])
 
-  await page.getByRole('button', { name: 'Previous day' }).click()
+  await page.keyboard.press('Alt+KeyQ')
   await page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' }).click()
   const priorDayItems = await activePlanTopLevelTexts(page)
   await focusInputByValue(page, priorDayItems.at(-1) as string)
+  await setCaretOffsetInFocusedEditor(page, priorDayItems.at(-1)!.length)
   await page.keyboard.press('Meta+V')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([...priorDayItems, ...movedItems])
 
   // Move the same three tasks back to today.
   await page.keyboard.press('Meta+X')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual(priorDayItems)
-  await page.getByRole('button', { name: 'Next day' }).click()
+  await page.keyboard.press('Alt+KeyW')
   await page.keyboard.press('Meta+V')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual(movedItems)
 
   // A second paste must still use the internal structured clipboard. Previously it
   // fell through to native rich-text paste and merged the three lines into one task.
   await focusInputByValue(page, movedItems.at(-1) as string)
+  await setCaretOffsetInFocusedEditor(page, movedItems.at(-1)!.length)
   await page.keyboard.press('Meta+V')
   await expect.poll(async () => activePlanTopLevelTexts(page)).toEqual([...movedItems, ...movedItems])
 })
@@ -6571,3 +6587,25 @@ async function altVerticalDrag(page: import('@playwright/test').Page, source: im
     await page.keyboard.up('Alt')
   }
 }
+
+
+test('probability shortcuts target the list item at the caret and allow typing brackets', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: 'New list' }).click()
+  const input = page.locator('[data-list-template-text-input]').first()
+  await input.fill('Caret item')
+  const probability = page.getByLabel('Appearance probability').first()
+  for (const modifier of ['Alt+', 'Alt+Shift+', 'Meta+', 'Meta+Shift+']) {
+    await page.keyboard.press(`${modifier}[`)
+    await expect(probability).toHaveValue('95')
+    await page.keyboard.press(`${modifier}]`)
+    await expect(probability).toHaveValue('100')
+  }
+  await page.keyboard.press('[')
+  await page.keyboard.press(']')
+  await expect(input).toContainText('[]')
+  await expect(probability).toHaveValue('100')
+})

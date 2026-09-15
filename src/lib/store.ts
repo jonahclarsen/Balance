@@ -838,9 +838,7 @@ function createPlannerStore() {
       return true
     },
 
-    // Generating normally moves the app onto the generated day. The side-by-side
-    // comparison fills its second pane instead, so it passes the date to stay on.
-    generatePlan(templateId: Id, date: string, replaceExisting: boolean, activePlanDate = date) {
+    generatePlan(templateId: Id, date: string, replaceExisting: boolean) {
       const current = get(store)
       const template = current.templates.find((candidate) => candidate.id === templateId)
       if (!template) return
@@ -875,7 +873,7 @@ function createPlannerStore() {
 
         return {
           ...state,
-          activePlanDate,
+          activePlanDate: date,
           goals,
           plans: [...plans, visiblePlan].sort((a, b) => b.date.localeCompare(a.date)),
           uneditedPlanItems: [...state.uneditedPlanItems.filter(({ id }) => !previousIds.has(id)), ...freshMarkers],
@@ -1241,9 +1239,8 @@ function createPlannerStore() {
       })))
     },
 
-    // Cross-day move, used by the side-by-side day comparison. The whole subtree
-    // travels with the item, so it ships in the payload and lands in the target
-    // plan the same way a paste would; the source plan just drops it.
+    // Keep this existing replicated primitive available for historical operation
+    // compatibility even though the former UI that authored it has been removed.
     movePlanItemToPlan(
       sourcePlanId: Id,
       targetPlanId: Id,

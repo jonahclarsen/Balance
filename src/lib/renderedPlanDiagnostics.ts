@@ -14,7 +14,6 @@ export type RenderedPlanRowDiagnostic = {
 
 export type RenderedPlanPaneDiagnostic = {
   paneIndex: number
-  comparisonPane: boolean
   date: string
   rows: RenderedPlanRowDiagnostic[]
 }
@@ -57,7 +56,6 @@ export function captureRenderedPlanSnapshot(): RenderedPlanDiagnosticSnapshot | 
     })
     return {
       paneIndex,
-      comparisonPane: pane.getAttribute('aria-label') === 'Compared day',
       date,
       rows,
     }
