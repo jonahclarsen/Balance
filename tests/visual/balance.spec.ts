@@ -71,6 +71,9 @@ test('day rail points toward today and disappears on today', async ({ page }, te
     await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
   }
   const primaryPane = page.getByRole('region', { name: 'Daily plan' })
+  await expect(page.getByRole('button', { name: 'Compare with another day' })).toHaveCount(0)
+  await page.keyboard.press('Alt+B')
+  await expect(page.locator('.day-pane')).toHaveCount(1)
   const todayDate = await primaryPane.locator('.date-input').inputValue()
   const mobile = testInfo.project.name === 'mobile'
   await expect(page.locator('.workspace')).toHaveClass(/current-day-workspace/)
@@ -88,31 +91,9 @@ test('day rail points toward today and disappears on today', async ({ page }, te
   await expectDayRail(page.locator('.workspace'), 'after', mobile)
 
   await primaryPane.locator('.date-input').fill(todayDate)
-  await primaryPane.getByRole('button', { name: 'Compare with another day' }).click()
-  const comparePane = page.getByRole('region', { name: 'Compared day' })
-  await expect(comparePane).toBeVisible()
-  if (testInfo.project.name === 'desktop') await page.setViewportSize({ width: 1000, height: 450 })
-
-  await expect(page.locator('.workspace')).not.toHaveClass(/current-day-workspace/)
+  await expect(page.locator('.workspace')).toHaveClass(/current-day-workspace/)
   await expectDayRail(page.locator('.workspace'), 'current', mobile)
   await expect(primaryPane).toHaveClass(/current-day-pane/)
-  await expectDayRail(primaryPane, 'current', mobile)
-  await expect(comparePane).toHaveClass(/after-current-day-pane/)
-  await expectDayRail(comparePane, 'after', mobile)
-  if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
-  else await primaryPane.evaluate((pane) => pane.scrollTo(0, 200))
-  await expect(primaryPane).toHaveClass(/current-day-pane/)
-
-  await primaryPane.locator('.date-input').fill(addDays(todayDate, -1))
-  await expect(primaryPane).toHaveClass(/before-current-day-pane/)
-  await expectDayRail(primaryPane, 'before', mobile)
-  await expect(primaryPane).not.toHaveAttribute('aria-current', 'date')
-
-  if (testInfo.project.name === 'mobile') await page.evaluate(() => window.scrollTo(0, 500))
-  else await comparePane.evaluate((pane) => pane.scrollTo(0, 200))
-  await expect(comparePane).toHaveClass(/after-current-day-pane/)
-  await expectDayRail(comparePane, 'after', mobile)
-  await expect(comparePane).not.toHaveAttribute('aria-current', 'date')
   await page.screenshot({
     path: `artifacts/visual-smoke/${testInfo.project.name}-directional-day-rails.png`,
     fullPage: false,
