@@ -1774,6 +1774,7 @@ return rows`
             ? await plannerStore.addPlanItemFromSiri(deepLink.text, deepLink.requestId, todayISO())
             : false
           await plannerStore.flushPendingOperations()
+          if (deepLink) await invoke('confirm_siri_request_saved', { requestId: deepLink.requestId })
           await invoke('acknowledge_deep_link', { url: raw })
           pendingDeepLinks.shift()
           if (!added || !mounted) continue

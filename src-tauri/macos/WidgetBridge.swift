@@ -43,6 +43,17 @@ public func balanceInstallSiriRequestHandler(
     }
 }
 
+// Called only after the native durable receipt has been checked.
+@_cdecl("balance_confirm_siri_request_saved")
+public func balanceConfirmSiriRequestSaved(_ request: UnsafePointer<CChar>) {
+    DistributedNotificationCenter.default().postNotificationName(
+        Notification.Name("app.balance.local.siri.saved"),
+        object: String(cString: request),
+        userInfo: nil,
+        deliverImmediately: true
+    )
+}
+
 private func widgetPublicKeyString() -> String? {
     // Sandboxed extension preferences live in the extension's container. A
     // suite lookup from the unsandboxed Tauri host targets the global domain
