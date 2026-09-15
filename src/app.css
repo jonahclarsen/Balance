@@ -6431,6 +6431,15 @@ textarea.note-title {
   background: color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
+::highlight(balance-note-selection) {
+  background-color: color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.note-text-selection .note-text::selection,
+.note-text-selection .note-text *::selection {
+  background-color: transparent;
+}
+
 .note-text a {
   color: var(--accent-strong);
   text-decoration: underline;

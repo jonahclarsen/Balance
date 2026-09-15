@@ -6,8 +6,9 @@
   import { onDestroy, onMount, tick } from 'svelte'
   import { caretPointFromCoordinates } from './caretGeometry'
   import NoteItemEditor from './NoteItemEditor.svelte'
+  import { noteTextOffset as textOffsetAtPoint, noteTextPoint as pointAtTextOffset } from './noteSelection'
   import ReadOnlyNoteItem from './ReadOnlyNoteItem.svelte'
-  import { htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
+  import { escapeHTML, htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
   import {
     noteClipboardHTML,
     noteClipboardPlainText,
@@ -51,9 +52,7 @@
   export let patchItem: typeof import('./store').plannerStore.patchNoteItem
   export let patchItemsDone: typeof import('./store').plannerStore.patchNoteItemsDone
   export let splitItem: typeof import('./store').plannerStore.splitNoteItem
-  export let pasteItems: typeof import('./store').plannerStore.pasteNoteItems
   export let backspaceItemAtStart: typeof import('./store').plannerStore.backspaceNoteItemAtStart
-  export let deleteItem: typeof import('./store').plannerStore.deleteNoteItem
   export let deleteItems: typeof import('./store').plannerStore.deleteNoteItems
   export let replaceItemRange: typeof import('./store').plannerStore.replaceNoteItemRange
   export let deleteItemPreservingChildren: typeof import('./store').plannerStore.deleteNoteItemPreservingChildren
@@ -87,16 +86,15 @@
   let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
   let pointerSelectionFocus: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
   type CrossBlockSelection = {
+    range: Range
     startEditor: HTMLDivElement
     endEditor: HTMLDivElement
-    selectedIds: Id[]
-    beforeHTML: string
-    afterHTML: string
-    caretOffset: number
-    selectedCharacterCount: number
-    savedAt: number
   }
-  let recentCrossBlockSelection: CrossBlockSelection | null = null
+  // Native selections can be clamped to one editing host in WebKit. Retain the
+  // intended range until the user changes it, and paint each paragraph's range.
+  let textSelection: CrossBlockSelection | null = null
+  let textSelectionAnchor: { node: Node; offset: number } | null = null
+  let textSelectionFocus: { node: Node; offset: number } | null = null
   // WKWebView clamps a DOM Selection at contenteditable boundaries when list
   // decoration sits between the editors. Keep a real row selection for lists;
   // it drives both the visible highlight and the clipboard independently.
@@ -388,28 +386,6 @@
     })
   }
 
-  function textOffsetAtPoint(editor: HTMLDivElement, node: Node, offset: number) {
-    const range = document.createRange()
-    range.selectNodeContents(editor)
-    range.setEnd(node, offset)
-    return range.toString().length
-  }
-
-  function pointAtTextOffset(editor: HTMLDivElement, requestedOffset: number) {
-    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT)
-    let remaining = requestedOffset
-    let node = walker.nextNode()
-
-    while (node) {
-      const length = node.textContent?.length ?? 0
-      if (remaining <= length) return { node, offset: remaining }
-      remaining -= length
-      node = walker.nextNode()
-    }
-
-    return { node: editor as Node, offset: requestedOffset <= 0 ? 0 : editor.childNodes.length }
-  }
-
   async function restoreActiveNoteViewState(noteId: Id) {
     const request = ++noteViewRestoreRequest
     restoringNoteViewState = true
@@ -538,14 +514,7 @@
     const selection = document.getSelection()
     if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
       const candidate = crossBlockSelectionForRange(selection.getRangeAt(0))
-      if (
-        candidate &&
-        (!recentCrossBlockSelection ||
-          candidate.startEditor !== recentCrossBlockSelection.startEditor ||
-          candidate.endEditor !== recentCrossBlockSelection.endEditor ||
-          Date.now() - recentCrossBlockSelection.savedAt >= 1000 ||
-          candidate.selectedCharacterCount >= recentCrossBlockSelection.selectedCharacterCount)
-      ) recentCrossBlockSelection = candidate
+      if (candidate && !textSelection) setTextSelection(candidate)
     }
     const inputs = noteInputs()
     const lastInput = inputs.at(-1)
@@ -634,8 +603,12 @@
   }
 
   function handleEditorKeydownCapture(event: KeyboardEvent) {
-    if (!['Backspace', 'Delete'].includes(event.key)) recentCrossBlockSelection = null
-    if (handleCrossBlockDeletion(event)) return
+    if (!(event.target instanceof Node)) return
+    // Safari can leave focus on the document after toggling a selected checkbox.
+    if (!noteBlocksElement?.contains(event.target) &&
+      !(selectedItemIds.length > 0 && event.target === document.body)) return
+    const primaryModifier = event.metaKey || event.ctrlKey
+    if (handleSelectedTextKeydown(event)) return
 
     if (event.key === 'Tab' && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
       const row = event.target instanceof Element
@@ -655,9 +628,8 @@
       }
     }
 
-    const primaryModifier = event.metaKey || event.ctrlKey
     if (selectedItemIds.length > 0) {
-      if (event.key === 'Backspace' && !primaryModifier && !event.altKey && !event.shiftKey) {
+      if (['Backspace', 'Delete'].includes(event.key)) {
         event.preventDefault()
         event.stopPropagation()
         void deleteSelectedItems()
@@ -672,7 +644,8 @@
       if (
         !modifierOnly &&
         !event.shiftKey &&
-        !(primaryModifier && ['a', 'c'].includes(event.key.toLocaleLowerCase()))
+        !(primaryModifier && ['a', 'c', 'x', 'v'].includes(event.key.toLocaleLowerCase())) &&
+        event.key.length !== 1 && event.key !== 'Enter'
       ) {
         clearItemSelection()
       }
@@ -680,51 +653,190 @@
     if (['Enter', 'Backspace', 'Delete', 'Tab'].includes(event.key)) void followNoteBottomAfterEdit(event)
   }
 
-  function handleCrossBlockDeletion(event: KeyboardEvent) {
-    if (
-      !['Backspace', 'Delete'].includes(event.key) ||
-      event.metaKey ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.shiftKey ||
-      !selectedNote
-    ) return false
+  function handleSelectedTextKeydown(event: KeyboardEvent) {
+    if (extendTextSelectionWithKeyboard(event)) return true
+    const selected = selectedTextRange()
+    const blockSelection = selected && crossBlockSelectionForRange(selected)
+    if (!blockSelection && selectedItemIds.length === 0) return false
+    if (event.isComposing) return false
+    if (['Backspace', 'Delete'].includes(event.key) && selectedItemIds.length === 0) {
+      event.preventDefault()
+      event.stopPropagation()
+      void replaceSelectionWithHTML('')
+      return true
+    }
+    if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault()
+      event.stopPropagation()
+      void replaceSelectionWithHTML(event.shiftKey ? '<br>' : '', !event.shiftKey)
+      return true
+    }
+    if (event.key === 'Escape' || (!event.shiftKey && event.key.startsWith('Arrow'))) {
+      if (textSelection) {
+        const range = textSelection.range
+        const toStart = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+        const editor = toStart ? textSelection.startEditor : textSelection.endEditor
+        const offset = textOffsetAtPoint(editor, toStart ? range.startContainer : range.endContainer, toStart ? range.startOffset : range.endOffset)
+        clearItemSelection()
+        placeCaretAtTextOffset(editor, offset)
+        event.preventDefault()
+        event.stopPropagation()
+        return true
+      }
+    }
+    if ((event.metaKey || event.ctrlKey) && ['z', 'a'].includes(event.key.toLowerCase())) clearTextSelection()
+    return false
+  }
 
+  function extendTextSelectionWithKeyboard(event: KeyboardEvent) {
+    if (!event.shiftKey || !event.key.startsWith('Arrow') || event.ctrlKey || event.altKey || selectedItemIds.length > 0) return false
     const selection = document.getSelection()
-    const liveSelection = selection && !selection.isCollapsed && selection.rangeCount > 0
-      ? crossBlockSelectionForRange(selection.getRangeAt(0))
-      : null
-    const eventEditor = event.target instanceof Node ? noteEditorForNode(event.target) : null
-    const savedSelection = recentCrossBlockSelection &&
-      Date.now() - recentCrossBlockSelection.savedAt < 1000 &&
-      eventEditor === recentCrossBlockSelection.endEditor
-      ? recentCrossBlockSelection
-      : null
-    const blockSelection = savedSelection &&
-      (!liveSelection || savedSelection.selectedCharacterCount > liveSelection.selectedCharacterCount)
-      ? savedSelection
-      : liveSelection
-    recentCrossBlockSelection = null
-    if (!blockSelection) return false
-    const { startEditor, selectedIds, beforeHTML, afterHTML, caretOffset } = blockSelection
-    const startId = startEditor.dataset.noteTextInputId
-    if (!startId) return false
-    const replacementHTML = sanitizeInlineHTML(`${beforeHTML}${afterHTML}`)
-
+    if (!selection?.anchorNode || !selection.focusNode) return false
+    const anchor = textSelectionAnchor ?? { node: selection.anchorNode, offset: selection.anchorOffset }
+    const focus = textSelectionFocus ?? { node: selection.focusNode, offset: selection.focusOffset }
+    const editor = noteEditorForNode(focus.node)
+    if (!editor) return false
+    const inputs = noteInputs()
+    const backwards = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
+    let target: { node: Node; offset: number }
+    if (event.metaKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
+      const endpoint = backwards ? inputs[0] : inputs.at(-1)!
+      target = { node: endpoint, offset: backwards ? 0 : endpoint.childNodes.length }
+    } else {
+      const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight'
+      const offset = textOffsetAtPoint(editor, focus.node, focus.offset)
+      const length = textOffsetAtPoint(editor, editor, editor.childNodes.length)
+      if (!textSelection && (!horizontal || (backwards ? offset !== 0 : offset !== length))) return false
+      editor.focus()
+      selection.collapse(focus.node, focus.offset)
+      const content = document.createRange()
+      content.selectNodeContents(editor)
+      const lineRects = Array.from(content.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
+      const caretRect = selection.getRangeAt(0).getBoundingClientRect()
+      const edge = backwards ? lineRects[0] : lineRects.at(-1)
+      const boundaryLine = !edge || caretRect.top < edge.bottom && caretRect.bottom > edge.top
+      const adjacent = inputs[inputs.indexOf(editor) + (backwards ? -1 : 1)]
+      if (!horizontal && boundaryLine && adjacent) {
+        target = pointAtTextOffset(adjacent, offset)
+      } else {
+        selection.modify('move', backwards ? 'backward' : 'forward', horizontal ? (event.metaKey ? 'lineboundary' : 'character') : 'line')
+        target = { node: selection.focusNode!, offset: selection.focusOffset }
+        if (target.node === focus.node && target.offset === focus.offset || !noteEditorForNode(target.node)) {
+          target = adjacent ? pointAtTextOffset(adjacent, horizontal ? (backwards ? Number.MAX_SAFE_INTEGER : 0) : offset) : focus
+        }
+      }
+    }
     event.preventDefault()
     event.stopPropagation()
-    startEditor.innerHTML = replacementHTML
-    replaceItemRange(selectedNote.id, startId, selectedIds, {
-      html: replacementHTML,
-      text: htmlToPlainTextWithBreaks(replacementHTML),
-    })
-    clearItemSelection()
-    activeItemId = startId
-    void tick().then(() => {
-      const editor = noteInputs().find((input) => input.dataset.noteTextInputId === startId)
-      if (editor) placeCaretAtTextOffset(editor, caretOffset)
-    })
+    applyPointerSelection(anchor, target)
     return true
+  }
+
+  function handleNoteBeforeInput(event: InputEvent) {
+    followNoteBottomAfterEdit(event)
+    const editor = event.target instanceof Node ? noteEditorForNode(event.target) : null
+    if (!editor || !noteBlocksElement?.contains(editor) || !event.cancelable) return
+    const range = selectedTextRange()
+    if (!range || (!crossBlockSelectionForRange(range) && selectedItemIds.length === 0)) return
+    if (event.inputType.startsWith('delete') || event.inputType === 'insertText' ||
+      event.inputType === 'insertReplacementText' || event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
+      event.preventDefault()
+      event.stopPropagation()
+      void replaceSelectionWithHTML(event.inputType === 'insertLineBreak' ? '<br>' : escapeHTML(event.data ?? ''), event.inputType === 'insertParagraph')
+    }
+  }
+
+  function selectedTextRange(): Range | null {
+    if (selectedItemIds.length > 0) {
+      const inputs = noteInputs().filter((input) => selectedItemIds.includes(input.dataset.noteTextInputId ?? ''))
+      if (!inputs.length) return null
+      const range = document.createRange()
+      range.setStart(inputs[0], 0)
+      range.setEnd(inputs.at(-1)!, inputs.at(-1)!.childNodes.length)
+      return range
+    }
+    if (textSelection) {
+      if (textSelection.startEditor.isConnected && textSelection.endEditor.isConnected &&
+        noteEditorForNode(textSelection.range.startContainer) === textSelection.startEditor &&
+        noteEditorForNode(textSelection.range.endContainer) === textSelection.endEditor) return textSelection.range
+      clearTextSelection()
+    }
+    const selection = document.getSelection()
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
+    return range && noteEditorForNode(range.startContainer) && noteEditorForNode(range.endContainer) &&
+      noteBlocksElement?.contains(range.commonAncestorContainer) ? range : null
+  }
+
+  function clearTextSelection() {
+    textSelection = null
+    textSelectionAnchor = null
+    textSelectionFocus = null
+    CSS.highlights?.delete('balance-note-selection')
+  }
+
+  function setTextSelection(selected: CrossBlockSelection) {
+    textSelection = selected
+    if (typeof Highlight !== 'undefined') CSS.highlights.set('balance-note-selection', new Highlight(...selectionFragments(selected.range)))
+  }
+
+  function selectionFragments(range: Range) {
+    return noteInputs().filter((input) => range.intersectsNode(input)).map((input) => {
+      const fragment = document.createRange()
+      fragment.selectNodeContents(input)
+      if (input.contains(range.startContainer)) fragment.setStart(range.startContainer, range.startOffset)
+      if (input.contains(range.endContainer)) fragment.setEnd(range.endContainer, range.endOffset)
+      return fragment
+    })
+  }
+
+  async function replaceSelectionWithHTML(html: string, split = false) {
+    const range = selectedTextRange()
+    if (!range) return
+    const startId = noteEditorForNode(range.startContainer)?.dataset.noteTextInputId
+    const source = selectedNote && startId ? findItem(selectedNote.items, startId) : null
+    const kind = source?.kind ?? 'paragraph'
+    const item = (content: string, itemKind = kind): ParsedNoteClipboardItem => ({ kind: itemKind, html: content, text: htmlToPlainTextWithBreaks(content), done: false, children: [] })
+    await replaceSelectionWithItems(range, split ? [item(''), item('', kind === 'heading' ? 'paragraph' : kind)] : [item(html)], false)
+  }
+
+  async function replaceSelectionWithItems(range: Range, items: ParsedNoteClipboardItem[], usePastedKind = true) {
+    if (!selectedNote || items.length === 0) return
+    const startEditor = noteEditorForNode(range.startContainer)
+    const endEditor = noteEditorForNode(range.endContainer)
+    const startId = startEditor?.dataset.noteTextInputId
+    if (!startEditor || !endEditor || !startId) return
+    const before = document.createRange()
+    before.selectNodeContents(startEditor)
+    before.setEnd(range.startContainer, range.startOffset)
+    const after = document.createRange()
+    after.selectNodeContents(endEditor)
+    after.setStart(range.endContainer, range.endOffset)
+    const beforeHTML = sanitizedRangeHTML(before)
+    const afterHTML = sanitizedRangeHTML(after)
+    const flatten = flattenParsedClipboardItems(items)
+    const first = flatten[0]
+    const last = flatten.at(-1)!
+    first.html = sanitizeInlineHTML(beforeHTML + first.html)
+    first.text = htmlToPlainTextWithBreaks(first.html)
+    const caretOffset = htmlToPlainTextWithBreaks(last.html).length
+    last.html = sanitizeInlineHTML(last.html + afterHTML)
+    last.text = htmlToPlainTextWithBreaks(last.html)
+    const inputs = noteInputs()
+    const ids = inputs.slice(inputs.indexOf(startEditor), inputs.indexOf(endEditor) + 1).flatMap((input) => input.dataset.noteTextInputId ?? [])
+    clearItemSelection()
+    // Clear the native range before removing blocks, so blur cannot save a
+    // browser-mutated version of the old endpoints over the replacement.
+    clearNativeSelection()
+    startEditor.innerHTML = first.html + (first.html.endsWith('<br>') ? '<br>' : '')
+    const pastedIds = replaceItemRange(selectedNote.id, startId, ids, {
+      html: first.html, text: first.text,
+      ...(usePastedKind ? { kind: first.kind, done: first.done } : {}),
+      children: first.children,
+    }, items.slice(1))
+    activeItemId = pastedIds.at(-1) ?? startId
+    await tick()
+    const editor = activeEditor()
+    if (editor) placeCaretAtTextOffset(editor, caretOffset)
   }
 
   function crossBlockSelectionForRange(range: Range): CrossBlockSelection | null {
@@ -736,34 +848,10 @@
     const startIndex = inputs.indexOf(startEditor)
     const endIndex = inputs.indexOf(endEditor)
     if (startIndex < 0 || endIndex <= startIndex) return null
-    const selectedIds = inputs
-      .slice(startIndex, endIndex + 1)
-      .flatMap((input) => input.dataset.noteTextInputId ?? [])
-    if (selectedIds.length < 2) return null
-
-    const beforeRange = document.createRange()
-    beforeRange.selectNodeContents(startEditor)
-    beforeRange.setEnd(range.startContainer, range.startOffset)
-    const afterRange = document.createRange()
-    afterRange.selectNodeContents(endEditor)
-    afterRange.setStart(range.endContainer, range.endOffset)
-    const beforeHTML = sanitizedRangeHTML(beforeRange)
-    const afterHTML = sanitizedRangeHTML(afterRange)
-    const beforeLength = htmlToPlainTextWithBreaks(beforeHTML).length
-    const afterLength = htmlToPlainTextWithBreaks(afterHTML).length
-    const selectedCharacterCount = (startEditor.textContent?.length ?? 0) - beforeLength
-      + (endEditor.textContent?.length ?? 0) - afterLength
-      + inputs.slice(startIndex + 1, endIndex)
-        .reduce((total, input) => total + (input.textContent?.length ?? 0), 0)
     return {
+      range: range.cloneRange(),
       startEditor,
       endEditor,
-      selectedIds,
-      beforeHTML,
-      afterHTML,
-      caretOffset: beforeLength,
-      selectedCharacterCount,
-      savedAt: Date.now(),
     }
   }
 
@@ -837,9 +925,8 @@
       : []
 
     if (!usingItemSelection) {
-      const selection = document.getSelection()
-      if (!selection || selection.isCollapsed || selection.rangeCount === 0) return
-      range = selection.getRangeAt(0)
+      range = selectedTextRange()
+      if (!range || range.collapsed) return
       selectedInputs = inputs.filter((input) => range?.intersectsNode(input))
     }
     if (selectedInputs.length === 0) return
@@ -854,8 +941,6 @@
       container.append(fragmentRange.cloneContents())
       const html = sanitizeInlineHTML(container.innerHTML)
       const text = htmlToPlainTextWithBreaks(html)
-      if (!html && !text) return []
-
       const itemId = input.dataset.noteTextInputId
       const item = itemId ? findItem(selectedNote.items, itemId) : null
       const row = input.closest<HTMLElement>('[data-note-item-id]')
@@ -888,9 +973,10 @@
   }
 
   function handleNoteCut(event: ClipboardEvent) {
-    if (selectedItemIds.length < 2) return
     handleNoteCopy(event)
-    if (event.defaultPrevented) void deleteSelectedItems()
+    if (!event.defaultPrevented) return
+    if (selectedItemIds.length > 0) void deleteSelectedItems()
+    else void replaceSelectionWithHTML('')
   }
 
   async function handleNotePaste(event: ClipboardEvent) {
@@ -901,8 +987,7 @@
       ? event.target.closest<HTMLDivElement>('[data-note-text-input]')
       : null
     const targetId = target?.dataset.noteTextInputId
-    const targetItem = targetId ? findItem(selectedNote.items, targetId) : null
-    if (!target || !targetId || !targetItem) return
+    if (!target || !targetId) return
 
     const plainText = event.clipboardData.getData('text/plain')
     const clipboardHTML = event.clipboardData.getData('text/html')
@@ -915,15 +1000,20 @@
       if (flattenedHTMLItems.length >= 2) items = htmlItems
     }
     const flattenedItems = flattenParsedClipboardItems(items)
-    if (flattenedItems.length < 2) return
+    const range = selectedTextRange()
+    if (!range) return
+    if (flattenedItems.length < 2) {
+      if (!crossBlockSelectionForRange(range) && selectedItemIds.length === 0) return
+      if (!plainText && !clipboardHTML) return
+      event.preventDefault()
+      event.stopPropagation()
+      await replaceSelectionWithHTML(clipboardHTML ? sanitizeInlineHTML(clipboardHTML) : escapeHTML(plainText).replace(/\r?\n/g, '<br>'))
+      return
+    }
 
     event.preventDefault()
     event.stopPropagation()
-    const placement = targetItem.text.trim() === '' ? 'replace' : 'after'
-    const pastedIds = pasteItems(selectedNote.id, items, targetId, placement)
-    activeItemId = pastedIds.at(-1) ?? null
-    await tick()
-    focusActiveEditor()
+    await replaceSelectionWithItems(range, items)
   }
 
   function flattenParsedClipboardItems(items: ParsedNoteClipboardItem[]): ParsedNoteClipboardItem[] {
@@ -972,7 +1062,7 @@
   ) {
     const inputs = noteInputs()
     const selection = document.getSelection()
-    const nativeAnchorNode = selection?.anchorNode ?? null
+    const nativeAnchorNode = textSelectionAnchor?.node ?? selection?.anchorNode ?? null
     const nativeAnchorEditor = nativeAnchorNode
       ? inputs.find((input) => input.contains(nativeAnchorNode)) ?? null
       : null
@@ -992,7 +1082,7 @@
     }
 
     if (!selection || !nativeAnchorNode) return false
-    const anchor = { node: nativeAnchorNode, offset: selection.anchorOffset }
+    const anchor = textSelectionAnchor ?? { node: nativeAnchorNode, offset: selection.anchorOffset }
     focusEditor.focus()
     applyPointerSelection(anchor, focus)
     window.requestAnimationFrame(() => applyPointerSelection(anchor, focus))
@@ -1011,7 +1101,8 @@
     const editor = target?.closest<HTMLDivElement>('[data-note-text-input]')
       ?? row?.querySelector<HTMLDivElement>('[data-note-text-input]')
       ?? null
-    if (!editor || editor === pointerSelectionAnchor.editor) return
+    if (!editor) return
+    if (editor === pointerSelectionAnchor.editor && !pointerSelectionFocus) return
 
     const point = caretPointFromCoordinates(editor, event.clientX, event.clientY)
     const itemId = editor.dataset.noteTextInputId
@@ -1078,6 +1169,7 @@
   }
 
   function selectItemRange(anchorId: Id, focusId: Id) {
+    clearTextSelection()
     const inputs = noteInputs()
     const anchorIndex = inputs.findIndex((input) => input.dataset.noteTextInputId === anchorId)
     const focusIndex = inputs.findIndex((input) => input.dataset.noteTextInputId === focusId)
@@ -1095,6 +1187,7 @@
   }
 
   function clearItemSelection() {
+    clearTextSelection()
     selectedItemIds = []
     selectionAnchorItemId = null
     selectionFocusItemId = null
@@ -1137,7 +1230,13 @@
     const end = anchorComesFirst ? focus : anchor
     logicalRange.setStart(start.node, start.offset)
     logicalRange.setEnd(end.node, end.offset)
-    recentCrossBlockSelection = crossBlockSelectionForRange(logicalRange)
+    clearTextSelection()
+    const selected = crossBlockSelectionForRange(logicalRange)
+    if (selected) {
+      textSelectionAnchor = anchor
+      textSelectionFocus = focus
+      setTextSelection(selected)
+    }
     document.getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
   }
 
@@ -1154,6 +1253,7 @@
   })
 
   onDestroy(() => {
+    clearTextSelection()
     rememberActiveNoteScroll()
     rememberActiveNoteCaret()
     noteViewRestoreRequest += 1
@@ -1166,7 +1266,7 @@
 <svelte:document
   on:selectionchange={handleNoteSelectionChange}
   on:keyup={updateInlineFormatState}
-  on:beforeinput|capture={followNoteBottomAfterEdit}
+  on:beforeinput|capture={handleNoteBeforeInput}
   on:keydown|capture={handleEditorKeydownCapture}
   on:copy={handleNoteCopy}
   on:cut={handleNoteCut}
@@ -1273,7 +1373,7 @@
         <span class="note-format-hint">Type <kbd><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" role="img" aria-label="Slash"><path d="M8 2 4 10" /></svg></kbd> for more</span>
         </div>
 
-        <div class="note-blocks" bind:this={noteBlocksElement} on:paste|capture={handleNotePaste}>
+        <div class="note-blocks" class:note-text-selection={textSelection !== null} bind:this={noteBlocksElement} on:paste|capture={handleNotePaste}>
         {#if selectedNote.items.length === 0}
           <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
         {:else}
@@ -1285,7 +1385,6 @@
               {patchItem}
               {splitItem}
               {backspaceItemAtStart}
-              {deleteItem}
               {deleteItemPreservingChildren}
               {moveItem}
               {moveItemWithinLevel}
@@ -1299,6 +1398,7 @@
               onExtendItemSelection={extendItemSelection}
               onSelectAllItems={selectAllItems}
               onToggleChecklist={toggleChecklist}
+              onTextSelection={applyPointerSelection}
               onFocusItem={(itemId) => (activeItemId = itemId)}
             />
           {/each}
