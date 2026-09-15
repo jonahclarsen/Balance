@@ -726,12 +726,20 @@ test('an open list overlay, its selection, and its scroll position survive a rel
   expect(await dialog.locator('.overlay-body').evaluate((element) => element.scrollTop)).toBeLessThanOrEqual(scrollTopBefore + 2)
 })
 
-test('reopening a list overlay restores the selected item near the one-third scroll line', async ({ page }) => {
+test('reopening a list overlay selects the first unchecked item near the one-third scroll line', async ({ page }) => {
   let dialog = await openLongGroceriesOverlay(page)
 
   const targetText = 'Item 24'
   await dialog.locator('.plan-row', { hasText: targetText }).click()
   await expect(dialog.locator('.plan-row.selected')).toContainText(targetText)
+  // Leave the remembered selection below the first unchecked row.
+  await dialog.locator('.plan-row', { hasText: 'Item 30' }).click()
+  for (let index = 1; index <= 24; index += 1) {
+    await dialog.locator('.plan-row', { hasText: `Item ${String(index).padStart(2, '0')}` }).getByRole('checkbox').check()
+  }
+  await dialog.locator('.plan-row', { hasText: targetText }).getByRole('checkbox').uncheck()
+  await dialog.locator('.plan-row', { hasText: 'Item 29' }).getByRole('checkbox').check()
+  await expect(dialog.locator('.plan-row.selected')).toContainText('Item 30')
   await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(dialog).toBeHidden()
 

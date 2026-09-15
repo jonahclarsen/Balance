@@ -1342,6 +1342,15 @@ return rows`
     )
   }
 
+  function firstUncheckedItemId(items: PlanItem[]): Id | null {
+    for (const item of items) {
+      if (!item.done) return item.id
+      const childId = firstUncheckedItemId(item.children)
+      if (childId) return childId
+    }
+    return null
+  }
+
   function openLink(link: ItemLink, opener: Opener | null) {
     const date = $plannerStore.activePlanDate
     if (link.kind === 'goalStats') {
@@ -1358,12 +1367,10 @@ return rows`
     } else if (link.kind === 'list') {
       const listId = plannerStore.ensureListForDate(link.listTemplateId, date)
       if (listId) {
-        if (!Object.prototype.hasOwnProperty.call(selectedListOverlayItemIdsByList, listId)) {
-          const instance = $plannerStore.lists.find((list) => list.id === listId)
-          selectedListOverlayItemIdsByList = {
-            ...selectedListOverlayItemIdsByList,
-            [listId]: instance ? (flattenItemIds(instance.items)[0] ?? null) : null,
-          }
+        const instance = $plannerStore.lists.find((list) => list.id === listId)
+        selectedListOverlayItemIdsByList = {
+          ...selectedListOverlayItemIdsByList,
+          [listId]: instance ? firstUncheckedItemId(instance.items) : null,
         }
         listOverlayArmed = false
         listOverlayView = view
