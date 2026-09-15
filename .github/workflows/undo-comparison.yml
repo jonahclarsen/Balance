@@ -1,8 +1,5 @@
 name: Compare undo revisions
 on:
-  push:
-    branches: ['codex/undo-regression-profile']
-    paths: ['tests/ci/undo-comparison*', 'playwright.undo-comparison.config.ts', '.github/workflows/undo-comparison.yml', 'src/lib/historyNavigation.ts', 'src-tauri/src/lib.rs', '.github/scripts/summarize-undo-comparison.mjs']
   workflow_dispatch:
 permissions:
   contents: read

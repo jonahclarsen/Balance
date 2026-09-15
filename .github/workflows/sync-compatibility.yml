@@ -110,11 +110,7 @@ jobs:
         run: node .github/scripts/sync-compatibility.mjs "$PWD/previous-engine" "$PWD/current-engine" "$PWD/future-engine" "$PWD/frontend-entity-fixtures"
       - name: Test current encrypted database and reconciliation engine
         if: always() && steps.engines.outcome == 'success'
-        run: |
-          ./current-engine --skip compatibility_process_driver --skip sync::tests::selftest_round_trips_two_real_databases
-          # This test compares elapsed times. Competing encrypted database tests
-          # distort its setup/incremental ratio; retain its threshold, run alone.
-          ./current-engine sync::tests::selftest_round_trips_two_real_databases --exact
+        run: ./current-engine --skip compatibility_process_driver
       - name: Save compiled engine dependencies
         if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4

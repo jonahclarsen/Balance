@@ -33,7 +33,7 @@ fn undo_comparison_driver() {
                 "items": [{"id": "item_ci", "kind": "paragraph", "text": "", "html": "", "done": false, "children": []}]}]);
             replace_app_state(&mut connection, &state).unwrap();
             // Retained undo history survives log checkpoints. Seed that shape
-            // directly, with test-only task patches and monotonically ordered IDs.
+            // directly, with test-only task deletions and increasing sequences.
             let tx = connection.transaction().unwrap();
             let retained_at = current_timestamp_ms() - 86_400_000;
             for i in 1..=entries {
