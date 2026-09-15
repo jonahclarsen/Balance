@@ -1,6 +1,6 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { clampListItemProbability, htmlToPlainText, linkifyItemText, MIN_LIST_ITEM_PROBABILITY, type ItemLink, wordCount } from './planner'
+  import { clampListItemProbability, htmlToPlainText, linkifyItemText, MIN_LIST_ITEM_PROBABILITY, type ItemLink, listItemWordCount } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
@@ -73,18 +73,18 @@
   $: selected = selectedItemIds.has(item.id)
   $: if (item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY) allowsLowProbability = true
 
-  // Expected words contributed by everything except this item's own text, so we can
+  // Expected words contributed by everything except this item's own text and linked quizzes, so we can
   // check whether new text would breach the cap without rebuilding the whole tree.
   $: appearanceProbability =
     ancestorProbability * (clampListItemProbability(item.probability) / 100)
-  $: itemContribution = wordCount(htmlToPlainText(item.html) || item.text) * appearanceProbability
+  $: itemContribution = listItemWordCount(htmlToPlainText(item.html) || item.text, metrics) * appearanceProbability
 
   function wouldExceedCap(text: string, probability: number): boolean {
     if (!maxExpectedWords) return false
     const base = currentExpected - itemContribution
     const nextProbability =
       ancestorProbability * (clampListItemProbability(probability) / 100)
-    const next = base + wordCount(text) * nextProbability
+    const next = base + listItemWordCount(text, metrics) * nextProbability
     // A lowered cap or a probability change can leave an existing template over
     // its limit. Keep rejecting edits that make that state worse, but allow
     // formatting-only changes and text edits that preserve or reduce its size.

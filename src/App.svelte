@@ -601,9 +601,9 @@ return rows`
   }
   $: if (listTemplatesViewStateReady) persistListTemplatesViewState(selectedListTemplateId)
   $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = listTemplates[0].id
-  $: selectedListExpectedWordCount = selectedListTemplate ? expectedWordCount(selectedListTemplate.items) : 0
+  $: selectedListExpectedWordCount = selectedListTemplate ? expectedWordCount(selectedListTemplate.items, 1, metrics) : 0
   $: selectedListWordCount = Math.round(selectedListExpectedWordCount)
-  $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items) : 0
+  $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items, metrics) : 0
   $: selectedArchivedListItems = [...(selectedListTemplate?.archivedItems ?? [])]
     .sort((left, right) => right.archivedAt.localeCompare(left.archivedAt))
   $: listViewInstance = lists.find(

@@ -2202,24 +2202,35 @@ export function wordCount(text: string): number {
   return trimmed.split(/\s+/).length
 }
 
-// Probability-weighted expected word count of a whole list template. A child
-// can only appear when every ancestor appears, so its effective probability is
-// the product of its own probability and all ancestor probabilities.
-export function expectedWordCount(items: ListTemplateItem[], ancestorProbability = 1): number {
-  return items.reduce((sum, item) => {
-    const appearanceProbability =
-      ancestorProbability * (clampListItemProbability(item.probability) / 100)
-    const itemWords = (wordCount(htmlToPlainText(item.html)) || wordCount(item.text)) *
-      appearanceProbability
-    return sum + itemWords + expectedWordCount(item.children, appearanceProbability)
+// Include each linked quiz's question text once per item, just as metric links
+// are resolved by name. Answers and quiz navigation are not template content.
+export function listItemWordCount(text: string, metrics: Metric[] = []): number {
+  const lower = text.toLowerCase()
+  return wordCount(text) + metrics.reduce((sum, metric) => {
+    const name = metric.name.trim().toLowerCase()
+    if (!name || !lower.includes(name)) return sum
+    return sum + metric.questions.reduce((words, question) =>
+      words + (wordCount(htmlToPlainText(question.html)) || wordCount(question.prompt)), 0)
   }, 0)
 }
 
-// Unweighted word count of every item, regardless of appearance probability.
-export function totalWordCount(items: ListTemplateItem[]): number {
+// A child only appears when every ancestor appears. Quiz words follow the same
+// effective probability as the item that links to them.
+export function expectedWordCount(items: ListTemplateItem[], ancestorProbability = 1, metrics: Metric[] = []): number {
   return items.reduce((sum, item) => {
-    const itemWords = wordCount(htmlToPlainText(item.html)) || wordCount(item.text)
-    return sum + itemWords + totalWordCount(item.children)
+    const appearanceProbability =
+      ancestorProbability * (clampListItemProbability(item.probability) / 100)
+    const itemWords = listItemWordCount(htmlToPlainText(item.html) || item.text, metrics) *
+      appearanceProbability
+    return sum + itemWords + expectedWordCount(item.children, appearanceProbability, metrics)
+  }, 0)
+}
+
+// Unweighted word count of every item and linked quiz.
+export function totalWordCount(items: ListTemplateItem[], metrics: Metric[] = []): number {
+  return items.reduce((sum, item) => {
+    const itemWords = listItemWordCount(htmlToPlainText(item.html) || item.text, metrics)
+    return sum + itemWords + totalWordCount(item.children, metrics)
   }, 0)
 }
 
