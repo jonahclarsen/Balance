@@ -35,7 +35,7 @@ export async function focusTaskBelow(containerId: Id, completedItemIds: Iterable
   if (!target) return false
 
   const completedItemId = rows[lastCompletedIndex].dataset.planItemId
-  const itemId = targetRow.dataset.planItemId
+  const itemId = targetRow?.dataset.planItemId
   if (!completedItemId || !itemId) return false
 
   focusTaskTarget(target, {
