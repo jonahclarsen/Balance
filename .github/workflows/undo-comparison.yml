@@ -83,8 +83,8 @@ jobs:
           done
           trap 'kill "${load_pids[@]}" 2>/dev/null || true' EXIT
           for round in 1 2; do
-            versions='two-weeks one-week baseline candidate'
-            if [[ "$round" == 2 ]]; then versions='candidate baseline one-week two-weeks'; fi
+            versions='baseline candidate one-week two-weeks'
+            if [[ "$round" == 2 ]]; then versions='two-weeks one-week candidate baseline'; fi
             for version in $versions; do
               (
                 cd "$RUNNER_TEMP/undo-$version"

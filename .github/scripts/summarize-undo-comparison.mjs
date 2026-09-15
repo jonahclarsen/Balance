@@ -10,7 +10,7 @@ const median = values => {
 }
 const versions = ['two-weeks', 'one-week', 'baseline', 'candidate']
 const groups = new Map()
-for (const row of rows.filter(row => row.sample > 0)) {
+for (const row of rows.filter(row => row.scenario === 'plan-after-reload' || row.sample > 0)) {
   const key = [row.size, row.scenario, row.direction].join('/')
   if (!groups.has(key)) groups.set(key, [])
   groups.get(key).push(row)
@@ -20,7 +20,8 @@ for (const [key, samples] of groups) {
   const revisions = {}
   for (const revision of versions) {
     const selected = samples.filter(row => row.revision === revision)
-    if (selected.length !== 6 || new Set(selected.map(row => row.round)).size !== 2) {
+    const expected = key.includes('/plan-after-reload/') ? 4 : 6
+    if (selected.length !== expected || new Set(selected.map(row => row.round)).size !== 2) {
       throw Error(`Incomplete measurements for ${key}/${revision}: ${selected.length} samples`)
     }
     const metrics = {}
@@ -36,7 +37,7 @@ for (const [key, samples] of groups) {
 writeFileSync(join(root, 'summary.json'), JSON.stringify(summaries, null, 2) + '\n')
 const lines = [
   '# Undo comparison', '',
-  'Median milliseconds, excluding the first sample in each round. Each revision ran on the same macOS runner under CPU contention.', '',
+  'Median milliseconds, excluding the first sample in each round except for full-state reloads (two samples per round). Each revision ran on the same macOS runner under CPU contention.', '',
   '| Fixture / scenario / direction | Sept 1 | Sept 8 | Sept 15 baseline | Candidate |',
   '|---|---:|---:|---:|---:|',
 ]

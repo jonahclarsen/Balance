@@ -59,6 +59,11 @@ fn undo_comparison_driver() {
             create_daily_database_backup_if_due(&connection, &root.join("fixture.sqlite3"), &key, current_timestamp_ms()).unwrap();
             Value::Null
         }
+        "verify" => json!({
+            "plan": read_plan_by_id(&connection, request["args"]["planId"].as_str().unwrap()).unwrap().unwrap(),
+            "note": current_entity(&connection, "notes", "note_ci").unwrap().unwrap().1,
+            "entries": read_entity_collection(&connection, "metricEntries").unwrap(),
+        }),
         "read_app_state" => json!(read_app_state_from_database(&connection).unwrap().map(|v| v.to_string())),
         "persist_operation" => {
             let operation = serde_json::from_str(request["args"]["operationJson"].as_str().unwrap()).unwrap();

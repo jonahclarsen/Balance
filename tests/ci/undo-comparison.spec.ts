@@ -13,7 +13,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
     writeFileSync(join(root, 'SYNTHETIC_FIXTURES_ONLY'), '')
     const calls: any[] = []
     function native(command: string, args: any = {}) {
-      if (!['seed', 'read_app_state', 'persist_operation', 'undo_last_operation', 'redo_last_operation'].includes(command)) {
+      if (!['seed', 'verify', 'read_app_state', 'persist_operation', 'undo_last_operation', 'redo_last_operation'].includes(command)) {
         if (command === 'get_recovery_key_status') return { confirmed: true, recoveryKey: null, databasePath: join(root, 'fixture.sqlite3') }
         if (command === 'get_sync_settings') return { enabled: false, pairingCode: null, relayUrl: '' }
         if (command === 'get_database_maintenance_status') return { due: false, operationCount: 0, operationBytes: 0, checkpointRecommended: false }
@@ -92,7 +92,8 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
           ;(window as any).expectedAfterProbe = (window as any).probe()
           ;(window as any).expectedAfter = JSON.stringify({ plans: (window as any).state.plans, notes: (window as any).state.notes, metricEntries: (window as any).state.metricEntries })
         }, scenario)
-        for (let sample = 0; sample < 4; sample++) {
+        const samples = scenario === 'plan-after-reload' ? 2 : 4
+        for (let sample = 0; sample < samples; sample++) {
           for (const direction of ['undo', 'redo']) {
             const result = await page.evaluate(async (direction) => {
               const runtime = window as any
@@ -122,17 +123,17 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
           const r = window as any
           return JSON.stringify({ plans: r.state.plans, notes: r.state.notes, metricEntries: r.state.metricEntries }) === r.expectedAfter
         })).toBe(true)
-        const persisted = JSON.parse(native('read_app_state'))
         const visible = await page.evaluate(() => {
           const r = window as any
           return { plan: r.state.plans[0], note: r.state.notes[0], entries: r.state.metricEntries }
         })
-        expect(persisted.plans[0].items[0].text).toBe(visible.plan.items[0].text)
-        expect(persisted.plans[0].items[0].children.map((i: any) => i.text)).toEqual(visible.plan.items[0].children.map((i: any) => i.text))
-        expect(persisted.plans[0].items[0].startMinutes).toBe(visible.plan.items[0].startMinutes)
-        expect(persisted.plans[0].items[0].endMinutes).toBe(visible.plan.items[0].endMinutes)
-        expect(persisted.notes[0].items[0].text).toBe(visible.note.items[0].text)
-        expect(persisted.metricEntries).toEqual(visible.entries)
+        const persisted = native('verify', { planId: visible.plan.id })
+        expect(persisted.plan.items[0].text).toBe(visible.plan.items[0].text)
+        expect(persisted.plan.items[0].children.map((i: any) => i.text)).toEqual(visible.plan.items[0].children.map((i: any) => i.text))
+        expect(persisted.plan.items[0].startMinutes).toBe(visible.plan.items[0].startMinutes)
+        expect(persisted.plan.items[0].endMinutes).toBe(visible.plan.items[0].endMinutes)
+        expect(persisted.note.items[0].text).toBe(visible.note.items[0].text)
+        expect(persisted.entries).toEqual(visible.entries)
         // Leave each scenario at its original value, preventing merged edits.
         await page.evaluate(async () => { await (window as any).store.undo() })
       }

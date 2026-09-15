@@ -34,8 +34,16 @@ for the state change and two animation frames. The isolated store scenarios
 verify undo and redo contents and compare restored frontend data with the
 persisted database outside the timed interval.
 
+In the isolated `plan-pending` scenario, only sample 0 includes the initial
+pending save; subsequent samples measure undo/redo of the saved edit. The
+`rendered-*` scenarios create a fresh edit before every timed undo and therefore
+cover pending persistence in repeated measurements.
+
 Compare medians after excluding sample 0 (warm-up), and retain the per-round
-results to spot runner noise. Native engines use Cargo's test profile; the UI
+results to spot runner noise. Full-state reload scenarios use two samples per
+round with neither discarded, since that path reloads the workspace on every
+operation. Correctness checks query the affected plan, note, and metric entries
+rather than repeatedly reading unrelated task history. Native engines use Cargo's test profile; the UI
 uses Vite and Chromium. The native bridge starts a test process for each command,
 so store/render totals include bridge overhead and are comparative measurements,
 not predictions of installed-app latency. OS Keychain access, widget publication,
