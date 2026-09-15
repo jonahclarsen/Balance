@@ -5742,7 +5742,6 @@ return rows`
       >
         <header class="page-header imax-page-header">
           <div class="day-pane-heading">
-            <p class="eyebrow day-pane-context">Daily plan</p>
             <h2>
               {activePlan?.title ?? formatPlanTitle(displayedPlanDate)}
               {#if editingReminderPlanId && activePlan && editingReminderPlanId === activePlan.id}
