@@ -3581,9 +3581,7 @@ return rows`
 
     for (const item of items) {
       if (removeTimes) {
-        patchSelectedTimeItem(item.id, { timeHidden: true })
-      } else if (item.timeHidden === true && item.startMinutes !== null && item.endMinutes !== null) {
-        patchSelectedTimeItem(item.id, { timeHidden: null })
+        patchSelectedTimeItem(item.id, { startMinutes: null, endMinutes: null, timeHidden: null })
       } else if (!hasActiveTimeRange(item)) {
         const range = surface === 'plan'
           ? defaultPlanItemTimeRange(activePlan?.items ?? [], item.id, activePlan?.date)
