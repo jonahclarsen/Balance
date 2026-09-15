@@ -8,6 +8,7 @@ import { join, resolve } from 'node:path'
 // the bridge adds process/Playwright overhead, reported separately from native work.
 for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000], ['xlarge', 4500, 30000]] as const) {
   test(`undo comparison: ${size}`, async ({ page }) => {
+    page.on('pageerror', error => console.log(`SYNTHETIC_PAGE_ERROR ${error.message}`))
     const root = mkdtempSync(join(tmpdir(), 'balance-undo-comparison-'))
     writeFileSync(join(root, 'SYNTHETIC_FIXTURES_ONLY'), '')
     const calls: any[] = []
@@ -28,7 +29,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
       if (command.includes('last_operation')) {
         const result = JSON.parse(response.result)
         calls.push({ command, nativeMs: response.commandMs, openMs: response.openMs,
-          operationMs: response.operationMs, housekeepingMs: response.housekeepingMs, fullState: result.state !== null, responseBytes: Buffer.byteLength(response.result) })
+          operationMs: response.operationMs, housekeepingMs: response.housekeepingMs, fullState: result.state !== null, retainedHistory: response.historyCount, responseBytes: Buffer.byteLength(response.result) })
       }
       return response.result
     }
@@ -60,6 +61,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
         }
       }, navigationExists)
       for (const scenario of ['plan-text', 'plan-pending', 'remove-time', 'paste-tree', 'note-text', 'metric-first', 'metric-last', 'plan-after-reload']) {
+        console.log(`UNDO_SCENARIO ${process.env.BALANCE_UNDO_REVISION}/${size}/${scenario}`)
         await page.evaluate(async (scenario) => {
           const { store, state } = window as any
           const plan = state.plans[0]
@@ -104,6 +106,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
               return { changed: runtime.state.historyRevision !== before.historyRevision, storeMs, revealMs, totalMs: storeMs + revealMs, destination: destination?.view }
             }, direction)
             expect(result.changed).toBe(true)
+            expect(calls.at(-1).retainedHistory).toBeGreaterThanOrEqual(entries)
             expect(await page.evaluate((direction) => {
               const r = window as any
               return r.probe() === (direction === 'undo' ? r.expectedBeforeProbe : r.expectedAfterProbe)
@@ -137,10 +140,20 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
       // task interactions as well as the isolated store/reveal stages above.
       await page.evaluate(() => localStorage.setItem('balance:activePlanDate', (window as any).state.plans[0].date))
       await page.goto('/')
+      await page.evaluate(async () => {
+        const path = '/src/lib/store.ts'
+        const { plannerStore: store } = await import(/* @vite-ignore */ path)
+        await store.ready
+        let state: any
+        store.subscribe((value: any) => { state = value })()
+        store.setActivePlanDate(state.plans[0].date)
+        await store.flushPendingOperations()
+      })
       const editor = page.locator('[data-plan-text-input]').first()
       await expect(editor).toBeVisible({ timeout: 60_000 })
       for (const scenario of ['rendered-text', 'rendered-remove-time', 'rendered-paste']) {
         for (let sample = 0; sample < 4; sample++) {
+          await editor.focus()
           const expected = await editor.textContent()
           await page.evaluate(async (scenario) => {
             const path = '/src/lib/store.ts'

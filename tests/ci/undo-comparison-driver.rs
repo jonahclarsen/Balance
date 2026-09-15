@@ -18,6 +18,7 @@ fn undo_comparison_driver() {
             let plans = request["args"]["plans"].as_u64().unwrap() as usize;
             let entries = request["args"]["entries"].as_u64().unwrap() as usize;
             let mut state = undo_performance_state(plans, 60, 100);
+            state["activePlanDate"] = json!(undo_performance_date(plans - 1));
             state["plans"][plans - 1]["items"][0]["startMinutes"] = json!(600);
             state["plans"][plans - 1]["items"][0]["endMinutes"] = json!(630);
             state["metrics"] = json!([{"id": "metric_ci", "name": "Synthetic metric", "questions": [
@@ -33,17 +34,23 @@ fn undo_comparison_driver() {
             replace_app_state(&mut connection, &state).unwrap();
             // Retained undo history survives log checkpoints. Seed that shape
             // directly, with test-only task patches and monotonically ordered IDs.
-            let patch = json!({"type": "patch_plan_item", "payload": {
-                "planId": format!("plan_{}", plans - 1),
-                "itemId": format!("plan_{}_item_0", plans - 1),
-                "patch": {"text": format!("Plan {} item 0", plans - 1)}
-            }}).to_string();
             let tx = connection.transaction().unwrap();
+            let retained_at = current_timestamp_ms() - 86_400_000;
             for i in 1..=entries {
+                let plan_id = format!("plan_{}", plans - 1);
+                let item_id = format!("deleted_fixture_{i}");
+                let redo = json!({"type": "delete_plan_item", "payload": {
+                    "planId": plan_id, "itemId": item_id
+                }}).to_string();
+                let undo = json!({"type": "restore_plan_item", "payload": {
+                    "planId": plan_id, "parentId": null, "position": 0,
+                    "item": {"id": item_id, "text": "Synthetic removed task", "html": "Synthetic removed task",
+                        "done": false, "startMinutes": null, "endMinutes": null, "children": []}
+                }}).to_string();
                 tx.execute("insert into history_entries
                     (id, operation_id, device_id, sequence, undo_operation_json, redo_operation_json, undone, created_at_ms, updated_at_ms)
-                    values (?1, ?2, 'device_perf', ?3, ?4, ?4, 0, ?3, ?3)",
-                    params![format!("history_fixture_{i}"), format!("fixture_op_{i}"), i as i64, patch]).unwrap();
+                    values (?1, ?2, 'device_perf', ?3, ?4, ?5, 0, ?6, ?6)",
+                    params![format!("history_fixture_{i}"), format!("fixture_op_{i}"), i as i64, undo, redo, retained_at]).unwrap();
             }
             set_metadata(&tx, "local_sequence", &(entries + 1).to_string()).unwrap();
             tx.commit().unwrap();

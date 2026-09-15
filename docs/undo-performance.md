@@ -8,7 +8,8 @@ revision order across two rounds on one macOS runner with four CPU load workers.
 The fixtures contain 4,500 / 90,000 / 270,000 tasks, 100 goals, and respectively
 300 / 10,000 / 30,000 metric entries and retained undo records. They are newly
 created SQLCipher databases in temporary directories, with a test-only key. The
-retained undo rows model history preserved after an operation-log checkpoint.
+retained undo rows model recently deleted tasks preserved by the recovery policy
+after an operation-log checkpoint. The harness checks they survive each edit.
 No installed database, recovery key, widget keychain, or personal data is used.
 
 The `undo-comparison` artifact contains `results.jsonl` and logs. Each result
