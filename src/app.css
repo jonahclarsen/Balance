@@ -6641,15 +6641,23 @@ textarea.note-title {
     position: sticky;
     z-index: 60;
     top: 0;
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) auto;
-    align-items: center;
+    display: flex;
+    flex-direction: column;
     height: var(--mobile-header-height);
-    padding: var(--mobile-top-inset) 8px 4px;
+    padding: var(--mobile-top-inset) 8px 0;
     border-bottom: 1px solid var(--line);
     background: color-mix(in srgb, var(--sidebar) 94%, transparent);
     box-shadow: 0 2px 10px color-mix(in srgb, var(--ink) 8%, transparent);
     backdrop-filter: blur(14px);
+  }
+
+  /* Keep safe-area spacing outside the shared vertical alignment row. */
+  .mobile-app-header-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    align-items: center;
+    flex: 1;
+    min-height: 0;
   }
 
   .mobile-app-title {
@@ -6660,7 +6668,6 @@ textarea.note-title {
     min-width: 0;
     gap: 0;
     padding-left: 6px;
-    padding-bottom: 1px;
     /* Sync status must stay inside the title column, clear of day navigation. */
     overflow: hidden;
   }
@@ -6697,6 +6704,7 @@ textarea.note-title {
     justify-self: start;
     color: var(--accent-strong);
     font-size: 16px;
+    line-height: 20px;
     letter-spacing: 0.02em;
   }
 
@@ -6724,14 +6732,6 @@ textarea.note-title {
     stroke-width: 1.8;
     stroke-linecap: round;
     stroke-linejoin: round;
-  }
-
-  .mobile-header-copy-button svg {
-    transform: translateY(0.5px);
-  }
-
-  .mobile-search-button svg {
-    transform: translateY(-0.5px);
   }
 
   .sidebar,
@@ -6791,7 +6791,7 @@ textarea.note-title {
 
   .mobile-drawer-close-button {
     position: absolute;
-    top: calc(var(--mobile-top-inset) + 2px);
+    top: calc(var(--mobile-top-inset) + (52px - 1px - 44px) / 2);
     left: 8px;
     display: grid;
     place-items: center;
