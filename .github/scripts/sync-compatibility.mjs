@@ -110,7 +110,7 @@ let future = run(futureBinary, 'future', 'write', { operation: generic('future-d
   record('regeneratedPlanItems', 'future-retired-item', { id: 'future-retired-item', date: '2026-09-08', parentId: null,
     item: { ...splitItem('future-retired-item', 'Synthetic archived item'), futureTaskField: 9 }, futureRetention: { enabled: true } }),
   record('uneditedPlanItems', 'synthetic-generated-task', { id: 'synthetic-generated-task', futureRetention: { enabled: true } }),
-  record('notes', 'n', { id: 'n', title: 'Before', futureColor: 'blue', items: [{ id: 'task', text: 'Synthetic task', done: false, futureLink: 'f' }] }),
+  record('notes', 'n', { id: 'n', title: 'Before', futureColor: 'blue', items: [{ id: 'task', kind: 'quote', text: 'Synthetic quote', done: false, futureLink: 'f' }] }),
 ]) })
 assert.deepEqual(future.state.futureHabitCheckIns, [{ id: 'f', amount: 7 }])
 run(blindBinary, 'blind', 'init', { state: state('blind-device') })
@@ -122,6 +122,7 @@ let blind = run(blindBinary, 'blind', 'write', { operation: generic('blind-devic
 let note = blind.entities.find((row) => row.key === 'n').value
 assert.equal(note.futureColor, 'blue')
 assert.equal(note.items[0].futureLink, 'f')
+assert.equal(note.items[0].kind, 'quote')
 assert.equal(note.items[0].done, true)
 assert.deepEqual(blind.entities.find((row) => row.collection === 'uneditedPlanItems').value, { id: 'synthetic-generated-task', futureRetention: { enabled: true } })
 run(blindBinary, 'blind', 'undo')

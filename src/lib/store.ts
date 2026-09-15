@@ -3451,7 +3451,7 @@ function normalizeArchivedListTemplateItem(entry: ArchivedListTemplateItem): Arc
 }
 
 function normalizeNoteItems(items: NoteItem[]): NoteItem[] {
-  const kinds = new Set<NoteItemKind>(['paragraph', 'heading', 'bullet', 'numbered', 'checklist'])
+  const kinds = new Set<NoteItemKind>(['paragraph', 'heading', 'quote', 'bullet', 'numbered', 'checklist'])
   return items.map((item) => {
     const html = sanitizeInlineHTML(item.html ?? escapeHTML(item.text ?? ''))
 

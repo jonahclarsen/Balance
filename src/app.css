@@ -6400,6 +6400,11 @@ textarea.note-title {
   box-shadow: none;
 }
 
+.note-quote > .note-block {
+  border-left: 3px solid var(--muted);
+  padding-left: 12px;
+}
+
 .note-heading {
   padding-top: 12px;
 }

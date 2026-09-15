@@ -33,7 +33,7 @@ export type PlanItem = {
   children: PlanItem[]
 }
 
-export type NoteItemKind = 'paragraph' | 'heading' | 'bullet' | 'numbered' | 'checklist'
+export type NoteItemKind = 'paragraph' | 'heading' | 'quote' | 'bullet' | 'numbered' | 'checklist'
 
 // Notes intentionally reuse the plan-item text/HTML/tree shape. That keeps
 // rich-text editing, splitting, indentation, and tree movement on the same

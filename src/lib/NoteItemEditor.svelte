@@ -38,6 +38,7 @@
   const blockCommands: { kind: NoteItemKind; label: string; hint: string; aliases?: string[] }[] = [
     { kind: 'paragraph', label: 'Text', hint: 'Plain body text' },
     { kind: 'heading', label: 'Heading', hint: 'Large section heading', aliases: ['h1', 'header'] },
+    { kind: 'quote', label: 'Quote', hint: 'Quote a passage', aliases: ['blockquote'] },
     { kind: 'bullet', label: 'Bulleted list', hint: 'Start a simple list' },
     { kind: 'numbered', label: 'Numbered list', hint: 'Start an ordered list' },
     { kind: 'checklist', label: 'Checklist', hint: 'Track something to do' },
@@ -113,7 +114,7 @@
   }
 
   async function handleSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
-    if ((item.kind === 'heading' || item.kind === 'checklist') && !before.text.trim() && !after.text.trim() && !`${before.html}${after.html}`.includes('data-balance-image=')) {
+    if ((item.kind === 'heading' || item.kind === 'checklist' || item.kind === 'quote') && !before.text.trim() && !after.text.trim() && !`${before.html}${after.html}`.includes('data-balance-image=')) {
       patchItem(noteId, item.id, { kind: 'paragraph', done: false })
       await tick()
       focusInput(item.id, 'start')
@@ -381,6 +382,7 @@
   function markdownKind(text: string): { kind: NoteItemKind; content: string } | null {
     const shortcuts: { expression: RegExp; kind: NoteItemKind }[] = [
       { expression: /^#\s(.*)$/s, kind: 'heading' },
+      { expression: /^>\s(.*)$/s, kind: 'quote' },
       { expression: /^(?:-|\*)\s(.*)$/s, kind: 'bullet' },
       { expression: /^[1-9]\d*\.\s(.*)$/s, kind: 'numbered' },
       { expression: /^\[\s?\]\s(.*)$/s, kind: 'checklist' },
@@ -468,6 +470,7 @@
 <div
   class="note-item"
   class:note-heading={item.kind === 'heading'}
+  class:note-quote={item.kind === 'quote'}
   class:note-done={item.kind === 'checklist' && item.done}
   class:note-list-item={item.kind === 'bullet' || item.kind === 'numbered' || item.kind === 'checklist'}
   class:note-bullet={item.kind === 'bullet'}
@@ -526,7 +529,7 @@
             aria-selected={index === slashIndex}
             on:mousedown|preventDefault={() => applySlashCommand(command)}
           >
-            <span class="note-slash-icon" aria-hidden="true">{command.kind === 'heading' ? 'H' : command.kind === 'bullet' ? '•' : command.kind === 'numbered' ? '1.' : command.kind === 'checklist' ? '✓' : 'Aa'}</span>
+            <span class="note-slash-icon" aria-hidden="true">{#if command.kind === 'quote'}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11H5V6h5v7a5 5 0 0 1-5 5M20 11h-5V6h5v7a5 5 0 0 1-5 5" /></svg>{:else}{command.kind === 'heading' ? 'H' : command.kind === 'bullet' ? '•' : command.kind === 'numbered' ? '1.' : command.kind === 'checklist' ? '✓' : 'Aa'}{/if}</span>
             <span><strong>{command.label}</strong><small>{command.hint}</small></span>
           </button>
         {/each}
