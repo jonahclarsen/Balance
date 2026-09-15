@@ -28,7 +28,7 @@ export async function focusTaskBelow(containerId: Id, completedItemIds: Iterable
 
   if (lastCompletedIndex === -1) return false
 
-  const targetRow = rows[lastCompletedIndex + 1]
+  const targetRow = rowBelowCompletedTask(rows, lastCompletedIndex)
   const target = targetRow?.querySelector<HTMLElement>(
     '[data-plan-text-focus-target], .item-text-display',
   )
@@ -46,6 +46,24 @@ export async function focusTaskBelow(containerId: Id, completedItemIds: Iterable
   })
 
   return true
+}
+
+function rowBelowCompletedTask(rows: HTMLElement[], completedIndex: number): HTMLElement | undefined {
+  const completedDepth = taskDepth(rows[completedIndex])
+  if (completedDepth === null) return rows[completedIndex + 1]
+
+  for (let index = completedIndex + 1; index < rows.length; index += 1) {
+    const row = rows[index]
+    const depth = taskDepth(row)
+    // Rows deeper than the completed row are its children. Keep looking until
+    // the next sibling or ancestor-level row, which is the task beneath it.
+    if (depth === null || depth <= completedDepth) return row
+  }
+}
+
+function taskDepth(row: HTMLElement): number | null {
+  const depth = Number(row.dataset.planItemDepth)
+  return Number.isInteger(depth) && depth >= 0 ? depth : null
 }
 
 export async function focusTaskById(

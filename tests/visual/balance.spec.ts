@@ -3362,6 +3362,32 @@ test('checking a plan item moves the desktop caret to the task beneath it', asyn
   await expect.poll(async () => activeInputValue(page)).toBe('Third task')
 })
 
+test('checking a parent moves the desktop caret past all of its descendants', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile checkbox taps deliberately dismiss task editing')
+  await seedPlanTree(page, [
+    {
+      id: 'parent',
+      text: 'Parent task',
+      children: [
+        {
+          id: 'child-group',
+          text: 'Child group',
+          children: [{ id: 'grandchild', text: 'Grandchild', children: [] }],
+        },
+        { id: 'direct-child', text: 'Direct child', children: [] },
+      ],
+    },
+    { id: 'task-below', text: 'Task below parent', children: [] },
+  ])
+
+  await page
+    .getByRole('listitem', { name: 'Plan item: Parent task', exact: true })
+    .getByRole('checkbox')
+    .check()
+
+  await expect.poll(async () => activeInputValue(page)).toBe('Task below parent')
+})
+
 test('unchecking a plan item keeps the desktop caret on that task', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Mobile checkbox taps deliberately dismiss task editing')
   await seedPlanItems(page, ['First task', 'Second task'])
