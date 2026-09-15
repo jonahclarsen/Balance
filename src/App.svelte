@@ -6472,9 +6472,7 @@ return rows`
         patchItem={plannerStore.patchNoteItem}
         patchItemsDone={plannerStore.patchNoteItemsDone}
         splitItem={plannerStore.splitNoteItem}
-        pasteItems={plannerStore.pasteNoteItems}
         backspaceItemAtStart={plannerStore.backspaceNoteItemAtStart}
-        deleteItem={plannerStore.deleteNoteItem}
         deleteItems={plannerStore.deleteNoteItems}
         replaceItemRange={plannerStore.replaceNoteItemRange}
         deleteItemPreservingChildren={plannerStore.deleteNoteItemPreservingChildren}
