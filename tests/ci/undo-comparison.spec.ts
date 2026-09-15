@@ -84,12 +84,12 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
               const runtime = window as any
               const before = runtime.state
               const started = performance.now()
-              const changed = await runtime.store[direction]()
+              await runtime.store[direction]()
               const storeMs = performance.now() - started
               const revealStarted = performance.now()
               const destination = runtime.destination?.(before, runtime.state)
               const revealMs = performance.now() - revealStarted
-              return { changed: !!changed, storeMs, revealMs, totalMs: storeMs + revealMs, destination: destination?.view }
+              return { changed: runtime.state.historyRevision !== before.historyRevision, storeMs, revealMs, totalMs: storeMs + revealMs, destination: destination?.view }
             }, direction)
             expect(result.changed).toBe(true)
             const record = { revision: process.env.BALANCE_UNDO_REVISION, round: process.env.BALANCE_UNDO_ROUND,
