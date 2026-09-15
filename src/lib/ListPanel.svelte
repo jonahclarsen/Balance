@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
   import { buildItemTimeWarnings, findPlanItem, isURL, itemMetricLink, type ItemLink } from './planner'
-  import { openExternalURL } from './externalLinks'
+  import { openExternalURLFromShortcut } from './externalLinks'
   import { plannerStore } from './store'
   import { focusTaskBelow, TASK_COMPLETION_FOCUS_EVENT } from './taskCompletionFocus'
   import type { Id, ListTemplate, Metric, Note, PlanItem } from './types'
@@ -332,7 +332,7 @@
       .map((anchor) => anchor.getAttribute('href')?.trim() ?? '')
       .find(isURL)
     if (externalURL) {
-      void openExternalURL(externalURL)
+      openExternalURLFromShortcut(externalURL)
       return true
     }
     if (!metricLink) return false

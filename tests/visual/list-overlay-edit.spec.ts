@@ -162,8 +162,11 @@ for (const url of ['https://example.com/docs', 'file:///tmp/Balance%20test.pdf']
 
     await page.evaluate(() => {
       ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = ''
+      ;(window as typeof window & { openedExternalURLCount?: number }).openedExternalURLCount = 0
       window.open = ((url?: string | URL) => {
         ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = String(url)
+        const testWindow = window as typeof window & { openedExternalURLCount?: number }
+        testWindow.openedExternalURLCount = (testWindow.openedExternalURLCount ?? 0) + 1
         return null
       }) as typeof window.open
     })
@@ -173,11 +176,18 @@ for (const url of ['https://example.com/docs', 'file:///tmp/Balance%20test.pdf']
       .toBe(url)
     await page.evaluate(() => {
       ;(window as typeof window & { openedExternalURL?: string }).openedExternalURL = ''
+      ;(window as typeof window & { openedExternalURLCount?: number }).openedExternalURLCount = 0
     })
     await taskInput.focus()
-    await page.keyboard.press('Alt+f')
+    await page.evaluate(() => {
+      const shortcut = { key: 'f', code: 'KeyF', altKey: true, bubbles: true, cancelable: true }
+      window.dispatchEvent(new KeyboardEvent('keydown', shortcut))
+      window.dispatchEvent(new KeyboardEvent('keydown', shortcut))
+    })
     await expect.poll(() => page.evaluate(() => (window as typeof window & { openedExternalURL?: string }).openedExternalURL))
       .toBe(url)
+    await expect.poll(() => page.evaluate(() => (window as typeof window & { openedExternalURLCount?: number }).openedExternalURLCount))
+      .toBe(1)
   })
 }
 
