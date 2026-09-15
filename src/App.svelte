@@ -5512,7 +5512,7 @@ return rows`
     </div>
   {/if}
 
-  <header class="mobile-app-header" aria-label="Mobile app header">
+  <header class="mobile-app-header" aria-label="Mobile app header" data-tauri-drag-region={isMac && !isMobile ? '' : undefined}>
     <button
       class="mobile-menu-button"
       type="button"
@@ -5528,8 +5528,8 @@ return rows`
     >
       <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
     </button>
-    <div class="mobile-app-title">
-      <strong>Balance</strong>
+    <div class="mobile-app-title" data-tauri-drag-region={isMac && !isMobile ? '' : undefined}>
+      <strong data-tauri-drag-region={isMac && !isMobile ? '' : undefined}>Balance</strong>
       {#if isTauri() && !$databaseLoadPending && !$databaseLoadError}
         <SyncStatusIndicator onOpenError={openSyncError} />
       {/if}
