@@ -3367,6 +3367,19 @@ return rows`
     }
 
     if (
+      selectedItemIds.length > 0 &&
+      !listOverlayVisible &&
+      (activeItemSurface() === 'day-template' || activeItemSurface() === 'list-template') &&
+      !(event.altKey && primaryModifier) &&
+      (event.code === 'BracketLeft' || event.code === 'BracketRight')
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      adjustSelectedItemProbabilities(event.code === 'BracketLeft' ? -5 : 5)
+      return
+    }
+
+    if (
       event.altKey &&
       !primaryModifier &&
       event.shiftKey &&
@@ -3716,6 +3729,28 @@ return rows`
           ? defaultPlanItemTimeRange(focusedPlan?.items ?? [], item.id, focusedPlan?.date)
           : defaultTemplateItemTimeRange(selectedTemplate?.items ?? [], item.id)
         patchSelectedTimeItem(item.id, { ...range, timeHidden: null })
+      }
+    }
+  }
+
+  function adjustSelectedItemProbabilities(delta: number) {
+    if (activeItemSurface() === 'day-template' && selectedTemplate) {
+      for (const item of collectSelectedTimeItems(selectedTemplate.items, new Set(selectedItemIds))) {
+        const option = item.options[0]
+        if (!option) continue
+        const probability = Math.max(0, Math.min(100, option.probability + delta))
+        if (probability !== option.probability) {
+          plannerStore.patchTemplateOption(selectedTemplate.id, item.id, option.id, { probability })
+        }
+      }
+    } else if (activeItemSurface() === 'list-template' && selectedListTemplate) {
+      for (const itemId of selectedItemIds) {
+        const item = findListTemplateItem(selectedListTemplate.items, (item) => item.id === itemId)
+        if (!item) continue
+        const probability = Math.max(item.probability < 30 ? 10 : 30, Math.min(100, item.probability + delta))
+        if (probability !== item.probability) {
+          plannerStore.patchListTemplateItem(selectedListTemplate.id, item.id, { probability })
+        }
       }
     }
   }

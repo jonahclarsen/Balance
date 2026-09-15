@@ -411,7 +411,7 @@
       <ProbabilitySlider
         value={item.probability}
         min={allowsLowProbability ? MIN_LIST_ITEM_PROBABILITY : NORMAL_MIN_LIST_ITEM_PROBABILITY}
-        step={10}
+        step={5}
         ariaLabel="Appearance probability"
         generousHitbox
         onChange={handleProbabilityChange}

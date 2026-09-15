@@ -2267,6 +2267,7 @@ test('adding plan time starts with a shallower timed item and after a same-level
 })
 
 test('keyboard shortcuts add, adjust, and remove time while editing a plan item', async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2030-01-15T08:00:00'))
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -4871,6 +4872,14 @@ test('dragging a selected day-template probability applies it to every selected 
   await dragRangeToRatio(page, probabilities.first(), 0.25)
   await expect.poll(async () => inputValues(probabilities)).toEqual(['25', '25'])
   await expect(selectedRows).toHaveCount(2)
+
+  for (const modifier of ['Alt+', 'Alt+Shift+', 'Meta+', 'Meta+Shift+', '', 'Shift+']) {
+    await page.keyboard.press(`${modifier}]`)
+    await expect.poll(async () => inputValues(probabilities)).toEqual(['30', '30'])
+    await page.keyboard.press(`${modifier}[`)
+    await expect.poll(async () => inputValues(probabilities)).toEqual(['25', '25'])
+  }
+  await expect(selectedRows).toHaveCount(2)
 })
 
 test('generating from a future date uses the selected date and latest template edits', async ({ page }) => {
@@ -5585,13 +5594,24 @@ test('dragging a selected list-template probability applies it to every selected
   await expect(probabilities).toHaveCount(2)
   const originalProbabilities = await inputValues(probabilities)
 
-  // The list-template range is 30–100 in 10-point steps; 3/7 lands on 60.
+  // The list-template range is 30–100 in 5-point steps; 3/7 lands on 60.
   await dragRangeToRatio(page, probabilities.first(), 3 / 7)
   await expect.poll(async () => inputValues(probabilities)).toEqual(['60', '60'])
   await expect(selectedRows).toHaveCount(2)
 
   await page.keyboard.press('Meta+Z')
-  await expect.poll(async () => inputValues(probabilities)).toEqual(originalProbabilities)
+  await expect.poll(async () => inputValues(page.getByLabel('Appearance probability'))).toEqual(originalProbabilities)
+  await inputs.first().focus()
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Shift+ArrowDown')
+
+  for (const modifier of ['Alt+', 'Alt+Shift+', 'Meta+', 'Meta+Shift+', '', 'Shift+']) {
+    await page.keyboard.press(`${modifier}[`)
+    await expect.poll(async () => inputValues(probabilities)).toEqual(['95', '95'])
+    await page.keyboard.press(`${modifier}]`)
+    await expect.poll(async () => inputValues(probabilities)).toEqual(['100', '100'])
+  }
+  await expect(selectedRows).toHaveCount(2)
 })
 
 test('nested list items include ancestor probabilities in expected words and cap checks', async ({ page }) => {
