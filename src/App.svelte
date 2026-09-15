@@ -5512,67 +5512,69 @@ return rows`
   {/if}
 
   <header class="mobile-app-header" aria-label="Mobile app header" data-tauri-drag-region={isMac && !isMobile ? '' : undefined}>
-    <button
-      class="mobile-menu-button"
-      type="button"
-      title="Open navigation"
-      aria-label="Open navigation"
-      aria-expanded={mobileDrawerOpen}
-      aria-controls="primary-sidebar"
-      on:pointerdown={previewMobileDrawer}
-      on:pointerup={releaseMobileDrawerPress}
-      on:pointercancel={cancelMobileDrawerPress}
-      on:lostpointercapture={cancelMobileDrawerPress}
-      on:click={finishMobileDrawerPress}
-    >
-      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
-    </button>
-    <div class="mobile-app-title" data-tauri-drag-region={isMac && !isMobile ? '' : undefined}>
-      <strong data-tauri-drag-region={isMac && !isMobile ? '' : undefined}>Balance</strong>
-      {#if isTauri() && !$databaseLoadPending && !$databaseLoadError}
-        <SyncStatusIndicator onOpenError={openSyncError} />
-      {/if}
-    </div>
-    <div class="mobile-header-actions">
-      {#if isMobile && view === 'today'}
-        <button
-          class="mobile-header-previous-day-button"
-          type="button"
-          title="Previous day"
-          aria-label="Previous day"
-          on:click={() => shiftActivePlanDate(-1)}
-        >
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6" /></svg>
-        </button>
-        <button
-          class="mobile-header-next-day-button"
-          type="button"
-          title="Next day"
-          aria-label="Next day"
-          on:click={() => shiftActivePlanDate(1)}
-        >
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6" /></svg>
-        </button>
-      {/if}
-      {#if isAndroid}
-        {#if selectedItemIds.length > 0}
+    <div class="mobile-app-header-row" data-tauri-drag-region={isMac && !isMobile ? '' : undefined}>
+      <button
+        class="mobile-menu-button"
+        type="button"
+        title="Open navigation"
+        aria-label="Open navigation"
+        aria-expanded={mobileDrawerOpen}
+        aria-controls="primary-sidebar"
+        on:pointerdown={previewMobileDrawer}
+        on:pointerup={releaseMobileDrawerPress}
+        on:pointercancel={cancelMobileDrawerPress}
+        on:lostpointercapture={cancelMobileDrawerPress}
+        on:click={finishMobileDrawerPress}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+      </button>
+      <div class="mobile-app-title" data-tauri-drag-region={isMac && !isMobile ? '' : undefined}>
+        <strong data-tauri-drag-region={isMac && !isMobile ? '' : undefined}>Balance</strong>
+        {#if isTauri() && !$databaseLoadPending && !$databaseLoadError}
+          <SyncStatusIndicator onOpenError={openSyncError} />
+        {/if}
+      </div>
+      <div class="mobile-header-actions">
+        {#if isMobile && view === 'today'}
           <button
-            class="mobile-header-copy-button"
+            class="mobile-header-previous-day-button"
             type="button"
-            title="Copy selected tasks"
-            aria-label="Copy selected tasks"
-            on:click={copyAndClearSelectedItems}
+            title="Previous day"
+            aria-label="Previous day"
+            on:click={() => shiftActivePlanDate(-1)}
           >
-            <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m14 6-6 6 6 6" /></svg>
+          </button>
+          <button
+            class="mobile-header-next-day-button"
+            type="button"
+            title="Next day"
+            aria-label="Next day"
+            on:click={() => shiftActivePlanDate(1)}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m10 6 6 6-6 6" /></svg>
           </button>
         {/if}
-        <button class="mobile-header-undo-button" data-completion-undo-trigger type="button" title="Undo" aria-label="Undo" on:click={() => { void undoAndOpenDestination() }}>
-          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 14-5-5 5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H12" /></svg>
+        {#if isAndroid}
+          {#if selectedItemIds.length > 0}
+            <button
+              class="mobile-header-copy-button"
+              type="button"
+              title="Copy selected tasks"
+              aria-label="Copy selected tasks"
+              on:click={copyAndClearSelectedItems}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
+            </button>
+          {/if}
+          <button class="mobile-header-undo-button" data-completion-undo-trigger type="button" title="Undo" aria-label="Undo" on:click={() => { void undoAndOpenDestination() }}>
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 14-5-5 5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H12" /></svg>
+          </button>
+        {/if}
+        <button class="mobile-search-button" type="button" title="Search" aria-label="Search" on:click={openMobileDrawerSearch}>
+          <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
         </button>
-      {/if}
-      <button class="mobile-search-button" type="button" title="Search" aria-label="Search" on:click={openMobileDrawerSearch}>
-        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
-      </button>
+      </div>
     </div>
   </header>
 
