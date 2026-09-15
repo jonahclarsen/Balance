@@ -272,7 +272,7 @@
   {/if}
   <header class="goal-history-toolbar">
     <div class="goal-history-title">
-      <strong>Goal rhythm</strong>
+      <button class="goal-history-open-goals" type="button" on:click={() => onOpenGoals()}>Goals</button>
       <span>{goalDeadlineSummary.overdue} overdue, {goalDeadlineSummary.upcoming} upcoming in the next 3 days</span>
     </div>
     <div class="goal-history-search-field">
@@ -293,7 +293,6 @@
         >×</button>
       {/if}
     </div>
-    <button type="button" on:click={() => onOpenGoals()}>Manage goals</button>
   </header>
 
   <div class="goal-history-body goal-history-scroll" bind:this={scrollEl}>

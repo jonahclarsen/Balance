@@ -4364,13 +4364,22 @@ body.mobile-checkbox-dragging {
   gap: 8px;
 }
 
-.goal-history-toolbar > button {
-  margin-left: auto;
-}
-
 .goal-history-toolbar span {
   color: var(--muted);
   font-size: 11px;
+}
+
+.goal-history-open-goals {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  font-weight: 700;
+}
+
+.goal-history-open-goals:hover {
+  color: var(--accent);
+  text-decoration: underline;
 }
 
 .goal-history-search-field {
@@ -4402,10 +4411,6 @@ body.mobile-checkbox-dragging {
   padding: 0;
   font-size: 19px;
   line-height: 1;
-}
-
-.goal-history-toolbar > button {
-  padding-block: 5px;
 }
 
 /* Names and day cells deliberately share this one native scroll owner. Splitting
@@ -5221,17 +5226,15 @@ body.mobile-checkbox-dragging {
   }
 
   .goal-history-title {
+    display: flex;
+  }
+
+  .goal-history-title span {
     display: none;
   }
 
   .goal-history-search-field {
     flex-basis: 120px;
-  }
-
-  .goal-history-toolbar > button {
-    padding-inline: 7px;
-    font-size: 12px;
-    white-space: nowrap;
   }
 
   .goal-history-body {
