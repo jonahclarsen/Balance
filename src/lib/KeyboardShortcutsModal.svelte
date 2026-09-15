@@ -87,6 +87,7 @@
         { keys: ['mod', 'D'], label: 'Toggle done (keeps selected items selected)' },
         { keys: ['alt', 'F'], label: 'Open linked list / URL / metric (first URL in selected list task)' },
         { keys: ['E'], label: 'Edit selected list item (overlay)' },
+        { keys: ['[ / ]'], label: 'Selected list / day-template probability −/+5% (also Alt, Cmd/Ctrl, or Shift combinations; first day-template option)' },
         { keys: ['T'], label: 'Add / remove time from selected items' },
         { keys: ['['], label: 'Move selected start earlier / later', alt: [']'] },
         { keys: ['shift', '['], label: 'Move selected end earlier / later', alt: ['shift', ']'] },
