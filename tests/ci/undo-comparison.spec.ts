@@ -28,7 +28,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
       if (command.includes('last_operation')) {
         const result = JSON.parse(response.result)
         calls.push({ command, nativeMs: response.commandMs, openMs: response.openMs,
-          fullState: result.state !== null, responseBytes: Buffer.byteLength(response.result) })
+          operationMs: response.operationMs, housekeepingMs: response.housekeepingMs, fullState: result.state !== null, responseBytes: Buffer.byteLength(response.result) })
       }
       return response.result
     }
@@ -63,6 +63,17 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
         await page.evaluate(async (scenario) => {
           const { store, state } = window as any
           const plan = state.plans[0]
+          ;(window as any).probe = () => {
+            const state = (window as any).state
+            if (scenario === 'note-text') return state.notes[0].items[0].text
+            if (scenario.startsWith('metric-')) {
+              const entry = scenario === 'metric-first' ? state.metricEntries[0] : state.metricEntries.at(-1)
+              return entry.answers[0].value
+            }
+            const item = state.plans[0].items[0]
+            return JSON.stringify([item.text, item.startMinutes, item.endMinutes, item.children.map((child: any) => child.text)])
+          }
+          ;(window as any).expectedBeforeProbe = (window as any).probe()
           if (scenario.startsWith('plan-')) store.patchPlanItem(plan.id, plan.items[0].id, { text: 'Changed', html: 'Changed' })
           if (scenario === 'remove-time') store.patchPlanItem(plan.id, plan.items[0].id, { startMinutes: null, endMinutes: null, timeHidden: null })
           if (scenario === 'note-text') store.patchNoteItem('note_ci', 'item_ci', { text: 'Changed', html: 'Changed' })
@@ -76,6 +87,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
           }
           if (scenario !== 'plan-pending') await store.flushPendingOperations()
           if (scenario === 'plan-after-reload') await store.reloadFromBackend()
+          ;(window as any).expectedAfterProbe = (window as any).probe()
           ;(window as any).expectedAfter = JSON.stringify({ plans: (window as any).state.plans, notes: (window as any).state.notes, metricEntries: (window as any).state.metricEntries })
         }, scenario)
         for (let sample = 0; sample < 4; sample++) {
@@ -92,6 +104,10 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
               return { changed: runtime.state.historyRevision !== before.historyRevision, storeMs, revealMs, totalMs: storeMs + revealMs, destination: destination?.view }
             }, direction)
             expect(result.changed).toBe(true)
+            expect(await page.evaluate((direction) => {
+              const r = window as any
+              return r.probe() === (direction === 'undo' ? r.expectedBeforeProbe : r.expectedAfterProbe)
+            }, direction), `${scenario} ${direction} restores the expected content`).toBe(true)
             const record = { revision: process.env.BALANCE_UNDO_REVISION, round: process.env.BALANCE_UNDO_ROUND,
               size, plans, items: plans * 60, entries, scenario, sample, direction, navigationExists, ...calls.at(-1), ...result }
             appendFileSync(process.env.BALANCE_UNDO_REPORT!, JSON.stringify(record) + '\n')
