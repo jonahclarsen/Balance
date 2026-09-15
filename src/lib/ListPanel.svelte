@@ -118,7 +118,7 @@
     const focusTarget = row?.querySelector<HTMLElement>('.item-text-display')
     if (focusTarget && row) {
       focusTarget.focus({ preventScroll: true })
-      scrollRowTopToOneThird(row, behavior)
+      scrollRowNearTop(row, behavior)
     }
   }
 
@@ -140,14 +140,17 @@
     animateBottomCollapse(0)
   }
 
-  function scrollRowTopToOneThird(row: HTMLElement, behavior: ScrollBehavior) {
+  function scrollRowNearTop(row: HTMLElement, behavior: ScrollBehavior) {
     const scrollContainer = findScrollContainer(row)
     const rowRect = row.getBoundingClientRect()
     if (scrollContainer) {
       const effectiveZoom = row.currentCSSZoom || 1
+      const containerRect = scrollContainer.getBoundingClientRect()
+      // Keep the target below the header and stable while the modal bottom collapses.
+      const selectionTop = containerRect.top + (containerRect.height + bottomCollapse * effectiveZoom) * 0.08
       const targetTop = Math.max(
         0,
-        scrollContainer.scrollTop + (rowRect.top - window.innerHeight / 3) / effectiveZoom,
+        scrollContainer.scrollTop + (rowRect.top - selectionTop) / effectiveZoom,
       )
       const expandedMaxScrollTop = Math.max(
         0,
@@ -157,7 +160,7 @@
       scrollToPosition(scrollContainer, targetTop, behavior, targetBottomCollapse)
       return
     }
-    scrollToPosition(null, window.scrollY + rowRect.top - window.innerHeight / 3, behavior, 0)
+    scrollToPosition(null, window.scrollY + rowRect.top - window.innerHeight * 0.08, behavior, 0)
   }
 
   function scrollToPosition(
