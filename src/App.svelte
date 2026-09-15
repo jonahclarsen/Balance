@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { planItemsClipboardText, parsePlainTaskClipboard } from './lib/taskClipboard'
   import ImageLayer from './lib/ImageLayer.svelte'
   import BackupBrowser from './lib/BackupBrowser.svelte'
   import { blobDataURL, selectedImage } from './lib/imageService'
@@ -447,7 +448,7 @@ return rows`
   let completionUndoCaret: CompletionUndoCaret | null = null
   let planKeyboardMoveSession: PlanKeyboardMoveSession | null = null
   let selectingItems = false
-  type PlanItemClipboard = { items: PlanItem[]; cut: boolean; sourceDate: string }
+  type PlanItemClipboard = { items: PlanItem[]; cut: boolean; sourceDate: string; portable?: boolean }
   type TemplateItemClipboard =
     | { kind: 'day-template'; items: TemplateItem[]; cut: boolean }
     | { kind: 'list-template'; items: ListTemplateItem[]; cut: boolean }
@@ -4330,7 +4331,7 @@ return rows`
     if (!surface || !containerId || selectedItemIds.length === 0) return
     if (surface === 'plan' && focusedPlan) {
       const items = plannerStore.copyPlanItems(containerId, selectedItemIds)
-      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: focusedPlan.date })
+      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: false, sourceDate: focusedPlan.date, portable: selectedItemIds.length > 1 })
       return
     }
     if (surface === 'day-template') {
@@ -4358,7 +4359,7 @@ return rows`
   async function pastePlanItemFromMenu(planId: Id, itemId: Id) {
     focusPane(planId)
     const clipboard = await readSystemClipboard()
-    const structured = parsePlanItemClipboard(clipboard.structuredPayload)
+    const structured = parsePlanItemClipboard(clipboard.structuredPayload) ?? plainPlanItemClipboard(clipboard.plainText)
     if (!structured) return
     pastePlanItemClipboard(structured, null, { planId, targetId: itemId, placement: 'after' })
   }
@@ -4378,7 +4379,7 @@ return rows`
     const orderedIds = flattenItemIds(activeItemTree())
     if (surface === 'plan' && focusedPlan) {
       const items = plannerStore.cutPlanItems(containerId, selectedItemIds)
-      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: true, sourceDate: focusedPlan.date })
+      if (items.length > 0) writePlanItemsToSystemClipboard({ items, cut: true, sourceDate: focusedPlan.date, portable: selectedItemIds.length > 1 })
       await finishCut(orderedIds, items)
       return
     }
@@ -4558,7 +4559,7 @@ return rows`
     // briefly disturb the DOM selection even though the user has not moved the caret.
     const pasteBeforeItemId = planItemIdWithCaretAtStart()
     const clipboard = contents ?? await readSystemClipboard()
-    const structured = parsePlanItemClipboard(clipboard.structuredPayload)
+    const structured = parsePlanItemClipboard(clipboard.structuredPayload) ?? plainPlanItemClipboard(clipboard.plainText)
     if (structured) {
       pastePlanItemClipboard(structured, pasteBeforeItemId)
       return
@@ -5121,7 +5122,7 @@ return rows`
   }
 
   function writePlanItemsToSystemClipboard(clipboard: PlanItemClipboard) {
-    const plainText = planItemsToPlainText(clipboard.items)
+    const plainText = planItemsClipboardText(clipboard.items, clipboard.portable)
     writeItemClipboard(clipboard, plainText)
   }
 
@@ -5187,6 +5188,11 @@ return rows`
     return { structuredPayload, plainText, html: null }
   }
 
+  function plainPlanItemClipboard(text: string | null): PlanItemClipboard | null {
+    const items = parsePlainTaskClipboard(text)
+    return items ? { items, cut: false, sourceDate: '', portable: true } : null
+  }
+
   function parsePlanItemClipboard(raw: string | null): PlanItemClipboard | null {
     if (!raw) return null
     try {
@@ -5220,7 +5226,7 @@ return rows`
   }
 
   function itemClipboardPlainText(clipboard: ItemClipboard): string {
-    return 'sourceDate' in clipboard ? planItemsToPlainText(clipboard.items) : templateClipboardPlainText(clipboard)
+    return 'sourceDate' in clipboard ? planItemsClipboardText(clipboard.items, clipboard.portable) : templateClipboardPlainText(clipboard)
   }
 
   function templateClipboardPlainText(clipboard: TemplateItemClipboard): string {
@@ -5245,15 +5251,6 @@ return rows`
     }).join('\n')
   }
 
-  function planItemsToPlainText(items: PlanItem[], depth = 0): string {
-    return items
-      .map((item) => {
-        const line = `${'  '.repeat(depth)}${item.text}`
-        const children = planItemsToPlainText(item.children, depth + 1)
-        return children ? `${line}\n${children}` : line
-      })
-      .join('\n')
-  }
 
   function isRichTextActive() {
     return document.activeElement instanceof HTMLElement && document.activeElement.matches('[data-rich-text-input]')

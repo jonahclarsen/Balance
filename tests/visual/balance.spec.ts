@@ -4406,7 +4406,7 @@ test('replacing the system clipboard prevents stale structured task paste', asyn
   await focusInputByValue(page, before[0])
   await page.keyboard.press('Shift+ArrowDown')
   await page.keyboard.press('Meta+C')
-  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(before.slice(0, 2).join('\n'))
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(`<balance>\n${before.slice(0, 2).map((text) => `- ${text}`).join('\n')}\n</balance>`)
 
   await focusInputByValue(page, 'Work block')
   await setCaretOffsetInFocusedEditor(page, 0)

@@ -64,3 +64,27 @@ pnpm run test:visual
 ```
 
 Visual smoke screenshots are written to `artifacts/visual-smoke/`, which is intentionally ignored by git.
+
+## Copying tasks through plain text
+
+Select multiple tasks in Today and copy them to get a readable block:
+
+```text
+<balance>
+- Plan trip
+  - Read [guide](https://example.com/guide)
+- Pack bags
+</balance>
+```
+
+Paste the whole block back into a day to restore tasks, nesting, and links—even
+if it passed through a plain-text editor. Copying a single selected task keeps
+the existing text format. Direct Balance-to-Balance paste still preserves the
+full task data.
+
+The portable format uses two spaces per nesting level; tabs and wider space
+indentation also work. Each task occupies one line, with `\n` for a line break,
+`\t` for a literal tab, and backslash escapes for backslashes and square brackets.
+The `- ` prefix preserves empty tasks and leading text whitespace. Both markers
+must be included. Plain-text imports create unchecked tasks without scheduled
+times, images, or text styling. Existing paste review applies to larger imports.
