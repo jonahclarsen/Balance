@@ -349,6 +349,29 @@ test('a slow launch sync leaves local state visible with a subtle status cue', a
   })
 })
 
+for (const width of [320, 360, 412]) {
+  test(`mobile day buttons remain reachable during sync at ${width}px`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'mobile', 'Mobile header controls')
+    await page.setViewportSize({ width, height: 840 })
+    await page.goto('/?hold-sync=1')
+    const header = page.locator('.mobile-app-header')
+    const status = header.getByRole('status', { name: 'Sync status: Syncing' })
+    await expect(status).toBeVisible()
+    const date = page.getByLabel('Day date', { exact: true })
+    const initialDate = await date.inputValue()
+    const priorDate = new Date(`${initialDate}T12:00:00Z`)
+    priorDate.setUTCDate(priorDate.getUTCDate() - 1)
+    await header.getByRole('button', { name: 'Previous day', exact: true }).tap()
+    await expect(date).toHaveValue(priorDate.toISOString().slice(0, 10))
+    await header.getByRole('button', { name: 'Next day', exact: true }).tap()
+    await expect(date).toHaveValue(initialDate)
+    const statusBox = await status.boundingBox()
+    const actionsBox = await header.locator('.mobile-header-actions').boundingBox()
+    expect(statusBox!.x + statusBox!.width).toBeLessThanOrEqual(actionsBox!.x)
+    expect(await readSyncStatus(page)).toEqual({ running: true, initialSyncComplete: false })
+  })
+}
+
 test('settings stay available while a launch sync is still running', async ({ page }) => {
   await page.goto('/?hold-sync=1&hold-second-settings=1')
 

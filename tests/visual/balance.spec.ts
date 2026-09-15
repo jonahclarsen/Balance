@@ -2292,9 +2292,9 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
 
   await page.keyboard.press('Alt+Shift+t')
   await expect.poll(async () => planItemStoredTime(page, 'Pick the first useful task')).toEqual({
-    startMinutes: 540,
-    endMinutes: 600,
-    timeHidden: true,
+    startMinutes: null,
+    endMinutes: null,
+    timeHidden: null,
     hasTimeHiddenField: true,
   })
   await expect
@@ -2308,16 +2308,17 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
 
   await page.keyboard.press('Alt+/')
   const shortcuts = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
-  await expect(shortcuts.getByText('Add / remove time from selected items', { exact: true })).toBeVisible()
+  await expect(shortcuts.getByText('Add fresh time / clear time from selected items', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Move selected start earlier / later', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Move selected end earlier / later', { exact: true })).toBeVisible()
-  await expect(shortcuts.getByText('Add / remove task time', { exact: true })).toBeVisible()
+  await expect(shortcuts.getByText('Add fresh task time / clear time', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Move task start earlier / later', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Move task end earlier / later', { exact: true })).toBeVisible()
   await expect(shortcuts.getByText('Shift task time earlier / later', { exact: true })).toBeVisible()
 })
 
-test('clicking add time generates a fresh range instead of restoring the keyboard-hidden range', async ({ page }, testInfo) => {
+test('removing time clears stored values, supports undo, and re-adds a fresh range', async ({ page }, testInfo) => {
+  await page.clock.setFixedTime(new Date('2030-01-15T08:00:00'))
   test.skip(testInfo.project.name === 'mobile', 'The desktop alarm button is replaced by the mobile task menu')
 
   await page.goto('/')
@@ -2331,10 +2332,22 @@ test('clicking add time generates a fresh range instead of restoring the keyboar
   await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([555, 615])
 
   await page.keyboard.press('Alt+Shift+t')
-  await page.keyboard.press('Alt+Shift+t')
+  const clearedTime = { startMinutes: null, endMinutes: null, timeHidden: null, hasTimeHiddenField: true }
+  await expect.poll(async () => planItemStoredTime(page, 'Pick the first useful task')).toEqual(clearedTime)
+  await page.keyboard.press('ControlOrMeta+z')
   await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([555, 615])
-
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await expect.poll(async () => planItemStoredTime(page, 'Pick the first useful task')).toEqual(clearedTime)
   await page.keyboard.press('Alt+Shift+t')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+
+  await page.getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
+    .getByTitle('Remove time', { exact: true }).click()
+  await expect.poll(async () => planItemStoredTime(page, 'Pick the first useful task')).toEqual(clearedTime)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect.poll(async () => planItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await expect.poll(async () => planItemStoredTime(page, 'Pick the first useful task')).toEqual(clearedTime)
   await page
     .getByRole('listitem', { name: /Plan item: Pick the first useful task/ })
     .getByRole('button', { name: 'Add time range' })
@@ -2362,6 +2375,12 @@ test('keyboard probability shortcuts work at the day-template caret without chan
   await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
 
   await page.keyboard.press('Alt+Shift+t')
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([null, null])
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
+  await page.getByRole('listitem', { name: /Template item: Pick the first useful task/ })
+    .getByTitle('Remove time', { exact: true }).click()
+  await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([null, null])
   await page.reload()
   await page.getByRole('button', { name: 'Day Templates' }).click()
   await focusTemplateOptionByValue(page, 'Pick the first useful task')

@@ -65,6 +65,13 @@ the recognized text, but test the behavior on that supported platform.
   Receipts are device-local metadata, independent of undo and compactable logs.
   Keep pending URLs until the frontend acknowledges them after persistence; a
   duplicate delivery must not navigate to another day.
+  Siri must confirm a save only after the native durable receipt check, never
+  merely because Launch Services accepted the URL. The sandboxed intent listens
+  before opening the URL and receives only the random request ID through the
+  saved notification. A timeout is an uncertain outcome: ask the user to check
+  Balance before retrying, since the original request may still arrive later.
+  Run `node --test scripts/siri-confirmation.test.mjs` to exercise cross-process
+  receipt matching, timeout, cancellation, and sandboxed receipt delivery.
 - `src/lib/deepLinks.ts` validates the URL. Reject blank or oversized input, but
   do not trim or otherwise rewrite accepted task text.
 - `src/App.svelte` receives the deep link and calls the planner store.

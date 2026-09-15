@@ -501,7 +501,7 @@
 
   function removeTime() {
     mobileMenuOpen = false
-    patchItem(planId, item.id, { timeHidden: true })
+    patchItem(planId, item.id, { startMinutes: null, endMinutes: null, timeHidden: null })
   }
 
   function startMobileSelection() {
@@ -901,7 +901,7 @@
           onChange={patchTimeRange}
           getShiftTargets={selectedTimeShiftTargets}
           onShift={shiftSelectedTimeRanges}
-          onRemove={() => patchItem(planId, item.id, { timeHidden: true })}
+          onRemove={() => patchItem(planId, item.id, { startMinutes: null, endMinutes: null, timeHidden: null })}
         />
       {/if}
     {:else if !locked && !mobile}

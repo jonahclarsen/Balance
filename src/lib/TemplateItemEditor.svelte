@@ -338,7 +338,7 @@
         precedesAncestor={timeWarning?.precedesAncestor}
         exceedsAncestor={timeWarning?.exceedsAncestor}
         onChange={patchTimeRange}
-        onRemove={() => patchItem(templateId, item.id, { timeHidden: true })}
+        onRemove={() => patchItem(templateId, item.id, { startMinutes: null, endMinutes: null, timeHidden: null })}
       />
     {:else}
       <button

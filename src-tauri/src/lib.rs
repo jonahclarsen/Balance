@@ -275,6 +275,24 @@ async fn has_processed_siri_request(app: tauri::AppHandle, request_id: String) -
     .await
 }
 
+// A frontend handoff is not proof of persistence. Check the device-local
+// receipt before telling the waiting App Intent that its task was saved.
+#[tauri::command]
+async fn confirm_siri_request_saved(app: tauri::AppHandle, request_id: String) -> Result<(), String> {
+    if !has_processed_siri_request(app, request_id.clone()).await? {
+        return Err("Siri request has not been saved".to_string());
+    }
+    #[cfg(target_os = "macos")]
+    {
+        extern "C" {
+            fn balance_confirm_siri_request_saved(request: *const std::ffi::c_char);
+        }
+        let request = std::ffi::CString::new(request_id).map_err(|error| error.to_string())?;
+        unsafe { balance_confirm_siri_request_saved(request.as_ptr()) };
+    }
+    Ok(())
+}
+
 fn siri_request_processed(connection: &Connection, request_id: &str) -> Result<bool, String> {
     Ok(metadata_value(connection, &format!("siri_request:{request_id}"))?.is_some())
 }
@@ -10610,6 +10628,7 @@ pub fn run() {
             pending_deep_links,
             acknowledge_deep_link,
             has_processed_siri_request,
+            confirm_siri_request_saved,
             get_device_appearance,
             set_device_appearance,
             initialize_app_state,
