@@ -1,6 +1,7 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import { caretPointFromCoordinates, collapsedCaretClientX } from './caretGeometry'
+  import { noteTextOffset as textOffsetAtPoint, noteTextPoint as pointAtTextOffset } from './noteSelection'
   import { escapeHTML, linkifyItemText, sanitizeInlineHTML, type ItemLink, type ItemTextSegment } from './planner'
   import RichTextEditor from './RichTextEditor.svelte'
   import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, NoteItem, NoteItemKind } from './types'
@@ -15,7 +16,6 @@
   export let patchItem: (noteId: Id, itemId: Id, patch: Partial<NoteItem>, options?: TextChangeOptions) => void
   export let splitItem: (noteId: Id, itemId: Id, before: { html: string; text: string }, after: { html: string; text: string }) => Id
   export let backspaceItemAtStart: (noteId: Id, itemId: Id) => { focusItemId: Id; focusOffset: number } | null
-  export let deleteItem: (noteId: Id, itemId: Id) => void
   export let deleteItemPreservingChildren: (noteId: Id, itemId: Id) => void
   export let moveItem: (noteId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (noteId: Id, itemId: Id, direction: MoveDirection) => void
@@ -30,6 +30,9 @@
   export let onExtendItemSelection: (itemId: Id, direction: MoveDirection) => boolean = () => false
   export let onSelectAllItems: () => void = () => {}
   export let onToggleChecklist: (itemId: Id, done: boolean) => void = () => {}
+  export let onTextSelection: (anchor: { node: Node; offset: number }, focus: { node: Node; offset: number }) => void = (anchor, focus) => {
+    document.getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
+  }
 
   let linkSegments: ItemTextSegment[] = [{ text: item.text, link: null }]
   let slashQuery: string | null = null
@@ -38,6 +41,7 @@
   const blockCommands: { kind: NoteItemKind; label: string; hint: string; aliases?: string[] }[] = [
     { kind: 'paragraph', label: 'Text', hint: 'Plain body text' },
     { kind: 'heading', label: 'Heading', hint: 'Large section heading', aliases: ['h1', 'header'] },
+    { kind: 'quote', label: 'Quote', hint: 'Quote a passage', aliases: ['blockquote'] },
     { kind: 'bullet', label: 'Bulleted list', hint: 'Start a simple list' },
     { kind: 'numbered', label: 'Numbered list', hint: 'Start an ordered list' },
     { kind: 'checklist', label: 'Checklist', hint: 'Track something to do' },
@@ -113,7 +117,7 @@
   }
 
   async function handleSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
-    if ((item.kind === 'heading' || item.kind === 'checklist') && !before.text.trim() && !after.text.trim() && !`${before.html}${after.html}`.includes('data-balance-image=')) {
+    if ((item.kind === 'heading' || item.kind === 'checklist' || item.kind === 'quote') && !before.text.trim() && !after.text.trim() && !`${before.html}${after.html}`.includes('data-balance-image=')) {
       patchItem(noteId, item.id, { kind: 'paragraph', done: false })
       await tick()
       focusInput(item.id, 'start')
@@ -157,35 +161,7 @@
         : target.textContent?.length ?? 0
     const targetPoint = pointAtTextOffset(target, targetOffset)
 
-    selection.setBaseAndExtent(
-      selection.anchorNode,
-      selection.anchorOffset,
-      targetPoint.node,
-      targetPoint.offset,
-    )
-  }
-
-  function textOffsetAtPoint(input: HTMLDivElement, node: Node, offset: number) {
-    if (!input.contains(node)) return 0
-    const range = document.createRange()
-    range.selectNodeContents(input)
-    range.setEnd(node, offset)
-    return range.toString().length
-  }
-
-  function pointAtTextOffset(input: HTMLDivElement, requestedOffset: number) {
-    const walker = document.createTreeWalker(input, NodeFilter.SHOW_TEXT)
-    let remaining = requestedOffset
-    let node = walker.nextNode()
-
-    while (node) {
-      const length = node.textContent?.length ?? 0
-      if (remaining <= length) return { node, offset: remaining }
-      remaining -= length
-      node = walker.nextNode()
-    }
-
-    return { node: input as Node, offset: requestedOffset <= 0 ? 0 : input.childNodes.length }
+    onTextSelection({ node: selection.anchorNode, offset: selection.anchorOffset }, targetPoint)
   }
 
   async function handleTab(direction: 'in' | 'out', current: HTMLDivElement) {
@@ -225,7 +201,7 @@
       return
     }
     const index = inputs.findIndex((input) => input.dataset.noteTextInputId === item.id)
-    deleteItem(noteId, item.id)
+    deleteItemPreservingChildren(noteId, item.id)
     await tick()
     const next = noteInputs()
     const target = next[Math.max(0, index - 1)] ?? next[0]
@@ -381,6 +357,7 @@
   function markdownKind(text: string): { kind: NoteItemKind; content: string } | null {
     const shortcuts: { expression: RegExp; kind: NoteItemKind }[] = [
       { expression: /^#\s(.*)$/s, kind: 'heading' },
+      { expression: /^>\s(.*)$/s, kind: 'quote' },
       { expression: /^(?:-|\*)\s(.*)$/s, kind: 'bullet' },
       { expression: /^[1-9]\d*\.\s(.*)$/s, kind: 'numbered' },
       { expression: /^\[\s?\]\s(.*)$/s, kind: 'checklist' },
@@ -423,6 +400,12 @@
   }
 
   function handleEditorKeyDown(_editor: HTMLDivElement, event: KeyboardEvent) {
+    if (event.key === 'Backspace' && event.metaKey && !event.ctrlKey && !event.altKey &&
+      !event.shiftKey && !item.text && !item.html.includes('data-balance-image=') && document.getSelection()?.isCollapsed) {
+      event.preventDefault()
+      void handleBackspaceEmpty()
+      return
+    }
     if (
       event.key.toLocaleLowerCase() === 'a' &&
       (event.metaKey || event.ctrlKey) &&
@@ -468,6 +451,7 @@
 <div
   class="note-item"
   class:note-heading={item.kind === 'heading'}
+  class:note-quote={item.kind === 'quote'}
   class:note-done={item.kind === 'checklist' && item.done}
   class:note-list-item={item.kind === 'bullet' || item.kind === 'numbered' || item.kind === 'checklist'}
   class:note-bullet={item.kind === 'bullet'}
@@ -526,7 +510,7 @@
             aria-selected={index === slashIndex}
             on:mousedown|preventDefault={() => applySlashCommand(command)}
           >
-            <span class="note-slash-icon" aria-hidden="true">{command.kind === 'heading' ? 'H' : command.kind === 'bullet' ? '•' : command.kind === 'numbered' ? '1.' : command.kind === 'checklist' ? '✓' : 'Aa'}</span>
+            <span class="note-slash-icon" aria-hidden="true">{#if command.kind === 'quote'}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11H5V6h5v7a5 5 0 0 1-5 5M20 11h-5V6h5v7a5 5 0 0 1-5 5" /></svg>{:else}{command.kind === 'heading' ? 'H' : command.kind === 'bullet' ? '•' : command.kind === 'numbered' ? '1.' : command.kind === 'checklist' ? '✓' : 'Aa'}{/if}</span>
             <span><strong>{command.label}</strong><small>{command.hint}</small></span>
           </button>
         {/each}
@@ -546,7 +530,6 @@
           {patchItem}
           {splitItem}
           {backspaceItemAtStart}
-          {deleteItem}
           {deleteItemPreservingChildren}
           {moveItem}
           {moveItemWithinLevel}
@@ -561,6 +544,7 @@
           {onExtendItemSelection}
           {onSelectAllItems}
           {onToggleChecklist}
+          {onTextSelection}
         />
       {/each}
     </div>

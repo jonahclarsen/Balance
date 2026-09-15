@@ -21,6 +21,7 @@
 <div
   class="note-item note-readonly-item"
   class:note-heading={item.kind === 'heading'}
+  class:note-quote={item.kind === 'quote'}
   class:note-done={item.kind === 'checklist' && item.done}
   class:note-list-item={item.kind === 'bullet' || item.kind === 'numbered' || item.kind === 'checklist'}
   class:note-bullet={item.kind === 'bullet'}

@@ -1930,43 +1930,6 @@ function createPlannerStore() {
       return newItem.id
     },
 
-    pasteNoteItems(
-      noteId: Id,
-      itemsToPaste: ParsedNoteClipboardItem[],
-      targetId: Id,
-      placement: 'after' | 'replace',
-    ) {
-      const createPastedItem = (item: ParsedNoteClipboardItem): NoteItem => ({
-        ...createNoteItem(item.text, item.kind),
-        html: item.html,
-        done: item.done,
-        children: item.children.map(createPastedItem),
-      })
-      const pastedItems = itemsToPaste.map(createPastedItem)
-      if (pastedItems.length === 0) return []
-
-      commitEntities('paste_note_items', { noteId, targetId, placement, items: pastedItems }, (state) =>
-        updateNote(state, noteId, (note) => {
-          const items = reconcileNoteChecklistItems(
-            pastePlanItemsIntoTree(note.items, pastedItems, targetId, placement) as NoteItem[],
-          )
-          return items === note.items ? note : { ...note, updatedAt: nowISO(), items }
-        }),
-      )
-
-      return pastedItems.map((item) => item.id)
-    },
-
-    deleteNoteItem(noteId: Id, itemId: Id) {
-      commitEntities('delete_note_item', { noteId, itemId }, (state) =>
-        updateNote(state, noteId, (note) => ({
-          ...note,
-          updatedAt: nowISO(),
-          items: reconcileNoteChecklistItems(deletePlanItem(note.items, itemId) as NoteItem[]),
-        })),
-      )
-    },
-
     deleteNoteItems(noteId: Id, itemIds: Id[]) {
       if (itemIds.length === 0) return
       commitEntities('delete_note_items', { noteId, itemIds }, (state) =>
@@ -1982,15 +1945,30 @@ function createPlannerStore() {
       noteId: Id,
       itemId: Id,
       itemIds: Id[],
-      replacement: { html: string; text: string },
+      replacement: { html: string; text: string; kind?: NoteItemKind; done?: boolean; children?: ParsedNoteClipboardItem[] },
+      followingItems: ParsedNoteClipboardItem[] = [],
     ) {
+      const createPastedItem = (item: ParsedNoteClipboardItem): NoteItem => ({
+        ...createNoteItem(item.text, item.kind),
+        html: item.html,
+        done: item.done,
+        children: item.children.map(createPastedItem),
+      })
+      const { children, ...patch } = replacement
+      const pastedChildren = children?.map(createPastedItem) ?? []
+      const insertedItems = followingItems.map(createPastedItem)
       const removedIds = itemIds.filter((candidateId) => candidateId !== itemId)
       commitEntities('replace_note_item_range', { noteId, itemId, itemIds, replacement }, (state) =>
         updateNote(state, noteId, (note) => {
-          let items = updatePlanItem(note.items, itemId, (item) => ({ ...item, ...replacement }))
+          let items = updatePlanItem(note.items, itemId, (item) => ({ ...item, ...patch }))
           for (const removedId of removedIds) {
             items = deletePlanItemPreservingChildren(items, removedId)
           }
+          items = updatePlanItem(items, itemId, (item) => ({
+            ...item,
+            children: [...pastedChildren, ...item.children],
+          }))
+          if (insertedItems.length > 0) items = pastePlanItemsIntoTree(items, insertedItems, itemId, 'after')
           return {
             ...note,
             updatedAt: nowISO(),
@@ -1998,6 +1976,8 @@ function createPlannerStore() {
           }
         }),
       )
+      const flattenedIds = (items: NoteItem[]): Id[] => items.flatMap((item) => [item.id, ...flattenedIds(item.children)])
+      return [itemId, ...flattenedIds(pastedChildren), ...flattenedIds(insertedItems)]
     },
 
     deleteNoteItemPreservingChildren(noteId: Id, itemId: Id) {
@@ -3451,7 +3431,7 @@ function normalizeArchivedListTemplateItem(entry: ArchivedListTemplateItem): Arc
 }
 
 function normalizeNoteItems(items: NoteItem[]): NoteItem[] {
-  const kinds = new Set<NoteItemKind>(['paragraph', 'heading', 'bullet', 'numbered', 'checklist'])
+  const kinds = new Set<NoteItemKind>(['paragraph', 'heading', 'quote', 'bullet', 'numbered', 'checklist'])
   return items.map((item) => {
     const html = sanitizeInlineHTML(item.html ?? escapeHTML(item.text ?? ''))
 

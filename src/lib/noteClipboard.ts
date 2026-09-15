@@ -112,11 +112,11 @@ function indentationWidth(indentation: string) {
 function parseClipboardContainer(container: Element): ParsedNoteClipboardItem[] {
   return Array.from(container.children).flatMap((element) => {
     if (element.matches('ul, ol')) return parseClipboardList(element)
-    if (!element.matches('p, div, h1, h2, h3, h4, h5, h6')) return []
+    if (!element.matches('p, div, blockquote, h1, h2, h3, h4, h5, h6')) return []
 
     const html = sanitizeInlineHTML(element.innerHTML)
     return [{
-      kind: element.matches('h1, h2, h3, h4, h5, h6') ? 'heading' : 'paragraph',
+      kind: element.matches('h1, h2, h3, h4, h5, h6') ? 'heading' : element.matches('blockquote') ? 'quote' : 'paragraph',
       html,
       text: htmlToPlainText(html),
       done: false,
@@ -158,6 +158,7 @@ function parseClipboardList(list: Element): ParsedNoteClipboardItem[] {
 }
 
 function plainTextMarker(block: NoteClipboardBlock): string {
+  if (block.kind === 'quote') return '> '
   if (block.kind === 'bullet') return '- '
   if (block.kind === 'numbered') return `${block.number}. `
   if (block.kind === 'checklist') return `${block.done ? '☑' : '☐'} `
@@ -198,7 +199,7 @@ function renderNodes(nodes: NoteClipboardNode[]): string {
       continue
     }
 
-    const tag = node.kind === 'heading' ? 'h1' : 'p'
+    const tag = node.kind === 'heading' ? 'h1' : node.kind === 'quote' ? 'blockquote' : 'p'
     result += `<${tag}>${clipboardInlineHTML(node.html) || '<br>'}</${tag}>`
     if (node.children.length > 0) result += renderNodes(node.children)
     index += 1

@@ -3,7 +3,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test'
 const auditExpect = expect.configure({ timeout: 750 })
 
 test.beforeEach(async ({}, testInfo) => {
-  test.skip(testInfo.project.name !== 'desktop', 'The paragraph-editing audit runs in the desktop editor')
+  test.skip(testInfo.project.name === 'mobile', 'The paragraph-editing audit runs in the desktop editor')
 })
 
 async function openFreshNote(page: Page) {
@@ -298,4 +298,153 @@ test('undo restores a paragraph after splitting it', async ({ page }) => {
   await page.keyboard.press('Meta+z')
 
   await expect(page.locator('[data-note-text-input]')).toHaveText(['AlphaBeta'])
+})
+
+async function createParagraphs(page: Page, texts = ['Alpha', 'Middle', 'Beta']) {
+  await openFreshNote(page)
+  for (let index = 0; index < texts.length; index++) {
+    const editor = page.locator('[data-note-text-input]').nth(index)
+    await editor.fill(texts[index])
+    if (index < texts.length - 1) {
+      await placeCaret(editor, texts[index].length)
+      await editor.press('Enter')
+    }
+  }
+}
+
+async function dragParagraphSelection(page: Page, reverse = false) {
+  // The last edit follows the bottom on the next frame. Measure mouse targets
+  // after that layout settles, so a fast run cannot drag from the wrong row.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  const editors = page.locator('[data-note-text-input]')
+  const start = await caretCoordinates(editors.first(), 2)
+  const end = await caretCoordinates(editors.last(), 2)
+  const [anchor, focus] = reverse ? [end, start] : [start, end]
+  await page.mouse.move(anchor.x, anchor.y)
+  await page.mouse.down()
+  await page.mouse.move(focus.x, focus.y, { steps: 8 })
+  await page.mouse.up()
+}
+
+async function clipboardEvent(page: Page, type: 'copy' | 'cut' | 'paste', text = '', html = '') {
+  return page.evaluate(({ type, text, html }) => {
+    const data = new DataTransfer()
+    data.setData('text/plain', text)
+    if (html) data.setData('text/html', html)
+    const handled = !document.activeElement!.dispatchEvent(new ClipboardEvent(type, {
+      bubbles: true, cancelable: true, clipboardData: data,
+    }))
+    return { handled, text: data.getData('text/plain'), html: data.getData('text/html') }
+  }, { type, text, html })
+}
+
+for (const reverse of [false, true]) {
+  test(`a ${reverse ? 'reverse' : 'forward'} drag stays highlighted and Backspace deletes the complete range after a pause`, async ({ page }, testInfo) => {
+    await createParagraphs(page)
+    await dragParagraphSelection(page, reverse)
+    await expect.poll(() => page.evaluate(() => Array.from(CSS.highlights.get('balance-note-selection') ?? [], range => range.toString()))).toEqual(['pha', 'Middle', 'Be'])
+    if (!reverse) await page.locator('.note-document').screenshot({ path: testInfo.outputPath('paragraph-selection.png') })
+    await page.waitForTimeout(1200)
+    expect((await clipboardEvent(page, 'copy')).text).toBe('pha\nMiddle\nBe')
+    await page.keyboard.press('Backspace')
+    await expect(page.locator('[data-note-text-input]')).toHaveText(['Alta'])
+    await expect.poll(() => caretState(page)).toEqual({ index: 0, offset: 2 })
+    await page.keyboard.press('Meta+z')
+    await expect(page.locator('[data-note-text-input]')).toHaveText(['Alpha', 'Middle', 'Beta'])
+    await page.keyboard.press('Meta+Shift+z')
+    await expect(page.locator('[data-note-text-input]')).toHaveText(['Alta'])
+  })
+}
+
+for (const action of ['Delete', 'Meta+Backspace', 'type', 'paste', 'cut', 'Enter', 'Shift+Enter'] as const) {
+  test(`${action} replaces a selection spanning paragraphs`, async ({ page }) => {
+    await createParagraphs(page)
+    await dragParagraphSelection(page)
+    if (action === 'type') await page.keyboard.insertText('X')
+    else if (action === 'paste') await clipboardEvent(page, 'paste', 'One\nTwo')
+    else if (action === 'cut') expect((await clipboardEvent(page, 'cut')).text).toBe('pha\nMiddle\nBe')
+    else await page.keyboard.press(action)
+    const expected = action === 'type' ? ['AlXta'] : action === 'paste' ? ['AlOne', 'Twota'] :
+      action === 'Enter' ? ['Al', 'ta'] : action === 'Shift+Enter' ? ['Al\nta'] : ['Alta']
+    await expect(page.locator('[data-note-text-input]')).toHaveText(expected, { useInnerText: true })
+    if (action === 'Shift+Enter') {
+      await page.keyboard.insertText('X')
+      await expect(page.locator('[data-note-text-input]')).toHaveText(['Al\nXta'], { useInnerText: true })
+      await page.keyboard.press('Meta+z')
+    }
+    await page.keyboard.press('Meta+z')
+    await expect(page.locator('[data-note-text-input]')).toHaveText(['Alpha', 'Middle', 'Beta'])
+  })
+}
+
+test('multi-paragraph paste replaces inline selection and keeps the suffix after the caret', async ({ page }) => {
+  await createParagraphs(page, ['AlphaBeta'])
+  const editor = page.locator('[data-note-text-input]').first()
+  await selectText(editor, 2, 7)
+  await clipboardEvent(page, 'paste', 'One\nTwo', '<p><b>One</b></p><p><i>Two</i></p>')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['AlOne', 'Twota'])
+  await expect.poll(() => caretState(page)).toEqual({ index: 1, offset: 3 })
+  await expect(page.locator('[data-note-text-input]').first().locator('b, strong')).toHaveText('One')
+  await page.keyboard.press('Meta+z')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['AlphaBeta'])
+})
+
+test('multi-paragraph paste at a caret splits the paragraph at that position', async ({ page }) => {
+  await createParagraphs(page, ['AlphaBeta'])
+  await placeCaret(page.locator('[data-note-text-input]').first(), 5)
+  await clipboardEvent(page, 'paste', 'One\nTwo')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['AlphaOne', 'TwoBeta'])
+  await expect.poll(() => caretState(page)).toEqual({ index: 1, offset: 3 })
+})
+
+test('Meta+Backspace removes an empty paragraph and keeps an editable final paragraph', async ({ page }) => {
+  await createParagraphs(page, ['Alpha', ''])
+  await page.keyboard.press('Meta+Backspace')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['Alpha'])
+  await expect.poll(() => caretState(page)).toEqual({ index: 0, offset: 5 })
+  await page.locator('[data-note-text-input]').fill('')
+  await page.keyboard.press('Meta+Backspace')
+  await expect(page.locator('[data-note-text-input]')).toHaveCount(1)
+  await page.keyboard.insertText('Still editable')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['Still editable'])
+})
+
+test('clicking after a cross-paragraph selection clears it before typing', async ({ page }) => {
+  await createParagraphs(page)
+  await dragParagraphSelection(page)
+  await page.locator('[data-note-text-input]').last().click()
+  await placeCaret(page.locator('[data-note-text-input]').last(), 4)
+  await page.keyboard.insertText('!')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['Alpha', 'Middle', 'Beta!'])
+  await expect.poll(() => page.evaluate(() => CSS.highlights.has('balance-note-selection'))).toBe(false)
+})
+
+test('keyboard selection extends through several paragraphs and shrinks again', async ({ page }) => {
+  await createParagraphs(page)
+  await placeCaret(page.locator('[data-note-text-input]').first(), 2)
+  await page.keyboard.press('Shift+ArrowDown')
+  await page.keyboard.press('Shift+ArrowDown')
+  expect((await clipboardEvent(page, 'copy')).text).toBe('pha\nMiddle\nBe')
+  await page.keyboard.press('Shift+ArrowUp')
+  expect((await clipboardEvent(page, 'copy')).text).toBe('pha\nMi')
+  await page.keyboard.press('Backspace')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['Alddle', 'Beta'])
+})
+
+test('Shift+Right selects a paragraph boundary and typing replaces it', async ({ page }) => {
+  await createParagraphs(page, ['Alpha', 'Beta'])
+  await placeCaret(page.locator('[data-note-text-input]').first(), 5)
+  await page.keyboard.press('Shift+ArrowRight')
+  await page.keyboard.insertText(' ')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['Alpha Beta'])
+})
+
+test('pasting over selected blocks replaces the selected blocks', async ({ page }) => {
+  await createParagraphs(page, ['Alpha', 'Beta'])
+  await page.keyboard.press('Meta+a')
+  await page.keyboard.press('Meta+a')
+  await clipboardEvent(page, 'paste', 'One\nTwo')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['One', 'Two'])
+  await page.keyboard.press('Meta+z')
+  await expect(page.locator('[data-note-text-input]')).toHaveText(['Alpha', 'Beta'])
 })

@@ -471,17 +471,14 @@ test('shift arrow keys extend note selection to the matching position on an adja
 
   await placeCaretAtOffset(secondLine, 4)
   await secondLine.press('Shift+ArrowUp')
-  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
-    anchor: { text: 'Second line', offset: 4 },
-    focus: { text: 'First line', offset: 4 },
-  })
+  // WebKit clamps the native range to one editing host; the note's logical
+  // selection must still copy exactly the selected parts of both paragraphs.
+  await expect.poll(() => copyNoteSelection(page)).toMatchObject({ plainText: 't line\nSeco' })
 
+  await firstLine.click()
   await placeCaretAtOffset(firstLine, 4)
   await firstLine.press('Shift+ArrowDown')
-  await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
-    anchor: { text: 'First line', offset: 4 },
-    focus: { text: 'Second line', offset: 4 },
-  })
+  await expect.poll(() => copyNoteSelection(page)).toMatchObject({ plainText: 't line\nSeco' })
 })
 
 test('ArrowUp from a new empty note paragraph enters the line directly above', async ({ page }) => {
@@ -685,9 +682,11 @@ test('a bullet indented below a heading keeps ordinary body typography', async (
   await expect(bulletRow).toHaveClass(/note-bullet/)
   await expect(bulletRow).toHaveAttribute('data-note-item-depth', '1')
   await expect(heading).toHaveCSS('font-size', '25px')
-  await expect(bullet).toHaveCSS('font-size', '15px')
-  await expect(bullet).toHaveCSS('min-height', '30px')
-  await expect(bullet).toHaveCSS('line-height', '25.5px')
+  const typography = await bullet.evaluate((element) => {
+    const style = getComputedStyle(element)
+    return [style.fontSize, style.minHeight, style.lineHeight].map(Number.parseFloat)
+  })
+  for (const [index, expected] of [15, 30, 25.5].entries()) expect(typography[index]).toBeCloseTo(expected, 4)
 })
 
 test('typing a numbered-list marker in a heading keeps it as heading text', async ({ page }) => {
@@ -1470,7 +1469,7 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   const workspace = page.locator('.note-document')
   const spacingSlider = page.getByLabel('Bottom writing space')
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
-  await expect(editor).toHaveCSS('line-height', '25.5px')
+  await expect.poll(() => editor.evaluate((element) => Number.parseFloat(getComputedStyle(element).lineHeight))).toBeCloseTo(25.5, 4)
 
   await expect(spacingSlider).toHaveAttribute('min', '0')
   await expect(spacingSlider).toHaveAttribute('max', '100')
@@ -1940,4 +1939,65 @@ test('mobile note formatting follows the keyboard viewport and preserves editing
   })
   await expect(toolbar).toHaveCSS('position', 'sticky')
   await expect(page.locator('.note-document .note-format-toolbar')).toHaveCount(1)
+})
+
+
+test('quote blocks support Markdown, continuation, exit, clipboard, and persistence', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openNotesView(page)
+  await page.getByRole('button', { name: '+ New note' }).click()
+
+  const editors = page.locator('[data-note-text-input]')
+  const rows = page.locator('.note-item')
+  await editors.first().pressSequentially('> ')
+  await expect(rows.first()).toHaveClass(/note-quote/)
+  await expect(editors.first()).toBeEmpty()
+  await expect(rows.first().locator('.note-block')).toHaveCSS('border-left-style', 'solid')
+  await editors.first().pressSequentially('A quoted passage')
+  await editors.first().press('Enter')
+  await expect(editors).toHaveCount(2)
+  await expect(rows.nth(1)).toHaveClass(/note-quote/)
+  await editors.nth(1).press('Enter')
+  await expect(editors).toHaveCount(2)
+  await expect(rows.nth(1)).not.toHaveClass(/note-quote/)
+
+  await editors.nth(1).fill('/quote')
+  await editors.nth(1).press('Enter')
+  await expect(rows.nth(1)).toHaveClass(/note-quote/)
+  await editors.nth(1).press('Backspace')
+  await expect(rows.nth(1)).not.toHaveClass(/note-quote/)
+  await editors.nth(1).fill('A body paragraph')
+  await page.getByRole('button', { name: 'Quote', exact: true }).click()
+  await expect(rows.nth(1)).toHaveClass(/note-quote/)
+  await page.keyboard.press('Meta+Z')
+  await expect(rows.nth(1)).not.toHaveClass(/note-quote/)
+  await page.keyboard.press('Meta+Shift+Z')
+  await expect(rows.nth(1)).toHaveClass(/note-quote/)
+
+  await editors.first().click()
+  await editors.first().press('Meta+A')
+  const copied = await copyNoteSelection(page)
+  expect(copied?.plainText).toBe('> A quoted passage')
+  expect(copied?.html).toBe('<blockquote>A quoted passage</blockquote>')
+  await placeCaretAtEnd(editors.nth(1))
+  await editors.nth(1).press('Enter')
+  await editors.nth(2).evaluate((element, html) => {
+    const clipboardData = new DataTransfer()
+    clipboardData.setData('text/html', html)
+    clipboardData.setData('text/plain', 'A quoted passage')
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData }))
+  }, copied!.html)
+  await expect(rows.nth(2)).toHaveClass(/note-quote/)
+  await expect(editors.nth(2)).toHaveText('A quoted passage')
+
+  await expect.poll(() => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return state.notes?.[0]?.items.map((item: { kind: string }) => item.kind)
+  })).toEqual(['quote', 'quote', 'quote'])
+  await page.reload()
+  await openNotesView(page)
+  await expect(page.locator('.note-quote')).toHaveCount(3)
+  await expect(editors.first()).toHaveText('A quoted passage')
 })
