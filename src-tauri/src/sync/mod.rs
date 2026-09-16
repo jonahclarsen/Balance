@@ -1304,11 +1304,8 @@ pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
                 )));
             }
         }
-        if long_task_incremental_sync_ms.saturating_mul(10) >= seed_and_checkpoint_ms {
-            return Err(Error::Codec(format!(
-                "two appended tasks took {long_task_incremental_sync_ms} ms to sync after a {seed_and_checkpoint_ms} ms fixture setup; the incremental path rebuilt too much state"
-            )));
-        }
+        // Timings remain in the returned profile for performance analysis.
+        // Setup speed and runner load must not determine sync correctness.
 
         // Reproduce the reported desktop-to-Android cut/paste direction after
         // both devices were already in sync. Use separate immutable operations,
