@@ -3439,3 +3439,5 @@ fn regeneration_preserves_future_fields_in_native_checkpoint_records() {
     assert_eq!(archived["futureRetention"]["enabled"], true);
     assert_eq!(archived["item"]["futureTaskField"], 9);
 }
+
+include!("../../../tests/ci/history-persistence-driver.rs");

@@ -30,7 +30,7 @@ test('undo opens the sidebar page that owns the restored change', async ({ page 
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
     return state.operations?.at(-1)?.payload?.action
   })).toBe('rename_list_template')
-  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  await page.getByTitle('Goals (Alt+G)', { exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Goals', exact: true })).toBeVisible()
 
   await dispatchUndo(page)

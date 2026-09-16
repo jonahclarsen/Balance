@@ -621,6 +621,43 @@ function createPlannerStore() {
   const store = writable<AppState>(readInitialState())
   let backendReloadPromise: Promise<void> | null = null
   let backendReloadRequestRevision = 0
+  let nativeHistoryPromise: Promise<unknown> | null = null
+  let deferredHistoryCommits: (() => void)[] | null = null
+
+  // Actions that precompute a tree replacement must read the restored tree,
+  // rather than retain an old replacement while native history is in flight.
+  function deferHistoryAction(action: () => void): boolean {
+    if (!deferredHistoryCommits) return false
+    deferredHistoryCommits.push(action)
+    return true
+  }
+
+  function withNativeHistory<T>(action: () => Promise<T>): Promise<T> {
+    const run = async () => {
+      // Native history allocates an operation ID. Edits must wait until its
+      // acknowledgement installs the new sequence and history snapshot.
+      deferredHistoryCommits = []
+      localMutationRevision += 1
+      try {
+        return await action()
+      } finally {
+        const deferred = deferredHistoryCommits
+        deferredHistoryCommits = null
+        localMutationRevision += 1
+        for (const commit of deferred) commit()
+      }
+    }
+    const result = nativeHistoryPromise ? nativeHistoryPromise.then(run, run) : run()
+    const settled = result.finally(() => {
+      if (nativeHistoryPromise === settled) nativeHistoryPromise = null
+    })
+    nativeHistoryPromise = settled
+    return settled
+  }
+
+  async function waitForNativeHistory(): Promise<void> {
+    while (nativeHistoryPromise) await nativeHistoryPromise
+  }
   store.subscribe((state) => {
     localStorage.setItem(ACTIVE_PLAN_DATE_KEY, state.activePlanDate)
     if (persistenceReady && persistenceTarget === 'localStorage') persistLocalState(state)
@@ -641,6 +678,7 @@ function createPlannerStore() {
 
     while (true) {
       if (waitForQuiet) await waitForLocalMutationQuietPeriod()
+      await waitForNativeHistory()
       await flushOperations()
 
       const mutationRevisionBeforeRead = localMutationRevision
@@ -707,6 +745,10 @@ function createPlannerStore() {
   let imageMoveEdits: { type: string; payload: unknown; mutate: Mutator }[] | null = null
   function commit(type: string, payload: unknown, mutate: Mutator, options: CommitOptions = {}): void {
     if (imageMoveEdits) { imageMoveEdits.push({ type: options.entityOnly ? 'apply_entity_changes' : type, payload, mutate }); return }
+    if (deferredHistoryCommits) {
+      deferredHistoryCommits.push(() => commit(type, payload, mutate, options))
+      return
+    }
     let operationToPersist: Operation | null = null
 
     store.update((state) => {
@@ -868,6 +910,7 @@ function createPlannerStore() {
     },
 
     generatePlan(templateId: Id, date: string, replaceExisting: boolean) {
+      if (deferHistoryAction(() => plannerStore.generatePlan(templateId, date, replaceExisting))) return
       const current = get(store)
       const template = current.templates.find((candidate) => candidate.id === templateId)
       if (!template) return
@@ -936,6 +979,7 @@ function createPlannerStore() {
         if (await invoke<boolean>('has_processed_siri_request', { requestId })) return false
       }
 
+      await waitForNativeHistory()
       const current = get(store)
       const currentPlan = current.plans.find((plan) => plan.date === date)
       const targetDate = currentPlan && hasIncompletePlanItems(currentPlan.items)
@@ -1179,6 +1223,7 @@ function createPlannerStore() {
     },
 
     backspacePlanItemAtStart(planId: Id, itemId: Id) {
+      if (deferHistoryAction(() => plannerStore.backspacePlanItemAtStart(planId, itemId))) return null
       const plan = get(store).plans.find((candidate) => candidate.id === planId)
       if (!plan) return null
 
@@ -1278,6 +1323,7 @@ function createPlannerStore() {
       placement: 'before' | 'after' | 'inside',
     ) {
       if (sourcePlanId === targetPlanId) return
+      if (deferHistoryAction(() => plannerStore.movePlanItemToPlan(sourcePlanId, targetPlanId, itemId, targetId, placement))) return
 
       const current = get(store)
       const sourcePlan = current.plans.find((plan) => plan.id === sourcePlanId)
@@ -1549,6 +1595,7 @@ function createPlannerStore() {
     },
 
     backspaceTemplateOptionAtStart(templateId: Id, itemId: Id, optionId: Id) {
+      if (deferHistoryAction(() => plannerStore.backspaceTemplateOptionAtStart(templateId, itemId, optionId))) return null
       const template = get(store).templates.find((candidate) => candidate.id === templateId)
       if (!template) return null
 
@@ -2022,6 +2069,7 @@ function createPlannerStore() {
     },
 
     backspaceNoteItemAtStart(noteId: Id, itemId: Id) {
+      if (deferHistoryAction(() => plannerStore.backspaceNoteItemAtStart(noteId, itemId))) return null
       const note = get(store).notes.find((candidate) => candidate.id === noteId)
       if (!note) return null
       const result = backspacePlanItemAtStartInTree(note.items, itemId)
@@ -2188,6 +2236,7 @@ function createPlannerStore() {
     },
 
     backspaceListTemplateItemAtStart(templateId: Id, itemId: Id) {
+      if (deferHistoryAction(() => plannerStore.backspaceListTemplateItemAtStart(templateId, itemId))) return null
       const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
       if (!template) return null
 
@@ -2457,6 +2506,7 @@ function createPlannerStore() {
     },
 
     backspaceListItemAtStart(listId: Id, itemId: Id) {
+      if (deferHistoryAction(() => plannerStore.backspaceListItemAtStart(listId, itemId))) return null
       const list = get(store).lists.find((candidate) => candidate.id === listId)
       if (!list) return null
 
@@ -2647,7 +2697,7 @@ function createPlannerStore() {
     },
 
     async undo(): Promise<string | null> {
-      if (isTauri()) {
+      if (isTauri()) return withNativeHistory(async () => {
         await flushOperations()
         const expected = undoStack.at(-1)
         const resultJson = await invoke<string | null>('undo_last_operation', {
@@ -2680,7 +2730,7 @@ function createPlannerStore() {
         redoAvailableState.set(result.canRedo)
         notifyPersistedOperation()
         return operationType
-      }
+      })
 
       let operationToPersist: Operation | null = null
       let operationType: string | null = null
@@ -2703,7 +2753,7 @@ function createPlannerStore() {
     },
 
     async redo(): Promise<boolean> {
-      if (isTauri()) {
+      if (isTauri()) return withNativeHistory(async () => {
         await flushOperations()
         const expected = redoStack.at(-1)
         const resultJson = await invoke<string | null>('redo_last_operation', {
@@ -2733,7 +2783,7 @@ function createPlannerStore() {
         redoAvailableState.set(result.canRedo)
         notifyPersistedOperation()
         return true
-      }
+      })
 
       let operationToPersist: Operation | null = null
 
@@ -2756,22 +2806,25 @@ function createPlannerStore() {
     async restoreRecoveryEntry(historyId: string): Promise<boolean> {
       if (!isTauri()) return false
 
-      await flushOperations()
-      const stateJson = await invoke<string | null>('restore_recovery_entry', { historyId })
-      const parsed = parseStoredState(stateJson)
-      if (!parsed) return false
+      return withNativeHistory(async () => {
+        await flushOperations()
+        const stateJson = await invoke<string | null>('restore_recovery_entry', { historyId })
+        const parsed = parseStoredState(stateJson)
+        if (!parsed) return false
 
-      lastOperationMergeKey = null
-      undoStack = []
-      redoStack = []
-      redoAvailableState.set(false)
-      store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
-      notifyPersistedOperation()
-      return true
+        lastOperationMergeKey = null
+        undoStack = []
+        redoStack = []
+        redoAvailableState.set(false)
+        store.update((current) => ({ ...parsed, historyRevision: current.historyRevision + 1 }))
+        notifyPersistedOperation()
+        return true
+      })
     },
 
     async flushPendingOperations(): Promise<void> {
       if (!isTauri()) return
+      await waitForNativeHistory()
       await flushOperations()
     },
 
@@ -3278,14 +3331,14 @@ export async function syncNewPairingCode(): Promise<string> {
 /** Enable sync as the primary device — keep this device's data as the baseline. */
 export async function syncEnablePrimary(pairingCode: string, relayUrl: string): Promise<SyncSettings> {
   if (!isTauri()) throw new Error("Sync is available in the Balance app.")
-  await flushOperations()
+  await plannerStore.flushPendingOperations()
   return invoke<SyncSettings>('sync_enable_primary', { pairingCode, relayUrl }).then(rememberSyncSettings)
 }
 
 /** Enable sync as a joining device — adopt the primary's data (local is backed up). */
 export async function syncEnableJoiner(pairingCode: string, relayUrl: string): Promise<SyncSettings> {
   if (!isTauri()) throw new Error("Sync is available in the Balance app.")
-  await flushOperations()
+  await plannerStore.flushPendingOperations()
   return invoke<SyncSettings>('sync_enable_joiner', { pairingCode, relayUrl }).then(rememberSyncSettings)
 }
 
@@ -3299,7 +3352,7 @@ export type SyncPassResult = {
 }
 
 export async function syncRelayOnce(reason: string): Promise<SyncPassResult> {
-  await flushOperations()
+  await plannerStore.flushPendingOperations()
   return invoke<SyncPassResult>('sync_relay_once', { reason })
 }
 
@@ -3309,7 +3362,7 @@ export async function syncRelayOnce(reason: string): Promise<SyncPassResult> {
  */
 export async function syncAnonymousDiagnostics(frontendStateJson: string, renderedPlanJson: string): Promise<string> {
   if (!isTauri()) throw new Error('Anonymous sync diagnostics require the Balance app.')
-  await flushOperations()
+  await plannerStore.flushPendingOperations()
   const today = todayISO()
   const nearbyDates = [today, shiftCalendarDateISO(today, -1)]
   return invoke<string>('sync_anonymous_diagnostics', { frontendStateJson, renderedPlanJson, nearbyDates })
@@ -3366,7 +3419,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
 
 export async function compactDatabase(): Promise<DatabaseCompactionResult | null> {
   if (!isTauri()) return null
-  await flushOperations()
+  await plannerStore.flushPendingOperations()
   return invoke<DatabaseCompactionResult>('compact_database')
 }
 
@@ -3377,7 +3430,7 @@ export async function getDatabaseMaintenanceStatus(): Promise<DatabaseMaintenanc
 
 export async function runDatabaseMaintenanceIfNeeded(): Promise<DatabaseCompactionResult | null> {
   if (!isTauri()) return null
-  await flushOperations()
+  await plannerStore.flushPendingOperations()
   return invoke<DatabaseCompactionResult | null>('run_database_maintenance_if_needed')
 }
 

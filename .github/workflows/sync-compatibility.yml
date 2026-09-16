@@ -3,7 +3,7 @@ on:
   push:
     branches: [main, 'feat/forward-compatible-sync']
     tags: ['v*.*.*']
-    paths: ['src-tauri/**', 'src/lib/store.ts', 'src/lib/entityPatch.ts', 'src/lib/types.ts', 'src/lib/planner.ts', 'tests/visual/entity-storage.spec.ts', 'tests/visual/projects.spec.ts', 'tests/unit/entity-patch.spec.ts', '.github/scripts/sync-compat*', '.github/workflows/sync-compatibility.yml']
+    paths: ['src-tauri/**', 'src/lib/store.ts', 'src/lib/entityPatch.ts', 'src/lib/types.ts', 'src/lib/planner.ts', 'tests/visual/entity-storage.spec.ts', 'tests/visual/history-persistence.spec.ts', 'tests/ci/history-persistence-driver.rs', 'tests/visual/projects.spec.ts', 'tests/unit/entity-patch.spec.ts', '.github/scripts/sync-compat*', '.github/workflows/sync-compatibility.yml']
   pull_request:
   workflow_dispatch:
 permissions:
@@ -48,6 +48,9 @@ jobs:
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -111,6 +114,12 @@ jobs:
       - name: Test current encrypted database and reconciliation engine
         if: always() && steps.engines.outcome == 'success'
         run: ./current-engine --skip compatibility_process_driver
+      - name: Verify history acknowledgement races against the encrypted database
+        if: matrix.previous == 'v0.6.8'
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium
+          BALANCE_HISTORY_ENGINE="$PWD/current-engine" pnpm exec playwright test tests/visual/history-persistence.spec.ts --project=desktop --workers=1
       - name: Save compiled engine dependencies
         if: always() && steps.cargo-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
@@ -137,7 +146,7 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm check && pnpm test:unit
       - name: Exercise entity features and undo on desktop and mobile
-        run: pnpm exec playwright test tests/visual/entity-storage.spec.ts tests/visual/projects.spec.ts --workers=2
+        run: pnpm exec playwright test tests/visual/entity-storage.spec.ts tests/visual/projects.spec.ts tests/visual/history-persistence.spec.ts --workers=2
       - uses: actions/upload-artifact@v7
         with:
           name: frontend-entity-fixtures
