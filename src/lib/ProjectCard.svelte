@@ -19,7 +19,7 @@
   let checkInForm: HTMLFormElement | undefined
   $: history = [...entries].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
   $: latest = history.at(-1)
-  // The clip uses the heart path's local coordinates, before its SVG transform.
+  // The gradient uses the heart path's local coordinates, before its SVG transform.
   $: heartFillHeight = (latest?.heart ?? 0) / 100 * (84.334 - 6.494)
   $: heartFillTop = 84.334 - heartFillHeight
   $: todaysCheckIn = projectCheckInForDay(history, project.id, currentDay)
@@ -64,16 +64,17 @@
   <header>
     <svg class="project-visual" viewBox="0 0 100 100" role="img" aria-label={latest ? `${latest.progress}% work complete; ${latest.heart}% heart in it` : 'No check-in yet'}>
       <defs>
-        <clipPath id={'project-heart-fill-' + project.id}>
-          <rect x="0" y={heartFillTop} width="90" height={heartFillHeight} />
-        </clipPath>
+        <linearGradient id={'project-heart-fill-' + project.id} gradientUnits="userSpaceOnUse" x1="0" y1={heartFillTop - 3} x2="0" y2={heartFillTop + 3}>
+          <stop offset="0" stop-color="currentColor" stop-opacity={latest?.heart === 100 ? 1 : 0} />
+          <stop offset="1" stop-color="currentColor" stop-opacity="1" />
+        </linearGradient>
       </defs>
       <circle class="ring-track" cx="50" cy="50" r="41" />
       <circle class="ring-progress" cx="50" cy="50" r="41" stroke-dasharray={`${(latest?.progress ?? 0) * 2.576} 257.6`} transform="rotate(-90 50 50)" />
       <!-- Cactus's contour, lowered 1px at 48px size to visually balance its broad top. -->
       <path class="heart-track" d="M45 84.334 6.802 46.136C2.416 41.75 0 35.918 0 29.716S2.416 17.682 6.802 13.296 17.019 6.494 23.222 6.494 35.256 8.91 39.642 13.296L45 18.654 50.358 13.296C54.744 8.91 60.576 6.494 66.778 6.494S78.812 8.91 83.198 13.296C87.585 17.682 90 23.513 90 29.716S87.585 41.75 83.198 46.136L45 84.334Z" transform="translate(25.25 27.1056) scale(.55)" />
-      {#if latest}
-        <path class="heart-fill" d="M45 84.334 6.802 46.136C2.416 41.75 0 35.918 0 29.716S2.416 17.682 6.802 13.296 17.019 6.494 23.222 6.494 35.256 8.91 39.642 13.296L45 18.654 50.358 13.296C54.744 8.91 60.576 6.494 66.778 6.494S78.812 8.91 83.198 13.296C87.585 17.682 90 23.513 90 29.716S87.585 41.75 83.198 46.136L45 84.334Z" transform="translate(25.25 27.1056) scale(.55)" clip-path={`url(#project-heart-fill-${project.id})`} />
+      {#if latest && latest.heart > 0}
+        <path class="heart-fill" d="M45 84.334 6.802 46.136C2.416 41.75 0 35.918 0 29.716S2.416 17.682 6.802 13.296 17.019 6.494 23.222 6.494 35.256 8.91 39.642 13.296L45 18.654 50.358 13.296C54.744 8.91 60.576 6.494 66.778 6.494S78.812 8.91 83.198 13.296C87.585 17.682 90 23.513 90 29.716S87.585 41.75 83.198 46.136L45 84.334Z" transform="translate(25.25 27.1056) scale(.55)" fill={`url(#project-heart-fill-${project.id})`} />
       {/if}
     </svg>
     <div class="project-heading"><h2>{project.name}</h2><p>{project.archived ? 'Archived' : latest ? `Last check-in ${new Date(latest.createdAt).toLocaleDateString()}` : 'No check-in yet'}</p></div>
@@ -149,8 +150,7 @@
   .ring-track, .ring-progress { fill: none; stroke-width: 5; }
   .ring-track { stroke: currentColor; opacity: .18; }
   .ring-progress { stroke: currentColor; stroke-linecap: round; }
-  .heart-track { fill: currentColor; fill-opacity: .18; stroke: currentColor; stroke-width: 3; stroke-linejoin: round; stroke-opacity: .35; }
-  .heart-fill { fill: currentColor; }
+  .heart-track { fill: currentColor; fill-opacity: .25; stroke: currentColor; stroke-width: 3; stroke-linejoin: round; stroke-opacity: .35; }
   .project-heading { min-width: 0; }
   h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
   p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
