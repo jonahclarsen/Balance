@@ -13,7 +13,8 @@
   let archiveOpen = false
   let archivedDetailId = ''
   let message = ''
-  $: active = projects.filter((project) => !project.archived)
+  $: active = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress !== 100)
+  $: completed = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress === 100)
   $: archived = projects.filter((project) => project.archived)
   $: histories = groupHistory(checkIns)
   function groupHistory(entries: ProjectCheckIn[]) {
@@ -22,6 +23,9 @@
       const group = grouped.get(entry.projectId) ?? []
       group.push(entry)
       grouped.set(entry.projectId, group)
+    }
+    for (const group of grouped.values()) {
+      group.sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
     }
     return grouped
   }
@@ -65,6 +69,12 @@
   {#if message}<p class="status muted" role="status">{message}</p>{/if}
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
   <div class="project-grid">{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {currentDay} />{/each}</div>
+  {#if completed.length}
+    <section class="completed-projects" aria-labelledby="completed-projects-title">
+      <h3 id="completed-projects-title">Completed projects</h3>
+      <div class="project-grid">{#each completed as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {currentDay} />{/each}</div>
+    </section>
+  {/if}
   {#if archiveOpen}
     <section id="project-archive" class="list-item-archive" aria-labelledby="project-archive-title">
       <div class="list-item-archive-header"><h3 id="project-archive-title">Archive</h3><span>{archived.length} saved</span></div>
@@ -96,5 +106,7 @@
   .project-add input { width: 100%; min-width: 0; }
   .project-add button { font-size: 14px; padding: 8px 10px; }
   .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
+  .completed-projects { margin-top: 24px; }
+  .completed-projects h3 { margin: 0 0 12px; font-size: 16px; }
   .status { overflow-wrap: anywhere; }
 </style>
