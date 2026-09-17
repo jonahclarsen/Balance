@@ -215,7 +215,7 @@ test('goal rhythm uses fixed Flow Tint even with an old saved style', async ({ p
     const geometry = await page.locator('.goal-history-day-row').first().evaluate((row) => {
       const cells = [...row.querySelectorAll<HTMLElement>('.goal-day-cell.active')]
       const start = cells.find((cell) => cell.classList.contains('segment-start'))!
-      const end = cells.find((cell) => cell.classList.contains('segment-end'))!
+      const end = cells.at(-1)!
       const middle = cells.find((cell) => !cell.classList.contains('segment-start') && !cell.classList.contains('segment-end'))!
       const boxes = [start, middle, end].map((cell) => cell.getBoundingClientRect())
       const styles = [start, middle, end].map((cell) => getComputedStyle(cell))
@@ -226,12 +226,15 @@ test('goal rhythm uses fixed Flow Tint even with an old saved style', async ({ p
         bottomWidths: styles.map((style) => style.borderBottomWidth),
         leftWidth: styles[0].borderLeftWidth,
         rightWidth: styles[2].borderRightWidth,
+        rightRadius: styles[2].borderTopRightRadius,
         capRadius: styles[0].borderTopLeftRadius,
       }
     })
     expect(geometry.topDifference).toBeLessThan(0.02)
     expect(geometry.bottomDifference).toBeLessThan(0.02)
-    expect(new Set([...geometry.topWidths, ...geometry.bottomWidths, geometry.leftWidth, geometry.rightWidth]).size).toBe(1)
+    expect(new Set([...geometry.topWidths, ...geometry.bottomWidths, geometry.leftWidth]).size).toBe(1)
+    expect(geometry.rightWidth).toBe('0px')
+    expect(geometry.rightRadius).toBe('0px')
     expect(geometry.capRadius).toBe('15px')
   }
   await page.evaluate(() => document.documentElement.style.removeProperty('--app-default-zoom'))
@@ -1115,11 +1118,11 @@ test('cadence edits retain recent completion coverage in both history views afte
   }
 })
 
-test('an unmet rolling deadline stays overdue until a completion resets it', async ({ page }) => {
+test('an unmet rolling deadline stays open until completing today resets its cadence', async ({ page }, testInfo) => {
   const start = addDays(todayISO(), -7)
   const deadline = addDays(start, 2)
   const secondStart = addDays(start, 3)
-  const lateCompletion = addDays(todayISO(), -2)
+  const lateCompletion = todayISO()
 
   await page.evaluate((start) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -1150,10 +1153,16 @@ test('an unmet rolling deadline stays overdue until a completion resets it', asy
   await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · overdue"] .overdue-mark svg`)).toBeVisible()
   await expect(page.locator(`.goal-day-cell[title="Read · ${secondStart} · overdue"] .overdue-mark svg`)).toBeVisible()
   const actionableToday = page.locator(`.goal-day-cell[title="Read · ${todayISO()} · active"]`)
-  await expect(actionableToday).toHaveClass(/segment-end/)
+  await expect(actionableToday).not.toHaveClass(/segment-end/)
   await expect(actionableToday.locator('.goal-cell-mark.open')).toBeVisible()
 
   await expect(page.locator('.goal-date-head.future')).toHaveCount(6)
+  await expect(page.locator('.goal-day-cell.segment-end')).toHaveCount(0)
+  await expect(page.locator('.goal-day-cell.future.segment-start')).toHaveCount(0)
+  await expect(page.locator('.goal-day-cell.future .overdue-mark')).toHaveCount(0)
+  await expect(page.locator('.goal-day-cell').last()).toHaveCSS('border-top-right-radius', '0px')
+  await expect(page.locator('.goal-day-cell').last()).toHaveCSS('border-right-width', '0px')
+  await page.locator('.goal-history-panel').screenshot({ path: `artifacts/visual-smoke/${testInfo.project.name}-overdue-open-pill.png` })
 
   await page.evaluate((lateCompletion) => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -1170,15 +1179,17 @@ test('an unmet rolling deadline stays overdue until a completion resets it', asy
   }, lateCompletion)
   await page.reload()
 
-  await expect(lapsePill).toHaveText('1d left')
+  await expect(lapsePill).toHaveText('3d left')
   await expect(page.locator(`.goal-day-cell[title="Read · ${deadline} · overdue"]`)).toBeVisible()
   await expect(page.locator(`.goal-day-cell[title="Read · ${secondStart} · overdue"]`)).toBeVisible()
   await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(lateCompletion, -1)} · overdue"]`)).toHaveClass(/segment-end/)
   await expect(page.locator(`.goal-day-cell[title="Read · ${lateCompletion} · completed"]`)).toHaveClass(/segment-start/)
-  await expect(page.locator(`.goal-day-cell[title="Read · ${todayISO()} · active"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(lateCompletion, 2)} · active"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(lateCompletion, 3)} · active"]`)).toHaveClass(/segment-start/)
+  await page.locator('.goal-history-panel').screenshot({ path: `artifacts/visual-smoke/${testInfo.project.name}-overdue-completed-today.png` })
 })
 
-test('goal rhythm keeps rounded segment ends when saved activity periods overlap', async ({ page }) => {
+test('goal rhythm keeps one open overdue segment when saved activity periods overlap', async ({ page }) => {
   const firstStart = addDays(todayISO(), -8)
   const overlapStart = addDays(todayISO(), -5)
   const firstEnd = addDays(todayISO(), -2)
@@ -1212,9 +1223,11 @@ test('goal rhythm keeps rounded segment ends when saved activity periods overlap
   const overlapBoundary = page.locator(`.goal-day-cell[title="Overlapping history · ${overlapStart} · overdue"]`)
   await expect(overlapBoundary).not.toHaveClass(/segment-start/)
 
-  const currentEnd = page.locator(`.goal-day-cell[title="Overlapping history · ${todayISO()} · active"]`)
-  await expect(currentEnd).toHaveClass(/segment-end/)
-  await expect(currentEnd).toHaveCSS('border-bottom-right-radius', '15px')
+  const currentDay = page.locator(`.goal-day-cell[title="Overlapping history · ${todayISO()} · active"]`)
+  await expect(currentDay).not.toHaveClass(/segment-end/)
+  await expect(page.locator('.goal-day-cell.segment-start')).toHaveCount(1)
+  await expect(page.locator('.goal-day-cell.segment-end')).toHaveCount(0)
+  await expect(page.locator('.goal-day-cell').last()).toHaveCSS('border-bottom-right-radius', '0px')
 })
 
 test('goal rhythm puts overdue goals last while the goals page keeps urgency order', async ({ page }) => {

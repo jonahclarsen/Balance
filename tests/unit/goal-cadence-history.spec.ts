@@ -70,7 +70,7 @@ test('Goal Rhythm preserves old cadence cells and carries completion coverage ac
   expect(byDate.get('2026-08-30')).toEqual(expect.objectContaining({ completed: true, segmentStart: true, segmentEnd: true }))
   expect(byDate.get('2026-08-31')).toEqual(expect.objectContaining({ relieved: true, missed: false, segmentStart: true }))
   expect(byDate.get('2026-09-01')).toEqual(expect.objectContaining({ overdue: true }))
-  expect(byDate.get('2026-09-02')).toEqual(expect.objectContaining({ missed: false, overdue: false, segmentEnd: true }))
+  expect(byDate.get('2026-09-02')).toEqual(expect.objectContaining({ missed: false, overdue: false, segmentEnd: false }))
 })
 
 test('a daily goal marks the closed missed day rather than the actionable current day', () => {
@@ -86,7 +86,7 @@ test('a daily goal marks the closed missed day rather than the actionable curren
     active: true,
     missed: false,
     overdue: false,
-    segmentEnd: true,
+    segmentEnd: false,
   }))
   expect(goalDaysUntilLapse(daily, [], '2026-09-01')).toBe(-1)
 
@@ -195,23 +195,55 @@ for (const { cadenceDays, completedDate, starts, ends, daysUntilLapse } of [
   })
 }
 
-test('an overdue run stays together and future pills do not reset the deadline', () => {
+test('an overdue run stays open through the future until a completion starts a new cadence', () => {
   const source = goal({ cadenceDays: 3 })
   const completions = [completion('2026-09-01')]
   const dates = Array.from({ length: 16 }, (_, i) => shiftISODate('2026-09-01', i))
   const cells = buildGoalDayCells(source, completions, dates, '2026-09-10')
 
   expect(cells.filter(cell => cell.segmentStart).map(cell => cell.date)).toEqual([
-    '2026-09-01', '2026-09-04', '2026-09-11', '2026-09-14',
+    '2026-09-01', '2026-09-04',
   ])
   expect(cells.filter(cell => cell.segmentEnd).map(cell => cell.date)).toEqual([
-    '2026-09-03', '2026-09-10', '2026-09-13', '2026-09-16',
+    '2026-09-03',
   ])
   expect(cells.slice(3, 9).every(cell => cell.overdue)).toBe(true)
   expect(cells.slice(9).every(cell => !cell.overdue && !cell.missed && !cell.relieved)).toBe(true)
-  expect(cells.filter(cell => cell.current).map(cell => cell.date)).toEqual(dates.slice(3, 10))
+  expect(cells.filter(cell => cell.current).map(cell => cell.date)).toEqual(dates.slice(3))
   expect(goalDaysUntilLapse(source, completions, '2026-09-10')).toBe(-6)
+
+  const completedToday = [...completions, completion('2026-09-10')]
+  const reset = buildGoalDayCells(source, completedToday, dates, '2026-09-10')
+  expect(reset.filter(cell => cell.segmentStart).map(cell => cell.date)).toEqual([
+    '2026-09-01', '2026-09-04', '2026-09-10', '2026-09-13', '2026-09-16',
+  ])
+  expect(reset.filter(cell => cell.segmentEnd).map(cell => cell.date)).toEqual([
+    '2026-09-03', '2026-09-09', '2026-09-12', '2026-09-15', '2026-09-16',
+  ])
+  expect(reset.slice(3, 9).every(cell => cell.overdue)).toBe(true)
+  expect(reset[9].completed).toBe(true)
+  expect(reset.slice(10, 12).every(cell => cell.relieved)).toBe(true)
+  expect(goalDaysUntilLapse(source, completedToday, '2026-09-10')).toBe(3)
 })
+
+for (const boundary of ['activity', 'cadence'] as const) {
+  test(`an overdue pill caps its real ${boundary} boundary, including at the viewport edge`, () => {
+    const source = goal({
+      cadenceDays: boundary === 'cadence' ? 2 : 3,
+      cadenceHistory: [
+        { startDate: '2026-09-01', cadenceDays: 3 },
+        ...(boundary === 'cadence' ? [{ startDate: '2026-09-13', cadenceDays: 2 }] : []),
+      ],
+      activityPeriods: [{ startDate: '2026-09-01', endDate: boundary === 'activity' ? '2026-09-12' : null }],
+    })
+    for (const length of [11, 12, 14]) {
+      const dates = Array.from({ length }, (_, i) => shiftISODate('2026-09-01', i))
+      const cells = buildGoalDayCells(source, [], dates, '2026-09-10')
+      expect(cells.filter(cell => cell.segmentEnd && cell.date <= '2026-09-12').map(cell => cell.date))
+        .toEqual(length >= 12 ? ['2026-09-12'] : [])
+    }
+  })
+}
 
 test('future pills stop at cadence changes and activity boundaries', () => {
   const source = goal({

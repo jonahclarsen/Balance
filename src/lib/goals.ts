@@ -441,13 +441,20 @@ export function buildGoalDayCells(
       while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
         const nextCompletion = sortedCompletions.find((date) => date >= segmentStart && date <= periodEnd)
         if (!nextCompletion) {
-          // Keep an elapsed unmet run together through today, then project
-          // cadence-sized pills without resetting the real deadline.
-          while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
-            const segmentEnd = minISODate(
-              maxISODate(shiftISODate(segmentStart, period.cadenceDays - 1), currentDate),
-              periodEnd,
+          if (deadline < evaluationDate) {
+            // An overdue obligation has no projected cadence until completion.
+            // Cap real activity/cadence boundaries, but leave the viewport edge open.
+            const capEnd = periodEnd <= visibleEnd && (
+              activityPeriod.endDate === periodEnd ||
+              cadenceDaysOnDate(goal, shiftISODate(periodEnd, 1)) !== period.cadenceDays
             )
+            markSegment(cells, indexesByDate, segmentStart, periodEnd, deadline, false, evaluationDate, capEnd)
+            break
+          }
+
+          // On-track goals project cadence-sized pills without resetting the deadline.
+          while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
+            const segmentEnd = minISODate(shiftISODate(segmentStart, period.cadenceDays - 1), periodEnd)
             markSegment(cells, indexesByDate, segmentStart, segmentEnd, deadline, false, evaluationDate)
             segmentStart = shiftISODate(segmentEnd, 1)
           }
@@ -722,6 +729,7 @@ function markSegment(
   deadline: string,
   satisfied: boolean,
   currentDate: string,
+  capEnd = true,
 ) {
   const startIndex = indexesByDate.get(maxISODate(startDate, cells[0]?.date ?? startDate))
   const endIndex = indexesByDate.get(minISODate(endDate, cells.at(-1)?.date ?? endDate))
@@ -733,7 +741,7 @@ function markSegment(
   for (let index = startIndex; index <= endIndex; index += 1) {
     const cell = cells[index]
     cell.segmentStart = index === startIndex
-    cell.segmentEnd = index === endIndex
+    cell.segmentEnd = capEnd && index === endIndex
     cell.relieved = satisfied && !cell.completed
     // Once a cadence window fails, put the X on the closed deadline and every
     // subsequently elapsed day. The current day stays open because it is still
