@@ -19,8 +19,9 @@
   let checkInForm: HTMLFormElement | undefined
   $: history = [...entries].sort((a, b) => a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id))
   $: latest = history.at(-1)
-  $: heartFillHeight = (latest?.heart ?? 0) * 0.43
-  $: heartFillTop = 73.5 - heartFillHeight
+  // The clip uses the heart path's local coordinates, before its SVG transform.
+  $: heartFillHeight = (latest?.heart ?? 0) / 100 * (84.334 - 6.494)
+  $: heartFillTop = 84.334 - heartFillHeight
   $: todaysCheckIn = projectCheckInForDay(history, project.id, currentDay)
   $: editingCheckIn = history.find((entry) => entry.id === editingCheckInId)
   $: if (checkingIn && editingCheckInId && !editingCheckIn) checkingIn = false
@@ -64,7 +65,7 @@
     <svg class="project-visual" viewBox="0 0 100 100" role="img" aria-label={latest ? `${latest.progress}% work complete; ${latest.heart}% heart in it` : 'No check-in yet'}>
       <defs>
         <clipPath id={'project-heart-fill-' + project.id}>
-          <rect x="25" y={heartFillTop} width="50" height={heartFillHeight} />
+          <rect x="0" y={heartFillTop} width="90" height={heartFillHeight} />
         </clipPath>
       </defs>
       <circle class="ring-track" cx="50" cy="50" r="41" />
