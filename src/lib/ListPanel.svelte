@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
-  import { buildItemTimeWarnings, findPlanItem, isURL, itemMetricLink, type ItemLink } from './planner'
+  import { buildItemTimeWarnings, findPlanItem, isURL, itemMetricLink, linkifyItemText, type ItemLink } from './planner'
   import { openExternalURLFromShortcut } from './externalLinks'
   import { plannerStore } from './store'
   import { focusTaskBelow, TASK_COMPLETION_FOCUS_EVENT } from './taskCompletionFocus'
@@ -328,7 +328,6 @@
     if (!selectedItemId) return false
     const item = findPlanItem(instance.items, selectedItemId)
     if (!item) return false
-    const metricLink = itemMetricLink(item.text, listTemplates, metrics)
     const template = document.createElement('template')
     template.innerHTML = item.html
     const externalURL = Array.from(template.content.querySelectorAll<HTMLAnchorElement>('a[href]'))
@@ -338,9 +337,11 @@
       openExternalURLFromShortcut(externalURL)
       return true
     }
-    if (!metricLink) return false
+    const internalLink = linkifyItemText(item.text, listTemplates, metrics, notes)
+      .find((segment) => segment.link)?.link
+    if (!internalLink) return false
 
-    onOpenLink(metricLink, item.id)
+    onOpenLink(internalLink, item.id)
     return true
   }
 

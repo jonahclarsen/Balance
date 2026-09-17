@@ -236,6 +236,32 @@ test('Alt+F opens only the first URL in the selected list modal task', async ({ 
     .toEqual(['https://example.com/first'])
 })
 
+for (const destination of [
+  { text: 'balance://projects', heading: 'Projects' },
+  { text: 'balance://goals/stats', heading: 'Goal stats' },
+]) {
+  test(`Alt+F follows ${destination.text} from the selected list modal item`, async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await page.getByRole('button', { name: 'Lists', exact: true }).click()
+    await page.getByRole('button', { name: '+ New list' }).click()
+    await page.getByLabel('List name').fill('Navigation')
+    await page.locator('[data-list-template-text-input]').first().fill(destination.text)
+    await page.getByRole('button', { name: 'Today', exact: true }).click()
+    await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+    const taskInput = page.locator('[data-plan-text-input]').first()
+    await taskInput.fill('Navigation')
+    await taskInput.blur()
+    await page.getByTitle('Open Navigation', { exact: true }).first().click()
+    const dialog = page.getByRole('dialog', { name: 'Navigation' })
+    await expect(dialog.locator('.plan-row.selected')).toContainText(destination.text)
+    await page.keyboard.press('Alt+f')
+    await expect(dialog).toBeHidden()
+    await expect(page.getByRole('heading', { name: destination.heading, exact: true })).toBeVisible()
+  })
+}
+
 test('Alt+F opens the metric linked by the selected list item', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
