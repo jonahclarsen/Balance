@@ -846,7 +846,8 @@ return rows`
   async function revealHistoryDestination(destination: HistoryDestination) {
     searchOpen = false
     documentFindOpen = false
-    listOverlay = null
+    // Preserve a list parked on another page unless it would cover the destination.
+    if (listOverlayVisible || destination.view === listOverlayView) listOverlay = null
     metricOverlay = null
     clearItemSelection()
     closeMobileDrawer()
