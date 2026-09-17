@@ -22,6 +22,8 @@
   // The gradient uses the heart path's local coordinates, before its SVG transform.
   $: heartFillHeight = (latest?.heart ?? 0) / 100 * (84.334 - 6.494)
   $: heartFillTop = 84.334 - heartFillHeight
+  // Half of a 0.5 CSS-pixel fade, accounting for the path scale and 48px icon.
+  const heartFeatherHalfWidth = 0.5 / (2 * 0.55 * 0.48)
   $: todaysCheckIn = projectCheckInForDay(history, project.id, currentDay)
   $: editingCheckIn = history.find((entry) => entry.id === editingCheckInId)
   $: if (checkingIn && editingCheckInId && !editingCheckIn) checkingIn = false
@@ -64,7 +66,7 @@
   <header>
     <svg class="project-visual" viewBox="0 0 100 100" role="img" aria-label={latest ? `${latest.progress}% work complete; ${latest.heart}% heart in it` : 'No check-in yet'}>
       <defs>
-        <linearGradient id={'project-heart-fill-' + project.id} gradientUnits="userSpaceOnUse" x1="0" y1={heartFillTop - 2} x2="0" y2={heartFillTop + 2}>
+        <linearGradient id={'project-heart-fill-' + project.id} gradientUnits="userSpaceOnUse" x1="0" y1={heartFillTop - heartFeatherHalfWidth} x2="0" y2={heartFillTop + heartFeatherHalfWidth}>
           <stop offset="0" stop-color="currentColor" stop-opacity={latest?.heart === 100 ? 1 : 0} />
           <stop offset="1" stop-color="currentColor" stop-opacity="1" />
         </linearGradient>
