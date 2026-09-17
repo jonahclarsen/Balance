@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import PlanItemEditor from './PlanItemEditor.svelte'
-  import { buildItemTimeWarnings, findPlanItem, isURL, itemMetricLink, linkifyItemText, type ItemLink } from './planner'
+  import { buildItemTimeWarnings, findPlanItem, isURL, itemLinkFromAnchor, itemMetricLink, linkifyItemText, renderItemDisplayHTML, type ItemLink } from './planner'
   import { openExternalURLFromShortcut } from './externalLinks'
   import { plannerStore } from './store'
   import { focusTaskBelow, TASK_COMPLETION_FOCUS_EVENT } from './taskCompletionFocus'
@@ -329,16 +329,19 @@
     const item = findPlanItem(instance.items, selectedItemId)
     if (!item) return false
     const template = document.createElement('template')
-    template.innerHTML = item.html
-    const externalURL = Array.from(template.content.querySelectorAll<HTMLAnchorElement>('a[href]'))
+    // Resolve the same anchors as clicks, including destinations behind custom labels.
+    template.innerHTML = renderItemDisplayHTML(
+      item.html, item.text, linkifyItemText(item.text, listTemplates, metrics, notes),
+    )
+    const anchors = Array.from(template.content.querySelectorAll<HTMLAnchorElement>('a[href]'))
+    const externalURL = anchors
       .map((anchor) => anchor.getAttribute('href')?.trim() ?? '')
       .find(isURL)
     if (externalURL) {
       openExternalURLFromShortcut(externalURL)
       return true
     }
-    const internalLink = linkifyItemText(item.text, listTemplates, metrics, notes)
-      .find((segment) => segment.link)?.link
+    const internalLink = anchors.map(itemLinkFromAnchor).find((link) => link !== null)
     if (!internalLink) return false
 
     onOpenLink(internalLink, item.id)
