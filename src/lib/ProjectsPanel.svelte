@@ -94,8 +94,8 @@
   {#if archiveOpen}
     <div class="archive-overlay" use:mountArchiveOverlay>
     <OverlayModal title="Project archive" onClose={() => archiveOpen = false}>
-    <section id="project-archive" class="list-item-archive" aria-labelledby="project-archive-title">
-      <div class="list-item-archive-header"><h3 id="project-archive-title">Archive</h3><span>{archived.length} saved</span></div>
+    <span slot="header-middle" class="archive-count">{archived.length} saved</span>
+    <div id="project-archive">
       {#if !archived.length}<p class="list-item-archive-empty">No archived projects.</p>{/if}
       <ul class="list-item-archive-list">
         {#each archived as project (project.id)}
@@ -112,7 +112,7 @@
           </li>
         {/each}
       </ul>
-    </section>
+    </div>
     </OverlayModal>
     </div>
   {/if}
@@ -121,7 +121,8 @@
 <style>
   .projects-panel { min-width: 0; }
   .archive-overlay { display: contents; }
-  .archive-overlay .list-item-archive { margin-top: 0; }
+  .archive-count { display: block; text-align: right; color: var(--muted); font-size: 12px; }
+  .archive-overlay .list-item-archive-list > li:first-child .list-item-archive-row { border-top: 0; padding-top: 0; }
   .page-header h2 { margin: 0; }
   .project-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 520px; padding: 12px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
   .project-add label { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
