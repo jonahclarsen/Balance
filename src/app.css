@@ -4302,6 +4302,36 @@ body.mobile-checkbox-dragging {
   padding-block: 5px;
 }
 
+.goal-history-filters {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.goal-history-overdue-filter {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.goal-history-overdue-filter input {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.goal-history-toolbar .goal-history-overdue-filter span {
+  color: var(--ink);
+  font-size: 12px;
+}
+
 .goal-history-search-field {
   position: relative;
   flex: 0 1 200px;

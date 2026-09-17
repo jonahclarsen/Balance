@@ -1306,7 +1306,23 @@ test('goal rhythm puts overdue goals last while the goals page keeps urgency ord
     'Overdue',
   ])
 
-  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  const overdueOnly = page.getByRole('checkbox', { name: 'Overdue only' })
+  const goalSearch = page.getByRole('searchbox', { name: 'Search goals' })
+  const filterBounds = await overdueOnly.boundingBox()
+  const searchBounds = await goalSearch.boundingBox()
+  expect(filterBounds).not.toBeNull()
+  expect(searchBounds).not.toBeNull()
+  expect(filterBounds!.x + filterBounds!.width).toBeLessThan(searchBounds!.x)
+
+  await overdueOnly.check()
+  await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual(['Overdue'])
+  await goalSearch.fill('Sooner')
+  await expect(page.getByText('No overdue goals match “Sooner”.')).toBeVisible()
+  await page.getByRole('button', { name: 'Clear search' }).click()
+  await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual(['Overdue'])
+  await overdueOnly.uncheck()
+
+  await page.getByRole('region', { name: 'Goal history' }).getByRole('button', { name: 'Goals', exact: true }).click()
   await expect(
     page.locator('.goal-card .goal-name-input').evaluateAll((inputs) =>
       inputs.map((input) => input.textContent),

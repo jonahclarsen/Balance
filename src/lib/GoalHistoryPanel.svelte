@@ -26,6 +26,7 @@
   export let scrollRequest: { goalId: string; nonce: number } | null = null
 
   let search = ''
+  let overdueOnly = false
   let scrollEl: HTMLDivElement | undefined
   let namePaneEl: HTMLDivElement | undefined
   let mounted = false
@@ -61,6 +62,7 @@
       // the same transient state that destroying the component used to clear so
       // toggling IMAX does not change the panel's user-visible behavior.
       search = ''
+      overdueOnly = false
       highlightedGoalId = null
       copiedGoalId = null
       lastCenteredStartDate = null
@@ -83,6 +85,7 @@
 
   async function revealGoal(goalId: string, nonce: number) {
     search = ''
+    overdueOnly = false
     highlightedGoalId = null
     if (highlightResetTimer) clearTimeout(highlightResetTimer)
 
@@ -165,7 +168,7 @@
     else if (daysUntilLapse <= 3) summary.upcoming += 1
     return summary
   }, { overdue: 0, upcoming: 0 })
-  $: visibleGoals = filterGoalsByPhrase(
+  $: matchingGoals = filterGoalsByPhrase(
     sortGoalsForRhythm(
       activeGoals,
       completions,
@@ -174,6 +177,9 @@
     ),
     search,
   )
+  $: visibleGoals = overdueOnly
+    ? matchingGoals.filter((goal) => (goalDaysUntilLapse(goal, completions, viewedDate) ?? 0) < 0)
+    : matchingGoals
 
   $: if (mounted && visible && historyStartDate !== lastCenteredStartDate) {
     lastCenteredStartDate = historyStartDate
@@ -275,23 +281,29 @@
       <button class="goal-history-open-goals" type="button" on:click={() => onOpenGoals()}>Goals</button>
       <span>{goalDeadlineSummary.overdue} overdue, {goalDeadlineSummary.upcoming} upcoming in the next 3 days</span>
     </div>
-    <div class="goal-history-search-field">
-      <input
-        class="goal-history-search"
-        type="search"
-        aria-label="Search goals"
-        placeholder="Search goals…"
-        bind:value={search}
-      />
-      {#if search}
-        <button
-          class="goal-history-search-clear"
-          type="button"
-          aria-label="Clear goal search"
-          title="Clear search"
-          on:click={() => (search = '')}
-        >×</button>
-      {/if}
+    <div class="goal-history-filters">
+      <label class="goal-history-overdue-filter">
+        <input type="checkbox" bind:checked={overdueOnly} />
+        <span>Overdue only</span>
+      </label>
+      <div class="goal-history-search-field">
+        <input
+          class="goal-history-search"
+          type="search"
+          aria-label="Search goals"
+          placeholder="Search goals…"
+          bind:value={search}
+        />
+        {#if search}
+          <button
+            class="goal-history-search-clear"
+            type="button"
+            aria-label="Clear goal search"
+            title="Clear search"
+            on:click={() => (search = '')}
+          >×</button>
+        {/if}
+      </div>
     </div>
   </header>
 
@@ -343,8 +355,11 @@
           {:else}
             <div class="goal-history-empty">
               {#if search.trim()}
-                <span>No goals match “{search.trim()}”.</span>
+                <span>{overdueOnly ? 'No overdue goals' : 'No goals'} match “{search.trim()}”.</span>
                 <button type="button" on:click={() => (search = '')}>Clear search</button>
+              {:else if overdueOnly}
+                <span>No overdue goals.</span>
+                <button type="button" on:click={() => (overdueOnly = false)}>Show all goals</button>
               {:else}
                 <span>No goals active in this range.</span>
                 <button type="button" on:click={() => onOpenGoals()}>Add your first goal</button>
