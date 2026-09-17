@@ -156,10 +156,17 @@
   const GOAL_HISTORY_UPDATE_DEBOUNCE_MS = 1_000
   const GOAL_HISTORY_EDIT_UPDATE_DEBOUNCE_MS = 5_000
   const DEFAULT_KEYBOARD_SCROLL_SPEED = 600
+  const DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS = 800
+  const DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE = 40
   const keyboardScrollSpeedKey = 'balance.admin.keyboardScrollSpeed.v1'
+  const keyboardScrollAccelerationKey = 'balance.admin.keyboardScrollAccelerationMs.v1'
+  const keyboardScrollSpeedIncreaseKey = 'balance.admin.keyboardScrollSpeedIncrease.v1'
   let keyboardScrollSpeed = readKeyboardScrollSpeed()
+  let keyboardScrollAccelerationMs = readKeyboardScrollAccelerationMs()
+  let keyboardScrollSpeedIncrease = readKeyboardScrollSpeedIncrease()
   const heldScrollKeys = new Set<string>()
   let keyboardScrollFrame: number | null = null
+  let keyboardScrollStartTime = 0
   let keyboardScrollTime = 0
   let keyboardScrollPosition = 0
 
@@ -177,6 +184,50 @@
     if (!Number.isFinite(value)) return
     keyboardScrollSpeed = Math.max(50, Math.min(3000, value))
     try { localStorage.setItem(keyboardScrollSpeedKey, String(keyboardScrollSpeed)) } catch { /* Keep the session value. */ }
+  }
+
+  function readKeyboardScrollAccelerationMs() {
+    if (import.meta.env.DEV) {
+      try {
+        const stored = localStorage.getItem(keyboardScrollAccelerationKey)
+        const value = stored === null ? Number.NaN : Number(stored)
+        if (Number.isFinite(value) && value >= 0 && value <= 10_000) return value
+      } catch { /* Storage may be unavailable. */ }
+    }
+    return DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS
+  }
+
+  function setKeyboardScrollAccelerationMs(value: number) {
+    if (!Number.isFinite(value)) return
+    keyboardScrollAccelerationMs = Math.max(0, Math.min(10_000, value))
+    try { localStorage.setItem(keyboardScrollAccelerationKey, String(keyboardScrollAccelerationMs)) } catch { /* Keep the session value. */ }
+  }
+
+  function readKeyboardScrollSpeedIncrease() {
+    if (import.meta.env.DEV) {
+      try {
+        const stored = localStorage.getItem(keyboardScrollSpeedIncreaseKey)
+        const value = stored === null ? Number.NaN : Number(stored)
+        if (Number.isFinite(value) && value >= 0 && value <= 300) return value
+      } catch { /* Storage may be unavailable. */ }
+    }
+    return DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE
+  }
+
+  function setKeyboardScrollSpeedIncrease(value: number) {
+    if (!Number.isFinite(value)) return
+    keyboardScrollSpeedIncrease = Math.max(0, Math.min(300, value))
+    try { localStorage.setItem(keyboardScrollSpeedIncreaseKey, String(keyboardScrollSpeedIncrease)) } catch { /* Keep the session value. */ }
+  }
+
+  function keyboardScrollDistanceAt(elapsedMs: number) {
+    const elapsed = Math.max(0, elapsedMs)
+    const increase = keyboardScrollSpeedIncrease / 100
+    if (keyboardScrollAccelerationMs === 0) return keyboardScrollSpeed * (1 + increase) * elapsed / 1000
+    const rampElapsed = Math.min(elapsed, keyboardScrollAccelerationMs)
+    const rampBonusMs = increase * rampElapsed * rampElapsed / (2 * keyboardScrollAccelerationMs)
+    const fullSpeedBonusMs = increase * Math.max(0, elapsed - keyboardScrollAccelerationMs)
+    return keyboardScrollSpeed * (elapsed + rampBonusMs + fullSpeedBonusMs) / 1000
   }
 
   function canKeyboardScroll() {
@@ -203,8 +254,10 @@
     const direction = Number(heldScrollKeys.has('KeyS')) - Number(heldScrollKeys.has('KeyW'))
     const scroller = usesWindowScroll() ? document.scrollingElement : workspaceEl
     if (scroller) {
+      const distance = keyboardScrollDistanceAt(time - keyboardScrollStartTime) -
+        keyboardScrollDistanceAt(keyboardScrollTime - keyboardScrollStartTime)
       keyboardScrollPosition = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight,
-        keyboardScrollPosition + direction * keyboardScrollSpeed * (time - keyboardScrollTime) / 1000))
+        keyboardScrollPosition + direction * distance))
       scroller.scrollTo({ top: keyboardScrollPosition, behavior: 'instant' })
     }
     keyboardScrollTime = time
@@ -3368,7 +3421,8 @@ return rows`
         heldScrollKeys.add(event.code)
         if (keyboardScrollFrame === null) {
           keyboardScrollPosition = currentWorkspaceScrollTop()
-          keyboardScrollTime = performance.now()
+          keyboardScrollStartTime = performance.now()
+          keyboardScrollTime = keyboardScrollStartTime
           keyboardScrollFrame = requestAnimationFrame(advanceKeyboardScroll)
         }
       }
@@ -6640,7 +6694,7 @@ return rows`
       <div class="settings-panel">
         <p>Development only. Tune values here, then use what works as the defaults you ship.</p>
         <section class="settings-section">
-          <div><h3>Keyboard scrolling</h3><p>Hold W or S on Today with no task selected or editor focused. Movement is constant, with no easing.</p></div>
+          <div><h3>Keyboard scrolling</h3><p>Hold W or S on Today with no task selected or editor focused. Speed rises linearly, then remains constant.</p></div>
           <label class="field">
             <span>Scroll speed (px/s)</span>
             <input type="number" min="50" max="3000" step="50" value={keyboardScrollSpeed}
@@ -6649,6 +6703,22 @@ return rows`
           <p>Default: {DEFAULT_KEYBOARD_SCROLL_SPEED} px/s. Saved on this device for development.</p>
           <div class="settings-actions"><button type="button" disabled={keyboardScrollSpeed === DEFAULT_KEYBOARD_SCROLL_SPEED}
             on:click={() => setKeyboardScrollSpeed(DEFAULT_KEYBOARD_SCROLL_SPEED)}>Reset scroll speed</button></div>
+          <label class="field">
+            <span>Acceleration duration (ms)</span>
+            <input type="number" min="0" max="10000" step="50" value={keyboardScrollAccelerationMs}
+              on:change={(event) => setKeyboardScrollAccelerationMs(Number(event.currentTarget.value))} />
+          </label>
+          <p>Default: {DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS} ms.</p>
+          <div class="settings-actions"><button type="button" disabled={keyboardScrollAccelerationMs === DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS}
+            on:click={() => setKeyboardScrollAccelerationMs(DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS)}>Reset acceleration duration</button></div>
+          <label class="field">
+            <span>Maximum speed increase (%)</span>
+            <input type="number" min="0" max="300" step="5" value={keyboardScrollSpeedIncrease}
+              on:change={(event) => setKeyboardScrollSpeedIncrease(Number(event.currentTarget.value))} />
+          </label>
+          <p>Default: {DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE}% above the chosen speed.</p>
+          <div class="settings-actions"><button type="button" disabled={keyboardScrollSpeedIncrease === DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE}
+            on:click={() => setKeyboardScrollSpeedIncrease(DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE)}>Reset speed increase</button></div>
         </section>
         <section class="settings-section">
           <div><h3>Gradient studio</h3><p>Choose Iridescent in Settings to preview changes across the app.</p></div>
