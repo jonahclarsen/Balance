@@ -877,6 +877,9 @@ test('empty days show every template and require an explicit selection', async (
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
+  if (await page.getByRole('button', { name: 'Open navigation' }).isVisible()) {
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+  }
   await page.getByRole('button', { name: 'Day Templates' }).click()
   await page.getByRole('button', { name: 'New day', exact: true }).click()
   await expect(page.getByLabel('Template name')).toHaveValue('New day')
@@ -901,6 +904,9 @@ test('empty days show every template and require an explicit selection', async (
     .poll(() => page.evaluate(() => localStorage.getItem('balance:selectedDayTemplateId')))
     .toBe(selectedTemplateId)
 
+  if (await page.getByRole('button', { name: 'Open navigation' }).isVisible()) {
+    await page.getByRole('button', { name: 'Open navigation' }).click()
+  }
   await page.getByRole('button', { name: 'Today', exact: true }).click()
   const firstDay = await page.locator('.date-input').inputValue()
   const emptyState = page.locator('.empty-state')
@@ -913,7 +919,7 @@ test('empty days show every template and require an explicit selection', async (
   await emptyState.getByRole('button', { name: 'Generate today' }).click()
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Next day' }).click()
+  await page.locator('.date-input').fill(addDays(firstDay, 1))
   await expect(page.locator('.date-input')).toHaveValue(addDays(firstDay, 1))
   await expect(page.locator('.empty-state').getByRole('radio', { checked: true })).toHaveCount(0)
   await expect(page.locator('.empty-state').getByRole('button', { name: 'Generate selected day' })).toBeDisabled()

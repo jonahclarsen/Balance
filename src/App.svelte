@@ -595,6 +595,7 @@ return rows`
   $: metricOverlayMetric = metricOverlay ? metrics.find((metric) => metric.id === metricOverlay?.metricId) : null
   $: metricOverlayAnswers =
     metricOverlay && metricOverlayMetric ? answersForEntry(metricOverlay.metricId, metricOverlay.date) : {}
+  $: canGenerateDisplayedDay = displayedPlanDate >= currentDay
   $: generateButtonLabel = displayedPlanDate === currentDay ? 'Generate today' : 'Generate selected day'
   $: selectedItemIdSet = new Set(selectedItemIds)
   $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
@@ -2781,6 +2782,7 @@ return rows`
     if (!template) return
 
     const date = $plannerStore.activePlanDate || todayISO()
+    if (date < todayISO()) return
     const exists = $plannerStore.plans.some((plan) => plan.date === date)
     const replaceExisting = exists ? await confirmReplaceExistingPlan() : false
 
@@ -2790,6 +2792,7 @@ return rows`
       return
     }
 
+    if (date < todayISO()) return
     const doabilityReviews = goalsNeedingDoabilityReview(
       $plannerStore.goals,
       $plannerStore.goalCompletions,
@@ -5704,7 +5707,7 @@ return rows`
         </label>
       {/if}
       {#if view === 'today'}
-        <button class="primary" type="button" on:click={() => { void generateSelectedDay() }}>{generateButtonLabel}</button>
+        <button class="primary" type="button" disabled={!canGenerateDisplayedDay} on:click={() => { void generateSelectedDay() }}>{generateButtonLabel}</button>
       {/if}
       <p class="tiny">{$plannerStore.plans.length} saved days · {activeGoalCount} active goals</p>
     </div>
@@ -5834,8 +5837,8 @@ return rows`
         {:else}
               <div class="empty-state">
                 <h3>No plan for this date</h3>
-                <p>Choose a template to generate this day, or pick another date.</p>
-                {#if templates.length > 0}
+                <p>{canGenerateDisplayedDay ? 'Choose a template to generate this day, or pick another date.' : 'Days before today cannot be generated. Choose today or a future date.'}</p>
+                {#if canGenerateDisplayedDay && templates.length > 0}
                   <fieldset class="day-template-picker">
                     <legend>Day template</legend>
                     <div class="day-template-options">

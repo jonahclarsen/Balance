@@ -1,6 +1,10 @@
 import { expect, test } from '@playwright/test'
 import { mkdirSync, writeFileSync } from 'node:fs'
 
+test.beforeEach(async ({ page }) => {
+  await page.clock.setFixedTime(new Date('2026-09-08T12:00:00'))
+})
+
 test('feature actions emit generic patches that replay in the native database', async ({ page }, info) => {
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
