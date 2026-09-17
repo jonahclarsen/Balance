@@ -155,9 +155,9 @@
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
   const GOAL_HISTORY_UPDATE_DEBOUNCE_MS = 1_000
   const GOAL_HISTORY_EDIT_UPDATE_DEBOUNCE_MS = 5_000
-  const DEFAULT_KEYBOARD_SCROLL_SPEED = 600
-  const DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS = 800
-  const DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE = 40
+  const DEFAULT_KEYBOARD_SCROLL_SPEED = 950
+  const DEFAULT_KEYBOARD_SCROLL_ACCELERATION_MS = 1_000
+  const DEFAULT_KEYBOARD_SCROLL_SPEED_INCREASE = 100
   const keyboardScrollSpeedKey = 'balance.admin.keyboardScrollSpeed.v1'
   const keyboardScrollAccelerationKey = 'balance.admin.keyboardScrollAccelerationMs.v1'
   const keyboardScrollSpeedIncreaseKey = 'balance.admin.keyboardScrollSpeedIncrease.v1'
