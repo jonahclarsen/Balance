@@ -13,6 +13,7 @@
   let name = ''
   let archiveOpen = false
   let archivedDetailId = ''
+  let initialCheckInProjectId = ''
   let message = ''
   $: active = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress !== 100)
   $: completed = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress === 100)
@@ -37,9 +38,15 @@
     await tick()
     document.getElementById(`project-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
-  function add() {
+  async function add() {
     const id = plannerStore.addProject(name)
-    if (id) { name = ''; linkedProjectId = id }
+    if (id) {
+      name = ''
+      linkedProjectId = id
+      initialCheckInProjectId = id
+      await tick()
+      initialCheckInProjectId = ''
+    }
   }
   async function deleteForever(project: Project) {
     const prompt = `Delete “${project.name}” and its check-in history from the archive forever? You can still undo this action.`
@@ -71,7 +78,7 @@
     <input id="new-project-name" aria-label="New project name" placeholder="Project name" bind:value={name} maxlength="160" />
     <button class="primary" type="submit" disabled={!name.trim()}>Add project</button>
   </form>
-  <div class="project-grid" use:projectReordering>{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} {currentDay} />{/each}</div>
+  <div class="project-grid" use:projectReordering>{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} {currentDay} openCheckInOnMount={initialCheckInProjectId === project.id} />{/each}</div>
   {#if completed.length}
     <section class="completed-projects" aria-labelledby="completed-projects-title">
       <h3 id="completed-projects-title">Completed projects</h3>

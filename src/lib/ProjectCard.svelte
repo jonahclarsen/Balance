@@ -1,7 +1,7 @@
 <script lang="ts">
   import { isTauri } from '@tauri-apps/api/core'
   import { confirm as confirmDialog } from '@tauri-apps/plugin-dialog'
-  import { tick } from 'svelte'
+  import { onMount, tick } from 'svelte'
   import type { Project, ProjectCheckIn } from './types'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import { plannerStore } from './store'
@@ -10,9 +10,10 @@
   export let project: Project
   export let entries: ProjectCheckIn[] = []
   export let currentDay: string
+  export let openCheckInOnMount = false
   let progress: number | null = null
   let heart: number | null = null
-  let checkingIn = false
+  let checkingIn = openCheckInOnMount
   let detailsOpen = false
   let editingCheckInId: string | null = null
   let checkInForm: HTMLFormElement | undefined
@@ -21,15 +22,21 @@
   $: todaysCheckIn = projectCheckInForDay(history, project.id, currentDay)
   $: editingCheckIn = history.find((entry) => entry.id === editingCheckInId)
   $: if (checkingIn && editingCheckInId && !editingCheckIn) checkingIn = false
+  function focusCheckIn() {
+    checkInForm?.scrollIntoView({ block: 'nearest' })
+    checkInForm?.querySelector<HTMLInputElement>('input[type="range"]')?.focus({ preventScroll: true })
+  }
   async function openCheckIn(entry?: ProjectCheckIn) {
     editingCheckInId = entry?.id ?? null
     progress = (entry ?? latest)?.progress ?? null
     heart = (entry ?? latest)?.heart ?? null
     checkingIn = true
     await tick()
-    checkInForm?.scrollIntoView({ block: 'nearest' })
-    checkInForm?.querySelector<HTMLInputElement>('input[type="range"]')?.focus({ preventScroll: true })
+    focusCheckIn()
   }
+  onMount(() => {
+    if (checkingIn) focusCheckIn()
+  })
   $: start = Date.parse(history[0]?.createdAt ?? '')
   $: end = Date.parse(latest?.createdAt ?? '')
   $: points = history.map((entry) => ({ ...entry, x: end > start ? 10 + (Date.parse(entry.createdAt) - start) / (end - start) * 280 : 150 }))

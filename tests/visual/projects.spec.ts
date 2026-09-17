@@ -26,7 +26,7 @@ test('daily check-ins roll over at 5 a.m. and history supports editing, deletion
     unsubscribe()
     return entries
   })
-  await card.getByRole('button', { name: 'Check in', exact: true }).click()
+  await expect(work).toBeFocused()
   await work.fill('35')
   await heart.fill('80')
   await save.click()
@@ -116,9 +116,8 @@ test('project check-ins retain history, survive reload, and open from a planner 
   await page.getByRole('button', { name: 'Add project', exact: true }).click()
   const card = page.locator('.project-card')
   await expect(card).toHaveCount(1)
-  await expect(card.getByRole('slider')).toHaveCount(0)
-  await expect(card.locator('dd')).toHaveText(['Not set', 'Not set'])
-  await page.getByRole('button', { name: 'Check in', exact: true }).click()
+  await expect(card.getByRole('slider')).toHaveCount(2)
+  await expect(card.getByRole('slider', { name: 'Work complete for Synthetic garden' })).toBeFocused()
   await expect(page.getByRole('button', { name: 'Save check-in' })).toBeDisabled()
   await expect(card.locator('.probability-slider')).toHaveCount(2)
   const initialTracks = await card.locator('.track-wrap').evaluateAll((tracks) => tracks.map((track) => {
@@ -271,6 +270,7 @@ test('project cards reorder from content, preserve controls, and retain order th
   for (const name of ['First project', 'Second project', 'Third project']) {
     await page.getByRole('textbox', { name: 'New project name' }).fill(name)
     await page.getByRole('button', { name: 'Add project', exact: true }).click()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   }
   const cards = page.locator('.project-grid .project-card')
   const headings = cards.locator('h2')
