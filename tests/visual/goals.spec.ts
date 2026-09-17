@@ -962,6 +962,54 @@ test('a completion resets a rolling deadline and late days stay overdue', async 
   })
 })
 
+for (const { cadenceDays, completionOffset, nextStartOffset } of [
+  { cadenceDays: 3, completionOffset: -3, nextStartOffset: 0 },
+  { cadenceDays: 2, completionOffset: -1, nextStartOffset: 1 },
+]) {
+  test(`Goal Rhythm renders capped ${cadenceDays}-day future pills`, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.name !== 'desktop', 'Goal Rhythm is desktop-only')
+    const today = todayISO()
+    const completedDate = addDays(today, completionOffset)
+    await page.evaluate(({ cadenceDays, completedDate }) => {
+      const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+      const timestamp = new Date().toISOString()
+      state.goals = [{
+        id: 'goal_read', name: 'Read', cadenceDays, matchTerms: ['read'], hue: 200,
+        activityPeriods: [{ startDate: completedDate, endDate: null }],
+        createdAt: timestamp, updatedAt: timestamp,
+      }]
+      state.goalCompletions = [{
+        goalId: 'goal_read', date: completedDate, itemIds: ['item_read'],
+        matchedTerms: ['read'], computedAt: timestamp,
+      }]
+      localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    }, { cadenceDays, completedDate })
+    await page.reload()
+
+    const cellOn = (date: string) => page.locator(`.goal-day-cell[title^="Read · ${date} ·"]`)
+    await expect(cellOn(completedDate)).toHaveClass(/completed/)
+    await expect(cellOn(addDays(completedDate, cadenceDays - 1))).toHaveClass(/segment-end/)
+    for (let offset = nextStartOffset; offset <= 6; offset += cadenceDays) {
+      const endOffset = Math.min(offset + cadenceDays - 1, 6)
+      const start = cellOn(addDays(today, offset))
+      const end = cellOn(addDays(today, endOffset))
+      await expect(start).toHaveClass(/segment-start/)
+      await expect(start).toHaveCSS('border-top-left-radius', '15px')
+      await expect(end).toHaveClass(/segment-end/)
+      await expect(end).toHaveCSS('border-top-right-radius', '15px')
+      if (offset !== endOffset) {
+        await expect(start).not.toHaveClass(/segment-end/)
+        await expect(end).not.toHaveClass(/segment-start/)
+      }
+    }
+    await expect(page.locator('.goal-day-cell.future .checked, .goal-day-cell.future .overdue-mark')).toHaveCount(0)
+    await page.screenshot({
+      path: `artifacts/visual-smoke/${testInfo.project.name}-goal-future-pills-${cadenceDays}d.png`,
+      fullPage: true,
+    })
+  })
+}
+
 test('editing cadence preserves the old Goal Rhythm schedule after reload', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'Goal Rhythm is desktop-only')
   const today = await page.evaluate(() => {
@@ -1021,7 +1069,8 @@ test('editing cadence preserves the old Goal Rhythm schedule after reload', asyn
   await expect(page.locator(`.goal-day-cell[title="Read · ${completionDate} · completed"]`)).toHaveClass(/segment-end/)
   await expect(page.locator(`.goal-day-cell[title="Read · ${today} · active"]`)).toHaveClass(/segment-start/)
   await expect(page.locator(`.goal-day-cell[title="Read · ${today} · active"]`)).toHaveClass(/relieved/)
-  await expect(page.locator(`.goal-day-cell[title="Read · ${tomorrow} · active"]`)).toHaveClass(/segment-end/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${tomorrow} · active"]`)).toHaveClass(/segment-start/)
+  await expect(page.locator(`.goal-day-cell[title="Read · ${addDays(today, 2)} · active"]`)).toHaveClass(/segment-end/)
 })
 
 test('cadence edits retain recent completion coverage in both history views after reload', async ({ page }, testInfo) => {

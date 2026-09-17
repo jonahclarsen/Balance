@@ -441,8 +441,16 @@ export function buildGoalDayCells(
       while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
         const nextCompletion = sortedCompletions.find((date) => date >= segmentStart && date <= periodEnd)
         if (!nextCompletion) {
-          const openEnd = minISODate(maxISODate(deadline, currentDate), periodEnd)
-          markSegment(cells, indexesByDate, segmentStart, openEnd, deadline, false, evaluationDate)
+          // Keep an elapsed unmet run together through today, then project
+          // cadence-sized pills without resetting the real deadline.
+          while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
+            const segmentEnd = minISODate(
+              maxISODate(shiftISODate(segmentStart, period.cadenceDays - 1), currentDate),
+              periodEnd,
+            )
+            markSegment(cells, indexesByDate, segmentStart, segmentEnd, deadline, false, evaluationDate)
+            segmentStart = shiftISODate(segmentEnd, 1)
+          }
           break
         }
 

@@ -176,3 +176,64 @@ test('completion coverage does not carry across a pause in activity', () => {
   expect(goalDaysUntilLapse(changed, completions, '2026-09-10')).toBe(7)
   expect(buildGoalDayCells(changed, completions, ['2026-09-10'], '2026-09-10')[0].relieved).toBe(false)
 })
+
+for (const { cadenceDays, completedDate, starts, ends, daysUntilLapse } of [
+  { cadenceDays: 3, completedDate: '2026-09-07', starts: [0, 3, 6, 9], ends: [2, 5, 8, 9], daysUntilLapse: 0 },
+  { cadenceDays: 2, completedDate: '2026-09-09', starts: [0, 2, 4, 6], ends: [1, 3, 5, 7], daysUntilLapse: 1 },
+  { cadenceDays: 1, completedDate: '2026-09-09', starts: [0, 1, 2, 3, 4, 5, 6, 7], ends: [0, 1, 2, 3, 4, 5, 6, 7], daysUntilLapse: 0 },
+]) {
+  test(`${cadenceDays}-day future pills follow completion coverage without changing urgency`, () => {
+    const source = goal({ cadenceDays })
+    const completions = [completion(completedDate)]
+    const dates = Array.from({ length: completedDate === '2026-09-07' ? 10 : 8 }, (_, i) => shiftISODate(completedDate, i))
+    const cells = buildGoalDayCells(source, completions, dates, '2026-09-10')
+
+    expect(cells.filter(cell => cell.segmentStart).map(cell => cell.date)).toEqual(starts.map(i => dates[i]))
+    expect(cells.filter(cell => cell.segmentEnd).map(cell => cell.date)).toEqual(ends.map(i => dates[i]))
+    expect(cells.slice(cadenceDays).every(cell => cell.active && !cell.completed && !cell.relieved && !cell.missed && !cell.overdue)).toBe(true)
+    expect(goalDaysUntilLapse(source, completions, '2026-09-10')).toBe(daysUntilLapse)
+  })
+}
+
+test('an overdue run stays together and future pills do not reset the deadline', () => {
+  const source = goal({ cadenceDays: 3 })
+  const completions = [completion('2026-09-01')]
+  const dates = Array.from({ length: 16 }, (_, i) => shiftISODate('2026-09-01', i))
+  const cells = buildGoalDayCells(source, completions, dates, '2026-09-10')
+
+  expect(cells.filter(cell => cell.segmentStart).map(cell => cell.date)).toEqual([
+    '2026-09-01', '2026-09-04', '2026-09-11', '2026-09-14',
+  ])
+  expect(cells.filter(cell => cell.segmentEnd).map(cell => cell.date)).toEqual([
+    '2026-09-03', '2026-09-10', '2026-09-13', '2026-09-16',
+  ])
+  expect(cells.slice(3, 9).every(cell => cell.overdue)).toBe(true)
+  expect(cells.slice(9).every(cell => !cell.overdue && !cell.missed && !cell.relieved)).toBe(true)
+  expect(cells.filter(cell => cell.current).map(cell => cell.date)).toEqual(dates.slice(3, 10))
+  expect(goalDaysUntilLapse(source, completions, '2026-09-10')).toBe(-6)
+})
+
+test('future pills stop at cadence changes and activity boundaries', () => {
+  const source = goal({
+    cadenceDays: 2,
+    cadenceHistory: [
+      { startDate: '2026-09-10', cadenceDays: 3 },
+      { startDate: '2026-09-12', cadenceDays: 2 },
+    ],
+    activityPeriods: [
+      { startDate: '2026-09-10', endDate: '2026-09-14' },
+      { startDate: '2026-09-16', endDate: null },
+    ],
+  })
+  const dates = Array.from({ length: 8 }, (_, i) => shiftISODate('2026-09-10', i))
+  const cells = buildGoalDayCells(source, [], dates, '2026-09-10')
+
+  expect(cells.filter(cell => cell.segmentStart).map(cell => cell.date)).toEqual([
+    '2026-09-10', '2026-09-12', '2026-09-14', '2026-09-16',
+  ])
+  expect(cells.filter(cell => cell.segmentEnd).map(cell => cell.date)).toEqual([
+    '2026-09-11', '2026-09-13', '2026-09-14', '2026-09-17',
+  ])
+  expect(cells[5]).toEqual(expect.objectContaining({ active: false, segmentStart: false, segmentEnd: false }))
+  expect(cells.every(cell => !cell.overdue && !cell.missed && !cell.relieved)).toBe(true)
+})
