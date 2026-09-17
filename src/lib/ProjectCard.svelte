@@ -149,7 +149,7 @@
   .ring-track, .ring-progress { fill: none; stroke-width: 5; }
   .ring-track { stroke: currentColor; opacity: .18; }
   .ring-progress { stroke: currentColor; stroke-linecap: round; }
-  .heart-track { fill: none; stroke: currentColor; stroke-width: 3; stroke-linejoin: round; opacity: .35; }
+  .heart-track { fill: currentColor; fill-opacity: .18; stroke: currentColor; stroke-width: 3; stroke-linejoin: round; stroke-opacity: .35; }
   .heart-fill { fill: currentColor; }
   .project-heading { min-width: 0; }
   h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
