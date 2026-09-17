@@ -271,16 +271,29 @@ test('project cards reorder from content, preserve controls, and retain order th
   for (const card of await cards.all()) await expect(card).toHaveCSS('outline-style', 'none')
   const first = cards.filter({ hasText: 'First project' })
   const second = cards.filter({ hasText: 'Second project' })
-  async function drag(source: ReturnType<Page['locator']>, destination: ReturnType<Page['locator']>) {
+  async function drag(source: ReturnType<Page['locator']>, destination: ReturnType<Page['locator']>, placement: 'before' | 'after' = 'after', expectIndicator = true) {
     await source.scrollIntoViewIfNeeded()
     const start = (await source.boundingBox())!
-    const end = (await destination.boundingBox())!
+    const end = (await destination.locator('xpath=ancestor-or-self::article').boundingBox())!
+    const singleColumn = await cards.evaluateAll((elements) => elements.every((element) => Math.abs(element.getBoundingClientRect().left - elements[0].getBoundingClientRect().left) < 1))
+    const x = singleColumn ? end.x + end.width / 2 : placement === 'before' ? end.x - 8 : end.x + end.width + 8
+    const y = singleColumn ? placement === 'before' ? end.y - 8 : end.y + end.height + 8 : end.y + end.height / 2
     await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
     await page.mouse.down()
-    await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 12 })
+    await page.mouse.move(x, y, { steps: 12 })
+    const indicator = page.locator('.project-drop-indicator')
+    if (expectIndicator) {
+      await expect(indicator).toBeVisible()
+      const line = (await indicator.boundingBox())!
+      expect(singleColumn ? line.height : line.width).toBeGreaterThan(2)
+      expect(singleColumn ? line.height : line.width).toBeLessThan(4)
+      expect(Math.abs(singleColumn ? line.y + line.height / 2 - y : line.x + line.width / 2 - x)).toBeLessThan(1)
+      await expect(page.locator('.project-drop-target')).toHaveCount(0)
+    } else await expect(indicator).toHaveCount(0)
     await page.mouse.up()
+    await expect(indicator).toHaveCount(0)
   }
-  await drag(first.getByRole('button', { name: 'Check in', exact: true }), second.locator('h2'))
+  await drag(first.getByRole('button', { name: 'Check in', exact: true }), second.locator('h2'), 'after', false)
   await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
   await drag(first.locator('h2'), second.locator('h2'))
   await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
@@ -311,7 +324,7 @@ test('project cards reorder from content, preserve controls, and retain order th
   await page.reload()
   await openView(page, 'Projects')
   await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
-  await drag(cards.filter({ hasText: 'First project' }).locator('dd').first(), cards.first().locator('h2'))
+  await drag(cards.filter({ hasText: 'First project' }).locator('dd').first(), cards.first().locator('h2'), 'before')
   await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
-  await expect(page.locator('.project-dragging, .project-drop-target')).toHaveCount(0)
+  await expect(page.locator('.project-dragging, .project-drop-indicator')).toHaveCount(0)
 })

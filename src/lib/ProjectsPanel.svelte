@@ -106,11 +106,11 @@
   .project-add label { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
   .project-add input { width: 100%; min-width: 0; }
   .project-add button { font-size: 14px; padding: 8px 10px; }
-  .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
+  .project-grid { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
   .project-grid :global(.project-card) { cursor: grab; touch-action: pan-y; }
   .project-grid :global(.project-card :is(button, input, textarea, select, a, label, .probability-slider)) { cursor: auto; }
   .project-grid :global(.project-card.project-dragging) { opacity: .5; cursor: grabbing; }
-  .project-grid :global(.project-card.project-drop-target) { box-shadow: 0 0 0 2px var(--accent); }
+  .project-grid :global(.project-drop-indicator) { position: absolute; background: var(--accent); border-radius: 2px; pointer-events: none; z-index: 1; }
   .completed-projects { margin-top: 24px; }
   .completed-projects h3 { margin: 0 0 12px; font-size: 16px; }
   .status { overflow-wrap: anywhere; }
