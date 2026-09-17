@@ -5,6 +5,7 @@
   import type { Project, ProjectCheckIn } from './types'
   import { plannerStore } from './store'
   import ProjectCard from './ProjectCard.svelte'
+  import { projectReordering } from './projectReordering'
   export let projects: Project[] = []
   export let checkIns: ProjectCheckIn[] = []
   export let linkedProjectId = ''
@@ -64,7 +65,7 @@
   </form>
   {#if message}<p class="status muted" role="status">{message}</p>{/if}
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
-  <div class="project-grid">{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {currentDay} />{/each}</div>
+  <div class="project-grid" use:projectReordering>{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} {currentDay} />{/each}</div>
   {#if archiveOpen}
     <section id="project-archive" class="list-item-archive" aria-labelledby="project-archive-title">
       <div class="list-item-archive-header"><h3 id="project-archive-title">Archive</h3><span>{archived.length} saved</span></div>
@@ -80,7 +81,7 @@
                 <button class="ghost danger" type="button" on:click={() => deleteForever(project)}>Delete forever</button>
               </div>
             </div>
-            {#if archivedDetailId === project.id}<ProjectCard {project} entries={histories.get(project.id) ?? []} highlighted={linkedProjectId === project.id} {currentDay} />{/if}
+            {#if archivedDetailId === project.id}<ProjectCard {project} entries={histories.get(project.id) ?? []} {currentDay} />{/if}
           </li>
         {/each}
       </ul>
@@ -96,5 +97,9 @@
   .project-add input { width: 100%; min-width: 0; }
   .project-add button { font-size: 14px; padding: 8px 10px; }
   .project-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
+  .project-grid :global(.project-card) { cursor: grab; touch-action: pan-y; }
+  .project-grid :global(.project-card :is(button, input, textarea, select, a, label, .probability-slider)) { cursor: auto; }
+  .project-grid :global(.project-card.project-dragging) { opacity: .5; cursor: grabbing; }
+  .project-grid :global(.project-card.project-drop-target) { box-shadow: 0 0 0 2px var(--accent); }
   .status { overflow-wrap: anywhere; }
 </style>

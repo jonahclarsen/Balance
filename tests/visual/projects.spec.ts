@@ -200,7 +200,7 @@ test('project check-ins retain history, survive reload, and open from a planner 
   await expect(link).toBeVisible()
   await link.click()
   await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
-  await expect(card).toHaveClass(/highlighted/)
+  await expect(card).toHaveCSS('outline-style', 'none')
   await expect(card).toContainText('Archived')
   await page.getByRole('button', { name: 'Restore', exact: true }).click()
   await expect(card.locator('dd')).toHaveText(['50%', '60%'])
@@ -254,6 +254,64 @@ for (const destination of ['page', 'project'] as const) {
     await expect(link).toHaveAttribute('href', url)
     await link.click()
     await expect(page.getByRole('heading', { name: 'Projects', exact: true })).toBeVisible()
-    if (destination === 'project') await expect(page.locator('.project-card')).toHaveClass(/highlighted/)
+    if (destination === 'project') await expect(page.locator('.project-card')).toHaveCSS('outline-style', 'none')
   })
 }
+
+test('project cards reorder from content, preserve controls, and retain order through undo and reload', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  for (const name of ['First project', 'Second project', 'Third project']) {
+    await page.getByRole('textbox', { name: 'New project name' }).fill(name)
+    await page.getByRole('button', { name: 'Add project', exact: true }).click()
+  }
+  const cards = page.locator('.project-grid .project-card')
+  const headings = cards.locator('h2')
+  await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
+  for (const card of await cards.all()) await expect(card).toHaveCSS('outline-style', 'none')
+  const first = cards.filter({ hasText: 'First project' })
+  const second = cards.filter({ hasText: 'Second project' })
+  async function drag(source: ReturnType<Page['locator']>, destination: ReturnType<Page['locator']>) {
+    await source.scrollIntoViewIfNeeded()
+    const start = (await source.boundingBox())!
+    const end = (await destination.boundingBox())!
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(end.x + end.width / 2, end.y + end.height / 2, { steps: 12 })
+    await page.mouse.up()
+  }
+  await drag(first.getByRole('button', { name: 'Check in', exact: true }), second.locator('h2'))
+  await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
+  await drag(first.locator('h2'), second.locator('h2'))
+  await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
+  const operation = await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    let operation: any
+    const unsubscribe = plannerStore.subscribe((state: any) => { operation = state.operations.at(-1) })
+    unsubscribe()
+    await plannerStore.undo()
+    return operation
+  })
+  expect(operation.type).toBe('apply_entity_changes')
+  expect(operation.payload.action).toBe('move_project')
+  expect(operation.payload.entityChanges.version).toBe(2)
+  await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    await plannerStore.redo()
+  })
+  await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
+  await first.getByRole('button', { name: 'Check in', exact: true }).click()
+  await first.getByRole('slider', { name: 'Work complete for First project' }).fill('45')
+  await expect(first.getByRole('slider', { name: 'Work complete for First project' })).toHaveValue('45')
+  await first.getByRole('button', { name: 'Cancel', exact: true }).click()
+  await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
+  await page.reload()
+  await openView(page, 'Projects')
+  await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
+  await drag(cards.filter({ hasText: 'First project' }).locator('dd').first(), cards.first().locator('h2'))
+  await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
+  await expect(page.locator('.project-dragging, .project-drop-target')).toHaveCount(0)
+})

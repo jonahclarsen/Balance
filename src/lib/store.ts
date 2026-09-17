@@ -1831,6 +1831,15 @@ function createPlannerStore() {
       })
     },
 
+    moveProject(sourceId: Id, targetId: Id, placement: 'before' | 'after') {
+      if (sourceId === targetId) return
+      commitEntities('move_project', { sourceId, targetId, placement }, (state) => {
+        if (![sourceId, targetId].every((id) => state.projects.some((project) => project.id === id && !project.archived))) return state
+        const projects = moveById(state.projects, sourceId, targetId, placement)
+        return projects === state.projects ? state : { ...state, projects }
+      })
+    },
+
     addProject(name: string) {
       if (!name.trim()) return null
       const timestamp = nowISO()

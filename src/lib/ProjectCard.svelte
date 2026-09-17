@@ -9,7 +9,6 @@
   import { projectCheckInForDay } from './projects'
   export let project: Project
   export let entries: ProjectCheckIn[] = []
-  export let highlighted = false
   export let currentDay: string
   let progress: number | null = null
   let heart: number | null = null
@@ -51,7 +50,7 @@
   }
 </script>
 
-<article class:highlighted class="project-card metric-card" id={'project-' + project.id} style:--project-color={project.color}>
+<article class="project-card metric-card" id={'project-' + project.id} style:--project-color={project.color}>
   <header>
     <svg class="project-visual" viewBox="0 0 100 100" role="img" aria-label={latest ? `${latest.progress}% work complete; ${latest.heart}% heart in it` : 'No check-in yet'}>
       <circle class="ring-track" cx="50" cy="50" r="41" />
@@ -124,7 +123,6 @@
 </article>
 
 <style>
-  .highlighted { outline: 2px solid var(--accent); outline-offset: 2px; }
   header { display: flex; gap: 12px; align-items: center; }
   .project-visual { width: 48px; height: 48px; flex: 0 0 48px; color: var(--project-color); }
   .ring-track, .ring-progress { fill: none; stroke-width: 5; }
