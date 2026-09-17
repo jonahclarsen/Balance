@@ -5,6 +5,7 @@
   import type { Project, ProjectCheckIn } from './types'
   import { plannerStore } from './store'
   import ProjectCard from './ProjectCard.svelte'
+  import OverlayModal from './OverlayModal.svelte'
   import { projectReordering } from './projectReordering'
   export let projects: Project[] = []
   export let checkIns: ProjectCheckIn[] = []
@@ -15,6 +16,12 @@
   let archivedDetailId = ''
   let initialCheckInProjectId = ''
   let message = ''
+  function mountArchiveOverlay(node: HTMLDivElement) {
+    // Match the list modal's placement outside the scrolling workspace.
+    const shell = node.closest('.content-shell')
+    shell?.appendChild(node)
+    return { destroy: () => node.remove() }
+  }
   $: active = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress !== 100)
   $: completed = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress === 100)
   $: archived = projects.filter((project) => project.archived)
@@ -66,13 +73,12 @@
   <header class="page-header">
     <h2>Projects</h2>
     <div class="template-panel-actions">
-      <button class="ghost" class:active={archiveOpen} type="button" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = !archiveOpen}>{archiveOpen ? 'Back to Projects' : 'View Archive'}</button>
+      <button class="ghost" class:active={archiveOpen} type="button" aria-haspopup="dialog" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = true}>View Archive</button>
       <button type="button" on:click={() => copyLink()}>Copy page link</button>
     </div>
   </header>
   {#if message}<p class="status muted" role="status">{message}</p>{/if}
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
-  {#if !archiveOpen}
   <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>
     <label for="new-project-name">New project</label>
     <input id="new-project-name" aria-label="New project name" placeholder="Project name" bind:value={name} maxlength="160" />
@@ -85,7 +91,9 @@
       <div class="project-grid" use:projectReordering>{#each completed as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} {currentDay} />{/each}</div>
     </section>
   {/if}
-  {:else}
+  {#if archiveOpen}
+    <div class="archive-overlay" use:mountArchiveOverlay>
+    <OverlayModal title="Project archive" onClose={() => archiveOpen = false}>
     <section id="project-archive" class="list-item-archive" aria-labelledby="project-archive-title">
       <div class="list-item-archive-header"><h3 id="project-archive-title">Archive</h3><span>{archived.length} saved</span></div>
       {#if !archived.length}<p class="list-item-archive-empty">No archived projects.</p>{/if}
@@ -105,11 +113,15 @@
         {/each}
       </ul>
     </section>
+    </OverlayModal>
+    </div>
   {/if}
 </section>
 
 <style>
   .projects-panel { min-width: 0; }
+  .archive-overlay { display: contents; }
+  .archive-overlay .list-item-archive { margin-top: 0; }
   .page-header h2 { margin: 0; }
   .project-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 520px; padding: 12px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
   .project-add label { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
