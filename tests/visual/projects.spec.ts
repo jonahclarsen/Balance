@@ -183,6 +183,11 @@ test('project check-ins retain history, survive reload, and open from a planner 
   await expect(card).toHaveCount(0)
   await page.getByRole('button', { name: 'View Archive' }).click()
   await expect(page.locator('#project-archive')).toContainText('Synthetic garden')
+  await expect(page.locator('.project-grid')).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'New project name' })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Back to Projects' }).click()
+  await expect(page.locator('#project-archive')).toHaveCount(0)
+  await expect(page.getByRole('textbox', { name: 'New project name' })).toBeVisible()
   // Reload with a synthetic linked task; no installed application data is used.
   await page.evaluate(() => {
     const key = 'balance.appState.v1'
@@ -203,11 +208,13 @@ test('project check-ins retain history, survive reload, and open from a planner 
   await expect(card).toHaveCSS('outline-style', 'none')
   await expect(card).toContainText('Archived')
   await page.getByRole('button', { name: 'Restore', exact: true }).click()
+  await page.getByRole('button', { name: 'Back to Projects' }).click()
   await expect(card.locator('dd')).toHaveText(['50%', '60%'])
   await page.getByRole('button', { name: 'Details' }).click()
   await expect(card.locator('input[type=color]')).toHaveCount(0)
   await page.getByRole('button', { name: 'Archive project', exact: true }).click()
   page.once('dialog', (dialog) => dialog.dismiss())
+  await page.getByRole('button', { name: 'View Archive' }).click()
   await page.getByRole('button', { name: 'Delete forever' }).click()
   await expect(page.locator('#project-archive')).toContainText('Synthetic garden')
   page.once('dialog', (dialog) => dialog.accept())

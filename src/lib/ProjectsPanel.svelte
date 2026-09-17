@@ -32,7 +32,8 @@
   }
   $: if (linkedProjectId) reveal(linkedProjectId)
   async function reveal(id: string) {
-    if (projects.some((project) => project.id === id && project.archived)) { archiveOpen = true; archivedDetailId = id }
+    archiveOpen = projects.some((project) => project.id === id && project.archived)
+    archivedDetailId = archiveOpen ? id : ''
     await tick()
     document.getElementById(`project-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
@@ -58,17 +59,18 @@
   <header class="page-header">
     <h2>Projects</h2>
     <div class="template-panel-actions">
-      <button class="ghost" class:active={archiveOpen} type="button" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = !archiveOpen}>View Archive</button>
+      <button class="ghost" class:active={archiveOpen} type="button" aria-expanded={archiveOpen} aria-controls="project-archive" on:click={() => archiveOpen = !archiveOpen}>{archiveOpen ? 'Back to Projects' : 'View Archive'}</button>
       <button type="button" on:click={() => copyLink()}>Copy page link</button>
     </div>
   </header>
+  {#if message}<p class="status muted" role="status">{message}</p>{/if}
+  {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
+  {#if !archiveOpen}
   <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>
     <label for="new-project-name">New project</label>
     <input id="new-project-name" aria-label="New project name" placeholder="Project name" bind:value={name} maxlength="160" />
     <button class="primary" type="submit" disabled={!name.trim()}>Add project</button>
   </form>
-  {#if message}<p class="status muted" role="status">{message}</p>{/if}
-  {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
   <div class="project-grid" use:projectReordering>{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} {currentDay} />{/each}</div>
   {#if completed.length}
     <section class="completed-projects" aria-labelledby="completed-projects-title">
@@ -76,7 +78,7 @@
       <div class="project-grid" use:projectReordering>{#each completed as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} {currentDay} />{/each}</div>
     </section>
   {/if}
-  {#if archiveOpen}
+  {:else}
     <section id="project-archive" class="list-item-archive" aria-labelledby="project-archive-title">
       <div class="list-item-archive-header"><h3 id="project-archive-title">Archive</h3><span>{archived.length} saved</span></div>
       {#if !archived.length}<p class="list-item-archive-empty">No archived projects.</p>{/if}

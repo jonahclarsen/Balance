@@ -88,7 +88,10 @@
       <section class="project-history" aria-label="Check-in history">
       <h3>History · {history.length} {history.length === 1 ? 'check-in' : 'check-ins'}</h3>
       {#if history.length}
-      <div class="legend"><span>Solid: work complete</span><span>Dashed: heart in it</span></div>
+      <div class="legend">
+        <span><svg class="legend-key" width="32" height="12" viewBox="0 0 32 12" aria-hidden="true"><path d="M1 6H31" stroke="currentColor" stroke-width="2" /><circle cx="16" cy="6" r="3" fill="currentColor" /></svg>Work complete</span>
+        <span><svg class="legend-key" width="32" height="12" viewBox="0 0 32 12" aria-hidden="true"><path d="M1 6H31" stroke="currentColor" stroke-width="2" stroke-dasharray="5 4" /><circle cx="16" cy="6" r="3" fill="var(--paper)" stroke="currentColor" /></svg>Heart in it</span>
+      </div>
       <svg class="history-chart" viewBox="0 0 300 120" role="img" aria-label="Project ratings over time, from 0 to 100 percent">
         <path d="M10 10H290 M10 60H290 M10 110H290" class="grid" />
         <polyline points={progressLine} fill="none" stroke="currentColor" stroke-width="2" />
@@ -148,10 +151,12 @@
   .history-actions { display: flex; gap: 2px; }
   .history-actions button { display: grid; place-items: center; padding: 6px; min-width: 30px; min-height: 32px; }
   .endpoints, .legend { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
-  .legend { margin-top: 12px; }
+  .legend { margin-top: 12px; flex-wrap: wrap; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend-key { flex: 0 0 auto; color: var(--project-color); }
   .history-chart { width: 100%; max-height: 160px; color: var(--project-color); }
   /* Keep bright saved colors legible on paper without changing the project's hue. */
-  :global(:root:not([data-color-scheme='dark'])) :is(.project-visual, .history-chart) {
+  :global(:root:not([data-color-scheme='dark'])) :is(.project-visual, .history-chart, .legend-key) {
     color: color-mix(in srgb, var(--project-color) 75%, black);
     color: oklch(from var(--project-color) min(l, 0.58) c h);
   }
