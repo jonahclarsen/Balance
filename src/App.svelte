@@ -79,7 +79,7 @@
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
@@ -1458,21 +1458,22 @@ return rows`
     const item = itemId ? findPlanItem(activePlan.items, itemId) : null
     if (!item || !itemId) return false
 
-    const listLink = linkifyItemText(item.text, listTemplates, metrics, notes)
-      .find((segment) => segment.link?.kind === 'list')?.link
-    if (listLink?.kind === 'list') {
-      openLink(listLink, { container: 'plan', containerId: activePlan.id, itemId })
-      return true
-    }
-
     const template = document.createElement('template')
-    template.innerHTML = item.html
-    const externalURL = Array.from(template.content.querySelectorAll<HTMLAnchorElement>('a[href]'))
+    template.innerHTML = renderItemDisplayHTML(
+      item.html, item.text, linkifyItemText(item.text, listTemplates, metrics, notes),
+    )
+    const anchors = Array.from(template.content.querySelectorAll<HTMLAnchorElement>('a[href]'))
+    const externalURL = anchors
       .map((anchor) => anchor.getAttribute('href')?.trim() ?? '')
       .find(isURL)
-    if (!externalURL) return false
+    if (externalURL) {
+      openExternalURLFromShortcut(externalURL)
+      return true
+    }
+    const internalLink = anchors.map(itemLinkFromAnchor).find((link) => link !== null)
+    if (!internalLink) return false
 
-    openExternalURLFromShortcut(externalURL)
+    openLink(internalLink, { container: 'plan', containerId: activePlan.id, itemId })
     return true
   }
 

@@ -85,7 +85,7 @@
       title: 'Editing items',
       shortcuts: [
         { keys: ['mod', 'D'], label: 'Toggle done (keeps selected items selected)' },
-        { keys: ['alt', 'F'], label: 'Open linked list / URL / metric (or other Balance link in selected list task; first URL takes priority)' },
+        { keys: ['alt', 'F'], label: 'Open a link from the active task (web or any Balance destination; first web URL takes priority)' },
         { keys: ['E'], label: 'Edit selected list item (overlay)' },
         { keys: ['[ / ]'], label: 'Selected list / day-template probability −/+5% (first day-template option)' },
         { keys: ['altOrMod', '[ / ]'], label: 'List / day-template probability −/+5% at caret (Shift also works)' },

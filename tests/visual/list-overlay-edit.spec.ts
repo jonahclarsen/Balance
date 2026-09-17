@@ -140,7 +140,35 @@ test('Alt+F opens a task linked list from either its caret or item selection', a
   await dialog.getByRole('button', { name: 'Close' }).click()
   await page.keyboard.press('Alt+/')
   await expect(page.getByRole('dialog', { name: 'Keyboard shortcuts' }))
-    .toContainText('Open linked list / URL / metric')
+    .toContainText('Open a link from the active task')
+})
+
+test('Alt+F opens a labeled Goal Stats link from the active Today task', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Option-key shortcuts are desktop-only')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' })
+    .evaluate((button: HTMLButtonElement) => button.click())
+  const taskInput = page.locator('[data-plan-text-input]').first()
+  await taskInput.fill('Review goal progress')
+  await pasteLinkOverText(taskInput, 'balance://goals/stats', 7, 20)
+  await expect(taskInput.getByRole('link', { name: 'goal progress' }))
+    .toHaveAttribute('href', 'balance://goals/stats')
+
+  await taskInput.blur()
+  await page.reload()
+  await expect(taskInput.getByRole('link', { name: 'goal progress' }))
+    .toHaveAttribute('href', 'balance://goals/stats')
+  await expect(page.locator('.database-loading-backdrop')).toBeHidden()
+  await taskInput.focus()
+  expect(await taskInput.evaluate((input) => document.activeElement === input)).toBe(true)
+  const shortcutAllowed = await page.evaluate(() => window.dispatchEvent(new KeyboardEvent('keydown', {
+    key: 'f', code: 'KeyF', altKey: true, bubbles: true, cancelable: true,
+  })))
+  expect(shortcutAllowed).toBe(false)
+  await expect(page.getByRole('heading', { name: 'Goal stats', exact: true })).toBeVisible()
 })
 
 for (const url of ['https://example.com/docs', 'file:///tmp/Balance%20test.pdf']) {
