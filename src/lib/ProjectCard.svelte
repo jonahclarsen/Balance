@@ -77,7 +77,7 @@
       <button type="button" on:click={() => openCheckIn(projectCheckInForDay(history, project.id, todayISO()))}>{todaysCheckIn ? 'Edit check-in' : 'Check in'}</button>
     {/if}
     <button class="details-toggle" type="button" aria-expanded={detailsOpen} aria-controls={'project-details-' + project.id} on:click={() => detailsOpen = !detailsOpen}>
-      {detailsOpen ? 'Close details' : 'View details'}
+      Details
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={detailsOpen ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'} /></svg>
     </button>
   </footer>

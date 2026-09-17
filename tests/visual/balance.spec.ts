@@ -1756,7 +1756,7 @@ test('iridescent gradient controls preview live, persist, and toggle with the or
   const openSettings = async () => {
     const openNavigation = page.getByRole('button', { name: 'Open navigation' })
     if (await openNavigation.isVisible()) await openNavigation.click()
-    await page.getByRole('button', { name: 'Settings', exact: true }).click()
+    await page.getByRole('button', { name: 'Admin Settings', exact: true }).click()
   }
 
   await page.goto('/')
@@ -2610,6 +2610,7 @@ test('dragging app sliders requests native haptics except for notes writing spac
 
   await page.getByRole('button', { name: 'Settings', exact: true }).click()
   await page.getByRole('group', { name: 'Color theme' }).getByRole('button', { name: /^Iridescent/ }).click()
+  await page.getByRole('button', { name: 'Admin Settings', exact: true }).click()
   const contrast = page.getByLabel('Iridescent contrast')
   await contrast.scrollIntoViewIfNeeded()
   const contrastBounds = await contrast.boundingBox()

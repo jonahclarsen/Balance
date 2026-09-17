@@ -55,6 +55,7 @@
       title: 'Navigate',
       shortcuts: [
         { keys: ['alt', 'C'], label: 'Search' },
+        { keys: ['W / S'], label: 'Hold to scroll Today up / down (no selection or editor focus)' },
         { keys: ['alt', 'T'], label: 'Open Today; press again to jump to today' },
         { keys: ['alt', 'R'], label: 'Open List History' },
         { keys: ['alt', 'N'], label: 'Open Notes' },
@@ -77,7 +78,7 @@
         { keys: ['down'], label: 'Edit selection from end', alt: ['right'] },
         { keys: ['shift', 'up'], label: 'Extend selection', alt: ['shift', 'down'] },
         { keys: ['mod', 'shift', 'up'], label: 'Directly select / extend items', alt: ['mod', 'shift', 'down'] },
-        { keys: ['esc'], label: 'Clear selection' },
+        { keys: ['esc'], label: 'Clear selection / leave task editor on Today' },
       ],
     },
     {

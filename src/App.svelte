@@ -133,7 +133,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals' | 'settings'
+  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals' | 'settings' | 'admin'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -155,6 +155,62 @@
   const GOAL_RHYTHM_AUTO_SHOW_MS = 60_000
   const GOAL_HISTORY_UPDATE_DEBOUNCE_MS = 1_000
   const GOAL_HISTORY_EDIT_UPDATE_DEBOUNCE_MS = 5_000
+  const DEFAULT_KEYBOARD_SCROLL_SPEED = 600
+  const keyboardScrollSpeedKey = 'balance.admin.keyboardScrollSpeed.v1'
+  let keyboardScrollSpeed = readKeyboardScrollSpeed()
+  const heldScrollKeys = new Set<string>()
+  let keyboardScrollFrame: number | null = null
+  let keyboardScrollTime = 0
+  let keyboardScrollPosition = 0
+
+  function readKeyboardScrollSpeed() {
+    if (import.meta.env.DEV) {
+      try {
+        const value = Number(localStorage.getItem(keyboardScrollSpeedKey))
+        if (Number.isFinite(value) && value >= 50 && value <= 3000) return value
+      } catch { /* Storage may be unavailable. */ }
+    }
+    return DEFAULT_KEYBOARD_SCROLL_SPEED
+  }
+
+  function setKeyboardScrollSpeed(value: number) {
+    if (!Number.isFinite(value)) return
+    keyboardScrollSpeed = Math.max(50, Math.min(3000, value))
+    try { localStorage.setItem(keyboardScrollSpeedKey, String(keyboardScrollSpeed)) } catch { /* Keep the session value. */ }
+  }
+
+  function canKeyboardScroll() {
+    return view === 'today' && selectedItemIds.length === 0 &&
+      !isFormFieldActive() && !isRichTextActive() &&
+      !document.activeElement?.closest('[contenteditable="true"]') &&
+      !searchOpen && !documentFindOpen && !shortcutsHelpOpen && !mobileDrawerOpen &&
+      !listOverlayVisible && !metricOverlay && !recoveryPanelOpen && !pasteReview && !celebrationPreview &&
+      !$databaseLoadPending && !$databaseLoadError && !document.hidden &&
+      !document.querySelector('.overlay-backdrop, dialog[open]')
+  }
+
+  function stopKeyboardScroll() {
+    heldScrollKeys.clear()
+    if (keyboardScrollFrame !== null) cancelAnimationFrame(keyboardScrollFrame)
+    keyboardScrollFrame = null
+  }
+
+  function advanceKeyboardScroll(time: number) {
+    if (!canKeyboardScroll()) {
+      stopKeyboardScroll()
+      return
+    }
+    const direction = Number(heldScrollKeys.has('KeyS')) - Number(heldScrollKeys.has('KeyW'))
+    const scroller = usesWindowScroll() ? document.scrollingElement : workspaceEl
+    if (scroller) {
+      keyboardScrollPosition = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight,
+        keyboardScrollPosition + direction * keyboardScrollSpeed * (time - keyboardScrollTime) / 1000))
+      scroller.scrollTo({ top: keyboardScrollPosition, behavior: 'instant' })
+    }
+    keyboardScrollTime = time
+    keyboardScrollFrame = requestAnimationFrame(advanceKeyboardScroll)
+  }
+
   const defaultIridescentGradient = createDefaultIridescentGradient()
   const GOAL_HISTORY_HEIGHT_KEY = 'balance:goalHistoryHeight'
   const DISMISSED_UPDATE_VERSION_KEY = 'balance:dismissedUpdateVersion'
@@ -837,6 +893,7 @@ return rows`
         await focusTaskById(completionCaret.containerId, completionCaret.completedItemId, completionCaret.completedCaret ?? undefined)
       }
       historyNotice = `${direction === 'undo' ? 'Undid' : 'Redid'} ${destination?.label ?? 'change'}`
+      stopKeyboardScroll()
       clearTimeout(historyNoticeTimer)
       historyNoticeTimer = setTimeout(() => { historyNotice = '' }, 4000)
     } catch (error) {
@@ -1985,6 +2042,7 @@ return rows`
     void initialize()
 
     return () => {
+      stopKeyboardScroll()
       clearTimeout(historyNoticeTimer)
       rememberWorkspaceScroll()
       mounted = false
@@ -2601,7 +2659,8 @@ return rows`
       value === 'projects' ||
       value === 'metrics' ||
       value === 'goals' ||
-      value === 'settings'
+      value === 'settings' ||
+      (import.meta.env.DEV && value === 'admin')
     )
   }
 
@@ -2928,6 +2987,7 @@ return rows`
   // When you add/remove/change a shortcut here, also update the user-facing
   // reference in src/lib/KeyboardShortcutsModal.svelte (opened with `?`).
   function handleGlobalKeydown(event: KeyboardEvent) {
+    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.key === 'Escape') stopKeyboardScroll()
     if (document.querySelector('dialog[data-image-dialog][open]')) return
     if ($selectedImage && event.target === $selectedImage.editor && (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'Escape' || event.key.startsWith('Arrow'))) return
     // The native store begins with a disposable bootstrap state. Do not let a
@@ -3293,9 +3353,25 @@ return rows`
       return
     }
 
-    if (event.key === 'Escape' && selectedItemIds.length > 0) {
+    if (event.key === 'Escape' && (selectedItemIds.length > 0 || (view === 'today' && activeFocusedItemId()))) {
       event.preventDefault()
+      event.stopPropagation()
+      releaseTextEditingFocus()
       clearItemSelection()
+      return
+    }
+
+    if (!event.altKey && !primaryModifier && !event.shiftKey && !event.isComposing &&
+      (event.code === 'KeyW' || event.code === 'KeyS') && canKeyboardScroll()) {
+      event.preventDefault()
+      if (!event.repeat) {
+        heldScrollKeys.add(event.code)
+        if (keyboardScrollFrame === null) {
+          keyboardScrollPosition = currentWorkspaceScrollTop()
+          keyboardScrollTime = performance.now()
+          keyboardScrollFrame = requestAnimationFrame(advanceKeyboardScroll)
+        }
+      }
       return
     }
 
@@ -3493,6 +3569,8 @@ return rows`
   }
 
   function handleGlobalKeyup(event: KeyboardEvent) {
+    heldScrollKeys.delete(event.code)
+    if (heldScrollKeys.size === 0) stopKeyboardScroll()
     if (
       event.key === 'Alt' ||
       (event.key === 'ArrowUp' && planKeyboardMoveSession?.direction === 'up') ||
@@ -3967,6 +4045,7 @@ return rows`
   }
 
   function handleGlobalPointerDown(event: PointerEvent) {
+    stopKeyboardScroll()
     mobileDrawerOpeningClickPending = false
     const pointerTarget = event.target instanceof Element ? event.target : null
     if (
@@ -4015,6 +4094,7 @@ return rows`
   }
 
   function handleGlobalFocusIn(event: FocusEvent) {
+    stopKeyboardScroll()
     const target = event.target instanceof Element ? event.target : null
     if (
       completionUndoCaret &&
@@ -5365,6 +5445,8 @@ return rows`
   on:keydown|capture={handleGlobalKeydown}
   on:paste|capture={handleNativeEditorPaste}
   on:keyup|capture={handleGlobalKeyup}
+  on:blur={stopKeyboardScroll}
+  on:wheel|passive={stopKeyboardScroll}
   on:focusin={handleGlobalFocusIn}
   on:scroll={handleWindowScroll}
   on:pointerdown|capture={handleGlobalPointerDown}
@@ -5373,7 +5455,7 @@ return rows`
   on:pointerup={endItemSelection}
   on:pointercancel={endItemSelection}
 />
-<svelte:document on:selectionchange={rememberActiveItemCaret} />
+<svelte:document on:selectionchange={rememberActiveItemCaret} on:visibilitychange={stopKeyboardScroll} />
 
 {#if documentFindOpen}
   <DocumentFindBar bind:this={documentFindBar} onClose={() => (documentFindOpen = false)} />
@@ -5645,6 +5727,9 @@ return rows`
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => openMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; openMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
       <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => openMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
+      {#if import.meta.env.DEV}
+        <button class:active={view === 'admin'} type="button" on:click={() => openMobileDrawerView('admin')}><span>Admin Settings</span></button>
+      {/if}
       {#if !isAndroid}
         <button
           class="mobile-undo-button"
@@ -6550,6 +6635,29 @@ return rows`
       </div>
     {/if}
 
+    {#if import.meta.env.DEV && view === 'admin'}
+      <header class="page-header"><div><h2>Admin Settings</h2></div></header>
+      <div class="settings-panel">
+        <p>Development only. Tune values here, then use what works as the defaults you ship.</p>
+        <section class="settings-section">
+          <div><h3>Keyboard scrolling</h3><p>Hold W or S on Today with no task selected or editor focused. Movement is constant, with no easing.</p></div>
+          <label class="field">
+            <span>Scroll speed (px/s)</span>
+            <input type="number" min="50" max="3000" step="50" value={keyboardScrollSpeed}
+              on:change={(event) => setKeyboardScrollSpeed(Number(event.currentTarget.value))} />
+          </label>
+          <p>Default: {DEFAULT_KEYBOARD_SCROLL_SPEED} px/s. Saved on this device for development.</p>
+          <div class="settings-actions"><button type="button" disabled={keyboardScrollSpeed === DEFAULT_KEYBOARD_SCROLL_SPEED}
+            on:click={() => setKeyboardScrollSpeed(DEFAULT_KEYBOARD_SCROLL_SPEED)}>Reset scroll speed</button></div>
+        </section>
+        <section class="settings-section">
+          <div><h3>Gradient studio</h3><p>Choose Iridescent in Settings to preview changes across the app.</p></div>
+          <IridescentGradientSettings value={iridescentGradient} defaults={defaultIridescentGradient}
+            onPreview={previewIridescentGradient} onCommit={commitIridescentGradient} />
+        </section>
+      </div>
+    {/if}
+
     {#if view === 'settings'}
       <header class="page-header">
         <div>
@@ -6605,15 +6713,6 @@ return rows`
             </div>
 
             <ThemeTaskPreview mobile={isMobile} />
-
-            {#if themeId === 'iridescent'}
-              <IridescentGradientSettings
-                value={iridescentGradient}
-                defaults={defaultIridescentGradient}
-                onPreview={previewIridescentGradient}
-                onCommit={commitIridescentGradient}
-              />
-            {/if}
           </div>
         </section>
 

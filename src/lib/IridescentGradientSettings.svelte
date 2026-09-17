@@ -151,6 +151,7 @@
     <div class="iridescent-global-grid">
       <label class="iridescent-gradient-control">
         <span><strong>Contrast</strong><output>{value.contrast}%</output></span>
+        <small>Default: {defaults.contrast}%</small>
         <small>Separation between the color washes and backdrop</small>
         <input
           use:hapticSlider
@@ -166,6 +167,7 @@
 
       <label class="iridescent-gradient-control">
         <span><strong>Backdrop saturation</strong><output>{value.backgroundSaturation}%</output></span>
+        <small>Default: {defaults.backgroundSaturation}%</small>
         <small>Colorfulness of the quiet layer underneath</small>
         <input
           use:hapticSlider
@@ -181,6 +183,7 @@
 
       <label class="iridescent-gradient-control">
         <span><strong>Backdrop lightness</strong><output>{value.backgroundLightness > 0 ? '+' : ''}{value.backgroundLightness}</output></span>
+        <small>Default: {defaults.backgroundLightness}</small>
         <small>Shift both the light and dark appearances</small>
         <input
           use:hapticSlider
@@ -196,6 +199,7 @@
 
       <label class="iridescent-gradient-control">
         <span><strong>Direction</strong><output>{value.angle}°</output></span>
+        <small>Default: {defaults.angle}°</small>
         <small>Angle of the underlying directional gradient</small>
         <input
           use:hapticSlider
@@ -211,6 +215,7 @@
 
       <label class="iridescent-gradient-control">
         <span><strong>Color reach</strong><output>{value.reach}%</output></span>
+        <small>Default: {defaults.reach}%</small>
         <small>How far each wash travels before fading away</small>
         <input
           use:hapticSlider
@@ -252,6 +257,7 @@
 
           <label class="iridescent-gradient-control compact">
             <span><strong>Hue</strong><output>{color.hue}°</output></span>
+            <small>Default: {defaults.colors[index].hue}°</small>
             <input
               use:hapticSlider
               class="hue-track"
@@ -267,6 +273,7 @@
 
           <label class="iridescent-gradient-control compact">
             <span><strong>Saturation</strong><output>{color.saturation}%</output></span>
+            <small>Default: {defaults.colors[index].saturation}%</small>
             <input
               use:hapticSlider
               class="saturation-track"
@@ -282,6 +289,7 @@
 
           <label class="iridescent-gradient-control compact">
             <span><strong>Lightness</strong><output>{color.lightness}%</output></span>
+            <small>Default: {defaults.colors[index].lightness}%</small>
             <input
               use:hapticSlider
               class="lightness-track"
@@ -297,6 +305,7 @@
 
           <label class="iridescent-gradient-control compact">
             <span><strong>Strength</strong><output>{color.strength}%</output></span>
+            <small>Default: {defaults.colors[index].strength}%</small>
             <input
               use:hapticSlider
               class="strength-track"
@@ -315,7 +324,7 @@
   </div>
 
   <div class="iridescent-gradient-actions">
-    <p>Adjustments are saved automatically and follow this theme between devices.</p>
+    <p>Adjustments are saved automatically on this device.</p>
     <button
       type="button"
       disabled={isDefault && !canRestorePreviousGradient}
