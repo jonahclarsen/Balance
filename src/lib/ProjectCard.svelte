@@ -64,7 +64,7 @@
   <header>
     <svg class="project-visual" viewBox="0 0 100 100" role="img" aria-label={latest ? `${latest.progress}% work complete; ${latest.heart}% heart in it` : 'No check-in yet'}>
       <defs>
-        <linearGradient id={'project-heart-fill-' + project.id} gradientUnits="userSpaceOnUse" x1="0" y1={heartFillTop - 3} x2="0" y2={heartFillTop + 3}>
+        <linearGradient id={'project-heart-fill-' + project.id} gradientUnits="userSpaceOnUse" x1="0" y1={heartFillTop - 2} x2="0" y2={heartFillTop + 2}>
           <stop offset="0" stop-color="currentColor" stop-opacity={latest?.heart === 100 ? 1 : 0} />
           <stop offset="1" stop-color="currentColor" stop-opacity="1" />
         </linearGradient>
@@ -150,7 +150,7 @@
   .ring-track, .ring-progress { fill: none; stroke-width: 5; }
   .ring-track { stroke: currentColor; opacity: .18; }
   .ring-progress { stroke: currentColor; stroke-linecap: round; }
-  .heart-track { fill: currentColor; fill-opacity: .25; stroke: currentColor; stroke-width: 3; stroke-linejoin: round; stroke-opacity: .35; }
+  .heart-track { fill: currentColor; fill-opacity: .30; stroke: currentColor; stroke-width: 3; stroke-linejoin: round; stroke-opacity: .35; }
   .project-heading { min-width: 0; }
   h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
   p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
