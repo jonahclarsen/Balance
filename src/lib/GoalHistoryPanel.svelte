@@ -279,7 +279,6 @@
   <header class="goal-history-toolbar">
     <div class="goal-history-title">
       <button class="goal-history-open-goals" type="button" on:click={() => onOpenGoals()}>Goals</button>
-      <span>{goalDeadlineSummary.overdue} overdue, {goalDeadlineSummary.upcoming} upcoming in the next 3 days</span>
     </div>
     <div class="goal-history-filters">
       <label class="goal-history-overdue-filter">
@@ -305,6 +304,7 @@
         {/if}
       </div>
     </div>
+    <span class="goal-history-summary">{goalDeadlineSummary.overdue} overdue, {goalDeadlineSummary.upcoming} upcoming in the next 3 days</span>
   </header>
 
   <div class="goal-history-body goal-history-scroll" bind:this={scrollEl}>

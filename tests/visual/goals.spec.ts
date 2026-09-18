@@ -1230,7 +1230,7 @@ test('goal rhythm keeps one open overdue segment when saved activity periods ove
   await expect(page.locator('.goal-day-cell').last()).toHaveCSS('border-bottom-right-radius', '0px')
 })
 
-test('goal rhythm puts overdue goals last while the goals page keeps urgency order', async ({ page }) => {
+test('goal rhythm puts overdue goals last while the goals page keeps urgency order', async ({ page }, testInfo) => {
   const today = todayISO()
   const fiveDaysAgo = addDays(today, -5)
   const threeDaysAgo = addDays(today, -3)
@@ -1306,13 +1306,41 @@ test('goal rhythm puts overdue goals last while the goals page keeps urgency ord
     'Overdue',
   ])
 
+  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
+  const goalsButton = goalRhythm.getByRole('button', { name: 'Goals', exact: true })
+  const overdueLabel = page.locator('.goal-history-overdue-filter')
+  const overdueText = overdueLabel.getByText('Overdue only')
   const overdueOnly = page.getByRole('checkbox', { name: 'Overdue only' })
   const goalSearch = page.getByRole('searchbox', { name: 'Search goals' })
-  const filterBounds = await overdueOnly.boundingBox()
-  const searchBounds = await goalSearch.boundingBox()
+  const [goalsBounds, filterBounds, searchBounds] = await Promise.all([
+    goalsButton.boundingBox(),
+    overdueLabel.boundingBox(),
+    goalSearch.boundingBox(),
+  ])
+  expect(goalsBounds).not.toBeNull()
   expect(filterBounds).not.toBeNull()
   expect(searchBounds).not.toBeNull()
+  expect(goalsBounds!.x + goalsBounds!.width).toBeLessThan(filterBounds!.x)
   expect(filterBounds!.x + filterBounds!.width).toBeLessThan(searchBounds!.x)
+  expect(filterBounds!.height).toBeGreaterThanOrEqual(32)
+
+  const filterCursors = await Promise.all([
+    overdueLabel.evaluate((element) => getComputedStyle(element).cursor),
+    overdueOnly.evaluate((element) => getComputedStyle(element).cursor),
+    overdueText.evaluate((element) => getComputedStyle(element).cursor),
+  ])
+  expect(filterCursors).toEqual(['pointer', 'pointer', 'pointer'])
+
+  await overdueText.click()
+  await expect(overdueOnly).toBeChecked()
+  await overdueLabel.click({ position: { x: filterBounds!.width - 2, y: filterBounds!.height / 2 } })
+  await expect(overdueOnly).not.toBeChecked()
+
+  if (testInfo.project.name === 'desktop') {
+    const summaryBounds = await page.locator('.goal-history-summary').boundingBox()
+    expect(summaryBounds).not.toBeNull()
+    expect(searchBounds!.x + searchBounds!.width).toBeLessThan(summaryBounds!.x)
+  }
 
   await overdueOnly.check()
   await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual(['Overdue'])
@@ -1322,7 +1350,7 @@ test('goal rhythm puts overdue goals last while the goals page keeps urgency ord
   await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual(['Overdue'])
   await overdueOnly.uncheck()
 
-  await page.getByRole('region', { name: 'Goal history' }).getByRole('button', { name: 'Goals', exact: true }).click()
+  await goalsButton.click()
   await expect(
     page.locator('.goal-card .goal-name-input').evaluateAll((inputs) =>
       inputs.map((input) => input.textContent),

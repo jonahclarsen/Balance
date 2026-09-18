@@ -4304,10 +4304,9 @@ body.mobile-checkbox-dragging {
 
 .goal-history-filters {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 312px;
   min-width: 0;
   align-items: center;
-  justify-content: flex-end;
   gap: 12px;
 }
 
@@ -4316,6 +4315,8 @@ body.mobile-checkbox-dragging {
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
+  min-height: 32px;
+  padding-inline: 8px;
   cursor: pointer;
   white-space: nowrap;
 }
@@ -4325,11 +4326,18 @@ body.mobile-checkbox-dragging {
   height: 15px;
   margin: 0;
   accent-color: var(--accent);
+  cursor: pointer;
 }
 
 .goal-history-toolbar .goal-history-overdue-filter span {
   color: var(--ink);
   font-size: 12px;
+  cursor: pointer;
+}
+
+.goal-history-summary {
+  margin-left: auto;
+  white-space: nowrap;
 }
 
 .goal-history-search-field {
@@ -5150,8 +5158,12 @@ body.mobile-checkbox-dragging {
     display: flex;
   }
 
-  .goal-history-title span {
+  .goal-history-summary {
     display: none;
+  }
+
+  .goal-history-filters {
+    flex: 1 1 auto;
   }
 
   .goal-history-search-field {
