@@ -176,9 +176,11 @@
   @media (max-width: 760px) {
     .overlay-backdrop {
       position: fixed;
-      inset: max(env(safe-area-inset-top), var(--mobile-overlay-top)) env(safe-area-inset-right)
-        env(safe-area-inset-bottom) env(safe-area-inset-left);
-      padding: 12px;
+      inset: 0;
+      /* Cover the safe areas with blur while keeping the card inside them. */
+      padding: calc(12px + max(env(safe-area-inset-top), var(--mobile-overlay-top)))
+        calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom))
+        calc(12px + env(safe-area-inset-left));
     }
 
     .overlay-card {
