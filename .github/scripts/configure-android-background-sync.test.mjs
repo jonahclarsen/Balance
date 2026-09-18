@@ -32,6 +32,8 @@ test('schedules five-minute and immediate relay sync while the activity is backg
 
     const configuredWorker = await readFile(worker, 'utf8')
     assert.match(configuredWorker, /if \(appForeground\)/)
+    assert.match(configuredWorker, /manager.activeNetwork == null/)
+    assert.ok(configuredWorker.indexOf('if (offline) return Result.retry()') < configuredWorker.indexOf('if (runNativeSync'))
     assert.match(configuredWorker, /cancelUniqueWork\(SYNC_NAME\)/)
     assert.match(configuredWorker, /SYNC_DELAY_MINUTES = 5L/)
     assert.match(configuredWorker, /OneTimeWorkRequestBuilder<BalanceSyncWorker>/)

@@ -1,5 +1,6 @@
 fn main() {
     build_macos_widget_bridge();
+    build_macos_connectivity_bridge();
 
     let commit = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
@@ -65,4 +66,27 @@ fn build_macos_widget_bridge() {
     println!("cargo:rustc-link-lib=framework=Security");
     println!("cargo:rustc-link-lib=framework=WidgetKit");
     println!("cargo:rustc-link-search=framework={sdk_path}/System/Library/PrivateFrameworks");
+}
+
+fn build_macos_connectivity_bridge() {
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let Some(architecture) = target.strip_suffix("-apple-darwin") else {
+        return;
+    };
+    let source = "macos/ConnectivityBridge.swift";
+    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR"))
+        .join("ConnectivityBridge.o");
+    let status = std::process::Command::new("xcrun")
+        .args([
+            "swiftc", "-parse-as-library", "-emit-object", "-O", "-target",
+            &format!("{architecture}-apple-macosx13.0"), "-o",
+        ])
+        .arg(&output)
+        .arg(source)
+        .status()
+        .expect("failed to run swiftc for connectivity");
+    assert!(status.success(), "failed to compile connectivity bridge");
+    println!("cargo:rerun-if-changed={source}");
+    println!("cargo:rustc-link-arg={}", output.display());
+    println!("cargo:rustc-link-lib=framework=Network");
 }

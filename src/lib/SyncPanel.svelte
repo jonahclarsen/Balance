@@ -211,7 +211,7 @@
       showPairing = true
       await renderQr()
       const result = await requestSync('sync-enabled')
-      setStatus(result ? 'Setup complete. You can now connect your other device.' : 'Setup saved. The first sync has not completed; Balance will retry automatically.', !result)
+      setStatus(result ? 'Setup complete. You can now connect your other device.' : 'Setup saved. The first sync has not completed; Balance will retry automatically.', !result && !$automaticSyncStatus.offline)
     } catch (err) {
       setStatus(`Could not set up sync: ${err}`, true)
     } finally {
@@ -244,7 +244,7 @@
       showPairing = false
       await plannerStore.reloadFromBackend()
       const result = await requestSync('paired')
-      setStatus(result ? 'Connected. This device now syncs automatically.' : 'Connection saved. Waiting for the first sync; Balance will retry automatically.', !result)
+      setStatus(result ? 'Connected. This device now syncs automatically.' : 'Connection saved. Waiting for the first sync; Balance will retry automatically.', !result && !$automaticSyncStatus.offline)
     } catch (err) {
       setStatus(`Could not connect: ${err}`, true)
     } finally {
@@ -259,7 +259,7 @@
       await waitForActiveSync()
       await persistServer()
       const result = await requestSync('relay-configured')
-      setStatus(result ? 'Connected to sync server.' : 'Server address saved. Sync has not completed; Balance will retry automatically.', !result)
+      setStatus(result ? 'Connected to sync server.' : 'Server address saved. Sync has not completed; Balance will retry automatically.', !result && !$automaticSyncStatus.offline)
     } catch (err) {
       setStatus(`Could not save sync server: ${err}`, true)
     } finally {
@@ -286,7 +286,7 @@
     actionBusy = true
     try {
       const result = await requestSync('manual')
-      setStatus(result ? 'Sync complete.' : 'Could not sync. Balance will retry automatically.', !result)
+      setStatus(result ? 'Sync complete.' : $automaticSyncStatus.offline ? 'You’re offline. Your changes are saved on this device and will sync when you’re online.' : 'Could not sync. Balance will retry automatically.', !result && !$automaticSyncStatus.offline)
     } catch (err) {
       setStatus(`Could not sync: ${err}`, true)
     } finally {
@@ -321,7 +321,7 @@
   </div>
 
   <div class="sync-body">
-    {#if $automaticSyncStatus.lastError}
+    {#if $automaticSyncStatus.lastError && !$automaticSyncStatus.offline}
       <div id="sync-error" class="sync-card sync-error" tabindex="-1" role="alert">
         <strong>Sync error</strong>
         <p class="sync-status error">{$automaticSyncStatus.lastError}</p>

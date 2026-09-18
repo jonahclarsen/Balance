@@ -112,6 +112,8 @@ test.beforeEach(async ({ page }) => {
       transformCallback: () => 1,
       invoke: async (command: string, args?: Record<string, unknown>) => {
         switch (command) {
+          case 'get_sync_network_offline':
+            return !navigator.onLine
           case 'read_app_state': {
             runtime.__stateReadCount += 1
             if (
@@ -1082,3 +1084,89 @@ for (const delayAcknowledgement of [false, true]) {
     expect(result.historyCalls).toEqual(['undo_last_operation', 'redo_last_operation', 'undo_last_operation'])
   })
 }
+
+
+// Synthetic native connectivity stays separate from WebView hints: real mobile
+// and desktop WebViews can report onLine=true with every interface disabled.
+async function mockNativeConnectivity(page: Page, state: boolean | null | 'unavailable') {
+  await page.addInitScript((initial) => {
+    const runtime = globalThis as typeof globalThis & {
+      __nativeOffline: boolean | null | 'unavailable'
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+    }
+    runtime.__nativeOffline = initial
+    const invoke = runtime.__TAURI_INTERNALS__.invoke
+    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === 'get_sync_network_offline') {
+        if (runtime.__nativeOffline === 'unavailable') throw new Error('Synthetic unavailable monitor')
+        return runtime.__nativeOffline
+      }
+      return invoke(command, args)
+    }
+  }, state)
+}
+
+test('native offline skips every sync trigger, saves edits, and reconnects without a WebView event', async ({ page }) => {
+  await mockNativeConnectivity(page, true)
+  await page.clock.install()
+  await page.goto('/?caret-refresh=1')
+  await expect(page.getByRole('status', { name: 'Sync status: Offline' })).toBeVisible()
+  await expect(page.getByText('Local version')).toBeVisible()
+  expect(await page.evaluate(() => navigator.onLine)).toBe(true)
+  const task = page.getByRole('textbox', { name: 'Plan item' }).first()
+  await task.fill('Saved while offline')
+  await page.evaluate(async () => {
+    const path = '/src/lib/syncScheduler.ts'
+    const { requestSync } = await import(/* @vite-ignore */ path)
+    for (const reason of ['manual', 'edit', 'poll', 'retry', 'resume', 'focus', 'online']) await requestSync(reason)
+  })
+  expect(await page.evaluate(() => {
+    const runtime = globalThis as typeof globalThis & { __syncAttemptCount: number; __storedState: string }
+    return { attempts: runtime.__syncAttemptCount, saved: runtime.__storedState.includes('Saved while offline') }
+  })).toEqual({ attempts: 0, saved: true })
+  expect((await readSyncStatus(page)).initialSyncComplete).toBe(true)
+  await page.evaluate(() => {
+    (globalThis as typeof globalThis & { __nativeOffline: boolean }).__nativeOffline = false
+  })
+  await page.clock.runFor(8_100)
+  await expect(page.getByRole('status', { name: 'Sync status: Offline' })).toHaveCount(0)
+  expect(await page.evaluate(() => (globalThis as typeof globalThis & { __syncAttemptCount: number }).__syncAttemptCount)).toBeGreaterThan(0)
+})
+
+for (const nativeState of [false, null, 'unavailable'] as const) {
+  test(`native ${nativeState} does not falsely suppress sync when the WebView says offline`, async ({ page }) => {
+    await mockNativeConnectivity(page, nativeState)
+    await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { configurable: true, value: false }))
+    await page.goto('/?caret-refresh=1')
+    await expect.poll(() => page.evaluate(() => (globalThis as typeof globalThis & { __syncAttemptCount: number }).__syncAttemptCount)).toBeGreaterThan(0)
+    await expect(page.getByRole('status', { name: 'Sync status: Offline' })).toHaveCount(0)
+  })
+}
+
+test('disconnect during an active pass becomes Offline and suppresses retries', async ({ page }) => {
+  await mockNativeConnectivity(page, false)
+  await page.addInitScript(() => {
+    const runtime = globalThis as typeof globalThis & {
+      __nativeOffline: boolean
+      __syncAttemptCount: number
+      __TAURI_INTERNALS__: { invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown> }
+    }
+    const invoke = runtime.__TAURI_INTERNALS__.invoke
+    runtime.__TAURI_INTERNALS__.invoke = async (command, args) => {
+      if (command === 'sync_relay_once') {
+        runtime.__syncAttemptCount++
+        runtime.__nativeOffline = true
+        throw new Error('Synthetic connection lost')
+      }
+      return invoke(command, args)
+    }
+  })
+  await page.clock.install()
+  await page.goto('/')
+  await expect(page.getByRole('status', { name: 'Sync status: Offline' })).toBeVisible()
+  await page.clock.runFor(30_000)
+  expect(await page.evaluate(() => (globalThis as typeof globalThis & { __syncAttemptCount: number }).__syncAttemptCount)).toBe(1)
+  await expect(page.getByRole('status', { name: 'Sync status: Error' })).toHaveCount(0)
+  await openSettings(page)
+  await expect(page.locator('#sync-error')).toHaveCount(0)
+})

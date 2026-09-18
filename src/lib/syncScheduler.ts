@@ -1,4 +1,5 @@
 import { writable } from 'svelte/store'
+import { invoke, isTauri } from '@tauri-apps/api/core'
 import {
   getSyncSettings,
   onPersistedOperation,
@@ -25,6 +26,8 @@ export type AutomaticSyncStatus = {
   showActivity: boolean
 }
 
+let offline = !isTauri() && typeof navigator !== 'undefined' && !navigator.onLine
+
 export const automaticSyncStatus = writable<AutomaticSyncStatus>({
   running: false,
   lastSuccessAt: null,
@@ -32,7 +35,7 @@ export const automaticSyncStatus = writable<AutomaticSyncStatus>({
   pending: false,
   configured: null,
   initialSyncComplete: false,
-  offline: typeof navigator !== 'undefined' && !navigator.onLine,
+  offline,
   showActivity: false,
 })
 
@@ -48,6 +51,25 @@ let lastChangeAt = 0
 let automaticSyncStarted = false
 let backendRefreshPending = false
 let uploadStarted = false
+
+async function refreshConnectivity(): Promise<boolean> {
+  // WebView online hints can be stale. On native platforms only an explicit OS
+  // offline result suppresses sync; unknown/failed checks permit an attempt.
+  offline = isTauri()
+    ? await invoke<boolean | null>('get_sync_network_offline').then((value) => value === true, () => false)
+    : !navigator.onLine
+  automaticSyncStatus.update((status) => ({
+    ...status,
+    offline,
+    lastError: offline ? '' : status.lastError,
+    showActivity: offline ? false : status.showActivity,
+  }))
+  if (offline && retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
+  return offline
+}
 
 function pollDelay(): number {
   if (document.visibilityState !== 'visible') return BACKGROUND_POLL_MS
@@ -80,7 +102,7 @@ async function configured(): Promise<boolean> {
 }
 
 function requiresFollowup(reason: string): boolean {
-  return ['edit', 'manual', 'resume', 'focus', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
+  return ['edit', 'manual', 'resume', 'focus', 'online', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
 }
 
 function shouldShowActivity(reason: string): boolean {
@@ -96,7 +118,7 @@ async function reloadVisibleState(reason: string, stateChanged: boolean): Promis
 }
 
 function scheduleRetry(): void {
-  if (retryTimer) return
+  if (offline || retryTimer) return
   const jitter = Math.floor(Math.random() * Math.max(1_000, retryMs / 4))
   retryTimer = setTimeout(() => {
     retryTimer = null
@@ -132,6 +154,8 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       showActivity: false,
     }))
 
+    await refreshConnectivity()
+
     let syncConfigured: boolean
     try {
       syncConfigured = await configured()
@@ -143,13 +167,14 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
           console.error('Could not refresh visible state after launch settings failed', reloadError)
         }
       }
+      await refreshConnectivity()
       const message = syncErrorMessage(error)
       automaticSyncStatus.update((status) => ({
         ...status,
         running: false,
-        lastError: message,
+        lastError: offline || error === 'sync-offline' ? '' : message,
         configured: null,
-        offline: !navigator.onLine,
+        offline,
         showActivity: false,
       }))
       scheduleRetry()
@@ -164,20 +189,35 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         pending: false,
         configured: false,
         initialSyncComplete: true,
-        offline: !navigator.onLine,
+        offline,
         showActivity: false,
       })
       return null
     }
 
-    automaticSyncStatus.update((status) => ({
-      ...status,
-      running: true,
-      configured: true,
-      offline: !navigator.onLine,
-      showActivity: shouldShowActivity(reason),
-    }))
     try {
+      if (offline) {
+        // Local durability and Android background updates still matter offline.
+        await plannerStore.flushPendingOperations()
+        await reloadVisibleState(reason, backendRefreshPending)
+        backendRefreshPending = false
+        automaticSyncStatus.update((status) => ({
+          ...status,
+          configured: true,
+          initialSyncComplete: true,
+          lastError: '',
+          offline: true,
+        }))
+        return null
+      }
+
+      automaticSyncStatus.update((status) => ({
+        ...status,
+        running: true,
+        configured: true,
+        offline,
+        showActivity: shouldShowActivity(reason),
+      }))
       // A mobile WebView can be suspended before the ordinary persistence
       // debounce fires. Reconcile only after every edit still visible in the
       // frontend is durable, or an incoming checkpoint can replace its older
@@ -204,7 +244,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         pending: false,
         configured: true,
         initialSyncComplete: true,
-        offline: false,
+        offline,
         showActivity: false,
       })
       return result
@@ -219,13 +259,14 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       } catch (reloadError) {
         console.error('Could not refresh visible state after sync failed', reloadError)
       }
+      await refreshConnectivity()
       const message = syncErrorMessage(error)
       automaticSyncStatus.update((status) => ({
         ...status,
         running: false,
-        lastError: message,
+        lastError: offline || error === 'sync-offline' ? '' : message,
         configured: true,
-        offline: !navigator.onLine,
+        offline,
         showActivity: false,
       }))
       scheduleRetry()
@@ -257,7 +298,7 @@ export function startAutomaticSync(): () => void {
     ...status,
     configured: null,
     initialSyncComplete: false,
-    offline: !navigator.onLine,
+    offline,
     showActivity: false,
   }))
   schedulePoll()
@@ -276,13 +317,10 @@ export function startAutomaticSync(): () => void {
       void requestSync('edit')
     }, EDIT_DEBOUNCE_MS)
   }
-  const onOnline = () => {
-    automaticSyncStatus.update((status) => ({ ...status, offline: false }))
-    void requestSync('online')
-  }
-  const onOffline = () => {
-    automaticSyncStatus.update((status) => ({ ...status, offline: true }))
-  }
+  // Events accelerate discovery; native snapshots remain authoritative. Polls
+  // also recover from WebViews that omit connectivity events while suspended.
+  const onOnline = () => void requestSync('online')
+  const onOffline = () => void refreshConnectivity()
   const onFocus = () => void requestSync('focus')
   const onVisibility = () => {
     schedulePoll()

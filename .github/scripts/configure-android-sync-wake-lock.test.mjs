@@ -14,7 +14,7 @@ const fixture = `<?xml version="1.0" encoding="utf-8"?>
 </manifest>
 `
 
-test('adds wake-lock and vibration permissions idempotently', async () => {
+test('adds network-state, wake-lock and vibration permissions idempotently', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'balance-android-permissions-'))
   const manifestPath = join(directory, 'AndroidManifest.xml')
   await writeFile(manifestPath, fixture)
@@ -23,6 +23,7 @@ test('adds wake-lock and vibration permissions idempotently', async () => {
   await execute(process.execPath, [script.pathname, manifestPath])
 
   const manifest = await readFile(manifestPath, 'utf8')
+  assert.equal(manifest.match(/android\.permission\.ACCESS_NETWORK_STATE/g)?.length, 1)
   assert.equal(manifest.match(/android\.permission\.WAKE_LOCK/g)?.length, 1)
   assert.equal(manifest.match(/android\.permission\.VIBRATE/g)?.length, 1)
   assert.ok(manifest.indexOf('android.permission.VIBRATE') < manifest.indexOf('<application'))

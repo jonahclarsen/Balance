@@ -6,6 +6,7 @@ const manifestPath =
 let manifest = await readFile(manifestPath, 'utf8')
 
 const permissions = [
+  'android.permission.ACCESS_NETWORK_STATE',
   'android.permission.WAKE_LOCK',
   // Android's vibrator APIs, including the Chromium WebView implementation of
   // navigator.vibrate(), require this normal manifest permission.

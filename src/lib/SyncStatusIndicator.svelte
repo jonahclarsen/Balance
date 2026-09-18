@@ -28,7 +28,7 @@
     class:error={state === 'error'}
     role="status"
     aria-label={`Sync status: ${label}`}
-    title={$automaticSyncStatus.lastError || label}
+    title={$automaticSyncStatus.offline ? label : $automaticSyncStatus.lastError || label}
   >
     {#if state === 'error'}
       <button type="button" class="sync-error-button" aria-label="Sync error: open settings" on:click={onOpenError}>

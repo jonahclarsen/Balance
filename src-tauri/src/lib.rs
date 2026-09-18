@@ -121,6 +121,7 @@ mod macos_haptic_drag {
     }
 }
 mod sync;
+mod connectivity;
 #[cfg(any(test, target_os = "android", target_os = "macos"))]
 mod widget;
 
@@ -10414,6 +10415,9 @@ async fn sync_relay_once(
     reason: String,
 ) -> Result<sync::relay_client::SyncPassResult, String> {
     let _ = reason;
+    if connectivity::get_sync_network_offline(app.clone()).await == Some(true) {
+        return Err(connectivity::OFFLINE.to_string());
+    }
     run_foreground_relay_task(move |gate| {
         let startup = take_startup_database_connection(&app, StartupDatabaseRead::RelaySync)?;
         let result = (|| {
@@ -10539,6 +10543,7 @@ pub fn run() {
         .setup(|app| {
             #[cfg(target_os = "macos")]
             {
+                let _ = connectivity::offline(app.handle());
                 restore_macos_main_window_frame(app)?;
                 install_paste_and_match_style_menu(app)?;
                 install_macos_alt_shortcut_monitor(app);
@@ -10678,6 +10683,7 @@ pub fn run() {
             sync_enable_primary,
             sync_enable_joiner,
             sync_relay_once,
+            connectivity::get_sync_network_offline,
             sync_anonymous_diagnostics,
         ])
         .build(tauri::generate_context!())

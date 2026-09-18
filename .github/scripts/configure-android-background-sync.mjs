@@ -28,6 +28,7 @@ if (!gradle.includes(dependency)) {
 const source = `package app.balance.local
 
 import android.content.Context
+import android.net.ConnectivityManager
 import android.util.Log
 import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
@@ -44,6 +45,13 @@ class BalanceSyncWorker(context: Context, params: WorkerParameters) : Worker(con
             Log.i(LOG_TAG, "Skipping background relay sync while Balance is foregrounded")
             return Result.success()
         }
+        // Recheck after WorkManager dispatch in case connectivity disappeared.
+        // Do not require VALIDATED: a reachable relay can coexist with blocked probes.
+        val offline = try {
+            val manager = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            manager != null && manager.activeNetwork == null
+        } catch (_: Exception) { false }
+        if (offline) return Result.retry()
         return try {
             if (runNativeSync(applicationContext.applicationInfo.dataDir) == 0) {
                 scheduleNext(applicationContext)
