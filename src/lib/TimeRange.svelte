@@ -66,7 +66,7 @@
     if (!dragState) return
 
     const steps = Math.round((dragState.originY - event.clientY) / dragPixelsPerStep)
-    const delta = steps * 15
+    const delta = steps * (event.shiftKey ? 5 : 15)
 
     if (steps !== dragState.lastSteps) {
       const crossedSteps = Math.abs(steps - dragState.lastSteps)
@@ -129,7 +129,7 @@
       class:warning={overlapsPrevious || precedesAncestor}
       type="button"
       aria-label={`Start time ${formatMinutes(startMinutes)}. Drag up or down to move the scheduled block.`}
-      title="Drag up or down to move the whole time range. Hold Alt to change only the start time."
+      title="Drag up or down to move the whole time range. Hold Alt to change only the start time. Hold Shift for 5-minute increments."
       on:pointerdown={(event) => beginDrag('start', event)}
       on:pointermove={continueDrag}
       on:pointerup={endDrag}
@@ -145,7 +145,7 @@
       class:warning={overlapsNext || exceedsAncestor}
       type="button"
       aria-label={`End time ${formatMinutes(endMinutes)}. Drag up or down to change the end time.`}
-      title="Drag up or down to change only the end time"
+      title="Drag up or down to change only the end time. Hold Shift for 5-minute increments."
       on:pointerdown={(event) => beginDrag('end', event)}
       on:pointermove={continueDrag}
       on:pointerup={endDrag}
