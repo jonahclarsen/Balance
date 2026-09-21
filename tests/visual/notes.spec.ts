@@ -1881,8 +1881,11 @@ test('mobile note formatting follows the keyboard viewport and preserves editing
   await openNotesView(page)
   await page.getByRole('button', { name: '+ New note' }).click()
   const editor = page.locator('[data-note-text-input]').first()
-  await editor.fill('Keyboard formatting fixture')
-  await placeCaretAtEnd(editor)
+  await editor.fill('Keyboard formatting fixture '.repeat(60))
+  await editor.evaluate(element => {
+    const text = element.firstChild!
+    getSelection()!.setPosition(text, text.textContent!.length)
+  })
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
 
   // Desktop automation has no IME; simulate both keyboard shrink and panning.
@@ -1898,6 +1901,15 @@ test('mobile note formatting follows the keyboard viewport and preserves editing
     const box = await toolbar.boundingBox()
     return !!box && box.y >= 120 && box.y + box.height <= 470
   }).toBe(true)
+  await expect.poll(() => editor.evaluate(() => {
+    const selection = getSelection()!
+    const range = document.createRange()
+    range.setStart(selection.focusNode!, selection.focusOffset)
+    range.collapse(true)
+    const caret = range.getBoundingClientRect()
+    const toolbar = document.querySelector('.note-format-toolbar')!.getBoundingClientRect()
+    return caret.height > 0 && caret.top >= 136 && caret.bottom <= toolbar.top - 16
+  })).toBe(true)
   await toolbar.getByRole('button', { name: 'Bold', exact: true }).tap()
   await expect(editor).toBeFocused()
   await editor.press('x')

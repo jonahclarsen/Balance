@@ -833,3 +833,117 @@ async function expectControlToFitViewport(
   expect(box!.x).toBeGreaterThanOrEqual(0)
   expect(box!.x + box!.width).toBeLessThanOrEqual(page.viewportSize()!.width)
 }
+
+async function keyboardViewport(page: import('@playwright/test').Page, height: number, offsetTop = 0) {
+  await page.evaluate(({ height, offsetTop }) => {
+    const viewport = window.visualViewport!
+    Object.defineProperty(viewport, 'height', { configurable: true, get: () => height })
+    Object.defineProperty(viewport, 'offsetTop', { configurable: true, get: () => offsetTop })
+    viewport.dispatchEvent(new Event('resize'))
+  }, { height, offsetTop })
+}
+
+test('mobile keyboard reveals focused tasks, follows typing, and permits manual scrolling', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name))
+  const editor = page.locator('[data-plan-text-input]').nth(12)
+  await editor.evaluate((element: HTMLElement) => {
+    element.scrollIntoView({ block: 'center' })
+    element.focus({ preventScroll: true })
+    const selection = getSelection()!
+    selection.selectAllChildren(element)
+    selection.collapseToEnd()
+  })
+  await keyboardViewport(page, 380)
+  await expect.poll(async () => {
+    const box = await editor.boundingBox()
+    return !!box && box.y >= 76 && box.y + box.height <= 340
+  }).toBe(true)
+  await page.keyboard.insertText(' more words'.repeat(35))
+  await page.waitForTimeout(200)
+  await expect.poll(() => editor.evaluate(() => {
+    const selection = getSelection()!
+    const range = document.createRange()
+    range.setStart(selection.focusNode!, selection.focusOffset)
+    range.collapse(true)
+    const rect = range.getBoundingClientRect()
+    return rect.top >= 76 && rect.bottom <= 330
+  })).toBe(true)
+  await page.evaluate(() => window.scrollBy(0, 150))
+  const manualScroll = await page.evaluate(() => window.scrollY)
+  await page.waitForTimeout(200)
+  expect(await page.evaluate(() => window.scrollY)).toBe(manualScroll)
+})
+
+test('mobile keyboard adds room for the last field and removes it on dismissal', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name))
+  const editor = page.locator('[data-plan-text-input]').last()
+  await editor.evaluate((element: HTMLElement) => {
+    element.focus({ preventScroll: true })
+    getSelection()!.selectAllChildren(element)
+    getSelection()!.collapseToEnd()
+  })
+  await keyboardViewport(page, 360, 90)
+  await expect.poll(async () => {
+    const box = await editor.boundingBox()
+    return !!box && box.y >= 106 && box.y + box.height <= 395
+  }).toBe(true)
+  expect(await page.evaluate(() => parseFloat(document.documentElement.style.paddingBottom))).toBeGreaterThan(100)
+  await page.evaluate(() => {
+    Reflect.deleteProperty(window.visualViewport!, 'height')
+    Reflect.deleteProperty(window.visualViewport!, 'offsetTop')
+    window.visualViewport!.dispatchEvent(new Event('resize'))
+  })
+  await expect.poll(() => page.evaluate(() => document.documentElement.style.paddingBottom)).toBe('')
+})
+
+test('mobile keyboard keeps a textarea caret visible inside a nested dialog', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name))
+  await page.evaluate(() => {
+    const dialog = document.createElement('div')
+    dialog.id = 'keyboard-dialog-fixture'
+    dialog.style.cssText = 'position:fixed;top:100px;left:20px;right:20px;height:650px;overflow:auto;z-index:1000;background:white;padding-bottom:17px'
+    const spacer = document.createElement('div')
+    spacer.style.height = '450px'
+    const textarea = document.createElement('textarea')
+    textarea.style.cssText = 'height:450px;width:100%;font:16px/24px monospace'
+    textarea.value = Array.from({ length: 14 }, (_, index) => `Synthetic line ${index}`).join('\n')
+    dialog.append(spacer, textarea)
+    document.body.append(dialog)
+    textarea.focus({ preventScroll: true })
+    textarea.setSelectionRange(textarea.value.length, textarea.value.length)
+  })
+  await keyboardViewport(page, 380)
+  const textarea = page.locator('#keyboard-dialog-fixture textarea')
+  await expect.poll(() => textarea.evaluate((element: HTMLTextAreaElement) => {
+    const style = getComputedStyle(element)
+    const caretBottom = element.getBoundingClientRect().top +
+      (parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop) + 14 * 24 - element.scrollTop) * element.currentCSSZoom
+    return caretBottom >= 116 && caretBottom <= 330
+  })).toBe(true)
+  await expect(textarea).toBeFocused()
+  await textarea.evaluate((element: HTMLElement) => element.blur())
+  await expect.poll(() => page.locator('#keyboard-dialog-fixture').evaluate((element: HTMLElement) => element.style.paddingBottom)).toBe('17px')
+})
+
+test('mobile keyboard handling also follows layout viewport resizing', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name))
+  const editor = page.locator('[data-plan-text-input]').nth(12)
+  await editor.evaluate((element: HTMLElement) => {
+    element.scrollIntoView({ block: 'center' })
+    element.focus({ preventScroll: true })
+  })
+  await page.setViewportSize({ width: page.viewportSize()!.width, height: 380 })
+  await page.waitForTimeout(200)
+  await expect.poll(async () => {
+    const box = await editor.boundingBox()
+    return !!box && box.y >= 76 && box.y + box.height <= 340
+  }).toBe(true)
+})
+
+test('desktop field focus and resizing do not add mobile keyboard padding', async ({ page }, testInfo) => {
+  test.skip(isMobileProject(testInfo.project.name))
+  await page.locator('[data-plan-text-input]').nth(12).focus()
+  await keyboardViewport(page, 380)
+  await page.waitForTimeout(100)
+  expect(await page.evaluate(() => document.documentElement.style.paddingBottom)).toBe('')
+})

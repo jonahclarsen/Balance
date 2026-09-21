@@ -10,6 +10,7 @@
   import { getCurrentWebview } from '@tauri-apps/api/webview'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
+  import { installMobileKeyboardScroll } from './lib/mobileKeyboardScroll'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import GoalCopyButton from './lib/GoalCopyButton.svelte'
   import IridescentGradientSettings from './lib/IridescentGradientSettings.svelte'
@@ -1855,6 +1856,7 @@ return rows`
   }
 
   onMount(() => {
+    const stopMobileKeyboardScroll = installMobileKeyboardScroll()
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
     let stopPasteMatchStyleListener: (() => void) | null = null
@@ -2096,6 +2098,7 @@ return rows`
     void initialize()
 
     return () => {
+      stopMobileKeyboardScroll()
       stopKeyboardScroll()
       clearTimeout(historyNoticeTimer)
       rememberWorkspaceScroll()
