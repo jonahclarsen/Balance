@@ -5259,6 +5259,7 @@ body.mobile-checkbox-dragging {
   flex: 1 1 auto;
   min-width: 0;
   gap: 8px;
+  padding-bottom: 1px;
   overflow-x: auto;
   scrollbar-width: thin;
   -webkit-overflow-scrolling: touch;
