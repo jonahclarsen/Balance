@@ -824,55 +824,35 @@ test('shift-clicking extends a note selection across list items', async ({ page 
   })
 })
 
-test('Enter deletes empty note list items like Backspace', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
-  await page.getByRole('button', { name: '+ New note' }).click()
+for (const kind of ['Bulleted list', 'Numbered list', 'Checklist']) {
+  test(`Enter turns an empty ${kind} item into a paragraph in place`, async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await openNotesView(page)
+    await page.getByRole('button', { name: '+ New note' }).click()
 
-  const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
-  await toolbar.getByRole('button', { name: 'Bulleted list' }).click()
-  const first = page.locator('.note-item').first()
-  await expect(first).toHaveClass(/note-bullet/)
-  await first.locator('[data-note-text-input]').fill('Bullet')
-  await placeCaretAtEnd(first.locator('[data-note-text-input]'))
-  await first.locator('[data-note-text-input]').press('Enter')
+    await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: kind, exact: true }).click()
+    const firstEditor = page.locator('[data-note-text-input]').first()
+    await firstEditor.fill('Keep this list item')
+    await placeCaretAtEnd(firstEditor)
+    await firstEditor.press('Enter')
 
-  await expect(page.locator('.note-item')).toHaveCount(2)
-  const second = page.locator('.note-item').nth(1)
-  await expect(second).toHaveClass(/note-bullet/)
-  await second.locator('[data-note-text-input]').press('Enter')
+    const emptyItem = page.locator('.note-item').nth(1)
+    await expect(emptyItem).toHaveClass(/note-list-item/)
+    const itemId = await emptyItem.getAttribute('data-note-item-id')
+    await emptyItem.locator('[data-note-text-input]').press('Enter')
 
-  await expect(page.locator('.note-item')).toHaveCount(1)
-  await expect(first.locator('[data-note-text-input]')).toBeFocused()
-
-  await toolbar.getByRole('button', { name: 'Numbered list' }).click()
-  await expect(first).toHaveClass(/note-numbered/)
-  await placeCaretAtEnd(first.locator('[data-note-text-input]'))
-  await first.locator('[data-note-text-input]').press('Enter')
-
-  await expect(page.locator('.note-item')).toHaveCount(2)
-  await expect(page.locator('.note-item').nth(1)).toHaveClass(/note-numbered/)
-  await page.locator('.note-item').nth(1).locator('[data-note-text-input]').press('Enter')
-
-  await expect(page.locator('.note-item')).toHaveCount(1)
-  await expect(first.locator('[data-note-text-input]')).toBeFocused()
-
-  await toolbar.getByRole('button', { name: 'Checklist' }).click()
-  await expect(first).toHaveClass(/note-list-item/)
-  await expect(first.getByLabel('Mark checked')).toBeVisible()
-  await placeCaretAtEnd(first.locator('[data-note-text-input]'))
-  await first.locator('[data-note-text-input]').press('Enter')
-
-  await expect(page.locator('.note-item')).toHaveCount(2)
-  const emptyChecklist = page.locator('.note-item').nth(1)
-  await expect(emptyChecklist.getByLabel('Mark checked')).toBeVisible()
-  await emptyChecklist.locator('[data-note-text-input]').press('Enter')
-
-  await expect(page.locator('.note-item')).toHaveCount(1)
-  await expect(first.locator('[data-note-text-input]')).toBeFocused()
-})
+    await expect(page.locator('.note-item')).toHaveCount(2)
+    await expect(emptyItem).toHaveAttribute('data-note-item-id', itemId!)
+    await expect(emptyItem).not.toHaveClass(/note-list-item/)
+    await expect(emptyItem.locator('input[type="checkbox"]')).toHaveCount(0)
+    await expect(emptyItem.locator('[data-note-text-input]')).toBeFocused()
+    await emptyItem.locator('[data-note-text-input]').fill('Continue as a paragraph')
+    await expect(firstEditor).toHaveText('Keep this list item')
+    await expect(emptyItem.locator('[data-note-text-input]')).toHaveText('Continue as a paragraph')
+  })
+}
 
 test('Enter on an empty note paragraph moves the caret to the new paragraph below', async ({ page }) => {
   await page.goto('/')
@@ -1182,9 +1162,9 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   expect(emptyChecklistId).toBeTruthy()
   const emptyChecklistItem = page.locator(`[data-note-item-id="${emptyChecklistId}"]`)
   await emptyChecklistItem.locator('[data-note-text-input]').press('Enter')
-  await expect(noteBlocks).toHaveCount(3)
-  await expect(emptyChecklistItem).toHaveCount(0)
-  await expect(checklistBlock).toBeFocused()
+  await expect(noteBlocks).toHaveCount(4)
+  await expect(emptyChecklistItem).not.toHaveClass(/note-list-item/)
+  await expect(emptyChecklistItem.locator('[data-note-text-input]')).toBeFocused()
   await expect(page.locator('[data-note-text-input]').nth(1)).toContainText('Formatted ideas')
 
   await page.getByRole('button', { name: 'Copy note link' }).click()
