@@ -824,7 +824,7 @@ test('shift-clicking extends a note selection across list items', async ({ page 
   })
 })
 
-test('empty bulleted and numbered note items remain list items on Enter', async ({ page }) => {
+test('Enter deletes empty note list items like Backspace', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -842,35 +842,36 @@ test('empty bulleted and numbered note items remain list items on Enter', async 
   await expect(page.locator('.note-item')).toHaveCount(2)
   const second = page.locator('.note-item').nth(1)
   await expect(second).toHaveClass(/note-bullet/)
-  const secondId = await second.getAttribute('data-note-item-id')
-  expect(secondId).not.toBeNull()
   await second.locator('[data-note-text-input]').press('Enter')
 
-  await expect(page.locator('.note-item')).toHaveCount(3)
-  await expect(page.locator('.note-item').nth(1)).toHaveAttribute('data-note-item-id', secondId!)
-  const newBullet = page.locator('.note-item').nth(2)
-  await expect(newBullet).toHaveClass(/note-bullet/)
-  await expect(newBullet.locator('[data-note-text-input]')).toBeFocused()
+  await expect(page.locator('.note-item')).toHaveCount(1)
+  await expect(first.locator('[data-note-text-input]')).toBeFocused()
 
-  const third = newBullet
-  await third.locator('[data-note-text-input]').fill('1. ')
-  await expect(third).toHaveClass(/note-numbered/)
-  await third.locator('[data-note-text-input]').fill('Numbered')
-  await placeCaretAtEnd(third.locator('[data-note-text-input]'))
-  await third.locator('[data-note-text-input]').press('Enter')
+  await toolbar.getByRole('button', { name: 'Numbered list' }).click()
+  await expect(first).toHaveClass(/note-numbered/)
+  await placeCaretAtEnd(first.locator('[data-note-text-input]'))
+  await first.locator('[data-note-text-input]').press('Enter')
 
-  await expect(page.locator('.note-item')).toHaveCount(4)
-  const fourth = page.locator('.note-item').nth(3)
-  await expect(fourth).toHaveClass(/note-numbered/)
-  const fourthId = await fourth.getAttribute('data-note-item-id')
-  expect(fourthId).not.toBeNull()
-  await fourth.locator('[data-note-text-input]').press('Enter')
+  await expect(page.locator('.note-item')).toHaveCount(2)
+  await expect(page.locator('.note-item').nth(1)).toHaveClass(/note-numbered/)
+  await page.locator('.note-item').nth(1).locator('[data-note-text-input]').press('Enter')
 
-  await expect(page.locator('.note-item')).toHaveCount(5)
-  await expect(page.locator('.note-item').nth(3)).toHaveAttribute('data-note-item-id', fourthId!)
-  const newNumbered = page.locator('.note-item').nth(4)
-  await expect(newNumbered).toHaveClass(/note-numbered/)
-  await expect(newNumbered.locator('[data-note-text-input]')).toBeFocused()
+  await expect(page.locator('.note-item')).toHaveCount(1)
+  await expect(first.locator('[data-note-text-input]')).toBeFocused()
+
+  await toolbar.getByRole('button', { name: 'Checklist' }).click()
+  await expect(first).toHaveClass(/note-list-item/)
+  await expect(first.getByLabel('Mark checked')).toBeVisible()
+  await placeCaretAtEnd(first.locator('[data-note-text-input]'))
+  await first.locator('[data-note-text-input]').press('Enter')
+
+  await expect(page.locator('.note-item')).toHaveCount(2)
+  const emptyChecklist = page.locator('.note-item').nth(1)
+  await expect(emptyChecklist.getByLabel('Mark checked')).toBeVisible()
+  await emptyChecklist.locator('[data-note-text-input]').press('Enter')
+
+  await expect(page.locator('.note-item')).toHaveCount(1)
+  await expect(first.locator('[data-note-text-input]')).toBeFocused()
 })
 
 test('Enter on an empty note paragraph moves the caret to the new paragraph below', async ({ page }) => {
@@ -1181,8 +1182,9 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   expect(emptyChecklistId).toBeTruthy()
   const emptyChecklistItem = page.locator(`[data-note-item-id="${emptyChecklistId}"]`)
   await emptyChecklistItem.locator('[data-note-text-input]').press('Enter')
-  await expect(noteBlocks).toHaveCount(4)
-  await expect(emptyChecklistItem).not.toHaveClass(/note-list-item/)
+  await expect(noteBlocks).toHaveCount(3)
+  await expect(emptyChecklistItem).toHaveCount(0)
+  await expect(checklistBlock).toBeFocused()
   await expect(page.locator('[data-note-text-input]').nth(1)).toContainText('Formatted ideas')
 
   await page.getByRole('button', { name: 'Copy note link' }).click()

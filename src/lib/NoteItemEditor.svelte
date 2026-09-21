@@ -117,7 +117,12 @@
   }
 
   async function handleSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
-    if ((item.kind === 'heading' || item.kind === 'checklist' || item.kind === 'quote') && !before.text.trim() && !after.text.trim() && !`${before.html}${after.html}`.includes('data-balance-image=')) {
+    const isEmpty = !before.text.trim() && !after.text.trim() && !`${before.html}${after.html}`.includes('data-balance-image=')
+    if (isEmpty && (item.kind === 'bullet' || item.kind === 'numbered' || item.kind === 'checklist')) {
+      await handleBackspaceEmpty()
+      return
+    }
+    if (isEmpty && (item.kind === 'heading' || item.kind === 'quote')) {
       patchItem(noteId, item.id, { kind: 'paragraph', done: false })
       await tick()
       focusInput(item.id, 'start')
