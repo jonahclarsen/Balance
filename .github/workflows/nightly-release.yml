@@ -30,7 +30,7 @@ jobs:
           fetch-depth: 0
           ref: main
 
-      - name: Tag the latest untagged main commit
+      - name: Select or create the latest main release tag
         id: release
         run: |
           set -euo pipefail
@@ -44,7 +44,35 @@ jobs:
           while IFS= read -r candidate; do
             if [[ "$candidate" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-all)?$ ]]; then
               echo "$TARGET_SHA already has release tag $candidate"
-              echo "created=false" >> "$GITHUB_OUTPUT"
+              # Desktop-inclusive releases use the separate push coordinator.
+              if [[ "$candidate" == *-all ]]; then
+                echo "dispatch=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+
+              # A tag is not proof of publication: a previous build or dispatch
+              # may have failed. API errors must fail this job, not look like a
+              # missing release. Draft releases still need publication.
+              PUBLISHED_TAGS="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" \
+                --jq '.[] | select(.draft == false) | .tag_name')"
+              if grep -Fxq "$candidate" <<< "$PUBLISHED_TAGS"; then
+                echo "$candidate is already published"
+                echo "dispatch=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+
+              ACTIVE_RUNS="$(gh run list --repo "$GITHUB_REPOSITORY" \
+                --workflow android.yml --branch "$candidate" --event workflow_dispatch \
+                --limit 100 --json status --jq '[.[] | select(.status != "completed")] | length')"
+              if [[ "$ACTIVE_RUNS" != "0" ]]; then
+                echo "$candidate already has an active Android build"
+                echo "dispatch=false" >> "$GITHUB_OUTPUT"
+                exit 0
+              fi
+
+              echo "Retrying unpublished release $candidate"
+              echo "dispatch=true" >> "$GITHUB_OUTPUT"
+              echo "tag=$candidate" >> "$GITHUB_OUTPUT"
               exit 0
             fi
           done < <(git tag --points-at "$TARGET_SHA")
@@ -77,11 +105,11 @@ jobs:
           git push origin "refs/tags/$RELEASE_TAG"
 
           echo "Created $RELEASE_TAG at $TARGET_SHA"
-          echo "created=true" >> "$GITHUB_OUTPUT"
+          echo "dispatch=true" >> "$GITHUB_OUTPUT"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
       - name: Dispatch Android release build
-        if: steps.release.outputs.created == 'true'
+        if: steps.release.outputs.dispatch == 'true'
         env:
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
@@ -89,7 +117,7 @@ jobs:
 
           # GITHUB_TOKEN tag pushes intentionally do not trigger other
           # workflows. workflow_dispatch is allowed, so start the existing
-          # Android workflow explicitly at the newly-created tag.
+          # Android workflow explicitly at the selected release tag.
           for attempt in 1 2 3; do
             if gh workflow run android.yml \
               --repo "$GITHUB_REPOSITORY" \
