@@ -5707,6 +5707,15 @@ return rows`
             >
               <svg aria-hidden="true" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2" /><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" /></svg>
             </button>
+            <button
+              class="mobile-header-delete-button"
+              type="button"
+              title="Delete selected tasks"
+              aria-label="Delete selected tasks"
+              on:click={deleteSelectedItems}
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg>
+            </button>
           {/if}
           <button class="mobile-header-undo-button" data-completion-undo-trigger type="button" title="Undo" aria-label="Undo" on:click={() => { void undoAndOpenDestination() }}>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 14-5-5 5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H12" /></svg>
