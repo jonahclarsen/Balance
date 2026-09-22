@@ -947,3 +947,39 @@ test('desktop field focus and resizing do not add mobile keyboard padding', asyn
   await page.waitForTimeout(100)
   expect(await page.evaluate(() => document.documentElement.style.paddingBottom)).toBe('')
 })
+
+for (const placement of ['before', 'inside', 'after'] as const) {
+  test(`task drag preserves the caret when dropped ${placement} another task`, async ({ page }) => {
+    const source = page.locator('[data-plan-item-id="trailing"]')
+    const editor = source.locator('[data-plan-text-input]')
+    const target = page.locator('[data-plan-item-id="parent"]')
+    await editor.evaluate((element) => {
+      element.innerHTML = 'First<br><strong>formatted task</strong>'
+      element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+      element.focus()
+      const text = element.querySelector('strong')!.firstChild!
+      window.getSelection()!.setBaseAndExtent(text, 4, text, 4)
+    })
+    const handle = await source.locator('.drag-handle').boundingBox()
+    const drop = await target.boundingBox()
+    if (!handle || !drop) throw new Error('Missing task drag geometry')
+    await page.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(drop.x + drop.width / 2,
+      drop.y + drop.height * ({ before: 0.1, inside: 0.5, after: 0.9 }[placement]), { steps: 5 })
+    await page.mouse.up()
+    await expect(source).toHaveAttribute('data-plan-item-depth', placement === 'inside' ? '1' : '0')
+    await expect(editor).toBeFocused()
+    await expect.poll(() => editor.evaluate((element) => {
+      const selection = window.getSelection()!
+      return {
+        inside: element.contains(selection.anchorNode),
+        text: selection.anchorNode?.textContent,
+        anchor: selection.anchorOffset,
+        focus: selection.focusOffset,
+      }
+    })).toEqual({ inside: true, text: 'formatted task', anchor: 4, focus: 4 })
+    await page.keyboard.type('X')
+    await expect(editor).toHaveText('FirstformXatted task')
+  })
+}

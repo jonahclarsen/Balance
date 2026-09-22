@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { onDestroy } from 'svelte'
+  import { onDestroy, tick } from 'svelte'
+  import { noteTextOffset, noteTextPoint } from './noteSelection'
   import type { Id, MovePlacement } from './types'
 
   type TreeItemRowKind = 'plan' | 'day-template' | 'list-template' | 'metric' | 'note'
@@ -24,6 +25,36 @@
   export let onRowClick: (event: MouseEvent) => void = () => {}
 
   type DropTarget = { element: HTMLElement; containerId: Id; targetId: Id; placement: MovePlacement }
+
+  type DragSelection = { inputId: string; anchor: number; focus: number }
+  let dragSelection: DragSelection | null = null
+
+  function captureDragSelection(handle: HTMLElement): DragSelection | null {
+    const editor = document.activeElement
+    const selection = document.getSelection()
+    if (!(editor instanceof HTMLElement) || !editor.dataset.richTextInputId ||
+      !handle.closest('.item-shell, .template-item')?.contains(editor) ||
+      !selection?.anchorNode || !selection.focusNode ||
+      !editor.contains(selection.anchorNode) || !editor.contains(selection.focusNode)) return null
+    return {
+      inputId: editor.dataset.richTextInputId,
+      anchor: noteTextOffset(editor, selection.anchorNode, selection.anchorOffset),
+      focus: noteTextOffset(editor, selection.focusNode, selection.focusOffset),
+    }
+  }
+
+  async function restoreDragSelection(saved: DragSelection | null) {
+    if (!saved) return
+    // Reparenting can destroy the original editor, so find its replacement after rendering.
+    const selector = `[data-item-container-id="${CSS.escape(containerId)}"] [data-rich-text-input-id="${CSS.escape(saved.inputId)}"]`
+    await tick()
+    const editor = document.querySelector<HTMLElement>(selector)
+    if (!editor) return
+    editor.focus({ preventScroll: true })
+    const anchor = noteTextPoint(editor, saved.anchor)
+    const focus = noteTextPoint(editor, saved.focus)
+    document.getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
+  }
 
   let dragging = false
   let dragPointerId: number | null = null
@@ -96,6 +127,7 @@
   function startPointerDrag(event: PointerEvent) {
     event.preventDefault()
     event.stopPropagation()
+    dragSelection = captureDragSelection(event.currentTarget as HTMLElement)
     const focusedElement = document.activeElement
     if ((event.pointerType === 'touch' || usesMobileLayout()) && focusedElement instanceof HTMLElement) {
       // Preventing the drag handle's default focus change can otherwise leave a
@@ -210,11 +242,12 @@
     dragging = false
     removeDragListeners()
     stopAutoScroll()
-    if (!target) return
-
-    if (target.targetId !== itemId) {
+    const savedSelection = dragSelection
+    dragSelection = null
+    if (target && target.containerId === containerId && target.targetId !== itemId) {
       moveItem(containerId, itemId, target.targetId, target.placement)
     }
+    void restoreDragSelection(savedSelection)
   }
 
   function cancelPointerDrag(event: PointerEvent) {
@@ -223,6 +256,9 @@
     clearDropMarker()
     removeDragListeners()
     stopAutoScroll()
+    const savedSelection = dragSelection
+    dragSelection = null
+    void restoreDragSelection(savedSelection)
   }
 
   function removeDragListeners() {
