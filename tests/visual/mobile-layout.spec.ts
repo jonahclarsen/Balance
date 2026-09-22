@@ -949,10 +949,10 @@ test('desktop field focus and resizing do not add mobile keyboard padding', asyn
 })
 
 for (const placement of ['before', 'inside', 'after'] as const) {
-  test(`task drag preserves the caret when dropped ${placement} another task`, async ({ page }) => {
+  test(`task drag preserves the caret through undo and redo when dropped ${placement} another task`, async ({ page }, testInfo) => {
     const source = page.locator('[data-plan-item-id="trailing"]')
     const editor = source.locator('[data-plan-text-input]')
-    const target = page.locator('[data-plan-item-id="parent"]')
+    const target = page.locator(`[data-plan-item-id="${placement === 'after' ? 'filler_0' : 'parent'}"]`)
     await editor.evaluate((element) => {
       element.innerHTML = 'First<br><strong>formatted task</strong>'
       element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
@@ -969,17 +969,36 @@ for (const placement of ['before', 'inside', 'after'] as const) {
       drop.y + drop.height * ({ before: 0.1, inside: 0.5, after: 0.9 }[placement]), { steps: 5 })
     await page.mouse.up()
     await expect(source).toHaveAttribute('data-plan-item-depth', placement === 'inside' ? '1' : '0')
-    await expect(editor).toBeFocused()
-    await expect.poll(() => editor.evaluate((element) => {
-      const selection = window.getSelection()!
-      return {
-        inside: element.contains(selection.anchorNode),
-        text: selection.anchorNode?.textContent,
-        anchor: selection.anchorOffset,
-        focus: selection.focusOffset,
-      }
-    })).toEqual({ inside: true, text: 'formatted task', anchor: 4, focus: 4 })
+    async function expectCaret(offset: number) {
+      await expect(editor).toBeFocused()
+      await expect.poll(() => editor.evaluate((element) => {
+        const selection = window.getSelection()!
+        return {
+          inside: element.contains(selection.anchorNode),
+          text: selection.anchorNode?.textContent,
+          anchor: selection.anchorOffset,
+          focus: selection.focusOffset,
+        }
+      })).toEqual({ inside: true, text: 'formatted task', anchor: offset, focus: offset })
+    }
+    await expectCaret(4)
+    // Preserve the current caret, even if it moved after the drag.
+    await page.keyboard.press('ArrowRight')
+    await expectCaret(5)
+    if (testInfo.project.name === 'mobile' && placement === 'before') await page.locator('.mobile-header-undo-button').click()
+    else await page.keyboard.press('ControlOrMeta+z')
+    await expect(page.locator('[data-plan-item-depth="0"]').nth(1)).toHaveAttribute('data-plan-item-id', 'trailing')
+    await expect(source).toHaveAttribute('data-plan-item-depth', '0')
+    await expectCaret(5)
+    if (testInfo.project.name === 'mobile' && placement === 'before') await page.getByRole('button', { name: 'Redo', exact: true }).click()
+    else await page.keyboard.press('ControlOrMeta+Shift+z')
+    if (placement !== 'inside') {
+      await expect(page.locator('[data-plan-item-depth="0"]').nth(placement === 'before' ? 0 : 2))
+        .toHaveAttribute('data-plan-item-id', 'trailing')
+    }
+    await expect(source).toHaveAttribute('data-plan-item-depth', placement === 'inside' ? '1' : '0')
+    await expectCaret(5)
     await page.keyboard.type('X')
-    await expect(editor).toHaveText('FirstformXatted task')
+    await expect(editor).toHaveText('FirstformaXtted task')
   })
 }

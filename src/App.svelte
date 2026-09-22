@@ -77,6 +77,7 @@
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
   import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
+  import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
@@ -933,6 +934,7 @@ return rows`
 
   async function applyHistoryAndReveal(direction: 'undo' | 'redo') {
     const before = $plannerStore
+    const editorSelection = captureTreeEditorSelection()
     const latestOperationId = before.operations.at(-1)?.id
     const completionCaret = direction === 'undo' && completionUndoCaret &&
       completionUndoCaret.operationId === latestOperationId && completionUndoCaretIsUntouched()
@@ -945,6 +947,8 @@ return rows`
       if (destination) await revealHistoryDestination(destination)
       if (completionCaret) {
         await focusTaskById(completionCaret.containerId, completionCaret.completedItemId, completionCaret.completedCaret ?? undefined)
+      } else if (destination?.entityId === editorSelection?.containerId) {
+        restoreTreeEditorSelection(editorSelection)
       }
       historyNotice = `${direction === 'undo' ? 'Undid' : 'Redid'} ${destination?.label ?? 'change'}`
       stopKeyboardScroll()
@@ -5753,7 +5757,7 @@ return rows`
               <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" /></svg>
             </button>
           {/if}
-          <button class="mobile-header-undo-button" data-completion-undo-trigger type="button" title="Undo" aria-label="Undo" on:click={() => { void undoAndOpenDestination() }}>
+          <button class="mobile-header-undo-button" data-completion-undo-trigger type="button" title="Undo" aria-label="Undo" on:pointerdown|preventDefault on:click={() => { void undoAndOpenDestination() }}>
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m9 14-5-5 5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H12" /></svg>
           </button>
         {/if}
@@ -5767,7 +5771,7 @@ return rows`
   {#if isMobile && (historyNotice || $redoAvailable)}
     <div class="history-notice" role="status">
       <span>{historyNotice || 'Change undone'}</span>
-      {#if $redoAvailable}<button type="button" on:click={() => { void redoAndOpenDestination() }}>Redo</button>{/if}
+      {#if $redoAvailable}<button type="button" on:pointerdown|preventDefault on:click={() => { void redoAndOpenDestination() }}>Redo</button>{/if}
     </div>
   {/if}
 
@@ -5837,6 +5841,7 @@ return rows`
           type="button"
           title="Undo"
           aria-label="Undo"
+          on:pointerdown|preventDefault
           on:click={() => { void undoAndOpenDestination() }}
         >↶ Undo</button>
       {/if}
