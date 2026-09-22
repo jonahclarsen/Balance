@@ -473,14 +473,22 @@ async function update() {
   $('weight').disabled = v.font === 'DM Serif Display';
   const family = v.font === fonts[0] ? original : '"' + v.font + '", ' + (['Lora','DM Serif Display','Fraunces'].includes(v.font) ? 'serif' : 'sans-serif');
   const style = {fontFamily:family,fontSize:v.size+'px',fontWeight:weight,letterSpacing:v.spacing+'em',textTransform:v.uppercase?'uppercase':'none'};
-  Object.assign($('preview-heading').style,style);
   $('size-value').textContent = v.size+'px'; $('spacing-value').textContent = v.spacing+'em';
   $('css').value = (v.font === fonts[0] ? '' : '/* Load '+v.font+' before applying. */\n') + '.paste-review-head .eyebrow {\n  font-family: '+family+';\n  font-size: '+style.fontSize+';\n  font-weight: '+weight+';\n  letter-spacing: '+style.letterSpacing+';\n  text-transform: '+style.textTransform+';\n}';
   persist();
   $('status').textContent = v.font === fonts[0] ? 'Original Balance heading.' : 'Loading '+v.font+'…';
-  if(v.font === fonts[0]) return;
-  try { await loadFont(v.font); const faces = await document.fonts.load(weight+' '+v.size+'px "'+v.font+'"'); if (!faces.length) throw Error(); if(version === revision) $('status').textContent = v.font+' loaded.'+(v.font === 'DM Serif Display' ? ' Available in regular weight only.' : ''); }
-  catch { if(version === revision) $('status').textContent = 'Could not load '+v.font+'. Showing a fallback; check your internet connection.'; }
+  if(v.font === fonts[0]) { Object.assign($('preview-heading').style,style); return; }
+  try {
+    await loadFont(v.font);
+    const text = $('preview-heading').textContent;
+    const faces = await document.fonts.load(weight+' '+v.size+'px "'+v.font+'"', v.uppercase ? text.toUpperCase() : text);
+    if (!faces.length) throw Error();
+    if(version !== revision) return;
+    // Keep the previous preview until the exact face and weight are ready.
+    Object.assign($('preview-heading').style,style);
+    $('status').textContent = v.font+' loaded.'+(v.font === 'DM Serif Display' ? ' Available in regular weight only.' : '');
+  }
+  catch { if(version === revision) $('status').textContent = 'Could not load '+v.font+'. Keeping the previous preview; check your internet connection.'; }
 }
 function renderFavorites() {
   $('favorites').replaceChildren();
