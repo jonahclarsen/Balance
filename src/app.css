@@ -6405,11 +6405,11 @@ textarea.note-title {
   min-width: 0;
 }
 
-.note-bullet > .note-block::before,
 .note-numbered > .note-block {
   align-items: baseline;
 }
 
+.note-bullet > .note-block::before,
 .note-numbered > .note-block::before {
   flex: 0 0 20px;
   padding-top: 5px;
