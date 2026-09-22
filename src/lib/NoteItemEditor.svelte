@@ -373,10 +373,14 @@
   function handleTextChange(html: string, text: string, options?: TextChangeOptions, editor?: HTMLDivElement) {
     const shortcut = html.includes('data-balance-image=') ? null : markdownKind(text)
     if (shortcut && !(item.kind === 'heading' && shortcut.kind === 'numbered')) {
+      const nextOffset = editor ? Math.max(0, caretOffset(editor) - (text.length - shortcut.content.length)) : 0
       const nextHTML = shortcut.content ? escapeHTML(shortcut.content) : ''
       patchItem(noteId, item.id, { kind: shortcut.kind, done: false, html: nextHTML, text: shortcut.content }, options)
       slashQuery = null
-      if (editor) replaceEditorContent(editor, nextHTML)
+      if (editor) {
+        editor.innerHTML = nextHTML
+        focusInputAtOffset(item.id, nextOffset)
+      }
       return
     }
 

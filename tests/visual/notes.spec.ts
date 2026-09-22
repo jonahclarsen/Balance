@@ -824,6 +824,30 @@ test('shift-clicking extends a note selection across list items', async ({ page 
   })
 })
 
+for (const prefix of ['- ', '* ', '1. ', '[] ', '[ ] ']) {
+  test(`typing ${JSON.stringify(prefix)} before existing note text keeps the caret at the start`, async ({ page }) => {
+    await page.goto('/')
+    await page.evaluate(() => localStorage.clear())
+    await page.reload()
+    await openNotesView(page)
+    await page.getByRole('button', { name: '+ New note' }).click()
+
+    const editor = page.locator('[data-note-text-input]').first()
+    await editor.fill('Existing paragraph')
+    await placeCaretAtOffset(editor, 0)
+    await editor.pressSequentially(prefix)
+
+    await expect(page.locator('.note-item').first()).toHaveClass(/note-list-item/)
+    await expect(editor).toHaveText('Existing paragraph')
+    await expect.poll(() => noteSelectionEndpoints(page)).toEqual({
+      anchor: { text: 'Existing paragraph', offset: 0 },
+      focus: { text: 'Existing paragraph', offset: 0 },
+    })
+    await editor.pressSequentially('New ')
+    await expect(editor).toHaveText('New Existing paragraph')
+  })
+}
+
 for (const kind of ['Bulleted list', 'Numbered list', 'Checklist']) {
   test(`Enter turns an empty ${kind} item into a paragraph in place`, async ({ page }) => {
     await page.goto('/')
