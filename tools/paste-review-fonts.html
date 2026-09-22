@@ -1,0 +1,509 @@
+<!doctype html>
+<html lang="en" data-theme="graphite">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Balance — paste review font preview</title>
+<style>/* Snapshot of Balance's modal, controls, and Graphite palette. Synthetic content only. */
+:root {
+  color-scheme: light;
+  color: var(--ink);
+  background: var(--app-background);
+  font-family: var(--font-interface);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  --font-interface: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", sans-serif;
+  --font-content: var(--font-interface);
+  --font-mono: "Cascadia Mono", "Roboto Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --app-background: #f1f6f2;
+  --paper: #fffdf8;
+  --paper-strong: #ffffff;
+  --ink: #1d2428;
+  --muted: #687276;
+  --line: #d8d4ca;
+  --line-strong: #c3bdb0;
+  --accent: #2f6f68;
+  --accent-strong: #245a54;
+  --theme-hue: 173.4;
+  --list-progress-stop-1: hsl(var(--theme-hue) 56% 52%);
+  --list-progress-stop-2: hsl(var(--theme-hue) 58% 57%);
+  --list-progress-stop-3: hsl(var(--theme-hue) 52% 56%);
+  --list-progress-stop-4: hsl(var(--theme-hue) 49% 58%);
+  --list-progress-stop-5: hsl(var(--theme-hue) 77% 67%);
+  --list-progress-stop-6: hsl(var(--theme-hue) 90% 69%);
+  --list-progress-stop-7: hsl(var(--theme-hue) 93% 64%);
+  --list-progress-stop-8: hsl(var(--theme-hue) 89% 69%);
+  --theme-checkbox: #2f6f68;
+  --theme-done: #3f9d54;
+  --checkbox-checked: var(--theme-checkbox);
+  --checkbox-checked-hover: color-mix(in srgb, var(--theme-checkbox) 88%, black);
+  --danger: #b4453d;
+  --shadow: 0 14px 34px rgba(38, 35, 27, 0.09);
+  --sidebar: #e0ece4;
+  --active-nav: #dfece7;
+  --row-border: rgba(216, 212, 202, 0.75);
+  --drop-inside: #e8f2ee;
+  --done-tint: color-mix(in srgb, var(--theme-done) 11%, transparent);
+  --time-border: #c6d6d1;
+  --time-bg: #eef7f3;
+  --time-warn-bg: #fbf0e1;
+  --time-warn-ink: #9a5e22;
+  --focus-ring: rgba(47, 111, 104, 0.25);
+  --goal-segment-border-lightness: 58%;
+  --goal-segment-current-border-lightness: 50%;
+  --goal-segment-bg-lightness: 96%;
+  --goal-segment-completed-bg-lightness: 89%;
+  --goal-open-mark-lightness: 50%;
+}
+
+
+:root[data-theme='graphite'] {
+  --app-background: #f0f0ee;
+  --paper: #f9f9f7;
+  --paper-strong: #ffffff;
+  --ink: #191918;
+  --muted: #6d6d69;
+  --line: #d1d1cd;
+  --line-strong: #b3b3ad;
+  --accent: #3a3a38;
+  --accent-strong: #151514;
+  --theme-checkbox: #30302f;
+  --theme-done: #777774;
+  --danger: #a33f3b;
+  --shadow: 0 14px 34px rgb(27 27 25 / 0.1);
+  --sidebar: #e4e4e1;
+  --active-nav: #d3d3cf;
+  --row-border: rgb(209 209 205 / 0.82);
+  --drop-inside: #ddddda;
+  --time-border: #c2c2bd;
+  --time-bg: #e9e9e6;
+  --focus-ring: rgb(58 58 56 / 0.24);
+}
+
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  /* Keep content clear of the Android status bar / notch and the iOS home
+     indicator. The webview renders edge-to-edge on mobile; these insets are 0
+     on desktop, so this is a no-op there. Requires viewport-fit=cover. */
+  padding-top: env(safe-area-inset-top);
+  padding-right: env(safe-area-inset-right);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  border: 1px solid var(--line);
+  background: var(--paper-strong);
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--line-strong);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+input,
+select {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper-strong);
+  color: var(--ink);
+  padding: 8px 10px;
+}
+
+input:focus,
+select:focus,
+button:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1 {
+  font-size: 28px;
+  line-height: 1;
+}
+
+h2 {
+  font-size: 28px;
+  line-height: 1.15;
+}
+
+
+.eyebrow {
+  margin-bottom: 5px;
+  color: var(--accent-strong);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+
+.paste-review-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(29, 36, 40, 0.42);
+  z-index: 100;
+}
+
+.paste-review {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+  width: min(620px, 100%);
+  max-height: min(760px, calc(100dvh - 40px));
+  overflow: hidden;
+  gap: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  box-shadow: 0 24px 80px rgba(20, 24, 26, 0.22);
+  padding: 24px;
+}
+
+.paste-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.paste-review-head h2 {
+  margin: 0;
+}
+
+.paste-review-card {
+  /* Flex column (like the real .plan-row) so the card grows with wrapped text.
+     A grid with align-content: center sized the row shorter than its content and
+     centred it, letting long items bleed past the card border. */
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper-strong);
+  padding: 8px 12px;
+}
+
+.paste-review-list {
+  display: grid;
+  /* Pack rows to their own content height. The list has a definite height (the
+     dialog's 1fr row), and the default align-content: stretch would divide that
+     height equally across the cards — capping tall items so their text spills
+     out. Starting the rows lets each card grow to fit and the list scroll. */
+  align-content: start;
+  grid-auto-rows: min-content;
+  min-height: 0;
+  gap: 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 12px;
+}
+
+.paste-review-item {
+  position: relative;
+  height: auto;
+  margin-left: calc(var(--paste-depth) * 18px);
+  opacity: 0.62;
+  transform-origin: center;
+  transition: border-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease, transform 160ms ease;
+}
+
+.paste-review-item.current {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+  opacity: 1;
+  transform: scale(1.01);
+}
+
+.paste-review-item.kept {
+  opacity: 0.78;
+  border-color: color-mix(in srgb, var(--done-tint, #3f9d54) 48%, var(--line));
+}
+
+.paste-review-item.removed {
+  display: none;
+}
+
+.paste-review-item.rejecting {
+  pointer-events: none;
+  animation: paste-review-sweep 420ms cubic-bezier(0.55, -0.15, 0.82, 0.35) forwards;
+}
+
+@keyframes paste-review-sweep {
+  0% { transform: translateX(0) rotate(0); opacity: 1; }
+  35% { transform: translateX(-12px) rotate(-1.5deg); opacity: 1; }
+  100% { transform: translateX(130%) rotate(7deg); opacity: 0; }
+}
+
+.paste-review-card.done {
+  background: var(--done-tint);
+}
+
+.paste-review-line {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 6px;
+}
+
+.paste-review-text {
+  min-width: 0;
+  margin: 0;
+  font-size: 17px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.paste-review-text.empty {
+  color: var(--muted);
+  font-style: italic;
+}
+
+.paste-review-edit {
+  width: 100%;
+  min-height: 36px;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--paper-strong);
+  font-family: inherit;
+  font-size: 17px;
+  line-height: 1.4;
+  resize: none;
+  overflow: hidden;
+  field-sizing: content;
+}
+
+.paste-review-cooldown {
+  overflow: hidden;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--line);
+}
+
+.paste-review-cooldown-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+}
+
+/* Once the read-cooldown elapses the bar turns green to signal Enter is armed. */
+.paste-review-cooldown.ready .paste-review-cooldown-fill {
+  background: var(--done-tint, #3f9d54);
+}
+
+.paste-review-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.paste-review-actions .primary {
+  margin-left: auto;
+}
+
+.paste-review-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+
+.check-target {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+
+.check {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  background-color: var(--paper-strong);
+  background-position: center;
+  background-repeat: no-repeat;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+.check:hover {
+  border-color: var(--checkbox-checked);
+}
+
+.check:checked {
+  border-color: var(--checkbox-checked);
+  background-color: var(--checkbox-checked);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 12'%3E%3Cpath d='m2 6 3 3 7-7' fill='none' stroke='white' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.4'/%3E%3C/svg%3E");
+  background-size: 14px 12px;
+}
+
+
+.primary {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: white;
+}
+
+
+.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+
+/* Preview workspace; the modal retains its application dimensions and typography. */
+body { display:grid; grid-template-columns:320px minmax(0,1fr); }
+.settings { padding:28px 24px; background:var(--paper); border-right:1px solid var(--line); height:100dvh; overflow:auto; }
+.settings h1 { font-size:22px; line-height:1.2; margin-bottom:10px; }
+.settings p { color:var(--muted); font-size:13px; line-height:1.5; margin-bottom:20px; }
+.settings label { display:block; font-size:13px; font-weight:600; margin:20px 0 7px; }
+.settings select,.settings input[type=range] { width:100%; }
+.settings .row { display:flex; gap:8px; margin-top:10px; }
+.settings .row button { flex:1; font-size:13px; }
+.settings .toggle { display:flex; align-items:center; gap:8px; }
+.settings output { float:right; color:var(--muted); font-weight:400; }
+.settings textarea { width:100%; height:150px; resize:vertical; font:12px/1.6 monospace; background:var(--paper-strong); color:var(--ink); border:1px solid var(--line); border-radius:6px; padding:10px; }
+#status { min-height:40px; margin:12px 0 0; }
+#favorites { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+#favorites button { font-size:12px; }
+.stage { position:relative; min-width:0; height:100dvh; background:var(--app-background); }
+.paste-review-backdrop { position:absolute; z-index:0; }
+.stage-note { position:absolute; bottom:10px; left:0; right:0; text-align:center; font-size:12px; color:var(--ink); }
+.ghost { display:grid; place-items:center; }
+.check { flex-shrink:0; }
+@media(max-width:900px) { body { grid-template-columns:1fr; } .settings { height:auto; border-right:0; } .stage { height:700px; } .paste-review { max-height:660px; } }
+</style></head>
+<body>
+<aside class="settings" aria-label="Font settings">
+<h1>Find the right font</h1>
+<p>20 handpicked alternatives for “Review pasted items.” Graphite modal, original spacing, and example tasks. Web fonts require internet.</p>
+<label for="font">Heading font</label><select id="font"></select>
+<div class="row"><button id="previous">Previous</button><button id="next">Next</button></div>
+<label for="size">Size <output id="size-value"></output></label><input id="size" type="range" min="10" max="28" step="1" value="12">
+<label for="weight">Weight</label><select id="weight"><option value="400">Regular · 400</option><option value="500">Medium · 500</option><option value="600">Semibold · 600</option><option value="700" selected>Bold · 700</option></select>
+<label for="spacing">Letter spacing <output id="spacing-value"></output></label><input id="spacing" type="range" min="0" max="0.2" step="0.01" value="0.08">
+<label class="toggle"><input type="checkbox" id="uppercase" checked> Uppercase</label>
+<div class="row"><button id="favorite">Save favorite</button><button id="reset">Original settings</button></div>
+<div id="favorites" aria-label="Saved favorites"></div>
+<label for="css">CSS for your choice</label><textarea id="css" readonly spellcheck="false" aria-label="Selected heading CSS"></textarea>
+<div class="row"><button id="copy">Copy CSS</button></div><p id="status" role="status" aria-live="polite"></p>
+</aside>
+<main class="stage" aria-label="Example paste review modal">
+<div class="paste-review-backdrop"><section class="paste-review" aria-labelledby="paste-review-title">
+<div class="paste-review-head"><div><p class="eyebrow" id="preview-heading">Review pasted items</p><h2 id="paste-review-title">Item 2 of 5</h2></div><button class="ghost" id="restart" title="Reset example" aria-label="Reset example"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg></button></div>
+<div class="paste-review-list" aria-label="Items being pasted"></div>
+<div class="paste-review-cooldown ready"><div class="paste-review-cooldown-fill" style="width:100%"></div></div>
+<div class="paste-review-actions"><button id="skip">Skip (←)</button><button id="edit">Edit (E)</button><button class="primary" id="keep">Keep (→ / Enter)</button></div>
+<p class="paste-review-hint">1/5 kept so far</p>
+</section></div><p class="stage-note">Font preview · synthetic example · changes only the small heading</p>
+</main>
+<script>
+const fonts = ['Original (Balance)', 'Inter', 'Manrope', 'DM Sans', 'Plus Jakarta Sans', 'Outfit', 'Sora', 'Space Grotesk', 'Work Sans', 'Public Sans', 'IBM Plex Sans', 'Source Sans 3', 'Nunito Sans', 'Nunito', 'Quicksand', 'Rubik', 'Barlow', 'Figtree', 'Lora', 'DM Serif Display', 'Fraunces'];
+const $ = id => document.getElementById(id);
+const original = 'ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", sans-serif';
+const key = 'balance-font-preview.v1';
+let saved = {}; try { saved = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch {}
+let favorites = Array.isArray(saved.favorites) ? saved.favorites.filter(x => x && fonts.includes(x.font)).slice(0,30) : [];
+const loaded = new Map(); let revision = 0;
+fonts.forEach(name => $('font').add(new Option(name, name)));
+function restore(value) {
+  $('font').value = fonts.includes(value.font) ? value.font : fonts[0];
+  $('size').value = Number(value.size) || 12;
+  $('weight').value = ['400','500','600','700'].includes(String(value.weight)) ? value.weight : '700';
+  $('spacing').value = Number.isFinite(Number(value.spacing)) ? value.spacing : '0.08';
+  $('uppercase').checked = value.uppercase !== false;
+}
+function settings() { return {font:$('font').value,size:$('size').value,weight:$('weight').value,spacing:$('spacing').value,uppercase:$('uppercase').checked}; }
+function persist() { try { localStorage.setItem(key, JSON.stringify({ ...settings(), favorites })); } catch {} }
+function loadFont(name) {
+  if (!loaded.has(name)) {
+    const promise = new Promise((resolve,reject) => {
+      const link = document.createElement('link'); link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=' + encodeURIComponent(name).replace(/%20/g,'+') + ':wght@' + (name === 'DM Serif Display' ? '400' : '400;500;600;700') + '&display=swap';
+      link.onload = resolve; link.onerror = reject; document.head.append(link);
+    });
+    loaded.set(name,promise); promise.catch(() => loaded.delete(name));
+  }
+  return loaded.get(name);
+}
+async function update() {
+  const version = ++revision, v = settings();
+  const weight = v.font === 'DM Serif Display' ? '400' : v.weight;
+  $('weight').disabled = v.font === 'DM Serif Display';
+  const family = v.font === fonts[0] ? original : '"' + v.font + '", ' + (['Lora','DM Serif Display','Fraunces'].includes(v.font) ? 'serif' : 'sans-serif');
+  const style = {fontFamily:family,fontSize:v.size+'px',fontWeight:weight,letterSpacing:v.spacing+'em',textTransform:v.uppercase?'uppercase':'none'};
+  Object.assign($('preview-heading').style,style);
+  $('size-value').textContent = v.size+'px'; $('spacing-value').textContent = v.spacing+'em';
+  $('css').value = (v.font === fonts[0] ? '' : '/* Load '+v.font+' before applying. */\n') + '.paste-review-head .eyebrow {\n  font-family: '+family+';\n  font-size: '+style.fontSize+';\n  font-weight: '+weight+';\n  letter-spacing: '+style.letterSpacing+';\n  text-transform: '+style.textTransform+';\n}';
+  persist();
+  $('status').textContent = v.font === fonts[0] ? 'Original Balance heading.' : 'Loading '+v.font+'…';
+  if(v.font === fonts[0]) return;
+  try { await loadFont(v.font); const faces = await document.fonts.load(weight+' '+v.size+'px "'+v.font+'"'); if (!faces.length) throw Error(); if(version === revision) $('status').textContent = v.font+' loaded.'+(v.font === 'DM Serif Display' ? ' Available in regular weight only.' : ''); }
+  catch { if(version === revision) $('status').textContent = 'Could not load '+v.font+'. Showing a fallback; check your internet connection.'; }
+}
+function renderFavorites() {
+  $('favorites').replaceChildren();
+  favorites.forEach((v,i) => { const button = document.createElement('button'); button.textContent = v.font+' · '+v.size+'px'; button.title='Restore favorite '+(i+1); button.onclick = () => {restore(v);update();}; $('favorites').append(button); });
+}
+['font','size','weight','spacing','uppercase'].forEach(id => $(id).addEventListener('input',update));
+$('previous').onclick = () => { $('font').selectedIndex = ($('font').selectedIndex+fonts.length-1)%fonts.length; update(); };
+$('next').onclick = () => { $('font').selectedIndex = ($('font').selectedIndex+1)%fonts.length; update(); };
+$('reset').onclick = () => {restore({});update();};
+$('favorite').onclick = () => { const v=settings(); if(!favorites.some(f=>JSON.stringify(f)===JSON.stringify(v))) favorites.push(v); favorites=favorites.slice(-30);persist();renderFavorites();$('status').textContent='Favorite saved in this browser.'; };
+$('copy').onclick = async () => { try { await navigator.clipboard.writeText($('css').value); $('status').textContent='CSS copied.'; } catch { $('css').focus();$('css').select();$('status').textContent='Press Command+C or Ctrl+C to copy the selected CSS.'; } };
+const examples=['Plan the week ahead','Make time for a walk outside','Try a new recipe for dinner','Read a chapter before bed','Write down one good thing from today'];
+let index=1, kept=1, items=[...examples];
+function renderExample() {
+ const list=document.querySelector('.paste-review-list'); list.replaceChildren();
+ items.forEach((text,i)=>{ const card=document.createElement('div'); card.className='paste-review-card paste-review-item'+(i===index?' current':i<index?' kept':''); card.style.setProperty('--paste-depth','0');
+ const line=document.createElement('div');line.className='paste-review-line'; const label=document.createElement('label');label.className='check-target';const check=document.createElement('input');check.type='checkbox';check.className='check';check.disabled=i!==index;check.setAttribute('aria-label','Complete '+text);label.append(check);const copy=document.createElement('div');copy.className='paste-review-text';copy.textContent=text;line.append(label,copy);card.append(line);list.append(card); });
+ $('paste-review-title').textContent='Item '+(index+1)+' of '+items.length;document.querySelector('.paste-review-hint').textContent=kept+'/'+items.length+' kept so far';
+}
+function resetExample(){ index=1;kept=1;items=[...examples];renderExample(); }
+$('restart').onclick=resetExample;
+$('keep').onclick=()=>{if(index===items.length-1){resetExample();return;}kept++;index++;renderExample();};
+$('skip').onclick=()=>{if(items.length===1){resetExample();return;}items.splice(index,1);index=Math.min(index,items.length-1);renderExample();};
+$('edit').onclick=()=>{const text=document.querySelector('.current .paste-review-text');text.contentEditable='true';text.focus();text.onblur=()=>{items[index]=text.textContent; text.contentEditable='false';};};
+restore(saved);renderFavorites();renderExample();update();
+</script></body></html>
