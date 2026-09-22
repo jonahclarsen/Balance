@@ -432,7 +432,9 @@
     beforeRange.selectNodeContents(activeEditor)
     beforeRange.setEnd(range.startContainer, range.startOffset)
     const fragment = beforeRange.cloneContents()
-    return !fragment.querySelector(IMAGE_SELECTOR) && htmlToPlainText(sanitizeFragment(fragment)) === ''
+    // A line break before the caret is editable content, even though the
+    // task's plain-text representation omits it. Let native Backspace delete it.
+    return !fragment.querySelector(`${IMAGE_SELECTOR}, br`) && htmlToPlainText(sanitizeFragment(fragment)) === ''
   }
 
   function isCaretAtEnd(activeEditor: HTMLDivElement) {

@@ -3961,6 +3961,27 @@ test('backspace at the start of a plan item removes an empty item above it', asy
     })
 })
 
+test('backspace after a leading blank line removes the newline without merging tasks', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  const before = await topLevelTexts(page)
+  await focusInputByValue(page, before[1])
+  await setCaretOffsetInFocusedEditor(page, 0)
+  await page.keyboard.press('Shift+Enter')
+  await expect.poll(async () => page.evaluate(() => document.activeElement?.innerHTML)).toContain('<br>')
+  await page.keyboard.press('Backspace')
+
+  await expect.poll(async () => ({
+    texts: await topLevelTexts(page),
+    activeText: await activeInputValue(page),
+    caretOffset: await caretOffsetInFocusedEditor(page),
+    hasBreak: await page.evaluate(() => !!document.activeElement?.querySelector('br')),
+  })).toEqual({ texts: before, activeText: before[1], caretOffset: 0, hasBreak: false })
+})
+
 test('backspace at the start of a plan item merges it into the item above', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
