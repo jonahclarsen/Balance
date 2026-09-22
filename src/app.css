@@ -1,3 +1,11 @@
+@font-face {
+  font-family: 'Sora';
+  font-style: normal;
+  font-weight: 700;
+  font-display: block;
+  src: url('/fonts/sora-latin-700.woff2') format('woff2');
+}
+
 :root {
   color-scheme: light;
   color: var(--ink);
@@ -3380,6 +3388,11 @@ body.mobile-checkbox-dragging {
 
 .paste-review-head h2 {
   margin: 0;
+}
+
+.paste-review-head .eyebrow {
+  font-family: 'Sora', sans-serif;
+  text-transform: none;
 }
 
 .paste-review-card {

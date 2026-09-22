@@ -7250,7 +7250,7 @@ return rows`
     <div class="paste-review" role="dialog" aria-modal="true" aria-labelledby="paste-review-title">
       <div class="paste-review-head">
         <div>
-          <p class="eyebrow">Review pasted items</p>
+          <p class="eyebrow">Review Pasted Items</p>
           <h2 id="paste-review-title">Item {pasteReview.index + 1} of {pasteReview.nodes.length}</h2>
         </div>
         <button class="ghost" type="button" title="Cancel (Esc)" on:click={cancelPasteReview}>✕</button>
