@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "demo:edge-scroll": "vite --host 0.0.0.0 --port 63653 --strictPort --open /edge-scroll-demo/index.html",
     "dev:tauri": "tauri dev",
     "build": "vite build && node scripts/build-macos-widget.mjs",
     "preview": "vite preview",

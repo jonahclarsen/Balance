@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Balance · Edge scroll lab</title>
+<style>
+:root{font-family:Inter,ui-sans-serif,system-ui,sans-serif;color:#e8eae4;background:#141916;color-scheme:dark;font-synthesis:none}*{box-sizing:border-box}body{margin:0}button,input{font:inherit}button{cursor:pointer;color:inherit;background:#28322b;border:1px solid #435146;border-radius:10px;padding:10px 14px}button:hover{background:#364339}button:focus-visible,input:focus-visible{outline:2px solid #c7ef9f;outline-offset:3px}button.active{background:#c7ef9f;color:#192319;border-color:#c7ef9f}h1,h2,p{margin:0}header{max-width:1100px;margin:auto;padding:32px 24px 22px}.eyebrow{font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#bbd899}h1{font-size:clamp(28px,4vw,42px);letter-spacing:-.05em;margin:10px 0}header p,.muted{color:#a3b0a5;font-size:14px;line-height:1.6}main{max-width:1100px;margin:auto;padding:0 24px 36px;display:grid;grid-template-columns:minmax(300px,1fr) minmax(320px,1fr);gap:36px}.panel{border:1px solid #364238;border-radius:20px;background:#1c241f;padding:24px}h2{font-size:17px;letter-spacing:-.02em}.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px}.tag{font-size:11px;border:1px solid #435146;border-radius:20px;padding:5px 9px;color:#bacaaf}.presets{display:flex;flex-wrap:wrap;gap:7px;margin:18px 0 24px}.presets button{font-size:12px;padding:9px 12px}.control{margin-top:24px}.control label{display:flex;justify-content:space-between;gap:10px;font-size:14px;font-weight:600}.control output{color:#c7ef9f;font-variant-numeric:tabular-nums}.control p{font-size:12px;color:#9faea2;line-height:1.5;margin-top:4px}input[type=range]{width:100%;accent-color:#c7ef9f;margin:13px 0 0;cursor:pointer}input[type=text]{min-width:0;width:100%;background:#141c17;border:1px solid #435146;border-radius:10px;padding:11px;color:inherit}.save-row{display:flex;gap:8px;margin:18px 0 10px}.save-row button{white-space:nowrap}.favorites{display:grid;gap:8px;margin-top:12px}.favorite{display:flex;gap:6px}.favorite button:first-child{flex:1;text-align:left;font-size:13px}.icon{padding:10px;display:grid;place-items:center}.icon svg{width:17px;height:17px}.share{width:100%;margin-top:12px;background:transparent}.status{min-height:36px;font-size:12px;color:#c7ef9f;line-height:1.5;margin-top:10px}.preview{align-self:start;position:sticky;top:16px}.phone{border:1px solid #52604f;border-radius:26px;padding:8px;background:#0e1410;box-shadow:0 25px 65px #0004;max-width:420px;margin:auto;overflow:hidden}.phone-top{padding:18px 16px 14px;display:flex;justify-content:space-between;align-items:center}.phone-top strong{font-size:16px}.phone-top span{font-size:11px;color:#9fac9d}.stage{position:relative;isolation:isolate;overflow:hidden;border-radius:12px;background:#19221b}.scroller{height:440px;height:clamp(280px,53dvh,510px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:#465340 transparent}.rows{padding:8px 12px 28px}.task{display:flex;align-items:center;gap:12px;height:60px;border-bottom:1px solid #334034;position:relative}.task.source{opacity:.3}.task.before:before,.task.after:after{content:"";position:absolute;left:0;right:0;height:3px;background:#c7ef9f;z-index:3}.task.before:before{top:0}.task.after:after{bottom:0}.handle{touch-action:none;user-select:none;cursor:grab;border:0;background:transparent;padding:12px 6px;color:#8b9c8c;border-radius:5px}.handle svg{display:block;width:18px;height:24px}.task-name{font-size:13px}.task-num{font-size:10px;color:#819482;display:block;margin-top:4px}.zone{position:absolute;left:0;right:0;height:64px;pointer-events:none;z-index:4;display:flex;justify-content:center;color:#d3eebb;font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:9px;background:linear-gradient(#b9ef7730,#b9ef7705);border-top:1px dashed #b9ef7770}.zone.top{top:0}.zone.bottom{bottom:0;align-items:flex-end;transform:none;background:linear-gradient(#b9ef7705,#b9ef7730);border-top:0;border-bottom:1px dashed #b9ef7770}.zone.hot{background:#b9ef7738}.telemetry{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:15px}.telemetry span{font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#9ba994;display:block}.telemetry strong{font-size:19px;font-weight:500;font-variant-numeric:tabular-nums;display:block;margin-top:5px}.hint{text-align:center;font-size:12px;color:#a3b0a5;line-height:1.6;margin:16px 0 10px}.preview-actions{display:flex;justify-content:center;gap:8px}.preview-actions button{font-size:12px}.ghost{position:fixed;pointer-events:none;z-index:50;padding:12px 18px;background:#d1eeba;color:#182015;border-radius:10px;box-shadow:0 8px 30px #0006;max-width:230px;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transform:translate(-50%,-125%)}.ghost[hidden]{display:none}@media(max-width:760px){header{padding:20px 16px 16px}main{display:flex;flex-direction:column;padding:0 16px 24px;gap:20px}.preview{position:static;order:-1;width:100%}.phone{max-width:100%}.scroller{height:44dvh;min-height:220px}.panel{padding:20px}h1{font-size:30px}.hint{margin:10px 0}.control{margin-top:20px}}
+</style>
+</head>
+<body>
+<header><div class="eyebrow">Balance / Interaction lab</div><h1>Find your flow.</h1><p>Drag to the edge. Dial in the speed. Keep the settings that feel right.</p></header>
+<main>
+<section class="panel" aria-label="Scroll settings">
+<div class="panel-head"><h2>Edge scroll tuning</h2><span class="tag" id="mode">Adjustable</span></div>
+<p class="muted">Start with a preset, then fine-tune. Changes apply on your next drag.</p>
+<div class="presets" id="presets"></div>
+<div id="controls"></div>
+<div class="control"><h2>Your favorites</h2><p>Saved on this browser. Load a favorite to compare it or copy its share link.</p></div>
+<form class="save-row" id="save-form"><input id="favorite-name" type="text" maxlength="48" placeholder="Name this feel…" aria-label="Favorite name" required><button type="submit">Save favorite</button></form>
+<div class="favorites" id="favorites"></div>
+<button class="share" id="share">Copy settings link</button>
+<p class="status" id="status" role="status"></p>
+<p class="muted" style="font-size:11px">Synthetic tasks only. Your Balance data and app behavior are untouched. “Current app” matches the existing frame-based scrolling; adjustable presets use pixels per second.</p>
+</section>
+<section class="preview" aria-label="Drag preview">
+<div class="phone"><div class="phone-top"><strong>A little plan</strong><span>80 demo tasks</span></div>
+<div class="stage" id="stage"><div class="scroller" id="scroller"><div class="rows" id="rows"></div></div><div class="zone top" id="top-zone">Drag here to go up</div><div class="zone bottom" id="bottom-zone">Drag here to go down</div></div>
+<div class="telemetry"><div><span>Scroll speed</span><strong id="speed">0 px/s</strong></div><div><span>Edge depth</span><strong id="depth">0%</strong></div></div></div>
+<p class="hint">Grab a task’s handle and hold in a shaded edge.<br>Release to drop. Scroll normally between tries.</p>
+<div class="preview-actions"><button id="reset">Reset tasks</button><button id="middle">Jump to middle</button></div>
+</section>
+</main>
+<div class="ghost" id="ghost" hidden></div>
+<script type="module">
+const $ = id => document.getElementById(id);
+const definitions = [
+  {key:'speed',name:'Maximum speed',min:60,max:1800,step:30,unit:' px/s',help:'How fast the list moves at the very edge. Current app ≈ 120 px/s at 60 Hz.'},
+  {key:'edge',name:'Edge zone',min:20,max:120,step:2,unit:' px',help:'How far from the top or bottom scrolling starts.'},
+  {key:'curve',name:'Response curve',min:0.4,max:3,step:0.1,unit:'',help:'Below 1 gets fast sooner. 1 is linear. Above 1 gives finer control near the zone entrance.'},
+  {key:'ramp',name:'Acceleration time',min:0,max:600,step:20,unit:' ms',help:'Time to reach about 63% of target speed. 0 responds instantly; leaving the zone always stops.'},
+];
+const presets = [
+  {name:'Current app',speed:120,edge:44,curve:1,ramp:0,legacy:true},
+  {name:'Brisk',speed:480,edge:64,curve:1,ramp:80,legacy:false},
+  {name:'Fast',speed:900,edge:80,curve:1.3,ramp:120,legacy:false},
+  {name:'Precise',speed:660,edge:96,curve:2,ramp:60,legacy:false},
+];
+let settings = {...presets[1]}, favorites = [], drag = null, velocity = 0, frame = 0, previousTime = 0, target = null;
+const storageKey = 'balance-edge-scroll-favorites-v1';
+function validate(value) {
+  if (!value || typeof value !== 'object') return null;
+  const clean = {legacy:value.legacy === true};
+  for (const def of definitions) {
+    if (typeof value[def.key] !== 'number' || !Number.isFinite(value[def.key])) return null;
+    clean[def.key] = Math.min(def.max,Math.max(def.min,value[def.key]));
+  }
+  if (clean.legacy) Object.assign(clean,{speed:120,edge:44,curve:1,ramp:0});
+  return clean;
+}
+try {const data=JSON.parse(localStorage.getItem(storageKey) || '[]'); if(Array.isArray(data)) favorites=data.filter(f=>typeof f?.name==='string' && validate(f)).slice(0,30).map(f=>({...validate(f),name:f.name.slice(0,48)}));} catch {}
+try {const shared=validate(JSON.parse(decodeURIComponent(location.hash.slice(1))));if(shared) settings=shared;} catch {}
+for(const def of definitions) {
+  const wrap=document.createElement('div');wrap.className='control';
+  wrap.innerHTML=`<label for="${def.key}-input">${def.name}<output id="${def.key}-value"></output></label><input type="range" id="${def.key}-input" min="${def.min}" max="${def.max}" step="${def.step}"><p>${def.help}</p>`;
+  $('controls').append(wrap);
+  $(def.key+'-input').addEventListener('input',event=>{settings[def.key]=Number(event.target.value);settings.legacy=false;refresh();});
+}
+for(const preset of presets) {
+  const button=document.createElement('button');button.textContent=preset.name;
+  button.addEventListener('click',()=>{settings={...preset};refresh();});$('presets').append(button);
+}
+function refresh(){
+  for(const def of definitions){$(def.key+'-input').value=settings[def.key];$(def.key+'-value').textContent=settings[def.key]+def.unit;}
+  $('mode').textContent=settings.legacy?'Current app · frame based':'Adjustable';
+  [...$('presets').children].forEach((b,i)=>{const active=definitions.every(d=>settings[d.key]===presets[i][d.key]) && settings.legacy===presets[i].legacy;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
+  $('top-zone').style.height=$('bottom-zone').style.height=settings.edge+'px';
+}
+function renderFavorites(){
+  $('favorites').replaceChildren();
+  favorites.forEach((favorite,i)=>{
+    const row=document.createElement('div');row.className='favorite';
+    const load=document.createElement('button');load.textContent=favorite.name;load.title=`${favorite.speed} px/s · ${favorite.edge}px edge · curve ${favorite.curve} · ${favorite.ramp}ms`;load.onclick=()=>{settings={...favorite};$('favorite-name').value=favorite.name;refresh();$('status').textContent=`Loaded “${favorite.name}”.`;};
+    const remove=document.createElement('button');remove.className='icon';remove.setAttribute('aria-label',`Delete ${favorite.name}`);remove.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13M10 10v7m4-7v7"/></svg>';remove.onclick=()=>{favorites.splice(i,1);persist();renderFavorites();};
+    row.append(load,remove);$('favorites').append(row);
+  });
+}
+function persist(){try{localStorage.setItem(storageKey,JSON.stringify(favorites));return true;}catch{$('status').textContent='Browser storage is unavailable. Use Copy settings link to keep this setup.';return false;}}
+$('save-form').onsubmit=event=>{event.preventDefault();const name=$('favorite-name').value.trim();if(!name)return;const existing=favorites.findIndex(f=>f.name===name);if(existing<0 && favorites.length>=30){$('status').textContent='You have 30 favorites. Delete one to make room.';return;}const favorite={...validate(settings),name};if(existing>=0)favorites[existing]=favorite;else favorites.push(favorite);if(persist())$('status').textContent=`Saved “${name}”.`;renderFavorites();};
+$('share').onclick=async()=>{
+  const url=new URL(location.href);url.hash=encodeURIComponent(JSON.stringify(validate(settings)));history.replaceState(null,'',url);
+  try{await navigator.clipboard.writeText(url.href);$('status').textContent='Settings link copied. Open it on another device or send it back with your pick.';}
+  catch{$('status').textContent='Settings added to the address bar. Copy the URL to share this setup.';}
+};
+const verbs=['Sketch a new idea','Take a walk outside','Read a chapter','Tidy the workspace','Plan a weekend trip','Make time for music','Water the plants','Review the week'];
+function reset(){
+  finish(false);$('rows').replaceChildren();
+  for(let i=0;i<80;i++){
+    const row=document.createElement('div');row.className='task';row.dataset.id=i;
+    row.innerHTML=`<button class="handle" aria-label="Drag task ${i+1}"><svg viewBox="0 0 18 24" fill="currentColor"><circle cx="6" cy="6" r="1.5"/><circle cx="12" cy="6" r="1.5"/><circle cx="6" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="6" cy="18" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg></button><div class="task-name">${verbs[i%verbs.length]}<span class="task-num">TASK ${String(i+1).padStart(2,'0')}</span></div>`;
+    row.querySelector('button').addEventListener('pointerdown',event=>start(event,row));$('rows').append(row);
+  }
+  $('scroller').scrollTop=0;
+}
+function start(event,row){
+  if(event.button!==0 || drag)return;
+  event.preventDefault();event.currentTarget.setPointerCapture(event.pointerId);
+  drag={id:event.pointerId,row,handle:event.currentTarget,x:event.clientX,y:event.clientY};row.classList.add('source');
+  $('ghost').textContent=row.querySelector('.task-name').firstChild.textContent;$('ghost').hidden=false;
+  previousTime=performance.now();velocity=0;position();frame=requestAnimationFrame(tick);
+}
+function position(){if(!drag)return;$('ghost').style.left=Math.max(110,Math.min(innerWidth-110,drag.x))+'px';$('ghost').style.top=drag.y+'px';markTarget();}
+function clearTarget(){if(target)target.row.classList.remove('before','after');target=null;}
+function markTarget(){
+  clearTarget();const bounds=$('scroller').getBoundingClientRect();if(drag.x<bounds.left || drag.x>bounds.right || drag.y<bounds.top || drag.y>bounds.bottom)return;
+  const element=document.elementFromPoint(drag.x,drag.y);const row=element?.closest('.task');if(!row || row===drag.row)return;
+  target={row,before:drag.y<row.getBoundingClientRect().top+row.offsetHeight/2};row.classList.add(target.before?'before':'after');
+}
+function tick(now){
+  if(!drag)return;
+  const dt=Math.min((now-previousTime)/1000,0.05);previousTime=now;
+  const bounds=$('scroller').getBoundingClientRect();const top=Math.max(0,bounds.top),bottom=Math.min(innerHeight,bounds.bottom);
+  let direction=0,depth=0;
+  if(drag.x>=bounds.left-24 && drag.x<=bounds.right+24){
+    const edge=Math.min(settings.edge,(bottom-top)/2);
+    if(drag.y<top+edge){direction=-1;depth=1-Math.max(0,drag.y-top)/edge;}
+    else if(drag.y>bottom-edge){direction=1;depth=1-Math.max(0,bottom-drag.y)/edge;}
+  }
+  const desired=direction*settings.speed*Math.pow(depth,settings.curve);
+  if(!direction)velocity=0;
+  else if(settings.legacy)velocity=direction*Math.ceil(2*depth)/Math.max(dt,0.001);
+  else{if(Math.sign(velocity)!==direction)velocity=0;velocity+=(desired-velocity)*(settings.ramp===0?1:1-Math.exp(-dt/(settings.ramp/1000)));}
+  const before=$('scroller').scrollTop;$('scroller').scrollTop+=settings.legacy?direction*Math.ceil(2*depth):velocity*dt;
+  const moved=$('scroller').scrollTop-before;
+  $('speed').textContent=Math.round(Math.abs(moved)/Math.max(dt,0.001))+' px/s';$('depth').textContent=Math.round(depth*100)+'%';
+  $('top-zone').classList.toggle('hot',direction===-1);$('bottom-zone').classList.toggle('hot',direction===1);
+  markTarget();frame=requestAnimationFrame(tick);
+}
+function finish(drop){
+  if(drag){if(drop && target)$('rows').insertBefore(drag.row,target.before?target.row:target.row.nextSibling);drag.row.classList.remove('source');if(drag.handle.hasPointerCapture(drag.id))drag.handle.releasePointerCapture(drag.id);}
+  drag=null;clearTarget();cancelAnimationFrame(frame);velocity=0;$('ghost').hidden=true;$('speed').textContent='0 px/s';$('depth').textContent='0%';$('top-zone').classList.remove('hot');$('bottom-zone').classList.remove('hot');
+}
+window.addEventListener('pointermove',event=>{if(drag && event.pointerId===drag.id){drag.x=event.clientX;drag.y=event.clientY;position();}});
+window.addEventListener('pointerup',event=>{if(drag && event.pointerId===drag.id){drag.x=event.clientX;drag.y=event.clientY;markTarget();finish(true);}});
+window.addEventListener('pointercancel',event=>{if(event.pointerId===drag?.id)finish(false);});
+window.addEventListener('lostpointercapture',event=>{if(event.pointerId===drag?.id)finish(false);});
+window.addEventListener('blur',()=>finish(false));
+document.addEventListener('visibilitychange',()=>{if(document.hidden)finish(false);});
+window.addEventListener('keydown',event=>{if(event.key==='Escape')finish(false);});
+$('reset').onclick=reset;$('middle').onclick=()=>{$('scroller').scrollTop=($('scroller').scrollHeight-$('scroller').clientHeight)/2;};
+refresh();renderFavorites();reset();
+</script>
+</body>
+</html>
