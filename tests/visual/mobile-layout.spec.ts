@@ -250,8 +250,16 @@ test('mobile task dragging auto-scrolls near both viewport edges', async ({ page
   })
   await page.waitForTimeout(250)
   const downwardScrollY = await page.evaluate(() => window.scrollY)
-  expect(downwardScrollY).toBeGreaterThan(20)
-  expect(downwardScrollY).toBeLessThan(160)
+  expect(downwardScrollY).toBeGreaterThan(80)
+  expect(downwardScrollY).toBeLessThan(240)
+  await cdp.send('Input.dispatchTouchEvent', {
+    type: 'touchMove',
+    touchPoints: [{ x: firstHandleBox.x + firstHandleBox.width / 2, y: viewport.height / 2 }],
+  })
+  await page.waitForTimeout(50)
+  const stoppedScrollY = await page.evaluate(() => window.scrollY)
+  await page.waitForTimeout(150)
+  expect(await page.evaluate(() => window.scrollY)).toBe(stoppedScrollY)
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
 
   const lowerHandle = page

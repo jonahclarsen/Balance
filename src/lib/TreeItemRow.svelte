@@ -40,9 +40,13 @@
   let dragPointer: { x: number; y: number } | null = null
   let dragScrollContainer: HTMLElement | null = null
   let autoScrollFrame: number | null = null
+  let autoScrollTime: number | null = null
+  let autoScrollVelocity = 0
 
-  const AUTO_SCROLL_EDGE = 44
-  const AUTO_SCROLL_MAX_SPEED = 2
+  const AUTO_SCROLL_EDGE = 56
+  const AUTO_SCROLL_MAX_SPEED = 810 // Pixels per second, independent of refresh rate.
+  const AUTO_SCROLL_CURVE = 2
+  const AUTO_SCROLL_RAMP = 0.08 // Seconds to reach ~63% of target velocity.
 
   $: rowSelector =
     kind === 'plan'
@@ -141,10 +145,11 @@
 
   function scheduleAutoScroll() {
     if (!usesMobileLayout() || autoScrollFrame !== null) return
+    autoScrollTime ??= performance.now()
     autoScrollFrame = requestAnimationFrame(autoScroll)
   }
 
-  function autoScroll() {
+  function autoScroll(now: number) {
     autoScrollFrame = null
     if (!dragging || !dragPointer) return
 
@@ -152,8 +157,18 @@
     if (!scrollContainer) return
 
     const bounds = scrollBounds(scrollContainer)
-    const delta = autoScrollDelta(dragPointer.y, bounds.top, bounds.bottom)
-    if (delta === 0) return
+    const targetSpeed = autoScrollTargetSpeed(dragPointer.y, bounds.top, bounds.bottom)
+    if (targetSpeed === 0) {
+      autoScrollVelocity = 0
+      autoScrollTime = null
+      return
+    }
+    // Clamp long frames so resuming a backgrounded window cannot jump the list.
+    const elapsed = Math.max(0, Math.min((now - (autoScrollTime ?? now)) / 1000, 0.05))
+    autoScrollTime = now
+    if (Math.sign(autoScrollVelocity) !== Math.sign(targetSpeed)) autoScrollVelocity = 0
+    autoScrollVelocity += (targetSpeed - autoScrollVelocity) * (1 - Math.exp(-elapsed / AUTO_SCROLL_RAMP))
+    const delta = autoScrollVelocity * elapsed
 
     const previousScrollTop = scrollContainer.scrollTop
     scrollContainer.scrollBy({ top: delta, left: 0, behavior: 'instant' })
@@ -161,16 +176,14 @@
     scheduleAutoScroll()
   }
 
-  function autoScrollDelta(clientY: number, top: number, bottom: number) {
-    if (clientY < top + AUTO_SCROLL_EDGE) {
-      return -Math.ceil(
-        AUTO_SCROLL_MAX_SPEED * (1 - Math.max(0, clientY - top) / AUTO_SCROLL_EDGE),
-      )
+  function autoScrollTargetSpeed(clientY: number, top: number, bottom: number) {
+    const edge = Math.min(AUTO_SCROLL_EDGE, (bottom - top) / 2)
+    if (edge <= 0) return 0
+    if (clientY < top + edge) {
+      return -AUTO_SCROLL_MAX_SPEED * (1 - Math.max(0, clientY - top) / edge) ** AUTO_SCROLL_CURVE
     }
-    if (clientY > bottom - AUTO_SCROLL_EDGE) {
-      return Math.ceil(
-        AUTO_SCROLL_MAX_SPEED * (1 - Math.max(0, bottom - clientY) / AUTO_SCROLL_EDGE),
-      )
+    if (clientY > bottom - edge) {
+      return AUTO_SCROLL_MAX_SPEED * (1 - Math.max(0, bottom - clientY) / edge) ** AUTO_SCROLL_CURVE
     }
     return 0
   }
@@ -204,6 +217,8 @@
   }
 
   function stopAutoScroll() {
+    autoScrollTime = null
+    autoScrollVelocity = 0
     dragPointer = null
     dragScrollContainer = null
     if (autoScrollFrame === null) return

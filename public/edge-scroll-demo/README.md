@@ -9,7 +9,9 @@ Drag a task by its handle into the shaded top or bottom zone to scroll and
 release to reorder. Save named favorites in this browser, or copy a link to
 share the currently selected settings across devices. Saved favorites stay local.
 
-The Current app preset reproduces TreeItemRow.svelte's 44px edge, 2px/frame
+The Current app preset uses the selected production settings: 810px/second,
+a 56px edge, a quadratic response curve, and 80ms acceleration.
+The Old app preset preserves the original 44px edge, 2px/frame
 maximum, and integer-rounded linear ramp. Its speed depends on refresh rate.
 The adjustable mode uses elapsed time (px/second), a power curve for edge
 penetration, and optional exponential smoothing of velocity. Leaving the edge

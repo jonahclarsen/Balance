@@ -21,7 +21,7 @@
 <div class="favorites" id="favorites"></div>
 <button class="share" id="share">Copy settings link</button>
 <p class="status" id="status" role="status"></p>
-<p class="muted" style="font-size:11px">Synthetic tasks only. Your Balance data and app behavior are untouched. “Current app” matches the existing frame-based scrolling; adjustable presets use pixels per second.</p>
+<p class="muted" style="font-size:11px">Synthetic tasks only. Your Balance data and app behavior are untouched. “Old app” preserves the original frame-based scrolling; adjustable presets use pixels per second.</p>
 </section>
 <section class="preview" aria-label="Drag preview">
 <div class="phone"><div class="phone-top"><strong>A little plan</strong><span>80 demo tasks</span></div>
@@ -35,13 +35,14 @@
 <script type="module">
 const $ = id => document.getElementById(id);
 const definitions = [
-  {key:'speed',name:'Maximum speed',min:60,max:1800,step:30,unit:' px/s',help:'How fast the list moves at the very edge. Current app ≈ 120 px/s at 60 Hz.'},
+  {key:'speed',name:'Maximum speed',min:60,max:1800,step:30,unit:' px/s',help:'How fast the list moves at the very edge. Current app tops out at 810 px/s.'},
   {key:'edge',name:'Edge zone',min:20,max:120,step:2,unit:' px',help:'How far from the top or bottom scrolling starts.'},
   {key:'curve',name:'Response curve',min:0.4,max:3,step:0.1,unit:'',help:'Below 1 gets fast sooner. 1 is linear. Above 1 gives finer control near the zone entrance.'},
   {key:'ramp',name:'Acceleration time',min:0,max:600,step:20,unit:' ms',help:'Time to reach about 63% of target speed. 0 responds instantly; leaving the zone always stops.'},
 ];
 const presets = [
-  {name:'Current app',speed:120,edge:44,curve:1,ramp:0,legacy:true},
+  {name:'Old app',speed:120,edge:44,curve:1,ramp:0,legacy:true},
+  {name:'Current app',speed:810,edge:56,curve:2,ramp:80,legacy:false},
   {name:'Brisk',speed:480,edge:64,curve:1,ramp:80,legacy:false},
   {name:'Fast',speed:900,edge:80,curve:1.3,ramp:120,legacy:false},
   {name:'Precise',speed:660,edge:96,curve:2,ramp:60,legacy:false},
@@ -72,7 +73,7 @@ for(const preset of presets) {
 }
 function refresh(){
   for(const def of definitions){$(def.key+'-input').value=settings[def.key];$(def.key+'-value').textContent=settings[def.key]+def.unit;}
-  $('mode').textContent=settings.legacy?'Current app · frame based':'Adjustable';
+  $('mode').textContent=settings.legacy?'Old app · frame based':'Adjustable';
   [...$('presets').children].forEach((b,i)=>{const active=definitions.every(d=>settings[d.key]===presets[i][d.key]) && settings.legacy===presets[i].legacy;b.classList.toggle('active',active);b.setAttribute('aria-pressed',String(active));});
   $('top-zone').style.height=$('bottom-zone').style.height=settings.edge+'px';
 }
