@@ -4341,6 +4341,85 @@ test('arrow keys enter a selected plan item at the matching text boundary', asyn
   }
 })
 
+test('Enter after a selected plan item adds and focuses a sibling below its subtree', async ({ page }) => {
+  await seedPlanTree(page, [
+    {
+      id: 'selected-parent',
+      text: 'Selected parent',
+      children: [{ id: 'existing-child', text: 'Existing child', children: [] }],
+    },
+    { id: 'following-task', text: 'Following task', children: [] },
+  ])
+
+  await focusInputByValue(page, 'Selected parent')
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Enter')
+
+  await expect.poll(async () => topLevelTexts(page)).toEqual([
+    'Selected parent',
+    '',
+    'Following task',
+  ])
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(0)
+  await expect
+    .poll(async () => ({
+      activeText: await activeInputValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({ activeText: '', caretOffset: 0 })
+})
+
+test('Enter after selected plan items uses the final task indentation and clears the selection', async ({ page }) => {
+  await seedPlanTree(page, [
+    {
+      id: 'parent',
+      text: 'Parent task',
+      children: [
+        { id: 'first-child', text: 'First child', children: [] },
+        { id: 'final-child', text: 'Final child', children: [] },
+      ],
+    },
+    { id: 'following-root', text: 'Following root', children: [] },
+  ])
+
+  await focusInputByValue(page, 'First child')
+  await page.keyboard.press('Meta+Shift+A')
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(2)
+
+  await page.keyboard.press('Enter')
+
+  const rows = page.locator('[data-plan-item-id]')
+  await expect(rows).toHaveCount(5)
+  await expect(rows.nth(0)).toContainText('Parent task')
+  await expect(rows.nth(1)).toContainText('First child')
+  await expect(rows.nth(2)).toContainText('Final child')
+  await expect(rows.nth(2)).toHaveAttribute('data-plan-item-depth', '1')
+  await expect(rows.nth(3)).toHaveAttribute('data-plan-item-depth', '1')
+  await expect(rows.nth(4)).toContainText('Following root')
+  await expect(rows.nth(4)).toHaveAttribute('data-plan-item-depth', '0')
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(0)
+  await expect
+    .poll(async () => ({
+      activeId: await page.evaluate(() => (document.activeElement as HTMLElement | null)?.dataset.planTextInputId),
+      activeText: await activeInputValue(page),
+      caretOffset: await caretOffsetInFocusedEditor(page),
+    }))
+    .toEqual({
+      activeId: await rows.nth(3).getAttribute('data-plan-item-id'),
+      activeText: '',
+      caretOffset: 0,
+    })
+
+  await page.keyboard.press('Alt+/')
+  await expect(
+    page.getByRole('dialog', { name: 'Keyboard shortcuts' }).getByText(
+      'Add a task after the selection on Today',
+      { exact: true },
+    ),
+  ).toBeVisible()
+})
+
 test('cutting a whole plan item focuses the item below it at the start', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

@@ -74,6 +74,7 @@
       shortcuts: [
         { keys: ['mod', 'A'], label: 'Select all items' },
         { keys: ['mod', 'shift', 'A'], label: 'Select focused item, then all items' },
+        { keys: ['enter'], label: 'Add a task after the selection on Today' },
         { keys: ['up'], label: 'Edit selection from start', alt: ['left'] },
         { keys: ['down'], label: 'Edit selection from end', alt: ['right'] },
         { keys: ['shift', 'up'], label: 'Extend selection', alt: ['shift', 'down'] },

@@ -3467,6 +3467,20 @@ return rows`
       !event.shiftKey &&
       !event.altKey &&
       !primaryModifier &&
+      event.key === 'Enter' &&
+      activeItemSurface() === 'plan'
+    ) {
+      event.preventDefault()
+      event.stopPropagation()
+      void addPlanItemAfterSelection()
+      return
+    }
+
+    if (
+      selectedItemIds.length > 0 &&
+      !event.shiftKey &&
+      !event.altKey &&
+      !primaryModifier &&
       (event.key === 'ArrowUp' ||
         event.key === 'ArrowDown' ||
         event.key === 'ArrowLeft' ||
@@ -4322,6 +4336,25 @@ return rows`
     if (!targetId) return
     clearItemSelection()
     focusItemTextInput(targetId, position)
+  }
+
+  async function addPlanItemAfterSelection() {
+    if (activeItemSurface() !== 'plan' || !activePlan) return
+
+    const selectedIds = new Set(selectedItemIds)
+    const finalSelectedId = flattenItemIds(activePlan.items).filter((itemId) => selectedIds.has(itemId)).at(-1)
+    if (!finalSelectedId) return
+
+    const newItemId = plannerStore.splitPlanItem(
+      activePlan.id,
+      finalSelectedId,
+      {},
+      { html: '', text: '' },
+    )
+    clearItemSelection()
+    await tick()
+    focusItemTextInput(newItemId, 'start')
+    scrollItemTextInputIntoView(newItemId)
   }
 
   function copySelectedItems() {
