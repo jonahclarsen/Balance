@@ -21,6 +21,7 @@
   export let axisMin = 0
   export let axisMax: number | null = null
   export let ticks: number[] | null = null
+  export let onPointClick: ((index: number) => void) | null = null
 
   const lineWidth = 1000
   const lineHeight = 164
@@ -106,6 +107,8 @@
           style={`--point-y: ${((hoveredPoints[0]?.points[index]?.y ?? lineHeight / 2) / lineHeight) * 100}%`}
           on:mouseenter={() => (hoveredIndex = index)}
           on:mouseleave={() => (hoveredIndex = null)}
+          class:clickable={onPointClick !== null}
+          on:click={() => onPointClick?.(index)}
         >
           {#if hoveredIndex === index}
             {#each hoveredPoints as line}
@@ -234,6 +237,10 @@
     border-radius: 0;
     background: transparent;
     box-shadow: none;
+  }
+
+  .line-hit-targets button.clickable {
+    cursor: pointer;
   }
 
   .line-hit-targets button:hover,

@@ -8,6 +8,7 @@
 
   export let plans: DailyPlan[]
   export let currentDay: string
+  export let onOpenDay: (date: string) => void
 
   let rangeDays: SleepStatsRangeDays = 30
 
@@ -52,6 +53,11 @@
     return { min, max, ticks: [...new Set([min, mid, max])] }
   }
 
+  function openDayAt(index: number) {
+    const date = stats.daily[index]?.date
+    if (date) onOpenDay(date)
+  }
+
   function parseISODate(date: string): Date {
     const [year, month, day] = date.split('-').map(Number)
     return new Date(year, month - 1, day)
@@ -94,6 +100,7 @@
     >
       <StatsLineChart
         {pointLabels}
+        onPointClick={openDayAt}
         series={wakeSeries}
         ariaLabel={`${rangeDays}-day wake time history, taken from the first timed task of each day.`}
         axisMin={wakeAxis.min}
@@ -111,6 +118,7 @@
     >
       <StatsLineChart
         {pointLabels}
+        onPointClick={openDayAt}
         series={bedSeries}
         ariaLabel={`${rangeDays}-day bedtime history, taken from the end of the last timed task of each day.`}
         axisMin={bedAxis.min}
@@ -131,6 +139,7 @@
       <strong slot="aside">{lastSleepMinutes === null ? '' : `${formatDuration(lastSleepMinutes)} last night`}</strong>
       <StatsLineChart
         {pointLabels}
+        onPointClick={openDayAt}
         series={sleepSeries}
         ariaLabel={`${rangeDays}-day sleep duration history, from each bedtime to the next day's wake time.`}
         axisMin={sleepAxis.min}

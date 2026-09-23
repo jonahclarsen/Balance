@@ -6535,7 +6535,7 @@ return rows`
     {/if}
 
     {#if view === 'statistics'}
-      <StatisticsPanel plans={$plannerStore.plans} {currentDay} />
+      <StatisticsPanel plans={$plannerStore.plans} {currentDay} onOpenDay={openDateInToday} />
     {/if}
 
     {#if view === 'projects'}
