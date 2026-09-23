@@ -90,7 +90,6 @@
       {#each plottedSeries as line}
         {#each line.dots as dot}
           <i
-           
             style={`--point-x: ${(dot.x / lineWidth) * 100}%; --point-y: ${(dot.y / lineHeight) * 100}%`}
           ></i>
         {/each}
@@ -114,7 +113,6 @@
             {#each hoveredPoints as line}
               <span
                 class="point-marker"
-               
                 style={`--point-y: ${((line.points[index]?.y ?? 0) / lineHeight) * 100}%`}
               ></span>
             {/each}
