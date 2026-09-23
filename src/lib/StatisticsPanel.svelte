@@ -13,37 +13,40 @@
 
   $: stats = buildSleepStats(plans, currentDay, rangeDays)
   $: pointLabels = stats.daily.map((day) => formatLongDate(day.date))
-  // Each day plots the bedtime that started its night below its wake time,
-  // so the shaded band between them is the sleep that ended that morning.
-  $: sleepSeries = [
+  $: wakeSeries = [
     {
       label: 'Wake time',
       values: stats.daily.map((day) => day.wakeMinutes),
       formatValue: (value: number) => `Woke ${formatClock(value)}`,
       missingLabel: 'No timed tasks',
     },
+  ] satisfies StatsLineSeries[]
+  $: bedSeries = [
     {
       label: 'Bedtime',
-      values: stats.daily.map((day) => day.priorBedMinutes),
-      tone: 'secondary',
-      formatValue: (value: number) => `Bed ${formatClock(value)} the night before`,
-      missingLabel: '',
+      values: stats.daily.map((day) => day.bedMinutes),
+      formatValue: (value: number) => `Bed ${formatClock(value)}`,
+      missingLabel: 'No timed tasks',
     },
+  ] satisfies StatsLineSeries[]
+  $: sleepSeries = [
     {
       label: 'Sleep',
       values: stats.daily.map((day) => day.sleepMinutes),
-      hidden: true,
-      formatValue: (value: number) => `Slept ${formatDuration(value)}`,
-      missingLabel: '',
+      area: true,
+      formatValue: (value: number) => `${formatDuration(value)} of sleep`,
+      missingLabel: 'No sleep data',
     },
   ] satisfies StatsLineSeries[]
-  $: timeAxis = hourAxis([...sleepSeries[0].values, ...sleepSeries[1].values])
+  $: wakeAxis = hourAxis(wakeSeries[0].values, 'floor')
+  $: bedAxis = hourAxis(bedSeries[0].values, 'floor')
+  $: sleepAxis = hourAxis([0, ...sleepSeries[0].values], 'zero')
   $: lastSleepMinutes = stats.daily.at(-1)?.sleepMinutes ?? null
 
   // Snap time axes to whole hours so tick labels read as clock times.
-  function hourAxis(values: (number | null)[]) {
+  function hourAxis(values: (number | null)[], mode: 'floor' | 'zero') {
     const present = values.filter((value): value is number => value !== null)
-    const min = present.length === 0 ? 0 : Math.floor(Math.min(...present) / 60) * 60
+    const min = mode === 'zero' || present.length === 0 ? 0 : Math.floor(Math.min(...present) / 60) * 60
     const max = Math.max(min + 60, Math.ceil(Math.max(min, ...present) / 60) * 60)
     const mid = min + Math.round((max - min) / 120) * 60
     return { min, max, ticks: [...new Set([min, mid, max])] }
@@ -86,28 +89,54 @@
 
   <div class="statistics-charts">
     <StatsChartCard
-      title="Sleep"
-      description={[
-        averageLabel('Average bed', stats.averageBedMinutes, formatClock),
-        averageLabel('wake', stats.averageWakeMinutes, formatClock),
-        averageLabel('sleep', stats.averageSleepMinutes, formatDuration),
-      ].filter(Boolean).join(' · ') || 'No timed tasks in this period'}
+      title="Wake time"
+      description={averageLabel('Average', stats.averageWakeMinutes, formatClock) || 'No timed tasks in this period'}
     >
-      <div slot="aside" class="chart-legend" aria-hidden="true">
-        <span><i class="secondary"></i>Bed</span>
-        <span><i></i>Wake</span>
-        <span><i class="band"></i>Sleep</span>
-        {#if lastSleepMinutes !== null}<strong>{formatDuration(lastSleepMinutes)} last night</strong>{/if}
-      </div>
+      <StatsLineChart
+        {pointLabels}
+        series={wakeSeries}
+        ariaLabel={`${rangeDays}-day wake time history, taken from the first timed task of each day.`}
+        axisMin={wakeAxis.min}
+        axisMax={wakeAxis.max}
+        ticks={wakeAxis.ticks}
+        formatTick={formatMinutes}
+        startLabel={formatDate(stats.rangeStart)}
+        endLabel={formatDate(stats.rangeEnd)}
+      />
+    </StatsChartCard>
+
+    <StatsChartCard
+      title="Bedtime"
+      description={averageLabel('Average', stats.averageBedMinutes, formatClock) || 'No timed tasks in this period'}
+    >
+      <StatsLineChart
+        {pointLabels}
+        series={bedSeries}
+        ariaLabel={`${rangeDays}-day bedtime history, taken from the end of the last timed task of each day.`}
+        axisMin={bedAxis.min}
+        axisMax={bedAxis.max}
+        ticks={bedAxis.ticks}
+        formatTick={formatMinutes}
+        startLabel={formatDate(stats.rangeStart)}
+        endLabel={formatDate(stats.rangeEnd)}
+      />
+    </StatsChartCard>
+
+    <StatsChartCard
+      title="Sleep duration"
+      description={stats.averageSleepMinutes === null
+        ? 'Needs timed tasks on consecutive days'
+        : `Average ${formatDuration(stats.averageSleepMinutes)} a night across this period`}
+    >
+      <strong slot="aside">{lastSleepMinutes === null ? '' : `${formatDuration(lastSleepMinutes)} last night`}</strong>
       <StatsLineChart
         {pointLabels}
         series={sleepSeries}
-        band={{ from: 1, to: 0 }}
-        ariaLabel={`${rangeDays}-day sleep history: bedtime, wake time, and sleep duration, taken from the last and first timed tasks of each day.`}
-        axisMin={timeAxis.min}
-        axisMax={timeAxis.max}
-        ticks={timeAxis.ticks}
-        formatTick={formatMinutes}
+        ariaLabel={`${rangeDays}-day sleep duration history, from each bedtime to the next day's wake time.`}
+        axisMin={sleepAxis.min}
+        axisMax={sleepAxis.max}
+        ticks={sleepAxis.ticks}
+        formatTick={(value) => `${value / 60}h`}
         startLabel={formatDate(stats.rangeStart)}
         endLabel={formatDate(stats.rangeEnd)}
       />
@@ -127,44 +156,5 @@
   .statistics-charts {
     display: grid;
     gap: 14px;
-  }
-
-  .chart-legend {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: flex-end;
-    flex: 0 0 auto;
-    gap: 12px;
-    color: var(--muted);
-    font-size: 12px;
-  }
-
-  .chart-legend span {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .chart-legend i {
-    width: 14px;
-    height: 0;
-    border-top: 2.5px solid var(--accent-strong);
-  }
-
-  .chart-legend i.secondary {
-    border-top: 2px dashed var(--muted);
-  }
-
-  .chart-legend i.band {
-    height: 10px;
-    border: 0;
-    border-radius: 2px;
-    background: color-mix(in srgb, var(--accent) 14%, transparent);
-  }
-
-  .chart-legend strong {
-    color: var(--ink);
-    font-size: 13px;
   }
 </style>
