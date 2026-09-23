@@ -34,7 +34,8 @@
   $: resolvedTicks = ticks ?? [...new Set([axisMin, Math.ceil((axisMin + resolvedAxisMax) / 2), resolvedAxisMax])]
   $: plottedSeries = series.map((line) => {
     const points = line.values.map((value, index) => value === null ? null : {
-      x: pointLabels.length === 1 ? lineWidth / 2 : (index / (pointLabels.length - 1)) * lineWidth,
+      // Center each point in its hover column so the marker and highlight line up.
+      x: ((index + 0.5) / pointLabels.length) * lineWidth,
       y: lineHeight - ((value - axisMin) / axisSpan) * lineHeight,
     })
     const runs: { x: number; y: number }[][] = []
