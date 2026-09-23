@@ -27,7 +27,7 @@ export type SleepStats = {
 
 /**
  * Treats the first timed task on a day as waking up and the end of the last
- * timed task as going to bed.
+ * timed task as going to bed, when the day's schedule covers those edges.
  */
 export function buildSleepStats(plans: DailyPlan[], currentDate: string, rangeDays: number): SleepStats {
   const normalizedRangeDays = Math.max(1, Math.round(rangeDays))
@@ -38,14 +38,14 @@ export function buildSleepStats(plans: DailyPlan[], currentDate: string, rangeDa
   const daily = Array.from({ length: normalizedRangeDays }, (_, index) => {
     const date = shiftISODate(rangeStart, index)
     const bounds = dayBounds(date)
-    const sleepMinutes = bounds && previousBounds
+    const sleepMinutes = bounds.wakeMinutes !== null && previousBounds.bedMinutes !== null
       ? bounds.wakeMinutes + 1440 - previousBounds.bedMinutes
       : null
     previousBounds = bounds
     return {
       date,
-      wakeMinutes: bounds?.wakeMinutes ?? null,
-      bedMinutes: bounds?.bedMinutes ?? null,
+      wakeMinutes: bounds.wakeMinutes,
+      bedMinutes: bounds.bedMinutes,
       sleepMinutes: sleepMinutes !== null && sleepMinutes > 0 ? sleepMinutes : null,
     }
   })
@@ -60,7 +60,10 @@ export function buildSleepStats(plans: DailyPlan[], currentDate: string, rangeDa
   }
 }
 
-function timedBounds(items: PlanItem[]): { wakeMinutes: number; bedMinutes: number } | null {
+// A day whose first task is untimed probably started before its schedule
+// did, and one whose last top-level task is untimed probably ran past it, so
+// those days give no wake time or bedtime rather than an inaccurate one.
+function timedBounds(items: PlanItem[]): { wakeMinutes: number | null; bedMinutes: number | null } {
   let wakeMinutes = Infinity
   let bedMinutes = -Infinity
   const visit = (items: PlanItem[]) => {
@@ -73,7 +76,12 @@ function timedBounds(items: PlanItem[]): { wakeMinutes: number; bedMinutes: numb
     }
   }
   visit(items)
-  return Number.isFinite(wakeMinutes) ? { wakeMinutes, bedMinutes } : null
+  const firstItem = items[0]
+  const lastItem = items.at(-1)
+  return {
+    wakeMinutes: firstItem && hasActiveTimeRange(firstItem) && Number.isFinite(wakeMinutes) ? wakeMinutes : null,
+    bedMinutes: lastItem && hasActiveTimeRange(lastItem) && Number.isFinite(bedMinutes) ? bedMinutes : null,
+  }
 }
 
 function average(values: (number | null)[]): number | null {

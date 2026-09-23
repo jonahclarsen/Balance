@@ -20,11 +20,11 @@ function plan(date: string, items: PlanItem[]): DailyPlan {
 
 test('wake and bedtime come from the first and last timed tasks, including nested and past-midnight tasks', () => {
   const stats = buildSleepStats([
-    plan('2026-09-01', [item('late', 22 * 60, 23 * 60 + 30), item('untimed', null, null)]),
+    plan('2026-09-01', [item('late', 22 * 60, 23 * 60 + 30)]),
     plan('2026-09-02', [
-      item('parent', null, null, [item('breakfast', 7 * 60, 7 * 60 + 30)]),
-      { ...item('hidden', 5 * 60, 6 * 60), timeHidden: true },
-      item('night', 23 * 60, 24 * 60 + 45),
+      item('breakfast', 7 * 60, 7 * 60 + 30, [{ ...item('hidden', 5 * 60, 6 * 60), timeHidden: true }]),
+      item('untimed', null, null, [item('night', 23 * 60, 24 * 60 + 45)]),
+      item('wind down', 23 * 60, 24 * 60),
     ]),
     plan('2026-09-03', [item('run', 8 * 60 + 15, 9 * 60)]),
   ], '2026-09-04', 3)
@@ -37,6 +37,19 @@ test('wake and bedtime come from the first and last timed tasks, including neste
   ])
   expect(stats.averageWakeMinutes).toBe((420 + 495) / 2)
   expect(stats.averageSleepMinutes).toBe((450 + 450) / 2)
+})
+
+test('an untimed first or last top-level task drops that day\'s wake time or bedtime', () => {
+  const stats = buildSleepStats([
+    plan('2026-09-01', [item('morning', null, null), item('work', 9 * 60, 17 * 60), item('bed', 22 * 60, 23 * 60)]),
+    plan('2026-09-02', [item('wake', 7 * 60, 8 * 60), item('work', 9 * 60, 17 * 60), item('evening', null, null)]),
+  ], '2026-09-02', 2)
+
+  expect(stats.daily.map(({ wakeMinutes, bedMinutes }) => [wakeMinutes, bedMinutes])).toEqual([
+    [null, 1380],
+    [420, null],
+  ])
+  expect(stats.daily[1].sleepMinutes).toBe(420 + 1440 - 1380)
 })
 
 test('sleep duration needs timed tasks on both days', () => {
