@@ -9,6 +9,8 @@
     area?: boolean
     formatValue?: (value: number) => string
     missingLabel?: string
+    // Listed in the tooltip only, for values measured in another unit.
+    hidden?: boolean
   }
 </script>
 
@@ -24,6 +26,8 @@
   export let axisMin = 0
   export let axisMax: number | null = null
   export let ticks: number[] | null = null
+  // Shades between two series (by index) wherever both have values.
+  export let band: { from: number; to: number } | null = null
 
   const lineWidth = 1000
   const lineHeight = 164
@@ -31,15 +35,12 @@
 
   $: resolvedAxisMax = axisMax ?? Math.max(
     axisMin + 1,
-    ...series.flatMap((line) => line.values.filter((value): value is number => value !== null)),
+    ...series.filter((line) => !line.hidden).flatMap((line) => line.values.filter((value): value is number => value !== null)),
   )
   $: axisSpan = Math.max(1, resolvedAxisMax - axisMin)
   $: resolvedTicks = ticks ?? [...new Set([axisMin, Math.ceil((axisMin + resolvedAxisMax) / 2), resolvedAxisMax])]
-  $: plottedSeries = series.map((line) => {
-    const points = line.values.map((value, index) => value === null ? null : {
-      x: pointLabels.length === 1 ? lineWidth / 2 : (index / (pointLabels.length - 1)) * lineWidth,
-      y: lineHeight - ((value - axisMin) / axisSpan) * lineHeight,
-    })
+  $: plottedSeries = series.filter((line) => !line.hidden).map((line) => {
+    const points = line.values.map((value, index) => value === null ? null : { x: pointX(index), y: pointY(value) })
     const runs: { x: number; y: number }[][] = []
     let run: { x: number; y: number }[] = []
     for (const point of points) {
@@ -66,6 +67,36 @@
     }
   })
 
+  $: bandPath = band ? buildBandPath(series[band.from], series[band.to]) : ''
+
+  function pointY(value: number): number {
+    return lineHeight - ((value - axisMin) / axisSpan) * lineHeight
+  }
+
+  function pointX(index: number): number {
+    return pointLabels.length === 1 ? lineWidth / 2 : (index / (pointLabels.length - 1)) * lineWidth
+  }
+
+  function buildBandPath(from: StatsLineSeries | undefined, to: StatsLineSeries | undefined): string {
+    if (!from || !to) return ''
+    const paths: string[] = []
+    let run: number[] = []
+    const flush = () => {
+      if (run.length > 1) {
+        const top = run.map((index, position) => `${position === 0 ? 'M' : 'L'} ${pointX(index)} ${pointY(to.values[index] ?? 0)}`)
+        const bottom = [...run].reverse().map((index) => `L ${pointX(index)} ${pointY(from.values[index] ?? 0)}`)
+        paths.push(`${top.join(' ')} ${bottom.join(' ')} Z`)
+      }
+      run = []
+    }
+    pointLabels.forEach((_, index) => {
+      if (from.values[index] !== null && to.values[index] !== null) run.push(index)
+      else flush()
+    })
+    flush()
+    return paths.join(' ')
+  }
+
   function tickPercent(tick: number): number {
     return ((tick - axisMin) / axisSpan) * 100
   }
@@ -80,6 +111,7 @@
       {#each resolvedTicks as tick}<i style={`--tick-position: ${tickPercent(tick)}%`}></i>{/each}
     </div>
     <svg viewBox={`0 0 ${lineWidth} ${lineHeight}`} preserveAspectRatio="none" aria-hidden="true">
+      {#if bandPath}<path class="chart-area" d={bandPath} />{/if}
       {#each plottedSeries as line}
         {#if line.areaPath}<path class="chart-area" d={line.areaPath} />{/if}
       {/each}
@@ -119,7 +151,7 @@
             {/each}
             <span class="chart-tooltip">
               <strong>{pointLabel}</strong>
-              {#each plottedSeries as line}
+              {#each series as line}
                 {@const value = line.values[index]}
                 {@const valueLabel = value === null ? line.missingLabel ?? 'No data' : (line.formatValue ?? formatValue)(value)}
                 {#if valueLabel}<span>{valueLabel}</span>{/if}

@@ -31,9 +31,9 @@ test('wake and bedtime come from the first and last timed tasks, including neste
 
   expect(stats.rangeStart).toBe('2026-09-02')
   expect(stats.daily).toEqual([
-    { date: '2026-09-02', wakeMinutes: 420, bedMinutes: 1485, sleepMinutes: 420 + 1440 - 1410 },
-    { date: '2026-09-03', wakeMinutes: 495, bedMinutes: 540, sleepMinutes: 495 + 1440 - 1485 },
-    { date: '2026-09-04', wakeMinutes: null, bedMinutes: null, sleepMinutes: null },
+    { date: '2026-09-02', wakeMinutes: 420, bedMinutes: 1485, priorBedMinutes: 1410 - 1440, sleepMinutes: 420 + 1440 - 1410 },
+    { date: '2026-09-03', wakeMinutes: 495, bedMinutes: 540, priorBedMinutes: 1485 - 1440, sleepMinutes: 495 + 1440 - 1485 },
+    { date: '2026-09-04', wakeMinutes: null, bedMinutes: null, priorBedMinutes: 540 - 1440, sleepMinutes: null },
   ])
   expect(stats.averageWakeMinutes).toBe((420 + 495) / 2)
   expect(stats.averageSleepMinutes).toBe((450 + 450) / 2)

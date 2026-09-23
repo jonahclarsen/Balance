@@ -11,6 +11,8 @@ export type SleepStatsDay = {
   // Minutes from the plan date's midnight; bedtimes after midnight exceed 1440.
   wakeMinutes: number | null
   bedMinutes: number | null
+  // The previous day's bedtime, relative to this day's midnight (usually negative).
+  priorBedMinutes: number | null
   // The sleep that ended on this day's wake time, measured from the previous
   // day's bedtime.
   sleepMinutes: number | null
@@ -41,11 +43,13 @@ export function buildSleepStats(plans: DailyPlan[], currentDate: string, rangeDa
     const sleepMinutes = bounds && previousBounds
       ? bounds.wakeMinutes + 1440 - previousBounds.bedMinutes
       : null
+    const priorBounds = previousBounds
     previousBounds = bounds
     return {
       date,
       wakeMinutes: bounds?.wakeMinutes ?? null,
       bedMinutes: bounds?.bedMinutes ?? null,
+      priorBedMinutes: priorBounds ? priorBounds.bedMinutes - 1440 : null,
       sleepMinutes: sleepMinutes !== null && sleepMinutes > 0 ? sleepMinutes : null,
     }
   })
