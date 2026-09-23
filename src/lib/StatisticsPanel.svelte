@@ -47,10 +47,15 @@
   // Snap time axes to whole hours so tick labels read as clock times.
   function hourAxis(values: (number | null)[], mode: 'floor' | 'zero') {
     const present = values.filter((value): value is number => value !== null)
-    const min = mode === 'zero' || present.length === 0 ? 0 : Math.floor(Math.min(...present) / 60) * 60
-    const max = Math.max(min + 60, Math.ceil(Math.max(min, ...present) / 60) * 60)
-    const mid = min + Math.round((max - min) / 120) * 60
-    return { min, max, ticks: [...new Set([min, mid, max])] }
+    const low = mode === 'zero' || present.length === 0 ? 0 : Math.min(...present)
+    const high = Math.max(low + 60, ...present)
+    // Round-hour ticks, spaced so there are at most five labels.
+    const stepHours = [1, 2, 3, 4, 6, 12].find((hours) => (high - low) / (hours * 60) <= 4) ?? 12
+    const step = stepHours * 60
+    const min = Math.floor(low / step) * step
+    const max = Math.ceil(high / step) * step
+    const ticks = Array.from({ length: (max - min) / step + 1 }, (_, index) => min + index * step)
+    return { min, max, ticks }
   }
 
   function openDayAt(index: number) {
@@ -121,6 +126,7 @@
         onPointClick={openDayAt}
         series={bedSeries}
         ariaLabel={`${rangeDays}-day bedtime history, taken from the end of the last timed task of each day.`}
+        inverted
         axisMin={bedAxis.min}
         axisMax={bedAxis.max}
         ticks={bedAxis.ticks}

@@ -21,6 +21,8 @@
   export let axisMin = 0
   export let axisMax: number | null = null
   export let ticks: number[] | null = null
+  // Puts larger values lower, e.g. so later bedtimes sit lower on the chart.
+  export let inverted = false
   export let onPointClick: ((index: number) => void) | null = null
 
   const lineWidth = 1000
@@ -37,7 +39,9 @@
     const points = line.values.map((value, index) => value === null ? null : {
       // Center each point in its hover column so the marker and highlight line up.
       x: ((index + 0.5) / pointLabels.length) * lineWidth,
-      y: lineHeight - ((value - axisMin) / axisSpan) * lineHeight,
+      y: inverted
+        ? ((value - axisMin) / axisSpan) * lineHeight
+        : lineHeight - ((value - axisMin) / axisSpan) * lineHeight,
     })
     const runs: { x: number; y: number }[][] = []
     let run: { x: number; y: number }[] = []
@@ -68,15 +72,20 @@
   function tickPercent(tick: number): number {
     return ((tick - axisMin) / axisSpan) * 100
   }
+
+  // Distance from the bottom of the plot, honoring inversion.
+  function tickBottom(tick: number): number {
+    return inverted ? 100 - tickPercent(tick) : tickPercent(tick)
+  }
 </script>
 
 <div class="line-chart" role="img" aria-label={ariaLabel}>
   <div class="line-y-axis" aria-hidden="true">
-    {#each resolvedTicks as tick}<span style={`--tick-position: ${tickPercent(tick)}%`}>{formatTick(tick)}</span>{/each}
+    {#each resolvedTicks as tick}<span style={`--tick-position: ${tickBottom(tick)}%`}>{formatTick(tick)}</span>{/each}
   </div>
   <div class="line-plot">
     <div class="line-grid" aria-hidden="true">
-      {#each resolvedTicks as tick}<i style={`--tick-position: ${tickPercent(tick)}%`}></i>{/each}
+      {#each resolvedTicks as tick}<i style={`--tick-position: ${tickBottom(tick)}%`}></i>{/each}
     </div>
     <svg viewBox={`0 0 ${lineWidth} ${lineHeight}`} preserveAspectRatio="none" aria-hidden="true">
       {#each plottedSeries as line}
