@@ -41,6 +41,7 @@
   import GoalBurst from './lib/GoalBurst.svelte'
   import GoalDoabilityModal from './lib/GoalDoabilityModal.svelte'
   import GoalStatsModal from './lib/GoalStatsModal.svelte'
+  import StatisticsPanel from './lib/StatisticsPanel.svelte'
   import { randomIridescentSelectionAnimationDelay, restartElementAnimations } from './lib/iridescentSelectionAnimation'
   import {
     filterGoalsByPhrase,
@@ -135,7 +136,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals' | 'settings' | 'admin'
+  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals' | 'statistics' | 'settings' | 'admin'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -2720,6 +2721,7 @@ return rows`
       value === 'projects' ||
       value === 'metrics' ||
       value === 'goals' ||
+      value === 'statistics' ||
       value === 'settings' ||
       (import.meta.env.DEV && value === 'admin')
     )
@@ -3226,6 +3228,7 @@ return rows`
         KeyN: 'notes',
         KeyP: 'projects',
         KeyV: 'metrics',
+        KeyY: 'statistics',
         KeyS: 'settings',
       }
       const sidebarView = sidebarViewByCode[event.code]
@@ -5830,6 +5833,7 @@ return rows`
       <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => openMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; openMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
+      <button class:active={view === 'statistics'} type="button" title="Statistics (Alt+Y)" aria-keyshortcuts="Alt+Y" on:click={() => openMobileDrawerView('statistics')}><span>Statistics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Y')}</kbd></button>
       <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => openMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
       {#if import.meta.env.DEV}
         <button class:active={view === 'admin'} type="button" on:click={() => openMobileDrawerView('admin')}><span>Admin Settings</span></button>
@@ -6528,6 +6532,10 @@ return rows`
           </div>
         </div>
       {/if}
+    {/if}
+
+    {#if view === 'statistics'}
+      <StatisticsPanel plans={$plannerStore.plans} {currentDay} />
     {/if}
 
     {#if view === 'projects'}

@@ -64,6 +64,7 @@
         { keys: ['alt', 'E'], label: 'Open Lists' },
         { keys: ['alt', 'V'], label: 'Open Metrics' },
         { keys: ['alt', 'G'], label: 'Open Goals' },
+        { keys: ['alt', 'Y'], label: 'Open Statistics' },
         { keys: ['alt', 'S'], label: 'Open Settings' },
         { keys: ['alt', 'Q'], label: 'Previous day, template, or metric' },
         { keys: ['alt', 'W'], label: 'Next day, template, or metric' },
