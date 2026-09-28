@@ -111,6 +111,28 @@ export function effectiveThemeForDate(
   return selected === 'random' ? randomThemeForDate(date) : selected
 }
 
+// The Iridescent background hues drift by the same daily amount. Days roll over
+// at 4 a.m. local time.
+export function iridescentHueShift(now = new Date()): number {
+  const day = new Date(now)
+  if (day.getHours() < 4) day.setDate(day.getDate() - 1)
+  const key = `${day.getFullYear()}-${day.getMonth() + 1}-${day.getDate()}`
+  let hash = 2166136261
+  for (const char of key) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619)
+  hash = Math.imul(hash ^ hash >>> 16, 0x85ebca6b)
+  hash = Math.imul(hash ^ hash >>> 13, 0xc2b2ae35)
+  hash ^= hash >>> 16
+  return Math.round((hash >>> 0) / 2 ** 32 * 60) - 30
+}
+
+export function applyIridescentHueShift(now = new Date()) {
+  const root = document.documentElement
+  const shift = String(iridescentHueShift(now))
+  if (root.style.getPropertyValue('--iridescent-hue-shift') !== shift) {
+    root.style.setProperty('--iridescent-hue-shift', shift)
+  }
+}
+
 export async function readEncryptedDeviceAppearance(): Promise<DeviceAppearancePreferences | null> {
   if (!isTauri()) return null
   const value = await invoke<unknown | null>('get_device_appearance')

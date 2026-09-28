@@ -2,6 +2,7 @@ import { mount } from 'svelte'
 import './app.css'
 import App from './App.svelte'
 import {
+  applyIridescentHueShift,
   COLOR_SCHEME_QUERY,
   createDefaultDeviceAppearance,
   effectiveColorScheme,
@@ -17,6 +18,7 @@ document.documentElement.dataset.colorScheme = effectiveColorScheme(
   window.matchMedia(COLOR_SCHEME_QUERY).matches,
 )
 document.documentElement.dataset.theme = effectiveThemeForDate(startupAppearance, todayISO())
+applyIridescentHueShift()
 performance.measure('balance-device-theme-bootstrap', {
   start: deviceThemeBootstrapStartedAt,
   end: performance.now(),

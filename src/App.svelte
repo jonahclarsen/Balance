@@ -89,6 +89,7 @@
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
   import {
+    applyIridescentHueShift,
     COLOR_SCHEME_QUERY,
     createDefaultDeviceAppearance,
     deviceAppearanceFromLegacyPreferences,
@@ -2144,6 +2145,7 @@ return rows`
   })
 
   function refreshCurrentDay() {
+    applyIridescentHueShift()
     const nextDay = todayISO()
     if (nextDay !== currentDay) {
       currentDay = nextDay
