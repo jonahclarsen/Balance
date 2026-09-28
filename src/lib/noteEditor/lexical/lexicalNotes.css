@@ -225,6 +225,8 @@
   content: attr(data-placeholder);
   position: absolute;
   inset: 0 auto auto 0;
+  /* Start where the caret does, not at the padding edge. */
+  padding: inherit;
   color: var(--muted);
   opacity: 0;
   pointer-events: none;
