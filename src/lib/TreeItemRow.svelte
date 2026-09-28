@@ -13,6 +13,9 @@
   export let dragLabel = 'Drag to move item'
   export let selected = false
   export let done = false
+  // Marks a row whose children are hidden so its bottom edge can show that
+  // more tasks sit beneath it.
+  export let childrenCollapsed = false
   export let selectionDragging = false
   export let wholeRowSelection = false
   export let interactive = true
@@ -281,6 +284,7 @@
     class:whole-row-selection={wholeRowSelection}
     class:done
     class:selected
+    class:children-collapsed={childrenCollapsed}
     data-item-container-id={containerId}
     data-plan-item-id={kind === 'plan' ? itemId : undefined}
     data-plan-item-depth={kind === 'plan' ? depth : undefined}

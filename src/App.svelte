@@ -6025,6 +6025,7 @@ return rows`
                     {metrics}
                     {notes}
                     onOpenLink={(link, itemId) => openLink(link, { container: 'plan', containerId: activePlan.id, itemId })}
+                    collapsible
                   />
                 {/each}
 

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
+  import { collapsedPlanItemIds, setPlanItemCollapsed } from './collapsedPlanItems'
   import { openExternalURL } from './externalLinks'
   import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
   import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
@@ -88,6 +89,8 @@
   // come from the list template, so locked items expose only the done checkbox and
   // any inline links. To change a list, edit its template and regenerate.
   export let locked = false
+  // Today rows with subtasks get a toggle that hides or shows them.
+  export let collapsible = false
 
   $: selected = selectedItemIds.has(item.id)
   let matchedGoals: Goal[] = []
@@ -124,6 +127,28 @@
   $: matchedGoalIds = new Set(matchedGoals.map((goal) => goal.id))
   $: previewGoals = item.done ? [] : matchingGoals.filter((goal) => !matchedGoalIds.has(goal.id))
   $: timeWarning = timeWarnings.get(item.id)
+
+  $: hasChildren = item.children.length > 0
+  $: childrenCollapsed = collapsible && hasChildren && $collapsedPlanItemIds.has(item.id)
+  // A task that newly lands under a collapsed parent (indent, split, paste,
+  // drop inside) must stay visible so it can take focus, so reveal them.
+  let knownChildIds: Set<Id> | null = null
+  $: {
+    const childIds = new Set(item.children.map((child) => child.id))
+    if (childrenCollapsed && knownChildIds && [...childIds].some((id) => !knownChildIds?.has(id))) {
+      setPlanItemCollapsed(item.id, false)
+    }
+    knownChildIds = childIds
+  }
+
+  function countDescendants(items: PlanItem[]): number {
+    return items.reduce((total, child) => total + 1 + countDescendants(child.children), 0)
+  }
+
+  $: hiddenCount = childrenCollapsed ? countDescendants(item.children) : 0
+  $: childrenToggleLabel = childrenCollapsed
+    ? `Show ${hiddenCount} hidden ${hiddenCount === 1 ? 'subtask' : 'subtasks'}`
+    : 'Hide subtasks'
 
   let mobileMenuOpen = false
   let mobileTimeEditorOpen = false
@@ -853,6 +878,7 @@
   ariaLabel={`Plan item: ${item.text || 'Untitled'}`}
   {selected}
   done={item.done}
+  {childrenCollapsed}
   {selectionDragging}
   wholeRowSelection={mobileSelectionMode}
   interactive={!locked}
@@ -914,6 +940,25 @@
         >
           <AlarmClockIcon />
         </button>
+    {/if}
+
+    {#if collapsible && hasChildren}
+      <button
+        class="icon-button quiet children-toggle"
+        class:collapsed={childrenCollapsed}
+        type="button"
+        title={childrenToggleLabel}
+        aria-label={childrenToggleLabel}
+        aria-expanded={!childrenCollapsed}
+        on:click|stopPropagation={() => setPlanItemCollapsed(item.id, !childrenCollapsed)}
+      >
+        <svg class="children-toggle-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" />
+        </svg>
+        {#if childrenCollapsed}
+          <span class="children-toggle-count">{hiddenCount}</span>
+        {/if}
+      </button>
     {/if}
 
     {#if locked}
@@ -1053,7 +1098,7 @@
   {/if}
 
   <svelte:fragment slot="children">
-    {#if item.children.length > 0}
+    {#if hasChildren && !childrenCollapsed}
       <div class="children">
         {#each item.children as child (child.id)}
           <svelte:self
@@ -1099,6 +1144,7 @@
             {onEditTemplate}
             {showEditShortcutHint}
             {locked}
+            {collapsible}
           />
         {/each}
       </div>
