@@ -154,9 +154,23 @@ export class NoteEditorAdapter {
         } else this.store.replaceNoteItems(noteId, items, summary)
         break
       }
-      case 'done':
-        this.store.patchNoteItemsDone(noteId, diff.itemIds, diff.done)
+      case 'done': {
+        // The store cascades `done` down from every id it is given and then
+        // reconciles ancestors. If the view already applied that cascade, the
+        // changed set includes reconciled ancestors; passing those would push
+        // the value down onto unrelated siblings. Send only the changed items
+        // with no changed descendant: ancestors re-derive the same value.
+        const changed = new Set(diff.itemIds)
+        const byId = noteItemById(items)
+        const hasChangedDescendant = (item: { children: NoteItem[] }): boolean =>
+          item.children.some((child) => changed.has(child.id) || hasChangedDescendant(child))
+        const ids = diff.itemIds.filter((id) => {
+          const item = byId.get(id)
+          return !item || !hasChangedDescendant(item)
+        })
+        this.store.patchNoteItemsDone(noteId, ids, diff.done)
         break
+      }
       default:
         this.store.replaceNoteItems(noteId, items, summary)
     }
