@@ -2065,7 +2065,6 @@ body.mobile-checkbox-dragging {
   align-items: center;
   justify-content: center;
   position: relative;
-  gap: 3px;
   width: auto;
   /* Pulls the task text in; the row gap plus the text's own padding
      otherwise leave a wide hole after the chevron. */
@@ -2088,26 +2087,11 @@ body.mobile-checkbox-dragging {
   flex: 0 0 auto;
   width: 13px;
   height: 13px;
-  /* Only the rotation animates: the count appears/disappears instantly, so
-     easing the margins too would push the task text out and then back. */
   transition: transform 120ms ease;
-}
-
-/* Collapsed, the count uses the task text's font. */
-.children-toggle.collapsed {
-  font-family: var(--font-content);
 }
 
 .children-toggle.collapsed .children-toggle-chevron {
   transform: rotate(-90deg);
-  /* Pointing right, the chevron's ink is a narrow strip in the middle of its
-     square box; drop the empty sides so the count's padding matches. */
-  margin-left: -4.7px;
-  margin-right: -4.1px;
-}
-
-.children-toggle-count {
-  font-size: 0.8em;
 }
 
 /* A task whose subtasks are hidden gets a heavy bar under it so the missing

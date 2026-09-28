@@ -141,54 +141,6 @@
     knownChildIds = childIds
   }
 
-  // Glyphs carry side bearings that differ per character (a "1" has far more
-  // empty space around it than a "4"), so padding alone can't center a count
-  // optically. Rasterize the text, find its actual ink, and cancel the empty
-  // sides with margins so the span is exactly as wide as what it draws.
-  // (measureText's ink bounds can't be used: WebKit reports the advance box.)
-  const BEARING_SCALE = 4
-  let bearingCanvas: HTMLCanvasElement | null = null
-  function trimGlyphBearings(node: HTMLElement, _text: string | number) {
-    const measure = () => {
-      const text = node.textContent ?? ''
-      const context = (bearingCanvas ??= document.createElement('canvas')).getContext('2d', { willReadFrequently: true })
-      if (!context || !node.isConnected || !text) return
-      const style = getComputedStyle(node)
-      const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
-      context.font = font
-      const advance = context.measureText(text).width
-      const pad = parseFloat(style.fontSize)
-      const width = Math.ceil((advance + pad * 2) * BEARING_SCALE)
-      const height = Math.ceil(pad * 3 * BEARING_SCALE)
-      bearingCanvas.width = width
-      bearingCanvas.height = height
-      context.scale(BEARING_SCALE, BEARING_SCALE)
-      context.font = font
-      context.textBaseline = 'middle'
-      context.fillText(text, pad, pad * 1.5)
-      const pixels = context.getImageData(0, 0, width, height).data
-      let first = -1
-      let last = -1
-      for (let x = 0; x < width; x++) {
-        for (let y = 0; y < height; y++) {
-          if (pixels[(y * width + x) * 4 + 3] > 64) {
-            if (first < 0) first = x
-            last = x
-            break
-          }
-        }
-      }
-      if (first < 0) return
-      const inkLeft = first / BEARING_SCALE - pad
-      const inkRight = (last + 1) / BEARING_SCALE - pad
-      node.style.marginLeft = `${-inkLeft}px`
-      node.style.marginRight = `${inkRight - advance}px`
-    }
-    measure()
-    void document.fonts?.ready.then(measure)
-    return { update: measure }
-  }
-
   function countDescendants(items: PlanItem[]): number {
     return items.reduce((total, child) => total + 1 + countDescendants(child.children), 0)
   }
@@ -1002,9 +954,6 @@
         <svg class="children-toggle-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
           <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" />
         </svg>
-        {#if childrenCollapsed}
-          <span class="children-toggle-count" use:trimGlyphBearings={hiddenCount}>{hiddenCount}</span>
-        {/if}
       </button>
     {/if}
 
