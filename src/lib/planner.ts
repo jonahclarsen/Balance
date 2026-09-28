@@ -371,6 +371,7 @@ function generatePlanItems(
         generatedGoalIds.add(goal.id)
         return {
           ...createPlanItem(goal.name),
+          html: goal.nameHtml || escapeHTML(goal.name),
           generatedGoalId: goal.id,
           startMinutes: item.startMinutes,
           endMinutes: item.endMinutes,
