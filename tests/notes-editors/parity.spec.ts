@@ -759,11 +759,17 @@ test.describe('host integration', () => {
     await harness.boot({ select: 'Links' })
     const note = harness.noteByTitle('Links')
     const target = harness.noteByTitle('Checklist')
-    const popup = harness.page.waitForEvent('popup', { timeout: 3000 }).catch(() => null)
+    // openExternalURL calls window.open(url, '_blank', 'noopener,noreferrer');
+    // headless browsers do not reliably surface that as a popup, so observe
+    // the call itself.
+    await harness.page.evaluate(() => {
+      const record: string[] = []
+      ;(window as unknown as { __openedURLs: string[] }).__openedURLs = record
+      window.open = ((url: string) => { record.push(String(url)); return null }) as typeof window.open
+    })
     await harness.block(note.items[0].id).locator('a').first().click()
-    const opened = await popup
-    expect(opened).not.toBeNull()
-    await opened?.close()
+    await expect.poll(() => harness.page.evaluate(() => (window as unknown as { __openedURLs: string[] }).__openedURLs)).toEqual(['https://example.com/path?q=1&r=2'])
+    expect(harness.page.url()).toContain('127.0.0.1')
     await pasteInto(harness, note.items[2].id, 0, { text: `balance://note/${target.id}` }, 4)
     await harness.waitForNote(note.id, (stored) => stored.items[2].html.includes(`href="balance://note/${target.id}"`))
     await harness.block(note.items[2].id).locator(`a[href="balance://note/${target.id}"]`).click()
