@@ -136,8 +136,12 @@ async function typeTask(text, { method = 'add', durable = true, composing = fals
       getSelection().removeAllRanges()
       getSelection().addRange(range)
     })()`)
-    await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
-    await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    // On mobile the first Enter inserts a line break; Enter on the resulting
+    // empty last line drops it and starts the next task.
+    for (let press = 0; press < 2; press += 1) {
+      await client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+      await client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 })
+    }
   }
   await waitFor(() => client.evaluate(`document.querySelectorAll('[data-plan-text-input]').length === ${count + 1}`), 'the new bottom task')
   const id = await client.evaluate(`(() => {
