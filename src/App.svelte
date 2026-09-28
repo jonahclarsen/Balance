@@ -6254,7 +6254,7 @@ return rows`
                 >
                   <svg class="word-cap-lock-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                     {#if wordCapUnlocked}
-                      <path d="M10.75 6.75V3.5a2.75 2.75 0 0 0-5.5 0" />
+                      <path d="M10.75 6V3.5a2.75 2.75 0 0 0-5.5 0" />
                       <rect x="3.25" y="6.75" width="9.5" height="7.25" rx="1.5" />
                     {:else}
                       <path d="M5.25 6V4.75a2.75 2.75 0 0 1 5.5 0V6" />
