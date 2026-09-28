@@ -65,3 +65,41 @@ test('marked text handles tabs, escaped content, blank tasks and unsafe links', 
   expect(result.ordinary).toBeNull()
   expect(result.partial).toBeNull()
 })
+
+test('tasks copied from Today paste as rows in list and day templates', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'desktop keyboard paste')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  const copied = '<balance>\n- Parent\n  - Read [docs](https://example.com/docs)\n- Sibling\n</balance>'
+  const shape = (items: any[], text: (item: any) => string): unknown =>
+    items.map((item) => ({ text: text(item), children: shape(item.children, text) }))
+  const expected = [
+    { text: 'Parent', children: [{ text: 'Read docs', children: [] }] },
+    { text: 'Sibling', children: [] },
+  ]
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).filter({ visible: true }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.locator('[data-list-template-text-input]').first().fill('')
+  await page.evaluate((text) => navigator.clipboard.writeText(text), copied)
+  await page.keyboard.press('Meta+V')
+  await expect(page.locator('[data-list-template-text-input]')).toHaveCount(3)
+  await expect(page.locator('[data-list-template-text-input] a[href="https://example.com/docs"]')).toHaveCount(1)
+  await expect.poll(async () => shape(
+    (await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!))).listTemplates.at(-1).items,
+    (item) => item.text,
+  )).toEqual(expected)
+
+  await page.getByRole('button', { name: 'Day Templates', exact: true }).filter({ visible: true }).click()
+  await page.getByRole('button', { name: 'New day', exact: true }).click()
+  await page.locator('[data-template-option-text-input]').first().fill('')
+  await page.evaluate((text) => navigator.clipboard.writeText(text), copied)
+  await page.keyboard.press('Meta+V')
+  await expect(page.locator('[data-template-option-text-input]')).toHaveCount(3)
+  await expect.poll(async () => shape(
+    (await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!))).templates.at(-1).items,
+    (item) => item.options[0].text,
+  )).toEqual(expected)
+})

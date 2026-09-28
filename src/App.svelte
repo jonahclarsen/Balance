@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { planItemsClipboardText, parsePlainTaskClipboard } from './lib/taskClipboard'
+  import { planItemsClipboardText, parsePlainTaskClipboard, planItemsToListTemplateItems, planItemsToTemplateItems } from './lib/taskClipboard'
   import ImageLayer from './lib/ImageLayer.svelte'
   import BackupBrowser from './lib/BackupBrowser.svelte'
   import { blobDataURL, selectedImage } from './lib/imageService'
@@ -4613,9 +4613,9 @@ return rows`
 
   async function pasteTemplateSystemClipboard(contents?: ClipboardContents) {
     const clipboard = contents ?? await readSystemClipboard()
-    const structured = parseTemplateItemClipboard(clipboard.structuredPayload)
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
+    const structured = parseTemplateItemClipboard(clipboard.structuredPayload) ?? templateClipboardFromPlanItems(clipboard, surface)
     if (!structured || structured.kind !== surface || !containerId) {
       pastePlainClipboardIntoActiveEditor(clipboard)
       return
@@ -5286,6 +5286,15 @@ return rows`
     } catch {
       return null
     }
+  }
+
+  function templateClipboardFromPlanItems(clipboard: ClipboardContents, surface: ItemSurface | null): TemplateItemClipboard | null {
+    if (surface !== 'day-template' && surface !== 'list-template') return null
+    const items = (parsePlanItemClipboard(clipboard.structuredPayload) ?? plainPlanItemClipboard(clipboard.plainText))?.items
+    if (!items) return null
+    return surface === 'day-template'
+      ? { kind: surface, items: planItemsToTemplateItems(items), cut: false }
+      : { kind: surface, items: planItemsToListTemplateItems(items), cut: false }
   }
 
   function parseTemplateItemClipboard(raw: string | null): TemplateItemClipboard | null {
