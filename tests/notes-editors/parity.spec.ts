@@ -585,11 +585,19 @@ test.describe('P-33/34/38/39 selection across blocks', () => {
     const note = harness.noteByTitle('Nested lists')
     const groceries = note.items[0]
     const errands = note.items[1]
-    // Measure each row's own line: per the DOM contract a row element also
-    // contains its nested children, so its box center can land on a child.
-    const ownLine = (id: string) => harness.block(id).locator('.note-block').first()
-    const from = (await ownLine(groceries.id).boundingBox())!
-    const to = (await ownLine(errands.id).boundingBox())!
+    // Measure each row's own text line: a row element also contains its
+    // nested children, so its box center can land on a child.
+    const ownLine = (id: string) => harness.block(id).evaluate((element) => {
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+      const node = walker.nextNode()
+      if (!node) throw new Error('row has no text')
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      const rect = range.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+    })
+    const from = await ownLine(groceries.id)
+    const to = await ownLine(errands.id)
     await harness.page.mouse.move(from.x + 12, from.y + from.height / 2)
     await harness.page.mouse.down()
     await harness.page.mouse.move(to.x + 30, to.y + to.height / 2, { steps: 8 })
