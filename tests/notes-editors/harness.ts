@@ -58,7 +58,8 @@ export class Harness {
     await this.page.reload()
     await this.openNotesView()
     if (options.select) await this.selectNote(options.select)
-    await expect(this.editorRoot()).toBeVisible()
+    // An empty note hides the editor behind "Start writing…" (P-16).
+    await expect(this.editorRoot()).toBeAttached()
   }
 
   async openNotesView() {

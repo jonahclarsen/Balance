@@ -773,7 +773,8 @@ test.describe('host integration', () => {
     const sourdough = flatten(note.items).find((item) => item.text === 'Sourdough')!
     await harness.page.keyboard.press(`${mod}+k`)
     await harness.page.getByRole('dialog').getByRole('searchbox').or(harness.page.getByRole('dialog').getByRole('textbox')).first().fill('Sourdough')
-    await harness.page.getByRole('dialog').getByRole('option').first().click()
+    // Search results are buttons named "Open <note title>, Note".
+    await harness.page.getByRole('dialog').getByRole('button', { name: /^Open Nested lists/ }).first().click()
     await expect(harness.page.locator('#note-title')).toHaveValue('Nested lists')
     await expect(harness.page.locator(`[data-note-item-id="${sourdough.id}"].search-result-target`)).toBeVisible()
   })
@@ -782,7 +783,9 @@ test.describe('host integration', () => {
     await harness.boot({ select: 'Headings and quotes' })
     await harness.page.keyboard.press(`${mod}+f`)
     const find = harness.page.getByRole('searchbox', { name: /find/i }).or(harness.page.getByPlaceholder(/find/i)).first()
-    await find.fill('plant a tree')
+    // A phrase beyond the sidebar card's 90-character preview, so the only
+    // match is the editor text itself.
+    await find.fill('Closing thoughts')
     await expect(harness.page.getByText(/1 of 1|1\/1/)).toBeVisible()
     await harness.page.keyboard.press('Escape')
   })
@@ -805,6 +808,9 @@ test.describe('host integration', () => {
     await harness.boot({ select: 'Long note' })
     const note = harness.noteByTitle('Long note')
     const toolbar = harness.page.getByRole('toolbar', { name: 'Note formatting' })
+    // The toolbar starts below the title; measure once it has stuck.
+    await harness.block(flatten(note.items)[30].id).scrollIntoViewIfNeeded()
+    await harness.page.waitForTimeout(100)
     const before = (await toolbar.boundingBox())!
     await harness.block(flatten(note.items)[60].id).scrollIntoViewIfNeeded()
     await harness.page.waitForTimeout(100)
