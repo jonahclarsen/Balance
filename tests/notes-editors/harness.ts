@@ -58,7 +58,8 @@ export class Harness {
     await this.page.reload()
     await this.openNotesView()
     if (options.select) await this.selectNote(options.select)
-    await expect(this.editorRoot()).toBeVisible()
+    // An empty note shows the "Start writing…" surface instead of the editor.
+    await expect(this.editorRoot().or(this.page.getByRole('button', { name: 'Start writing…' })).first()).toBeVisible()
   }
 
   async openNotesView() {

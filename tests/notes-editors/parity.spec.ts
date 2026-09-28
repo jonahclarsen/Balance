@@ -585,8 +585,11 @@ test.describe('P-33/34/38/39 selection across blocks', () => {
     const note = harness.noteByTitle('Nested lists')
     const groceries = note.items[0]
     const errands = note.items[1]
-    const from = (await harness.block(groceries.id).boundingBox())!
-    const to = (await harness.block(errands.id).boundingBox())!
+    // Measure each row's own line: per the DOM contract a row element also
+    // contains its nested children, so its box center can land on a child.
+    const ownLine = (id: string) => harness.block(id).locator('.note-block').first()
+    const from = (await ownLine(groceries.id).boundingBox())!
+    const to = (await ownLine(errands.id).boundingBox())!
     await harness.page.mouse.move(from.x + 12, from.y + from.height / 2)
     await harness.page.mouse.down()
     await harness.page.mouse.move(to.x + 30, to.y + to.height / 2, { steps: 8 })
@@ -756,11 +759,17 @@ test.describe('host integration', () => {
     await harness.boot({ select: 'Links' })
     const note = harness.noteByTitle('Links')
     const target = harness.noteByTitle('Checklist')
-    const popup = harness.page.waitForEvent('popup', { timeout: 3000 }).catch(() => null)
+    // openExternalURL calls window.open(url, '_blank', 'noopener,noreferrer');
+    // headless browsers do not reliably surface that as a popup, so observe
+    // the call itself.
+    await harness.page.evaluate(() => {
+      const record: string[] = []
+      ;(window as unknown as { __openedURLs: string[] }).__openedURLs = record
+      window.open = ((url: string) => { record.push(String(url)); return null }) as typeof window.open
+    })
     await harness.block(note.items[0].id).locator('a').first().click()
-    const opened = await popup
-    expect(opened).not.toBeNull()
-    await opened?.close()
+    await expect.poll(() => harness.page.evaluate(() => (window as unknown as { __openedURLs: string[] }).__openedURLs)).toEqual(['https://example.com/path?q=1&r=2'])
+    expect(harness.page.url()).toContain('127.0.0.1')
     await pasteInto(harness, note.items[2].id, 0, { text: `balance://note/${target.id}` }, 4)
     await harness.waitForNote(note.id, (stored) => stored.items[2].html.includes(`href="balance://note/${target.id}"`))
     await harness.block(note.items[2].id).locator(`a[href="balance://note/${target.id}"]`).click()
@@ -773,7 +782,8 @@ test.describe('host integration', () => {
     const sourdough = flatten(note.items).find((item) => item.text === 'Sourdough')!
     await harness.page.keyboard.press(`${mod}+k`)
     await harness.page.getByRole('dialog').getByRole('searchbox').or(harness.page.getByRole('dialog').getByRole('textbox')).first().fill('Sourdough')
-    await harness.page.getByRole('dialog').getByRole('option').first().click()
+    // Search results are buttons named "Open <title>, Note".
+    await harness.page.getByRole('dialog').getByRole('button', { name: /^Open Nested lists/ }).first().click()
     await expect(harness.page.locator('#note-title')).toHaveValue('Nested lists')
     await expect(harness.page.locator(`[data-note-item-id="${sourdough.id}"].search-result-target`)).toBeVisible()
   })
@@ -782,7 +792,9 @@ test.describe('host integration', () => {
     await harness.boot({ select: 'Headings and quotes' })
     await harness.page.keyboard.press(`${mod}+f`)
     const find = harness.page.getByRole('searchbox', { name: /find/i }).or(harness.page.getByPlaceholder(/find/i)).first()
-    await find.fill('plant a tree')
+    // A phrase beyond the sidebar card preview (first 90 characters), so the
+    // only match is the editor text.
+    await find.fill('Closing thoughts')
     await expect(harness.page.getByText(/1 of 1|1\/1/)).toBeVisible()
     await harness.page.keyboard.press('Escape')
   })
@@ -805,11 +817,18 @@ test.describe('host integration', () => {
     await harness.boot({ select: 'Long note' })
     const note = harness.noteByTitle('Long note')
     const toolbar = harness.page.getByRole('toolbar', { name: 'Note formatting' })
-    const before = (await toolbar.boundingBox())!
+    // P-51: once scrolled, the toolbar stays pinned 8–48 px (CSS, before
+    // zoom) below the note scroller's top edge.
+    const scroller = harness.page.locator('.note-document').first()
     await harness.block(flatten(note.items)[60].id).scrollIntoViewIfNeeded()
     await harness.page.waitForTimeout(100)
-    const after = (await toolbar.boundingBox())!
-    expect(Math.abs(after.y - before.y)).toBeLessThanOrEqual(60)
+    const pinned = (await toolbar.boundingBox())!.y - (await scroller.boundingBox())!.y
+    await harness.block(flatten(note.items)[120].id).scrollIntoViewIfNeeded()
+    await harness.page.waitForTimeout(100)
+    const later = (await toolbar.boundingBox())!.y - (await scroller.boundingBox())!.y
+    expect(pinned).toBeGreaterThanOrEqual(0)
+    expect(pinned).toBeLessThanOrEqual(60)
+    expect(Math.abs(later - pinned)).toBeLessThanOrEqual(1)
     await expect(toolbar).toBeInViewport()
     const count = await harness.page.locator('[data-note-item-id]').count()
     expect(count).toBe(flatten(note.items).length)
