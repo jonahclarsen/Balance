@@ -26,10 +26,12 @@ export default defineConfig({
     {
       name: 'tiptap',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 820 }, noteEditor: 'tiptap' },
+      testIgnore: /mobile\.spec\.ts/,
     },
     {
       name: 'lexical',
       use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 820 }, noteEditor: 'lexical' },
+      testIgnore: /mobile\.spec\.ts/,
     },
     {
       name: 'tiptap-mobile',

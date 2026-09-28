@@ -1,0 +1,401 @@
+/* Notes editor: B (Lexical). Scoped to the Lexical host; theme tokens only. */
+
+.lexical-note-host {
+  position: relative;
+}
+
+.lexical-note-editor {
+  --note-body-size: 15px;
+  --note-body-line: 1.7;
+  --note-marker-column: 24px;
+  --note-child-indent: 24px;
+  --note-thread: color-mix(in srgb, var(--line) 70%, transparent);
+  position: relative;
+  min-height: 240px;
+  padding: 2px 0 12px;
+  outline: none;
+  color: var(--ink);
+  font-family: var(--font-content);
+  font-synthesis: style;
+  caret-color: var(--accent-strong);
+  overflow-wrap: anywhere;
+  -webkit-user-modify: read-write;
+}
+
+.lexical-note-editor:focus-visible {
+  outline: none;
+}
+
+/* Rows ---------------------------------------------------------------- */
+
+.lexical-note-editor .note-item {
+  position: relative;
+  color: var(--ink);
+  font-size: var(--note-body-size);
+  line-height: var(--note-body-line);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
+.lexical-note-editor .note-block {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  min-height: 30px;
+  padding: 2px 2px;
+  border-radius: 6px;
+  transition: background-color 140ms ease;
+}
+
+.lexical-note-editor .note-text {
+  position: relative;
+  min-width: 0;
+  min-height: 1.7em;
+  white-space: pre-wrap;
+  font-family: var(--font-content);
+  font-synthesis: style;
+}
+
+.lexical-note-editor .note-text strong {
+  font-weight: 700;
+}
+
+.lexical-note-editor .note-text a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.18em;
+  text-decoration-color: color-mix(in srgb, var(--accent-strong) 45%, transparent);
+  cursor: pointer;
+  transition: text-decoration-color 120ms ease;
+}
+
+.lexical-note-editor .note-text a:hover {
+  text-decoration-color: var(--accent-strong);
+}
+
+.lexical-note-editor.note-link-hover {
+  cursor: pointer;
+}
+
+::highlight(balance-note-internal-link) {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent-strong) 45%, transparent);
+}
+
+/* Headings: a clear section break, never the first thing's top gap. */
+.lexical-note-editor .note-item.note-heading {
+  font-size: clamp(20px, 2.5vw, 25px);
+  line-height: 1.35;
+  font-weight: 720;
+  letter-spacing: -0.02em;
+  padding-top: 12px;
+}
+
+.lexical-note-editor > .note-item.note-heading:first-child {
+  padding-top: 0;
+}
+
+.lexical-note-editor .note-heading > .note-block {
+  min-height: 40px;
+  padding-top: 3px;
+  padding-bottom: 3px;
+}
+
+.lexical-note-editor .note-heading > .note-block > .note-text {
+  min-height: 1.35em;
+  text-wrap: balance;
+}
+
+/* Quote: a muted rule and a slightly softer voice. */
+.lexical-note-editor .note-quote > .note-block {
+  border-left: 3px solid var(--muted);
+  border-radius: 0 6px 6px 0;
+  padding-left: 12px;
+  color: color-mix(in srgb, var(--ink) 86%, var(--muted));
+}
+
+/* List markers sit in a gutter column aligned with the first text line. */
+.lexical-note-editor .note-list-item > .note-block {
+  grid-template-columns: var(--note-marker-column) minmax(0, 1fr);
+}
+
+.lexical-note-editor .note-bullet > .note-block::before,
+.lexical-note-editor .note-numbered > .note-block::before {
+  grid-column: 1;
+  grid-row: 1;
+  user-select: none;
+  pointer-events: none;
+}
+
+.lexical-note-editor .note-bullet > .note-block::before {
+  content: '•';
+  width: 20px;
+  padding-top: 0;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: calc(var(--note-body-size) * var(--note-body-line));
+  text-align: center;
+  color: var(--ink);
+}
+
+.lexical-note-editor .note-numbered > .note-block::before {
+  content: attr(data-note-item-number) '.';
+  padding-right: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: calc(var(--note-body-size) * var(--note-body-line));
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--muted);
+}
+
+.lexical-note-editor .note-list-item > .note-block > .note-text {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* Checklists */
+.lexical-note-editor .note-check {
+  grid-column: 1;
+  grid-row: 1;
+  width: 18px;
+  height: 18px;
+  margin: calc((var(--note-body-size) * var(--note-body-line) - 18px) / 2) 3px 0 2px;
+  border-radius: 5px;
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease, transform 120ms ease;
+  user-select: none;
+}
+
+.lexical-note-editor .note-check:hover {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--checkbox-checked) 14%, transparent);
+}
+
+.lexical-note-editor .note-check:active {
+  transform: scale(0.92);
+}
+
+.lexical-note-editor .note-check:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.lexical-note-editor .note-done > .note-block > .note-text {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--muted) 70%, transparent);
+  text-decoration-thickness: 1px;
+}
+
+.lexical-note-editor .note-list-item > .note-block > .note-text {
+  transition: color 160ms ease, text-decoration-color 160ms ease;
+}
+
+/* Nesting: children indent under the parent's text, with a hairline thread
+   that makes the hierarchy readable at a glance. */
+.lexical-note-editor .note-children {
+  position: relative;
+  margin-left: var(--note-child-indent);
+}
+
+.lexical-note-editor .note-children::before {
+  content: '';
+  position: absolute;
+  top: 4px;
+  bottom: 6px;
+  left: -14px;
+  width: 1px;
+  border-radius: 1px;
+  background: var(--note-thread);
+  pointer-events: none;
+}
+
+.lexical-note-editor .note-item:focus-within > .note-children::before,
+.lexical-note-editor .note-item.note-caret-block > .note-children::before {
+  background: color-mix(in srgb, var(--accent) 34%, var(--line));
+}
+
+/* Placeholders ------------------------------------------------------------- */
+
+.lexical-note-editor .note-text[data-placeholder]::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  inset: 0 auto auto 0;
+  color: var(--muted);
+  opacity: 0;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  transition: opacity 120ms ease;
+}
+
+.lexical-note-editor:focus .note-caret-block > .note-block > .note-text[data-placeholder]::before,
+.lexical-note-editor.note-single-block .note-text[data-placeholder]::before {
+  opacity: 0.72;
+}
+
+/* Selection ---------------------------------------------------------------- */
+
+.lexical-note-editor ::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
+
+.lexical-note-editor.note-row-selection ::selection {
+  background: transparent;
+}
+
+.lexical-note-editor .note-multi-selected > .note-block {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  border-radius: 5px;
+}
+
+/* Search reveal (P-57). */
+.lexical-note-editor .note-item.search-result-target > .note-block {
+  animation: lexical-note-reveal 1800ms ease-out;
+}
+
+@keyframes lexical-note-reveal {
+  0%,
+  35% {
+    background-color: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Images keep the shared image styling; only keep them from overflowing. */
+.lexical-note-editor img[data-balance-image] {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Slash menu (P-31) ------------------------------------------------------- */
+
+.lexical-slash-menu {
+  position: absolute;
+  z-index: 30;
+  width: min(310px, 100vw - 48px);
+  max-height: min(320px, 100dvh - 16px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--paper-strong);
+  box-shadow: var(--shadow), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
+  font-family: var(--font-interface);
+  transform-origin: top left;
+}
+
+.lexical-slash-menu[hidden] {
+  display: none;
+}
+
+.lexical-slash-menu.is-entering {
+  animation: lexical-slash-enter 140ms ease-out;
+}
+
+@keyframes lexical-slash-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.lexical-slash-menu button[role='option'] {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 5px 8px 5px 5px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.lexical-slash-menu button[role='option'].active {
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+}
+
+.lexical-slash-menu .note-slash-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-content);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.lexical-slash-menu button[role='option'].active .note-slash-icon {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  color: var(--accent-strong);
+}
+
+.lexical-slash-menu .note-slash-copy {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+}
+
+.lexical-slash-menu strong {
+  font-size: 13.5px;
+  font-weight: 620;
+  line-height: 1.25;
+}
+
+.lexical-slash-menu small {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+/* Mobile ------------------------------------------------------------------- */
+
+@media (max-width: 760px) {
+  .lexical-note-editor {
+    --note-child-indent: 18px;
+    min-height: 160px;
+  }
+
+  .lexical-note-editor .note-children::before {
+    left: -11px;
+  }
+
+  .lexical-note-editor .note-check {
+    width: 20px;
+    height: 20px;
+    margin-top: calc((var(--note-body-size) * var(--note-body-line) - 20px) / 2);
+  }
+
+  .lexical-note-editor .note-list-item > .note-block {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lexical-note-editor *,
+  .lexical-slash-menu,
+  .lexical-slash-menu * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
