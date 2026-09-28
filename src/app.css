@@ -1604,7 +1604,7 @@ nav button.active {
    Kept in step with the sizes below so wrapped content can line up under the text
    instead of under the handles. */
 .plan-row {
-  --row-chrome-width: 106px;
+  --row-chrome-width: 104.1px;
 }
 
 [data-plan-text-focus-target],
@@ -1673,7 +1673,7 @@ nav button.active {
 .drag-handle {
   display: inline-grid;
   place-items: center;
-  width: 36px;
+  width: 35px;
   height: 36px;
   flex: 0 0 auto;
   border: 1px solid transparent;
@@ -1724,7 +1724,7 @@ nav button.active {
 .check-target {
   display: grid;
   place-items: center;
-  width: 36px;
+  width: 35.1px;
   height: 36px;
   flex: 0 0 auto;
   cursor: pointer;
@@ -1906,17 +1906,17 @@ body.mobile-checkbox-dragging {
 
 @container task-row (max-width: 620px) {
   .plan-row {
-    --row-chrome-width: 83px;
+    --row-chrome-width: 81.8px;
     gap: 5px;
   }
 
   .drag-handle {
-    width: 28px;
+    width: 27.4px;
     height: 32px;
   }
 
   .check-target {
-    width: 30px;
+    width: 29.4px;
     height: 32px;
   }
 
@@ -5025,7 +5025,7 @@ body.mobile-checkbox-dragging {
   }
 
   .plan-row {
-    --row-chrome-width: 66px;
+    --row-chrome-width: 64.8px;
   }
 
   .select-handle {
@@ -5104,7 +5104,7 @@ body.mobile-checkbox-dragging {
      the list probability slider can widen the document on a phone. */
   .template-main {
     display: grid;
-    grid-template-columns: 8px 28px minmax(0, 1fr) auto;
+    grid-template-columns: 8px 27.4px minmax(0, 1fr) auto;
     align-items: center;
   }
 
@@ -5302,7 +5302,7 @@ body.mobile-checkbox-dragging {
   }
 
   .plan-row > .plan-item-main {
-    flex-basis: calc(100% - 66px);
+    flex-basis: calc(100% - 64.8px);
   }
 
   .plan-row > .row-actions {
@@ -5832,7 +5832,7 @@ body.mobile-checkbox-dragging {
 
   [data-metric-question-id] {
     display: grid;
-    grid-template-columns: 28px minmax(0, 1fr) 40px;
+    grid-template-columns: 27.4px minmax(0, 1fr) 40px;
     gap: 4px;
     padding-block: 6px;
   }
@@ -5840,7 +5840,7 @@ body.mobile-checkbox-dragging {
   [data-metric-question-id] > .drag-handle {
     grid-column: 1;
     grid-row: 1;
-    width: 28px;
+    width: 27.4px;
     height: 40px;
   }
 
