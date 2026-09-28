@@ -17,6 +17,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
+  import { collapsedPlanItemIds, setPlanItemCollapsed } from './lib/collapsedPlanItems'
   import TaskCheckbox from './lib/TaskCheckbox.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
   import TemplateTabs from './lib/TemplateTabs.svelte'
@@ -3601,6 +3602,13 @@ return rows`
       return
     }
 
+    if (activeItemSurface() === 'plan' && activePlan && key === 'r' && !event.shiftKey) {
+      // Always claim Cmd+R on Today so it never reloads the window mid-edit.
+      event.preventDefault()
+      if (!event.repeat) void togglePlanItemChildrenFromKeyboard(activePlan.items)
+      return
+    }
+
     if (activeItemSurface() && !hasActiveRichTextSelection() && !isFormFieldActive()) {
       if ((key === 'c' || key === 'x') && !event.shiftKey && selectedItemIds.length > 0) {
         event.preventDefault()
@@ -3683,6 +3691,39 @@ return rows`
       key,
       repeat: shortcut.repeat,
     }))
+  }
+
+  function findPlanItemParent(items: PlanItem[], itemId: Id, parent: PlanItem | null = null): PlanItem | null | undefined {
+    for (const item of items) {
+      if (item.id === itemId) return parent
+      const found = findPlanItemParent(item.children, itemId, item)
+      if (found !== undefined) return found
+    }
+
+    return undefined
+  }
+
+  // Hides or shows the subtasks of the focused (or selected) task. On a task
+  // without subtasks it acts on the parent, so Cmd+R from inside a group folds
+  // that group away and leaves the cursor on its parent.
+  async function togglePlanItemChildrenFromKeyboard(items: PlanItem[]) {
+    const focused = document.activeElement instanceof HTMLElement
+      ? document.activeElement.closest<HTMLElement>('[data-plan-text-focus-target-id]')?.dataset.planTextFocusTargetId
+      : undefined
+    const itemId = focused ?? (selectedItemIds.length === 1 ? selectedItemIds[0] : undefined)
+    if (!itemId) return
+
+    const item = findPlanItem(items, itemId)
+    const target = item?.children.length ? item : findPlanItemParent(items, itemId)
+    if (!target) return
+
+    const collapse = !$collapsedPlanItemIds.has(target.id)
+    setPlanItemCollapsed(target.id, collapse)
+    if (collapse && target.id !== itemId) {
+      if (selectedItemIds.length > 0) selectedItemIds = []
+      await tick()
+      focusItemTextInput(target.id)
+    }
   }
 
   function findPlanItem(items: PlanItem[], itemId: string): PlanItem | null {

@@ -2110,6 +2110,19 @@ test('a Today task can hide and show its subtasks', async ({ page }, testInfo) =
   await expect(child).toBeVisible()
   await expect(page.locator('.hidden-children-bar')).toHaveCount(0)
 
+  // Cmd+R toggles the focused task's subtasks, or folds a subtask's parent.
+  await focusInputByValue(page, 'Work block')
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(child).toHaveCount(0)
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(child).toBeVisible()
+  await focusInputByValue(page, 'Pick the first useful task')
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(child).toHaveCount(0)
+  await expect(page.locator('[data-plan-text-input]', { hasText: /^Work block$/ })).toBeFocused()
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(child).toBeVisible()
+
   // A task indented under a collapsed parent reveals the subtasks so it stays visible.
   await workRow.getByRole('button', { name: 'Hide subtasks' }).click()
   await focusInputByValue(page, 'Later')

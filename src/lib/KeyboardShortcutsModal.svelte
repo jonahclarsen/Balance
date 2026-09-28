@@ -87,6 +87,7 @@
       title: 'Editing items',
       shortcuts: [
         { keys: ['mod', 'D'], label: 'Toggle done (keeps selected items selected)' },
+        { keys: ['mod', 'R'], label: 'Hide / show subtasks of the active task (or its parent)' },
         { keys: ['alt', 'F'], label: 'Open a link from the active task (web or any Balance destination; first web URL takes priority)' },
         { keys: ['E'], label: 'Edit selected list item (overlay)' },
         { keys: ['[ / ]'], label: 'Selected list / day-template probability −/+5% (first day-template option)' },
