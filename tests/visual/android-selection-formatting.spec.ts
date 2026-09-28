@@ -40,10 +40,17 @@ for (const [pageName, selector] of [
       expect(await page.evaluate(`(${script})('${command}')`)).toBe(true)
       await expect.poll(() => editor.innerHTML()).not.toMatch(/<(b|strong|i|em|u)>/)
     }
+    expect(await page.evaluate(`(${script})('bold')`)).toBe(true)
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('balance.appState.v1'))).toContain('<strong>Format this task</strong>')
     await editor.evaluate(() => document.getSelection()!.collapseToEnd())
     expect(await page.evaluate(`(${script})('bold')`)).toBe(false)
     await page.reload()
+    if (pageName !== 'Today') {
+      if (info.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+      await page.getByRole('button', { name: pageName, exact: true }).click()
+    }
     await expect(page.locator(selector).first()).toHaveText('Format this task')
+    await expect(page.locator(selector).first().locator('strong')).toHaveText('Format this task')
   })
 }
 

@@ -349,7 +349,7 @@ jobs:
           if-no-files-found: ignore
 
   editing-tests:
-    name: Enter behavior and template probabilities
+    name: Task editing, formatting, and template probabilities
     if: github.ref_type == 'tag' || inputs.publish_tag != '' || inputs.run_stale_task_repro
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -363,8 +363,10 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node --test .github/scripts/android-task-preservation-gate.test.mjs
+      - run: node --test .github/scripts/android-task-preservation-gate.test.mjs .github/scripts/configure-android-selection-formatting.test.mjs
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Verify Android selection formatting
+        run: pnpm exec playwright test tests/visual/android-selection-formatting.spec.ts --workers=2
       - name: Verify task splitting and template probabilities
         run: pnpm exec playwright test tests/visual/balance.spec.ts --grep 'enter splits plan items|enter in the middle of a parent plan item|template splits preserve probability' --workers=2
       - uses: actions/upload-artifact@v7
