@@ -269,6 +269,8 @@ export type ImageAsset = {
 export type Project = {
   id: Id
   name: string
+  // Formatted name with inline links; absent on projects created before it existed.
+  nameHtml?: string
   description: string
   color: string
   archived: boolean

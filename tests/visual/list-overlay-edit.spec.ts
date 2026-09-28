@@ -171,7 +171,7 @@ test('Alt+F opens a labeled Goal Stats link from the active Today task', async (
   await expect(page.getByRole('heading', { name: 'Goal stats', exact: true })).toBeVisible()
 })
 
-for (const url of ['https://example.com/docs', 'file:///tmp/Balance%20test.pdf']) {
+for (const url of ['https://example.com/docs', 'file:///tmp/Balance%20test.pdf', 'slack://channel?team=T1&id=C1']) {
   test(`pasting ${url} over selected text preserves and opens the link`, async ({ page }) => {
     await page.goto('/')
     await page.evaluate(() => localStorage.clear())

@@ -894,6 +894,35 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* A single-line RichTextEditor styled like a plain text input. */
+.rich-text-field {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--paper-strong);
+  color: var(--ink);
+  padding: 8px 10px;
+  cursor: text;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.rich-text-field:focus {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.rich-text-field:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+}
+
+.rich-text-field a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+}
+
 h1,
 h2,
 h3,

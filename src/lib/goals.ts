@@ -45,6 +45,7 @@ export function createGoal(
   startDate = todayISO(),
   id: Id,
   matchTermsHtml?: string,
+  nameHtml?: string,
 ): Goal {
   const timestamp = nowISO()
   const normalizedMatchTerms = normalizeMatchTerms(matchTerms)
@@ -53,7 +54,7 @@ export function createGoal(
   return {
     id,
     name: name.trim(),
-    nameHtml: escapeHTML(name.trim()),
+    nameHtml: normalizeGoalNameHtml(nameHtml, name.trim()),
     cadenceDays: normalizedCadenceDays,
     matchTerms: normalizedMatchTerms,
     matchTermsHtml: normalizeMatchTermsHtml(matchTermsHtml, normalizedMatchTerms),

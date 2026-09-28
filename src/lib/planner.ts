@@ -1684,16 +1684,24 @@ export function htmlToPlainTextWithBreaks(value: string): string {
   return div.textContent ?? ''
 }
 
+// Schemes that are opaque (no "//") but still commonly used as links.
+const OPAQUE_LINK_SCHEMES = new Set(['mailto', 'tel', 'sms', 'facetime', 'facetime-audio', 'message', 'magnet', 'maps', 'geo'])
+// Schemes that run code or embed content, plus Balance's own internal links.
+const BLOCKED_LINK_SCHEMES = new Set(['javascript', 'vbscript', 'data', 'blob', 'about', 'balance'])
+
+// External links: any app or web URL (https:, file:, slack://, obsidian://,
+// mailto:, …). Keep in sync with validate_external_url in src-tauri/src/lib.rs.
 export function isURL(value: string): boolean {
   const trimmed = value.trim()
-  if (!trimmed) return false
+  if (!trimmed || /[\u0000-\u001f\u007f]/.test(trimmed)) return false
 
-  try {
-    const url = new URL(trimmed)
-    return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'file:'
-  } catch {
-    return false
-  }
+  const match = /^([a-z][a-z0-9+.-]*):(.+)$/i.exec(trimmed)
+  if (!match) return false
+  const scheme = match[1].toLowerCase()
+  const rest = match[2]
+  if (BLOCKED_LINK_SCHEMES.has(scheme)) return false
+  if (rest.startsWith('//')) return rest.length > 2
+  return OPAQUE_LINK_SCHEMES.has(scheme)
 }
 
 export const GOAL_STATS_URL = 'balance://goals/stats'

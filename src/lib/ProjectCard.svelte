@@ -7,7 +7,9 @@
   import OverlayModal from './OverlayModal.svelte'
   import { mountInContentShell } from './contentShellOverlay'
   import { plannerStore } from './store'
-  import { todayISO } from './planner'
+  import { escapeHTML, isURL, sanitizeInlineHTML, todayISO } from './planner'
+  import { openExternalURL } from './externalLinks'
+  import RichTextEditor from './RichTextEditor.svelte'
   import { projectCheckInForDay } from './projects'
   export let project: Project
   export let entries: ProjectCheckIn[] = []
@@ -40,6 +42,14 @@
     checkingIn = true
     await tick()
     focusCheckIn()
+  }
+  $: nameHtml = sanitizeInlineHTML(project.nameHtml ?? escapeHTML(project.name))
+  function openNameLink(event: MouseEvent) {
+    const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null
+    if (!anchor) return
+    event.preventDefault()
+    const href = anchor.getAttribute('href') ?? ''
+    if (isURL(href)) void openExternalURL(href)
   }
   function openDetails() {
     // Keep an unsaved check-in on the card rather than moving it into the dialog.
@@ -90,7 +100,7 @@
         <path class="heart-fill" d="M45 84.334 6.802 46.136C2.416 41.75 0 35.918 0 29.716S2.416 17.682 6.802 13.296 17.019 6.494 23.222 6.494 35.256 8.91 39.642 13.296L45 18.654 50.358 13.296C54.744 8.91 60.576 6.494 66.778 6.494S78.812 8.91 83.198 13.296C87.585 17.682 90 23.513 90 29.716S87.585 41.75 83.198 46.136L45 84.334Z" transform="translate(25.25 27.1056) scale(.55)" fill={`url(#project-heart-fill-${project.id})`} />
       {/if}
     </svg>
-    <div class="project-heading"><h2>{project.name}</h2><p>{project.archived ? 'Archived' : latest ? `Last check-in ${new Date(latest.createdAt).toLocaleDateString()}` : 'No check-in yet'}</p></div>
+    <div class="project-heading"><!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions --><h2 on:click={openNameLink}>{@html nameHtml}</h2><p>{project.archived ? 'Archived' : latest ? `Last check-in ${new Date(latest.createdAt).toLocaleDateString()}` : 'No check-in yet'}</p></div>
   </header>
   {#if project.description}<p class="description">{project.description}</p>{/if}
   {#snippet checkInForm_()}
@@ -122,7 +132,17 @@
         {@render checkInForm_()}
         <div class="check-in-actions">{@render checkInActions()}</div>
       {/if}
-      <label>Name<input aria-label="Project name" value={project.name} on:change={(event) => plannerStore.updateProject(project.id, { name: event.currentTarget.value.trim() || project.name })} /></label>
+      <div class="name-field"><span>Name</span><RichTextEditor
+        className="rich-text-field"
+        kind="project-name"
+        inputId={`project-name:${project.id}`}
+        html={nameHtml}
+        text={project.name}
+        ariaLabel="Project name"
+        revision={$plannerStore.historyRevision}
+        singleLine
+        onChange={(html, text) => { if (text.trim()) plannerStore.updateProject(project.id, { name: text.trim(), nameHtml: html }) }}
+      /></div>
       <label>Description<textarea value={project.description} on:change={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
       <section class="project-history" aria-label="Check-in history">
       <h3>History · {history.length} {history.length === 1 ? 'check-in' : 'check-ins'}</h3>
@@ -213,6 +233,7 @@
   .check-in-actions { display: flex; gap: 8px; }
   .check-in-actions button { font-size: 14px; padding: 8px 10px; }
   .archive-toggle { justify-self: start; font-size: 14px; padding: 8px 10px; }
-  .edit-details label { display: grid; gap: 6px; font-size: 13px; }
+  .edit-details label, .name-field { display: grid; gap: 6px; font-size: 13px; }
+  h2 :global(a) { color: inherit; text-decoration: underline; text-decoration-color: var(--accent-strong); }
   textarea { width: 100%; box-sizing: border-box; resize: vertical; background: var(--paper-strong); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 </style>

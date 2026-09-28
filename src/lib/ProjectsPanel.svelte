@@ -8,11 +8,15 @@
   import OverlayModal from './OverlayModal.svelte'
   import { projectReordering } from './projectReordering'
   import { mountInContentShell } from './contentShellOverlay'
+  import RichTextEditor from './RichTextEditor.svelte'
   export let projects: Project[] = []
   export let checkIns: ProjectCheckIn[] = []
   export let linkedProjectId = ''
   export let currentDay: string
   let name = ''
+  let nameHtml = ''
+  // Bumped after adding so the still-focused name editor clears its DOM.
+  let formResets = 0
   let archiveOpen = false
   let archivedDetailId = ''
   let initialCheckInProjectId = ''
@@ -41,9 +45,11 @@
     document.getElementById(`project-${id}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
   }
   async function add() {
-    const id = plannerStore.addProject(name)
+    const id = plannerStore.addProject(name, nameHtml)
     if (id) {
       name = ''
+      nameHtml = ''
+      formResets += 1
       linkedProjectId = id
       initialCheckInProjectId = id
       await tick()
@@ -75,8 +81,27 @@
   {#if message}<p class="status muted" role="status">{message}</p>{/if}
   {#if linkedProjectId && !projects.some((project) => project.id === linkedProjectId)}<p class="muted">Project unavailable.</p>{/if}
   <form class="project-add" aria-label="Add a new project" on:submit|preventDefault={add}>
-    <label for="new-project-name">New project</label>
-    <input id="new-project-name" aria-label="New project name" placeholder="Project name" bind:value={name} maxlength="160" />
+    <span class="project-add-label">New project</span>
+    <RichTextEditor
+      className="rich-text-field"
+      kind="project-name"
+      inputId="new-project-name"
+      placeholder="Project name"
+      html={nameHtml}
+      text={name}
+      ariaLabel="New project name"
+      revision={$plannerStore.historyRevision + formResets}
+      singleLine
+      onKeyDown={(_editor, event) => {
+        if (event.key !== 'Enter' || event.isComposing) return
+        event.preventDefault()
+        void add()
+      }}
+      onChange={(html, text) => {
+        nameHtml = html
+        name = text
+      }}
+    />
     <button class="primary" type="submit" disabled={!name.trim()}>Add project</button>
   </form>
   <div class="project-grid" use:projectReordering>{#each active as project (project.id)}<ProjectCard {project} entries={histories.get(project.id) ?? []} {currentDay} openCheckInOnMount={initialCheckInProjectId === project.id} />{/each}</div>
@@ -120,8 +145,7 @@
   .archive-overlay .list-item-archive-list > li:first-child .list-item-archive-row { border-top: 0; padding-top: 0; }
   .page-header h2 { margin: 0; }
   .project-add { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; max-width: 520px; padding: 12px; margin-bottom: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--paper); }
-  .project-add label { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
-  .project-add input { width: 100%; min-width: 0; }
+  .project-add-label { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
   .project-add button { font-size: 14px; padding: 8px 10px; }
   .project-grid { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: stretch; }
   .project-grid :global(.project-card) { cursor: grab; touch-action: pan-y; }

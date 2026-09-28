@@ -1399,8 +1399,8 @@ function createPlannerStore() {
       )
     },
 
-    addGoal(name: string, cadenceDays: number, matchTerms: string[], hue: number, lightness = 50, matchTermsHtml?: string) {
-      const goal = createGoal(name, cadenceDays, matchTerms, hue, lightness, todayISO(), createId('goal'), matchTermsHtml)
+    addGoal(name: string, cadenceDays: number, matchTerms: string[], hue: number, lightness = 50, matchTermsHtml?: string, nameHtml?: string) {
+      const goal = createGoal(name, cadenceDays, matchTerms, hue, lightness, todayISO(), createId('goal'), matchTermsHtml, nameHtml)
       commitEntities('replace_goal_data', { action: 'add_goal', goalId: goal.id }, (state) => ({
         ...state,
         goals: [...state.goals, goal],
@@ -1842,15 +1842,15 @@ function createPlannerStore() {
       })
     },
 
-    addProject(name: string) {
+    addProject(name: string, nameHtml?: string) {
       if (!name.trim()) return null
       const timestamp = nowISO()
-      const project = { id: createId('project'), name: name.trim(), description: '', color: pickerColorToHex({ hue: Math.floor(Math.random() * 360), lightness: 50 }), archived: false, createdAt: timestamp, updatedAt: timestamp }
+      const project = { id: createId('project'), name: name.trim(), nameHtml: sanitizeInlineHTML(nameHtml ?? escapeHTML(name.trim())), description: '', color: pickerColorToHex({ hue: Math.floor(Math.random() * 360), lightness: 50 }), archived: false, createdAt: timestamp, updatedAt: timestamp }
       commitEntities('add_project', { projectId: project.id }, (state) => ({ ...state, projects: [...state.projects, project] }))
       return project.id
     },
 
-    updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'description' | 'archived'>>) {
+    updateProject(projectId: Id, patch: Partial<Pick<import('./types').Project, 'name' | 'nameHtml' | 'description' | 'archived'>>) {
       if (patch.name !== undefined && !patch.name.trim()) return
       commitEntities('update_project', { projectId }, (state) => ({
         ...state,
