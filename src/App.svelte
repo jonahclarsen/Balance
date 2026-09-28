@@ -3242,7 +3242,8 @@ return rows`
         return
       }
 
-      if (event.code === 'KeyE') {
+      // Alt+L is an intentionally unlisted alias for Alt+E.
+      if (event.code === 'KeyE' || event.code === 'KeyL') {
         event.preventDefault()
         openLists()
         return
@@ -6244,7 +6245,7 @@ return rows`
                 >
                   <svg class="word-cap-lock-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                     {#if wordCapUnlocked}
-                      <path d="M10.75 6V4.75a2.75 2.75 0 0 0-5.2-1.25" />
+                      <path d="M10.75 6V3.5a2.75 2.75 0 0 0-5.5 0v0.75" />
                     {:else}
                       <path d="M5.25 6V4.75a2.75 2.75 0 0 1 5.5 0V6" />
                     {/if}
