@@ -2202,6 +2202,22 @@ export function wordCount(text: string): number {
   return trimmed.split(/\s+/).length
 }
 
+// Word counts rerun over the whole template on every keystroke, so memoize the
+// DOM-based HTML parsing by source string.
+const plainTextCache = new Map<string, string>()
+const PLAIN_TEXT_CACHE_LIMIT = 5000
+
+function cachedPlainText(html: string): string {
+  if (!html) return ''
+  let text = plainTextCache.get(html)
+  if (text === undefined) {
+    text = htmlToPlainText(html)
+    if (plainTextCache.size >= PLAIN_TEXT_CACHE_LIMIT) plainTextCache.clear()
+    plainTextCache.set(html, text)
+  }
+  return text
+}
+
 // Include each linked quiz's question text once per item, just as metric links
 // are resolved by name. Answers and quiz navigation are not template content.
 export function listItemWordCount(text: string, metrics: Metric[] = []): number {
@@ -2210,7 +2226,7 @@ export function listItemWordCount(text: string, metrics: Metric[] = []): number 
     const name = metric.name.trim().toLowerCase()
     if (!name || !lower.includes(name)) return sum
     return sum + metric.questions.reduce((words, question) =>
-      words + (wordCount(htmlToPlainText(question.html)) || wordCount(question.prompt)), 0)
+      words + (wordCount(cachedPlainText(question.html)) || wordCount(question.prompt)), 0)
   }, 0)
 }
 
@@ -2220,7 +2236,7 @@ export function expectedWordCount(items: ListTemplateItem[], ancestorProbability
   return items.reduce((sum, item) => {
     const appearanceProbability =
       ancestorProbability * (clampListItemProbability(item.probability) / 100)
-    const itemWords = listItemWordCount(htmlToPlainText(item.html) || item.text, metrics) *
+    const itemWords = listItemWordCount(cachedPlainText(item.html) || item.text, metrics) *
       appearanceProbability
     return sum + itemWords + expectedWordCount(item.children, appearanceProbability, metrics)
   }, 0)
@@ -2229,7 +2245,7 @@ export function expectedWordCount(items: ListTemplateItem[], ancestorProbability
 // Unweighted word count of every item and linked quiz.
 export function totalWordCount(items: ListTemplateItem[], metrics: Metric[] = []): number {
   return items.reduce((sum, item) => {
-    const itemWords = listItemWordCount(htmlToPlainText(item.html) || item.text, metrics)
+    const itemWords = listItemWordCount(cachedPlainText(item.html) || item.text, metrics)
     return sum + itemWords + totalWordCount(item.children, metrics)
   }, 0)
 }
