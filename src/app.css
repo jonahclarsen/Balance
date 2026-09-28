@@ -2092,6 +2092,7 @@ body.mobile-checkbox-dragging {
 }
 
 .children-toggle-count {
+  font-size: 0.8em;
   font-variant-numeric: tabular-nums;
 }
 
