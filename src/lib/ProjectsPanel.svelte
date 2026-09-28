@@ -128,6 +128,7 @@
   .project-grid :global(.project-card :is(input, textarea, select, label, .probability-slider)) { cursor: auto; }
   .project-grid :global(.project-card :is(button, a)) { cursor: pointer; }
   .project-grid :global(.project-card.project-dragging) { position: relative; z-index: 2; cursor: grabbing; box-shadow: 0 12px 32px rgba(0, 0, 0, .22); pointer-events: none; }
+  .project-grid :global(.project-card.project-settling) { position: relative; z-index: 2; }
   .project-grid :global(.project-drop-indicator) { position: absolute; background: var(--accent); border-radius: 2px; pointer-events: none; z-index: 1; }
   .completed-projects { margin-top: 24px; }
   .completed-projects h3 { margin: 0 0 12px; font-size: 16px; }

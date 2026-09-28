@@ -314,10 +314,12 @@ test('project cards reorder from content, preserve controls, and retain order th
     } else await expect(indicator).toHaveCount(0)
     await page.mouse.up()
     await expect(indicator).toHaveCount(0)
+    // Cards glide into their new slots rather than jumping.
+    return cards.evaluateAll((elements) => elements.filter((element) => element.getAnimations().length).length)
   }
   await drag(first.getByRole('button', { name: 'Check in', exact: true }), second.locator('h2'), 'after', false)
   await expect(headings).toHaveText(['First project', 'Second project', 'Third project'])
-  await drag(first.locator('h2'), second.locator('h2'))
+  expect(await drag(first.locator('h2'), second.locator('h2'))).toBe(2)
   await expect(headings).toHaveText(['Second project', 'First project', 'Third project'])
   const operation = await page.evaluate(async () => {
     const path = '/src/lib/store.ts'
