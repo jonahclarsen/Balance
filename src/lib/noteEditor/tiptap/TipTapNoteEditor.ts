@@ -971,6 +971,25 @@ class TipTapNoteEditor implements NoteEditorView {
       return true
     }
 
+    // Left at a block's start / Right at its end cross to the adjacent block
+    // explicitly: checkboxes sit between lines and would catch a native caret.
+    if ((key === 'ArrowLeft' || key === 'ArrowRight') && plainKey && state.selection.empty && span) {
+      const info = span.from
+      const atEdge = key === 'ArrowLeft'
+        ? state.selection.head === info.lineStart
+        : state.selection.head === info.lineStart + info.line.content.size
+      if (atEdge) {
+        const blocks = listBlocks(state.doc)
+        const index = blocks.findIndex((block) => block.pos === info.pos)
+        const target = blocks[index + (key === 'ArrowLeft' ? -1 : 1)]
+        if (target) {
+          const pos = key === 'ArrowLeft' ? target.lineStart + target.line.content.size : target.lineStart
+          this.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, pos)).scrollIntoView())
+        }
+        return true
+      }
+    }
+
     if (mod && !event.altKey && !event.shiftKey && (event.code === 'KeyA' || key.toLowerCase() === 'a')) {
       this.selectAll()
       return true
@@ -1210,8 +1229,9 @@ class TipTapNoteEditor implements NoteEditorView {
 
   private buildStructure(doc: PMNode): DecorationSet {
     const decorations: Decoration[] = []
-    const only = listBlocks(doc).length === 1
-    for (const block of listBlocks(doc)) {
+    const blocks = listBlocks(doc)
+    const only = blocks.length === 1
+    for (const block of blocks) {
       const { node, pos, line } = block
       const kind = node.attrs.kind as NoteItemKind
       const rowAttrs: Record<string, string> = { 'data-note-item-depth': String(block.depth) }

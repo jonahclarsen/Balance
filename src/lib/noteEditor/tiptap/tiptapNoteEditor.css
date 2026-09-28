@@ -109,6 +109,7 @@
   letter-spacing: normal;
   text-decoration: none;
   white-space: inherit;
+  gap: 0;
   transition: color 160ms ease, background-color 160ms ease;
 }
 
@@ -122,7 +123,14 @@
   content: attr(data-placeholder);
   position: absolute;
   inset: 3px auto auto 0;
+  display: block;
+  margin: 0;
+  padding: 0 0 0 0;
   padding-left: inherit;
+  font: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  background: none;
   color: var(--muted);
   opacity: 0.72;
   pointer-events: none;

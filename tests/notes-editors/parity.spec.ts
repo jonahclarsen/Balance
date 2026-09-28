@@ -756,6 +756,9 @@ test.describe('host integration', () => {
     await harness.boot({ select: 'Links' })
     const note = harness.noteByTitle('Links')
     const target = harness.noteByTitle('Checklist')
+    // Keep the test hermetic: a noopener popup is only reported once its
+    // navigation commits, which otherwise depends on the live network.
+    await harness.page.context().route('https://example.com/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: '' }))
     const popup = harness.page.waitForEvent('popup', { timeout: 3000 }).catch(() => null)
     await harness.block(note.items[0].id).locator('a').first().click()
     const opened = await popup
