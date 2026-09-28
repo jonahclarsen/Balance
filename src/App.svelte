@@ -3289,6 +3289,10 @@ return rows`
     // Cmd-D to its own selection before any plan-level shortcut can fire (an
     // unscoped ArrowUp would otherwise jump focus to a plan row behind the toast).
     if (listOverlayVisible && overlayListPanel) {
+      // Leave Escape to OverlayModal so it closes the topmost overlay instead of
+      // the plan-level handler below swallowing it to clear a focused row.
+      if (event.key === 'Escape') return
+
       if (!event.shiftKey && !event.altKey && !primaryModifier && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
         event.preventDefault()
         event.stopPropagation()
