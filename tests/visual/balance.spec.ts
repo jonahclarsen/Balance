@@ -2102,14 +2102,13 @@ test('a Today task can hide and show its subtasks', async ({ page }, testInfo) =
 
   await workRow.getByRole('button', { name: 'Hide subtasks' }).click()
   await expect(child).toHaveCount(0)
-  await expect(workRow).toHaveClass(/children-collapsed/)
-  expect(await workRow.evaluate((row) => parseFloat(getComputedStyle(row).borderBottomWidth))).toBeGreaterThan(3)
+  await expect(page.locator('.hidden-children-bar')).toBeVisible()
 
   await page.reload()
   await expect(child).toHaveCount(0)
   await workRow.getByRole('button', { name: 'Show 2 hidden subtasks' }).click()
   await expect(child).toBeVisible()
-  await expect(workRow).not.toHaveClass(/children-collapsed/)
+  await expect(page.locator('.hidden-children-bar')).toHaveCount(0)
 
   // A task indented under a collapsed parent reveals the subtasks so it stays visible.
   await workRow.getByRole('button', { name: 'Hide subtasks' }).click()

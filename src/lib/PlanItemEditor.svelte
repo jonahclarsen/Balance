@@ -878,7 +878,6 @@
   ariaLabel={`Plan item: ${item.text || 'Untitled'}`}
   {selected}
   done={item.done}
-  {childrenCollapsed}
   {selectionDragging}
   wholeRowSelection={mobileSelectionMode}
   interactive={!locked}
@@ -1147,6 +1146,12 @@
             {collapsible}
           />
         {/each}
+      </div>
+    {:else if childrenCollapsed}
+      <div class="children hidden-children-rule" aria-hidden="true">
+        <div class="item-shell" style={`--depth: ${depth + 1}`}>
+          <div class="hidden-children-bar"></div>
+        </div>
       </div>
     {/if}
   </svelte:fragment>

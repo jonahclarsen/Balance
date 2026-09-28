@@ -2058,25 +2058,33 @@ body.mobile-checkbox-dragging {
   flex: 0 0 auto;
 }
 
-/* Fixed width so the task text doesn't shift when the hidden count appears. */
+/* Kept narrow so it costs the task text as little width as possible. */
 .children-toggle {
   flex: 0 0 auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 1px;
-  width: 36px;
+  gap: 2px;
+  width: auto;
+  min-width: 22px;
+  padding: 0 3px;
+}
+
+.icon-button.quiet.children-toggle:hover {
+  border-color: var(--line-strong);
 }
 
 .children-toggle-chevron {
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
+  width: 13px;
+  height: 13px;
   transition: transform 120ms ease;
 }
 
+/* Collapsed, the chevron and count read as part of the task text. */
 .children-toggle.collapsed {
   color: var(--ink);
+  font-family: var(--font-content);
 }
 
 .children-toggle.collapsed .children-toggle-chevron {
@@ -2084,14 +2092,20 @@ body.mobile-checkbox-dragging {
 }
 
 .children-toggle-count {
-  font-size: 11px;
   font-variant-numeric: tabular-nums;
 }
 
-/* A task whose subtasks are hidden gets a heavy bottom edge so the missing
-   rows are obvious at a glance. */
-.plan-row.children-collapsed {
-  border-bottom: 4px solid var(--line-strong);
+/* A task whose subtasks are hidden gets a heavy bar under it so the missing
+   rows are obvious at a glance. The bar sits in a stand-in child row, so it
+   starts exactly where the hidden rows would at every indent density. */
+.children.hidden-children-rule {
+  border-left-color: transparent;
+}
+
+.hidden-children-bar {
+  height: 4px;
+  margin-top: -1px;
+  background: var(--line-strong);
 }
 
 .time-range {
