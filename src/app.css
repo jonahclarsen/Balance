@@ -2088,7 +2088,9 @@ body.mobile-checkbox-dragging {
   flex: 0 0 auto;
   width: 13px;
   height: 13px;
-  transition: transform 120ms ease, margin 120ms ease;
+  /* Only the rotation animates: the count appears/disappears instantly, so
+     easing the margins too would push the task text out and then back. */
+  transition: transform 120ms ease;
 }
 
 /* Collapsed, the count uses the task text's font. */
