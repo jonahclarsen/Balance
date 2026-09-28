@@ -7,6 +7,7 @@
   import ProjectCard from './ProjectCard.svelte'
   import OverlayModal from './OverlayModal.svelte'
   import { projectReordering } from './projectReordering'
+  import { mountInContentShell } from './contentShellOverlay'
   export let projects: Project[] = []
   export let checkIns: ProjectCheckIn[] = []
   export let linkedProjectId = ''
@@ -16,12 +17,6 @@
   let archivedDetailId = ''
   let initialCheckInProjectId = ''
   let message = ''
-  function mountArchiveOverlay(node: HTMLDivElement) {
-    // Match the list modal's placement outside the scrolling workspace.
-    const shell = node.closest('.content-shell')
-    shell?.appendChild(node)
-    return { destroy: () => node.remove() }
-  }
   $: active = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress !== 100)
   $: completed = projects.filter((project) => !project.archived && histories.get(project.id)?.at(-1)?.progress === 100)
   $: archived = projects.filter((project) => project.archived)
@@ -92,7 +87,7 @@
     </section>
   {/if}
   {#if archiveOpen}
-    <div class="archive-overlay" use:mountArchiveOverlay>
+    <div class="archive-overlay" use:mountInContentShell>
     <OverlayModal title="Project archive" onClose={() => archiveOpen = false}>
     <span slot="header-middle" class="archive-count">{archived.length} saved</span>
     <div id="project-archive">
@@ -128,10 +123,11 @@
   .project-add label { grid-column: 1 / -1; font-size: 13px; font-weight: 600; }
   .project-add input { width: 100%; min-width: 0; }
   .project-add button { font-size: 14px; padding: 8px 10px; }
-  .project-grid { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: start; }
+  .project-grid { position: relative; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 16px; align-items: stretch; }
   .project-grid :global(.project-card) { cursor: grab; touch-action: pan-y; }
-  .project-grid :global(.project-card :is(button, input, textarea, select, a, label, .probability-slider)) { cursor: auto; }
-  .project-grid :global(.project-card.project-dragging) { opacity: .5; cursor: grabbing; }
+  .project-grid :global(.project-card :is(input, textarea, select, label, .probability-slider)) { cursor: auto; }
+  .project-grid :global(.project-card :is(button, a)) { cursor: pointer; }
+  .project-grid :global(.project-card.project-dragging) { position: relative; z-index: 2; cursor: grabbing; box-shadow: 0 12px 32px rgba(0, 0, 0, .22); pointer-events: none; }
   .project-grid :global(.project-drop-indicator) { position: absolute; background: var(--accent); border-radius: 2px; pointer-events: none; z-index: 1; }
   .completed-projects { margin-top: 24px; }
   .completed-projects h3 { margin: 0 0 12px; font-size: 16px; }

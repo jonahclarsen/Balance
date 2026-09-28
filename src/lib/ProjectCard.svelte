@@ -4,6 +4,8 @@
   import { onMount, tick } from 'svelte'
   import type { Project, ProjectCheckIn } from './types'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
+  import OverlayModal from './OverlayModal.svelte'
+  import { mountInContentShell } from './contentShellOverlay'
   import { plannerStore } from './store'
   import { todayISO } from './planner'
   import { projectCheckInForDay } from './projects'
@@ -38,6 +40,15 @@
     checkingIn = true
     await tick()
     focusCheckIn()
+  }
+  function openDetails() {
+    // Keep an unsaved check-in on the card rather than moving it into the dialog.
+    checkingIn = false
+    detailsOpen = true
+  }
+  function closeDetails() {
+    checkingIn = false
+    detailsOpen = false
   }
   onMount(() => {
     if (checkingIn) focusCheckIn()
@@ -82,28 +93,35 @@
     <div class="project-heading"><h2>{project.name}</h2><p>{project.archived ? 'Archived' : latest ? `Last check-in ${new Date(latest.createdAt).toLocaleDateString()}` : 'No check-in yet'}</p></div>
   </header>
   {#if project.description}<p class="description">{project.description}</p>{/if}
-  {#if !checkingIn}<dl class="ratings"><div><dt>Work complete</dt><dd>{latest ? `${latest.progress}%` : 'Not set'}</dd></div><div><dt>Heart in it</dt><dd>{latest ? `${latest.heart}%` : 'Not set'}</dd></div></dl>{/if}
-  {#if checkingIn}
-      <form class="check-in" id={'project-check-in-' + project.id} bind:this={checkInForm} on:submit|preventDefault={save}>
-        {#if editingCheckIn}<p class="check-in-date">Editing check-in from {new Date(editingCheckIn.createdAt).toLocaleString()}</p>{/if}
-        <div class="rating-control"><span>Work complete</span><ProbabilitySlider step={5} value={progress ?? 0} unset={progress === null} ariaLabel={`Work complete for ${project.name}`} onChange={(value) => progress = value} generousHitbox /></div>
-        <div class="rating-control"><span>Heart in it</span><ProbabilitySlider step={5} value={heart ?? 0} unset={heart === null} ariaLabel={`Heart in it for ${project.name}`} onChange={(value) => heart = value} generousHitbox /></div>
-      </form>
-  {/if}
+  {#snippet checkInForm_()}
+    <form class="check-in" id={'project-check-in-' + project.id} bind:this={checkInForm} on:submit|preventDefault={save}>
+      {#if editingCheckIn}<p class="check-in-date">Editing check-in from {new Date(editingCheckIn.createdAt).toLocaleString()}</p>{/if}
+      <div class="rating-control"><span>Work complete</span><ProbabilitySlider step={5} value={progress ?? 0} unset={progress === null} ariaLabel={`Work complete for ${project.name}`} onChange={(value) => progress = value} generousHitbox /></div>
+      <div class="rating-control"><span>Heart in it</span><ProbabilitySlider step={5} value={heart ?? 0} unset={heart === null} ariaLabel={`Heart in it for ${project.name}`} onChange={(value) => heart = value} generousHitbox /></div>
+    </form>
+  {/snippet}
+  {#snippet checkInActions()}
+    <button class="primary" type="submit" form={'project-check-in-' + project.id} disabled={progress === null || heart === null}>Save check-in</button>
+    <button type="button" on:click={() => checkingIn = false}>Cancel</button>
+  {/snippet}
+  {#if !checkingIn || detailsOpen}<dl class="ratings"><div><dt>Work complete</dt><dd>{latest ? `${latest.progress}%` : 'Not set'}</dd></div><div><dt>Heart in it</dt><dd>{latest ? `${latest.heart}%` : 'Not set'}</dd></div></dl>{/if}
+  {#if checkingIn && !detailsOpen}{@render checkInForm_()}{/if}
   <footer>
-    {#if checkingIn}
-      <button class="primary" type="submit" form={'project-check-in-' + project.id} disabled={progress === null || heart === null}>Save check-in</button>
-      <button type="button" on:click={() => checkingIn = false}>Cancel</button>
+    {#if checkingIn && !detailsOpen}
+      {@render checkInActions()}
     {:else if !project.archived}
       <button type="button" on:click={() => openCheckIn(projectCheckInForDay(history, project.id, todayISO()))}>{todaysCheckIn ? 'Edit check-in' : 'Check in'}</button>
     {/if}
-    <button class="details-toggle" type="button" aria-expanded={detailsOpen} aria-controls={'project-details-' + project.id} on:click={() => detailsOpen = !detailsOpen}>
-      Details
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={detailsOpen ? 'm6 15 6-6 6 6' : 'm6 9 6 6 6-6'} /></svg>
-    </button>
+    <button type="button" aria-haspopup="dialog" on:click={openDetails}>Details</button>
   </footer>
   {#if detailsOpen}
-    <div class="edit-details" id={'project-details-' + project.id}>
+    <div class="details-overlay" use:mountInContentShell>
+    <OverlayModal title={project.name} ariaLabel={`${project.name} details`} z={65} onClose={closeDetails}>
+    <div class="edit-details project-card-details" id={'project-details-' + project.id} style:--project-color={project.color}>
+      {#if checkingIn}
+        {@render checkInForm_()}
+        <div class="check-in-actions">{@render checkInActions()}</div>
+      {/if}
       <label>Name<input aria-label="Project name" value={project.name} on:change={(event) => plannerStore.updateProject(project.id, { name: event.currentTarget.value.trim() || project.name })} /></label>
       <label>Description<textarea value={project.description} on:change={(event) => plannerStore.updateProject(project.id, { description: event.currentTarget.value })}></textarea></label>
       <section class="project-history" aria-label="Check-in history">
@@ -141,12 +159,18 @@
       </table></div>
       {:else}<p>No check-ins yet.</p>{/if}
       </section>
-      <button type="button" on:click={() => plannerStore.updateProject(project.id, { archived: !project.archived })}>{project.archived ? 'Restore project' : 'Archive project'}</button>
+      <button class="archive-toggle" type="button" on:click={() => plannerStore.updateProject(project.id, { archived: !project.archived })}>{project.archived ? 'Restore project' : 'Archive project'}</button>
+    </div>
+    </OverlayModal>
     </div>
   {/if}
 </article>
 
 <style>
+  /* Stretch to the row's tallest card, keeping actions along the bottom edge. */
+  article { display: flex; flex-direction: column; }
+  footer { margin-top: auto; }
+  .details-overlay { display: contents; }
   header { display: flex; gap: 12px; align-items: center; }
   .project-visual { width: 48px; height: 48px; flex: 0 0 48px; color: var(--project-color); }
   .ring-track, .ring-progress { fill: none; stroke-width: 5; }
@@ -168,8 +192,7 @@
   footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   footer button { font-size: 14px; padding: 8px 10px; }
   h3 { margin: 0; font-size: 13px; font-weight: 500; }
-  .details-toggle { display: inline-flex; align-items: center; gap: 6px; }
-  .details-toggle svg, .history-actions svg { flex: 0 0 auto; }
+  .history-actions svg { flex: 0 0 auto; }
   .history-actions { display: flex; gap: 2px; }
   .history-actions button { display: grid; place-items: center; padding: 6px; min-width: 30px; min-height: 32px; }
   .endpoints, .legend { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--muted); }
@@ -186,7 +209,10 @@
   .history-table { max-height: 180px; overflow: auto; margin-top: 12px; }
   table { width: 100%; border-collapse: collapse; font-size: 12px; }
   th, td { text-align: left; padding: 6px 3px; border-bottom: 1px solid var(--line); }
-  .edit-details { display: grid; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .edit-details { display: grid; gap: 12px; }
+  .check-in-actions { display: flex; gap: 8px; }
+  .check-in-actions button { font-size: 14px; padding: 8px 10px; }
+  .archive-toggle { justify-self: start; font-size: 14px; padding: 8px 10px; }
   .edit-details label { display: grid; gap: 6px; font-size: 13px; }
   textarea { width: 100%; box-sizing: border-box; resize: vertical; background: var(--paper-strong); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
 </style>

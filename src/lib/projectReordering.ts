@@ -15,6 +15,7 @@ export function projectReordering(node: HTMLElement) {
 
   function reset() {
     source?.classList.remove('project-dragging')
+    source?.style.removeProperty('transform')
     indicator.remove()
     if (pointerId !== null && node.hasPointerCapture(pointerId)) node.releasePointerCapture(pointerId)
     source = target = null
@@ -41,6 +42,9 @@ export function projectReordering(node: HTMLElement) {
     if (!dragging && Math.hypot(event.clientX - startX, event.clientY - startY) < 6) return
     dragging = true
     source.classList.add('project-dragging')
+    // Carry the card under the pointer, converting to CSS pixels under the app’s UI zoom.
+    const scale = node.getBoundingClientRect().width / parseFloat(getComputedStyle(node).width) || 1
+    source.style.transform = `translate(${(event.clientX - startX) / scale}px, ${(event.clientY - startY) / scale}px)`
     updateTarget(event.clientX, event.clientY)
   }
 
@@ -50,7 +54,8 @@ export function projectReordering(node: HTMLElement) {
     const bounds = node.getBoundingClientRect()
     if (x < bounds.left - 16 || x > bounds.right + 16 || y < bounds.top - 16 || y > bounds.bottom + 16) return
     const cards = [...node.querySelectorAll<HTMLElement>('.project-card')]
-    const rects = cards.map((card) => card.getBoundingClientRect())
+    // Measure the dragged card at its resting slot, not where the pointer carries it.
+    const rects = cards.map((card) => card === source ? restingRect(card) : card.getBoundingClientRect())
     const singleColumn = rects.every((rect) => Math.abs(rect.left - rects[0].left) < 1)
     const style = getComputedStyle(node)
     // Convert viewport geometry back to CSS coordinates under the app’s UI zoom.
@@ -93,6 +98,14 @@ export function projectReordering(node: HTMLElement) {
       width: `${slot.width / scale || 3}px`, height: `${slot.height / scale || 3}px`,
     })
     node.append(indicator)
+  }
+
+  function restingRect(card: HTMLElement) {
+    const transform = card.style.transform
+    card.style.transform = ''
+    const rect = card.getBoundingClientRect()
+    card.style.transform = transform
+    return rect
   }
 
   function up(event: PointerEvent) {
