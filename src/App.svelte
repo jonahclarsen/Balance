@@ -598,6 +598,9 @@ return rows`
   let preserveSelectionFocusUntil = 0
   $: syncAndroidBackListener(isAndroid && isTauri())
   let newGoalName = ''
+  let newGoalNameHtml = ''
+  // Bumped after adding so the still-focused name editor clears its DOM.
+  let newGoalFormResets = 0
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
   let newGoalTermsHtml = ''
@@ -2862,8 +2865,10 @@ return rows`
       return
     }
 
-    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue, 50, newGoalTermsHtml)
+    plannerStore.addGoal(name, newGoalCadenceDays, matchTerms, newGoalHue, 50, newGoalTermsHtml, newGoalNameHtml)
     newGoalName = ''
+    newGoalNameHtml = ''
+    newGoalFormResets += 1
     newGoalCadenceDays = 1
     newGoalTerms = ''
     newGoalTermsHtml = ''
@@ -6644,12 +6649,24 @@ return rows`
         </div>
         <label class="goal-name-field">
           <span>Name</span>
-          <input
-            aria-label="New goal name"
+          <RichTextEditor
+            className="goal-rules-editor"
+            kind="goal-name"
+            inputId="new-goal-name"
             placeholder="Strenuous exercise"
-            bind:value={newGoalName}
-            on:keydown={(event) => {
-              if (event.key === 'Enter') addGoal()
+            html={newGoalNameHtml}
+            text={newGoalName}
+            ariaLabel="New goal name"
+            revision={$plannerStore.historyRevision + newGoalFormResets}
+            singleLine
+            onKeyDown={(_editor, event) => {
+              if (event.key !== 'Enter' || event.isComposing) return
+              event.preventDefault()
+              addGoal()
+            }}
+            onChange={(html, text) => {
+              newGoalNameHtml = html
+              newGoalName = text
             }}
           />
         </label>

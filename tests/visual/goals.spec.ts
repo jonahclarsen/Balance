@@ -52,6 +52,28 @@ test('goals warn when their inserted name does not match any configured term', a
   await expect(warning).toHaveCount(0)
 })
 
+test('pasting a link over selected new goal name text keeps it linked on the goal', async ({ page }) => {
+  await openGoalsFromRhythm(page)
+  const newName = page.getByLabel('New goal name')
+  await newName.fill('Practice piano')
+  await newName.evaluate((element) => {
+    const range = document.createRange()
+    range.setStart(element.firstChild!, 9)
+    range.setEnd(element.firstChild!, 14)
+    document.getSelection()?.removeAllRanges()
+    document.getSelection()?.addRange(range)
+    const clipboard = new DataTransfer()
+    clipboard.setData('text/plain', 'spotify://playlist/abc')
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }))
+  })
+  await page.getByLabel('New goal matching terms').fill('piano')
+  await newName.press('Enter')
+
+  const savedName = page.getByLabel('Goal name: Practice piano')
+  await expect(savedName.getByRole('link', { name: 'piano' })).toHaveAttribute('href', 'spotify://playlist/abc')
+  await expect(newName).toHaveText('')
+})
+
 test('a new goal receives the color previewed by the add button and has no color editor', async ({ page }) => {
   await openGoalsFromRhythm(page)
   const addButton = page.getByRole('button', { name: 'Add goal', exact: true })

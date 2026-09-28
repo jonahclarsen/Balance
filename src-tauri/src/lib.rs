@@ -3805,16 +3805,46 @@ fn reveal_path(path: PathBuf) -> Result<(), String> {
     }
 }
 
+// Mirrors isURL in src/lib/planner.ts: any app or web link except schemes that
+// run code or embed content, and Balance's own internal links.
 fn validate_external_url(url: &str) -> Result<&str, String> {
-    let url = url.trim();
-    let lower = url.to_ascii_lowercase();
-    if (lower.starts_with("http://") || lower.starts_with("https://") || lower.starts_with("file://"))
-        && !url.chars().any(char::is_control)
-    {
-        return Ok(url);
-    }
+    const OPAQUE_SCHEMES: [&str; 9] = [
+        "mailto",
+        "tel",
+        "sms",
+        "facetime",
+        "facetime-audio",
+        "message",
+        "magnet",
+        "maps",
+        "geo",
+    ];
+    const BLOCKED_SCHEMES: [&str; 6] = ["javascript", "vbscript", "data", "blob", "about", "balance"];
 
-    Err("Only http, https and file links can be opened".to_string())
+    let url = url.trim();
+    let invalid = || Err(format!("Can't open link: {url}"));
+    if url.is_empty() || url.chars().any(char::is_control) {
+        return invalid();
+    }
+    let Some((scheme, rest)) = url.split_once(':') else {
+        return invalid();
+    };
+    let mut scheme_chars = scheme.chars();
+    let valid_scheme = scheme_chars.next().is_some_and(|c| c.is_ascii_alphabetic())
+        && scheme_chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '+' | '.' | '-'));
+    let scheme = scheme.to_ascii_lowercase();
+    if !valid_scheme || BLOCKED_SCHEMES.contains(&scheme.as_str()) {
+        return invalid();
+    }
+    let allowed = match rest.strip_prefix("//") {
+        Some(target) => !target.is_empty(),
+        None => !rest.is_empty() && OPAQUE_SCHEMES.contains(&scheme.as_str()),
+    };
+    if allowed {
+        Ok(url)
+    } else {
+        invalid()
+    }
 }
 
 fn replace_app_state(connection: &mut Connection, state: &Value) -> Result<(), String> {
@@ -15524,7 +15554,7 @@ mod tests {
             .all(|character| character == '-' || matches!(character, 'A'..='Z' | '2'..='7')));
     }
     #[test]
-    fn external_url_validation_allows_only_http_https_and_file() {
+    fn external_url_validation_allows_app_links_but_not_script_schemes() {
         assert_eq!(
             validate_external_url(" https://example.com/path ").unwrap(),
             "https://example.com/path"
@@ -15533,7 +15563,25 @@ mod tests {
             validate_external_url("http://example.com").unwrap(),
             "http://example.com"
         );
-        assert!(validate_external_url("ftp://example.com").is_err());
+        assert_eq!(
+            validate_external_url("slack://channel?team=T1&id=C1").unwrap(),
+            "slack://channel?team=T1&id=C1"
+        );
+        assert_eq!(
+            validate_external_url("obsidian://open?vault=Notes").unwrap(),
+            "obsidian://open?vault=Notes"
+        );
+        assert_eq!(
+            validate_external_url("mailto:someone@example.com").unwrap(),
+            "mailto:someone@example.com"
+        );
+        assert!(validate_external_url("ftp://example.com").is_ok());
+        assert!(validate_external_url("note:something").is_err());
+        assert!(validate_external_url("slack://").is_err());
+        assert!(validate_external_url("balance://note/abc").is_err());
+        assert!(validate_external_url("data:text/html,hi").is_err());
+        assert!(validate_external_url("JavaScript://%0aalert(1)").is_err());
+        assert!(validate_external_url("https://example.com\topen").is_err());
         assert_eq!(
             validate_external_url(" file:///tmp/Balance%20test.pdf ").unwrap(),
             "file:///tmp/Balance%20test.pdf"

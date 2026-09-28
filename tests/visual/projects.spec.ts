@@ -366,3 +366,40 @@ test('project cards reorder from content, preserve controls, and retain order th
   for (const box of rowMates) expect(Math.abs(box.height - boxes[0].height)).toBeLessThan(1)
   expect(boxes[0].height).toBeGreaterThan(boxes.at(-1)!.height - 1)
 })
+
+async function pasteLinkOverText(editor: import('@playwright/test').Locator, link: string, start: number, end: number) {
+  await editor.evaluate((element, selection) => {
+    const range = document.createRange()
+    range.setStart(element.firstChild!, selection.start)
+    range.setEnd(element.firstChild!, selection.end)
+    const browserSelection = document.getSelection()
+    browserSelection?.removeAllRanges()
+    browserSelection?.addRange(range)
+    const clipboard = new DataTransfer()
+    clipboard.setData('text/plain', selection.link)
+    element.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: clipboard }))
+  }, { link, start, end })
+}
+
+test('pasting a link over selected project name text links it when creating and editing', async ({ page }) => {
+  await page.goto('/')
+  await openView(page, 'Projects')
+  const newName = page.getByRole('textbox', { name: 'New project name' })
+  await newName.fill('Synthetic garden plan')
+  await pasteLinkOverText(newName, 'obsidian://open?vault=Garden', 10, 16)
+  await newName.press('Enter')
+
+  const heading = page.locator('.project-card h2')
+  await expect(heading).toHaveText('Synthetic garden plan')
+  await expect(heading.getByRole('link', { name: 'garden' })).toHaveAttribute('href', 'obsidian://open?vault=Garden')
+  await expect(newName).toHaveText('')
+
+  await page.getByRole('button', { name: 'Details', exact: true }).click()
+  const editName = page.getByRole('textbox', { name: 'Project name', exact: true })
+  await pasteLinkOverText(editName, 'https://example.com/plan', 0, 9)
+  await expect(heading.getByRole('link', { name: 'Synthetic' })).toHaveAttribute('href', 'https://example.com/plan')
+  await page.reload()
+  await openView(page, 'Projects')
+  await expect(page.locator('.project-card h2').getByRole('link', { name: 'garden' })).toHaveAttribute('href', 'obsidian://open?vault=Garden')
+  await expect(page.locator('.project-card h2').getByRole('link', { name: 'Synthetic' })).toHaveAttribute('href', 'https://example.com/plan')
+})
