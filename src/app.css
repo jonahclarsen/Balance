@@ -2064,10 +2064,21 @@ body.mobile-checkbox-dragging {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  position: relative;
   gap: 2px;
   width: auto;
   min-width: 22px;
+  /* Pulls the task text in; the row gap plus the text's own padding
+     otherwise leave a wide hole after the chevron. */
+  margin-right: -6px;
   padding: 0 3px;
+}
+
+/* A hit area a little larger than the drawn button. */
+.children-toggle::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
 }
 
 .icon-button.quiet.children-toggle:hover {
@@ -2081,9 +2092,8 @@ body.mobile-checkbox-dragging {
   transition: transform 120ms ease;
 }
 
-/* Collapsed, the chevron and count read as part of the task text. */
+/* Collapsed, the count uses the task text's font. */
 .children-toggle.collapsed {
-  color: var(--ink);
   font-family: var(--font-content);
 }
 
@@ -2106,7 +2116,7 @@ body.mobile-checkbox-dragging {
 .hidden-children-bar {
   height: 4px;
   margin-top: -1px;
-  background: var(--line-strong);
+  background: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
 }
 
 .time-range {
