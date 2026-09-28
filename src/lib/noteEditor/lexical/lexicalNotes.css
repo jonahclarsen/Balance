@@ -139,6 +139,8 @@
   line-height: calc(var(--note-body-size) * var(--note-body-line));
   text-align: center;
   color: var(--ink);
+  /* The glyph sits above the body x-height centre at 17px; nudge it onto it. */
+  transform: translateY(1px);
 }
 
 .lexical-note-editor .note-numbered > .note-block::before {
@@ -242,7 +244,7 @@
   background: color-mix(in srgb, var(--accent) 28%, transparent);
 }
 
-.lexical-note-editor.note-row-selection ::selection {
+.lexical-note-editor.lexical-row-selection ::selection {
   background: transparent;
 }
 

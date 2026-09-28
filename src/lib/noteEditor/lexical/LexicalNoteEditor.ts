@@ -323,6 +323,11 @@ class LexicalNoteEditorView implements NoteEditorView {
     this.slash?.close()
     this.selectAllMarker = null
     const focused = this.hasFocus()
+    // A reload that reports back the caret we already have (checkbox
+    // cascades, remote edits elsewhere) keeps the live selection, including
+    // a multi-block or row selection.
+    const live = caret && focused ? this.getCaret() : null
+    const keepSelection = Boolean(live && caret && live.itemId === caret.itemId && live.start === caret.start && live.end === caret.end)
     if (caret && !focused) this.root?.focus({ preventScroll: true })
     const loaded = new Map<NodeKey, string>()
     let rebuilt = false
@@ -335,7 +340,11 @@ class LexicalNoteEditorView implements NoteEditorView {
         root.clear()
         root.append(...blocks.map((block) => this.$buildBlock(block, loaded)))
       }
-      if (caret) {
+      const selectionIntact = keepSelection && !rebuilt && ($getSelection()?.getNodes().every((node) => node.isAttached()) ?? false) &&
+        !($currentRange() && [...loaded.keys()].some((key) => $blockOf($currentRange()!.anchor.getNode())?.getFirstChild()?.getKey() === key))
+      if (selectionIntact) {
+        // Nothing to do: the selection still points at unchanged content.
+      } else if (caret) {
         const target = $blocksInOrder().find((block) => block.getItemId() === caret.itemId)
         if (target) $selectOffset(target, caret.start, caret.end)
         else $setSelection(null)
@@ -847,8 +856,8 @@ class LexicalNoteEditorView implements NoteEditorView {
     const blocks = $rootBlocks()
     const single = blocks.length === 1 && $childBlocks(blocks[0]).length === 0
     root.classList.toggle('note-single-block', single)
-    root.classList.toggle('note-row-selection', rowKeys.size > 0)
-    root.classList.toggle('note-text-selection', Boolean(edges && !edges.anchor.block.is(edges.focus.block) && rowKeys.size === 0))
+    root.classList.toggle('lexical-row-selection', rowKeys.size > 0)
+    root.classList.toggle('lexical-cross-block', Boolean(edges && !edges.anchor.block.is(edges.focus.block) && rowKeys.size === 0))
 
     const visit = (list: NoteBlockNode[], depth: number) => {
       let number = 0
