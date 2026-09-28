@@ -24,6 +24,7 @@
   import ListPanel from './lib/ListPanel.svelte'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
   import NotesPanel from './lib/NotesPanel.svelte'
+  import { NOTE_EDITOR_OPTIONS, readNoteEditorPreference, writeNoteEditorPreference, type NoteEditorChoice } from './lib/noteEditorPreference'
   import ImaxButton from './lib/ImaxButton.svelte'
   import OverlayModal from './lib/OverlayModal.svelte'
   import SyncPanel from './lib/SyncPanel.svelte'
@@ -426,6 +427,13 @@
   let notesPanel: NotesPanel | null = null
   let notesTrashOpen = false
   const noteViewStatesById = new Map<Id, NoteViewState>()
+  // Local per-device choice of Notes editor (Classic / TipTap / Lexical).
+  let noteEditorChoice: NoteEditorChoice = readNoteEditorPreference()
+  function updateNoteEditorChoice(choice: NoteEditorChoice) {
+    if (choice === noteEditorChoice) return
+    noteEditorChoice = choice
+    writeNoteEditorPreference(choice)
+  }
   let wordCapUnlocked = false
   let wordCapUnlockTimer: number | null = null
   let selectedMetricId = ''
@@ -6433,6 +6441,7 @@ return rows`
         bind:trashOpen={notesTrashOpen}
         notes={allNotes}
         {selectedNoteId}
+        editor={noteEditorChoice}
         {listTemplates}
         {metrics}
         historyRevision={$plannerStore.historyRevision}
@@ -6456,6 +6465,7 @@ return rows`
         moveItem={plannerStore.moveNoteItem}
         moveItemWithinLevel={plannerStore.moveNoteItemWithinLevel}
         outdentItem={plannerStore.outdentNoteItem}
+        replaceItems={plannerStore.replaceNoteItems}
         onOpenLink={(link) => openLink(link, null)}
       />
     {/if}
@@ -6867,6 +6877,31 @@ return rows`
                 <span class={`color-scheme-swatch ${option.id}`} aria-hidden="true"></span>
                 <span class="color-scheme-option-copy">
                   <strong>{option.name}</strong>
+                  <small>{option.description}</small>
+                </span>
+                <span class="theme-selected-mark" aria-hidden="true">✓</span>
+              </button>
+            {/each}
+          </div>
+        </section>
+
+        <section class="settings-section">
+          <div>
+            <h3>Notes editor</h3>
+            <p>Choose which editor the Notes page uses on this device. All three read and write the same notes.</p>
+          </div>
+
+          <div class="color-scheme-grid" role="group" aria-label="Notes editor">
+            {#each NOTE_EDITOR_OPTIONS as option (option.id)}
+              <button
+                type="button"
+                class="color-scheme-option note-editor-option"
+                class:active={noteEditorChoice === option.id}
+                aria-pressed={noteEditorChoice === option.id}
+                on:click={() => updateNoteEditorChoice(option.id)}
+              >
+                <span class="color-scheme-option-copy">
+                  <strong>{option.label}</strong>
                   <small>{option.description}</small>
                 </span>
                 <span class="theme-selected-mark" aria-hidden="true">✓</span>

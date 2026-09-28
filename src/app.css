@@ -2799,6 +2799,10 @@ body.mobile-checkbox-dragging {
   transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
+.note-editor-option {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
 .color-scheme-option:hover {
   border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
   background: color-mix(in srgb, var(--paper-strong) 92%, var(--accent));

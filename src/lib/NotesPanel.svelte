@@ -8,6 +8,7 @@
   import NoteItemEditor from './NoteItemEditor.svelte'
   import { noteTextOffset as textOffsetAtPoint, noteTextPoint as pointAtTextOffset } from './noteSelection'
   import ReadOnlyNoteItem from './ReadOnlyNoteItem.svelte'
+  import NoteEditorHost from './noteEditor/NoteEditorHost.svelte'
   import { escapeHTML, htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
   import {
     noteClipboardHTML,
@@ -19,6 +20,7 @@
     type ParsedNoteClipboardItem,
   } from './noteClipboard'
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
+  import type { NoteEditorChoice } from './noteEditorPreference'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from './types'
 
   type InlineFormatCommand = 'bold' | 'italic' | 'underline'
@@ -38,6 +40,9 @@
 
   export let notes: Note[]
   export let selectedNoteId: Id
+  // Which editor renders the note body: the classic per-item editor, or one of
+  // the rebuilt document editors (TipTap / Lexical) behind the shared adapter.
+  export let editor: NoteEditorChoice = 'classic'
   export let listTemplates: ListTemplate[] = []
   export let metrics: Metric[] = []
   export let historyRevision = 0
@@ -59,6 +64,7 @@
   export let moveItem: typeof import('./store').plannerStore.moveNoteItem
   export let moveItemWithinLevel: typeof import('./store').plannerStore.moveNoteItemWithinLevel
   export let outdentItem: typeof import('./store').plannerStore.outdentNoteItem
+  export let replaceItems: typeof import('./store').plannerStore.replaceNoteItems
   export let onOpenLink: (link: ItemLink) => void
   export let trashOpen = false
   export let viewStatesByNote: ReadonlyMap<Id, NoteViewState> = new Map()
@@ -74,6 +80,9 @@
   let noteViewRestoreRequest = 0
   let restoringNoteViewState = false
   let noteBlocksElement: HTMLDivElement
+  // Wrapper for the document editors (TipTap / Lexical); null while Classic renders.
+  let noteEditorHostElement: HTMLDivElement | null = null
+  let noteEditorHost: NoteEditorHost | null = null
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
   let noteScrollSpacePercent = DEFAULT_NOTE_SCROLL_SPACE_PERCENT
@@ -428,7 +437,8 @@
   }
 
   function noteScrollContainer() {
-    const noteDocument = noteBlocksElement?.closest<HTMLElement>('.note-document') ?? null
+    const blocksElement = noteBlocksElement ?? noteEditorHostElement
+    const noteDocument = blocksElement?.closest<HTMLElement>('.note-document') ?? null
     if (noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)) {
       return noteDocument
     }
@@ -437,7 +447,7 @@
       return document.scrollingElement as HTMLElement | null
     }
 
-    const workspace = noteBlocksElement?.closest<HTMLElement>('.workspace') ?? null
+    const workspace = blocksElement?.closest<HTMLElement>('.workspace') ?? null
     if (!workspace) return null
 
     const documentScroller = document.scrollingElement as HTMLElement | null
@@ -1352,6 +1362,7 @@
           {/if}
         </div>
       {:else}
+        {#if editor === 'classic'}
         <div use:mobileNoteToolbar class="note-format-toolbar" role="toolbar" aria-label="Note formatting">
         <div class="note-format-group" aria-label="Text style">
           <button type="button" class:active={activeItem?.kind === 'paragraph'} aria-label="Text" title="Text" on:click={() => applyBlockKind('paragraph')}>Aa</button>
@@ -1404,6 +1415,25 @@
           {/each}
         {/if}
         </div>
+        {:else}
+          <div class="note-blocks note-editor-blocks" bind:this={noteEditorHostElement}>
+            <NoteEditorHost
+              bind:this={noteEditorHost}
+              {editor}
+              note={selectedNote}
+              {historyRevision}
+              store={{ patchNoteItem: patchItem, patchNoteItemsDone: patchItemsDone, replaceNoteItems: replaceItems }}
+              {listTemplates}
+              {metrics}
+              notes={activeNotes}
+              {onOpenLink}
+              {onAddItem}
+              scrollContainer={noteScrollContainer}
+              {viewStatesByNote}
+              {onViewStateChange}
+            />
+          </div>
+        {/if}
       {/if}
 
     {:else}

@@ -1,6 +1,7 @@
 import { entityPatch, type EntityPatch } from './entityPatch'
 import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } from './planGeneration'
 import { invoke, isTauri } from '@tauri-apps/api/core'
+import { noteItemsEqual } from './noteEditor/noteItems'
 import { pickerColorToHex } from './colors'
 import { projectCheckInForDay } from './projects'
 import { get, writable, type Writable } from 'svelte/store'
@@ -2130,6 +2131,22 @@ function createPlannerStore() {
       )
     },
 
+    // Structural edits from the document editors (TipTap / Lexical) arrive as a
+    // complete next tree. Item ids are stable and unchanged items keep their
+    // object identity, so the replicated change is still an id-addressed patch
+    // per touched item (see entityPatch.ts), never a whole-array replacement.
+    // `summary` is history/diagnostic metadata only.
+    replaceNoteItems(noteId: Id, items: NoteItem[], summary = 'edit', options: TextChangeOptions = {}) {
+      const mergeOptions = options.mergeKey
+        ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
+        : {}
+      commitEntities('replace_note_items', { noteId, summary }, (state) =>
+        updateNote(state, noteId, (note) => {
+          const next = reconcileNoteChecklistItems(items)
+          return noteItemsEqual(next, note.items) ? note : { ...note, updatedAt: nowISO(), items: next }
+        }), mergeOptions)
+    },
+
     renameListTemplate(templateId: Id, name: string) {
       commitEntities(
         'rename_list_template',
@@ -3259,6 +3276,22 @@ function renderItems(items: PlanItem[]): string {
 }
 
 export const plannerStore = createPlannerStore()
+
+// Dev-server-only hook for the Notes editor conformance tests: applies an item
+// tree the editors did not produce, standing in for a sync/remote update.
+if (import.meta.env.DEV && typeof window !== 'undefined') {
+  ;(window as unknown as { __balanceNotesTestHook?: unknown }).__balanceNotesTestHook = {
+    replaceItems(noteId: Id, mutateSource: string) {
+      const note = get(plannerStore).notes.find((candidate) => candidate.id === noteId)
+      if (!note) throw new Error(`No note ${noteId}`)
+      const mutate = new Function(`return (${mutateSource})`)() as (items: NoteItem[]) => NoteItem[]
+      plannerStore.replaceNoteItems(noteId, mutate(structuredClone(note.items)), 'test-remote')
+    },
+    noteItems(noteId: Id) {
+      return get(plannerStore).notes.find((candidate) => candidate.id === noteId)?.items ?? null
+    },
+  }
+}
 
 export async function getRecoveryKeyStatus(): Promise<RecoveryKeyStatus | null> {
   if (!isTauri()) return null
