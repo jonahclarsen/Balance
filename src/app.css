@@ -1580,7 +1580,7 @@ nav button.active {
    actually has as nesting depth changes, not just to the viewport width. */
 .item-shell {
   container: task-row / inline-size;
-  margin-left: calc(var(--depth, 0) * 12px);
+  margin-left: calc(var(--depth, 0) * 14.4px);
 }
 
 .plan-item-main {
