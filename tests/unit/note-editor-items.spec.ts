@@ -38,3 +38,26 @@ test('kind changes, inserts, removals, moves and mixed edits are structural', ()
     [item('a', 'x', 'checklist', [], true), item('b', 'y', 'checklist', [], false)],
   )).toEqual({ kind: 'done', itemIds: ['a'], done: true })
 })
+
+test('a structural note replacement still replicates as id-addressed item patches', async () => {
+  const { entityPatch } = await import('../../src/lib/entityPatch')
+  const before = { id: 'n', title: 't', items: [item('a', 'one', 'bullet', [item('b', 'two')]), item('c', 'three')] }
+  // Split "c" into "c" + new "d", edit "b", and keep "a" by reference.
+  const after = {
+    ...before,
+    items: [before.items[0].children ? { ...before.items[0], children: [item('b', 'two!')] } : before.items[0], item('c', 'thr'), item('d', 'ee')],
+  }
+  const patch = entityPatch(before, after)
+  expect(patch.kind).toBe('object')
+  if (patch.kind !== 'object') return
+  const items = patch.fields.items
+  expect(items.kind).toBe('records')
+  if (items.kind !== 'records') return
+  expect(Object.keys(items.entries).sort()).toEqual(['a', 'c', 'd'])
+  expect(items.remove).toEqual([])
+  expect(items.order).toEqual(['a', 'c', 'd'])
+  const nested = items.entries.a
+  expect(nested.kind).toBe('object')
+  if (nested.kind !== 'object') return
+  expect(nested.fields.children.kind).toBe('records')
+})
