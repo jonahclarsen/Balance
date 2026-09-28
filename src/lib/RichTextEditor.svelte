@@ -38,6 +38,9 @@
   export let className = ''
   export let done = false
   export let singleLine = false
+  // Touch keyboards have no Shift+Enter, so Enter inserts a line break and only
+  // Enter on an empty last line (or in an empty editor) splits via onSplit.
+  export let enterInsertsLineBreak = false
   export let placeholder = ''
   export let ariaLabel = 'Text'
   export let revision = 0
@@ -197,7 +200,7 @@
         return
       }
 
-      if (event.shiftKey) {
+      if (event.shiftKey || (enterInsertsLineBreak && onSplit && !caretIsOnEmptyLastLine(activeEditor))) {
         event.preventDefault()
         document.execCommand('insertLineBreak')
         persistEditor(activeEditor, false)
@@ -207,6 +210,8 @@
       if (onSplit) {
         event.preventDefault()
         const split = splitEditorAtSelection(activeEditor)
+        // The empty line that ended the item becomes the item boundary instead.
+        if (enterInsertsLineBreak) split.before = withoutTrailingLineBreaks(split.before.html)
         const source = split.before.html === '' && split.before.text === '' ? split.after : split.before
         activeEditor.innerHTML = source.html
         renderedHTML = source.html
@@ -712,6 +717,41 @@
       before: { html: beforeHTML, text: htmlToPlainText(beforeHTML) },
       after: { html: afterHTML, text: htmlToPlainText(afterHTML) },
     }
+  }
+
+  function caretIsOnEmptyLastLine(activeEditor: HTMLDivElement) {
+    const selection = document.getSelection()
+    const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+    if (!range || !range.collapsed || !rangeIsInside(activeEditor, range)) return false
+
+    const beforeRange = document.createRange()
+    beforeRange.selectNodeContents(activeEditor)
+    beforeRange.setEnd(range.startContainer, range.startOffset)
+    const afterRange = document.createRange()
+    afterRange.selectNodeContents(activeEditor)
+    afterRange.setStart(range.startContainer, range.startOffset)
+
+    const before = document.createElement('div')
+    before.append(beforeRange.cloneContents())
+    const after = document.createElement('div')
+    after.append(afterRange.cloneContents())
+
+    // Only the contenteditable placeholder <br> may follow an empty last line.
+    const afterIsEmpty = (after.textContent ?? '').trim() === '' &&
+      !after.querySelector(IMAGE_SELECTOR) &&
+      after.querySelectorAll('br').length <= 1
+    if (!afterIsEmpty) return false
+
+    const beforeIsEmpty = (before.textContent ?? '') === '' && !before.querySelector(IMAGE_SELECTOR)
+    return beforeIsEmpty || lastRenderedNodeIsLineBreak(before)
+  }
+
+  function withoutTrailingLineBreaks(value: string) {
+    const template = document.createElement('template')
+    template.innerHTML = value
+    while (removeLastLineBreak(template.content)) {}
+    const html = sanitizeFragment(template.content)
+    return { html, text: htmlToPlainText(html) }
   }
 
   function selectionRangeAtEnd(activeEditor: HTMLDivElement) {

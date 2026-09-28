@@ -988,6 +988,7 @@
         onArrowKey={handleTextArrowKey}
         interceptShiftArrowAtBoundary
         onSplit={handleTextSplit}
+        enterInsertsLineBreak={mobile}
         onBackspaceEmpty={handleBackspaceEmpty}
         onBackspaceStart={handleBackspaceStart}
         onMetaBackspaceEnd={handleMetaBackspaceEnd}

@@ -3748,6 +3748,7 @@ test('deleting the final incomplete child completes each satisfied parent task',
 })
 
 test('enter splits plan items and shift-enter inserts a line break', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile Enter inserts a line break except on an empty last line')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -3889,6 +3890,7 @@ test('enter at the start of a parent plan item inserts a blank sibling above it'
 })
 
 test('enter in the middle of a parent plan item moves children to the second split item', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile Enter inserts a line break except on an empty last line')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
