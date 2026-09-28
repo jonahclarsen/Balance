@@ -172,7 +172,7 @@
     anchorItemId: Id
   }
 
-  const MOBILE_CHECKBOX_HOLD_MS = 1000
+  const MOBILE_CHECKBOX_HOLD_MS = 400
   const MOBILE_CHECKBOX_HOLD_SLOP = 10
   let mobileCheckboxDrag: MobileCheckboxDrag | null = null
 
