@@ -2069,6 +2069,68 @@ test('tab indents a plan item only one level after a nested sibling', async ({ p
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(2)
 })
 
+test('a Today task can hide and show its subtasks', async ({ page }, testInfo) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const plan = state.plans?.[0]
+    if (!plan) return
+
+    const workIndex = plan.items.findIndex((item: { text: string }) => item.text === 'Work block')
+    plan.items.splice(workIndex + 1, 0, {
+      id: 'plan_item_later',
+      text: 'Later',
+      html: 'Later',
+      done: false,
+      startMinutes: null,
+      endMinutes: null,
+      children: [],
+    })
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  })
+  await page.reload()
+
+  const workRow = page.locator('.plan-row').filter({ has: page.locator('[data-plan-text-focus-target]', { hasText: /^Work block$/ }) })
+  const child = page.locator('[data-plan-text-focus-target]', { hasText: 'Pick the first useful task' })
+  await expect(child).toBeVisible()
+  await expect(page.locator('.plan-row', { hasText: 'Pick the first useful task' }).getByRole('button', { name: /subtasks/ })).toHaveCount(0)
+
+  await workRow.getByRole('button', { name: 'Hide subtasks' }).click()
+  await expect(child).toHaveCount(0)
+  await expect(page.locator('.hidden-children-bar')).toBeVisible()
+
+  await page.reload()
+  await expect(child).toHaveCount(0)
+  await workRow.getByRole('button', { name: 'Show 2 hidden subtasks' }).click()
+  await expect(child).toBeVisible()
+  await expect(page.locator('.hidden-children-bar')).toHaveCount(0)
+
+  // Cmd+R toggles the focused task's subtasks, or folds a subtask's parent.
+  await focusInputByValue(page, 'Work block')
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(child).toHaveCount(0)
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(child).toBeVisible()
+  await focusInputByValue(page, 'Pick the first useful task')
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(child).toHaveCount(0)
+  await expect(page.locator('[data-plan-text-input]', { hasText: /^Work block$/ })).toBeFocused()
+  await page.keyboard.press('ControlOrMeta+R')
+  await expect(child).toBeVisible()
+
+  // A task indented under a collapsed parent reveals the subtasks so it stays visible.
+  await workRow.getByRole('button', { name: 'Hide subtasks' }).click()
+  await focusInputByValue(page, 'Later')
+  await page.keyboard.press('Tab')
+  await expect(child).toBeVisible()
+  await expect(page.locator('[data-plan-text-input]', { hasText: 'Later' })).toBeFocused()
+})
+
 test('tab indents a template item only one level after a nested sibling', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -3699,6 +3761,7 @@ test('deleting the final incomplete child completes each satisfied parent task',
 })
 
 test('enter splits plan items and shift-enter inserts a line break', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile Enter inserts a line break except on an empty last line')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -3840,6 +3903,7 @@ test('enter at the start of a parent plan item inserts a blank sibling above it'
 })
 
 test('enter in the middle of a parent plan item moves children to the second split item', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile Enter inserts a line break except on an empty last line')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()

@@ -1,5 +1,5 @@
-import { escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
-import type { PlanItem } from './types'
+import { createListTemplateItem, createTemplateItem, escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
+import type { ListTemplateItem, PlanItem, TemplateItem } from './types'
 
 // A marked block avoids interpreting ordinary multiline prose as planner rows.
 // Backslash escapes keep multiline tasks and literal Markdown unambiguous.
@@ -82,4 +82,23 @@ export function parsePlainTaskClipboard(raw: string | null): PlanItem[] | null {
     ancestors.push({ indent, item })
   }
   return roots.length ? roots : null
+}
+
+// Tasks copied from Today paste into templates as always-included rows. Store
+// pastes assign fresh ids, so only the content and hierarchy matter here.
+export function planItemsToTemplateItems(items: PlanItem[]): TemplateItem[] {
+  return items.map((item) => {
+    const templateItem = createTemplateItem()
+    Object.assign(templateItem.options[0]!, { text: item.text, html: item.html })
+    return {
+      ...templateItem, startMinutes: item.startMinutes, endMinutes: item.endMinutes,
+      ...(item.timeHidden ? { timeHidden: true } : {}), children: planItemsToTemplateItems(item.children),
+    }
+  })
+}
+
+export function planItemsToListTemplateItems(items: PlanItem[]): ListTemplateItem[] {
+  return items.map((item) => ({
+    ...createListTemplateItem(), text: item.text, html: item.html, children: planItemsToListTemplateItems(item.children),
+  }))
 }

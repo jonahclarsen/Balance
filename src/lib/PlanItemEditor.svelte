@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
+  import { collapsedPlanItemIds, setPlanItemCollapsed } from './collapsedPlanItems'
   import { openExternalURL } from './externalLinks'
   import { goalLightnessShift, goalMatchesForItem, goalsMatchingItemText } from './goals'
   import { defaultPlanItemTimeRange, formatMinutes, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, type ItemLink, type ItemTextSegment, type ItemTimeWarning } from './planner'
@@ -88,6 +89,8 @@
   // come from the list template, so locked items expose only the done checkbox and
   // any inline links. To change a list, edit its template and regenerate.
   export let locked = false
+  // Today rows with subtasks get a toggle that hides or shows them.
+  export let collapsible = false
 
   $: selected = selectedItemIds.has(item.id)
   let matchedGoals: Goal[] = []
@@ -124,6 +127,76 @@
   $: matchedGoalIds = new Set(matchedGoals.map((goal) => goal.id))
   $: previewGoals = item.done ? [] : matchingGoals.filter((goal) => !matchedGoalIds.has(goal.id))
   $: timeWarning = timeWarnings.get(item.id)
+
+  $: hasChildren = item.children.length > 0
+  $: childrenCollapsed = collapsible && hasChildren && $collapsedPlanItemIds.has(item.id)
+  // A task that newly lands under a collapsed parent (indent, split, paste,
+  // drop inside) must stay visible so it can take focus, so reveal them.
+  let knownChildIds: Set<Id> | null = null
+  $: {
+    const childIds = new Set(item.children.map((child) => child.id))
+    if (childrenCollapsed && knownChildIds && [...childIds].some((id) => !knownChildIds?.has(id))) {
+      setPlanItemCollapsed(item.id, false)
+    }
+    knownChildIds = childIds
+  }
+
+  // Glyphs carry side bearings that differ per character (a "1" has far more
+  // empty space around it than a "4"), so padding alone can't center a count
+  // optically. Rasterize the text, find its actual ink, and cancel the empty
+  // sides with margins so the span is exactly as wide as what it draws.
+  // (measureText's ink bounds can't be used: WebKit reports the advance box.)
+  const BEARING_SCALE = 4
+  let bearingCanvas: HTMLCanvasElement | null = null
+  function trimGlyphBearings(node: HTMLElement, _text: string | number) {
+    const measure = () => {
+      const text = node.textContent ?? ''
+      const context = (bearingCanvas ??= document.createElement('canvas')).getContext('2d', { willReadFrequently: true })
+      if (!context || !node.isConnected || !text) return
+      const style = getComputedStyle(node)
+      const font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+      context.font = font
+      const advance = context.measureText(text).width
+      const pad = parseFloat(style.fontSize)
+      const width = Math.ceil((advance + pad * 2) * BEARING_SCALE)
+      const height = Math.ceil(pad * 3 * BEARING_SCALE)
+      bearingCanvas.width = width
+      bearingCanvas.height = height
+      context.scale(BEARING_SCALE, BEARING_SCALE)
+      context.font = font
+      context.textBaseline = 'middle'
+      context.fillText(text, pad, pad * 1.5)
+      const pixels = context.getImageData(0, 0, width, height).data
+      let first = -1
+      let last = -1
+      for (let x = 0; x < width; x++) {
+        for (let y = 0; y < height; y++) {
+          if (pixels[(y * width + x) * 4 + 3] > 64) {
+            if (first < 0) first = x
+            last = x
+            break
+          }
+        }
+      }
+      if (first < 0) return
+      const inkLeft = first / BEARING_SCALE - pad
+      const inkRight = (last + 1) / BEARING_SCALE - pad
+      node.style.marginLeft = `${-inkLeft}px`
+      node.style.marginRight = `${inkRight - advance}px`
+    }
+    measure()
+    void document.fonts?.ready.then(measure)
+    return { update: measure }
+  }
+
+  function countDescendants(items: PlanItem[]): number {
+    return items.reduce((total, child) => total + 1 + countDescendants(child.children), 0)
+  }
+
+  $: hiddenCount = childrenCollapsed ? countDescendants(item.children) : 0
+  $: childrenToggleLabel = childrenCollapsed
+    ? `Show ${hiddenCount} hidden ${hiddenCount === 1 ? 'subtask' : 'subtasks'}`
+    : 'Hide subtasks'
 
   let mobileMenuOpen = false
   let mobileTimeEditorOpen = false
@@ -916,6 +989,25 @@
         </button>
     {/if}
 
+    {#if collapsible && hasChildren}
+      <button
+        class="icon-button quiet children-toggle"
+        class:collapsed={childrenCollapsed}
+        type="button"
+        title={childrenToggleLabel}
+        aria-label={childrenToggleLabel}
+        aria-expanded={!childrenCollapsed}
+        on:click|stopPropagation={() => setPlanItemCollapsed(item.id, !childrenCollapsed)}
+      >
+        <svg class="children-toggle-chevron" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+          <path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" />
+        </svg>
+        {#if childrenCollapsed}
+          <span class="children-toggle-count" use:trimGlyphBearings={hiddenCount}>{hiddenCount}</span>
+        {/if}
+      </button>
+    {/if}
+
     {#if locked}
       <!-- Generated list items are fixed: text is static, but inline links stay
            clickable and row clicks toggle completion. -->
@@ -944,6 +1036,7 @@
         onArrowKey={handleTextArrowKey}
         interceptShiftArrowAtBoundary
         onSplit={handleTextSplit}
+        enterInsertsLineBreak={mobile}
         onBackspaceEmpty={handleBackspaceEmpty}
         onBackspaceStart={handleBackspaceStart}
         onMetaBackspaceEnd={handleMetaBackspaceEnd}
@@ -1053,7 +1146,7 @@
   {/if}
 
   <svelte:fragment slot="children">
-    {#if item.children.length > 0}
+    {#if hasChildren && !childrenCollapsed}
       <div class="children">
         {#each item.children as child (child.id)}
           <svelte:self
@@ -1099,8 +1192,15 @@
             {onEditTemplate}
             {showEditShortcutHint}
             {locked}
+            {collapsible}
           />
         {/each}
+      </div>
+    {:else if childrenCollapsed}
+      <div class="children hidden-children-rule" aria-hidden="true">
+        <div class="item-shell" style={`--depth: ${depth + 1}`}>
+          <div class="hidden-children-bar"></div>
+        </div>
       </div>
     {/if}
   </svelte:fragment>

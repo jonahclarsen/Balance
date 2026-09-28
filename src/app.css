@@ -1976,7 +1976,7 @@ body.mobile-checkbox-dragging {
 @container task-row (max-width: 380px) {
   .plan-item-main {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto auto;
     flex: 1 1 0;
     min-width: 0;
     align-self: stretch;
@@ -1992,7 +1992,7 @@ body.mobile-checkbox-dragging {
   }
 
   .plan-item-main.timed .item-text {
-    grid-column: 1 / -1;
+    grid-column: 1 / 3;
   }
 
   .plan-item-main .add-time {
@@ -2000,14 +2000,19 @@ body.mobile-checkbox-dragging {
     grid-row: 1;
   }
 
+  .plan-item-main .children-toggle {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
   .plan-item-main .time-range {
-    grid-column: 1 / -1;
+    grid-column: 1 / 3;
     grid-row: 2;
     justify-self: start;
   }
 
   .plan-item-main .mobile-time-summary {
-    grid-column: 1 / -1;
+    grid-column: 1 / 3;
     grid-row: 2;
     justify-self: start;
   }
@@ -2015,6 +2020,7 @@ body.mobile-checkbox-dragging {
   /* On Android the schedule reads first when a narrow row has to stack. Keep
      the desktop order unchanged for narrow comparison panes. */
   .app-shell.android .plan-item-main.timed .item-text {
+    grid-column: 1 / -1;
     grid-row: 2;
   }
 
@@ -2050,6 +2056,72 @@ body.mobile-checkbox-dragging {
 
 .add-time {
   flex: 0 0 auto;
+}
+
+/* Kept narrow so it costs the task text as little width as possible. */
+.children-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  gap: 3px;
+  width: auto;
+  /* Pulls the task text in; the row gap plus the text's own padding
+     otherwise leave a wide hole after the chevron. */
+  margin-right: -6px;
+  padding: 0 4px;
+}
+
+/* A hit area a little larger than the drawn button. */
+.children-toggle::before {
+  content: "";
+  position: absolute;
+  inset: -5px;
+}
+
+.icon-button.quiet.children-toggle:hover {
+  border-color: var(--line-strong);
+}
+
+.children-toggle-chevron {
+  flex: 0 0 auto;
+  width: 13px;
+  height: 13px;
+  /* Only the rotation animates: the count appears/disappears instantly, so
+     easing the margins too would push the task text out and then back. */
+  transition: transform 120ms ease;
+}
+
+/* Collapsed, the count uses the task text's font. */
+.children-toggle.collapsed {
+  font-family: var(--font-content);
+}
+
+.children-toggle.collapsed .children-toggle-chevron {
+  transform: rotate(-90deg);
+  /* Pointing right, the chevron's ink is a narrow strip in the middle of its
+     square box; drop the empty sides so the count's padding matches. */
+  margin-left: -4.7px;
+  margin-right: -4.1px;
+}
+
+.children-toggle-count {
+  font-size: 0.8em;
+}
+
+/* A task whose subtasks are hidden gets a heavy bar under it so the missing
+   rows are obvious at a glance. The bar sits in a stand-in child row, so it
+   starts exactly where the hidden rows would at every indent density. */
+.children.hidden-children-rule {
+  border-left-color: transparent;
+}
+
+.hidden-children-bar {
+  height: 3px;
+  margin-top: -1px;
+  background: color-mix(in srgb, var(--accent) 45%, var(--line-strong));
+  opacity: 0.5;
 }
 
 .time-range {
@@ -3725,7 +3797,7 @@ body.mobile-checkbox-dragging {
 }
 
 .recovery-row.undone {
-  opacity: 0.6;
+  opacity: 0.5;
 }
 
 .recovery-row-main {

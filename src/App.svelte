@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { planItemsClipboardText, parsePlainTaskClipboard } from './lib/taskClipboard'
+  import { planItemsClipboardText, parsePlainTaskClipboard, planItemsToListTemplateItems, planItemsToTemplateItems } from './lib/taskClipboard'
   import ImageLayer from './lib/ImageLayer.svelte'
   import BackupBrowser from './lib/BackupBrowser.svelte'
   import { blobDataURL, selectedImage } from './lib/imageService'
@@ -17,6 +17,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
+  import { collapsedPlanItemIds, setPlanItemCollapsed } from './lib/collapsedPlanItems'
   import TaskCheckbox from './lib/TaskCheckbox.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
   import TemplateTabs from './lib/TemplateTabs.svelte'
@@ -3249,7 +3250,8 @@ return rows`
         return
       }
 
-      if (event.code === 'KeyE') {
+      // Alt+L is an intentionally unlisted alias for Alt+E.
+      if (event.code === 'KeyE' || event.code === 'KeyL') {
         event.preventDefault()
         openLists()
         return
@@ -3609,6 +3611,13 @@ return rows`
       return
     }
 
+    if (activeItemSurface() === 'plan' && activePlan && key === 'r' && !event.shiftKey) {
+      // Always claim Cmd+R on Today so it never reloads the window mid-edit.
+      event.preventDefault()
+      if (!event.repeat) void togglePlanItemChildrenFromKeyboard(activePlan.items)
+      return
+    }
+
     if (activeItemSurface() && !hasActiveRichTextSelection() && !isFormFieldActive()) {
       if ((key === 'c' || key === 'x') && !event.shiftKey && selectedItemIds.length > 0) {
         event.preventDefault()
@@ -3691,6 +3700,39 @@ return rows`
       key,
       repeat: shortcut.repeat,
     }))
+  }
+
+  function findPlanItemParent(items: PlanItem[], itemId: Id, parent: PlanItem | null = null): PlanItem | null | undefined {
+    for (const item of items) {
+      if (item.id === itemId) return parent
+      const found = findPlanItemParent(item.children, itemId, item)
+      if (found !== undefined) return found
+    }
+
+    return undefined
+  }
+
+  // Hides or shows the subtasks of the focused (or selected) task. On a task
+  // without subtasks it acts on the parent, so Cmd+R from inside a group folds
+  // that group away and leaves the cursor on its parent.
+  async function togglePlanItemChildrenFromKeyboard(items: PlanItem[]) {
+    const focused = document.activeElement instanceof HTMLElement
+      ? document.activeElement.closest<HTMLElement>('[data-plan-text-focus-target-id]')?.dataset.planTextFocusTargetId
+      : undefined
+    const itemId = focused ?? (selectedItemIds.length === 1 ? selectedItemIds[0] : undefined)
+    if (!itemId) return
+
+    const item = findPlanItem(items, itemId)
+    const target = item?.children.length ? item : findPlanItemParent(items, itemId)
+    if (!target) return
+
+    const collapse = !$collapsedPlanItemIds.has(target.id)
+    setPlanItemCollapsed(target.id, collapse)
+    if (collapse && target.id !== itemId) {
+      if (selectedItemIds.length > 0) selectedItemIds = []
+      await tick()
+      focusItemTextInput(target.id)
+    }
   }
 
   function findPlanItem(items: PlanItem[], itemId: string): PlanItem | null {
@@ -4579,9 +4621,9 @@ return rows`
 
   async function pasteTemplateSystemClipboard(contents?: ClipboardContents) {
     const clipboard = contents ?? await readSystemClipboard()
-    const structured = parseTemplateItemClipboard(clipboard.structuredPayload)
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
+    const structured = parseTemplateItemClipboard(clipboard.structuredPayload) ?? templateClipboardFromPlanItems(clipboard, surface)
     if (!structured || structured.kind !== surface || !containerId) {
       pastePlainClipboardIntoActiveEditor(clipboard)
       return
@@ -5252,6 +5294,15 @@ return rows`
     } catch {
       return null
     }
+  }
+
+  function templateClipboardFromPlanItems(clipboard: ClipboardContents, surface: ItemSurface | null): TemplateItemClipboard | null {
+    if (surface !== 'day-template' && surface !== 'list-template') return null
+    const items = (parsePlanItemClipboard(clipboard.structuredPayload) ?? plainPlanItemClipboard(clipboard.plainText))?.items
+    if (!items) return null
+    return surface === 'day-template'
+      ? { kind: surface, items: planItemsToTemplateItems(items), cut: false }
+      : { kind: surface, items: planItemsToListTemplateItems(items), cut: false }
   }
 
   function parseTemplateItemClipboard(raw: string | null): TemplateItemClipboard | null {
@@ -6033,6 +6084,7 @@ return rows`
                     {metrics}
                     {notes}
                     onOpenLink={(link, itemId) => openLink(link, { container: 'plan', containerId: activePlan.id, itemId })}
+                    collapsible
                   />
                 {/each}
 
@@ -6210,11 +6262,12 @@ return rows`
                 >
                   <svg class="word-cap-lock-icon" viewBox="0 0 16 16" aria-hidden="true" focusable="false">
                     {#if wordCapUnlocked}
-                      <path d="M10.75 6V4.75a2.75 2.75 0 0 0-5.2-1.25" />
+                      <path d="M10.75 6V3.5a2.75 2.75 0 0 0-5.5 0" />
+                      <rect x="3.25" y="6.75" width="9.5" height="7.25" rx="1.5" />
                     {:else}
                       <path d="M5.25 6V4.75a2.75 2.75 0 0 1 5.5 0V6" />
+                      <rect x="3.25" y="6" width="9.5" height="7.25" rx="1.5" />
                     {/if}
-                    <rect x="3.25" y="6" width="9.5" height="7.25" rx="1.5" />
                   </svg>
                 </button>
                 <label>

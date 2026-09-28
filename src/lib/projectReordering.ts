@@ -1,3 +1,4 @@
+import { tick } from 'svelte'
 import { plannerStore } from './store'
 
 /** Start a card move from its content, leaving embedded controls interactive. */
@@ -111,10 +112,37 @@ export function projectReordering(node: HTMLElement) {
   function up(event: PointerEvent) {
     if (event.pointerId !== pointerId) return
     if (dragging) updateTarget(event.clientX, event.clientY)
+    const dropped = dragging ? source : null
+    const before = dropped ? measureCards() : null
     if (dragging && source && target) {
       plannerStore.moveProject(source.id.slice('project-'.length), target.id.slice('project-'.length), placement)
     }
     reset()
+    if (dropped && before) void settle(dropped, before)
+  }
+
+  function measureCards() {
+    return new Map([...node.querySelectorAll<HTMLElement>('.project-card')].map((card) => [card, card.getBoundingClientRect()]))
+  }
+
+  /** Glide the dropped card and every card it displaced from their old spots into their new ones. */
+  async function settle(dropped: HTMLElement, before: Map<HTMLElement, DOMRect>) {
+    await tick()
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    const scale = node.getBoundingClientRect().width / parseFloat(getComputedStyle(node).width) || 1
+    for (const [card, first] of before) {
+      if (!card.isConnected) continue
+      const last = card.getBoundingClientRect()
+      const dx = (first.left - last.left) / scale
+      const dy = (first.top - last.top) / scale
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue
+      if (card === dropped) card.classList.add('project-settling')
+      const animation = card.animate(
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+        { duration: card === dropped ? 180 : 220, easing: 'cubic-bezier(.2, .8, .2, 1)' },
+      )
+      animation.finished.catch(() => {}).finally(() => card.classList.remove('project-settling'))
+    }
   }
 
   function cancel(event: PointerEvent) {
