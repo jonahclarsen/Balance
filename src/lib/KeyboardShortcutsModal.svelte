@@ -57,7 +57,7 @@
         { keys: ['alt', 'C'], label: 'Search' },
         { keys: ['W / S'], label: 'Hold to scroll Today up / down (no selection or editor focus)' },
         { keys: ['alt', 'T'], label: 'Open Today; press again to jump to today' },
-        { keys: ['alt', 'R'], label: 'Open List History' },
+        { keys: ['alt', 'H'], label: 'Open List History' },
         { keys: ['alt', 'N'], label: 'Open Notes' },
         { keys: ['alt', 'P'], label: 'Open Projects' },
         { keys: ['alt', 'D'], label: 'Open Day Templates' },

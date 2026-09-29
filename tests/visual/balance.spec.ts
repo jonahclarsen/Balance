@@ -961,12 +961,12 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
   }
 
   await expect(page.getByRole('button', { name: 'List History', exact: true })).toHaveCount(0)
-  await page.keyboard.press('Alt+r')
+  await page.keyboard.press('Alt+h')
   const listHistory = page.getByRole('navigation', { name: 'Primary' })
     .getByRole('button', { name: 'List History', exact: true })
   await expect(listHistory).toBeVisible()
-  await expect(listHistory).toHaveAttribute('aria-keyshortcuts', 'Alt+R')
-  await expect(listHistory.locator('.nav-shortcut')).toHaveText(/^(?:⌥|Alt\+)R$/)
+  await expect(listHistory).toHaveAttribute('aria-keyshortcuts', 'Alt+H')
+  await expect(listHistory.locator('.nav-shortcut')).toHaveText(/^(?:⌥|Alt\+)H$/)
   await expect(listHistory).toHaveClass(/active/)
 
   const search = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Search', exact: true })

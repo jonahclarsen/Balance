@@ -3264,7 +3264,7 @@ return rows`
         return
       }
 
-      if (event.code === 'KeyR') {
+      if (event.code === 'KeyH') {
         event.preventDefault()
         openListHistory()
         return
@@ -5897,7 +5897,7 @@ return rows`
       <button class:active={view === 'templates'} type="button" title="Day Templates (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => openMobileDrawerView('templates')}><span>Day Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
       <button class:active={view === 'listTemplates'} type="button" title="Lists (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => openMobileDrawerView('listTemplates')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
       {#if listHistoryNavigationVisible}
-        <button class="nav-child" class:active={view === 'lists'} type="button" title="List History (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => openMobileDrawerView('lists')}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
+        <button class="nav-child" class:active={view === 'lists'} type="button" title="List History (Alt+H)" aria-keyshortcuts="Alt+H" on:click={() => openMobileDrawerView('lists')}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('H')}</kbd></button>
       {/if}
       <button class:active={view === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => openMobileDrawerView('notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
       <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
