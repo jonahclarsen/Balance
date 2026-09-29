@@ -39,7 +39,7 @@
   export let done = false
   export let singleLine = false
   // Touch keyboards have no Shift+Enter, so Enter inserts a line break and only
-  // Enter at the very start or on an empty last line splits via onSplit.
+  // Enter at the very start or on an empty line splits via onSplit.
   export let enterInsertsLineBreak = false
   export let placeholder = ''
   export let ariaLabel = 'Text'
@@ -200,7 +200,7 @@
         return
       }
 
-      if (event.shiftKey || (enterInsertsLineBreak && onSplit && !isCaretAtStart(activeEditor) && !caretIsOnEmptyLastLine(activeEditor))) {
+      if (event.shiftKey || (enterInsertsLineBreak && onSplit && !isCaretAtStart(activeEditor) && !caretIsOnEmptyLine(activeEditor))) {
         event.preventDefault()
         document.execCommand('insertLineBreak')
         persistEditor(activeEditor, false)
@@ -210,8 +210,11 @@
       if (onSplit) {
         event.preventDefault()
         const split = splitEditorAtSelection(activeEditor)
-        // The empty line that ended the item becomes the item boundary instead.
-        if (enterInsertsLineBreak) split.before = withoutTrailingLineBreaks(split.before.html)
+        // The empty line becomes the item boundary instead.
+        if (enterInsertsLineBreak) {
+          split.before = withoutEdgeLineBreaks(split.before.html, 'last')
+          split.after = withoutEdgeLineBreaks(split.after.html, 'first')
+        }
         const source = split.before.html === '' && split.before.text === '' ? split.after : split.before
         activeEditor.innerHTML = source.html
         renderedHTML = source.html
@@ -643,35 +646,14 @@
 
   function sanitizeInlineHTMLWithoutCaretPlaceholder(activeEditor: HTMLDivElement) {
     const clone = activeEditor.cloneNode(true) as HTMLDivElement
-    if ((clone.textContent ?? '').trim() !== '') removeLastLineBreak(clone)
+    if ((clone.textContent ?? '').trim() !== '') edgeRenderedNodeIsLineBreak(clone, 'last', true)
     return sanitizeInlineHTML(clone.innerHTML)
   }
 
   function endsWithLineBreak(value: string) {
     const template = document.createElement('template')
     template.innerHTML = value
-    return lastRenderedNodeIsLineBreak(template.content)
-  }
-
-  function lastRenderedNodeIsLineBreak(parent: ParentNode): boolean {
-    for (let node = parent.lastChild; node; node = node.previousSibling) {
-      if (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '') === '') continue
-      if (node.nodeName === 'BR') return true
-      return node.nodeType === Node.ELEMENT_NODE && lastRenderedNodeIsLineBreak(node as unknown as ParentNode)
-    }
-    return false
-  }
-
-  function removeLastLineBreak(parent: ParentNode): boolean {
-    for (let node = parent.lastChild; node; node = node.previousSibling) {
-      if (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '') === '') continue
-      if (node.nodeName === 'BR') {
-        node.remove()
-        return true
-      }
-      return node.nodeType === Node.ELEMENT_NODE && removeLastLineBreak(node as unknown as ParentNode)
-    }
-    return false
+    return edgeRenderedNodeIsLineBreak(template.content, 'last')
   }
 
   function internalLinkKey(segments: ItemTextSegment[]) {
@@ -719,7 +701,7 @@
     }
   }
 
-  function caretIsOnEmptyLastLine(activeEditor: HTMLDivElement) {
+  function caretIsOnEmptyLine(activeEditor: HTMLDivElement) {
     const selection = document.getSelection()
     const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
     if (!range || !range.collapsed || !rangeIsInside(activeEditor, range)) return false
@@ -740,16 +722,29 @@
     const afterIsEmpty = (after.textContent ?? '').trim() === '' &&
       !after.querySelector(IMAGE_SELECTOR) &&
       after.querySelectorAll('br').length <= 1
-    if (!afterIsEmpty) return false
+    if (!afterIsEmpty && !edgeRenderedNodeIsLineBreak(after, 'first')) return false
 
     const beforeIsEmpty = (before.textContent ?? '') === '' && !before.querySelector(IMAGE_SELECTOR)
-    return beforeIsEmpty || lastRenderedNodeIsLineBreak(before)
+    return beforeIsEmpty || edgeRenderedNodeIsLineBreak(before, 'last')
   }
 
-  function withoutTrailingLineBreaks(value: string) {
+  function edgeRenderedNodeIsLineBreak(parent: ParentNode, edge: 'first' | 'last', remove = false): boolean {
+    const step = (node: ChildNode) => edge === 'first' ? node.nextSibling : node.previousSibling
+    for (let node = edge === 'first' ? parent.firstChild : parent.lastChild; node; node = step(node)) {
+      if (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '') === '') continue
+      if (node.nodeName === 'BR') {
+        if (remove) node.remove()
+        return true
+      }
+      return node.nodeType === Node.ELEMENT_NODE && edgeRenderedNodeIsLineBreak(node as unknown as ParentNode, edge, remove)
+    }
+    return false
+  }
+
+  function withoutEdgeLineBreaks(value: string, edge: 'first' | 'last') {
     const template = document.createElement('template')
     template.innerHTML = value
-    while (removeLastLineBreak(template.content)) {}
+    while (edgeRenderedNodeIsLineBreak(template.content, edge, true)) {}
     const html = sanitizeFragment(template.content)
     return { html, text: htmlToPlainText(html) }
   }
