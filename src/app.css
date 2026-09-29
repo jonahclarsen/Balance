@@ -2095,9 +2095,6 @@ body.mobile-checkbox-dragging {
   justify-content: center;
   position: relative;
   width: auto;
-  /* Pulls the task text in; the row gap plus the text's own padding
-     otherwise leave a wide hole after the chevron. */
-  margin-right: -6px;
   padding: 0 4px;
 }
 
