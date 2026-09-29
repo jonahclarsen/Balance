@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
+  import { vibrateSteps } from './haptics'
   import { captureTreeEditorSelection, restoreTreeEditorSelection, type TreeEditorSelection } from './treeEditorSelection'
   import type { Id, MovePlacement } from './types'
 
@@ -117,6 +118,9 @@
       document.getSelection()?.removeAllRanges()
       focusedElement.blur()
     }
+    // Buzz on contact so the handle feels grabbed immediately instead of
+    // waiting for the platform's long-press haptic.
+    if (event.pointerType === 'touch') vibrateSteps()
     dragging = true
     dragPointerId = event.pointerId
     dragPointer = { x: event.clientX, y: event.clientY }
@@ -332,6 +336,7 @@
         title={dragLabel}
         aria-label={dragLabel}
         on:pointerdown={startPointerDrag}
+        on:contextmenu|preventDefault
       >
         <span class="handle-dots" aria-hidden="true"></span>
       </button>
