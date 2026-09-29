@@ -39,7 +39,7 @@
   export let done = false
   export let singleLine = false
   // Touch keyboards have no Shift+Enter, so Enter inserts a line break and only
-  // Enter on an empty last line (or in an empty editor) splits via onSplit.
+  // Enter at the very start or on an empty last line splits via onSplit.
   export let enterInsertsLineBreak = false
   export let placeholder = ''
   export let ariaLabel = 'Text'
@@ -200,7 +200,7 @@
         return
       }
 
-      if (event.shiftKey || (enterInsertsLineBreak && onSplit && !caretIsOnEmptyLastLine(activeEditor))) {
+      if (event.shiftKey || (enterInsertsLineBreak && onSplit && !isCaretAtStart(activeEditor) && !caretIsOnEmptyLastLine(activeEditor))) {
         event.preventDefault()
         document.execCommand('insertLineBreak')
         persistEditor(activeEditor, false)

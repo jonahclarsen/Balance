@@ -880,6 +880,26 @@ test('mobile Enter adds a line and Enter on an empty last line starts the next t
   await expect(page.getByRole('listitem', { name: 'Plan item: Next task', exact: true })).toBeVisible()
 })
 
+test('mobile Enter at the very start of a task starts a new task above it', async ({ page }, testInfo) => {
+  test.skip(!isMobileProject(testInfo.project.name), 'Desktop Enter always starts the next task')
+  const taskEditors = page.locator('[data-plan-text-input]')
+  const taskCount = await taskEditors.count()
+  const editor = page
+    .getByRole('listitem', { name: 'Plan item: Another task used to verify mobile drag selection' })
+    .locator('[data-plan-text-input]')
+  await editor.evaluate((element: HTMLElement) => {
+    element.focus()
+    const selection = getSelection()!
+    selection.selectAllChildren(element)
+    selection.collapseToStart()
+  })
+
+  await page.keyboard.press('Enter')
+  await expect(taskEditors).toHaveCount(taskCount + 1)
+  await expect(editor).toHaveText('Another task used to verify mobile drag selection')
+  await expect(editor.locator('br')).toHaveCount(0)
+})
+
 test('mobile keyboard reveals focused tasks, follows typing, and permits manual scrolling', async ({ page }, testInfo) => {
   test.skip(!isMobileProject(testInfo.project.name))
   const editor = page.locator('[data-plan-text-input]').nth(12)
