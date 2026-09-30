@@ -1,16 +1,44 @@
 <script lang="ts">
-  import { formatMinutes, hasActiveTimeRange, sanitizeInlineHTML } from './planner'
+  import { openExternalURL } from './externalLinks'
+  import { goalLightnessShift, goalsMatchingItemText } from './goals'
+  import { formatMinutes, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, renderItemDisplayHTML, type ItemLink } from './planner'
   import type { NextTask } from './nextTask'
-  import type { DailyPlan, Id } from './types'
+  import type { DailyPlan, Goal, Id, ListTemplate, Metric, Note } from './types'
 
   export let plan: DailyPlan | undefined
   export let next: NextTask | null
+  export let goals: Goal[]
+  export let listTemplates: ListTemplate[]
+  export let metrics: Metric[]
+  export let notes: Note[]
   export let onComplete: (planId: Id, itemId: Id) => void
+  export let onOpenLink: (link: ItemLink, itemId: Id) => void
+  export let onGoalClick: (goalId: Id) => void
   export let onOpenToday: () => void
 
   // The task to do now is selected, as on Today; its unfinished parents sit
   // above it so the context and their times stay visible and checkable.
   $: rows = next ? [...next.ancestors, next.item] : []
+
+  function displayHTML(row: NextTask['item']) {
+    return renderItemDisplayHTML(row.html, row.text, linkifyItemText(row.text, listTemplates, metrics, notes))
+  }
+
+  // The text renders via {@html}, so route its links explicitly instead of
+  // letting the webview navigate away.
+  async function handleLinkClick(event: MouseEvent, itemId: Id) {
+    const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>('a[href]') : null
+    if (!anchor) return
+    const link = itemLinkFromAnchor(anchor)
+    if (link) {
+      event.preventDefault()
+      onOpenLink(link, itemId)
+      return
+    }
+    if (!isURL(anchor.href)) return
+    event.preventDefault()
+    await openExternalURL(anchor.href)
+  }
 </script>
 
 <section class="next-task-page" aria-label="Next task">
@@ -42,9 +70,27 @@
               title="Complete task"
               on:change={() => plan && onComplete(plan.id, row.id)}
             />
-            <div class="next-task-text">{@html sanitizeInlineHTML(row.html)}</div>
+            <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+            <div class="next-task-text" on:click={(event) => handleLinkClick(event, row.id)}>{@html displayHTML(row)}</div>
             {#if hasActiveTimeRange(row)}
               <span class="next-task-time">{formatMinutes(row.startMinutes)}–{formatMinutes(row.endMinutes)}</span>
+            {/if}
+            {#if plan}
+              {@const rowGoals = goalsMatchingItemText(row, goals, plan.date)}
+              {#if rowGoals.length > 0}
+                <div class="plan-goal-badges next-task-goals" aria-label="Goals matched by this item">
+                  {#each rowGoals as goal (goal.id)}
+                    <button
+                      type="button"
+                      class="plan-goal-badge"
+                      style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
+                      title={`Will complete goal: ${goal.name} — show in Goals`}
+                      aria-label={`${goal.name} — show in Goals`}
+                      on:click={() => onGoalClick(goal.id)}
+                    >{goal.name}</button>
+                  {/each}
+                </div>
+              {/if}
             {/if}
           </li>
         {/each}
@@ -64,7 +110,7 @@
   .next-task-card {
     display: grid;
     gap: 14px;
-    width: min(560px, 100%);
+    width: min(680px, 100%);
     padding: 28px 30px;
     border: 1px solid var(--line);
     border-radius: 14px;
@@ -113,6 +159,15 @@
     font-size: 13px;
     font-variant-numeric: tabular-nums;
     line-height: 1.5;
+  }
+
+  .next-task-goals {
+    flex: none;
+    margin: 2px 0 0;
+  }
+
+  .next-task-row.selected .next-task-goals {
+    margin-top: 8px;
   }
 
   .next-task-row.selected {
@@ -177,7 +232,9 @@
     }
 
     .next-task-time,
-    .next-task-row.selected .next-task-time {
+    .next-task-row.selected .next-task-time,
+    .next-task-goals,
+    .next-task-row.selected .next-task-goals {
       margin: 0 0 0 34px;
     }
 

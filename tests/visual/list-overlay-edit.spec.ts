@@ -143,6 +143,38 @@ test('Alt+F opens a task linked list from either its caret or item selection', a
     .toContainText('Open a link from the active task')
 })
 
+test('Alt+F and a click open the Next task linked list', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Alt+F is a desktop keyboard shortcut')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  await page.locator('[data-list-template-text-input]').first().fill('Milk')
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const taskInput = page.locator('[data-plan-text-input]').first()
+  await taskInput.fill('Groceries')
+  await taskInput.blur()
+
+  await page.keyboard.press('Alt+x')
+  const panel = page.getByRole('region', { name: 'Next task' })
+  await expect(panel.locator('.next-task-row.selected .next-task-text')).toHaveText('Groceries')
+
+  await page.keyboard.press('Alt+f')
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('Milk')).toBeVisible()
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await panel.getByTitle('Open Groceries').click()
+  await expect(dialog).toBeVisible()
+})
+
 test('Alt+F opens a labeled Goal Stats link from the active Today task', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Option-key shortcuts are desktop-only')
   await page.goto('/')

@@ -1013,9 +1013,29 @@ test('Next shows the first unfinished task of today under its unfinished parents
     },
     { id: 'afterwards', text: 'Afterwards', children: [] },
   ], todayISO())
+  await page.evaluate((date) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    const timestamp = new Date().toISOString()
+    state.goals = [{
+      id: 'goal_writing',
+      name: 'Writing',
+      nameHtml: 'Writing',
+      cadenceDays: 1,
+      matchTerms: ['outline'],
+      matchTermsHtml: 'outline',
+      hue: 200,
+      lightness: 50,
+      activityPeriods: [{ startDate: date, endDate: null }],
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    }]
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, todayISO())
+  await page.reload()
   await page.keyboard.press('Alt+x')
 
   const panel = page.getByRole('region', { name: 'Next task' })
+  await expect(panel.locator('[data-next-task-id="outline"] .plan-goal-badge')).toHaveText('Writing')
   const rows = panel.locator('.next-task-row')
   await expect(rows.locator('.next-task-text')).toHaveText(['Project', 'Outline', 'Write intro'])
   await expect(panel.locator('.next-task-row.selected .next-task-text')).toHaveText('Write intro')
@@ -1035,6 +1055,10 @@ test('Next shows the first unfinished task of today under its unfinished parents
   // Completing a parent completes its unfinished subtasks too.
   await panel.getByRole('checkbox', { name: 'Complete Project' }).click()
   await expect(rows.locator('.next-task-text')).toHaveText(['Afterwards'])
+
+  await page.keyboard.press('ControlOrMeta+z')
+  await panel.locator('[data-next-task-id="outline"] .plan-goal-badge').click()
+  await expect(page.locator('.goal-card-focus')).toHaveCount(1)
 })
 
 test('List History is an obvious contextual child of Lists', async ({ page }) => {

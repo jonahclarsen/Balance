@@ -1475,8 +1475,7 @@ return rows`
     return null
   }
 
-  function openLink(link: ItemLink, opener: Opener | null) {
-    const date = $plannerStore.activePlanDate
+  function openLink(link: ItemLink, opener: Opener | null, date = $plannerStore.activePlanDate) {
     if (link.kind === 'goalStats') {
       view = 'goals'
       goalStatsOpen = true
@@ -1514,13 +1513,22 @@ return rows`
   }
 
   function openLinkedDestinationForActiveTask(): boolean {
+    if (view === 'next') {
+      return currentDayPlan && nextTask
+        ? openItemLinkFromShortcut(currentDayPlan, nextTask.item, currentDay)
+        : false
+    }
     if (activeItemSurface() !== 'plan' || !activePlan) return false
 
     const itemId = selectedItemIds.length > 0
       ? (selectionFocusId ?? selectedItemIds.at(-1) ?? null)
       : activeFocusedItemId()
     const item = itemId ? findPlanItem(activePlan.items, itemId) : null
-    if (!item || !itemId) return false
+    if (!item) return false
+    return openItemLinkFromShortcut(activePlan, item)
+  }
+
+  function openItemLinkFromShortcut(plan: DailyPlan, item: PlanItem, date?: string): boolean {
 
     const template = document.createElement('template')
     template.innerHTML = renderItemDisplayHTML(
@@ -1537,7 +1545,7 @@ return rows`
     const internalLink = anchors.map(itemLinkFromAnchor).find((link) => link !== null)
     if (!internalLink) return false
 
-    openLink(internalLink, { container: 'plan', containerId: activePlan.id, itemId })
+    openLink(internalLink, { container: 'plan', containerId: plan.id, itemId: item.id }, date)
     return true
   }
 
@@ -6123,6 +6131,12 @@ return rows`
       <NextTaskPanel
         plan={currentDayPlan}
         next={nextTask}
+        {goals}
+        {listTemplates}
+        {metrics}
+        {notes}
+        onOpenLink={(link, itemId) => currentDayPlan && openLink(link, { container: 'plan', containerId: currentDayPlan.id, itemId }, currentDay)}
+        onGoalClick={(goalId) => { void openGoals(goalId) }}
         onComplete={(planId, itemId) => plannerStore.patchPlanItem(planId, itemId, { done: true })}
         onOpenToday={() => openDateInToday(currentDay)}
       />
