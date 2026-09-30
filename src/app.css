@@ -2501,6 +2501,14 @@ body.mobile-checkbox-dragging {
   gap: 6px;
 }
 
+.typical-duration {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .probability {
   width: 64px;
   padding-inline: 8px;
@@ -3339,6 +3347,68 @@ body.mobile-checkbox-dragging {
   color: var(--muted);
   overflow-wrap: anywhere;
   font-size: 0.82rem;
+}
+
+.list-overlay-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.list-overlay-status .list-progress {
+  flex: 1 1 auto;
+}
+
+.list-view-clock {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
+.list-timing-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.list-ideal-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.list-ideal-time input {
+  width: 64px;
+  padding-inline: 8px;
+}
+
+.list-typical-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.list-typical-time.over {
+  color: var(--danger);
+}
+
+.list-trim-nudge {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 7%, transparent);
+  font-size: 13px;
+}
+
+.list-trim-nudge p {
+  flex: 1 1 auto;
+  margin: 0;
 }
 
 .list-progress {
@@ -5171,6 +5241,12 @@ body.mobile-checkbox-dragging {
   .template-main .option-row > .icon-button {
     grid-column: 2;
     grid-row: 2;
+  }
+
+  .template-main .option-row > .typical-duration {
+    grid-column: 1;
+    grid-row: 2;
+    justify-self: start;
   }
 
   .list-history-heading {

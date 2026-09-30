@@ -2195,6 +2195,7 @@ function generateListItems(items: ListTemplateItem[]): PlanItem[] {
       {
         ...createPlanItem(item.text),
         html: item.html || escapeHTML(item.text),
+        sourceItemId: item.id,
         children: generateListItems(item.children),
       },
     ]

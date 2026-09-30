@@ -2,6 +2,7 @@
   import { tick } from 'svelte'
   import { clampListItemProbability, htmlToPlainText, linkifyItemText, MIN_LIST_ITEM_PROBABILITY, type ItemLink, listItemWordCount } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
+  import { formatDuration } from './listTiming'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
@@ -59,6 +60,8 @@
   export let metrics: Metric[] = []
   export let notes: Note[] = []
   export let onOpenLink: (link: ItemLink) => void = () => {}
+  // Typical time each item takes in finished runs, outliers excluded.
+  export let typicalItemMs: Map<Id, number> = new Map()
 
   // Bumped to force the contenteditable to revert when a keystroke would push the
   // template's expected word count past the cap.
@@ -408,6 +411,11 @@
         internalLinkSegments={linkifyItemText(item.text, listTemplates, metrics, notes)}
         onInternalLinkClick={(link) => onOpenLink(link)}
       />
+      {#if typicalItemMs.has(item.id)}
+        <span class="typical-duration" title="Typical time for this task, ignoring interrupted runs">
+          ~{formatDuration(typicalItemMs.get(item.id) ?? 0)}
+        </span>
+      {/if}
       <ProbabilitySlider
         value={item.probability}
         min={allowsLowProbability ? MIN_LIST_ITEM_PROBABILITY : NORMAL_MIN_LIST_ITEM_PROBABILITY}
@@ -450,6 +458,7 @@
             {metrics}
             {notes}
             {onOpenLink}
+            {typicalItemMs}
           />
         {/each}
       </div>

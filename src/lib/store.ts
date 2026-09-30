@@ -2156,6 +2156,21 @@ function createPlannerStore() {
       )
     },
 
+    setListTemplateIdealMinutes(templateId: Id, idealMinutes: number) {
+      const normalized = Math.max(0, Math.round(idealMinutes) || 0)
+      commitEntities(
+        'set_list_template_ideal_minutes',
+        { templateId, idealMinutes: normalized },
+        (state) =>
+          updateListTemplate(state, templateId, (template) =>
+            (template.idealMinutes ?? 0) === normalized
+              ? template
+              : { ...template, idealMinutes: normalized, updatedAt: nowISO() },
+          ),
+        { mergeKey: `list-template-ideal-minutes:${templateId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
+      )
+    },
+
     setListTemplateMaxWords(templateId: Id, maxExpectedWords: number) {
       const normalized = Math.max(0, Math.round(maxExpectedWords) || 0)
       commitEntities('set_list_template_max_words', { templateId, maxExpectedWords: normalized }, (state) =>
@@ -2487,7 +2502,7 @@ function createPlannerStore() {
             : {}
       commitEntities('patch_list_item', { listId, itemId, patch }, (state) =>
         updateList(state, listId, (list) => {
-          const items = updatePlanItem(list.items, itemId, (item) => applyPatch(item, patch))
+          const items = updatePlanItem(list.items, itemId, (item) => withListCompletionTime(item, applyPatch(item, patch)))
           return items === list.items ? list : { ...list, items }
         }),
         mergeOptions,
@@ -2894,6 +2909,16 @@ function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, loca
     operations: [],
     historyRevision: current.historyRevision + 1,
   }
+}
+
+// Stamp list rows as they are checked off so list and task durations can be
+// measured. Reopening a row clears the stamp so a later check-off restarts it.
+function withListCompletionTime(previous: PlanItem, item: PlanItem): PlanItem {
+  if (item.done === previous.done) return item
+  if (item.done) return { ...item, completedAt: nowISO() }
+  if (item.completedAt === undefined) return item
+  const { completedAt: _completedAt, ...reopened } = item
+  return reopened
 }
 
 function applyPatch<T extends object>(target: T, patch: Partial<Record<keyof T, unknown>>): T {

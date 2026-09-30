@@ -23,6 +23,13 @@
   import TemplateTabs from './lib/TemplateTabs.svelte'
   import ListTemplateItemEditor from './lib/ListTemplateItemEditor.svelte'
   import ListPanel from './lib/ListPanel.svelte'
+  import ListTimeClock from './lib/ListTimeClock.svelte'
+  import {
+    formatDuration,
+    LIST_TRIM_NUDGE_INTERVAL_MS,
+    shouldSuggestTrim,
+    summarizeListTiming,
+  } from './lib/listTiming'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
   import NotesPanel from './lib/NotesPanel.svelte'
   import { NOTE_EDITOR_OPTIONS, readNoteEditorPreference, writeNoteEditorPreference, type NoteEditorChoice } from './lib/noteEditorPreference'
@@ -437,6 +444,8 @@
     writeNoteEditorPreference(choice)
   }
   let wordCapUnlocked = false
+  let listTrimNudgeDismissals = 0
+  const noTypicalItemMs = new Map<Id, number>()
   let wordCapUnlockTimer: number | null = null
   let selectedMetricId = ''
   let selectedNoteId = ''
@@ -690,6 +699,19 @@ return rows`
   $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items, metrics) : 0
   $: selectedArchivedListItems = [...(selectedListTemplate?.archivedItems ?? [])]
     .sort((left, right) => right.archivedAt.localeCompare(left.archivedAt))
+  $: selectedListTiming = selectedListTemplate ? summarizeListTiming(lists, selectedListTemplate.id) : null
+  $: selectedListSlowestItems = selectedListTemplate && selectedListTiming
+    ? flattenListTemplateItems(selectedListTemplate.items)
+        .filter((item) => item.children.length === 0 && selectedListTiming.typicalItemMs.has(item.id))
+        .map((item) => ({ item, ms: selectedListTiming.typicalItemMs.get(item.id) ?? 0 }))
+        .sort((left, right) => right.ms - left.ms)
+        .slice(0, 3)
+    : []
+  $: showListTrimNudge =
+    selectedListTemplate !== undefined &&
+    selectedListTiming !== null &&
+    shouldSuggestTrim(selectedListTiming, selectedListTemplate.idealMinutes) &&
+    !listTrimNudgeRecentlyDismissed(selectedListTemplate.id, listTrimNudgeDismissals)
   $: listViewInstance = lists.find(
     (list) => list.listTemplateId === listViewTemplateId && list.date === $plannerStore.activePlanDate,
   )
@@ -1542,6 +1564,32 @@ return rows`
     selectedListTemplateId = instance.listTemplateId
 
     if (templateItem) void focusListTemplateItem(templateItem.id)
+  }
+
+  function flattenListTemplateItems(items: ListTemplateItem[]): ListTemplateItem[] {
+    return items.flatMap((item) => [item, ...flattenListTemplateItems(item.children)])
+  }
+
+  // The trim suggestion is a periodic nudge, so a dismissal only lasts a while
+  // and stays on this device.
+  const listTrimNudgeStorageKey = (templateId: Id) => `balance.listTrimNudgeDismissedAt.${templateId}`
+
+  function listTrimNudgeRecentlyDismissed(templateId: Id, _dismissals: number): boolean {
+    try {
+      const dismissedAt = Number(localStorage.getItem(listTrimNudgeStorageKey(templateId)))
+      return Number.isFinite(dismissedAt) && Date.now() - dismissedAt < LIST_TRIM_NUDGE_INTERVAL_MS
+    } catch {
+      return false
+    }
+  }
+
+  function dismissListTrimNudge(templateId: Id) {
+    try {
+      localStorage.setItem(listTrimNudgeStorageKey(templateId), String(Date.now()))
+    } catch {
+      // Without storage the nudge simply returns next time the page renders.
+    }
+    listTrimNudgeDismissals += 1
   }
 
   function findListTemplateItemByContent(items: ListTemplateItem[], target: PlanItem): ListTemplateItem | null {
@@ -6296,6 +6344,46 @@ return rows`
 
       {#if selectedListTemplate}
         <div class="template-panel">
+          <div class="list-timing-bar">
+            <label class="list-ideal-time">
+              Ideal time
+              <input
+                type="number"
+                min="0"
+                inputmode="numeric"
+                placeholder="—"
+                value={selectedListTemplate.idealMinutes || ''}
+                on:input={(event) =>
+                  plannerStore.setListTemplateIdealMinutes(selectedListTemplate.id, Number(event.currentTarget.value) || 0)}
+              />
+              min
+            </label>
+            {#if selectedListTiming?.typicalRunMs != null}
+              <span
+                class="list-typical-time"
+                class:over={Boolean(selectedListTemplate.idealMinutes) &&
+                  selectedListTiming.typicalRunMs > (selectedListTemplate.idealMinutes ?? 0) * 60_000}
+              >
+                Usually takes {formatDuration(selectedListTiming.typicalRunMs)}
+              </span>
+            {/if}
+          </div>
+
+          {#if showListTrimNudge && selectedListTiming?.typicalRunMs != null}
+            <div class="list-trim-nudge" role="status">
+              <p>
+                This list has been taking about {formatDuration(selectedListTiming.typicalRunMs)}, longer than your
+                {selectedListTemplate.idealMinutes} min ideal. Consider trimming it{#if selectedListSlowestItems.length > 0}
+                  — the slowest tasks are
+                  {#each selectedListSlowestItems as { item, ms }, index}
+                    <strong>{item.text || 'Untitled'}</strong> (~{formatDuration(ms)}){index < selectedListSlowestItems.length - 1 ? ', ' : ''}
+                  {/each}{/if}.
+              </p>
+              <button class="icon-button quiet" type="button" aria-label="Dismiss for a week" title="Dismiss for a week"
+                on:click={() => dismissListTrimNudge(selectedListTemplate.id)}>✕</button>
+            </div>
+          {/if}
+
           <label class="field-label" for="list-template-name">List name</label>
           <input
             id="list-template-name"
@@ -6311,6 +6399,7 @@ return rows`
                 currentExpected={selectedListExpectedWordCount}
                 templateId={selectedListTemplate.id}
                 maxExpectedWords={selectedListTemplate.maxExpectedWords}
+                typicalItemMs={selectedListTiming?.typicalItemMs ?? noTypicalItemMs}
                 patchItem={plannerStore.patchListTemplateItem}
                 splitItem={plannerStore.splitListTemplateItem}
                 backspaceItemAtStart={plannerStore.backspaceListTemplateItemAtStart}
@@ -6455,6 +6544,12 @@ return rows`
         </div>
       {:else if listViewInstance}
         {@const instance = listViewInstance}
+        {@const idealMinutes = listTemplates.find((template) => template.id === instance.listTemplateId)?.idealMinutes}
+        {#if idealMinutes}
+          <div class="list-view-clock">
+            <ListTimeClock items={instance.items} {idealMinutes} />
+          </div>
+        {/if}
         <ListPanel
           {instance}
           {listTemplates}
@@ -7265,17 +7360,21 @@ return rows`
       {@const completion = planItemCompletion(instance.items)}
       {@const completionPercent = completion.total === 0 ? 0 : Math.round((completion.done / completion.total) * 100)}
       <OverlayModal title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
-        <div
-          slot="header-middle"
-          class="list-progress"
-          style={`--list-progress: ${completionPercent}%`}
-          role="progressbar"
-          aria-label="List completion"
-          aria-valuemin="0"
-          aria-valuemax={completion.total}
-          aria-valuenow={completion.done}
-        >
-          <span class="list-progress-fill"></span>
+        <div slot="header-middle" class="list-overlay-status">
+          <div
+            class="list-progress"
+            style={`--list-progress: ${completionPercent}%`}
+            role="progressbar"
+            aria-label="List completion"
+            aria-valuemin="0"
+            aria-valuemax={completion.total}
+            aria-valuenow={completion.done}
+          >
+            <span class="list-progress-fill"></span>
+          </div>
+          {#if template?.idealMinutes}
+            <ListTimeClock items={instance.items} idealMinutes={template.idealMinutes} />
+          {/if}
         </div>
         <ListPanel
           bind:this={overlayListPanel}

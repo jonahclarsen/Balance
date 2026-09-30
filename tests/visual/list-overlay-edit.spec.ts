@@ -857,3 +857,55 @@ test('reopening a list overlay selects the first unchecked item near 8% from the
     })
     .toBeLessThan(2)
 })
+
+test('list runs are timed against the ideal time set on the template', async ({ page }) => {
+  await page.clock.install()
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  await page.getByRole('spinbutton', { name: 'Ideal time' }).fill('1')
+
+  const listItems = page.locator('[data-list-template-text-input]')
+  await listItems.first().fill('Milk')
+  await page.getByRole('button', { name: '+ Add list item' }).click()
+  await listItems.nth(1).fill('Eggs')
+
+  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  const firstItem = page.locator('[data-plan-text-input]').first()
+  await firstItem.fill('Groceries')
+  await firstItem.blur()
+
+  await page.getByTitle('Open Groceries').first().click()
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  const clock = dialog.getByRole('timer')
+  await expect(clock).toHaveAccessibleName(/starts when you check off the first task/)
+
+  await dialog.getByRole('listitem', { name: 'Plan item: Milk' }).getByRole('checkbox').check()
+  await page.clock.fastForward(30_000)
+  await expect(clock).toContainText(/5\d%/)
+
+  await page.clock.fastForward(60_000)
+  await expect(clock).toContainText(/15\d%/)
+  await expect(clock).toHaveClass(/over/)
+  await page.screenshot({ path: 'artifacts/list-timing-overlay.png' })
+
+  // Finishing the list closes the overlay; the clock stops at the run's length.
+  await page.clock.fastForward(30_000)
+  await dialog.getByRole('listitem', { name: 'Plan item: Eggs' }).getByRole('checkbox').click()
+  await expect(dialog).toHaveCount(0)
+  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.getByRole('button', { name: 'View List History →' }).click()
+  await expect(page.getByRole('timer')).toContainText(/20\d%/)
+  await page.clock.fastForward(60_000)
+  await expect(page.getByRole('timer')).toContainText(/20\d%/)
+
+  await page.getByRole('button', { name: '← Back to Lists' }).click()
+  await expect(page.getByText('Usually takes 2m')).toBeVisible()
+  await expect(page.getByTitle('Typical time for this task, ignoring interrupted runs')).toHaveText('~2m')
+  await page.screenshot({ path: 'artifacts/list-timing-template.png' })
+})

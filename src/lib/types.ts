@@ -27,6 +27,10 @@ export type PlanItem = {
   // source on the item lets checking it complete the intended goal even when
   // the goal name does not contain one of its matching terms.
   generatedGoalId?: Id
+  // List instances only: the template item this row was generated from, and
+  // when it was last checked off. Together they time each task and the list.
+  sourceItemId?: Id
+  completedAt?: string
   startMinutes: number | null
   endMinutes: number | null
   timeHidden?: boolean | null
@@ -93,6 +97,9 @@ export type ListTemplate = {
   // including the conditional probability of every item's ancestors.
   // 0 means unlimited.
   maxExpectedWords: number
+  // Preferred time to get through the list, from the first check-off to the
+  // last. Absent or 0 means no target.
+  idealMinutes?: number
   items: ListTemplateItem[]
   archivedItems: ArchivedListTemplateItem[]
   createdAt: string
