@@ -1,3 +1,4 @@
+import { listRowSourceItemId } from './planner'
 import type { Id, ListInstance, PlanItem } from './types'
 
 // How many of the most recent finished runs describe a list's current pace.
@@ -26,10 +27,7 @@ export type ListTimingSummary = {
 
 function completions(items: PlanItem[], into: Completion[] = []): Completion[] {
   for (const item of items) {
-    if (item.done && item.completedAt) {
-      const at = Date.parse(item.completedAt)
-      if (Number.isFinite(at)) into.push({ item, at })
-    }
+    if (item.done && typeof item.completedAt === 'number') into.push({ item, at: item.completedAt * 1000 })
     completions(item.children, into)
   }
   return into
@@ -39,16 +37,28 @@ function allDone(items: PlanItem[]): boolean {
   return items.every((item) => item.done && allDone(item.children))
 }
 
+// List edits replace the items array, so an unchanged list keeps its cached
+// timing and a check-off re-times only the list it happened in.
+const runTimingCache = new WeakMap<PlanItem[], ListRunTiming>()
+
 export function listRunTiming(instance: Pick<ListInstance, 'items'>): ListRunTiming {
-  const done = completions(instance.items).sort((a, b) => a.at - b.at)
+  const cached = runTimingCache.get(instance.items)
+  if (cached) return cached
+  const timing = computeListRunTiming(instance.items)
+  runTimingCache.set(instance.items, timing)
+  return timing
+}
+
+function computeListRunTiming(items: PlanItem[]): ListRunTiming {
+  const done = completions(items).sort((a, b) => a.at - b.at)
   const itemDurations: ListRunTiming['itemDurations'] = []
   for (let index = 1; index < done.length; index += 1) {
     const { item, at } = done[index]
     // Parents close with their last child, so only leaves carry real work.
-    if (item.children.length > 0 || !item.sourceItemId) continue
-    itemDurations.push({ sourceItemId: item.sourceItemId, durationMs: at - done[index - 1].at })
+    const sourceItemId = item.children.length > 0 ? null : listRowSourceItemId(item.id)
+    if (sourceItemId) itemDurations.push({ sourceItemId, durationMs: at - done[index - 1].at })
   }
-  const finished = instance.items.length > 0 && done.length > 1 && allDone(instance.items)
+  const finished = items.length > 0 && done.length > 1 && allDone(items)
   return {
     startedAt: done[0]?.at ?? null,
     finishedAt: finished ? done[done.length - 1].at : null,

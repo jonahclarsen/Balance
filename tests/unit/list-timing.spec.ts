@@ -7,12 +7,11 @@ const start = Date.parse('2026-09-01T08:00:00.000Z')
 
 function row(sourceItemId: string, completedAtMinute: number | null, children: PlanItem[] = []): PlanItem {
   return {
-    id: `row-${sourceItemId}-${Math.random()}`,
+    id: `${sourceItemId}.${Math.random().toString(36).slice(2, 10)}`,
     text: sourceItemId,
     html: sourceItemId,
     done: completedAtMinute !== null,
-    sourceItemId,
-    ...(completedAtMinute === null ? {} : { completedAt: new Date(start + completedAtMinute * minute).toISOString() }),
+    ...(completedAtMinute === null ? {} : { completedAt: (start + completedAtMinute * minute) / 1000 }),
     startMinutes: null,
     endMinutes: null,
     children,

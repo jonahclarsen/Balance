@@ -2216,20 +2216,29 @@ export function generateListFromTemplate(template: ListTemplate, date: string): 
     date,
     listTemplateId: template.id,
     createdAt: nowISO(),
-    items: generateListItems(template.items),
+    items: generateListItems(template.items, Math.random().toString(36).slice(2, 10)),
   }
 }
 
-function generateListItems(items: ListTemplateItem[]): PlanItem[] {
+// Generated row ids are the template item id plus a per-list suffix, so a row's
+// source is recoverable for task timing without storing an extra field.
+const LIST_ROW_SOURCE_SEPARATOR = '.'
+
+export function listRowSourceItemId(rowId: Id): Id | null {
+  const separator = rowId.lastIndexOf(LIST_ROW_SOURCE_SEPARATOR)
+  return separator > 0 ? rowId.slice(0, separator) : null
+}
+
+function generateListItems(items: ListTemplateItem[], suffix: string): PlanItem[] {
   return items.flatMap((item) => {
     const appears = Math.random() * 100 < clampListItemProbability(item.probability)
     if (!appears) return []
     return [
       {
         ...createPlanItem(item.text),
+        id: `${item.id}${LIST_ROW_SOURCE_SEPARATOR}${suffix}`,
         html: item.html || escapeHTML(item.text),
-        sourceItemId: item.id,
-        children: generateListItems(item.children),
+        children: generateListItems(item.children, suffix),
       },
     ]
   })

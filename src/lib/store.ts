@@ -2941,7 +2941,7 @@ function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, loca
 // measured. Reopening a row clears the stamp so a later check-off restarts it.
 function withListCompletionTime(previous: PlanItem, item: PlanItem): PlanItem {
   if (item.done === previous.done) return item
-  if (item.done) return { ...item, completedAt: nowISO() }
+  if (item.done) return { ...item, completedAt: Math.floor(Date.now() / 1000) }
   if (item.completedAt === undefined) return item
   const { completedAt: _completedAt, ...reopened } = item
   return reopened

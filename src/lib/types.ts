@@ -37,10 +37,9 @@ export type PlanItem = {
   // source on the item lets checking it complete the intended goal even when
   // the goal name does not contain one of its matching terms.
   generatedGoalId?: Id
-  // List instances only: the template item this row was generated from, and
-  // when it was last checked off. Together they time each task and the list.
-  sourceItemId?: Id
-  completedAt?: string
+  // List instances only: when the row was last checked off, in Unix seconds.
+  // Kept compact because every checked list row carries it.
+  completedAt?: number
   startMinutes: number | null
   endMinutes: number | null
   timeHidden?: boolean | null

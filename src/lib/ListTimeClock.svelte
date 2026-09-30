@@ -16,8 +16,10 @@
 
   $: timing = listRunTiming({ items })
   $: running = timing.startedAt !== null && timing.finishedAt === null
-  $: setTicking(running)
   $: idealMs = idealMinutes * 60_000
+  // Redraw once per displayed percent rather than every second for long ideals.
+  $: tickMs = Math.max(1000, Math.floor(idealMs / 100))
+  $: setTicking(running, tickMs)
   $: elapsedMs = timing.startedAt === null ? 0 : (timing.finishedAt ?? now) - timing.startedAt
   $: fraction = idealMs > 0 ? elapsedMs / idealMs : 0
   $: over = fraction > 1
@@ -29,13 +31,17 @@
       ? `Ideal time ${formatDuration(idealMs)} — starts when you check off the first task`
       : `${formatDuration(elapsedMs)} of ${formatDuration(idealMs)} ideal (${percent}%)`
 
-  function setTicking(active: boolean) {
-    if (active && timer === null) {
-      now = Date.now()
-      timer = setInterval(() => (now = Date.now()), 1000)
-    } else if (!active && timer !== null) {
+  let timerMs = 0
+
+  function setTicking(active: boolean, intervalMs = 0) {
+    if (timer !== null && (!active || intervalMs !== timerMs)) {
       clearInterval(timer)
       timer = null
+    }
+    if (active && timer === null) {
+      now = Date.now()
+      timerMs = intervalMs
+      timer = setInterval(() => (now = Date.now()), intervalMs)
     }
   }
 

@@ -703,7 +703,9 @@ return rows`
   $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items, metrics) : 0
   $: selectedArchivedListItems = [...(selectedListTemplate?.archivedItems ?? [])]
     .sort((left, right) => right.archivedAt.localeCompare(left.archivedAt))
-  $: selectedListTiming = selectedListTemplate ? summarizeListTiming(lists, selectedListTemplate.id) : null
+  // Only the list-template page shows these stats, so skip the work elsewhere.
+  $: selectedListTiming =
+    view === 'listTemplates' && selectedListTemplate ? summarizeListTiming(lists, selectedListTemplate.id) : null
   $: selectedListSlowestItems = selectedListTemplate && selectedListTiming
     ? flattenListTemplateItems(selectedListTemplate.items)
         .filter((item) => item.children.length === 0 && selectedListTiming.typicalItemMs.has(item.id))
