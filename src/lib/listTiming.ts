@@ -3,6 +3,9 @@ import type { Id, ListInstance, PlanItem } from './types'
 
 // How many of the most recent finished runs describe a list's current pace.
 const RECENT_RUN_COUNT = 7
+// A gap this long between check-offs means the list was left unattended, so
+// that task and that run aren't timed.
+const UNATTENDED_GAP_MS = 60 * 60 * 1000
 // Runs needed before an over-time pattern is worth pointing out.
 const MIN_RUNS_FOR_NUDGE = 3
 // The trim suggestion reappears at most this often after being dismissed.
@@ -13,6 +16,8 @@ type Completion = { item: PlanItem; at: number }
 export type ListRunTiming = {
   startedAt: number | null
   finishedAt: number | null
+  // Some gap between check-offs was long enough that the list was left alone.
+  unattended: boolean
   // Time between each leaf row's check-off and the check-off before it, keyed
   // by the template item it came from. The first check-off starts the clock and
   // has no measured duration.
@@ -27,7 +32,7 @@ export type ListTimingSummary = {
 
 function completions(items: PlanItem[], into: Completion[] = []): Completion[] {
   for (const item of items) {
-    if (item.done && typeof item.completedAt === 'number') into.push({ item, at: item.completedAt * 1000 })
+    if (item.done && typeof item.doneAt === 'number') into.push({ item, at: item.doneAt * 1000 })
     completions(item.children, into)
   }
   return into
@@ -41,27 +46,35 @@ function allDone(items: PlanItem[]): boolean {
 // timing and a check-off re-times only the list it happened in.
 const runTimingCache = new WeakMap<PlanItem[], ListRunTiming>()
 
-export function listRunTiming(instance: Pick<ListInstance, 'items'>): ListRunTiming {
+export function listRunTiming(instance: Pick<ListInstance, 'items' | 'createdAt'>): ListRunTiming {
   const cached = runTimingCache.get(instance.items)
   if (cached) return cached
-  const timing = computeListRunTiming(instance.items)
+  const timing = computeListRunTiming(instance.items, Date.parse(instance.createdAt))
   runTimingCache.set(instance.items, timing)
   return timing
 }
 
-function computeListRunTiming(items: PlanItem[]): ListRunTiming {
+function computeListRunTiming(items: PlanItem[], createdAt: number): ListRunTiming {
   const done = completions(items).sort((a, b) => a.at - b.at)
   const itemDurations: ListRunTiming['itemDurations'] = []
+  let unattended = false
   for (let index = 1; index < done.length; index += 1) {
     const { item, at } = done[index]
+    const durationMs = at - done[index - 1].at
+    if (durationMs > UNATTENDED_GAP_MS) {
+      unattended = true
+      continue
+    }
     // Parents close with their last child, so only leaves carry real work.
     const sourceItemId = item.children.length > 0 ? null : listRowSourceItemId(item.id)
-    if (sourceItemId) itemDurations.push({ sourceItemId, durationMs: at - done[index - 1].at })
+    if (sourceItemId) itemDurations.push({ sourceItemId, durationMs })
   }
   const finished = items.length > 0 && done.length > 1 && allDone(items)
+  const base = Number.isFinite(createdAt) ? createdAt : 0
   return {
-    startedAt: done[0]?.at ?? null,
-    finishedAt: finished ? done[done.length - 1].at : null,
+    startedAt: done.length > 0 ? base + done[0].at : null,
+    finishedAt: finished ? base + done[done.length - 1].at : null,
+    unattended,
     itemDurations,
   }
 }
@@ -96,7 +109,10 @@ export function summarizeListTiming(lists: ListInstance[], listTemplateId: Id): 
   const runs = lists
     .filter((list) => list.listTemplateId === listTemplateId)
     .map(listRunTiming)
-    .filter((run): run is ListRunTiming & { startedAt: number; finishedAt: number } => run.finishedAt !== null)
+    .filter(
+      (run): run is ListRunTiming & { startedAt: number; finishedAt: number } =>
+        run.finishedAt !== null && !run.unattended,
+    )
     .sort((a, b) => b.finishedAt - a.finishedAt)
 
   const samples = new Map<Id, number[]>()

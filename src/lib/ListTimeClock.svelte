@@ -4,6 +4,7 @@
   import type { PlanItem } from './types'
 
   export let items: PlanItem[]
+  export let createdAt: string
   export let idealMinutes: number
 
   const size = 26
@@ -14,7 +15,7 @@
   let now = Date.now()
   let timer: ReturnType<typeof setInterval> | null = null
 
-  $: timing = listRunTiming({ items })
+  $: timing = listRunTiming({ items, createdAt })
   $: running = timing.startedAt !== null && timing.finishedAt === null
   $: idealMs = idealMinutes * 60_000
   // Redraw once per displayed percent rather than every second for long ideals.

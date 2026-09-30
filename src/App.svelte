@@ -6586,7 +6586,7 @@ return rows`
         {@const idealMinutes = listTemplates.find((template) => template.id === instance.listTemplateId)?.idealMinutes}
         {#if idealMinutes}
           <div class="list-view-clock">
-            <ListTimeClock items={instance.items} {idealMinutes} />
+            <ListTimeClock items={instance.items} createdAt={instance.createdAt} {idealMinutes} />
           </div>
         {/if}
         <ListPanel
@@ -7412,7 +7412,7 @@ return rows`
             <span class="list-progress-fill"></span>
           </div>
           {#if template?.idealMinutes}
-            <ListTimeClock items={instance.items} idealMinutes={template.idealMinutes} />
+            <ListTimeClock items={instance.items} createdAt={instance.createdAt} idealMinutes={template.idealMinutes} />
           {/if}
         </div>
         <ListPanel

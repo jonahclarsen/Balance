@@ -2528,7 +2528,9 @@ function createPlannerStore() {
             : {}
       commitEntities('patch_list_item', { listId, itemId, patch }, (state) =>
         updateList(state, listId, (list) => {
-          const items = updatePlanItem(list.items, itemId, (item) => withListCompletionTime(item, applyPatch(item, patch)))
+          const items = updatePlanItem(list.items, itemId, (item) =>
+            withListCompletionTime(list.createdAt, item, applyPatch(item, patch)),
+          )
           return items === list.items ? list : { ...list, items }
         }),
         mergeOptions,
@@ -2939,11 +2941,13 @@ function stateFromNativeHistoryEntry(current: AppState, snapshot: AppState, loca
 
 // Stamp list rows as they are checked off so list and task durations can be
 // measured. Reopening a row clears the stamp so a later check-off restarts it.
-function withListCompletionTime(previous: PlanItem, item: PlanItem): PlanItem {
+// The stamp is an offset from the list's createdAt, which never changes, so
+// every device measures from the same base.
+function withListCompletionTime(listCreatedAt: string, previous: PlanItem, item: PlanItem): PlanItem {
   if (item.done === previous.done) return item
-  if (item.done) return { ...item, completedAt: Math.floor(Date.now() / 1000) }
-  if (item.completedAt === undefined) return item
-  const { completedAt: _completedAt, ...reopened } = item
+  if (item.done) return { ...item, doneAt: Math.round((Date.now() - Date.parse(listCreatedAt)) / 1000) }
+  if (item.doneAt === undefined) return item
+  const { doneAt: _doneAt, ...reopened } = item
   return reopened
 }
 

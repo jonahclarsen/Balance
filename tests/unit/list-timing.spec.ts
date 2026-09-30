@@ -11,7 +11,8 @@ function row(sourceItemId: string, completedAtMinute: number | null, children: P
     text: sourceItemId,
     html: sourceItemId,
     done: completedAtMinute !== null,
-    ...(completedAtMinute === null ? {} : { completedAt: (start + completedAtMinute * minute) / 1000 }),
+    // Lists are generated an hour before the first check-off.
+    ...(completedAtMinute === null ? {} : { doneAt: 3600 + completedAtMinute * 60 }),
     startMinutes: null,
     endMinutes: null,
     children,
@@ -19,11 +20,12 @@ function row(sourceItemId: string, completedAtMinute: number | null, children: P
 }
 
 function run(day: number, items: PlanItem[]): ListInstance {
-  return { id: `list-${day}`, date: `2026-09-${String(day).padStart(2, '0')}`, listTemplateId: 'template', createdAt: '', items }
+  return { id: `list-${day}`, date: `2026-09-${String(day).padStart(2, '0')}`, listTemplateId: 'template', createdAt: new Date(start - 60 * minute).toISOString(), items }
 }
 
 test('a run is timed from the first check-off to the last and each task from the one before it', () => {
   const timing = listRunTiming(run(1, [row('a', 0), row('b', 3), row('c', 8)]))
+  expect(timing.startedAt).toBe(start)
   expect(timing.finishedAt! - timing.startedAt!).toBe(8 * minute)
   expect(timing.itemDurations).toEqual([
     { sourceItemId: 'b', durationMs: 3 * minute },
@@ -56,4 +58,13 @@ test('trimming is suggested once recent runs consistently exceed the ideal', () 
   expect(shouldSuggestTrim(summary, 25)).toBe(false)
   expect(shouldSuggestTrim(summary, 0)).toBe(false)
   expect(shouldSuggestTrim(summarizeListTiming(lists.slice(0, 2), 'template'), 15)).toBe(false)
+})
+
+test('a list left unattended for over an hour is not timed', () => {
+  const timing = listRunTiming(run(1, [row('a', 0), row('b', 2), row('c', 90)]))
+  expect(timing.unattended).toBe(true)
+  expect(timing.itemDurations).toEqual([{ sourceItemId: 'b', durationMs: 2 * minute }])
+
+  const lists = [1, 2, 3].map((day) => run(day, [row('a', 0), row('b', 2), row('c', 90)]))
+  expect(summarizeListTiming(lists, 'template').runCount).toBe(0)
 })
