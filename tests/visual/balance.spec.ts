@@ -615,8 +615,8 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
     fullPage: true,
   })
 
-  await page.getByRole('button', { name: 'Day Templates' }).click()
-  await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await page.getByRole('button', { name: 'Days' }).click()
+  await expect(page.getByRole('heading', { name: 'Days' })).toBeVisible()
   await expect(page.getByLabel('Template name')).toHaveValue('Default day')
   await expect(page.getByRole('navigation', { name: 'Select day template' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Default day', exact: true })).toHaveAttribute('aria-current', 'true')
@@ -881,7 +881,7 @@ test('empty days show every template and require an explicit selection', async (
   if (await page.getByRole('button', { name: 'Open navigation' }).isVisible()) {
     await page.getByRole('button', { name: 'Open navigation' }).click()
   }
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
   await page.getByRole('button', { name: 'New day', exact: true }).click()
   await expect(page.getByLabel('Template name')).toHaveValue('New day')
   await page.getByLabel('Template name').fill('Weekend')
@@ -941,7 +941,7 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
   const shortcuts = [
     { key: 'x', label: 'Next' },
     { key: 't', label: 'Today' },
-    { key: 'd', label: 'Day Templates' },
+    { key: 'd', label: 'Days' },
     { key: 'e', label: 'Lists' },
     { key: 'n', label: 'Notes' },
     { key: 'v', label: 'Quizzes' },
@@ -1384,7 +1384,7 @@ test('iridescent sidebar gradient starts at a random phase on each page', async 
 
   const activeSidebarButton = page.locator('.sidebar nav button.active')
   const navigateAtVisibleProgress = (
-    name: 'Today' | 'Day Templates',
+    name: 'Today' | 'Days',
     visibleProgress: number,
     reverse: boolean,
   ) => page.evaluate(async ({ name, visibleProgress, reverse }) => {
@@ -1409,9 +1409,9 @@ test('iridescent sidebar gradient starts at a random phase on each page', async 
   }, { name, visibleProgress, reverse })
 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
-  const quarterPhase = await navigateAtVisibleProgress('Day Templates', 0.25, false)
+  const quarterPhase = await navigateAtVisibleProgress('Days', 0.25, false)
   const middleReversePhase = await navigateAtVisibleProgress('Today', 0.5, true)
-  const threeQuarterPhase = await navigateAtVisibleProgress('Day Templates', 0.75, false)
+  const threeQuarterPhase = await navigateAtVisibleProgress('Days', 0.75, false)
 
   expect(quarterPhase.animationDelay).toBeGreaterThan(-12)
   expect(middleReversePhase.animationDelay).toBeLessThan(-12)
@@ -1423,12 +1423,12 @@ test('iridescent sidebar gradient starts at a random phase on each page', async 
   expect(middleReversePhase.backgroundPosition).toBeLessThan(53)
   expect(threeQuarterPhase.backgroundPosition).toBeGreaterThan(72)
   expect(threeQuarterPhase.backgroundPosition).toBeLessThan(78)
-  await expect(activeSidebarButton).toHaveText(/Day Templates/)
+  await expect(activeSidebarButton).toHaveText(/Days/)
 
   const rapidReturnAnimationTime = await page.evaluate(async () => {
     const buttons = [...document.querySelectorAll<HTMLButtonElement>('.primary-nav > button')]
     const todayButton = buttons.find((button) => button.textContent?.includes('Today'))!
-    const templatesButton = buttons.find((button) => button.textContent?.includes('Day Templates'))!
+    const templatesButton = buttons.find((button) => button.textContent?.includes('Days'))!
     const currentAnimation = document.querySelector<HTMLElement>('.sidebar nav button.active')?.getAnimations()[0]
     if (currentAnimation) currentAnimation.currentTime = 5_000
 
@@ -1454,7 +1454,7 @@ test('iridescent template tabs randomize and restart on rapid selection', async 
   await selectDeviceThemeForTest(page, 'iridescent')
   await page.reload()
   await page.emulateMedia({ reducedMotion: 'no-preference' })
-  await page.locator('.primary-nav button').filter({ hasText: 'Day Templates' }).evaluate((button) => button.click())
+  await page.locator('.primary-nav button').filter({ hasText: 'Days' }).evaluate((button) => button.click())
   await page.getByRole('button', { name: 'New day', exact: true }).click()
 
   const selectAtVisibleProgress = (name: 'Default day' | 'New day', visibleProgress: number) => page.evaluate(
@@ -2003,7 +2003,7 @@ test('template items can be nested and un-nested with the drag handle', async ({
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   const wakeRow = page.getByRole('listitem', { name: /Template item: Wake up/ })
   const workRow = page.getByRole('listitem', { name: /Template item: Work block/ })
@@ -2167,7 +2167,7 @@ test('tab indents a template item only one level after a nested sibling', async 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
@@ -2191,7 +2191,7 @@ test('tab indents a template item only one level after a nested sibling', async 
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   })
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
   const topLevelBeforeIndent = await topLevelTemplateOptionTexts(page)
   expect(topLevelBeforeIndent).toContain('Later')
 
@@ -2270,7 +2270,7 @@ test('shift-tab outdents a template item without jumping below following sibling
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   const topLevelBeforeOutdent = await topLevelTemplateOptionTexts(page)
   const workIndex = topLevelBeforeOutdent.indexOf('Work block')
@@ -2459,7 +2459,7 @@ test('keyboard probability shortcuts work at the day-template caret without chan
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   await focusTemplateOptionByValue(page, 'Pick the first useful task')
   await page.keyboard.press('Alt+Shift+t')
@@ -2482,7 +2482,7 @@ test('keyboard probability shortcuts work at the day-template caret without chan
     .getByTitle('Remove time', { exact: true }).click()
   await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([null, null])
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
   await focusTemplateOptionByValue(page, 'Pick the first useful task')
   await page.keyboard.press('Alt+Shift+t')
   await expect.poll(async () => templateItemTimeRange(page, 'Pick the first useful task')).toEqual([540, 600])
@@ -2691,7 +2691,7 @@ test('dragging app sliders requests native haptics except for notes writing spac
     () => (window as typeof window & { balanceNativeHaptics?: string[] }).balanceNativeHaptics?.length ?? 0,
   )
 
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
   await dragRangeToRatio(page, page.getByLabel('Probability', { exact: true }).first(), 0.45)
   await expect.poll(hapticCount).toBeGreaterThan(0)
   const dayTemplateHaptics = await hapticCount()
@@ -2796,7 +2796,7 @@ test('adding template time starts with the nearest shallower timed item', async 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   await page.getByRole('listitem', { name: /Template item: Wake up/ }).getByRole('button', { name: 'Add time range' }).click()
   await page
@@ -2877,7 +2877,7 @@ test('template time warnings cover sibling overlaps and ancestor boundaries', as
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   })
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   const childTime = page.getByRole('listitem', { name: 'Template item: Child', exact: true }).getByLabel('Time range')
   const earlyChildTime = page
@@ -3441,7 +3441,7 @@ test('template item text fields support arrow focus and option-arrow sibling mov
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   await focusTemplateOptionByValue(page, 'Wake up')
   await setCaretOffsetInFocusedEditor(page, 'Wake up'.length)
@@ -4377,8 +4377,8 @@ test('a page restores its selected task after visiting another page', async ({ p
   const row = page.getByRole('listitem', { name: /Plan item: Wake up/ })
   await expect(row).toHaveClass(/selected/)
 
-  await openSidebarPage(page, 'Day Templates', testInfo.project.name === 'mobile')
-  await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await openSidebarPage(page, 'Days', testInfo.project.name === 'mobile')
+  await expect(page.getByRole('heading', { name: 'Days' })).toBeVisible()
   await openSidebarPage(page, 'Today', testInfo.project.name === 'mobile')
 
   await expect(row).toHaveClass(/selected/)
@@ -4399,8 +4399,8 @@ test('a page restores its task caret after visiting another page', async ({ page
   await setCaretOffsetInFocusedEditor(page, 4)
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(4)
 
-  await openSidebarPage(page, 'Day Templates', testInfo.project.name === 'mobile')
-  await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await openSidebarPage(page, 'Days', testInfo.project.name === 'mobile')
+  await expect(page.getByRole('heading', { name: 'Days' })).toBeVisible()
   await openSidebarPage(page, 'Today', testInfo.project.name === 'mobile')
 
   await expect
@@ -4954,7 +4954,7 @@ test('template options use rich text formatting and generate formatted plan item
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   await focusTemplateOptionByValue(page, 'Wake up')
   await page.evaluate(async () => {
@@ -4988,7 +4988,7 @@ test('day template probabilities snap to five-percent increments', async ({ page
   await page.reload()
   const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
   if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   const probability = page.getByLabel('Probability percent').first()
   await probability.fill('73')
@@ -5010,7 +5010,7 @@ test('template splits preserve probability for text and default empty items to 1
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   if (testInfo.project.name === 'mobile') await page.getByRole('button', { name: 'Open navigation' }).click()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   const dayProbability = page.getByLabel('Probability percent').first()
   await dayProbability.fill('65')
@@ -5095,7 +5095,7 @@ test('dragging a selected day-template probability applies it to every selected 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   const original = await topLevelTemplateOptionTexts(page)
   await focusTemplateOptionByValue(page, original[0])
@@ -5128,7 +5128,7 @@ test('generating from a future date uses the selected date and latest template e
   await page.locator('input[type="date"]').fill('2030-01-15')
   await expect(page.getByRole('complementary').getByRole('button', { name: 'Generate selected day' })).toBeVisible()
 
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
   await focusTemplateOptionByValue(page, 'Wake up')
   await page.keyboard.press('Meta+A')
   await page.keyboard.type('Future plan item')
@@ -5164,7 +5164,7 @@ test('blank template options show skip placeholder and skip generated plan item'
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   const wakeRow = page.getByRole('listitem', { name: /Template item: Wake up/ })
   await wakeRow.getByRole('button', { name: '±' }).click()
@@ -5419,7 +5419,7 @@ test('day template rows support multi-select copy, cut, paste, and keyboard dele
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   await expect(page.getByRole('button', { name: 'Add child item' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Delete item' })).toHaveCount(0)
@@ -5460,7 +5460,7 @@ test('pasting a day-template item replaces the sole empty placeholder', async ({
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   const sourceText = 'Wake up'
   const sourceInput = page.locator('[data-template-option-text-input]').filter({ hasText: sourceText })
@@ -5497,7 +5497,7 @@ test('day template items support horizontal boundary navigation and backspace me
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Day Templates' }).click()
+  await page.getByRole('button', { name: 'Days' }).click()
 
   const original = await topLevelTemplateOptionTexts(page)
   expect(original.length).toBeGreaterThanOrEqual(2)

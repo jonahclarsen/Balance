@@ -24,7 +24,7 @@ async function seedTemplates(page: Page, isMobile: boolean) {
   })
   await page.reload()
   if (isMobile) await page.getByRole('button', { name: 'Open navigation', exact: true }).click()
-  await page.getByRole('button', { name: 'Day Templates', exact: true }).click()
+  await page.getByRole('button', { name: 'Days', exact: true }).click()
   await expect(page.getByLabel('Template name', { exact: true })).toHaveValue('Alpha')
   await page.keyboard.press('Meta+f')
   await page.getByLabel('Find text', { exact: true }).fill('needle')

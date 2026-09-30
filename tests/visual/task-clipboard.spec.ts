@@ -92,7 +92,7 @@ test('tasks copied from Today paste as rows in list and day templates', async ({
     (item) => item.text,
   )).toEqual(expected)
 
-  await page.getByRole('button', { name: 'Day Templates', exact: true }).filter({ visible: true }).click()
+  await page.getByRole('button', { name: 'Days', exact: true }).filter({ visible: true }).click()
   await page.getByRole('button', { name: 'New day', exact: true }).click()
   await page.locator('[data-template-option-text-input]').first().fill('')
   await page.evaluate((text) => navigator.clipboard.writeText(text), copied)

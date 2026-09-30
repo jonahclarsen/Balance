@@ -13,7 +13,7 @@ async function placeCaretAtEnd(editor: Locator) {
   })
 }
 
-async function openPrimaryView(page: Page, name: 'Notes' | 'Day Templates') {
+async function openPrimaryView(page: Page, name: 'Notes' | 'Days') {
   const mobileMenu = page.locator('.mobile-app-header').getByRole('button', { name: 'Open navigation' })
   if (await mobileMenu.isVisible()) {
     await mobileMenu.click()
@@ -1810,8 +1810,8 @@ test('notes restores its caret and scroll position after visiting another page',
     focus: { offset: 17 },
   })
 
-  await openPrimaryView(page, 'Day Templates')
-  await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await openPrimaryView(page, 'Days')
+  await expect(page.getByRole('heading', { name: 'Days' })).toBeVisible()
   await openNotesView(page)
 
   await expect(noteText).toBeFocused()

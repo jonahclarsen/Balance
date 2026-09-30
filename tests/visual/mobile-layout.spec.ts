@@ -778,9 +778,9 @@ test('day templates and lists fit an S10e-width viewport', async ({ page }, test
 
   await page.getByRole('button', { name: 'Open navigation' }).click()
   const drawer = page.getByRole('complementary', { name: 'Primary navigation drawer' })
-  await drawer.getByRole('button', { name: 'Day Templates', exact: true }).click()
+  await drawer.getByRole('button', { name: 'Days', exact: true }).click()
   await expect(drawer).toBeHidden()
-  await expect(page.getByRole('heading', { name: 'Daily template' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Days' })).toBeVisible()
   await expectPageToFitViewport(page)
   await expectControlToFitViewport(page, page.getByRole('button', { name: 'Mobile day', exact: true }))
   await page.screenshot({ path: 'artifacts/visual-smoke/mobile-s10e-day-templates.png', fullPage: false })

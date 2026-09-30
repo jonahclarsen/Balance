@@ -6,7 +6,7 @@ const script = readFileSync('.github/android/selection-formatting.js', 'utf8')
 for (const [pageName, selector] of [
   ['Today', '[data-plan-text-input]'],
   ['Lists', '[data-list-template-text-input]'],
-  ['Day Templates', '[data-template-option-text-input]'],
+  ['Days', '[data-template-option-text-input]'],
 ] as const) {
   test(`Android selection formatting saves and toggles in ${pageName}`, async ({ page }, info) => {
     await page.goto('/')
