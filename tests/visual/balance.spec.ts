@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from '@playwright/test'
+import { todayISO } from '../../src/lib/planner'
 
 const playwrightOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_PORT ?? '5123'}`
 const transparent = 'rgba(0, 0, 0, 0)'
@@ -938,18 +939,21 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
   await page.reload()
 
   const shortcuts = [
+    { key: 'x', label: 'Next' },
     { key: 't', label: 'Today' },
     { key: 'd', label: 'Day Templates' },
     { key: 'e', label: 'Lists' },
     { key: 'n', label: 'Notes' },
     { key: 'v', label: 'Metrics' },
     { key: 'g', label: 'Goals' },
+    { key: 'p', label: 'Projects' },
+    { key: 'y', label: 'Statistics' },
     { key: 's', label: 'Settings' },
   ]
 
   await expect(page.locator('.primary-nav > button > span')).toHaveText([
-    '⌕ Search',
     ...shortcuts.map(({ label }) => label),
+    'Admin Settings',
   ])
 
   for (const { key, label } of shortcuts) {
@@ -969,7 +973,9 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
   await expect(listHistory.locator('.nav-shortcut')).toHaveText(/^(?:⌥|Alt\+)H$/)
   await expect(listHistory).toHaveClass(/active/)
 
-  const search = page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Search', exact: true })
+  const search = page.locator('.sidebar-search-button')
+  await expect(search).toHaveAccessibleName('Search')
+  await expect(search).not.toContainText('Search')
   await expect(search).toHaveAttribute('aria-keyshortcuts', 'Alt+C')
   await expect(search.locator('.nav-shortcut')).toHaveText(/^(?:⌥|Alt\+)C$/)
   await page.keyboard.press('Alt+c')
@@ -984,6 +990,32 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
   await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Notes', exact: true })).toHaveClass(/active/)
   await page.keyboard.press('Alt+t')
   await expect(dateInput).toHaveValue(originalDate)
+})
+
+test('Next shows only the first unfinished task of today without goal rhythm', async ({ page }) => {
+  await page.goto('/')
+  await seedPlanTree(page, [
+    { id: 'finished', text: 'Finished', done: true, children: [] },
+    {
+      id: 'project',
+      text: 'Project',
+      children: [
+        { id: 'finished-step', text: 'Finished step', done: true, children: [] },
+        { id: 'outline', text: 'Write outline', children: [] },
+        { id: 'later', text: 'Later step', children: [] },
+      ],
+    },
+    { id: 'afterwards', text: 'Afterwards', children: [] },
+  ], todayISO())
+  await page.keyboard.press('Alt+x')
+
+  const card = page.getByRole('region', { name: 'Next task' }).locator('.next-task-card')
+  await expect(card.locator('.next-task-text')).toHaveText('Write outline')
+  await expect(card.locator('.next-task-breadcrumb')).toHaveText('Project')
+  await expect(page.locator('.goal-history-panel')).toHaveCount(0)
+
+  await card.getByRole('checkbox', { name: 'Complete task' }).click()
+  await expect(card.locator('.next-task-text')).toHaveText('Later step')
 })
 
 test('List History is an obvious contextual child of Lists', async ({ page }) => {
@@ -6211,10 +6243,13 @@ type SeedPlanTreeItem = {
   children: SeedPlanTreeItem[]
 }
 
-async function seedPlanTree(page: import('@playwright/test').Page, items: SeedPlanTreeItem[]) {
+async function seedPlanTree(
+  page: import('@playwright/test').Page,
+  items: SeedPlanTreeItem[],
+  planDate = new Date().toISOString().slice(0, 10),
+) {
   await page.goto('/')
-  await page.evaluate((seedItems) => {
-    const date = new Date().toISOString().slice(0, 10)
+  await page.evaluate(({ seedItems, date }) => {
     const normalize = (item: SeedPlanTreeItem): SeedPlanTreeItem & {
       html: string
       done: boolean
@@ -6243,7 +6278,7 @@ async function seedPlanTree(page: import('@playwright/test').Page, items: SeedPl
         operations: [],
       }),
     )
-  }, items)
+  }, { seedItems: items, date: planDate })
   await page.reload()
   await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
 }

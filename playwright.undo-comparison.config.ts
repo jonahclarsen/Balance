@@ -7,6 +7,7 @@ export default defineConfig({
   use: { baseURL: 'http://127.0.0.1:55338' },
   webServer: {
     command: 'pnpm exec vite --host 127.0.0.1 --port 55338 --strictPort',
+    env: { VITE_BALANCE_START_VIEW: 'today' },
     url: 'http://127.0.0.1:55338', reuseExistingServer: false,
   },
 })

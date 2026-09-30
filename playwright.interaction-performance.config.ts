@@ -36,6 +36,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'pnpm exec vite --host 127.0.0.1 --port 5124',
+    env: { VITE_BALANCE_START_VIEW: 'today' },
     url: 'http://127.0.0.1:5124',
     reuseExistingServer: !process.env.CI,
     stdout: 'pipe',

@@ -17,6 +17,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
+  import NextTaskPanel from './lib/NextTaskPanel.svelte'
   import { collapsedPlanItemIds, setPlanItemCollapsed } from './lib/collapsedPlanItems'
   import TaskCheckbox from './lib/TaskCheckbox.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
@@ -147,7 +148,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals' | 'statistics' | 'settings' | 'admin'
+  type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals' | 'statistics' | 'settings' | 'admin'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -311,7 +312,8 @@
     return `${isMac ? '⌥⇧' : 'Alt+Shift+'}${key}`
   }
 
-  let view: View = 'today'
+  // Playwright pins the start page to Today because most tests begin there.
+  let view: View = import.meta.env.VITE_BALANCE_START_VIEW === 'today' ? 'today' : 'next'
   let linkedProjectId = ''
 
   function applyDefaultZoom() {
@@ -1212,7 +1214,7 @@ return rows`
   ) {
     if (!ready) return
 
-    if (celebrationKind === 'day' && celebrationDate && (celebrationDate !== selectedDate || currentView !== 'today')) {
+    if (celebrationKind === 'day' && celebrationDate && (celebrationDate !== selectedDate || (currentView !== 'today' && currentView !== 'next'))) {
       dismissCelebration()
     }
     if (!plan) {
@@ -1224,7 +1226,7 @@ return rows`
     const wasComplete = planCompletionById.get(plan.id)
     planCompletionById.set(plan.id, complete)
 
-    if (wasComplete === false && complete && currentView === 'today' && plan.date === todayISO()) {
+    if (wasComplete === false && complete && (currentView === 'today' || currentView === 'next') && plan.date === todayISO()) {
       celebrationDate = plan.date
       celebrationListId = null
       celebrationKind = 'day'
@@ -2778,6 +2780,7 @@ return rows`
 
   function isView(value: unknown): value is View {
     return (
+      value === 'next' ||
       value === 'today' ||
       value === 'templates' ||
       value === 'listTemplates' ||
@@ -3307,6 +3310,7 @@ return rows`
       }
 
       const sidebarViewByCode: Partial<Record<string, View>> = {
+        KeyX: 'next',
         KeyD: 'templates',
         KeyN: 'notes',
         KeyP: 'projects',
@@ -5926,6 +5930,19 @@ return rows`
     inert={mobileDrawerPressing}
     bind:this={mobileDrawerEl}
   >
+    <button
+      class="sidebar-search-button"
+      class:active={searchOpen}
+      type="button"
+      title="Search (Alt+C or Cmd/Ctrl+K)"
+      aria-label="Search"
+      aria-keyshortcuts="Alt+C"
+      on:click={openMobileDrawerSearch}
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
+      <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd>
+    </button>
+
     <div>
       <div class="sidebar-brand-heading">
         <h1>Balance</h1>
@@ -5952,14 +5969,7 @@ return rows`
       style:--active-nav-animation-delay={activeNavAnimationDelay}
       bind:this={primaryNavEl}
     >
-      <button
-        class:active={searchOpen}
-        type="button"
-        title="Search (Alt+C or Cmd/Ctrl+K)"
-        aria-label="Search"
-        aria-keyshortcuts="Alt+C"
-        on:click={openMobileDrawerSearch}
-      ><span>⌕ Search</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd></button>
+      <button class:active={view === 'next'} type="button" title="Next (Alt+X)" aria-keyshortcuts="Alt+X" on:click={() => openMobileDrawerView('next')}><span>Next</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('X')}</kbd></button>
       <button class:active={view === 'today'} type="button" title="Today (Alt+T)" aria-keyshortcuts="Alt+T" on:click={() => openMobileDrawerView('today')}><span>Today</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('T')}</kbd></button>
       <button class:active={view === 'templates'} type="button" title="Day Templates (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => openMobileDrawerView('templates')}><span>Day Templates</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
       <button class:active={view === 'listTemplates'} type="button" title="Lists (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => openMobileDrawerView('listTemplates')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
@@ -6066,7 +6076,13 @@ return rows`
       bind:this={workspaceEl}
       on:scroll={handleWorkspaceScroll}
     >
-    {#if view === 'today'}
+    {#if view === 'next'}
+      <NextTaskPanel
+        plan={$plannerStore.plans.find((plan) => plan.date === currentDay)}
+        onComplete={(planId, itemId) => plannerStore.patchPlanItem(planId, itemId, { done: true })}
+        onOpenToday={() => openDateInToday(currentDay)}
+      />
+    {:else if view === 'today'}
       <section
         class="day-pane"
         class:before-current-day-pane={displayedPlanDate < currentDay}
@@ -7362,7 +7378,7 @@ return rows`
     {/if}
     </section>
 
-    {#if (goalRhythmVisible || viewMaximized) && (!isMobile || view === 'today')}
+    {#if (goalRhythmVisible || viewMaximized) && view !== 'next' && (!isMobile || view === 'today')}
       <GoalHistoryPanel
         goals={goalHistoryGoals}
         completions={goalCompletions}

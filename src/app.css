@@ -1123,6 +1123,35 @@ nav button.active {
   display: none;
 }
 
+.sidebar-search-button {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  gap: 8px;
+  margin-bottom: -16px;
+  padding: 6px 8px;
+}
+
+.sidebar-search-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-width: 2;
+}
+
+.sidebar-search-button.active {
+  border-color: var(--accent);
+  background: var(--active-nav);
+  color: var(--accent-strong);
+}
+
+.sidebar-search-button.active .nav-shortcut {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--line));
+  color: inherit;
+}
+
 .sidebar-brand-heading {
   display: flex;
   align-items: center;
@@ -5010,14 +5039,14 @@ body.mobile-checkbox-dragging {
     visibility: visible;
   }
 
-  .sidebar > div:first-child {
+  .sidebar > div:first-of-type {
     display: block;
     position: relative;
     height: 0;
     margin-bottom: -8px;
   }
 
-  .sidebar > div:first-child p,
+  .sidebar > div:first-of-type p,
   .sidebar-footer p {
     display: none;
   }
@@ -5065,6 +5094,10 @@ body.mobile-checkbox-dragging {
   }
 
   .nav-shortcut {
+    display: none;
+  }
+
+  .sidebar-search-button {
     display: none;
   }
 
@@ -6847,7 +6880,7 @@ textarea.note-title {
     left: 84px;
   }
 
-  .app-shell.macos-titlebar-overlay .sidebar > div:first-child {
+  .app-shell.macos-titlebar-overlay .sidebar > div:first-of-type {
     padding-left: 128px;
   }
 
@@ -7012,7 +7045,7 @@ textarea.note-title {
     transition: none;
   }
 
-  .sidebar > div:first-child {
+  .sidebar > div:first-of-type {
     display: block;
     position: static;
     height: auto;
@@ -7021,7 +7054,7 @@ textarea.note-title {
     padding-left: 44px;
   }
 
-  .sidebar > div:first-child p,
+  .sidebar > div:first-of-type p,
   .sidebar-footer p {
     display: block;
   }
