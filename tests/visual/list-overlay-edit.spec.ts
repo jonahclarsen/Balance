@@ -302,9 +302,9 @@ test('Alt+F opens the metric linked by the selected list item', async ({ page })
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Metrics', exact: true }).click()
-  await page.getByRole('button', { name: '+ New metric' }).first().click()
-  await page.getByLabel('Metric name').fill('Mood')
+  await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New quiz' }).first().click()
+  await page.getByLabel('Quiz name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Score')
   await page.getByRole('group', { name: 'Question type' }).getByRole('button', { name: 'Yes / no' }).click()
 
@@ -341,9 +341,9 @@ test('arrowing onto a metric-linked list item opens its metric', async ({ page }
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Metrics', exact: true }).click()
-  await page.getByRole('button', { name: '+ New metric' }).first().click()
-  await page.getByLabel('Metric name').fill('Mood')
+  await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New quiz' }).first().click()
+  await page.getByLabel('Quiz name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Score')
   await page.getByRole('group', { name: 'Question type' }).getByRole('button', { name: 'Yes / no' }).click()
 
@@ -383,9 +383,9 @@ test('B goes back and S skips on yes-no metric questions', async ({ page }) => {
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Metrics', exact: true }).click()
-  await page.getByRole('button', { name: '+ New metric' }).first().click()
-  await page.getByLabel('Metric name').fill('Mood')
+  await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New quiz' }).first().click()
+  await page.getByLabel('Quiz name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Morning')
   await page.getByRole('group', { name: 'Question type' }).getByRole('button', { name: 'Yes / no' }).click()
   await page.getByRole('button', { name: '+ Add question' }).click()

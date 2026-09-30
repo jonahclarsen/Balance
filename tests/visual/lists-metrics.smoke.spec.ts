@@ -101,9 +101,9 @@ async function openMetrics(page: import('@playwright/test').Page) {
   const mobileMenu = page.getByRole('button', { name: 'Open navigation' })
   if (await mobileMenu.isVisible()) {
     await mobileMenu.click()
-    await page.getByRole('complementary', { name: 'Primary navigation drawer' }).getByRole('button', { name: 'Metrics', exact: true }).click()
+    await page.getByRole('complementary', { name: 'Primary navigation drawer' }).getByRole('button', { name: 'Quizzes', exact: true }).click()
   } else {
-    await page.getByRole('button', { name: 'Metrics', exact: true }).click()
+    await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
   }
 }
 
@@ -226,14 +226,37 @@ test('command backspace archives a list item immediately', async ({ page }, test
   await expect(page.getByRole('button', { name: 'Archive (1)' })).toBeVisible()
 })
 
+test('quiz links in a list template open the quiz editor instead of the quiz', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  await openMetrics(page)
+  await page.getByRole('button', { name: '+ New quiz' }).first().click()
+  await page.getByLabel('Quiz name').fill('Mood')
+  await page.getByRole('button', { name: 'New quiz', exact: true }).click()
+  await page.getByLabel('Quiz name').fill('Energy')
+
+  await openLists(page)
+  await page.getByRole('button', { name: '+ New list' }).click()
+  const listItem = page.locator('[data-list-template-text-input]').first()
+  await listItem.fill('log Mood now')
+  await listItem.blur()
+
+  await page.getByTitle('Open Mood').first().click()
+  await expect(page.getByRole('dialog', { name: 'Mood' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Quizzes' })).toBeVisible()
+  await expect(page.getByLabel('Quiz name')).toHaveValue('Mood')
+})
+
 test('metric quiz records answers and bulk import backfills', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
   await openMetrics(page)
-  await page.getByRole('button', { name: '+ New metric' }).first().click()
-  await page.getByLabel('Metric name').fill('Mood')
+  await page.getByRole('button', { name: '+ New quiz' }).first().click()
+  await page.getByLabel('Quiz name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Score')
 
   // Link from a daily task.
@@ -272,10 +295,10 @@ test('Alt+Q and Alt+W select adjacent metrics', async ({ page }) => {
   await page.reload()
 
   await openMetrics(page)
-  await page.getByRole('button', { name: '+ New metric' }).click()
-  await page.getByLabel('Metric name').fill('Alpha')
-  await page.getByRole('button', { name: 'New metric', exact: true }).click()
-  await page.getByLabel('Metric name').fill('Beta')
+  await page.getByRole('button', { name: '+ New quiz' }).click()
+  await page.getByLabel('Quiz name').fill('Alpha')
+  await page.getByRole('button', { name: 'New quiz', exact: true }).click()
+  await page.getByLabel('Quiz name').fill('Beta')
 
   const alphaTab = page.getByRole('button', { name: 'Alpha', exact: true })
   const betaTab = page.getByRole('button', { name: 'Beta', exact: true })
@@ -293,8 +316,8 @@ test('metric graph uses elapsed dates for point spacing and labels its x-axis', 
   await page.reload()
 
   await openMetrics(page)
-  await page.getByRole('button', { name: '+ New metric' }).first().click()
-  await page.getByLabel('Metric name').fill('Irregular history')
+  await page.getByRole('button', { name: '+ New quiz' }).first().click()
+  await page.getByLabel('Quiz name').fill('Irregular history')
   await page.getByLabel('Question prompt').first().fill('Score')
 
   await page.evaluate(() => {

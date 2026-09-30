@@ -128,7 +128,7 @@
       {/if}
     </div>
   {:else}
-    <p class="empty">This metric has no questions yet.</p>
+    <p class="empty">This quiz has no questions yet.</p>
   {/if}
 </div>
 

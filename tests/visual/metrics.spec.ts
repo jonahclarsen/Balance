@@ -18,8 +18,8 @@ test('metric questions split on Enter, use type buttons, and drag like task rows
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Metrics', exact: true }).click()
-  await page.getByRole('button', { name: '+ New metric' }).first().click()
+  await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
+  await page.getByRole('button', { name: '+ New quiz' }).first().click()
 
   const prompts = page.locator('[data-metric-question-text-input]')
   await prompts.first().fill('Energy score')

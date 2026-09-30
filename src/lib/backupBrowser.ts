@@ -30,10 +30,10 @@ export function backupDocuments(content: BackupContent): BackupDocument[] {
   }
   for (const list of content.lists ?? []) add('Lists', list.id,
     `${list.date} · ${content.listTemplates?.find(template => template.id === list.listTemplateId)?.name ?? 'List'}`, itemLines(list.items))
-  for (const metric of content.metrics ?? []) add('Metrics', metric.id, metric.name, metric.questions.map(question => question.prompt))
+  for (const metric of content.metrics ?? []) add('Quizzes', metric.id, metric.name, metric.questions.map(question => question.prompt))
   for (const entry of content.metricEntries ?? []) {
     const metric = content.metrics?.find(metric => metric.id === entry.metricId)
-    add('Metric entries', entry.id, `${entry.date} · ${metric?.name ?? 'Metric'}`, entry.answers.map(answer =>
+    add('Quiz entries', entry.id, `${entry.date} · ${metric?.name ?? 'Quiz'}`, entry.answers.map(answer =>
       `${metric?.questions.find(question => question.id === answer.questionId)?.prompt ?? 'Answer'}: ${answer.value}`))
   }
   for (const goal of content.goals ?? []) add('Goals', goal.id, goal.name, [

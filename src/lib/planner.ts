@@ -2270,15 +2270,22 @@ function cachedPlainText(html: string): string {
   return text
 }
 
-// Include each linked quiz's question text once per item, just as metric links
-// are resolved by name. Answers and quiz navigation are not template content.
+// Include all of each linked quiz's text once per item, just as metric links
+// are resolved by name: its title, every question, and the yes/no choices.
+const BOOLEAN_CHOICE_WORDS = 2
+
+function quizWordCount(metric: Metric): number {
+  return wordCount(metric.name) + metric.questions.reduce((words, question) =>
+    words + (wordCount(cachedPlainText(question.html)) || wordCount(question.prompt)) +
+      (question.type === 'boolean' ? BOOLEAN_CHOICE_WORDS : 0), 0)
+}
+
 export function listItemWordCount(text: string, metrics: Metric[] = []): number {
   const lower = text.toLowerCase()
   return wordCount(text) + metrics.reduce((sum, metric) => {
     const name = metric.name.trim().toLowerCase()
     if (!name || !lower.includes(name)) return sum
-    return sum + metric.questions.reduce((words, question) =>
-      words + (wordCount(cachedPlainText(question.html)) || wordCount(question.prompt)), 0)
+    return sum + quizWordCount(metric)
   }, 0)
 }
 
@@ -2310,7 +2317,7 @@ export function createMetricQuestion(prompt = '', type: MetricQuestionType = 'te
   return { id: createId('metric_question'), prompt, html: escapeHTML(prompt), type }
 }
 
-export function createMetric(name = 'New metric'): Metric {
+export function createMetric(name = 'New quiz'): Metric {
   const createdAt = nowISO()
   return {
     id: createId('metric'),

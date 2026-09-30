@@ -1491,6 +1491,12 @@ return rows`
         delete listOverlayBottomCollapsesByList[listId]
         listOverlay = { listId, date, opener }
       }
+    } else if (view === 'listTemplates') {
+      // While authoring a list template, a quiz link edits the quiz instead of taking it.
+      if (metrics.some((metric) => metric.id === link.metricId)) {
+        selectedMetricId = link.metricId
+        openMobileDrawerView('metrics')
+      }
     } else {
       metricOverlay = { metricId: link.metricId, date, opener }
     }
@@ -1737,7 +1743,7 @@ return rows`
     importPreview = null
     const metric = metrics.find((candidate) => candidate.id === importMetricId)
     if (!metric) {
-      importError = 'Select a metric first.'
+      importError = 'Select a quiz first.'
       return
     }
     try {
@@ -5979,7 +5985,7 @@ return rows`
         <button class="nav-child" class:active={view === 'lists'} type="button" title="List History (Alt+H)" aria-keyshortcuts="Alt+H" on:click={() => openMobileDrawerView('lists')}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('H')}</kbd></button>
       {/if}
       <button class:active={view === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => openMobileDrawerView('notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
-      <button class:active={view === 'metrics'} type="button" title="Metrics (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Metrics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
+      <button class:active={view === 'metrics'} type="button" title="Quizzes (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Quizzes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => openMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; openMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
       <button class:active={view === 'statistics'} type="button" title="Statistics (Alt+Y)" aria-keyshortcuts="Alt+Y" on:click={() => openMobileDrawerView('statistics')}><span>Statistics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Y')}</kbd></button>
@@ -6667,7 +6673,7 @@ return rows`
     {#if view === 'metrics'}
       <header class="page-header metric-page-header">
         <div>
-          <h2>Metrics</h2>
+          <h2>Quizzes</h2>
         </div>
         {#if metrics.length > 0}
           <button type="button" on:click={openImportModal}>Import past data</button>
@@ -6675,7 +6681,7 @@ return rows`
       </header>
 
       {#if metrics.length > 0}
-        <nav class="template-rail metric-rail" aria-label="Select metric">
+        <nav class="template-rail metric-rail" aria-label="Select quiz">
           {#each metrics as metric (metric.id)}
             <button
               type="button"
@@ -6685,18 +6691,18 @@ return rows`
               data-metric-tab-id={metric.id}
               on:click={() => (selectedMetricId = metric.id)}
             >
-              {metric.name || 'Untitled metric'}
+              {metric.name || 'Untitled quiz'}
             </button>
           {/each}
-          <button type="button" class="rail-chip dashed-edge" on:click={createMetricAndSelect}>New metric</button>
+          <button type="button" class="rail-chip dashed-edge" on:click={createMetricAndSelect}>New quiz</button>
         </nav>
       {/if}
 
       {#if metrics.length === 0}
         <div class="empty-state">
-          <h3>No metrics yet</h3>
-          <p>Create a metric to start gathering data, one question at a time.</p>
-          <button class="primary" type="button" on:click={createMetricAndSelect}>+ New metric</button>
+          <h3>No quizzes yet</h3>
+          <p>Create a quiz to start gathering data, one question at a time.</p>
+          <button class="primary" type="button" on:click={createMetricAndSelect}>+ New quiz</button>
         </div>
       {:else if selectedMetric}
         {@const metric = selectedMetric}
@@ -6706,13 +6712,13 @@ return rows`
               <input
                 class="title-input"
                 value={metric.name}
-                aria-label="Metric name"
+                aria-label="Quiz name"
                 on:input={(event) => plannerStore.renameMetric(metric.id, event.currentTarget.value)}
               />
-              <button class="icon-button danger" type="button" title="Delete metric" on:click={() => plannerStore.deleteMetric(metric.id)}>×</button>
+              <button class="icon-button danger" type="button" title="Delete quiz" on:click={() => plannerStore.deleteMetric(metric.id)}>×</button>
             </div>
 
-            <div class="metric-question-list" role="list" aria-label="Metric questions">
+            <div class="metric-question-list" role="list" aria-label="Quiz questions">
               {#each metric.questions as question (question.id)}
                 <MetricQuestionEditor
                   metricId={metric.id}
@@ -7464,7 +7470,7 @@ return rows`
     {#if importOverlayOpen}
       <OverlayModal title="Import past data" z={70} onClose={() => (importOverlayOpen = false)}>
         <div class="metric-import">
-          <label class="field-label" for="import-metric">Target metric</label>
+          <label class="field-label" for="import-metric">Target quiz</label>
           <select id="import-metric" bind:value={importMetricId}>
             {#each metrics as metric (metric.id)}
               <option value={metric.id}>{metric.name}</option>

@@ -88,7 +88,7 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
       const change = changedItem(old?.items ?? old?.questions ?? [], current?.items ?? current?.questions ?? [])
       const name = entity.title || entity.name
       const subject = change?.completion ? 'completion' : change ? 'item change' : 'change'
-      const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Day Templates', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', projects: 'Projects', metrics: 'Metrics', goals: 'Goals' }[view])
+      const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Day Templates', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', projects: 'Projects', metrics: 'Quizzes', goals: 'Goals' }[view])
       destinations.push({
         view, entityId: id, itemId: change?.itemId, date: entity.date,
         listTemplateId: entity.listTemplateId,

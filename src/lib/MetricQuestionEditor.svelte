@@ -82,7 +82,7 @@
   kind="metric"
   itemId={question.id}
   containerId={metricId}
-  ariaLabel={`Metric question: ${question.prompt || 'Untitled'}`}
+  ariaLabel={`Quiz question: ${question.prompt || 'Untitled'}`}
   dragLabel="Drag to move question"
   showSelectionHandle={false}
   moveItem={moveQuestion}

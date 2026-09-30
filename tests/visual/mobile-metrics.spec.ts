@@ -74,12 +74,12 @@ test('metrics editor uses a readable phone layout', async ({ page }, testInfo) =
   await page.getByRole('button', { name: 'Open navigation' }).click()
   await page
     .getByRole('complementary', { name: 'Primary navigation drawer' })
-    .getByRole('button', { name: 'Metrics', exact: true })
+    .getByRole('button', { name: 'Quizzes', exact: true })
     .click()
 
   await expect(page.locator('.app-shell')).not.toHaveClass(/mobile-drawer-open/)
   await page.waitForTimeout(250)
-  await expect(page.getByRole('heading', { name: 'Metrics' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Quizzes' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
 
   const questionRows = page.locator('[data-metric-question-id]')
