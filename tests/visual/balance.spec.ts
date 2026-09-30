@@ -1016,6 +1016,15 @@ test('Next shows only the first unfinished task of today without goal rhythm', a
 
   await card.getByRole('checkbox', { name: 'Complete task' }).click()
   await expect(card.locator('.next-task-text')).toHaveText('Later step')
+
+  await page.keyboard.press('ControlOrMeta+d')
+  await expect(card.locator('.next-task-text')).toHaveText('Afterwards')
+  await expect(card.locator('.next-task-breadcrumb')).toHaveCount(0)
+
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(card.locator('.next-task-text')).toHaveText('Later step')
+  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Next', exact: true })).toHaveClass(/active/)
+  await expect(page.getByRole('region', { name: 'Daily plan' })).toHaveCount(0)
 })
 
 test('List History is an obvious contextual child of Lists', async ({ page }) => {

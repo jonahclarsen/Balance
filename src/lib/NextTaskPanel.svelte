@@ -1,29 +1,16 @@
 <script lang="ts">
   import { formatMinutes, hasActiveTimeRange, sanitizeInlineHTML } from './planner'
-  import type { DailyPlan, Id, PlanItem } from './types'
+  import type { NextTask } from './nextTask'
+  import type { DailyPlan, Id } from './types'
 
   export let plan: DailyPlan | undefined
+  export let next: NextTask | null
   export let onComplete: (planId: Id, itemId: Id) => void
   export let onOpenToday: () => void
 
-  type NextTask = { item: PlanItem; ancestors: PlanItem[] }
-
-  $: next = plan ? findNextTask(plan.items, []) : null
   $: safeHTML = next ? sanitizeInlineHTML(next.item.html) : ''
   $: breadcrumb = next?.ancestors.map((ancestor) => ancestor.text.trim()).filter(Boolean).join(' › ') ?? ''
 
-  // The next task is the first unfinished item in reading order. An unfinished
-  // parent yields to its first unfinished child, since that is the concrete
-  // step to take; blank rows are skipped.
-  function findNextTask(items: PlanItem[], ancestors: PlanItem[]): NextTask | null {
-    for (const item of items) {
-      if (item.done) continue
-      const child = findNextTask(item.children, [...ancestors, item])
-      if (child) return child
-      if (item.text.trim() || item.html.includes('data-balance-image=')) return { item, ancestors }
-    }
-    return null
-  }
 </script>
 
 <section class="next-task-page" aria-label="Next task">

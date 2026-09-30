@@ -18,6 +18,7 @@
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
   import NextTaskPanel from './lib/NextTaskPanel.svelte'
+  import { findNextTask } from './lib/nextTask'
   import { collapsedPlanItemIds, setPlanItemCollapsed } from './lib/collapsedPlanItems'
   import TaskCheckbox from './lib/TaskCheckbox.svelte'
   import TemplateItemEditor from './lib/TemplateItemEditor.svelte'
@@ -660,6 +661,8 @@ return rows`
   $: if (goals !== goalHistoryGoals) scheduleGoalHistoryUpdate()
   $: displayedPlanDate = celebrationPreview?.previewDate ?? $plannerStore.activePlanDate
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === displayedPlanDate)
+  $: currentDayPlan = $plannerStore.plans.find((plan) => plan.date === currentDay)
+  $: nextTask = view === 'next' && currentDayPlan ? findNextTask(currentDayPlan.items) : null
   $: activePlanTimeWarnings = buildItemTimeWarnings(activePlan?.items ?? [])
   // Scroll position is remembered per page. Today scrolls independently for each
   // date, and List Templates scrolls independently for each template.
@@ -989,8 +992,13 @@ return rows`
       const changed = direction === 'undo' ? await plannerStore.undo() : await plannerStore.redo()
       if (!changed) return
       const destination = historyDestination(before, $plannerStore)
-      if (destination) await revealHistoryDestination(destination)
-      if (completionCaret) {
+      // Next shows today's plan changes in place, so undo stays there instead
+      // of jumping to Today, whose editor rows are not mounted.
+      const stayOnNext = view === 'next' && destination?.view === 'today'
+      if (destination && !stayOnNext) await revealHistoryDestination(destination)
+      if (stayOnNext) {
+        // Leave focus alone.
+      } else if (completionCaret) {
         await focusTaskById(completionCaret.containerId, completionCaret.completedItemId, completionCaret.completedCaret ?? undefined)
       } else if (destination?.entityId === editorSelection?.containerId) {
         restoreTreeEditorSelection(editorSelection)
@@ -3722,6 +3730,14 @@ return rows`
       }
     }
 
+    if (view === 'next' && key === 'd' && !event.shiftKey) {
+      event.preventDefault()
+      if (currentDayPlan && nextTask && !event.repeat) {
+        plannerStore.patchPlanItem(currentDayPlan.id, nextTask.item.id, { done: true })
+      }
+      return
+    }
+
     if (key === 'd' && !event.shiftKey) {
       const itemId = activeItemSurface() === 'plan' ? activeFocusedItemId() : null
       const plan = itemId ? planContainingItem(itemId) : undefined
@@ -6105,7 +6121,8 @@ return rows`
     >
     {#if view === 'next'}
       <NextTaskPanel
-        plan={$plannerStore.plans.find((plan) => plan.date === currentDay)}
+        plan={currentDayPlan}
+        next={nextTask}
         onComplete={(planId, itemId) => plannerStore.patchPlanItem(planId, itemId, { done: true })}
         onOpenToday={() => openDateInToday(currentDay)}
       />
