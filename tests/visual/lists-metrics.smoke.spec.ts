@@ -321,3 +321,78 @@ test('metric graph uses elapsed dates for point spacing and labels its x-axis', 
   expect(pointXs[1] - pointXs[0]).toBeLessThan(10)
   expect(pointXs[2] - pointXs[1]).toBeGreaterThan(400)
 })
+
+test('finishing a list survey opens the next row survey', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => {
+    const date = new Date().toISOString().slice(0, 10)
+    const now = new Date().toISOString()
+    const templateItem = (id: string, text: string) => ({ id, text, html: text, probability: 100, children: [] })
+    const metric = (id: string, name: string) => ({
+      id,
+      name,
+      questions: [{ id: `${id}_q`, prompt: `${name}?`, html: '', type: 'boolean' }],
+      createdAt: now,
+      updatedAt: now,
+    })
+
+    localStorage.setItem(
+      'balance.appState.v1',
+      JSON.stringify({
+        schemaVersion: 1,
+        deviceId: 'test-device',
+        localSequence: 0,
+        historyRevision: 0,
+        activePlanDate: date,
+        templates: [],
+        plans: [
+          {
+            id: 'plan_test',
+            date,
+            title: 'Today',
+            dailyReminder: '',
+            generatedFromTemplateId: null,
+            createdAt: now,
+            items: [{ id: 'item_0', text: 'Checkin', html: 'Checkin', done: false, startMinutes: null, endMinutes: null, children: [] }],
+          },
+        ],
+        listTemplates: [
+          {
+            id: 'list_template_checkin',
+            name: 'Checkin',
+            maxExpectedWords: 0,
+            items: [
+              templateItem('t_start', 'Start'),
+              templateItem('t_mood', 'Mood'),
+              templateItem('t_sleep', 'Sleep'),
+              templateItem('t_stretch', 'Stretch'),
+            ],
+            createdAt: now,
+            updatedAt: now,
+          },
+        ],
+        lists: [],
+        metrics: [metric('metric_mood', 'Mood'), metric('metric_sleep', 'Sleep')],
+        metricEntries: [],
+        goals: [],
+        goalCompletions: [],
+        operations: [],
+      }),
+    )
+  })
+  await page.reload()
+
+  await page.getByTitle('Open Checkin').click()
+  await expect(page.getByRole('dialog', { name: 'Checkin' })).toBeVisible()
+
+  await page.keyboard.press('ArrowDown')
+  await expect(page.getByRole('dialog', { name: /^Mood · / })).toBeVisible()
+  await page.keyboard.press('y')
+
+  await expect(page.getByRole('dialog', { name: /^Mood · / })).toBeHidden()
+  await expect(page.getByRole('dialog', { name: /^Sleep · / })).toBeVisible()
+  await page.keyboard.press('y')
+
+  await expect(page.getByRole('dialog', { name: /^Sleep · / })).toBeHidden()
+  await expect(page.locator('.metric-quiz')).toHaveCount(0)
+})

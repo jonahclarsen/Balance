@@ -4,7 +4,7 @@
   import { buildItemTimeWarnings, findPlanItem, isURL, itemLinkFromAnchor, itemMetricLink, linkifyItemText, renderItemDisplayHTML, type ItemLink } from './planner'
   import { openExternalURLFromShortcut } from './externalLinks'
   import { plannerStore } from './store'
-  import { focusTaskBelow, TASK_COMPLETION_FOCUS_EVENT } from './taskCompletionFocus'
+  import { focusTaskBelow, TASK_COMPLETION_FOCUS_EVENT, type TaskCompletionFocusDetail } from './taskCompletionFocus'
   import type { Id, ListTemplate, Metric, Note, PlanItem } from './types'
 
   export let instance: { id: Id; items: PlanItem[] }
@@ -382,9 +382,19 @@
     }
   }
 
+  // Finishing one survey and advancing onto another survey row opens the next
+  // survey right away, so a run of metric rows can be answered back to back.
   function handleCompletionFocus(event: Event) {
-    const itemId = (event as CustomEvent<{ itemId?: Id }>).detail?.itemId
-    if (itemId && findPlanItem(instance.items, itemId)) selectedItemId = itemId
+    const { itemId, completedItemId } = (event as CustomEvent<TaskCompletionFocusDetail>).detail ?? {}
+    const item = itemId ? findPlanItem(instance.items, itemId) : null
+    if (!item) return
+    selectedItemId = item.id
+
+    if (!openMetricOnArrowSelection || item.done || !completedItemId) return
+    const completedItem = findPlanItem(instance.items, completedItemId)
+    if (!completedItem || !itemMetricLink(completedItem.text, listTemplates, metrics)) return
+    const metricLink = itemMetricLink(item.text, listTemplates, metrics)
+    if (metricLink) onOpenLink(metricLink, item.id)
   }
 </script>
 
