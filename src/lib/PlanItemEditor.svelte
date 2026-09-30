@@ -139,6 +139,9 @@
     const childIds = new Set(item.children.map((child) => child.id))
     if (childrenCollapsed && knownChildIds && [...childIds].some((id) => !knownChildIds?.has(id))) {
       setPlanItemCollapsed(item.id, false)
+      // The store change does not rerun the declaration above within this
+      // update, so reveal the children now.
+      childrenCollapsed = false
     }
     knownChildIds = childIds
   }
