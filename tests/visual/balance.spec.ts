@@ -2417,6 +2417,29 @@ test('keyboard shortcuts add, adjust, and remove time while editing a plan item'
   await expect(shortcuts.getByText('Shift task time earlier / later', { exact: true })).toBeVisible()
 })
 
+test('time adjustment shortcuts on an untimed subtask adjust the nearest timed parent', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Keyboard time shortcuts are desktop-only')
+  await page.clock.setFixedTime(new Date('2030-01-15T08:00:00'))
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await focusInputByValue(page, 'Work block')
+  await page.keyboard.press('Alt+Shift+t')
+  await expect.poll(async () => (await planItemTimeRange(page, 'Work block'))?.[0]).toEqual(expect.any(Number))
+  const [start, end] = (await planItemTimeRange(page, 'Work block')) as number[]
+
+  await focusInputByValue(page, 'Pick the first useful task')
+  await page.keyboard.press('Alt+Shift+]')
+  await expect.poll(async () => planItemTimeRange(page, 'Work block')).toEqual([start + 15, end + 15])
+  await page.keyboard.press('ControlOrMeta+]')
+  await expect.poll(async () => planItemTimeRange(page, 'Work block')).toEqual([start + 15, end + 30])
+  await expect
+    .poll(async () => planItemStoredTime(page, 'Pick the first useful task'))
+    .toMatchObject({ startMinutes: null, endMinutes: null })
+})
+
 test('removing time clears stored values, supports undo, and re-adds a fresh range', async ({ page }, testInfo) => {
   await page.clock.setFixedTime(new Date('2030-01-15T08:00:00'))
   test.skip(testInfo.project.name === 'mobile', 'The desktop alarm button is replaced by the mobile task menu')

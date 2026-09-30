@@ -3841,6 +3841,32 @@ return rows`
     return []
   }
 
+  // Resolves each selected item to itself if it has a time, otherwise to its
+  // nearest timed ancestor, so time shortcuts on an untimed subtask move its parent.
+  function collectTimedTargetItems<T extends PlanItem | TemplateItem>(
+    items: T[],
+    selectedIds: Set<Id>,
+    nearestTimedAncestor: T | null = null,
+    targets = new Set<T>(),
+  ): Set<T> {
+    for (const item of items) {
+      const timedTarget = hasActiveTimeRange(item) ? item : nearestTimedAncestor
+      if (selectedIds.has(item.id) && timedTarget) targets.add(timedTarget)
+      collectTimedTargetItems(item.children as T[], selectedIds, timedTarget, targets)
+    }
+    return targets
+  }
+
+  function timedTargetItemsForIds(itemIds: Id[]): Array<PlanItem | TemplateItem> {
+    const surface = activeItemSurface()
+    const selectedIds = new Set(itemIds)
+
+    if (surface === 'plan') return [...collectTimedTargetItems(activePlan?.items ?? [], selectedIds)]
+    if (surface === 'day-template') return [...collectTimedTargetItems(selectedTemplate?.items ?? [], selectedIds)]
+
+    return []
+  }
+
   function activeTimeTargetIds(): Id[] {
     const surface = activeItemSurface()
     if (surface !== 'plan' && surface !== 'day-template') return []
@@ -3924,7 +3950,7 @@ return rows`
     const surface = activeItemSurface()
     if (surface !== 'plan' && surface !== 'day-template') return
 
-    const timedItems = timeItemsForIds(itemIds).filter(
+    const timedItems = timedTargetItemsForIds(itemIds).filter(
       (item): item is (PlanItem | TemplateItem) & { startMinutes: number; endMinutes: number } =>
         hasActiveTimeRange(item),
     )
