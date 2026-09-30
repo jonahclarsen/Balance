@@ -2036,6 +2036,14 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
         && event.target.matches('.goal-history-scroll')
         && !testWindow.goalRevealEventOrder?.includes('scroll')
       ) {
+        // animationstart is dispatched asynchronously and can trail the scroll
+        // event under load, so a highlight class already applied when the
+        // scroll lands also counts as the highlight coming first.
+        const highlightedRow = [...document.querySelectorAll('.goal-history-name[data-goal-id].goal-row-focus')]
+          .some((row) => row.textContent?.includes('Exercise'))
+        if (highlightedRow && !testWindow.goalRevealEventOrder?.includes('highlight')) {
+          testWindow.goalRevealEventOrder?.push('highlight')
+        }
         testWindow.goalRevealEventOrder?.push('scroll')
       }
     }, true)
@@ -2070,8 +2078,7 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
   await expect.poll(() => goalRhythmRowCenterOffset(page, 'Exercise')).toBeLessThanOrEqual(1)
   expect(await goalRhythmScrollTopDifference(page)).toBe(0)
   await expect.poll(() => goalHighlightAnimationStarts(page)).toBe(1)
-  await page.waitForTimeout(1100)
-  const fadingRowOpacity = await goalRevealHighlightOpacity(goalRow)
+  const fadingRowOpacity = await goalRevealHighlightOpacityPartWayThroughFade(goalRow)
   expect(fadingRowOpacity).toBeGreaterThan(0)
   expect(fadingRowOpacity).toBeLessThan(1)
   await expect(goalRow).not.toHaveClass(/goal-row-focus/)
@@ -2468,8 +2475,16 @@ async function goalRevealEventOrder(page: import('@playwright/test').Page) {
   ).goalRevealEventOrder ?? [])
 }
 
-async function goalRevealHighlightOpacity(locator: import('@playwright/test').Locator) {
-  return locator.evaluate((element) => Number(getComputedStyle(element, '::after').opacity))
+// Seek the running highlight animation into its fade instead of sleeping, so a
+// loaded machine cannot sample it before the fade starts or after it ends.
+async function goalRevealHighlightOpacityPartWayThroughFade(locator: import('@playwright/test').Locator) {
+  return locator.evaluate((element) => {
+    const animation = element.getAnimations({ subtree: true })
+      .find((candidate) => (candidate as CSSAnimation).animationName === 'goal-reveal-highlight-fade')
+    if (!animation) throw new Error('Expected the goal reveal highlight animation to be running')
+    animation.currentTime = 1200
+    return Number(getComputedStyle(element, '::after').opacity)
+  })
 }
 
 test('goal stats survive navigation and their copied link opens the modal from a task', async ({ page }) => {
