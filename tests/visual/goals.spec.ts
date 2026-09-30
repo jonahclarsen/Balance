@@ -2086,7 +2086,10 @@ test('clicking a plan item goal badge reveals that goal in the rhythm panel', as
 
   await scrollGoalRhythmAwayFromRow(page, 'Exercise')
   await expect.poll(() => goalRhythmRowIsFullyVisible(page, 'Exercise')).toBe(false)
-  await page.evaluate(() => {
+  await page.evaluate(async () => {
+    // Scroll events are dispatched on the next frame; let the scroll-away
+    // event land before clearing so it is not mistaken for the reveal.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
     const testWindow = window as Window & { goalRevealEventOrder?: string[] }
     testWindow.goalRevealEventOrder = []
   })

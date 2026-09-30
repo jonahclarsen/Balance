@@ -4278,9 +4278,6 @@ test('adding an item focuses its editor at the caret', async ({ page }, testInfo
 })
 
 test('option backspace clears freshly typed new plan items without leaving newline-only content', async ({ page }) => {
-  // Sixty edit rounds keep the race reproducible but outlast the default
-  // timeout when the machine is under load.
-  test.slow()
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()

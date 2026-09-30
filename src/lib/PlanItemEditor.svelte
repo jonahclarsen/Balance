@@ -1,3 +1,5 @@
+<svelte:options immutable />
+
 <script lang="ts">
   import { onDestroy, tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
