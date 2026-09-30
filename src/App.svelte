@@ -38,6 +38,7 @@
   import SyncPanel from './lib/SyncPanel.svelte'
   import SyncStatusIndicator from './lib/SyncStatusIndicator.svelte'
   import MetricQuiz from './lib/MetricQuiz.svelte'
+  import TemplateDayQuiz from './lib/TemplateDayQuiz.svelte'
   import MetricGraph from './lib/MetricGraph.svelte'
   import MetricQuestionEditor from './lib/MetricQuestionEditor.svelte'
   import RichTextEditor from './lib/RichTextEditor.svelte'
@@ -85,13 +86,13 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, todayISO, totalWordCount, type ItemLink } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
@@ -419,6 +420,7 @@
   let celebrationPreviewAnnouncementTimer: number | null = null
   let goalBurst: GoalBurst | null = null
   let goalDoabilityReviews: GoalDoabilityReview[] = []
+  let dayQuiz: { templateName: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
   // Tracks each plan item's done state so we can fire a goal burst the moment an
   // item that contributes to a goal transitions to done (via any completion path).
   let goalItemDoneById = new Map<Id, boolean>()
@@ -2978,6 +2980,10 @@ return rows`
       return
     }
 
+    const steps = templateQuizSteps(template, $plannerStore.templateQuestions)
+    const quizAnswers = steps.length > 0 ? await askDayQuiz(template.name, steps) : {}
+    if (!quizAnswers) return
+
     if (date < todayISO()) return
     const doabilityReviews = goalsNeedingDoabilityReview(
       $plannerStore.goals,
@@ -2985,11 +2991,24 @@ return rows`
       $plannerStore.plans,
       todayISO(),
     )
-    plannerStore.generatePlan(template.id, date, replaceExisting)
+    plannerStore.generatePlan(template.id, date, replaceExisting, quizAnswers)
     const { [date]: _generatedDate, ...remainingSelections } = emptyDayTemplateSelections
     emptyDayTemplateSelections = remainingSelections
     view = 'today'
     if (doabilityReviews.length > 0) goalDoabilityReviews = doabilityReviews
+  }
+
+  function askDayQuiz(templateName: string, steps: TemplateQuizStep[]): Promise<TemplateQuizAnswers | null> {
+    dayQuiz?.resolve(null)
+    return new Promise((resolve) => {
+      dayQuiz = { templateName, steps, resolve }
+    })
+  }
+
+  function finishDayQuiz(answers: TemplateQuizAnswers | null) {
+    const quiz = dayQuiz
+    dayQuiz = null
+    quiz?.resolve(answers)
   }
 
   async function generateSelectedDay() {
@@ -6247,6 +6266,8 @@ return rows`
                 {metrics}
                 {notes}
                 onOpenLink={(link) => openLink(link, null)}
+                templateQuestions={$plannerStore.templateQuestions}
+                setQuestion={plannerStore.setTemplateItemQuestion}
               />
             {/each}
           </div>
@@ -7399,6 +7420,12 @@ return rows`
           showEditShortcutHint
           openMetricOnArrowSelection
         />
+      </OverlayModal>
+    {/if}
+
+    {#if dayQuiz}
+      <OverlayModal title={`Plan your day · ${dayQuiz.templateName}`} z={70} onClose={() => finishDayQuiz(null)}>
+        <TemplateDayQuiz steps={dayQuiz.steps} onComplete={finishDayQuiz} />
       </OverlayModal>
     {/if}
 

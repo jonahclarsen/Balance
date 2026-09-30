@@ -7,7 +7,7 @@
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
-  import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, TemplateItem, TemplateOption } from './types'
+  import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, TemplateItem, TemplateOption, TemplateQuestion } from './types'
 
   type TextChangeOptions = {
     mergeHistory?: boolean
@@ -66,6 +66,17 @@
   export let metrics: Metric[] = []
   export let notes: Note[] = []
   export let onOpenLink: (link: ItemLink) => void = () => {}
+  export let templateQuestions: TemplateQuestion[] = []
+  export let setQuestion: (itemId: Id, question: string | null) => void = () => {}
+
+  let questionInput: HTMLInputElement | null = null
+  $: question = templateQuestions.find(({ id }) => id === item.id)?.question
+
+  async function addQuestion() {
+    setQuestion(item.id, '')
+    await tick()
+    questionInput?.focus()
+  }
 
   $: selected = selectedItemIds.has(item.id)
 
@@ -353,6 +364,29 @@
   {/if}
 
   <div class="option-stack">
+      {#if question !== undefined}
+        <div class="question-row">
+          <span class="question-mark" aria-hidden="true">?</span>
+          <input
+            bind:this={questionInput}
+            class="question-input"
+            type="text"
+            value={question}
+            placeholder="Question asked when generating the day"
+            aria-label="Question asked when generating the day"
+            on:input={(event) => setQuestion(item.id, event.currentTarget.value)}
+          />
+          <button
+            class="icon-button danger"
+            type="button"
+            title="Remove question"
+            aria-label="Remove question"
+            on:click={() => setQuestion(item.id, null)}
+          >
+            ×
+          </button>
+        </div>
+      {/if}
       {#each item.options as option, index (option.id)}
         <div class="option-row">
           <RichTextEditor
@@ -361,7 +395,9 @@
             inputId={option.id}
             html={option.html}
             text={option.text}
-            placeholder={index === 0 ? 'Template item' : '(Skip)'}
+            placeholder={question !== undefined
+              ? (item.options.length === 1 ? 'Added when you answer yes' : 'Answer')
+              : index === 0 ? 'Template item' : '(Skip)'}
             ariaLabel={index === 0 ? 'Template item' : 'Template alternative'}
             revision={historyRevision}
             onChange={(html, text, options) => patchOption(templateId, item.id, option.id, { html, text }, options)}
@@ -376,13 +412,15 @@
             internalLinkSegments={linkifyItemText(option.text, listTemplates, metrics, notes)}
             onInternalLinkClick={(link) => onOpenLink(link)}
           />
-          <ProbabilitySlider
-            value={option.probability}
-            min={0}
-            step={5}
-            editable
-            onChange={(probability) => handleProbabilityChange(index, probability)}
-          />
+          {#if question === undefined}
+            <ProbabilitySlider
+              value={option.probability}
+              min={0}
+              step={5}
+              editable
+              onChange={(probability) => handleProbabilityChange(index, probability)}
+            />
+          {/if}
           <button
             class="icon-button danger"
             type="button"
@@ -397,8 +435,19 @@
   </div>
 
   <div class="template-actions">
-    <span class:bad-total={badProbabilityTotal} class="total">{probabilityTotal}%</span>
-    <button class="icon-button" type="button" title="Add option" on:click={() => addOption(templateId, item.id)}>±</button>
+    {#if question === undefined}
+      <span class:bad-total={badProbabilityTotal} class="total">{probabilityTotal}%</span>
+      <button
+        class="icon-button quiet"
+        type="button"
+        title="Ask a question when generating the day"
+        aria-label="Ask a question when generating the day"
+        on:click={addQuestion}
+      >
+        ?
+      </button>
+    {/if}
+    <button class="icon-button" type="button" title={question === undefined ? 'Add option' : 'Add answer'} on:click={() => addOption(templateId, item.id)}>±</button>
   </div>
 
   <svelte:fragment slot="children">
@@ -434,6 +483,8 @@
             {metrics}
             {notes}
             {onOpenLink}
+            {templateQuestions}
+            {setQuestion}
           />
         {/each}
       </div>

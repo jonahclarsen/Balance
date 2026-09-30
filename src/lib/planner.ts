@@ -19,6 +19,8 @@ import type {
   PlanItem,
   TemplateItem,
   TemplateOption,
+  TemplateQuestion,
+  TemplateQuizAnswers,
 } from './types'
 import { goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
 import { createDefaultReplicatedPreferences } from './preferences'
@@ -148,6 +150,7 @@ export function createInitialState(): AppState {
     templates: [createDefaultTemplate()],
     plans: [],
     uneditedPlanItems: [],
+    templateQuestions: [],
     listTemplates: [],
     lists: [],
     metrics: [],
@@ -334,9 +337,10 @@ export function generatePlanFromTemplate(
   dailyReminder = DEFAULT_DAILY_REMINDER,
   goals: Goal[] = [],
   goalCompletions: GoalCompletion[] = [],
+  quizAnswers: TemplateQuizAnswers = {},
 ): DailyPlan {
   const generatedGoalIds = new Set<Id>()
-  const items = generatePlanItems(template.items, date, goals, goalCompletions, generatedGoalIds)
+  const items = generatePlanItems(template.items, date, goals, goalCompletions, generatedGoalIds, quizAnswers)
   return {
     id: createId('plan'),
     date,
@@ -349,6 +353,31 @@ export function generatePlanFromTemplate(
   }
 }
 
+export type TemplateQuizStep = {
+  itemId: Id
+  question: string
+  options: TemplateOption[]
+  // Questions nested under another question row are asked only when an
+  // answer to every such ancestor keeps the row in the day.
+  questionAncestorIds: Id[]
+}
+
+export function templateQuizSteps(template: DailyTemplate, questions: TemplateQuestion[]): TemplateQuizStep[] {
+  const byItem = new Map(
+    questions.filter(({ question }) => question.trim() !== '').map(({ id, question }) => [id, question.trim()]),
+  )
+  const steps: TemplateQuizStep[] = []
+  function visit(items: TemplateItem[], ancestors: Id[]) {
+    for (const item of items) {
+      const question = byItem.get(item.id)
+      if (question !== undefined) steps.push({ itemId: item.id, question, options: item.options, questionAncestorIds: ancestors })
+      visit(item.children, question === undefined ? ancestors : [...ancestors, item.id])
+    }
+  }
+  visit(template.items, [])
+  return steps
+}
+
 const N_GOALS_PATTERN = /^(\d+)\s+goals$/i
 
 function generatePlanItems(
@@ -357,9 +386,13 @@ function generatePlanItems(
   goals: Goal[],
   goalCompletions: GoalCompletion[],
   generatedGoalIds: Set<Id>,
+  quizAnswers: TemplateQuizAnswers,
 ): PlanItem[] {
   return items.flatMap((item) => {
-    const option = pickOption(item.options)
+    // An answered question decides the option; an unanswered one keeps its odds.
+    const option = item.id in quizAnswers
+      ? item.options.find(({ id }) => id === quizAnswers[item.id]) ?? null
+      : pickOption(item.options)
     const text = option?.text.trim() ?? ''
     if (!option || (text === '' && !option.html.includes('data-balance-image=')) || text.toLowerCase() === '(skip)') {
       return []
@@ -387,7 +420,7 @@ function generatePlanItems(
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
         timeHidden: item.timeHidden,
-        children: generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds),
+        children: generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds, quizAnswers),
       },
     ]
   })

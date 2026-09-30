@@ -126,6 +126,7 @@ import type {
   ReplicatedPreferences,
   TemplateItem,
   TemplateOption,
+  TemplateQuizAnswers,
 } from './types'
 import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './preferences'
 import { isNoteTrashExpired } from './noteTrash'
@@ -180,6 +181,7 @@ const ENTITY_COLLECTIONS = [
   'projects',
   'projectCheckIns',
   'uneditedPlanItems',
+  'templateQuestions',
 ] as const
 type EntityCollection = (typeof ENTITY_COLLECTIONS)[number]
 type EntityUpsert = { collection: EntityCollection; key: string; position: number | null; value: unknown; patches: EntityPatch[] }
@@ -910,9 +912,9 @@ function createPlannerStore() {
       return true
     },
 
-    generatePlan(templateId: Id, date: string, replaceExisting: boolean) {
+    generatePlan(templateId: Id, date: string, replaceExisting: boolean, quizAnswers: TemplateQuizAnswers = {}) {
       if (date < todayISO()) return
-      if (deferHistoryAction(() => plannerStore.generatePlan(templateId, date, replaceExisting))) return
+      if (deferHistoryAction(() => plannerStore.generatePlan(templateId, date, replaceExisting, quizAnswers))) return
       const current = get(store)
       const template = current.templates.find((candidate) => candidate.id === templateId)
       if (!template) return
@@ -922,6 +924,7 @@ function createPlannerStore() {
         dailyReminderForGeneratedPlan(current.plans, date),
         current.goals,
         current.goalCompletions,
+        quizAnswers,
       )
 
       const freshMarkers = generatedItemMarkers(generated.items)
@@ -1545,6 +1548,29 @@ function createPlannerStore() {
           updatedAt: nowISO(),
           items: addTemplateItem(template.items, parentId, item),
         })),
+      )
+    },
+
+    // A null question removes it. Records for deleted rows are kept so undoing
+    // the deletion brings the question back with the row.
+    setTemplateItemQuestion(itemId: Id, question: string | null) {
+      commitEntities(
+        'set_template_item_question',
+        { itemId },
+        (state) => {
+          const existing = state.templateQuestions.find(({ id }) => id === itemId)
+          if (question === null) {
+            return existing ? { ...state, templateQuestions: state.templateQuestions.filter(({ id }) => id !== itemId) } : state
+          }
+          if (existing?.question === question) return state
+          return {
+            ...state,
+            templateQuestions: existing
+              ? state.templateQuestions.map((record) => (record.id === itemId ? { ...record, question } : record))
+              : [...state.templateQuestions, { id: itemId, question }],
+          }
+        },
+        { mergeKey: `template-question:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS, reconcileGoals: false },
       )
     },
 
@@ -3470,6 +3496,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       templates: [],
       plans: parsed.plans ?? [],
       uneditedPlanItems: [],
+      templateQuestions: [],
       listTemplates: [],
       lists: [],
       metrics: [],
@@ -3512,6 +3539,7 @@ function normalizeState(state: AppState): AppState {
     ...state,
     images: state.images ?? [],
     uneditedPlanItems: state.uneditedPlanItems ?? [],
+    templateQuestions: state.templateQuestions ?? [],
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),

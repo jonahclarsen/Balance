@@ -18,6 +18,16 @@ export type TemplateItem = {
   children: TemplateItem[]
 }
 
+// Turns a template row into a question asked when a day is generated. The row's
+// options become the answers (plus "none"), replacing its probability roll.
+// Keyed by the template item's ID in a generic entity collection.
+export type TemplateQuestion = {
+  id: Id
+  question: string
+}
+
+export type TemplateQuizAnswers = Record<Id, Id | null>
+
 export type PlanItem = {
   id: Id
   text: string
@@ -303,6 +313,7 @@ export type AppState = {
   activePlanDate: string
   preferences: ReplicatedPreferences
   templates: DailyTemplate[]
+  templateQuestions: TemplateQuestion[]
   plans: DailyPlan[]
   uneditedPlanItems: UneditedPlanItem[]
   listTemplates: ListTemplate[]

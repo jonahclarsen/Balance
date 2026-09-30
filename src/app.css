@@ -2509,6 +2509,26 @@ body.mobile-checkbox-dragging {
   white-space: nowrap;
 }
 
+.question-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.question-mark {
+  flex: 0 0 auto;
+  width: 18px;
+  color: var(--accent);
+  font-weight: 700;
+  text-align: center;
+}
+
+.question-input {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+}
+
 .probability {
   width: 64px;
   padding-inline: 8px;
