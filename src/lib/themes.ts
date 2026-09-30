@@ -19,9 +19,9 @@ export const THEME_PRESETS = [
     id: 'graphite',
     name: 'Graphite',
     description: 'Charcoal, silver, and clean gray',
-    swatches: ['#252525', '#dededb', '#777774'],
+    swatches: ['#252525', '#dddddd', '#767676'],
     checkboxColor: '#303030',
-    doneColor: '#777774',
+    doneColor: '#767676',
   },
   {
     id: 'crimson',
