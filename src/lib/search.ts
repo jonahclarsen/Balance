@@ -124,6 +124,7 @@ export function searchBalanceState(state: AppState, query: string): SearchResult
   })
 
   const listTemplateResults: SearchResult[] = state.listTemplates.flatMap((template) => {
+    if (template.archivedAt) return []
     const lines = flattenListTemplateItems(template.items)
     if (!matchesTerms([template.name, ...lines.map((line) => line.text)].join(' '), terms)) return []
 

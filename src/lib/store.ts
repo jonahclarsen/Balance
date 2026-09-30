@@ -1841,12 +1841,15 @@ function createPlannerStore() {
       return template.id
     },
 
-    deleteListTemplate(templateId: Id) {
-      commitEntities('delete_list_template', { templateId }, (state) => ({
-        ...state,
-        listTemplates: state.listTemplates.filter((template) => template.id !== templateId),
-        lists: state.lists.filter((list) => list.listTemplateId !== templateId),
-      }))
+    setListTemplateArchived(templateId: Id, archived: boolean) {
+      commitEntities(archived ? 'archive_list_template' : 'unarchive_list_template', { templateId }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          if (Boolean(template.archivedAt) === archived) return template
+          if (archived) return { ...template, archivedAt: nowISO(), updatedAt: nowISO() }
+          const { archivedAt: _archivedAt, ...rest } = template
+          return { ...rest, updatedAt: nowISO() }
+        }),
+      )
     },
 
     moveListTemplate(sourceId: Id, targetId: Id, placement: 'before' | 'after') {

@@ -691,13 +691,16 @@ return rows`
 
   // ---- Lists ----
   $: if (view === 'lists') listHistoryNavigationVisible = true
-  $: selectedListTemplate = listTemplates.find((template) => template.id === selectedListTemplateId) ?? listTemplates[0]
-  $: if (!selectedListTemplateId && listTemplates[0]) selectedListTemplateId = listTemplates[0].id
-  $: if (listTemplatesViewStateReady && !listTemplates.some((template) => template.id === selectedListTemplateId)) {
-    selectedListTemplateId = listTemplates[0]?.id ?? ''
+  // Archived lists are hidden from Lists but stay visible in List History.
+  $: activeListTemplates = listTemplates.filter((template) => !template.archivedAt)
+  $: selectedListTemplate = activeListTemplates.find((template) => template.id === selectedListTemplateId) ?? activeListTemplates[0]
+  $: if (!selectedListTemplateId && activeListTemplates[0]) selectedListTemplateId = activeListTemplates[0].id
+  $: if (listTemplatesViewStateReady && !activeListTemplates.some((template) => template.id === selectedListTemplateId)) {
+    selectedListTemplateId = activeListTemplates[0]?.id ?? ''
   }
   $: if (listTemplatesViewStateReady) persistListTemplatesViewState(selectedListTemplateId)
-  $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = listTemplates[0].id
+  $: if (!listViewTemplateId && listTemplates[0]) listViewTemplateId = (activeListTemplates[0] ?? listTemplates[0]).id
+  $: listViewTemplate = listTemplates.find((template) => template.id === listViewTemplateId)
   $: selectedListExpectedWordCount = selectedListTemplate ? expectedWordCount(selectedListTemplate.items, 1, metrics) : 0
   $: selectedListWordCount = Math.round(selectedListExpectedWordCount)
   $: selectedListTotalWordCount = selectedListTemplate ? totalWordCount(selectedListTemplate.items, metrics) : 0
@@ -1827,13 +1830,13 @@ return rows`
   }
 
   async function selectAdjacentListTemplate(direction: -1 | 1) {
-    if (listTemplates.length < 2 || !selectedListTemplate) return
+    if (activeListTemplates.length < 2 || !selectedListTemplate) return
 
-    const currentIndex = listTemplates.findIndex((template) => template.id === selectedListTemplate.id)
+    const currentIndex = activeListTemplates.findIndex((template) => template.id === selectedListTemplate.id)
     if (currentIndex === -1) return
 
-    const nextIndex = (currentIndex + direction + listTemplates.length) % listTemplates.length
-    selectedListTemplateId = listTemplates[nextIndex].id
+    const nextIndex = (currentIndex + direction + activeListTemplates.length) % activeListTemplates.length
+    selectedListTemplateId = activeListTemplates[nextIndex].id
 
     await tick()
     const selectedTab = Array.from(
@@ -1842,18 +1845,8 @@ return rows`
     selectedTab?.scrollIntoView({ block: 'nearest', inline: 'nearest' })
   }
 
-  async function confirmDeleteListTemplate(templateId: Id, templateName: string) {
-    const savedListCount = $plannerStore.lists.filter((list) => list.listTemplateId === templateId).length
-    const savedListMessage = savedListCount
-      ? ` This will also delete ${savedListCount} generated list${savedListCount === 1 ? '' : 's'} made from it.`
-      : ''
-    const message = `Delete “${templateName || 'Untitled list'}”?${savedListMessage}`
-    const confirmed = isTauri()
-      ? await confirmDialog(message, { title: 'Delete list?', kind: 'warning' })
-      : window.confirm(message)
-    if (!confirmed) return
-
-    plannerStore.deleteListTemplate(templateId)
+  function archiveListTemplate(templateId: Id) {
+    plannerStore.setListTemplateArchived(templateId, true)
   }
 
   function toggleWordCapUnlock() {
@@ -6328,10 +6321,10 @@ return rows`
         <button class="primary outlined" type="button" on:click={openListHistory}>View List History →</button>
       </header>
 
-      {#if listTemplates.length > 0}
+      {#if activeListTemplates.length > 0}
         <nav class="template-rail list-template-rail" aria-label="Select list">
           <TemplateTabs
-            templates={listTemplates}
+            templates={activeListTemplates}
             selectedId={selectedListTemplate?.id ?? ''}
             kind="list"
             untitledLabel="Untitled list"
@@ -6483,11 +6476,11 @@ return rows`
               View Archive
             </button>
             <button
-              class="ghost danger"
+              class="ghost"
               type="button"
-              on:click={() => { void confirmDeleteListTemplate(selectedListTemplate.id, selectedListTemplate.name) }}
+              on:click={() => archiveListTemplate(selectedListTemplate.id)}
             >
-              Delete list
+              Archive list
             </button>
           </div>
 
@@ -6538,7 +6531,7 @@ return rows`
       {:else}
         <div class="empty-state">
           <h3>No lists yet</h3>
-          <p>Create one to start building checklists.</p>
+          <p>{listTemplates.length > 0 ? 'All lists are archived. Unarchive one from List History, or create a new one.' : 'Create one to start building checklists.'}</p>
           <button class="primary" type="button" on:click={createListTemplateAndSelect}>+ New list</button>
         </div>
       {/if}
@@ -6576,9 +6569,18 @@ return rows`
               on:click={() => (listViewTemplateId = template.id)}
             >
               {template.name || 'Untitled list'}
+              {#if template.archivedAt}<span class="rail-chip-archived">Archived</span>{/if}
             </button>
           {/each}
         </nav>
+      {/if}
+
+      {#if listViewTemplate?.archivedAt}
+        {@const archivedTemplate = listViewTemplate}
+        <div class="list-archived-banner" role="status">
+          <span>This list is archived and hidden from Lists.</span>
+          <button type="button" on:click={() => plannerStore.setListTemplateArchived(archivedTemplate.id, false)}>Unarchive</button>
+        </div>
       {/if}
 
       {#if listTemplates.length === 0}

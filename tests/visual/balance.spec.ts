@@ -6169,7 +6169,7 @@ test('list template tabs can be dragged to persist a new order without changing 
   await expect(page.locator('[data-list-template-tab-id]')).toHaveText(['Beta', 'Alpha', 'Gamma'])
 })
 
-test('deleting a list template requires confirmation', async ({ page }) => {
+test('archiving a list hides it from Lists and it can be unarchived from List History', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -6177,19 +6177,19 @@ test('deleting a list template requires confirmation', async ({ page }) => {
   await page.getByRole('button', { name: 'New list' }).click()
   await page.getByLabel('List name').fill('Errands')
 
-  page.once('dialog', async (dialog) => {
-    expect(dialog.type()).toBe('confirm')
-    expect(dialog.message()).toContain('Delete “Errands”?')
-    await dialog.dismiss()
-  })
-  await page.getByRole('button', { name: 'Delete list' }).click()
-  await expect(page.getByLabel('List name')).toHaveValue('Errands')
-
-  page.once('dialog', async (dialog) => {
-    await dialog.accept()
-  })
-  await page.getByRole('button', { name: 'Delete list' }).click()
+  await page.getByRole('button', { name: 'Archive list' }).click()
   await expect(page.getByRole('heading', { name: 'No lists yet' })).toBeVisible()
+  await expect(page.locator('[data-list-template-tab-id]')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'View List History →' }).click()
+  const historyChip = page.locator('.rail-chip', { hasText: 'Errands' })
+  await expect(historyChip).toContainText('Archived')
+  await historyChip.click()
+  await page.getByRole('button', { name: 'Unarchive' }).click()
+  await expect(historyChip).not.toContainText('Archived')
+
+  await page.getByRole('button', { name: '← Back to Lists' }).click()
+  await expect(page.getByLabel('List name')).toHaveValue('Errands')
 })
 
 async function topLevelPlanItemTexts(page: import('@playwright/test').Page) {

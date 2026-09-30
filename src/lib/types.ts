@@ -111,6 +111,8 @@ export type ListTemplate = {
   idealMinutes?: number
   items: ListTemplateItem[]
   archivedItems: ArchivedListTemplateItem[]
+  // Set when the list is archived: hidden from Lists, still shown in List History.
+  archivedAt?: string
   createdAt: string
   updatedAt: string
 }
