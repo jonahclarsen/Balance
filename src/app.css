@@ -1130,6 +1130,8 @@ nav button.active {
   gap: 8px;
   margin-bottom: -16px;
   padding: 6px 8px;
+  background: transparent;
+  box-shadow: none;
 }
 
 .sidebar-search-button svg {
