@@ -574,7 +574,7 @@ test('concurrent backend reload callers share one stable database read', async (
   })).toBe(readsBefore + 1)
 })
 
-test('routine sync checks stay silent without resetting launch completion', async ({ page }) => {
+test('quick resume checks stay silent without resetting launch completion', async ({ page }) => {
   await page.goto('/?launch-then-hold=1')
 
   await expect.poll(() => readSyncStatus(page)).toEqual({
@@ -596,6 +596,9 @@ test('routine sync checks stay silent without resetting launch completion', asyn
   await expect(page.getByText('Checking for changes…')).toHaveCount(0)
   await expect(page.getByText('Reading sync settings…')).toHaveCount(0)
   await expect(page.getByText('Waiting for database access…')).toHaveCount(0)
+
+  // A resume that is still catching up after a second shows the subtle cue.
+  await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
 })
 
 test('edit-triggered syncs stay silent', async ({ page }) => {

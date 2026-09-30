@@ -14,6 +14,7 @@ const ACTIVE_CHANGE_WINDOW_MS = 60_000
 const QUIET_VISIBLE_POLL_MS = 8_000
 const BACKGROUND_POLL_MS = 5 * 60 * 1_000
 const MAX_RETRY_MS = 5 * 60 * 1_000
+const SLOW_ACTIVITY_MS = 1_000
 
 export type AutomaticSyncStatus = {
   running: boolean
@@ -51,6 +52,7 @@ let lastChangeAt = 0
 let automaticSyncStarted = false
 let backendRefreshPending = false
 let uploadStarted = false
+let slowActivityTimer: ReturnType<typeof setTimeout> | null = null
 
 async function refreshConnectivity(): Promise<boolean> {
   // WebView online hints can be stale. On native platforms only an explicit OS
@@ -107,6 +109,12 @@ function requiresFollowup(reason: string): boolean {
 
 function shouldShowActivity(reason: string): boolean {
   return ['launch', 'manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
+}
+
+// Returning to the app may show stale state until the pass lands. Quick checks
+// stay silent; a slow catch-up shows the same cue as launch.
+function showsActivityWhenSlow(reason: string): boolean {
+  return ['resume', 'focus'].includes(reason)
 }
 
 function refreshesVisibleState(reason: string): boolean {
@@ -218,6 +226,14 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         offline,
         showActivity: shouldShowActivity(reason),
       }))
+      if (showsActivityWhenSlow(reason)) {
+        slowActivityTimer = setTimeout(() => {
+          slowActivityTimer = null
+          automaticSyncStatus.update((status) => (
+            status.running ? { ...status, showActivity: true } : status
+          ))
+        }, SLOW_ACTIVITY_MS)
+      }
       // A mobile WebView can be suspended before the ordinary persistence
       // debounce fires. Reconcile only after every edit still visible in the
       // frontend is durable, or an incoming checkpoint can replace its older
@@ -277,6 +293,8 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
   const finish = () => {
     if (running !== current) return
     running = null
+    if (slowActivityTimer) clearTimeout(slowActivityTimer)
+    slowActivityTimer = null
     uploadStarted = false
     const followup = queuedReason
     const settleFollowup = resolveQueued
