@@ -933,7 +933,8 @@ test('empty days show every template and require an explicit selection', async (
   await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Rest' })).toBeVisible()
 })
 
-test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) => {
+test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Sidebar shortcut hints are hidden in the mobile drawer')
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -992,8 +993,7 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }) =>
   await expect(dateInput).toHaveValue(originalDate)
 })
 
-test('Next shows only the first unfinished task of today without goal rhythm', async ({ page }) => {
-  await page.goto('/')
+test('Next shows the first unfinished task of today under its unfinished parents', async ({ page }) => {
   await seedPlanTree(page, [
     { id: 'finished', text: 'Finished', done: true, children: [] },
     {
@@ -1001,30 +1001,40 @@ test('Next shows only the first unfinished task of today without goal rhythm', a
       text: 'Project',
       children: [
         { id: 'finished-step', text: 'Finished step', done: true, children: [] },
-        { id: 'outline', text: 'Write outline', children: [] },
-        { id: 'later', text: 'Later step', children: [] },
+        {
+          id: 'outline',
+          text: 'Outline',
+          children: [
+            { id: 'intro', text: 'Write intro', children: [] },
+            { id: 'body', text: 'Write body', children: [] },
+          ],
+        },
       ],
     },
     { id: 'afterwards', text: 'Afterwards', children: [] },
   ], todayISO())
   await page.keyboard.press('Alt+x')
 
-  const card = page.getByRole('region', { name: 'Next task' }).locator('.next-task-card')
-  await expect(card.locator('.next-task-text')).toHaveText('Write outline')
-  await expect(card.locator('.next-task-breadcrumb')).toHaveText('Project')
+  const panel = page.getByRole('region', { name: 'Next task' })
+  const rows = panel.locator('.next-task-row')
+  await expect(rows.locator('.next-task-text')).toHaveText(['Project', 'Outline', 'Write intro'])
+  await expect(panel.locator('.next-task-row.selected .next-task-text')).toHaveText('Write intro')
   await expect(page.locator('.goal-history-panel')).toHaveCount(0)
 
-  await card.getByRole('checkbox', { name: 'Complete task' }).click()
-  await expect(card.locator('.next-task-text')).toHaveText('Later step')
+  await panel.getByRole('checkbox', { name: 'Complete Write intro' }).click()
+  await expect(panel.locator('.next-task-row.selected .next-task-text')).toHaveText('Write body')
 
+  // Finishing the last subtask finishes its parents, as on Today.
   await page.keyboard.press('ControlOrMeta+d')
-  await expect(card.locator('.next-task-text')).toHaveText('Afterwards')
-  await expect(card.locator('.next-task-breadcrumb')).toHaveCount(0)
+  await expect(rows.locator('.next-task-text')).toHaveText(['Afterwards'])
 
   await page.keyboard.press('ControlOrMeta+z')
-  await expect(card.locator('.next-task-text')).toHaveText('Later step')
-  await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('button', { name: 'Next', exact: true })).toHaveClass(/active/)
+  await expect(panel.locator('.next-task-row.selected .next-task-text')).toHaveText('Write body')
   await expect(page.getByRole('region', { name: 'Daily plan' })).toHaveCount(0)
+
+  // Completing a parent completes its unfinished subtasks too.
+  await panel.getByRole('checkbox', { name: 'Complete Project' }).click()
+  await expect(rows.locator('.next-task-text')).toHaveText(['Afterwards'])
 })
 
 test('List History is an obvious contextual child of Lists', async ({ page }) => {
