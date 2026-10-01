@@ -184,6 +184,7 @@ const ENTITY_COLLECTIONS = [
   'projectCheckIns',
   'uneditedPlanItems',
   'templateQuestions',
+  'templateListExpansions',
 ] as const
 type EntityCollection = (typeof ENTITY_COLLECTIONS)[number]
 type EntityUpsert = { collection: EntityCollection; key: string; position: number | null; value: unknown; patches: EntityPatch[] }
@@ -1007,6 +1008,8 @@ function createPlannerStore() {
         current.goals,
         current.goalCompletions,
         quizAnswers,
+        current.listTemplates,
+        current.templateListExpansions,
       )
 
       const freshMarkers = generatedItemMarkers(generated.items)
@@ -1570,8 +1573,20 @@ function createPlannerStore() {
       )
     },
 
-    // A null question removes it. Records for deleted rows are kept so undoing
-    // the deletion brings the question back with the row.
+    // Keep choices for removed options so undoing deletion restores them.
+    setTemplateListExpansion(optionId: Id, listTemplateId: Id, enabled: boolean) {
+      commitEntities('set_template_list_expansion', { optionId, listTemplateId, enabled }, (state) => {
+        const existing = state.templateListExpansions.find(({ id }) => id === optionId)
+        const ids = existing?.listTemplateIds ?? []
+        if (ids.includes(listTemplateId) === enabled) return state
+        const listTemplateIds = enabled ? [...ids, listTemplateId] : ids.filter((id) => id !== listTemplateId)
+        return { ...state, templateListExpansions: existing
+          ? state.templateListExpansions.map((record) => record.id === optionId ? { ...record, listTemplateIds } : record)
+          : [...state.templateListExpansions, { id: optionId, listTemplateIds }] }
+      }, { reconcileGoals: false })
+    },
+
+    // A null question removes it. Keep deleted-row records for undo.
     setTemplateItemQuestion(itemId: Id, question: string | null) {
       commitEntities(
         'set_template_item_question',
@@ -1852,7 +1867,7 @@ function createPlannerStore() {
     // ---- List templates ----
 
     addListTemplate() {
-      const template = createListTemplate()
+      const template = createListTemplate('')
       commitEntities('add_list_template', { templateId: template.id }, (state) => ({
         ...state,
         listTemplates: [...state.listTemplates, template],
@@ -3523,6 +3538,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       plans: parsed.plans ?? [],
       uneditedPlanItems: [],
       templateQuestions: [],
+      templateListExpansions: [],
       listTemplates: [],
       lists: [],
       metrics: [],
@@ -3566,6 +3582,7 @@ function normalizeState(state: AppState): AppState {
     images: state.images ?? [],
     uneditedPlanItems: state.uneditedPlanItems ?? [],
     templateQuestions: state.templateQuestions ?? [],
+    templateListExpansions: state.templateListExpansions ?? [],
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),

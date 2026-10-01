@@ -32,6 +32,9 @@ test('feature actions emit generic patches that replay in the native database', 
     store.renameListTemplate(listTemplate, 'Synthetic list')
     const listItem = store.addRootListTemplateItem(listTemplate)
     store.patchListTemplateItem(listTemplate, listItem, { text: 'Synthetic list task', html: 'Synthetic list task' })
+    store.setTemplateListExpansion('synthetic-option', listTemplate, true)
+    store.setTemplateListExpansion('synthetic-option', listTemplate, false)
+    store.setTemplateListExpansion('synthetic-option', listTemplate, true)
     const list = store.ensureListForDate(listTemplate, live.activePlanDate)
     const generatedItem = live.lists.find((value: any) => value.id === list).items[0]
     store.patchListItem(list, generatedItem.id, { done: true })
@@ -67,7 +70,7 @@ test('feature actions emit generic patches that replay in the native database', 
       expect(operation.payload.action).toEqual(expect.any(String))
     }
   }
-  for (const collection of ['notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'projects', 'projectCheckIns']) {
+  for (const collection of ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'projects', 'projectCheckIns']) {
     expect(fixture.operations.some((operation: any) => operation.payload.entityChanges.upserts.some((upsert: any) => upsert.collection === collection))).toBe(true)
   }
   mkdirSync('artifacts/entity-fixtures', { recursive: true })

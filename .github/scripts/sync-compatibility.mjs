@@ -105,6 +105,7 @@ console.log('PASS: released day replacement/checkpoint preserves an offline addi
 // executable has no schema/UI for the future collection or nested field.
 run(futureBinary, 'future', 'init', { state: state('future-device') })
 let future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 1, [
+  record('templateListExpansions', 'synthetic-option', { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] }),
   record('futureHabitCheckIns', 'f', { id: 'f', amount: 7 }),
   record('planDateAliases', 'future-day-alias', { id: 'future-day-alias', date: '2026-09-08', futureRouting: { enabled: true } }),
   record('regeneratedPlanItems', 'future-retired-item', { id: 'future-retired-item', date: '2026-09-08', parentId: null,
@@ -132,6 +133,7 @@ blind = run(blindBinary, 'blind', 'checkpoint')
 assert.deepEqual(blind.entities, beforeCompact)
 future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
 assert.deepEqual(future.entities, blind.entities)
+assert.deepEqual(future.entities.find((row) => row.collection === 'templateListExpansions').value, { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] })
 
 // Deleting unfamiliar records/fields must survive an older client's next
 // edit and checkpoint rather than being resurrected from a stale whole record.
@@ -153,6 +155,7 @@ assert(!blind.entities.some((row) => row.collection === 'uneditedPlanItems'))
 blind = run(blindBinary, 'blind', 'checkpoint')
 future = run(futureBinary, 'future', 'merge', { operations: blind.operations })
 assert.deepEqual(future.entities, blind.entities)
+assert.deepEqual(future.entities.find((row) => row.collection === 'templateListExpansions').value, { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] })
 
 // Unsupported primitives roll back the entire incoming transaction; the failed
 // operation is never acknowledged or compacted away.

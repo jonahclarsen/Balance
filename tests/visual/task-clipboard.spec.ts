@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openView } from '../helpers/navigation'
 
 test('multiple tasks round-trip through plain text with hierarchy and links', async ({ page }) => {
   await page.goto('/')
@@ -93,7 +94,7 @@ test('tasks copied from Today paste as rows in list and day templates', async ({
   )).toEqual(expected)
 
   await page.getByRole('button', { name: 'Days', exact: true }).filter({ visible: true }).click()
-  await page.getByRole('button', { name: 'New day', exact: true }).click()
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
   await page.locator('[data-template-option-text-input]').first().fill('')
   await page.evaluate((text) => navigator.clipboard.writeText(text), copied)
   await page.keyboard.press('Meta+V')
@@ -102,4 +103,43 @@ test('tasks copied from Today paste as rows in list and day templates', async ({
     (await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!))).templates.at(-1).items,
     (item) => item.options[0].text,
   )).toEqual(expected)
+})
+
+test('selected day and list template trees paste across template types with undo', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'desktop keyboard clipboard')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await openView(page, 'Days')
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  const dayInput = page.locator('[data-template-option-text-input]').first()
+  await dayInput.fill('Copied day row')
+  await dayInput.focus()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.press('Meta+C')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Copied day row')
+  await openView(page, 'Lists')
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.locator('[data-list-template-text-input]').first().fill('')
+  await page.keyboard.press('Meta+V')
+  const listInput = page.locator('[data-list-template-text-input]').first()
+  await expect(listInput).toHaveText('Copied day row')
+  await page.keyboard.press('Meta+Z')
+  await expect(listInput).toHaveText('First item')
+  await listInput.fill('')
+  await page.keyboard.press('Meta+V')
+  await expect(listInput).toHaveText('Copied day row')
+  await listInput.fill('Copied list row')
+  await listInput.focus()
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('Meta+A')
+  await page.keyboard.press('Meta+C')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('Copied list row')
+  await openView(page, 'Days')
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  await dayInput.fill('')
+  await page.keyboard.press('Meta+V')
+  await expect(dayInput).toHaveText('Copied list row')
 })

@@ -20,6 +20,7 @@ import type {
   TemplateItem,
   TemplateOption,
   TemplateQuestion,
+  TemplateListExpansion,
   TemplateQuizAnswers,
 } from './types'
 import { goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
@@ -151,6 +152,7 @@ export function createInitialState(): AppState {
     plans: [],
     uneditedPlanItems: [],
     templateQuestions: [],
+    templateListExpansions: [],
     listTemplates: [],
     lists: [],
     metrics: [],
@@ -354,9 +356,11 @@ export function generatePlanFromTemplate(
   goals: Goal[] = [],
   goalCompletions: GoalCompletion[] = [],
   quizAnswers: TemplateQuizAnswers = {},
+  listTemplates: ListTemplate[] = [],
+  listExpansions: TemplateListExpansion[] = [],
 ): DailyPlan {
   const generatedGoalIds = new Set<Id>()
-  const items = generatePlanItems(template.items, date, goals, goalCompletions, generatedGoalIds, quizAnswers)
+  const items = generatePlanItems(template.items, date, goals, goalCompletions, generatedGoalIds, quizAnswers, listTemplates, listExpansions)
   return {
     id: createId('plan'),
     date,
@@ -403,6 +407,8 @@ function generatePlanItems(
   goalCompletions: GoalCompletion[],
   generatedGoalIds: Set<Id>,
   quizAnswers: TemplateQuizAnswers,
+  listTemplates: ListTemplate[],
+  listExpansions: TemplateListExpansion[],
 ): PlanItem[] {
   return items.flatMap((item) => {
     // An answered question decides the option; an unanswered one keeps its odds.
@@ -412,6 +418,19 @@ function generatePlanItems(
     const text = option?.text.trim() ?? ''
     if (!option || (text === '' && !option.html.includes('data-balance-image=')) || text.toLowerCase() === '(skip)') {
       return []
+    }
+
+    const expansion = listExpansions.find(({ id }) => id === option.id)
+    const linkedLists = detectedTemplateLists(option.text, listTemplates)
+      .filter((list) => expansion?.listTemplateIds.includes(list.id))
+    if (linkedLists.length > 0) {
+      // Fresh planner IDs keep repeated references independent of list instances.
+      const copy = (items: PlanItem[]): PlanItem[] => items.map((entry) => ({
+        ...entry, id: createId('item'), children: copy(entry.children),
+      }))
+      const expanded = linkedLists.flatMap((list) => copy(generateListFromTemplate(list, date).items))
+      // Template children follow the expanded block once, rather than being duplicated.
+      return [...expanded, ...generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds, quizAnswers, listTemplates, listExpansions)]
     }
 
     const nGoalsMatch = N_GOALS_PATTERN.exec(text)
@@ -436,7 +455,7 @@ function generatePlanItems(
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
         timeHidden: item.timeHidden,
-        children: generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds, quizAnswers),
+        children: generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds, quizAnswers, listTemplates, listExpansions),
       },
     ]
   })
@@ -2480,6 +2499,12 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
   }
   if (cursor < text.length) segments.push({ text: text.slice(cursor), link: null })
   return segments
+}
+
+// Use the same non-overlapping matches as the underlined editor links.
+export function detectedTemplateLists(text: string, listTemplates: ListTemplate[], metrics: Metric[] = [], notes: import('./types').Note[] = []): ListTemplate[] {
+  const ids = new Set(linkifyItemText(text, listTemplates, metrics, notes).flatMap(({ link }) => link?.kind === 'list' ? [link.listTemplateId] : []))
+  return [...ids].flatMap((id) => listTemplates.filter((list) => list.id === id))
 }
 
 export function internalLinkId(link: ItemLink): string {

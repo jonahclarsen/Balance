@@ -1,13 +1,13 @@
 <script lang="ts">
   import { tick } from 'svelte'
   import AlarmClockIcon from './AlarmClockIcon.svelte'
-  import { defaultTemplateItemTimeRange, hasActiveTimeRange, linkifyItemText, type ItemLink, type ItemTimeWarning } from './planner'
+  import { defaultTemplateItemTimeRange, hasActiveTimeRange, detectedTemplateLists, linkifyItemText, type ItemLink, type ItemTimeWarning } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TimeRange from './TimeRange.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
-  import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, TemplateItem, TemplateOption, TemplateQuestion } from './types'
+  import type { Id, ListTemplate, Metric, MoveDirection, MovePlacement, Note, TemplateItem, TemplateOption, TemplateListExpansion, TemplateQuestion } from './types'
 
   type TextChangeOptions = {
     mergeHistory?: boolean
@@ -68,6 +68,9 @@
   export let onOpenLink: (link: ItemLink) => void = () => {}
   export let templateQuestions: TemplateQuestion[] = []
   export let setQuestion: (itemId: Id, question: string | null) => void = () => {}
+
+  export let listExpansions: TemplateListExpansion[] = []
+  export let setListExpansion: (optionId: Id, listTemplateId: Id, enabled: boolean) => void = () => {}
 
   let questionInput: HTMLInputElement | null = null
   $: question = templateQuestions.find(({ id }) => id === item.id)?.question
@@ -412,6 +415,17 @@
             internalLinkSegments={linkifyItemText(option.text, listTemplates, metrics, notes)}
             onInternalLinkClick={(link) => onOpenLink(link)}
           />
+          {#each detectedTemplateLists(option.text, listTemplates, metrics, notes) as list (list.id)}
+            <label class="list-expansion" title={`Place ${list.name} tasks here when generating the day`}>
+              <input
+                type="checkbox"
+                aria-label={`Expand ${list.name} into tasks`}
+                checked={listExpansions.find(({ id }) => id === option.id)?.listTemplateIds.includes(list.id) ?? false}
+                on:change={(event) => setListExpansion(option.id, list.id, event.currentTarget.checked)}
+              />
+              <span>Expand{detectedTemplateLists(option.text, listTemplates, metrics, notes).length > 1 ? ` ${list.name}` : ''}</span>
+            </label>
+          {/each}
           {#if question === undefined}
             <ProbabilitySlider
               value={option.probability}
@@ -484,6 +498,8 @@
             {notes}
             {onOpenLink}
             {templateQuestions}
+            {listExpansions}
+            {setListExpansion}
             {setQuestion}
           />
         {/each}
@@ -491,3 +507,18 @@
     {/if}
   </svelte:fragment>
 </TreeItemRow>
+
+<style>
+  .list-expansion {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .list-expansion input { margin: 0; }
+  @media (max-width: 700px) {
+    .list-expansion { grid-column: 1 / -1; }
+  }
+</style>

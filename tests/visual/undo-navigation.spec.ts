@@ -41,7 +41,7 @@ test('undo opens the sidebar page that owns the restored change', async ({ page 
 
   await expect(page.getByRole('button', { name: 'Lists', exact: true })).toHaveClass(/active/)
   await expect(page.getByRole('heading', { name: 'Lists', exact: true })).toBeVisible()
-  await expect(page.getByLabel('List name')).toHaveValue('New list')
+  await expect(page.getByLabel('List name')).toHaveValue('')
 })
 
 async function dispatchUndo(page: import('@playwright/test').Page) {
@@ -192,7 +192,7 @@ for (const surface of ['notes', 'lists', 'metrics'] as const) {
       await expect(page.getByLabel('Note title')).toBeVisible()
       await expect(page.locator('.note-document')).toBeInViewport()
     } else if (surface === 'lists') {
-      await expect(page.getByLabel('List name')).toHaveValue('New list')
+      await expect(page.getByLabel('List name')).toHaveValue('')
       await expect(page.locator('.template-panel')).toBeInViewport()
     } else {
       await expect(page.locator('.metric-quiz')).toBeInViewport()

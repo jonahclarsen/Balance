@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { planItemsClipboardText, parsePlainTaskClipboard, planItemsToListTemplateItems, planItemsToTemplateItems } from './lib/taskClipboard'
+  import { templateItemsToListTemplateItems, listTemplateItemsToTemplateItems, planItemsClipboardText, parsePlainTaskClipboard, planItemsToListTemplateItems, planItemsToTemplateItems } from './lib/taskClipboard'
   import ImageLayer from './lib/ImageLayer.svelte'
   import BackupBrowser from './lib/BackupBrowser.svelte'
   import { blobDataURL, selectedImage } from './lib/imageService'
@@ -1802,10 +1802,12 @@ return rows`
     importRaw = ''
   }
 
-  function createListTemplateAndSelect() {
+  async function createListTemplateAndSelect() {
     const id = plannerStore.addListTemplate()
     selectedListTemplateId = id
     openLists()
+    await tick()
+    document.getElementById('list-template-name')?.focus()
   }
 
   function selectDayTemplate(templateId: Id) {
@@ -4791,7 +4793,12 @@ return rows`
     const clipboard = contents ?? await readSystemClipboard()
     const surface = activeItemSurface()
     const containerId = activeItemContainerId()
-    const structured = parseTemplateItemClipboard(clipboard.structuredPayload) ?? templateClipboardFromPlanItems(clipboard, surface)
+    const source = parseTemplateItemClipboard(clipboard.structuredPayload)
+    const structured = source && surface === 'list-template' && source.kind === 'day-template'
+      ? { kind: 'list-template' as const, items: templateItemsToListTemplateItems(source.items), cut: source.cut }
+      : source && surface === 'day-template' && source.kind === 'list-template'
+        ? { kind: 'day-template' as const, items: listTemplateItemsToTemplateItems(source.items), cut: source.cut }
+        : source ?? templateClipboardFromPlanItems(clipboard, surface)
     if (!structured || structured.kind !== surface || !containerId) {
       pastePlainClipboardIntoActiveEditor(clipboard)
       return
@@ -4811,7 +4818,7 @@ return rows`
     selectionAnchorId = pastedIds.at(-1) ?? null
     selectionFocusId = pastedIds.at(-1) ?? null
     releaseTextEditingFocus()
-    if (structured.cut) writeTemplateItemsToSystemClipboard({ ...structured, cut: false })
+    if (structured.cut) writeTemplateItemsToSystemClipboard({ ...(source ?? structured), cut: false })
   }
 
   async function pasteSystemClipboard(contents?: ClipboardContents) {
@@ -6388,6 +6395,8 @@ return rows`
                 {metrics}
                 {notes}
                 onOpenLink={(link) => openLink(link, null)}
+                listExpansions={$plannerStore.templateListExpansions}
+                setListExpansion={plannerStore.setTemplateListExpansion}
                 templateQuestions={$plannerStore.templateQuestions}
                 setQuestion={plannerStore.setTemplateItemQuestion}
               />

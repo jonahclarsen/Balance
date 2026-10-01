@@ -102,3 +102,19 @@ export function planItemsToListTemplateItems(items: PlanItem[]): ListTemplateIte
     ...createListTemplateItem(), text: item.text, html: item.html, children: planItemsToListTemplateItems(item.children),
   }))
 }
+
+// List rows have one choice; day alternatives become individual list rows.
+export function templateItemsToListTemplateItems(items: TemplateItem[]): ListTemplateItem[] {
+  return items.flatMap((item) => item.options.map((option) => ({
+    ...createListTemplateItem(), text: option.text, html: option.html,
+    probability: option.probability, children: templateItemsToListTemplateItems(item.children),
+  })))
+}
+
+export function listTemplateItemsToTemplateItems(items: ListTemplateItem[]): TemplateItem[] {
+  return items.map((item) => {
+    const row = createTemplateItem()
+    Object.assign(row.options[0]!, { text: item.text, html: item.html, probability: item.probability })
+    return { ...row, children: listTemplateItemsToTemplateItems(item.children) }
+  })
+}

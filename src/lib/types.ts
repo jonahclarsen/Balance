@@ -26,6 +26,12 @@ export type TemplateQuestion = {
   question: string
 }
 
+// Per-option choices live outside relational templates for older-client compatibility.
+export type TemplateListExpansion = {
+  id: Id
+  listTemplateIds: Id[]
+}
+
 export type TemplateQuizAnswers = Record<Id, Id | null>
 
 export type PlanItem = {
@@ -315,6 +321,7 @@ export type AppState = {
   preferences: ReplicatedPreferences
   templates: DailyTemplate[]
   templateQuestions: TemplateQuestion[]
+  templateListExpansions: TemplateListExpansion[]
   plans: DailyPlan[]
   uneditedPlanItems: UneditedPlanItem[]
   listTemplates: ListTemplate[]
