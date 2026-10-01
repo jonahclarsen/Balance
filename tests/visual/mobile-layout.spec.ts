@@ -562,10 +562,8 @@ test('mobile task options open on touch press before a keyboard resize can cance
   await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toBeVisible()
   await page.screenshot({ path: 'artifacts/visual-smoke/mobile-task-menu-touch-open.png', fullPage: false })
 
-  await page.touchscreen.tap(
-    menuButtonBox.x + menuButtonBox.width / 2,
-    menuButtonBox.y + menuButtonBox.height / 2,
-  )
+  // Dismissing the editor can move the row. Re-measure the button for each tap.
+  await menuButton.tap()
   await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toHaveCount(0)
 
   await menuButton.press('Enter')
@@ -573,10 +571,7 @@ test('mobile task options open on touch press before a keyboard resize can cance
   await page.keyboard.press('Escape')
   await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toHaveCount(0)
 
-  await page.touchscreen.tap(
-    menuButtonBox.x + menuButtonBox.width / 2,
-    menuButtonBox.y + menuButtonBox.height / 2,
-  )
+  await menuButton.tap()
   await expect(page.getByRole('menu', { name: `Options for ${taskText}` })).toBeVisible()
   const headerBox = await page.locator('.mobile-app-header').boundingBox()
   if (!headerBox) throw new Error('Missing mobile app header geometry')

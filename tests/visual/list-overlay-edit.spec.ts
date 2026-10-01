@@ -1,3 +1,4 @@
+import { generateDay, openView } from '../helpers/navigation'
 import { expect, test } from '@playwright/test'
 
 // Seed a list template "Groceries" (one item) plus a plan whose task links to it,
@@ -7,7 +8,7 @@ async function openGroceriesOverlay(page: import('@playwright/test').Page) {
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await expect(page.getByRole('heading', { name: 'Lists' })).toBeVisible()
   await page.getByLabel('List name').fill('Groceries')
@@ -16,8 +17,8 @@ async function openGroceriesOverlay(page: import('@playwright/test').Page) {
   await expect(listItems.first()).toBeVisible()
   await listItems.first().fill('Milk')
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const firstItem = page.locator('[data-plan-text-input]').first()
   await firstItem.fill('Groceries')
   await firstItem.blur()
@@ -34,7 +35,7 @@ async function openLongGroceriesOverlay(page: import('@playwright/test').Page) {
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
 
@@ -45,8 +46,8 @@ async function openLongGroceriesOverlay(page: import('@playwright/test').Page) {
     await listItems.nth(index - 1).fill(`Item ${String(index).padStart(2, '0')}`)
   }
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const firstItem = page.locator('[data-plan-text-input]').first()
   await firstItem.fill('Groceries')
   await firstItem.blur()
@@ -62,7 +63,7 @@ async function openTwoItemGroceriesOverlay(page: import('@playwright/test').Page
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
 
@@ -71,8 +72,8 @@ async function openTwoItemGroceriesOverlay(page: import('@playwright/test').Page
   await page.getByRole('button', { name: '+ Add list item' }).click()
   await listItems.nth(1).fill('Eggs')
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const firstItem = page.locator('[data-plan-text-input]').first()
   await firstItem.fill('Groceries')
   await firstItem.blur()
@@ -90,7 +91,7 @@ async function openThreeItemGroceriesOverlay(page: import('@playwright/test').Pa
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
 
@@ -100,8 +101,8 @@ async function openThreeItemGroceriesOverlay(page: import('@playwright/test').Pa
     await listItems.nth(index).fill(item)
   }
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const firstItem = page.locator('[data-plan-text-input]').first()
   await firstItem.fill('Groceries')
   await firstItem.blur()
@@ -117,13 +118,13 @@ test('Alt+F opens a task linked list from either its caret or item selection', a
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
   await page.locator('[data-list-template-text-input]').first().fill('Milk')
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const taskInput = page.locator('[data-plan-text-input]').first()
   await taskInput.fill('Groceries')
 
@@ -133,7 +134,8 @@ test('Alt+F opens a task linked list from either its caret or item selection', a
   await dialog.getByRole('button', { name: 'Close' }).click()
 
   const taskRow = page.getByRole('listitem', { name: 'Plan item: Groceries' })
-  await taskRow.getByRole('button', { name: 'Select item' }).click()
+  await taskRow.locator('[data-plan-text-input]').focus()
+  await page.keyboard.press('Meta+Shift+A')
   await page.keyboard.press('Alt+f')
   await expect(dialog).toBeVisible()
 
@@ -149,13 +151,13 @@ test('Alt+F and a click open the Next task linked list', async ({ page }, testIn
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
   await page.locator('[data-list-template-text-input]').first().fill('Milk')
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const taskInput = page.locator('[data-plan-text-input]').first()
   await taskInput.fill('Groceries')
   await taskInput.blur()
@@ -209,8 +211,8 @@ for (const url of ['https://example.com/docs', 'file:///tmp/Balance%20test.pdf',
     await page.evaluate(() => localStorage.clear())
     await page.reload()
 
-    await page.getByRole('button', { name: 'Today', exact: true }).click()
-    await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+    await openView(page, 'Today')
+    await generateDay(page)
     const taskInput = page.locator('[data-plan-text-input]').first()
     await taskInput.fill('Visit example')
     await pasteLinkOverText(taskInput, url, 6, 13)
@@ -255,7 +257,7 @@ test('Alt+F opens only the first URL in the selected list modal task', async ({ 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
   const listItem = page.locator('[data-list-template-text-input]').first()
@@ -265,8 +267,8 @@ test('Alt+F opens only the first URL in the selected list modal task', async ({ 
   await page.getByRole('button', { name: '+ Add list item' }).click()
   await page.locator('[data-list-template-text-input]').nth(1).fill('No link')
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const taskInput = page.locator('[data-plan-text-input]').first()
   await taskInput.fill('Groceries')
   await taskInput.blur()
@@ -306,7 +308,7 @@ for (const destination of [
     await page.goto('/')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
-    await page.getByRole('button', { name: 'Lists', exact: true }).click()
+    await openView(page, 'Lists')
     await page.getByRole('button', { name: '+ New list' }).click()
     await page.getByLabel('List name').fill('Navigation')
     const listItem = page.locator('[data-list-template-text-input]').first()
@@ -315,8 +317,8 @@ for (const destination of [
       await pasteLinkOverText(listItem, destination.text, 0, destination.label.length)
       await expect(listItem.getByRole('link', { name: destination.label })).toHaveAttribute('href', destination.text)
     }
-    await page.getByRole('button', { name: 'Today', exact: true }).click()
-    await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+    await openView(page, 'Today')
+    await generateDay(page)
     const taskInput = page.locator('[data-plan-text-input]').first()
     await taskInput.fill('Navigation')
     await taskInput.blur()
@@ -334,19 +336,19 @@ test('Alt+F opens the metric linked by the selected list item', async ({ page })
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
+  await openView(page, 'Quizzes')
   await page.getByRole('button', { name: '+ New quiz' }).first().click()
   await page.getByLabel('Quiz name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Score')
   await page.getByRole('group', { name: 'Question type' }).getByRole('button', { name: 'Yes / no' }).click()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
   await page.locator('[data-list-template-text-input]').first().fill('Record Mood')
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const taskInput = page.locator('[data-plan-text-input]').first()
   await taskInput.fill('Groceries')
   await taskInput.blur()
@@ -373,13 +375,13 @@ test('arrowing onto a metric-linked list item opens its metric', async ({ page }
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
+  await openView(page, 'Quizzes')
   await page.getByRole('button', { name: '+ New quiz' }).first().click()
   await page.getByLabel('Quiz name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Score')
   await page.getByRole('group', { name: 'Question type' }).getByRole('button', { name: 'Yes / no' }).click()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
   const listItems = page.locator('[data-list-template-text-input]')
@@ -387,8 +389,8 @@ test('arrowing onto a metric-linked list item opens its metric', async ({ page }
   await page.getByRole('button', { name: '+ Add list item' }).click()
   await listItems.nth(1).fill('Record Mood')
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const taskInput = page.locator('[data-plan-text-input]').first()
   await taskInput.fill('Groceries')
   await taskInput.blur()
@@ -415,7 +417,7 @@ test('B goes back and S skips on yes-no metric questions', async ({ page }) => {
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
+  await openView(page, 'Quizzes')
   await page.getByRole('button', { name: '+ New quiz' }).first().click()
   await page.getByLabel('Quiz name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Morning')
@@ -424,8 +426,8 @@ test('B goes back and S skips on yes-no metric questions', async ({ page }) => {
   await page.getByLabel('Question prompt').nth(1).fill('Evening')
   await page.getByRole('group', { name: 'Question type' }).nth(1).getByRole('button', { name: 'Yes / no' }).click()
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const firstItem = page.locator('[data-plan-text-input]').first()
   await firstItem.fill('Record Mood')
   await firstItem.blur()
@@ -536,16 +538,7 @@ async function pasteLinkOverText(
 }
 
 async function openPrimaryView(page: import('@playwright/test').Page, name: 'Today' | 'Lists' | 'Notes') {
-  const mobileMenu = page.getByRole('button', { name: 'Open navigation' })
-  if (await mobileMenu.isVisible()) {
-    await mobileMenu.click()
-    await page.getByRole('complementary', { name: 'Primary navigation drawer' })
-      .getByRole('button', { name, exact: true })
-      .click()
-    return
-  }
-
-  await page.getByRole('button', { name, exact: true }).click()
+  await openView(page, name)
 }
 
 async function generateToday(page: import('@playwright/test').Page) {
@@ -747,7 +740,7 @@ test('list overlay item shows an edit pencil that jumps to the template and reop
   await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute('data-list-template-text-input-id') ?? null)).not.toBeNull()
   await expect(page.locator('[data-list-template-text-input]').first()).toContainText('Milk')
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await openView(page, 'Today')
   await expect(page.getByRole('dialog', { name: 'Groceries' })).toBeVisible()
 })
 
@@ -769,10 +762,10 @@ test('navigating to another page hides the list overlay until returning', async 
   const dialog = await openGroceriesOverlay(page)
 
   // Clicking any other page (Lists) hides the toast so it never floats over unrelated content.
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.keyboard.press('Alt+l')
   await expect(dialog).toBeHidden()
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.keyboard.press('Alt+t')
   await expect(page.getByRole('dialog', { name: 'Groceries' })).toBeVisible()
 })
 
@@ -788,10 +781,10 @@ test('returning to Today restores the list overlay scroll position', async ({ pa
   await page.waitForTimeout(50)
   const scrollTopBefore = await dialog.locator('.overlay-body').evaluate((element) => element.scrollTop)
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await page.keyboard.press('Alt+l')
   await expect(dialog).toBeHidden()
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
+  await page.keyboard.press('Alt+t')
   const reopenedDialog = page.getByRole('dialog', { name: 'Groceries' })
   await expect(reopenedDialog).toBeVisible()
   await expect
@@ -896,7 +889,7 @@ test('list runs are timed against the ideal time set on the template', async ({ 
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Groceries')
   await page.getByRole('spinbutton', { name: 'Ideal time' }).fill('1')
@@ -906,8 +899,8 @@ test('list runs are timed against the ideal time set on the template', async ({ 
   await page.getByRole('button', { name: '+ Add list item' }).click()
   await listItems.nth(1).fill('Eggs')
 
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const firstItem = page.locator('[data-plan-text-input]').first()
   await firstItem.fill('Groceries')
   await firstItem.blur()
@@ -930,7 +923,7 @@ test('list runs are timed against the ideal time set on the template', async ({ 
   await page.clock.fastForward(30_000)
   await dialog.getByRole('listitem', { name: 'Plan item: Eggs' }).getByRole('checkbox').click()
   await expect(dialog).toHaveCount(0)
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: 'View List History →' }).click()
   await expect(page.getByRole('timer')).toContainText(/20\d%/)
   await page.clock.fastForward(60_000)

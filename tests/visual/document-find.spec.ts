@@ -115,6 +115,10 @@ test('document find survives rapid keyboard template switches followed by deleti
     await page.keyboard.press('Alt+w')
   }
   await expect(page.getByLabel('Template name', { exact: true })).toHaveValue('Alpha')
+  // A template switch refreshes find after layout. Wait for that refresh before
+  // pressing Enter, otherwise it can reset the newly selected second match.
+  await expect(page.locator('.find-status')).toHaveText('1/2 matches')
+  await expectHighlight(page, 'alpha-0')
   const input = page.getByLabel('Find text', { exact: true })
   await input.press('Enter')
   await expectHighlight(page, 'alpha-1')

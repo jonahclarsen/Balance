@@ -10,6 +10,7 @@ test('Android recovery-key confirmation stays usable in a short viewport and sub
       __confirmedRecoveryKeys: string[]
       __recoveryClipboardWrites: Array<Record<string, unknown> | undefined>
       __TAURI_INTERNALS__: {
+        metadata: { currentWindow: { label: string }; currentWebview: { label: string } }
         invoke: (command: string, args?: Record<string, unknown>) => Promise<unknown>
         transformCallback: () => number
       }
@@ -22,12 +23,14 @@ test('Android recovery-key confirmation stays usable in a short viewport and sub
     const syntheticRecoveryKey = 'TEST-ONLY-RECO-VERY-KEY0-0000-0000-0000-0000-0000-0000-0000'
     let confirmed = false
 
+    Object.defineProperty(navigator, 'platform', { value: 'Linux armv8l', configurable: true })
     Object.defineProperty(navigator, 'userAgent', { value: 'Balance Android CI', configurable: true })
     runtime.isTauri = true
     runtime.__confirmedRecoveryKeys = []
     runtime.__recoveryClipboardWrites = []
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       transformCallback: () => 1,
       invoke: async (command, args) => {
         switch (command) {

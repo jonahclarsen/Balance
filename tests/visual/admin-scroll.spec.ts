@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { openView } from '../helpers/navigation'
 
 test.beforeEach(async ({ page }) => {
   await page.goto('/')
@@ -17,7 +18,8 @@ test.beforeEach(async ({ page }) => {
   await page.reload()
 })
 
-test('Escape leaves task editing; held W/S accelerates linearly and stops immediately', async ({ page }) => {
+test('Escape leaves task editing; held W/S accelerates linearly and stops immediately', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'W/S scrolling is a desktop keyboard feature')
   const editor = page.locator('[data-plan-text-input]').first()
   await editor.focus()
   await page.keyboard.press('Escape')
@@ -66,10 +68,10 @@ test('Escape leaves task editing; held W/S accelerates linearly and stops immedi
   await page.keyboard.up('s')
 })
 
-test('admin settings show defaults, persist scroll tuning and reset it; studio moved out of Settings', async ({ page }) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click()
+test('admin settings show defaults, persist scroll tuning and reset it; studio moved out of Settings', async ({ page }, testInfo) => {
+  await openView(page, 'Settings')
   await expect(page.getByLabel('Iridescent background controls')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Admin Settings', exact: true }).click()
+  await openView(page, 'Admin Settings')
   await expect(page.getByText('Default: 950 px/s.', { exact: false })).toBeVisible()
   const speed = page.getByLabel('Scroll speed (px/s)')
   const acceleration = page.getByLabel('Acceleration duration (ms)')
@@ -84,23 +86,25 @@ test('admin settings show defaults, persist scroll tuning and reset it; studio m
   await increase.fill('75')
   await increase.press('Tab')
   await page.reload()
-  await page.getByRole('button', { name: 'Admin Settings', exact: true }).click()
+  await openView(page, 'Admin Settings')
   await expect(speed).toHaveValue('1200')
   await expect(acceleration).toHaveValue('1600')
   await expect(increase).toHaveValue('75')
   await expect(page.getByLabel('Iridescent background controls')).toBeVisible()
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.clock.install()
-  await page.clock.pauseAt(new Date())
-  const workspace = page.locator('.workspace')
-  const initial = await workspace.evaluate(el => el.scrollTop)
-  await page.keyboard.down('s')
-  await page.clock.runFor(400)
-  await page.keyboard.up('s')
-  const customizedDistance = await workspace.evaluate(el => el.scrollTop) - initial
-  expect(customizedDistance).toBeGreaterThan(515)
-  expect(customizedDistance).toBeLessThan(535)
-  await page.getByRole('button', { name: 'Admin Settings', exact: true }).click()
+  if (testInfo.project.name !== 'mobile') {
+    await openView(page, 'Today')
+    await page.clock.install()
+    await page.clock.pauseAt(new Date())
+    const workspace = page.locator('.workspace')
+    const initial = await workspace.evaluate(el => el.scrollTop)
+    await page.keyboard.down('s')
+    await page.clock.runFor(400)
+    await page.keyboard.up('s')
+    const customizedDistance = await workspace.evaluate(el => el.scrollTop) - initial
+    expect(customizedDistance).toBeGreaterThan(515)
+    expect(customizedDistance).toBeLessThan(535)
+    await openView(page, 'Admin Settings')
+  }
   await page.getByRole('button', { name: 'Reset scroll speed' }).click()
   await page.getByRole('button', { name: 'Reset acceleration duration' }).click()
   await page.getByRole('button', { name: 'Reset speed increase' }).click()

@@ -5209,7 +5209,7 @@ body.mobile-checkbox-dragging {
 
   .workspace.list-template-workspace {
     overflow-y: visible;
-    --list-template-rail-top: 0;
+    --list-template-rail-top: var(--mobile-header-height, 0px);
   }
 
   .list-template-rail {

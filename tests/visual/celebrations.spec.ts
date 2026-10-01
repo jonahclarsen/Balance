@@ -1,5 +1,6 @@
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 import { COMPLETION_CELEBRATIONS } from '../../src/lib/celebrations'
+import { primaryNavigation } from '../helpers/navigation'
 
 function addDays(date: string, days: number): string {
   const [year, month, day] = date.split('-').map(Number)
@@ -22,7 +23,7 @@ async function openSettings(page: Page, testInfo: TestInfo) {
   if (testInfo.project.name === 'mobile') {
     await page.getByRole('button', { name: 'Open navigation' }).click()
   }
-  await page.getByRole('complementary').getByRole('button', { name: 'Settings' }).click()
+  await primaryNavigation(page).getByRole('button', { name: 'Settings', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible()
 }
 
@@ -50,8 +51,6 @@ test('Settings hides the preview gallery behind a disclosure with no explanatory
   await expect(section.locator('p')).toHaveCount(0)
   await expect(toggle).toHaveText('Day completion celebrations')
   await expect(toggle.locator('.celebration-title-chevron')).toHaveCount(1)
-  await expect(toggle).toHaveCSS('border-top-width', '0px')
-  await expect(toggle).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)')
   await expect(toggle).toHaveAttribute('aria-expanded', 'false')
   await expect(page.getByRole('group', { name: 'Celebration previews' })).toHaveCount(0)
 

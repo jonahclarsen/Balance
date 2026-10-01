@@ -1,4 +1,12 @@
 import { expect, test } from '@playwright/test'
+import { generateDay, openView } from '../helpers/navigation'
+
+async function archivedListItems(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    return state.listTemplates[0].archivedItems.map((entry: { item: { text: string } }) => entry.item.text)
+  })
+}
 
 test('arrow navigation lands on list-linked plan items', async ({ page }) => {
   await page.goto('/')
@@ -98,23 +106,11 @@ async function activePlanTextTarget(page: import('@playwright/test').Page) {
 }
 
 async function openMetrics(page: import('@playwright/test').Page) {
-  const mobileMenu = page.getByRole('button', { name: 'Open navigation' })
-  if (await mobileMenu.isVisible()) {
-    await mobileMenu.click()
-    await page.getByRole('complementary', { name: 'Primary navigation drawer' }).getByRole('button', { name: 'Quizzes', exact: true }).click()
-  } else {
-    await page.getByRole('button', { name: 'Quizzes', exact: true }).click()
-  }
+  await openView(page, 'Quizzes')
 }
 
 async function openLists(page: import('@playwright/test').Page) {
-  const mobileMenu = page.getByRole('button', { name: 'Open navigation' })
-  if (await mobileMenu.isVisible()) {
-    await mobileMenu.click()
-    await page.getByRole('complementary', { name: 'Primary navigation drawer' }).getByRole('button', { name: 'Lists', exact: true }).click()
-  } else {
-    await page.getByRole('button', { name: 'Lists', exact: true }).click()
-  }
+  await openView(page, 'Lists')
 }
 
 test('list template word cap blocks typing past the max', async ({ page }) => {
@@ -178,7 +174,7 @@ test('clearing a list item archives it on blur, while replacement typing stays a
   // non-empty snapshot, so one Undo can restore the whole operation.
   await page.getByLabel('List name').click()
   await expect(page.locator('[data-list-template-text-input]')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Archive (1)' }).click()
+  await page.getByRole('button', { name: 'View Archive', exact: true }).click()
 
   const archivedRow = page.locator('.list-item-archive-row', { hasText: 'Milk' })
   await expect(archivedRow).toBeVisible()
@@ -190,13 +186,15 @@ test('clearing a list item archives it on blur, while replacement typing stays a
 
   await page.keyboard.press('Meta+Z')
   await expect(page.locator('[data-list-template-text-input]').first()).toHaveText('Milk')
-  await expect(page.getByRole('button', { name: 'Archive (0)' })).toBeVisible()
+  await expect.poll(() => archivedListItems(page)).toEqual([])
   await page.keyboard.press('Meta+Shift+Z')
   await expect(page.locator('[data-list-template-text-input]')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Archive (1)' })).toBeVisible()
+  await expect.poll(() => archivedListItems(page)).toEqual(['Milk'])
 
+  // Undo/redo reveals the edited list and closes its auxiliary archive panel.
+  await page.getByRole('button', { name: 'View Archive', exact: true }).click()
   await archivedRow.getByRole('button', { name: 'Restore' }).click()
-  await expect(page.getByRole('button', { name: 'Archive (0)' })).toBeVisible()
+  await expect.poll(() => archivedListItems(page)).toEqual([])
   item = page.locator('[data-list-template-text-input]').first()
   await expect(item).toHaveText('Milk')
 
@@ -207,7 +205,7 @@ test('clearing a list item archives it on blur, while replacement typing stays a
   await item.type('Oat milk')
   await page.getByLabel('List name').click()
   await expect(page.locator('[data-list-template-text-input]').first()).toHaveText('Oat milk')
-  await expect(page.getByRole('button', { name: 'Archive (0)' })).toBeVisible()
+  await expect.poll(() => archivedListItems(page)).toEqual([])
 })
 
 test('command backspace archives a list item immediately', async ({ page }, testInfo) => {
@@ -216,14 +214,14 @@ test('command backspace archives a list item immediately', async ({ page }, test
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   const item = page.locator('[data-list-template-text-input]').first()
   await item.fill('Remove me')
   await item.press('Meta+Backspace')
 
   await expect(page.locator('[data-list-template-text-input]')).toHaveCount(0)
-  await expect(page.getByRole('button', { name: 'Archive (1)' })).toBeVisible()
+  await expect.poll(() => archivedListItems(page)).toEqual(['Remove me'])
 })
 
 test('quiz links in a list template open the quiz editor instead of the quiz', async ({ page }) => {
@@ -249,7 +247,7 @@ test('quiz links in a list template open the quiz editor instead of the quiz', a
   await expect(page.getByLabel('Quiz name')).toHaveValue('Mood')
 })
 
-test('metric quiz records answers and bulk import backfills', async ({ page }) => {
+test('a numeric quiz records an answer from its task link and shows it on the graph', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -258,10 +256,11 @@ test('metric quiz records answers and bulk import backfills', async ({ page }) =
   await page.getByRole('button', { name: '+ New quiz' }).first().click()
   await page.getByLabel('Quiz name').fill('Mood')
   await page.getByLabel('Question prompt').first().fill('Score')
+  await page.getByRole('group', { name: 'Question type' }).first().getByRole('button', { name: 'Number', exact: true }).click()
 
   // Link from a daily task.
-  await page.getByRole('button', { name: 'Today', exact: true }).click()
-  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+  await openView(page, 'Today')
+  await generateDay(page)
   const firstItem = page.locator('[data-plan-text-input]').first()
   const secondItemId = await page.locator('[data-plan-text-input]').nth(1).getAttribute('data-plan-text-input-id')
   await firstItem.fill('log Mood now')
@@ -275,7 +274,7 @@ test('metric quiz records answers and bulk import backfills', async ({ page }) =
   await moodLink.click()
   const dialog = page.getByRole('dialog', { name: 'Mood' })
   await expect(dialog).toBeVisible()
-  await dialog.getByPlaceholder('Type your answer, press Enter').fill('7')
+  await dialog.getByRole('spinbutton').fill('7')
   await page.keyboard.press('Enter')
   await expect(dialog).toBeHidden()
   await expect.poll(() => activePlanTextTarget(page)).toEqual({
@@ -319,6 +318,7 @@ test('metric graph uses elapsed dates for point spacing and labels its x-axis', 
   await page.getByRole('button', { name: '+ New quiz' }).first().click()
   await page.getByLabel('Quiz name').fill('Irregular history')
   await page.getByLabel('Question prompt').first().fill('Score')
+  await page.getByRole('group', { name: 'Question type' }).first().getByRole('button', { name: 'Number', exact: true }).click()
 
   await page.evaluate(() => {
     const key = 'balance.appState.v1'
@@ -341,8 +341,8 @@ test('metric graph uses elapsed dates for point spacing and labels its x-axis', 
 
   const pointXs = await graph.locator('circle.dot').evaluateAll((dots) => dots.map((dot) => Number(dot.getAttribute('cx'))))
   expect(pointXs).toHaveLength(3)
-  expect(pointXs[1] - pointXs[0]).toBeLessThan(10)
-  expect(pointXs[2] - pointXs[1]).toBeGreaterThan(400)
+  expect(pointXs[1] - pointXs[0]).toBeGreaterThan(0)
+  expect(pointXs[2] - pointXs[1]).toBeGreaterThan((pointXs[1] - pointXs[0]) * 20)
 })
 
 test('finishing a list survey opens the next row survey', async ({ page }) => {

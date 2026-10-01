@@ -1,0 +1,55 @@
+name: Frontend behavior tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - 'scripts/relay-server*'
+      - 'relay-worker/src/**'
+      - 'playwright*.config.ts'
+      - 'vite.config.ts'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/frontend-tests.yml'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: frontend-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  behavior:
+    runs-on: macos-15
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium webkit
+      - run: pnpm check
+      - run: pnpm test:unit
+      - run: pnpm test:relay
+      - name: Exercise the full desktop, mobile, and WebKit browser suite
+        run: pnpm test:visual --workers=2 --shard=${{ matrix.shard }}/3
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: frontend-failure-traces-${{ matrix.shard }}
+          path: artifacts/playwright
+          retention-days: 7

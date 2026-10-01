@@ -66,6 +66,19 @@ If there's a part of the code that's no longer used, there's no need to hold
 onto regression tests or migration code for it forever, that just bloats the
 codebase for no reason.
 
+## Keep browser tests focused on useful behavior
+
+Preserve coverage for persistence, undo, sync, keyboard editing, recovery errors,
+and controls staying usable. Avoid pinning theme RGB values, font choices,
+padding, or exact layout dimensions unless they protect a specific usability
+regression. Remove tests for retired UI instead of restoring the UI to satisfy
+them. Use `tests/helpers/navigation.ts` for primary navigation and generation
+on desktop and mobile. Date fixtures must respect Balance's 5 a.m. day boundary;
+time-editing fixtures should fix the clock rather than assume it is morning.
+The baseline checks are `pnpm check`, `pnpm test:unit`, `pnpm test:relay`, and
+`pnpm test:visual`. The Frontend behavior tests workflow runs the full browser
+suite, including desktop, mobile, and WebKit, rather than selected files only.
+
 ## Preserve Goal Rhythm rendering containment
 
 Do not animate inherited CSS variables or backgrounds on `:root` or `body`.

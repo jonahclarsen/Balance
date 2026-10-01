@@ -1,3 +1,4 @@
+import { openView } from '../helpers/navigation'
 import { expect, test, type Locator, type Page } from '@playwright/test'
 
 async function placeCaretAtEnd(editor: Locator) {
@@ -14,15 +15,7 @@ async function placeCaretAtEnd(editor: Locator) {
 }
 
 async function openPrimaryView(page: Page, name: 'Notes' | 'Days') {
-  const mobileMenu = page.locator('.mobile-app-header').getByRole('button', { name: 'Open navigation' })
-  if (await mobileMenu.isVisible()) {
-    await mobileMenu.click()
-    await page.getByRole('complementary', { name: 'Primary navigation drawer' })
-      .getByRole('button', { name, exact: true })
-      .click()
-    return
-  }
-  await page.getByRole('button', { name, exact: true }).click()
+  await openView(page, name)
 }
 
 async function openNotesView(page: Page) {
@@ -191,7 +184,7 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   const notesPageActions = page.locator('.notes-page-actions')
   const notesPageHeader = page.locator('.notes-page-header')
   const notesSidebar = page.locator('.notes-sidebar')
@@ -421,7 +414,7 @@ test('note style menu stays visible inside the note scroller and viewport', asyn
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const workspace = page.locator('.workspace')
@@ -459,7 +452,7 @@ test('shift arrow keys extend note selection to the matching position on an adja
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const firstLine = page.locator('[data-note-text-input]').first()
@@ -536,7 +529,7 @@ test('arrow keys keep the visual caret column when moving between numbered note 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Numbered list' }).click()
 
@@ -565,7 +558,7 @@ test('arrow keys enter the boundary line of a wrapped numbered note item', async
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Numbered list' }).click()
   await page.locator('.note-blocks').evaluate((element) => (element.style.width = '520px'))
@@ -598,7 +591,7 @@ test('shift arrow keys select adjacent bullet items without relying on a cross-e
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Bulleted list' }).click()
 
@@ -629,7 +622,7 @@ test('typing the next number resumes a numbered list after outdenting a bulleted
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Numbered list' }).click()
 
@@ -662,7 +655,7 @@ test('a bullet indented below a heading keeps ordinary body typography', async (
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const editors = page.locator('[data-note-text-input]')
@@ -713,7 +706,7 @@ test('notes select all blocks and copy plain text plus semantic HTML lists', asy
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
@@ -752,7 +745,7 @@ test('dragging can extend a note selection across list items', async ({ page }, 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Bulleted list' }).click()
 
@@ -786,7 +779,7 @@ test('shift-clicking extends a note selection across list items', async ({ page 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByRole('toolbar', { name: 'Note formatting' }).getByRole('button', { name: 'Bulleted list' }).click()
 
@@ -1144,7 +1137,7 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   await page.evaluate(() => localStorage.clear())
   await page.reload()
 
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByLabel('Note title').fill('Project Brain')
 
@@ -1198,7 +1191,7 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
     return `balance://note/${state.notes[0].id}`
   })
 
-  await page.getByRole('button', { name: 'Lists', exact: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   await page.getByLabel('List name').fill('Reading')
   const templateText = page.locator('[data-list-template-text-input]').first()
@@ -1229,7 +1222,7 @@ test('notes support a seamless editor, natural formatting, persistence, search, 
   await expect(page.locator('[data-note-text-input]').nth(1)).toContainText('Formatted ideas')
 
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await expect(page.getByLabel('Note title')).toHaveValue('Project Brain')
   await expect(page.locator('[data-note-text-input]').nth(1)).toContainText('Formatted ideas')
   await expect(page.locator('.note-done')).toContainText('Ship the notes feature')
@@ -1249,7 +1242,7 @@ test('note inline formatting shortcuts and toolbar buttons are true toggles', as
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const editor = page.locator('[data-note-text-input]').first()
@@ -1293,7 +1286,7 @@ test('note formatting toolbar stays visible in a wide centered workspace while s
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const editor = page.locator('[data-note-text-input]').first()
@@ -1383,7 +1376,7 @@ test('note formatting toolbar uses a complete static pink stroke on Iridescent',
     }))
   })
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
@@ -1468,7 +1461,7 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const editor = page.locator('[data-note-text-input]').first()
@@ -1614,7 +1607,7 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   await spacingSlider.fill('40')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:noteScrollSpacePercent'))).toBe('40')
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await expect(page.getByLabel('Bottom writing space')).toHaveValue('40')
 
   await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
@@ -1689,7 +1682,7 @@ test('an empty note always has a place to start typing', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const onlyLine = page.locator('[data-note-text-input]')
@@ -1707,7 +1700,7 @@ test('an empty note always has a place to start typing', async ({ page }) => {
     localStorage.setItem(key, JSON.stringify(state))
   })
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
 
   const emptySurface = page.getByRole('button', { name: 'Start writing…' })
   await expect(emptySurface).toBeVisible()
@@ -1722,7 +1715,7 @@ test('note text restores the caret after tabbing away mid-edit', async ({ page }
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.getByRole('button', { name: 'Notes', exact: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
 
   const noteText = page.locator('[data-note-text-input]').first()

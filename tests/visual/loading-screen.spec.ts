@@ -14,6 +14,7 @@ test('the Android loading card is horizontally centered', async ({ page }, testI
     type TestRuntime = typeof globalThis & {
       isTauri: boolean
       __TAURI_INTERNALS__: {
+        metadata: { currentWindow: { label: string }; currentWebview: { label: string } }
         invoke: (command: string) => Promise<unknown>
         transformCallback: () => number
       }
@@ -23,10 +24,12 @@ test('the Android loading card is horizontally centered', async ({ page }, testI
     }
     const runtime = globalThis as TestRuntime
 
+    Object.defineProperty(navigator, 'platform', { value: 'Linux armv8l', configurable: true })
     Object.defineProperty(navigator, 'userAgent', { value: 'Balance Android visual test', configurable: true })
     runtime.isTauri = true
     runtime.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => undefined }
     runtime.__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
       transformCallback: () => 1,
       invoke: async (command: string) => {
         if (command === 'read_app_state') return new Promise(() => undefined)
@@ -48,8 +51,7 @@ test('the Android loading card is horizontally centered', async ({ page }, testI
   await expect(loadingScreen).toBeVisible()
   await expect(loadingScreen.getByText('Loading…')).toBeVisible()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'graphite')
-  await expect(page.locator('.database-maintenance-spinner')).toHaveCSS('border-top-color', 'rgb(58, 58, 56)')
-  await expect(page.locator('.database-loading-progress > span')).toHaveCSS('background-color', 'rgb(58, 58, 56)')
+  await expect(loadingScreen.getByRole('progressbar', { name: 'Database loading progress' })).toBeVisible()
 
   const geometry = await loadingScreen.evaluate((backdrop) => {
     const card = backdrop.querySelector<HTMLElement>('.database-loading-card')

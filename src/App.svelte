@@ -3563,7 +3563,9 @@ return rows`
       return
     }
 
-    if (event.key === 'Escape' && (selectedItemIds.length > 0 || (view === 'today' && activeFocusedItemId()))) {
+    // Let the task menu consume Escape even when its trigger is focused in a task row.
+    if (event.key === 'Escape' && !document.querySelector('.mobile-task-menu') &&
+      (selectedItemIds.length > 0 || (view === 'today' && activeFocusedItemId()))) {
       event.preventDefault()
       event.stopPropagation()
       releaseTextEditingFocus()
