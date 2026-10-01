@@ -169,6 +169,17 @@ export type MetricEntry = {
 // Presence alone marks a generated task as untouched; delete the record on edit.
 export type UneditedPlanItem = { id: Id }
 
+// A snapshot of generated text and its absolute notification time. Generic
+// entities preserve this metadata through older clients, undo and checkpoints.
+export type TaskNotification = {
+  id: Id
+  sourceKind: 'plan' | 'list'
+  sourceId: Id
+  itemId: Id
+  at: number
+  text: string
+}
+
 export type DailyPlan = {
   id: Id
   date: string
@@ -322,6 +333,7 @@ export type AppState = {
   templates: DailyTemplate[]
   templateQuestions: TemplateQuestion[]
   templateListExpansions: TemplateListExpansion[]
+  taskNotifications: TaskNotification[]
   plans: DailyPlan[]
   uneditedPlanItems: UneditedPlanItem[]
   listTemplates: ListTemplate[]

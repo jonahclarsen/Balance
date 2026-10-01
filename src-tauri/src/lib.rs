@@ -122,6 +122,7 @@ mod macos_haptic_drag {
 }
 mod sync;
 mod connectivity;
+mod task_notifications;
 #[cfg(any(test, target_os = "android", target_os = "macos"))]
 mod widget;
 
@@ -159,11 +160,12 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 13] = [
+const ENTITY_COLLECTIONS: [&str; 14] = [
     "images",
     "uneditedPlanItems",
     "templateQuestions",
     "templateListExpansions",
+    "taskNotifications",
     "goals",
     "goalCompletions",
     "listTemplates",
@@ -1448,6 +1450,9 @@ async fn read_app_state(app: tauri::AppHandle) -> Result<Option<String>, String>
                 .transpose()
         });
         if result.is_ok() {
+            if let Err(error) = task_notifications::publish(&startup.connection) {
+                log::warn!("Could not refresh task notifications: {error}");
+            }
             #[cfg(target_os = "macos")]
             if let Err(error) = macos_widget::publish_snapshot(&startup.connection) {
                 eprintln!("Could not refresh the macOS widget: {error}");
@@ -1465,6 +1470,9 @@ async fn initialize_app_state(app: tauri::AppHandle, state_json: String) -> Resu
         with_database(&app, |connection| {
             let state = parse_json(&state_json)?;
             replace_app_state(connection, &state)?;
+            if let Err(error) = task_notifications::publish(connection) {
+                log::warn!("Could not refresh task notifications: {error}");
+            }
             #[cfg(target_os = "macos")]
             if let Err(error) = macos_widget::publish_snapshot(connection) {
                 eprintln!("Could not refresh the macOS widget: {error}");
@@ -2462,6 +2470,9 @@ fn finish_meaningful_database_write(
     database_path: &Path,
     recovery_key: &str,
 ) {
+    if let Err(error) = task_notifications::publish(connection) {
+        log::warn!("Could not update task notifications: {error}");
+    }
     if metadata_value(connection, SYNC_LOG_DIRTY_SINCE_MS)
         .ok()
         .flatten()
@@ -3002,6 +3013,7 @@ fn read_app_state_from_database_with_progress(
         "uneditedPlanItems": read_entity_collection(connection, "uneditedPlanItems")?,
         "templateQuestions": read_entity_collection(connection, "templateQuestions")?,
         "templateListExpansions": read_entity_collection(connection, "templateListExpansions")?,
+        "taskNotifications": read_entity_collection(connection, "taskNotifications")?,
         "projects": lists_metrics_data["projects"].clone(),
         "projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),
         "goals": goal_data["goals"].clone(),
@@ -10258,8 +10270,8 @@ fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
         &key,
         sync::relay_client::SyncOptions::background(),
     )
-    .map(|_| ())
-    .map_err(sync::Error::into_string)
+    .map_err(sync::Error::into_string)?;
+    task_notifications::publish(&connection)
 }
 
 fn missing_recovery_key_error() -> String {
@@ -10489,6 +10501,11 @@ async fn sync_relay_once(
         if result.is_ok() {
             if let Err(error) = macos_widget::publish_snapshot(&startup.connection) {
                 eprintln!("Could not refresh the macOS widget: {error}");
+            }
+        }
+        if result.is_ok() {
+            if let Err(error) = task_notifications::publish(&startup.connection) {
+                log::warn!("Could not refresh task notifications after sync: {error}");
             }
         }
         finish_startup_database_read(startup, StartupDatabaseRead::RelaySync, None);
@@ -11915,6 +11932,33 @@ mod tests {
         assert_eq!(undone["templateQuestions"], json!([]));
         let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
         assert_eq!(redone["templateQuestions"], json!([question]));
+    }
+
+    #[test]
+    fn task_notifications_persist_cancel_and_round_trip_undo_redo() {
+        let database = TestDatabase::new("synthetic-task-notifications");
+        let key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &key).unwrap();
+        let mut state = test_state("Synthetic sunset tasks");
+        let record = json!({"id":"sunset-test", "sourceKind":"plan", "sourceId":"plan_today", "itemId":"plan_item_wake", "at":2000000000000i64, "text":"Walk 6:51 PM", "futureField":true});
+        state["taskNotifications"] = json!([record]);
+        replace_app_state(&mut connection, &state).unwrap();
+        assert_eq!(task_notifications::pending(&connection, 1000).unwrap().len(), 1);
+        assert!(task_notifications::pending(&connection, 2000000000000).unwrap().is_empty());
+        let operation = json!({"id":"op_notification_delete", "deviceId":"device_test", "sequence":2,
+            "type":"delete_plan_item", "timestamp":"2026-10-01T12:00:00Z",
+            "payload":{"planId":"plan_today", "itemId":"plan_item_wake"}});
+        persist_operation_to_database(&mut connection, &operation).unwrap();
+        assert!(task_notifications::pending(&connection, 1000).unwrap().is_empty());
+        undo_last_operation_in_database(&mut connection).unwrap();
+        assert_eq!(task_notifications::pending(&connection, 1000).unwrap().len(), 1);
+        redo_last_operation_in_database(&mut connection).unwrap();
+        assert!(task_notifications::pending(&connection, 1000).unwrap().is_empty());
+        sync::checkpoint_operation_log_preserving_history(&connection).unwrap();
+        drop(connection);
+        let connection = open_database_at(&database.path, &key).unwrap();
+        assert_eq!(read_app_state_from_database(&connection).unwrap().unwrap()["taskNotifications"], json!([record]));
+        assert!(task_notifications::pending(&connection, 1000).unwrap().is_empty());
     }
 
     #[test]

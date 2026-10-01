@@ -107,6 +107,7 @@ run(futureBinary, 'future', 'init', { state: state('future-device') })
 let future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 1, [
   record('templateListExpansions', 'synthetic-option', { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] }),
   record('futureHabitCheckIns', 'f', { id: 'f', amount: 7 }),
+  record('taskNotifications', 'synthetic-sunset', { id: 'synthetic-sunset', sourceKind: 'plan', sourceId: 'synthetic-day', itemId: 'synthetic-task', at: 2000000000000, text: 'Synthetic walk 6:51 PM', futureDelivery: { enabled: true } }),
   record('planDateAliases', 'future-day-alias', { id: 'future-day-alias', date: '2026-09-08', futureRouting: { enabled: true } }),
   record('regeneratedPlanItems', 'future-retired-item', { id: 'future-retired-item', date: '2026-09-08', parentId: null,
     item: { ...splitItem('future-retired-item', 'Synthetic archived item'), futureTaskField: 9 }, futureRetention: { enabled: true } }),
@@ -126,6 +127,7 @@ assert.equal(note.items[0].futureLink, 'f')
 assert.equal(note.items[0].kind, 'quote')
 assert.equal(note.items[0].done, true)
 assert.deepEqual(blind.entities.find((row) => row.collection === 'uneditedPlanItems').value, { id: 'synthetic-generated-task', futureRetention: { enabled: true } })
+assert.deepEqual(blind.entities.find((row) => row.collection === 'taskNotifications').value, { id: 'synthetic-sunset', sourceKind: 'plan', sourceId: 'synthetic-day', itemId: 'synthetic-task', at: 2000000000000, text: 'Synthetic walk 6:51 PM', futureDelivery: { enabled: true } })
 run(blindBinary, 'blind', 'undo')
 blind = run(blindBinary, 'blind', 'redo')
 const beforeCompact = blind.entities

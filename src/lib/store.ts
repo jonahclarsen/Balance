@@ -129,9 +129,11 @@ import type {
   TemplateItem,
   TemplateOption,
   TemplateQuizAnswers,
+  TaskNotification,
 } from './types'
 import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './preferences'
 import { isNoteTrashExpired } from './noteTrash'
+import { reconcileTaskNotifications } from './taskNotifications'
 
 const STORAGE_KEY = 'balance.appState.v1'
 const ACTIVE_PLAN_DATE_KEY = 'balance:activePlanDate'
@@ -185,6 +187,7 @@ const ENTITY_COLLECTIONS = [
   'uneditedPlanItems',
   'templateQuestions',
   'templateListExpansions',
+  'taskNotifications',
 ] as const
 type EntityCollection = (typeof ENTITY_COLLECTIONS)[number]
 type EntityUpsert = { collection: EntityCollection; key: string; position: number | null; value: unknown; patches: EntityPatch[] }
@@ -761,6 +764,7 @@ function createPlannerStore() {
       let next = mutate(state)
       if (next === state) return state
       next = reconcileUneditedPlanItems(state, next)
+      next = reconcileTaskNotifications(state, next)
       // Persist the bytes and their first reference in the same operation. A
       // checkpoint can never observe a half-finished image insertion.
       const nextImageIds = imageReferences(next)
@@ -1001,6 +1005,7 @@ function createPlannerStore() {
       const current = get(store)
       const template = current.templates.find((candidate) => candidate.id === templateId)
       if (!template) return
+      const notifications: TaskNotification[] = []
       const generated = generatePlanFromTemplate(
         template,
         date,
@@ -1010,6 +1015,7 @@ function createPlannerStore() {
         quizAnswers,
         current.listTemplates,
         current.templateListExpansions,
+        notifications,
       )
 
       const freshMarkers = generatedItemMarkers(generated.items)
@@ -1039,6 +1045,7 @@ function createPlannerStore() {
           goals,
           plans: [...plans, visiblePlan].sort((a, b) => b.date.localeCompare(a.date)),
           uneditedPlanItems: [...state.uneditedPlanItems.filter(({ id }) => !previousIds.has(id)), ...freshMarkers],
+          taskNotifications: [...state.taskNotifications, ...notifications.map(record => ({ ...record, sourceId: generated.id }))],
         }
       })
     },
@@ -2539,10 +2546,11 @@ function createPlannerStore() {
       const template = current.listTemplates.find((candidate) => candidate.id === listTemplateId)
       if (!template) return null
 
-      const generated = generateListFromTemplate(template, date)
+      const notifications: TaskNotification[] = []
+      const generated = generateListFromTemplate(template, date, notifications)
       commitEntities('generate_list', { listTemplateId, date, generated }, (state) => {
         if (state.lists.some((list) => list.listTemplateId === listTemplateId && list.date === date)) return state
-        return { ...state, lists: [...state.lists, generated] }
+        return { ...state, lists: [...state.lists, generated], taskNotifications: [...state.taskNotifications, ...notifications] }
       })
 
       return generated.id
@@ -3539,6 +3547,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       uneditedPlanItems: [],
       templateQuestions: [],
       templateListExpansions: [],
+      taskNotifications: [],
       listTemplates: [],
       lists: [],
       metrics: [],
@@ -3583,6 +3592,7 @@ function normalizeState(state: AppState): AppState {
     uneditedPlanItems: state.uneditedPlanItems ?? [],
     templateQuestions: state.templateQuestions ?? [],
     templateListExpansions: state.templateListExpansions ?? [],
+    taskNotifications: state.taskNotifications ?? [],
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),

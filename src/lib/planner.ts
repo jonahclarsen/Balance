@@ -22,9 +22,11 @@ import type {
   TemplateQuestion,
   TemplateListExpansion,
   TemplateQuizAnswers,
+  TaskNotification,
 } from './types'
 import { goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
 import { createDefaultReplicatedPreferences } from './preferences'
+import { expandTemplateSunset, templateSunsetNotificationTimes } from './templateSunset'
 
 export const DEFAULT_DAILY_REMINDER = "This shouldn't be aspirational"
 export const DAY_ROLLOVER_HOUR = 5
@@ -153,6 +155,7 @@ export function createInitialState(): AppState {
     uneditedPlanItems: [],
     templateQuestions: [],
     templateListExpansions: [],
+    taskNotifications: [],
     listTemplates: [],
     lists: [],
     metrics: [],
@@ -358,11 +361,13 @@ export function generatePlanFromTemplate(
   quizAnswers: TemplateQuizAnswers = {},
   listTemplates: ListTemplate[] = [],
   listExpansions: TemplateListExpansion[] = [],
+  notifications: TaskNotification[] = [],
 ): DailyPlan {
+  const id = createId('plan')
   const generatedGoalIds = new Set<Id>()
-  const items = generatePlanItems(template.items, date, goals, goalCompletions, generatedGoalIds, quizAnswers, listTemplates, listExpansions)
+  const items = generatePlanItems(template.items, date, goals, goalCompletions, generatedGoalIds, quizAnswers, listTemplates, listExpansions, id, notifications)
   return {
-    id: createId('plan'),
+    id,
     date,
     title: formatPlanTitle(date),
     dailyReminder,
@@ -409,6 +414,8 @@ function generatePlanItems(
   quizAnswers: TemplateQuizAnswers,
   listTemplates: ListTemplate[],
   listExpansions: TemplateListExpansion[],
+  planId: Id,
+  notifications: TaskNotification[],
 ): PlanItem[] {
   return items.flatMap((item) => {
     // An answered question decides the option; an unanswered one keeps its odds.
@@ -425,12 +432,24 @@ function generatePlanItems(
       .filter((list) => expansion?.listTemplateIds.includes(list.id))
     if (linkedLists.length > 0) {
       // Fresh planner IDs keep repeated references independent of list instances.
-      const copy = (items: PlanItem[]): PlanItem[] => items.map((entry) => ({
-        ...entry, id: createId('item'), children: copy(entry.children),
-      }))
-      const expanded = linkedLists.flatMap((list) => copy(generateListFromTemplate(list, date).items))
+      const expanded = linkedLists.flatMap((list) => {
+        const listNotifications: TaskNotification[] = []
+        const generatedList = generateListFromTemplate(list, date, listNotifications)
+        const ids = new Map<Id, Id>()
+        const copy = (items: PlanItem[]): PlanItem[] => items.map((entry) => {
+          const id = createId('item')
+          ids.set(entry.id, id)
+          return { ...entry, id, children: copy(entry.children) }
+        })
+        const copied = copy(generatedList.items)
+        for (const record of listNotifications) {
+          const itemId = ids.get(record.itemId)!
+          notifications.push({ ...record, id: `${itemId}:${record.id.split(':').at(-1)}`, sourceKind: 'plan', sourceId: planId, itemId })
+        }
+        return copied
+      })
       // Template children follow the expanded block once, rather than being duplicated.
-      return [...expanded, ...generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds, quizAnswers, listTemplates, listExpansions)]
+      return [...expanded, ...generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds, quizAnswers, listTemplates, listExpansions, planId, notifications)]
     }
 
     const nGoalsMatch = N_GOALS_PATTERN.exec(text)
@@ -448,14 +467,17 @@ function generatePlanItems(
       })
     }
 
+    const expanded = expandTemplateSunset(option.text, option.html || escapeHTML(option.text), date)
+    const generatedItem = createPlanItem(expanded.text)
+    captureTaskNotifications(option.text, expanded.text, date, 'plan', planId, generatedItem.id, notifications)
     return [
       {
-        ...createPlanItem(option.text),
-        html: option.html || escapeHTML(option.text),
+        ...generatedItem,
+        html: expanded.html,
         startMinutes: item.startMinutes,
         endMinutes: item.endMinutes,
         timeHidden: item.timeHidden,
-        children: generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds, quizAnswers, listTemplates, listExpansions),
+        children: generatePlanItems(item.children, date, goals, goalCompletions, generatedGoalIds, quizAnswers, listTemplates, listExpansions, planId, notifications),
       },
     ]
   })
@@ -2245,13 +2267,14 @@ export function splitListTemplateItem(
 // List instances (generated checklists; reuse PlanItem)
 // ---------------------------------------------------------------------------
 
-export function generateListFromTemplate(template: ListTemplate, date: string): ListInstance {
+export function generateListFromTemplate(template: ListTemplate, date: string, notifications: TaskNotification[] = []): ListInstance {
+  const id = createId('list')
   return {
-    id: createId('list'),
+    id,
     date,
     listTemplateId: template.id,
     createdAt: nowISO(),
-    items: generateListItems(template.items, Math.random().toString(36).slice(2, 10)),
+    items: generateListItems(template.items, Math.random().toString(36).slice(2, 10), date, id, notifications),
   }
 }
 
@@ -2264,16 +2287,26 @@ export function listRowSourceItemId(rowId: Id): Id | null {
   return separator > 0 ? rowId.slice(0, separator) : null
 }
 
-function generateListItems(items: ListTemplateItem[], suffix: string): PlanItem[] {
+function captureTaskNotifications(source: string, text: string, date: string, sourceKind: 'plan' | 'list', sourceId: Id, itemId: Id, notifications: TaskNotification[]) {
+  if (!source.toLowerCase().includes('sunset')) return
+  for (const [index, at] of templateSunsetNotificationTimes(source, date).entries()) {
+    notifications.push({ id: `${itemId}:${index}`, sourceKind, sourceId, itemId, at, text })
+  }
+}
+
+function generateListItems(items: ListTemplateItem[], suffix: string, date: string, listId: Id, notifications: TaskNotification[]): PlanItem[] {
   return items.flatMap((item) => {
     const appears = Math.random() * 100 < clampListItemProbability(item.probability)
     if (!appears) return []
+    const expanded = expandTemplateSunset(item.text, item.html || escapeHTML(item.text), date)
+    const id = `${item.id}${LIST_ROW_SOURCE_SEPARATOR}${suffix}`
+    captureTaskNotifications(item.text, expanded.text, date, 'list', listId, id, notifications)
     return [
       {
-        ...createPlanItem(item.text),
-        id: `${item.id}${LIST_ROW_SOURCE_SEPARATOR}${suffix}`,
-        html: item.html || escapeHTML(item.text),
-        children: generateListItems(item.children, suffix),
+        ...createPlanItem(expanded.text),
+        id,
+        html: expanded.html,
+        children: generateListItems(item.children, suffix, date, listId, notifications),
       },
     ]
   })

@@ -1,6 +1,7 @@
 fn main() {
     build_macos_widget_bridge();
     build_macos_connectivity_bridge();
+    build_macos_task_notification_bridge();
 
     let commit = std::process::Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
@@ -89,4 +90,35 @@ fn build_macos_connectivity_bridge() {
     println!("cargo:rerun-if-changed={source}");
     println!("cargo:rustc-link-arg={}", output.display());
     println!("cargo:rustc-link-lib=framework=Network");
+}
+
+fn build_macos_task_notification_bridge() {
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let Some(architecture) = target.strip_suffix("-apple-darwin") else {
+        return;
+    };
+    let source = "macos/TaskNotificationBridge.swift";
+    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("OUT_DIR"))
+        .join("TaskNotificationBridge.o");
+    let status = std::process::Command::new("xcrun")
+        .args([
+            "swiftc",
+            "-parse-as-library",
+            "-emit-object",
+            "-O",
+            "-target",
+            &format!("{architecture}-apple-macosx13.0"),
+            "-o",
+        ])
+        .arg(&output)
+        .arg(source)
+        .status()
+        .expect("failed to run swiftc for task notifications");
+    assert!(
+        status.success(),
+        "failed to compile task notification bridge"
+    );
+    println!("cargo:rerun-if-changed={source}");
+    println!("cargo:rustc-link-arg={}", output.display());
+    println!("cargo:rustc-link-lib=framework=UserNotifications");
 }

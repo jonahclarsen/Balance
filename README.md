@@ -19,6 +19,30 @@ Current slice:
 - Use the macOS 15+ “Add Task to Balance” action in Shortcuts to capture a task verbatim under “reminders from siri:”. Balance uses today while it has incomplete tasks, then rolls capture forward to tomorrow. To use Siri on Mac, create a custom shortcut named “Add to Balance” containing this action; the distinct names keep Siri from bypassing the custom shortcut's input prompt. Siri will run the shortcut by name and ask for the task. Apple does not support direct App Shortcut phrases on macOS.
 - Record local mutations in an operation log for future sync work.
 
+## Sunset in templates
+
+Put `{sunset}` or `[sunset]` in a day or list template task to insert Vancouver,
+BC's sunset time when that day/list is generated, formatted like `6:50 PM`.
+Offsets work with either delimiter: `{sunset +5m}`, `[sunset-2h3m]`, or
+`{sunset+26h}`. Each distinct computed time also schedules a macOS/Android
+notification containing the task's complete generated text. Offsets retain the
+date across midnight and account for Vancouver's timezone rules. Times already
+past when generating are skipped. Templates keep their placeholders.
+
+Regenerating a day replaces the removed tasks' notifications. Manually edited
+tasks preserved by regeneration retain their existing schedules. Deleting a
+task cancels its notifications; undo restores future schedules. Later text edits
+do not change the notification's original generated text. Schedules are restored
+on launch, sync, and Android reboot. Allow notifications in the OS prompt;
+Android also requests exact-alarm access for timely delivery (without it,
+Android may delay notifications).
+
+The bundled lookup covers 2000–2099 and requires no internet. It is generated
+offline by `node scripts/generate-vancouver-sunsets.mjs` using NOAA solar
+equations for Vancouver city centre at sea level, rounded to the nearest minute.
+Terrain and weather can change the observed sunset. Invalid placeholders and
+dates outside the lookup remain unchanged.
+
 ## Browse backups
 
 In the installed app, open **Settings → Recovery & diagnostics → Open recovery & diagnostics → Browse encrypted backups**
