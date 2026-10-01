@@ -137,6 +137,10 @@ runs:
       shell: bash
       run: node .github/scripts/configure-android-widgets.mjs
 
+    - name: Configure scheduled task notifications
+      shell: bash
+      run: node .github/scripts/configure-android-task-notifications.mjs
+
     - name: Configure text selection formatting
       shell: bash
       run: node .github/scripts/configure-android-selection-formatting.mjs

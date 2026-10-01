@@ -74,10 +74,37 @@ for _ in $(seq 1 15); do
 done
 adb shell pm path "$PKG"
 
+# Explicitly request the synthetic alarm/notification self-test; ordinary
+# debug installs never run it. Permissions are granted only on this CI emulator.
+adb shell pm grant "$PKG" android.permission.POST_NOTIFICATIONS
+adb shell appops set "$PKG" SCHEDULE_EXACT_ALARM allow
+adb shell run-as "$PKG" mkdir -p files
+adb shell run-as "$PKG" touch files/notification-ci-selftest
+
 # First launch: generates the recovery key, wraps it with a hardware-backed
 # Keystore key, writes the ciphertext, and creates the encrypted database.
 launch
 assert_running "first-launch" logcat.txt
+
+NOTIFICATION_OK=0
+for _ in $(seq 1 15); do
+  adb logcat -d > notification-log.txt 2>/dev/null || true
+  if grep -q "BALANCE_NOTIFICATION_E2E: OK" notification-log.txt; then
+    NOTIFICATION_OK=1
+    break
+  fi
+  if grep -q "BALANCE_NOTIFICATION_E2E: FAIL" notification-log.txt; then
+    echo "[notifications] Scheduled notification delivery/cancellation failed."
+    grep -F "BalanceNotifications" notification-log.txt | tail -20 || true
+    exit 1
+  fi
+  sleep 2
+done
+if [ "$NOTIFICATION_OK" != 1 ]; then
+  echo "[notifications] Scheduled notification self-test never completed."
+  grep -iE "BalanceNotifications|nativeInitialize|nativeRefresh|UnsatisfiedLink" notification-log.txt | head -40 || true
+  exit 1
+fi
 
 # The debug app runs an on-device widget self-test after the encrypted database
 # opens. It loads today's native snapshot through SQLCipher + Android Keystore,
