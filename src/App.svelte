@@ -575,7 +575,13 @@ return rows`
   let selectingItems = false
   type PlanItemClipboard = { items: PlanItem[]; cut: boolean; sourceDate: string; portable?: boolean }
   type TemplateItemClipboard =
-    | { kind: 'day-template'; items: TemplateItem[]; cut: boolean; listExpansions?: import('./lib/types').TemplateListExpansion[] }
+    | {
+      kind: 'day-template'
+      items: TemplateItem[]
+      cut: boolean
+      listExpansions?: import('./lib/types').TemplateListExpansion[]
+      questions?: import('./lib/types').TemplateQuestion[]
+    }
     | { kind: 'list-template'; items: ListTemplateItem[]; cut: boolean }
   type ItemClipboard = PlanItemClipboard | TemplateItemClipboard
   type ClipboardContents = { imageDataURL?: string | null; structuredPayload: string | null; plainText: string | null; html: string | null }
@@ -4809,7 +4815,7 @@ return rows`
     const targetId = explicitTargetId ?? emptyPlaceholderId
     const placement = targetId && isEmptyTemplateLeaf(structured.kind, targetId) ? 'replace' : 'after'
     const pastedIds = structured.kind === 'day-template'
-      ? plannerStore.pasteTemplateItems(containerId, structured.items, targetId, placement, structured.listExpansions)
+      ? plannerStore.pasteTemplateItems(containerId, structured.items, targetId, placement, structured.listExpansions, structured.questions)
       : plannerStore.pasteListTemplateItems(containerId, structured.items, targetId, placement)
     if (pastedIds.length === 0) return
 
@@ -5394,15 +5400,22 @@ return rows`
   }
 
   function writeTemplateItemsToSystemClipboard(clipboard: TemplateItemClipboard) {
-    if (clipboard.kind === 'day-template' && !clipboard.listExpansions) {
+    if (clipboard.kind === 'day-template' && (!clipboard.listExpansions || !clipboard.questions)) {
+      const itemIds = new Set<Id>()
       const optionIds = new Set<Id>()
       const visit = (items: TemplateItem[]) => items.forEach((item) => {
+        itemIds.add(item.id)
         item.options.forEach((option) => optionIds.add(option.id))
         visit(item.children)
       })
       visit(clipboard.items)
-      clipboard = { ...clipboard, listExpansions: $plannerStore.templateListExpansions
-        .filter(({ id }) => optionIds.has(id)).map((record) => ({ ...record, listTemplateIds: [...record.listTemplateIds] })) }
+      clipboard = {
+        ...clipboard,
+        listExpansions: clipboard.listExpansions ?? $plannerStore.templateListExpansions
+          .filter(({ id }) => optionIds.has(id)).map((record) => ({ ...record, listTemplateIds: [...record.listTemplateIds] })),
+        questions: clipboard.questions ?? $plannerStore.templateQuestions
+          .filter(({ id }) => itemIds.has(id)).map((record) => ({ ...record })),
+      }
     }
     const plainText = templateClipboardPlainText(clipboard)
     writeItemClipboard(clipboard, plainText)

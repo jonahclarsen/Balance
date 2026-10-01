@@ -129,6 +129,7 @@ import type {
   TemplateItem,
   TemplateOption,
   TemplateListExpansion,
+  TemplateQuestion,
   TemplateQuizAnswers,
   TaskNotification,
 } from './types'
@@ -1742,11 +1743,21 @@ function createPlannerStore() {
       return rootIds
     },
 
-    pasteTemplateItems(templateId: Id, itemsToPaste: TemplateItem[], targetId: Id | null, placement: 'after' | 'replace', listExpansions: TemplateListExpansion[] = []) {
+    pasteTemplateItems(
+      templateId: Id,
+      itemsToPaste: TemplateItem[],
+      targetId: Id | null,
+      placement: 'after' | 'replace',
+      listExpansions: TemplateListExpansion[] = [],
+      questions: TemplateQuestion[] = [],
+    ) {
       if (itemsToPaste.length === 0) return []
       const pastedItems = cloneTemplateItemsForPaste(itemsToPaste)
       const copiedExpansions: TemplateListExpansion[] = []
+      const copiedQuestions: TemplateQuestion[] = []
       const copyChoices = (source: TemplateItem[], pasted: TemplateItem[]) => source.forEach((item, index) => {
+        const question = questions.find(({ id }) => id === item.id)
+        if (question) copiedQuestions.push({ ...question, id: pasted[index].id })
         item.options.forEach((option, optionIndex) => {
           const choice = listExpansions.find(({ id }) => id === option.id)
           if (choice) copiedExpansions.push({ ...choice, id: pasted[index].options[optionIndex].id, listTemplateIds: [...choice.listTemplateIds] })
@@ -1761,8 +1772,12 @@ function createPlannerStore() {
           updatedAt: nowISO(),
           items: pasteTemplateItemsIntoTree(template.items, pastedItems, targetId, placement),
         }))
-        return next === state || copiedExpansions.length === 0 ? next
-          : { ...next, templateListExpansions: [...next.templateListExpansions, ...copiedExpansions] }
+        if (next === state) return next
+        return {
+          ...next,
+          templateListExpansions: copiedExpansions.length === 0 ? next.templateListExpansions : [...next.templateListExpansions, ...copiedExpansions],
+          templateQuestions: copiedQuestions.length === 0 ? next.templateQuestions : [...next.templateQuestions, ...copiedQuestions],
+        }
       })
       return pastedItems.map((item) => item.id)
     },

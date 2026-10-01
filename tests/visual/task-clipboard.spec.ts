@@ -143,3 +143,36 @@ test('selected day and list template trees paste across template types with undo
   await page.keyboard.press('Meta+V')
   await expect(dayInput).toHaveText('Copied list row')
 })
+
+test('day template rows keep their generation question when pasted into another day', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'desktop keyboard clipboard')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  const saved = () => page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!))
+  await openView(page, 'Days')
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  const sourceInput = page.locator('[data-template-option-text-input]').first()
+  await sourceInput.fill('No laptop until noon')
+  await page.getByRole('button', { name: 'Ask a question when generating the day' }).first().click()
+  await page.keyboard.type('Ban laptop this morning?')
+  await page.getByRole('button', { name: 'Select item' }).filter({ visible: true }).first().click()
+  await page.keyboard.press('Meta+C')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('No laptop until noon')
+
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  await page.locator('[data-template-option-text-input]').first().fill('')
+  await page.keyboard.press('Meta+V')
+  await expect(page.locator('.question-input')).toHaveValue('Ban laptop this morning?')
+  const pastedQuestion = async () => {
+    const state = await saved()
+    const pasted = state.templates.at(-1).items[0]
+    return state.templateQuestions.find((record: any) => record.id === pasted.id)?.question ?? null
+  }
+  await expect.poll(pastedQuestion).toBe('Ban laptop this morning?')
+  expect((await saved()).templates.at(-1).items[0].id).not.toBe((await saved()).templates.at(-2).items[0].id)
+
+  await page.keyboard.press('Meta+Z')
+  await expect(page.locator('.question-input')).toHaveCount(0)
+})
