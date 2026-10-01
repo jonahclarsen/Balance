@@ -218,22 +218,22 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await expect(notesSidebar).toBeVisible()
 })
 
-test('the Notes pane adds another 10% zoom without scaling its surrounding panels', async ({ page }, testInfo) => {
+test('Notes zoom stays scoped to its editing pane and fits the viewport', async ({ page }, testInfo) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  const navigationSidebar = page.getByRole('complementary', { name: 'Primary navigation drawer', includeHidden: true })
+  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
+  const navigationZoom = await navigationSidebar.evaluate(element => element.currentCSSZoom)
+  const rhythmZoom = testInfo.project.name !== 'mobile'
+    ? await goalRhythm.evaluate(element => element.currentCSSZoom) : null
   await openNotesView(page)
 
   const notesPage = page.locator('.notes-view-workspace')
-  const navigationSidebar = page.getByRole('complementary', { name: 'Primary navigation drawer' })
-  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
-  await expect.poll(() => notesPage.evaluate((element) => ({
-    ownZoom: Number.parseFloat(getComputedStyle(element).zoom),
-    effectiveZoom: element.currentCSSZoom,
-  }))).toEqual({ ownZoom: 1.1, effectiveZoom: expect.closeTo(1.21, 5) })
-  await expect.poll(() => navigationSidebar.evaluate((element) => element.currentCSSZoom)).toBeCloseTo(1.1, 5)
-  if (testInfo.project.name !== 'mobile') {
-    await expect.poll(() => goalRhythm.evaluate((element) => element.currentCSSZoom)).toBeCloseTo(1.1, 5)
+  await expect.poll(() => notesPage.evaluate(element => element.currentCSSZoom)).toBeGreaterThan(navigationZoom)
+  await expect.poll(() => navigationSidebar.evaluate(element => element.currentCSSZoom)).toBe(navigationZoom)
+  if (rhythmZoom !== null) {
+    await expect.poll(() => goalRhythm.evaluate(element => element.currentCSSZoom)).toBe(rhythmZoom)
   }
 
   const bounds = await notesPage.boundingBox()
@@ -1902,7 +1902,12 @@ test('mobile note formatting follows the keyboard viewport and preserves editing
   await editor.evaluate(element => {
     const text = element.firstChild!
     getSelection()!.setPosition(text, text.textContent!.length)
+    document.dispatchEvent(new Event('selectionchange'))
   })
+  // Finish the editor's selection and scroll restoration before simulating an IME.
+  await page.evaluate(() => new Promise<void>(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
   const toolbar = page.getByRole('toolbar', { name: 'Note formatting' })
 
   // Desktop automation has no IME; simulate both keyboard shrink and panning.

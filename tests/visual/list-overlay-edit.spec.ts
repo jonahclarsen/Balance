@@ -634,6 +634,11 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   await rows.nth(crossoverIndex).click()
   await page.waitForTimeout(300)
 
+  // Drive requestAnimationFrame explicitly: a busy machine can finish the
+  // animation before a wall-clock 70 ms sample reaches the browser.
+  const animationTime = new Date()
+  await page.clock.install({ time: animationTime })
+  await page.clock.pauseAt(animationTime)
   const before = await body.evaluate(modalGeometry)
   const expectWithinVisualPixel = (actual: number, expected: number) => {
     expect(Math.abs(actual - expected)).toBeLessThanOrEqual(1)
@@ -647,9 +652,9 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   expect(expectedFirstCollapse).toBeGreaterThan(2)
 
   await page.keyboard.press('ArrowDown')
-  await page.waitForTimeout(70)
+  await page.clock.runFor(70)
   const midHeight = await dialog.evaluate((element) => element.getBoundingClientRect().height)
-  await page.waitForTimeout(220)
+  await page.clock.runFor(220)
   const afterFirst = await body.evaluate(modalGeometry)
 
   expect(midHeight).toBeLessThan(before.cardHeight)
@@ -659,7 +664,7 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   expectWithinVisualPixel(afterFirst.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowDown')
-  await page.waitForTimeout(300)
+  await page.clock.runFor(300)
   const afterSecond = await body.evaluate(modalGeometry)
 
   expect(afterSecond.cardHeight).toBeLessThan(afterFirst.cardHeight)
@@ -667,28 +672,33 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   expectWithinVisualPixel(afterSecond.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowUp')
-  await page.waitForTimeout(300)
+  await page.clock.runFor(300)
   const afterFirstReverse = await body.evaluate(modalGeometry)
   expect(afterFirstReverse.cardHeight).toBeCloseTo(afterFirst.cardHeight, 0)
   expectWithinVisualPixel(afterFirstReverse.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowUp')
-  await page.waitForTimeout(300)
+  await page.clock.runFor(300)
   const restored = await body.evaluate(modalGeometry)
   expect(restored.cardHeight).toBeCloseTo(before.cardHeight, 0)
   expectWithinVisualPixel(restored.cardTop, before.cardTop)
   expectWithinVisualPixel(restored.selectedTop, before.selectedTop)
 
   await page.keyboard.press('ArrowDown')
-  await page.waitForTimeout(300)
+  await page.clock.runFor(300)
   const recollapsed = await body.evaluate(modalGeometry)
   expect(recollapsed.cardHeight).toBeCloseTo(afterFirst.cardHeight, 0)
 
   await body.hover()
+  // Playwright's wheel call returns before Chromium necessarily dispatches it.
+  await body.evaluate((element) => {
+    element.addEventListener('wheel', () => element.setAttribute('data-test-wheel-received', 'true'), { once: true })
+  })
   await page.mouse.wheel(0, -120)
-  await page.waitForTimeout(70)
+  await expect(body).toHaveAttribute('data-test-wheel-received', 'true')
+  await page.clock.runFor(70)
   const wheelMidHeight = await dialog.evaluate((element) => element.getBoundingClientRect().height)
-  await page.waitForTimeout(220)
+  await page.clock.runFor(220)
   const afterWheel = await body.evaluate(modalGeometry)
 
   expect(wheelMidHeight).toBeGreaterThan(recollapsed.cardHeight)
@@ -697,7 +707,7 @@ test('list modal collapses at the keyboard boundary and expands for upward wheel
   expectWithinVisualPixel(afterWheel.cardTop, before.cardTop)
 
   await page.keyboard.press('ArrowDown')
-  await page.waitForTimeout(300)
+  await page.clock.runFor(300)
   const afterKeyboardResume = await body.evaluate(modalGeometry)
   expect(afterKeyboardResume.cardHeight).toBeLessThan(afterWheel.cardHeight)
   expectWithinVisualPixel(afterKeyboardResume.cardTop, before.cardTop)
