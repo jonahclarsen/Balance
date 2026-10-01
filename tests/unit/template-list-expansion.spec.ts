@@ -34,14 +34,20 @@ test('disabled, missing and no-longer-linked lists keep the ordinary template ta
 })
 
 test('list probabilities and quiz selection apply to expansion, including empty lists', () => {
-  const { list, row, template, expansions } = fixture()
-  list.items[0].probability = 0
-  row.options[0].probability = 0
-  expect(generatePlanFromTemplate(template, '2026-10-02', '', [], [], {}, [list], expansions).items.map(({ text }) => text)).toEqual(['Before', 'After'])
-  const answers = { [row.id]: row.options[0].id }
-  expect(generatePlanFromTemplate(template, '2026-10-02', '', [], [], answers, [list], expansions).items.map(({ text }) => text)).toEqual(['Before', 'Second', 'After list', 'After'])
-  list.items = []
-  expect(generatePlanFromTemplate(template, '2026-10-02', '', [], [], answers, [list], expansions).items.map(({ text }) => text)).toEqual(['Before', 'After list', 'After'])
+  const originalRandom = Math.random
+  try {
+    Math.random = () => 0.5
+    const { list, row, template, expansions } = fixture()
+    list.items[0].probability = 10
+    row.options[0].probability = 0
+    expect(generatePlanFromTemplate(template, '2026-10-02', '', [], [], {}, [list], expansions).items.map(({ text }) => text)).toEqual(['Before', 'After'])
+    const answers = { [row.id]: row.options[0].id }
+    expect(generatePlanFromTemplate(template, '2026-10-02', '', [], [], answers, [list], expansions).items.map(({ text }) => text)).toEqual(['Before', 'Second', 'After list', 'After'])
+    list.items = []
+    expect(generatePlanFromTemplate(template, '2026-10-02', '', [], [], answers, [list], expansions).items.map(({ text }) => text)).toEqual(['Before', 'After list', 'After'])
+  } finally {
+    Math.random = originalRandom
+  }
 })
 
 test('list detection uses the underlined matches and removes repeated names', () => {
