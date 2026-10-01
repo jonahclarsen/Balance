@@ -20,6 +20,13 @@ private let reminderDelegate = TaskNotificationDelegate()
 private let reminderQueue = DispatchQueue(label: "app.balance.task-notifications")
 private let prefix = "balance.sunset."
 
+func initializeDevTaskNotificationCenter() {
+    // Cache the helper's app bundle proxy before the runner unregisters its
+    // Launch Services entry to keep the installed Balance app canonical.
+    let center = UNUserNotificationCenter.current()
+    center.delegate = reminderDelegate
+}
+
 // Called on the native database worker, never the main thread. Serialized
 // reconciliation prevents an older regeneration callback restoring stale alarms.
 @_cdecl("balance_replace_task_notifications")

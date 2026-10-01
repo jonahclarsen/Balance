@@ -18,6 +18,7 @@ struct BalanceWidgetDevBridge {
 
         let readyFile = CommandLine.arguments[2]
         let socketPath = CommandLine.arguments[3]
+        initializeDevTaskNotificationCenter()
         guard startDevTaskNotificationServer(path: socketPath, parent: parentProcessIdentifier) else {
             fputs("BalanceWidgetDevBridge could not start its notification socket\n", stderr)
             exit(73)
