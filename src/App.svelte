@@ -505,6 +505,9 @@ return rows`
   let widgetPrivacySettingsStatus = ''
   let widgetPrivacySettingsStatusIsError = false
   let recoveryPanelOpen = false
+  let quickAddOpen = false
+  let quickAddText = ''
+  let quickAddInput: HTMLTextAreaElement | null = null
   let recoveryEntries: RecoveryEntry[] = []
   let recoveryBusy = false
   let recoveryStatus = ''
@@ -2664,6 +2667,40 @@ return rows`
 
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+  }
+
+  async function openQuickAdd() {
+    quickAddText = ''
+    quickAddOpen = true
+    await tick()
+    quickAddInput?.focus()
+  }
+
+  function closeQuickAdd() {
+    quickAddOpen = false
+    quickAddText = ''
+  }
+
+  async function saveQuickAdd() {
+    const text = quickAddText.trim()
+    closeQuickAdd()
+    if (!text) return
+    try {
+      if (await plannerStore.addQuickTask(text, todayISO())) view = 'today'
+    } catch (error) {
+      console.error('Could not add quick task', error)
+    }
+  }
+
+  function handleQuickAddKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      closeQuickAdd()
+    } else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+      event.preventDefault()
+      void saveQuickAdd()
+    }
   }
 
   function shiftActivePlanDate(days: number) {
@@ -5913,6 +5950,15 @@ return rows`
       <div class="mobile-header-actions">
         {#if isMobile && view === 'today'}
           <button
+            class="mobile-header-quick-add-button"
+            type="button"
+            title="Add task"
+            aria-label="Add task"
+            on:click={() => { void openQuickAdd() }}
+          >
+            <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+          </button>
+          <button
             class="mobile-header-previous-day-button"
             type="button"
             title="Previous day"
@@ -7699,6 +7745,28 @@ return rows`
 
       <p class="paste-review-hint">{pasteReview.approved.length}/{pasteReview.nodes.length} kept so far</p>
     </div>
+  </div>
+{/if}
+
+{#if quickAddOpen}
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div class="modal-backdrop quick-add-backdrop" style={appShellStyle} role="presentation" on:click|self={closeQuickAdd}>
+    <form class="quick-add-dialog" aria-label="Add task" on:submit|preventDefault={() => { void saveQuickAdd() }}>
+      <textarea
+        class="quick-add-input"
+        rows="3"
+        enterkeyhint="done"
+        placeholder="New task"
+        aria-label="New task"
+        bind:this={quickAddInput}
+        bind:value={quickAddText}
+        on:keydown={handleQuickAddKeydown}
+      ></textarea>
+      <div class="quick-add-actions">
+        <button class="primary" type="submit" disabled={!quickAddText.trim()}>Save</button>
+        <button type="button" on:click={closeQuickAdd}>Cancel</button>
+      </div>
+    </form>
   </div>
 {/if}
 

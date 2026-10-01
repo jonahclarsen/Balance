@@ -274,6 +274,22 @@ export function insertSiriReminder(items: PlanItem[], text: string): SiriReminde
   }
 }
 
+// Quick-add places a plain task where Siri would place its heading: before
+// the deepest first incomplete task. The Siri action carries it unchanged.
+export function insertQuickTask(items: PlanItem[], text: string): SiriReminderInsertion {
+  const item = createPlanItem(text)
+  const insertion = insertBeforeDeepestFirstIncomplete(items, item)
+  return {
+    items: insertion.items,
+    item,
+    heading: item,
+    headingId: item.id,
+    parentId: insertion.parentId,
+    position: insertion.position,
+    reactivatedItemIds: [],
+  }
+}
+
 function findPlanItemPath(items: PlanItem[], text: string, ancestors: Id[] = []): Id[] | null {
   for (const item of items) {
     const path = [...ancestors, item.id]

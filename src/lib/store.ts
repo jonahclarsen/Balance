@@ -81,6 +81,7 @@ import {
   clampListItemProbability,
   generateListFromTemplate,
   hasIncompletePlanItems,
+  insertQuickTask,
   insertSiriReminder,
   createMetric,
   createMetricQuestion,
@@ -89,6 +90,7 @@ import {
   createNoteItem,
   shiftCalendarDateISO,
 } from './planner'
+import type { SiriReminderInsertion } from './planner'
 import type { ParsedNoteClipboardItem } from './noteClipboard'
 import {
   createGoal,
@@ -869,6 +871,86 @@ function createPlannerStore() {
     if (operationToPersist) queueOperationPersistence(operationToPersist)
   }
 
+  async function addTaskLikeSiri(
+    text: string,
+    requestId: string,
+    date: string,
+    insert: (items: PlanItem[], text: string) => SiriReminderInsertion,
+  ): Promise<boolean> {
+    if (!text.trim() || !requestId) return false
+    await ready
+    if (get(databaseLoadError)) throw new Error(get(databaseLoadError))
+    if (isTauri()) {
+      await flushOperations()
+      if (await invoke<boolean>('has_processed_siri_request', { requestId })) return false
+    }
+
+    await waitForNativeHistory()
+    const current = get(store)
+    const currentPlan = current.plans.find((plan) => plan.date === date)
+    const targetDate = currentPlan && hasIncompletePlanItems(currentPlan.items)
+      ? date
+      : shiftCalendarDateISO(date, 1)
+    const existingPlan = current.plans.find((plan) => plan.date === targetDate)
+    const insertion = insert(existingPlan?.items ?? [], text)
+    const createdPlan: DailyPlan | null = existingPlan
+      ? null
+      : {
+          id: createId('plan'),
+          date: targetDate,
+          title: formatPlanTitle(targetDate),
+          dailyReminder: DEFAULT_DAILY_REMINDER,
+          generatedFromTemplateId: null,
+          createdAt: nowISO(),
+          items: insertion.items,
+        }
+    let added = false
+    commit('add_plan_item_from_siri', {
+      date: targetDate,
+      requestId,
+      createdPlan,
+      item: insertion.item,
+      heading: insertion.heading,
+      headingId: insertion.headingId,
+      parentId: insertion.parentId,
+      position: insertion.position,
+      reactivatedItemIds: insertion.reactivatedItemIds,
+    }, (state) => {
+      const alreadyAdded = state.operations.some((operation) => {
+        if (operation.type !== 'add_plan_item_from_siri' || !operation.payload || typeof operation.payload !== 'object') {
+          return false
+        }
+        return (operation.payload as Record<string, unknown>).requestId === requestId
+      })
+      if (alreadyAdded) return state
+
+      added = true
+      const targetPlan = state.plans.find((plan) => plan.date === targetDate)
+      if (targetPlan) {
+        return updatePlan(
+          { ...state, activePlanDate: targetDate },
+          targetPlan.id,
+          (plan) => ({ ...plan, items: insertion.items }),
+        )
+      }
+
+      if (!createdPlan) return state
+      return {
+        ...state,
+        activePlanDate: targetDate,
+        plans: [...state.plans, createdPlan].sort((a, b) => b.date.localeCompare(a.date)),
+      }
+    })
+    if (added && isTauri()) {
+      await flushOperations()
+      if (backendReloadPromise) await backendReloadPromise
+      // Native rejection reconciles the optimistic insertion. Report whether
+      // this particular item survived, so a replay cannot navigate the UI.
+      return get(store).plans.some((plan) => Boolean(findPlanItem(plan.items, insertion.item.id)))
+    }
+    return added
+  }
+
   return {
     subscribe: store.subscribe,
     moveImage(edit: () => void) {
@@ -975,80 +1057,16 @@ function createPlannerStore() {
       })))
     },
 
-    async addPlanItemFromSiri(text: string, requestId: string, date = todayISO()): Promise<boolean> {
-      if (!text.trim() || !requestId) return false
-      await ready
-      if (get(databaseLoadError)) throw new Error(get(databaseLoadError))
-      if (isTauri()) {
-        await flushOperations()
-        if (await invoke<boolean>('has_processed_siri_request', { requestId })) return false
-      }
-
-      await waitForNativeHistory()
-      const current = get(store)
-      const currentPlan = current.plans.find((plan) => plan.date === date)
-      const targetDate = currentPlan && hasIncompletePlanItems(currentPlan.items)
-        ? date
-        : shiftCalendarDateISO(date, 1)
-      const existingPlan = current.plans.find((plan) => plan.date === targetDate)
-      const insertion = insertSiriReminder(existingPlan?.items ?? [], text)
-      const createdPlan: DailyPlan | null = existingPlan
-        ? null
-        : {
-            id: createId('plan'),
-            date: targetDate,
-            title: formatPlanTitle(targetDate),
-            dailyReminder: DEFAULT_DAILY_REMINDER,
-            generatedFromTemplateId: null,
-            createdAt: nowISO(),
-            items: insertion.items,
-          }
-      let added = false
-      commit('add_plan_item_from_siri', {
-        date: targetDate,
-        requestId,
-        createdPlan,
-        item: insertion.item,
-        heading: insertion.heading,
-        headingId: insertion.headingId,
-        parentId: insertion.parentId,
-        position: insertion.position,
-        reactivatedItemIds: insertion.reactivatedItemIds,
-      }, (state) => {
-        const alreadyAdded = state.operations.some((operation) => {
-          if (operation.type !== 'add_plan_item_from_siri' || !operation.payload || typeof operation.payload !== 'object') {
-            return false
-          }
-          return (operation.payload as Record<string, unknown>).requestId === requestId
-        })
-        if (alreadyAdded) return state
-
-        added = true
-        const targetPlan = state.plans.find((plan) => plan.date === targetDate)
-        if (targetPlan) {
-          return updatePlan(
-            { ...state, activePlanDate: targetDate },
-            targetPlan.id,
-            (plan) => ({ ...plan, items: insertion.items }),
-          )
-        }
-
-        if (!createdPlan) return state
-        return {
-          ...state,
-          activePlanDate: targetDate,
-          plans: [...state.plans, createdPlan].sort((a, b) => b.date.localeCompare(a.date)),
-        }
-      })
-      if (added && isTauri()) {
-        await flushOperations()
-        if (backendReloadPromise) await backendReloadPromise
-        // Native rejection reconciles the optimistic insertion. Report whether
-        // this particular item survived, so a replay cannot navigate the UI.
-        return get(store).plans.some((plan) => Boolean(findPlanItem(plan.items, insertion.item.id)))
-      }
-      return added
+    addPlanItemFromSiri(text: string, requestId: string, date = todayISO()): Promise<boolean> {
+      return addTaskLikeSiri(text, requestId, date, insertSiriReminder)
     },
+
+    // Same placement, date rollover and storage action as Siri, without the
+    // "reminders from siri:" heading.
+    addQuickTask(text: string, date = todayISO()): Promise<boolean> {
+      return addTaskLikeSiri(text, createId('quick-add'), date, insertQuickTask)
+    },
+
 
     patchPlanItem(
       planId: Id,
