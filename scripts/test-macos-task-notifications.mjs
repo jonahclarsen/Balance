@@ -1,6 +1,6 @@
 import { mkdtempSync, mkdirSync, existsSync, writeFileSync, rmSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { execFileSync, spawn } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { createConnection } from 'node:net'
 import assert from 'node:assert/strict'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -51,6 +51,9 @@ print("Unbundled notification bridge passed")
     await delay(50)
   }
   assert.ok(existsSync(ready), 'Helper socket became ready')
+  // The dev runner removes the helper's Launch Services registration to keep
+  // the installed Balance app canonical for Siri and balance:// links.
+  spawnSync('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-u', join(directory, 'SyntheticBridge.app')], { stdio: 'ignore' })
   async function send(json) {
     return new Promise((resolve, reject) => {
       const connection = createConnection(socket)
@@ -63,6 +66,14 @@ print("Unbundled notification bridge passed")
   }
   assert.equal(await send('[]'), 0)
   assert.equal(await send('invalid-json'), 1)
+  execFileSync(process.execPath, ['-e', `
+const connection = require('node:net').createConnection(${JSON.stringify(socket)});
+connection.setTimeout(5000, () => process.exit(1));
+connection.on('connect', () => connection.end('[]'));
+connection.on('data', () => process.exit(1));
+connection.on('error', error => { if (!['ECONNRESET', 'EPIPE'].includes(error.code)) { console.error(error.code); process.exit(1) } });
+connection.on('close', () => process.exit(0));
+`], { timeout: 10_000 })
   await delay(500)
   assert.equal(helper.exitCode, null, 'App-shaped helper acquired the macOS notification center without crashing')
   console.log('Dev helper received schedules through its private socket and acquired the notification center')
