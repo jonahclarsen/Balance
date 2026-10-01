@@ -14,7 +14,7 @@ if (!activity.includes(marker)) {
     // Wrap the WebView so its floating menu callback is extended on the way to
     // the window. Restarting the action mode from the window callback instead
     // makes DecorView finish the nested mode as soon as it is shown.
-    override fun setContentView(view: android.view.View) {
+    override fun setContentView(view: android.view.View?) {
         val webView = view as? android.webkit.WebView
         if (webView == null) super.setContentView(view)
         else super.setContentView(BalanceSelectionFormattingHost(this, webView))
