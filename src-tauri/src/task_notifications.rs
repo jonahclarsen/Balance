@@ -31,11 +31,20 @@ pub(crate) fn pending(connection: &Connection, now: i64) -> Result<Vec<TaskNotif
         .prepare("select exists(select 1 from plan_items where plan_id = ?1 and id = ?2)")
         .map_err(|e| e.to_string())?;
     for record in &candidates {
+        let source = if record.source_kind == "plan" {
+            crate::plan_regeneration::resolve(connection, &record.source_id, None)?
+        } else {
+            None
+        };
         if record.source_kind == "plan"
             && statement
-                .query_row(rusqlite::params![record.source_id, record.item_id], |row| {
-                    row.get::<_, bool>(0)
-                })
+                .query_row(
+                    rusqlite::params![
+                        source.as_deref().unwrap_or(&record.source_id),
+                        record.item_id
+                    ],
+                    |row| row.get::<_, bool>(0),
+                )
                 .map_err(|e| e.to_string())?
         {
             live.insert((

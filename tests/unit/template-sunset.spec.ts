@@ -104,6 +104,8 @@ test('notification snapshots retain generated text and absolute rollover dates, 
   const before = { ...createInitialState(), plans: [plan], taskNotifications: records }
   const edited = { ...before, plans: [{ ...plan, items: [{ ...plan.items[0], text: 'Edited later' }] }] }
   expect(reconcileTaskNotifications(before, edited).taskNotifications).toBe(records)
+  const aliased = { ...before, plans: [{ ...plan, id: 'replacement-day-id' }] }
+  expect(reconcileTaskNotifications(before, aliased).taskNotifications).toBe(records)
   expect(reconcileTaskNotifications(before, { ...before, plans: [] }).taskNotifications).toEqual([])
   expect(reconcileTaskNotifications(before, { ...before, plans: [{ ...plan, items: [] }] }).taskNotifications).toEqual([])
 })

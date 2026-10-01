@@ -11940,9 +11940,10 @@ mod tests {
         let key = generate_recovery_key();
         let mut connection = open_database_at(&database.path, &key).unwrap();
         let mut state = test_state("Synthetic sunset tasks");
-        let record = json!({"id":"sunset-test", "sourceKind":"plan", "sourceId":"plan_today", "itemId":"plan_item_wake", "at":2000000000000i64, "text":"Walk 6:51 PM", "futureField":true});
+        let record = json!({"id":"sunset-test", "sourceKind":"plan", "sourceId":"synthetic-plan-alias", "itemId":"plan_item_wake", "at":2000000000000i64, "text":"Walk 6:51 PM", "futureField":true});
         state["taskNotifications"] = json!([record]);
         replace_app_state(&mut connection, &state).unwrap();
+        plan_regeneration::alias(&connection, "synthetic-plan-alias", "2026-05-21").unwrap();
         assert_eq!(task_notifications::pending(&connection, 1000).unwrap().len(), 1);
         assert!(task_notifications::pending(&connection, 2000000000000).unwrap().is_empty());
         let operation = json!({"id":"op_notification_delete", "deviceId":"device_test", "sequence":2,
