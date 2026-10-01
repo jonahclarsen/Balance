@@ -42,6 +42,7 @@
     itemId: Id,
     patch: Partial<Omit<PlanItem, 'id' | 'children'>>,
     after: { html: string; text: string },
+    preserveChildren?: boolean,
   ) => Id
   export let backspaceItemAtStart: (
     planId: Id,
@@ -648,7 +649,7 @@
   }
 
   async function handleTextSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
-    const newItemId = splitItem(planId, item.id, before, after)
+    const newItemId = splitItem(planId, item.id, before, after, childrenCollapsed && after.text.length === 0)
     await tick()
     focusItemTextInput(newItemId, 'start')
   }

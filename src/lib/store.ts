@@ -1179,12 +1179,13 @@ function createPlannerStore() {
       itemId: Id,
       before: Partial<Omit<PlanItem, 'id' | 'children'>>,
       after: { html: string; text: string },
+      preserveChildren = false,
     ) {
       const emptyItem = !(before.text ?? '').trim() && !after.text.trim()
       let placement = emptyItem ? 'after' : splitPlacementForBeforeText(before)
       const patch = placement === 'before' ? after : before
       const inserted = placement === 'before' ? before : after
-      let moveChildrenToNewItem = shouldMoveChildrenToSplitItem(before, after)
+      const moveChildrenToNewItem = !preserveChildren && shouldMoveChildrenToSplitItem(before, after)
 
       const newItem = {
         ...createPlanItem(inserted.text ?? ''),

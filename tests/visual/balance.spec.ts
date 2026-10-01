@@ -4073,6 +4073,44 @@ test('enter at the end of a parent plan item moves children to the new blank sib
     })
 })
 
+test('enter at the end of a collapsed parent keeps children and focuses a new sibling', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('complementary').getByRole('button', { name: 'Generate today' }).click()
+
+  await page.getByRole('button', { name: 'Hide subtasks', exact: true }).click()
+  await focusInputByValue(page, 'Work block')
+  await setCaretOffsetInFocusedEditor(page, 'Work block'.length)
+  await page.keyboard.press('Enter')
+
+  await expect
+    .poll(async () =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+        const items =
+          state.plans?.[0]?.items?.map((item: { text: string; children?: Array<{ text: string }> }) => ({
+            text: item.text,
+            children: item.children?.map((child) => child.text) ?? [],
+          })) ?? []
+        const workIndex = items.findIndex((item: { text: string }) => item.text === 'Work block')
+
+        return {
+          activeText: document.activeElement instanceof HTMLElement ? document.activeElement.textContent : null,
+          first: workIndex >= 0 ? items[workIndex] : null,
+          second: workIndex >= 0 ? items[workIndex + 1] : null,
+        }
+      }),
+    )
+    .toEqual({
+      activeText: '',
+      first: { text: 'Work block', children: ['Pick the first useful task', 'Write down next action'] },
+      second: { text: '', children: [] },
+    })
+  await expect(page.getByRole('button', { name: 'Show 2 hidden subtasks', exact: true })).toHaveAttribute('aria-expanded', 'false')
+  await expect(page.locator('[data-plan-text-input]').filter({ hasText: 'Pick the first useful task' })).toHaveCount(0)
+})
+
 test('backspace at the start of a plan item removes an empty item above it', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
