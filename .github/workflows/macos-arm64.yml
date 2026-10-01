@@ -38,6 +38,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Verify notification bridge in dev executables
+        run: node scripts/test-macos-task-notifications.mjs
+
       - name: Resolve app version
         run: |
           VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"

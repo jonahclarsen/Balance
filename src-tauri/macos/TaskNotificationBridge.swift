@@ -23,6 +23,12 @@ private let prefix = "balance.sunset."
 // reconciliation prevents an older regeneration callback restoring stale alarms.
 @_cdecl("balance_replace_task_notifications")
 func balanceReplaceTaskNotifications(_ raw: UnsafePointer<CChar>) -> Int32 {
+    // Tauri dev runs a bare executable. Even an embedded bundle identifier is
+    // insufficient: current() raises an Objective-C exception without an app
+    // bundle proxy, which Swift cannot catch. Keep durable schedules for the
+    // packaged app to register when it launches.
+    guard Bundle.main.bundleURL.pathExtension == "app",
+          Bundle.main.bundleIdentifier != nil else { return 0 }
     guard let data = String(cString: raw).data(using: .utf8),
           let records = try? JSONDecoder().decode([TaskReminder].self, from: data) else { return 1 }
     reminderQueue.async {

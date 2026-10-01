@@ -36,6 +36,8 @@ do not change the notification's original generated text. Schedules are restored
 on launch, sync, and Android reboot. Allow notifications in the OS prompt;
 Android also requests exact-alarm access for timely delivery (without it,
 Android may delay notifications).
+macOS delivery requires the packaged `.app`; `pnpm dev:tauri` retains schedules
+but skips OS notification registration because its executable has no app bundle.
 
 The bundled lookup covers 2000–2099 and requires no internet. It is generated
 offline by `node scripts/generate-vancouver-sunsets.mjs` using NOAA solar
