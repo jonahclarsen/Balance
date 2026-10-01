@@ -95,6 +95,7 @@ for _ in $(seq 1 15); do
   fi
   if grep -q "BALANCE_NOTIFICATION_E2E: FAIL" notification-log.txt; then
     echo "[notifications] Scheduled notification delivery/cancellation failed."
+    grep -F "BalanceNotifications" notification-log.txt | tail -20 || true
     exit 1
   fi
   sleep 2

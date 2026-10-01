@@ -28,6 +28,7 @@ object BalanceTaskNotifications {
     private const val STORE = "task-notification-registry"
     private var activity = WeakReference<Activity>(null)
     private val executor = Executors.newSingleThreadExecutor()
+    @Volatile private var ciTesting = false
     init { System.loadLibrary("balance_lib") }
     @JvmStatic external fun nativeInitialize(context: Context)
     @JvmStatic external fun nativeRefresh(appDataPath: String): Boolean
@@ -59,7 +60,12 @@ object BalanceTaskNotifications {
         return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
 
-    @JvmStatic @Synchronized fun replace(context: Context, json: String) {
+    @JvmStatic fun replace(context: Context, json: String) {
+        replaceSchedules(context, json, fromNative = true)
+    }
+
+    @Synchronized private fun replaceSchedules(context: Context, json: String, fromNative: Boolean = false) {
+        if (fromNative && ciTesting) return
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Sunset tasks", NotificationManager.IMPORTANCE_HIGH))
@@ -116,6 +122,7 @@ object BalanceTaskNotifications {
     }
 
     @Synchronized fun resetAndRefresh(context: Context, complete: () -> Unit = {}) {
+        if (ciTesting) { complete(); return }
         // AlarmManager discards alarms on reboot; fingerprints must be cleared
         // so the same durable records are scheduled again.
         val registry = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
@@ -140,35 +147,43 @@ object BalanceTaskNotifications {
         manager.notify(id, 0, notification)
     }
 
-    @Synchronized private fun runCITest(context: Context) {
+    private fun runCITest(context: Context) {
         val marker = File(context.filesDir, "notification-ci-selftest")
         if ((context.applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) == 0 || !marker.exists()) return
         marker.delete()
+        ciTesting = true
         val id = "synthetic-notification-ci"
         val body = "Synthetic walk 6:51 PM"
+        var stage = "exact permission"
         try {
             val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             check(Build.VERSION.SDK_INT < 31 || manager.canScheduleExactAlarms())
             fun record(at: Long) = JSONArray().put(org.json.JSONObject().put("id", id).put("at", at).put("text", body)).toString()
-            replace(context, record(System.currentTimeMillis() + 3000))
-            // Only this explicitly requested synthetic CI self-test waits.
-            Thread.sleep(6500)
+            replaceSchedules(context, record(System.currentTimeMillis() + 3000))
+            stage = "delivery"
             val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            check(notifications.activeNotifications.any { it.tag == id && it.notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() == body })
-            replace(context, record(System.currentTimeMillis() + 300000))
-            replace(context, "[]")
+            // Wait outside the scheduler monitor: startup/resume and boot
+            // receivers run on the same main thread that delivers the alarm.
+            val deadline = System.currentTimeMillis() + 20000
+            fun delivered() = notifications.activeNotifications.any { it.tag == id && it.notification.extras.getCharSequence(Notification.EXTRA_TEXT)?.toString() == body }
+            while (!delivered() && System.currentTimeMillis() < deadline) Thread.sleep(250)
+            check(delivered())
+            stage = "cancellation"
+            replaceSchedules(context, record(System.currentTimeMillis() + 300000))
+            replaceSchedules(context, "[]")
             val intent = Intent(context, BalanceTaskNotificationReceiver::class.java).setAction("app.balance.local.SUNSET_TASK")
                 .setData(Uri.parse("balance-notification:" + Uri.encode(id)))
             check(PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) == null)
-            replace(context, record(System.currentTimeMillis() + 300000))
+            stage = "re-registration"
+            replaceSchedules(context, record(System.currentTimeMillis() + 300000))
             check(PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) != null)
-            replace(context, "[]")
+            replaceSchedules(context, "[]")
             notifications.cancel(id, 0)
             Log.i("BalanceNotifications", "BALANCE_NOTIFICATION_E2E: OK delivered generated text, cancelled and re-registered")
         } catch (_: Throwable) {
-            replace(context, "[]")
-            Log.e("BalanceNotifications", "BALANCE_NOTIFICATION_E2E: FAIL")
-        } finally { refresh(context) }
+            replaceSchedules(context, "[]")
+            Log.e("BalanceNotifications", "BALANCE_NOTIFICATION_E2E: FAIL $stage")
+        } finally { ciTesting = false; refresh(context) }
     }
 }
 
