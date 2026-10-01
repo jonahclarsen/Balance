@@ -223,10 +223,10 @@ start, `scripts/run-macos-dev-app.sh`:
 
 The host publishes encrypted ciphertext first, then posts the notification. No
 task data, key material, or ciphertext crosses that notification, and no process
-is launched per task change. Measured on this machine, the first bridge compile
-and launch took about 680 ms; subsequent cached Rust-process starts took about
-30 ms. A task change only posts the notification. Re-profile if the bridge or
-runner changes materially.
+is launched per task change. A widget task change only posts the reload
+notification; reminder reconciliation uses the existing socket. Re-profile
+helper startup if the bridge or runner changes materially, using a synthetic app
+identity so the measurement cannot touch the installed planner or widget data.
 
 Keep `/Applications/Balance.app` as the sole installed extension container and
 `balance://` handler. The dev bridge intentionally declares neither an extension
