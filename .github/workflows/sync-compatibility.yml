@@ -78,8 +78,12 @@ jobs:
           python3 - <<'PYTHON'
           from pathlib import Path
           path = Path('../future/src-tauri/src/lib.rs')
-          source = path.read_text().replace('const ENTITY_COLLECTIONS: [&str; 11]', 'const ENTITY_COLLECTIONS: [&str; 12]')
-          source = source.replace('const LISTS_METRICS_KEYS: [&str; 7]', 'const LISTS_METRICS_KEYS: [&str; 8]')
+          import re
+          def grow(source, name):
+              updated, count = re.subn(rf'const {name}: \[&str; (\d+)\]', lambda m: f'const {name}: [&str; {int(m[1]) + 1}]', source)
+              assert count == 1, name
+              return updated
+          source = grow(grow(path.read_text(), 'ENTITY_COLLECTIONS'), 'LISTS_METRICS_KEYS')
           source = source.replace('    "projectCheckIns",', '    "projectCheckIns",\n    "futureHabitCheckIns",')
           source = source.replace('"projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),', '"projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),\n        "futureHabitCheckIns": lists_metrics_data["futureHabitCheckIns"].clone(),')
           path.write_text(source)

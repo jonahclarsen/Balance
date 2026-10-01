@@ -89,6 +89,14 @@ async function manifest() {
   assert(response.ok)
   return response.json()
 }
+// The app opens on Next; the repro observes the day on Today.
+async function openToday() {
+  await waitFor(() => client.evaluate(`(() => {
+    const button = document.querySelector('.sidebar button[aria-keyshortcuts="Alt+T"]')
+    button?.click()
+    return Boolean(button)
+  })()`), 'the Today navigation button')
+}
 async function reload() {
   await client.evaluate(`(() => {
     localStorage.setItem('balance:activePlanDate', '2026-01-01')
@@ -100,6 +108,7 @@ async function reload() {
   client = await connectDevTools(await waitFor(appPid, 'the synthetic app'))
   const ready = await waitForDatabaseReady(client)
   assert(!ready.failed, 'Synthetic database failed to open')
+  await openToday()
 }
 async function resetJoiner(pairingCode) {
   client?.close()
@@ -281,6 +290,7 @@ async function runScenario(scenario, pairingCode) {
   launchApp()
   client = await connectDevTools(await waitFor(appPid, 'the reopened synthetic process'))
   assert(!(await waitForDatabaseReady(client)).failed)
+  await openToday()
   const reopenedState = await readState()
   const reopenedTask = findTask(reopenedState, task.id)
   result.afterRestart = { taskInDatabase: reopenedTask?.item.text === text, taskVisible: await visible(text),
