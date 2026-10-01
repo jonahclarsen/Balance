@@ -17,6 +17,10 @@ test('installs selection formatting idempotently without replacing activity life
     run()
     assert.equal(await readFile(activity, 'utf8'), first)
     assert.ok(first.includes('override fun onStart() { super.onStart() }'))
+    // Restarting a floating action mode from the window callback makes
+    // DecorView finish it immediately, so the copy menu flashes and vanishes.
+    assert.ok(!first.includes('onWindowStartingActionMode'))
+    assert.ok(first.includes('BalanceSelectionFormattingHost(this, webView)'))
     const source = await readFile(join(root, 'BalanceSelectionFormatting.kt'), 'utf8')
     assert.ok(!source.includes('__SELECTION_SCRIPT__'))
     assert.ok(source.includes('balanceformat'))

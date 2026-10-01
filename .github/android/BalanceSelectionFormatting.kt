@@ -1,11 +1,29 @@
 package app.balance.local
 
+import android.content.Context
 import android.graphics.Rect
 import android.view.ActionMode
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.webkit.WebView
+import android.widget.FrameLayout
+
+/** Content root that extends the WebView's floating selection menu before the window shows it. */
+internal class BalanceSelectionFormattingHost(
+    context: Context,
+    private val webView: WebView,
+) : FrameLayout(context) {
+    init {
+        addView(webView, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+    }
+
+    override fun startActionModeForChild(originalView: View, callback: ActionMode.Callback, type: Int): ActionMode? {
+        val wrapped = if (type == ActionMode.TYPE_FLOATING) BalanceSelectionFormatting(webView, callback) else callback
+        return super.startActionModeForChild(originalView, wrapped, type)
+    }
+}
 
 /** Extend Chromium's selection menu while retaining its clipboard actions and geometry. */
 internal class BalanceSelectionFormatting(
