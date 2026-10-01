@@ -17,24 +17,28 @@ fi
 script_directory=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 build_directory=$(CDPATH= cd -- "$(dirname -- "$source_executable")" && pwd)
 bridge_source="$script_directory/../src-tauri/macos/BalanceWidgetDevBridge.swift"
+notification_source="$script_directory/../src-tauri/macos/TaskNotificationBridge.swift"
 bridge_info="$script_directory/../src-tauri/macos/BalanceWidgetDevBridgeInfo.plist"
 bridge_app="$build_directory/BalanceWidgetDevBridge.app"
 bridge_executable="$bridge_app/Contents/MacOS/BalanceWidgetDevBridge"
-ready_file="$build_directory/.balance-widget-dev-bridge-ready-$$"
+bridge_runtime_directory=$(mktemp -d /tmp/balance-dev-bridge.XXXXXX)
+ready_file="$bridge_runtime_directory/ready"
+export BALANCE_DEV_NOTIFICATION_SOCKET="$bridge_runtime_directory/notifications.sock"
+trap 'rm -f "$ready_file" "$BALANCE_DEV_NOTIFICATION_SOCKET"; rmdir "$bridge_runtime_directory" 2>/dev/null || true' EXIT
 
 # The full Tauri process is rejected by WidgetKit even from an app-shaped path.
-# Keep one tiny valid app process alive for this dev process and send it only
-# zero-payload reload notifications after the encrypted snapshot is persisted.
-if [ ! -x "$bridge_executable" ] || [ "$bridge_source" -nt "$bridge_executable" ] || [ "$bridge_info" -nt "$bridge_executable" ]; then
+# Keep one tiny valid app process alive for widget reloads and OS reminders.
+# Widget reload notifications carry no payload; reminders use a private socket.
+if [ ! -x "$bridge_executable" ] || [ "$bridge_source" -nt "$bridge_executable" ] || [ "$notification_source" -nt "$bridge_executable" ] || [ "$bridge_info" -nt "$bridge_executable" ]; then
   architecture=$(uname -m)
   mkdir -p "$bridge_app/Contents/MacOS"
   cp "$bridge_info" "$bridge_app/Contents/Info.plist"
-  xcrun swiftc -O -target "$architecture-apple-macosx13.0" -framework WidgetKit \
-    "$bridge_source" -o "$bridge_executable"
+  xcrun swiftc -parse-as-library -O -target "$architecture-apple-macosx13.0" -framework WidgetKit -framework UserNotifications \
+    "$bridge_source" "$notification_source" -o "$bridge_executable"
 fi
 
 rm -f "$ready_file"
-"$bridge_executable" "$$" "$ready_file" &
+"$bridge_executable" "$$" "$ready_file" "$BALANCE_DEV_NOTIFICATION_SOCKET" &
 bridge_process_identifier=$!
 
 attempt=0

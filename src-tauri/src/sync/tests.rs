@@ -2542,6 +2542,15 @@ fn selftest_round_trips_two_real_databases() {
 }
 
 #[test]
+fn desktop_generated_notifications_reach_android_after_sync_and_checkpoint() {
+    let json = notification_selftest_fixture(&std::env::temp_dir(), 2000000000000).unwrap();
+    let records: JsonValue = serde_json::from_str(&json).unwrap();
+    assert_eq!(records[0]["id"], "synthetic-notification-ci");
+    assert_eq!(records[0]["text"], "Synthetic walk 6:51 PM");
+    assert_eq!(records[0]["at"], 2000000000000i64);
+}
+
+#[test]
 fn pairing_code_round_trips_and_rejects_corruption() {
     let key = SyncKey::generate();
     let code = key.to_pairing_code();

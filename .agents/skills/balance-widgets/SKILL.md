@@ -199,9 +199,19 @@ Do not use configuration enumeration as proof that the real host can invalidate
 a timeline, and do not return to the dev app-shell design. The working boundary
 is a tiny Swift executable that is the declared main executable of its own
 `BalanceWidgetDevBridge.app`. It has the production container bundle identifier
-but no URL schemes and no embedded extension. It listens only for the
+but no URL schemes and no embedded extension. For widget reloads it listens for the
 zero-payload distributed notification `app.balance.local.widget.reload` and
 calls `reloadTimelines(ofKind: "BalanceToday")`.
+
+The helper also registers dev-mode task notifications: the raw Tauri executable
+cannot acquire `UNUserNotificationCenter` (it raises an Objective-C exception,
+even with an embedded bundle identifier). Reminder JSON travels only through a
+private Unix socket in a mode-700 temporary directory, authenticated to the
+supervised dev process's UID and PID. Never put task text in the distributed
+widget notification or a plaintext cache. Compile the helper with
+`TaskNotificationBridge.swift`; test it using
+`node scripts/test-macos-task-notifications.mjs`, which creates a synthetic app
+identity and never opens planner data or asks for notification permission.
 
 Normal `pnpm tauri dev` uses the macOS-only Cargo runner. On each Rust process
 start, `scripts/run-macos-dev-app.sh`:
@@ -367,7 +377,7 @@ cargo test --manifest-path src-tauri/Cargo.toml widget::tests
 cargo test --manifest-path src-tauri/Cargo.toml
 pnpm check
 sh -n scripts/macos-tauri-cargo.sh scripts/run-macos-dev-app.sh
-swiftc -typecheck src-tauri/macos/BalanceWidgetDevBridge.swift
+swiftc -parse-as-library -typecheck src-tauri/macos/BalanceWidgetDevBridge.swift src-tauri/macos/TaskNotificationBridge.swift
 node --test .github/scripts/configure-android-widgets.test.mjs
 ```
 

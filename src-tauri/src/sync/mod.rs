@@ -1059,6 +1059,85 @@ fn exchange_fixture_operations(
     Ok(())
 }
 
+// The Android debug notification test uses two fresh encrypted databases and
+// the same generation operation and E2EE merge as desktop-to-phone sync.
+#[cfg(any(test, all(target_os = "android", debug_assertions)))]
+pub(crate) fn notification_selftest_fixture(scratch_dir: &Path, at: i64) -> Result<String> {
+    std::fs::create_dir_all(scratch_dir).map_err(|e| Error::Codec(e.to_string()))?;
+    let directory = scratch_dir.join(format!("synthetic-notification-sync-{}", random_id()));
+    std::fs::create_dir(&directory).map_err(|e| Error::Codec(e.to_string()))?;
+    let result = (|| -> Result<String> {
+        let mut desktop = crate::open_database_at(
+            &directory.join("desktop.sqlite3"),
+            &crate::generate_recovery_key(),
+        )
+        .map_err(Error::Codec)?;
+        let mut android = crate::open_database_at(
+            &directory.join("android.sqlite3"),
+            &crate::generate_recovery_key(),
+        )
+        .map_err(Error::Codec)?;
+        for (connection, device) in [
+            (&mut desktop, "synthetic-desktop"),
+            (&mut android, "synthetic-android"),
+        ] {
+            crate::replace_app_state(connection, &json!({"schemaVersion":1, "deviceId":device,
+                "localSequence":0, "historyRevision":0, "activePlanDate":"2026-10-01",
+                "plans":[], "templates":[], "goals":[], "goalCompletions":[], "operations":[],
+                "lists":[], "listTemplates":[], "notes":[], "metrics":[], "metricEntries":[], "taskNotifications":[]
+            })).map_err(Error::Codec)?;
+        }
+        enable_primary(&desktop)?;
+        enable_joiner(&android)?;
+        let key = crypto::SyncKey::generate();
+        exchange_fixture_operations(&desktop, &android, &key)?;
+        let mut previous = json!([]);
+        for (index, id) in ["synthetic-notification-old", "synthetic-notification-ci"]
+            .iter()
+            .enumerate()
+        {
+            let item = json!({"id":format!("{id}-item"), "text":"Synthetic walk 6:51 PM", "html":"Synthetic walk 6:51 PM",
+                "done":false, "startMinutes":null, "endMinutes":null, "children":[]});
+            let record = json!({"id":id, "sourceKind":"plan", "sourceId":"synthetic-desktop-day",
+                "itemId":item["id"], "at":at, "text":item["text"]});
+            crate::persist_operation_to_database(&mut desktop, &json!({
+                "id":format!("synthetic-generation-{index}"), "deviceId":"synthetic-desktop", "sequence":index+1,
+                "timestamp":format!("2026-10-01T12:00:0{index}Z"), "type":"regenerate_plan",
+                "payload":{"date":"2026-10-01", "replaceExisting":index>0, "activePlanDate":"",
+                    "generatedPlan":{"id":"synthetic-desktop-day", "date":"2026-10-01", "title":"Synthetic day",
+                        "dailyReminder":"", "createdAt":"2026-10-01T12:00:00Z", "generatedFromTemplateId":null, "items":[item]},
+                    "replaceItems":previous, "entityChanges":{"version":2,
+                        "deletes":if index>0 { json!([{"collection":"taskNotifications", "key":"synthetic-notification-old"}]) } else {json!([])},
+                        "upserts":[{"collection":"taskNotifications", "key":id, "position":0,
+                            "value":record, "patches":[entities::diff(&JsonValue::Null, &record)]}]}}
+            })).map_err(Error::Codec)?;
+            exchange_fixture_operations(&desktop, &android, &key)?;
+            let pending = crate::task_notifications::pending(&android, 0).map_err(Error::Codec)?;
+            if serde_json::to_value(pending).map_err(|e| Error::Codec(e.to_string()))?
+                != json!([record])
+            {
+                return Err(Error::Codec(
+                    "desktop generation/regeneration did not replace the Android schedule".into(),
+                ));
+            }
+            previous = json!([item]);
+        }
+        // Checkpoint bootstrap must carry reminders to a freshly paired phone too.
+        enable_joiner(&android)?;
+        checkpoint_operation_log_preserving_history(&desktop)?;
+        exchange_fixture_operations(&desktop, &android, &key)?;
+        let pending = crate::task_notifications::pending(&android, 0).map_err(Error::Codec)?;
+        if pending.len() != 1 {
+            return Err(Error::Codec(
+                "notification lost during Android checkpoint bootstrap".into(),
+            ));
+        }
+        serde_json::to_string(&pending).map_err(|e| Error::Codec(e.to_string()))
+    })();
+    let _ = std::fs::remove_dir_all(&directory);
+    result
+}
+
 pub fn selftest(scratch_dir: &Path) -> Result<SyncSelftestProfile> {
     // The self-test may run before the main database has created this directory.
     std::fs::create_dir_all(scratch_dir).map_err(|e| Error::Codec(e.to_string()))?;

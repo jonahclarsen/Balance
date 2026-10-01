@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import Darwin
 
 private struct TaskReminder: Decodable {
     let id: String
@@ -23,13 +24,21 @@ private let prefix = "balance.sunset."
 // reconciliation prevents an older regeneration callback restoring stale alarms.
 @_cdecl("balance_replace_task_notifications")
 func balanceReplaceTaskNotifications(_ raw: UnsafePointer<CChar>) -> Int32 {
-    // Tauri dev runs a bare executable. Even an embedded bundle identifier is
-    // insufficient: current() raises an Objective-C exception without an app
-    // bundle proxy, which Swift cannot catch. Keep durable schedules for the
-    // packaged app to register when it launches.
+    let json = String(cString: raw)
+    // Bare Tauri executables cannot acquire a notification center. The existing
+    // app-shaped widget helper registers reminders on their behalf instead.
     guard Bundle.main.bundleURL.pathExtension == "app",
-          Bundle.main.bundleIdentifier != nil else { return 0 }
-    guard let data = String(cString: raw).data(using: .utf8),
+          Bundle.main.bundleIdentifier != nil else {
+        if let path = ProcessInfo.processInfo.environment["BALANCE_DEV_NOTIFICATION_SOCKET"] {
+            reminderQueue.async {
+                if !sendDevTaskNotifications(json, path: path) {
+                    NSLog("Could not forward Balance dev task notifications")
+                }
+            }
+        }
+        return 0
+    }
+    guard let data = json.data(using: .utf8),
           let records = try? JSONDecoder().decode([TaskReminder].self, from: data) else { return 1 }
     reminderQueue.async {
         let center = UNUserNotificationCenter.current()
@@ -77,4 +86,88 @@ func balanceReplaceTaskNotifications(_ raw: UnsafePointer<CChar>) -> Int32 {
         if failed { NSLog("Could not register Balance sunset notifications") }
     }
     return 0
+}
+
+// Private, owner-only Unix socket: task bodies travel in memory, never through
+// preferences, files, command-line arguments, or distributed notifications.
+private func withSocketAddress<T>(_ path: String, _ body: (UnsafePointer<sockaddr>, socklen_t) -> T) -> T? {
+    var address = sockaddr_un()
+    let bytes = Array(path.utf8) + [0]
+    guard bytes.count <= MemoryLayout.size(ofValue: address.sun_path) else { return nil }
+    address.sun_family = sa_family_t(AF_UNIX)
+    address.sun_len = UInt8(MemoryLayout<sockaddr_un>.size)
+    withUnsafeMutableBytes(of: &address.sun_path) { $0.copyBytes(from: bytes) }
+    return withUnsafePointer(to: &address) {
+        $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { body($0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+    }
+}
+
+private func prepareSocket(_ descriptor: Int32) {
+    var noSignal: Int32 = 1
+    setsockopt(descriptor, SOL_SOCKET, SO_NOSIGPIPE, &noSignal, socklen_t(MemoryLayout<Int32>.size))
+    var timeout = timeval(tv_sec: 5, tv_usec: 0)
+    setsockopt(descriptor, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    setsockopt(descriptor, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+}
+
+func sendDevTaskNotifications(_ json: String, path: String) -> Bool {
+    let descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+    guard descriptor >= 0 else { return false }
+    defer { close(descriptor) }
+    prepareSocket(descriptor)
+    guard withSocketAddress(path, { connect(descriptor, $0, $1) }) == 0 else { return false }
+    let data = Data(json.utf8)
+    guard data.count <= 16 * 1024 * 1024 else { return false }
+    let sent = data.withUnsafeBytes { bytes -> Bool in
+        var offset = 0
+        while offset < bytes.count {
+            let count = write(descriptor, bytes.baseAddress!.advanced(by: offset), bytes.count - offset)
+            if count < 0 && errno == EINTR { continue }
+            guard count > 0 else { return false }
+            offset += count
+        }
+        return true
+    }
+    guard sent else { return false }
+    shutdown(descriptor, SHUT_WR)
+    var acknowledgement: UInt8 = 1
+    return read(descriptor, &acknowledgement, 1) == 1 && acknowledgement == 0
+}
+
+func startDevTaskNotificationServer(path: String, parent: pid_t) -> Bool {
+    let listener = socket(AF_UNIX, SOCK_STREAM, 0)
+    guard listener >= 0 else { return false }
+    guard withSocketAddress(path, { bind(listener, $0, $1) }) == 0,
+          chmod(path, 0o600) == 0, listen(listener, 4) == 0 else {
+        close(listener)
+        return false
+    }
+    DispatchQueue(label: "app.balance.dev-notification-socket").async {
+        while true {
+            let client = accept(listener, nil, nil)
+            if client < 0 { if errno == EINTR { continue }; return }
+            defer { close(client) }
+            prepareSocket(client)
+            var peer: pid_t = 0
+            var size = socklen_t(MemoryLayout<pid_t>.size)
+            var user: uid_t = 0
+            var group: gid_t = 0
+            guard getpeereid(client, &user, &group) == 0, user == getuid(),
+                  getsockopt(client, SOL_LOCAL, LOCAL_PEERPID, &peer, &size) == 0, peer == parent else { continue }
+            var data = Data()
+            var buffer = [UInt8](repeating: 0, count: 8192)
+            var complete = false
+            while data.count <= 16 * 1024 * 1024 {
+                let count = read(client, &buffer, buffer.count)
+                if count < 0 && errno == EINTR { continue }
+                if count == 0 { complete = true; break }
+                if count < 0 { break }
+                data.append(contentsOf: buffer.prefix(count))
+            }
+            guard complete, let json = String(data: data, encoding: .utf8) else { continue }
+            var result = UInt8(json.withCString { balanceReplaceTaskNotifications($0) })
+            _ = write(client, &result, 1)
+        }
+    }
+    return true
 }

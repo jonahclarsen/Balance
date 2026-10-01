@@ -32,6 +32,7 @@ object BalanceTaskNotifications {
     init { System.loadLibrary("balance_lib") }
     @JvmStatic external fun nativeInitialize(context: Context)
     @JvmStatic external fun nativeRefresh(appDataPath: String): Boolean
+    @JvmStatic external fun nativeSyncedFixture(scratchPath: String, at: Long): Boolean
 
     fun initialize(context: Context) { nativeInitialize(context.applicationContext) }
 
@@ -65,7 +66,7 @@ object BalanceTaskNotifications {
     }
 
     @Synchronized private fun replaceSchedules(context: Context, json: String, fromNative: Boolean = false) {
-        if (fromNative && ciTesting) return
+        if (fromNative && ciTesting && !json.contains("synthetic-notification-ci")) return
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Sunset tasks", NotificationManager.IMPORTANCE_HIGH))
@@ -159,7 +160,8 @@ object BalanceTaskNotifications {
             val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             check(Build.VERSION.SDK_INT < 31 || manager.canScheduleExactAlarms())
             fun record(at: Long) = JSONArray().put(org.json.JSONObject().put("id", id).put("at", at).put("text", body)).toString()
-            replaceSchedules(context, record(System.currentTimeMillis() + 3000))
+            stage = "desktop-to-Android encrypted sync and registration"
+            check(nativeSyncedFixture(context.cacheDir.absolutePath, System.currentTimeMillis() + 5000))
             stage = "delivery"
             val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             // Wait outside the scheduler monitor: startup/resume and boot
@@ -179,7 +181,7 @@ object BalanceTaskNotifications {
             check(PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE) != null)
             replaceSchedules(context, "[]")
             notifications.cancel(id, 0)
-            Log.i("BalanceNotifications", "BALANCE_NOTIFICATION_E2E: OK delivered generated text, cancelled and re-registered")
+            Log.i("BalanceNotifications", "BALANCE_NOTIFICATION_E2E: OK delivered desktop-synced generated text, cancelled and re-registered")
         } catch (_: Throwable) {
             replaceSchedules(context, "[]")
             Log.e("BalanceNotifications", "BALANCE_NOTIFICATION_E2E: FAIL $stage")

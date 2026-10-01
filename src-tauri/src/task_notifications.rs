@@ -200,4 +200,25 @@ mod platform {
             }));
         u8::from(matches!(result, Ok(Ok(()))))
     }
+
+    #[cfg(debug_assertions)]
+    #[no_mangle]
+    pub extern "system" fn Java_app_balance_local_BalanceTaskNotifications_nativeSyncedFixture(
+        mut env: JNIEnv,
+        _class: JClass,
+        path: JString,
+        at: jni::sys::jlong,
+    ) -> jni::sys::jboolean {
+        let result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| -> Result<(), String> {
+                let path: String = env.get_string(&path).map_err(|e| e.to_string())?.into();
+                let json =
+                    crate::sync::notification_selftest_fixture(std::path::Path::new(&path), at)
+                        .map_err(crate::sync::Error::into_string)?;
+                // Use the production JNI registration path with the receiving
+                // device's pending records, rather than constructing alarms here.
+                publish(&json)
+            }));
+        u8::from(matches!(result, Ok(Ok(()))))
+    }
 }
