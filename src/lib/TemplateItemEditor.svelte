@@ -557,9 +557,9 @@
     transform: translateY(-50%);
     visibility: hidden;
   }
-  .list-expansion { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); cursor: pointer; }
-  .list-expansion input { margin: 0; }
-  .list-expansion svg { width: 12px; height: 12px; }
+  .list-expansion { display: inline-flex; align-items: center; gap: 3px; padding: 4px; margin: -4px; color: var(--muted); cursor: pointer; }
+  .list-expansion input { margin: 0; cursor: pointer; }
+  .list-expansion svg { width: 12px; height: 12px; cursor: pointer; }
   @media (max-width: 760px) {
     .template-option-editor { grid-column: 1 / -1; grid-row: 1; width: 100%; }
   }
