@@ -108,6 +108,9 @@ test('notification snapshots retain generated text and absolute rollover dates, 
   expect(reconcileTaskNotifications(before, aliased).taskNotifications).toBe(records)
   expect(reconcileTaskNotifications(before, { ...before, plans: [] }).taskNotifications).toEqual([])
   expect(reconcileTaskNotifications(before, { ...before, plans: [{ ...plan, items: [] }] }).taskNotifications).toEqual([])
+  const future = { ...records[0], id: 'synthetic-future-source', sourceKind: 'event' } as unknown as TaskNotification
+  const withFuture = { ...before, taskNotifications: [...records, future] }
+  expect(reconcileTaskNotifications(withFuture, { ...withFuture, plans: [] }).taskNotifications).toEqual([future])
 })
 
 test('linked-list expansion remaps sunset notification snapshots to the generated day task IDs', () => {

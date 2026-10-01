@@ -20,8 +20,11 @@ export function reconcileTaskNotifications(before: AppState, after: AppState): A
   // resolves the source ID alias and checks the task's calendar-day membership.
   const plans = after.plans.map(plan => itemIds(plan.items))
   const lists = new Map(after.lists.map(list => [list.id, itemIds(list.items)]))
-  const records = after.taskNotifications.filter(record => record.sourceKind === 'plan'
-    ? plans.some(ids => ids.has(record.itemId))
-    : lists.get(record.sourceId)?.has(record.itemId))
+  const records = after.taskNotifications.filter(record => {
+    if (record.sourceKind === 'plan') return plans.some(ids => ids.has(record.itemId))
+    if (record.sourceKind === 'list') return lists.get(record.sourceId)?.has(record.itemId)
+    // A future client may add another source kind to this collection.
+    return true
+  })
   return records.length === after.taskNotifications.length ? after : { ...after, taskNotifications: records }
 }
