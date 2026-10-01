@@ -52,3 +52,72 @@ test('new lists open with an empty name and focus ready for typing', async ({ pa
   await page.keyboard.type('Synthetic new list')
   await expect(name).toHaveValue('Synthetic new list')
 })
+
+test('copied day options retain checked and unchecked expansion choices independently of their source', async ({ page }, info) => {
+  test.skip(info.project.name === 'mobile', 'desktop structured clipboard')
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  await page.evaluate(async () => {
+    // @ts-expect-error Served by Vite.
+    const { plannerStore: store } = await import('/src/lib/store.ts')
+    const id = store.addListTemplate()
+    store.renameListTemplate(id, 'Synthetic routine')
+  })
+  await openView(page, 'Days')
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  const editors = page.locator('[data-template-option-text-input]')
+  await editors.first().fill('Synthetic routine')
+  await editors.first().press('End')
+  await editors.first().press('Enter')
+  await editors.last().fill('Synthetic routine unchecked')
+  const choices = page.getByRole('checkbox', { name: 'Expand Synthetic routine into tasks' })
+  await expect(choices).toHaveCount(2)
+  await choices.first().check()
+  await editors.first().focus()
+  await page.keyboard.press('End')
+  await page.keyboard.press('Meta+Shift+ArrowDown')
+  await page.keyboard.press('Meta+C')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('unchecked')
+  // Changing the original after copying must not change the clipboard snapshot.
+  await choices.first().uncheck()
+  await page.getByRole('button', { name: 'New day', exact: true }).last().click()
+  await editors.first().fill('')
+  await page.keyboard.press('Meta+V')
+  await expect(choices).toHaveCount(2)
+  await expect(choices.first()).toBeChecked()
+  await expect(choices.last()).not.toBeChecked()
+  await page.keyboard.press('Meta+Z')
+  await expect(choices).toHaveCount(0)
+  await page.keyboard.press('Meta+Shift+Z')
+  await expect(choices.first()).toBeChecked()
+  await expect(choices.last()).not.toBeChecked()
+  await page.reload()
+  await openView(page, 'Days')
+  await expect(choices.first()).toBeChecked()
+})
+
+test('expansion controls sit inside the editor immediately after short and wrapped text', async ({ page }) => {
+  await page.evaluate(async () => {
+    // @ts-expect-error Served by Vite.
+    const { plannerStore: store } = await import('/src/lib/store.ts')
+    const id = store.addListTemplate()
+    store.renameListTemplate(id, 'Synthetic routine')
+  })
+  await openView(page, 'Days')
+  const editor = page.locator('[data-template-option-text-input]').first()
+  const checkbox = page.getByRole('checkbox', { name: 'Expand Synthetic routine into tasks' })
+  for (const text of ['Synthetic routine', 'Synthetic routine ' + 'more synthetic text '.repeat(20)]) {
+    await editor.fill(text)
+    await expect(checkbox).toBeVisible()
+    await expect.poll(() => editor.evaluate((node) => {
+      const range = document.createRange()
+      range.selectNodeContents(node)
+      const end = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0).at(-1)!
+      const box = node.getBoundingClientRect()
+      const control = node.parentElement!.querySelector('input[type="checkbox"]')!.getBoundingClientRect()
+      return control.left >= end.right && control.left - end.right < 16 && control.right <= box.right &&
+        control.top >= box.top && control.bottom <= box.bottom && control.top < end.bottom && control.bottom > end.top
+    })).toBe(true)
+  }
+  await checkbox.check()
+  await expect(editor).toHaveText('Synthetic routine ' + 'more synthetic text '.repeat(20))
+})

@@ -200,6 +200,7 @@ try {
 }
 
 function comparable(collection, values) {
+  if (collection === 'templateListExpansions') return values ?? []
   if (collection === 'uneditedPlanItems') return [...values].sort((a, b) => a.id.localeCompare(b.id))
   if (collection !== 'plans') return values
   // SQL rows normalize optional time visibility and do not expose the existing
@@ -209,7 +210,7 @@ function comparable(collection, values) {
   return values.map(({ generatedGoalIds, items: rows, ...plan }) => ({ ...plan, items: items(rows) }))
 }
 if (frontendFixtures) {
-  const collections = ['notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'goalCompletions', 'projects', 'projectCheckIns', 'uneditedPlanItems', 'plans']
+  const collections = ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'goalCompletions', 'projects', 'projectCheckIns', 'uneditedPlanItems', 'plans']
   for (const [index, filename] of readdirSync(frontendFixtures).filter((name) => name.endsWith('.json')).entries()) {
     const fixture = JSON.parse(readFileSync(join(frontendFixtures, filename), 'utf8'))
     const database = `frontend-${index}`

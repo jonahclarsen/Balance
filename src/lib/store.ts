@@ -128,6 +128,7 @@ import type {
   ReplicatedPreferences,
   TemplateItem,
   TemplateOption,
+  TemplateListExpansion,
   TemplateQuizAnswers,
 } from './types'
 import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './preferences'
@@ -1734,16 +1735,28 @@ function createPlannerStore() {
       return rootIds
     },
 
-    pasteTemplateItems(templateId: Id, itemsToPaste: TemplateItem[], targetId: Id | null, placement: 'after' | 'replace') {
+    pasteTemplateItems(templateId: Id, itemsToPaste: TemplateItem[], targetId: Id | null, placement: 'after' | 'replace', listExpansions: TemplateListExpansion[] = []) {
       if (itemsToPaste.length === 0) return []
       const pastedItems = cloneTemplateItemsForPaste(itemsToPaste)
-      commit('paste_template_items', { templateId, targetId, placement, items: pastedItems }, (state) =>
-        updateTemplate(state, templateId, (template) => ({
+      const copiedExpansions: TemplateListExpansion[] = []
+      const copyChoices = (source: TemplateItem[], pasted: TemplateItem[]) => source.forEach((item, index) => {
+        item.options.forEach((option, optionIndex) => {
+          const choice = listExpansions.find(({ id }) => id === option.id)
+          if (choice) copiedExpansions.push({ ...choice, id: pasted[index].options[optionIndex].id, listTemplateIds: [...choice.listTemplateIds] })
+        })
+        copyChoices(item.children, pasted[index].children)
+      })
+      copyChoices(itemsToPaste, pastedItems)
+      // Existing relational paste plus generic entity patches share one undo entry.
+      commit('paste_template_items', { templateId, targetId, placement, items: pastedItems }, (state) => {
+        const next = updateTemplate(state, templateId, (template) => ({
           ...template,
           updatedAt: nowISO(),
           items: pasteTemplateItemsIntoTree(template.items, pastedItems, targetId, placement),
-        })),
-      )
+        }))
+        return next === state || copiedExpansions.length === 0 ? next
+          : { ...next, templateListExpansions: [...next.templateListExpansions, ...copiedExpansions] }
+      })
       return pastedItems.map((item) => item.id)
     },
 

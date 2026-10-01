@@ -192,3 +192,42 @@ test('editing one generated task deletes one marker without rewriting the rest',
   expect(result.undoneMarkers).toEqual(result.markersBefore)
   expect(result.completedMarkers).toEqual([])
 })
+
+test('day template paste remaps nested expansion choices in the same persisted operation', async ({ page }, info) => {
+  await page.goto('/')
+  const fixture = await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore: store } = await import(/* @vite-ignore */ path)
+    let live: any
+    const unsubscribe = store.subscribe((state: any) => { live = state })
+    const listId = store.addListTemplate()
+    store.renameListTemplate(listId, 'Synthetic routine')
+    const templateId = store.addTemplate()
+    const root = live.templates.find((value: any) => value.id === templateId).items[0]
+    store.patchTemplateOption(templateId, root.id, root.options[0].id, { text: 'Synthetic routine', html: 'Synthetic routine' })
+    store.addTemplateChild(templateId, root.id)
+    const child = live.templates.find((value: any) => value.id === templateId).items[0].children[0]
+    store.patchTemplateOption(templateId, child.id, child.options[0].id, { text: 'Synthetic routine child', html: 'Synthetic routine child' })
+    store.setTemplateListExpansion(root.options[0].id, listId, true)
+    store.setTemplateListExpansion(child.options[0].id, listId, true)
+    store.setTemplateListExpansion(child.options[0].id, listId, false)
+    const initial = structuredClone(live)
+    const start = live.operations.length
+    const copied = store.copyTemplateItems(templateId, [root.id])
+    const ids = store.pasteTemplateItems(templateId, copied, root.id, 'after', structuredClone(live.templateListExpansions))
+    const pasted = live.templates.find((value: any) => value.id === templateId).items.find((value: any) => value.id === ids[0])
+    const result = {
+      initial, operations: structuredClone(live.operations.slice(start)), expected: structuredClone(live),
+      choices: [pasted.options[0].id, pasted.children[0].options[0].id].map((id) => live.templateListExpansions.find((value: any) => value.id === id)?.listTemplateIds),
+      listId,
+    }
+    unsubscribe()
+    return result
+  })
+  expect(fixture.choices).toEqual([[fixture.listId], []])
+  expect(fixture.operations).toHaveLength(1)
+  expect(fixture.operations[0].type).toBe('paste_template_items')
+  expect(fixture.operations[0].payload.entityChanges.upserts).toHaveLength(2)
+  mkdirSync('artifacts/entity-fixtures', { recursive: true })
+  writeFileSync(`artifacts/entity-fixtures/paste-expansion-${info.project.name}.json`, JSON.stringify(fixture))
+})

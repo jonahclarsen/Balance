@@ -72,6 +72,38 @@
   export let listExpansions: TemplateListExpansion[] = []
   export let setListExpansion: (optionId: Id, listTemplateId: Id, enabled: boolean) => void = () => {}
 
+  // Keep controls outside contenteditable, positioned over its final text line.
+  function inlineExpansionControls(wrapper: HTMLDivElement) {
+    let frame = 0
+    const update = () => {
+      cancelAnimationFrame(frame)
+      frame = requestAnimationFrame(() => {
+        const editor = wrapper.querySelector<HTMLElement>('[data-rich-text-input]')
+        const controls = wrapper.querySelector<HTMLElement>('.expansion-controls')
+        if (!editor) return
+        const padding = controls ? `${controls.offsetWidth + 18}px` : ''
+        if (editor.style.paddingRight !== padding) editor.style.paddingRight = padding
+        if (!controls) return
+        const range = document.createRange()
+        range.selectNodeContents(editor)
+        const rect = Array.from(range.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0).at(-1)
+        if (!rect) return
+        const bounds = wrapper.getBoundingClientRect()
+        // Client rectangles include Balance's browser zoom; CSS offsets do not.
+        const scale = bounds.width / wrapper.offsetWidth
+        controls.style.left = `${Math.min((rect.right - bounds.left) / scale + 6, wrapper.clientWidth - controls.offsetWidth - 2)}px`
+        controls.style.top = `${(rect.top - bounds.top + rect.height / 2) / scale}px`
+        controls.style.visibility = 'visible'
+      })
+    }
+    const resize = new ResizeObserver(update)
+    resize.observe(wrapper)
+    const mutation = new MutationObserver(update)
+    mutation.observe(wrapper, { childList: true, subtree: true, characterData: true })
+    update()
+    return { destroy() { cancelAnimationFrame(frame); resize.disconnect(); mutation.disconnect() } }
+  }
+
   let questionInput: HTMLInputElement | null = null
   $: question = templateQuestions.find(({ id }) => id === item.id)?.question
 
@@ -392,40 +424,46 @@
       {/if}
       {#each item.options as option, index (option.id)}
         <div class="option-row">
-          <RichTextEditor
-            className="template-text"
-            kind="template-option"
-            inputId={option.id}
-            html={option.html}
-            text={option.text}
-            placeholder={question !== undefined
-              ? (item.options.length === 1 ? 'Added when you answer yes' : 'Answer')
-              : index === 0 ? 'Template item' : '(Skip)'}
-            ariaLabel={index === 0 ? 'Template item' : 'Template alternative'}
-            revision={historyRevision}
-            onChange={(html, text, options) => patchOption(templateId, item.id, option.id, { html, text }, options)}
-            onArrowKey={(direction, editor, event) => handleTextArrowKey(option.id, direction, editor, event)}
-            interceptShiftArrowAtBoundary
-            onSplit={(before, after) => handleTextSplit(option.id, before, after)}
-            onTabKey={handleTextTab}
-            onBackspaceEmpty={(editor) => handleBackspaceEmpty(option, index, editor)}
-            onBackspaceStart={(editor) => handleBackspaceStart(option, index, editor)}
-            onMetaBackspaceEnd={(editor) => handleMetaBackspaceEnd(option, index, editor)}
-            onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
-            internalLinkSegments={linkifyItemText(option.text, listTemplates, metrics, notes)}
-            onInternalLinkClick={(link) => onOpenLink(link)}
-          />
-          {#each detectedTemplateLists(option.text, listTemplates, metrics, notes) as list (list.id)}
-            <label class="list-expansion" title={`Place ${list.name} tasks here when generating the day`}>
-              <input
-                type="checkbox"
-                aria-label={`Expand ${list.name} into tasks`}
-                checked={listExpansions.find(({ id }) => id === option.id)?.listTemplateIds.includes(list.id) ?? false}
-                on:change={(event) => setListExpansion(option.id, list.id, event.currentTarget.checked)}
-              />
-              <span>Expand{detectedTemplateLists(option.text, listTemplates, metrics, notes).length > 1 ? ` ${list.name}` : ''}</span>
-            </label>
-          {/each}
+          <div class="template-option-editor" use:inlineExpansionControls>
+            <RichTextEditor
+              className="template-text"
+              kind="template-option"
+              inputId={option.id}
+              html={option.html}
+              text={option.text}
+              placeholder={question !== undefined
+                ? (item.options.length === 1 ? 'Added when you answer yes' : 'Answer')
+                : index === 0 ? 'Template item' : '(Skip)'}
+              ariaLabel={index === 0 ? 'Template item' : 'Template alternative'}
+              revision={historyRevision}
+              onChange={(html, text, options) => patchOption(templateId, item.id, option.id, { html, text }, options)}
+              onArrowKey={(direction, editor, event) => handleTextArrowKey(option.id, direction, editor, event)}
+              interceptShiftArrowAtBoundary
+              onSplit={(before, after) => handleTextSplit(option.id, before, after)}
+              onTabKey={handleTextTab}
+              onBackspaceEmpty={(editor) => handleBackspaceEmpty(option, index, editor)}
+              onBackspaceStart={(editor) => handleBackspaceStart(option, index, editor)}
+              onMetaBackspaceEnd={(editor) => handleMetaBackspaceEnd(option, index, editor)}
+              onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
+              internalLinkSegments={linkifyItemText(option.text, listTemplates, metrics, notes)}
+              onInternalLinkClick={(link) => onOpenLink(link)}
+            />
+            {#if detectedTemplateLists(option.text, listTemplates, metrics, notes).length > 0}
+            <div class="expansion-controls">
+            {#each detectedTemplateLists(option.text, listTemplates, metrics, notes) as list (list.id)}
+              <label class="list-expansion" title={`Place ${list.name} tasks here when generating the day`}>
+                <input
+                  type="checkbox"
+                  aria-label={`Expand ${list.name} into tasks`}
+                  checked={listExpansions.find(({ id }) => id === option.id)?.listTemplateIds.includes(list.id) ?? false}
+                  on:change={(event) => setListExpansion(option.id, list.id, event.currentTarget.checked)}
+                />
+                <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3h10M3 8h10M3 13h10" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" /></svg>
+              </label>
+            {/each}
+            </div>
+            {/if}
+          </div>
           {#if question === undefined}
             <ProbabilitySlider
               value={option.probability}
@@ -509,16 +547,20 @@
 </TreeItemRow>
 
 <style>
-  .list-expansion {
+  .template-option-editor { position: relative; flex: 1; min-width: 0; }
+  .template-option-editor :global(.template-text) { width: 100%; }
+  .expansion-controls {
+    position: absolute;
     display: inline-flex;
+    gap: 6px;
     align-items: center;
-    gap: 0.3rem;
-    font-size: 0.75rem;
-    color: var(--muted);
-    cursor: pointer;
+    transform: translateY(-50%);
+    visibility: hidden;
   }
+  .list-expansion { display: inline-flex; align-items: center; gap: 3px; color: var(--muted); cursor: pointer; }
   .list-expansion input { margin: 0; }
-  @media (max-width: 700px) {
-    .list-expansion { grid-column: 1 / -1; }
+  .list-expansion svg { width: 12px; height: 12px; }
+  @media (max-width: 760px) {
+    .template-option-editor { grid-column: 1 / -1; grid-row: 1; width: 100%; }
   }
 </style>
