@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { defaultPlanItemTimeRange, defaultTemplateItemTimeRange } from '../../src/lib/planner'
+import { clampMinutes, defaultPlanItemTimeRange, defaultTemplateItemTimeRange } from '../../src/lib/planner'
 import type { PlanItem, TemplateItem } from '../../src/lib/types'
 
 function item(
@@ -18,6 +18,13 @@ function item(
     children,
   }
 }
+
+test('times pushed beyond the timeline stop at the following noon on the quarter-hour grid', () => {
+  expect(clampMinutes(36 * 60 + 15)).toBe(36 * 60)
+  const task = item('task')
+  expect(defaultPlanItemTimeRange([item('previous', 35 * 60, 36 * 60), task], task.id))
+    .toEqual({ startMinutes: 35 * 60, endMinutes: 36 * 60 })
+})
 
 test('a child starts with its timed parent while a peer starts after it', () => {
   const child = item('child')

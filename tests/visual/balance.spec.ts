@@ -2286,6 +2286,39 @@ test('adding time to deeper descendants reuses the previous timed task start', a
     })
 })
 
+for (const side of ['start', 'end'] as const) {
+  test(`dragging a time pill ${side} past the upper limit stays on the quarter-hour grid`, async ({ page, isMobile }) => {
+    test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
+    await page.goto('/')
+    await page.evaluate((date) => {
+      localStorage.clear()
+      localStorage.setItem('balance.appState.v1', JSON.stringify({
+        schemaVersion: 1,
+        deviceId: 'test-device',
+        localSequence: 0,
+        historyRevision: 0,
+        activePlanDate: date,
+        templates: [],
+        plans: [{
+          id: 'plan_time_boundary', date, dailyReminder: '',
+          items: [{ id: 'boundary-task', text: 'Boundary task', html: 'Boundary task', done: false,
+            startMinutes: 2100, endMinutes: 2145, children: [] }],
+        }],
+        goals: [], goalCompletions: [], operations: [],
+      }))
+    }, todayISO())
+    await page.reload()
+
+    const row = page.getByRole('listitem', { name: /Plan item: Boundary task/ })
+    await verticalDrag(page, row.locator(`.time-${side}-side .time-part`), -40)
+    const expected = side === 'start' ? [2115, 2160] : [2100, 2160]
+    await expect.poll(() => planItemTimeRange(page, 'Boundary task')).toEqual(expected)
+    await expect(row.locator('.time-end-side .time-part')).toHaveText('12pm')
+    await page.reload()
+    await expect.poll(() => planItemTimeRange(page, 'Boundary task')).toEqual(expected)
+  })
+}
+
 test('alt-dragging a plan start time changes only the start time', async ({ page, isMobile }) => {
   test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
   await page.goto('/')
