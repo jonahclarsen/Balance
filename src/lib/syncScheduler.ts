@@ -54,12 +54,14 @@ let backendRefreshPending = false
 let uploadStarted = false
 let slowActivityTimer: ReturnType<typeof setTimeout> | null = null
 
-async function refreshConnectivity(): Promise<boolean> {
-  // WebView online hints can be stale. On native platforms only an explicit OS
-  // offline result suppresses sync; unknown/failed checks permit an attempt.
-  offline = isTauri()
-    ? await invoke<boolean | null>('get_sync_network_offline').then((value) => value === true, () => false)
-    : !navigator.onLine
+async function refreshConnectivity(syncReportedOffline = false): Promise<boolean> {
+  // Prefer an explicit OS result over potentially stale WebView hints. If the
+  // native monitor is unavailable (including during startup), retain the
+  // WebView's offline signal instead of attempting a doomed relay pass.
+  const nativeOffline = isTauri()
+    ? await invoke<boolean | null>('get_sync_network_offline').catch(() => null)
+    : null
+  offline = syncReportedOffline || (nativeOffline ?? !navigator.onLine)
   automaticSyncStatus.update((status) => ({
     ...status,
     offline,
@@ -175,7 +177,7 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
           console.error('Could not refresh visible state after launch settings failed', reloadError)
         }
       }
-      await refreshConnectivity()
+      await refreshConnectivity(error === 'sync-offline')
       const message = syncErrorMessage(error)
       automaticSyncStatus.update((status) => ({
         ...status,
@@ -275,13 +277,14 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
       } catch (reloadError) {
         console.error('Could not refresh visible state after sync failed', reloadError)
       }
-      await refreshConnectivity()
+      await refreshConnectivity(error === 'sync-offline')
       const message = syncErrorMessage(error)
       automaticSyncStatus.update((status) => ({
         ...status,
         running: false,
         lastError: offline || error === 'sync-offline' ? '' : message,
         configured: true,
+        initialSyncComplete: offline || status.initialSyncComplete,
         offline,
         showActivity: false,
       }))

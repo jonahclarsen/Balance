@@ -1136,7 +1136,7 @@ test('native offline skips every sync trigger, saves edits, and reconnects witho
   expect(await page.evaluate(() => (globalThis as typeof globalThis & { __syncAttemptCount: number }).__syncAttemptCount)).toBeGreaterThan(0)
 })
 
-for (const nativeState of [false, null, 'unavailable'] as const) {
+for (const nativeState of [false] as const) {
   test(`native ${nativeState} does not falsely suppress sync when the WebView says offline`, async ({ page }) => {
     await mockNativeConnectivity(page, nativeState)
     await page.addInitScript(() => Object.defineProperty(navigator, 'onLine', { configurable: true, value: false }))
@@ -1145,6 +1145,53 @@ for (const nativeState of [false, null, 'unavailable'] as const) {
     await expect(page.getByRole('status', { name: 'Sync status: Offline' })).toHaveCount(0)
   })
 }
+
+for (const nativeState of [null, 'unavailable'] as const) {
+  test(`native ${nativeState} falls back to the WebView offline signal at launch`, async ({ page }) => {
+    await mockNativeConnectivity(page, nativeState)
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: false })
+    })
+    await page.clock.install()
+    await page.goto('/?caret-refresh=1')
+    await expect(page.getByRole('status', { name: 'Sync status: Offline' })).toBeVisible()
+    await page.getByRole('textbox', { name: 'Plan item' }).first().fill('Saved with unavailable connectivity monitor')
+    await page.clock.runFor(30_000)
+    expect(await page.evaluate(() => {
+      const runtime = globalThis as any
+      return { attempts: runtime.__syncAttemptCount, saved: runtime.__storedState.includes('Saved with unavailable connectivity monitor') }
+    })).toEqual({ attempts: 0, saved: true })
+    await expect(page.getByRole('status', { name: 'Sync status: Error' })).toHaveCount(0)
+    expect((await readSyncStatus(page)).initialSyncComplete).toBe(true)
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'onLine', { configurable: true, value: true })
+      window.dispatchEvent(new Event('online'))
+    })
+    await expect.poll(() => page.evaluate(() => (globalThis as any).__syncAttemptCount)).toBeGreaterThan(0)
+    await expect(page.getByRole('status', { name: 'Sync status: Offline' })).toHaveCount(0)
+  })
+}
+
+test('a native sync-offline result remains neutral even when the connectivity snapshot is unavailable', async ({ page }) => {
+  await mockNativeConnectivity(page, null)
+  await page.addInitScript(() => {
+    const runtime = globalThis as any
+    const invoke = runtime.__TAURI_INTERNALS__.invoke
+    runtime.__TAURI_INTERNALS__.invoke = async (command: string, args: any) => {
+      if (command === 'sync_relay_once') {
+        runtime.__syncAttemptCount++
+        throw 'sync-offline'
+      }
+      return invoke(command, args)
+    }
+  })
+  await page.clock.install()
+  await page.goto('/')
+  await expect(page.getByRole('status', { name: 'Sync status: Offline' })).toBeVisible()
+  await expect(page.getByRole('status', { name: 'Sync status: Error' })).toHaveCount(0)
+  expect((await readSyncStatus(page)).initialSyncComplete).toBe(true)
+  expect(await page.evaluate(() => (globalThis as any).__syncAttemptCount)).toBe(1)
+})
 
 test('disconnect during an active pass becomes Offline and suppresses retries', async ({ page }) => {
   await mockNativeConnectivity(page, false)
