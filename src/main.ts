@@ -10,6 +10,9 @@ import {
   readDeviceAppearanceBootstrap,
 } from './lib/deviceAppearance'
 import { todayISO } from './lib/planner'
+import { installWebKitInnerHTMLWorkaround } from './lib/webkitInnerHTMLWorkaround'
+
+installWebKitInnerHTMLWorkaround()
 
 const deviceThemeBootstrapStartedAt = performance.now()
 const startupAppearance = readDeviceAppearanceBootstrap() ?? createDefaultDeviceAppearance()

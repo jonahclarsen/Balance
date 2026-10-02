@@ -88,13 +88,13 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
@@ -124,7 +124,7 @@
   import { isNoteTrashed } from './lib/noteTrash'
   import { BALANCE_DEEP_LINK_EVENT, parseBalanceDeepLink } from './lib/deepLinks'
   import { captureRenderedPlanSnapshot } from './lib/renderedPlanDiagnostics'
-  import { openExternalURLFromShortcut } from './lib/externalLinks'
+  import { openClickedLink, openExternalURLFromShortcut } from './lib/externalLinks'
   import {
     DEFAULT_COMPLETION_CELEBRATION_ID,
     getCompletionCelebration,
@@ -762,7 +762,7 @@ return rows`
   }
   $: metricOverlayMetric = metricOverlay ? metrics.find((metric) => metric.id === metricOverlay?.metricId) : null
   $: metricOverlayAnswers =
-    metricOverlay && metricOverlayMetric ? answersForEntry(metricOverlay.metricId, metricOverlay.date) : {}
+    metricOverlay && metricOverlayMetric ? answersForEntry($plannerStore.metricEntries, metricOverlay.metricId, metricOverlay.date) : {}
   $: canGenerateDisplayedDay = displayedPlanDate >= currentDay
   $: generateButtonLabel = displayedPlanDate === currentDay ? 'Generate today' : 'Generate selected day'
   $: selectedItemIdSet = new Set(selectedItemIds)
@@ -1719,8 +1719,9 @@ return rows`
     void focusTaskBelow(opener.containerId, [opener.itemId])
   }
 
-  function answersForEntry(metricId: Id, date: string): Record<Id, string> {
-    const entry = $plannerStore.metricEntries.find((candidate) => candidate.metricId === metricId && candidate.date === date)
+  // Takes the entries explicitly so the reactive caller refreshes as answers are saved.
+  function answersForEntry(entries: MetricEntry[], metricId: Id, date: string): Record<Id, string> {
+    const entry = entries.find((candidate) => candidate.metricId === metricId && candidate.date === date)
     const map: Record<Id, string> = {}
     for (const answer of entry?.answers ?? []) map[answer.questionId] = answer.value
     return map
@@ -6877,7 +6878,8 @@ return rows`
               {@const graph = buildGraph(metric, question)}
               {#if graph}
                 <div class="metric-graph-block">
-                  <h4>{@html question.html || escapeHTML(question.prompt || 'Untitled question')}</h4>
+                  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+                  <h4 on:click={(event) => openClickedLink(event, (link) => openLink(link, null))}>{@html sanitizeInlineHTML(question.html || escapeHTML(question.prompt || 'Untitled question'))}</h4>
                   <MetricGraph type={graph.type} points={graph.points} />
                 </div>
               {/if}
@@ -7595,14 +7597,20 @@ return rows`
     {#if metricOverlay && metricOverlayMetric}
       {@const overlay = metricOverlay}
       <OverlayModal title={`${metricOverlayMetric.name} · ${overlay.date}`} z={70} onClose={() => (metricOverlay = null)}>
-        <MetricQuiz
-          metric={metricOverlayMetric}
-          revealQuestionId={overlay.questionId}
-          answers={metricOverlayAnswers}
-          onAnswer={(questionId, value) => plannerStore.upsertMetricAnswer(overlay.metricId, overlay.date, questionId, value)}
-          onClose={() => (metricOverlay = null)}
-          onComplete={completeMetricOverlay}
-        />
+        <!-- Each opening starts fresh, including one that replaces an open quiz. -->
+        {#key overlay}
+          <MetricQuiz
+            metric={metricOverlayMetric}
+            revealQuestionId={overlay.questionId}
+            answers={metricOverlayAnswers}
+            onAnswer={(questionId, value) => plannerStore.upsertMetricAnswer(overlay.metricId, overlay.date, questionId, value)}
+            onComplete={completeMetricOverlay}
+            onOpenLink={(link) => {
+              metricOverlay = null
+              openLink(link, null, overlay.date)
+            }}
+          />
+        {/key}
       </OverlayModal>
     {/if}
 

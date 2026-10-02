@@ -1,97 +1,136 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { escapeHTML } from './planner'
-  import type { Id, Metric } from './types'
+  import { openClickedLink } from './externalLinks'
+  import { escapeHTML, sanitizeInlineHTML, type ItemLink } from './planner'
+  import type { Id, Metric, MetricQuestion } from './types'
 
   export let metric: Metric
+  // Only read when the quiz opens; App remounts the quiz for each opening.
   export let revealQuestionId: Id | undefined = undefined
   export let answers: Record<Id, string>
   export let onAnswer: (questionId: Id, value: string) => void
-  export let onClose: () => void
-  // Called when the survey is finished (advanced past the last question), as
-  // opposed to onClose which also fires when the modal is dismissed early.
-  export let onComplete: () => void = onClose
+  // Called after advancing past the last question. Dismissing the modal early
+  // goes through OverlayModal's onClose instead.
+  export let onComplete: () => void
+  export let onOpenLink: (link: ItemLink) => void
 
-  let index = 0
-  $: if (revealQuestionId) index = Math.max(0, metric.questions.findIndex((question) => question.id === revealQuestionId))
-  let draft = ''
-  let lastIndex = -1
+  let root: HTMLDivElement
   let textInput: HTMLInputElement | null = null
+  let answerButton: HTMLButtonElement | null = null
+  // Track the question itself rather than its position so a question added,
+  // removed or reordered by sync does not swap the prompt under the answer.
+  let currentId = revealQuestionId ?? metric.questions[0]?.id
+  let draft = ''
+  let draftQuestionId: Id | null = null
 
-  $: question = metric.questions[index]
   $: total = metric.questions.length
+  $: index = Math.max(0, metric.questions.findIndex((candidate) => candidate.id === currentId))
+  $: question = metric.questions[index] as MetricQuestion | undefined
+  $: promptHTML = question ? sanitizeInlineHTML(question.html || escapeHTML(question.prompt || 'Untitled question')) : ''
+  $: promptId = `metric-quiz-prompt-${metric.id}`
+  $: isLast = index >= total - 1
+  $: if (question && question.id !== draftQuestionId) showQuestion(question)
 
-  // Seed the draft from the stored answer whenever we land on a new question.
-  $: if (question && index !== lastIndex) {
-    lastIndex = index
-    draft = answers[question.id] ?? ''
-    void focusTextSoon()
+  function showQuestion(next: MetricQuestion) {
+    draftQuestionId = next.id
+    draft = answers[next.id] ?? ''
+    void focusAnswer()
   }
 
-  async function focusTextSoon() {
+  async function focusAnswer() {
     await tick()
-    if (question?.type !== 'boolean') textInput?.focus()
+    ;(question?.type === 'boolean' ? answerButton : textInput)?.focus()
+    // Focusing a button leaves the caret where it was. WebKit then types
+    // unhandled keys into the task behind the quiz, so drop a caret left there.
+    const selection = document.getSelection()
+    if (selection?.anchorNode && !root.contains(selection.anchorNode)) selection.removeAllRanges()
   }
 
-  function advance() {
-    if (index >= total - 1) {
-      onComplete()
-      return
-    }
-    index += 1
+  function goTo(offset: 1 | -1) {
+    const next = metric.questions[index + offset]
+    if (next) currentId = next.id
+    else if (offset === 1) onComplete()
   }
 
-  function goBack() {
-    if (index > 0) index -= 1
+  // Store only real changes: revisiting a question must not add undo history.
+  function save(value: string) {
+    if (question && value !== (answers[question.id] ?? '')) onAnswer(question.id, value)
   }
 
   function submitText() {
-    if (question) onAnswer(question.id, draft.trim())
-    advance()
+    save(draft.trim())
+    goTo(1)
   }
 
-  function setBoolean(value: 'y' | 'n') {
-    if (question) onAnswer(question.id, value)
-    advance()
+  function goBack() {
+    if (index === 0) return
+    if (question?.type !== 'boolean') save(draft.trim())
+    goTo(-1)
   }
 
+  function answerBoolean(value: 'y' | 'n') {
+    save(value)
+    goTo(1)
+  }
+
+  function isEditable(target: EventTarget | null) {
+    return target instanceof HTMLElement && (target.isContentEditable || target.matches('input, textarea, select'))
+  }
+
+  // Yes/no shortcuts are window-wide so they work without focus in the quiz,
+  // but never while typing or while another dialog has focus.
   function handleKeydown(event: KeyboardEvent) {
-    if (!question || question.type !== 'boolean' || event.altKey || event.ctrlKey || event.metaKey) return
+    if (question?.type !== 'boolean' || event.isComposing) return
+    if (event.altKey || event.ctrlKey || event.metaKey || isEditable(event.target)) return
+    const focusedDialog = document.activeElement?.closest('[role="dialog"], dialog')
+    if (focusedDialog && !focusedDialog.contains(root)) return
+
     const key = event.key.toLowerCase()
-    if (key === 'b') {
-      event.preventDefault()
-      if (!event.repeat) goBack()
-      return
-    }
-    if (key === 's') {
-      event.preventDefault()
-      if (!event.repeat) advance()
-      return
-    }
-    if (key === 'y') {
-      event.preventDefault()
-      setBoolean('y')
-    } else if (key === 'n') {
-      event.preventDefault()
-      setBoolean('n')
-    }
+    if (!['y', 'n', 'b', 's'].includes(key)) return
+    event.preventDefault()
+    // A held key answers one question, not every question after it.
+    if (event.repeat) return
+    if (key === 'y') answerBoolean('y')
+    else if (key === 'n') answerBoolean('n')
+    else if (key === 'b') goBack()
+    else goTo(1)
+  }
+
+  function handleTextKeydown(event: KeyboardEvent) {
+    if (event.key !== 'Enter' || event.isComposing) return
+    event.preventDefault()
+    submitText()
   }
 </script>
 
 <svelte:window on:keydown={handleKeydown} />
 
-<div class="metric-quiz">
+<div class="metric-quiz" bind:this={root}>
   {#if question}
+    {@const current = answers[question.id]}
     <p class="metric-progress">Question {index + 1} of {total}</p>
-    <p class="metric-prompt">{@html question.html || escapeHTML(question.prompt || 'Untitled question')}</p>
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+    <p id={promptId} class="metric-prompt" on:click={(event) => openClickedLink(event, onOpenLink)}>{@html promptHTML}</p>
 
     {#if question.type === 'boolean'}
-      {@const current = answers[question.id] ?? draft}
-      <div class="metric-bool">
-        <button class="metric-bool-button" class:chosen={current === 'y'} type="button" on:click={() => setBoolean('y')}>
+      <div class="metric-bool" role="group" aria-labelledby={promptId}>
+        <button
+          bind:this={answerButton}
+          class="metric-bool-button"
+          class:chosen={current === 'y'}
+          type="button"
+          aria-pressed={current === 'y'}
+          on:click={() => answerBoolean('y')}
+        >
           Yes <kbd>Y</kbd>
         </button>
-        <button class="metric-bool-button" class:chosen={current === 'n'} type="button" on:click={() => setBoolean('n')}>
+        <button
+          class="metric-bool-button"
+          class:chosen={current === 'n'}
+          type="button"
+          aria-pressed={current === 'n'}
+          on:click={() => answerBoolean('n')}
+        >
           No <kbd>N</kbd>
         </button>
       </div>
@@ -103,14 +142,10 @@
         inputmode={question.type === 'number' ? 'decimal' : undefined}
         step={question.type === 'number' ? 'any' : undefined}
         value={draft}
+        aria-labelledby={promptId}
         placeholder={question.type === 'number' ? 'Enter a number, press Enter' : 'Type your answer, press Enter'}
         on:input={(event) => (draft = event.currentTarget.value)}
-        on:keydown={(event) => {
-          if (event.key === 'Enter') {
-            event.preventDefault()
-            submitText()
-          }
-        }}
+        on:keydown={handleTextKeydown}
       />
     {/if}
 
@@ -119,12 +154,10 @@
         ← Back
         {#if question.type === 'boolean'}<kbd>B</kbd>{/if}
       </button>
-      {#if question.type !== 'boolean'}
-        <button class="primary" type="button" on:click={submitText}>
-          {index >= total - 1 ? 'Finish' : 'Next →'}
-        </button>
+      {#if question.type === 'boolean'}
+        <button type="button" on:click={() => goTo(1)}>{isLast ? 'Skip and finish' : 'Skip'} <kbd>S</kbd></button>
       {:else}
-        <button type="button" on:click={advance}>Skip <kbd>S</kbd> →</button>
+        <button class="primary" type="button" on:click={submitText}>{isLast ? 'Finish' : 'Next →'}</button>
       {/if}
     </div>
   {:else}
@@ -151,6 +184,13 @@
     margin: 0;
     font-size: 20px;
     font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+
+  .metric-prompt :global(a) {
+    color: var(--accent-strong);
+    text-decoration: underline;
+    cursor: pointer;
   }
 
   .metric-text-input {

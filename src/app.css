@@ -5934,6 +5934,13 @@ body.mobile-checkbox-dragging {
 .metric-graph-block h4 {
   margin: 0;
   font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.metric-graph-block h4 a {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  cursor: pointer;
 }
 
 .metric-import {
