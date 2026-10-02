@@ -1,4 +1,5 @@
 import { tick } from 'svelte'
+import { dragAutoScroll } from './dragAutoScroll'
 import { plannerStore } from './store'
 
 /** Start a card move from its content, leaving embedded controls interactive. */
@@ -13,11 +14,21 @@ export function projectReordering(node: HTMLElement) {
   let startX = 0
   let startY = 0
   let dragging = false
+  let lastX = 0
+  let lastY = 0
+  // Where the grid sat when the drag began, so scrolling keeps the card under the pointer.
+  let gridStart = { left: 0, top: 0 }
+  const autoScroller = dragAutoScroll(() => {
+    if (!dragging) return
+    carry()
+    updateTarget(lastX, lastY)
+  })
 
   function reset() {
     source?.classList.remove('project-dragging')
     source?.style.removeProperty('transform')
     indicator.remove()
+    autoScroller.stop()
     if (pointerId !== null && node.hasPointerCapture(pointerId)) node.releasePointerCapture(pointerId)
     source = target = null
     pointerId = null
@@ -41,12 +52,28 @@ export function projectReordering(node: HTMLElement) {
   function move(event: PointerEvent) {
     if (!source || event.pointerId !== pointerId) return
     if (!dragging && Math.hypot(event.clientX - startX, event.clientY - startY) < 6) return
-    dragging = true
-    source.classList.add('project-dragging')
-    // Carry the card under the pointer, converting to CSS pixels under the app’s UI zoom.
-    const scale = node.getBoundingClientRect().width / parseFloat(getComputedStyle(node).width) || 1
-    source.style.transform = `translate(${(event.clientX - startX) / scale}px, ${(event.clientY - startY) / scale}px)`
-    updateTarget(event.clientX, event.clientY)
+    if (!dragging) {
+      dragging = true
+      source.classList.add('project-dragging')
+      const bounds = node.getBoundingClientRect()
+      gridStart = { left: bounds.left, top: bounds.top }
+      autoScroller.start(node, event.clientX, event.clientY)
+    }
+    lastX = event.clientX
+    lastY = event.clientY
+    carry()
+    autoScroller.move(lastX, lastY)
+    updateTarget(lastX, lastY)
+  }
+
+  /** Carry the card under the pointer, converting to CSS pixels under the app’s UI zoom. */
+  function carry() {
+    if (!source) return
+    const bounds = node.getBoundingClientRect()
+    const scale = bounds.width / parseFloat(getComputedStyle(node).width) || 1
+    const dx = lastX - startX + gridStart.left - bounds.left
+    const dy = lastY - startY + gridStart.top - bounds.top
+    source.style.transform = `translate(${dx / scale}px, ${dy / scale}px)`
   }
 
   function updateTarget(x: number, y: number) {

@@ -367,6 +367,42 @@ test('project cards reorder from content, preserve controls, and retain order th
   expect(boxes[0].height).toBeGreaterThan(boxes.at(-1)!.height - 1)
 })
 
+test('dragging a project card to the window edge scrolls the page and keeps the card under the pointer', async ({ page }) => {
+  await page.setViewportSize({ width: page.viewportSize()!.width, height: 600 })
+  await page.goto('/')
+  await openView(page, 'Projects')
+  const names = Array.from({ length: 10 }, (_, index) => `Project ${index + 1}`)
+  for (const name of names) {
+    await page.getByRole('textbox', { name: 'New project name' }).fill(name)
+    await page.getByRole('button', { name: 'Add project', exact: true }).click()
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click()
+  }
+  const cards = page.locator('.project-grid .project-card')
+  await expect(cards.locator('h2')).toHaveText(names)
+  const source = cards.first()
+  await source.locator('h2').scrollIntoViewIfNeeded()
+  const scrollTop = () => source.evaluate((card) => {
+    for (let element = card.parentElement; element; element = element.parentElement) {
+      if (element.scrollTop > 0) return element.scrollTop
+    }
+    return document.scrollingElement?.scrollTop ?? 0
+  })
+  const before = await scrollTop()
+  const start = (await source.locator('h2').boundingBox())!
+  await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2)
+  await page.mouse.down()
+  const edge = { x: start.x + start.width / 2, y: 596 }
+  await page.mouse.move(edge.x, edge.y, { steps: 12 })
+  await expect.poll(scrollTop).toBeGreaterThan(before + 200)
+  // The carried card follows the pointer while the content scrolls beneath it.
+  const carried = (await source.boundingBox())!
+  expect(edge.y).toBeGreaterThan(carried.y)
+  expect(edge.y).toBeLessThan(carried.y + carried.height)
+  await page.mouse.up()
+  await expect(page.locator('.project-dragging, .project-drop-indicator')).toHaveCount(0)
+  await expect(cards.locator('h2').first()).not.toHaveText('Project 1')
+})
+
 async function pasteLinkOverText(editor: import('@playwright/test').Locator, link: string, start: number, end: number) {
   await editor.evaluate((element, selection) => {
     const range = document.createRange()
