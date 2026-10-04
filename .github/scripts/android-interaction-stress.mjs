@@ -672,6 +672,18 @@ try {
   // markers, then reload only the synthetic WebView so the actual interaction
   // journey starts through the normal, uncontended hydration path.
   await waitForDebugStartupProfiles()
+  // This fresh CI installation owns only a generated database and test key.
+  // Complete its first-run gate before exercising controls or the soft keyboard.
+  // Never return or log the key from the WebView.
+  await client.evaluate(`(async () => {
+    const invoke = window.__TAURI_INTERNALS__.invoke
+    const status = await invoke('get_recovery_key_status')
+    if (!status.confirmed) {
+      if (!status.recoveryKey) throw new Error('Synthetic recovery key unavailable')
+      await invoke('confirm_recovery_key', {recoveryKey: status.recoveryKey})
+    }
+    return true
+  })()`)
   await client.evaluate(`(() => { setTimeout(() => window.location.reload(), 0); return true })()`)
   await sleep(500)
   await reconnect()
