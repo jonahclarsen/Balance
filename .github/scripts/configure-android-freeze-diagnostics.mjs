@@ -19,7 +19,7 @@ await writeFile(join(source, 'BalanceFreezeDiagnostics.kt'), await readFile('.gi
 const manifestPath = join(root, 'AndroidManifest.xml')
 let manifest = await readFile(manifestPath, 'utf8')
 if (!manifest.includes('.freeze-reports')) {
-  manifest = manifest.replace('</application>', `<provider android:name="androidx.core.content.FileProvider" android:authorities="\${applicationId}.freeze-reports" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/freeze_report_paths" /></provider>\n</application>`)
+  manifest = manifest.replace('</application>', `<provider android:name="app.balance.local.BalanceFreezeReportProvider" android:authorities="\${applicationId}.freeze-reports" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/freeze_report_paths" /></provider>\n</application>`)
   await writeFile(manifestPath, manifest)
 }
 await mkdir(join(root, 'res/xml'), {recursive: true})

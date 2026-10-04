@@ -19,7 +19,7 @@ test('lifecycle hooks precede existing resume work and sharing exposes only the 
     assert.ok(activity.indexOf('BalanceFreezeDiagnostics.resume') < activity.indexOf('super.onResume'))
     assert.ok(activity.indexOf('BalanceFreezeDiagnostics.pause') < activity.indexOf('super.onPause'))
     const manifest = await readFile(join(root, 'AndroidManifest.xml'), 'utf8')
-    assert.equal((manifest.match(/androidx.core.content.FileProvider/g)??[]).length, 1)
+    assert.equal((manifest.match(/app\.balance\.local\.BalanceFreezeReportProvider/g)??[]).length, 1)
     assert.match(manifest, /\$\{applicationId\}\.freeze-reports/)
     assert.match(manifest, /android:exported="false"/)
     const paths = await readFile(join(root, 'res/xml/freeze_report_paths.xml'), 'utf8')

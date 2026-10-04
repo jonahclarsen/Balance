@@ -9,6 +9,9 @@ import android.webkit.WebView
 import androidx.core.content.FileProvider
 import java.io.File
 
+// Android requires an app-specific provider for reliable sharing across devices.
+class BalanceFreezeReportProvider : FileProvider()
+
 /** No task values, exception strings, URLs, keys or device identifiers. */
 object BalanceFreezeDiagnostics {
     init { System.loadLibrary("balance_lib") }
