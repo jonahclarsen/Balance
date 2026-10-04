@@ -10011,14 +10011,7 @@ mod android_keystore {
 
     pub(super) fn share_freeze_report(report: &str) -> Result<(), String> {
         with_env(|env| {
-            let result = (|| -> Result<bool, jni::errors::Error> {
-                let application = env.call_static_method("android/app/ActivityThread", "currentApplication", "()Landroid/app/Application;", &[])?.l()?;
-                let loader = env.call_method(&application, "getClassLoader", "()Ljava/lang/ClassLoader;", &[])?.l()?;
-                let name = env.new_string("app.balance.local.BalanceFreezeDiagnostics")?;
-                let class = env.call_method(&loader, "loadClass", "(Ljava/lang/String;)Ljava/lang/Class;", &[(&name).into()])?.l()?;
-                let text = env.new_string(report)?;
-                env.call_static_method(JClass::from(class), "share", "(Ljava/lang/String;)Z", &[(&text).into()])?.z()
-            })();
+            let result = super::freeze_diagnostics::share_android(env, report);
             match result {
                 Ok(true) => Ok(()),
                 _ => { let _ = env.exception_clear(); Err("Could not open the freeze report share sheet.".to_string()) }

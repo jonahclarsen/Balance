@@ -545,12 +545,33 @@ mod tests {
 }
 
 #[cfg(target_os = "android")]
+static ANDROID_CLASS: OnceLock<jni::objects::GlobalRef> = OnceLock::new();
+
+#[cfg(target_os = "android")]
+pub fn share_android(env: &mut jni::JNIEnv, report: &str) -> Result<bool, jni::errors::Error> {
+    let cached = ANDROID_CLASS
+        .get()
+        .ok_or(jni::errors::Error::NullPtr("freeze diagnostics class"))?;
+    let class = jni::objects::JClass::from(env.new_local_ref(cached.as_obj())?);
+    let text = env.new_string(report)?;
+    env.call_static_method(class, "share", "(Ljava/lang/String;)Z", &[(&text).into()])?
+        .z()
+}
+
+#[cfg(target_os = "android")]
 #[no_mangle]
 pub extern "system" fn Java_app_balance_local_BalanceFreezeDiagnostics_signal(
-    _env: jni::JNIEnv,
-    _class: jni::objects::JClass,
+    env: jni::JNIEnv,
+    class: jni::objects::JClass,
     kind: jni::sys::jint,
 ) {
+    // Retain the class delivered by Java, avoiding hidden Android APIs or
+    // class-loader lookup from an attached Rust thread.
+    if ANDROID_CLASS.get().is_none() {
+        if let Ok(class) = env.new_global_ref(class) {
+            let _ = ANDROID_CLASS.set(class);
+        }
+    }
     match kind {
         0 => record(Event::ActivityResumed),
         1 => record(Event::ActivityPaused),
