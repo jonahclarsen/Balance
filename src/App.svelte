@@ -10,6 +10,7 @@
   import { getCurrentWebview } from '@tauri-apps/api/webview'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
+  import { startFreezeDiagnostics } from './lib/freezeDiagnostics'
   import { installMobileKeyboardScroll } from './lib/mobileKeyboardScroll'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import GoalCopyButton from './lib/GoalCopyButton.svelte'
@@ -490,6 +491,8 @@ return rows`
   let databaseRecoveryKey = ''
   let databaseRecoveryBusy = false
   let databaseRecoveryStatus = ''
+  let freezeReportBusy = false
+  let freezeReportStatus = ''
   let exportStatus = ''
   let exportStatusIsError = false
   let exportSavedPath = ''
@@ -1955,6 +1958,7 @@ return rows`
   }
 
   onMount(() => {
+    const stopFreezeDiagnostics = startFreezeDiagnostics()
     const stopMobileKeyboardScroll = installMobileKeyboardScroll()
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
@@ -2197,6 +2201,7 @@ return rows`
     void initialize()
 
     return () => {
+      stopFreezeDiagnostics()
       stopMobileKeyboardScroll()
       stopKeyboardScroll()
       clearTimeout(historyNoticeTimer)
@@ -3125,6 +3130,18 @@ return rows`
     } catch (error) {
       exportStatusIsError = true
       exportStatus = error instanceof Error ? error.message : String(error)
+    }
+  }
+
+  async function exportFreezeReport() {
+    freezeReportBusy = true
+    freezeReportStatus = ''
+    try {
+      freezeReportStatus = await invoke<string>('share_freeze_diagnostics')
+    } catch {
+      freezeReportStatus = 'Could not export the freeze report. Try again after reopening Balance.'
+    } finally {
+      freezeReportBusy = false
     }
   }
 
@@ -7436,8 +7453,18 @@ return rows`
             <button type="button" on:click={() => { void openRecoveryPanel() }}>
               Open recovery &amp; diagnostics
             </button>
+            {#if isTauri()}
+              <button type="button" data-freeze-report-export disabled={freezeReportBusy} on:click={exportFreezeReport}>
+                {freezeReportBusy ? 'Preparing report…' : 'Export freeze report'}
+              </button>
+            {/if}
           </div>
         </section>
+
+        {#if isTauri()}
+          <p class="export-status">If Balance freezes, force quit and reopen it, then export the report here. It includes recent responsiveness and lifecycle events, without task text, keys, or database contents.</p>
+          {#if freezeReportStatus}<p class="export-status" role="status">{freezeReportStatus}</p>{/if}
+        {/if}
 
         <section class="settings-section">
           <div>

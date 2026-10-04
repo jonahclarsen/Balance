@@ -36,6 +36,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_freeze_diagnostics_test:
+        description: Verify a synthetic WebView stall survives force quit and can be shared
+        required: false
+        default: false
+        type: boolean
       run_caret_check:
         description: Check Today task caret stability after idle and Android composition
         required: false
@@ -382,7 +387,7 @@ jobs:
 
   interaction-stress:
     name: Android interaction stress (seed ${{ matrix.seed }})
-    if: github.event_name == 'workflow_dispatch' && (inputs.run_interaction_stress || inputs.run_caret_check || inputs.run_caret_resume_stress)
+    if: github.event_name == 'workflow_dispatch' && (inputs.run_interaction_stress || inputs.run_caret_check || inputs.run_caret_resume_stress || inputs.run_freeze_diagnostics_test)
     needs: build-debug
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -390,7 +395,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        seed: ${{ inputs.run_caret_check && fromJSON('[1701]') || fromJSON('[1701,2947,4813]') }}
+        seed: ${{ (inputs.run_caret_check || inputs.run_freeze_diagnostics_test) && fromJSON('[1701]') || fromJSON('[1701,2947,4813]') }}
 
     steps:
       - name: Check out repository
@@ -419,6 +424,7 @@ jobs:
         env:
           BALANCE_INTERACTION_STRESS_SEED: ${{ matrix.seed }}
           BALANCE_INTERACTION_STRESS_SECONDS: "600"
+          BALANCE_FREEZE_DIAGNOSTICS_TEST: ${{ inputs.run_freeze_diagnostics_test && '1' || '0' }}
           BALANCE_CARET_CHECK: ${{ inputs.run_caret_check && '1' || '0' }}
           BALANCE_CARET_RESUME_STRESS: ${{ inputs.run_caret_resume_stress && '1' || '0' }}
         with:
@@ -437,6 +443,7 @@ jobs:
         with:
           name: android-interaction-stress-${{ matrix.seed }}
           path: |
+            android-freeze-diagnostics-test.json
             android-interaction-stress-*.json
             android-interaction-logcat-*.txt
             android-interaction-meminfo-*.txt

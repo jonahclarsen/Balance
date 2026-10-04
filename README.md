@@ -63,6 +63,12 @@ Previews stay in memory and are discarded when the browser closes. Only **Copy t
 An older recovery key can unlock a backup from before a key rotation without changing the live database key.
 On macOS, previous keys are retained under their archived accounts in Keychain.
 
+## Report a freeze
+
+If the app freezes, force quit and reopen it, then use **Settings → Recovery & diagnostics → Export freeze report**. On Android, share the generated `balance-freeze-report.json` file through the share sheet. Desktop saves it in Downloads.
+
+The app keeps a bounded local log across restarts. It records app/Android/WebView versions, lifecycle and focus events, missing UI/WebView heartbeats, editing/composition flags, and slow or pending database/sync work. It does not include task text, database contents, task/account IDs, relay URLs, recovery keys, exception messages, or automatic uploads. Background suspension is excluded from stall detection. A missing heartbeat is evidence of a stall, not proof of its cause; an abrupt process or system failure can leave only the last successfully written events.
+
 ## Development
 
 Install dependencies:
