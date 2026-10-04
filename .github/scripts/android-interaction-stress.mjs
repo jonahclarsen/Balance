@@ -339,13 +339,13 @@ async function pressKey(key, code = key) {
 }
 
 const pageSelectors = {
-  Today: '.primary-nav button[title^="Today ("]',
-  'Day Templates': '.primary-nav button[title^="Day Templates ("]',
-  Lists: '.primary-nav button[title^="Lists ("]',
-  Notes: '.primary-nav button[title^="Notes ("]',
-  Metrics: '.primary-nav button[title^="Metrics ("]',
-  Goals: '.primary-nav button[title^="Goals ("]',
-  Settings: '.primary-nav button[title^="Settings ("]',
+  Today: '.primary-nav button[aria-keyshortcuts="Alt+T"]',
+  'Day Templates': '.primary-nav button[aria-keyshortcuts="Alt+D"]',
+  Lists: '.primary-nav button[aria-keyshortcuts="Alt+E"]',
+  Notes: '.primary-nav button[aria-keyshortcuts="Alt+N"]',
+  Metrics: '.primary-nav button[aria-keyshortcuts="Alt+V"]',
+  Goals: '.primary-nav button[aria-keyshortcuts="Alt+G"]',
+  Settings: '.primary-nav button[aria-keyshortcuts="Alt+S"]',
 }
 
 async function openPage(page) {
@@ -499,14 +499,14 @@ async function exercisePageFeature(page) {
     return
   }
   if (page === 'Metrics') {
-    const hasMetric = await client.evaluate(`Boolean(document.querySelector('input[aria-label="Metric name"]'))`)
+    const hasMetric = await client.evaluate(`Boolean(document.querySelector('input[aria-label="Quiz name"]'))`)
     if (!hasMetric) await tap('.empty-state button.primary', 'create first metric')
     if (cycle % 4 === 2) await tap('.metric-card .add-row', 'add metric question')
     return
   }
   if (page === 'Goals') {
     if (cycle % 3 === 1) {
-      await setInput('input[aria-label="New goal name"]', `Goal ${seed}-${cycle}`, 'enter goal name')
+      await setRichText('[aria-label="New goal name"]', `Goal ${seed}-${cycle}`, 'enter goal name')
       await setRichText('[aria-label="New goal matching terms"]', `term-${cycle}`, 'enter goal match term')
       await tap('.goal-add-button', 'add goal')
     } else {
@@ -695,7 +695,7 @@ const freezeActions = actions.filter((action) => (
 ))
 const failedActions = actions.filter((action) => !action.ok)
 const fatalLogLines = diagnostics.logcat.split('\n').filter((line) => (
-  /FATAL EXCEPTION|ANR in app\.balance\.local\.debug|am_anr.*app\.balance\.local\.debug|Fatal signal.*(?:balance|libbalance)/i.test(line)
+  /FATAL EXCEPTION|ANR in app\.balance\.local\.debug|am_anr.*app\.balance\.local\.debug|Fatal signal.*(?:balance|libbalance)|F DEBUG\s*:.*>>> app\.balance\.local\.debug <<</i.test(line)
 ))
 const report = {
   seed,
@@ -714,7 +714,10 @@ const report = {
   frontendErrorCount: frontendErrors.length,
   fatalLogLineCount: fatalLogLines.length,
   finalPid: appPid(),
-  reproducedFreeze: Boolean(failure) || freezeActions.length > 0 || fatalLogLines.length > 0,
+  completedJourney: !failure,
+  // A missing selector or another harness error is an incomplete journey,
+  // not evidence that the application froze. Keep failures independently.
+  reproducedFreeze: freezeActions.length > 0 || fatalLogLines.length > 0,
   failure: failure ? String(failure?.stack ?? failure) : null,
   slowActions,
   freezeActions,
