@@ -496,7 +496,7 @@ async function stressTodayCaretResume(syncFailure = false) {
       // text. Verify that the edit works and persists, rather than treating
       // composition replacement as an app freeze or requiring an appended edit.
       if (edited.text === before.text || !edited.text.includes('resumed')) throw new Error('Today task did not accept typing after reopening')
-      const expectedText = edited.text.replaceAll('\u00a0', ' ')
+      const expectedText = edited.text
       await waitFor(async () => {
         const nativeText = await recordAction('native-read', 'persist resumed Today task', () => client.evaluate(`(async () => {
         const state = JSON.parse(await window.__TAURI_INTERNALS__.invoke('read_app_state'))
