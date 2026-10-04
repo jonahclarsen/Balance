@@ -883,6 +883,7 @@ function createPlannerStore() {
     requestId: string,
     date: string,
     insert: (items: PlanItem[], text: string) => SiriReminderInsertion,
+    rollCompletedDay = true,
   ): Promise<boolean> {
     if (!text.trim() || !requestId) return false
     await ready
@@ -895,7 +896,7 @@ function createPlannerStore() {
     await waitForNativeHistory()
     const current = get(store)
     const currentPlan = current.plans.find((plan) => plan.date === date)
-    const targetDate = currentPlan && hasIncompletePlanItems(currentPlan.items)
+    const targetDate = !rollCompletedDay || (currentPlan && hasIncompletePlanItems(currentPlan.items))
       ? date
       : shiftCalendarDateISO(date, 1)
     const existingPlan = current.plans.find((plan) => plan.date === targetDate)
@@ -1073,10 +1074,10 @@ function createPlannerStore() {
       return addTaskLikeSiri(text, requestId, date, insertSiriReminder)
     },
 
-    // Same placement, date rollover and storage action as Siri, without the
-    // "reminders from siri:" heading.
+    // Keep quick-add on the viewed day, including empty and completed days.
+    // Reuse Siri's placement and storage action without its heading or rollover.
     addQuickTask(text: string, date = todayISO()): Promise<boolean> {
-      return addTaskLikeSiri(text, createId('quick-add'), date, insertQuickTask)
+      return addTaskLikeSiri(text, createId('quick-add'), date, insertQuickTask, false)
     },
 
 
