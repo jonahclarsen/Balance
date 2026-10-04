@@ -469,10 +469,10 @@ async function stressTodayCaretResume(syncFailure = false) {
         await client.send('Input.insertText', {text: 'mobile '})
       }
       const before = await client.evaluate('window.readCaret()')
-      const keyboardVisible = /mInputShown=true|mIsInputViewShown=true/.test(
+      const keyboardVisible = await waitFor(() => /mInputShown=true|mIsInputViewShown=true/.test(
         adb(['shell', 'dumpsys', 'input_method']),
-      )
-      if (!before.focused || !keyboardVisible) throw new Error('Caret resume fixture must have a focused task and visible soft keyboard')
+      ), 'the Android soft keyboard', 8_000, 100)
+      if (!before.focused) throw new Error('Caret resume fixture must have a focused task')
       await backgroundResume(backgroundMs)
       const after = await client.evaluate('window.readCaret()')
       if (!after.connected || after.text !== before.text) throw new Error('Today task text was lost while reopening')
@@ -489,15 +489,24 @@ async function stressTodayCaretResume(syncFailure = false) {
       })()`)
       await client.send('Input.insertText', {text: ' resumed'})
       await heartbeat('after editing resumed Today task')
-      const expectedText = before.text + ' resumed'
-      await waitFor(async () => recordAction('native-read', 'persist resumed Today task', () => client.evaluate(`(async () => {
+      const edited = await client.evaluate('window.readCaret()')
+      // Native focus restoration may retain the original middle caret. Check
+      // the actual edited text rather than assuming the marker was appended.
+      if (edited.text.replace(/[\u00a0 ]resumed/, '') !== before.text) throw new Error('Resumed typing changed existing task text')
+      const expectedText = edited.text
+      const result = {mode, syncFailure, backgroundMs, keyboardVisible, before, after, edited, nativeText: null, persisted: false}
+      caretResumeChecks.push(result)
+      await waitFor(async () => {
+        const nativeText = await recordAction('native-read', 'persist resumed Today task', () => client.evaluate(`(async () => {
         const state = JSON.parse(await window.__TAURI_INTERNALS__.invoke('read_app_state'))
         const id = window.caretEditor.dataset.planTextInputId
         const find = (items) => items.flatMap(item => [item, ...find(item.children ?? [])])
-        return state.plans.flatMap(plan => find(plan.items)).some(item => item.id === id && item.text === ${JSON.stringify(expectedText)})
-      })()`)), 'the resumed edit to persist', 15_000, 250)
-      const result = {mode, syncFailure, backgroundMs, keyboardVisible, before, after, persisted: true}
-      caretResumeChecks.push(result)
+        return state.plans.flatMap(plan => find(plan.items)).find(item => item.id === id)?.text ?? null
+      })()`))
+        result.nativeText = nativeText
+        return nativeText === expectedText
+      }, 'the resumed edit to persist', 15_000, 250)
+      result.persisted = true
       console.log('[caret-resume] ' + JSON.stringify(result))
     }
   }
