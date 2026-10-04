@@ -41,6 +41,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_caret_resume_stress:
+        description: Background and reopen Today with a focused task and the soft keyboard
+        required: false
+        default: false
+        type: boolean
       run_interaction_stress:
         description: Run three seeded real-WebView navigation and Notes stress journeys
         required: false
@@ -377,7 +382,7 @@ jobs:
 
   interaction-stress:
     name: Android interaction stress (seed ${{ matrix.seed }})
-    if: github.event_name == 'workflow_dispatch' && (inputs.run_interaction_stress || inputs.run_caret_check)
+    if: github.event_name == 'workflow_dispatch' && (inputs.run_interaction_stress || inputs.run_caret_check || inputs.run_caret_resume_stress)
     needs: build-debug
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -415,6 +420,7 @@ jobs:
           BALANCE_INTERACTION_STRESS_SEED: ${{ matrix.seed }}
           BALANCE_INTERACTION_STRESS_SECONDS: "600"
           BALANCE_CARET_CHECK: ${{ inputs.run_caret_check && '1' || '0' }}
+          BALANCE_CARET_RESUME_STRESS: ${{ inputs.run_caret_resume_stress && '1' || '0' }}
         with:
           api-level: 34
           arch: x86_64
@@ -422,7 +428,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
-          enable-hw-keyboard: true
+          enable-hw-keyboard: ${{ !inputs.run_caret_resume_stress }}
           script: timeout --foreground --kill-after=30s 20m node .github/scripts/android-interaction-stress.mjs
 
       - name: Upload interaction diagnostics

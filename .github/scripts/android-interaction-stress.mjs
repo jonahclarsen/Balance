@@ -13,7 +13,9 @@ const listHistoryTransitions = Number.parseInt(
   10,
 )
 const caretCheck = process.env.BALANCE_CARET_CHECK === '1'
+const caretResumeStress = process.env.BALANCE_CARET_RESUME_STRESS === '1'
 const caretChecks = []
+const caretResumeChecks = []
 const commandTimeoutMs = 30_000
 const devToolsPort = 9224
 const actionTimeoutMs = 10_000
@@ -440,6 +442,67 @@ async function checkTodayCaret(syncFailure = false) {
   if (caretChecks.some((check) => !check.stable)) throw new Error('Today task caret moved during idle')
 }
 
+async function stressTodayCaretResume(syncFailure = false) {
+  for (const mode of ['idle', 'typing', 'composition']) {
+    for (const backgroundMs of [500, 3_000, 10_000, 30_000]) {
+      const target = await client.evaluate(`(() => {
+        const editor = window.caretEditor
+        if (!editor?.isConnected) throw new Error('Focused Today task disappeared')
+        editor.scrollIntoView({block: 'center'})
+        editor.focus()
+        document.execCommand('selectAll')
+        document.execCommand('insertText', false, 'Synthetic Samsung resume task with a caret in the middle')
+        const rect = editor.getBoundingClientRect()
+        return {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2}
+      })()`)
+      // Use a real touch so Android opens its soft keyboard, rather than only
+      // focusing a contenteditable through JavaScript in hardware-keyboard mode.
+      await client.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [target]})
+      await client.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []})
+      await client.evaluate(`(() => {
+        const text = document.createTreeWalker(window.caretEditor, NodeFilter.SHOW_TEXT).nextNode()
+        getSelection().setBaseAndExtent(text, 19, text, 19)
+      })()`)
+      if (mode === 'typing') await client.send('Input.insertText', {text: 'typed '})
+      if (mode === 'composition') {
+        await client.send('Input.imeSetComposition', {text: 'mobile', selectionStart: 6, selectionEnd: 6})
+        await client.send('Input.insertText', {text: 'mobile '})
+      }
+      const before = await client.evaluate('window.readCaret()')
+      const keyboardVisible = /mInputShown=true|mIsInputViewShown=true/.test(
+        adb(['shell', 'dumpsys', 'input_method']),
+      )
+      if (!before.focused || !keyboardVisible) throw new Error('Caret resume fixture must have a focused task and visible soft keyboard')
+      await backgroundResume(backgroundMs)
+      const after = await client.evaluate('window.readCaret()')
+      if (!after.connected || after.text !== before.text) throw new Error('Today task text was lost while reopening')
+      // Verify editing and native persistence after reopening, without restarting
+      // the process or manually reloading the WebView to recover it.
+      await client.evaluate(`(() => {
+        const editor = window.caretEditor
+        editor.focus()
+        const range = document.createRange()
+        range.selectNodeContents(editor)
+        range.collapse(false)
+        getSelection().removeAllRanges()
+        getSelection().addRange(range)
+      })()`)
+      await client.send('Input.insertText', {text: ' resumed'})
+      await heartbeat('after editing resumed Today task')
+      const expectedText = before.text + ' resumed'
+      await waitFor(async () => recordAction('native-read', 'persist resumed Today task', () => client.evaluate(`(async () => {
+        const state = JSON.parse(await window.__TAURI_INTERNALS__.invoke('read_app_state'))
+        const id = window.caretEditor.dataset.planTextInputId
+        const find = (items) => items.flatMap(item => [item, ...find(item.children ?? [])])
+        return state.plans.flatMap(plan => find(plan.items)).some(item => item.id === id && item.text === ${JSON.stringify(expectedText)})
+      })()`)), 'the resumed edit to persist', 15_000, 250)
+      const result = {mode, syncFailure, backgroundMs, keyboardVisible, before, after, persisted: true}
+      caretResumeChecks.push(result)
+      console.log('[caret-resume] ' + JSON.stringify(result))
+    }
+  }
+}
+
 async function exerciseNotes() {
   await openPage('Notes')
   const hasNote = await client.evaluate(`Boolean(document.querySelector('.note-card'))`)
@@ -520,10 +583,10 @@ async function exercisePageFeature(page) {
   }
 }
 
-async function backgroundResume() {
+async function backgroundResume(backgroundMs = 500 + Math.floor(random() * 1_000)) {
   await recordAction('lifecycle', 'background and resume', async () => {
     adb(['shell', 'input', 'keyevent', 'KEYCODE_HOME'])
-    await sleep(500 + Math.floor(random() * 1_000))
+    await sleep(backgroundMs)
     adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
     await sleep(500)
   })
@@ -626,8 +689,9 @@ try {
   // Debug APK startup intentionally runs large synthetic native sync and
   // database profiles before the frontend can read state. Start the requested
   // interaction duration only after those one-time diagnostics release the DB.
-  if (caretCheck) {
+  if (caretCheck || caretResumeStress) {
     await checkTodayCaret()
+    if (caretResumeStress) await stressTodayCaretResume()
     // Enable only this generated CI database against the existing test relay
     // port with no server running, reproducing a disconnected sync setup.
     const pairingCode = (await readFile('sync-e2e-pairing-code.txt', 'utf8')).trim()
@@ -641,6 +705,7 @@ try {
     await sleep(2000)
     await openPage('Today')
     await checkTodayCaret(true)
+    if (caretResumeStress) await stressTodayCaretResume(true)
   } else if (startupRelaunches > 0) {
     await openPage('Notes')
     for (cycle = 1; cycle <= startupRelaunches; cycle += 1) {
@@ -701,6 +766,7 @@ const report = {
   seed,
   requestedDurationSeconds: durationSeconds,
   caretChecks,
+  caretResumeChecks,
   requestedStartupRelaunches: startupRelaunches,
   requestedListHistoryTransitions: listHistoryTransitions,
   elapsedSeconds: Math.round((Date.now() - startedAt) / 1000),
