@@ -469,6 +469,7 @@ async function verifyFreezeDiagnostics() {
   if (!report.records.some(record => record.session_ms !== session && record.details.event === 'session_start')) throw new Error('New native session was not recorded')
   const text = JSON.stringify(report)
   if (text.includes(secret) || text.includes('Synthetic Today task')) throw new Error('Freeze report leaked synthetic private content')
+  await writeFile('android-freeze-diagnostics-test.json', JSON.stringify({passed: false, report}, null, 2))
   if (!report.records.some(record => record.details.event === 'android_device' && record.details.sdk > 0)) throw new Error('Android/WebView version metadata missing')
   await openPage('Settings')
   await client.evaluate(`document.querySelector('[data-freeze-report-export]').click()`)

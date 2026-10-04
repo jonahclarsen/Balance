@@ -85,8 +85,8 @@ pub enum WebEvent {
     WindowFocus {
         focused: bool,
     },
-    JavascriptError,
-    UnhandledRejection,
+    JavascriptError {},
+    UnhandledRejection {},
 }
 impl From<WebEvent> for Event {
     fn from(event: WebEvent) -> Self {
@@ -101,8 +101,8 @@ impl From<WebEvent> for Event {
                 composing,
             },
             WebEvent::WindowFocus { focused } => Event::WindowFocus { focused },
-            WebEvent::JavascriptError => Event::JavascriptError,
-            WebEvent::UnhandledRejection => Event::UnhandledRejection,
+            WebEvent::JavascriptError {} => Event::JavascriptError,
+            WebEvent::UnhandledRejection {} => Event::UnhandledRejection,
         }
     }
 }
@@ -158,6 +158,22 @@ pub fn start(directory: PathBuf, version: String, commit: String) {
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                     }
+                    #[cfg(target_os = "android")]
+                    {
+                        let active = ANDROID_ACTIVE.load(std::sync::atomic::Ordering::Relaxed);
+                        if active != monitor.active {
+                            for event in monitor.accept(
+                                if active {
+                                    Event::ActivityResumed
+                                } else {
+                                    Event::ActivityPaused
+                                },
+                                Instant::now(),
+                            ) {
+                                let _ = writer.append(event);
+                            }
+                        }
+                    }
                     for record in monitor.check(Instant::now()) {
                         let _ = writer.append(record);
                     }
@@ -168,10 +184,11 @@ pub fn start(directory: PathBuf, version: String, commit: String) {
 }
 
 /// Best effort, bounded and nonblocking, including while a DB worker is stuck.
-pub fn record(event: Event) {
-    if let Some(recorder) = RECORDER.get() {
-        let _ = recorder.sender.try_send(event);
-    }
+pub fn record(event: Event) -> bool {
+    RECORDER
+        .get()
+        .map(|recorder| recorder.sender.try_send(event).is_ok())
+        .unwrap_or(false)
 }
 
 pub struct Span {
@@ -546,6 +563,8 @@ mod tests {
 
 #[cfg(target_os = "android")]
 static ANDROID_CLASS: OnceLock<jni::objects::GlobalRef> = OnceLock::new();
+#[cfg(target_os = "android")]
+static ANDROID_ACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 #[cfg(target_os = "android")]
 pub fn share_android(env: &mut jni::JNIEnv, report: &str) -> Result<bool, jni::errors::Error> {
@@ -573,10 +592,20 @@ pub extern "system" fn Java_app_balance_local_BalanceFreezeDiagnostics_signal(
         }
     }
     match kind {
-        0 => record(Event::ActivityResumed),
-        1 => record(Event::ActivityPaused),
-        2 => record(Event::MainThreadPulse),
-        3 => record(Event::ReportShareFailed),
+        0 => {
+            ANDROID_ACTIVE.store(true, std::sync::atomic::Ordering::Relaxed);
+            record(Event::ActivityResumed);
+        }
+        1 => {
+            ANDROID_ACTIVE.store(false, std::sync::atomic::Ordering::Relaxed);
+            record(Event::ActivityPaused);
+        }
+        2 => {
+            record(Event::MainThreadPulse);
+        }
+        3 => {
+            record(Event::ReportShareFailed);
+        }
         _ => {}
     }
 }
@@ -590,7 +619,7 @@ pub extern "system" fn Java_app_balance_local_BalanceFreezeDiagnostics_device(
     model: jni::objects::JString,
     sdk: jni::sys::jint,
     webview_version: jni::objects::JString,
-) {
+) -> jni::sys::jboolean {
     let mut read = |value: &jni::objects::JString| -> String {
         env.get_string(value)
             .map(|s| {
@@ -602,10 +631,15 @@ pub extern "system" fn Java_app_balance_local_BalanceFreezeDiagnostics_device(
             })
             .unwrap_or_default()
     };
-    record(Event::AndroidDevice {
+    let accepted = record(Event::AndroidDevice {
         manufacturer: read(&manufacturer),
         model: read(&model),
         sdk,
         webview_version: read(&webview_version),
     });
+    if accepted {
+        jni::sys::JNI_TRUE
+    } else {
+        jni::sys::JNI_FALSE
+    }
 }

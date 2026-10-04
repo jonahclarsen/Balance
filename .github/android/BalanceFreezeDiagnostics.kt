@@ -13,13 +13,14 @@ import java.io.File
 object BalanceFreezeDiagnostics {
     init { System.loadLibrary("balance_lib") }
     @JvmStatic external fun signal(kind: Int)
-    @JvmStatic external fun device(manufacturer: String, model: String, sdk: Int, webviewVersion: String)
+    @JvmStatic external fun device(manufacturer: String, model: String, sdk: Int, webviewVersion: String): Boolean
     private val main = Handler(Looper.getMainLooper())
     @Volatile private var context: Context? = null
     private var deviceRecorded = false
     private val pulse = object : Runnable {
         override fun run() {
             signal(2)
+            recordDevice()
             main.postDelayed(this, 5000)
         }
     }
@@ -28,11 +29,14 @@ object BalanceFreezeDiagnostics {
         signal(0)
         main.removeCallbacks(pulse)
         main.post(pulse)
-        if (!deviceRecorded) {
-            deviceRecorded = true
-            val version = try { if (Build.VERSION.SDK_INT >= 26) WebView.getCurrentWebViewPackage()?.versionName ?: "unknown" else "unknown" } catch (_: Throwable) { "unknown" }
-            device(Build.MANUFACTURER, Build.MODEL, Build.VERSION.SDK_INT, version)
-        }
+    }
+    private fun recordDevice() {
+        if (deviceRecorded) return
+        val version = try { if (Build.VERSION.SDK_INT >= 26) WebView.getCurrentWebViewPackage()?.versionName ?: "unknown" else "unknown" } catch (_: Throwable) { "unknown" }
+        // Native setup can follow the first activity callback. Retry from the
+        // pulse until the recorder accepts the metadata, without retaining it
+        // on an Activity or introducing a startup plugin registration.
+        deviceRecorded = device(Build.MANUFACTURER, Build.MODEL, Build.VERSION.SDK_INT, version)
     }
     fun pause() {
         signal(1)
