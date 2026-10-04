@@ -141,6 +141,12 @@ runs:
       shell: bash
       run: node .github/scripts/configure-android-task-notifications.mjs
 
+    - name: Configure persistent freeze diagnostics
+      shell: bash
+      run: |
+        node --test .github/scripts/configure-android-freeze-diagnostics.test.mjs
+        node .github/scripts/configure-android-freeze-diagnostics.mjs
+
     - name: Configure text selection formatting
       shell: bash
       run: node .github/scripts/configure-android-selection-formatting.mjs

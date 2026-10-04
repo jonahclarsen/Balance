@@ -12,6 +12,7 @@ const listHistoryTransitions = Number.parseInt(
   process.env.BALANCE_INTERACTION_STRESS_LIST_HISTORY_TRANSITIONS ?? '0',
   10,
 )
+const freezeDiagnosticsTest = process.env.BALANCE_FREEZE_DIAGNOSTICS_TEST === '1'
 const caretCheck = process.env.BALANCE_CARET_CHECK === '1'
 const caretResumeStress = process.env.BALANCE_CARET_RESUME_STRESS === '1'
 const caretChecks = []
@@ -442,6 +443,41 @@ async function checkTodayCaret(syncFailure = false) {
   if (caretChecks.some((check) => !check.stable)) throw new Error('Today task caret moved during idle')
 }
 
+async function verifyFreezeDiagnostics() {
+  await checkTodayCaret()
+  // Synthetic text is never allowed into the exported recorder report.
+  const secret = 'synthetic-private-error-and-task-text-DO-NOT-EXPORT'
+  await client.evaluate(`(() => { window.caretEditor.focus(); document.execCommand('insertText', false, ${JSON.stringify(secret)}); setTimeout(() => { throw new Error(${JSON.stringify(secret)}) }, 0); return true })()`)
+  await sleep(1_000)
+  const read = () => client.evaluate(`window.__TAURI_INTERNALS__.invoke('export_freeze_diagnostics')`).then(JSON.parse)
+  const baseline = await read()
+  const before = baseline.records.at(-1)?.time_ms ?? 0
+  await backgroundResume(20_000)
+  await sleep(1_000)
+  const healthy = await read()
+  const backgroundStalls = healthy.records.filter(record => record.time_ms > before && ['webview_stall', 'main_thread_stall'].includes(record.details.event))
+  if (backgroundStalls.length) throw new Error('Normal background suspension was classified as a freeze')
+  const session = healthy.records.at(-1).session_ms
+  // Block only the generated fixture's JS renderer. The independent native
+  // recorder must persist the missed heartbeat before the process is killed.
+  await client.evaluate(`(() => { setTimeout(() => { const end = performance.now() + 45_000; while (performance.now() < end) {} }, 50); return true })()`)
+  await sleep(25_000)
+  await forceStopRelaunch()
+  await sleep(1_000)
+  const report = await read()
+  if (!report.records.some(record => record.session_ms === session && record.details.event === 'webview_stall')) throw new Error('WebView stall did not survive force quit')
+  if (!report.records.some(record => record.session_ms !== session && record.details.event === 'session_start')) throw new Error('New native session was not recorded')
+  const text = JSON.stringify(report)
+  if (text.includes(secret) || text.includes('Synthetic Today task')) throw new Error('Freeze report leaked synthetic private content')
+  await writeFile('android-freeze-diagnostics-test.json', JSON.stringify({passed: false, report}, null, 2))
+  if (!report.records.some(record => record.details.event === 'android_device' && record.details.sdk > 0)) throw new Error('Android/WebView version metadata missing')
+  await openPage('Settings')
+  await client.evaluate(`document.querySelector('[data-freeze-report-export]').click()`)
+  await waitFor(() => /ChooserActivity|ResolverActivity|android.intent.action.CHOOSER/.test(adb(['shell', 'dumpsys', 'activity', 'activities'])), 'the report file share sheet')
+  await writeFile('android-freeze-diagnostics-test.json', JSON.stringify({passed: true, report}, null, 2))
+  console.log('[freeze-diagnostics] synthetic stall retained after force quit; private content excluded; file share sheet opened')
+}
+
 async function stressTodayCaretResume(syncFailure = false) {
   for (const mode of ['idle', 'typing', 'composition']) {
     for (const backgroundMs of [500, 3_000, 10_000, 30_000]) {
@@ -711,7 +747,9 @@ try {
   // Debug APK startup intentionally runs large synthetic native sync and
   // database profiles before the frontend can read state. Start the requested
   // interaction duration only after those one-time diagnostics release the DB.
-  if (caretCheck || caretResumeStress) {
+  if (freezeDiagnosticsTest) {
+    await verifyFreezeDiagnostics()
+  } else if (caretCheck || caretResumeStress) {
     await checkTodayCaret()
     if (caretResumeStress) await stressTodayCaretResume()
     // Enable only this generated CI database against the existing test relay

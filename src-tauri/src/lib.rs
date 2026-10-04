@@ -29,6 +29,7 @@ mod backup_browser;
 #[cfg(not(target_os = "android"))]
 mod desktop_recovery_key;
 mod images;
+mod freeze_diagnostics;
 #[cfg(target_os = "macos")]
 mod macos_widget;
 #[cfg(target_os = "macos")]
@@ -2014,6 +2015,7 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, String> + Send + 'static,
 {
+    let _diagnostic = freeze_diagnostics::Span::new(freeze_diagnostics::Operation::Database);
     tauri::async_runtime::spawn_blocking(move || {
         let _guard = database_access_guard()?;
         task()
@@ -10007,6 +10009,16 @@ mod android_keystore {
         Ok(rest.split_at(iv_len as usize))
     }
 
+    pub(super) fn share_freeze_report(report: &str) -> Result<(), String> {
+        with_env(|env| {
+            let result = super::freeze_diagnostics::share_android(env, report);
+            match result {
+                Ok(true) => Ok(()),
+                _ => { let _ = env.exception_clear(); Err("Could not open the freeze report share sheet.".to_string()) }
+            }
+        })
+    }
+
     fn with_env<T>(f: impl FnOnce(&mut JNIEnv) -> Result<T, String>) -> Result<T, String> {
         let vm = JAVA_VM
             .get()
@@ -10239,6 +10251,7 @@ mod android_keystore {
 
 #[cfg(target_os = "android")]
 fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
+    let _diagnostic = freeze_diagnostics::Span::new(freeze_diagnostics::Operation::BackgroundRelay);
     let _guard = database_access_guard()?;
     let database_path = app_database_path_from_data_dir(data_dir);
     if !database_path.exists() {
@@ -10460,6 +10473,7 @@ async fn sync_relay_once(
     app: tauri::AppHandle,
     reason: String,
 ) -> Result<sync::relay_client::SyncPassResult, String> {
+    let _diagnostic = freeze_diagnostics::Span::new(freeze_diagnostics::Operation::ForegroundRelay);
     let _ = reason;
     if connectivity::get_sync_network_offline(app.clone()).await == Some(true) {
         return Err(connectivity::OFFLINE.to_string());
@@ -10557,6 +10571,39 @@ async fn sync_anonymous_diagnostics(
     .await
 }
 
+// These commands use neither the database lock nor planner state. A blocked
+// database worker must not prevent exporting the retained freeze report.
+#[tauri::command]
+fn record_freeze_diagnostic(event: freeze_diagnostics::WebEvent) {
+    freeze_diagnostics::record(event.into());
+}
+
+#[tauri::command]
+async fn export_freeze_diagnostics() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(freeze_diagnostics::export)
+        .await.map_err(|_| "Could not prepare freeze diagnostics.".to_string())?
+}
+
+#[tauri::command]
+async fn share_freeze_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let report = freeze_diagnostics::export()?;
+        #[cfg(target_os = "android")]
+        {
+            let _ = app;
+            android_keystore::share_freeze_report(&report)?;
+            Ok("Report prepared. Choose an app to share it.".to_string())
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let directory = app.path().download_dir().map_err(|_| "Downloads folder is unavailable.".to_string())?;
+            fs::create_dir_all(&directory).map_err(|_| "Could not create the report folder.".to_string())?;
+            fs::write(directory.join("balance-freeze-report.json"), report).map_err(|_| "Could not save the freeze report.".to_string())?;
+            Ok("Saved balance-freeze-report.json in Downloads.".to_string())
+        }
+    }).await.map_err(|_| "Could not export freeze diagnostics.".to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     disable_automatic_text_substitutions();
@@ -10592,6 +10639,9 @@ pub fn run() {
 
     let app = builder
         .setup(|app| {
+            if let Ok(directory) = app.path().app_data_dir() {
+                freeze_diagnostics::start(directory.join("freeze-diagnostics"), app.package_info().version.to_string(), env!("GIT_COMMIT").to_string());
+            }
             #[cfg(target_os = "macos")]
             {
                 let _ = connectivity::offline(app.handle());
@@ -10736,6 +10786,9 @@ pub fn run() {
             sync_relay_once,
             connectivity::get_sync_network_offline,
             sync_anonymous_diagnostics,
+            record_freeze_diagnostic,
+            export_freeze_diagnostics,
+            share_freeze_diagnostics,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
