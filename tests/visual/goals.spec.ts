@@ -2110,7 +2110,8 @@ test('clicking a goal rhythm row scrolls to that goal on the goals page', async 
   expect(highlightedCard.animationName).toBe('goal-card-highlight-fade')
   expect(highlightedCard.animationDuration).toBe('1.6s')
   expect(highlightedCard.backgroundImage).toContain('linear-gradient')
-  expect(highlightedCard.opacity).toBe(1)
+  // The highlight is already fading while the scroll assertion settles.
+  expect(highlightedCard.opacity).toBeGreaterThan(0)
   await expect(targetCard).not.toHaveClass(/goal-card-focus/)
 
   // Goal Rhythm remains mounted on desktop, and lives on Today on mobile.

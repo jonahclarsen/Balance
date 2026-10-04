@@ -13,7 +13,9 @@ const listHistoryTransitions = Number.parseInt(
   10,
 )
 const caretCheck = process.env.BALANCE_CARET_CHECK === '1'
+const caretResumeStress = process.env.BALANCE_CARET_RESUME_STRESS === '1'
 const caretChecks = []
+const caretResumeChecks = []
 const commandTimeoutMs = 30_000
 const devToolsPort = 9224
 const actionTimeoutMs = 10_000
@@ -339,13 +341,13 @@ async function pressKey(key, code = key) {
 }
 
 const pageSelectors = {
-  Today: '.primary-nav button[title^="Today ("]',
-  'Day Templates': '.primary-nav button[title^="Day Templates ("]',
-  Lists: '.primary-nav button[title^="Lists ("]',
-  Notes: '.primary-nav button[title^="Notes ("]',
-  Metrics: '.primary-nav button[title^="Metrics ("]',
-  Goals: '.primary-nav button[title^="Goals ("]',
-  Settings: '.primary-nav button[title^="Settings ("]',
+  Today: '.primary-nav button[aria-keyshortcuts="Alt+T"]',
+  'Day Templates': '.primary-nav button[aria-keyshortcuts="Alt+D"]',
+  Lists: '.primary-nav button[aria-keyshortcuts="Alt+E"]',
+  Notes: '.primary-nav button[aria-keyshortcuts="Alt+N"]',
+  Metrics: '.primary-nav button[aria-keyshortcuts="Alt+V"]',
+  Goals: '.primary-nav button[aria-keyshortcuts="Alt+G"]',
+  Settings: '.primary-nav button[aria-keyshortcuts="Alt+S"]',
 }
 
 async function openPage(page) {
@@ -440,6 +442,77 @@ async function checkTodayCaret(syncFailure = false) {
   if (caretChecks.some((check) => !check.stable)) throw new Error('Today task caret moved during idle')
 }
 
+async function stressTodayCaretResume(syncFailure = false) {
+  for (const mode of ['idle', 'typing', 'composition']) {
+    for (const backgroundMs of [500, 3_000, 10_000, 30_000]) {
+      const target = await client.evaluate(`(() => {
+        const editor = window.caretEditor
+        if (!editor?.isConnected) throw new Error('Focused Today task disappeared')
+        editor.scrollIntoView({block: 'center'})
+        editor.focus()
+        document.execCommand('selectAll')
+        document.execCommand('insertText', false, 'Synthetic Samsung resume task with a caret in the middle')
+        const rect = editor.getBoundingClientRect()
+        return {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2}
+      })()`)
+      // Use a real touch so Android opens its soft keyboard, rather than only
+      // focusing a contenteditable through JavaScript in hardware-keyboard mode.
+      await client.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [target]})
+      await client.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []})
+      await client.evaluate(`(() => {
+        const text = document.createTreeWalker(window.caretEditor, NodeFilter.SHOW_TEXT).nextNode()
+        getSelection().setBaseAndExtent(text, 19, text, 19)
+      })()`)
+      if (mode === 'typing') await client.send('Input.insertText', {text: 'typed '})
+      if (mode === 'composition') {
+        await client.send('Input.imeSetComposition', {text: 'mobile', selectionStart: 6, selectionEnd: 6})
+        await client.send('Input.insertText', {text: 'mobile '})
+      }
+      const before = await client.evaluate('window.readCaret()')
+      const keyboardVisible = await waitFor(() => /mInputShown=true|mIsInputViewShown=true/.test(
+        adb(['shell', 'dumpsys', 'input_method']),
+      ), 'the Android soft keyboard', 8_000, 100)
+      if (!before.focused) throw new Error('Caret resume fixture must have a focused task')
+      await backgroundResume(backgroundMs)
+      const after = await client.evaluate('window.readCaret()')
+      if (!after.connected || after.text !== before.text) throw new Error('Today task text was lost while reopening')
+      // Verify editing and native persistence after reopening, without restarting
+      // the process or manually reloading the WebView to recover it.
+      await client.evaluate(`(() => {
+        const editor = window.caretEditor
+        editor.focus()
+        const range = document.createRange()
+        range.selectNodeContents(editor)
+        range.collapse(false)
+        getSelection().removeAllRanges()
+        getSelection().addRange(range)
+      })()`)
+      await client.send('Input.insertText', {text: ' resumed'})
+      await heartbeat('after editing resumed Today task')
+      const edited = await client.evaluate('window.readCaret()')
+      const result = {mode, syncFailure, backgroundMs, keyboardVisible, before, after, edited, nativeText: null, persisted: false}
+      caretResumeChecks.push(result)
+      // Android's IME may replace its active composing word when CDP commits
+      // text. Verify that the edit works and persists, rather than treating
+      // composition replacement as an app freeze or requiring an appended edit.
+      if (edited.text === before.text || !edited.text.includes('resumed')) throw new Error('Today task did not accept typing after reopening')
+      const expectedText = edited.text
+      await waitFor(async () => {
+        const nativeText = await recordAction('native-read', 'persist resumed Today task', () => client.evaluate(`(async () => {
+        const state = JSON.parse(await window.__TAURI_INTERNALS__.invoke('read_app_state'))
+        const id = window.caretEditor.dataset.planTextInputId
+        const find = (items) => items.flatMap(item => [item, ...find(item.children ?? [])])
+        return state.plans.flatMap(plan => find(plan.items)).find(item => item.id === id)?.text ?? null
+      })()`))
+        result.nativeText = nativeText
+        return nativeText === expectedText
+      }, 'the resumed edit to persist', 15_000, 250)
+      result.persisted = true
+      console.log('[caret-resume] ' + JSON.stringify(result))
+    }
+  }
+}
+
 async function exerciseNotes() {
   await openPage('Notes')
   const hasNote = await client.evaluate(`Boolean(document.querySelector('.note-card'))`)
@@ -499,14 +572,14 @@ async function exercisePageFeature(page) {
     return
   }
   if (page === 'Metrics') {
-    const hasMetric = await client.evaluate(`Boolean(document.querySelector('input[aria-label="Metric name"]'))`)
+    const hasMetric = await client.evaluate(`Boolean(document.querySelector('input[aria-label="Quiz name"]'))`)
     if (!hasMetric) await tap('.empty-state button.primary', 'create first metric')
     if (cycle % 4 === 2) await tap('.metric-card .add-row', 'add metric question')
     return
   }
   if (page === 'Goals') {
     if (cycle % 3 === 1) {
-      await setInput('input[aria-label="New goal name"]', `Goal ${seed}-${cycle}`, 'enter goal name')
+      await setRichText('[aria-label="New goal name"]', `Goal ${seed}-${cycle}`, 'enter goal name')
       await setRichText('[aria-label="New goal matching terms"]', `term-${cycle}`, 'enter goal match term')
       await tap('.goal-add-button', 'add goal')
     } else {
@@ -520,10 +593,10 @@ async function exercisePageFeature(page) {
   }
 }
 
-async function backgroundResume() {
+async function backgroundResume(backgroundMs = 500 + Math.floor(random() * 1_000)) {
   await recordAction('lifecycle', 'background and resume', async () => {
     adb(['shell', 'input', 'keyevent', 'KEYCODE_HOME'])
-    await sleep(500 + Math.floor(random() * 1_000))
+    await sleep(backgroundMs)
     adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
     await sleep(500)
   })
@@ -609,6 +682,18 @@ try {
   // markers, then reload only the synthetic WebView so the actual interaction
   // journey starts through the normal, uncontended hydration path.
   await waitForDebugStartupProfiles()
+  // This fresh CI installation owns only a generated database and test key.
+  // Complete its first-run gate before exercising controls or the soft keyboard.
+  // Never return or log the key from the WebView.
+  await client.evaluate(`(async () => {
+    const invoke = window.__TAURI_INTERNALS__.invoke
+    const status = await invoke('get_recovery_key_status')
+    if (!status.confirmed) {
+      if (!status.recoveryKey) throw new Error('Synthetic recovery key unavailable')
+      await invoke('confirm_recovery_key', {recoveryKey: status.recoveryKey})
+    }
+    return true
+  })()`)
   await client.evaluate(`(() => { setTimeout(() => window.location.reload(), 0); return true })()`)
   await sleep(500)
   await reconnect()
@@ -626,8 +711,9 @@ try {
   // Debug APK startup intentionally runs large synthetic native sync and
   // database profiles before the frontend can read state. Start the requested
   // interaction duration only after those one-time diagnostics release the DB.
-  if (caretCheck) {
+  if (caretCheck || caretResumeStress) {
     await checkTodayCaret()
+    if (caretResumeStress) await stressTodayCaretResume()
     // Enable only this generated CI database against the existing test relay
     // port with no server running, reproducing a disconnected sync setup.
     const pairingCode = (await readFile('sync-e2e-pairing-code.txt', 'utf8')).trim()
@@ -641,6 +727,7 @@ try {
     await sleep(2000)
     await openPage('Today')
     await checkTodayCaret(true)
+    if (caretResumeStress) await stressTodayCaretResume(true)
   } else if (startupRelaunches > 0) {
     await openPage('Notes')
     for (cycle = 1; cycle <= startupRelaunches; cycle += 1) {
@@ -695,12 +782,13 @@ const freezeActions = actions.filter((action) => (
 ))
 const failedActions = actions.filter((action) => !action.ok)
 const fatalLogLines = diagnostics.logcat.split('\n').filter((line) => (
-  /FATAL EXCEPTION|ANR in app\.balance\.local\.debug|am_anr.*app\.balance\.local\.debug|Fatal signal.*(?:balance|libbalance)/i.test(line)
+  /FATAL EXCEPTION|ANR in app\.balance\.local\.debug|am_anr.*app\.balance\.local\.debug|Fatal signal.*(?:balance|libbalance)|F DEBUG\s*:.*>>> app\.balance\.local\.debug <<</i.test(line)
 ))
 const report = {
   seed,
   requestedDurationSeconds: durationSeconds,
   caretChecks,
+  caretResumeChecks,
   requestedStartupRelaunches: startupRelaunches,
   requestedListHistoryTransitions: listHistoryTransitions,
   elapsedSeconds: Math.round((Date.now() - startedAt) / 1000),
@@ -714,7 +802,10 @@ const report = {
   frontendErrorCount: frontendErrors.length,
   fatalLogLineCount: fatalLogLines.length,
   finalPid: appPid(),
-  reproducedFreeze: Boolean(failure) || freezeActions.length > 0 || fatalLogLines.length > 0,
+  completedJourney: !failure,
+  // A missing selector or another harness error is an incomplete journey,
+  // not evidence that the application froze. Keep failures independently.
+  reproducedFreeze: freezeActions.length > 0 || fatalLogLines.length > 0,
   failure: failure ? String(failure?.stack ?? failure) : null,
   slowActions,
   freezeActions,

@@ -2695,7 +2695,7 @@ return rows`
     closeQuickAdd()
     if (!text) return
     try {
-      if (await plannerStore.addQuickTask(text, todayISO())) view = 'today'
+      if (await plannerStore.addQuickTask(text, displayedPlanDate || todayISO())) view = 'today'
     } catch (error) {
       console.error('Could not add quick task', error)
     }
