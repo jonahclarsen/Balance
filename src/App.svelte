@@ -766,7 +766,7 @@ return rows`
   $: metricOverlayMetric = metricOverlay ? metrics.find((metric) => metric.id === metricOverlay?.metricId) : null
   $: metricOverlayAnswers =
     metricOverlay && metricOverlayMetric ? answersForEntry($plannerStore.metricEntries, metricOverlay.metricId, metricOverlay.date) : {}
-  $: canGenerateDisplayedDay = displayedPlanDate >= currentDay
+  $: canGenerateDisplayedDay = displayedPlanDate >= currentDay || !activePlan
   $: generateButtonLabel = displayedPlanDate === currentDay ? 'Generate today' : 'Generate selected day'
   $: selectedItemIdSet = new Set(selectedItemIds)
   $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
@@ -3041,8 +3041,8 @@ return rows`
     if (!template) return
 
     const date = $plannerStore.activePlanDate || todayISO()
-    if (date < todayISO()) return
     const exists = $plannerStore.plans.some((plan) => plan.date === date)
+    if (exists && date < todayISO()) return
     const replaceExisting = exists ? await confirmReplaceExistingPlan() : false
 
     if (exists && !replaceExisting) {
@@ -3055,7 +3055,7 @@ return rows`
     const quizAnswers = steps.length > 0 ? await askDayQuiz(template.name, steps) : {}
     if (!quizAnswers) return
 
-    if (date < todayISO()) return
+    if (date < todayISO() && $plannerStore.plans.some((plan) => plan.date === date)) return
     const doabilityReviews = goalsNeedingDoabilityReview(
       $plannerStore.goals,
       $plannerStore.goalCompletions,
@@ -6339,8 +6339,8 @@ return rows`
         {:else}
               <div class="empty-state">
                 <h3>No plan for this date</h3>
-                <p>{canGenerateDisplayedDay ? 'Choose a template to generate this day, or pick another date.' : 'Days before today cannot be generated. Choose today or a future date.'}</p>
-                {#if canGenerateDisplayedDay && templates.length > 0}
+                <p>Choose a template to generate this day, or pick another date.</p>
+                {#if templates.length > 0}
                   <fieldset class="day-template-picker">
                     <legend>Day template</legend>
                     <div class="day-template-options">

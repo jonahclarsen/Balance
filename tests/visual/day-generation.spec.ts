@@ -1,19 +1,11 @@
 import { expect, test } from '@playwright/test'
 
-test('generation rejects past days and preserves existing history', async ({ page }) => {
+test('past days can be generated once but existing past plans are kept', async ({ page }) => {
   await page.clock.setFixedTime(new Date('2026-09-17T12:00:00'))
   await page.goto('/')
   await expect(page.getByRole('region', { name: 'Daily plan' })).toBeVisible()
   await page.locator('.date-input').fill('2026-09-16')
-  if (await page.getByRole('button', { name: 'Open navigation' }).isVisible()) {
-    await page.getByRole('button', { name: 'Open navigation' }).click()
-    await expect(page.getByRole('button', { name: 'Generate selected day' })).toBeDisabled()
-    await page.getByRole('button', { name: 'Close navigation', exact: true }).first().click()
-  } else {
-    await expect(page.getByRole('button', { name: 'Generate selected day' })).toBeDisabled()
-  }
-  await expect(page.locator('.empty-state')).toContainText('Days before today cannot be generated.')
-  await expect(page.locator('.empty-state input[type="radio"]')).toHaveCount(0)
+  await expect(page.locator('.empty-state input[type="radio"]').first()).toBeVisible()
 
   const generate = async (date: string, replaceExisting = false) => page.evaluate(async ({ date, replaceExisting }) => {
     const path = '/src/lib/store.ts'
@@ -28,6 +20,8 @@ test('generation rejects past days and preserves existing history', async ({ pag
     return result
   }, { date, replaceExisting })
 
+  expect((await generate('2026-09-16')).dates).toContain('2026-09-16')
+  expect((await generate('2026-09-16', true)).unchanged).toBe(true)
   expect((await generate('2026-09-16')).unchanged).toBe(true)
   expect((await generate('2026-09-17')).dates).toContain('2026-09-17')
   expect((await generate('2026-09-18')).dates).toContain('2026-09-18')

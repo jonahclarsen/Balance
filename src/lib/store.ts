@@ -1003,7 +1003,7 @@ function createPlannerStore() {
     },
 
     generatePlan(templateId: Id, date: string, replaceExisting: boolean, quizAnswers: TemplateQuizAnswers = {}) {
-      if (date < todayISO()) return
+      if (date < todayISO() && get(store).plans.some((plan) => plan.date === date)) return
       if (deferHistoryAction(() => plannerStore.generatePlan(templateId, date, replaceExisting, quizAnswers))) return
       const current = get(store)
       const template = current.templates.find((candidate) => candidate.id === templateId)
