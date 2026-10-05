@@ -4,6 +4,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { noteItemsEqual } from './noteEditor/noteItems'
 import { pickerColorToHex } from './colors'
 import { projectCheckInForDay } from './projects'
+import { spreadPriorityItems } from './prioritize'
 import { get, writable, type Writable } from 'svelte/store'
 import {
   addPlanItem,
@@ -2057,6 +2058,16 @@ function createPlannerStore() {
           ? { ...session, items: session.items.map((entry) => entry === item ? next : entry), updatedAt: nowISO() }
           : candidate) }
       }, { mergeKey: `priority:${sessionId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS })
+    },
+
+    spreadPriorities(sessionId: Id) {
+      commitEntities('spread_priorities', { sessionId }, (state) => {
+        const session = state.prioritySessions.find((candidate) => candidate.id === sessionId)
+        if (!session || !session.items.some((item) => item.priority !== undefined)) return state
+        return { ...state, prioritySessions: state.prioritySessions.map((candidate) => candidate === session
+          ? { ...session, items: spreadPriorityItems(session.items), updatedAt: nowISO() }
+          : candidate) }
+      })
     },
 
     // ---- Notes (reuse the plan-item tree and shared rich-text editor) ----

@@ -5,6 +5,7 @@
   import {
     PRIORITIZE_IDLE_MS,
     defaultPrioritySeeds,
+    isPriorityScaleCrowded,
     nextUnratedId,
     orderPriorityItems,
     prioritizeReveal,
@@ -24,6 +25,7 @@
 
   // Touch keyboards need a real (invisible) input behind the number card.
   const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent)
 
   let screen: 'home' | 'past' | 'session' = 'home'
   let sessionId: Id | null = null
@@ -43,6 +45,7 @@
   $: ordered = session ? orderPriorityItems(session.items) : []
   $: ensureSelection(ordered)
   $: selected = ordered.find((item) => item.id === selectedId) ?? null
+  $: crowded = session ? isPriorityScaleCrowded(session.items) : false
   $: syncDraft(selected)
   $: scrollSelectedIntoView(selectedId, ordered)
   $: leaveMissingSession(sessions)
@@ -268,6 +271,11 @@
       if (selected && !event.repeat) startEdit(selected)
       return
     }
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.code === 'KeyS') {
+      event.preventDefault()
+      if (!event.repeat) spread()
+      return
+    }
     const active = document.activeElement
     if (active && active !== document.body && (active === numberCard || active.matches('input, textarea, select, [contenteditable="true"]'))) return
     if (document.querySelector('.overlay-backdrop, dialog[open]')) return
@@ -280,6 +288,12 @@
     } else {
       focusAdd(event.key)
     }
+  }
+
+  function spread() {
+    if (!session || !crowded) return
+    plannerStore.spreadPriorities(session.id)
+    markActive()
   }
 
   // Selection moves to the row that takes the deleted row's place.
@@ -396,6 +410,16 @@
       <div class="prioritize-toolbar">
         <button class="ghost prioritize-back" type="button" on:click={goHome}>Back</button>
         <ImaxButton active={maximized} onToggle={onToggleMaximized} />
+        {#if crowded}
+          <button
+            class="ghost prioritize-spread"
+            type="button"
+            title={`Spread out the numbers (${isMac ? '⌘' : 'Ctrl+'}S)`}
+            aria-keyshortcuts="Meta+S Control+S"
+            on:mousedown|preventDefault
+            on:click={spread}
+          >Spread</button>
+        {/if}
       </div>
       <div class="prioritize-entry" bind:clientHeight={barHeight}>
         <input

@@ -208,6 +208,35 @@ test('keyboard prioritizing reorders, persists, undoes and times out', async ({ 
   expect(await sessions(page)).toEqual([before])
 })
 
+test('Spread appears for a crowded scale and doubles it with undo', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Touch entry is covered separately')
+  await seed(page)
+  await openView(page, 'Prioritize')
+  await page.getByRole('button', { name: 'Start prioritizing' }).click()
+  const spread = page.getByRole('button', { name: 'Spread' })
+  await expect(spread).toHaveCount(0)
+
+  for (const value of ['9', '8.5', '8']) {
+    await page.keyboard.type(value)
+    await page.keyboard.press('Enter')
+  }
+  await expectRows(page, ['Synthetic alpha\\s*9', 'Synthetic beta\\s*8.5', 'Synthetic overdue goal\\s*8', 'Synthetic daily goal'])
+  await expect(spread).toBeVisible()
+
+  // Each spread doubles the scale; it hides once every gap is wider than 3.
+  await page.keyboard.press('ControlOrMeta+s')
+  await expectRows(page, ['Synthetic alpha\\s*18', 'Synthetic beta\\s*17', 'Synthetic overdue goal\\s*16', 'Synthetic daily goal'])
+  await spread.click()
+  await expect(page.locator('.prioritize-number')).toBeFocused()
+  await page.keyboard.press('ControlOrMeta+s')
+  await expectRows(page, ['Synthetic alpha\\s*72', 'Synthetic beta\\s*68', 'Synthetic overdue goal\\s*64', 'Synthetic daily goal'])
+  await expect(spread).toHaveCount(0)
+
+  await page.keyboard.press('ControlOrMeta+z')
+  await expectRows(page, ['Synthetic alpha\\s*36', 'Synthetic beta\\s*34', 'Synthetic overdue goal\\s*32', 'Synthetic daily goal'])
+  await expect(spread).toBeVisible()
+})
+
 test('touch prioritizing uses tapped rows and a next button', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'Keyboard entry is covered on desktop')
   await seed(page)
