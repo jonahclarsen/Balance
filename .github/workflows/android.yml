@@ -342,12 +342,17 @@ jobs:
         if: github.ref_type == 'tag' || inputs.publish_tag != '' || inputs.run_stale_task_repro
         run: node .github/scripts/android-task-preservation-gate.mjs android-stale-task-repro.json
 
+      - name: Retain bounded emulator host diagnostics
+        if: always()
+        run: bash .github/scripts/collect-android-host-diagnostics.sh
+
       - name: Upload logcat
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: emulator-logcat
           path: |
+            android-host-diagnostics.txt
             logcat*.txt
             android-startup-profile.json
             sync-e2e-large-task-profile.json
@@ -443,12 +448,17 @@ jobs:
           enable-hw-keyboard: ${{ !(inputs.run_caret_resume_stress || inputs.run_network_loss_test) }}
           script: timeout --foreground --kill-after=30s 20m node .github/scripts/android-interaction-stress.mjs
 
+      - name: Retain bounded emulator host diagnostics
+        if: always()
+        run: bash .github/scripts/collect-android-host-diagnostics.sh
+
       - name: Upload interaction diagnostics
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: android-interaction-stress-${{ matrix.seed }}
           path: |
+            android-host-diagnostics.txt
             android-network-loss-*.json
             android-freeze-diagnostics-test.json
             android-interaction-stress-*.json
