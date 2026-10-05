@@ -34,6 +34,8 @@
     summarizeListTiming,
   } from './lib/listTiming'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
+  import PrioritizePanel from './lib/PrioritizePanel.svelte'
+  import { prioritizeReveal } from './lib/prioritize'
   import NotesPanel from './lib/NotesPanel.svelte'
   import { NOTE_EDITOR_OPTIONS, readNoteEditorPreference, writeNoteEditorPreference, type NoteEditorChoice } from './lib/noteEditorPreference'
   import ImaxButton from './lib/ImaxButton.svelte'
@@ -150,7 +152,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals' | 'statistics' | 'settings' | 'admin'
+  type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'metrics' | 'goals' | 'statistics' | 'settings' | 'admin'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -1048,6 +1050,7 @@ return rows`
     } else if (nextView === 'metrics') selectedMetricId = entityId
     else if (nextView === 'goals') goalSearch = ''
     else if (nextView === 'projects') linkedProjectId = entityId
+    else if (nextView === 'prioritize') prioritizeReveal.set({ sessionId: entityId, itemId })
     openMobileDrawerView(nextView)
     await tick()
     if (nextView === 'metrics' && date && $plannerStore.metrics.some((metric) => metric.id === entityId)) {
@@ -1059,7 +1062,7 @@ return rows`
     const attribute = {
       today: 'data-plan-item-id', lists: 'data-plan-item-id', templates: 'data-template-item-id',
       listTemplates: 'data-list-template-item-id', notes: 'data-note-item-id',
-      projects: 'data-project-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
+      projects: 'data-project-id', prioritize: 'data-priority-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
     }[nextView]
     const targetId = nextView === 'goals' ? entityId : itemId
     const row = targetId ? workspaceEl?.querySelector<HTMLElement>(
@@ -1068,7 +1071,7 @@ return rows`
     const containerSelector = {
       today: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, lists: '.list-panel',
       templates: '.template-panel', listTemplates: '.template-panel',
-      projects: `#project-${CSS.escape(entityId)}`, notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
+      projects: `#project-${CSS.escape(entityId)}`, prioritize: '.priority-list', notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
     }[nextView]
     const target = (metricOverlay ? document.querySelector<HTMLElement>('.metric-quiz') : row) ??
       workspaceEl?.querySelector<HTMLElement>(containerSelector) ?? workspaceEl?.querySelector<HTMLElement>('h2')
@@ -2854,6 +2857,7 @@ return rows`
       value === 'listTemplates' ||
       value === 'lists' ||
       value === 'projects' ||
+      value === 'prioritize' ||
       value === 'metrics' ||
       value === 'goals' ||
       value === 'statistics' ||
@@ -3394,6 +3398,7 @@ return rows`
         KeyD: 'templates',
         KeyN: 'notes',
         KeyP: 'projects',
+        KeyR: 'prioritize',
         KeyV: 'metrics',
         KeyY: 'statistics',
         KeyS: 'settings',
@@ -6127,6 +6132,7 @@ return rows`
       <button class:active={view === 'metrics'} type="button" title="Quizzes (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Quizzes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
       <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => openMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button class:active={view === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; openMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
+      <button class:active={view === 'prioritize'} type="button" title="Prioritize (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => openMobileDrawerView('prioritize')}><span>Prioritize</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       <button class:active={view === 'statistics'} type="button" title="Statistics (Alt+Y)" aria-keyshortcuts="Alt+Y" on:click={() => openMobileDrawerView('statistics')}><span>Statistics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Y')}</kbd></button>
       <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => openMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
       {#if import.meta.env.DEV}
@@ -6217,6 +6223,7 @@ return rows`
       class="workspace"
       class:notes-view-workspace={view === 'notes'}
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
+      class:prioritize-workspace={view === 'prioritize'}
       class:before-current-day-workspace={view === 'today' && displayedPlanDate < currentDay}
       class:current-day-workspace={view === 'today' && displayedPlanDate === currentDay}
       class:after-current-day-workspace={view === 'today' && displayedPlanDate > currentDay}
@@ -6912,6 +6919,17 @@ return rows`
 
     {#if view === 'projects'}
       <ProjectsPanel projects={$plannerStore.projects} checkIns={$plannerStore.projectCheckIns} {linkedProjectId} {currentDay} />
+    {/if}
+
+    {#if view === 'prioritize'}
+      <PrioritizePanel
+        sessions={$plannerStore.prioritySessions}
+        projects={$plannerStore.projects}
+        checkIns={$plannerStore.projectCheckIns}
+        {goals}
+        {goalCompletions}
+        {currentDay}
+      />
     {/if}
 
     {#if view === 'goals'}

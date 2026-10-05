@@ -1,7 +1,7 @@
 import type { AppState } from './types'
 
 export type HistoryDestination = {
-  view: 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'metrics' | 'goals'
+  view: 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'metrics' | 'goals'
   entityId: string
   itemId?: string
   date?: string
@@ -67,6 +67,7 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
   const collections = [
     ['plans', 'today'], ['templates', 'templates'], ['listTemplates', 'listTemplates'],
     ['projects', 'projects'], ['lists', 'lists'], ['notes', 'notes'], ['metrics', 'metrics'], ['goals', 'goals'],
+    ['prioritySessions', 'prioritize'],
   ] as const
   for (const [collection, view] of collections) {
     if (before[collection] === after[collection]) continue
@@ -88,7 +89,7 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
       const change = changedItem(old?.items ?? old?.questions ?? [], current?.items ?? current?.questions ?? [])
       const name = entity.title || entity.name
       const subject = change?.completion ? 'completion' : change ? 'item change' : 'change'
-      const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Days', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', projects: 'Projects', metrics: 'Quizzes', goals: 'Goals' }[view])
+      const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Days', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', projects: 'Projects', prioritize: 'Prioritize', metrics: 'Quizzes', goals: 'Goals' }[view])
       destinations.push({
         view, entityId: id, itemId: change?.itemId, date: entity.date,
         listTemplateId: entity.listTemplateId,

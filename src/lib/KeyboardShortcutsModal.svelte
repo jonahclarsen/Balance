@@ -62,6 +62,7 @@
         { keys: ['alt', 'H'], label: 'Open List History' },
         { keys: ['alt', 'N'], label: 'Open Notes' },
         { keys: ['alt', 'P'], label: 'Open Projects' },
+        { keys: ['alt', 'R'], label: 'Open Prioritize' },
         { keys: ['alt', 'D'], label: 'Open Days' },
         { keys: ['alt', 'E'], label: 'Open Lists' },
         { keys: ['alt', 'V'], label: 'Open Quizzes' },

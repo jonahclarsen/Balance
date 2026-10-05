@@ -321,6 +321,23 @@ export type ProjectCheckIn = {
   createdAt: string
 }
 
+export type PriorityItem = {
+  id: Id
+  text: string
+  // Absent until rated; higher values rank first.
+  priority?: number
+  projectId?: Id
+  goalId?: Id
+}
+
+export type PrioritySession = {
+  id: Id
+  // Unrated items keep this order.
+  items: PriorityItem[]
+  createdAt: string
+  updatedAt: string
+}
+
 export type AppState = {
   images: ImageAsset[]
   schemaVersion: 1
@@ -342,6 +359,7 @@ export type AppState = {
   metricEntries: MetricEntry[]
   projects: Project[]
   projectCheckIns: ProjectCheckIn[]
+  prioritySessions: PrioritySession[]
   notes: Note[]
   goals: Goal[]
   goalCompletions: GoalCompletion[]

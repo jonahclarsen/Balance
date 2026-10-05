@@ -5207,6 +5207,11 @@ body.mobile-checkbox-dragging {
     height: 24px;
   }
 
+  /* Sticky page controls need the document, not the workspace, to scroll. */
+  .workspace.prioritize-workspace {
+    overflow-y: visible;
+  }
+
   .workspace.list-template-workspace {
     overflow-y: visible;
     --list-template-rail-top: var(--mobile-header-height, 0px);

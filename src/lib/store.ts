@@ -186,6 +186,7 @@ const ENTITY_COLLECTIONS = [
   'notes',
   'projects',
   'projectCheckIns',
+  'prioritySessions',
   'uneditedPlanItems',
   'templateQuestions',
   'templateListExpansions',
@@ -1998,6 +1999,43 @@ function createPlannerStore() {
       })
     },
 
+    // ---- Prioritize ----
+
+    startPrioritySession(seeds: Omit<import('./types').PriorityItem, 'id'>[]) {
+      const timestamp = nowISO()
+      const session = { id: createId('priority_session'), items: seeds.map((seed) => ({ ...seed, id: createId('priority') })), createdAt: timestamp, updatedAt: timestamp }
+      commitEntities('start_priority_session', { sessionId: session.id }, (state) => ({ ...state, prioritySessions: [...state.prioritySessions, session] }))
+      return session.id
+    },
+
+    addPriorityItem(sessionId: Id, text: string) {
+      const trimmed = text.replace(/\s+/g, ' ').trim()
+      if (!trimmed) return null
+      const item = { id: createId('priority'), text: trimmed }
+      let added = false
+      commitEntities('add_priority_item', { sessionId, itemId: item.id }, (state) => {
+        if (!state.prioritySessions.some((session) => session.id === sessionId)) return state
+        added = true
+        return { ...state, prioritySessions: state.prioritySessions.map((session) =>
+          session.id === sessionId ? { ...session, items: [...session.items, item], updatedAt: nowISO() } : session) }
+      })
+      return added ? item.id : null
+    },
+
+    setPriority(sessionId: Id, itemId: Id, priority: number | undefined) {
+      if (priority !== undefined && !Number.isFinite(priority)) return
+      commitEntities('set_priority', { sessionId, itemId }, (state) => {
+        const session = state.prioritySessions.find((candidate) => candidate.id === sessionId)
+        const item = session?.items.find((candidate) => candidate.id === itemId)
+        if (!session || !item || item.priority === priority) return state
+        const { priority: _previous, ...rest } = item
+        const next = priority === undefined ? rest : { ...rest, priority }
+        return { ...state, prioritySessions: state.prioritySessions.map((candidate) => candidate === session
+          ? { ...session, items: session.items.map((entry) => entry === item ? next : entry), updatedAt: nowISO() }
+          : candidate) }
+      }, { mergeKey: `priority:${sessionId}:${itemId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS })
+    },
+
     // ---- Notes (reuse the plan-item tree and shared rich-text editor) ----
 
     addNote() {
@@ -3583,6 +3621,7 @@ export async function inspectDatabase(): Promise<DatabaseInspection | null> {
       metricEntries: [],
       projects: [],
       projectCheckIns: [],
+      prioritySessions: [],
       notes: [],
       images: [],
       goals: [],
@@ -3624,6 +3663,7 @@ function normalizeState(state: AppState): AppState {
     taskNotifications: state.taskNotifications ?? [],
     projects: state.projects ?? [],
     projectCheckIns: state.projectCheckIns ?? [],
+    prioritySessions: state.prioritySessions ?? [],
     preferences: normalizeReplicatedPreferences(state.preferences),
     goals: (state.goals ?? []).map(normalizeGoal),
     goalCompletions: (state.goalCompletions ?? []).map(normalizeGoalCompletion),
