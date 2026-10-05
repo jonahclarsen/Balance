@@ -591,6 +591,22 @@ test('ArrowUp reopens the two items above completion-advanced focus', async ({ p
   await expect(eggsRow).toHaveClass(/selected/)
 })
 
+test('W/O and S/L move the list overlay selection like the arrow keys', async ({ page }) => {
+  const dialog = await openThreeItemGroceriesOverlay(page)
+  const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })
+  const eggsRow = dialog.locator('.plan-row', { hasText: 'Eggs' })
+  const breadRow = dialog.locator('.plan-row', { hasText: 'Bread' })
+
+  await page.keyboard.press('s')
+  await expect(eggsRow).toHaveClass(/selected/)
+  await page.keyboard.press('l')
+  await expect(breadRow).toHaveClass(/selected/)
+  await page.keyboard.press('w')
+  await expect(eggsRow).toHaveClass(/selected/)
+  await page.keyboard.press('o')
+  await expect(milkRow).toHaveClass(/selected/)
+})
+
 test('ArrowDown checks the final list item when it cannot navigate farther', async ({ page }) => {
   const dialog = await openTwoItemGroceriesOverlay(page)
   const milkRow = dialog.locator('.plan-row', { hasText: 'Milk' })

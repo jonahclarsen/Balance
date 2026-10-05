@@ -3486,6 +3486,22 @@ return rows`
         return
       }
 
+      // W/O move up and S/L move down, mirroring the arrow keys.
+      if (
+        !event.shiftKey &&
+        !event.altKey &&
+        !primaryModifier &&
+        (key === 'w' || key === 'o' || key === 's' || key === 'l') &&
+        !metricOverlay &&
+        !isFormFieldActive() &&
+        !isRichTextActive()
+      ) {
+        event.preventDefault()
+        event.stopPropagation()
+        overlayListPanel.moveSelection(key === 'w' || key === 'o' ? -1 : 1)
+        return
+      }
+
       if (primaryModifier && !event.altKey && !event.shiftKey && key === 'd' && overlayListPanel.hasSelection()) {
         event.preventDefault()
         event.stopPropagation()

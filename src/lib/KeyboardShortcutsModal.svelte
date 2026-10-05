@@ -94,6 +94,8 @@
         { keys: ['mod', 'D'], label: 'Toggle done (keeps selected items selected)' },
         { keys: ['mod', 'R'], label: 'Hide / show subtasks of the active task (or its parent)' },
         { keys: ['alt', 'F'], label: 'Open a link from the active task (web or any Balance destination; first web URL takes priority)' },
+        { keys: ['W / O'], label: 'Select previous list item (overlay)' },
+        { keys: ['S / L'], label: 'Select next list item (overlay)' },
         { keys: ['E'], label: 'Edit selected list item (overlay)' },
         { keys: ['[ / ]'], label: 'Selected list / day-template probability −/+5% (first day-template option)' },
         { keys: ['altOrMod', '[ / ]'], label: 'List / day-template probability −/+5% at caret (Shift also works)' },
