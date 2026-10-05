@@ -495,6 +495,12 @@
     }
   }
 
+  function cancelNoteBottomFollow() {
+    bottomFollowRequest += 1
+    if (bottomFollowFrame !== null) window.cancelAnimationFrame(bottomFollowFrame)
+    bottomFollowFrame = null
+  }
+
   async function scrollNoteToBottomAfterLayout(scroller: HTMLElement) {
     const request = ++bottomFollowRequest
     await tick()
@@ -502,6 +508,7 @@
 
     if (bottomFollowFrame !== null) window.cancelAnimationFrame(bottomFollowFrame)
     bottomFollowFrame = window.requestAnimationFrame(() => {
+      if (request !== bottomFollowRequest || !scroller.isConnected) return
       bottomFollowFrame = null
       scroller.scrollTop = scroller.scrollHeight
     })
@@ -528,8 +535,11 @@
     }
     const inputs = noteInputs()
     const lastInput = inputs.at(-1)
-    if (!selection?.isCollapsed || !selection.focusNode || !lastInput?.contains(selection.focusNode)) return
-    if (!caretIsOnLastVisualLine(lastInput, selection.getRangeAt(0))) return
+    if (!selection?.isCollapsed || !selection.focusNode || !lastInput?.contains(selection.focusNode)
+      || !caretIsOnLastVisualLine(lastInput, selection.getRangeAt(0))) {
+      cancelNoteBottomFollow()
+      return
+    }
 
     const scroller = noteScrollContainer()
     if (scroller && !isAtNoteBottom(scroller)) void scrollNoteToBottomAfterLayout(scroller)
@@ -1267,8 +1277,7 @@
     rememberActiveNoteScroll()
     rememberActiveNoteCaret()
     noteViewRestoreRequest += 1
-    bottomFollowRequest += 1
-    if (bottomFollowFrame !== null) window.cancelAnimationFrame(bottomFollowFrame)
+    cancelNoteBottomFollow()
     noteScrollSpaceAdjustmentActive = false
   })
 </script>
