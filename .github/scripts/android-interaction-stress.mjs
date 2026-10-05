@@ -3,6 +3,8 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { createWriteStream } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
+import { createNetworkLossFixture } from './android-network-loss-fixture.mjs'
+import { forceBackgroundJob } from './android-sync-profile-helpers.mjs'
 
 const packageName = 'app.balance.local.debug'
 const seed = Number.parseInt(process.env.BALANCE_INTERACTION_STRESS_SEED ?? '1701', 10)
@@ -12,6 +14,9 @@ const listHistoryTransitions = Number.parseInt(
   process.env.BALANCE_INTERACTION_STRESS_LIST_HISTORY_TRANSITIONS ?? '0',
   10,
 )
+const networkLossTest = process.env.BALANCE_NETWORK_LOSS_TEST === '1'
+const networkLossChecks = []
+let networkFixture
 const freezeDiagnosticsTest = process.env.BALANCE_FREEZE_DIAGNOSTICS_TEST === '1'
 const caretCheck = process.env.BALANCE_CARET_CHECK === '1'
 const caretResumeStress = process.env.BALANCE_CARET_RESUME_STRESS === '1'
@@ -478,6 +483,121 @@ async function verifyFreezeDiagnostics() {
   console.log('[freeze-diagnostics] synthetic stall retained after force quit; private content excluded; file share sheet opened')
 }
 
+async function prepareNetworkEditor(mode) {
+  const target = await client.evaluate(`(() => {
+    const editor = window.caretEditor
+    editor.scrollIntoView({block: 'center'}); editor.focus()
+    document.execCommand('selectAll')
+    document.execCommand('insertText', false, 'Synthetic network loss task')
+    const rect = editor.getBoundingClientRect()
+    return {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2}
+  })()`)
+  await client.send('Input.dispatchTouchEvent', {type: 'touchStart', touchPoints: [target]})
+  await client.send('Input.dispatchTouchEvent', {type: 'touchEnd', touchPoints: []})
+  await waitFor(() => /mInputShown=true|mIsInputViewShown=true/.test(adb(['shell', 'dumpsys', 'input_method'])), 'the offline fixture soft keyboard', 8000)
+  if (mode === 'typing') await client.send('Input.insertText', {text: ' typed'})
+  if (mode === 'composition') await client.send('Input.imeSetComposition', {text: 'composing', selectionStart: 9, selectionEnd: 9})
+  const before = await client.evaluate('window.readCaret()')
+  if (!before.focused) throw new Error('Network loss fixture must have a focused task')
+  return before
+}
+
+async function verifyNetworkEdit(detail) {
+  const before = await client.evaluate('window.readCaret()')
+  if (!before.connected) throw new Error('Task editor disconnected during network loss')
+  await client.evaluate(`window.caretEditor.focus()`)
+  await client.send('Input.insertText', {text: ' offline-edit'})
+  await heartbeat(detail)
+  const expected = await client.evaluate('window.readCaret().text')
+  if (expected === before.text || !expected.includes('offline-edit')) throw new Error('Offline task edit was not accepted')
+  await waitFor(async () => recordAction('native-read', detail, () => client.evaluate(`(async () => {
+    const state = JSON.parse(await window.__TAURI_INTERNALS__.invoke('read_app_state'))
+    const find = items => items.flatMap(item => [item, ...find(item.children ?? [])])
+    return state.plans.flatMap(plan => find(plan.items)).find(item => item.id === window.caretEditor.dataset.planTextInputId)?.text
+  })()`)).then(text => text === expected), 'offline edit native persistence', 15_000, 100)
+  return {accepted: true, persisted: true}
+}
+
+function setRadios(online) {
+  adb(['shell', 'cmd', 'connectivity', 'airplane-mode', online ? 'disable' : 'enable'])
+  adb(['shell', 'svc', 'wifi', online ? 'enable' : 'disable'])
+  adb(['shell', 'svc', 'data', online ? 'enable' : 'disable'])
+}
+
+async function verifyNetworkLoss() {
+  networkFixture = await createNetworkLossFixture()
+  await checkTodayCaret()
+  const pairingCode = (await readFile('sync-e2e-pairing-code.txt', 'utf8')).trim()
+  if (!pairingCode.startsWith('BALSYNC1:')) throw new Error('Missing generated pairing code')
+  setRadios(true)
+  await client.evaluate(`window.__TAURI_INTERNALS__.invoke('sync_enable_primary', ${JSON.stringify({pairingCode, relayUrl: networkFixture.relayUrl})})`)
+  await client.evaluate(`(() => { setTimeout(() => location.reload(), 0); return true })()`)
+  await sleep(500); await reconnect(); await openPage('Today'); await checkTodayCaret()
+  const sync = () => client.evaluate(`window.__TAURI_INTERNALS__.invoke('sync_relay_once', {reason: 'network-loss-ci'})`, 30_000)
+  await sync() // Prove the native client really reaches a healthy relay first.
+  const baseline = JSON.parse(await client.evaluate(`window.__TAURI_INTERNALS__.invoke('export_freeze_diagnostics')`))
+  const since = baseline.records.at(-1)?.time_ms ?? 0
+  for (const transport of shuffle(['reset', 'silent', 'airplane'])) {
+    for (const mode of shuffle(['idle', 'typing', 'composition'])) {
+      await prepareNetworkEditor(mode)
+      const result = {transport, mode, persisted: false, restoredSync: false}
+      networkLossChecks.push(result)
+      if (transport === 'airplane') {
+        setRadios(false)
+        await waitFor(() => client.evaluate(`window.__TAURI_INTERNALS__.invoke('get_sync_network_offline')`), 'Android to confirm no default network')
+        result.androidOffline = true
+      } else {
+        const requestsBefore = networkFixture.manifestRequests
+        networkFixture.setMode('silent')
+        await client.evaluate(`(() => {
+          window.networkSync = {done: false, ok: false}
+          window.__TAURI_INTERNALS__.invoke('sync_relay_once', {reason: 'network-loss-ci'})
+            .then(() => window.networkSync = {done: true, ok: true}, () => window.networkSync = {done: true, ok: false})
+          return true
+        })()`)
+        await waitFor(() => networkFixture.manifestRequests > requestsBefore, 'an actual in-flight native relay request')
+        result.inFlightVerified = true
+        if (transport === 'reset') networkFixture.setMode('reset')
+      }
+      result.foregroundEdit = await verifyNetworkEdit('persist task while network is cut')
+      await backgroundResume(transport === 'airplane' ? 3000 : 500)
+      result.resumedEdit = await verifyNetworkEdit('persist task after offline resume')
+      if (transport !== 'airplane') {
+        await waitFor(() => client.evaluate('window.networkSync.done'), 'failed network request to settle', 45_000)
+        if (await client.evaluate('window.networkSync.ok')) throw new Error('Faulted sync unexpectedly succeeded')
+        result.syncFailed = true
+      }
+      setRadios(true); networkFixture.setMode('online')
+      await waitFor(async () => { try { await sync(); return true } catch { return false } }, 'sync after restoring connectivity', 45_000, 1000)
+      result.persisted = true; result.restoredSync = true
+      console.log('[network-loss] ' + JSON.stringify(result))
+    }
+  }
+  // A background WorkManager request must not park resumed editing behind its
+  // longer transport timeout. Confirm it actually reaches the fault proxy.
+  await prepareNetworkEditor('composition')
+  networkFixture.setMode('silent')
+  const background = {transport: 'background-silent', mode: 'composition', persisted: false}
+  networkLossChecks.push(background)
+  background.jobId = await forceBackgroundJob(networkFixture)
+  adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
+  await sleep(500); await heartbeat('resume during background network timeout')
+  background.resumedEdit = await verifyNetworkEdit('persist task while background relay is stuck')
+  background.persisted = true
+  networkFixture.setMode('reset'); await sleep(1000); networkFixture.setMode('online'); await sync()
+  // Also launch cold with the OS offline, retaining the generated local edits.
+  setRadios(false)
+  await waitFor(() => client.evaluate(`window.__TAURI_INTERNALS__.invoke('get_sync_network_offline')`), 'Android offline before cold launch')
+  await forceStopRelaunch()
+  await openPage('Today'); await checkTodayCaret(); await prepareNetworkEditor('typing')
+  networkLossChecks.push({transport: 'offline-cold-launch', ...await verifyNetworkEdit('persist edit after offline cold launch')})
+  setRadios(true); await waitFor(async () => { try { await sync(); return true } catch { return false } }, 'final restored sync', 45_000, 1000)
+  const report = JSON.parse(await client.evaluate(`window.__TAURI_INTERNALS__.invoke('export_freeze_diagnostics')`))
+  const stalls = report.records.filter(record => record.time_ms > since && ['webview_stall', 'main_thread_stall'].includes(record.details.event))
+  await writeFile(`android-network-loss-${seed}.json`, JSON.stringify({passed: stalls.length === 0, checks: networkLossChecks, stalls, report}, null, 2))
+  if (stalls.length) throw new Error('Native recorder detected a UI/WebView stall during network loss')
+}
+
 async function stressTodayCaretResume(syncFailure = false) {
   for (const mode of ['idle', 'typing', 'composition']) {
     for (const backgroundMs of [500, 3_000, 10_000, 30_000]) {
@@ -747,7 +867,9 @@ try {
   // Debug APK startup intentionally runs large synthetic native sync and
   // database profiles before the frontend can read state. Start the requested
   // interaction duration only after those one-time diagnostics release the DB.
-  if (freezeDiagnosticsTest) {
+  if (networkLossTest) {
+    await verifyNetworkLoss()
+  } else if (freezeDiagnosticsTest) {
     await verifyFreezeDiagnostics()
   } else if (caretCheck || caretResumeStress) {
     await checkTodayCaret()
@@ -804,6 +926,14 @@ try {
   failure = error
   console.error(`[interaction-stress] FAILED: ${error?.stack ?? error}`)
 } finally {
+  if (networkLossTest) {
+    try {
+      const report = JSON.parse(await client.evaluate(`window.__TAURI_INTERNALS__.invoke('export_freeze_diagnostics')`))
+      await writeFile(`android-network-loss-${seed}.json`, JSON.stringify({passed: !failure, checks: networkLossChecks, failure: failure ? String(failure) : null, report}, null, 2))
+    } catch {}
+    setRadios(true)
+    await networkFixture?.close()
+  }
   diagnostics = await collectDiagnostics(Boolean(failure))
   client?.close()
   adb(['forward', '--remove', `tcp:${devToolsPort}`], { allowFailure: true })
@@ -827,6 +957,7 @@ const report = {
   requestedDurationSeconds: durationSeconds,
   caretChecks,
   caretResumeChecks,
+  networkLossChecks,
   requestedStartupRelaunches: startupRelaunches,
   requestedListHistoryTransitions: listHistoryTransitions,
   elapsedSeconds: Math.round((Date.now() - startedAt) / 1000),

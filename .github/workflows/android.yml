@@ -36,6 +36,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_network_loss_test:
+        description: Cut native sync requests and radios with a focused task, then resume offline
+        required: false
+        default: false
+        type: boolean
       run_freeze_diagnostics_test:
         description: Verify a synthetic WebView stall survives force quit and can be shared
         required: false
@@ -373,7 +378,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node --test .github/scripts/android-task-preservation-gate.test.mjs .github/scripts/configure-android-selection-formatting.test.mjs
+      - run: node --test .github/scripts/android-task-preservation-gate.test.mjs .github/scripts/configure-android-selection-formatting.test.mjs .github/scripts/android-network-loss-fixture.test.mjs
       - run: pnpm exec playwright install --with-deps chromium
       - name: Verify Android selection formatting
         run: pnpm exec playwright test tests/visual/android-selection-formatting.spec.ts --workers=2
@@ -387,7 +392,7 @@ jobs:
 
   interaction-stress:
     name: Android interaction stress (seed ${{ matrix.seed }})
-    if: github.event_name == 'workflow_dispatch' && (inputs.run_interaction_stress || inputs.run_caret_check || inputs.run_caret_resume_stress || inputs.run_freeze_diagnostics_test)
+    if: github.event_name == 'workflow_dispatch' && (inputs.run_network_loss_test || inputs.run_interaction_stress || inputs.run_caret_check || inputs.run_caret_resume_stress || inputs.run_freeze_diagnostics_test)
     needs: build-debug
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -424,6 +429,7 @@ jobs:
         env:
           BALANCE_INTERACTION_STRESS_SEED: ${{ matrix.seed }}
           BALANCE_INTERACTION_STRESS_SECONDS: "600"
+          BALANCE_NETWORK_LOSS_TEST: ${{ inputs.run_network_loss_test && '1' || '0' }}
           BALANCE_FREEZE_DIAGNOSTICS_TEST: ${{ inputs.run_freeze_diagnostics_test && '1' || '0' }}
           BALANCE_CARET_CHECK: ${{ inputs.run_caret_check && '1' || '0' }}
           BALANCE_CARET_RESUME_STRESS: ${{ inputs.run_caret_resume_stress && '1' || '0' }}
@@ -434,7 +440,7 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
           disable-animations: true
-          enable-hw-keyboard: ${{ !inputs.run_caret_resume_stress }}
+          enable-hw-keyboard: ${{ !(inputs.run_caret_resume_stress || inputs.run_network_loss_test) }}
           script: timeout --foreground --kill-after=30s 20m node .github/scripts/android-interaction-stress.mjs
 
       - name: Upload interaction diagnostics
@@ -443,6 +449,7 @@ jobs:
         with:
           name: android-interaction-stress-${{ matrix.seed }}
           path: |
+            android-network-loss-*.json
             android-freeze-diagnostics-test.json
             android-interaction-stress-*.json
             android-interaction-logcat-*.txt
