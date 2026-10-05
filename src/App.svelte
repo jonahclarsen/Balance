@@ -839,7 +839,7 @@ return rows`
     .filter(Boolean)
     .join('; ')
   $: contentShellStyle = [
-    !goalRhythmVisible
+    !goalRhythmVisible || view === 'prioritize'
       ? '--goal-history-height: 0px'
       : goalHistoryHeight != null
         ? `--goal-history-height: ${goalHistoryHeight}px`
@@ -7577,7 +7577,7 @@ return rows`
     {/if}
     </section>
 
-    {#if (goalRhythmVisible || viewMaximized) && view !== 'next' && (!isMobile || view === 'today')}
+    {#if (goalRhythmVisible || viewMaximized) && view !== 'next' && view !== 'prioritize' && (!isMobile || view === 'today')}
       <GoalHistoryPanel
         goals={goalHistoryGoals}
         completions={goalCompletions}

@@ -19,16 +19,20 @@
   export let goalCompletions: GoalCompletion[] = []
   export let currentDay: string
 
+  // Touch keyboards need a real (invisible) input behind the number card.
+  const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
+
   let screen: 'home' | 'past' | 'session' = 'home'
   let sessionId: Id | null = null
   let selectedId: Id | null = null
   let addText = ''
   let numberDraft = ''
   let draftItemId: Id | null = null
-  // The next digit replaces the shown value instead of appending to it.
-  let freshNumber = true
+  let editingId: Id | null = null
+  let editText = ''
   let addInput: HTMLInputElement | undefined
-  let numberInput: HTMLInputElement | undefined
+  let numberCard: HTMLDivElement | undefined
+  let numberProxy: HTMLInputElement | undefined
   let listEl: HTMLOListElement | undefined
   let barHeight = 0
 
@@ -58,16 +62,18 @@
     screen = 'home'
     sessionId = null
     selectedId = null
+    editingId = null
     addText = ''
   }
 
   async function openSession(id: Id, itemId?: Id) {
     sessionId = id
     selectedId = itemId ?? null
+    editingId = null
     screen = 'session'
     markActive()
     await tick()
-    if (window.matchMedia('(hover: hover) and (pointer: fine)').matches) numberInput?.focus()
+    if (!touch) focusNumber()
   }
 
   function start() {
@@ -116,13 +122,11 @@
     if (!item) {
       draftItemId = null
       numberDraft = ''
-    } else if (item.id !== draftItemId) {
+    } else if (item.id !== draftItemId || parseDraft(numberDraft) !== item.priority) {
       draftItemId = item.id
       numberDraft = formatPriority(item.priority)
-      freshNumber = true
-    } else if (parseDraft(numberDraft) !== item.priority) {
-      numberDraft = formatPriority(item.priority)
     }
+    if (numberProxy) numberProxy.value = numberDraft
   }
 
   async function scrollSelectedIntoView(id: Id | null, _order: PriorityItem[]) {
@@ -133,15 +137,14 @@
 
   function applyDraft(draft: string) {
     numberDraft = draft
-    if (numberInput) numberInput.value = draft
-    freshNumber = false
+    if (numberProxy) numberProxy.value = draft
     if (!session || !selected) return
     plannerStore.setPriority(session.id, selected.id, parseDraft(draft))
     markActive()
   }
 
   function typeNumber(text: string) {
-    applyDraft(sanitize((freshNumber ? '' : numberDraft) + text))
+    applyDraft(sanitize(numberDraft + text))
   }
 
   function move(delta: number) {
@@ -152,8 +155,7 @@
 
   function selectNextUnrated() {
     const id = nextUnratedId(ordered, selectedId)
-    if (id && id !== selectedId) selectedId = id
-    else freshNumber = true
+    if (id) selectedId = id
   }
 
   function focusAdd(text = '') {
@@ -162,7 +164,13 @@
   }
 
   function focusNumber() {
-    numberInput?.focus()
+    if (touch) numberProxy?.focus()
+    else numberCard?.focus()
+  }
+
+  // Shift or Ctrl with a number key types the digit itself.
+  function digitFromCode(event: KeyboardEvent) {
+    return /^(?:Digit|Numpad)(\d)$/.exec(event.code)?.[1] ?? null
   }
 
   function isPlainKey(event: KeyboardEvent) {
@@ -180,6 +188,7 @@
 
   function handleAddKeydown(event: KeyboardEvent) {
     if (event.isComposing || handleNavigationKey(event)) return
+    const digit = digitFromCode(event)
     if (event.key === 'Tab') {
       event.preventDefault()
       focusNumber()
@@ -193,7 +202,11 @@
       selectedId = id
       markActive()
       focusNumber()
-    } else if (isPlainKey(event) && /[0-9]/.test(event.key) && !addText) {
+    } else if (digit && (event.shiftKey || event.ctrlKey) && !event.metaKey && !event.altKey && addInput) {
+      event.preventDefault()
+      addInput.setRangeText(digit, addInput.selectionStart ?? addText.length, addInput.selectionEnd ?? addText.length, 'end')
+      addText = addInput.value
+    } else if (!touch && isPlainKey(event) && /[0-9]/.test(event.key)) {
       event.preventDefault()
       focusNumber()
       typeNumber(event.key)
@@ -202,6 +215,7 @@
 
   function handleNumberKeydown(event: KeyboardEvent) {
     if (event.isComposing || handleNavigationKey(event)) return
+    const digit = digitFromCode(event)
     if (event.key === 'Tab') {
       event.preventDefault()
       focusAdd()
@@ -209,30 +223,40 @@
       event.preventDefault()
       event.stopPropagation()
       selectNextUnrated()
-    } else if (isPlainKey(event) && !/[0-9.,\s]/.test(event.key)) {
+    } else if (event.key === 'Backspace' || event.key === 'Delete') {
+      event.preventDefault()
+      event.stopPropagation()
+      applyDraft(event.metaKey || event.ctrlKey || event.altKey ? '' : numberDraft.slice(0, -1))
+    } else if (digit && !event.metaKey && !event.ctrlKey && !event.altKey) {
+      event.preventDefault()
+      typeNumber(digit)
+    } else if (isPlainKey(event) && /[.,]/.test(event.key)) {
+      event.preventDefault()
+      typeNumber('.')
+    } else if (isPlainKey(event) && event.key !== ' ') {
       event.preventDefault()
       focusAdd(event.key)
     }
   }
 
-  // Edits always apply at the end, like a heading being typed.
-  function handleNumberBeforeInput(event: InputEvent) {
+  // Touch keyboards that skip key events edit through input events instead.
+  function handleProxyBeforeInput(event: InputEvent) {
     if (event.inputType.startsWith('insertComposition')) return
     event.preventDefault()
-    if (event.inputType.startsWith('delete')) applyDraft(numberDraft.slice(0, -1))
+    if (event.inputType === 'deleteContentBackward') applyDraft(numberDraft.slice(0, -1))
+    else if (event.inputType.startsWith('delete')) applyDraft('')
     else if (event.data) typeNumber(event.data)
   }
 
-  function handleNumberInput() {
-    // Composition input cannot be cancelled; normalize what it produced.
-    if (numberInput && numberInput.value !== numberDraft) applyDraft(sanitize(numberInput.value))
+  function handleProxyInput() {
+    if (numberProxy && numberProxy.value !== numberDraft) applyDraft(sanitize(numberProxy.value))
   }
 
   // Typing anywhere on the page goes to the matching field.
   function handleWindowKeydown(event: KeyboardEvent) {
     if (screen !== 'session' || event.defaultPrevented) return
     const active = document.activeElement
-    if (active && active !== document.body && active.matches('input, textarea, select, [contenteditable="true"]')) return
+    if (active && active !== document.body && (active === numberCard || active.matches('input, textarea, select, [contenteditable="true"]'))) return
     if (document.querySelector('.overlay-backdrop, dialog[open]')) return
     if (handleNavigationKey(event)) return
     if (!isPlainKey(event) || event.key === ' ') return
@@ -247,14 +271,47 @@
 
   function selectRow(id: Id) {
     selectedId = id
-    freshNumber = true
     focusNumber()
   }
 
-  function formatTime(iso: string, reference?: string) {
+  function startEdit(item: PriorityItem) {
+    commitEdit()
+    selectedId = item.id
+    editingId = item.id
+    editText = item.text
+  }
+
+  function commitEdit() {
+    if (!editingId || !session) return
+    const id = editingId
+    editingId = null
+    if (editText.trim() && editText !== session.items.find((item) => item.id === id)?.text) {
+      plannerStore.renamePriorityItem(session.id, id, editText)
+      markActive()
+    }
+  }
+
+  function handleEditKeydown(event: KeyboardEvent) {
+    event.stopPropagation()
+    if (event.isComposing) return
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      commitEdit()
+      focusNumber()
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      editingId = null
+      focusNumber()
+    }
+  }
+
+  function focusAtEnd(input: HTMLInputElement) {
+    input.focus()
+    input.setSelectionRange(input.value.length, input.value.length)
+  }
+
+  function formatTime(iso: string) {
     const date = new Date(iso)
-    const sameDay = reference && new Date(reference).toDateString() === date.toDateString()
-    if (sameDay) return date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
     return date.toLocaleString(undefined, {
       month: 'short',
       day: 'numeric',
@@ -268,7 +325,7 @@
 <svelte:window on:keydown={handleWindowKeydown} />
 <svelte:document on:visibilitychange={handleVisibility} />
 
-<section class="prioritize-panel" class:in-session={screen === 'session'} aria-label="Prioritize">
+<section class="prioritize-panel" aria-label="Prioritize">
   {#if screen === 'home'}
     <header class="page-header"><h2>Prioritize</h2></header>
     <div class="prioritize-home">
@@ -278,26 +335,32 @@
       {/if}
     </div>
   {:else if screen === 'past'}
-    <header class="page-header">
+    <header class="page-header prioritize-past-header">
+      <button class="ghost prioritize-back" type="button" on:click={() => (screen = 'home')}>Back</button>
       <h2>Past sessions</h2>
-      <button class="ghost" type="button" on:click={() => (screen = 'home')}>Back</button>
     </header>
     <ul class="prioritize-past">
       {#each pastSessions as past (past.id)}
         <li>
           <button type="button" on:click={() => openSession(past.id)}>
             <strong>{formatTime(past.createdAt)}</strong>
-            {#if past.updatedAt !== past.createdAt}<span>Edited {formatTime(past.updatedAt, past.createdAt)}</span>{/if}
+            <span class="prioritize-past-edited">Last edited: {formatTime(past.updatedAt)}</span>
+            <span class="prioritize-past-top">
+              {#each orderPriorityItems(past.items).slice(0, 6) as item, index (item.id)}
+                <span class="prioritize-past-row">
+                  <span class="priority-rank">{index + 1}</span>
+                  <span class="prioritize-past-text">{item.text}</span>
+                  {#if item.priority !== undefined}<span class="priority-value">{item.priority}</span>{/if}
+                </span>
+              {/each}
+            </span>
           </button>
         </li>
       {/each}
     </ul>
   {:else if session}
-    <header class="page-header">
-      <h2>Prioritize</h2>
-      <button class="ghost" type="button" on:click={goHome}>Done</button>
-    </header>
     <div class="prioritize-session" style:--prioritize-bar-height={`${barHeight}px`}>
+      <button class="ghost prioritize-back" type="button" on:click={goHome}>Back</button>
       <div class="prioritize-entry" bind:clientHeight={barHeight}>
         <input
           class="prioritize-add"
@@ -311,22 +374,35 @@
           on:keydown={handleAddKeydown}
         />
         <div class="prioritize-number-row">
-          <input
+          <!-- svelte-ignore a11y_no_noninteractive_tabindex a11y_click_events_have_key_events -->
+          <div
             class="prioritize-number"
-            type="text"
-            inputmode="decimal"
-            placeholder="#"
+            class:disabled={!selected}
+            role="textbox"
+            tabindex={touch ? -1 : 0}
             aria-label={selected ? `Priority of ${selected.text}` : 'Priority'}
-            autocomplete="off"
-            enterkeyhint="next"
-            disabled={!selected}
-            value={numberDraft}
-            bind:this={numberInput}
-            on:focus={() => (freshNumber = true)}
+            bind:this={numberCard}
+            on:mousedown|preventDefault
+            on:click={focusNumber}
             on:keydown={handleNumberKeydown}
-            on:beforeinput={handleNumberBeforeInput}
-            on:input={handleNumberInput}
-          />
+          >
+            <h3 class:unset={!numberDraft}>{numberDraft || '0'}<span class="prioritize-caret" aria-hidden="true"></span></h3>
+            {#if touch}
+              <input
+                class="prioritize-number-proxy"
+                type="text"
+                inputmode="decimal"
+                enterkeyhint="next"
+                autocomplete="off"
+                aria-hidden="true"
+                tabindex="-1"
+                disabled={!selected}
+                bind:this={numberProxy}
+                on:beforeinput={handleProxyBeforeInput}
+                on:input={handleProxyInput}
+              />
+            {/if}
+          </div>
           <button
             class="ghost prioritize-next"
             type="button"
@@ -352,7 +428,24 @@
             on:click={() => selectRow(item.id)}
           >
             <span class="priority-rank">{index + 1}</span>
-            <span class="priority-text" title={item.text}>{item.text}</span>
+            {#if editingId === item.id}
+              <input
+                class="priority-text-edit"
+                type="text"
+                aria-label="Priority text"
+                autocomplete="off"
+                enterkeyhint="done"
+                bind:value={editText}
+                use:focusAtEnd
+                on:mousedown|stopPropagation
+                on:click|stopPropagation
+                on:keydown={handleEditKeydown}
+                on:blur={commitEdit}
+              />
+            {:else}
+              <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+              <span class="priority-text" title={item.text} on:click|stopPropagation={() => startEdit(item)}>{item.text}</span>
+            {/if}
             {#if item.priority !== undefined}<span class="priority-value">{item.priority}</span>{/if}
           </li>
         {/each}
@@ -390,10 +483,27 @@
     font-weight: 600;
   }
 
+  .prioritize-past-header {
+    justify-content: flex-start;
+  }
+
+  .prioritize-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding-left: 8px;
+  }
+
+  .prioritize-back::before {
+    content: '‹';
+    font-size: 1.3em;
+    line-height: 0.8;
+  }
+
   .prioritize-past {
     display: grid;
-    gap: 6px;
-    width: min(520px, 100%);
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr));
+    gap: 14px;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -401,34 +511,68 @@
 
   .prioritize-past button {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
+    flex-direction: column;
+    gap: 2px;
     width: 100%;
-    padding: 10px 14px;
-    border-radius: 8px;
+    height: 100%;
+    padding: 14px 16px;
+    border-radius: 10px;
     background: var(--paper);
     text-align: left;
   }
 
-  .prioritize-past span {
+  .prioritize-past strong {
+    font-size: 16px;
+  }
+
+  .prioritize-past-edited {
     color: var(--muted);
+    font-size: 12px;
+    font-weight: 400;
+  }
+
+  .prioritize-past-top {
+    display: grid;
+    gap: 2px;
+    margin-top: 10px;
+  }
+
+  .prioritize-past-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
     font-size: 13px;
+  }
+
+  .prioritize-past-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .prioritize-session {
     display: grid;
     flex: 1;
+    grid-template-areas: 'back list' 'entry list';
     grid-template-columns: minmax(240px, 2fr) minmax(0, 3fr);
-    gap: 32px;
+    grid-template-rows: auto minmax(0, 1fr);
+    column-gap: 32px;
     min-height: 0;
+  }
+
+  .prioritize-session > .prioritize-back {
+    grid-area: back;
+    justify-self: start;
   }
 
   .prioritize-entry {
     display: flex;
+    grid-area: entry;
     flex-direction: column;
     justify-content: center;
-    gap: 20px;
+    gap: 16px;
     min-width: 0;
     padding-bottom: 8vh;
   }
@@ -438,48 +582,103 @@
     padding: 12px 14px;
     border-radius: 10px;
     font-size: 17px;
+    text-align: center;
   }
 
   .prioritize-number-row {
     display: flex;
-    align-items: center;
+    align-items: stretch;
     gap: 8px;
   }
 
   .prioritize-number {
-    width: 100%;
+    position: relative;
+    flex: 1;
     min-width: 0;
-    padding: 0 4px;
-    border: 0;
-    border-bottom: 2px solid var(--line);
-    border-radius: 0;
-    background: transparent;
+    padding: 18px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--paper);
+    box-shadow: var(--shadow);
+    cursor: pointer;
+    text-align: center;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
+  }
+
+  .prioritize-number:hover {
+    border-color: var(--line-strong);
+  }
+
+  .prioritize-number:focus-visible,
+  .prioritize-number:focus-within,
+  .prioritize-number:focus {
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 0 3px var(--focus-ring), var(--shadow);
+  }
+
+  .prioritize-number.disabled {
+    opacity: 0.4;
+    pointer-events: none;
+  }
+
+  .prioritize-number h3 {
+    margin: 0;
     color: var(--ink);
     font-size: 56px;
     font-variant-numeric: tabular-nums;
     font-weight: 700;
-    line-height: 1.2;
-    caret-color: var(--accent);
+    line-height: 1.1;
+    overflow-wrap: anywhere;
   }
 
-  .prioritize-number::placeholder {
+  .prioritize-number h3.unset {
     color: var(--line-strong);
   }
 
-  .prioritize-number:focus {
-    outline: none;
-    border-bottom-color: var(--accent);
+  .prioritize-caret {
+    display: none;
+    width: 3px;
+    height: 0.8em;
+    margin-left: 4px;
+    border-radius: 2px;
+    background: var(--accent);
+    vertical-align: -0.04em;
+    animation: prioritize-caret-blink 1s steps(1) infinite;
   }
 
-  .prioritize-number:disabled {
-    opacity: 0.4;
+  .prioritize-number:is(:focus, :focus-within) .prioritize-caret {
+    display: inline-block;
+  }
+
+  @keyframes prioritize-caret-blink {
+    50% {
+      opacity: 0;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .prioritize-caret {
+      animation: none;
+    }
+  }
+
+  .prioritize-number-proxy {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    opacity: 0;
+    font-size: 16px;
+    caret-color: transparent;
   }
 
   .prioritize-next {
     display: none;
     flex: none;
     width: 52px;
-    height: 52px;
     padding: 0;
     border-radius: 10px;
   }
@@ -495,6 +694,7 @@
   }
 
   .priority-list {
+    grid-area: list;
     min-height: 0;
     margin: 0;
     padding: 6px;
@@ -508,12 +708,12 @@
 
   .priority-list li {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 10px;
     padding: 4px 10px;
     border-radius: 6px;
     font-size: 14px;
-    line-height: 1.4;
+    line-height: 20px;
     cursor: pointer;
     scroll-margin-block: 6px;
     user-select: none;
@@ -537,16 +737,43 @@
     text-align: right;
   }
 
-  .priority-text {
-    flex: 1;
+  /* Only the words are an edit target; the rest of the row selects it. */
+  .priority-text,
+  .priority-text-edit {
     min-width: 0;
+    margin: 0 -5px;
+    padding: 0 5px;
+    border-radius: 4px;
+    font: inherit;
+    line-height: 20px;
+  }
+
+  .priority-text {
+    flex: 0 1 auto;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    cursor: text;
+  }
+
+  .priority-text:hover {
+    background: var(--paper-strong);
+    box-shadow: inset 0 0 0 1px var(--line-strong);
+  }
+
+  .priority-text-edit {
+    flex: 1;
+    height: 20px;
+    border: 0;
+    background: var(--paper-strong);
+    color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--accent);
+    outline: none;
   }
 
   .priority-value {
     flex: none;
+    margin-left: auto;
     color: var(--accent-strong);
     font-variant-numeric: tabular-nums;
     font-weight: 600;
@@ -566,35 +793,44 @@
 
     .prioritize-session {
       display: flex;
-      flex-direction: column-reverse;
-      justify-content: flex-end;
-      gap: 0;
+      flex-direction: column;
+    }
+
+    .prioritize-session > .prioritize-back {
+      margin-bottom: 8px;
+    }
+
+    .priority-list {
+      flex: 1 0 auto;
+      overflow: visible;
+      margin-bottom: 12px;
     }
 
     .prioritize-entry {
       position: sticky;
       bottom: 0;
       z-index: 2;
+      order: 1;
+      flex-direction: column-reverse;
       gap: 8px;
       margin: 0 -12px;
       padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
       border-top: 1px solid var(--line);
       background: var(--app-background);
-      flex-direction: column-reverse;
     }
 
     .prioritize-number {
+      padding: 8px 12px;
+      box-shadow: none;
+    }
+
+    .prioritize-number h3 {
       font-size: 34px;
     }
 
     .prioritize-next {
       display: grid;
       place-items: center;
-    }
-
-    .priority-list {
-      overflow: visible;
-      margin-bottom: 12px;
     }
 
     .priority-list li {
