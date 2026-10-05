@@ -386,7 +386,7 @@
             on:click={focusNumber}
             on:keydown={handleNumberKeydown}
           >
-            <h3 class:unset={!numberDraft}>{numberDraft || '0'}<span class="prioritize-caret" aria-hidden="true"></span></h3>
+            <h3 class:unset={!numberDraft}>{numberDraft || '0'}</h3>
             {#if touch}
               <input
                 class="prioritize-number-proxy"
@@ -634,33 +634,6 @@
 
   .prioritize-number h3.unset {
     color: var(--line-strong);
-  }
-
-  .prioritize-caret {
-    display: none;
-    width: 3px;
-    height: 0.8em;
-    margin-left: 4px;
-    border-radius: 2px;
-    background: var(--accent);
-    vertical-align: -0.04em;
-    animation: prioritize-caret-blink 1s steps(1) infinite;
-  }
-
-  .prioritize-number:is(:focus, :focus-within) .prioritize-caret {
-    display: inline-block;
-  }
-
-  @keyframes prioritize-caret-blink {
-    50% {
-      opacity: 0;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .prioritize-caret {
-      animation: none;
-    }
   }
 
   .prioritize-number-proxy {
