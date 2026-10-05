@@ -5,6 +5,7 @@ import { createWriteStream } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { createNetworkLossFixture } from './android-network-loss-fixture.mjs'
 import { forceBackgroundJob } from './android-sync-profile-helpers.mjs'
+import { cdpErrorMessage } from './cdp-error.mjs'
 
 const packageName = 'app.balance.local.debug'
 const seed = Number.parseInt(process.env.BALANCE_INTERACTION_STRESS_SEED ?? '1701', 10)
@@ -169,7 +170,7 @@ class CdpClient {
       returnByValue: true,
     }, timeoutMs)
     if (response.exceptionDetails) {
-      throw new Error(response.exceptionDetails.exception?.description ?? response.exceptionDetails.text)
+      throw new Error(cdpErrorMessage(response.exceptionDetails))
     }
     return response.result?.value
   }
