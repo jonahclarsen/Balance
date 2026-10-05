@@ -46,7 +46,7 @@ jobs:
       - run: pnpm test:unit
       - run: pnpm test:relay
       - name: Exercise the full desktop, mobile, and WebKit browser suite
-        run: pnpm test:visual --workers=2 --shard=${{ matrix.shard }}/3
+        run: pnpm test:visual --workers=1 --shard=${{ matrix.shard }}/3
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
