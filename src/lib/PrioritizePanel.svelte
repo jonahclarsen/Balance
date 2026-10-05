@@ -342,10 +342,8 @@
 
 <section class="prioritize-panel" aria-label="Prioritize">
   {#if screen === 'home'}
-    <header class="page-header">
-      <h2>Prioritize</h2>
-      <ImaxButton active={maximized} onToggle={onToggleMaximized} />
-    </header>
+    <ImaxButton active={maximized} onToggle={onToggleMaximized} />
+    <header class="page-header"><h2>Prioritize</h2></header>
     <div class="prioritize-home">
       <button class="primary prioritize-start" type="button" on:click={start}>Start prioritizing</button>
       {#if sessions.length}
@@ -355,8 +353,8 @@
   {:else if screen === 'past'}
     <header class="page-header prioritize-past-header">
       <button class="ghost prioritize-back" type="button" on:click={() => (screen = 'home')}>Back</button>
-      <h2>Past sessions</h2>
       <ImaxButton active={maximized} onToggle={onToggleMaximized} />
+      <h2>Past sessions</h2>
     </header>
     <ul class="prioritize-past">
       {#each pastSessions as past (past.id)}
@@ -484,6 +482,11 @@
     height: 100%;
   }
 
+  .prioritize-panel > :global(.imax-button) {
+    align-self: flex-start;
+    margin-bottom: 8px;
+  }
+
   .page-header h2 {
     margin: 0;
   }
@@ -505,8 +508,13 @@
     font-weight: 600;
   }
 
+  .prioritize-past-header {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
   .prioritize-past-header h2 {
-    flex: 1;
+    margin-left: 8px;
   }
 
   /* IMAX hides page headers; keep these, minus titles, for Back and exit. */
@@ -597,8 +605,7 @@
     display: flex;
     grid-area: back;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 8px;
   }
 
   .prioritize-entry {
