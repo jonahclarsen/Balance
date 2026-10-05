@@ -6985,7 +6985,12 @@ return rows`
             html={newGoalTermsHtml}
             text={newGoalTerms}
             ariaLabel="New goal matching terms"
-            revision={$plannerStore.historyRevision}
+            revision={$plannerStore.historyRevision + newGoalFormResets}
+            onKeyDown={(_editor, event) => {
+              if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey) || event.isComposing) return
+              event.preventDefault()
+              addGoal()
+            }}
             onChange={(html, text) => {
               newGoalTermsHtml = html
               newGoalTerms = text

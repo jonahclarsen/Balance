@@ -73,6 +73,25 @@ test('pasting a link over selected new goal name text keeps it linked on the goa
   await expect(newName).toHaveText('')
 })
 
+test('Cmd+Enter in either new goal field adds the goal and clears the form', async ({ page }) => {
+  await openGoalsFromRhythm(page)
+  const newName = page.getByLabel('New goal name')
+  const newTerms = page.getByLabel('New goal matching terms')
+
+  await newName.fill('Swim laps')
+  await newTerms.fill('swim')
+  await newTerms.press('ControlOrMeta+Enter')
+  await expect(page.getByLabel('Goal name: Swim laps')).toBeVisible()
+  await expect(newName).toHaveText('')
+  await expect(newTerms).toHaveText('')
+
+  await newName.fill('Read')
+  await newTerms.fill('read')
+  await newName.press('ControlOrMeta+Enter')
+  await expect(page.getByLabel('Goal name: Read')).toBeVisible()
+  await expect(newTerms).toHaveText('')
+})
+
 test('a new goal receives the color previewed by the add button and has no color editor', async ({ page }) => {
   await openGoalsFromRhythm(page)
   const addButton = page.getByRole('button', { name: 'Add goal', exact: true })
