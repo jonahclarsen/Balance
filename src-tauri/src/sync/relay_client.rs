@@ -29,7 +29,7 @@ const RELAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const FOREGROUND_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const BACKGROUND_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Foreground app sync temporarily gives up the process-wide database mutex
+/// App sync temporarily gives up the process-wide database mutex
 /// while it waits on HTTP. Database work on the relay connection remains
 /// serialized before and after each wait, so local edits and history commands
 /// are never parked behind an unreachable relay.

@@ -36,6 +36,11 @@ on:
         required: false
         default: false
         type: boolean
+      run_network_loss_test:
+        description: Cut native sync requests and radios with a focused task, then resume offline
+        required: false
+        default: false
+        type: boolean
       run_freeze_diagnostics_test:
         description: Verify a synthetic WebView stall survives force quit and can be shared
         required: false
@@ -322,7 +327,8 @@ jobs:
           force-avd-creation: false
           # Feed the real QR fixture to Android's emulated back camera. The UI
           # test must scan it; it never types the joiner's pairing code.
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back imagefile:${{ github.workspace }}/sync-e2e-pairing.png
+          # Mesa passed the real-WebView gates after emulator SIGSEGVs with SwiftShader.
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim -camera-back imagefile:${{ github.workspace }}/sync-e2e-pairing.png
           disable-animations: true
           # UI Automator enters text through adb's hardware-input path. Keep the
           # soft keyboard from covering the next WebView field between entries.
@@ -337,12 +343,17 @@ jobs:
         if: github.ref_type == 'tag' || inputs.publish_tag != '' || inputs.run_stale_task_repro
         run: node .github/scripts/android-task-preservation-gate.mjs android-stale-task-repro.json
 
+      - name: Retain bounded emulator host diagnostics
+        if: always()
+        run: bash .github/scripts/collect-android-host-diagnostics.sh
+
       - name: Upload logcat
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: emulator-logcat
           path: |
+            android-host-diagnostics.txt
             logcat*.txt
             android-startup-profile.json
             sync-e2e-large-task-profile.json
@@ -373,7 +384,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node --test .github/scripts/android-task-preservation-gate.test.mjs .github/scripts/configure-android-selection-formatting.test.mjs
+      - run: node --test .github/scripts/android-task-preservation-gate.test.mjs .github/scripts/configure-android-selection-formatting.test.mjs .github/scripts/android-network-loss-fixture.test.mjs .github/scripts/cdp-error.test.mjs
       - run: pnpm exec playwright install --with-deps chromium
       - name: Verify Android selection formatting
         run: pnpm exec playwright test tests/visual/android-selection-formatting.spec.ts --workers=2
@@ -387,7 +398,7 @@ jobs:
 
   interaction-stress:
     name: Android interaction stress (seed ${{ matrix.seed }})
-    if: github.event_name == 'workflow_dispatch' && (inputs.run_interaction_stress || inputs.run_caret_check || inputs.run_caret_resume_stress || inputs.run_freeze_diagnostics_test)
+    if: github.event_name == 'workflow_dispatch' && (inputs.run_network_loss_test || inputs.run_interaction_stress || inputs.run_caret_check || inputs.run_caret_resume_stress || inputs.run_freeze_diagnostics_test)
     needs: build-debug
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -424,6 +435,7 @@ jobs:
         env:
           BALANCE_INTERACTION_STRESS_SEED: ${{ matrix.seed }}
           BALANCE_INTERACTION_STRESS_SECONDS: "600"
+          BALANCE_NETWORK_LOSS_TEST: ${{ inputs.run_network_loss_test && '1' || '0' }}
           BALANCE_FREEZE_DIAGNOSTICS_TEST: ${{ inputs.run_freeze_diagnostics_test && '1' || '0' }}
           BALANCE_CARET_CHECK: ${{ inputs.run_caret_check && '1' || '0' }}
           BALANCE_CARET_RESUME_STRESS: ${{ inputs.run_caret_resume_stress && '1' || '0' }}
@@ -432,10 +444,15 @@ jobs:
           arch: x86_64
           target: default
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim
+          # Mesa passed the real-WebView gates after emulator SIGSEGVs with SwiftShader.
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim
           disable-animations: true
-          enable-hw-keyboard: ${{ !inputs.run_caret_resume_stress }}
+          enable-hw-keyboard: ${{ !(inputs.run_caret_resume_stress || inputs.run_network_loss_test) }}
           script: timeout --foreground --kill-after=30s 20m node .github/scripts/android-interaction-stress.mjs
+
+      - name: Retain bounded emulator host diagnostics
+        if: always()
+        run: bash .github/scripts/collect-android-host-diagnostics.sh
 
       - name: Upload interaction diagnostics
         if: always()
@@ -443,6 +460,8 @@ jobs:
         with:
           name: android-interaction-stress-${{ matrix.seed }}
           path: |
+            android-host-diagnostics.txt
+            android-network-loss-*.json
             android-freeze-diagnostics-test.json
             android-interaction-stress-*.json
             android-interaction-logcat-*.txt

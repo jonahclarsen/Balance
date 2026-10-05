@@ -2025,11 +2025,11 @@ where
     .map_err(|error| error.to_string())?
 }
 
-struct ForegroundRelayDatabaseGate {
+struct RelayDatabaseGate {
     guard: Option<MutexGuard<'static, ()>>,
 }
 
-impl ForegroundRelayDatabaseGate {
+impl RelayDatabaseGate {
     fn acquire() -> Result<Self, String> {
         Ok(Self {
             guard: Some(database_access_guard()?),
@@ -2037,7 +2037,7 @@ impl ForegroundRelayDatabaseGate {
     }
 }
 
-impl sync::relay_client::NetworkDatabaseGate for ForegroundRelayDatabaseGate {
+impl sync::relay_client::NetworkDatabaseGate for RelayDatabaseGate {
     fn without_database_lock<T>(
         &mut self,
         task: impl FnOnce() -> sync::Result<T>,
@@ -2055,10 +2055,10 @@ impl sync::relay_client::NetworkDatabaseGate for ForegroundRelayDatabaseGate {
 async fn run_foreground_relay_task<T, F>(task: F) -> Result<T, String>
 where
     T: Send + 'static,
-    F: FnOnce(&mut ForegroundRelayDatabaseGate) -> Result<T, String> + Send + 'static,
+    F: FnOnce(&mut RelayDatabaseGate) -> Result<T, String> + Send + 'static,
 {
     tauri::async_runtime::spawn_blocking(move || {
-        let mut gate = ForegroundRelayDatabaseGate::acquire()?;
+        let mut gate = RelayDatabaseGate::acquire()?;
         task(&mut gate)
     })
     .await
@@ -2066,10 +2066,9 @@ where
 }
 
 /// Android can start an overdue WorkManager relay pass before its activity.
-/// That pass holds the ordinary database mutex across network I/O, but SQLite
-/// itself still permits the launch path's read-only connection while the relay
-/// is waiting. Let only the two startup-gating reads bypass a busy in-process
-/// mutex so a slow or unreachable relay cannot strand the loading screen.
+/// SQLite permits the launch path's read-only connection while another worker
+/// owns the process mutex. Let only the two startup-gating reads bypass a busy
+/// mutex so overlapping database work cannot strand the loading screen.
 async fn run_startup_database_task<T, F>(task: F) -> Result<T, String>
 where
     T: Send + 'static,
@@ -10254,7 +10253,9 @@ mod android_keystore {
 #[cfg(target_os = "android")]
 fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
     let _diagnostic = freeze_diagnostics::Span::new(freeze_diagnostics::Operation::BackgroundRelay);
-    let _guard = database_access_guard()?;
+    // WorkManager cancellation cannot interrupt a JNI call already waiting on
+    // HTTP. Reuse the foreground gate so resumed local saves stay available.
+    let mut gate = RelayDatabaseGate::acquire()?;
     let database_path = app_database_path_from_data_dir(data_dir);
     if !database_path.exists() {
         return Ok(());
@@ -10279,11 +10280,12 @@ fn run_android_background_sync_at(data_dir: &Path) -> Result<(), String> {
         .map_err(sync::Error::into_string)?;
     // Background work is capped by Android. Apply ordinary incremental batches
     // here; potentially large checkpoint promotion waits for the foreground.
-    sync::relay_client::sync_once(
+    sync::relay_client::sync_once_with_network_gate(
         &connection,
         &relay_url,
         &key,
         sync::relay_client::SyncOptions::background(),
+        &mut gate,
     )
     .map_err(sync::Error::into_string)?;
     task_notifications::publish(&connection)
@@ -15748,14 +15750,14 @@ mod tests {
 
     #[test]
     fn foreground_relay_network_wait_yields_database_access() {
-        let mut relay_gate = ForegroundRelayDatabaseGate::acquire().unwrap();
+        let mut relay_gate = RelayDatabaseGate::acquire().unwrap();
         let (sender, receiver) = std::sync::mpsc::channel();
         let waiter = std::thread::spawn(move || {
             let _guard = database_access_guard().unwrap();
             sender.send(()).unwrap();
         });
 
-        <ForegroundRelayDatabaseGate as sync::relay_client::NetworkDatabaseGate>::without_database_lock(
+        <RelayDatabaseGate as sync::relay_client::NetworkDatabaseGate>::without_database_lock(
             &mut relay_gate,
             || {
                 receiver
@@ -15767,6 +15769,31 @@ mod tests {
         .unwrap();
         waiter.join().unwrap();
         assert!(relay_gate.guard.is_some());
+    }
+
+    #[test]
+    fn failed_relay_network_wait_reacquires_database_access() {
+        let mut relay_gate = RelayDatabaseGate::acquire().unwrap();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        let waiter = std::thread::spawn(move || {
+            let _guard = database_access_guard().unwrap();
+            sender.send(()).unwrap();
+        });
+        let result = <RelayDatabaseGate as sync::relay_client::NetworkDatabaseGate>::without_database_lock(
+            &mut relay_gate,
+            || {
+                receiver
+                    .recv_timeout(Duration::from_secs(1))
+                    .expect("local saves must proceed during failed network waits");
+                Err::<(), _>(sync::Error::Codec("synthetic network loss".into()))
+            },
+        );
+        assert!(result.is_err());
+        waiter.join().unwrap();
+        assert!(
+            relay_gate.guard.is_some(),
+            "database access must be serialized again after failure"
+        );
     }
 
     #[test]
