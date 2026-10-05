@@ -179,6 +179,10 @@ test('deleting a selection across two paragraphs merges the remaining text', asy
   await first.press('Enter')
   const second = page.locator('[data-note-text-input]').nth(1)
   await second.fill('Beta')
+  // Let setup's bottom-follow finish before measuring the drag endpoints.
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
   const start = await caretCoordinates(first, 2)
   const end = await caretCoordinates(second, 2)
   await page.mouse.move(start.x, start.y)
