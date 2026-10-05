@@ -298,6 +298,42 @@ test('Alt+F opens only the first URL in the selected list modal task', async ({ 
     .toEqual(['https://example.com/first'])
 })
 
+test('Alt+F skips an empty leftover link in the selected list modal task', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openView(page, 'Lists')
+  await page.getByRole('button', { name: '+ New list' }).click()
+  await page.getByLabel('List name').fill('Groceries')
+  const listItem = page.locator('[data-list-template-text-input]').first()
+  await listItem.fill('First')
+  await listItem.evaluate((element) => {
+    element.innerHTML = '<a href="https://example.com/stale"></a><a href="https://example.com/first">First</a>'
+    element.dispatchEvent(new InputEvent('input', { bubbles: true }))
+  })
+  await listItem.blur()
+
+  await openView(page, 'Today')
+  await generateDay(page)
+  const taskInput = page.locator('[data-plan-text-input]').first()
+  await taskInput.fill('Groceries')
+  await taskInput.blur()
+  await page.getByTitle('Open Groceries').first().click()
+  const dialog = page.getByRole('dialog', { name: 'Groceries' })
+  await expect(dialog.locator('.plan-row.selected')).toContainText('First')
+  await page.evaluate(() => {
+    const opened: string[] = []
+    ;(window as typeof window & { openedURLs?: string[] }).openedURLs = opened
+    window.open = ((url?: string | URL) => {
+      opened.push(String(url))
+      return null
+    }) as typeof window.open
+  })
+  await page.keyboard.press('Alt+f')
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { openedURLs?: string[] }).openedURLs))
+    .toEqual(['https://example.com/first'])
+})
+
 for (const destination of [
   { text: 'balance://projects', heading: 'Projects' },
   { text: 'balance://projects', heading: 'Projects', label: 'My projects' },

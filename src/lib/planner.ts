@@ -1829,6 +1829,8 @@ function sanitizeNode(node: Node): string {
   if (tag === 'p' || tag === 'div') return children ? `${children}<br>` : ''
 
   if (tag === 'a') {
+    // An empty anchor is invisible but would still be the first link Alt+F opens.
+    if (!children) return ''
     const href = element.getAttribute('href') ?? ''
     if (isGoalStatsURL(href) || noteIdFromURL(href) || projectIdFromURL(href) !== null) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
     if (!isURL(href)) return children
