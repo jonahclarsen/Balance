@@ -13,13 +13,17 @@ cargo test --manifest-path src-tauri/Cargo.toml \
 pipeline_status=("${PIPESTATUS[@]}")
 set -e
 
+extraction_status=0
 sed -n 's/^.*THEME_NATIVE_PERF //p' "$results_directory/theme-native-performance.log" \
-  > "$results_directory/theme-native-performance.json"
+  > "$results_directory/theme-native-performance.json" || extraction_status=$?
 
 if (( pipeline_status[0] != 0 )); then
   exit "${pipeline_status[0]}"
 fi
 if (( pipeline_status[1] != 0 )); then
   exit "${pipeline_status[1]}"
+fi
+if (( extraction_status != 0 )); then
+  exit "$extraction_status"
 fi
 test -s "$results_directory/theme-native-performance.json"
