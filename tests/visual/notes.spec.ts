@@ -756,6 +756,10 @@ test('dragging can extend a note selection across list items', async ({ page }, 
   const second = page.locator('[data-note-text-input]').nth(1)
   await second.fill('Second line')
 
+  // Let bottom-follow finish before measuring the coordinates used for dragging.
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
   const firstBox = await first.boundingBox()
   const secondBox = await second.boundingBox()
   expect(firstBox).not.toBeNull()
