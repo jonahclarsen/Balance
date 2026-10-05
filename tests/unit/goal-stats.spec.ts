@@ -63,15 +63,15 @@ test('goal stats summarize current health and historical overdue counts', () => 
   expect(stats.daily.map((day) => day.completedGoals)).toEqual([0, 0, 1, 1, 0])
   expect(stats.deadlineOutlook).toEqual([
     { label: 'Overdue', count: 1 },
-    { label: 'Today', count: 0 },
-    { label: '1 day', count: 0 },
-    { label: '2 days', count: 0 },
-    { label: '3 days', count: 0 },
-    { label: '4 days', count: 0 },
-    { label: '5 days', count: 0 },
-    { label: '6 days', count: 1 },
-    { label: '7 days', count: 0 },
-    { label: 'Later', count: 0 },
+    { label: 'Today', count: 1 },
+    { label: '1 day', count: 1 },
+    { label: '2 days', count: 1 },
+    { label: '3 days', count: 1 },
+    { label: '4 days', count: 1 },
+    { label: '5 days', count: 1 },
+    { label: '6 days', count: 2 },
+    { label: '7 days', count: 2 },
+    { label: 'All goals', count: 2 },
   ])
   expect(stats.weekdayCompletions).toEqual([
     { label: 'Mon', count: 0 },
@@ -82,6 +82,23 @@ test('goal stats summarize current health and historical overdue counts', () => 
     { label: 'Sat', count: 0 },
     { label: 'Sun', count: 0 },
   ])
+})
+
+test('deadline outlook accumulates goals through each due date and ends with all active goals', () => {
+  const goals = [
+    goal('overdue', 'Overdue', 1, '2026-09-01'),
+    goal('today', 'Today', 1, '2026-09-03'),
+    goal('tomorrow', 'Tomorrow', 2, '2026-09-03'),
+    goal('week', 'Week', 8, '2026-09-03'),
+    goal('later', 'Later', 9, '2026-09-03'),
+    goal('ending', 'Ending before due', 9, '2026-09-03', '2026-09-04'),
+    goal('archived', 'Archived', 1, '2026-09-01', '2026-09-02'),
+    goal('future', 'Future', 1, '2026-09-04'),
+  ]
+
+  const stats = buildGoalStats(goals, [], '2026-09-03', 5)
+
+  expect(stats.deadlineOutlook.map((category) => category.count)).toEqual([1, 2, 3, 3, 3, 3, 3, 3, 4, 6])
 })
 
 test('goal stats handle an empty collection without invalid percentages', () => {

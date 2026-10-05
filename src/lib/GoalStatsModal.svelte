@@ -112,7 +112,7 @@
     </StatsChartCard>
 
     <div class="new-charts-grid">
-      <StatsChartCard title="When goals are next due">
+      <StatsChartCard title="When goals are next due" description="Cumulative goals due by each day, including overdue goals">
         <GoalStatsBarChart
           items={deadlineItems}
           ariaLabel={`Goal deadline outlook. ${deadlineSummary}.`}

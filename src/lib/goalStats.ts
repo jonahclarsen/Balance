@@ -75,11 +75,11 @@ export function buildGoalStats(
       label: daysFromToday === 0
         ? 'Today'
         : `${daysFromToday} ${daysFromToday === 1 ? 'day' : 'days'}`,
-      count: activeDeadlines.filter((daysUntilLapse) => daysUntilLapse === daysFromToday).length,
+      count: activeDeadlines.filter((daysUntilLapse) => daysUntilLapse !== null && daysUntilLapse <= daysFromToday).length,
     })),
     {
-      label: 'Later',
-      count: activeDeadlines.filter((daysUntilLapse) => daysUntilLapse === null || daysUntilLapse > 7).length,
+      label: 'All goals',
+      count: activeDeadlines.length,
     },
   ]
   const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
