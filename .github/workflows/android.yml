@@ -282,9 +282,7 @@ jobs:
   smoke-test:
     name: Android pairing + sync E2E
     needs: build-debug
-    # Keep emulator validation on a fixed host image while investigating the
-    # repeated emulator loss on Ubuntu 24.04; APK, AVD and checks stay unchanged.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     # Successful runs take about five minutes. Keep a little headroom for a
     # cold emulator, but never let an ADB/emulator wedge consume hours.
     timeout-minutes: 15
@@ -401,9 +399,7 @@ jobs:
     name: Android interaction stress (seed ${{ matrix.seed }})
     if: github.event_name == 'workflow_dispatch' && (inputs.run_network_loss_test || inputs.run_interaction_stress || inputs.run_caret_check || inputs.run_caret_resume_stress || inputs.run_freeze_diagnostics_test)
     needs: build-debug
-    # Keep emulator validation on a fixed host image while investigating the
-    # repeated emulator loss on Ubuntu 24.04; APK, AVD and checks stay unchanged.
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
     timeout-minutes: 25
 
     strategy:
