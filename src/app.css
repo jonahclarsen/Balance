@@ -681,7 +681,6 @@
   .empty-state,
   .export-panel,
   .settings-panel,
-  .mobile-task-menu,
   .mobile-time-editor,
   .export-panel > div,
   .celebration-option-button,
@@ -2338,6 +2337,7 @@ body.mobile-checkbox-dragging {
    fixed so its collision adjustment is not converted back to row-relative. */
 :root[data-theme='iridescent'] .mobile-task-menu {
   position: fixed;
+  border-color: transparent;
 }
 
 .mobile-task-menu.positioned {
