@@ -2,6 +2,7 @@ import {expect, test} from '@playwright/test'
 import {openView} from '../helpers/navigation'
 
 test('freeze report export bypasses database diagnostics and event recording never sends editor values', async ({page}) => {
+  await page.clock.install({time: new Date('2025-01-15T12:00:00Z')})
   await page.addInitScript(() => {
     const runtime = window as any
     runtime.isTauri = true
@@ -29,6 +30,9 @@ test('freeze report export bypasses database diagnostics and event recording nev
   })
   await page.goto('/')
   await openView(page, 'Settings')
+  // Finish startup timers and hold unrelated background work while measuring
+  // the report action. A database call made by export still increments the spy.
+  await page.clock.pauseAt(new Date('2025-01-15T12:01:00Z'))
   await page.evaluate(() => {
     const input = document.createElement('textarea')
     input.value = 'synthetic private task and recovery key'
@@ -44,12 +48,14 @@ test('freeze report export bypasses database diagnostics and event recording nev
     const {plannerStore} = await import(/* @vite-ignore */ storePath)
     await plannerStore.flushPendingOperations()
   })
+  await page.clock.runFor(3000)
   const prior = await page.evaluate(() => (window as any).__databaseCalls.length)
   await page.getByRole('button', {name:'Export freeze report',exact:true}).click()
   await expect(page.getByText('Report prepared. Choose an app to share it.', {exact:true})).toBeVisible()
-  const data = await page.evaluate(() => ({calls:(window as any).__freezeCalls, after:(window as any).__databaseCalls.length}))
+  await page.clock.runFor(1000)
+  const data = await page.evaluate(() => ({calls:(window as any).__freezeCalls, databaseCalls:(window as any).__databaseCalls, after:(window as any).__databaseCalls.length}))
   expect(JSON.stringify(data.calls)).not.toContain('synthetic private')
   expect(data.calls.some((c:any) => c.args?.event?.event==='javascript_error')).toBe(true)
   expect(data.calls.some((c:any) => c.command==='share_freeze_diagnostics')).toBe(true)
-  expect(data.after).toBe(prior)
+  expect(data.after, JSON.stringify(data.databaseCalls.slice(prior))).toBe(prior)
 })
