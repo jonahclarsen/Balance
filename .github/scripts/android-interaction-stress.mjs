@@ -518,10 +518,10 @@ async function verifyNetworkEdit(detail) {
   return {accepted: true, persisted: true}
 }
 
-function setRadios(online) {
-  adb(['shell', 'cmd', 'connectivity', 'airplane-mode', online ? 'disable' : 'enable'])
-  adb(['shell', 'svc', 'wifi', online ? 'enable' : 'disable'])
-  adb(['shell', 'svc', 'data', online ? 'enable' : 'disable'])
+function setRadios(online, allowFailure = false) {
+  adb(['shell', 'cmd', 'connectivity', 'airplane-mode', online ? 'disable' : 'enable'], {allowFailure})
+  adb(['shell', 'svc', 'wifi', online ? 'enable' : 'disable'], {allowFailure})
+  adb(['shell', 'svc', 'data', online ? 'enable' : 'disable'], {allowFailure})
 }
 
 async function verifyNetworkLoss() {
@@ -582,6 +582,26 @@ async function verifyNetworkLoss() {
   background.jobId = await forceBackgroundJob(networkFixture)
   adb(['shell', 'monkey', '-p', packageName, '-c', 'android.intent.category.LAUNCHER', '1'])
   await sleep(500); await heartbeat('resume during background network timeout')
+  // A normal settings read takes the same database gate as local saves. This
+  // avoids conflating an IME composition issue with a blocked database worker.
+  await client.evaluate(`(() => {
+    const started = performance.now()
+    window.backgroundDatabaseProbe = {done: false}
+    window.__TAURI_INTERNALS__.invoke('get_export_settings').then(
+      () => window.backgroundDatabaseProbe = {done: true, elapsedMs: performance.now() - started},
+      () => window.backgroundDatabaseProbe = {done: true, failed: true, elapsedMs: performance.now() - started})
+    return true
+  })()`)
+  await sleep(5000)
+  background.databaseProbe = await client.evaluate('window.backgroundDatabaseProbe')
+  await heartbeat('screen responsiveness during background database probe')
+  if (!background.databaseProbe.done) {
+    networkFixture.setMode('reset')
+    await waitFor(() => client.evaluate('window.backgroundDatabaseProbe.done'), 'database read after cutting the stuck connection', 10_000)
+    background.databaseProbeAfterReset = await client.evaluate('window.backgroundDatabaseProbe')
+    throw new Error('Local database read blocked for five seconds behind background relay; released after connection reset')
+  }
+  if (background.databaseProbe.failed || background.databaseProbe.elapsedMs >= 2000) throw new Error('Background network timeout delayed local database access')
   background.resumedEdit = await verifyNetworkEdit('persist task while background relay is stuck')
   background.persisted = true
   networkFixture.setMode('reset'); await sleep(1000); networkFixture.setMode('online'); await sync()
@@ -927,11 +947,12 @@ try {
   console.error(`[interaction-stress] FAILED: ${error?.stack ?? error}`)
 } finally {
   if (networkLossTest) {
+    await writeFile(`android-network-loss-${seed}.json`, JSON.stringify({passed: false, checks: networkLossChecks, failure: failure ? String(failure) : null}, null, 2))
     try {
       const report = JSON.parse(await client.evaluate(`window.__TAURI_INTERNALS__.invoke('export_freeze_diagnostics')`))
       await writeFile(`android-network-loss-${seed}.json`, JSON.stringify({passed: !failure, checks: networkLossChecks, failure: failure ? String(failure) : null, report}, null, 2))
     } catch {}
-    setRadios(true)
+    setRadios(true, true)
     await networkFixture?.close()
   }
   diagnostics = await collectDiagnostics(Boolean(failure))
