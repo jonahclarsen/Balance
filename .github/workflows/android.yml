@@ -384,7 +384,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: node --test .github/scripts/android-task-preservation-gate.test.mjs .github/scripts/configure-android-selection-formatting.test.mjs .github/scripts/android-network-loss-fixture.test.mjs
+      - run: node --test .github/scripts/android-task-preservation-gate.test.mjs .github/scripts/configure-android-selection-formatting.test.mjs .github/scripts/android-network-loss-fixture.test.mjs .github/scripts/cdp-error.test.mjs
       - run: pnpm exec playwright install --with-deps chromium
       - name: Verify Android selection formatting
         run: pnpm exec playwright test tests/visual/android-selection-formatting.spec.ts --workers=2
