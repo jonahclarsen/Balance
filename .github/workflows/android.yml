@@ -327,9 +327,8 @@ jobs:
           force-avd-creation: false
           # Feed the real QR fixture to Android's emulated back camera. The UI
           # test must scan it; it never types the joiner's pairing code.
-          # Use the current SwiftShader backend; indirect mode was deprecated
-          # in emulator 36.4.9 and reports lost graphics contexts in CI.
-          emulator-options: -no-window -gpu swiftshader -noaudio -no-boot-anim -camera-back imagefile:${{ github.workspace }}/sync-e2e-pairing.png
+          # Mesa passed the real-WebView gates after emulator SIGSEGVs with SwiftShader.
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim -camera-back imagefile:${{ github.workspace }}/sync-e2e-pairing.png
           disable-animations: true
           # UI Automator enters text through adb's hardware-input path. Keep the
           # soft keyboard from covering the next WebView field between entries.
@@ -445,9 +444,8 @@ jobs:
           arch: x86_64
           target: default
           force-avd-creation: false
-          # Use the current SwiftShader backend; indirect mode was deprecated
-          # in emulator 36.4.9 and reports lost graphics contexts in CI.
-          emulator-options: -no-window -gpu swiftshader -noaudio -no-boot-anim
+          # Mesa passed the real-WebView gates after emulator SIGSEGVs with SwiftShader.
+          emulator-options: -no-window -gpu lavapipe -noaudio -no-boot-anim
           disable-animations: true
           enable-hw-keyboard: ${{ !(inputs.run_caret_resume_stress || inputs.run_network_loss_test) }}
           script: timeout --foreground --kill-after=30s 20m node .github/scripts/android-interaction-stress.mjs
