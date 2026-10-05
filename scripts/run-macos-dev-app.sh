@@ -29,12 +29,15 @@ trap 'rm -f "$ready_file" "$BALANCE_DEV_NOTIFICATION_SOCKET"; rmdir "$bridge_run
 # The full Tauri process is rejected by WidgetKit even from an app-shaped path.
 # Keep one tiny valid app process alive for widget reloads and OS reminders.
 # Widget reload notifications carry no payload; reminders use a private socket.
-if [ ! -x "$bridge_executable" ] || [ "$bridge_source" -nt "$bridge_executable" ] || [ "$notification_source" -nt "$bridge_executable" ] || [ "$bridge_info" -nt "$bridge_executable" ]; then
+if [ ! -x "$bridge_executable" ] || [ "$0" -nt "$bridge_executable" ] || [ "$bridge_source" -nt "$bridge_executable" ] || [ "$notification_source" -nt "$bridge_executable" ] || [ "$bridge_info" -nt "$bridge_executable" ]; then
   architecture=$(uname -m)
   mkdir -p "$bridge_app/Contents/MacOS"
   cp "$bridge_info" "$bridge_app/Contents/Info.plist"
   xcrun swiftc -parse-as-library -O -target "$architecture-apple-macosx13.0" -framework WidgetKit -framework UserNotifications \
     "$bridge_source" "$notification_source" -o "$bridge_executable"
+  # The linker's ad-hoc signature names the binary, not app.balance.local.
+  # usernotificationsd rejects that identity, so reminders would never register.
+  codesign --force --sign - "$bridge_app"
 fi
 
 rm -f "$ready_file"
