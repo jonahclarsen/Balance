@@ -38,6 +38,12 @@ test('freeze report export bypasses database diagnostics and event recording nev
     window.dispatchEvent(new ErrorEvent('error', {message:'synthetic private error'}))
   })
   await expect.poll(() => page.evaluate(() => (window as any).__freezeCalls.filter((c:any) => c.command==='record_freeze_diagnostic').length)).toBeGreaterThan(1)
+  // Drain saves queued by setup before measuring the report export itself.
+  await page.evaluate(async () => {
+    const storePath = '/src/lib/store.ts'
+    const {plannerStore} = await import(/* @vite-ignore */ storePath)
+    await plannerStore.flushPendingOperations()
+  })
   const prior = await page.evaluate(() => (window as any).__databaseCalls.length)
   await page.getByRole('button', {name:'Export freeze report',exact:true}).click()
   await expect(page.getByText('Report prepared. Choose an app to share it.', {exact:true})).toBeVisible()
