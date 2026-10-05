@@ -12,7 +12,9 @@ on:
       - "src/lib/store.ts"
       - "src/lib/themes.ts"
       - "src-tauri/src/lib.rs"
+      - "src-tauri/src/theme_performance.rs"
       - "src-tauri/src/widget.rs"
+      - "scripts/profile-native-theme*"
       - "tests/performance/theme-state.spec.ts"
   workflow_dispatch:
 
@@ -49,7 +51,9 @@ jobs:
           pnpm exec playwright install chromium
 
       - name: Check source
-        run: pnpm check
+        run: |
+          pnpm check
+          node --test scripts/profile-native-theme.test.mjs
 
       - name: Measure loading-theme bootstrap and repeated today observations
         run: |
@@ -59,17 +63,39 @@ jobs:
             | sed 's/^THEME_PERF //' > "$RUNNER_TEMP/theme-browser-performance.jsonl"
           test "$(wc -l < "$RUNNER_TEMP/theme-browser-performance.jsonl")" -eq 2
 
-      - name: Measure encrypted device and synced day-theme writes
+      - name: Verify native persistence behavior
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Verify diagnostics survive a failed native assertion
         run: |
           set -euo pipefail
-          cargo test --manifest-path src-tauri/Cargo.toml \
-            tests::theme_state_performance_profile -- --exact --ignored --nocapture \
-            2>&1 | tee "$RUNNER_TEMP/theme-native-performance.log"
-          sed -n 's/^.*THEME_NATIVE_PERF /THEME_NATIVE_PERF /p' "$RUNNER_TEMP/theme-native-performance.log" \
-            | sed 's/^THEME_NATIVE_PERF //' > "$RUNNER_TEMP/theme-native-performance.json"
-          test -s "$RUNNER_TEMP/theme-native-performance.json"
+          results="$RUNNER_TEMP/theme-failure-diagnostics"
+          if bash scripts/profile-native-theme.sh "$results" \
+            tests::theme_state_performance_failure_diagnostics; then
+            echo '::error::The intentional failure probe unexpectedly passed'
+            exit 1
+          else
+            status=$?
+            test "$status" -eq 101
+          fi
+          grep -q 'intentional theme profile diagnostic failure' "$results/theme-native-performance.log"
+          jq -e '
+            .samples == 30 and
+            (.deviceAppearance.openSamplesMs | length == 30) and
+            (.deviceAppearance.encryptedMetadataWriteSamplesMs | length == 30) and
+            (.dayTheme.sampleTimings | length == 30) and
+            (.dayTheme.sampleTimings | all(
+              .phases | has("preferenceProcessingMs") and has("preferenceSqlWriteMs") and
+              has("otherSqlWorkMs") and has("commitMs") and has("housekeepingMs") and
+              all(.[]; type == "number" and . >= 0)
+            ))
+          ' "$results/theme-native-performance.json" > /dev/null
+
+      - name: Measure encrypted device and synced day-theme writes
+        run: bash scripts/profile-native-theme.sh "$RUNNER_TEMP"
 
       - name: Summarize profile
+        if: always()
         run: |
           {
             echo '## Theme-state performance'
@@ -78,16 +104,25 @@ jobs:
             echo
             echo '### Browser'
             echo '```json'
-            jq -s . "$RUNNER_TEMP/theme-browser-performance.jsonl"
+            if [[ -s "$RUNNER_TEMP/theme-browser-performance.jsonl" ]]; then
+              jq -s . "$RUNNER_TEMP/theme-browser-performance.jsonl"
+            else
+              echo 'No browser measurements were emitted; see the available logs.'
+            fi
             echo '```'
             echo
             echo '### Native persistence'
             echo '```json'
-            jq . "$RUNNER_TEMP/theme-native-performance.json"
+            if [[ -s "$RUNNER_TEMP/theme-native-performance.json" ]]; then
+              jq . "$RUNNER_TEMP/theme-native-performance.json"
+            else
+              echo 'No native measurements were emitted; see the available logs.'
+            fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload performance results
+        if: always()
         uses: actions/upload-artifact@v7
         with:
           name: theme-state-performance
@@ -96,4 +131,5 @@ jobs:
             ${{ runner.temp }}/theme-browser-performance.log
             ${{ runner.temp }}/theme-native-performance.json
             ${{ runner.temp }}/theme-native-performance.log
-          if-no-files-found: error
+            ${{ runner.temp }}/theme-failure-diagnostics/
+          if-no-files-found: warn

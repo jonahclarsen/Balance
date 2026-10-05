@@ -24,6 +24,8 @@ use tauri_plugin_opener::OpenerExt;
 #[cfg(target_os = "android")]
 mod android_widget;
 mod database_keys;
+#[cfg(test)]
+mod theme_performance;
 mod plan_regeneration;
 mod backup_browser;
 #[cfg(not(target_os = "android"))]
@@ -3430,18 +3432,25 @@ fn read_replicated_preferences(connection: &Connection) -> Result<Value, String>
 }
 
 fn patch_replicated_preferences(connection: &Connection, patch: &Value) -> Result<(), String> {
-    let patch = patch
-        .as_object()
-        .ok_or_else(|| "Replicated preference patch must be an object".to_string())?;
-    let mut preferences = read_replicated_preferences(connection)?;
-    let object = preferences
-        .as_object_mut()
-        .ok_or_else(|| "Replicated preferences must be an object".to_string())?;
-    for (key, value) in patch {
-        object.insert(key.clone(), value.clone());
-    }
-    let preferences = validate_replicated_preferences(&preferences)?;
-    set_metadata(connection, REPLICATED_PREFERENCES, &preferences.to_string())
+    let preferences = {
+        #[cfg(test)]
+        let _phase = theme_performance::Phase::start("preferenceProcessingMs");
+        let patch = patch
+            .as_object()
+            .ok_or_else(|| "Replicated preference patch must be an object".to_string())?;
+        let mut preferences = read_replicated_preferences(connection)?;
+        let object = preferences
+            .as_object_mut()
+            .ok_or_else(|| "Replicated preferences must be an object".to_string())?;
+        for (key, value) in patch {
+            object.insert(key.clone(), value.clone());
+        }
+        let preferences = validate_replicated_preferences(&preferences)?;
+        preferences.to_string()
+    };
+    #[cfg(test)]
+    let _phase = theme_performance::Phase::start("preferenceSqlWriteMs");
+    set_metadata(connection, REPLICATED_PREFERENCES, &preferences)
 }
 
 fn is_iso_calendar_date(value: &str) -> bool {
@@ -3980,21 +3989,35 @@ fn persist_operation_once(
             .map_err(|error| error.to_string())?;
     }
 
-    upsert_operation(&tx, operation)?;
-    apply_operation(&tx, operation)?;
-    set_metadata(&tx, "device_id", required_string(operation, "deviceId")?)?;
-    set_metadata(
-        &tx,
-        "local_sequence",
-        &required_i64(operation, "sequence")?.to_string(),
-    )?;
-
-    if let Some(undo_operation) = undo_operation {
-        upsert_history_entry(&tx, operation, &undo_operation)?;
+    {
+        #[cfg(test)]
+        let _phase = theme_performance::Phase::start("otherSqlWorkMs");
+        upsert_operation(&tx, operation)?;
     }
-    prune_history_entries(&tx, current_timestamp_ms())?;
+    apply_operation(&tx, operation)?;
+    {
+        #[cfg(test)]
+        let _phase = theme_performance::Phase::start("otherSqlWorkMs");
+        set_metadata(&tx, "device_id", required_string(operation, "deviceId")?)?;
+        set_metadata(
+            &tx,
+            "local_sequence",
+            &required_i64(operation, "sequence")?.to_string(),
+        )?;
 
-    tx.commit().map_err(|error| error.to_string())?;
+        if let Some(undo_operation) = undo_operation {
+            upsert_history_entry(&tx, operation, &undo_operation)?;
+        }
+        prune_history_entries(&tx, current_timestamp_ms())?;
+    }
+
+    {
+        #[cfg(test)]
+        let _phase = theme_performance::Phase::start("commitMs");
+        tx.commit().map_err(|error| error.to_string())?;
+    }
+    #[cfg(test)]
+    let _phase = theme_performance::Phase::start("housekeepingMs");
     if metadata_value(connection, SYNC_LOG_DIRTY_SINCE_MS)?.is_none() {
         set_metadata(
             connection,
@@ -16310,6 +16333,18 @@ mod tests {
     #[test]
     #[ignore = "performance profile; run explicitly with --ignored --nocapture"]
     fn theme_state_performance_profile() {
+        run_theme_state_performance_profile(false);
+    }
+
+    // The CI wrapper must retain real encrypted-fixture timings and cargo's
+    // failure status when an assertion fails. Never run in the normal suite.
+    #[test]
+    #[ignore = "intentional failure probe; invoked and checked by theme-performance CI"]
+    fn theme_state_performance_failure_diagnostics() {
+        run_theme_state_performance_profile(true);
+    }
+
+    fn run_theme_state_performance_profile(force_failure: bool) {
         const SAMPLE_COUNT: usize = 30;
         const HISTORICAL_DAY_COUNT: usize = 3_264;
         let database = TestDatabase::new("theme-state-performance");
@@ -16361,6 +16396,7 @@ mod tests {
 
         let mut day_theme_open_ms = Vec::with_capacity(SAMPLE_COUNT);
         let mut day_theme_persist_ms = Vec::with_capacity(SAMPLE_COUNT);
+        let mut day_theme_samples = Vec::with_capacity(SAMPLE_COUNT);
         let mut operation_bytes = 0;
         for index in 0..SAMPLE_COUNT {
             let sequence = index + 2;
@@ -16380,8 +16416,20 @@ mod tests {
             let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
             day_theme_open_ms.push(open_started.elapsed().as_secs_f64() * 1_000.0);
             let persist_started = std::time::Instant::now();
-            persist_operation_to_database(&mut connection, &operation).unwrap();
-            day_theme_persist_ms.push(persist_started.elapsed().as_secs_f64() * 1_000.0);
+            let (result, phases) = theme_performance::capture(|| {
+                persist_operation_to_database(&mut connection, &operation)
+            });
+            let persist_ms = persist_started.elapsed().as_secs_f64() * 1_000.0;
+            result.unwrap();
+            day_theme_persist_ms.push(persist_ms);
+            // Phases cover named sections; setup and instrumentation overhead
+            // remain included in the complete persistOperationMs measurement.
+            day_theme_samples.push(json!({
+                "sample": index + 1,
+                "openMs": day_theme_open_ms[index],
+                "persistOperationMs": persist_ms,
+                "phases": phases,
+            }));
         }
 
         let stats = |samples: &[f64]| {
@@ -16403,17 +16451,23 @@ mod tests {
             "deviceAppearance": {
                 "open": stats(&appearance_open_ms),
                 "encryptedMetadataWrite": stats(&appearance_write_ms),
+                "openSamplesMs": appearance_open_ms,
+                "encryptedMetadataWriteSamplesMs": appearance_write_ms,
                 "debounceMs": 250,
                 "networkOperations": 0,
             },
             "dayTheme": {
                 "open": stats(&day_theme_open_ms),
                 "persistOperation": stats(&day_theme_persist_ms),
+                "sampleTimings": day_theme_samples,
                 "operationBytes": operation_bytes,
                 "localPersistDebounceMs": 500,
                 "networkDebounceMs": 2_000,
             }
         });
+        // Emit before every gate so failed runs retain the measurements too.
+        eprintln!("THEME_NATIVE_PERF {profile}");
+        assert!(!force_failure, "intentional theme profile diagnostic failure");
         assert!(
             profile["deviceAppearance"]["encryptedMetadataWrite"]["p95Ms"]
                 .as_f64()
@@ -16426,7 +16480,6 @@ mod tests {
                 .unwrap()
                 < 50.0
         );
-        eprintln!("THEME_NATIVE_PERF {profile}");
     }
 
     /// Opt-in profile for the complete native undo path. This deliberately uses a
