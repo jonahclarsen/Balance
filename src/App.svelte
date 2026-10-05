@@ -518,6 +518,7 @@ return rows`
   let widgetPrivacySettingsStatusIsError = false
   let recoveryPanelOpen = false
   let quickAddOpen = false
+  let prioritizeSessionOpen = false
   let quickAddText = ''
   let quickAddInput: HTMLTextAreaElement | null = null
   let recoveryEntries: RecoveryEntry[] = []
@@ -6002,8 +6003,8 @@ return rows`
     ></button>
   {/if}
 
-  <!-- Prioritize keeps its own button beside Back, clear of its list. -->
-  {#if viewMaximized && view !== 'prioritize'}
+  <!-- A Prioritize session keeps its own button beside Back, clear of its list. -->
+  {#if viewMaximized && (view !== 'prioritize' || !prioritizeSessionOpen)}
     <div class="imax-exit-control">
       <ImaxButton active onToggle={(event) => toggleViewMaximized(view, event)} />
     </div>
@@ -6961,6 +6962,7 @@ return rows`
         {currentDay}
         maximized={viewMaximized}
         onToggleMaximized={(event) => toggleViewMaximized('prioritize', event)}
+        bind:sessionOpen={prioritizeSessionOpen}
       />
     {/if}
 

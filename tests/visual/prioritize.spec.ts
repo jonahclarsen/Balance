@@ -231,9 +231,57 @@ test('Spread appears for a crowded scale and doubles it with undo', async ({ pag
   await expectRows(page, ['Synthetic alpha\\s*36', 'Synthetic beta\\s*32', 'Synthetic overdue goal\\s*28', 'Synthetic daily goal'])
   await expect(spread).toHaveCount(0)
 
+  // Undoing a spread keeps the selected row.
+  await rows(page).nth(1).locator('.priority-rank').click()
   await page.keyboard.press('ControlOrMeta+z')
   await expectRows(page, ['Synthetic alpha\\s*18', 'Synthetic beta\\s*16', 'Synthetic overdue goal\\s*14', 'Synthetic daily goal'])
   await expect(spread).toBeVisible()
+  await expect(rows(page).nth(1)).toHaveClass(/selected/)
+})
+
+test('a newly selected number is replaced by typing and trimmed by Backspace', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Touch entry is covered separately')
+  await seed(page)
+  await openView(page, 'Prioritize')
+  await page.getByRole('button', { name: 'Start prioritizing' }).click()
+  await page.keyboard.type('42')
+  await page.keyboard.press('Enter')
+  await page.keyboard.type('15')
+
+  await page.keyboard.press('ArrowUp')
+  await page.keyboard.type('7')
+  await expectRows(page, ['Synthetic beta\\s*15', 'Synthetic alpha\\s*7', 'Synthetic overdue goal', 'Synthetic daily goal'])
+  await page.keyboard.type('3')
+  await expectRows(page, ['Synthetic alpha\\s*73', 'Synthetic beta\\s*15', 'Synthetic overdue goal', 'Synthetic daily goal'])
+
+  await rows(page).nth(1).locator('.priority-rank').click()
+  await page.keyboard.press('Backspace')
+  await expectRows(page, ['Synthetic alpha\\s*73', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal'])
+  await page.keyboard.type('6')
+  await expectRows(page, ['Synthetic alpha\\s*73', 'Synthetic beta\\s*16', 'Synthetic overdue goal', 'Synthetic daily goal'])
+
+  // The delete control accepts clicks just outside its icon.
+  const remove = rows(page).nth(1).getByRole('button', { name: 'Delete Synthetic beta' })
+  const box = (await remove.boundingBox())!
+  await page.mouse.click(box.x - 4, box.y + box.height + 3)
+  await expect(rows(page)).toHaveCount(3)
+})
+
+test('IMAX is offered only inside a prioritizing session', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'IMAX is desktop-only')
+  await seed(page)
+  await openView(page, 'Prioritize')
+  const enter = page.getByRole('button', { name: 'Enter IMAX mode' })
+  await expect(enter).toHaveCount(0)
+  await page.getByRole('button', { name: 'Start prioritizing' }).click()
+  await expect(enter).toBeVisible()
+  await page.keyboard.press('Alt+KeyI')
+  await page.getByRole('button', { name: 'Back' }).click()
+  await expect(page.locator('.imax-exit-control')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Past sessions' }).click()
+  await expect(page.getByRole('button', { name: 'Exit IMAX mode' })).toHaveCount(1)
+  await page.getByRole('button', { name: 'Exit IMAX mode' }).click()
+  await expect(page.getByRole('button', { name: /IMAX mode/ })).toHaveCount(0)
 })
 
 test('touch prioritizing uses tapped rows and a next button', async ({ page }, testInfo) => {

@@ -44,11 +44,12 @@ function changedItem(before: Item[], after: Item[]) {
   const previous = locations(before)
   const next = locations(after)
   const ids = [...new Set([...next.keys(), ...previous.keys()])]
-  const changedId = ids.find((id) => {
+  const changedIds = ids.filter((id) => {
     const a = previous.get(id)
     const b = next.get(id)
     return !a || !b || !sameFields(a.item, b.item, ['children']) || a.parentId !== b.parentId
-  }) ?? ids.find((id) => previous.get(id)?.index !== next.get(id)?.index)
+  })
+  const changedId = changedIds[0] ?? ids.find((id) => previous.get(id)?.index !== next.get(id)?.index)
   if (!changedId) return null
   const a = previous.get(changedId)
   const b = next.get(changedId)
@@ -60,7 +61,7 @@ function changedItem(before: Item[], after: Item[]) {
     const siblings = [...next.values()].filter((entry) => entry.parentId === a?.parentId)
     itemId = (siblings[Math.min(a?.index ?? 0, siblings.length - 1)])?.item.id
   }
-  return { itemId, removed: !b, completion: !!completion }
+  return { itemId, removed: !b, completion: !!completion, bulk: changedIds.length > 1 }
 }
 
 export function historyDestination(before: AppState, after: AppState): HistoryDestination | null {
@@ -91,7 +92,8 @@ export function historyDestination(before: AppState, after: AppState): HistoryDe
       const subject = change?.completion ? 'completion' : change ? 'item change' : 'change'
       const context = entity.date ? null : name ?? ({ today: 'Today', templates: 'Days', listTemplates: 'Lists', lists: 'List History', notes: 'Notes', projects: 'Projects', prioritize: 'Prioritize', metrics: 'Quizzes', goals: 'Goals' }[view])
       destinations.push({
-        view, entityId: id, itemId: change?.itemId, date: entity.date,
+        // A Prioritize reveal selects its row, so whole-list changes like Spread select nothing.
+        view, entityId: id, itemId: view === 'prioritize' && change?.bulk ? undefined : change?.itemId, date: entity.date,
         listTemplateId: entity.listTemplateId,
         label: context ? `${subject} · ${context}` : subject,
         removed: !b || (change?.removed ?? false),

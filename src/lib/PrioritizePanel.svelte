@@ -22,6 +22,7 @@
   export let currentDay: string
   export let maximized = false
   export let onToggleMaximized: (event: MouseEvent) => void
+  export let sessionOpen = false
 
   // Touch keyboards need a real (invisible) input behind the number card.
   const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
@@ -33,6 +34,8 @@
   let addText = ''
   let numberDraft = ''
   let draftItemId: Id | null = null
+  // A freshly selected number is replaced by typing, like selected text.
+  let replaceDraft = false
   let editingId: Id | null = null
   let editText = ''
   let addInput: HTMLInputElement | undefined
@@ -49,6 +52,7 @@
   $: syncDraft(selected)
   $: scrollSelectedIntoView(selectedId, ordered)
   $: leaveMissingSession(sessions)
+  $: sessionOpen = screen === 'session' && !!session
   $: pastSessions = [...sessions].sort((left, right) => right.createdAt.localeCompare(left.createdAt))
 
   function ensureSelection(order: PriorityItem[]) {
@@ -106,6 +110,8 @@
     unsubscribeReveal = prioritizeReveal.subscribe((target) => {
       if (!target) return
       prioritizeReveal.set(null)
+      // Undoing a whole-list change (like Spread) keeps the current selection.
+      if (!target.itemId && screen === 'session' && sessionId === target.sessionId) return
       if (sessions.some((candidate) => candidate.id === target.sessionId)) void openSession(target.sessionId, target.itemId)
     })
   })
@@ -127,8 +133,11 @@
     if (!item) {
       draftItemId = null
       numberDraft = ''
-    } else if (item.id !== draftItemId || parseDraft(numberDraft) !== item.priority) {
+    } else if (item.id !== draftItemId) {
       draftItemId = item.id
+      numberDraft = formatPriority(item.priority)
+      replaceDraft = true
+    } else if (parseDraft(numberDraft) !== item.priority) {
       numberDraft = formatPriority(item.priority)
     }
     if (numberProxy) numberProxy.value = numberDraft
@@ -141,6 +150,7 @@
   }
 
   function applyDraft(draft: string) {
+    replaceDraft = false
     numberDraft = draft
     if (numberProxy) numberProxy.value = draft
     if (!session || !selected) return
@@ -149,7 +159,7 @@
   }
 
   function typeNumber(text: string) {
-    applyDraft(sanitize(numberDraft + text))
+    applyDraft(sanitize((replaceDraft ? '' : numberDraft) + text))
   }
 
   function move(delta: number) {
@@ -251,7 +261,9 @@
   }
 
   function handleProxyInput() {
-    if (numberProxy && numberProxy.value !== numberDraft) applyDraft(sanitize(numberProxy.value))
+    if (!numberProxy || numberProxy.value === numberDraft) return
+    const value = numberProxy.value
+    applyDraft(sanitize(replaceDraft && value.startsWith(numberDraft) ? value.slice(numberDraft.length) : value))
   }
 
   // Typing anywhere on the page goes to the matching field.
@@ -304,6 +316,7 @@
 
   function selectRow(id: Id) {
     selectedId = id
+    replaceDraft = true
     focusNumber()
   }
 
@@ -368,7 +381,6 @@
 
 <section class="prioritize-panel" aria-label="Prioritize">
   {#if screen === 'home'}
-    <ImaxButton active={maximized} onToggle={onToggleMaximized} />
     <header class="page-header"><h2>Prioritize</h2></header>
     <div class="prioritize-home">
       <button class="primary prioritize-start" type="button" on:click={start}>Start prioritizing</button>
@@ -379,7 +391,6 @@
   {:else if screen === 'past'}
     <header class="page-header prioritize-past-header">
       <button class="ghost prioritize-back" type="button" on:click={() => (screen = 'home')}>Back</button>
-      <ImaxButton active={maximized} onToggle={onToggleMaximized} />
       <h2>Past sessions</h2>
     </header>
     <ul class="prioritize-past">
@@ -442,7 +453,7 @@
             on:click={focusNumber}
             on:keydown={handleNumberKeydown}
           >
-            <h3 class:unset={!numberDraft}>{numberDraft || '0'}</h3>
+            <h3 class:unset={!numberDraft} class:replacing={replaceDraft && numberDraft !== ''}>{numberDraft || '0'}</h3>
             {#if touch}
               <input
                 class="prioritize-number-proxy"
@@ -530,11 +541,6 @@
     flex-direction: column;
     min-width: 0;
     height: 100%;
-  }
-
-  .prioritize-panel > :global(.imax-button) {
-    align-self: flex-start;
-    margin-bottom: 8px;
   }
 
   .page-header h2 {
@@ -658,6 +664,31 @@
     gap: 8px;
   }
 
+  /* IMAX matches the ghost Back and Spread buttons beside it. */
+  .prioritize-toolbar :global(.imax-button) {
+    width: auto;
+    height: auto;
+    align-self: stretch;
+    padding: 0 12px;
+    border-color: transparent;
+    background: transparent;
+    color: var(--muted);
+  }
+
+  .prioritize-toolbar :global(.imax-button:hover) {
+    border-color: var(--line);
+    color: var(--ink);
+  }
+
+  .prioritize-toolbar :global(.imax-button .imax-logo) {
+    width: 40px;
+    color: inherit;
+  }
+
+  .prioritize-toolbar :global(.imax-button.active) {
+    color: var(--accent-strong);
+  }
+
   .prioritize-entry {
     display: flex;
     grid-area: entry;
@@ -721,6 +752,19 @@
     font-weight: 700;
     line-height: 1.1;
     overflow-wrap: anywhere;
+  }
+
+  /* Shown while focused: the next digit replaces the number. */
+  .prioritize-number h3.replacing {
+    width: fit-content;
+    margin-inline: auto;
+    padding-inline: 6px;
+    border-radius: 6px;
+  }
+
+  .prioritize-number:focus h3.replacing,
+  .prioritize-number:focus-within h3.replacing {
+    background: var(--focus-ring);
   }
 
   .prioritize-number h3.unset {
@@ -800,6 +844,7 @@
   }
 
   .priority-delete {
+    position: relative;
     align-self: center;
     height: 16px;
     padding: 0;
@@ -807,6 +852,13 @@
     border-radius: 4px;
     background: transparent;
     color: var(--muted);
+  }
+
+  /* A larger invisible hit target around the small button. */
+  .priority-delete::before {
+    position: absolute;
+    inset: -6px -8px;
+    content: '';
   }
 
   .priority-delete:hover {
