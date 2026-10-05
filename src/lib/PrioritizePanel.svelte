@@ -116,12 +116,11 @@
   }
 
   function parseDraft(draft: string) {
-    return draft === '' || draft === '.' ? undefined : Number(draft)
+    return draft === '' ? undefined : Number(draft)
   }
 
   function sanitize(raw: string) {
-    const [whole, ...fraction] = raw.replace(/,/g, '.').replace(/[^0-9.]/g, '').split('.')
-    return (fraction.length ? `${whole}.${fraction.join('')}` : whole).slice(0, 9)
+    return raw.replace(/\D/g, '').slice(0, 9)
   }
 
   function syncDraft(item: PriorityItem | null) {
@@ -236,9 +235,6 @@
     } else if (digit && !event.metaKey && !event.ctrlKey && !event.altKey) {
       event.preventDefault()
       typeNumber(digit)
-    } else if (isPlainKey(event) && /[.,]/.test(event.key)) {
-      event.preventDefault()
-      typeNumber('.')
     } else if (isPlainKey(event) && event.key !== ' ') {
       event.preventDefault()
       focusAdd(event.key)
@@ -451,7 +447,7 @@
               <input
                 class="prioritize-number-proxy"
                 type="text"
-                inputmode="decimal"
+                inputmode="numeric"
                 enterkeyhint="next"
                 autocomplete="off"
                 aria-hidden="true"

@@ -73,38 +73,13 @@ export function defaultPrioritySeeds(
 // Neighbouring values this close leave no comfortable whole number between them.
 const CROWDED_GAP = 3
 
-function distinctRatedValues(items: PriorityItem[]): number[] {
-  return [...new Set(items.flatMap((item) => (item.priority === undefined ? [] : [item.priority])))].sort((left, right) => left - right)
-}
-
 // Ties are deliberate, so only distinct values count as neighbours.
 export function isPriorityScaleCrowded(items: PriorityItem[]): boolean {
-  const values = distinctRatedValues(items)
-  return values.some((value, index) => !Number.isInteger(value) || (index > 0 && value - values[index - 1] <= CROWDED_GAP))
+  const values = [...new Set(items.flatMap((item) => (item.priority === undefined ? [] : [item.priority])))].sort((left, right) => left - right)
+  return values.some((value, index) => index > 0 && value - values[index - 1] <= CROWDED_GAP)
 }
 
-function gcd(left: number, right: number): number {
-  return right ? gcd(right, left % right) : left
-}
-
-// The smallest whole multiplier that turns a value into a whole number.
-function decimalDenominator(value: number): number {
-  const fraction = value.toFixed(8).replace(/0+$/, '').split('.')[1] ?? ''
-  const scale = 10 ** fraction.length
-  return scale / gcd(Math.round(value * scale), scale)
-}
-
-// Doubling widens every gap while keeping order and ties. Decimals that
-// doubling can't clear (like .3) use the smallest multiplier that does.
-export function priorityScaleFactor(items: PriorityItem[]): number {
-  const factor = distinctRatedValues(items).reduce((lcm, value) => {
-    const denominator = decimalDenominator(value)
-    return (lcm * denominator) / gcd(lcm, denominator)
-  }, 1)
-  return factor < 2 ? 2 : factor
-}
-
+// Doubling widens every gap while keeping order and ties.
 export function spreadPriorityItems(items: PriorityItem[]): PriorityItem[] {
-  const factor = priorityScaleFactor(items)
-  return items.map((item) => (item.priority === undefined ? item : { ...item, priority: Math.round(item.priority * factor) }))
+  return items.map((item) => (item.priority === undefined ? item : { ...item, priority: item.priority * 2 }))
 }
