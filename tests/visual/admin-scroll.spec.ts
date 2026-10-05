@@ -27,6 +27,8 @@ test('Escape leaves task editing; held W/S accelerates linearly and stops immedi
   const scrollTop = () => page.locator('.workspace').evaluate(el => el.scrollTop)
   await page.clock.install()
   await page.clock.pauseAt(new Date())
+  // Align Playwright's 16 ms frames so the 400 ms intervals end on a frame.
+  await page.clock.runFor(16 - (await page.evaluate(() => performance.now() % 16)))
   const initial = await scrollTop()
   await page.keyboard.down('s')
   await page.clock.runFor(400)
@@ -95,6 +97,8 @@ test('admin settings show defaults, persist scroll tuning and reset it; studio m
     await openView(page, 'Today')
     await page.clock.install()
     await page.clock.pauseAt(new Date())
+    // Align Playwright's 16 ms frames so the 400 ms interval ends on a frame.
+    await page.clock.runFor(16 - (await page.evaluate(() => performance.now() % 16)))
     const workspace = page.locator('.workspace')
     const initial = await workspace.evaluate(el => el.scrollTop)
     await page.keyboard.down('s')
