@@ -316,8 +316,15 @@
     return `${isMac ? '⌥⇧' : 'Alt+Shift+'}${key}`
   }
 
-  // Playwright pins the start page to Today because most tests begin there.
-  let view: View = import.meta.env.VITE_BALANCE_START_VIEW === 'today' ? 'today' : 'next'
+  const storedWorkspaceViewState = readWorkspaceViewState()
+  const launchDate = todayISO()
+  // Next greets the first launch of each Balance day; later launches that day
+  // resume the last page. Playwright pins the start page to Today because most
+  // tests begin there.
+  const resumesLastView = import.meta.env.VITE_BALANCE_START_VIEW === 'today' || storedWorkspaceViewState?.launchDate === launchDate
+  let view: View = import.meta.env.VITE_BALANCE_START_VIEW === 'today'
+    ? 'today'
+    : (resumesLastView && storedWorkspaceViewState?.view) || 'next'
   let linkedProjectId = ''
 
   function applyDefaultZoom() {
@@ -2036,7 +2043,6 @@ return rows`
     window.addEventListener('focus', refreshCurrentDay)
     document.addEventListener('visibilitychange', refreshCurrentDay)
     document.addEventListener('visibilitychange', handleCelebrationVisibilityChange)
-    const storedWorkspaceViewState = readWorkspaceViewState()
 
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
 
@@ -2153,7 +2159,7 @@ return rows`
         listOverlayScrollTopsByList = storedWorkspaceViewState.listOverlayScrollTopsByList
         listOverlayBottomCollapsesByList = storedWorkspaceViewState.listOverlayBottomCollapsesByList
 
-        const storedOverlay = storedWorkspaceViewState.listOverlay
+        const storedOverlay = resumesLastView ? storedWorkspaceViewState.listOverlay : null
         if (storedOverlay && $plannerStore.lists.some((list) => list.id === storedOverlay.listId)) {
           listOverlay = {
             listId: storedOverlay.listId,
@@ -2814,6 +2820,8 @@ return rows`
   }
 
   function readWorkspaceViewState(): {
+    view: View | null
+    launchDate: string | null
     scrollPositionsByPage: Record<string, number>
     listOverlay: ({ listId: Id; date: string; opener: Opener | null; view: View }) | null
     selectedListOverlayItemIdsByList: Record<Id, Id | null>
@@ -2838,6 +2846,8 @@ return rows`
       }
 
       return {
+        view: isView(parsed.view) ? parsed.view : null,
+        launchDate: typeof parsed.launchDate === 'string' ? parsed.launchDate : null,
         scrollPositionsByPage: readStoredNumberRecord(parsed.scrollPositionsByPage, (key) => key.startsWith('today:')),
         listOverlay: storedOverlay,
         selectedListOverlayItemIdsByList: readStoredNullableIdRecord(parsed.selectedListOverlayItemIdsByList),
@@ -2856,6 +2866,7 @@ return rows`
       value === 'templates' ||
       value === 'listTemplates' ||
       value === 'lists' ||
+      value === 'notes' ||
       value === 'projects' ||
       value === 'prioritize' ||
       value === 'metrics' ||
@@ -2918,6 +2929,8 @@ return rows`
     localStorage.setItem(
       WORKSPACE_VIEW_STATE_KEY,
       JSON.stringify({
+        view: currentView,
+        launchDate,
         scrollPositionsByPage: scrollPositions,
         listOverlay: visibleOverlay,
         selectedListOverlayItemIdsByList: selectedItemIdsByList,
