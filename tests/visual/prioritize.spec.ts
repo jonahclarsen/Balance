@@ -49,7 +49,7 @@ async function sessions(page: Page) {
 const rows = (page: Page) => page.locator('.priority-list li')
 
 async function expectRows(page: Page, expected: string[]) {
-  await expect(rows(page)).toHaveText(expected.map((text, index) => new RegExp(`^${index + 1}\\s*${text}\\s*$`)))
+  await expect(rows(page)).toHaveText(expected.map((text, index) => new RegExp(`^\\s*${index + 1}\\s*${text}\\s*$`)))
 }
 
 test('keyboard prioritizing reorders, persists, undoes and times out', async ({ page }, testInfo) => {
@@ -57,22 +57,23 @@ test('keyboard prioritizing reorders, persists, undoes and times out', async ({ 
   await seed(page)
   await openView(page, 'Prioritize')
   await expect(page.getByRole('button', { name: 'Past sessions' })).toHaveCount(0)
+  // Archived and completed projects, inactive goals, and goals not yet due are left out.
   await page.getByRole('button', { name: 'Start prioritizing' }).click()
 
   const add = page.getByRole('textbox', { name: 'Add priority' })
   const number = page.locator('.prioritize-number')
-  await expectRows(page, ['Synthetic alpha', 'Synthetic beta', 'Synthetic overdue goal', 'Synthetic daily goal', 'Synthetic monthly goal'])
+  await expectRows(page, ['Synthetic alpha', 'Synthetic beta', 'Synthetic overdue goal', 'Synthetic daily goal'])
   await expect(number).toBeFocused()
 
   await page.keyboard.type('3')
   await page.keyboard.press('Enter')
   await page.keyboard.type('12')
-  await expectRows(page, ['Synthetic beta\\s*12', 'Synthetic alpha\\s*3', 'Synthetic overdue goal', 'Synthetic daily goal', 'Synthetic monthly goal'])
+  await expectRows(page, ['Synthetic beta\\s*12', 'Synthetic alpha\\s*3', 'Synthetic overdue goal', 'Synthetic daily goal'])
   await expect(rows(page).first()).toHaveClass(/selected/)
 
   // Backspace edits the selected value; Enter skips to the next unrated row.
   await page.keyboard.press('Backspace')
-  await expectRows(page, ['Synthetic alpha\\s*3', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal', 'Synthetic monthly goal'])
+  await expectRows(page, ['Synthetic alpha\\s*3', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal'])
   await page.keyboard.press('Enter')
   await expect(rows(page).nth(2)).toHaveClass(/selected/)
   await page.keyboard.press('ArrowDown')
@@ -92,7 +93,7 @@ test('keyboard prioritizing reorders, persists, undoes and times out', async ({ 
   await expect(rows(page).last()).toHaveText(/Synthetic new v2\s*$/)
   await expect(rows(page).last()).toHaveClass(/selected/)
   await page.keyboard.type('2')
-  await expectRows(page, ['Synthetic alpha\\s*3', 'Synthetic new v2\\s*2', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal', 'Synthetic monthly goal'])
+  await expectRows(page, ['Synthetic alpha\\s*3', 'Synthetic new v2\\s*2', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal'])
 
   // A plain digit always moves to the number and appends to it.
   await page.keyboard.press('Tab')
@@ -100,12 +101,12 @@ test('keyboard prioritizing reorders, persists, undoes and times out', async ({ 
   await page.keyboard.type('abc4')
   await expect(number).toBeFocused()
   await expect(add).toHaveValue('abc')
-  await expectRows(page, ['Synthetic new v2\\s*24', 'Synthetic alpha\\s*3', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal', 'Synthetic monthly goal'])
+  await expectRows(page, ['Synthetic new v2\\s*24', 'Synthetic alpha\\s*3', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal'])
   await page.keyboard.press('ControlOrMeta+Backspace')
-  await expectRows(page, ['Synthetic alpha\\s*3', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal', 'Synthetic monthly goal', 'Synthetic new v2'])
+  await expectRows(page, ['Synthetic alpha\\s*3', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal', 'Synthetic new v2'])
   await expect(number).toHaveText('0')
   await page.keyboard.type('9')
-  await expectRows(page, ['Synthetic new v2\\s*9', 'Synthetic alpha\\s*3', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal', 'Synthetic monthly goal'])
+  await expectRows(page, ['Synthetic new v2\\s*9', 'Synthetic alpha\\s*3', 'Synthetic beta\\s*1', 'Synthetic overdue goal', 'Synthetic daily goal'])
 
   // Clicking a row's words edits them in place.
   await rows(page).nth(2).locator('.priority-text').click()
@@ -114,12 +115,46 @@ test('keyboard prioritizing reorders, persists, undoes and times out', async ({ 
   await page.keyboard.type(' renamed')
   await page.keyboard.press('Enter')
   await expect(number).toBeFocused()
-  await expect(rows(page).nth(2)).toHaveText(/^3\s*Synthetic beta renamed\s*1\s*$/)
+  await expect(rows(page).nth(2)).toHaveText(/^\s*3\s*Synthetic beta renamed\s*1\s*$/)
   await rows(page).nth(3).locator('.priority-text').click()
   await page.keyboard.type(' x')
   await page.locator('.prioritize-add').click()
   await expect(rows(page).nth(3)).toHaveText(/Synthetic overdue goal x\s*$/)
   await expect(page.getByText('Overdue only')).toHaveCount(0)
+
+  // Cmd/Ctrl+E edits the selected row; Escape saves like Enter.
+  await rows(page).nth(2).locator('.priority-rank').click()
+  await page.keyboard.press('ControlOrMeta+e')
+  await expect(edit).toBeFocused()
+  await expect(edit).toHaveValue('Synthetic beta renamed')
+  await page.keyboard.type(' too')
+  await page.keyboard.press('Escape')
+  await expect(number).toBeFocused()
+  await expect(rows(page).nth(2)).toHaveText(/Synthetic beta renamed too\s*1\s*$/)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(rows(page).nth(2)).toHaveText(/Synthetic beta renamed\s*1\s*$/)
+
+  // Arrow keys wrap around the ends of the list.
+  await rows(page).first().locator('.priority-rank').click()
+  await page.keyboard.press('ArrowUp')
+  await expect(rows(page).last()).toHaveClass(/selected/)
+  await page.keyboard.press('ArrowDown')
+  await expect(rows(page).first()).toHaveClass(/selected/)
+
+  // The selected row's x or Cmd/Ctrl+D deletes it; selection takes its place.
+  await page.keyboard.press('ArrowDown')
+  await expect(rows(page).nth(1).getByRole('button', { name: /^Delete / })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Delete / })).toHaveCount(1)
+  await page.keyboard.press('ControlOrMeta+d')
+  await expect(rows(page)).toHaveCount(4)
+  await expect(rows(page).nth(1)).toHaveText(/Synthetic beta renamed/)
+  await expect(rows(page).nth(1)).toHaveClass(/selected/)
+  await rows(page).nth(1).getByRole('button', { name: 'Delete Synthetic beta renamed' }).click()
+  await expect(rows(page)).toHaveCount(3)
+  await page.keyboard.press('ControlOrMeta+z')
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(rows(page)).toHaveCount(5)
+  await expect(rows(page).nth(1)).toHaveText(/Synthetic alpha\s*3\s*$/)
 
   // Long priorities wrap instead of truncating, also while editing.
   const long = 'Synthetic long priority '.repeat(8).trim()
@@ -132,8 +167,9 @@ test('keyboard prioritizing reorders, persists, undoes and times out', async ({ 
   const editor = page.getByRole('textbox', { name: 'Priority text' })
   expect(await editor.evaluate((field) => field.scrollHeight <= field.clientHeight + 1 && field.clientHeight > 40)).toBe(true)
   await page.keyboard.press('Escape')
+  await expect(number).toBeFocused()
   await page.keyboard.press('ControlOrMeta+z')
-  await expect(rows(page)).toHaveCount(6)
+  await expect(rows(page)).toHaveCount(5)
 
   // IMAX hides the sidebar but keeps Back and the exit control beside it.
   await page.keyboard.press('Alt+KeyI')
@@ -165,10 +201,10 @@ test('keyboard prioritizing reorders, persists, undoes and times out', async ({ 
   await expect(past).toHaveCount(1)
   await expect(past.locator('strong')).toHaveText('Sep 9, 11:00 AM')
   await expect(past.locator('.prioritize-past-edited')).toHaveText('Last edited: Sep 9, 11:00 AM')
-  await expect(past.locator('.prioritize-past-row')).toHaveCount(6)
+  await expect(past.locator('.prioritize-past-row')).toHaveCount(5)
   await expect(past.locator('.prioritize-past-row').first()).toHaveText(/Synthetic new v2\s*9/)
   await past.click()
-  await expect(rows(page)).toHaveCount(6)
+  await expect(rows(page)).toHaveCount(5)
   expect(await sessions(page)).toEqual([before])
 })
 
@@ -177,7 +213,7 @@ test('touch prioritizing uses tapped rows and a next button', async ({ page }, t
   await seed(page)
   await openView(page, 'Prioritize')
   await page.getByRole('button', { name: 'Start prioritizing' }).click()
-  await expect(rows(page)).toHaveCount(5)
+  await expect(rows(page)).toHaveCount(4)
 
   const number = page.locator('.prioritize-number-proxy')
   await rows(page).nth(1).locator('.priority-rank').tap()

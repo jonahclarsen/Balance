@@ -45,8 +45,8 @@ export function nextUnratedId(ordered: PriorityItem[], currentId: Id | null): Id
   return null
 }
 
-// Active, incomplete projects in their page order, then active goals from
-// most overdue to furthest from due.
+// Active, incomplete projects in their page order, then goals due today or
+// overdue, most overdue first.
 export function defaultPrioritySeeds(
   projects: Project[],
   checkIns: ProjectCheckIn[],
@@ -61,11 +61,11 @@ export function defaultPrioritySeeds(
   }
   const openProjects = projects.filter((project) => !project.archived && latestProgress.get(project.id)?.progress !== 100)
   const lapse = new Map(goals.map((goal) => [goal.id, goalDaysUntilLapse(goal, completions, currentDay)]))
-  const activeGoals = goals
-    .filter((goal) => isGoalActiveOnDate(goal, currentDay))
-    .sort((left, right) => (lapse.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (lapse.get(right.id) ?? Number.MAX_SAFE_INTEGER))
+  const dueGoals = goals
+    .filter((goal) => isGoalActiveOnDate(goal, currentDay) && (lapse.get(goal.id) ?? 1) <= 0)
+    .sort((left, right) => lapse.get(left.id)! - lapse.get(right.id)!)
   return [
     ...openProjects.map((project) => ({ text: project.name, projectId: project.id })),
-    ...activeGoals.map((goal) => ({ text: goal.name, goalId: goal.id })),
+    ...dueGoals.map((goal) => ({ text: goal.name, goalId: goal.id })),
   ]
 }

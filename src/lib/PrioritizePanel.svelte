@@ -153,7 +153,7 @@
   function move(delta: number) {
     if (!ordered.length) return
     const index = ordered.findIndex((item) => item.id === selectedId)
-    selectedId = ordered[Math.max(0, Math.min(ordered.length - 1, index + delta))].id
+    selectedId = ordered[(index + delta + ordered.length) % ordered.length].id
   }
 
   function selectNextUnrated() {
@@ -258,6 +258,16 @@
   // Typing anywhere on the page goes to the matching field.
   function handleWindowKeydown(event: KeyboardEvent) {
     if (screen !== 'session' || event.defaultPrevented) return
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.code === 'KeyD') {
+      event.preventDefault()
+      if (selectedId && !event.repeat) deleteItem(selectedId)
+      return
+    }
+    if ((event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey && event.code === 'KeyE') {
+      event.preventDefault()
+      if (selected && !event.repeat) startEdit(selected)
+      return
+    }
     const active = document.activeElement
     if (active && active !== document.body && (active === numberCard || active.matches('input, textarea, select, [contenteditable="true"]'))) return
     if (document.querySelector('.overlay-backdrop, dialog[open]')) return
@@ -270,6 +280,16 @@
     } else {
       focusAdd(event.key)
     }
+  }
+
+  // Selection moves to the row that takes the deleted row's place.
+  function deleteItem(id: Id) {
+    if (!session) return
+    const index = ordered.findIndex((item) => item.id === id)
+    if (id === editingId) editingId = null
+    plannerStore.deletePriorityItem(session.id, id)
+    markActive()
+    if (id === selectedId) selectedId = (ordered[index + 1] ?? ordered[index - 1])?.id ?? null
   }
 
   function selectRow(id: Id) {
@@ -297,13 +317,9 @@
   function handleEditKeydown(event: KeyboardEvent) {
     event.stopPropagation()
     if (event.isComposing) return
-    if (event.key === 'Enter') {
+    if (event.key === 'Enter' || event.key === 'Escape') {
       event.preventDefault()
       commitEdit()
-      focusNumber()
-    } else if (event.key === 'Escape') {
-      event.preventDefault()
-      editingId = null
       focusNumber()
     }
   }
@@ -447,6 +463,20 @@
             on:mousedown|preventDefault
             on:click={() => selectRow(item.id)}
           >
+            {#if item.id === selectedId}
+              <button
+                class="priority-delete"
+                type="button"
+                title="Delete"
+                aria-label={`Delete ${item.text}`}
+                on:mousedown|preventDefault|stopPropagation
+                on:click|stopPropagation={() => deleteItem(item.id)}
+              >
+                <svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 7 10 10M17 7 7 17" /></svg>
+              </button>
+            {:else}
+              <span class="priority-delete-slot" aria-hidden="true"></span>
+            {/if}
             <span class="priority-rank">{index + 1}</span>
             {#if editingId === item.id}
               <textarea
@@ -740,6 +770,38 @@
   .priority-list li.selected {
     background: var(--drop-inside);
     box-shadow: inset 3px 0 0 var(--accent);
+  }
+
+  .priority-delete,
+  .priority-delete-slot {
+    flex: none;
+    width: 16px;
+    margin-right: -6px;
+  }
+
+  .priority-delete {
+    align-self: center;
+    height: 16px;
+    padding: 0;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--muted);
+  }
+
+  .priority-delete:hover {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    color: var(--danger);
+  }
+
+  .priority-delete svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-width: 2.2;
   }
 
   .priority-rank {

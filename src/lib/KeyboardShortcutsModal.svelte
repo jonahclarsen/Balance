@@ -58,6 +58,8 @@
         { keys: ['W / S'], label: 'Hold to scroll Today up / down (no selection or editor focus)' },
         { keys: ['alt', 'X'], label: 'Open Next' },
         { keys: ['mod', 'D'], label: 'Complete the task shown on Next' },
+        { keys: ['mod', 'D'], label: 'Delete the selected priority (while in Prioritize)' },
+        { keys: ['mod', 'E'], label: 'Edit the selected priority (while in Prioritize)' },
         { keys: ['alt', 'T'], label: 'Open Today; press again to jump to today' },
         { keys: ['alt', 'H'], label: 'Open List History' },
         { keys: ['alt', 'N'], label: 'Open Notes' },

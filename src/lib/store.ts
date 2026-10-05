@@ -2022,6 +2022,16 @@ function createPlannerStore() {
       return added ? item.id : null
     },
 
+    deletePriorityItem(sessionId: Id, itemId: Id) {
+      commitEntities('delete_priority_item', { sessionId, itemId }, (state) => {
+        const session = state.prioritySessions.find((candidate) => candidate.id === sessionId)
+        if (!session?.items.some((item) => item.id === itemId)) return state
+        return { ...state, prioritySessions: state.prioritySessions.map((candidate) => candidate === session
+          ? { ...session, items: session.items.filter((item) => item.id !== itemId), updatedAt: nowISO() }
+          : candidate) }
+      })
+    },
+
     renamePriorityItem(sessionId: Id, itemId: Id, text: string) {
       const trimmed = text.replace(/\s+/g, ' ').trim()
       if (!trimmed) return
