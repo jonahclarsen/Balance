@@ -2518,7 +2518,7 @@ return rows`
   }
 
   function viewSupportsImax(targetView: View) {
-    return targetView === 'today' || targetView === 'notes'
+    return targetView === 'today' || targetView === 'notes' || targetView === 'prioritize'
   }
 
   function switchViewFromShortcut(nextView: View) {
@@ -3400,7 +3400,7 @@ return rows`
     }
 
     if (event.altKey && !primaryModifier && !event.shiftKey) {
-      if (event.code === 'KeyI' && (view === 'today' || view === 'notes')) {
+      if (event.code === 'KeyI' && viewSupportsImax(view)) {
         event.preventDefault()
         if (!event.repeat) toggleViewMaximized(view)
         return
@@ -5986,7 +5986,8 @@ return rows`
     ></button>
   {/if}
 
-  {#if viewMaximized}
+  <!-- Prioritize keeps its own button beside Back, clear of its list. -->
+  {#if viewMaximized && view !== 'prioritize'}
     <div class="imax-exit-control">
       <ImaxButton active onToggle={(event) => toggleViewMaximized(view, event)} />
     </div>
@@ -6942,6 +6943,8 @@ return rows`
         {goals}
         {goalCompletions}
         {currentDay}
+        maximized={viewMaximized}
+        onToggleMaximized={(event) => toggleViewMaximized('prioritize', event)}
       />
     {/if}
 

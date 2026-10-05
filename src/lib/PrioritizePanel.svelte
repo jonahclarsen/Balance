@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
   import { plannerStore } from './store'
+  import ImaxButton from './ImaxButton.svelte'
   import {
     PRIORITIZE_IDLE_MS,
     defaultPrioritySeeds,
@@ -18,6 +19,8 @@
   export let goals: Goal[] = []
   export let goalCompletions: GoalCompletion[] = []
   export let currentDay: string
+  export let maximized = false
+  export let onToggleMaximized: (event: MouseEvent) => void
 
   // Touch keyboards need a real (invisible) input behind the number card.
   const touch = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches
@@ -305,9 +308,21 @@
     }
   }
 
-  function focusAtEnd(input: HTMLInputElement) {
-    input.focus()
-    input.setSelectionRange(input.value.length, input.value.length)
+  function fitHeight(field: HTMLTextAreaElement) {
+    field.style.height = 'auto'
+    field.style.height = `${field.scrollHeight}px`
+  }
+
+  function focusAtEnd(field: HTMLTextAreaElement) {
+    fitHeight(field)
+    field.focus()
+    field.setSelectionRange(field.value.length, field.value.length)
+  }
+
+  // Priorities are single lines that wrap; pasted line breaks become spaces.
+  function handleEditInput(event: Event & { currentTarget: HTMLTextAreaElement }) {
+    if (/[\r\n]/.test(editText)) editText = event.currentTarget.value = editText.replace(/[\r\n]+/g, ' ')
+    fitHeight(event.currentTarget)
   }
 
   function formatTime(iso: string) {
@@ -327,7 +342,10 @@
 
 <section class="prioritize-panel" aria-label="Prioritize">
   {#if screen === 'home'}
-    <header class="page-header"><h2>Prioritize</h2></header>
+    <header class="page-header">
+      <h2>Prioritize</h2>
+      <ImaxButton active={maximized} onToggle={onToggleMaximized} />
+    </header>
     <div class="prioritize-home">
       <button class="primary prioritize-start" type="button" on:click={start}>Start prioritizing</button>
       {#if sessions.length}
@@ -338,6 +356,7 @@
     <header class="page-header prioritize-past-header">
       <button class="ghost prioritize-back" type="button" on:click={() => (screen = 'home')}>Back</button>
       <h2>Past sessions</h2>
+      <ImaxButton active={maximized} onToggle={onToggleMaximized} />
     </header>
     <ul class="prioritize-past">
       {#each pastSessions as past (past.id)}
@@ -360,7 +379,10 @@
     </ul>
   {:else if session}
     <div class="prioritize-session" style:--prioritize-bar-height={`${barHeight}px`}>
-      <button class="ghost prioritize-back" type="button" on:click={goHome}>Back</button>
+      <div class="prioritize-toolbar">
+        <button class="ghost prioritize-back" type="button" on:click={goHome}>Back</button>
+        <ImaxButton active={maximized} onToggle={onToggleMaximized} />
+      </div>
       <div class="prioritize-entry" bind:clientHeight={barHeight}>
         <input
           class="prioritize-add"
@@ -429,22 +451,22 @@
           >
             <span class="priority-rank">{index + 1}</span>
             {#if editingId === item.id}
-              <input
+              <textarea
                 class="priority-text-edit"
-                type="text"
+                rows="1"
                 aria-label="Priority text"
-                autocomplete="off"
                 enterkeyhint="done"
                 bind:value={editText}
                 use:focusAtEnd
+                on:input={handleEditInput}
                 on:mousedown|stopPropagation
                 on:click|stopPropagation
                 on:keydown={handleEditKeydown}
                 on:blur={commitEdit}
-              />
+              ></textarea>
             {:else}
               <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-              <span class="priority-text" title={item.text} on:click|stopPropagation={() => startEdit(item)}>{item.text}</span>
+              <span class="priority-text" on:click|stopPropagation={() => startEdit(item)}>{item.text}</span>
             {/if}
             {#if item.priority !== undefined}<span class="priority-value">{item.priority}</span>{/if}
           </li>
@@ -483,8 +505,17 @@
     font-weight: 600;
   }
 
-  .prioritize-past-header {
-    justify-content: flex-start;
+  .prioritize-past-header h2 {
+    flex: 1;
+  }
+
+  /* IMAX hides page headers; keep these, minus titles, for Back and exit. */
+  :global(.app-shell.page-maximized) .prioritize-panel .page-header {
+    display: flex;
+  }
+
+  :global(.app-shell.page-maximized) .prioritize-panel .page-header h2 {
+    visibility: hidden;
   }
 
   .prioritize-back {
@@ -562,9 +593,12 @@
     min-height: 0;
   }
 
-  .prioritize-session > .prioritize-back {
+  .prioritize-toolbar {
+    display: flex;
     grid-area: back;
-    justify-self: start;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
   }
 
   .prioritize-entry {
@@ -681,7 +715,7 @@
 
   .priority-list li {
     display: flex;
-    align-items: center;
+    align-items: baseline;
     gap: 10px;
     padding: 4px 10px;
     border-radius: 6px;
@@ -723,9 +757,7 @@
 
   .priority-text {
     flex: 0 1 auto;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
     cursor: text;
   }
 
@@ -735,9 +767,11 @@
   }
 
   .priority-text-edit {
+    display: block;
     flex: 1;
-    height: 20px;
+    overflow: hidden;
     border: 0;
+    resize: none;
     background: var(--paper-strong);
     color: var(--ink);
     box-shadow: inset 0 0 0 1px var(--accent);
@@ -769,7 +803,7 @@
       flex-direction: column;
     }
 
-    .prioritize-session > .prioritize-back {
+    .prioritize-toolbar {
       margin-bottom: 8px;
     }
 

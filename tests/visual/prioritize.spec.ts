@@ -121,6 +121,29 @@ test('keyboard prioritizing reorders, persists, undoes and times out', async ({ 
   await expect(rows(page).nth(3)).toHaveText(/Synthetic overdue goal x\s*$/)
   await expect(page.getByText('Overdue only')).toHaveCount(0)
 
+  // Long priorities wrap instead of truncating, also while editing.
+  const long = 'Synthetic long priority '.repeat(8).trim()
+  await page.locator('.prioritize-add').fill(long)
+  await page.locator('.prioritize-add').press('Enter')
+  const longRow = rows(page).last()
+  await expect(longRow).toHaveText(new RegExp(`${long}\\s*$`))
+  expect((await longRow.boundingBox())!.height).toBeGreaterThan(50)
+  await longRow.locator('.priority-text').click()
+  const editor = page.getByRole('textbox', { name: 'Priority text' })
+  expect(await editor.evaluate((field) => field.scrollHeight <= field.clientHeight + 1 && field.clientHeight > 40)).toBe(true)
+  await page.keyboard.press('Escape')
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(rows(page)).toHaveCount(6)
+
+  // IMAX hides the sidebar but keeps Back and the exit control beside it.
+  await page.keyboard.press('Alt+KeyI')
+  await expect(page.locator('.app-shell.page-maximized')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Back' })).toBeVisible()
+  await expect(page.locator('.imax-exit-control')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Exit IMAX mode' }).click()
+  await expect(page.locator('.app-shell.page-maximized')).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Enter IMAX mode' })).toBeVisible()
+
   // Undo restores the last lasting edit time too.
   await page.clock.fastForward(5 * 60_000)
   const [before] = await sessions(page)
