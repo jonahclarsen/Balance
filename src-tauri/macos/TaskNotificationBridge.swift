@@ -19,6 +19,10 @@ private final class TaskNotificationDelegate: NSObject, UNUserNotificationCenter
 private let reminderDelegate = TaskNotificationDelegate()
 private let reminderQueue = DispatchQueue(label: "app.balance.task-notifications")
 private let prefix = "balance.sunset."
+// Confined to reminderQueue. Every meaningful write republishes reminders, so
+// ask at most once per process and report missing permission only on change.
+private var requestedAuthorization = false
+private var reportedMissingPermission = false
 
 func initializeDevTaskNotificationCenter() {
     // Cache the helper's app bundle proxy before the runner unregisters its
@@ -62,13 +66,19 @@ func balanceReplaceTaskNotifications(_ raw: UnsafePointer<CChar>) -> Int32 {
         let settings = DispatchSemaphore(value: 0)
         center.getNotificationSettings { authorization = $0.authorizationStatus; settings.signal() }
         settings.wait()
-        if authorization == .notDetermined {
+        var allowed = authorization != .notDetermined && authorization != .denied
+        if authorization == .notDetermined && !requestedAuthorization {
+            requestedAuthorization = true
             let permission = DispatchSemaphore(value: 0)
-            var allowed = false
             center.requestAuthorization(options: [.alert, .sound]) { granted, _ in allowed = granted; permission.signal() }
             permission.wait()
-            if !allowed { NSLog("Balance sunset notifications need notification permission"); return }
-        } else if authorization == .denied { NSLog("Balance sunset notifications need notification permission"); return }
+        }
+        guard allowed else {
+            if !reportedMissingPermission { NSLog("Balance sunset notifications need notification permission") }
+            reportedMissingPermission = true
+            return
+        }
+        reportedMissingPermission = false
         var failed = false
         for record in wanted {
             let id = prefix + record.id
