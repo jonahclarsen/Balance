@@ -1428,6 +1428,90 @@ test('moving the caret onto the final visual line scrolls fully to the page bott
   )).toBeLessThanOrEqual(4)
 })
 
+for (const moveTiming of ['before layout finishes', 'after a frame is queued'] as const) {
+  test(`moving away from the last note line ${moveTiming} preserves the newer scroll`, async ({ page }) => {
+    await page.goto('/')
+    await openNotesView(page)
+    await page.getByRole('button', { name: '+ New note' }).click()
+    const editor = page.locator('[data-note-text-input]').first()
+    await editor.fill(Array.from({ length: 100 }, (_, index) => `Keep this note line visible ${index + 1}`).join(' '))
+    await placeCaretAtOffset(editor, 17)
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+    }))
+    await setNoteScrollTop(page, 0)
+
+    // Control the order of layout and scroll callbacks without changing the app.
+    await page.evaluate(() => {
+      const runtime = window as any
+      const frames = new Map<number, FrameRequestCallback>()
+      let nextId = 1_000_000
+      runtime.noteFollowFrames = frames
+      runtime.noteFollowOriginalRaf = window.requestAnimationFrame
+      runtime.noteFollowOriginalCancel = window.cancelAnimationFrame
+      window.requestAnimationFrame = (callback) => {
+        frames.set(++nextId, callback)
+        return nextId
+      }
+      window.cancelAnimationFrame = (id) => {
+        if (!frames.delete(id)) runtime.noteFollowOriginalCancel(id)
+      }
+    })
+
+    try {
+      await editor.evaluate((element, moveBeforeLayout) => {
+        const selectOffset = (offset: number) => {
+          const range = document.createRange()
+          range.setStart(element.firstChild!, offset)
+          range.collapse(true)
+          const selection = document.getSelection()!
+          selection.removeAllRanges()
+          selection.addRange(range)
+          document.dispatchEvent(new Event('selectionchange'))
+        }
+        selectOffset(element.textContent!.length)
+        if (moveBeforeLayout) selectOffset(17)
+      }, moveTiming === 'before layout finishes')
+      if (moveTiming === 'after a frame is queued') {
+        await expect.poll(() => page.evaluate(() => (window as any).noteFollowFrames.size)).toBeGreaterThan(0)
+        await placeCaretAtOffset(editor, 17)
+        await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')))
+      }
+      const newerScroll = await setNoteScrollTop(page, 240)
+      expect(newerScroll).toBeGreaterThan(0)
+      await page.evaluate(() => {
+        const frames: Map<number, FrameRequestCallback> = (window as any).noteFollowFrames
+        for (const [id, callback] of [...frames]) {
+          frames.delete(id)
+          callback(performance.now())
+        }
+      })
+      await expect.poll(() => noteScrollTop(page)).toBe(newerScroll)
+      await expect.poll(() => noteSelectionEndpoints(page)).toMatchObject({
+        anchor: { offset: 17 },
+        focus: { offset: 17 },
+      })
+    } finally {
+      await page.evaluate(() => {
+        const runtime = window as any
+        window.requestAnimationFrame = runtime.noteFollowOriginalRaf
+        window.cancelAnimationFrame = runtime.noteFollowOriginalCancel
+        for (const callback of runtime.noteFollowFrames.values()) requestAnimationFrame(callback)
+        runtime.noteFollowFrames.clear()
+      })
+    }
+
+    await placeCaretAtOffset(editor, await editor.evaluate((element) => element.textContent!.length))
+    await page.evaluate(() => document.dispatchEvent(new Event('selectionchange')))
+    await expect.poll(() => page.evaluate(() => {
+      const noteDocument = document.querySelector<HTMLElement>('.note-document')
+      const noteDocumentScrolls = noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)
+      const scroller = noteDocumentScrolls ? noteDocument : document.scrollingElement
+      return scroller ? scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop : Infinity
+    })).toBeLessThanOrEqual(4)
+  })
+}
+
 test('Enter moves the caret into the newly created note line', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
