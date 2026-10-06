@@ -1,0 +1,146 @@
+name: Profile day navigation
+
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Git ref for the baseline run
+        required: true
+        default: "main"
+        type: string
+      candidate_ref:
+        description: Git ref for the comparison run
+        required: true
+        default: "main"
+        type: string
+      cpu_contention:
+        description: Run two busy host CPU workers during the measurements
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    name: Day navigation on macOS arm64
+    runs-on: macos-15
+    timeout-minutes: 40
+    env:
+      BASELINE_REF: ${{ inputs.baseline_ref }}
+      CANDIDATE_REF: ${{ inputs.candidate_ref }}
+      CPU_CONTENTION: ${{ inputs.cpu_contention }}
+
+    steps:
+      - name: Check out benchmark harness
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies, Chromium and WebKit
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec playwright install chromium webkit
+
+      - name: Prepare matched revisions
+        env:
+          BASELINE_DIR: ${{ runner.temp }}/balance-day-nav-baseline
+          CANDIDATE_DIR: ${{ runner.temp }}/balance-day-nav-candidate
+        run: |
+          set -euo pipefail
+          resolve_ref() {
+            ref="$1"
+            if git rev-parse --verify "${ref}^{commit}" >/dev/null 2>&1; then
+              git rev-parse --verify "${ref}^{commit}"
+              return
+            fi
+            git fetch --no-tags origin "$ref"
+            git rev-parse --verify 'FETCH_HEAD^{commit}'
+          }
+          baseline_sha="$(resolve_ref "$BASELINE_REF")"
+          candidate_sha="$(resolve_ref "$CANDIDATE_REF")"
+          {
+            echo "BASELINE_SHA=$baseline_sha"
+            echo "CANDIDATE_SHA=$candidate_sha"
+            echo "BASELINE_DIR=$BASELINE_DIR"
+            echo "CANDIDATE_DIR=$CANDIDATE_DIR"
+          } >> "$GITHUB_ENV"
+
+          for target in "$BASELINE_DIR:$baseline_sha" "$CANDIDATE_DIR:$candidate_sha"; do
+            directory="${target%%:*}"
+            git worktree add --detach "$directory" "${target#*:}"
+            # Both revisions run the same harness so only the app code differs.
+            mkdir -p "$directory/tests/performance"
+            cp tests/performance/day-navigation.spec.ts "$directory/tests/performance/"
+            cp playwright.day-navigation-performance.config.ts "$directory/"
+            (cd "$directory" && pnpm install --force --frozen-lockfile --offline)
+          done
+
+      - name: Alternate measured runs
+        run: |
+          set -euo pipefail
+          output="$PWD/artifacts/day-navigation-profile"
+          mkdir -p "$output"
+          if [[ "$CPU_CONTENTION" == "true" ]]; then
+            load_pids=()
+            for worker in 1 2; do
+              yes > /dev/null &
+              load_pids+=("$!")
+            done
+            trap 'kill "${load_pids[@]}" 2>/dev/null || true' EXIT
+          fi
+
+          run_profile() {
+            variant="$1"
+            round="$2"
+            directory="$BASELINE_DIR"
+            if [[ "$variant" == candidate ]]; then directory="$CANDIDATE_DIR"; fi
+            echo "::group::$variant round $round"
+            (
+              cd "$directory"
+              BALANCE_DAY_NAV_REVISION="$variant" \
+              BALANCE_DAY_NAV_REPORT_DIR="$output/round-$round" \
+                pnpm exec playwright test --config playwright.day-navigation-performance.config.ts
+            ) 2>&1 | tee "$output/$variant-$round.log"
+            echo "::endgroup::"
+          }
+
+          for round in 1 2 3; do
+            if (( round % 2 == 1 )); then
+              run_profile baseline "$round"
+              run_profile candidate "$round"
+            else
+              run_profile candidate "$round"
+              run_profile baseline "$round"
+            fi
+          done
+
+      - name: Summarize matched measurements
+        run: |
+          {
+            echo '## Day navigation profile (macOS arm64)'
+            echo
+            echo "Baseline: \`$BASELINE_SHA\` · Candidate: \`$CANDIDATE_SHA\` · CPU contention: $CPU_CONTENTION"
+            echo
+            node .github/scripts/summarize-day-navigation-profile.mjs artifacts/day-navigation-profile
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload profiles
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: day-navigation-profile
+          path: artifacts/day-navigation-profile
+          if-no-files-found: error
