@@ -87,8 +87,10 @@ pub(crate) fn snapshot_from_plan(
         flatten_items(items, 0, &mut all_items);
     }
 
-    let total = all_items.len();
-    let done = all_items.iter().filter(|(_, done, _, _)| *done).count();
+    let (mut done, mut total) = (0, 0);
+    if let Some(items) = plan.get("items").and_then(Value::as_array) {
+        count_items(items, &mut done, &mut total);
+    }
     let pending = all_items
         .into_iter()
         .filter(|(_, done, _, _)| !done)
@@ -221,6 +223,35 @@ fn flatten_items(items: &[Value], depth: usize, output: &mut Vec<(String, bool, 
     }
 }
 
+// A "plan tomorrow" task counts as one item; its subtasks are part of that
+// planning and don't inflate the day's progress.
+fn count_items(items: &[Value], done: &mut usize, total: &mut usize) {
+    for item in items {
+        let text = item
+            .get("text")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .unwrap_or_default();
+        if !text.is_empty() {
+            *total += 1;
+            if item.get("done").and_then(Value::as_bool).unwrap_or(false) {
+                *done += 1;
+            }
+        }
+        if is_plan_tomorrow_item(text) {
+            continue;
+        }
+        if let Some(children) = item.get("children").and_then(Value::as_array) {
+            count_items(children, done, total);
+        }
+    }
+}
+
+fn is_plan_tomorrow_item(text: &str) -> bool {
+    let text = text.to_lowercase();
+    text.contains("plan tmw") || text.contains("plan tomorrow")
+}
+
 fn item_time_label(item: &Value) -> String {
     if item
         .get("timeHidden")
@@ -334,6 +365,42 @@ mod tests {
             snapshot.item_times,
             ["9am–10:15am", "", "", "", "", "", "", "", "", ""]
         );
+    }
+
+    #[test]
+    fn widget_snapshot_counts_plan_tomorrow_items_once() {
+        let plan = json!({
+            "items": [
+                { "text": "Workout", "done": true, "children": [] },
+                {
+                    "text": "Plan TMW",
+                    "done": false,
+                    "children": [
+                        {
+                            "text": "Pick outfit",
+                            "done": true,
+                            "children": [{ "text": "Iron shirt", "done": false, "children": [] }]
+                        }
+                    ]
+                },
+                {
+                    "text": "Evening",
+                    "done": false,
+                    "children": [
+                        {
+                            "text": "Plan tomorrow's meals",
+                            "done": true,
+                            "children": [{ "text": "Groceries", "done": true, "children": [] }]
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let snapshot = snapshot_from_plan("2026-08-01", Some(&plan), "ocean");
+
+        assert_eq!(snapshot.done, 2);
+        assert_eq!(snapshot.total, 4);
     }
 
     #[test]
