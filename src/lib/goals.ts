@@ -383,6 +383,24 @@ export function planItemGoalMatchesChanged(
   })
 }
 
+// Completion dates are sorted ISO strings, so Goal Rhythm can binary search them
+// instead of rescanning a long history for every cadence segment.
+function firstDateIndexAtOrAfter(sortedDates: string[], date: string): number {
+  let low = 0
+  let high = sortedDates.length
+  while (low < high) {
+    const middle = (low + high) >>> 1
+    if (sortedDates[middle] < date) low = middle + 1
+    else high = middle
+  }
+  return low
+}
+
+function completionWithin(sortedDates: string[], startDate: string, endDate: string): string | undefined {
+  const date = sortedDates[firstDateIndexAtOrAfter(sortedDates, startDate)]
+  return date !== undefined && date <= endDate ? date : undefined
+}
+
 export function buildGoalDayCells(
   goal: Goal,
   completions: GoalCompletion[],
@@ -424,13 +442,14 @@ export function buildGoalDayCells(
       // A display/cadence boundary is not a deadline. Freeze closed periods at
       // their boundary so a later rule cannot retroactively fail earlier days.
       const evaluationDate = minISODate(currentDate, shiftISODate(periodEnd, 1))
-      const previousCompletion = sortedCompletions.filter(
-        (date) => date >= activityPeriod.startDate && date < period.startDate,
-      ).at(-1)
+      const previousCandidate = sortedCompletions[firstDateIndexAtOrAfter(sortedCompletions, period.startDate) - 1]
+      const previousCompletion = previousCandidate !== undefined && previousCandidate >= activityPeriod.startDate
+        ? previousCandidate
+        : undefined
       let deadline = cadenceDeadline(period, previousCompletion)
 
       if (previousCompletion && deadline > segmentStart) {
-        const nextCompletion = sortedCompletions.find((date) => date >= segmentStart && date <= periodEnd)
+        const nextCompletion = completionWithin(sortedCompletions, segmentStart, periodEnd)
         const coverageEnd = minISODate(
           shiftISODate(deadline, -1),
           nextCompletion ? shiftISODate(nextCompletion, -1) : periodEnd,
@@ -440,7 +459,7 @@ export function buildGoalDayCells(
       }
 
       while (segmentStart <= periodEnd && segmentStart <= visibleEnd) {
-        const nextCompletion = sortedCompletions.find((date) => date >= segmentStart && date <= periodEnd)
+        const nextCompletion = completionWithin(sortedCompletions, segmentStart, periodEnd)
         if (!nextCompletion) {
           if (deadline < evaluationDate) {
             // An overdue obligation has no projected cadence until completion.
@@ -476,9 +495,7 @@ export function buildGoalDayCells(
         }
 
         const coverageEnd = minISODate(shiftISODate(nextCompletion, period.cadenceDays - 1), periodEnd)
-        const followingCompletion = sortedCompletions.find(
-          (date) => date > nextCompletion && date <= coverageEnd,
-        )
+        const followingCompletion = completionWithin(sortedCompletions, shiftISODate(nextCompletion, 1), coverageEnd)
         const segmentEnd = followingCompletion ? shiftISODate(followingCompletion, -1) : coverageEnd
         markSegment(cells, indexesByDate, nextCompletion, segmentEnd, coverageEnd, true, evaluationDate)
 
@@ -524,12 +541,13 @@ export function goalDaysUntilLapse(
   const cadencePeriod = cadencePeriodsWithinActivity(goal, period, currentDate).at(-1)
   if (!cadencePeriod) return null
 
-  const sortedCompletions = [
-    ...new Set(completions.filter((completion) => completion.goalId === goal.id).map((completion) => completion.date)),
-  ]
-    .filter((date) => date >= period.startDate && date <= currentDate)
-    .sort()
-  const latestCompletion = sortedCompletions.at(-1)
+  // Goal Rhythm calls this for every goal on each day change, so find the
+  // latest completion in one pass instead of filtering and sorting.
+  let latestCompletion: string | undefined
+  for (const completion of completions) {
+    if (completion.goalId !== goal.id || completion.date < period.startDate || completion.date > currentDate) continue
+    if (latestCompletion === undefined || completion.date > latestCompletion) latestCompletion = completion.date
+  }
   const deadline = cadenceDeadline(cadencePeriod, latestCompletion)
 
   if (period.endDate && deadline > period.endDate) return null

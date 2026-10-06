@@ -1635,7 +1635,12 @@ test('goal rhythm bolds the current day and keeps it bold when another day is se
   await expect(tomorrowHead).toHaveClass(/viewed/)
   await expect(tomorrowHead).not.toHaveClass(/today/)
   await expect(tomorrowHead.locator('strong')).toHaveCSS('font-weight', '600')
-  await expect(page.locator(`.goal-day-cell[title*="${tomorrow}"]`)).toHaveClass(/viewed/)
+  // The dashed viewed-day outline sits over the selected day's cell.
+  await expect.poll(async () => {
+    const cell = await page.locator(`.goal-day-cell[title*="${tomorrow}"]`).boundingBox()
+    const marker = await page.locator('.goal-viewed-day-marker').first().boundingBox()
+    return cell && marker ? Math.round(marker.x - cell.x) : null
+  }).toBe(2)
 
   // Selecting another day moves the highlight but not the bold current-day mark.
   await expect(todayHead).not.toHaveClass(/viewed/)

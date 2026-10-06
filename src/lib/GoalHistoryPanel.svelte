@@ -155,12 +155,18 @@
   $: historyStartDate = firstGoalDate && firstGoalDate < today ? firstGoalDate : today
   $: pastDayCount = isoDateDiffDays(historyStartDate, today) + 1
   $: pastDates = Array.from({ length: pastDayCount }, (_, index) => shiftISODate(historyStartDate, index))
-  // The grid always reaches GOAL_FUTURE_DAYS past the viewed day; when
-  // viewing the past that range is already covered by the history dates.
-  $: futureDayCount = Math.max(0, isoDateDiffDays(today, viewedDate) + GOAL_FUTURE_DAYS)
+  // The grid always shows GOAL_FUTURE_DAYS past today, and reaches that far past
+  // a viewed future day. Keeping the range fixed while viewing the past means
+  // moving between those days does not rebuild every goal's cells.
+  $: futureDayCount = GOAL_FUTURE_DAYS + Math.max(0, isoDateDiffDays(today, viewedDate))
   $: futureDates = Array.from({ length: futureDayCount }, (_, index) => shiftISODate(today, index + 1))
   $: dates = [...pastDates, ...futureDates]
   $: dateChunks = chunksOf(dates)
+  $: dateIndexes = new Map(dates.map((date, index) => [date, index]))
+  // A single overlay column outlines the viewed day. A per-cell class would make
+  // every cell depend on viewedDate, and markers inside the content-visibility
+  // rows make WebKit restyle whole rows, so a day change only moves this column.
+  $: viewedDateIndex = dateIndexes.get(viewedDate) ?? -1
   $: goalDeadlineSummary = activeGoals.reduce((summary, goal) => {
     const daysUntilLapse = goalDaysUntilLapse(goal, completions, viewedDate)
     if (daysUntilLapse === null) return summary
@@ -177,9 +183,17 @@
     ),
     search,
   )
-  $: visibleGoals = overdueOnly
+  $: nextVisibleGoals = overdueOnly
     ? matchingGoals.filter((goal) => (goalDaysUntilLapse(goal, completions, viewedDate) ?? 0) < 0)
     : matchingGoals
+  // Re-sorting for a new viewed day usually keeps the same rows. Reassigning an
+  // equal array would still re-render every goal row and all of its cells.
+  let visibleGoals: Goal[] = []
+  $: if (!sameGoals(nextVisibleGoals, visibleGoals)) visibleGoals = nextVisibleGoals
+
+  function sameGoals(left: Goal[], right: Goal[]) {
+    return left.length === right.length && left.every((goal, index) => goal === right[index])
+  }
 
   $: if (mounted && visible && historyStartDate !== lastCenteredStartDate) {
     lastCenteredStartDate = historyStartDate
@@ -411,7 +425,6 @@
                     class:relieved={cell.relieved}
                     class:missed={cell.missed}
                     class:overdue={cell.overdue}
-                    class:viewed={cell.date === viewedDate}
                     class:future={cell.date > today}
                     style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
                     title={`${goal.name} · ${cell.date}${cell.completed ? ' · completed' : cell.overdue ? ' · overdue' : cell.missed ? ' · missed' : cell.active ? ' · active' : ' · inactive'}`}
@@ -435,6 +448,17 @@
             {/each}
           </div>
         {/each}
+
+        {#if viewedDateIndex >= 0}
+          <div class="goal-viewed-day-column" style={`--goal-viewed-day-index: ${viewedDateIndex}`} aria-hidden="true">
+            {#each visibleGoals as goal (goal.id)}
+              <span
+                class="goal-viewed-day-marker"
+                style={`--goal-hue: ${goal.hue}; --goal-lightness-shift: ${goalLightnessShift(goal.lightness)}%`}
+              ></span>
+            {/each}
+          </div>
+        {/if}
       </div>
     </div>
   </div>

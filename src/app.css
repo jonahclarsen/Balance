@@ -4696,6 +4696,7 @@ body.mobile-checkbox-dragging {
 }
 
 .goal-history-grid {
+  position: relative;
   width: max-content;
   min-width: 100%;
   padding-bottom: 8px;
@@ -4962,13 +4963,22 @@ body.mobile-checkbox-dragging {
   pointer-events: none;
 }
 
-.goal-day-cell.viewed::after {
+.goal-viewed-day-column {
   position: absolute;
-  inset: 2px;
+  z-index: 1;
+  top: 30px;
+  left: 0;
+  display: grid;
+  grid-auto-rows: 30px;
+  width: 30px;
+  pointer-events: none;
+  transform: translateX(calc(var(--goal-viewed-day-index) * 30px));
+}
+
+.goal-viewed-day-marker {
+  margin: 2px;
   border: 1px dashed hsl(var(--goal-hue) 42% calc(45% + var(--goal-lightness-shift, 0%)) / 0.45);
   border-radius: 999px;
-  content: "";
-  pointer-events: none;
 }
 
 .goal-cell-mark {
