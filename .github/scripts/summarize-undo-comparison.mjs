@@ -21,6 +21,11 @@ for (const [key, samples] of groups) {
   for (const revision of versions) {
     const selected = samples.filter(row => row.revision === revision)
     const expected = key.includes('/plan-after-reload/') ? 4 : 6
+    if (selected.length === 0) {
+      // A scenario added after this revision was cut has nothing to compare.
+      revisions[revision] = null
+      continue
+    }
     if (selected.length !== expected || new Set(selected.map(row => row.round)).size !== 2) {
       throw Error(`Incomplete measurements for ${key}/${revision}: ${selected.length} samples`)
     }
@@ -38,11 +43,11 @@ writeFileSync(join(root, 'summary.json'), JSON.stringify(summaries, null, 2) + '
 const lines = [
   '# Undo comparison', '',
   'Median milliseconds, excluding the first sample in each round except for full-state reloads (two samples per round). Each revision ran on the same macOS runner under CPU contention.', '',
-  '| Fixture / scenario / direction | Sept 1 | Sept 8 | Sept 15 baseline | Candidate |',
+  `| Fixture / scenario / direction | ${versions.join(' | ')} |`,
   '|---|---:|---:|---:|---:|',
 ]
 for (const { key, revisions } of summaries) {
-  lines.push(`| ${key} | ${versions.map(version => revisions[version].totalMs.median.toFixed(1)).join(' | ')} |`)
+  lines.push(`| ${key} | ${versions.map(version => revisions[version]?.totalMs.median.toFixed(1) ?? '—').join(' | ')} |`)
 }
 lines.push('', 'Store totals include the synthetic native bridge; rendered scenarios include the actual app keyboard handler and two animation frames. Native operation and database-open timings are recorded separately in summary.json. This is a debug/test-profile comparison, not installed-app latency.', '')
 writeFileSync(join(root, 'summary.md'), lines.join('\n'))

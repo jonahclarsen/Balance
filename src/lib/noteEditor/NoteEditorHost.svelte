@@ -23,6 +23,8 @@
   export let onAddItem: (noteId: Id, kind?: NoteItemKind) => Id = () => ''
   export let onUndo: () => void = () => {}
   export let onRedo: () => void = () => {}
+  // Shift+Tab at the top of the note hands focus back to the title.
+  export let onFocusTitle: () => void = () => {}
   // Resolves the element whose scrollTop the view state records (the note
   // document, the workspace, or the page depending on layout).
   export let scrollContainer: () => HTMLElement | null = () => null
@@ -105,6 +107,7 @@
         onOpenLink,
         onUndo,
         onRedo,
+        onExitToTitle: () => onFocusTitle(),
         onBlur: () => {
           adapter?.flush()
           rememberViewState()
@@ -176,6 +179,22 @@
     const itemId = onAddItem(note.id)
     await tick()
     if (itemId) focusItem(itemId, 0)
+  }
+
+  // Title handoff: Tab lands at the start of the first block, Enter at the end
+  // of the last block (contract P-06). An empty note first gets a paragraph.
+  export async function focusEdge(edge: 'start' | 'end') {
+    if (note.items.length === 0) {
+      await startEmptyNote()
+      return
+    }
+    if (edge === 'start') {
+      focusItem(note.items[0].id, 0)
+      return
+    }
+    let last = note.items[note.items.length - 1]
+    while (last.children.length > 0) last = last.children[last.children.length - 1]
+    focusItem(last.id, Number.MAX_SAFE_INTEGER)
   }
 
   function applyKind(kind: NoteItemKind) {

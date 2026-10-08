@@ -20,6 +20,7 @@
     type NoteClipboardBlock,
     type ParsedNoteClipboardItem,
   } from './noteClipboard'
+  import { parseTaskClipboardAsNoteBlocks } from './taskClipboard'
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
   import type { NoteEditorChoice } from './noteEditorPreference'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from './types'
@@ -335,9 +336,10 @@
     }
   }
 
+  // Enter moves into the end of the note, Tab into its start (P-06).
   async function handleTitleKeydown(event: KeyboardEvent) {
     if (
-      event.key !== 'Enter' ||
+      (event.key !== 'Enter' && event.key !== 'Tab') ||
       event.isComposing ||
       event.metaKey ||
       event.ctrlKey ||
@@ -347,16 +349,28 @@
     ) return
 
     event.preventDefault()
-    let editor = noteInputs().at(-1)
-    if (!editor) {
+    const edge = event.key === 'Tab' ? 'start' : 'end'
+    if (editor !== 'classic') {
+      void noteEditorHost?.focusEdge(edge)
+      return
+    }
+    let target = edge === 'start' ? noteInputs()[0] : noteInputs().at(-1)
+    if (!target) {
       activeItemId = onAddItem(selectedNote.id)
       await tick()
-      editor = activeEditor() ?? undefined
+      target = activeEditor() ?? undefined
     }
-    if (!editor) return
+    if (!target) return
 
-    activeItemId = editor.dataset.noteTextInputId ?? null
-    placeCaretAtTextOffset(editor, editor.textContent?.length ?? 0)
+    activeItemId = target.dataset.noteTextInputId ?? null
+    placeCaretAtTextOffset(target, edge === 'start' ? 0 : target.textContent?.length ?? 0)
+  }
+
+  function focusTitle() {
+    const title = document.querySelector<HTMLTextAreaElement>('#note-title')
+    if (!title) return
+    title.focus()
+    title.setSelectionRange(title.value.length, title.value.length)
   }
 
   function rememberNoteViewState(noteId: Id, patch: Partial<NoteViewState>) {
@@ -1013,7 +1027,7 @@
     const plainText = event.clipboardData.getData('text/plain')
     const clipboardHTML = event.clipboardData.getData('text/html')
     stageClipboardImages(clipboardHTML)
-    let items = parseNoteChecklistClipboard(plainText, clipboardHTML)
+    let items = parseTaskClipboardAsNoteBlocks(plainText) ?? parseNoteChecklistClipboard(plainText, clipboardHTML)
     if (items.length === 0 && !clipboardHTML.trim()) items = parseNotePlainTextClipboard(plainText)
     if (items.length === 0 && clipboardHTML.trim()) {
       const htmlItems = parseNoteClipboardHTML(clipboardHTML)
@@ -1438,6 +1452,7 @@
               notes={activeNotes}
               {onOpenLink}
               {onAddItem}
+              onFocusTitle={focusTitle}
               scrollContainer={noteScrollContainer}
               {viewStatesByNote}
               {onViewStateChange}

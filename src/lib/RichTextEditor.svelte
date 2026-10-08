@@ -11,6 +11,7 @@
     itemLinkFromAnchor,
     linkifyExternalURLs,
     isGoalStatsURL,
+    templateReviewFromURL,
     noteIdFromURL,
     projectIdFromURL,
     renderItemDisplayHTML,
@@ -18,6 +19,7 @@
     type ItemLink,
     type ItemTextSegment,
   } from './planner'
+  import { flattenClipboardHTML } from './taskClipboard'
   import type { Id, MoveDirection } from './types'
 
   type HorizontalBoundaryDirection = 'left' | 'right'
@@ -568,7 +570,7 @@
 
   function insertClipboardContents(activeEditor: HTMLDivElement, clipboardText: string, clipboardHTML: string) {
 
-    if (clipboardText && (isGoalStatsURL(clipboardText) || isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
+    if (clipboardText && (isGoalStatsURL(clipboardText) || templateReviewFromURL(clipboardText) || isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
       pendingPasteInput = true
       document.execCommand('createLink', false, clipboardText.trim())
       persistPasteIfInputDidNotFire(activeEditor)
@@ -576,8 +578,11 @@
     }
 
     if (clipboardHTML || clipboardText) {
+      // Lists and paragraphs (a bulleted list copied from Notes, say) keep
+      // their markers and line breaks instead of collapsing into one run.
+      const flattened = clipboardHTML ? flattenClipboardHTML(clipboardHTML) : null
       let pastedHTML = linkifyExternalURLs(
-        clipboardHTML ? clipboardHTML : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>'),
+        flattened ?? (clipboardHTML ? clipboardHTML : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>')),
       )
       if (singleLine) pastedHTML = pastedHTML.replace(/<br>/g, ' ')
       pendingPasteInput = true

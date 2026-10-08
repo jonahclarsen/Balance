@@ -3778,6 +3778,33 @@ body.mobile-checkbox-dragging {
   text-align: right;
 }
 
+/* Template review reuses the paste-review shell. A discarded card sweeps off
+   without blocking the next decision, then collapses once the sweep ends. */
+.template-review-item.removed.sweeping {
+  display: flex;
+  pointer-events: none;
+  animation: paste-review-sweep 420ms cubic-bezier(0.55, -0.15, 0.82, 0.35) forwards;
+}
+
+.template-review-time {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.template-review-probability,
+.template-review-separator {
+  color: var(--muted);
+  font-size: 0.8em;
+}
+
+.template-review-copy-status {
+  margin: -8px 0 0;
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+
 .recovery-key {
   overflow-wrap: anywhere;
   border: 1px solid var(--line);

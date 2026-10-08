@@ -60,9 +60,12 @@ import { invoke, isTauri } from '@tauri-apps/api/core'
 import { openExternalURL } from '../../externalLinks'
 import { imageEditing } from '../../imageEditing'
 import { imageClipboardHTML } from '../../imageService'
+import { parseTaskClipboardAsNoteBlocks } from '../../taskClipboard'
 import {
   escapeHTML,
   isGoalStatsURL,
+  templateReviewFromURL,
+  templateReviewLabel,
   isURL,
   linkifyExternalURLs,
   linkifyItemText,
@@ -206,7 +209,7 @@ function $numberOf(block: NoteBlockNode): number | null {
 }
 
 function isLinkTarget(value: string): boolean {
-  return isURL(value) || noteIdFromURL(value) !== null || projectIdFromURL(value) !== null || isGoalStatsURL(value)
+  return isURL(value) || noteIdFromURL(value) !== null || projectIdFromURL(value) !== null || isGoalStatsURL(value) || templateReviewFromURL(value) !== null
 }
 
 function stripAnchors(html: string): string {
@@ -1112,6 +1115,10 @@ class LexicalNoteEditorView implements NoteEditorView {
 
     if (event.key === 'Tab' && !mod && !event.altKey) {
       event.preventDefault()
+      if (event.shiftKey && editor.getEditorState().read(() => this.$isAtTopWithNothingToOutdent())) {
+        this.callbacks?.onExitToTitle()
+        return true
+      }
       editor.update(() => {
         this.pendingSource = 'command'
         this.selectAllMarker = null
@@ -1168,6 +1175,19 @@ class LexicalNoteEditorView implements NoteEditorView {
     // Plain arrows clear a row selection first; the caret then moves natively.
     if (plain && event.key.startsWith('Arrow') && this.selectAllMarker) this.selectAllMarker = null
     return false
+  }
+
+  // Shift+Tab in the first root block (not a list, so outdent is a no-op)
+  // moves focus up into the title.
+  private $isAtTopWithNothingToOutdent(): boolean {
+    const selection = $currentRange()
+    if (!selection) return false
+    const point = $blockPoint(selection.focus)
+    if (!point) return false
+    const { block } = point
+    if ($parentBlock(block) || isListKind(block.getKind())) return false
+    const first = $blocksInOrder()[0]
+    return first != null && first.is(block)
   }
 
   private $indentOrOutdent(outdent: boolean) {
@@ -1469,6 +1489,8 @@ class LexicalNoteEditorView implements NoteEditorView {
     const projectId = projectIdFromURL(href)
     if (projectId !== null) return { kind: 'projects', projectId, label: 'Project vibes' }
     if (isGoalStatsURL(href)) return { kind: 'goalStats', label: 'Goal stats' }
+    const review = templateReviewFromURL(href)
+    if (review) return { kind: 'templateReview', templateKind: review.kind, templateId: review.templateId, label: templateReviewLabel(review.kind) }
     return null
   }
 
@@ -1603,7 +1625,7 @@ class LexicalNoteEditorView implements NoteEditorView {
     if (!selection) return true
     this.pendingSource = 'paste'
 
-    let items: PastedBlock[] = parseChecklistClipboard(plain, html)
+    let items: PastedBlock[] = parseTaskClipboardAsNoteBlocks(plain) ?? parseChecklistClipboard(plain, html)
     if (items.length === 0 && !html) items = parsePlainTextClipboard(plain)
     if (items.length === 0 && html) items = parseClipboardHTML(html)
 

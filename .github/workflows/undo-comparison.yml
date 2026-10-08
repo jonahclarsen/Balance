@@ -1,6 +1,11 @@
 name: Compare undo revisions
 on:
   workflow_dispatch:
+    inputs:
+      sizes:
+        description: 'JSON array of synthetic workspace sizes to compare'
+        required: false
+        default: '["large"]'
 permissions:
   contents: read
 jobs:
@@ -9,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        size: [small, large, xlarge]
+        size: ${{ fromJSON(inputs.sizes || '["small", "large", "xlarge"]') }}
     runs-on: macos-15
     timeout-minutes: 90
     steps:
@@ -45,9 +50,9 @@ jobs:
           mkdir -p artifacts/undo-comparison
           for version in two-weeks one-week baseline candidate; do
             case "$version" in
-              two-weeks) revision=bb8d8bfda03746adf081bbd36373243a67411246 ;;
-              one-week) revision=ae2513446b92b9d61f40e4708876d295c258c915 ;;
-              baseline) revision=255b275 ;;
+              two-weeks) revision=f40d6e9 ;;
+              one-week) revision=015580c ;;
+              baseline) revision=5e18ef4 ;;
               candidate) revision="$GITHUB_SHA" ;;
             esac
             checkout="$RUNNER_TEMP/undo-$version"

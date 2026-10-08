@@ -18,6 +18,7 @@ import { openExternalURL } from '../../externalLinks'
 import { imageEditing } from '../../imageEditing'
 import { IMAGE_CLIPBOARD_TYPE } from '../../imageMarkup'
 import { imageClipboardHTML } from '../../imageService'
+import { parseTaskClipboardAsNoteBlocks } from '../../taskClipboard'
 import {
   escapeHTML,
   isURL,
@@ -736,6 +737,18 @@ class TipTapNoteEditor implements NoteEditorView {
     else if (!state.selection.empty && this.selectedRows(state)) this.collapse('head')
   }
 
+  // Shift+Tab in the first root block (not a list, so outdent is a no-op)
+  // moves focus up into the title.
+  private isAtTopWithNothingToOutdent(): boolean {
+    if (!this.editor) return false
+    const state = this.view.state
+    const info = blockInfoAt(state.doc, state.selection.head)
+    if (!info) return false
+    const tree = docToTree(state.doc)
+    const block = findBlockByPos(tree, info.pos)
+    return block != null && tree[0] === block && !LIST_KINDS.has(block.kind)
+  }
+
   outdent() {
     if (!this.editor) return
     const state = this.view.state
@@ -947,7 +960,8 @@ class TipTapNoteEditor implements NoteEditorView {
     }
 
     if (key === 'Tab' && !mod && !event.altKey) {
-      if (event.shiftKey) this.outdent()
+      if (event.shiftKey && this.isAtTopWithNothingToOutdent()) this.callbacks?.onExitToTitle()
+      else if (event.shiftKey) this.outdent()
       else this.indent()
       return true
     }
@@ -1072,7 +1086,7 @@ class TipTapNoteEditor implements NoteEditorView {
     event.preventDefault()
     const plain = data.getData('text/plain')
     const html = data.getData('text/html')
-    const items = parseNoteClipboard(plain, html)
+    const items = parseTaskClipboardAsNoteBlocks(plain) ?? parseNoteClipboard(plain, html)
     if (items) this.pasteBlocks(items)
     else this.pasteInline(plain, html)
     return true
