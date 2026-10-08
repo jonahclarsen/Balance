@@ -1,5 +1,6 @@
 <script lang="ts">
   import { mobileNoteToolbar } from './mobileNoteToolbar'
+  import { externalNotePaste } from './externalNotePaste'
   import { stageClipboardImages } from './imageService'
   import { clipboardHasDirectImage, IMAGE_CLIPBOARD_TYPE } from './imageMarkup'
   import { invoke, isTauri } from '@tauri-apps/api/core'
@@ -1017,12 +1018,12 @@
     if (items.length === 0 && clipboardHTML.trim()) {
       const htmlItems = parseNoteClipboardHTML(clipboardHTML)
       const flattenedHTMLItems = flattenParsedClipboardItems(htmlItems)
-      if (flattenedHTMLItems.length >= 2) items = htmlItems
+      if (flattenedHTMLItems.length >= 2 || flattenedHTMLItems[0]?.kind !== 'paragraph') items = htmlItems
     }
     const flattenedItems = flattenParsedClipboardItems(items)
     const range = selectedTextRange()
     if (!range) return
-    if (flattenedItems.length < 2) {
+    if (flattenedItems.length === 0 || (flattenedItems.length === 1 && flattenedItems[0].kind === 'paragraph')) {
       if (!crossBlockSelectionForRange(range) && selectedItemIds.length === 0) return
       if (!plainText && !clipboardHTML) return
       event.preventDefault()
@@ -1334,7 +1335,7 @@
     {#if trashOpen}<button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>{/if}
   </aside>
 
-  <section class="note-document">
+  <section class="note-document" use:externalNotePaste={`${selectedNoteId}:${editor}:${trashOpen}`}>
     {#if selectedNote}
       <header class="note-document-head">
         {#if trashOpen}

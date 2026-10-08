@@ -70,8 +70,8 @@ export function imageEditing(editor: HTMLElement, commit: () => void) {
   }
   async function insertFiles(files: Blob[], range = currentRange()) {
     try {
-      for (const file of files) {
-        const asset = await importImage(file)
+      for (const [index, file] of files.entries()) {
+        const asset = await importImage(file, { index: index + 1, total: files.length })
         if (!asset) continue
         const width = Math.min(asset.width, 480, editor.clientWidth || 480)
         insert(imageHTML(asset.id, width, width * asset.height / asset.width, 'left'), range)

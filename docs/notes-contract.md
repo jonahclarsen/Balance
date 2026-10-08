@@ -1,5 +1,25 @@
 # Notes page contract (clean-room specification)
 
+## Rich paste additions (October 2026)
+
+The historical inventory below predates the shared rich-paste importer. Current
+entry points are `externalNotePaste.ts` (all three note editors),
+`noteClipboard.ts` (shared block/list parsing), and the macOS
+`NoteClipboardBridge.swift` (RTF/RTFD to self-contained HTML with attachments).
+Notesnook HTML checklists preserve `checked` state. Text styles use the restricted
+`inlineTextStyle.ts` allowlist and survive Classic, TipTap, and Lexical editing;
+the historical assertion below that all font/color/span markup is stripped no
+longer applies. Heading levels retain their imported size in inline HTML.
+
+External images must pass through `importImage`, including its existing size
+threshold, compression preview, and 6 MB limit. Multiple pasted images are
+reviewed sequentially with an image index; skipping one retains the surrounding
+note content. Image assets are staged before the editor commits the complete
+paste, so one undo reverses the note insertion. No new persisted action or record
+field is used. Unavailable cross-app blob/file URLs produce an import error;
+they are never saved as dangling image references. Keep clipboard examples out
+of the repository and use synthetic fixtures in tests.
+
 This document specifies the behavior of the existing Balance **Notes** page so
 that replacement Notes editors can be built without reading the existing Notes
 UI code. It covers the data and persistence contract, a complete behavioral

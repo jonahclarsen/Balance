@@ -18,6 +18,7 @@ import {
   type TextNode,
 } from 'lexical'
 import { escapeHTML } from '../../planner'
+import { inlineTextStyle } from '../../inlineTextStyle'
 import { imageHTML, type ImageLayout } from '../../imageMarkup'
 import {
   $createNoteImageNode,
@@ -41,26 +42,27 @@ export function $nodesFromInlineHTML(html: string): LexicalNode[] {
   const template = document.createElement('template')
   template.innerHTML = html
   const nodes: LexicalNode[] = []
-  const walk = (parent: Node, format: number, out: LexicalNode[]) => {
+  const walk = (parent: Node, format: number, out: LexicalNode[], style = '') => {
     for (const child of Array.from(parent.childNodes)) {
       if (child.nodeType === Node.TEXT_NODE) {
         const parts = (child.textContent ?? '').split('\n')
         parts.forEach((part, index) => {
           if (index > 0) out.push($createLineBreakNode())
-          if (part) out.push($createNoteTextNode(part).setFormat(format))
+          if (part) out.push($createNoteTextNode(part).setFormat(format).setStyle(style))
         })
         continue
       }
       if (!(child instanceof HTMLElement)) continue
       const tag = child.tagName
+      const nextStyle = inlineTextStyle(`${style};${child.getAttribute('style') ?? ''}`)
       if (tag === 'BR') out.push($createLineBreakNode())
-      else if (tag === 'STRONG' || tag === 'B') walk(child, format | FORMAT_BOLD, out)
-      else if (tag === 'EM' || tag === 'I') walk(child, format | FORMAT_ITALIC, out)
-      else if (tag === 'U') walk(child, format | FORMAT_UNDERLINE, out)
+      else if (tag === 'STRONG' || tag === 'B') walk(child, format | FORMAT_BOLD, out, nextStyle)
+      else if (tag === 'EM' || tag === 'I') walk(child, format | FORMAT_ITALIC, out, nextStyle)
+      else if (tag === 'U') walk(child, format | FORMAT_UNDERLINE, out, nextStyle)
       else if (tag === 'A' && child.getAttribute('href')) {
         const link = $createNoteLinkNode(child.getAttribute('href') ?? '')
         const inner: LexicalNode[] = []
-        walk(child, format, inner)
+        walk(child, format, inner, nextStyle)
         if (inner.length === 0) continue
         link.append(...inner)
         out.push(link)
@@ -72,7 +74,7 @@ export function $nodesFromInlineHTML(html: string): LexicalNode[] {
           Number(child.getAttribute('height')) || 1,
           (layout === 'left' || layout === 'right' ? layout : 'inline') as ImageLayout,
         ))
-      } else walk(child, format, out)
+      } else walk(child, format, out, nextStyle)
     }
   }
   walk(template.content, 0, nodes)
@@ -125,7 +127,8 @@ function serializeChildren(element: ElementNode, state: { offset: number }, from
       const part = text.slice(sliceStart, sliceEnd)
       if (!part) continue
       setMarks(child.getFormat() & ALLOWED_FORMATS)
-      html += escapeHTML(part)
+      const style = inlineTextStyle(child.getStyle())
+      html += style ? `<span style="${escapeHTML(style)}">${escapeHTML(part)}</span>` : escapeHTML(part)
     } else if ($isLineBreakNode(child)) {
       const start = state.offset
       state.offset += 1

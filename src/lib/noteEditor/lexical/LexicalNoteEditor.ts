@@ -1,3 +1,4 @@
+import { inlineTextStyle } from '../../inlineTextStyle'
 // Option B: the Notes body editor built on Lexical (headless, no React).
 //
 // One contenteditable holds the whole note. The Lexical tree mirrors
@@ -699,7 +700,8 @@ class LexicalNoteEditorView implements NoteEditorView {
       editor.registerNodeTransform(NoteTextNode, (text) => {
         const format = text.getFormat()
         if (format & ~ALLOWED_FORMATS) text.setFormat(format & ALLOWED_FORMATS)
-        if (text.getStyle()) text.setStyle('')
+        const style = inlineTextStyle(text.getStyle())
+        if (style !== text.getStyle()) text.setStyle(style)
       }),
     )
   }
@@ -1605,7 +1607,7 @@ class LexicalNoteEditorView implements NoteEditorView {
     if (items.length === 0 && !html) items = parsePlainTextClipboard(plain)
     if (items.length === 0 && html) items = parseClipboardHTML(html)
 
-    if (countPasted(items) < 2) {
+    if (items.length === 0 || (countPasted(items) === 1 && items[0].kind === 'paragraph')) {
       if (this.$collapseMultiBlockRange()) {
         const inline = html ? sanitizeInlineHTML(html) : escapeHTML(plain).replace(/\r?\n/g, '<br>')
         this.$insertInlineHTML(inline)
