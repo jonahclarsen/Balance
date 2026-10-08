@@ -60,7 +60,6 @@
   import GoalBurst from './lib/GoalBurst.svelte'
   import GoalDoabilityModal from './lib/GoalDoabilityModal.svelte'
   import GoalStatsModal from './lib/GoalStatsModal.svelte'
-  import StatisticsPanel from './lib/StatisticsPanel.svelte'
   import { randomIridescentSelectionAnimationDelay, restartElementAnimations } from './lib/iridescentSelectionAnimation'
   import {
     filterGoalsByPhrase,
@@ -159,7 +158,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'statistics' | 'settings' | 'admin'
+  type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'settings' | 'admin'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -3085,7 +3084,6 @@ return rows`
       value === 'buckets' ||
       value === 'metrics' ||
       value === 'goals' ||
-      value === 'statistics' ||
       value === 'settings' ||
       (import.meta.env.DEV && value === 'admin')
     )
@@ -3656,7 +3654,6 @@ return rows`
         KeyR: 'prioritize',
         KeyB: 'buckets',
         KeyV: 'metrics',
-        KeyY: 'statistics',
         KeyS: 'settings',
       }
       const sidebarView = sidebarViewByCode[event.code]
@@ -6594,7 +6591,6 @@ return rows`
       <button data-nav-view="projects" class:active={selectedNavView === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; selectMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
       <button data-nav-view="prioritize" class:active={selectedNavView === 'prioritize'} type="button" title="Prioritize (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => selectMobileDrawerView('prioritize')}><span>Prioritize</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
       <button data-nav-view="buckets" class:active={selectedNavView === 'buckets'} type="button" title="Buckets (Alt+B)" aria-keyshortcuts="Alt+B" on:click={() => selectMobileDrawerView('buckets')}><span>Buckets</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('B')}</kbd></button>
-      <button data-nav-view="statistics" class:active={selectedNavView === 'statistics'} type="button" title="Statistics (Alt+Y)" aria-keyshortcuts="Alt+Y" on:click={() => selectMobileDrawerView('statistics')}><span>Statistics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Y')}</kbd></button>
       <button data-nav-view="settings" class:active={selectedNavView === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => selectMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
       {#if import.meta.env.DEV}
         <button data-nav-view="admin" class:active={selectedNavView === 'admin'} type="button" on:click={() => selectMobileDrawerView('admin')}><span>Admin Settings</span></button>
@@ -7384,10 +7380,6 @@ return rows`
           </div>
         </div>
       {/if}
-    {/if}
-
-    {#if view === 'statistics'}
-      <StatisticsPanel plans={$plannerStore.plans} {currentDay} onOpenDay={openDateInToday} />
     {/if}
 
     {#if view === 'projects'}

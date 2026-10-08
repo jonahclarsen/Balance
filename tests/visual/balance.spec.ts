@@ -912,7 +912,6 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }, te
     { key: 'p', label: 'Projects' },
     { key: 'r', label: 'Prioritize' },
     { key: 'b', label: 'Buckets' },
-    { key: 'y', label: 'Statistics' },
     { key: 's', label: 'Settings' },
   ]
 
