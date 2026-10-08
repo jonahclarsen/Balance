@@ -79,8 +79,6 @@ test('day rail points toward today and disappears on today', async ({ page }, te
     await page.getByRole('complementary').getByRole('button', { name: 'Close navigation' }).click()
   }
   const primaryPane = page.getByRole('region', { name: 'Daily plan' })
-  await expect(page.getByRole('button', { name: 'Compare with another day' })).toHaveCount(0)
-  await page.keyboard.press('Alt+B')
   await expect(page.locator('.day-pane')).toHaveCount(1)
   const todayDate = await primaryPane.locator('.date-input').inputValue()
   const mobile = testInfo.project.name === 'mobile'
@@ -846,6 +844,7 @@ test('every sidebar menu item has a left-hand Alt shortcut', async ({ page }, te
     { key: 'g', label: 'Goals' },
     { key: 'p', label: 'Projects' },
     { key: 'r', label: 'Prioritize' },
+    { key: 'b', label: 'Buckets' },
     { key: 'y', label: 'Statistics' },
     { key: 's', label: 'Settings' },
   ]

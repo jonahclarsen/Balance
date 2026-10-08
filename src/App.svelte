@@ -6459,7 +6459,7 @@ return rows`
       <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd>
     </button>
     <button
-      class="sidebar-search-button sidebar-add-idea-button"
+      class="sidebar-add-idea-button"
       type="button"
       title="Add idea (Alt+K)"
       aria-label="Add idea"

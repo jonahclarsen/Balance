@@ -173,8 +173,8 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   await open(page)
   await generateDay(page)
   expect(await storeCall(page, 'return [plannerStore.ensureIdeaReviewGoal(), plannerStore.ensureIdeaReviewGoal()]')).toEqual([true, false])
-  const goal = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).goals[0])
-  expect(goal.id).toBe('goal_idea_review')
+  const goal = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).goals.find((goal: any) => goal.id === 'goal_idea_review'))
+  expect(goal).toBeTruthy()
   expect(goal.cadenceDays).toBe(7)
   expect(goal.nameHtml).toContain('balance://buckets/review')
 
