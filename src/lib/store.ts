@@ -1367,6 +1367,35 @@ function createPlannerStore() {
       })))
     },
 
+    // Drops a selection as one block: the first item lands at the drop target
+    // and each following item follows the one before it. The block is a batch
+    // of existing move primitives so older clients replay it unchanged.
+    movePlanItems(planId: Id, sourceIds: Id[], targetId: Id, placement: MovePlacement) {
+      if (sourceIds.length === 0 || sourceIds.includes(targetId)) return
+      if (sourceIds.length === 1) {
+        plannerStore.movePlanItem(planId, sourceIds[0], targetId, placement)
+        return
+      }
+      const plan = get(store).plans.find((candidate) => candidate.id === planId)
+      if (!plan) return
+      const moves = sourceIds.map((sourceId, index) => ({
+        sourceId,
+        targetId: index === 0 ? targetId : sourceIds[index - 1],
+        placement: index === 0 ? placement : 'after' as MovePlacement,
+      }))
+      const operations = moves.map((move) => ({
+        type: 'move_plan_item',
+        payload: { planId, planDate: plan.date, ...move },
+      }))
+      commit('batch', { action: 'move_plan_items', operations }, (state) => updatePlan(state, planId, (current) => ({
+        ...current,
+        items: moves.reduce(
+          (items, move) => movePlanItem(items, move.sourceId, move.targetId, move.placement),
+          current.items,
+        ),
+      })))
+    },
+
     // Keep this existing replicated primitive available for historical operation
     // compatibility even though the former UI that authored it has been removed.
     movePlanItemToPlan(

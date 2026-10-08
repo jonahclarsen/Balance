@@ -3087,6 +3087,23 @@ body.mobile-checkbox-dragging {
   display: none;
 }
 
+.color-scheme-option-shell {
+  position: relative;
+  display: grid;
+}
+
+.color-scheme-option-shell .color-scheme-option {
+  width: 100%;
+}
+
+.color-scheme-option-shell.has-schedule .color-scheme-option {
+  padding-right: 100px;
+}
+
+.color-scheme-option-shell.has-schedule .theme-selected-mark {
+  display: none;
+}
+
 @container settings-panel (max-width: 760px) {
   .theme-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

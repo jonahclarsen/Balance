@@ -236,6 +236,73 @@ test('appearance can follow the system or stay light or dark on this device', as
   })).toBe('system')
 })
 
+test('the system appearance can be scheduled for the next day boundary', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-08-18T04:59:00') })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openView(page, 'Settings')
+
+  const appearanceGroup = page.getByRole('group', { name: 'Appearance' })
+  const systemOption = appearanceGroup.getByRole('button', { name: 'System Match this device' })
+  await expect(appearanceGroup.getByRole('button', { name: 'Start tomorrow' })).toHaveCount(0)
+
+  await appearanceGroup.getByRole('button', { name: 'Light Always use light mode' }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'light')
+  await expect(systemOption).toHaveAttribute('aria-pressed', 'false')
+
+  const startTomorrow = appearanceGroup.getByRole('button', { name: 'Start tomorrow' })
+  await startTomorrow.click()
+  const cancelStart = appearanceGroup.getByRole('button', { name: 'Cancel start' })
+  await expect(cancelStart).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'light')
+  await expect.poll(() => page.evaluate(() => {
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return [appearance?.colorScheme, appearance?.systemColorSchemeStartDate]
+  })).toEqual(['light', '2026-08-18'])
+
+  await cancelStart.click()
+  await expect(startTomorrow).toHaveAttribute('aria-pressed', 'false')
+  await expect.poll(() => page.evaluate(() => {
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return appearance?.systemColorSchemeStartDate
+  })).toBe('')
+  await startTomorrow.click()
+  await expect(cancelStart).toHaveAttribute('aria-pressed', 'true')
+
+  // Crossing the 5 a.m. boundary switches back to following the device.
+  await page.clock.setFixedTime(new Date('2026-08-18T05:01:00'))
+  await page.clock.runFor(61_000)
+  await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark')
+  await expect(systemOption).toHaveAttribute('aria-pressed', 'true')
+  await expect(appearanceGroup.getByRole('button', { name: 'Start tomorrow' })).toHaveCount(0)
+  await expect.poll(() => page.evaluate(() => {
+    const appearance = JSON.parse(localStorage.getItem('balance:deviceAppearance.v1') ?? 'null')
+    return [appearance?.colorScheme, appearance?.systemColorSchemeStartDate]
+  })).toEqual(['system', ''])
+})
+
+test('a scheduled system appearance applies on launch after its start day', async ({ page }) => {
+  await page.clock.install({ time: new Date('2026-08-19T09:00:00') })
+  await page.emulateMedia({ colorScheme: 'dark' })
+  await page.goto('/')
+  await page.evaluate(() => {
+    localStorage.clear()
+    localStorage.setItem('balance:deviceAppearance.v1', JSON.stringify({
+      version: 1,
+      colorScheme: 'light',
+      systemColorSchemeStartDate: '2026-08-19',
+      themeId: 'graphite',
+      randomThemeStartDate: '',
+      doneTintColor: '',
+      checkboxColor: '',
+    }))
+  })
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-color-scheme', 'dark')
+})
+
 test('random theme can be scheduled for the next day boundary while changing today\'s theme', async ({ page }) => {
   await page.clock.install({ time: new Date('2026-08-18T04:59:00') })
   await page.goto('/')
@@ -3222,6 +3289,71 @@ test('bulk completion preserves selection for repeated toggles', async ({ page }
   await expect(secondRow).toHaveClass(/selected/)
   await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(2)
   await expect(page.getByRole('listitem', { name: 'Plan item: Third task' }).getByRole('checkbox')).not.toBeChecked()
+})
+
+test('dragging one selected task carries the whole selection and undoes as one step', async ({ page }, testInfo) => {
+  await seedPlanTree(page, [
+    { id: 'first', text: 'First task', children: [] },
+    { id: 'second', text: 'Second task', children: [{ id: 'child', text: 'Child task', children: [] }] },
+    { id: 'third', text: 'Third task', children: [] },
+    { id: 'fourth', text: 'Fourth task', children: [] },
+  ])
+  const firstRow = page.getByRole('listitem', { name: 'Plan item: First task', exact: true })
+  const secondRow = page.getByRole('listitem', { name: 'Plan item: Second task', exact: true })
+  const fourthRow = page.getByRole('listitem', { name: 'Plan item: Fourth task', exact: true })
+  const topLevelIds = () => page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    return (state.plans?.[0]?.items ?? []).map((item: { id: string; children: { id: string }[] }) =>
+      item.children.length ? `${item.id}(${item.children.map((child) => child.id).join(',')})` : item.id)
+  })
+
+  if (testInfo.project.name === 'mobile') {
+    await firstRow.getByRole('button', { name: 'Task options for First task' }).click()
+    await page.getByRole('menuitem', { name: 'Select tasks' }).click()
+    await secondRow.getByRole('button', { name: 'Select Second task', exact: true }).click()
+  } else {
+    await firstRow.getByRole('button', { name: 'Select item' }).click()
+    await secondRow.getByRole('button', { name: 'Select item' }).click({ modifiers: ['Meta'] })
+  }
+  await expect(page.locator('[data-plan-item-id].selected')).toHaveCount(2)
+
+  // Dropping onto the selection itself changes nothing.
+  await pointerDrag(page, firstRow.getByRole('button', { name: 'Drag to move item' }), secondRow, 'inside')
+  expect(await topLevelIds()).toEqual(['first', 'second(child)', 'third', 'fourth'])
+
+  await pointerDrag(page, firstRow.getByRole('button', { name: 'Drag to move item' }), fourthRow, 'after')
+  await expect.poll(topLevelIds).toEqual(['third', 'fourth', 'first', 'second(child)'])
+
+  if (testInfo.project.name === 'mobile') {
+    await page.locator('.mobile-app-header').getByRole('button', { name: 'Undo' }).click()
+  } else {
+    await page.keyboard.press('Escape')
+    await page.keyboard.press('Meta+Z')
+  }
+  await expect.poll(topLevelIds).toEqual(['first', 'second(child)', 'third', 'fourth'])
+})
+
+test('the Today page returns to the current day after half a day away', async ({ page }) => {
+  const yesterday = addDays(todayISO(), -1)
+  await seedPlanTree(page, [{ id: 'old', text: 'Yesterday task', children: [] }], yesterday)
+  await expect(page.locator('.today-date-input')).toHaveValue(yesterday)
+
+  // A short break keeps the day that was open.
+  await page.evaluate(() => localStorage.setItem('balance:lastVisibleAt', String(Date.now() - 2 * 60 * 60 * 1000)))
+  await page.reload()
+  await expect(page.locator('.today-date-input')).toHaveValue(yesterday)
+
+  // Leaving the page records the departure, so the stale timestamp has to be
+  // planted as the next load begins.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('balance-test:stale-visit')) return
+    sessionStorage.setItem('balance-test:stale-visit', '1')
+    localStorage.setItem('balance:lastVisibleAt', String(Date.now() - 13 * 60 * 60 * 1000))
+  })
+  await page.reload()
+  await expect(page.locator('.today-date-input')).toHaveValue(todayISO())
+  await expect.poll(() => page.evaluate(() => Date.now() - Number(localStorage.getItem('balance:lastVisibleAt'))))
+    .toBeLessThan(60 * 60 * 1000)
 })
 
 for (const initial of [

@@ -116,6 +116,7 @@
     persistEncryptedDeviceAppearance,
     readDeviceAppearanceBootstrap,
     readEncryptedDeviceAppearance,
+    selectedColorSchemeForDate,
     selectedThemeForDate,
     writeDeviceAppearanceBootstrap,
   } from './lib/deviceAppearance'
@@ -350,6 +351,10 @@
   let mobileNavPreview: View | null = null
   let mobileNavRevision = 0
   $: selectedNavView = mobileNavPreview ?? view
+  // After this long away, the Today page returns to the current Balance day
+  // instead of the day that was open when the app was last used.
+  const ACTIVE_DAY_RESET_AFTER_MS = 12 * 60 * 60 * 1000
+  const LAST_VISIBLE_AT_KEY = 'balance:lastVisibleAt'
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
   let mobileDrawerPressPointerId: number | null = null
@@ -827,6 +832,17 @@ return rows`
   $: effectiveThemeId = effectiveThemeForDate(deviceAppearance, currentDay)
   $: randomThemeScheduled = deviceAppearance.themeId !== 'random'
     && deviceAppearance.randomThemeStartDate > currentDay
+  $: colorSchemePreference = selectedColorSchemeForDate(deviceAppearance, currentDay)
+  $: systemColorSchemeScheduled = deviceAppearance.colorScheme !== 'system'
+    && deviceAppearance.systemColorSchemeStartDate > currentDay
+  $: if (
+    preferencesReady
+    && deviceAppearance.colorScheme !== 'system'
+    && deviceAppearance.systemColorSchemeStartDate
+    && deviceAppearance.systemColorSchemeStartDate <= currentDay
+  ) {
+    activateScheduledSystemColorScheme()
+  }
   $: if (
     preferencesReady
     && deviceAppearance.themeId !== 'random'
@@ -847,7 +863,7 @@ return rows`
     ? normalizePresetThemeId(historicalThemeId)
     : effectiveThemeId
   $: document.documentElement.dataset.colorScheme = effectiveColorScheme(
-    deviceAppearance.colorScheme,
+    colorSchemePreference,
     systemPrefersDark,
   )
   $: document.documentElement.dataset.theme = displayedThemeId
@@ -2147,9 +2163,12 @@ return rows`
         databaseLoadingMessageIndex,
       )
     }, DATABASE_LOADING_MESSAGE_INTERVAL_MS)
+    returnToTodayAfterLongAbsence()
+    recordLastVisibleAt()
     const currentDayTimer = window.setInterval(refreshCurrentDay, 60_000)
     window.addEventListener('focus', refreshCurrentDay)
     document.addEventListener('visibilitychange', refreshCurrentDay)
+    document.addEventListener('visibilitychange', handleActiveDayVisibilityChange)
     document.addEventListener('visibilitychange', handleCelebrationVisibilityChange)
 
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
@@ -2340,6 +2359,7 @@ return rows`
       if (noteTrashCleanupTimer !== null) window.clearInterval(noteTrashCleanupTimer)
       window.removeEventListener('focus', refreshCurrentDay)
       document.removeEventListener('visibilitychange', refreshCurrentDay)
+      document.removeEventListener('visibilitychange', handleActiveDayVisibilityChange)
       document.removeEventListener('visibilitychange', handleCelebrationVisibilityChange)
       if (goalHistoryUpdateTimer !== null) window.clearTimeout(goalHistoryUpdateTimer)
       clearCelebrationPreviewTimer()
@@ -2362,6 +2382,39 @@ return rows`
       lastObservedTodayKey = ''
     }
     recordVisibleTodayTheme()
+    if (document.visibilityState === 'visible') recordLastVisibleAt()
+  }
+
+  function readLastVisibleAt(): number | null {
+    try {
+      const raw = localStorage.getItem(LAST_VISIBLE_AT_KEY)
+      const value = raw === null ? Number.NaN : Number(raw)
+      return Number.isFinite(value) ? value : null
+    } catch {
+      return null
+    }
+  }
+
+  function recordLastVisibleAt() {
+    try {
+      localStorage.setItem(LAST_VISIBLE_AT_KEY, String(Date.now()))
+    } catch {
+      // Without storage the next launch simply keeps the last open day.
+    }
+  }
+
+  // Mobile keeps the web view alive in the background for hours, so a resume
+  // needs the same return-to-today check as a cold launch.
+  function returnToTodayAfterLongAbsence() {
+    const lastVisibleAt = readLastVisibleAt()
+    if (lastVisibleAt === null || Date.now() - lastVisibleAt < ACTIVE_DAY_RESET_AFTER_MS) return
+    const today = todayISO()
+    if ($plannerStore.activePlanDate !== today) plannerStore.setActivePlanDate(today)
+  }
+
+  function handleActiveDayVisibilityChange() {
+    if (document.visibilityState === 'visible') returnToTodayAfterLongAbsence()
+    recordLastVisibleAt()
   }
 
   function observeCurrentTodayTheme(visible: boolean, date: string, concreteThemeId: PresetThemeId) {
@@ -2513,7 +2566,20 @@ return rows`
 
   function updateColorScheme(colorScheme: ColorSchemePreference) {
     if (colorScheme === deviceAppearance.colorScheme) return
-    commitDeviceAppearance({ colorScheme })
+    commitDeviceAppearance({
+      colorScheme,
+      systemColorSchemeStartDate: colorScheme === 'system' ? '' : deviceAppearance.systemColorSchemeStartDate,
+    })
+  }
+
+  function toggleSystemColorSchemeSchedule() {
+    commitDeviceAppearance({
+      systemColorSchemeStartDate: systemColorSchemeScheduled ? '' : shiftISODate(currentDay, 1),
+    })
+  }
+
+  function activateScheduledSystemColorScheme() {
+    commitDeviceAppearance({ colorScheme: 'system', systemColorSchemeStartDate: '' })
   }
 
   function toggleRandomThemeSchedule() {
@@ -4801,6 +4867,20 @@ return rows`
       .filter((item): item is PlanItem => item !== null)
   }
 
+  // Dragging one selected task carries the whole selection with it.
+  function movePlanItemFromDrag(planId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) {
+    const selectedRoots = activeItemSurface() === 'plan' && activePlan?.id === planId && selectedItemIdSet.has(sourceId)
+      ? plannerStore.copyPlanItems(planId, selectedItemIds)
+      : []
+    if (selectedRoots.length < 2) {
+      plannerStore.movePlanItem(planId, sourceId, targetId, placement)
+      return
+    }
+    // A drop onto the selection itself has nowhere to go.
+    if (selectedRoots.some((root) => root.id === targetId || findPlanItem(root.children, targetId))) return
+    plannerStore.movePlanItems(planId, selectedRoots.map((root) => root.id), targetId, placement)
+  }
+
   function toggleSelectedPlanItemsDone(planId: Id): boolean | null {
     if (activeItemSurface() !== 'plan' || activePlan?.id !== planId) return null
     const items = selectedPlanItems()
@@ -6687,7 +6767,7 @@ return rows`
                     backspaceItemAtStart={plannerStore.backspacePlanItemAtStart}
                     deleteItem={plannerStore.deletePlanItem}
                     deleteItemPreservingChildren={plannerStore.deletePlanItemPreservingChildren}
-                    moveItem={plannerStore.movePlanItem}
+                    moveItem={movePlanItemFromDrag}
                     moveItemWithinLevel={movePlanItemWithinLevelFromKeyboard}
                     outdentItem={plannerStore.outdentPlanItem}
                     historyRevision={$plannerStore.historyRevision}
@@ -7668,20 +7748,36 @@ return rows`
 
           <div class="color-scheme-grid" role="group" aria-label="Appearance">
             {#each COLOR_SCHEME_OPTIONS as option (option.id)}
-              <button
-                type="button"
-                class="color-scheme-option"
-                class:active={deviceAppearance.colorScheme === option.id}
-                aria-pressed={deviceAppearance.colorScheme === option.id}
-                on:click={() => updateColorScheme(option.id)}
+              <div
+                class="color-scheme-option-shell"
+                class:has-schedule={option.id === 'system' && colorSchemePreference !== 'system'}
               >
-                <span class={`color-scheme-swatch ${option.id}`} aria-hidden="true"></span>
-                <span class="color-scheme-option-copy">
-                  <strong>{option.name}</strong>
-                  <small>{option.description}</small>
-                </span>
-                <span class="theme-selected-mark" aria-hidden="true">✓</span>
-              </button>
+                <button
+                  type="button"
+                  class="color-scheme-option"
+                  class:active={colorSchemePreference === option.id}
+                  aria-pressed={colorSchemePreference === option.id}
+                  on:click={() => updateColorScheme(option.id)}
+                >
+                  <span class={`color-scheme-swatch ${option.id}`} aria-hidden="true"></span>
+                  <span class="color-scheme-option-copy">
+                    <strong>{option.name}</strong>
+                    <small>{option.description}</small>
+                  </span>
+                  <span class="theme-selected-mark" aria-hidden="true">✓</span>
+                </button>
+                {#if option.id === 'system' && colorSchemePreference !== 'system'}
+                  <button
+                    type="button"
+                    class="random-theme-schedule color-scheme-schedule"
+                    class:scheduled={systemColorSchemeScheduled}
+                    aria-pressed={systemColorSchemeScheduled}
+                    on:click={toggleSystemColorSchemeSchedule}
+                  >
+                    {systemColorSchemeScheduled ? 'Cancel start' : 'Start tomorrow'}
+                  </button>
+                {/if}
+              </div>
             {/each}
           </div>
         </section>

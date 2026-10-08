@@ -8,6 +8,7 @@ import {
   effectiveColorScheme,
   effectiveThemeForDate,
   readDeviceAppearanceBootstrap,
+  selectedColorSchemeForDate,
 } from './lib/deviceAppearance'
 import { todayISO } from './lib/planner'
 import { installWebKitInnerHTMLWorkaround } from './lib/webkitInnerHTMLWorkaround'
@@ -16,11 +17,12 @@ installWebKitInnerHTMLWorkaround()
 
 const deviceThemeBootstrapStartedAt = performance.now()
 const startupAppearance = readDeviceAppearanceBootstrap() ?? createDefaultDeviceAppearance()
+const startupDay = todayISO()
 document.documentElement.dataset.colorScheme = effectiveColorScheme(
-  startupAppearance.colorScheme,
+  selectedColorSchemeForDate(startupAppearance, startupDay),
   window.matchMedia(COLOR_SCHEME_QUERY).matches,
 )
-document.documentElement.dataset.theme = effectiveThemeForDate(startupAppearance, todayISO())
+document.documentElement.dataset.theme = effectiveThemeForDate(startupAppearance, startupDay)
 applyIridescentHueShift()
 performance.measure('balance-device-theme-bootstrap', {
   start: deviceThemeBootstrapStartedAt,

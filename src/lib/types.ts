@@ -268,6 +268,8 @@ export type ReplicatedPreferences = {
 export type DeviceAppearancePreferences = {
   version: 1
   colorScheme: ColorSchemePreference
+  // When set, the device returns to the system color scheme on this day.
+  systemColorSchemeStartDate: string
   themeId: string
   randomThemeStartDate: string
   doneTintColor: string

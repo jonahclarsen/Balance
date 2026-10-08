@@ -12,7 +12,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 #[cfg(not(target_os = "android"))]
 use keyring::{Entry, Error as KeyringError};
 use rand::{rngs::OsRng, RngCore};
-use rusqlite::{backup::Backup, params, Connection, OptionalExtension, Transaction};
+use rusqlite::{backup::Backup, params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
@@ -3531,6 +3531,13 @@ fn validate_device_appearance(value: &Value) -> Result<Value, String> {
     if !random_start.is_empty() && !is_iso_calendar_date(random_start) {
         return Err("Device appearance has an invalid Random start date".to_string());
     }
+    let system_scheme_start = value
+        .get("systemColorSchemeStartDate")
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if !system_scheme_start.is_empty() && !is_iso_calendar_date(system_scheme_start) {
+        return Err("Device appearance has an invalid System appearance start date".to_string());
+    }
     Ok(Value::Object(appearance))
 }
 
@@ -4660,7 +4667,7 @@ fn count_plan_item_subtree(item: &Value, count: &mut i64, preview: &mut String) 
     }
 }
 
-fn apply_operation(tx: &Transaction<'_>, operation: &Value) -> Result<(), String> {
+fn apply_operation(tx: &Connection, operation: &Value) -> Result<(), String> {
     let operation_type = required_string(operation, "type")?;
     let resolved_payload = plan_regeneration::resolve_payload(tx, required_value(operation, "payload")?)?;
     let payload = &resolved_payload;
@@ -5227,6 +5234,43 @@ fn build_undo_operation(
     }
 }
 
+// Nested relational operations can depend on each other (a block move places
+// each item after the one moved before it), so each undo is captured against
+// the state its operation actually saw. The probe runs inside a savepoint that
+// is rolled back before the batch is applied for real.
+fn build_batch_undo_operation(
+    connection: &Connection,
+    payload: &Value,
+) -> Result<Option<Value>, String> {
+    let operations = required_array(payload, "operations")?;
+    connection
+        .execute_batch("SAVEPOINT batch_undo_probe")
+        .map_err(|error| error.to_string())?;
+    let probe = (|| {
+        let mut undo = Vec::new();
+        for nested in operations {
+            if let Some(operation) = build_domain_undo_operation(connection, nested)? {
+                undo.push(operation);
+            }
+            apply_operation(connection, nested)?;
+        }
+        undo.reverse();
+        Ok::<_, String>(undo)
+    })();
+    connection
+        .execute_batch("ROLLBACK TO batch_undo_probe; RELEASE batch_undo_probe")
+        .map_err(|error| error.to_string())?;
+    let undo = probe?;
+    if undo.is_empty() {
+        return Ok(None);
+    }
+    let mut undo_payload = json!({ "operations": undo });
+    if let Some(action) = payload.get("action") {
+        undo_payload["action"] = action.clone();
+    }
+    Ok(Some(storage_operation("batch", undo_payload)))
+}
+
 fn build_domain_undo_operation(
     connection: &Connection,
     operation: &Value,
@@ -5245,6 +5289,7 @@ fn build_domain_undo_operation(
             }
             Ok(Some(storage_operation("batch", json!({ "operations": undo }))))
         }
+        "batch" => build_batch_undo_operation(connection, payload),
         "add_image" => Ok(None),
         "patch_preferences" => Ok(None),
         "set_active_plan_date" => Ok(Some(storage_operation(
@@ -14345,6 +14390,71 @@ mod tests {
         assert_eq!(
             top_plan_item_ids(&redone),
             ["plan_item_second", "plan_item_wake"]
+        );
+    }
+
+    #[test]
+    fn batched_block_moves_undo_and_redo_in_sequence() {
+        let database = TestDatabase::new("block-move-history");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Block move test");
+        for id in ["plan_item_second", "plan_item_third", "plan_item_fourth"] {
+            state["plans"][0]["items"].as_array_mut().unwrap().push(json!({
+                "id": id,
+                "text": id,
+                "html": id,
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }));
+        }
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        // Dropping a two-item selection after the last item: the first lands at
+        // the target and the second follows it. A pre-state undo of the second
+        // move would restore it to the wrong index.
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "batch",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "action": "move_plan_items",
+                    "operations": [
+                        { "type": "move_plan_item", "payload": {
+                            "planId": "plan_today", "sourceId": "plan_item_wake",
+                            "targetId": "plan_item_fourth", "placement": "after" } },
+                        { "type": "move_plan_item", "payload": {
+                            "planId": "plan_today", "sourceId": "plan_item_second",
+                            "targetId": "plan_item_wake", "placement": "after" } }
+                    ]
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&moved),
+            ["plan_item_third", "plan_item_fourth", "plan_item_wake", "plan_item_second"]
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&undone),
+            ["plan_item_wake", "plan_item_second", "plan_item_third", "plan_item_fourth"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&redone),
+            ["plan_item_third", "plan_item_fourth", "plan_item_wake", "plan_item_second"]
         );
     }
 
