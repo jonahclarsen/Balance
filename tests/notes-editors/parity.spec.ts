@@ -687,6 +687,28 @@ test.describe('P-40..P-45 clipboard', () => {
     expect(stored.items[4].text).toBe('Gamma')
   })
 
+  test('a copied Balance task block pastes as nested bullets with real line breaks', async ({ harness }) => {
+    await harness.boot({ select: 'Simple paragraphs' })
+    const note = harness.noteByTitle('Simple paragraphs')
+    const empty = note.items[3]
+    await pasteInto(harness, empty.id, 0, {
+      text: '<balance>\n- Parent\n  second line\n  - Read [docs](https://example.com/docs)\n- Sibling\n</balance>',
+    })
+    await harness.waitForNote(note.id, (stored) => stored.items.length === note.items.length + 1)
+    const stored = (await harness.storedNote(note.id))!
+    expect(stored.items[3].id).toBe(empty.id)
+    expect(stored.items[3].kind).toBe('bullet')
+    expect(stored.items[3].html).toBe('Parent<br>second line')
+    expect(stored.items[3].children.map((child) => [child.kind, child.html])).toEqual([
+      ['bullet', 'Read <a href="https://example.com/docs" target="_blank" rel="noreferrer">docs</a>'],
+    ])
+    expect([stored.items[4].kind, stored.items[4].text]).toEqual(['bullet', 'Sibling'])
+    // A single task still becomes a bullet rather than inline text.
+    await expect(harness.block(stored.items[4].id)).toBeVisible()
+    await pasteInto(harness, note.items[0].id, 0, { text: '<balance>\n- Solo\n</balance>' })
+    await harness.waitForNote(note.id, (current) => current.items[0].kind === 'bullet' && current.items[0].text.startsWith('Solo'))
+  })
+
   test('single-line paste is inline, links bare URLs, and a URL pasted over a selection creates a link', async ({ harness }) => {
     await harness.boot({ select: 'Simple paragraphs' })
     const note = harness.noteByTitle('Simple paragraphs')
@@ -761,6 +783,31 @@ test.describe('host integration', () => {
     await expect(harness.page.getByRole('button', { name: 'Exit IMAX mode' })).toBeVisible()
     await harness.page.keyboard.press('Alt+i')
     await expect(harness.page.getByRole('button', { name: 'Enter IMAX mode' })).toBeVisible()
+  })
+
+  test('P-06 title handoff: Enter lands at the end of the note, Tab at its start, Shift+Tab returns to the title', async ({ harness }) => {
+    await harness.boot({ select: 'Simple paragraphs' })
+    const note = harness.noteByTitle('Simple paragraphs')
+    const title = harness.page.locator('#note-title')
+    await title.focus()
+    await harness.page.keyboard.press('Enter')
+    await expect.poll(() => harness.caretItemId()).toBe(note.items[4].id)
+    expect(await harness.caretOffset()).toBe(note.items[4].text.length)
+    expect((await harness.storedNote(note.id))!.items.length).toBe(note.items.length)
+
+    await title.focus()
+    await harness.page.keyboard.press('Tab')
+    await expect.poll(() => harness.caretItemId()).toBe(note.items[0].id)
+    expect(await harness.caretOffset()).toBe(0)
+
+    await harness.page.keyboard.press('Shift+Tab')
+    await expect(title).toBeFocused()
+    expect((await harness.storedNote(note.id))!.items.length).toBe(note.items.length)
+
+    // Shift+Tab further down keeps its outdent meaning.
+    await harness.placeCaret(note.items[1].id, 0)
+    await harness.page.keyboard.press('Shift+Tab')
+    await expect(title).not.toBeFocused()
   })
 
   test('P-18/19 links: external anchors open in a new window, note links select the note', async ({ harness }) => {

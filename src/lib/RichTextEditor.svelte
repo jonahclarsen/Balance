@@ -18,6 +18,7 @@
     type ItemLink,
     type ItemTextSegment,
   } from './planner'
+  import { flattenClipboardHTML } from './taskClipboard'
   import type { Id, MoveDirection } from './types'
 
   type HorizontalBoundaryDirection = 'left' | 'right'
@@ -576,8 +577,11 @@
     }
 
     if (clipboardHTML || clipboardText) {
+      // Lists and paragraphs (a bulleted list copied from Notes, say) keep
+      // their markers and line breaks instead of collapsing into one run.
+      const flattened = clipboardHTML ? flattenClipboardHTML(clipboardHTML) : null
       let pastedHTML = linkifyExternalURLs(
-        clipboardHTML ? clipboardHTML : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>'),
+        flattened ?? (clipboardHTML ? clipboardHTML : escapeHTML(clipboardText).replace(/\r?\n/g, '<br>')),
       )
       if (singleLine) pastedHTML = pastedHTML.replace(/<br>/g, ' ')
       pendingPasteInput = true

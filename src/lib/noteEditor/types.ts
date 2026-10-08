@@ -47,6 +47,9 @@ export type NoteEditorHostCallbacks = {
   // reverts the store and the adapter reloads the document.
   onUndo: () => void
   onRedo: () => void
+  // Shift+Tab in the first block with nothing left to outdent: the host moves
+  // focus up into the note title.
+  onExitToTitle: () => void
   // Focus left the editor (blur to outside the editor root).
   onBlur: () => void
   onFocus: () => void
