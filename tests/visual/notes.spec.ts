@@ -196,7 +196,8 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
   await expect(notesPageActions.locator('button')).toHaveCount(2)
   await expect(binButton).toBeVisible()
   await expect(imaxButton).toBeVisible()
-  await expect(goalRhythm).toBeVisible()
+  // Goal Rhythm only renders on Today.
+  await expect(goalRhythm).toHaveCount(0)
   await expect(sidebar).toBeVisible()
   await expect(notesPageHeader).toBeVisible()
   await expect(notesSidebar).toBeVisible()
@@ -205,14 +206,13 @@ test('IMAX mode maximizes Notes and restores its surrounding panels', async ({ p
 
   const exitImaxButton = page.locator('.imax-exit-control').getByRole('button', { name: 'Exit IMAX mode' })
   await expect(exitImaxButton).toHaveAttribute('aria-pressed', 'true')
-  await expect(goalRhythm).toBeHidden()
   await expect(sidebar).toBeHidden()
   await expect(notesPageHeader).toBeHidden()
   await expect(notesSidebar).toBeHidden()
 
   await exitImaxButton.click()
   await expect(imaxButton).toHaveAttribute('aria-pressed', 'false')
-  await expect(goalRhythm).toBeVisible()
+  await expect(goalRhythm).toHaveCount(0)
   await expect(sidebar).toBeVisible()
   await expect(notesPageHeader).toBeVisible()
   await expect(notesSidebar).toBeVisible()
@@ -223,18 +223,12 @@ test('Notes zoom stays scoped to its editing pane and fits the viewport', async 
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   const navigationSidebar = page.getByRole('complementary', { name: 'Primary navigation drawer', includeHidden: true })
-  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
   const navigationZoom = await navigationSidebar.evaluate(element => element.currentCSSZoom)
-  const rhythmZoom = testInfo.project.name !== 'mobile'
-    ? await goalRhythm.evaluate(element => element.currentCSSZoom) : null
   await openNotesView(page)
 
   const notesPage = page.locator('.notes-view-workspace')
   await expect.poll(() => notesPage.evaluate(element => element.currentCSSZoom)).toBeGreaterThan(navigationZoom)
   await expect.poll(() => navigationSidebar.evaluate(element => element.currentCSSZoom)).toBe(navigationZoom)
-  if (rhythmZoom !== null) {
-    await expect.poll(() => goalRhythm.evaluate(element => element.currentCSSZoom)).toBe(rhythmZoom)
-  }
 
   const bounds = await notesPage.boundingBox()
   expect(bounds).not.toBeNull()

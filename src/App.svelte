@@ -97,7 +97,7 @@
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
@@ -847,7 +847,7 @@ return rows`
     .filter(Boolean)
     .join('; ')
   $: contentShellStyle = [
-    !goalRhythmVisible || view === 'prioritize'
+    !goalRhythmVisible || view !== 'today'
       ? '--goal-history-height: 0px'
       : goalHistoryHeight != null
         ? `--goal-history-height: ${goalHistoryHeight}px`
@@ -1487,6 +1487,20 @@ return rows`
       },
       { done: 0, total: 0 },
     )
+  }
+
+  // Dates whose saved day still has an unchecked item. Goal Rhythm marks past
+  // ones with a red X. The set keeps its identity while its members are
+  // unchanged so unrelated edits do not re-render the date row.
+  let incompletePlanDates = new Set<string>()
+  $: incompletePlanDates = nextIncompletePlanDates($plannerStore.plans, incompletePlanDates)
+  function nextIncompletePlanDates(plans: DailyPlan[], previous: Set<string>): Set<string> {
+    const next = new Set<string>()
+    for (const plan of plans) {
+      if (hasIncompletePlanItems(plan.items)) next.add(plan.date)
+    }
+    if (next.size === previous.size && [...next].every((date) => previous.has(date))) return previous
+    return next
   }
 
   function firstUncheckedItemId(items: PlanItem[]): Id | null {
@@ -7611,10 +7625,11 @@ return rows`
     {/if}
     </section>
 
-    {#if (goalRhythmVisible || viewMaximized) && view !== 'next' && view !== 'prioritize' && (!isMobile || view === 'today')}
+    {#if (goalRhythmVisible || viewMaximized) && view === 'today'}
       <GoalHistoryPanel
         goals={goalHistoryGoals}
         completions={goalCompletions}
+        incompleteDates={incompletePlanDates}
         viewedDate={$plannerStore.activePlanDate || todayISO()}
         visible={goalRhythmVisible}
         onOpenGoals={openGoals}
