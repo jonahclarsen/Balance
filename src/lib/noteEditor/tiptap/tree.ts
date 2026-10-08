@@ -8,6 +8,7 @@
 
 import { DOMParser as PMDOMParser, Fragment, type Mark, type Node as PMNode, type Schema } from '@tiptap/pm/model'
 import { imageHTML } from '../../imageMarkup'
+import { inlineTextStyle } from '../../inlineTextStyle'
 import { escapeHTML } from '../../planner'
 import type { NoteItemKind } from '../../types'
 import type { NoteBlock } from '../noteItems'
@@ -316,6 +317,12 @@ export function parseInline(schema: Schema, html: string, remember = false): Fra
   if (!html) return Fragment.empty
   const template = document.createElement('template')
   template.innerHTML = html
+  // ProseMirror has one mark per type. Carry inherited text properties into
+  // nested spans so a highlight does not erase the surrounding font size.
+  for (const span of template.content.querySelectorAll<HTMLElement>('span[style]')) {
+    const parent = span.parentElement?.closest<HTMLElement>('span[style]')
+    if (parent) span.style.cssText = inlineTextStyle(`${parent.style.cssText};${span.style.cssText}`)
+  }
   const line = parserFor(schema).parse(template.content, {
     topNode: schema.nodes.noteLine.create(),
     preserveWhitespace: 'full',
@@ -330,6 +337,7 @@ function openTag(mark: Mark): string {
     case 'bold': return '<strong>'
     case 'italic': return '<em>'
     case 'underline': return '<u>'
+    case 'importedTextStyle': return `<span style="${escapeHTML(inlineTextStyle(mark.attrs.style))}">`
     case 'link': {
       const href = String(mark.attrs.href ?? '').trim()
       return isInternalHref(href)
@@ -345,6 +353,7 @@ function closeTag(mark: Mark): string {
     case 'bold': return '</strong>'
     case 'italic': return '</em>'
     case 'underline': return '</u>'
+    case 'importedTextStyle': return '</span>'
     case 'link': return '</a>'
     default: return ''
   }

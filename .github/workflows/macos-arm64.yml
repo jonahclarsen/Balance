@@ -41,6 +41,11 @@ jobs:
       - name: Verify notification bridge in dev executables
         run: node scripts/test-macos-task-notifications.mjs
 
+      - name: Verify rich note clipboard conversion with synthetic attachments
+        run: |
+          swiftc src-tauri/macos/NoteClipboardBridge.swift src-tauri/macos/NoteClipboardBridgeTests.swift -o "$RUNNER_TEMP/note-clipboard-tests"
+          "$RUNNER_TEMP/note-clipboard-tests"
+
       - name: Resolve app version
         run: |
           VERSION="$(node -p "require('./src-tauri/tauri.conf.json').version")"

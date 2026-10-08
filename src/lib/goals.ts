@@ -650,25 +650,15 @@ export function sortGoalsByUrgency(goals: Goal[], completions: GoalCompletion[],
 
 /**
  * Puts goals completed today first, even when currentDate is a different viewed
- * day. Within each completion group, on-track goals precede overdue goals,
- * followed by the standard urgency order. A goal due on currentDate has a lapse
- * value of zero, so it remains on track.
+ * day. Within each completion group, goals keep the standard urgency order, so
+ * the most overdue goals lead.
  */
 export function sortGoalsForRhythm(goals: Goal[], completions: GoalCompletion[], currentDate = todayISO(), today = todayISO()): Goal[] {
   const sorted = sortGoalsByUrgency(goals, completions, currentDate)
-  const onTrack: Goal[] = []
-  const overdue: Goal[] = []
-
-  for (const goal of sorted) {
-    const destination = (goalDaysUntilLapse(goal, completions, currentDate) ?? 0) < 0 ? overdue : onTrack
-    destination.push(goal)
-  }
-
   const completedTodayIds = new Set(completions.filter((completion) => completion.date === today).map((completion) => completion.goalId))
-  const ordered = [...onTrack, ...overdue]
   return [
-    ...ordered.filter((goal) => completedTodayIds.has(goal.id)),
-    ...ordered.filter((goal) => !completedTodayIds.has(goal.id)),
+    ...sorted.filter((goal) => completedTodayIds.has(goal.id)),
+    ...sorted.filter((goal) => !completedTodayIds.has(goal.id)),
   ]
 }
 

@@ -4,7 +4,8 @@ import type { ImageAsset } from './types'
 export const MAX_IMAGE_BYTES = 6_000_000
 export const IMAGE_SIZE_LIMIT_MESSAGE = 'Images must be smaller than 6 MB. Reduce the scale or WebP quality to continue.'
 
-export type ImageImport = { blob: Blob; resolve: (blob: Blob | null) => void }
+export type ImageImportPosition = { index: number; total: number }
+export type ImageImport = { blob: Blob; position?: ImageImportPosition; resolve: (blob: Blob | null) => void }
 export const imageImport = writable<ImageImport | null>(null)
 export const imageViewer = writable<string | null>(null)
 export const imageError = writable('')
@@ -36,11 +37,11 @@ export function blobDataURL(blob: Blob): Promise<string> {
   })
 }
 
-export function importImage(original: Blob): Promise<ImageAsset | null> {
+export function importImage(original: Blob, position?: ImageImportPosition): Promise<ImageAsset | null> {
   const result = importQueue.then(async () => {
     if (!/^image\/(png|jpeg|webp|gif|avif|bmp)$/.test(original.type)) throw new Error('This image format is not supported. Use PNG, JPEG, WebP, GIF, AVIF, or BMP.')
     const blob = original.size > 1_000_000
-      ? await new Promise<Blob | null>((resolve) => imageImport.set({ blob: original, resolve }))
+      ? await new Promise<Blob | null>((resolve) => imageImport.set({ blob: original, position, resolve }))
       : original
     if (!blob) return null
     if (blob.size >= MAX_IMAGE_BYTES) throw new Error(IMAGE_SIZE_LIMIT_MESSAGE)

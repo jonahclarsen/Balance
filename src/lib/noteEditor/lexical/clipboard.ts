@@ -1,6 +1,7 @@
+import { parseNoteClipboardHTML, parseNoteChecklistClipboard } from '../../noteClipboard'
 // Notes clipboard formats (contract P-40..P-43), written to the spec.
 
-import { escapeHTML, htmlToPlainTextWithBreaks, sanitizeInlineHTML } from '../../planner'
+import { escapeHTML, htmlToPlainTextWithBreaks } from '../../planner'
 import type { NoteItemKind } from '../../types'
 
 export type ClipboardBlock = {
@@ -106,55 +107,8 @@ export function countPasted(blocks: PastedBlock[]): number {
   return blocks.reduce((sum, block) => sum + 1 + countPasted(block.children), 0)
 }
 
-function flattenPasted(blocks: PastedBlock[]): PastedBlock[] {
-  return blocks.flatMap((block) => [block, ...flattenPasted(block.children)])
-}
-
-function cleanPastedHTML(html: string): string {
-  // Block wrappers (<p>, <div>) sanitize to a trailing <br>; drop it.
-  return sanitizeInlineHTML(html).replace(/(?:<br>)+$/, '')
-}
-
-const CHECK_LINE = /^(\s*)([☐☑])(\s+|$)(.*)$/
-
-function indentWidth(value: string): number {
-  let width = 0
-  for (const character of value) width += character === '\t' ? 2 : 1
-  return width
-}
-
-function parseChecklistPlain(plain: string): PastedBlock[] {
-  const lines = plain.split(/\r?\n/)
-  const roots: PastedBlock[] = []
-  const stack: Array<{ indent: number; block: PastedBlock }> = []
-  let last: PastedBlock | null = null
-  for (const line of lines) {
-    const match = CHECK_LINE.exec(line)
-    if (!match) {
-      if (!line.trim()) continue
-      if (!last) return []
-      last.html += `<br>${escapeHTML(line.trim())}`
-      continue
-    }
-    const indent = indentWidth(match[1])
-    const block: PastedBlock = { kind: 'checklist', html: escapeHTML(match[4]), done: match[2] === CHECKED, children: [] }
-    while (stack.length > 0 && stack[stack.length - 1].indent >= indent) stack.pop()
-    if (stack.length === 0) roots.push(block)
-    else stack[stack.length - 1].block.children.push(block)
-    stack.push({ indent, block })
-    last = block
-  }
-  return roots
-}
-
 export function parseChecklistClipboard(plain: string, html: string): PastedBlock[] {
-  if (html) {
-    const parsed = parseClipboardHTML(html)
-    const flat = flattenPasted(parsed)
-    if (flat.length >= 2 && flat.every((block) => block.kind === 'checklist')) return parsed
-  }
-  const fromPlain = plain ? parseChecklistPlain(plain) : []
-  return countPasted(fromPlain) >= 2 ? fromPlain : []
+  return parseNoteChecklistClipboard(plain, html)
 }
 
 export function parsePlainTextClipboard(plain: string): PastedBlock[] {
@@ -163,61 +117,7 @@ export function parsePlainTextClipboard(plain: string): PastedBlock[] {
   return lines.map((line) => ({ kind: 'paragraph', html: escapeHTML(line), done: false, children: [] }))
 }
 
-function listItems(list: Element, kind: 'bullet' | 'numbered'): PastedBlock[] {
-  const items: PastedBlock[] = []
-  for (const li of Array.from(list.children)) {
-    if (li.tagName !== 'LI') continue
-    const inline = document.createElement('div')
-    const children: PastedBlock[] = []
-    for (const node of Array.from(li.childNodes)) {
-      if (node instanceof Element && (node.tagName === 'UL' || node.tagName === 'OL')) {
-        children.push(...listItems(node, node.tagName === 'OL' ? 'numbered' : 'bullet'))
-      } else inline.append(node.cloneNode(true))
-    }
-    let html = cleanPastedHTML(inline.innerHTML)
-    let itemKind: NoteItemKind = kind
-    let done = false
-    if (kind === 'bullet') {
-      const text = (inline.textContent ?? '').trimStart()
-      const match = /^([☐☑])\s*/.exec(text)
-      if (match) {
-        itemKind = 'checklist'
-        done = match[1] === CHECKED
-        html = removeLeadingMarker(html)
-      }
-    }
-    items.push({ kind: itemKind, html, done, children })
-  }
-  return items
-}
-
-// Strips a leading ☐/☑ marker (and following whitespace) from inline HTML.
-function removeLeadingMarker(html: string): string {
-  const template = document.createElement('template')
-  template.innerHTML = html
-  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT)
-  let removing = true
-  for (let node = walker.nextNode(); node && removing; node = walker.nextNode()) {
-    const text = node.textContent ?? ''
-    const stripped = text.replace(/^\s*[☐☑]?\s*/, '')
-    if (/[☐☑]/.test(text.slice(0, text.length - stripped.length)) || text.trim() === '') {
-      node.textContent = stripped
-      if (stripped) removing = false
-    } else removing = false
-  }
-  return sanitizeInlineHTML(template.innerHTML)
-}
-
 export function parseClipboardHTML(html: string): PastedBlock[] {
-  const parsed = new DOMParser().parseFromString(html, 'text/html')
-  const blocks: PastedBlock[] = []
-  for (const element of Array.from(parsed.body.children)) {
-    const tag = element.tagName
-    if (tag === 'UL') blocks.push(...listItems(element, 'bullet'))
-    else if (tag === 'OL') blocks.push(...listItems(element, 'numbered'))
-    else if (tag === 'P' || tag === 'DIV') blocks.push({ kind: 'paragraph', html: cleanPastedHTML(element.innerHTML), done: false, children: [] })
-    else if (/^H[1-6]$/.test(tag)) blocks.push({ kind: 'heading', html: cleanPastedHTML(element.innerHTML), done: false, children: [] })
-    else if (tag === 'BLOCKQUOTE') blocks.push({ kind: 'quote', html: cleanPastedHTML(element.innerHTML), done: false, children: [] })
-  }
-  return countPasted(blocks) >= 2 ? blocks : []
+  const items = parseNoteClipboardHTML(html)
+  return countPasted(items) >= 2 || (items.length === 1 && items[0].kind !== 'paragraph') ? items : []
 }

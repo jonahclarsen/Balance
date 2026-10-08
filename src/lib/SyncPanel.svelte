@@ -48,8 +48,11 @@
   let replaceKey = false
   let connectionOpen = false
   $: configured = syncEnabled && Boolean(pairingCode && savedRelayUrl)
-  $: busy = actionBusy || showSyncing
-  $: updateSyncingIndicator($automaticSyncStatus.running)
+  $: busy = actionBusy
+  $: updateSyncingIndicator(
+    $automaticSyncStatus.running &&
+    ($automaticSyncStatus.showActivity || !$automaticSyncStatus.initialSyncComplete),
+  )
   let actionBusy = false
 
   function updateSyncingIndicator(running: boolean) {

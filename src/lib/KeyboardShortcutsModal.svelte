@@ -39,8 +39,8 @@
         { keys: ['mod', 'K'], label: 'Open / close search' },
         { keys: ['mod', 'F'], label: 'Find in current document / search goals' },
         { keys: ['mod', 'S'], label: 'Open Goal Stats (while in Goals)' },
-        { keys: ['mod', 'Z'], label: 'Undo and reveal change' },
-        { keys: ['mod', 'shift', 'Z'], label: 'Redo and reveal change', alt: ['mod', 'shift', 'C'] },
+        { keys: ['mod', 'Z'], label: 'Undo and reveal change (undoes typing while in the Add-a-goal form)' },
+        { keys: ['mod', 'shift', 'Z'], label: 'Redo and reveal change (redoes typing while in the Add-a-goal form)', alt: ['mod', 'shift', 'C'] },
         { keys: ['mod', 'shift', 'P'], label: 'Open recovery panel' },
         { keys: ['esc'], label: 'Close backup browser (workspace shortcuts pause while browsing)' },
         { keys: ['mod', 'shift', 'G'], label: 'Generate selected day' },
@@ -114,6 +114,14 @@
         { keys: ['mod', 'V'], label: 'Paste items; paste text or images into the focused editor' },
         { keys: ['mod', 'alt', 'shift', 'V'], label: 'Paste item text only' },
         { keys: ['del'], label: 'Delete selected items' },
+      ],
+    },
+    {
+      title: 'Template review (from a review link)',
+      shortcuts: [
+        { keys: ['left'], label: 'Discard item (instant)', alt: ['del'] },
+        { keys: ['right'], label: 'Keep item (after the 2-second read bar fills)', alt: ['enter'] },
+        { keys: ['esc'], label: 'Cancel review without changing the template' },
       ],
     },
     {

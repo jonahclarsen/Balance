@@ -260,16 +260,16 @@ test('large images preview at the shorter-side default and paste the selected en
   expect(asset.dataURL).toMatch(/^data:image\/webp/)
 })
 
-test('original shortcut bypasses compression and mixed webpage paste excludes images', async ({ page }) => {
+test('original shortcut bypasses compression and mixed webpage paste retains supplied images', async ({ page }) => {
   await notes(page)
   await pasteImage(page, false, true)
-  await expect(page.locator('[data-note-text-input] img')).toHaveCount(0)
+  await expect(page.locator('[data-note-text-input] img')).toHaveCount(1)
   await expect(page.locator('[data-note-text-input]').first()).toContainText('A web passage')
   await pasteImage(page, true)
   await expect(page.getByRole('dialog', { name: 'Paste image', exact: true })).toBeVisible()
   await page.keyboard.press('ControlOrMeta+Enter')
-  await expect(page.locator('[data-note-text-input] img')).toBeVisible()
-  const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images[0])
+  await expect(page.locator('[data-note-text-input] img')).toHaveCount(2)
+  const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images.find((asset: { height: number }) => asset.height === 2000))
   expect(asset.height).toBe(2000)
   expect(asset.bytes).toBeGreaterThan(1_000_000)
   expect(asset.dataURL).toMatch(/^data:image\/png/)

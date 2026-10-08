@@ -1,3 +1,4 @@
+import { inlineTextStyle } from '../../inlineTextStyle'
 // Option B: the Notes body editor built on Lexical (headless, no React).
 //
 // One contenteditable holds the whole note. The Lexical tree mirrors
@@ -63,6 +64,8 @@ import { parseTaskClipboardAsNoteBlocks } from '../../taskClipboard'
 import {
   escapeHTML,
   isGoalStatsURL,
+  templateReviewFromURL,
+  templateReviewLabel,
   isURL,
   linkifyExternalURLs,
   linkifyItemText,
@@ -206,7 +209,7 @@ function $numberOf(block: NoteBlockNode): number | null {
 }
 
 function isLinkTarget(value: string): boolean {
-  return isURL(value) || noteIdFromURL(value) !== null || projectIdFromURL(value) !== null || isGoalStatsURL(value)
+  return isURL(value) || noteIdFromURL(value) !== null || projectIdFromURL(value) !== null || isGoalStatsURL(value) || templateReviewFromURL(value) !== null
 }
 
 function stripAnchors(html: string): string {
@@ -700,7 +703,8 @@ class LexicalNoteEditorView implements NoteEditorView {
       editor.registerNodeTransform(NoteTextNode, (text) => {
         const format = text.getFormat()
         if (format & ~ALLOWED_FORMATS) text.setFormat(format & ALLOWED_FORMATS)
-        if (text.getStyle()) text.setStyle('')
+        const style = inlineTextStyle(text.getStyle())
+        if (style !== text.getStyle()) text.setStyle(style)
       }),
     )
   }
@@ -1485,6 +1489,8 @@ class LexicalNoteEditorView implements NoteEditorView {
     const projectId = projectIdFromURL(href)
     if (projectId !== null) return { kind: 'projects', projectId, label: 'Project vibes' }
     if (isGoalStatsURL(href)) return { kind: 'goalStats', label: 'Goal stats' }
+    const review = templateReviewFromURL(href)
+    if (review) return { kind: 'templateReview', templateKind: review.kind, templateId: review.templateId, label: templateReviewLabel(review.kind) }
     return null
   }
 
@@ -1619,12 +1625,11 @@ class LexicalNoteEditorView implements NoteEditorView {
     if (!selection) return true
     this.pendingSource = 'paste'
 
-    const tasks = parseTaskClipboardAsNoteBlocks(plain)
-    let items: PastedBlock[] = tasks ?? parseChecklistClipboard(plain, html)
+    let items: PastedBlock[] = parseTaskClipboardAsNoteBlocks(plain) ?? parseChecklistClipboard(plain, html)
     if (items.length === 0 && !html) items = parsePlainTextClipboard(plain)
     if (items.length === 0 && html) items = parseClipboardHTML(html)
 
-    if (!tasks && countPasted(items) < 2) {
+    if (items.length === 0 || (countPasted(items) === 1 && items[0].kind === 'paragraph')) {
       if (this.$collapseMultiBlockRange()) {
         const inline = html ? sanitizeInlineHTML(html) : escapeHTML(plain).replace(/\r?\n/g, '<br>')
         this.$insertInlineHTML(inline)

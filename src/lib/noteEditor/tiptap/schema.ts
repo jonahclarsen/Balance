@@ -12,12 +12,13 @@
 
 import { Extension, Mark, Node } from '@tiptap/core'
 import { imageHTML, type ImageLayout } from '../../imageMarkup'
-import { isGoalStatsURL, isURL, noteIdFromURL, projectIdFromURL } from '../../planner'
+import { inlineTextStyle } from '../../inlineTextStyle'
+import { isGoalStatsURL, isURL, noteIdFromURL, projectIdFromURL, templateReviewFromURL } from '../../planner'
 import type { NoteItemKind } from '../../types'
 import { BlockNodeView } from './blockView'
 
 export function isInternalHref(href: string): boolean {
-  return isGoalStatsURL(href) || noteIdFromURL(href) !== null || projectIdFromURL(href) !== null
+  return isGoalStatsURL(href) || noteIdFromURL(href) !== null || projectIdFromURL(href) !== null || templateReviewFromURL(href) !== null
 }
 
 export function allowedHref(href: string | null): string | null {
@@ -189,5 +190,17 @@ const Underline = Mark.create({
 })
 
 export function noteSchemaExtensions(behavior: Extension) {
-  return [NoteDocument, NoteText, NoteBlock, NoteLine, HardBreak, BalanceImage, Link, Bold, Italic, Underline, behavior]
+  return [NoteDocument, NoteText, NoteBlock, NoteLine, HardBreak, BalanceImage, Link, Bold, Italic, Underline, TextStyle, behavior]
 }
+
+const TextStyle = Mark.create({
+  name: 'importedTextStyle',
+  addAttributes() { return { style: { default: '', rendered: false } } },
+  parseHTML() {
+    return [{ tag: 'span[style]', getAttrs: (element) => {
+      const style = inlineTextStyle((element as HTMLElement).getAttribute('style') ?? '')
+      return style ? { style } : false
+    } }]
+  },
+  renderHTML({ mark }) { return ['span', { style: inlineTextStyle(mark.attrs.style) }, 0] },
+})

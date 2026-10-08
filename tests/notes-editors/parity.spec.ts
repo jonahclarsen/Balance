@@ -718,9 +718,14 @@ test.describe('P-40..P-45 clipboard', () => {
     expect((await harness.storedNote(note.id))!.items.length).toBe(note.items.length)
     await pasteInto(harness, target.id, 0, { text: 'https://balance.example/link' }, 5)
     await harness.waitForNote(note.id, (stored) => /^<a href="https:\/\/balance.example\/link"[^>]*>First<\/a>/.test(stored.items[0].html))
-    // Formatting from foreign HTML is reduced to the allowlist.
-    await pasteInto(harness, note.items[3].id, 0, { html: '<span style="color:red"><b>Bold</b> <s>struck</s> <code>code</code></span>', text: 'Bold struck code' })
-    await harness.waitForNote(note.id, (stored) => stored.items[3].html === '<strong>Bold</strong> struck code')
+    // Foreign text formatting survives while unrelated CSS is discarded.
+    await pasteInto(harness, note.items[3].id, 0, { html: '<span style="color:red;position:fixed"><b>Bold</b> <s>struck</s> <code>code</code></span>', text: 'Bold struck code' })
+    await harness.waitForNote(note.id, (stored) => stored.items[3].text === 'Bold struck code')
+    const pastedHtml = (await harness.storedNote(note.id))!.items[3].html
+    expect(pastedHtml).toContain('<strong>')
+    expect(pastedHtml).toMatch(/color:\s*(?:red|rgb\(255, 0, 0\))/)
+    expect(pastedHtml).toContain('line-through')
+    expect(pastedHtml).not.toContain('position')
   })
 
   test('copying a multi-block selection writes list markers and HTML; cut removes the rows', async ({ harness }) => {

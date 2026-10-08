@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test'
+import { primaryNavigation, showPrimaryNavigation } from '../helpers/navigation'
 
 test('mobile header opens a smooth, close-only swipe drawer', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'This navigation only appears in compact layouts')
@@ -235,4 +236,54 @@ test('mobile menu retains a held touch with finger drift', async ({ page }, test
   await expect(menuButton).toHaveAttribute('aria-expanded', 'false')
   await menuButton.tap()
   await expect(menuButton).toHaveAttribute('aria-expanded', 'true')
+})
+
+
+test('mobile navigation paints selection before switching pages and cancels gesture previews', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'This navigation only appears in compact layouts')
+  const session = await page.context().newCDPSession(page)
+  await session.send('Emulation.setCPUThrottlingRate', { rate: 6 })
+  await page.goto('/')
+  await showPrimaryNavigation(page)
+  const nav = primaryNavigation(page)
+  const notes = nav.getByRole('button', { name: 'Notes', exact: true })
+  const today = nav.getByRole('button', { name: 'Today', exact: true })
+  const pointer = { button: 0, pointerType: 'touch', isPrimary: true, pointerId: 42, clientX: 100, clientY: 300 }
+  await notes.dispatchEvent('pointerdown', pointer)
+  await expect(notes).toHaveClass(/active/)
+  await expect(today).not.toHaveClass(/active/)
+  await expect(page.locator('.workspace')).not.toHaveClass(/notes-view-workspace/)
+  await notes.dispatchEvent('pointermove', { ...pointer, clientY: 340 })
+  await expect(today).toHaveClass(/active/)
+  await notes.dispatchEvent('pointercancel', pointer)
+  await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveAttribute('aria-expanded', 'true')
+
+  await notes.dispatchEvent('pointerdown', pointer)
+  await notes.dispatchEvent('pointercancel', pointer)
+  await expect(today).toHaveClass(/active/)
+
+  // Observe in the browser's animation-frame callback: selection must already
+  // be ready to paint while the old page and open drawer are still present.
+  const firstFrame = await notes.evaluate(async (button) => {
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }))
+    return new Promise<{ selected: boolean; oldPage: boolean; drawerOpen: boolean }>((resolve) => {
+      requestAnimationFrame(() => resolve({
+        selected: button.classList.contains('active'),
+        oldPage: !document.querySelector('.workspace')?.classList.contains('notes-view-workspace'),
+        drawerOpen: document.querySelector('.sidebar')?.classList.contains('mobile-drawer-open') ?? false,
+      }))
+    })
+  })
+  expect(firstFrame).toEqual({ selected: true, oldPage: true, drawerOpen: true })
+  await expect(page.locator('.workspace')).toHaveClass(/notes-view-workspace/)
+  await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveAttribute('aria-expanded', 'false')
+
+  // Closing the drawer before the deferred switch must cancel navigation.
+  await showPrimaryNavigation(page)
+  await today.evaluate((button) => {
+    button.click()
+    document.querySelector<HTMLButtonElement>('.mobile-drawer-close-button')?.click()
+  })
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))))
+  await expect(page.locator('.workspace')).toHaveClass(/notes-view-workspace/)
 })

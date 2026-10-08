@@ -21,7 +21,7 @@ export default defineConfig({
     stderr: 'pipe',
   },
   projects: [
-    { name: 'webkit-notes', testMatch: /notes(?:-paragraph-audit)?\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
+    { name: 'webkit-notes', testMatch: /notes(?:-paragraph-audit|-import)?\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
     { name: 'webkit-images', testMatch: /images\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
     { name: 'webkit-quiz', testMatch: /metric-quiz\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
     { name: 'webkit-document-find', testMatch: /document-find\.spec\.ts/, use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } } },
