@@ -11,7 +11,7 @@ import type { NoteBlock } from './noteItems'
 export type NoteEditorCaret = {
   itemId: Id
   // Offsets in plain-text characters within the block (as `NoteItem.text`
-  // counts them: `<br>` is one "\n" character, images count as one char).
+  // counts them, plus one "\n" character per `<br>`; images count as zero).
   start: number
   end: number
 }

@@ -102,10 +102,12 @@ import {
   $caretLength,
   $hasImage,
   $inlineLeaves,
+  $internalOffset,
   $isContentEmpty,
   $nodesFromInlineHTML,
   $offsetOfPoint,
   $plainText,
+  $publicOffset,
   $removeLeadingCharacters,
   $serializeInline,
   $textWithBreaks,
@@ -292,7 +294,35 @@ class LexicalNoteEditorView implements NoteEditorView {
       editor.registerUpdateListener((payload) => this.handleUpdate(payload)),
     )
     this.attachDOMListeners(root)
-    const images = imageEditing(root, () => this.resyncImages())
+    const images = imageEditing(root, () => this.resyncImages(), {
+      insertHTML: (html, range) => {
+        this.resyncImages()
+        const dom = document.getSelection()
+        dom?.removeAllRanges()
+        dom?.addRange(range)
+        // Import into the model before reconciliation can discard or duplicate
+        // unmanaged DOM nodes. The same live range advances for multiple files.
+        editor.update(() => {
+          this.$syncSelectionFromDOM()
+          if (!this.$ensureRange()) return
+          this.pendingSource = 'image'
+          this.$collapseMultiBlockRange()
+          this.$insertInlineHTML(html)
+        }, { discrete: true })
+        if (dom?.rangeCount) {
+          const next = dom.getRangeAt(0)
+          range.setStart(next.startContainer, next.startOffset)
+          range.setEnd(next.endContainer, next.endOffset)
+        }
+      },
+      deleteSelection: () => {
+        editor.update(() => {
+          this.$syncSelectionFromDOM()
+          this.pendingSource = 'image'
+          if (!this.$collapseMultiBlockRange()) $currentRange()?.removeText()
+        }, { discrete: true })
+      },
+    })
     this.teardown.push(() => images.destroy())
   }
 
@@ -351,7 +381,7 @@ class LexicalNoteEditorView implements NoteEditorView {
         // Nothing to do: the selection still points at unchanged content.
       } else if (caret) {
         const target = $blocksInOrder().find((block) => block.getItemId() === caret.itemId)
-        if (target) $selectOffset(target, caret.start, caret.end)
+        if (target) $selectOffset(target, $internalOffset($contentOf(target), caret.start), $internalOffset($contentOf(target), caret.end))
         else $setSelection(null)
       } else if (!focused) {
         $setSelection(null)
@@ -482,10 +512,12 @@ class LexicalNoteEditorView implements NoteEditorView {
       if (!anchor) return null
       const itemId = anchor.block.getItemId() ?? this.adoptedIds.get(anchor.block.getKey())
       if (!itemId) return null
+      const start = $publicOffset($contentOf(anchor.block), anchor.offset)
       if (focus && focus.block.is(anchor.block)) {
-        return { itemId, start: Math.min(anchor.offset, focus.offset), end: Math.max(anchor.offset, focus.offset) }
+        const end = $publicOffset($contentOf(focus.block), focus.offset)
+        return { itemId, start: Math.min(start, end), end: Math.max(start, end) }
       }
-      return { itemId, start: anchor.offset, end: anchor.offset }
+      return { itemId, start, end: start }
     })
   }
 
@@ -496,8 +528,8 @@ class LexicalNoteEditorView implements NoteEditorView {
     editor.update(() => {
       const target = $blocksInOrder().find((block) => (block.getItemId() ?? this.adoptedIds.get(block.getKey())) === caret.itemId)
       if (!target) return
-      const length = $caretLength($contentOf(target))
-      $selectOffset(target, Math.min(length, caret.start), Math.min(length, caret.end))
+      const content = $contentOf(target)
+      $selectOffset(target, $internalOffset(content, caret.start), $internalOffset(content, caret.end))
     }, { discrete: true, tag: SILENT_TAG })
   }
 
@@ -804,6 +836,7 @@ class LexicalNoteEditorView implements NoteEditorView {
         : detail.plainText ? linkifyExternalURLs(escapeHTML(detail.plainText).replace(/\r?\n/g, '<br>')) : ''
       if (!html) return
       this.editor?.update(() => {
+        this.$syncSelectionFromDOM()
         const selection = this.$ensureRange()
         if (!selection) return
         this.pendingSource = 'paste'
@@ -1238,8 +1271,7 @@ class LexicalNoteEditorView implements NoteEditorView {
       }
       return true
     }
-    const leaves = $inlineLeaves(content)
-    if (offset === 0 && !(leaves[0] && $isNoteImageNode(leaves[0].node) && current.anchor.type === 'element' && current.anchor.offset > 0)) {
+    if (offset === 0) {
       // At the very start: a new empty block of the same kind goes above and
       // the caret stays with the text (contract R-09, decided: conventional).
       const above = $createBlock(block.getKind())
@@ -1308,7 +1340,7 @@ class LexicalNoteEditorView implements NoteEditorView {
 
     const leaves = $inlineLeaves(content)
     if (isBackward) {
-      const atStart = offset === 0 && !(leaves[0] && $isNoteImageNode(leaves[0].node) && selection.anchor.type === 'element' && selection.anchor.offset > 0)
+      const atStart = offset === 0
       if (!atStart) return false
       if (unit === 'line' && !$isContentEmpty(content)) return true
       return this.$backspaceAtStart(block)
@@ -1723,44 +1755,40 @@ class LexicalNoteEditorView implements NoteEditorView {
   }
 
   // -------------------------------------------------------------------------
-  // Images: the shared image action edits the DOM directly; mirror its
-  // changes back into the model.
+  // Shared resize, layout and removal controls mutate image DOM. Update only
+  // those image nodes, preserving text nodes and the selection around them.
   // -------------------------------------------------------------------------
 
   private resyncImages() {
     const editor = this.editor
     if (!editor) return
-    const changed: Array<{ key: NodeKey; html: string }> = []
+    const changed: Array<{ key: NodeKey; image: HTMLImageElement | null }> = []
     editor.getEditorState().read(() => {
       for (const block of $blocksInOrder()) {
         const content = $readContent(block)
         if (!content) continue
-        const dom = editor.getElementByKey(content.getKey())?.querySelector<HTMLElement>(':scope > .note-text')
-        if (!dom) continue
-        const domImages = Array.from(dom.querySelectorAll('img[data-balance-image]')).map((image) => image.outerHTML.length > 0 ? `${image.getAttribute('data-balance-image')}:${image.getAttribute('width')}x${image.getAttribute('height')}:${image.getAttribute('data-image-layout')}` : '')
-        const modelImages = $inlineLeaves(content).filter((leaf) => $isNoteImageNode(leaf.node)).map((leaf) => {
-          const image = leaf.node as unknown as { __imageId: string; __width: number; __height: number; __layout: string }
-          return `${image.__imageId}:${image.__width}x${image.__height}:${image.__layout}`
-        })
-        if (domImages.join('|') === modelImages.join('|')) continue
-        let html = sanitizeInlineHTML(dom.innerHTML)
-        const modelHTML = this.$htmlOf(content)
-        const modelBreaks = (modelHTML.match(/(?:<br>)+$/)?.[0].length ?? 0) / 4
-        const domBreaks = (html.match(/(?:<br>)+$/)?.[0].length ?? 0) / 4
-        if (domBreaks > modelBreaks) html = html.slice(0, html.length - (domBreaks - modelBreaks) * 4)
-        changed.push({ key: content.getKey(), html })
+        for (const leaf of $inlineLeaves(content)) {
+          if (!$isNoteImageNode(leaf.node)) continue
+          const node = leaf.node
+          const dom = editor.getElementByKey(node.getKey())
+          const image = dom instanceof HTMLImageElement && this.root?.contains(dom) ? dom : null
+          if (image && Number(image.getAttribute('width')) === node.__width &&
+            Number(image.getAttribute('height')) === node.__height &&
+            image.getAttribute('data-image-layout') === node.__layout) continue
+          changed.push({ key: node.getKey(), image })
+        }
       }
     })
     if (changed.length === 0) return
     editor.update(() => {
       this.pendingSource = 'image'
-      for (const { key, html } of changed) {
-        const content = $getNodeByKey(key)
-        if (!$isNoteContentNode(content)) continue
-        content.clear()
-        const nodes = $nodesFromInlineHTML(html)
-        if (nodes.length > 0) content.append(...nodes)
+      for (const { key, image } of changed) {
+        const node = $getNodeByKey(key)
+        if (!$isNoteImageNode(node)) continue
+        if (!image) node.remove()
+        else node.setDimensionsAndLayout(Number(image.getAttribute('width')), Number(image.getAttribute('height')), image.getAttribute('data-image-layout'))
       }
+      this.$syncSelectionFromDOM()
     }, { discrete: true })
   }
 }

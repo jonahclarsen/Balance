@@ -469,6 +469,13 @@ export class NoteImageNode extends DecoratorNode<null> {
       prevNode.__height !== this.__height || prevNode.__layout !== this.__layout
   }
 
+  setDimensionsAndLayout(width: number, height: number, layout: string | null): void {
+    const node = this.getWritable()
+    node.__width = Math.max(1, Math.min(30000, Math.round(width) || 1))
+    node.__height = Math.max(1, Math.min(30000, Math.round(height) || 1))
+    node.__layout = layout === 'left' || layout === 'right' ? layout : 'inline'
+  }
+
   decorate(): null {
     return null
   }
