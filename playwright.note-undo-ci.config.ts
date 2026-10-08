@@ -10,7 +10,7 @@ export default defineConfig({
   use: { baseURL: 'http://127.0.0.1:5123' },
   webServer: {
     command: 'pnpm exec vite --host 127.0.0.1 --port 5123',
-    env: { VITE_BALANCE_START_VIEW: 'today' },
+    env: { VITE_BALANCE_START_VIEW: 'today', VITE_BALANCE_SKIP_SEED_GOALS: '1' },
     url: 'http://127.0.0.1:5123',
     reuseExistingServer: false,
   },

@@ -35,6 +35,10 @@
   } from './lib/listTiming'
   import ProjectsPanel from './lib/ProjectsPanel.svelte'
   import PrioritizePanel from './lib/PrioritizePanel.svelte'
+  import BucketsPanel from './lib/BucketsPanel.svelte'
+  import IdeaSortModal from './lib/IdeaSortModal.svelte'
+  import IdeaImportModal from './lib/IdeaImportModal.svelte'
+  import { bucketItems, findIdea, IDEA_REVIEW_GOAL_NAME } from './lib/ideaBuckets'
   import { prioritizeReveal } from './lib/prioritize'
   import NotesPanel from './lib/NotesPanel.svelte'
   import { NOTE_EDITOR_OPTIONS, readNoteEditorPreference, writeNoteEditorPreference, type NoteEditorChoice } from './lib/noteEditorPreference'
@@ -152,7 +156,7 @@
     { id: 'dark', name: 'Dark', description: 'Always use dark mode' },
   ]
 
-  type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'metrics' | 'goals' | 'statistics' | 'settings' | 'admin'
+  type View = 'next' | 'today' | 'templates' | 'listTemplates' | 'lists' | 'notes' | 'projects' | 'prioritize' | 'buckets' | 'metrics' | 'goals' | 'statistics' | 'settings' | 'admin'
   type Opener = { container: 'plan' | 'list'; containerId: Id; itemId: Id }
   type ExportSettings = {
     exportDirectory: string
@@ -437,6 +441,9 @@
   let goalBurst: GoalBurst | null = null
   let goalDoabilityReviews: GoalDoabilityReview[] = []
   let dayQuiz: { templateName: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
+  // One-card-at-a-time idea sorting; resolves true once every queued idea has a bucket.
+  let ideaSort: { queue: import('./lib/types').IdeaItem[]; mode: 'proposition' | 'review'; title: string; resolve: (completed: boolean) => void } | null = null
+  let ideaImportOpen = false
   // Tracks each plan item's done state so we can fire a goal burst the moment an
   // item that contributes to a goal transitions to done (via any completion path).
   let goalItemDoneById = new Map<Id, boolean>()
@@ -1127,7 +1134,7 @@ return rows`
     const attribute = {
       today: 'data-plan-item-id', lists: 'data-plan-item-id', templates: 'data-template-item-id',
       listTemplates: 'data-list-template-item-id', notes: 'data-note-item-id',
-      projects: 'data-project-id', prioritize: 'data-priority-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
+      projects: 'data-project-id', prioritize: 'data-priority-id', buckets: 'data-plan-item-id', metrics: 'data-metric-question-id', goals: 'data-goal-id',
     }[nextView]
     const targetId = nextView === 'goals' ? entityId : itemId
     const row = targetId ? workspaceEl?.querySelector<HTMLElement>(
@@ -1136,7 +1143,7 @@ return rows`
     const containerSelector = {
       today: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, lists: '.list-panel',
       templates: '.template-panel', listTemplates: '.template-panel',
-      projects: `#project-${CSS.escape(entityId)}`, prioritize: '.priority-list', notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
+      projects: `#project-${CSS.escape(entityId)}`, prioritize: '.priority-list', buckets: `[data-plan-item-scope="${CSS.escape(entityId)}"]`, notes: '.note-document', metrics: '.metric-card', goals: '.goal-list',
     }[nextView]
     const target = (metricOverlay ? document.querySelector<HTMLElement>('.metric-quiz') : row) ??
       workspaceEl?.querySelector<HTMLElement>(containerSelector) ?? workspaceEl?.querySelector<HTMLElement>('h2')
@@ -1576,6 +1583,9 @@ return rows`
     } else if (link.kind === 'projects') {
       linkedProjectId = link.projectId
       view = 'projects'
+    } else if (link.kind === 'buckets') {
+      view = 'buckets'
+      if (link.review) void startIdeaReview()
     } else if (link.kind === 'note') {
       if (notes.some((note) => note.id === link.noteId)) {
         selectedNoteId = link.noteId
@@ -2178,7 +2188,9 @@ return rows`
       preferencesReady = true
 
       plannerStore.purgeExpiredNotes()
-      noteTrashCleanupTimer = window.setInterval(() => plannerStore.purgeExpiredNotes(), 60 * 1000)
+      plannerStore.purgeExpiredIdeas()
+      noteTrashCleanupTimer = window.setInterval(() => { plannerStore.purgeExpiredNotes(); plannerStore.purgeExpiredIdeas() }, 60 * 1000)
+      seedDefaultGoals()
 
       // Android may serialize event-plugin registration with command IPC while
       // the WebView is starting. Register optional listeners only after the
@@ -2266,6 +2278,8 @@ return rows`
       // Pull remote changes before evaluating threshold-based housekeeping.
       await requestSync('launch')
       plannerStore.purgeExpiredNotes()
+      plannerStore.purgeExpiredIdeas()
+      seedDefaultGoals()
 
       try {
         buildInfo = await invoke<{ version: string; commit: string }>('build_info')
@@ -2776,15 +2790,50 @@ return rows`
     quickAddText = ''
   }
 
-  async function saveQuickAdd() {
+  // Quick add drops the text into Proposition Party; the next day generation sorts it.
+  function saveQuickAdd() {
     const text = quickAddText.trim()
     closeQuickAdd()
     if (!text) return
-    try {
-      if (await plannerStore.addQuickTask(text, displayedPlanDate || todayISO())) view = 'today'
-    } catch (error) {
-      console.error('Could not add quick task', error)
-    }
+    plannerStore.addIdea(text)
+  }
+
+  // Seeds the weekly "Filter Genuinely Worth Doing" goal once per database.
+  // Browser test runs opt out so goal counts in fixtures stay predictable.
+  function seedDefaultGoals() {
+    if (import.meta.env.VITE_BALANCE_SKIP_SEED_GOALS === '1') return
+    plannerStore.ensureIdeaReviewGoal()
+  }
+
+  function askIdeaSort(queue: import('./lib/types').IdeaItem[], mode: 'proposition' | 'review', title: string): Promise<boolean> {
+    ideaSort?.resolve(false)
+    return new Promise((resolve) => {
+      ideaSort = { queue, mode, title, resolve }
+    })
+  }
+
+  function finishIdeaSort(completed: boolean) {
+    const sort = ideaSort
+    ideaSort = null
+    sort?.resolve(completed)
+  }
+
+  // Runs the key question over Genuinely Worth Doing. Finishing it logs a done
+  // task so the seeded weekly goal counts the review.
+  async function startIdeaReview() {
+    const queue = bucketItems($plannerStore.ideaBuckets, 'genuine')
+    if (queue.length === 0) return
+    const completed = await askIdeaSort(queue, 'review', 'Review Genuinely Worth Doing')
+    if (!completed) return
+    const plan = $plannerStore.plans.find((candidate) => candidate.date === todayISO())
+    if (plan) plannerStore.addCompletedPlanItem(plan.id, IDEA_REVIEW_GOAL_NAME)
+  }
+
+  function importIdeas(items: PlanItem[]) {
+    ideaImportOpen = false
+    const ids = new Set(plannerStore.importIdeas(items))
+    const queue = bucketItems($plannerStore.ideaBuckets, 'proposition').filter((item) => ids.has(item.id))
+    if (queue.length > 0) void askIdeaSort(queue, 'proposition', 'Sort imported ideas')
   }
 
   function handleQuickAddKeydown(event: KeyboardEvent) {
@@ -2794,7 +2843,7 @@ return rows`
       closeQuickAdd()
     } else if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
       event.preventDefault()
-      void saveQuickAdd()
+      saveQuickAdd()
     }
   }
 
@@ -2941,6 +2990,7 @@ return rows`
       value === 'notes' ||
       value === 'projects' ||
       value === 'prioritize' ||
+      value === 'buckets' ||
       value === 'metrics' ||
       value === 'goals' ||
       value === 'statistics' ||
@@ -3140,6 +3190,10 @@ return rows`
       view = 'today'
       return
     }
+
+    // Every proposition must land in a bucket before a new day begins.
+    const propositions = bucketItems($plannerStore.ideaBuckets, 'proposition')
+    if (propositions.length > 0 && !(await askIdeaSort(propositions, 'proposition', 'Sort new ideas'))) return
 
     const steps = templateQuizSteps(template, $plannerStore.templateQuestions)
     const quizAnswers = steps.length > 0 ? await askDayQuiz(template.name, steps) : {}
@@ -3372,6 +3426,15 @@ return rows`
       return
     }
 
+    // The sort modal owns the keyboard while open (its own window listener).
+    if (ideaSort) return
+
+    if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyK') {
+      event.preventDefault()
+      if (!event.repeat) void openQuickAdd()
+      return
+    }
+
     if (pasteReview) {
       if (pasteReviewEditing) {
         if (event.key === 'Enter') {
@@ -3485,6 +3548,7 @@ return rows`
         KeyN: 'notes',
         KeyP: 'projects',
         KeyR: 'prioritize',
+        KeyB: 'buckets',
         KeyV: 'metrics',
         KeyY: 'statistics',
         KeyS: 'settings',
@@ -6121,16 +6185,18 @@ return rows`
         {/if}
       </div>
       <div class="mobile-header-actions">
-        {#if isMobile && view === 'today'}
+        {#if isMobile}
           <button
             class="mobile-header-quick-add-button"
             type="button"
-            title="Add task"
-            aria-label="Add task"
+            title="Add idea"
+            aria-label="Add idea"
             on:click={() => { void openQuickAdd() }}
           >
             <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
           </button>
+        {/if}
+        {#if isMobile && view === 'today'}
           <button
             class="mobile-header-previous-day-button"
             type="button"
@@ -6212,6 +6278,17 @@ return rows`
       <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
       <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd>
     </button>
+    <button
+      class="sidebar-search-button sidebar-add-idea-button"
+      type="button"
+      title="Add idea (Alt+K)"
+      aria-label="Add idea"
+      aria-keyshortcuts="Alt+K"
+      on:click={() => { void openQuickAdd() }}
+    >
+      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+      <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('K')}</kbd>
+    </button>
 
     <div>
       <div class="sidebar-brand-heading">
@@ -6252,6 +6329,7 @@ return rows`
       <button data-nav-view="goals" class:active={selectedNavView === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => selectMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
       <button data-nav-view="projects" class:active={selectedNavView === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; selectMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
       <button data-nav-view="prioritize" class:active={selectedNavView === 'prioritize'} type="button" title="Prioritize (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => selectMobileDrawerView('prioritize')}><span>Prioritize</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
+      <button data-nav-view="buckets" class:active={selectedNavView === 'buckets'} type="button" title="Buckets (Alt+B)" aria-keyshortcuts="Alt+B" on:click={() => selectMobileDrawerView('buckets')}><span>Buckets</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('B')}</kbd></button>
       <button data-nav-view="statistics" class:active={selectedNavView === 'statistics'} type="button" title="Statistics (Alt+Y)" aria-keyshortcuts="Alt+Y" on:click={() => selectMobileDrawerView('statistics')}><span>Statistics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Y')}</kbd></button>
       <button data-nav-view="settings" class:active={selectedNavView === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => selectMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
       {#if import.meta.env.DEV}
@@ -7054,6 +7132,19 @@ return rows`
       />
     {/if}
 
+    {#if view === 'buckets'}
+      <BucketsPanel
+        buckets={$plannerStore.ideaBuckets}
+        {listTemplates}
+        {metrics}
+        {notes}
+        mobile={isMobile}
+        onOpenLink={(link, itemId) => openLink(link, null)}
+        onImport={() => (ideaImportOpen = true)}
+        onReview={() => { void startIdeaReview() }}
+      />
+    {/if}
+
     {#if view === 'goals'}
       <header class="page-header">
         <div>
@@ -7769,6 +7860,10 @@ return rows`
       </OverlayModal>
     {/if}
 
+    {#if ideaImportOpen}
+      <IdeaImportModal onImport={importIdeas} onClose={() => (ideaImportOpen = false)} />
+    {/if}
+
     {#if metricOverlay && metricOverlayMetric}
       {@const overlay = metricOverlay}
       <OverlayModal title={`${metricOverlayMetric.name} · ${overlay.date}`} z={70} onClose={() => (metricOverlay = null)}>
@@ -7968,13 +8063,13 @@ return rows`
 {#if quickAddOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="modal-backdrop quick-add-backdrop" style={appShellStyle} role="presentation" on:click|self={closeQuickAdd}>
-    <form class="quick-add-dialog" aria-label="Add task" on:submit|preventDefault={() => { void saveQuickAdd() }}>
+    <form class="quick-add-dialog" aria-label="Add idea" on:submit|preventDefault={saveQuickAdd}>
       <textarea
         class="quick-add-input"
         rows="3"
         enterkeyhint="done"
-        placeholder="New task"
-        aria-label="New task"
+        placeholder="New idea"
+        aria-label="New idea"
         bind:this={quickAddInput}
         bind:value={quickAddText}
         on:keydown={handleQuickAddKeydown}
@@ -7985,6 +8080,22 @@ return rows`
       </div>
     </form>
   </div>
+{/if}
+
+{#if ideaSort}
+  {#key ideaSort}
+    <IdeaSortModal
+      queue={ideaSort.queue}
+      buckets={$plannerStore.ideaBuckets}
+      mode={ideaSort.mode}
+      title={ideaSort.title}
+      onDecide={(itemId, kind) => plannerStore.moveIdeaToBucket(itemId, kind)}
+      onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}
+      onEdit={(itemId, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { text, html: escapeHTML(text) }) }}
+      onToggleDone={(itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { done }) }}
+      onFinish={finishIdeaSort}
+    />
+  {/key}
 {/if}
 
 {#if recoveryKeyStatus?.recoveryKey}

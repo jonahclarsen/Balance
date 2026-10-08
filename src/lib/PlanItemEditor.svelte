@@ -94,6 +94,8 @@
   export let locked = false
   // Today rows with subtasks get a toggle that hides or shows them.
   export let collapsible = false
+  // Idea rows have no schedule: no time pill, add-time button or time menu entries.
+  export let hideTime = false
 
   $: selected = selectedItemIds.has(item.id)
   let matchedGoals: Goal[] = []
@@ -907,7 +909,7 @@
   />
 
   <div class="plan-item-main" class:timed={hasActiveTimeRange(item)}>
-    {#if hasActiveTimeRange(item)}
+    {#if hasActiveTimeRange(item) && !hideTime}
       {#if mobile}
         <button
           class="mobile-time-summary"
@@ -935,7 +937,7 @@
           onRemove={() => patchItem(planId, item.id, { startMinutes: null, endMinutes: null, timeHidden: null })}
         />
       {/if}
-    {:else if !locked && !mobile}
+    {:else if !locked && !mobile && !hideTime}
         <button
           class="icon-button quiet add-time"
           type="button"
@@ -1063,7 +1065,9 @@
             role="menu"
             aria-label={`Options for ${item.text || 'untitled task'}`}
           >
-            {#if hasActiveTimeRange(item)}
+            {#if hideTime}
+              <!-- Ideas carry no schedule. -->
+            {:else if hasActiveTimeRange(item)}
               <button type="button" role="menuitem" on:click|stopPropagation={openMobileTimeEditor}>Edit time</button>
               <button type="button" role="menuitem" on:click|stopPropagation={removeTime}>Remove time</button>
             {:else}

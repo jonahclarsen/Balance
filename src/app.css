@@ -7330,3 +7330,104 @@ textarea.note-title {
   color: var(--accent-strong);
   font-weight: 700;
 }
+
+/* ---- Idea buckets ------------------------------------------------------- */
+
+.sidebar-add-idea-button {
+  margin-top: 16px;
+}
+
+.idea-sort .paste-review-list {
+  max-height: 46dvh;
+}
+
+.idea-sort-question {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.idea-sort-actions .primary {
+  margin-left: 0;
+}
+
+.idea-sort-actions,
+.idea-sort-secondary {
+  justify-content: flex-end;
+}
+
+.idea-sort-secondary button {
+  font-size: 13px;
+  padding: 6px 10px;
+}
+
+.idea-sort-tag {
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.idea-sort-children {
+  margin: 4px 0 0;
+  padding-left: 34px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* Commitment buttons dim until their unlock delay passes; an early press shakes. */
+.idea-bucket-button.locked {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.idea-bucket-button.shaking {
+  animation: idea-bucket-shake 420ms ease;
+}
+
+@keyframes idea-bucket-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .idea-bucket-button.shaking { animation: none; }
+}
+
+.idea-import {
+  display: grid;
+  gap: 12px;
+}
+
+.idea-import-input {
+  width: 100%;
+  min-height: 160px;
+  resize: vertical;
+  font: inherit;
+}
+
+.idea-import-preview {
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  padding-left: 22px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.idea-import-preview .muted {
+  color: var(--muted);
+}
+
+.idea-import-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

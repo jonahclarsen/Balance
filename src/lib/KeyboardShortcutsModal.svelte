@@ -46,6 +46,7 @@
         { keys: ['mod', 'shift', 'G'], label: 'Generate selected day' },
         { keys: ['mod', 'N'], label: 'Create note (while in Notes)' },
         { keys: ['alt', 'A'], label: 'Toggle goal rhythm' },
+        { keys: ['alt', 'K'], label: 'Add an idea to Proposition Party' },
         { keys: ['alt', 'I'], label: 'Toggle IMAX mode' },
         { keys: ['?'], label: 'Show this shortcuts reference' },
         { keys: ['esc'], label: 'Close overlay / clear selection' },
@@ -66,6 +67,7 @@
         { keys: ['alt', 'N'], label: 'Open Notes' },
         { keys: ['alt', 'P'], label: 'Open Projects' },
         { keys: ['alt', 'R'], label: 'Open Prioritize' },
+        { keys: ['alt', 'B'], label: 'Open Buckets' },
         { keys: ['alt', 'D'], label: 'Open Days' },
         { keys: ['alt', 'E'], label: 'Open Lists' },
         { keys: ['alt', 'V'], label: 'Open Quizzes' },
@@ -114,6 +116,17 @@
         { keys: ['mod', 'V'], label: 'Paste items; paste text or images into the focused editor' },
         { keys: ['mod', 'alt', 'shift', 'V'], label: 'Paste item text only' },
         { keys: ['del'], label: 'Delete selected items' },
+      ],
+    },
+    {
+      title: 'Buckets',
+      shortcuts: [
+        { keys: ['G / P / A / T / U'], label: 'Move the selected idea to Genuinely / Possibly / Afterlife / Trash / Proposition Party' },
+        { keys: ['up'], label: 'Select the previous / next idea', alt: ['down'] },
+        { keys: ['Y / N'], label: 'Sorting: answer the key question' },
+        { keys: ['B'], label: 'Sorting: back one idea', alt: ['left'] },
+        { keys: ['M'], label: 'Sorting: append this idea to the previous one' },
+        { keys: ['E'], label: 'Sorting: edit the idea' },
       ],
     },
     {
