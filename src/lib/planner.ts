@@ -126,13 +126,14 @@ export function createDefaultTemplate(): DailyTemplate {
         ...createTemplateItem('Work block'),
         children: [createTemplateItem('Pick the first useful task'), createTemplateItem('Write down next action')],
       },
-      createTemplateItem('1 goals'),
     ],
   }
 }
 
 // The starter goal sends you back through the default day every ten days so the
-// template stays something you actively chose, not something you inherited.
+// template stays something you actively chose, not something you inherited. It
+// shows up in Goal Rhythm and on the Goals page; a template "N goals" row also
+// presents it in generated days.
 export const DEFAULT_TEMPLATE_REVIEW_GOAL_CADENCE_DAYS = 10
 
 export function createDefaultTemplateReviewGoal(template: DailyTemplate): Goal {

@@ -104,9 +104,11 @@ test('a new goal receives the color previewed by the add button and has no color
 
   await expect.poll(() => page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-    return { hue: state.goals[0].hue, lightness: state.goals[0].lightness }
+    const goal = state.goals.find((candidate: { name: string }) => candidate.name === 'Exercise')
+    return { hue: goal.hue, lightness: goal.lightness }
   })).toEqual({ hue: previewHue, lightness: 50 })
-  await expect(page.locator('.goal-card-accent')).toHaveCSS('background-color', previewColor)
+  const exerciseCard = page.getByRole('article').filter({ has: page.getByLabel('Goal name: Exercise') })
+  await expect(exerciseCard.locator('.goal-card-accent')).toHaveCSS('background-color', previewColor)
   await expect(page.getByLabel('New goal color')).toHaveCount(0)
   await expect(page.getByLabel('Color for Exercise')).toHaveCount(0)
 
@@ -827,7 +829,7 @@ test('old goal snapshots survive rule edits and archived goals leave rhythm', as
     state.plans[0].date = date
     state.plans[0].title = 'Old saved day'
     state.activePlanDate = date
-    state.goals[0].activityPeriods = [{ startDate: date, endDate: null }]
+    state.goals.find((goal: { name: string }) => goal.name === 'Exercise').activityPeriods = [{ startDate: date, endDate: null }]
     state.goalCompletions[0].date = date
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   }, oldDate)

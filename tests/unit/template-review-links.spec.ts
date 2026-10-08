@@ -43,6 +43,4 @@ test('a fresh workspace starts with a goal that reviews the default day every te
   expect(resolveItemLinks(goal.nameHtml, [], [])).toEqual([
     { kind: 'templateReview', templateKind: 'day', templateId: template.id, label: 'Recommit to day plan' },
   ])
-  // The default day presents one goal so the review actually comes around.
-  expect(template.items.some((item) => item.options.some((option) => /^1 goals$/i.test(option.text)))).toBe(true)
 })
