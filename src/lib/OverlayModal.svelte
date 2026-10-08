@@ -1,4 +1,14 @@
+<script module lang="ts">
+  // On phones the page itself scrolls behind the fixed backdrop. While any
+  // overlay is open the document stays put, so a swipe that overshoots the
+  // card cannot scroll the day underneath it.
+  let openOverlays = 0
+  const SCROLL_LOCK_CLASS = 'overlay-scroll-lock'
+</script>
+
 <script lang="ts">
+  import { onMount } from 'svelte'
+
   export let onClose: () => void
   export let title = ''
   export let ariaLabel = title || 'Dialog'
@@ -24,6 +34,15 @@
 
     return topmost === backdrop
   }
+
+  onMount(() => {
+    openOverlays += 1
+    document.documentElement.classList.add(SCROLL_LOCK_CLASS)
+    return () => {
+      openOverlays -= 1
+      if (openOverlays === 0) document.documentElement.classList.remove(SCROLL_LOCK_CLASS)
+    }
+  })
 
   function handleEscape(event: KeyboardEvent) {
     if (event.key === 'Escape' && isTopmostOverlay()) {
@@ -174,9 +193,16 @@
   }
 
   @media (max-width: 760px) {
+    :global(html.overlay-scroll-lock),
+    :global(html.overlay-scroll-lock body) {
+      overflow: hidden;
+    }
+
     .overlay-backdrop {
       position: fixed;
       inset: 0;
+      /* Touches on the dimmed area belong to the overlay, not the page. */
+      touch-action: none;
       /* Cover the safe areas with blur while keeping the card inside them. */
       padding: calc(12px + max(env(safe-area-inset-top), var(--mobile-overlay-top)))
         calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom))
@@ -196,6 +222,7 @@
 
     .overlay-body {
       padding: 12px;
+      overscroll-behavior: contain;
     }
 
   }

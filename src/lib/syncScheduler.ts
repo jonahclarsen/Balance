@@ -1,4 +1,4 @@
-import { writable } from 'svelte/store'
+import { get, writable } from 'svelte/store'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import {
   getSyncSettings,
@@ -14,7 +14,15 @@ const ACTIVE_CHANGE_WINDOW_MS = 60_000
 const QUIET_VISIBLE_POLL_MS = 8_000
 const BACKGROUND_POLL_MS = 5 * 60 * 1_000
 const MAX_RETRY_MS = 5 * 60 * 1_000
+// A phone catching up after a quick app switch stays quiet unless the pass
+// drags on. A desktop window regains focus constantly, so only a pass that is
+// genuinely slow earns the cue there.
 const SLOW_ACTIVITY_MS = 1_000
+const DESKTOP_SLOW_ACTIVITY_MS = 6_000
+// After this long away, a phone shows Syncing at once so stale state is never
+// mistaken for current.
+const STALE_AFTER_MS = 60_000
+const isMobileDevice = typeof navigator !== 'undefined' && /android|iphone|ipad|ipod/i.test(navigator.userAgent)
 
 export type AutomaticSyncStatus = {
   running: boolean
@@ -109,14 +117,22 @@ function requiresFollowup(reason: string): boolean {
   return ['edit', 'manual', 'resume', 'focus', 'online', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
 }
 
-function shouldShowActivity(reason: string): boolean {
-  return ['launch', 'manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)
+// Which passes show the Syncing cue, and when. User-requested passes show it
+// at once. Launch and a return to the app show it at once on a phone that has
+// been away for a while, and otherwise only when the pass is slow. Polls,
+// edits, and retries never show it; errors and offline have their own cues.
+function activityDelay(reason: string, lastSuccessAt: number | null): number | null {
+  if (['manual', 'sync-enabled', 'paired', 'relay-configured'].includes(reason)) return 0
+  if (!['launch', 'resume', 'focus'].includes(reason)) return null
+  if (isMobileDevice) {
+    const stale = lastSuccessAt === null || Date.now() - lastSuccessAt > STALE_AFTER_MS
+    return stale ? 0 : SLOW_ACTIVITY_MS
+  }
+  return DESKTOP_SLOW_ACTIVITY_MS
 }
 
-// Returning to the app may show stale state until the pass lands. Quick checks
-// stay silent; a slow catch-up shows the same cue as launch.
-function showsActivityWhenSlow(reason: string): boolean {
-  return ['resume', 'focus'].includes(reason)
+function shouldShowActivity(reason: string): boolean {
+  return activityDelay(reason, null) === 0
 }
 
 function refreshesVisibleState(reason: string): boolean {
@@ -221,20 +237,21 @@ export async function requestSync(reason: string): Promise<SyncPassResult | null
         return null
       }
 
+      const delay = activityDelay(reason, get(automaticSyncStatus).lastSuccessAt)
       automaticSyncStatus.update((status) => ({
         ...status,
         running: true,
         configured: true,
         offline,
-        showActivity: shouldShowActivity(reason),
+        showActivity: status.showActivity || delay === 0,
       }))
-      if (showsActivityWhenSlow(reason)) {
+      if (delay !== null && delay > 0) {
         slowActivityTimer = setTimeout(() => {
           slowActivityTimer = null
           automaticSyncStatus.update((status) => (
             status.running ? { ...status, showActivity: true } : status
           ))
-        }, SLOW_ACTIVITY_MS)
+        }, delay)
       }
       // A mobile WebView can be suspended before the ordinary persistence
       // debounce fires. Reconcile only after every edit still visible in the
