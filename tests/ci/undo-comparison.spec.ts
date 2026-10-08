@@ -71,7 +71,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
             if (scenario === 'note-text') return state.notes[0].items[0].text
             if (scenario === 'list-template-text') return state.listTemplates[0].items[0].text
             if (scenario.startsWith('list-')) {
-              const row = state.lists.find((list: any) => list.date === state.activePlanDate).items[0]
+              const row = state.lists.at(-1).items[0]
               return JSON.stringify([row.text, row.done, row.doneAt ?? null])
             }
             if (scenario.startsWith('metric-')) {
@@ -87,8 +87,8 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
           if (scenario === 'note-text') store.patchNoteItem('note_ci', 'item_ci', { text: 'Changed', html: 'Changed' })
           if (scenario === 'list-template-text') store.patchListTemplateItem('list_template_ci', 'lt_item_0', { text: 'Changed', html: 'Changed' })
           if (scenario.startsWith('list-check') || scenario === 'list-text') {
-            const list = state.lists.find((list: any) => list.date === state.activePlanDate)
-            const patch = scenario === 'list-check' ? { done: true } : { text: 'Changed', html: 'Changed' }
+            const list = state.lists.at(-1)
+            const patch = scenario === 'list-text' ? { text: 'Changed', html: 'Changed' } : { done: true }
             store.patchListItem(list.id, list.items[0].id, patch)
           }
           if (scenario.startsWith('metric-')) {
@@ -142,7 +142,7 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
         const visible = await page.evaluate(() => {
           const r = window as any
           return { plan: r.state.plans[0], note: r.state.notes[0], entries: r.state.metricEntries,
-            list: r.state.lists.find((list: any) => list.date === r.state.activePlanDate), listTemplate: r.state.listTemplates[0] }
+            list: r.state.lists.at(-1), listTemplate: r.state.listTemplates[0] }
         })
         const persisted = native('verify', { planId: visible.plan.id, listId: visible.list.id })
         expect(persisted.list.items[0]).toEqual(visible.list.items[0])
@@ -230,27 +230,36 @@ for (const [size, plans, entries] of [['small', 75, 300], ['large', 1500, 10000]
         if (await menu.isVisible() && await menu.getAttribute('aria-expanded') !== 'true') await menu.click()
         await page.getByRole('navigation', { name: 'Primary', exact: true }).getByRole('button', { name, exact: true }).click()
       }
+      // List History has no sidebar entry until it has been opened once; its
+      // shortcut is Alt+H (Alt+R before Sept 16).
+      async function openListHistory(rowSelector: string) {
+        for (const code of ['KeyH', 'KeyR']) {
+          await page.evaluate((code) => window.dispatchEvent(new KeyboardEvent('keydown', { key: code.slice(3).toLowerCase(), code, altKey: true, bubbles: true, cancelable: true })), code)
+          if (await page.locator(rowSelector).first().isVisible({ timeout: 5_000 }).catch(() => false)) return
+        }
+      }
       for (const [scenario, viewName, rowSelector] of [
         ['rendered-list-template-text', 'Lists', '.template-list [contenteditable="true"]'],
         ['rendered-list-check', 'List History', '.list-panel [data-plan-item-id]'],
       ] as const) {
-        await openView(viewName)
+        if (viewName === 'List History') await openListHistory(rowSelector)
+        else await openView(viewName)
         const row = page.locator(rowSelector).first()
         await expect(row).toBeVisible({ timeout: 60_000 })
         for (let sample = 0; sample < 4; sample++) {
           const before = await page.evaluate(async (scenario) => {
             const path = '/src/lib/store.ts'
             const { plannerStore: store } = await import(/* @vite-ignore */ path)
-            let state: any
-            store.subscribe((value: any) => { state = value })()
+            // window.state follows the live store, so the probe sees the edit.
+            const state = () => (window as any).state
             const probe = () => scenario === 'rendered-list-check'
-              ? JSON.stringify(state.lists.find((list: any) => list.date === state.activePlanDate).items[0])
-              : state.listTemplates[0].items[0].text
+              ? JSON.stringify(state().lists.find((list: any) => list.date === state().activePlanDate).items[0])
+              : state().listTemplates[0].items[0].text
             const original = probe()
             if (scenario === 'rendered-list-template-text') {
               store.patchListTemplateItem('list_template_ci', 'lt_item_0', { text: 'Rendered changed', html: 'Rendered changed' })
             } else {
-              const list = state.lists.find((list: any) => list.date === state.activePlanDate)
+              const list = state().lists.find((list: any) => list.date === state().activePlanDate)
               store.patchListItem(list.id, list.items[0].id, { done: true })
             }
             await store.flushPendingOperations()

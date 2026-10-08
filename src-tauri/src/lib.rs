@@ -1500,16 +1500,17 @@ async fn initialize_app_state(app: tauri::AppHandle, state_json: String) -> Resu
 
 #[tauri::command]
 async fn persist_operation(app: tauri::AppHandle, operation_json: String) -> Result<bool, String> {
-    run_database_task(move || {
+    let housekeeping_app = app.clone();
+    let accepted = run_database_task(move || {
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
         let operation = parse_json(&operation_json)?;
-        let accepted = persist_operation_once(&mut connection, &operation)?;
-        finish_meaningful_database_write(&connection, &database_path, &recovery_key);
-        Ok(accepted)
+        persist_operation_once(&mut connection, &operation)
     })
-    .await
+    .await?;
+    schedule_meaningful_database_housekeeping(&housekeeping_app);
+    Ok(accepted)
 }
 
 /// CI-only bulk fixture setup for the Android emulator profile. Production
@@ -1566,17 +1567,19 @@ async fn undo_last_operation(
     app: tauri::AppHandle,
     expected_operation_id: Option<String>,
 ) -> Result<Option<String>, String> {
-    run_database_task(move || {
+    let housekeeping_app = app.clone();
+    let result = run_database_task(move || {
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
         let result = undo_last_operation_for_ui(&mut connection, expected_operation_id.as_deref())?;
-        if result.is_some() {
-            finish_meaningful_database_write(&connection, &database_path, &recovery_key);
-        }
         Ok(result.map(|value| value.to_string()))
     })
-    .await
+    .await?;
+    if result.is_some() {
+        schedule_meaningful_database_housekeeping(&housekeeping_app);
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1584,17 +1587,19 @@ async fn redo_last_operation(
     app: tauri::AppHandle,
     expected_operation_id: Option<String>,
 ) -> Result<Option<String>, String> {
-    run_database_task(move || {
+    let housekeeping_app = app.clone();
+    let result = run_database_task(move || {
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
         let result = redo_last_operation_for_ui(&mut connection, expected_operation_id.as_deref())?;
-        if result.is_some() {
-            finish_meaningful_database_write(&connection, &database_path, &recovery_key);
-        }
         Ok(result.map(|value| value.to_string()))
     })
-    .await
+    .await?;
+    if result.is_some() {
+        schedule_meaningful_database_housekeeping(&housekeeping_app);
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -1690,17 +1695,19 @@ async fn restore_recovery_entry(
     app: tauri::AppHandle,
     history_id: String,
 ) -> Result<Option<String>, String> {
-    run_database_task(move || {
+    let housekeeping_app = app.clone();
+    let state = run_database_task(move || {
         let database_path = app_database_path(&app)?;
         let recovery_key = database_recovery_key(&database_path)?;
         let mut connection = open_database_at(&database_path, &recovery_key)?;
         let state = restore_recovery_entry_in_database(&mut connection, &history_id)?;
-        if state.is_some() {
-            finish_meaningful_database_write(&connection, &database_path, &recovery_key);
-        }
         Ok(state.map(|value| value.to_string()))
     })
-    .await
+    .await?;
+    if state.is_some() {
+        schedule_meaningful_database_housekeeping(&housekeeping_app);
+    }
+    Ok(state)
 }
 
 #[tauri::command]
@@ -2478,6 +2485,38 @@ fn rotate_database_key_at_with_checkpoint(
     }
 
     Ok(())
+}
+
+// Housekeeping after a write never changes what the UI shows, yet it costs far
+// more than the write itself: notification re-verification, checkpoint and
+// backup checks, and the encrypted widget snapshot. Edits are acknowledged
+// optimistically so nobody notices, but undo and redo wait for their reply, so
+// the housekeeping ran in the middle of every Cmd+Z. Answer first and run it
+// in a following database task. Writes that arrive while one task is queued
+// share it; a write during the run queues another.
+static MEANINGFUL_DATABASE_HOUSEKEEPING_QUEUED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+fn schedule_meaningful_database_housekeeping(app: &tauri::AppHandle) {
+    use std::sync::atomic::Ordering;
+    if MEANINGFUL_DATABASE_HOUSEKEEPING_QUEUED.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let result = run_database_task(move || {
+            MEANINGFUL_DATABASE_HOUSEKEEPING_QUEUED.store(false, Ordering::Release);
+            let database_path = app_database_path(&app)?;
+            let recovery_key = database_recovery_key(&database_path)?;
+            let connection = open_database_at(&database_path, &recovery_key)?;
+            finish_meaningful_database_write(&connection, &database_path, &recovery_key);
+            Ok(())
+        })
+        .await;
+        if let Err(error) = result {
+            log::warn!("Deferred database housekeeping did not run: {error}");
+        }
+    });
 }
 
 fn finish_meaningful_database_write(
