@@ -13,6 +13,7 @@ const STEP_COUNT = performanceSize('BALANCE_DAY_NAV_STEPS', 30)
 const ROUNDS = performanceSize('BALANCE_DAY_NAV_ROUNDS', 2)
 const THEME_ID = process.env.BALANCE_DAY_NAV_THEME ?? 'graphite'
 const REPORT_DIR = process.env.BALANCE_DAY_NAV_REPORT_DIR ?? 'artifacts/day-navigation-performance'
+const ALTERNATE_DAYS = process.env.BALANCE_DAY_NAV_ALTERNATE === '1'
 const REVISION = process.env.BALANCE_DAY_NAV_REVISION ?? 'local'
 // The app opens on the current Balance day (which starts at 5 a.m.), so the
 // synthetic workspace is centered on it instead of a fixed date.
@@ -203,13 +204,14 @@ async function installSyntheticWorkspace(page: Page) {
 // Sends the desktop Option-Q / Option-W shortcuts inside the page so Playwright
 // IPC latency is excluded. "Painted" waits for the frame after the update.
 async function profileDaySteps(page: Page, steps: number) {
-  return page.evaluate(async (steps) => {
+  return page.evaluate(async ({ steps, alternate }) => {
     const samples: { dispatchMs: number; paintMs: number }[] = []
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
     for (let index = 0; index < steps; index += 1) {
       // Walk back across generated days, then forward across the boundary
-      // into ungenerated future days.
-      const code = index < steps / 2 ? 'KeyQ' : 'KeyW'
+      // into ungenerated future days, or revisit the same two days to measure
+      // retained editors (BALANCE_DAY_NAV_ALTERNATE=1).
+      const code = (alternate ? index % 2 === 0 : index < steps / 2) ? 'KeyQ' : 'KeyW'
       const dateBefore = document.querySelector<HTMLInputElement>('input.today-date-input')?.value
       const started = performance.now()
       window.dispatchEvent(new KeyboardEvent('keydown', { code, key: code === 'KeyQ' ? 'œ' : '∑', altKey: true, bubbles: true, cancelable: true }))
@@ -220,7 +222,7 @@ async function profileDaySteps(page: Page, steps: number) {
       samples.push({ dispatchMs: dispatched - started, paintMs: performance.now() - started })
     }
     return samples
-  }, steps)
+  }, { steps, alternate: ALTERNATE_DAYS })
 }
 
 type ProfileNode = {
@@ -305,6 +307,7 @@ test('profiles moving between day pages', async ({ page, browserName }, testInfo
     browser: browserName,
     workspace: { plans: PLAN_COUNT, itemsPerPlan: ITEMS_PER_PLAN, lists: LIST_COUNT, goals: GOAL_COUNT, notes: NOTE_COUNT },
     steps: samples.length,
+    alternateDays: ALTERNATE_DAYS,
     dispatch: summarize(samples.map((sample) => sample.dispatchMs)),
     paint: summarize(samples.map((sample) => sample.paintMs)),
     paintSamplesMs: samples.map((sample) => round(sample.paintMs)),

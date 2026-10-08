@@ -36,7 +36,9 @@ let lastNonEmptySnapshot: RenderedPlanDiagnosticSnapshot | null = null
 export function captureRenderedPlanSnapshot(): RenderedPlanDiagnosticSnapshot | null {
   const panes = Array.from(document.querySelectorAll<HTMLElement>('.day-pane')).map((pane, paneIndex) => {
     const date = pane.querySelector<HTMLInputElement>('.date-input')?.value ?? ''
-    const rows = Array.from(pane.querySelectorAll<HTMLElement>('[data-plan-item-id]')).map((row, rowIndex) => {
+    const rows = Array.from(pane.querySelectorAll<HTMLElement>('[data-plan-item-id]'))
+      .filter((row) => !row.closest('.retained-day[hidden]'))
+    const diagnostics = rows.map((row, rowIndex) => {
       const checkboxes = Array.from(row.querySelectorAll<HTMLInputElement>(':scope > .check-target > input.check'))
       const checkbox = checkboxes[0] ?? null
       const editor = row.querySelector<HTMLElement>(':scope > .plan-item-main [data-plan-text-input]')
@@ -57,7 +59,7 @@ export function captureRenderedPlanSnapshot(): RenderedPlanDiagnosticSnapshot | 
     return {
       paneIndex,
       date,
-      rows,
+      rows: diagnostics,
     }
   })
   const snapshot = {

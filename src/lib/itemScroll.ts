@@ -32,6 +32,7 @@ export function scrollMovedItemsIntoView(kind: ItemRowKind, itemIds: Id[], direc
 
   const selector = rowSelectors[kind]
   const rows = Array.from(document.querySelectorAll<HTMLElement>(selector))
+    .filter((row) => !row.closest('.retained-day[hidden]'))
   const movedIds = new Set(itemIds)
   const movedIndexes = rows
     .map((row, index) => (movedIds.has(rowItemId(row, kind) ?? '') ? index : -1))

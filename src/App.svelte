@@ -18,6 +18,7 @@
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
+  import RecentDayPlans from './lib/RecentDayPlans.svelte'
   import NextTaskPanel from './lib/NextTaskPanel.svelte'
   import { findNextTask } from './lib/nextTask'
   import { collapsedPlanItemIds, setPlanItemCollapsed } from './lib/collapsedPlanItems'
@@ -725,7 +726,6 @@ return rows`
   $: activePlan = $plannerStore.plans.find((plan) => plan.date === displayedPlanDate)
   $: currentDayPlan = $plannerStore.plans.find((plan) => plan.date === currentDay)
   $: nextTask = view === 'next' && currentDayPlan ? findNextTask(currentDayPlan.items) : null
-  $: activePlanTimeWarnings = buildItemTimeWarnings(activePlan?.items ?? [])
   // Scroll position is remembered per page. Today scrolls independently for each
   // date, and List Templates scrolls independently for each template.
   $: scrollPageKey =
@@ -6748,18 +6748,18 @@ return rows`
           </div>
         </header>
 
-        {#if activePlan}
-          <div class="list-panel" data-plan-item-scope={activePlan.id}>
-                {#if activePlan.items.length === 0}
+        <RecentDayPlans plans={$plannerStore.plans} activePlanId={activePlan?.id ?? null} let:plan let:timeWarnings>
+          <div class="list-panel" data-plan-item-scope={plan.id}>
+                {#if plan.items.length === 0}
                   <p class="empty">No items yet.</p>
                 {/if}
 
-                {#each activePlan.items as item (item.id)}
+                {#each plan.items as item (item.id)}
                   <PlanItemEditor
                     {item}
-                    allItems={activePlan.items}
-                    timeWarnings={activePlanTimeWarnings}
-                    planId={activePlan.id}
+                    allItems={plan.items}
+                    {timeWarnings}
+                    planId={plan.id}
                     patchItem={plannerStore.patchPlanItem}
                     patchItemsDone={plannerStore.patchPlanItemsDone}
                     toggleSelectedDone={toggleSelectedPlanItemsDone}
@@ -6786,21 +6786,22 @@ return rows`
                     onTextShiftArrow={selectItemWithAdjacent}
                     {goals}
                     {goalCompletions}
-                    planDate={activePlan.date}
+                    planDate={plan.date}
                     onGoalBadgeClick={focusGoalInRhythm}
                     {listTemplates}
                     {metrics}
                     {notes}
-                    onOpenLink={(link, itemId) => openLink(link, { container: 'plan', containerId: activePlan.id, itemId })}
+                    onOpenLink={(link, itemId) => openLink(link, { container: 'plan', containerId: plan.id, itemId })}
                     collapsible
                   />
                 {/each}
 
-                <button class="add-row" type="button" on:click={() => addRootPlanItemAndFocus(activePlan.id)}>
+                <button class="add-row" type="button" on:click={() => addRootPlanItemAndFocus(plan.id)}>
                   + Add item
                 </button>
               </div>
-        {:else}
+        </RecentDayPlans>
+        {#if !activePlan}
               <div class="empty-state">
                 <h3>No plan for this date</h3>
                 <p>Choose a template to generate this day, or pick another date.</p>
