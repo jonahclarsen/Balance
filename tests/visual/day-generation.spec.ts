@@ -36,5 +36,5 @@ test('past days can be generated once but existing past plans are kept', async (
   } else {
     await expect(page.getByRole('button', { name: 'Generate selected day' })).toBeDisabled()
   }
-  await expect(page.locator('[data-plan-text-input]').first()).toBeVisible()
+  await expect(page.locator('[data-plan-text-input]:visible').first()).toBeVisible()
 })
