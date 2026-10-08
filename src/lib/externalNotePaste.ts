@@ -20,6 +20,15 @@ export function normalizeNotePasteHTML(html: string): string {
   }
   doc.querySelectorAll('script, iframe, object, link, meta').forEach((node) => node.remove())
   for (const element of doc.body.querySelectorAll<HTMLElement>('*')) {
+    if (element.tagName === 'IMG') {
+      for (const dimension of ['width', 'height'] as const) {
+        const value = element.style[dimension]
+        if (!element.hasAttribute(dimension) && /^\d+(?:\.\d+)?px$/.test(value)) {
+          element.setAttribute(dimension, String(parseFloat(value)))
+        }
+      }
+      if (element.style.float === 'left' || element.style.float === 'right') element.dataset.imageLayout = element.style.float
+    }
     if (/^H[1-6]$/.test(element.tagName) && !element.style.fontSize) {
       element.style.fontSize = `${[32, 24, 20, 18, 16, 14][Number(element.tagName[1]) - 1]}px`
       element.style.fontWeight = 'bold'
@@ -56,7 +65,8 @@ export async function importNotePasteImages(html: string, files: File[] = []): P
     if (!asset) { image.remove(); continue }
     const width = Number(image.getAttribute('width')) || Math.min(asset.width, 640)
     const height = Number(image.getAttribute('height')) || width * asset.height / asset.width
-    image.outerHTML = imageHTML(asset.id, width, height)
+    const layout = image.dataset.imageLayout
+    image.outerHTML = imageHTML(asset.id, width, height, layout === 'left' || layout === 'right' ? layout : 'inline')
   }
   return template.innerHTML
 }

@@ -112,14 +112,19 @@ function indentationWidth(indentation: string) {
   return Array.from(indentation).reduce((width, character) => width + (character === '\t' ? 2 : 1), 0)
 }
 
+function clipboardInlineContent(element: Element, trimBlockBreak = false): string {
+  const span = element.ownerDocument.createElement('span')
+  const content = sanitizeInlineHTML(element.innerHTML)
+  span.innerHTML = trimBlockBreak ? content.replace(/(?:<br>)+$/, '') : content
+  if (element.hasAttribute('style')) span.setAttribute('style', element.getAttribute('style')!)
+  return sanitizeInlineHTML(span.outerHTML)
+}
+
 function parseClipboardContainer(container: Element): ParsedNoteClipboardItem[] {
   const items: ParsedNoteClipboardItem[] = []
   const inline = container.ownerDocument.createElement('span')
   const append = (element: Element, kind: NoteItemKind = 'paragraph') => {
-    const span = element.ownerDocument.createElement('span')
-    span.innerHTML = element.innerHTML
-    if (element.hasAttribute('style')) span.setAttribute('style', element.getAttribute('style')!)
-    const html = sanitizeInlineHTML(span.outerHTML)
+    const html = clipboardInlineContent(element)
     items.push({ kind, html, text: htmlToPlainText(html), done: false, children: [] })
   }
   const flush = () => {
@@ -156,7 +161,7 @@ function parseClipboardList(list: Element): ParsedNoteClipboardItem[] {
       if (list.matches('ul.checklist, ul[data-type="taskList"]') || element.matches('[data-type="taskItem"]')) {
         kind = 'checklist'
         done = element.classList.contains('checked') || element.getAttribute('data-checked') === 'true'
-        inline.querySelectorAll('input[type="checkbox"], label').forEach((node) => node.remove())
+        inline.querySelectorAll('input[type="checkbox"]').forEach((node) => node.remove())
       } else if (list.matches('ul')) {
         const walker = document.createTreeWalker(inline, NodeFilter.SHOW_TEXT)
         const firstText = walker.nextNode() as Text | null
@@ -170,7 +175,7 @@ function parseClipboardList(list: Element): ParsedNoteClipboardItem[] {
 
       // Notesnook wraps list-item text in paragraphs; their trailing block
       // break is structural, not a soft line break within the list item.
-      const html = sanitizeInlineHTML(inline.innerHTML).replace(/(?:<br>)+$/, '')
+      const html = clipboardInlineContent(inline, true)
       return {
         kind,
         html,

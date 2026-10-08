@@ -22,7 +22,7 @@ for (const editor of ['classic', 'tiptap', 'lexical']) {
     await input.evaluate((node) => {
       const data = new DataTransfer()
       data.setData('text/plain', 'Title\nSubtitle\nIntro\nFirst\nNested\nOpen\nDone\nTail')
-      data.setData('text/html', `<meta charset="utf-8"><div><h1 data-pm-slice="1 3 []">Title</h1><h2>Subtitle</h2><p data-spacing="double">Intro <strong><em><u>format</u></em></strong></p><ul><li>First<ol><li><a href="https://example.com">Nested</a></li></ol></li></ul><ul class="checklist"><li class="checklist--item">Open</li><li class="checked checklist--item">Done</li></ul><p>Tail</p></div>`)
+      data.setData('text/html', `<meta charset="utf-8"><div><h1 data-pm-slice="1 3 []">Title</h1><h2>Subtitle</h2><p data-spacing="double">Intro <strong><em><u>format</u></em></strong></p><ul><li style="font-size: 13px">First<ol><li><a href="https://example.com">Nested</a></li></ol></li></ul><ul class="checklist"><li class="checklist--item">Open</li><li class="checked checklist--item">Done</li></ul><p>Tail</p></div>`)
       node.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
     })
     await expect.poll(async () => (await state(page)).notes[0].items.length).toBe(7)
@@ -33,6 +33,7 @@ for (const editor of ['classic', 'tiptap', 'lexical']) {
     expect(items[2].html).toMatch(/<(?:strong|b)>/)
     expect(items[2].html).toContain('<em>')
     expect(items[2].html).toContain('<u>')
+    expect(items[3].html).toContain('13px')
     expect(items[3].children[0].kind).toBe('numbered')
     expect(items[3].children[0].html).toContain('https://example.com')
     expect(items[4].done).toBe(false)
