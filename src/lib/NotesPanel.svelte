@@ -14,13 +14,10 @@
   import {
     noteClipboardHTML,
     noteClipboardPlainText,
-    parseNoteChecklistClipboard,
-    parseNoteClipboardHTML,
-    parseNotePlainTextClipboard,
+    parseNoteBlocksFromClipboard,
     type NoteClipboardBlock,
     type ParsedNoteClipboardItem,
   } from './noteClipboard'
-  import { parseTaskClipboardAsNoteBlocks } from './taskClipboard'
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
   import type { NoteEditorChoice } from './noteEditorPreference'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from './types'
@@ -1027,13 +1024,7 @@
     const plainText = event.clipboardData.getData('text/plain')
     const clipboardHTML = event.clipboardData.getData('text/html')
     stageClipboardImages(clipboardHTML)
-    let items = parseTaskClipboardAsNoteBlocks(plainText) ?? parseNoteChecklistClipboard(plainText, clipboardHTML)
-    if (items.length === 0 && !clipboardHTML.trim()) items = parseNotePlainTextClipboard(plainText)
-    if (items.length === 0 && clipboardHTML.trim()) {
-      const htmlItems = parseNoteClipboardHTML(clipboardHTML)
-      const flattenedHTMLItems = flattenParsedClipboardItems(htmlItems)
-      if (flattenedHTMLItems.length >= 2 || flattenedHTMLItems[0]?.kind !== 'paragraph') items = htmlItems
-    }
+    const items = parseNoteBlocksFromClipboard(plainText, clipboardHTML)
     const flattenedItems = flattenParsedClipboardItems(items)
     const range = selectedTextRange()
     if (!range) return

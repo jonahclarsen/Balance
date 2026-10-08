@@ -1,5 +1,6 @@
 import { imageClipboardHTML } from './imageService'
 import { escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
+import { parseTaskClipboardAsNoteBlocks } from './taskClipboard'
 import type { NoteItemKind } from './types'
 
 export type NoteClipboardBlock = {
@@ -90,6 +91,21 @@ export function parseNoteChecklistClipboard(plainText: string, html: string): Pa
   }
 
   return flattenParsedItems(roots).length >= 2 ? roots : []
+}
+
+// The one entry point for turning a clipboard payload into note blocks: Balance
+// task blocks first, then checklists, then plain lines, then block-structured
+// HTML (Apple Notes, Notesnook, web pages). Empty when nothing structured was
+// pasted, so callers can fall back to inline insertion.
+export function parseNoteBlocksFromClipboard(plainText: string, html: string): ParsedNoteClipboardItem[] {
+  let items = parseTaskClipboardAsNoteBlocks(plainText) ?? parseNoteChecklistClipboard(plainText, html)
+  if (items.length === 0 && !html.trim()) items = parseNotePlainTextClipboard(plainText)
+  if (items.length === 0 && html.trim()) {
+    const htmlItems = parseNoteClipboardHTML(html)
+    const flattened = flattenParsedItems(htmlItems)
+    if (flattened.length >= 2 || flattened[0]?.kind !== 'paragraph') items = htmlItems
+  }
+  return items
 }
 
 export function parseNotePlainTextClipboard(plainText: string): ParsedNoteClipboardItem[] {

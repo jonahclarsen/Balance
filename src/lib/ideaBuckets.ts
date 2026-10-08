@@ -1,4 +1,6 @@
+import { parseNoteBlocksFromClipboard, type ParsedNoteClipboardItem } from './noteClipboard'
 import { createPlanItem, escapeHTML, htmlToPlainText, sanitizeInlineHTML } from './planner'
+import { parseTaskClipboardAsNoteBlocks } from './taskClipboard'
 import type { Goal, Id, IdeaBucket, IdeaBucketKind, IdeaItem, PlanItem } from './types'
 
 export type IdeaBucketMeta = { kind: IdeaBucketKind; id: Id; label: string; key: string }
@@ -95,75 +97,29 @@ export function ideaReviewGoalHue(goals: Pick<Goal, 'hue'>[]): number {
 
 // ---- Import ----------------------------------------------------------------
 
-const BLOCK_SELECTOR = 'ul, ol, p, div, blockquote, h1, h2, h3, h4, h5, h6, section, article, li, table, tr, td, th, pre'
-
-function ideaFromHTML(html: string, children: PlanItem[] = []): PlanItem | null {
-  const sanitized = sanitizeInlineHTML(html).replace(/^(?:<br>|\s)+|(?:<br>|\s)+$/g, '')
-  const text = htmlToPlainText(sanitized).trim()
-  if (!text && children.length === 0) return null
-  return { ...createPlanItem(text || ''), html: text ? sanitized : '', children }
-}
-
-// Every <br>-separated line of a leaf block is its own idea.
-function ideasFromLeaf(element: Element): PlanItem[] {
-  return element.innerHTML.split(/<br\s*\/?>/i).flatMap((line) => {
-    const idea = ideaFromHTML(line)
-    return idea ? [idea] : []
+// Imports share the notes paste parser (Balance task blocks, Apple Notes,
+// Notesnook, checklists, plain lines) so improvements there carry over.
+function ideasFromNoteBlocks(blocks: ParsedNoteClipboardItem[]): PlanItem[] {
+  return blocks.flatMap((block) => {
+    const children = ideasFromNoteBlocks(block.children)
+    // A paragraph with hard line breaks is several ideas; list items keep theirs.
+    const lines = block.kind === 'bullet' || block.kind === 'numbered' || block.kind === 'checklist'
+      ? [block.html]
+      : block.html.split(/<br\s*\/?>/i)
+    const ideas = lines.flatMap((line) => {
+      const html = sanitizeInlineHTML(line).replace(/^(?:<br>|\s)+|(?:<br>|\s)+$/g, '')
+      const text = htmlToPlainText(html).trim()
+      return text ? [{ ...createPlanItem(text), html, done: block.done }] : []
+    })
+    if (ideas.length === 0) return children
+    const [first, ...rest] = ideas
+    return [{ ...first!, children }, ...rest]
   })
-}
-
-function ideasFromList(list: Element): PlanItem[] {
-  return Array.from(list.children).filter((child) => child.matches('li')).flatMap((li) => {
-    const inline = li.cloneNode(true) as HTMLElement
-    const nested = Array.from(inline.children).filter((child) => child.matches('ul, ol'))
-    nested.forEach((child) => child.remove())
-    const children = Array.from(li.children).filter((child) => child.matches('ul, ol')).flatMap(ideasFromList)
-    // A bullet with its own block children (Notesnook wraps bullet text in <p>).
-    const blocks = Array.from(inline.children).filter((child) => child.matches(BLOCK_SELECTOR))
-    const lines = blocks.length > 0 ? blocks.flatMap((block) => ideasFromContainer(block)) : ideasFromLeaf(inline)
-    if (lines.length === 0) return children
-    const [first, ...rest] = lines
-    return [{ ...first!, children: [...first!.children, ...children] }, ...rest]
-  })
-}
-
-function ideasFromContainer(element: Element): PlanItem[] {
-  if (element.matches('ul, ol')) return ideasFromList(element)
-  const blocks = Array.from(element.children).filter((child) => child.matches(BLOCK_SELECTOR))
-  if (blocks.length === 0) return ideasFromLeaf(element)
-  // Text nodes and inline runs between blocks still count as lines.
-  const ideas: PlanItem[] = []
-  let inline = ''
-  const flush = () => {
-    if (inline.trim()) {
-      const holder = document.createElement('div')
-      holder.innerHTML = inline
-      ideas.push(...ideasFromLeaf(holder))
-    }
-    inline = ''
-  }
-  for (const node of Array.from(element.childNodes)) {
-    if (node.nodeType === Node.ELEMENT_NODE && (node as Element).matches(BLOCK_SELECTOR)) {
-      flush()
-      ideas.push(...ideasFromContainer(node as Element))
-    } else if (node.nodeType === Node.ELEMENT_NODE) {
-      inline += (node as Element).outerHTML
-    } else if (node.nodeType === Node.TEXT_NODE) {
-      inline += escapeHTML(node.textContent ?? '')
-    }
-  }
-  flush()
-  return ideas
-}
-
-export function parseIdeaImportHTML(html: string): PlanItem[] {
-  if (!html.trim() || typeof DOMParser === 'undefined') return []
-  const parsed = new DOMParser().parseFromString(html, 'text/html')
-  return ideasFromContainer(parsed.body)
 }
 
 const BULLET_LINE = /^([ \t]*)(?:(?:[-*+•◦▪‣]|\d+[.)]|[☐☑✓✔])[ \t]+)?(.*)$/
 
+// Typed or plain-text lists: markers are stripped and indentation nests.
 export function parseIdeaImportText(text: string): PlanItem[] {
   const roots: PlanItem[] = []
   const ancestors: { indent: number; item: PlanItem }[] = []
@@ -181,10 +137,16 @@ export function parseIdeaImportText(text: string): PlanItem[] {
   return roots
 }
 
-// HTML wins when it yields anything; otherwise fall back to the plain lines.
+// Balance task blocks and rich HTML go through the shared notes parser; bare
+// text keeps the bullet-aware line parser.
 export function parseIdeaImport(html: string, text: string): PlanItem[] {
-  const fromHTML = parseIdeaImportHTML(html)
-  return fromHTML.length > 0 ? fromHTML : parseIdeaImportText(text)
+  const fromTasks = parseTaskClipboardAsNoteBlocks(text)
+  if (fromTasks) return ideasFromNoteBlocks(fromTasks)
+  if (html.trim()) {
+    const fromNotes = ideasFromNoteBlocks(parseNoteBlocksFromClipboard(text, html))
+    if (fromNotes.length > 0) return fromNotes
+  }
+  return parseIdeaImportText(text)
 }
 
 export function countIdeas(items: PlanItem[]): number {

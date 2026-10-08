@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from 'svelte'
   import OverlayModal from './OverlayModal.svelte'
+  import { readExternalPasteContent } from './externalNotePaste'
   import { countIdeas, parseIdeaImport, parseIdeaImportText } from './ideaBuckets'
   import type { PlanItem } from './types'
 
@@ -21,14 +22,22 @@
     input?.focus()
   })
 
+  // Same clipboard reading as a paste into Notes, so Apple Notes, Notesnook
+  // and Balance task blocks all arrive the way the notes parser expects.
   function handlePaste(event: ClipboardEvent) {
-    const html = event.clipboardData?.getData('text/html') ?? ''
-    const text = event.clipboardData?.getData('text/plain') ?? ''
-    const parsed = parseIdeaImport(html, text)
-    if (parsed.length === 0) return
+    const data = event.clipboardData
+    if (!data) return
     event.preventDefault()
-    pasted = parsed
-    draft = text || parsed.map((item) => item.text).join('\n')
+    void readExternalPasteContent(data).then(({ html, text }) => {
+      const parsed = parseIdeaImport(html, text)
+      if (parsed.length === 0) {
+        draft = text
+        pasted = null
+        return
+      }
+      pasted = parsed
+      draft = text || parsed.map((item) => item.text).join('\n')
+    })
   }
 
   function handleInput() {

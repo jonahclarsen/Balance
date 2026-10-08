@@ -71,6 +71,20 @@ export async function importNotePasteImages(html: string, files: File[] = []): P
   return template.innerHTML
 }
 
+// The clipboard as the note parsers expect it: on desktop the native conversion
+// (self-contained HTML from RTFD) wins over WebKit's synthesized HTML, and the
+// markup is normalized before any parser sees it.
+export async function readExternalPasteContent(data: DataTransfer): Promise<{ html: string; text: string }> {
+  let html = data.getData('text/html')
+  let text = data.getData('text/plain')
+  if (isTauri()) {
+    const native = await invoke<{ html?: string; plainText?: string }>('read_balance_clipboard').catch(() => null)
+    html = native?.html || html
+    text = native?.plainText ?? text
+  }
+  return { html: html ? normalizeNotePasteHTML(html) : '', text }
+}
+
 // Capture above all three note editors, then replay through their normal paste
 // handlers. Their selection replacement and single-step undo stay authoritative.
 export function externalNotePaste(root: HTMLElement, context: string) {
@@ -97,16 +111,10 @@ export function externalNotePaste(root: HTMLElement, context: string) {
     const range = selection?.rangeCount ? selection.getRangeAt(0).cloneRange() : null
     const files = Array.from(data.files).filter((file) => file.type.startsWith('image/'))
     void (async () => {
-      let richHTML = html
-      let text = plain
-      // WebKit can synthesize incomplete HTML from RTFD (including unusable
-      // attachment file URLs). Prefer the self-contained native conversion.
-      if (isTauri()) {
-        const native = await invoke<{ html?: string; plainText?: string }>('read_balance_clipboard').catch(() => null)
-        richHTML = native?.html || richHTML
-        text = native?.plainText ?? text
-      }
-      if (richHTML) richHTML = await importNotePasteImages(normalizeNotePasteHTML(richHTML), files)
+      const content = await readExternalPasteContent(data)
+      const text = content.text
+      let richHTML = content.html
+      if (richHTML) richHTML = await importNotePasteImages(richHTML, files)
       if (destroyed || context !== originalContext || !target.isConnected || !range || !root.contains(range.commonAncestorContainer)) return
       target.focus({ preventScroll: true })
       selection?.removeAllRanges()

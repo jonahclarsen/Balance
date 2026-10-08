@@ -156,7 +156,32 @@ test('pasted lists import as ideas and open the sorter; trash clears after 30 da
   await page.keyboard.press('Escape')
   await expect(rows(page, 'proposition')).toHaveText(['Synthetic alpha', 'Synthetic alpha child', 'Synthetic beta', 'Synthetic gamma', 'Synthetic delta'])
 
-  await card(page, 'proposition').getByRole('button', { name: 'Select item' }).last().click()
+  // Balance task blocks and Apple Notes markup go through the notes paste parser.
+  await page.getByRole('button', { name: 'Import', exact: true }).click()
+  await paste.evaluate((element) => {
+    const data = new DataTransfer()
+    data.setData('text/plain', '<balance>\n- Synthetic **task** one\n  - Synthetic sub task\n- Synthetic task two\n</balance>')
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  })
+  await page.getByRole('button', { name: /^Import 2 ideas/ }).click()
+  await page.keyboard.press('Escape')
+  await expect(rows(page, 'proposition').nth(5)).toHaveText('Synthetic **task** one')
+  await expect(rows(page, 'proposition').nth(7)).toHaveText('Synthetic task two')
+
+  await page.getByRole('button', { name: 'Import', exact: true }).click()
+  await paste.evaluate((element) => {
+    const data = new DataTransfer()
+    data.setData('text/html', `<html><head><style>p.p1 {font: 20px 'Helvetica Neue'} li.li2 {font: 13px 'Helvetica Neue'}</style></head><body><p class="p1"><b>Synthetic apple title</b></p><ul class="ul1"><li class="li2">Synthetic apple bullet</li><li class="li2">Synthetic apple <i>second</i></li></ul></body></html>`)
+    data.setData('text/plain', 'Synthetic apple title\n\t• Synthetic apple bullet\n\t• Synthetic apple second')
+    element.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }))
+  })
+  await page.getByRole('button', { name: /^Import 3 ideas/ }).click()
+  await page.keyboard.press('Escape')
+  await expect(rows(page, 'proposition').nth(8)).toHaveText('Synthetic apple title')
+  await expect(rows(page, 'proposition').nth(10)).toHaveText('Synthetic apple second')
+  await expect(rows(page, 'proposition').nth(10).locator('em')).toHaveText('second')
+
+  await card(page, 'proposition').locator('[data-plan-item-id]').filter({ hasText: 'Synthetic delta' }).getByRole('button', { name: 'Select item' }).click()
   await page.keyboard.press('t')
   await expect(rows(page, 'trash')).toHaveText(['Synthetic delta'])
   // The minute sweep runs against the moved clock.
