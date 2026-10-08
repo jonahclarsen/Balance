@@ -25,6 +25,7 @@ export function createDefaultDeviceAppearance(): DeviceAppearancePreferences {
   return {
     version: 1,
     colorScheme: 'system',
+    systemColorSchemeStartDate: '',
     themeId: DEFAULT_THEME_ID,
     randomThemeStartDate: '',
     doneTintColor: '',
@@ -40,19 +41,32 @@ export function normalizeDeviceAppearance(value: unknown): DeviceAppearancePrefe
   return {
     version: 1,
     colorScheme: normalizeColorScheme(appearance.colorScheme),
+    systemColorSchemeStartDate: normalizeStartDate(appearance.systemColorSchemeStartDate),
     themeId: normalizeThemeId(typeof appearance.themeId === 'string' ? appearance.themeId : null),
-    randomThemeStartDate: typeof appearance.randomThemeStartDate === 'string'
-      && DATE_PATTERN.test(appearance.randomThemeStartDate)
-      ? appearance.randomThemeStartDate
-      : '',
+    randomThemeStartDate: normalizeStartDate(appearance.randomThemeStartDate),
     doneTintColor: normalizeColorOverride(appearance.doneTintColor),
     checkboxColor: normalizeColorOverride(appearance.checkboxColor),
     iridescentGradient: normalizeIridescentGradient(appearance.iridescentGradient),
   }
 }
 
+function normalizeStartDate(value: unknown): string {
+  return typeof value === 'string' && DATE_PATTERN.test(value) ? value : ''
+}
+
 export function normalizeColorScheme(value: unknown): ColorSchemePreference {
   return value === 'light' || value === 'dark' ? value : 'system'
+}
+
+// A scheduled return to the system scheme takes effect on its start day even
+// before the app has had a chance to persist the switch.
+export function selectedColorSchemeForDate(
+  appearance: DeviceAppearancePreferences,
+  date: string,
+): ColorSchemePreference {
+  return appearance.systemColorSchemeStartDate && appearance.systemColorSchemeStartDate <= date
+    ? 'system'
+    : appearance.colorScheme
 }
 
 export function effectiveColorScheme(
