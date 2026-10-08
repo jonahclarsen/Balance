@@ -179,7 +179,12 @@ test('the review goal seeds once with a link that runs the Genuinely review', as
   expect(goal.nameHtml).toContain('balance://buckets/review')
 
   await storeCall(page, "plannerStore.addIdea('Synthetic reviewed', 'genuine')")
-  await openView(page, 'Buckets')
+  // The goal name carries the link that starts the review.
+  await openView(page, 'Goals')
+  await page.locator('.goal-name-input a[href="balance://buckets/review"]').click()
+  await expect(page.getByRole('dialog', { name: /Idea 1 of 1/ })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('heading', { name: 'Buckets', level: 2 })).toBeVisible()
   await page.getByRole('button', { name: 'Review', exact: true }).click()
   await expect(page.getByRole('dialog', { name: /Idea 1 of 1/ })).toBeVisible()
   await page.keyboard.press('y')

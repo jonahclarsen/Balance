@@ -7276,6 +7276,7 @@ return rows`
                   revision={$plannerStore.historyRevision}
                   singleLine
                   onFocusChange={setGoalNameEditing}
+                  onInternalLinkClick={(link) => openLink(link, null)}
                   onChange={(html, text) => plannerStore.patchGoal(goal.id, { name: text, nameHtml: html })}
                 />
                 <GoalCopyButton name={goal.name} />
