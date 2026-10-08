@@ -68,15 +68,16 @@ pub(crate) fn pending(connection: &Connection, now: i64) -> Result<Vec<TaskNotif
             }
         }
     }
-    if candidates.iter().any(|record| record.source_kind == "list") {
-        for list in crate::read_entity_collection(connection, "lists")?
-            .as_array()
-            .into_iter()
-            .flatten()
-        {
-            if let Some(id) = list["id"].as_str() {
-                visit(&mut live, id, &list["items"]);
-            }
+    // Only the lists that still hold a reminder matter. Reading the whole
+    // collection parsed every generated list on every save and undo.
+    let list_sources: HashSet<&str> = candidates
+        .iter()
+        .filter(|record| record.source_kind == "list")
+        .map(|record| record.source_id.as_str())
+        .collect();
+    for source in list_sources {
+        if let Some((_, list)) = crate::current_entity(connection, "lists", source)? {
+            visit(&mut live, source, &list["items"]);
         }
     }
     let mut pending: Vec<TaskNotification> = candidates
