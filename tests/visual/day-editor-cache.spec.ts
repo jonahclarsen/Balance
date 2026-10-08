@@ -23,8 +23,16 @@ test('recent days reuse editors, stay current through edits and undo, and expire
   const first = page.locator(`[data-plan-text-input-id="${fixtures[0].itemId}"]`)
   await expect(first).toBeVisible()
   await first.evaluate((node) => { (window as any).retainedEditor = node })
+  await first.evaluate(async (editor) => {
+    const path = '/src/lib/imageService.ts'
+    const { selectedImage } = await import(/* @vite-ignore */ path)
+    const image = document.createElement('img')
+    editor.append(image)
+    selectedImage.set({ image, editor, commit: () => {} })
+  })
   await page.getByLabel('Day date', { exact: true }).fill(fixtures[1].date)
   await expect(first).toBeHidden()
+  await expect(page.locator('.image-selection')).toHaveCount(0)
   await expect(page.locator('.retained-day')).toHaveCount(2)
 
   // A background update (the same live store path used by sync) must reach a

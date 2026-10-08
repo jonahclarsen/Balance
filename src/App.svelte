@@ -4396,6 +4396,12 @@ return rows`
 
   async function switchItemContext(nextContext: string) {
     const previousContext = itemStateContext
+    // A retained day remains connected, so its image action's destroy hook no
+    // longer clears the floating image toolbar when we leave that day.
+    if ($selectedImage?.editor.closest('.retained-day')) {
+      $selectedImage.image.removeAttribute('data-image-selected')
+      selectedImage.set(null)
+    }
     if (previousContext) {
       if (selectedItemContext === previousContext && selectedItemIds.length > 0) {
         itemSelectionsByContext[previousContext] = {
