@@ -637,6 +637,8 @@ return rows`
   let newGoalNameHtml = ''
   // Bumped after adding so the still-focused name editor clears its DOM.
   let newGoalFormResets = 0
+  // True once the Add-a-goal draft has been typed in since its last reset.
+  let newGoalDraftTyped = false
   let newGoalCadenceDays = 1
   let newGoalTerms = ''
   let newGoalTermsHtml = ''
@@ -3008,6 +3010,7 @@ return rows`
     newGoalName = ''
     newGoalNameHtml = ''
     newGoalFormResets += 1
+    newGoalDraftTyped = false
     newGoalCadenceDays = 1
     newGoalTerms = ''
     newGoalTermsHtml = ''
@@ -3859,6 +3862,13 @@ return rows`
       return
     }
 
+    if (key === 'z' || (event.shiftKey && key === 'c')) {
+      // The Add-a-goal form is a draft: nothing typed there is in the
+      // history yet, so global undo would jump to an unrelated change.
+      // Let the browser undo and redo typing in the form instead.
+      if (isGoalDraftFormEditing()) return
+    }
+
     if (key === 'z' && !event.shiftKey) {
       event.preventDefault()
       void undoAndOpenDestination()
@@ -3869,6 +3879,14 @@ return rows`
       event.preventDefault()
       void redoAndOpenDestination()
     }
+  }
+
+  function isGoalDraftFormEditing() {
+    const active = document.activeElement
+    if (!(active instanceof HTMLElement) || !active.closest('[data-goal-draft-form]')) return false
+    // Adding a goal resets the draft, so Cmd+Z right after Enter still
+    // undoes the add instead of doing nothing.
+    return newGoalDraftTyped
   }
 
   function handleGlobalKeyup(event: KeyboardEvent) {
@@ -6992,7 +7010,7 @@ return rows`
         </div>
       </header>
 
-      <div class="goal-create-panel">
+      <div class="goal-create-panel" data-goal-draft-form>
         <div class="goal-create-intro">
           <h3>Add a goal</h3>
           <p>It completes automatically when a checked daily-plan item contains any matching word or phrase.</p>
@@ -7017,6 +7035,7 @@ return rows`
             onChange={(html, text) => {
               newGoalNameHtml = html
               newGoalName = text
+              newGoalDraftTyped = true
             }}
           />
         </label>
@@ -7046,6 +7065,7 @@ return rows`
             onChange={(html, text) => {
               newGoalTermsHtml = html
               newGoalTerms = text
+              newGoalDraftTyped = true
             }}
           />
           {#if newGoalNameMismatch}

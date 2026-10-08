@@ -51,6 +51,40 @@ test('goals warn when their inserted name does not match any configured term', a
   await expect(warning).toHaveCount(0)
 })
 
+test('undo inside the Add-a-goal draft form undoes typing instead of the last saved change', async ({ page }) => {
+  await openGoalsFromRhythm(page)
+  const newName = page.getByLabel('New goal name')
+  const newTerms = page.getByLabel('New goal matching terms')
+
+  await newName.fill('Write music')
+  await newTerms.fill('beat')
+  await page.getByRole('button', { name: 'Add goal', exact: true }).click()
+  const savedName = page.getByLabel('Goal name: Write music')
+  await expect(savedName).toBeVisible()
+
+  await newName.click()
+  await newName.pressSequentially('Strenuos')
+  await expect(newName).toHaveText('Strenuos')
+  await newName.press('ControlOrMeta+z')
+  await expect(newName).not.toHaveText('Strenuos')
+  await expect(savedName).toBeVisible()
+
+  await newName.press('ControlOrMeta+Shift+z')
+  await expect(newName).toHaveText('Strenuos')
+  await expect(savedName).toBeVisible()
+
+  // Adding the goal resets the draft, so undo returns to app history.
+  await newTerms.fill('lift')
+  await newName.press('Enter')
+  const addedName = page.getByLabel('Goal name: Strenuos')
+  await expect(addedName).toBeVisible()
+  await newName.press('ControlOrMeta+z')
+  await expect(addedName).toHaveCount(0)
+  await expect(savedName).toBeVisible()
+  await newName.press('ControlOrMeta+Shift+z')
+  await expect(addedName).toBeVisible()
+})
+
 test('pasting a link over selected new goal name text keeps it linked on the goal', async ({ page }) => {
   await openGoalsFromRhythm(page)
   const newName = page.getByLabel('New goal name')
