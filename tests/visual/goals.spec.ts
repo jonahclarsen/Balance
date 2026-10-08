@@ -1234,7 +1234,7 @@ test('goal rhythm keeps one open overdue segment when saved activity periods ove
   await expect(page.locator('.goal-day-cell').last()).toHaveCSS('border-bottom-right-radius', '0px')
 })
 
-test('goal rhythm puts overdue goals last while the goals page keeps urgency order', async ({ page }, testInfo) => {
+test('goal rhythm and the goals page both use urgency order', async ({ page }, testInfo) => {
   const today = todayISO()
   const fiveDaysAgo = addDays(today, -5)
   const threeDaysAgo = addDays(today, -3)
@@ -1304,10 +1304,10 @@ test('goal rhythm puts overdue goals last while the goals page keeps urgency ord
   await page.reload()
 
   await expect(page.locator('.goal-history-name span:not(.goal-color-dot)').allTextContents()).resolves.toEqual([
+    'Overdue',
     'Sooner',
     'Short tie',
     'Long tie',
-    'Overdue',
   ])
 
   const goalRhythm = page.getByRole('region', { name: 'Goal history' })
