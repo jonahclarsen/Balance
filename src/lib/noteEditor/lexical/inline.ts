@@ -4,8 +4,9 @@
 // <br>, <a>, <img data-balance-image>) straight from the Lexical model — no
 // DOM parsing per keystroke. Import turns sanitized inline HTML into nodes.
 //
-// Caret offsets (NoteEditorCaret / NoteViewState) count text characters, one
-// per line break, and zero per image.
+// Internal offsets count text characters and one per line break or image.
+// Public NoteEditorCaret offsets still count zero per image; translate at the
+// adapter boundary so editing ranges can distinguish either side of an image.
 
 import {
   $createLineBreakNode,
@@ -136,7 +137,8 @@ function serializeChildren(element: ElementNode, state: { offset: number }, from
         html += '<br>'
       }
     } else if ($isNoteImageNode(child)) {
-      if (from < to && state.offset >= from && state.offset <= to) {
+      const start = state.offset++
+      if (start >= from && start < to) {
         setMarks(0)
         html += imageHTML(child.__imageId, child.__width, child.__height, child.__layout)
       }
@@ -174,7 +176,11 @@ export function $inlineLeaves(content: ElementNode): Leaf[] {
         leaves.push({ node: child, start: offset, end: offset + 1 })
         offset += 1
       } else if ($isElementNode(child)) walk(child)
-      else leaves.push({ node: child, start: offset, end: offset })
+      else {
+        const length = $isNoteImageNode(child) ? 1 : 0
+        leaves.push({ node: child, start: offset, end: offset + length })
+        offset += length
+      }
     }
   }
   walk(content)
@@ -273,6 +279,18 @@ export function $offsetOfPoint(content: NoteContentNode, point: PointType): numb
 }
 
 export type PointSpec = { key: string; offset: number; type: 'text' | 'element' }
+
+export function $publicOffset(content: NoteContentNode, offset: number): number {
+  return offset - $inlineLeaves(content).filter((leaf) => $isNoteImageNode(leaf.node) && leaf.end <= offset).length
+}
+
+export function $internalOffset(content: NoteContentNode, offset: number): number {
+  let internal = offset
+  for (const leaf of $inlineLeaves(content)) {
+    if ($isNoteImageNode(leaf.node) && leaf.start <= internal) internal += 1
+  }
+  return Math.min($caretLength(content), internal)
+}
 
 // Resolve a caret offset to a Lexical point, preferring text positions.
 export function $pointAtOffset(content: NoteContentNode, target: number): PointSpec {

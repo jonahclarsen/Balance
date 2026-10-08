@@ -15,7 +15,12 @@ export function hydrateImages(root: ParentNode) {
   }
 }
 
-export function imageEditing(editor: HTMLElement, commit: () => void) {
+type ImageEditingModel = {
+  insertHTML: (html: string, range: Range) => void
+  deleteSelection: () => void
+}
+
+export function imageEditing(editor: HTMLElement, commit: () => void, model?: ImageEditingModel) {
   function select(image: HTMLImageElement) {
     get(selectedImage)?.image.removeAttribute('data-image-selected')
     image.dataset.imageSelected = ''
@@ -46,6 +51,11 @@ export function imageEditing(editor: HTMLElement, commit: () => void) {
   function insert(html: string, range: Range) {
     if (!editor.isConnected) return
     editor.focus()
+    if (model) {
+      model.insertHTML(html, range)
+      hydrateImages(editor)
+      return
+    }
     const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
@@ -118,7 +128,11 @@ export function imageEditing(editor: HTMLElement, commit: () => void) {
     event.clipboardData.setData('text/html', html)
     event.clipboardData.setData('text/plain', container.textContent || '\uFFFC')
     event.preventDefault(); event.stopPropagation()
-    if (event.type === 'cut') { selection.deleteFromDocument(); commit(); selectedImage.set(null) }
+    if (event.type === 'cut') {
+      if (model) model.deleteSelection()
+      else { selection.deleteFromDocument(); commit() }
+      selectedImage.set(null)
+    }
   }
   function keydown(event: KeyboardEvent) {
     const selected = get(selectedImage)

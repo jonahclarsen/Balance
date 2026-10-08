@@ -35,6 +35,11 @@ export default defineConfig({
       testIgnore: /mobile\.spec\.ts/,
     },
     {
+      name: 'lexical-images-webkit',
+      use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 }, noteEditor: 'lexical' },
+      testMatch: /images\.spec\.ts/,
+    },
+    {
       name: 'tiptap-mobile',
       use: { ...devices['Pixel 7'], noteEditor: 'tiptap' },
       testMatch: /mobile\.spec\.ts/,
