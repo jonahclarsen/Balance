@@ -408,8 +408,8 @@
                   <strong>{dateLabel(date)}</strong>
                   {#if date < today && incompleteDates.has(date)}
                     <span class="goal-date-incomplete-mark" aria-hidden="true">
-                      <svg viewBox="0 0 16 16" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-                        <path d="m4 4 8 8M12 4l-8 8" />
+                      <svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+                        <path d="m2 2 12 12M14 2 2 14" />
                       </svg>
                     </span>
                   {/if}

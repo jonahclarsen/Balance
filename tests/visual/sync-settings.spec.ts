@@ -66,7 +66,7 @@ async function startBackgroundSync(page: Page, delay: number) {
   await expect.poll(async () => (await calls(page)).length).toBeGreaterThan(previousCalls)
 }
 
-test('background sync only disables buttons after one second', async ({ page }) => {
+test('routine background sync stays quiet and keeps controls usable', async ({ page }) => {
   const panel = await openSync(page, 'connected')
   await expect(panel.locator('.sync-overview strong')).toHaveText('Connected to sync server')
   await page.clock.install()
@@ -91,12 +91,18 @@ test('background sync only disables buttons after one second', async ({ page }) 
   await expect(syncNow).toBeEnabled()
   await expect(connect).toBeEnabled()
   await page.clock.runFor(2)
-  await expect(syncNow).toBeDisabled()
-  await expect(connect).toBeDisabled()
-  await page.clock.runFor(499)
-  await page.evaluate(() => (window as any).__backgroundSync)
   await expect(syncNow).toBeEnabled()
   await expect(connect).toBeEnabled()
+  await expect(panel.locator('.sync-overview strong')).toHaveText('Connected to sync server')
+  // A manual request can join a slow poll instead of leaving its button blocked.
+  await syncNow.click()
+  await expect(syncNow).toBeDisabled()
+  await page.clock.runFor(499)
+  await page.evaluate(() => (window as any).__backgroundSync)
+  await page.clock.runFor(1_500)
+  await expect(syncNow).toBeEnabled()
+  await expect(connect).toBeEnabled()
+  await expect(panel.getByText('Sync complete.', { exact: true })).toBeVisible()
 })
 
 test('saving connection settings waits for an active background sync', async ({ page }) => {

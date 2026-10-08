@@ -4802,8 +4802,7 @@ body.mobile-checkbox-dragging {
 
 .goal-date-incomplete-mark {
   position: absolute;
-  top: 2px;
-  right: 2px;
+  inset: 0;
   display: grid;
   place-items: center;
   color: var(--danger);
@@ -4812,6 +4811,8 @@ body.mobile-checkbox-dragging {
 
 .goal-date-incomplete-mark svg {
   display: block;
+  width: 28px;
+  height: 28px;
 }
 
 .goal-history-name {
