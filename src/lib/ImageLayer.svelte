@@ -232,7 +232,7 @@
     <div class="image-error"><p>{$imageError}</p><button on:click={close}>Close</button></div>
   {:else if active}
     <div class="compression">
-      <header><h2>Paste image</h2><button aria-label="Cancel image paste" on:click={close}>×</button></header>
+      <header><h2>Paste image{#if active.position && active.position.total > 1}{` ${active.position.index} of ${active.position.total}`}{/if}</h2><button aria-label="Cancel image paste" on:click={close}><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button></header>
       <div class="previews">
         <div class="main-preview">
           {#if originalURL}
@@ -250,7 +250,7 @@
       {#if original}<div class="original-dimensions">Original: {original.naturalWidth} × {original.naturalHeight}</div>{/if}
       {#if active.blob.size >= MAX_IMAGE_BYTES || (result && !processing && result.size >= MAX_IMAGE_BYTES)}<p role="status">{IMAGE_SIZE_LIMIT_MESSAGE}</p>{/if}
       {#if modalError}<p role="alert">{modalError}</p>{/if}
-      <footer><button on:click={() => finish(null)}>Cancel <kbd>Esc</kbd></button><div><button disabled={active.blob.size >= MAX_IMAGE_BYTES} on:click={() => active && finish(active.blob)}>Paste original <kbd>{mod}Enter</kbd></button><button class="primary" disabled={processing || !result || result.size >= MAX_IMAGE_BYTES} on:click={() => result && finish(result)}>Paste image <kbd>Enter</kbd></button></div></footer>
+      <footer><button on:click={() => finish(null)}>{active.position && active.position.total > 1 ? 'Skip image' : 'Cancel'} <kbd>Esc</kbd></button><div><button disabled={active.blob.size >= MAX_IMAGE_BYTES} on:click={() => active && finish(active.blob)}>Paste original <kbd>{mod}Enter</kbd></button><button class="primary" disabled={processing || !result || result.size >= MAX_IMAGE_BYTES} on:click={() => result && finish(result)}>Paste image <kbd>Enter</kbd></button></div></footer>
     </div>
   {/if}
 </dialog>

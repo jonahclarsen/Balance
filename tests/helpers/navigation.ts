@@ -31,7 +31,7 @@ export async function generateDay(page: Page, name = 'Generate today') {
   await showPrimaryNavigation(page)
   // Generation controls live on Today; returning from a template preserves the selected date.
   if (await button.count() === 0) {
-    await primaryNavigation(page).getByRole('button', { name: 'Today', exact: true }).click()
+    await openView(page, 'Today')
     await showPrimaryNavigation(page)
   }
   await button.click()

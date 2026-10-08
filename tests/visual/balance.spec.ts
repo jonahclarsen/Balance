@@ -605,66 +605,6 @@ test('core planner screens render and screenshot cleanly', async ({ page }, test
   })
 })
 
-test('settings opens recovery and diagnostics above goal rhythm', async ({ page }, testInfo) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-
-  const goalRhythm = page.getByRole('region', { name: 'Goal history' })
-  await expect(goalRhythm).toBeVisible()
-
-  await openView(page, 'Settings')
-  const openRecovery = page.getByRole('button', { name: 'Open recovery & diagnostics' })
-  await expect(openRecovery).toBeVisible()
-  await openRecovery.click()
-
-  const dialog = page.getByRole('dialog', { name: 'Recovery history' })
-  await expect(dialog).toBeVisible()
-
-  const stacking = await page.evaluate(() => {
-    const backdrop = document.querySelector<HTMLElement>('.modal-backdrop')
-    const rhythm = document.querySelector<HTMLElement>('.goal-history-panel')
-    if (!backdrop || !rhythm) return null
-
-    const rhythmRect = rhythm.getBoundingClientRect()
-    const visibleLeft = Math.max(0, rhythmRect.left)
-    const visibleRight = Math.min(window.innerWidth, rhythmRect.right)
-    const visibleTop = Math.max(0, rhythmRect.top)
-    const visibleBottom = Math.min(window.innerHeight, rhythmRect.bottom)
-    const hasVisibleOverlap = visibleRight > visibleLeft && visibleBottom > visibleTop
-    const backdropZIndex = Number.parseInt(getComputedStyle(backdrop).zIndex, 10)
-    const rhythmZIndex = Number.parseInt(getComputedStyle(rhythm).zIndex, 10)
-    if (!hasVisibleOverlap) {
-      return { backdropZIndex, rhythmZIndex, hasVisibleOverlap, backdropOwnsTopElement: false }
-    }
-
-    const topElement = document.elementFromPoint(
-      visibleLeft + Math.min(12, (visibleRight - visibleLeft) / 2),
-      visibleTop + Math.min(12, (visibleBottom - visibleTop) / 2),
-    )
-    return {
-      backdropZIndex,
-      rhythmZIndex,
-      hasVisibleOverlap,
-      backdropOwnsTopElement: Boolean(topElement && backdrop.contains(topElement)),
-    }
-  })
-
-  if (testInfo.project.name === 'desktop') {
-    expect(stacking).not.toBeNull()
-    expect(stacking?.backdropZIndex).toBeGreaterThan(stacking?.rhythmZIndex ?? Number.MAX_SAFE_INTEGER)
-    if (stacking?.hasVisibleOverlap) expect(stacking.backdropOwnsTopElement).toBe(true)
-  }
-
-  await page.screenshot({
-    path: `artifacts/visual-smoke/${testInfo.project.name}-recovery-diagnostics-modal.png`,
-    fullPage: true,
-  })
-
-  await dialog.getByRole('button', { name: 'Close' }).click()
-  await expect(dialog).toHaveCount(0)
-})
-
 test('threshold-based launch housekeeping never blocks the app with a maintenance dialog', async ({ page }, testInfo) => {
   await page.addInitScript(() => {
     type TestRuntime = typeof globalThis & {

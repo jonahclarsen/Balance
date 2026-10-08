@@ -1056,7 +1056,18 @@ fn read_balance_clipboard() -> ClipboardContents {
             .map(|value| value.to_string()),
         html: pasteboard
             .stringForType(unsafe { NSPasteboardTypeHTML })
-            .map(|value| value.to_string()),
+            .map(|value| value.to_string())
+            .or_else(|| unsafe {
+                extern "C" {
+                    fn balance_note_clipboard_html() -> *mut std::ffi::c_char;
+                    fn balance_free_note_clipboard_html(pointer: *mut std::ffi::c_char);
+                }
+                let pointer = balance_note_clipboard_html();
+                if pointer.is_null() { return None; }
+                let html = std::ffi::CStr::from_ptr(pointer).to_string_lossy().into_owned();
+                balance_free_note_clipboard_html(pointer);
+                Some(html)
+            }),
     }
 }
 

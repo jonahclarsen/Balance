@@ -53,6 +53,9 @@ export function parseNoteChecklistClipboard(plainText: string, html: string): Pa
   if (flattenedHTMLItems.length >= 2 && flattenedHTMLItems.every((item) => item.kind === 'checklist')) {
     return htmlItems
   }
+  // Plain checkbox markers must not replace a mixed rich document and lose
+  // its headings, images or formatting.
+  if (html.trim()) return []
 
   const roots: ParsedNoteClipboardItem[] = []
   const stack: { depth: number; item: ParsedNoteClipboardItem }[] = []
@@ -109,20 +112,40 @@ function indentationWidth(indentation: string) {
   return Array.from(indentation).reduce((width, character) => width + (character === '\t' ? 2 : 1), 0)
 }
 
-function parseClipboardContainer(container: Element): ParsedNoteClipboardItem[] {
-  return Array.from(container.children).flatMap((element) => {
-    if (element.matches('ul, ol')) return parseClipboardList(element)
-    if (!element.matches('p, div, blockquote, h1, h2, h3, h4, h5, h6')) return []
+function clipboardInlineContent(element: Element, trimBlockBreak = false): string {
+  const span = element.ownerDocument.createElement('span')
+  const content = sanitizeInlineHTML(element.innerHTML)
+  span.innerHTML = trimBlockBreak ? content.replace(/(?:<br>)+$/, '') : content
+  if (element.hasAttribute('style')) span.setAttribute('style', element.getAttribute('style')!)
+  return sanitizeInlineHTML(span.outerHTML)
+}
 
-    const html = sanitizeInlineHTML(element.innerHTML)
-    return [{
-      kind: element.matches('h1, h2, h3, h4, h5, h6') ? 'heading' : element.matches('blockquote') ? 'quote' : 'paragraph',
-      html,
-      text: htmlToPlainText(html),
-      done: false,
-      children: [],
-    } satisfies ParsedNoteClipboardItem]
-  })
+function parseClipboardContainer(container: Element): ParsedNoteClipboardItem[] {
+  const items: ParsedNoteClipboardItem[] = []
+  const inline = container.ownerDocument.createElement('span')
+  const append = (element: Element, kind: NoteItemKind = 'paragraph') => {
+    const html = clipboardInlineContent(element)
+    items.push({ kind, html, text: htmlToPlainText(html), done: false, children: [] })
+  }
+  const flush = () => {
+    if (inline.textContent?.trim() || inline.querySelector('img,br')) append(inline)
+    inline.replaceChildren()
+  }
+  for (const node of Array.from(container.childNodes)) {
+    if (node.nodeType !== Node.ELEMENT_NODE) { inline.append(node.cloneNode(true)); continue }
+    const element = node as Element
+    if (element.matches('meta, style, script, link')) continue
+    if (element.matches('ul,ol')) { flush(); items.push(...parseClipboardList(element)); continue }
+    if (element.matches('div,section,article') && element.querySelector('p,div,ul,ol,h1,h2,h3,h4,h5,h6,blockquote')) {
+      flush(); items.push(...parseClipboardContainer(element)); continue
+    }
+    if (element.matches('p,div,blockquote,h1,h2,h3,h4,h5,h6')) {
+      flush()
+      append(element, element.matches('h1,h2,h3,h4,h5,h6') ? 'heading' : element.matches('blockquote') ? 'quote' : 'paragraph')
+    } else inline.append(element.cloneNode(true))
+  }
+  flush()
+  return items
 }
 
 function parseClipboardList(list: Element): ParsedNoteClipboardItem[] {
@@ -135,7 +158,11 @@ function parseClipboardList(list: Element): ParsedNoteClipboardItem[] {
 
       let kind: NoteItemKind = list.matches('ol') ? 'numbered' : 'bullet'
       let done = false
-      if (list.matches('ul')) {
+      if (list.matches('ul.checklist, ul[data-type="taskList"]') || element.matches('[data-type="taskItem"]')) {
+        kind = 'checklist'
+        done = element.classList.contains('checked') || element.getAttribute('data-checked') === 'true'
+        inline.querySelectorAll('input[type="checkbox"]').forEach((node) => node.remove())
+      } else if (list.matches('ul')) {
         const walker = document.createTreeWalker(inline, NodeFilter.SHOW_TEXT)
         const firstText = walker.nextNode() as Text | null
         const checkbox = firstText?.data.match(/^([☐☑])\s*/)
@@ -146,7 +173,9 @@ function parseClipboardList(list: Element): ParsedNoteClipboardItem[] {
         }
       }
 
-      const html = sanitizeInlineHTML(inline.innerHTML)
+      // Notesnook wraps list-item text in paragraphs; their trailing block
+      // break is structural, not a soft line break within the list item.
+      const html = clipboardInlineContent(inline, true)
       return {
         kind,
         html,

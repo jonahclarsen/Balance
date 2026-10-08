@@ -17,6 +17,8 @@
 
   export let goals: Goal[]
   export let completions: GoalCompletion[]
+  // Dates whose saved day still has unchecked tasks. Past ones get a red X.
+  export let incompleteDates: Set<string> = new Set()
   export let viewedDate: string = todayISO()
   export let visible = true
   export let onOpenGoals: (goalId?: string) => void
@@ -395,14 +397,22 @@
                   class:viewed={date === viewedDate}
                   class:today={date === today}
                   class:future={date > today}
+                  class:incomplete={date < today && incompleteDates.has(date)}
                   class="goal-date-head"
                   data-goal-date={date}
-                  aria-label={`Open ${date} in Today view`}
-                  title={`Open ${date} in Today view`}
+                  aria-label={`Open ${date} in Today view${date < today && incompleteDates.has(date) ? ' (tasks incomplete)' : ''}`}
+                  title={`Open ${date} in Today view${date < today && incompleteDates.has(date) ? '\nSome tasks on this day are still unchecked' : ''}`}
                   on:click={() => onOpenDate(date)}
                 >
                   <span>{dayLabel(date)}</span>
                   <strong>{dateLabel(date)}</strong>
+                  {#if date < today && incompleteDates.has(date)}
+                    <span class="goal-date-incomplete-mark" aria-hidden="true">
+                      <svg viewBox="0 0 16 16" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round">
+                        <path d="m2 2 12 12M14 2 2 14" />
+                      </svg>
+                    </span>
+                  {/if}
                 </button>
               {/each}
             </div>

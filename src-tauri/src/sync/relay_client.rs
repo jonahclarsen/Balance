@@ -30,9 +30,9 @@ const FOREGROUND_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 const BACKGROUND_REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// App sync temporarily gives up the process-wide database mutex
-/// while it waits on HTTP. Database work on the relay connection remains
-/// serialized before and after each wait, so local edits and history commands
-/// are never parked behind an unreachable relay.
+/// during HTTP and payload encoding/decoding. Database work on the relay
+/// connection remains serialized, so local edits and history commands do not
+/// wait for transport or compression work.
 pub(crate) trait NetworkDatabaseGate {
     fn without_database_lock<T>(&mut self, task: impl FnOnce() -> Result<T>) -> Result<T>;
 }
@@ -406,10 +406,14 @@ fn apply_descriptor_with_gate(
     chunks: usize,
     gate: &mut impl NetworkDatabaseGate,
 ) -> Result<(usize, bool)> {
-    let ciphertext = gate.without_database_lock(|| fetch_blob(client, base, id, chunks))?;
-    apply_ciphertext(conn, key, epoch, &ciphertext)
+    let ops = gate.without_database_lock(|| {
+        let ciphertext = fetch_blob(client, base, id, chunks)?;
+        decode_ciphertext(key, epoch, &ciphertext)
+    })?;
+    apply_decoded_ops(conn, ops)
 }
 
+#[cfg(test)]
 fn apply_ciphertext(
     conn: &Connection,
     key: &SyncKey,
@@ -579,18 +583,19 @@ fn apply_manifest_with_budget_and_gate(
                     .collect::<Vec<_>>()
                     .into_iter()
                     .map(|download| {
-                        download.join().unwrap_or_else(|_| {
-                            Err(Error::Codec("relay download worker panicked".into()))
-                        })
+                        download
+                            .join()
+                            .unwrap_or_else(|_| {
+                                Err(Error::Codec("relay download worker panicked".into()))
+                            })
+                            .and_then(|ciphertext| decode_ciphertext(key, &manifest.epoch, &ciphertext))
                     })
                     .collect::<Vec<_>>()
             }))
         })?;
 
         for (batch, download) in group.iter().zip(downloads) {
-            match download
-                .and_then(|ciphertext| decode_ciphertext(key, &manifest.epoch, &ciphertext))
-            {
+            match download {
                 Ok(ops) => {
                     decoded_ops.extend(ops);
                     decoded_batches.push(*batch);
@@ -624,7 +629,17 @@ fn apply_manifest_with_budget_and_gate(
     Ok((pulled, changed))
 }
 
+#[cfg(test)]
 fn stage_outbox(conn: &Connection, key: &SyncKey, epoch: &str) -> Result<bool> {
+    stage_outbox_with_gate(conn, key, epoch, &mut ContinuousDatabaseAccess)
+}
+
+fn stage_outbox_with_gate(
+    conn: &Connection,
+    key: &SyncKey,
+    epoch: &str,
+    gate: &mut impl NetworkDatabaseGate,
+) -> Result<bool> {
     let mut known: HashSet<String> = {
         let mut stmt = conn.prepare("SELECT op_id FROM sync_relay_known_ops")?;
         let rows = stmt
@@ -670,14 +685,16 @@ fn stage_outbox(conn: &Connection, key: &SyncKey, epoch: &str) -> Result<bool> {
 
     for ops in batches {
         let batch_id = random_token();
-        let ciphertext = seal(
-            key,
-            &RelayEnvelope {
-                v: PROTOCOL_VERSION,
-                epoch: epoch.to_string(),
-                ops: ops.clone(),
-            },
-        )?;
+        let ciphertext = gate.without_database_lock(|| {
+            seal(
+                key,
+                &RelayEnvelope {
+                    v: PROTOCOL_VERSION,
+                    epoch: epoch.to_string(),
+                    ops: ops.clone(),
+                },
+            )
+        })?;
         if ciphertext.len() > MAX_BATCH_CIPHERTEXT {
             // A single large operation cannot be split. Promote the complete
             // local state through the chunked checkpoint endpoint instead.
@@ -812,14 +829,16 @@ fn upload_current_checkpoint(
     let new_epoch = random_token();
     let upload_id = random_token();
     let checkpoint_ops = all_ops(conn)?;
-    let ciphertext = seal(
-        key,
-        &RelayEnvelope {
-            v: PROTOCOL_VERSION,
-            epoch: new_epoch.clone(),
-            ops: checkpoint_ops.clone(),
-        },
-    )?;
+    let ciphertext = gate.without_database_lock(|| {
+        seal(
+            key,
+            &RelayEnvelope {
+                v: PROTOCOL_VERSION,
+                epoch: new_epoch.clone(),
+                ops: checkpoint_ops.clone(),
+            },
+        )
+    })?;
     let chunks = ciphertext.len().div_ceil(CHECKPOINT_CHUNK_BYTES);
     let start = CheckpointStart {
         upload_id: &upload_id,
@@ -1002,7 +1021,7 @@ fn sync_once_inner(
     }
 
     let active_epoch = relay_state(conn)?.0;
-    if stage_outbox(conn, key, &active_epoch)? {
+    if stage_outbox_with_gate(conn, key, &active_epoch, gate)? {
         let latest_sequence = relay_state(conn)?.1;
         if !options.allow_checkpoint {
             return Err(Error::Codec(
@@ -1130,6 +1149,49 @@ mod tests {
                 params![id, payload],
             )
             .unwrap();
+    }
+
+    #[test]
+    fn edits_during_outbox_encoding_remain_pending_for_the_next_pass() {
+        struct EditingGate<'a> {
+            connection: &'a Connection,
+            yielded: bool,
+        }
+        impl NetworkDatabaseGate for EditingGate<'_> {
+            fn without_database_lock<T>(&mut self, task: impl FnOnce() -> Result<T>) -> Result<T> {
+                assert!(!self.yielded);
+                self.yielded = true;
+                // Simulate a local write after sync releases database access.
+                insert_op(self.connection, "edit-during-encoding", "{}");
+                task()
+            }
+        }
+        let connection = relay_database();
+        let key = SyncKey::generate();
+        insert_op(&connection, "captured-edit", "{}");
+        let mut gate = EditingGate {
+            connection: &connection,
+            yielded: false,
+        };
+        assert!(!stage_outbox_with_gate(&connection, &key, "epoch-1", &mut gate).unwrap());
+        assert!(gate.yielded);
+        let staged: String = connection
+            .query_row("SELECT op_ids_json FROM sync_relay_outbox", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            serde_json::from_str::<Vec<String>>(&staged).unwrap(),
+            vec!["captured-edit"]
+        );
+        assert!(!stage_outbox(&connection, &key, "epoch-1").unwrap());
+        let mut stmt = connection.prepare("SELECT ciphertext FROM sync_relay_outbox").unwrap();
+        let mut ids = stmt
+            .query_map([], |row| row.get::<_, Vec<u8>>(0))
+            .unwrap()
+            .flat_map(|row| decode_ciphertext(&key, "epoch-1", &row.unwrap()).unwrap())
+            .map(|op| op.id)
+            .collect::<Vec<_>>();
+        ids.sort();
+        assert_eq!(ids, vec!["captured-edit", "edit-during-encoding"]);
     }
 
     #[test]
