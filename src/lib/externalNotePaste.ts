@@ -1,10 +1,13 @@
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { imageHTML, IMAGE_CLIPBOARD_TYPE } from './imageMarkup'
 import { importImage, reportImageError, stageClipboardImages } from './imageService'
-import { inlineTextStyle } from './inlineTextStyle'
+import { isUnboldedBold, textStyleTags } from './textStyleTags'
+
+const HEADING = 'h1, h2, h3, h4, h5, h6'
 
 // AppKit exports fonts in local CSS classes; Notesnook exports semantic HTML.
-// Inline just the permitted text styles before discarding the stylesheet.
+// Resolve the stylesheet into Balance's own vocabulary (heading, bold, italic,
+// underline) so pasted text never keeps another app's font, size or color.
 export function normalizeNotePasteHTML(html: string): string {
   const doc = new DOMParser().parseFromString(html, 'text/html')
   for (const sheet of doc.querySelectorAll('style')) {
@@ -19,7 +22,8 @@ export function normalizeNotePasteHTML(html: string): string {
     sheet.remove()
   }
   doc.querySelectorAll('script, iframe, object, link, meta').forEach((node) => node.remove())
-  for (const element of doc.body.querySelectorAll<HTMLElement>('*')) {
+  promoteLargeBlocksToHeadings(doc.body)
+  for (const element of Array.from(doc.body.querySelectorAll<HTMLElement>('*'))) {
     if (element.tagName === 'IMG') {
       for (const dimension of ['width', 'height'] as const) {
         const value = element.style[dimension]
@@ -28,16 +32,59 @@ export function normalizeNotePasteHTML(html: string): string {
         }
       }
       if (element.style.float === 'left' || element.style.float === 'right') element.dataset.imageLayout = element.style.float
+      element.removeAttribute('style')
+      continue
     }
-    if (/^H[1-6]$/.test(element.tagName) && !element.style.fontSize) {
-      element.style.fontSize = `${[32, 24, 20, 18, 16, 14][Number(element.tagName[1]) - 1]}px`
-      element.style.fontWeight = 'bold'
+    const inHeading = Boolean(element.closest(HEADING))
+    // Headings are already bold; a nested bold would render heavier still.
+    if (/^(B|STRONG)$/.test(element.tagName) && (inHeading || isUnboldedBold(element))) {
+      element.replaceWith(...element.childNodes)
+      continue
     }
-    const style = inlineTextStyle(element.style.cssText)
+    const own = ({ B: 'strong', STRONG: 'strong', I: 'em', EM: 'em', U: 'u' } as Record<string, string>)[element.tagName]
+    for (const mark of textStyleTags(element)) {
+      if (mark === own || (mark === 'strong' && inHeading)) continue
+      const wrapper = doc.createElement(mark)
+      wrapper.append(...element.childNodes)
+      element.append(wrapper)
+    }
     element.removeAttribute('style')
-    if (style) element.setAttribute('style', style)
   }
   return doc.body.innerHTML
+}
+
+// AppKit marks Apple Notes titles and headings only by font size. Promote
+// blocks clearly larger than the note's body text to a heading.
+function promoteLargeBlocksToHeadings(body: HTMLElement) {
+  const blocks = Array.from(body.querySelectorAll<HTMLElement>('p, div'))
+    .filter((block) => block.textContent?.trim() && !block.querySelector(`p, div, ul, ol, blockquote, ${HEADING}`) && !block.closest(`li, blockquote, ${HEADING}`))
+    .map((block) => ({ block, size: blockFontSize(block) }))
+  const weights = new Map<number, number>()
+  for (const { block, size } of blocks) if (size) weights.set(size, (weights.get(size) ?? 0) + block.textContent!.length)
+  const bodySize = [...weights].sort((a, b) => b[1] - a[1])[0]?.[0]
+  if (!bodySize) return
+  for (const { block, size } of blocks) {
+    if (!size || size < bodySize * 1.25 || block.querySelector('img')) continue
+    const heading = block.ownerDocument.createElement('h1')
+    heading.append(...block.childNodes)
+    block.replaceWith(heading)
+  }
+}
+
+// The one font size shared by all of a block's text, in pixels.
+function blockFontSize(block: HTMLElement): number | null {
+  let size: number | null = null
+  const walker = block.ownerDocument.createTreeWalker(block, NodeFilter.SHOW_TEXT)
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    if (!text.textContent?.trim()) continue
+    let element = text.parentElement
+    while (element && element !== block && !element.style.fontSize) element = element.parentElement
+    const match = element?.style.fontSize.match(/^(\d+(?:\.\d+)?)(px|pt)$/)
+    const value = match ? Number(match[1]) * (match[2] === 'pt' ? 4 / 3 : 1) : null
+    if (value === null || (size !== null && value !== size)) return null
+    size = value
+  }
+  return size
 }
 
 export async function importNotePasteImages(html: string, files: File[] = []): Promise<string> {

@@ -6,10 +6,11 @@ The historical inventory below predates the shared rich-paste importer. Current
 entry points are `externalNotePaste.ts` (all three note editors),
 `noteClipboard.ts` (shared block/list parsing), and the macOS
 `NoteClipboardBridge.swift` (RTF/RTFD to self-contained HTML with attachments).
-Notesnook HTML checklists preserve `checked` state. Text styles use the restricted
-`inlineTextStyle.ts` allowlist and survive Classic, TipTap, and Lexical editing;
-the historical assertion below that all font/color/span markup is stripped no
-longer applies. Heading levels retain their imported size in inline HTML.
+Notesnook HTML checklists preserve `checked` state. Pasted text keeps only
+Balance's own type: inline CSS weight, slant and underline become `<strong>`,
+`<em>` and `<u>` (`textStyleTags.ts`), and fonts, sizes and colors are dropped.
+AppKit marks Apple Notes titles only by size, so a block at least 1.25× the
+dominant body size becomes a heading; headings drop nested bold.
 
 External images must pass through `importImage`, including its existing size
 threshold, compression preview, and 6 MB limit. Multiple pasted images are

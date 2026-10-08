@@ -536,7 +536,6 @@ export class NoteTextNode extends TextNode {
   createDOM(_config: EditorConfig): HTMLElement {
     const tags = markTags(this.__format)
     const outer = document.createElement(tags[0] ?? 'span')
-    outer.style.cssText = this.__style
     let inner = outer
     for (const tag of tags.slice(1)) {
       const next = document.createElement(tag)

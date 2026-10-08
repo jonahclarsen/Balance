@@ -1,5 +1,5 @@
 import { sanitizeImage } from './imageMarkup'
-import { inlineTextStyle } from './inlineTextStyle'
+import { isUnboldedBold, textStyleTags } from './textStyleTags'
 import type {
   AppState,
   DailyPlan,
@@ -1865,15 +1865,18 @@ function sanitizeNode(node: Node): string {
   const tag = element.tagName.toLowerCase()
 
   if (['script', 'style', 'iframe', 'object'].includes(tag)) return ''
-  const style = inlineTextStyle(element.getAttribute('style') ?? '')
-  if (style && children) children = `<span style="${escapeHTML(style)}">${children}</span>`
+  const ownMark = tag === 'b' ? 'strong' : tag === 'i' ? 'em' : tag
+  if (children) {
+    for (const mark of textStyleTags(element).reverse()) {
+      if (mark !== ownMark) children = `<${mark}>${children}</${mark}>`
+    }
+  }
 
   if (tag === 'img') return sanitizeImage(element)
   if (tag === 'br') return '<br>'
-  if (tag === 'b' || tag === 'strong') return `<strong>${children}</strong>`
+  if (tag === 'b' || tag === 'strong') return isUnboldedBold(element) ? children : `<strong>${children}</strong>`
   if (tag === 'i' || tag === 'em') return `<em>${children}</em>`
   if (tag === 'u') return `<u>${children}</u>`
-  if (tag === 's' || tag === 'strike' || tag === 'del') return `<span style="text-decoration-line: line-through;">${children}</span>`
   if (tag === 'p' || tag === 'div') return children ? `${children}<br>` : ''
 
   if (tag === 'a') {
