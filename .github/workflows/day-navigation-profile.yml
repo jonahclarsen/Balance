@@ -13,6 +13,11 @@ on:
         required: true
         default: "main"
         type: string
+      alternate_days:
+        description: Revisit the same two days to measure the editor cache
+        required: false
+        default: false
+        type: boolean
       cpu_contention:
         description: Run two busy host CPU workers during the measurements
         required: false
@@ -31,6 +36,7 @@ jobs:
       BASELINE_REF: ${{ inputs.baseline_ref }}
       CANDIDATE_REF: ${{ inputs.candidate_ref }}
       CPU_CONTENTION: ${{ inputs.cpu_contention }}
+      BALANCE_DAY_NAV_ALTERNATE: ${{ inputs.alternate_days && '1' || '0' }}
 
     steps:
       - name: Check out benchmark harness
@@ -132,7 +138,7 @@ jobs:
           {
             echo '## Day navigation profile (macOS arm64)'
             echo
-            echo "Baseline: \`$BASELINE_SHA\` · Candidate: \`$CANDIDATE_SHA\` · CPU contention: $CPU_CONTENTION"
+            echo "Baseline: \`$BASELINE_SHA\` · Candidate: \`$CANDIDATE_SHA\` · CPU contention: $CPU_CONTENTION · Alternate days: $BALANCE_DAY_NAV_ALTERNATE"
             echo
             node .github/scripts/summarize-day-navigation-profile.mjs artifacts/day-navigation-profile
           } >> "$GITHUB_STEP_SUMMARY"
