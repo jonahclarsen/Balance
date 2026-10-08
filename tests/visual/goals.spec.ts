@@ -631,12 +631,10 @@ test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 6
   await expect(goalRhythm).toBeVisible()
 })
 
-test('clicking a goal rhythm date opens that day in Today view', async ({ page }, testInfo) => {
+test('clicking a goal rhythm date opens that day in Today view', async ({ page }) => {
   const selectedDate = await page.locator('.date-input').inputValue()
   const targetDate = addDays(selectedDate, 2)
 
-  // Mobile shows Goal Rhythm only on Today; desktop also shows it on Goals.
-  if (testInfo.project.name !== 'mobile') await openView(page, 'Goals')
   await page.locator(`[data-goal-date="${targetDate}"]`).click()
 
   await expect(page.locator('.primary-nav > button.active')).toContainText('Today')
@@ -2150,16 +2148,13 @@ test('clicking an unchecked goal preview reveals that goal in the rhythm panel',
   await expect(goalRow).toHaveClass(/goal-row-focus/)
 })
 
-test('clicking a goal card background reveals it without making field labels focus inputs', async ({ page }, testInfo) => {
+test('clicking a goal card background reveals it without making field labels focus inputs', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 
   const card = page.locator('.goal-card', { has: page.getByLabel('Goal name: Exercise') })
-  const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
-  if (testInfo.project.name !== 'mobile') {
-    await expect(goalRow).not.toHaveClass(/goal-row-focus/)
-    await card.locator('.goal-card-accent').click()
-    await expect(goalRow).toHaveClass(/goal-row-focus/)
-  }
+  // Goal Rhythm only renders on Today, so a card click cannot focus a rhythm row here.
+  await card.locator('.goal-card-accent').click()
+  await expect(page.locator('.goal-history-name[data-goal-id]')).toHaveCount(0)
 
   const cadenceInput = page.getByLabel('Cadence days for Exercise')
   await card.getByText('Complete every', { exact: true }).click()
