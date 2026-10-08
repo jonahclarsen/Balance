@@ -14362,6 +14362,71 @@ mod tests {
     }
 
     #[test]
+    fn batched_block_moves_undo_and_redo_in_sequence() {
+        let database = TestDatabase::new("block-move-history");
+        let recovery_key = generate_recovery_key();
+        let mut state = test_state("Block move test");
+        for id in ["plan_item_second", "plan_item_third", "plan_item_fourth"] {
+            state["plans"][0]["items"].as_array_mut().unwrap().push(json!({
+                "id": id,
+                "text": id,
+                "html": id,
+                "done": false,
+                "startMinutes": null,
+                "endMinutes": null,
+                "children": []
+            }));
+        }
+
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        replace_app_state(&mut connection, &state).unwrap();
+
+        // Dropping a two-item selection after the last item: the first lands at
+        // the target and the second follows it. A pre-state undo of the second
+        // move would restore it to the wrong index.
+        persist_operation_to_database(
+            &mut connection,
+            &json!({
+                "id": "op_device_test_2",
+                "deviceId": "device_test",
+                "sequence": 2,
+                "type": "batch",
+                "timestamp": "2026-05-21T00:01:00Z",
+                "payload": {
+                    "action": "move_plan_items",
+                    "operations": [
+                        { "type": "move_plan_item", "payload": {
+                            "planId": "plan_today", "sourceId": "plan_item_wake",
+                            "targetId": "plan_item_fourth", "placement": "after" } },
+                        { "type": "move_plan_item", "payload": {
+                            "planId": "plan_today", "sourceId": "plan_item_second",
+                            "targetId": "plan_item_wake", "placement": "after" } }
+                    ]
+                }
+            }),
+        )
+        .unwrap();
+
+        let moved = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&moved),
+            ["plan_item_third", "plan_item_fourth", "plan_item_wake", "plan_item_second"]
+        );
+
+        let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&undone),
+            ["plan_item_wake", "plan_item_second", "plan_item_third", "plan_item_fourth"]
+        );
+
+        let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(
+            top_plan_item_ids(&redone),
+            ["plan_item_third", "plan_item_fourth", "plan_item_wake", "plan_item_second"]
+        );
+    }
+
+    #[test]
     fn indent_plan_items_persists_and_undoes() {
         let database = TestDatabase::new("plan-indent");
         let recovery_key = generate_recovery_key();

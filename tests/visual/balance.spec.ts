@@ -3344,11 +3344,17 @@ test('the Today page returns to the current day after half a day away', async ({
   await page.reload()
   await expect(page.locator('.today-date-input')).toHaveValue(yesterday)
 
-  await page.evaluate(() => localStorage.setItem('balance:lastVisibleAt', String(Date.now() - 13 * 60 * 60 * 1000)))
+  // Leaving the page records the departure, so the stale timestamp has to be
+  // planted as the next load begins.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('balance-test:stale-visit')) return
+    sessionStorage.setItem('balance-test:stale-visit', '1')
+    localStorage.setItem('balance:lastVisibleAt', String(Date.now() - 13 * 60 * 60 * 1000))
+  })
   await page.reload()
   await expect(page.locator('.today-date-input')).toHaveValue(todayISO())
-  await expect.poll(() => page.evaluate(() => Number(localStorage.getItem('balance:lastVisibleAt'))))
-    .toBeGreaterThan(Date.now() - 60 * 60 * 1000)
+  await expect.poll(() => page.evaluate(() => Date.now() - Number(localStorage.getItem('balance:lastVisibleAt'))))
+    .toBeLessThan(60 * 60 * 1000)
 })
 
 for (const initial of [
