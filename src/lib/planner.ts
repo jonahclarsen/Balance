@@ -24,7 +24,7 @@ import type {
   TemplateQuizAnswers,
   TaskNotification,
 } from './types'
-import { goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
+import { createGoal, goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
 import { createDefaultReplicatedPreferences } from './preferences'
 import { expandTemplateSunset, templateSunsetNotificationTimes } from './templateSunset'
 
@@ -126,7 +126,22 @@ export function createDefaultTemplate(): DailyTemplate {
         ...createTemplateItem('Work block'),
         children: [createTemplateItem('Pick the first useful task'), createTemplateItem('Write down next action')],
       },
+      createTemplateItem('1 goals'),
     ],
+  }
+}
+
+// The starter goal sends you back through the default day every ten days so the
+// template stays something you actively chose, not something you inherited.
+export const DEFAULT_TEMPLATE_REVIEW_GOAL_CADENCE_DAYS = 10
+
+export function createDefaultTemplateReviewGoal(template: DailyTemplate): Goal {
+  const name = `Recommit to ${template.name}`
+  return {
+    ...createGoal(name, DEFAULT_TEMPLATE_REVIEW_GOAL_CADENCE_DAYS, [name], 200, 50, todayISO(), createId('goal')),
+    // Set directly: this markup is a trusted constant, and the DOM-backed
+    // sanitizer is unavailable when the initial state is built outside a browser.
+    nameHtml: `Recommit to <a href="${templateReviewURL('day', template.id)}">${escapeHTML(template.name)}</a>`,
   }
 }
 
@@ -143,6 +158,7 @@ export function createDailyTemplate(name = 'New day'): DailyTemplate {
 }
 
 export function createInitialState(): AppState {
+  const template = createDefaultTemplate()
   return {
     schemaVersion: 1,
     deviceId: createId('device'),
@@ -150,7 +166,7 @@ export function createInitialState(): AppState {
     historyRevision: 0,
     activePlanDate: todayISO(),
     preferences: createDefaultReplicatedPreferences(),
-    templates: [createDefaultTemplate()],
+    templates: [template],
     plans: [],
     uneditedPlanItems: [],
     templateQuestions: [],
@@ -165,7 +181,7 @@ export function createInitialState(): AppState {
     prioritySessions: [],
     notes: [],
     images: [],
-    goals: [],
+    goals: [createDefaultTemplateReviewGoal(template)],
     goalCompletions: [],
     operations: [],
   }
@@ -1802,6 +1818,24 @@ export function isGoalStatsURL(value: string): boolean {
   return value.trim() === GOAL_STATS_URL
 }
 
+// A template review walks every row of a day or list template, forcing a quick
+// discard or a deliberate (cooldown-gated) keep for each one.
+export type TemplateReviewKind = 'day' | 'list'
+export type TemplateReviewTarget = { kind: TemplateReviewKind; templateId: Id }
+
+export function templateReviewURL(kind: TemplateReviewKind, templateId: Id): string {
+  return `balance://review/${kind}/${templateId}`
+}
+
+export function templateReviewFromURL(value: string): TemplateReviewTarget | null {
+  const match = /^balance:\/\/review\/(day|list)\/([a-zA-Z0-9_-]+)$/.exec(value.trim())
+  return match ? { kind: match[1] as TemplateReviewKind, templateId: match[2] } : null
+}
+
+export function templateReviewLabel(kind: TemplateReviewKind): string {
+  return kind === 'day' ? 'Recommit to day plan' : 'Recommit to list'
+}
+
 // An empty id targets the project overview; null means this is not a project link.
 export function projectIdFromURL(value: string): Id | null {
   const match = /^balance:\/\/projects(?:\/([a-zA-Z0-9_-]+))?$/.exec(value.trim())
@@ -1832,7 +1866,7 @@ function sanitizeNode(node: Node): string {
     // An empty anchor is invisible but would still be the first link Alt+F opens.
     if (!children) return ''
     const href = element.getAttribute('href') ?? ''
-    if (isGoalStatsURL(href) || noteIdFromURL(href) || projectIdFromURL(href) !== null) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
+    if (isGoalStatsURL(href) || noteIdFromURL(href) || projectIdFromURL(href) !== null || templateReviewFromURL(href)) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
     if (!isURL(href)) return children
     return `<a href="${escapeHTML(href.trim())}" target="_blank" rel="noreferrer">${children}</a>`
   }
@@ -2426,6 +2460,14 @@ export type ItemLink =
   | { kind: 'metric'; metricId: Id; label: string }
   | { kind: 'note'; noteId: Id; label: string }
   | { kind: 'projects'; projectId: Id; label: string }
+  | { kind: 'templateReview'; templateKind: TemplateReviewKind; templateId: Id; label: string }
+
+const TEMPLATE_REVIEW_URL_PATTERN = /balance:\/\/review\/(day|list)\/([a-zA-Z0-9_-]+)(?![a-zA-Z0-9_/?#-])/g
+
+function templateReviewLinkFromMatch(match: RegExpMatchArray): Extract<ItemLink, { kind: 'templateReview' }> {
+  const templateKind = match[1] as TemplateReviewKind
+  return { kind: 'templateReview', templateKind, templateId: match[2], label: templateReviewLabel(templateKind) }
+}
 
 export function resolveItemLinks(text: string, listTemplates: ListTemplate[], metrics: Metric[], notes: import('./types').Note[] = []): ItemLink[] {
   const trimmed = text.trim()
@@ -2458,6 +2500,9 @@ export function resolveItemLinks(text: string, listTemplates: ListTemplate[], me
   }
   for (const _match of trimmed.matchAll(/balance:\/\/goals\/stats(?![a-zA-Z0-9_/?#-])/g)) {
     links.push({ kind: 'goalStats', label: 'Goal stats' })
+  }
+  for (const match of trimmed.matchAll(TEMPLATE_REVIEW_URL_PATTERN)) {
+    links.push(templateReviewLinkFromMatch(match))
   }
   return links
 }
@@ -2522,6 +2567,9 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
   for (const match of text.matchAll(/balance:\/\/goals\/stats(?![a-zA-Z0-9_/?#-])/g)) {
     matches.push({ start: match.index!, end: match.index! + match[0].length, link: { kind: 'goalStats', label: 'Goal stats' } })
   }
+  for (const match of text.matchAll(TEMPLATE_REVIEW_URL_PATTERN)) {
+    matches.push({ start: match.index!, end: match.index! + match[0].length, link: templateReviewLinkFromMatch(match) })
+  }
   if (matches.length === 0) return [{ text, link: null }]
 
   // Earliest start first, longest match wins on ties; skip overlaps.
@@ -2546,6 +2594,7 @@ export function detectedTemplateLists(text: string, listTemplates: ListTemplate[
 
 export function internalLinkId(link: ItemLink): string {
   if (link.kind === 'goalStats') return 'stats'
+  if (link.kind === 'templateReview') return `${link.templateKind}:${link.templateId}`
   if (link.kind === 'projects') return link.projectId || 'all'
   if (link.kind === 'list') return link.listTemplateId
   if (link.kind === 'metric') return link.metricId
@@ -2620,5 +2669,9 @@ export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
   if (kind === 'note' && id) return { kind, noteId: id, label }
   const noteId = noteIdFromURL(anchor.getAttribute('href') ?? '')
   if (noteId) return { kind: 'note', noteId, label }
+  const review = kind === 'templateReview' && id
+    ? templateReviewFromURL(`balance://review/${id.replace(':', '/')}`)
+    : templateReviewFromURL(anchor.getAttribute('href') ?? '')
+  if (review) return { kind: 'templateReview', templateKind: review.kind, templateId: review.templateId, label }
   return null
 }

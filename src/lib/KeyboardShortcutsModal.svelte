@@ -117,6 +117,14 @@
       ],
     },
     {
+      title: 'Template review (from a review link)',
+      shortcuts: [
+        { keys: ['left'], label: 'Discard item (instant)', alt: ['del'] },
+        { keys: ['right'], label: 'Keep item (after the 2-second read bar fills)', alt: ['enter'] },
+        { keys: ['esc'], label: 'Cancel review without changing the template' },
+      ],
+    },
+    {
       title: 'Celebration review',
       shortcuts: [
         { keys: ['left'], label: 'Previous / next celebration', alt: ['right'] },

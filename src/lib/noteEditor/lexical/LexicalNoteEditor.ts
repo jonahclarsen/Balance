@@ -62,6 +62,8 @@ import { imageClipboardHTML } from '../../imageService'
 import {
   escapeHTML,
   isGoalStatsURL,
+  templateReviewFromURL,
+  templateReviewLabel,
   isURL,
   linkifyExternalURLs,
   linkifyItemText,
@@ -205,7 +207,7 @@ function $numberOf(block: NoteBlockNode): number | null {
 }
 
 function isLinkTarget(value: string): boolean {
-  return isURL(value) || noteIdFromURL(value) !== null || projectIdFromURL(value) !== null || isGoalStatsURL(value)
+  return isURL(value) || noteIdFromURL(value) !== null || projectIdFromURL(value) !== null || isGoalStatsURL(value) || templateReviewFromURL(value) !== null
 }
 
 function stripAnchors(html: string): string {
@@ -1467,6 +1469,8 @@ class LexicalNoteEditorView implements NoteEditorView {
     const projectId = projectIdFromURL(href)
     if (projectId !== null) return { kind: 'projects', projectId, label: 'Project vibes' }
     if (isGoalStatsURL(href)) return { kind: 'goalStats', label: 'Goal stats' }
+    const review = templateReviewFromURL(href)
+    if (review) return { kind: 'templateReview', templateKind: review.kind, templateId: review.templateId, label: templateReviewLabel(review.kind) }
     return null
   }
 

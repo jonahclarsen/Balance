@@ -91,13 +91,13 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
   import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
-  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatPlanTitle, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep } from './lib/planner'
+  import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, templateReviewURL, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
   import { createDefaultIridescentGradient, DEFAULT_DATABASE_LOADING_MESSAGES, normalizeIridescentGradient, replicatedDayTheme } from './lib/preferences'
@@ -138,6 +138,8 @@
   // so each pasted "thing" can be approved, skipped, or edited before it lands.
   const PASTE_REVIEW_THRESHOLD = 4
   const PASTE_REVIEW_COOLDOWN_MS = 2000
+  const TEMPLATE_REVIEW_COOLDOWN_MS = 2000
+  const REVIEW_DISCARD_SWEEP_MS = 420
   const PASTE_MATCH_STYLE_EVENT = 'balance-paste-match-style'
   const MACOS_ALT_SHORTCUT_EVENT = 'balance-macos-alt-shortcut'
   const TIME_KEYBOARD_STEP_MINUTES = 15
@@ -254,7 +256,7 @@
       !isFormFieldActive() && !isRichTextActive() &&
       !document.activeElement?.closest('[contenteditable="true"]') &&
       !searchOpen && !documentFindOpen && !shortcutsHelpOpen && !mobileDrawerOpen &&
-      !listOverlayVisible && !metricOverlay && !recoveryPanelOpen && !pasteReview && !celebrationPreview &&
+      !listOverlayVisible && !metricOverlay && !recoveryPanelOpen && !pasteReview && !templateReview && !celebrationPreview &&
       !$databaseLoadPending && !$databaseLoadError && !document.hidden &&
       !document.querySelector('.overlay-backdrop, dialog[open]')
   }
@@ -629,7 +631,29 @@ return rows`
   // can't be blown through without being read. pasteReviewProgress drives the bar.
   let pasteReviewReady = false
   let pasteReviewProgress = 0
-  let pasteReviewCooldownFrame: number | null = null
+  let cancelPasteReviewCooldownFrames: (() => void) | null = null
+  // Template review: every row of a day or list template is re-confirmed one at a
+  // time. Discarding is instant; keeping waits out the read-cooldown so the template
+  // is recommitted to on purpose rather than skimmed through. Discards are applied
+  // to the template in one undoable step once the queue empties.
+  type TemplateReviewNode = { id: Id; depth: number; html: string; empty: boolean; timeLabel: string | null }
+  let templateReview: {
+    kind: TemplateReviewKind
+    templateId: Id
+    name: string
+    nodes: TemplateReviewNode[]
+    index: number
+    kept: number[]
+    discarded: number[]
+  } | null = null
+  let templateReviewReady = false
+  let templateReviewProgress = 0
+  let cancelTemplateReviewCooldownFrames: (() => void) | null = null
+  // Discarded cards sweep off before collapsing, without blocking the next decision.
+  let templateReviewSweeping: number[] = []
+  let templateReviewList: HTMLDivElement | null = null
+  let templateReviewCopyStatus = ''
+  let templateReviewCopyTimer: ReturnType<typeof setTimeout> | undefined
   let itemTextDragOrigin: { itemId: Id; input: HTMLElement } | null = null
   let preserveSelectionFocusUntil = 0
   $: syncAndroidBackListener(isAndroid && isTauri())
@@ -1502,6 +1526,8 @@ return rows`
     if (link.kind === 'goalStats') {
       view = 'goals'
       goalStatsOpen = true
+    } else if (link.kind === 'templateReview') {
+      startTemplateReview(link.templateKind, link.templateId)
     } else if (link.kind === 'projects') {
       linkedProjectId = link.projectId
       view = 'projects'
@@ -3300,6 +3326,20 @@ return rows`
       return
     }
 
+    if (templateReview) {
+      if (event.key === 'Enter' || event.key === 'ArrowRight') {
+        event.preventDefault()
+        templateReviewDecide(true)
+      } else if (event.key === 'Backspace' || event.key === 'Delete' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        templateReviewDecide(false)
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        cancelTemplateReview()
+      }
+      return
+    }
+
     if (pasteReview) {
       if (pasteReviewEditing) {
         if (event.key === 'Enter') {
@@ -4979,43 +5019,52 @@ return rows`
     return roots
   }
 
-  function startPasteReviewCooldown() {
-    cancelPasteReviewCooldown()
-    pasteReviewReady = false
-    pasteReviewProgress = 0
-
+  // Drives a read-cooldown bar frame by frame and reports progress until the
+  // duration elapses. Returns a cancel function for when the review moves on.
+  function runReadCooldown(durationMs: number, onProgress: (progress: number, ready: boolean) => void): () => void {
     const start = performance.now()
+    let frame: number | null = null
     const step = (now: number) => {
       const elapsed = now - start
-      pasteReviewProgress = Math.min(1, elapsed / PASTE_REVIEW_COOLDOWN_MS)
-      if (elapsed >= PASTE_REVIEW_COOLDOWN_MS) {
-        pasteReviewProgress = 1
-        pasteReviewReady = true
-        pasteReviewCooldownFrame = null
+      if (elapsed >= durationMs) {
+        frame = null
+        onProgress(1, true)
         return
       }
-      pasteReviewCooldownFrame = requestAnimationFrame(step)
+      onProgress(Math.min(1, elapsed / durationMs), false)
+      frame = requestAnimationFrame(step)
     }
-    pasteReviewCooldownFrame = requestAnimationFrame(step)
+    onProgress(0, false)
+    frame = requestAnimationFrame(step)
+    return () => {
+      if (frame != null) cancelAnimationFrame(frame)
+      frame = null
+    }
   }
 
-  function scrollCurrentPasteReviewItem() {
-    const current = pasteReviewList?.querySelector<HTMLElement>('[aria-current="true"]')
-    if (!pasteReviewList || !current) return
+  function startPasteReviewCooldown() {
+    cancelPasteReviewCooldown()
+    cancelPasteReviewCooldownFrames = runReadCooldown(PASTE_REVIEW_COOLDOWN_MS, (progress, ready) => {
+      pasteReviewProgress = progress
+      pasteReviewReady = ready
+    })
+  }
 
-    const listRect = pasteReviewList.getBoundingClientRect()
+  function scrollCurrentReviewItem(list: HTMLDivElement | null) {
+    const current = list?.querySelector<HTMLElement>('[aria-current="true"]')
+    if (!list || !current) return
+
+    const listRect = list.getBoundingClientRect()
     const currentRect = current.getBoundingClientRect()
     const effectiveZoom = current.currentCSSZoom || 1
-    const top = pasteReviewList.scrollTop
+    const top = list.scrollTop
       + (currentRect.top - listRect.top - listRect.height * 0.3) / effectiveZoom
-    pasteReviewList.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
+    list.scrollTo({ top: Math.max(0, top), behavior: 'smooth' })
   }
 
   function cancelPasteReviewCooldown() {
-    if (pasteReviewCooldownFrame != null) {
-      cancelAnimationFrame(pasteReviewCooldownFrame)
-      pasteReviewCooldownFrame = null
-    }
+    cancelPasteReviewCooldownFrames?.()
+    cancelPasteReviewCooldownFrames = null
   }
 
   function insertPastedPlanItems(
@@ -5075,7 +5124,7 @@ return rows`
     pasteReview = { ...pasteReview, approved, rejected, index: next }
     startPasteReviewCooldown()
     await tick()
-    scrollCurrentPasteReviewItem()
+    scrollCurrentReviewItem(pasteReviewList)
   }
 
   function cancelPasteReview() {
@@ -5083,6 +5132,137 @@ return rows`
     pasteReview = null
     pasteReviewEditing = false
     pasteReviewRejecting = false
+  }
+
+  function templateReviewNodesForDay(items: TemplateItem[], depth = 0): TemplateReviewNode[] {
+    return items.flatMap((item) => {
+      const options = item.options.filter((option) => option.text.trim())
+      const html = options.map((option) => {
+        const label = sanitizeInlineHTML(option.html || escapeHTML(option.text))
+        return options.length > 1 || option.probability < 100
+          ? `${label} <span class="template-review-probability">${Math.round(option.probability)}%</span>`
+          : label
+      }).join(' <span class="template-review-separator">or</span> ')
+      const timeLabel = hasActiveTimeRange(item) && !item.timeHidden
+        ? `${formatMinutes(item.startMinutes)}–${formatMinutes(item.endMinutes)}`
+        : null
+      return [
+        { id: item.id, depth, html, empty: options.length === 0, timeLabel },
+        ...templateReviewNodesForDay(item.children, depth + 1),
+      ]
+    })
+  }
+
+  function templateReviewNodesForList(items: ListTemplateItem[], depth = 0): TemplateReviewNode[] {
+    return items.flatMap((item) => {
+      const label = sanitizeInlineHTML(item.html || escapeHTML(item.text))
+      const html = item.probability < 100
+        ? `${label} <span class="template-review-probability">${Math.round(item.probability)}%</span>`
+        : label
+      return [
+        { id: item.id, depth, html, empty: !item.text.trim(), timeLabel: null },
+        ...templateReviewNodesForList(item.children, depth + 1),
+      ]
+    })
+  }
+
+  function startTemplateReview(kind: TemplateReviewKind, templateId: Id) {
+    if (pasteReview || templateReview) return
+    const template = kind === 'day'
+      ? $plannerStore.templates.find((candidate) => candidate.id === templateId)
+      : $plannerStore.listTemplates.find((candidate) => candidate.id === templateId)
+    if (!template) return
+
+    const nodes = kind === 'day'
+      ? templateReviewNodesForDay((template as DailyTemplate).items)
+      : templateReviewNodesForList((template as ListTemplate).items)
+    if (nodes.length === 0) return
+
+    templateReview = {
+      kind,
+      templateId,
+      name: template.name.trim() || (kind === 'day' ? 'Untitled day' : 'Untitled list'),
+      nodes,
+      index: 0,
+      kept: [],
+      discarded: [],
+    }
+    templateReviewSweeping = []
+    releaseTextEditingFocus()
+    startTemplateReviewCooldown()
+  }
+
+  function startTemplateReviewCooldown() {
+    cancelTemplateReviewCooldown()
+    cancelTemplateReviewCooldownFrames = runReadCooldown(TEMPLATE_REVIEW_COOLDOWN_MS, (progress, ready) => {
+      templateReviewProgress = progress
+      templateReviewReady = ready
+    })
+  }
+
+  function cancelTemplateReviewCooldown() {
+    cancelTemplateReviewCooldownFrames?.()
+    cancelTemplateReviewCooldownFrames = null
+  }
+
+  // keep === true recommits the current row (only once the read-cooldown has
+  // elapsed); keep === false discards it immediately, along with its children,
+  // since a dropped parent takes its subtree with it.
+  function templateReviewDecide(keep: boolean) {
+    if (!templateReview) return
+    if (keep && !templateReviewReady) return
+
+    const review = templateReview
+    const current = review.nodes[review.index]
+    if (!current) return
+
+    let next = review.index + 1
+    const kept = keep ? [...review.kept, review.index] : review.kept
+    let discarded = review.discarded
+    if (!keep) {
+      const dropped = [review.index]
+      while (next < review.nodes.length && review.nodes[next].depth > current.depth) dropped.push(next++)
+      discarded = [...discarded, ...dropped]
+      templateReviewSweeping = [...templateReviewSweeping, ...dropped]
+      window.setTimeout(() => {
+        templateReviewSweeping = templateReviewSweeping.filter((index) => !dropped.includes(index))
+      }, REVIEW_DISCARD_SWEEP_MS)
+    }
+
+    if (next >= review.nodes.length) {
+      finishTemplateReview({ ...review, kept, discarded })
+      return
+    }
+
+    templateReview = { ...review, kept, discarded, index: next }
+    startTemplateReviewCooldown()
+    void tick().then(() => scrollCurrentReviewItem(templateReviewList))
+  }
+
+  function finishTemplateReview(review: NonNullable<typeof templateReview>) {
+    cancelTemplateReview()
+    const itemIds = review.discarded.map((index) => review.nodes[index].id)
+    if (itemIds.length === 0) return
+    if (review.kind === 'day') plannerStore.deleteTemplateItems(review.templateId, itemIds)
+    else plannerStore.deleteListTemplateItems(review.templateId, itemIds)
+  }
+
+  function cancelTemplateReview() {
+    cancelTemplateReviewCooldown()
+    templateReview = null
+    templateReviewSweeping = []
+  }
+
+  async function copyTemplateReviewLink(kind: TemplateReviewKind, templateId: Id) {
+    const link = templateReviewURL(kind, templateId)
+    try {
+      await navigator.clipboard.writeText(link)
+      templateReviewCopyStatus = 'Review link copied. Paste it into a task, note, or goal name.'
+    } catch {
+      templateReviewCopyStatus = `Copy this link: ${link}`
+    }
+    clearTimeout(templateReviewCopyTimer)
+    templateReviewCopyTimer = setTimeout(() => (templateReviewCopyStatus = ''), 6000)
   }
 
   function startPasteReviewEdit() {
@@ -6418,7 +6598,13 @@ return rows`
         <div>
           <h2>Days</h2>
         </div>
+        {#if selectedTemplate}
+          <div class="template-panel-actions">
+            <button type="button" title="Copy a link that opens a keep-or-discard review of this day" on:click={() => copyTemplateReviewLink('day', selectedTemplate.id)}>Copy review link</button>
+          </div>
+        {/if}
       </header>
+      {#if templateReviewCopyStatus}<p class="template-review-copy-status muted" role="status">{templateReviewCopyStatus}</p>{/if}
 
       {#if templates.length > 0}
         <nav class="template-rail list-template-rail" aria-label="Select day template">
@@ -6511,8 +6697,14 @@ return rows`
         <div>
           <h2>Lists</h2>
         </div>
-        <button class="primary outlined" type="button" on:click={openListHistory}>View List History →</button>
+        <div class="template-panel-actions">
+          {#if selectedListTemplate}
+            <button type="button" title="Copy a link that opens a keep-or-discard review of this list" on:click={() => copyTemplateReviewLink('list', selectedListTemplate.id)}>Copy review link</button>
+          {/if}
+          <button class="primary outlined" type="button" on:click={openListHistory}>View List History →</button>
+        </div>
       </header>
+      {#if templateReviewCopyStatus}<p class="template-review-copy-status muted" role="status">{templateReviewCopyStatus}</p>{/if}
 
       {#if activeListTemplates.length > 0}
         <nav class="template-rail list-template-rail" aria-label="Select list">
@@ -7095,6 +7287,7 @@ return rows`
                   revision={$plannerStore.historyRevision}
                   singleLine
                   onFocusChange={setGoalNameEditing}
+                  onInternalLinkClick={(link) => openLink(link, null)}
                   onChange={(html, text) => plannerStore.patchGoal(goal.id, { name: text, nameHtml: html })}
                 />
                 <GoalCopyButton name={goal.name} />
@@ -7870,6 +8063,66 @@ return rows`
       </div>
 
       <p class="paste-review-hint">{pasteReview.approved.length}/{pasteReview.nodes.length} kept so far</p>
+    </div>
+  </div>
+{/if}
+
+{#if templateReview}
+  <div class="paste-review-backdrop" style={appShellStyle}>
+    <div class="paste-review template-review" role="dialog" aria-modal="true" aria-labelledby="template-review-title">
+      <div class="paste-review-head">
+        <div>
+          <p class="eyebrow">Recommit to {templateReview.name}</p>
+          <h2 id="template-review-title">Item {templateReview.index + 1} of {templateReview.nodes.length}</h2>
+        </div>
+        <button class="ghost" type="button" title="Cancel without changes (Esc)" on:click={cancelTemplateReview}>✕</button>
+      </div>
+
+      <div class="paste-review-list" aria-label="Template items under review" bind:this={templateReviewList}>
+        {#each templateReview.nodes as node, nodeIndex (node.id)}
+          {@const isCurrent = nodeIndex === templateReview.index}
+          <div
+            class="paste-review-card paste-review-item template-review-item"
+            class:current={isCurrent}
+            class:kept={templateReview.kept.includes(nodeIndex)}
+            class:removed={templateReview.discarded.includes(nodeIndex)}
+            class:sweeping={templateReviewSweeping.includes(nodeIndex)}
+            style:--paste-depth={node.depth}
+            aria-current={isCurrent ? 'true' : undefined}
+          >
+            <div class="paste-review-line">
+              {#if node.timeLabel}<span class="template-review-time">{node.timeLabel}</span>{/if}
+              <div class="paste-review-text item-text item-text-display" class:empty={node.empty}>{@html node.empty ? '(empty item)' : node.html}</div>
+            </div>
+          </div>
+        {/each}
+      </div>
+
+      <div
+        class="paste-review-cooldown"
+        class:ready={templateReviewReady}
+        role="progressbar"
+        aria-label="Read the item before keeping it"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={Math.round(templateReviewProgress * 100)}
+      >
+        <div class="paste-review-cooldown-fill" style="width: {templateReviewProgress * 100}%"></div>
+      </div>
+
+      <div class="paste-review-actions">
+        <button type="button" on:click={() => templateReviewDecide(false)}>Discard (←)</button>
+        <button
+          class="primary"
+          type="button"
+          disabled={!templateReviewReady}
+          on:click={() => templateReviewDecide(true)}
+        >
+          {templateReviewReady ? 'Keep (→ / Enter)' : 'Read it…'}
+        </button>
+      </div>
+
+      <p class="paste-review-hint">{templateReview.kept.length} kept · {templateReview.discarded.length} discarded</p>
     </div>
   </div>
 {/if}

@@ -12,12 +12,12 @@
 
 import { Extension, Mark, Node } from '@tiptap/core'
 import { imageHTML, type ImageLayout } from '../../imageMarkup'
-import { isGoalStatsURL, isURL, noteIdFromURL, projectIdFromURL } from '../../planner'
+import { isGoalStatsURL, isURL, noteIdFromURL, projectIdFromURL, templateReviewFromURL } from '../../planner'
 import type { NoteItemKind } from '../../types'
 import { BlockNodeView } from './blockView'
 
 export function isInternalHref(href: string): boolean {
-  return isGoalStatsURL(href) || noteIdFromURL(href) !== null || projectIdFromURL(href) !== null
+  return isGoalStatsURL(href) || noteIdFromURL(href) !== null || projectIdFromURL(href) !== null || templateReviewFromURL(href) !== null
 }
 
 export function allowedHref(href: string | null): string | null {
