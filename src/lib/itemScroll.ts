@@ -67,3 +67,22 @@ export function scrollMovedItemsIntoView(kind: ItemRowKind, itemIds: Id[], direc
   if (scrollContainer) scrollContainer.scrollBy({ top: delta })
   else window.scrollBy({ top: delta })
 }
+
+// Scroll just far enough for the caret (or the editor, when the selection is
+// elsewhere) to be visible, leaving the rest of the view where the user had it.
+export function revealCaret(editor: HTMLElement, margin = 24) {
+  const selection = document.getSelection()
+  const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null
+  const caret = range && editor.contains(range.startContainer) ? range.getBoundingClientRect() : null
+  const rect = caret && caret.height > 0 ? caret : editor.getBoundingClientRect()
+  const scrollContainer = scrollContainerFor(editor)
+  const viewport = scrollContainer?.getBoundingClientRect()
+  const viewportTop = (viewport?.top ?? 0) + margin
+  const viewportBottom = (viewport?.bottom ?? window.innerHeight) - margin
+  const delta = rect.bottom > viewportBottom ? rect.bottom - viewportBottom
+    : rect.top < viewportTop ? rect.top - viewportTop : 0
+  if (delta === 0) return
+  const zoom = editor.currentCSSZoom || 1
+  if (scrollContainer) scrollContainer.scrollBy({ top: delta / zoom })
+  else window.scrollBy({ top: delta })
+}

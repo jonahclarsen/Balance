@@ -996,3 +996,22 @@ test('list runs are timed against the ideal time set on the template', async ({ 
   await expect(page.getByTitle('Typical time for this task, ignoring interrupted runs')).toHaveText('~2m')
   await page.screenshot({ path: 'artifacts/list-timing-template.png' })
 })
+
+test('an open list modal keeps the day behind it from scrolling on mobile', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'The page itself scrolls only on phones')
+  await openLongGroceriesOverlay(page)
+  await page.evaluate(() => window.scrollTo(0, 120))
+  const before = await page.evaluate(() => window.scrollY)
+  await expect(page.locator('html')).toHaveCSS('overflow', 'hidden')
+
+  const box = (await page.getByRole('dialog', { name: 'Groceries' }).boundingBox())!
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.wheel(0, 400)
+  await page.mouse.wheel(0, -800)
+  await page.waitForTimeout(300)
+  expect(await page.evaluate(() => window.scrollY)).toBe(before)
+
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'Groceries' })).toHaveCount(0)
+  await expect(page.locator('html')).not.toHaveCSS('overflow', 'hidden')
+})

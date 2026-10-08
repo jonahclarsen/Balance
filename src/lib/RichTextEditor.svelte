@@ -106,14 +106,21 @@
       lastRevision = revision
       lastInternalLinkKey = nextInternalLinkKey
       renderedHTML = nextHTML
-      // Background reads also advance revision. Keep a focused editor's DOM
-      // when only browser markup differs (for example <b> versus <strong>).
+      // Background reads also advance revision. Leave the DOM alone when only
+      // browser markup differs (for example <b> versus <strong>): rewriting
+      // it would move every editor's layout and drop the caret. When the
+      // focused editor's content really changed, keep the caret at its offset.
       if (
         editor && editor.innerHTML !== nextHTML &&
-        (editor !== document.activeElement || sanitizeInlineHTML(editor.innerHTML) !== sanitizeInlineHTML(nextHTML))
+        sanitizeInlineHTML(editor.innerHTML) !== sanitizeInlineHTML(nextHTML)
       ) {
+        const focused = editor === document.activeElement
+        if (focused) saveSelection(editor)
         editor.innerHTML = nextHTML
-        if (editor === document.activeElement) focusTextInput(editor)
+        if (focused) {
+          if (savedSelection) restoreSelection(editor)
+          else focusTextInput(editor)
+        }
       }
     } else if (nextInternalLinkKey !== lastInternalLinkKey && editor !== document.activeElement) {
       lastInternalLinkKey = nextInternalLinkKey
@@ -794,9 +801,10 @@
   function restoreSelection(activeEditor: HTMLDivElement) {
     if (!savedSelection) return
 
+    const length = selectionLength(activeEditor)
     const range = document.createRange()
-    const start = domPositionForSelectionOffset(activeEditor, savedSelection.start)
-    const end = domPositionForSelectionOffset(activeEditor, savedSelection.end)
+    const start = domPositionForSelectionOffset(activeEditor, Math.min(savedSelection.start, length))
+    const end = domPositionForSelectionOffset(activeEditor, Math.min(savedSelection.end, length))
     range.setStart(start.node, start.offset)
     range.setEnd(end.node, end.offset)
 

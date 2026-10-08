@@ -715,6 +715,8 @@ function createPlannerStore() {
         // Focus/resume can refresh an unchanged database. Keep the validated
         // history snapshots and their shared collection references in that case;
         // throwing them away makes the next undo reload the entire workspace.
+        // The history revision stays put too: bumping it would make every
+        // editor and form on screen re-apply content that did not change.
         const keys = ['preferences', 'plans', 'templates', ...ENTITY_COLLECTIONS] as const
         const unchanged = current.deviceId === parsed.deviceId &&
           current.localSequence === parsed.localSequence &&
@@ -724,8 +726,8 @@ function createPlannerStore() {
           redoStack = []
           return { ...parsed, historyRevision: current.historyRevision + 1 }
         }
-        return { ...current, operations: parsed.operations, activePlanDate: parsed.activePlanDate,
-          historyRevision: current.historyRevision + 1 }
+        if (current.operations === parsed.operations && current.activePlanDate === parsed.activePlanDate) return current
+        return { ...current, operations: parsed.operations, activePlanDate: parsed.activePlanDate }
       })
       return
     }

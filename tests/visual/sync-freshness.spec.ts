@@ -574,7 +574,7 @@ test('concurrent backend reload callers share one stable database read', async (
   })).toBe(readsBefore + 1)
 })
 
-test('quick resume checks stay silent without resetting launch completion', async ({ page }) => {
+test('quick resume checks stay silent without resetting launch completion', async ({ page }, testInfo) => {
   await page.goto('/?launch-then-hold=1')
 
   await expect.poll(() => readSyncStatus(page)).toEqual({
@@ -597,8 +597,16 @@ test('quick resume checks stay silent without resetting launch completion', asyn
   await expect(page.getByText('Reading sync settings…')).toHaveCount(0)
   await expect(page.getByText('Waiting for database access…')).toHaveCount(0)
 
-  // A resume that is still catching up after a second shows the subtle cue.
-  await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
+  if (testInfo.project.name === 'mobile') {
+    // A phone still catching up after a second shows the subtle cue.
+    await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible()
+  } else {
+    // A desktop window regains focus constantly; only a genuinely slow pass
+    // shows the cue there.
+    await page.waitForTimeout(2_500)
+    await expect(page.getByRole('status', { name: /^Sync status:/ })).toHaveCount(0)
+    await expect(page.getByRole('status', { name: 'Sync status: Syncing' })).toBeVisible({ timeout: 10_000 })
+  }
 })
 
 test('edit-triggered syncs stay silent', async ({ page }) => {

@@ -95,7 +95,7 @@
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
-  import { scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
+  import { revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
   import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, templateReviewURL, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
@@ -4386,7 +4386,10 @@ return rows`
       return
     }
 
-    editor.focus()
+    // The page's own scroll position was just restored; a plain focus() would
+    // recenter the view on this editor, which for a long task means jumping
+    // to its middle. Reveal only a caret that is actually off screen.
+    editor.focus({ preventScroll: true })
     const range = document.createRange()
     const start = domPositionForTextOffset(editor, savedCaret.start)
     const end = domPositionForTextOffset(editor, savedCaret.end)
@@ -4396,6 +4399,7 @@ return rows`
     const selection = document.getSelection()
     selection?.removeAllRanges()
     selection?.addRange(range)
+    revealCaret(editor)
   }
 
   function rememberActiveItemCaret() {
