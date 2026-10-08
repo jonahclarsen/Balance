@@ -7194,6 +7194,7 @@ textarea.note-title {
   }
 
   .sidebar .primary-nav button {
+    touch-action: manipulation;
     flex: none;
     width: 100%;
     min-height: 42px;

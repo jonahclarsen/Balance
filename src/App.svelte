@@ -341,6 +341,9 @@
 
   applyDefaultZoom()
   let currentDay = todayISO()
+  let mobileNavPreview: View | null = null
+  let mobileNavRevision = 0
+  $: selectedNavView = mobileNavPreview ?? view
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
   let mobileDrawerPressPointerId: number | null = null
@@ -951,12 +954,64 @@ return rows`
     mobileDrawerPressing = false
   }
 
+  // Preview only the existing selection styling. Never navigate on pointerdown:
+  // a press may turn into scrolling or the drawer's close gesture.
+  function previewMobileNavigation(node: HTMLElement) {
+    let press: { id: number; x: number; y: number } | null = null
+    function reset() {
+      press = null
+      mobileNavPreview = null
+    }
+    function down(event: PointerEvent) {
+      if (!mobileDrawerOpen || event.button !== 0 || !event.isPrimary) return
+      const button = (event.target as Element).closest<HTMLButtonElement>('button[data-nav-view]')
+      if (!button || !node.contains(button)) return
+      press = { id: event.pointerId, x: event.clientX, y: event.clientY }
+      mobileNavPreview = button.dataset.navView as View
+    }
+    function move(event: PointerEvent) {
+      if (press?.id !== event.pointerId) return
+      if (Math.hypot(event.clientX - press.x, event.clientY - press.y) > 10) reset()
+    }
+    function end(event: PointerEvent) {
+      if (press?.id === event.pointerId) reset()
+    }
+    node.addEventListener('pointerdown', down)
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', end)
+    window.addEventListener('pointercancel', end)
+    return {
+      destroy() {
+        node.removeEventListener('pointerdown', down)
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', end)
+        window.removeEventListener('pointercancel', end)
+      },
+    }
+  }
+
   function closeMobileDrawer() {
+    mobileNavRevision += 1
+    mobileNavPreview = null
     mobileDrawerOpen = false
     mobileDrawerPressing = false
     mobileDrawerPressPointerId = null
     mobileDrawerOpeningClickPending = false
     finishMobileDrawerGesture()
+  }
+
+  async function selectMobileDrawerView(nextView: View) {
+    if (mobileDrawerOpen) {
+      const revision = ++mobileNavRevision
+      mobileNavPreview = nextView
+      // Give the selected button a paint before mounting the destination can
+      // occupy the main thread. Desktop navigation stays synchronous.
+      await tick()
+      await waitForAnimationFrame()
+      await waitForAnimationFrame()
+      if (revision !== mobileNavRevision || !mobileDrawerOpen) return
+    }
+    openMobileDrawerView(nextView)
   }
 
   function openMobileDrawerView(nextView: View) {
@@ -6183,23 +6238,24 @@ return rows`
       aria-label="Primary"
       style:--active-nav-animation-delay={activeNavAnimationDelay}
       bind:this={primaryNavEl}
+      use:previewMobileNavigation
     >
-      <button class:active={view === 'next'} type="button" title="Next (Alt+X)" aria-keyshortcuts="Alt+X" on:click={() => openMobileDrawerView('next')}><span>Next</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('X')}</kbd></button>
-      <button class:active={view === 'today'} type="button" title="Today (Alt+T)" aria-keyshortcuts="Alt+T" on:click={() => openMobileDrawerView('today')}><span>Today</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('T')}</kbd></button>
-      <button class:active={view === 'templates'} type="button" title="Days (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => openMobileDrawerView('templates')}><span>Days</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
-      <button class:active={view === 'listTemplates'} type="button" title="Lists (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => openMobileDrawerView('listTemplates')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
+      <button data-nav-view="next" class:active={selectedNavView === 'next'} type="button" title="Next (Alt+X)" aria-keyshortcuts="Alt+X" on:click={() => selectMobileDrawerView('next')}><span>Next</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('X')}</kbd></button>
+      <button data-nav-view="today" class:active={selectedNavView === 'today'} type="button" title="Today (Alt+T)" aria-keyshortcuts="Alt+T" on:click={() => selectMobileDrawerView('today')}><span>Today</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('T')}</kbd></button>
+      <button data-nav-view="templates" class:active={selectedNavView === 'templates'} type="button" title="Days (Alt+D)" aria-keyshortcuts="Alt+D" on:click={() => selectMobileDrawerView('templates')}><span>Days</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('D')}</kbd></button>
+      <button data-nav-view="listTemplates" class:active={selectedNavView === 'listTemplates'} type="button" title="Lists (Alt+E)" aria-keyshortcuts="Alt+E" on:click={() => selectMobileDrawerView('listTemplates')}><span>Lists</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('E')}</kbd></button>
       {#if listHistoryNavigationVisible}
-        <button class="nav-child" class:active={view === 'lists'} type="button" title="List History (Alt+H)" aria-keyshortcuts="Alt+H" on:click={() => openMobileDrawerView('lists')}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('H')}</kbd></button>
+        <button class="nav-child" data-nav-view="lists" class:active={selectedNavView === 'lists'} type="button" title="List History (Alt+H)" aria-keyshortcuts="Alt+H" on:click={() => selectMobileDrawerView('lists')}><span>List History</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('H')}</kbd></button>
       {/if}
-      <button class:active={view === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => openMobileDrawerView('notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
-      <button class:active={view === 'metrics'} type="button" title="Quizzes (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => openMobileDrawerView('metrics')}><span>Quizzes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
-      <button class:active={view === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => openMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
-      <button class:active={view === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; openMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
-      <button class:active={view === 'prioritize'} type="button" title="Prioritize (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => openMobileDrawerView('prioritize')}><span>Prioritize</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
-      <button class:active={view === 'statistics'} type="button" title="Statistics (Alt+Y)" aria-keyshortcuts="Alt+Y" on:click={() => openMobileDrawerView('statistics')}><span>Statistics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Y')}</kbd></button>
-      <button class:active={view === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => openMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
+      <button data-nav-view="notes" class:active={selectedNavView === 'notes'} type="button" title="Notes (Alt+N)" aria-keyshortcuts="Alt+N" on:click={() => selectMobileDrawerView('notes')}><span>Notes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('N')}</kbd></button>
+      <button data-nav-view="metrics" class:active={selectedNavView === 'metrics'} type="button" title="Quizzes (Alt+V)" aria-keyshortcuts="Alt+V" on:click={() => selectMobileDrawerView('metrics')}><span>Quizzes</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('V')}</kbd></button>
+      <button data-nav-view="goals" class:active={selectedNavView === 'goals'} type="button" title="Goals (Alt+G)" aria-keyshortcuts="Alt+G" on:click={() => selectMobileDrawerView('goals')}><span>Goals</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('G')}</kbd></button>
+      <button data-nav-view="projects" class:active={selectedNavView === 'projects'} type="button" title="Projects (Alt+P)" aria-keyshortcuts="Alt+P" on:click={() => { linkedProjectId = ''; selectMobileDrawerView('projects') }}><span>Projects</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('P')}</kbd></button>
+      <button data-nav-view="prioritize" class:active={selectedNavView === 'prioritize'} type="button" title="Prioritize (Alt+R)" aria-keyshortcuts="Alt+R" on:click={() => selectMobileDrawerView('prioritize')}><span>Prioritize</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('R')}</kbd></button>
+      <button data-nav-view="statistics" class:active={selectedNavView === 'statistics'} type="button" title="Statistics (Alt+Y)" aria-keyshortcuts="Alt+Y" on:click={() => selectMobileDrawerView('statistics')}><span>Statistics</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('Y')}</kbd></button>
+      <button data-nav-view="settings" class:active={selectedNavView === 'settings'} type="button" title="Settings (Alt+S)" aria-keyshortcuts="Alt+S" on:click={() => selectMobileDrawerView('settings')}><span>Settings</span><kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('S')}</kbd></button>
       {#if import.meta.env.DEV}
-        <button class:active={view === 'admin'} type="button" on:click={() => openMobileDrawerView('admin')}><span>Admin Settings</span></button>
+        <button data-nav-view="admin" class:active={selectedNavView === 'admin'} type="button" on:click={() => selectMobileDrawerView('admin')}><span>Admin Settings</span></button>
       {/if}
       {#if !isAndroid}
         <button
