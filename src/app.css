@@ -4800,6 +4800,20 @@ body.mobile-checkbox-dragging {
   font-weight: 700;
 }
 
+.goal-date-incomplete-mark {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: grid;
+  place-items: center;
+  color: var(--danger);
+  pointer-events: none;
+}
+
+.goal-date-incomplete-mark svg {
+  display: block;
+}
+
 .goal-history-name {
   isolation: isolate;
   cursor: pointer;

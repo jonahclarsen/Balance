@@ -547,8 +547,77 @@ test('goal rhythm catches up after live goal-name editing pauses', async ({ page
 
   await page.getByRole('textbox', { name: 'Goal name: Exercise' }).fill('Daily exercise')
 
+  await navigateTo(page, 'Today')
   const rhythm = page.getByRole('region', { name: 'Goal history' })
   await expect(rhythm.locator('.goal-history-name', { hasText: 'Daily exercise' })).toBeVisible({ timeout: 8_000 })
+})
+
+test('goal rhythm only renders on Today', async ({ page }) => {
+  const rhythm = page.getByRole('region', { name: 'Goal history' })
+  await expect(rhythm).toBeVisible()
+
+  await openGoalsFromRhythm(page)
+  await expect(page.getByLabel('New goal name')).toBeVisible()
+  await expect(rhythm).toHaveCount(0)
+
+  await navigateTo(page, 'Today')
+  await expect(rhythm).toBeVisible()
+})
+
+test('goal rhythm marks past days with unchecked tasks with a red X', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'desktop', 'Goal Rhythm date heads are desktop-only')
+  await page.clock.install({ time: new Date('2026-06-16T12:00:00') })
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await createGoal(page, 'Exercise', 3, 'lift, swim')
+  await navigateTo(page, 'Today')
+
+  const today = (await page.locator('.goal-date-head.today').getAttribute('data-goal-date')) ?? todayISO()
+  const unfinished = addDays(today, -1)
+  const finished = addDays(today, -2)
+  const unfinishedNested = addDays(today, -3)
+  const historyStart = addDays(today, -6)
+  await page.evaluate(({ today, unfinished, finished, unfinishedNested, historyStart }) => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
+    // Goal Rhythm's date row starts at the earliest goal start date.
+    state.goals[0].activityPeriods = [{ startDate: historyStart, endDate: null }]
+    const plan = (date: string, items: unknown[]) => ({
+      id: `plan_${date}`,
+      date,
+      title: date,
+      dailyReminder: '',
+      generatedFromTemplateId: null,
+      createdAt: `${date}T08:00:00.000Z`,
+      items,
+    })
+    const item = (id: string, text: string, done: boolean, children: unknown[] = []) => ({
+      id, text, html: text, done, startMinutes: null, endMinutes: null, children,
+    })
+    state.plans = [
+      plan(unfinishedNested, [item('nested-parent', 'Parent', true, [item('nested-child', 'Child', false)])]),
+      plan(finished, [item('done-a', 'Done A', true), item('done-b', 'Done B', true)]),
+      plan(unfinished, [item('open-a', 'Open A', false), item('done-c', 'Done C', true)]),
+      plan(today, [item('today-open', 'Today open', false)]),
+    ]
+    state.activePlanDate = today
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+  }, { today, unfinished, finished, unfinishedNested, historyStart })
+  await page.reload()
+
+  const head = (date: string) => page.locator(`.goal-date-head[data-goal-date="${date}"]`)
+  await expect(head(unfinished)).toHaveClass(/incomplete/)
+  await expect(head(unfinished).locator('.goal-date-incomplete-mark')).toBeVisible()
+  await expect(head(unfinishedNested)).toHaveClass(/incomplete/)
+  await expect(head(finished)).not.toHaveClass(/incomplete/)
+  await expect(head(finished).locator('.goal-date-incomplete-mark')).toHaveCount(0)
+  // Today is never marked, even with open tasks; days without a plan are not either.
+  await expect(head(today)).not.toHaveClass(/incomplete/)
+  await expect(head(addDays(today, -4))).not.toHaveClass(/incomplete/)
+
+  // Checking the last open task clears the mark.
+  await page.getByRole('textbox', { name: 'Day date', exact: true }).fill(unfinished)
+  await page.getByRole('listitem', { name: 'Plan item: Open A' }).getByRole('checkbox').check()
+  await expect(head(unfinished)).not.toHaveClass(/incomplete/)
 })
 
 test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 60 seconds', async ({ page }) => {
@@ -596,12 +665,10 @@ test('Alt+A toggles goal rhythm without typing and hidden rhythm returns after 6
   await expect(goalRhythm).toBeVisible()
 })
 
-test('clicking a goal rhythm date opens that day in Today view', async ({ page }, testInfo) => {
+test('clicking a goal rhythm date opens that day in Today view', async ({ page }) => {
   const selectedDate = await page.locator('.date-input').inputValue()
   const targetDate = addDays(selectedDate, 2)
 
-  // Mobile shows Goal Rhythm only on Today; desktop also shows it on Goals.
-  if (testInfo.project.name !== 'mobile') await openView(page, 'Goals')
   await page.locator(`[data-goal-date="${targetDate}"]`).click()
 
   await expect(page.locator('.primary-nav > button.active')).toContainText('Today')
@@ -2115,16 +2182,13 @@ test('clicking an unchecked goal preview reveals that goal in the rhythm panel',
   await expect(goalRow).toHaveClass(/goal-row-focus/)
 })
 
-test('clicking a goal card background reveals it without making field labels focus inputs', async ({ page }, testInfo) => {
+test('clicking a goal card background reveals it without making field labels focus inputs', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 
   const card = page.locator('.goal-card', { has: page.getByLabel('Goal name: Exercise') })
-  const goalRow = page.locator('.goal-history-name[data-goal-id]', { hasText: 'Exercise' })
-  if (testInfo.project.name !== 'mobile') {
-    await expect(goalRow).not.toHaveClass(/goal-row-focus/)
-    await card.locator('.goal-card-accent').click()
-    await expect(goalRow).toHaveClass(/goal-row-focus/)
-  }
+  // Goal Rhythm only renders on Today, so a card click cannot focus a rhythm row here.
+  await card.locator('.goal-card-accent').click()
+  await expect(page.locator('.goal-history-name[data-goal-id]')).toHaveCount(0)
 
   const cadenceInput = page.getByLabel('Cadence days for Exercise')
   await card.getByText('Complete every', { exact: true }).click()

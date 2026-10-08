@@ -517,7 +517,7 @@ test('profiles goal-name edits that legitimately change the goal collection', as
   if (testInfo.project.name.includes('android-like')) {
     await page.getByRole('button', { name: 'Open navigation' }).click()
   }
-  await page.getByRole('button', { name: 'Goals', exact: true }).click()
+  await page.locator('.primary-nav').getByRole('button', { name: 'Goals', exact: true }).click()
   const selector = '[data-rich-text-input-id="goal-name:goal_0"]'
   await expect(page.locator(selector)).toBeVisible()
 
