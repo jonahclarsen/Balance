@@ -62,6 +62,7 @@ import { imageEditing } from '../../imageEditing'
 import { imageClipboardHTML } from '../../imageService'
 import { parseTaskClipboardAsNoteBlocks } from '../../taskClipboard'
 import {
+  bucketsLinkFromURL,
   escapeHTML,
   isGoalStatsURL,
   templateReviewFromURL,
@@ -209,7 +210,7 @@ function $numberOf(block: NoteBlockNode): number | null {
 }
 
 function isLinkTarget(value: string): boolean {
-  return isURL(value) || noteIdFromURL(value) !== null || projectIdFromURL(value) !== null || isGoalStatsURL(value) || templateReviewFromURL(value) !== null
+  return isURL(value) || noteIdFromURL(value) !== null || projectIdFromURL(value) !== null || isGoalStatsURL(value) || templateReviewFromURL(value) !== null || bucketsLinkFromURL(value) !== null
 }
 
 function stripAnchors(html: string): string {
@@ -1491,6 +1492,8 @@ class LexicalNoteEditorView implements NoteEditorView {
     if (isGoalStatsURL(href)) return { kind: 'goalStats', label: 'Goal stats' }
     const review = templateReviewFromURL(href)
     if (review) return { kind: 'templateReview', templateKind: review.kind, templateId: review.templateId, label: templateReviewLabel(review.kind) }
+    const buckets = bucketsLinkFromURL(href)
+    if (buckets) return { kind: 'buckets', review: buckets === 'review', label: buckets === 'review' ? 'Review ideas' : 'Buckets' }
     return null
   }
 

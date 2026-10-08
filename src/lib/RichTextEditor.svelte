@@ -10,6 +10,7 @@
     isURL,
     itemLinkFromAnchor,
     linkifyExternalURLs,
+    bucketsLinkFromURL,
     isGoalStatsURL,
     templateReviewFromURL,
     noteIdFromURL,
@@ -570,7 +571,7 @@
 
   function insertClipboardContents(activeEditor: HTMLDivElement, clipboardText: string, clipboardHTML: string) {
 
-    if (clipboardText && (isGoalStatsURL(clipboardText) || templateReviewFromURL(clipboardText) || isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
+    if (clipboardText && (isGoalStatsURL(clipboardText) || templateReviewFromURL(clipboardText) || bucketsLinkFromURL(clipboardText) || isURL(clipboardText) || noteIdFromURL(clipboardText) || projectIdFromURL(clipboardText) !== null) && hasNonCollapsedSelectionInside(activeEditor)) {
       pendingPasteInput = true
       document.execCommand('createLink', false, clipboardText.trim())
       persistPasteIfInputDidNotFire(activeEditor)
