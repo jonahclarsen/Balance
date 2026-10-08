@@ -163,7 +163,7 @@ const SYNC_LOG_DIRTY_SINCE_MS: &str = "sync_log_dirty_since_ms";
 const REPLICATED_PREFERENCES: &str = "replicated_preferences";
 const DEVICE_APPEARANCE: &str = "device_appearance";
 const DAY_THEME_PREFERENCE_PREFIX: &str = "dayTheme/";
-const ENTITY_COLLECTIONS: [&str; 15] = [
+const ENTITY_COLLECTIONS: [&str; 16] = [
     "images",
     "uneditedPlanItems",
     "templateQuestions",
@@ -179,6 +179,7 @@ const ENTITY_COLLECTIONS: [&str; 15] = [
     "projects",
     "projectCheckIns",
     "prioritySessions",
+    "ideaBuckets",
 ];
 const DEFAULT_DAILY_REMINDER: &str = "This shouldn't be aspirational";
 const GITHUB_LATEST_RELEASE_API: &str =
@@ -3032,6 +3033,7 @@ fn read_app_state_from_database_with_progress(
         "projects": lists_metrics_data["projects"].clone(),
         "projectCheckIns": lists_metrics_data["projectCheckIns"].clone(),
         "prioritySessions": read_entity_collection(connection, "prioritySessions")?,
+        "ideaBuckets": read_entity_collection(connection, "ideaBuckets")?,
         "goals": goal_data["goals"].clone(),
         "goalCompletions": goal_data["goalCompletions"].clone(),
         "operations": [],
@@ -12023,6 +12025,36 @@ mod tests {
         assert_eq!(undone["templateQuestions"], json!([]));
         let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
         assert_eq!(redone["templateQuestions"], json!([question]));
+    }
+
+    #[test]
+    fn idea_buckets_persist_and_round_trip_undo_redo() {
+        let database = TestDatabase::new("idea-buckets");
+        let recovery_key = generate_recovery_key();
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let state = test_state("Synthetic idea buckets");
+        replace_app_state(&mut connection, &state).unwrap();
+        let bucket = json!({"id": "bucket_proposition", "kind": "proposition", "items": [
+            {"id": "idea_test", "text": "Synthetic idea", "html": "Synthetic idea", "done": false,
+             "startMinutes": null, "endMinutes": null, "children": [], "bucketedAt": "2026-10-08T08:00:00Z"}
+        ]});
+        let operation = json!({
+            "id": "idea-bucket-op", "deviceId": "device_test", "sequence": 2,
+            "type": "apply_entity_changes", "timestamp": "2026-10-08T08:00:00Z",
+            "payload": {"action": "add_idea", "kind": "proposition", "itemId": "idea_test", "entityChanges": {
+                "version": 2, "deletes": [], "upserts": [{"collection": "ideaBuckets", "key": "bucket_proposition",
+                    "position": 0, "value": bucket, "patches": [sync::entities::diff(&Value::Null, &bucket)]}]
+            }}
+        });
+        persist_operation_to_database(&mut connection, &operation).unwrap();
+        drop(connection);
+        let mut connection = open_database_at(&database.path, &recovery_key).unwrap();
+        let loaded = read_app_state_from_database(&connection).unwrap().unwrap();
+        assert_eq!(loaded["ideaBuckets"], json!([bucket]));
+        let undone = undo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(undone["ideaBuckets"], json!([]));
+        let redone = redo_last_operation_in_database(&mut connection).unwrap().unwrap();
+        assert_eq!(redone["ideaBuckets"], json!([bucket]));
     }
 
     #[test]

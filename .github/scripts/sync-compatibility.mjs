@@ -212,7 +212,7 @@ function comparable(collection, values) {
   return values.map(({ generatedGoalIds, items: rows, ...plan }) => ({ ...plan, items: items(rows) }))
 }
 if (frontendFixtures) {
-  const collections = ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'goalCompletions', 'projects', 'projectCheckIns', 'uneditedPlanItems', 'plans']
+  const collections = ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'goalCompletions', 'projects', 'projectCheckIns', 'ideaBuckets', 'uneditedPlanItems', 'plans']
   for (const [index, filename] of readdirSync(frontendFixtures).filter((name) => name.endsWith('.json')).entries()) {
     const fixture = JSON.parse(readFileSync(join(frontendFixtures, filename), 'utf8'))
     const database = `frontend-${index}`

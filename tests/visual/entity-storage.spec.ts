@@ -52,6 +52,15 @@ test('feature actions emit generic patches that replay in the native database', 
     store.updateProjectCheckIn(checkIn.id, 55, 70)
     store.deleteProjectCheckIn(checkIn.id)
     store.checkInProject(project, 60, 65)
+    const idea = store.addIdea('Synthetic idea')
+    const fragment = store.addIdea('Synthetic fragment')
+    store.appendIdeaToPrevious(fragment, idea)
+    store.moveIdeaToBucket(idea, 'genuine')
+    const ideaBucket = live.ideaBuckets.find((bucket: any) => bucket.kind === 'genuine')
+    store.patchIdeaItem(ideaBucket.id, idea, { text: 'Synthetic renamed idea', html: 'Synthetic renamed idea' })
+    const trashed = store.addIdea('Synthetic trashed idea')
+    store.moveIdeaToBucket(trashed, 'trash')
+    store.purgeExpiredIdeas(Date.now() + 31 * 24 * 60 * 60 * 1000)
     store.moveImage(() => {
       store.renameNote(note, 'Synthetic compound note edit')
       store.renameMetric(metric, 'Synthetic compound metric edit')
@@ -70,7 +79,7 @@ test('feature actions emit generic patches that replay in the native database', 
       expect(operation.payload.action).toEqual(expect.any(String))
     }
   }
-  for (const collection of ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'projects', 'projectCheckIns']) {
+  for (const collection of ['templateListExpansions', 'notes', 'listTemplates', 'lists', 'metrics', 'metricEntries', 'goals', 'projects', 'projectCheckIns', 'ideaBuckets']) {
     expect(fixture.operations.some((operation: any) => operation.payload.entityChanges.upserts.some((upsert: any) => upsert.collection === collection))).toBe(true)
   }
   mkdirSync('artifacts/entity-fixtures', { recursive: true })

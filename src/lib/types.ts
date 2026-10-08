@@ -330,6 +330,20 @@ export type PriorityItem = {
   goalId?: Id
 }
 
+export type IdeaBucketKind = 'proposition' | 'genuine' | 'possible' | 'afterlife' | 'trash'
+
+// Ideas reuse the plan-item tree so the Today row editor renders them.
+export type IdeaItem = PlanItem & {
+  // When the idea entered its current bucket; Trash items expire 30 days after.
+  bucketedAt?: string
+}
+
+export type IdeaBucket = {
+  id: Id
+  kind: IdeaBucketKind
+  items: IdeaItem[]
+}
+
 export type PrioritySession = {
   id: Id
   // Unrated items keep this order.
@@ -360,6 +374,7 @@ export type AppState = {
   projects: Project[]
   projectCheckIns: ProjectCheckIn[]
   prioritySessions: PrioritySession[]
+  ideaBuckets: IdeaBucket[]
   notes: Note[]
   goals: Goal[]
   goalCompletions: GoalCompletion[]

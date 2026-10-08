@@ -164,6 +164,7 @@ export function createInitialState(): AppState {
     projects: [],
     projectCheckIns: [],
     prioritySessions: [],
+    ideaBuckets: [],
     notes: [],
     images: [],
     goals: [],
@@ -1809,6 +1810,12 @@ export function projectIdFromURL(value: string): Id | null {
   return match ? match[1] ?? '' : null
 }
 
+// 'page' opens the Buckets page; 'review' runs the Genuinely Worth Doing review.
+export function bucketsLinkFromURL(value: string): 'page' | 'review' | null {
+  const match = /^balance:\/\/buckets(?:\/(review))?$/.exec(value.trim())
+  return match ? (match[1] ? 'review' : 'page') : null
+}
+
 export function noteIdFromURL(value: string): Id | null {
   const match = value.trim().match(/^balance:\/\/note\/([a-zA-Z0-9_-]+)$/)
   return match?.[1] ?? null
@@ -1838,7 +1845,7 @@ function sanitizeNode(node: Node): string {
     // An empty anchor is invisible but would still be the first link Alt+F opens.
     if (!children) return ''
     const href = element.getAttribute('href') ?? ''
-    if (isGoalStatsURL(href) || noteIdFromURL(href) || projectIdFromURL(href) !== null) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
+    if (isGoalStatsURL(href) || noteIdFromURL(href) || projectIdFromURL(href) !== null || bucketsLinkFromURL(href)) return `<a href="${escapeHTML(href.trim())}">${children}</a>`
     if (!isURL(href)) return children
     return `<a href="${escapeHTML(href.trim())}" target="_blank" rel="noreferrer">${children}</a>`
   }
@@ -2432,6 +2439,7 @@ export type ItemLink =
   | { kind: 'metric'; metricId: Id; label: string }
   | { kind: 'note'; noteId: Id; label: string }
   | { kind: 'projects'; projectId: Id; label: string }
+  | { kind: 'buckets'; review: boolean; label: string }
 
 export function resolveItemLinks(text: string, listTemplates: ListTemplate[], metrics: Metric[], notes: import('./types').Note[] = []): ItemLink[] {
   const trimmed = text.trim()
@@ -2464,6 +2472,9 @@ export function resolveItemLinks(text: string, listTemplates: ListTemplate[], me
   }
   for (const _match of trimmed.matchAll(/balance:\/\/goals\/stats(?![a-zA-Z0-9_/?#-])/g)) {
     links.push({ kind: 'goalStats', label: 'Goal stats' })
+  }
+  for (const match of trimmed.matchAll(/balance:\/\/buckets(?:\/(review))?(?![a-zA-Z0-9_/?#-])/g)) {
+    links.push({ kind: 'buckets', review: Boolean(match[1]), label: match[1] ? 'Review ideas' : 'Buckets' })
   }
   return links
 }
@@ -2528,6 +2539,9 @@ export function linkifyItemText(text: string, listTemplates: ListTemplate[], met
   for (const match of text.matchAll(/balance:\/\/goals\/stats(?![a-zA-Z0-9_/?#-])/g)) {
     matches.push({ start: match.index!, end: match.index! + match[0].length, link: { kind: 'goalStats', label: 'Goal stats' } })
   }
+  for (const match of text.matchAll(/balance:\/\/buckets(?:\/(review))?(?![a-zA-Z0-9_/?#-])/g)) {
+    matches.push({ start: match.index!, end: match.index! + match[0].length, link: { kind: 'buckets', review: Boolean(match[1]), label: match[1] ? 'Review ideas' : 'Buckets' } })
+  }
   if (matches.length === 0) return [{ text, link: null }]
 
   // Earliest start first, longest match wins on ties; skip overlaps.
@@ -2552,6 +2566,7 @@ export function detectedTemplateLists(text: string, listTemplates: ListTemplate[
 
 export function internalLinkId(link: ItemLink): string {
   if (link.kind === 'goalStats') return 'stats'
+  if (link.kind === 'buckets') return link.review ? 'review' : 'page'
   if (link.kind === 'projects') return link.projectId || 'all'
   if (link.kind === 'list') return link.listTemplateId
   if (link.kind === 'metric') return link.metricId
@@ -2619,6 +2634,9 @@ export function itemLinkFromAnchor(anchor: HTMLElement): ItemLink | null {
 
   if (kind === 'goalStats' || isGoalStatsURL(anchor.getAttribute('href') ?? '')) return { kind: 'goalStats', label }
   if (kind === 'projects') return { kind, projectId: id === 'all' ? '' : id ?? '', label }
+  if (kind === 'buckets') return { kind, review: id === 'review', label }
+  const bucketsLink = bucketsLinkFromURL(anchor.getAttribute('href') ?? '')
+  if (bucketsLink) return { kind: 'buckets', review: bucketsLink === 'review', label }
   const projectId = projectIdFromURL(anchor.getAttribute('href') ?? '')
   if (projectId !== null) return { kind: 'projects', projectId, label }
   if (kind === 'list' && id) return { kind, listTemplateId: id, label }
