@@ -284,6 +284,35 @@ test('original shortcut bypasses compression and mixed webpage paste retains sup
   await expect(page.locator('[data-note-text-input]').first()).toContainText('A web passage')
 })
 
+test('day-theme writes preserve image references in untouched historical preferences', async ({ page }) => {
+  await notes(page)
+  await pasteImage(page)
+  const asset = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    const asset = state.images[0]
+    // Unknown historical theme values survive normalization verbatim.
+    state.preferences['dayTheme/2098-12-31'] = `<img data-balance-image="${asset.id}">`
+    state.images = []; state.notes = []; state.operations = []
+    localStorage.setItem('balance.appState.v1', JSON.stringify(state))
+    return asset
+  })
+  await page.reload()
+  const result = await page.evaluate(async (asset) => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    await plannerStore.ready
+    plannerStore.stageImage(asset)
+    plannerStore.recordDayTheme('2099-01-01', 'graphite')
+    const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
+    return {
+      image: state.images.find((image: { id: string }) => image.id === asset.id),
+      markup: state.preferences['dayTheme/2098-12-31'],
+    }
+  }, asset)
+  expect(result.image).toEqual(asset)
+  expect(result.markup).toBe(`<img data-balance-image="${asset.id}">`)
+})
+
 test('image copy reuses bytes and floating layout stays attached to the text', async ({ page }, info) => {
   test.skip(info.project.name === 'mobile', 'pointer resizing uses the desktop mouse')
   await notes(page)

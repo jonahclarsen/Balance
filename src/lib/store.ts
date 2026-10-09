@@ -154,7 +154,7 @@ const TEXT_MERGE_WINDOW_MS = 1200
 const MAX_HISTORY_ENTRIES = 200
 const PERSIST_DEBOUNCE_MS = 500
 const pendingImages = new Map<string, import('./types').ImageAsset>()
-const imageReferenceCache = new WeakMap<object, Set<string>>()
+const imageReferenceCache = new WeakMap<object, ReadonlySet<string>>()
 const EMPTY_IMAGE_REFERENCES: ReadonlySet<string> = new Set()
 function imageReferences(value: unknown): ReadonlySet<string> {
   if (typeof value === 'string') {
@@ -1001,12 +1001,19 @@ function createPlannerStore() {
       const current = get(store)
       if ((current.preferences as unknown as Record<string, unknown>)[key] === themeId) return false
       commit('patch_preferences', { patch: { [key]: themeId } }, (state) => {
-        if ((state.preferences as unknown as Record<string, unknown>)[key] === themeId) return state
+        const previousTheme = (state.preferences as unknown as Record<string, unknown>)[key]
+        if (previousTheme === themeId) return state
+        const preferences = { ...state.preferences, [key]: themeId }
+        // A concrete theme changes no image references. Preserve references in
+        // unknown preference fields without rescanning every historical day.
+        if (imageReferences(previousTheme).size === 0 && imageReferences(themeId).size === 0) {
+          imageReferenceCache.set(preferences, imageReferences(state.preferences))
+        }
         return {
           ...state,
           // The date and concrete theme are generated internally, so avoid
           // renormalizing every historical day-theme key on this hot path.
-          preferences: { ...state.preferences, [key]: themeId },
+          preferences,
         }
       }, { undoable: false, reconcileGoals: false })
       return true
