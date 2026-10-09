@@ -19,15 +19,25 @@ Current slice:
 - Use the macOS 15+ “Add Task to Balance” action in Shortcuts to capture a task verbatim under “reminders from siri:”. Balance uses today while it has incomplete tasks, then rolls capture forward to tomorrow. To use Siri on Mac, create a custom shortcut named “Add to Balance” containing this action; the distinct names keep Siri from bypassing the custom shortcut's input prompt. Siri will run the shortcut by name and ask for the task. Apple does not support direct App Shortcut phrases on macOS.
 - Record local mutations in an operation log for future sync work.
 
-## Sunset in templates
+## Times and sunset in templates
 
 Put `{sunset}` or `[sunset]` in a day or list template task to insert Vancouver,
 BC's sunset time when that day/list is generated, formatted like `6:50 PM`.
 Offsets work with either delimiter: `{sunset +5m}`, `[sunset-2h3m]`, or
-`{sunset+26h}`. Each distinct computed time also schedules a macOS/Android
-notification containing the task's complete generated text. Offsets retain the
-date across midnight and account for Vancouver's timezone rules. Times already
-past when generating are skipped. Templates keep their placeholders.
+`{sunset+26h}`. A plain clock time works the same way: `{10am}`, `[7:30pm]`,
+or `{22:15}`, optionally with an offset like `{9am+90m}`.
+
+Add bounds after the time to clamp it: `<` means "no later than" and `>` "no
+earlier than". `{sunset+4h <10pm}` is four hours after sunset, but never later
+than 10 PM; `{sunset-1h >5pm}` never earlier than 5 PM; both can be combined, as
+in `{sunset >8pm <9pm}`. Times before 5 AM (`{1am}`, `<1am`) mean the night
+after the generated day, matching Balance's 5 a.m. day boundary.
+
+Each distinct computed time also schedules a macOS/Android notification
+containing the task's complete generated text. Offsets retain the date across
+midnight and account for Vancouver's timezone rules (clock times are Vancouver
+time too). Times already past when generating are skipped. Templates keep their
+placeholders.
 
 Regenerating a day replaces the removed tasks' notifications. Manually edited
 tasks preserved by regeneration retain their existing schedules. Deleting a
@@ -45,7 +55,7 @@ The bundled lookup covers 2000–2099 and requires no internet. It is generated
 offline by `node scripts/generate-vancouver-sunsets.mjs` using NOAA solar
 equations for Vancouver city centre at sea level, rounded to the nearest minute.
 Terrain and weather can change the observed sunset. Invalid placeholders and
-dates outside the lookup remain unchanged.
+sunset tokens on dates outside the lookup remain unchanged.
 
 ## Browse backups
 

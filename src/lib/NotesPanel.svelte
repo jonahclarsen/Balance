@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isQuoteKey, wrapRangeInQuotes } from './quoteSelection'
   import { mobileNoteToolbar } from './mobileNoteToolbar'
   import { externalNotePaste } from './externalNotePaste'
   import { stageClipboardImages } from './imageService'
@@ -691,6 +692,38 @@
     const blockSelection = selected && crossBlockSelectionForRange(selected)
     if (!blockSelection && selectedItemIds.length === 0) return false
     if (event.isComposing) return false
+    if (isQuoteKey(event) && blockSelection && selectedNote) {
+      event.preventDefault()
+      event.stopPropagation()
+      const { startEditor, endEditor, range } = blockSelection
+      const anchor = textSelectionAnchor ?? { node: document.getSelection()?.anchorNode, offset: document.getSelection()?.anchorOffset }
+      const backward = anchor.node === range.endContainer && anchor.offset === range.endOffset
+      const startOffset = textOffsetAtPoint(startEditor, range.startContainer, range.startOffset) + 1
+      const endOffset = textOffsetAtPoint(endEditor, range.endContainer, range.endOffset)
+      const startId = startEditor.dataset.noteTextInputId!
+      const endId = endEditor.dataset.noteTextInputId!
+      const wrapped = wrapRangeInQuotes(range, event.key)
+      const items = structuredClone(selectedNote.items)
+      for (const [id, input] of [[startId, startEditor], [endId, endEditor]] as const) {
+        const item = findItem(items, id)
+        if (item) {
+          item.html = sanitizeInlineHTML(input.innerHTML)
+          item.text = htmlToPlainTextWithBreaks(item.html)
+        }
+      }
+      setTextSelection({ range: wrapped, startEditor, endEditor })
+      replaceItems(selectedNote.id, items, 'quote selection')
+      void tick().then(() => {
+        const inputs = noteInputs()
+        const start = inputs.find((input) => input.dataset.noteTextInputId === startId)
+        const end = inputs.find((input) => input.dataset.noteTextInputId === endId)
+        if (!start || !end) return
+        const a = pointAtTextOffset(start, startOffset)
+        const b = pointAtTextOffset(end, endOffset)
+        applyPointerSelection(backward ? b : a, backward ? a : b)
+      })
+      return true
+    }
     if (['Backspace', 'Delete'].includes(event.key) && selectedItemIds.length === 0) {
       event.preventDefault()
       event.stopPropagation()
