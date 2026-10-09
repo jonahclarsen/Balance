@@ -5552,19 +5552,19 @@ test('list-template word cap allows one trailing space and letters within a word
   const probability = page.getByLabel('Appearance probability').nth(1)
   await probability.focus()
   await page.keyboard.press('Home')
-  await expect(probability).toHaveValue('30')
+  await expect(probability).toHaveValue('25')
 
   await editor.fill('')
   await editor.focus()
-  await page.keyboard.type('one two three')
+  await page.keyboard.type('one two three four')
 
-  const textAtLimit = 'one two three'
+  const textAtLimit = 'one two three four'
   await expect(editor).toHaveText(textAtLimit)
   await expect(page.locator('.word-cap-count')).toContainText('2 / 2 expected words')
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(textAtLimit.length)
 
-  // One trailing space is allowed even though a fourth 30%-probability word
-  // would raise the exact total from 1.9 to 2.2.
+  // One trailing space is allowed even though a fifth 25%-probability word
+  // would raise the exact total from 2 to 2.25.
   await page.keyboard.press('Space')
   const trailingSpaceOffset = textAtLimit.length + 1
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(trailingSpaceOffset)
@@ -5572,9 +5572,9 @@ test('list-template word cap allows one trailing space and letters within a word
   // Additional spaces and a new word are rejected without moving the caret.
   await page.keyboard.press('Space')
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(trailingSpaceOffset)
-  await page.keyboard.type('four')
+  await page.keyboard.type('five')
 
-  await expect(editor).not.toContainText('four')
+  await expect(editor).not.toContainText('five')
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(trailingSpaceOffset)
 
   // Letters inside an existing word do not increase the word count, so they
@@ -5582,11 +5582,11 @@ test('list-template word cap allows one trailing space and letters within a word
   await setCaretOffsetInFocusedEditor(page, textAtLimit.length)
   await page.keyboard.type('x')
 
-  await expect(editor).toContainText('one two threex')
+  await expect(editor).toContainText('one two three fourx')
   await expect.poll(async () => caretOffsetInFocusedEditor(page)).toBe(trailingSpaceOffset)
 })
 
-test('list template item appearance probability grandfathers saved values below 30 percent', async ({ page }) => {
+test('list template item appearance probability grandfathers saved values below 25 percent', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => {
     localStorage.clear()
@@ -5634,10 +5634,10 @@ test('list template item appearance probability grandfathers saved values below 
   const normalProbability = probabilities.nth(1)
   await expect(lowProbability).toHaveAttribute('min', '10')
   await expect(lowProbability).toHaveValue('10')
-  await expect(normalProbability).toHaveAttribute('min', '30')
+  await expect(normalProbability).toHaveAttribute('min', '25')
 
   await normalProbability.press('Home')
-  await expect(normalProbability).toHaveValue('30')
+  await expect(normalProbability).toHaveValue('25')
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -5645,7 +5645,7 @@ test('list template item appearance probability grandfathers saved values below 
         return state.listTemplates?.[0]?.items?.map((item: { probability: number }) => item.probability)
       }),
     )
-    .toEqual([10, 30])
+    .toEqual([10, 25])
 })
 
 test('list template appearance slider uses the full visible track for pointer dragging', async ({ page }) => {
@@ -5657,7 +5657,7 @@ test('list template appearance slider uses the full visible track for pointer dr
 
   const probability = page.getByLabel('Appearance probability')
   await dragRangeToRatio(page, probability, 0)
-  await expect(probability).toHaveValue(await probability.getAttribute('min') ?? '30')
+  await expect(probability).toHaveValue(await probability.getAttribute('min') ?? '25')
   await dragRangeToRatio(page, probability, 1)
   await expect(probability).toHaveValue(await probability.getAttribute('max') ?? '100')
 })
@@ -5682,8 +5682,8 @@ test('dragging a selected list-template probability applies it to every selected
   await expect(probabilities).toHaveCount(2)
   const originalProbabilities = await inputValues(probabilities)
 
-  // The list-template range is 30–100 in 5-point steps; 3/7 lands on 60.
-  await dragRangeToRatio(page, probabilities.first(), 3 / 7)
+  // The list-template range is 25–100 in 5-point steps; 7/15 lands on 60.
+  await dragRangeToRatio(page, probabilities.first(), 7 / 15)
   await expect.poll(async () => inputValues(probabilities)).toEqual(['60', '60'])
   await expect(selectedRows).toHaveCount(2)
 

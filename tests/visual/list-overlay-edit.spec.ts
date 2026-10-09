@@ -992,8 +992,8 @@ test('list runs are timed against the ideal time set on the template', async ({ 
   await expect(page.getByRole('timer')).toContainText(/20\d%/)
 
   await page.getByRole('button', { name: '← Back to Lists' }).click()
-  await expect(page.getByText('Usually takes 2m')).toBeVisible()
-  await expect(page.getByTitle('Typical time for this task, ignoring interrupted runs')).toHaveText('~2m')
+  await expect(page.getByText('Usually takes 2 min')).toBeVisible()
+  await expect(page.getByTitle('Typical time for this task, ignoring interrupted runs')).toHaveText('~2 min')
   await page.screenshot({ path: 'artifacts/list-timing-template.png' })
 })
 
