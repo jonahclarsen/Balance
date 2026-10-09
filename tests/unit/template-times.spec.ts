@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test'
 import { createDailyTemplate, createListTemplate, createListTemplateItem, createTemplateItem, generateListFromTemplate, generatePlanFromTemplate } from '../../src/lib/planner'
-import { expandTemplateSunset, vancouverSunsetMinutes } from '../../src/lib/templateSunset'
+import { expandTemplateTimes, vancouverSunsetMinutes } from '../../src/lib/templateTimes'
 import { VANCOUVER_SUNSETS } from '../../src/lib/vancouverSunsets'
 import { createInitialState } from '../../src/lib/planner'
 import { reconcileTaskNotifications } from '../../src/lib/taskNotifications'
 import type { TaskNotification } from '../../src/lib/types'
 
 const date = '2026-10-01'
-const expand = (text: string) => expandTemplateSunset(text, text, date).text
+const expand = (text: string) => expandTemplateTimes(text, text, date).text
 
 test('both delimiters expand with signed hours and minutes, whitespace and repeated tokens', () => {
   expect(expand('{sunset} / [sunset] / {sunset +5m} / [sunset-2h3m]')).toBe('6:51 PM / 6:51 PM / 6:56 PM / 4:48 PM')
@@ -23,6 +23,38 @@ test('invalid tokens and unsafe offsets stay literal', () => {
   for (const token of ['[sunset}', '{sunset]', '{sunset+}', '[sunset+2]', '{sunset-2d}', '[sunset+1.5h]', '{sunset+1h-2m}', '{sunset+999999999999999999999h}']) {
     expect(expand(token)).toBe(token)
   }
+})
+
+test('bounds clamp a computed time, including past midnight and in rich text', () => {
+  // 2026-10-01 sunset is 6:51 PM; 2026-06-21 is 9:22 PM.
+  expect(expand('{sunset+4h <10pm} [sunset+2h <10pm] {sunset-3h >5pm} {sunset+4h ≤ 10:30PM}')).toBe('10:00 PM 8:51 PM 5:00 PM 10:30 PM')
+  expect(expandTemplateTimes('{sunset+4h <10pm}', '', '2026-06-21').text).toBe('10:00 PM')
+  expect(expandTemplateTimes('{sunset+4h <1am} {sunset >8pm <9pm}', '', '2026-06-21').text).toBe('1:00 AM 9:00 PM')
+  expect(expandTemplateTimes('', '<p>Bed <b>{sunset+4h &lt;10pm}</b></p>', date).html).toBe('<p>Bed <b>10:00 PM</b></p>')
+})
+
+test('bare clock times expand like sunset, with offsets and bounds', () => {
+  expect(expand('{10am} [7:30pm] {22:15} {12am} {12pm} {9am+90m} {9am <8am}')).toBe('10:00 AM 7:30 PM 10:15 PM 12:00 AM 12:00 PM 10:30 AM 8:00 AM')
+  for (const token of ['{10}', '[13pm]', '{0am}', '{9:60am}', '{24:00}', '{note}', '[x]', '{sunset <10}', '{10am <}']) {
+    expect(expand(token)).toBe(token)
+  }
+})
+
+test('clock-time notifications use Vancouver time and roll early-morning times to the next night', () => {
+  const template = createDailyTemplate('Synthetic')
+  template.items = [createTemplateItem('Stretch {10am}, bed {sunset+4h <10pm}, lights [1am]')]
+  const records: TaskNotification[] = []
+  generatePlanFromTemplate(template, '2026-06-21', '', [], [], {}, [], [], records)
+  expect(records.map(record => record.at)).toEqual([
+    Date.parse('2026-06-21T17:00:00Z'),
+    Date.parse('2026-06-22T05:00:00Z'),
+    Date.parse('2026-06-22T08:00:00Z'),
+  ])
+  const winter = createDailyTemplate('Synthetic')
+  winter.items = [createTemplateItem('{10am}')]
+  const winterRecords: TaskNotification[] = []
+  generatePlanFromTemplate(winter, '2026-12-01', '', [], [], {}, [], [], winterRecords)
+  expect(winterRecords.map(record => record.at)).toEqual([Date.parse('2026-12-01T18:00:00Z')])
 })
 
 test('lookup covers complete leap and common years with seasonally appropriate UTC sunsets', () => {
@@ -51,17 +83,17 @@ test('Vancouver timezone conversion uses the target date, independent of host ti
 test('invalid and out-of-range dates keep placeholders literal', () => {
   for (const date of ['2026-02-29', '2024-02-30', '2026-13-01', '2026-00-01', '2026-01-00', '2026-1-1', '1999-12-31', '2100-01-01', 'invalid']) {
     expect(vancouverSunsetMinutes(date)).toBeNull()
-    expect(expandTemplateSunset('{sunset}', '<b>{sunset}</b>', date)).toEqual({ text: '{sunset}', html: '<b>{sunset}</b>' })
+    expect(expandTemplateTimes('{sunset}', '<b>{sunset}</b>', date)).toEqual({ text: '{sunset}', html: '<b>{sunset}</b>' })
   }
 })
 
 test('rich text expands across inline formatting and encoded whitespace, leaving attributes intact', () => {
   const html = '<a href="https://example.com/{sunset}" title="[sunset]">Walk <b>{sun</b><i>set&nbsp;+5m}</i></a> &#91;sunset-2h3m&#93;'
-  expect(expandTemplateSunset('Walk {sunset +5m} [sunset-2h3m]', html, date)).toEqual({
+  expect(expandTemplateTimes('Walk {sunset +5m} [sunset-2h3m]', html, date)).toEqual({
     text: 'Walk 6:56 PM 4:48 PM',
     html: '<a href="https://example.com/{sunset}" title="[sunset]">Walk <b>6:56 PM</b><i></i></a> 4:48 PM',
   })
-  expect(expandTemplateSunset('', '<div>{sunset</div><div>+5m}</div>', date).html).toBe('<div>{sunset</div><div>+5m}</div>')
+  expect(expandTemplateTimes('', '<div>{sunset</div><div>+5m}</div>', date).html).toBe('<div>{sunset</div><div>+5m}</div>')
 })
 
 test('day generation expands selected options and nested rows while preserving the template', () => {

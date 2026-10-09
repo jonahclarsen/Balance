@@ -37,7 +37,11 @@
       title: 'General',
       shortcuts: [
         { keys: ['mod', 'K'], label: 'Open / close search' },
-        { keys: ['mod', 'F'], label: 'Find in current document / search goals' },
+        { keys: ['mod', 'F'], label: 'Find in current view / search goals' },
+        { keys: ['enter'], label: 'Next match (in Find)' },
+        { keys: ['shift', 'enter'], label: 'Previous match (in Find)' },
+        { keys: ['mod', 'G'], label: 'Next find match', alt: ['F3'] },
+        { keys: ['mod', 'shift', 'G'], label: 'Previous find match (while Find is open)', alt: ['shift', 'F3'] },
         { keys: ['mod', 'S'], label: 'Open Goal Stats (while in Goals)' },
         { keys: ['mod', 'Z'], label: 'Undo and reveal change (undoes typing while in the Add-a-goal form)' },
         { keys: ['mod', 'shift', 'Z'], label: 'Redo and reveal change (redoes typing while in the Add-a-goal form)', alt: ['mod', 'shift', 'C'] },

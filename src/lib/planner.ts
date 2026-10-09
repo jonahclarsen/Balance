@@ -27,7 +27,7 @@ import type {
 } from './types'
 import { createGoal, goalDaysUntilLapse, isGoalActiveOnDate } from './goals'
 import { createDefaultReplicatedPreferences } from './preferences'
-import { expandTemplateSunset, templateSunsetNotificationTimes } from './templateSunset'
+import { expandTemplateTimes, templateTimeNotificationTimes } from './templateTimes'
 
 export const DEFAULT_DAILY_REMINDER = "This shouldn't be aspirational"
 export const DAY_ROLLOVER_HOUR = 5
@@ -487,7 +487,7 @@ function generatePlanItems(
       })
     }
 
-    const expanded = expandTemplateSunset(option.text, option.html || escapeHTML(option.text), date)
+    const expanded = expandTemplateTimes(option.text, option.html || escapeHTML(option.text), date)
     const generatedItem = createPlanItem(expanded.text)
     captureTaskNotifications(option.text, expanded.text, date, 'plan', planId, generatedItem.id, notifications)
     return [
@@ -2343,8 +2343,8 @@ export function listRowSourceItemId(rowId: Id): Id | null {
 }
 
 function captureTaskNotifications(source: string, text: string, date: string, sourceKind: 'plan' | 'list', sourceId: Id, itemId: Id, notifications: TaskNotification[]) {
-  if (!source.toLowerCase().includes('sunset')) return
-  for (const [index, at] of templateSunsetNotificationTimes(source, date).entries()) {
+  if (!/[[{]/.test(source)) return
+  for (const [index, at] of templateTimeNotificationTimes(source, date).entries()) {
     notifications.push({ id: `${itemId}:${index}`, sourceKind, sourceId, itemId, at, text })
   }
 }
@@ -2353,7 +2353,7 @@ function generateListItems(items: ListTemplateItem[], suffix: string, date: stri
   return items.flatMap((item) => {
     const appears = Math.random() * 100 < clampListItemProbability(item.probability)
     if (!appears) return []
-    const expanded = expandTemplateSunset(item.text, item.html || escapeHTML(item.text), date)
+    const expanded = expandTemplateTimes(item.text, item.html || escapeHTML(item.text), date)
     const id = `${item.id}${LIST_ROW_SOURCE_SEPARATOR}${suffix}`
     captureTaskNotifications(item.text, expanded.text, date, 'list', listId, id, notifications)
     return [
