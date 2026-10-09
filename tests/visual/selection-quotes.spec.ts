@@ -28,10 +28,12 @@ for (const view of ['Today', 'Days', 'Lists']) {
       await openView(page, 'Lists')
       await page.getByRole('button', { name: '+ New list' }).click()
     } else {
-      await generateDay(page)
+      if (view === 'Today') await generateDay(page)
       await openView(page, view)
     }
-    const input = page.locator(view === 'Lists' ? '[data-list-template-text-input]' : '[data-plan-text-input]').first()
+    const selector = view === 'Lists' ? '[data-list-template-text-input]'
+      : view === 'Days' ? '[data-template-option-text-input]' : '[data-plan-text-input]'
+    const input = page.locator(selector).first()
     await input.fill('before selected after')
     await selectText(input, 7, 15)
     await page.keyboard.press('"')
