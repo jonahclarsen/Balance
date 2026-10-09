@@ -69,7 +69,7 @@ object BalanceTaskNotifications {
         if (fromNative && ciTesting && !json.contains("synthetic-notification-ci")) return
         val manager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val notifications = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Sunset tasks", NotificationManager.IMPORTANCE_HIGH))
+        notifications.createNotificationChannel(NotificationChannel(CHANNEL, "Timed tasks", NotificationManager.IMPORTANCE_HIGH))
         val registry = context.getSharedPreferences(STORE, Context.MODE_PRIVATE)
         val old = registry.getStringSet("ids", emptySet())!!.toSet()
         val records = JSONArray(json)
