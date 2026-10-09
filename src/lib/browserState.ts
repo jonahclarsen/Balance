@@ -8,6 +8,10 @@ const ENCODING_VERSION = 1
 // Keep the first data URL intact and encode later copies only on disk; native
 // operations and the live store always retain their original payloads.
 export function serializeBrowserState(state: AppState): string {
+  const plain = JSON.stringify(state)
+  // Most workspaces have no images. Avoid a replacer visit for every field on
+  // routine task edits and unchanged today observations in that common case.
+  if (!plain.includes('data:image/')) return plain
   const images = new Map<string, number>()
   return JSON.stringify({ ...state, browserImageEncoding: ENCODING_VERSION }, (_key, value: unknown) => {
     if (typeof value !== 'string') return value

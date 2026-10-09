@@ -29,6 +29,7 @@ test('browser snapshots store image bytes once and restore exact operation paylo
 test('plain legacy browser snapshots keep literal reference-like text intact', () => {
   const state = createInitialState()
   state.templates[0].name = 'balance:browser-image:0'
+  expect(serializeBrowserState(state)).toBe(JSON.stringify(state))
   expect(parseBrowserState(JSON.stringify(state))).toEqual(state)
   expect(parseBrowserState(serializeBrowserState(state))).toEqual(state)
 })
