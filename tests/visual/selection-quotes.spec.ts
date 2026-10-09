@@ -97,10 +97,9 @@ for (const editor of ['classic', 'tiptap', 'lexical']) {
     await expect(second).toHaveText('second paragraph')
     await selectText(input, 7, 15)
     await page.keyboard.press("'")
-    await input.locator('strong, b').first().click()
-    await page.keyboard.press('End')
+    await selectText(input, 23, 23)
     await page.keyboard.press("'")
-    await expect(input).toContainText("selected'")
+    await expect(input).toHaveText("before 'selected' after'")
     await expect.poll(() => page.evaluate(() => {
       const state = JSON.parse(localStorage.getItem('balance.appState.v1')!)
       return state.notes[0].items[0].text
