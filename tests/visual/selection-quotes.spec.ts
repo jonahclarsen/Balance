@@ -2,7 +2,7 @@ import { expect, test, type Locator } from '@playwright/test'
 import { generateDay, openView } from '../helpers/navigation'
 
 async function selectText(input: Locator, start: number, end: number) {
-  await input.evaluate((element, [a, b]) => {
+  await input.evaluate(async (element, [a, b]) => {
     const editable = element.closest<HTMLElement>('[contenteditable="true"]') ?? element as HTMLElement
     editable.focus()
     const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
@@ -16,6 +16,8 @@ async function selectText(input: Locator, start: number, end: number) {
       throw new Error('Selection offset outside text')
     }
     document.getSelection()!.setBaseAndExtent(...point(a), ...point(b))
+    // Let editor adapters observe the native selectionchange before typing.
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
   }, [start, end])
 }
 
