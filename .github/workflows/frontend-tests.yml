@@ -25,8 +25,9 @@ concurrency:
 
 jobs:
   behavior:
-    # Keep browser-only coverage off the scarce native macOS runner pool.
-    runs-on: ubuntu-24.04
+    # Browser editing fixtures exercise macOS Command-key and clipboard behavior.
+    # Use Intel because macos-15 ARM jobs have failed to acquire runner capacity.
+    runs-on: macos-15-intel
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -42,7 +43,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium webkit
+      - run: pnpm exec playwright install chromium webkit
       - run: pnpm check
       - run: pnpm test:unit
       - run: pnpm test:relay
