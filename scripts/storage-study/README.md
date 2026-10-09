@@ -44,7 +44,10 @@ The main interpretation is templates of 2,700 / 1,350 / 540 words with independe
 one-third daily inclusion (approximately 900 / 450 / 180 words), and a one-word
 template edit every seven days per list. The word counts precede daily-only edits.
 We test one and ten years. Sensitivity cases use all words every day, or daily
-word edits plus monthly row replacement/reordering. The smaller day-plan proxy
+word edits plus monthly row replacement/reordering. A diverse-vocabulary case
+mixes common words with 4,096 invented tokens to stress higher text entropy. This
+is a sensitivity bound, not an assertion that invented words model normal prose.
+The smaller day-plan proxy
 has 300 words per day over ten years.
 
 **Scope:** these databases measure retained daily **materialized records** only.
@@ -100,9 +103,10 @@ but existing local JSON SQL queries/readers must be adapted explicitly.
   source of possible duplication that this experiment does not measure.
 - `src-tauri/src/sync/relay_client.rs`: relay envelopes already use Zstandard
   level 3 before encryption. These results are not additional network savings.
-- `src-tauri/src/lib.rs`: existing database compaction builds a new checkpoint
-  and vacuums a replacement database. It can remove obsolete history/free space,
-  but retains the full current daily records.
+- `src-tauri/src/lib.rs`: database maintenance vacuums a replacement database
+  while explicitly preserving operation/history counts. It reclaims free pages,
+  not retained list content. Separate sync checkpointing in `sync/mod.rs` can
+  replace covered operations, but still retains the full current daily records.
 
 The baseline also streams the encrypted file through zlib to demonstrate why
 zipping an already encrypted database does not exploit repeated list text.

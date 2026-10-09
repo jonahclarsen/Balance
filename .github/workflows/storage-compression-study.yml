@@ -2,11 +2,12 @@ name: Synthetic storage compression study
 
 on:
   workflow_dispatch:
-  push:
-    branches: ['codex/storage-compression-study']
-    paths:
-      - 'scripts/storage-study/**'
-      - '.github/workflows/storage-compression-study.yml'
+    inputs:
+      scenario:
+        description: Workload to measure
+        type: choice
+        default: all
+        options: [all, typical-year, typical-decade, full-decade, churn-decade, diverse-decade, plans-decade]
 
 permissions:
   contents: read
@@ -18,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        scenario: [typical-year, typical-decade, full-decade, churn-decade, plans-decade]
+        scenario: ${{ fromJSON(inputs.scenario == 'all' && '["typical-year","typical-decade","full-decade","churn-decade","diverse-decade","plans-decade"]' || format('["{0}"]', inputs.scenario)) }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6

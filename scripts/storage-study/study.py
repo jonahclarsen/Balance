@@ -28,6 +28,7 @@ SCENARIOS = {
     'typical-decade': (3650, 1 / 3, 7, False),
     'full-decade': (3650, 1, 7, False),
     'churn-decade': (3650, 1 / 3, 1, False),
+    'diverse-decade': (3650, 1 / 3, 7, False),
     'plans-decade': (3650, 1, 7, True),
 }
 # Entirely authored synthetic vocabulary; no downloaded/user corpus.
@@ -52,9 +53,16 @@ def walk(items):
         yield from walk(item.get('children', []))
 
 
-def fixture(days, probability, edit_every, plans, seed):
+def fixture(days, probability, edit_every, plans, seed, diverse=False):
     """Different daily IDs, selections, nested rows, checkoffs and durable edits."""
     rng = random.Random(seed)
+    vocabulary = WORDS
+    if diverse:
+        # Stress compression with 4096 invented tokens, rather than relying only
+        # on the intentionally small authored vocabulary of the main fixture.
+        invented = [''.join(rng.choices('abcdefghijklmnopqrstuvwxyz', k=rng.randint(5, 12)))
+                    for _ in range(4096)]
+        vocabulary = WORDS * 40 + invented
 
     def identifier():
         return str(uuid.UUID(int=rng.getrandbits(128)))
@@ -66,7 +74,7 @@ def fixture(days, probability, edit_every, plans, seed):
         remaining = size
         while remaining:
             count = min(remaining, rng.randint(8, 32))
-            words = rng.choices(WORDS, k=count)
+            words = rng.choices(vocabulary, k=count)
             text = ' '.join(words)
             markup = '<p>' + html.escape(text) + '</p>'
             if len(rows) % 4 == 0:
@@ -83,14 +91,14 @@ def fixture(days, probability, edit_every, plans, seed):
             if day and day % edit_every == 0:
                 row = rng.choice(source)
                 words = row['text'].split()
-                words[rng.randrange(len(words))] = rng.choice(WORDS)
+                words[rng.randrange(len(words))] = rng.choice(vocabulary)
                 row['text'] = ' '.join(words)
                 row['html'] = '<p>' + html.escape(row['text']) + '</p>'
             # Sensitivity case includes deletion/replacement, reorders, new prose.
             if edit_every == 1 and day % 30 == 0:
                 rng.shuffle(source)
                 row = rng.choice(source)
-                row.update(id=identifier(), text=' '.join(rng.choices(WORDS, k=22)))
+                row.update(id=identifier(), text=' '.join(rng.choices(vocabulary, k=22)))
                 row['html'] = '<p>' + row['text'] + '</p>'
             suffix = identifier()[:8]
             items = []
@@ -104,7 +112,7 @@ def fixture(days, probability, edit_every, plans, seed):
                     row['doneAt'] = index * 25 + rng.randrange(25)
                 # Some day-specific edits must not affect the source or other days.
                 if rng.random() < .01:
-                    row['text'] += ' ' + rng.choice(WORDS)
+                    row['text'] += ' ' + rng.choice(vocabulary)
                     row['html'] = '<p>' + html.escape(row['text']) + '</p>'
                 if items and index % 7 == 0:
                     items[-1]['children'].append(row)
@@ -301,7 +309,8 @@ def benchmark(scenario, output):
     results = []
     output.mkdir(parents=True, exist_ok=True)
     for seed in [17, 29, 43]:
-        records, dictionaries = fixture(days, probability, edit_every, plans, seed)
+        records, dictionaries = fixture(days, probability, edit_every, plans, seed,
+                                        diverse=scenario == 'diverse-decade')
         logical_bytes = sum(len(pack(row)) for row in records)
         groups = len(dictionaries)
         order = METHODS[:]
