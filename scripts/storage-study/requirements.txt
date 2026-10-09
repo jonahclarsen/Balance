@@ -1,0 +1,2 @@
+sqlcipher3-binary==0.6.0
+zstandard==0.25.0
