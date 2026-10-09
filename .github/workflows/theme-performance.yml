@@ -21,6 +21,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: theme-performance-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   profile:
     name: Synthetic startup and persistence profile

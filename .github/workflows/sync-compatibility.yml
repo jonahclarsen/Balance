@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: sync-compatibility-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   baselines:
     runs-on: ubuntu-latest

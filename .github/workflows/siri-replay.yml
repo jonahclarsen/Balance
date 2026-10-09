@@ -13,6 +13,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: siri-replay-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   reproduce:
     # macos-15 selects ARM runners, which have failed to acquire capacity in CI.

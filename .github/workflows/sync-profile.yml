@@ -37,6 +37,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: sync-profile-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   frontend-reload:
     name: Desktop and mobile sync reload races
