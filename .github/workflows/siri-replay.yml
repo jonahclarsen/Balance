@@ -15,7 +15,8 @@ permissions:
 
 jobs:
   reproduce:
-    runs-on: macos-15
+    # macos-15 selects ARM runners, which have failed to acquire capacity in CI.
+    runs-on: macos-15-intel
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -33,9 +34,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-siri-tests-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-siri-tests-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-siri-tests-
+            ${{ runner.os }}-${{ runner.arch }}-siri-tests-
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
       - name: Test encrypted native Siri persistence and delivery

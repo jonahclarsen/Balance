@@ -24,7 +24,8 @@ permissions:
 jobs:
   profile:
     name: Synthetic startup and persistence profile
-    runs-on: macos-15
+    # macos-15 selects ARM runners, which have failed to acquire capacity in CI.
+    runs-on: macos-15-intel
     timeout-minutes: 20
 
     steps:

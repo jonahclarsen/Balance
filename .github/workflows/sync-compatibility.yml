@@ -37,7 +37,8 @@ jobs:
           PYTHON
   compatibility:
     needs: [baselines, record-ui]
-    runs-on: macos-15
+    # macos-15 selects ARM runners, which have failed to acquire capacity in CI.
+    runs-on: macos-15-intel
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -61,9 +62,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             compat-target
-          key: ${{ runner.os }}-sync-compat-${{ matrix.previous }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-sync-compat-${{ matrix.previous }}-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-sync-compat-${{ matrix.previous }}-
+            ${{ runner.os }}-${{ runner.arch }}-sync-compat-${{ matrix.previous }}-
       - name: Build real current and released engines with the same synthetic fixture driver
         id: engines
         env:

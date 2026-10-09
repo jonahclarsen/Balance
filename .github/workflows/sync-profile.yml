@@ -122,7 +122,8 @@ jobs:
 
   large-task-sync:
     name: Native convergence and large workspace
-    runs-on: macos-15
+    # macos-15 selects ARM runners, which have failed to acquire capacity in CI.
+    runs-on: macos-15-intel
     timeout-minutes: 35
 
     steps:
@@ -144,9 +145,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-large-task-sync-${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-large-task-sync-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: |
-            ${{ runner.os }}-large-task-sync-
+            ${{ runner.os }}-${{ runner.arch }}-large-task-sync-
 
       - name: Test encrypted database and sync behavior
         run: cargo test --manifest-path src-tauri/Cargo.toml
