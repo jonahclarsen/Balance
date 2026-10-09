@@ -40,6 +40,9 @@ jobs:
     # macos-15 selects ARM runners, which have failed to acquire capacity in CI.
     runs-on: macos-15-intel
     timeout-minutes: 60
+    env:
+      # Apply to current and released engines, which link Swift bridge objects.
+      RUSTFLAGS: -C link-arg=-Wl,-rpath,/usr/lib/swift
     strategy:
       fail-fast: false
       matrix:
