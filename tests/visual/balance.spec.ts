@@ -2497,7 +2497,7 @@ test('dragging app sliders requests native haptics except for notes writing spac
 
   await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
-  const editor = page.locator('[data-note-text-input]').first()
+  const editor = page.locator('.lexical-note-editor .note-text').first()
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
   await page.locator('.workspace').evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   const notesSlider = page.getByLabel('Bottom writing space')

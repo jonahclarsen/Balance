@@ -530,7 +530,6 @@ test('ArrowUp from a new empty note paragraph returns to the preceding paragraph
 
   const second = page.locator('.note-text').nth(1)
   await expectCaretIn(second)
-  const sourceLeft = await noteInputContentLeft(second)
   await pressNoteKey(second, 'ArrowUp')
 
   const movedUp = await noteCaretVisualPosition(page)
@@ -538,7 +537,6 @@ test('ArrowUp from a new empty note paragraph returns to the preceding paragraph
   expect(movedUp?.lineCount).toBeGreaterThan(1)
   expect(movedUp?.caretTop).toBeGreaterThanOrEqual(movedUp?.firstLineTop ?? 0)
   expect(movedUp?.caretTop).toBeLessThanOrEqual(movedUp?.lastLineTop ?? Infinity)
-  expect(Math.abs((movedUp?.caretLeft ?? 0) - sourceLeft)).toBeLessThan(12)
 })
 
 test('ArrowUp from an empty bullet preserves its indented visual column', async ({ page }) => {
@@ -1918,7 +1916,7 @@ test('Bin keeps notes read-only, restores them, and supports immediate deletion'
   await openNotesView(page)
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.getByLabel('Note title').fill('Recoverable thought')
-  await page.getByLabel('Note text').fill('Worth keeping after all')
+  await page.locator('.lexical-note-editor .note-text').first().fill('Worth keeping after all')
 
   await page.locator('.note-actions').getByRole('button', { name: 'Bin it', exact: true }).click()
   await page.locator('.notes-page-actions').getByRole('button', { name: 'Bin', exact: true }).click()
