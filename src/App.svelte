@@ -29,6 +29,7 @@
   import ListPanel from './lib/ListPanel.svelte'
   import ListTimeClock from './lib/ListTimeClock.svelte'
   import {
+    exceedsIdealMinutes,
     formatDuration,
     LIST_TRIM_NUDGE_INTERVAL_MS,
     shouldSuggestTrim,
@@ -774,13 +775,6 @@ return rows`
   // Only the list-template page shows these stats, so skip the work elsewhere.
   $: selectedListTiming =
     view === 'listTemplates' && selectedListTemplate ? summarizeListTiming(lists, selectedListTemplate.id) : null
-  $: selectedListSlowestItems = selectedListTemplate && selectedListTiming
-    ? flattenListTemplateItems(selectedListTemplate.items)
-        .filter((item) => item.children.length === 0 && selectedListTiming.typicalItemMs.has(item.id))
-        .map((item) => ({ item, ms: selectedListTiming.typicalItemMs.get(item.id) ?? 0 }))
-        .sort((left, right) => right.ms - left.ms)
-        .slice(0, 3)
-    : []
   $: showListTrimNudge =
     selectedListTemplate !== undefined &&
     selectedListTiming !== null &&
@@ -7037,8 +7031,7 @@ return rows`
             {#if selectedListTiming?.typicalRunMs != null}
               <span
                 class="list-typical-time"
-                class:over={Boolean(selectedListTemplate.idealMinutes) &&
-                  selectedListTiming.typicalRunMs > (selectedListTemplate.idealMinutes ?? 0) * 60_000}
+                class:over={exceedsIdealMinutes(selectedListTiming.typicalRunMs, selectedListTemplate.idealMinutes)}
               >
                 Usually takes {formatDuration(selectedListTiming.typicalRunMs)}
               </span>
@@ -7049,11 +7042,7 @@ return rows`
             <div class="list-trim-nudge" role="status">
               <p>
                 This list has been taking about {formatDuration(selectedListTiming.typicalRunMs)}, longer than your
-                {selectedListTemplate.idealMinutes} min ideal. Consider trimming it{#if selectedListSlowestItems.length > 0}
-                  — the slowest tasks are
-                  {#each selectedListSlowestItems as { item, ms }, index}
-                    <strong>{item.text || 'Untitled'}</strong> (~{formatDuration(ms)}){index < selectedListSlowestItems.length - 1 ? ', ' : ''}
-                  {/each}{/if}.
+                {selectedListTemplate.idealMinutes} min ideal. Consider trimming it or increasing the ideal time.
               </p>
               <button class="icon-button quiet" type="button" aria-label="Dismiss for a week" title="Dismiss for a week"
                 on:click={() => dismissListTrimNudge(selectedListTemplate.id)}>✕</button>
