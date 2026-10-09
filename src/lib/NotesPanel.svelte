@@ -696,6 +696,8 @@
       event.preventDefault()
       event.stopPropagation()
       const { startEditor, endEditor, range } = blockSelection
+      const anchor = textSelectionAnchor ?? { node: document.getSelection()?.anchorNode, offset: document.getSelection()?.anchorOffset }
+      const backward = anchor.node === range.endContainer && anchor.offset === range.endOffset
       const startOffset = textOffsetAtPoint(startEditor, range.startContainer, range.startOffset) + 1
       const endOffset = textOffsetAtPoint(endEditor, range.endContainer, range.endOffset)
       const startId = startEditor.dataset.noteTextInputId!
@@ -716,12 +718,9 @@
         const start = inputs.find((input) => input.dataset.noteTextInputId === startId)
         const end = inputs.find((input) => input.dataset.noteTextInputId === endId)
         if (!start || !end) return
-        const restored = document.createRange()
         const a = pointAtTextOffset(start, startOffset)
         const b = pointAtTextOffset(end, endOffset)
-        restored.setStart(a.node, a.offset)
-        restored.setEnd(b.node, b.offset)
-        setTextSelection({ range: restored, startEditor: start, endEditor: end })
+        applyPointerSelection(backward ? b : a, backward ? a : b)
       })
       return true
     }
