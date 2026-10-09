@@ -132,8 +132,8 @@ export async function readExternalPasteContent(data: DataTransfer): Promise<{ ht
   return { html: html ? normalizeNotePasteHTML(html) : '', text }
 }
 
-// Capture above all three note editors, then replay through their normal paste
-// handlers. Their selection replacement and single-step undo stay authoritative.
+// Capture above the Notes editor, then replay through its normal paste handler.
+// Selection replacement and single-step undo stay authoritative.
 export function externalNotePaste(root: HTMLElement, context: string) {
   const prepared = new WeakSet<Event>()
   let busy = false

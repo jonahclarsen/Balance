@@ -824,8 +824,23 @@ class LexicalNoteEditorView implements NoteEditorView {
       this.callbacks?.onBlur()
     })
     listen('keydown', (event) => {
-      // Space on a focused checkbox toggles it natively; keep Lexical out.
-      if ((event.target as HTMLElement).closest?.('.note-check')) event.stopPropagation()
+      const check = (event.target as HTMLElement).closest?.('.note-check')
+      if (!check) return
+      // Space toggles the checkbox natively. Tab belongs to block editing even
+      // when focus is inside this noneditable control (especially in WebKit).
+      event.stopPropagation()
+      if (event.key === 'Tab' && !event.metaKey && !event.ctrlKey && !event.altKey) {
+        event.preventDefault()
+        this.editor?.update(() => {
+          const block = $blockOf($getNearestNodeFromDOMNode(check))
+          if (!block) return
+          $selectOffset(block, 0)
+          this.pendingSource = 'command'
+          this.selectAllMarker = null
+          this.$indentOrOutdent(event.shiftKey)
+        }, { discrete: true })
+        root.focus()
+      }
     }, { capture: true })
     const balancepaste = (event: Event) => {
       const detail = (event as CustomEvent<{ plainText?: string | null; html?: string | null }>).detail

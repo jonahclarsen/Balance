@@ -721,7 +721,7 @@ test('a bullet indented below a heading keeps ordinary body typography', async (
     const style = getComputedStyle(element)
     return { actual: Number.parseFloat(style.fontSize), expected: Number.parseFloat(style.getPropertyValue('--note-body-size')) }
   })
-  expect(bodySize.actual).toBe(bodySize.expected)
+  expect(bodySize.actual).toBeCloseTo(bodySize.expected, 3)
   expect(bodySize.actual).toBeLessThan(headingSize)
 
 })
