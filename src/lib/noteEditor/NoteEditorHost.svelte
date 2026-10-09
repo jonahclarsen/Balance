@@ -53,9 +53,12 @@
   // Keep the last known caret when focus leaves the editor.
   function rememberViewState() {
     if (!adapter || !openedNoteId) return
-    const scrollTop = scrollContainer()?.scrollTop ?? 0
-    const state = adapter.viewState(scrollTop)
     const previous = viewStatesByNote.get(openedNoteId)
+    // Svelte can detach the host before teardown runs. Keep the last mounted
+    // scroll position instead of replacing it with the detached pane's zero.
+    const scroller = host?.isConnected ? scrollContainer() : null
+    const scrollTop = scroller?.isConnected ? scroller.scrollTop : previous?.scrollTop ?? 0
+    const state = adapter.viewState(scrollTop)
     onViewStateChange(openedNoteId, { scrollTop: state.scrollTop, caret: state.caret ?? previous?.caret ?? null })
   }
 

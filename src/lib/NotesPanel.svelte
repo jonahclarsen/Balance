@@ -45,7 +45,6 @@
   let lastTrashNoteId: Id | null = null
   let copyButtonText = 'Copy note link'
   let copyButtonResetTimer: number | undefined
-  let activeNoteId: Id | null = null
   let noteEditorHostElement: HTMLDivElement | null = null
   let noteEditorHost: NoteEditorHost | null = null
   let bottomFollowFrame: number | null = null
@@ -64,10 +63,6 @@
   $: selectedNote = visibleNotes.find((note) => note.id === selectedNoteId) ?? visibleNotes[0] ?? null
   $: if (!trashOpen && selectedNote) lastActiveNoteId = selectedNote.id
   $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
-  $: if (selectedNoteId !== activeNoteId) {
-    rememberActiveNoteScroll()
-    activeNoteId = selectedNoteId
-  }
   $: filteredNotes = [...visibleNotes]
     .filter((note) => `${note.title} ${flattenText(note)}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()))
     .sort((a, b) => trashOpen
@@ -214,20 +209,6 @@
     title.setSelectionRange(title.value.length, title.value.length)
   }
 
-  function rememberNoteViewState(noteId: Id, patch: Partial<NoteViewState>) {
-    const previous = viewStatesByNote.get(noteId)
-    onViewStateChange(noteId, {
-      scrollTop: previous?.scrollTop ?? 0,
-      caret: previous?.caret ?? null,
-      ...patch,
-    })
-  }
-
-  function rememberActiveNoteScroll(scroller = noteScrollContainer()) {
-    if (!activeNoteId || !scroller) return
-    rememberNoteViewState(activeNoteId, { scrollTop: scroller.scrollTop })
-  }
-
   function noteScrollContainer() {
     const blocksElement = noteEditorHostElement
     const noteDocument = blocksElement?.closest<HTMLElement>('.note-document') ?? null
@@ -263,7 +244,6 @@
       frame = null
       noteScrollViewportHeight = scroller.clientHeight
       noteScrollSpaceControlVisible = noteScrollSpaceAdjustmentActive || isAtNoteBottom(scroller)
-      rememberActiveNoteScroll(scroller)
     }
     const scheduleVisibilityUpdate = () => {
       if (frame !== null) return
@@ -417,7 +397,6 @@
   })
 
   onDestroy(() => {
-    rememberActiveNoteScroll()
     cancelNoteBottomFollow()
     noteScrollSpaceAdjustmentActive = false
   })
