@@ -1,5 +1,5 @@
 // The contract between the Notes page and a document editor implementation
-// (TipTap, Lexical). Implementations are pure view layers: they render a block
+// (Lexical). Implementations are pure view layers: they render a block
 // tree, let the user edit it, and report the resulting block tree. Everything
 // about persistence — store operations, ids, sanitizing, undo, remote updates,
 // caret restore — lives in the shared adapter (NoteEditorAdapter.ts).
@@ -27,7 +27,7 @@ export type NoteEditorSelectionState = {
 }
 
 // Why the document changed. `paste` and `image` edits become their own undo
-// step instead of merging into the surrounding typing (parity with Classic).
+// step instead of merging into the surrounding typing.
 export type NoteEditorChangeSource = 'typing' | 'paste' | 'image' | 'command'
 
 export type NoteEditorHostCallbacks = {
@@ -72,7 +72,7 @@ export type NoteEditorMountOptions = {
 }
 
 export interface NoteEditorView {
-  readonly name: 'tiptap' | 'lexical'
+  readonly name: 'lexical'
 
   mount(options: NoteEditorMountOptions): void
   destroy(): void

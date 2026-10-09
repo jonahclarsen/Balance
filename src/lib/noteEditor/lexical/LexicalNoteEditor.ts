@@ -1,4 +1,4 @@
-// Option B: the Notes body editor built on Lexical (headless, no React).
+// The Notes body editor built on Lexical (headless, no React).
 //
 // One contenteditable holds the whole note. The Lexical tree mirrors
 // NoteItem.children exactly (see nodes.ts); structural keys (Enter,

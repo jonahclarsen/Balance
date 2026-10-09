@@ -1,10 +1,10 @@
-name: Profile Notes editors
+name: Profile Notes editor
 
 on:
   workflow_dispatch:
     inputs:
       rounds:
-        description: Measured runs per editor (order rotates each round)
+        description: Measured Notes runs
         required: true
         default: "5"
         type: string
@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   profile:
-    name: Classic vs TipTap vs Lexical on macOS
+    name: Notes editor on macOS
     runs-on: macos-15
     timeout-minutes: 60
     env:
@@ -45,28 +45,26 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm exec playwright install chromium
 
-      - name: Rotate editors across measured rounds
+      - name: Measure Notes across repeated rounds
         run: |
           set -euo pipefail
           results="$RUNNER_TEMP/notes-editor-performance.jsonl"
           logs="$RUNNER_TEMP/notes-editor-performance.log"
           : > "$results"
           : > "$logs"
-          editors=(classic tiptap lexical)
 
           run_profile() {
-            editor="$1"
-            round="$2"
-            echo "Running $editor round $round" | tee -a "$logs"
+            round="$1"
+            echo "Running Notes round $round" | tee -a "$logs"
             for attempt in 1 2 3; do
               set +e
-              output="$(BALANCE_NOTES_PERF_EDITOR="$editor" pnpm exec playwright test \
+              output="$(pnpm exec playwright test \
                 --config playwright.notes-editor-performance.config.ts --trace off 2>&1)"
               command_exit="$?"
               set -e
               printf '%s\n' "$output" | tee -a "$logs"
               if (( command_exit == 0 )); then break; fi
-              echo "Attempt $attempt failed for $editor round $round" | tee -a "$logs"
+              echo "Attempt $attempt failed for Notes round $round" | tee -a "$logs"
               if (( attempt == 3 )); then return "$command_exit"; fi
             done
             payload="$(printf '%s\n' "$output" | sed -n 's/^NOTES_EDITOR_PERF //p')"
@@ -76,10 +74,7 @@ jobs:
           }
 
           for (( round = 1; round <= ROUNDS; round += 1 )); do
-            shift_by=$(( (round - 1) % 3 ))
-            for (( index = 0; index < 3; index += 1 )); do
-              run_profile "${editors[$(( (index + shift_by) % 3 ))]}" "$round"
-            done
+            run_profile "$round"
           done
 
           summary="$(jq -s '
@@ -100,25 +95,21 @@ jobs:
               "DOM nodes for 1k-block note": .memory.largeDomNodes,
               "Idle CPU while focused (ms/s)": .idleTaskMsPerSecond
             };
-            group_by(.profile.editor)
-            | map({
-                key: .[0].profile.editor,
-                value: ([.[].profile | metrics] as $runs
-                  | ($runs[0] | keys_unsorted) | map({key: ., value: ([$runs[][.]] | median)}) | from_entries)
-              })
-            | from_entries
+            [.[].profile | metrics] as $runs
+            | ($runs[0] | keys_unsorted)
+            | map({key: ., value: ([$runs[][.]] | median)}) | from_entries
           ' "$results")"
           printf '%s\n' "$summary" > "$RUNNER_TEMP/notes-editor-performance-summary.json"
           {
             echo '## Notes editor profile'
             echo
-            echo "Commit \`$GITHUB_SHA\` · $ROUNDS rotating rounds per editor · Desktop Chrome with ${BALANCE_NOTES_PERF_CPU_RATE}× CPU throttling · medians across rounds (lower is better)."
+            echo "Commit \`$GITHUB_SHA\` · $ROUNDS rounds · Desktop Chrome with ${BALANCE_NOTES_PERF_CPU_RATE}× CPU throttling · medians across rounds (lower is better)."
             echo
-            echo '| Metric | Classic | TipTap | Lexical |'
-            echo '|---|---:|---:|---:|'
+            echo '| Metric | Notes |'
+            echo '|---|---:|'
             printf '%s\n' "$summary" | jq -r '
-              . as $all | ($all.classic | keys_unsorted)[] as $metric
-              | "| \($metric) | \($all.classic[$metric]) | \($all.tiptap[$metric]) | \($all.lexical[$metric]) |"'
+              . as $all | keys_unsorted[] as $metric
+              | "| \($metric) | \($all[$metric]) |"'
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload profile results
