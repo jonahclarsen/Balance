@@ -34,12 +34,12 @@ test('daily check-ins roll over at 5 a.m. and history supports editing, deletion
   await save.click()
   const original = (await readEntries())[0]
   await expect(card.getByRole('status')).toHaveCount(0)
-  await expect(card.getByRole('button', { name: 'Edit check-in', exact: true })).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
 
   // Midnight does not begin a new Balance day.
   await page.clock.setSystemTime(new Date('2026-09-09T11:59:00Z'))
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
-  await card.getByRole('button', { name: 'Edit check-in', exact: true }).click()
+  await card.getByRole('button', { name: 'Edit', exact: true }).click()
   await expect(work).toHaveValue('35')
   await work.fill('45')
   await save.click()
@@ -84,7 +84,7 @@ test('daily check-ins roll over at 5 a.m. and history supports editing, deletion
     await plannerStore.undo()
   })
   await expect(rows).toHaveCount(2)
-  await expect(card.getByRole('button', { name: 'Edit check-in', exact: true })).toBeVisible()
+  await expect(card.getByRole('button', { name: 'Edit', exact: true })).toBeVisible()
   await page.evaluate(async () => {
     const path = '/src/lib/store.ts'
     const { plannerStore } = await import(/* @vite-ignore */ path)
@@ -159,7 +159,7 @@ test('project check-ins retain history, survive reload, and open from a planner 
   expect(persistedAction.payload.entityChanges.upserts.some((row: any) => row.collection === 'projectCheckIns')).toBe(true)
 
   await expect(card.getByRole('slider')).toHaveCount(0)
-  await page.getByRole('button', { name: 'Edit check-in', exact: true }).click()
+  await page.getByRole('button', { name: 'Edit', exact: true }).click()
   await page.getByRole('slider', { name: 'Work complete for Synthetic garden' }).fill('95')
   await page.getByRole('button', { name: 'Cancel', exact: true }).click()
   await expect(card.locator('dd')).toHaveText(['35%', '80%'])

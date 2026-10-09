@@ -114,15 +114,17 @@
     <button class="primary" type="submit" form={'project-check-in-' + project.id} disabled={progress === null || heart === null}>Save check-in</button>
     <button type="button" on:click={() => checkingIn = false}>Cancel</button>
   {/snippet}
-  {#if !checkingIn || detailsOpen}<dl class="ratings"><div><dt>Work complete</dt><dd>{latest ? `${latest.progress}%` : 'Not set'}</dd></div><div><dt>Heart in it</dt><dd>{latest ? `${latest.heart}%` : 'Not set'}</dd></div></dl>{/if}
   {#if checkingIn && !detailsOpen}{@render checkInForm_()}{/if}
   <footer>
-    {#if checkingIn && !detailsOpen}
-      {@render checkInActions()}
-    {:else if !project.archived}
-      <button type="button" on:click={() => openCheckIn(projectCheckInForDay(history, project.id, todayISO()))}>{todaysCheckIn ? 'Edit check-in' : 'Check in'}</button>
-    {/if}
-    <button type="button" aria-haspopup="dialog" on:click={openDetails}>Details</button>
+    {#if !checkingIn || detailsOpen}<dl class="ratings"><div><dt>Complete</dt><dd>{latest ? `${latest.progress}%` : 'Not set'}</dd></div><div><dt>Heart in it</dt><dd>{latest ? `${latest.heart}%` : 'Not set'}</dd></div></dl>{/if}
+    <div class="card-actions">
+      {#if checkingIn && !detailsOpen}
+        {@render checkInActions()}
+      {:else if !project.archived}
+        <button type="button" on:click={() => openCheckIn(projectCheckInForDay(history, project.id, todayISO()))}>{todaysCheckIn ? 'Edit' : 'Check in'}</button>
+      {/if}
+      <button type="button" aria-haspopup="dialog" on:click={openDetails}>Details</button>
+    </div>
   </footer>
   {#if detailsOpen}
     <div class="details-overlay" use:mountInContentShell>
@@ -201,15 +203,16 @@
   h2 { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
   p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
   .description { white-space: pre-wrap; overflow-wrap: anywhere; }
-  .ratings { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin: 0; font-size: 13px; }
-  .ratings div { display: grid; gap: 6px; } dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .ratings { display: flex; gap: 12px; margin: 0 auto 0 0; font-size: 13px; }
+  .ratings div { display: grid; gap: 4px; } dt { color: var(--muted); } dd { margin: 0; font-variant-numeric: tabular-nums; }
   .check-in { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; border-top: 1px solid var(--line); padding-top: 12px; }
   .rating-control { display: grid; gap: 8px; min-width: 0; font-size: 13px; --slider-readout-width: 44px; }
   .rating-control :global(.probability-slider) { min-width: 0; gap: 8px; }
   .rating-control :global(.track-wrap) { flex: 1; width: auto; min-width: 0; }
   .rating-control :global(.probability-readout) { flex: 0 0 44px; }
   .check-in-date { grid-column: 1 / -1; }
-  footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  footer { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  .card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
   footer button { font-size: 14px; padding: 8px 10px; }
   h3 { margin: 0; font-size: 13px; font-weight: 500; }
   .history-actions svg { flex: 0 0 auto; }
