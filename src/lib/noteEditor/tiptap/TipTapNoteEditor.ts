@@ -8,6 +8,7 @@
 // back as a single transaction. The shared adapter owns persistence: this view
 // only reports `onDocumentChanged` once per user transaction.
 
+import { isQuoteKey } from '../../quoteSelection'
 import { Editor, Extension } from '@tiptap/core'
 import { toggleMark as pmToggleMark } from '@tiptap/pm/commands'
 import { Fragment, Slice, type Node as PMNode, type Schema } from '@tiptap/pm/model'
@@ -927,6 +928,14 @@ class TipTapNoteEditor implements NoteEditorView {
     const mod = event.metaKey || event.ctrlKey
     const plainKey = !mod && !event.altKey && !event.shiftKey
     const key = event.key
+
+    if (isQuoteKey(event) && state.selection instanceof TextSelection && !state.selection.empty) {
+      const { from, to, anchor, head } = state.selection
+      const transaction = state.tr.insertText(key, to).insertText(key, from).setMeta(SOURCE, 'quote')
+      transaction.setSelection(TextSelection.create(transaction.doc, anchor + 1, head + 1))
+      this.view.dispatch(transaction)
+      return true
+    }
 
     if (this.slash?.isOpen) {
       if (plainKey && key === 'ArrowDown') { this.slash.move(1); return true }
