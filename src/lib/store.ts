@@ -1,4 +1,5 @@
 import { entityPatch, type EntityPatch } from './entityPatch'
+import { parseBrowserState, serializeBrowserState } from './browserState'
 import { generatedItemMarkers, preservedPlanItems, reconcileUneditedPlanItems } from './planGeneration'
 import { invoke, isTauri } from '@tauri-apps/api/core'
 import { noteItemsEqual } from './noteEditor/noteItems'
@@ -375,7 +376,7 @@ function sameStoredValue(left: unknown, right: unknown): boolean {
 function parseStoredState(raw: string | null): AppState | null {
   if (!raw) return null
   try {
-    const stored = JSON.parse(raw) as AppState & { canRedo?: unknown }
+    const stored = (isTauri() ? JSON.parse(raw) : parseBrowserState(raw)) as AppState & { canRedo?: unknown }
     if (stored.schemaVersion !== 1) return null
     redoAvailableState.set(stored.canRedo === true)
     const { canRedo: _canRedo, ...parsed } = stored
@@ -440,7 +441,7 @@ async function hydratePersistence(store: Writable<AppState>): Promise<void> {
 
 function persistLocalState(state: AppState): void {
   // Browser-only storage is device-local too; native persistence uses operations.
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+  localStorage.setItem(STORAGE_KEY, serializeBrowserState(state))
 }
 
 function splitPlacementForBeforeText(before: { html?: string; text?: string }): SplitPlacement {

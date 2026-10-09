@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openView } from '../helpers/navigation'
 
 test('Mac Cmd+V delivers the clipboard image to a list-template editor', async ({ page }) => {
   await notes(page)
@@ -273,6 +274,14 @@ test('original shortcut bypasses compression and mixed webpage paste retains sup
   expect(asset.height).toBe(2000)
   expect(asset.bytes).toBeGreaterThan(1_000_000)
   expect(asset.dataURL).toMatch(/^data:image\/png/)
+  await page.keyboard.press('ControlOrMeta+z')
+  await expect(page.locator('[data-note-text-input] img')).toHaveCount(1)
+  await page.keyboard.press('ControlOrMeta+Shift+z')
+  await expect(page.locator('[data-note-text-input] img')).toHaveCount(2)
+  await page.reload()
+  await openView(page, 'Notes')
+  await expect(page.locator('[data-note-text-input] img')).toHaveCount(2)
+  await expect(page.locator('[data-note-text-input]').first()).toContainText('A web passage')
 })
 
 test('image copy reuses bytes and floating layout stays attached to the text', async ({ page }, info) => {
