@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { isQuoteKey, wrapRangeInQuotes } from './quoteSelection'
   import { imageEditing } from './imageEditing'
   import { IMAGE_SELECTOR } from './imageMarkup'
   import { onMount } from 'svelte'
@@ -140,6 +141,23 @@
     if (onKeyDown) {
       onKeyDown(activeEditor, event)
       if (event.defaultPrevented) return
+    }
+
+    if (isQuoteKey(event) && hasNonCollapsedSelectionInside(activeEditor)) {
+      event.preventDefault()
+      const selection = document.getSelection()!
+      const backward = selection.anchorNode === selection.getRangeAt(0).endContainer &&
+        selection.anchorOffset === selection.getRangeAt(0).endOffset
+      const range = wrapRangeInQuotes(selection.getRangeAt(0), event.key)
+      selection.setBaseAndExtent(
+        backward ? range.endContainer : range.startContainer,
+        backward ? range.endOffset : range.startOffset,
+        backward ? range.startContainer : range.endContainer,
+        backward ? range.startOffset : range.endOffset,
+      )
+      persistEditor(activeEditor, false, { mergeHistory: false })
+      lastInteractionSelection = saveSelection(activeEditor)
+      return
     }
 
     if (
