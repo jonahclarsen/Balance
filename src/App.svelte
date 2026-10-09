@@ -3588,9 +3588,19 @@ return rows`
       return
     }
 
-    if (documentFindOpen && event.key === 'Escape') {
+    if (documentFindOpen && !event.isComposing && !event.altKey && (
+      (primaryModifier && key === 'g') || (!primaryModifier && event.key === 'F3')
+    )) {
       event.preventDefault()
-      documentFindOpen = false
+      event.stopPropagation()
+      documentFindBar?.find(event.shiftKey)
+      return
+    }
+
+    if (documentFindOpen && !event.isComposing && event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      documentFindBar?.close()
       return
     }
 
@@ -6282,7 +6292,7 @@ return rows`
 <svelte:document on:selectionchange={rememberActiveItemCaret} on:visibilitychange={stopKeyboardScroll} />
 
 {#if documentFindOpen}
-  <DocumentFindBar bind:this={documentFindBar} onClose={() => (documentFindOpen = false)} />
+  <DocumentFindBar bind:this={documentFindBar} root={workspaceEl} onClose={() => (documentFindOpen = false)} />
 {/if}
 
 {#if $persistenceError}
