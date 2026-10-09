@@ -2325,6 +2325,51 @@ for (const side of ['start', 'end'] as const) {
   })
 }
 
+for (const shift of [false, true]) {
+  for (const side of ['start', 'end'] as const) {
+    test(`dragging the ${side} time enforces a ${shift ? 5 : 15}-minute minimum`, async ({ page, isMobile }) => {
+      test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
+      await page.goto('/')
+      await page.evaluate((date) => {
+        localStorage.clear()
+        localStorage.setItem('balance.appState.v1', JSON.stringify({
+          schemaVersion: 1, deviceId: 'test-device', localSequence: 0, historyRevision: 0,
+          activePlanDate: date, templates: [],
+          plans: [{ id: 'plan_minimum_time', date, dailyReminder: '', items: [{
+            id: 'minimum-task', text: 'Minimum task', html: 'Minimum task', done: false,
+            startMinutes: 540, endMinutes: 570, children: [],
+          }] }],
+          goals: [], goalCompletions: [], operations: [],
+        }))
+      }, todayISO())
+      await page.reload()
+
+      const row = page.getByRole('listitem', { name: /Plan item: Minimum task/ })
+      const source = row.locator(`.time-${side}-side .time-part`)
+      const minimum = shift ? 5 : 15
+      if (shift) await page.keyboard.down('Shift')
+      try {
+        const drag = (distance: number) => side === 'start'
+          ? altVerticalDrag(page, source, -distance)
+          : verticalDrag(page, source, distance)
+        await drag(shift ? 50 : 10)
+        const expected = side === 'start' ? [570 - minimum, 570] : [540, 540 + minimum]
+        await expect.poll(() => planItemTimeRange(page, 'Minimum task')).toEqual(expected)
+
+        // Crossing the minimum keeps the start fixed for Alt-drag, and moves
+        // the whole minimum-duration block when dragging the end.
+        await drag(10)
+        const crossed = side === 'start' ? expected : [540 - minimum, 540]
+        await expect.poll(() => planItemTimeRange(page, 'Minimum task')).toEqual(crossed)
+        await page.reload()
+        await expect.poll(() => planItemTimeRange(page, 'Minimum task')).toEqual(crossed)
+      } finally {
+        if (shift) await page.keyboard.up('Shift')
+      }
+    })
+  }
+}
+
 test('alt-dragging a plan start time changes only the start time', async ({ page, isMobile }) => {
   test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
   await page.goto('/')

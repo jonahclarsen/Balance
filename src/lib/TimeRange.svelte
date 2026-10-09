@@ -66,7 +66,8 @@
     if (!dragState) return
 
     const steps = Math.round((dragState.originY - event.clientY) / dragPixelsPerStep)
-    const delta = steps * (event.shiftKey ? 5 : 15)
+    const stepMinutes = event.shiftKey ? 5 : 15
+    const delta = steps * stepMinutes
 
     if (steps !== dragState.lastSteps) {
       const crossedSteps = Math.abs(steps - dragState.lastSteps)
@@ -81,7 +82,7 @@
 
     if (dragState.mode === 'start') {
       if (dragState.adjustStartOnly) {
-        const latestStart = dragState.originEnd - 15
+        const latestStart = dragState.originEnd - stepMinutes
         const nextStart = clampMinutes(Math.min(dragState.originStart + delta, latestStart))
         onChange(nextStart, dragState.originEnd)
         return
@@ -95,15 +96,15 @@
     }
 
     const desiredEnd = dragState.originEnd + delta
-    const minimumEnd = dragState.originStart + 15
+    const minimumEnd = dragState.originStart + stepMinutes
 
     if (desiredEnd >= minimumEnd) {
       onChange(dragState.originStart, clampMinutes(desiredEnd))
       return
     }
 
-    const nextStart = clampMinutes(desiredEnd - 15)
-    onChange(nextStart, nextStart + 15)
+    const nextStart = clampMinutes(desiredEnd - stepMinutes)
+    onChange(nextStart, nextStart + stepMinutes)
   }
 
   function endDrag() {
