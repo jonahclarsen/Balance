@@ -10,6 +10,7 @@
 // `callbacks.onDocumentChanged` and serializes blocks on `readBlocks()`.
 // Lexical's history is not registered; the app owns undo.
 
+import { isQuoteKey } from '../../quoteSelection'
 import {
   $createRangeSelectionFromDom,
   $getNearestNodeFromDOMNode,
@@ -1126,6 +1127,26 @@ class LexicalNoteEditorView implements NoteEditorView {
     const mod = event.metaKey || event.ctrlKey
     const plain = !mod && !event.altKey && !event.shiftKey
     if (!event.isComposing && !this.isComposing()) this.$syncSelectionFromDOM()
+
+    if (isQuoteKey(event)) {
+      const selection = $currentRange()
+      const edges = selection && !selection.isCollapsed() ? $selectionEdges(selection) : null
+      if (edges) {
+        event.preventDefault()
+        this.pendingSource = 'quote'
+        const backward = selection!.isBackward()
+        $selectOffset(edges.end.block, edges.end.offset).insertText(event.key)
+        $selectOffset(edges.start.block, edges.start.offset).insertText(event.key)
+        const start = $selectOffset(edges.start.block, edges.start.offset + 1).clone()
+        const endOffset = edges.end.offset + (edges.start.block.is(edges.end.block) ? 1 : 0)
+        const end = $selectOffset(edges.end.block, endOffset)
+        const next = backward ? end.clone() : start
+        const focus = backward ? start.anchor : end.anchor
+        next.focus.set(focus.key, focus.offset, focus.type)
+        $setSelection(next)
+        return true
+      }
+    }
 
     if (this.slash?.isOpen) {
       if (plain && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {

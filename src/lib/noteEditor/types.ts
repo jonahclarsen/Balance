@@ -26,9 +26,9 @@ export type NoteEditorSelectionState = {
   multiBlock: boolean
 }
 
-// Why the document changed. `paste` and `image` edits become their own undo
-// step instead of merging into the surrounding typing.
-export type NoteEditorChangeSource = 'typing' | 'paste' | 'image' | 'command'
+// Why the document changed. `paste`, `image` and `quote` edits become their own
+// undo step instead of merging into the surrounding typing.
+export type NoteEditorChangeSource = 'typing' | 'paste' | 'image' | 'command' | 'quote'
 
 export type NoteEditorHostCallbacks = {
   // The document changed because of a user action (typing, command, paste…).

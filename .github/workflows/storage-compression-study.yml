@@ -1,0 +1,40 @@
+name: Synthetic storage compression study
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: Workload to measure
+        type: choice
+        default: all
+        options: [all, typical-year, typical-decade, full-decade, churn-decade, diverse-decade, plans-decade]
+
+permissions:
+  contents: read
+
+jobs:
+  study:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJSON(inputs.scenario == 'all' && '["typical-year","typical-decade","full-decade","churn-decade","diverse-decade","plans-decade"]' || format('["{0}"]', inputs.scenario)) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r scripts/storage-study/requirements.txt
+      - name: Verify codecs and storage lifecycle using synthetic data
+        run: python scripts/storage-study/study.py --verify
+      - name: Benchmark three independent synthetic histories
+        run: python scripts/storage-study/study.py --scenario '${{ matrix.scenario }}' --output results
+      - name: Publish measurements
+        run: cat results/summary.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: storage-study-${{ matrix.scenario }}
+          path: results
+          retention-days: 30

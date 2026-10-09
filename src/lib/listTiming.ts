@@ -149,18 +149,27 @@ export function summarizeListTiming(lists: ListInstance[], listTemplateId: Id): 
   }
 }
 
+// Compare at the displayed minute so "8 min" never reads as over an 8 min ideal.
+export function exceedsIdealMinutes(ms: number, idealMinutes: number | undefined): boolean {
+  return Boolean(idealMinutes) && roundedMinutes(ms) > (idealMinutes ?? 0)
+}
+
 // Suggest trimming when recent runs have consistently gone past the ideal.
 export function shouldSuggestTrim(summary: ListTimingSummary, idealMinutes: number | undefined): boolean {
-  if (!idealMinutes || summary.typicalRunMs === null || summary.runCount < MIN_RUNS_FOR_NUDGE) return false
-  return summary.typicalRunMs > idealMinutes * 60_000
+  if (summary.typicalRunMs === null || summary.runCount < MIN_RUNS_FOR_NUDGE) return false
+  return exceedsIdealMinutes(summary.typicalRunMs, idealMinutes)
+}
+
+function roundedMinutes(ms: number): number {
+  return Math.round(Math.max(0, Math.round(ms / 1000)) / 60)
 }
 
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000))
-  if (totalSeconds < 60) return `${totalSeconds}s`
-  const totalMinutes = Math.round(totalSeconds / 60)
-  if (totalMinutes < 60) return `${totalMinutes}m`
+  if (totalSeconds < 60) return `${totalSeconds} sec`
+  const totalMinutes = roundedMinutes(ms)
+  if (totalMinutes < 60) return `${totalMinutes} min`
   const hours = Math.floor(totalMinutes / 60)
   const minutes = totalMinutes % 60
-  return minutes ? `${hours}h ${minutes}m` : `${hours}h`
+  return minutes ? `${hours} hr ${minutes} min` : `${hours} hr`
 }

@@ -17,8 +17,8 @@
 
   // The data layer keeps accepting 10% so previously saved low-probability
   // items survive unchanged. Only those grandfathered items expose that lower
-  // range; every item currently at 30% or above uses the normal UI minimum.
-  const NORMAL_MIN_LIST_ITEM_PROBABILITY = 30
+  // range; every item currently at 25% or above uses the normal UI minimum.
+  const NORMAL_MIN_LIST_ITEM_PROBABILITY = 25
   const PROBABILITY_DRAG_MERGE_WINDOW_MS = 1500
 
   export let item: ListTemplateItem

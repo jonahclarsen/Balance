@@ -1,320 +1,218 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
+  import { findTextRanges, normalizeFindText, scrollFindRangeIntoView } from './documentFind'
 
   export let onClose: () => void
+  export let root: HTMLElement | null
 
+  let bar: HTMLDivElement | null = null
   let input: HTMLInputElement | null = null
   let query = ''
-  let found: boolean | null = null
-  let findTimeout: number | null = null
-  let focusTimeout: number | null = null
-  let refreshTimeout: number | null = null
-  let highlightedQuery = ''
-  let highlightedRange: Range | null = null
+  let searchedQuery = ''
   let matchRanges: Range[] = []
   let activeMatchIndex = -1
-  let highlightRects: Array<{ top: number; left: number; width: number; height: number }> = []
+  let dirty = true
+  let composing = false
+  let disposed = false
+  let searchTimeout: number | undefined
+  let observer: MutationObserver | null = null
+  let returnFocus: HTMLElement | null = null
+  let returnSelection: Range | null = null
+  let returnInputSelection: [number, number] | null = null
 
-  const highlightName = 'balance-document-find-match'
-  const findUISelector = '.document-find, .find-match-overlay'
+  const activeHighlightName = 'balance-document-find-match'
+  const allHighlightName = 'balance-document-find-all'
+  $: hasQuery = Boolean(normalizeFindText(query).text.trim())
+  $: status = !hasQuery || searchedQuery !== query ? ''
+    : matchRanges.length ? `${activeMatchIndex + 1}/${matchRanges.length} matches` : 'No matches'
 
   onMount(() => {
     void focus()
-    window.addEventListener('scroll', updateHighlightRects, true)
-    window.addEventListener('resize', updateHighlightRects)
-    const observer = new MutationObserver((records) => {
-      if (!query || !records.some(isDocumentChange)) return
-      if (refreshTimeout !== null) return
-      refreshTimeout = window.setTimeout(() => {
-        refreshTimeout = null
-        // A pending query change performs its own search and scroll.
-        if (findTimeout !== null) return
-        refreshMatches()
-        showHighlight()
-      }, 100)
+    observer = new MutationObserver(invalidate)
+    if (root) observer.observe(root, {
+      subtree: true, childList: true, characterData: true, attributes: true,
+      attributeFilter: ['hidden', 'aria-hidden', 'inert', 'class', 'style', 'open'],
     })
-    observer.observe(document.body, {
-      subtree: true,
-      childList: true,
-      characterData: true,
-      attributes: true,
-      attributeFilter: ['hidden', 'aria-hidden'],
-    })
+    window.addEventListener('resize', invalidate)
     return () => {
-      observer.disconnect()
-      window.removeEventListener('scroll', updateHighlightRects, true)
-      window.removeEventListener('resize', updateHighlightRects)
+      observer?.disconnect()
+      window.removeEventListener('resize', invalidate)
     }
   })
 
+  onDestroy(() => {
+    disposed = true
+    window.clearTimeout(searchTimeout)
+    clearHighlights()
+  })
+
+  function rememberReturnFocus() {
+    const active = document.activeElement
+    if (active instanceof HTMLElement && active !== document.body && !bar?.contains(active)) {
+      returnFocus = active
+      const selection = window.getSelection()
+      returnSelection = selection?.rangeCount && active.contains(selection.anchorNode)
+        ? selection.getRangeAt(0).cloneRange() : null
+      returnInputSelection = (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)
+        && active.selectionStart !== null && active.selectionEnd !== null
+        ? [active.selectionStart, active.selectionEnd] : null
+    }
+  }
+
   export async function focus() {
+    rememberReturnFocus()
     await tick()
-    input?.focus()
+    if (disposed) return
+    input?.focus({ preventScroll: true })
     input?.select()
   }
 
-  onDestroy(() => {
-    if (findTimeout !== null) window.clearTimeout(findTimeout)
-    if (focusTimeout !== null) window.clearTimeout(focusTimeout)
-    if (refreshTimeout !== null) window.clearTimeout(refreshTimeout)
-    CSS.highlights.delete(highlightName)
-  })
-
-  function isDocumentChange(record: MutationRecord): boolean {
-    const target = record.target instanceof Element ? record.target : record.target.parentElement
-    if (target?.closest(findUISelector)) return false
-    if (record.type !== 'childList') return true
-    // The overlay is mounted alongside the document, so ignore its insertion
-    // and removal too; otherwise highlighting would trigger another search.
-    return [...record.addedNodes, ...record.removedNodes].some((node) =>
-      node instanceof Element
-        ? !node.matches(findUISelector)
-        : node instanceof Text && Boolean(node.data.trim()),
-    )
-  }
-
-  function clearHighlight() {
-    highlightedQuery = ''
-    highlightedRange = null
-    matchRanges = []
-    activeMatchIndex = -1
-    highlightRects = []
-    CSS.highlights.delete(highlightName)
-  }
-
-  function findTextRanges(searchQuery: string): Range[] {
-    type TextPiece = { node: Text; start: number; end: number }
-    type TextRun = { block: Element; text: string; pieces: TextPiece[] }
-
-    const runs: TextRun[] = []
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-      acceptNode(node) {
-        const text = node instanceof Text ? node : null
-        const parent = text?.parentElement
-        if (!text?.data || !parent) return NodeFilter.FILTER_REJECT
-        if (parent.closest('.document-find, .find-match-overlay, script, style, noscript, [hidden], [aria-hidden="true"]')) {
-          return NodeFilter.FILTER_REJECT
-        }
-
-        const range = document.createRange()
-        range.selectNodeContents(text)
-        return range.getClientRects().length > 0 ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT
-      },
-    })
-
-    let node = walker.nextNode()
-    while (node) {
-      const text = node as Text
-      const block = textBlock(text)
-      if (block) {
-        let run = runs.at(-1)
-        if (!run || run.block !== block) {
-          run = { block, text: '', pieces: [] }
-          runs.push(run)
-        }
-        const start = run.text.length
-        run.text += text.data
-        run.pieces.push({ node: text, start, end: run.text.length })
-      }
-      node = walker.nextNode()
-    }
-
-    const needle = searchQuery.toLocaleLowerCase()
-    const ranges: Range[] = []
-    for (const run of runs) {
-      const haystack = run.text.toLocaleLowerCase()
-      let matchStart = haystack.indexOf(needle)
-      while (matchStart !== -1) {
-        const matchEnd = matchStart + needle.length
-        const startPiece = run.pieces.find((piece) => matchStart >= piece.start && matchStart < piece.end)
-        const endPiece = run.pieces.find((piece) => matchEnd > piece.start && matchEnd <= piece.end)
-        if (startPiece && endPiece) {
-          const range = document.createRange()
-          range.setStart(startPiece.node, matchStart - startPiece.start)
-          range.setEnd(endPiece.node, matchEnd - endPiece.start)
-          ranges.push(range)
-        }
-        matchStart = haystack.indexOf(needle, matchEnd)
+  export function close(restoreFocus = Boolean(bar?.contains(document.activeElement))) {
+    // Only restore focus when leaving the bar itself. Closing after clicking
+    // into a different editor must not send the caret back to the old one.
+    if (restoreFocus && returnFocus?.isConnected && returnFocus.getClientRects().length) {
+      returnFocus.focus({ preventScroll: true })
+      if (returnInputSelection && (returnFocus instanceof HTMLInputElement || returnFocus instanceof HTMLTextAreaElement)) {
+        returnFocus.setSelectionRange(...returnInputSelection)
+      } else if (returnSelection && returnFocus.contains(returnSelection.commonAncestorContainer)) {
+        const selection = window.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(returnSelection)
       }
     }
-    return ranges
+    onClose()
   }
 
-  function textBlock(text: Text): Element | null {
-    let element = text.parentElement
-    const fallback = element
-    while (element && element !== document.body) {
-      const display = window.getComputedStyle(element).display
-      if (display !== 'contents' && !display.startsWith('inline')) return element
-      element = element.parentElement
-    }
-    return fallback
+  function clearHighlights() {
+    CSS.highlights?.delete(activeHighlightName)
+    CSS.highlights?.delete(allHighlightName)
   }
 
-  function updateHighlightRects() {
-    if (
-      !highlightedRange?.startContainer.isConnected
-      || !highlightedRange.endContainer.isConnected
-    ) {
-      if (highlightRects.length > 0) highlightRects = []
+  function showHighlights(refreshAll = false) {
+    if (!CSS.highlights || typeof Highlight === 'undefined') return
+    if (!matchRanges.length) {
+      clearHighlights()
       return
     }
-
-    highlightRects = Array.from(highlightedRange.getClientRects())
-      .filter((rect) => rect.width > 0 && rect.height > 0)
-      .map((rect) => ({
-        top: Math.max(0, rect.top),
-        left: Math.max(0, rect.left),
-        width: Math.max(0, Math.min(window.innerWidth, rect.right) - Math.max(0, rect.left)),
-        height: Math.max(0, Math.min(window.innerHeight, rect.bottom) - Math.max(0, rect.top)),
-      }))
-      .filter((rect) => rect.width > 0 && rect.height > 0)
+    if (refreshAll) {
+      const all = new Highlight()
+      for (const range of matchRanges) all.add(range)
+      CSS.highlights.set(allHighlightName, all)
+    }
+    const active = new Highlight()
+    const range = matchRanges[activeMatchIndex]
+    if (range) active.add(range)
+    active.priority = 1
+    CSS.highlights.set(activeHighlightName, active)
   }
 
-  function scrollRangeIntoView(range: Range) {
-    const matchElement = range.startContainer instanceof Element
-      ? range.startContainer
-      : range.startContainer.parentElement
-    if (!matchElement) return
-
-    let scrollContainer = matchElement.parentElement
-    let scrolledContainer = false
-    while (scrollContainer) {
-      const overflowY = window.getComputedStyle(scrollContainer).overflowY
-      if (/(auto|scroll|overlay)/.test(overflowY) && scrollContainer.scrollHeight > scrollContainer.clientHeight) {
-        const matchRect = range.getBoundingClientRect()
-        const containerRect = scrollContainer.getBoundingClientRect()
-        const effectiveZoom = matchElement.currentCSSZoom || 1
-        scrollContainer.scrollTop += (
-          matchRect.top - containerRect.top - (containerRect.height - matchRect.height) / 2
-        ) / effectiveZoom
-        scrolledContainer = true
-      }
-      scrollContainer = scrollContainer.parentElement
-    }
-
-    if (!scrolledContainer) matchElement.scrollIntoView({ block: 'center', inline: 'nearest' })
-  }
-
-  function scheduleFind(event: Event) {
-    const nextQuery = event.currentTarget instanceof HTMLInputElement
-      ? event.currentTarget.value
-      : query
-    if (nextQuery !== highlightedQuery) {
-      found = null
-      clearHighlight()
-    }
-
-    if (findTimeout !== null) window.clearTimeout(findTimeout)
-    findTimeout = window.setTimeout(() => {
-      findTimeout = null
-      find()
+  function invalidate() {
+    dirty = true
+    if (searchTimeout !== undefined || composing || !hasQuery) return
+    searchTimeout = window.setTimeout(() => {
+      searchTimeout = undefined
+      refreshMatches()
     }, 100)
   }
 
   function refreshMatches() {
-    if (!query) {
-      found = null
-      clearHighlight()
-      return
-    }
-
-    const previousRange = highlightedQuery === query ? highlightedRange : null
-    matchRanges = findTextRanges(query)
-    const retainedIndex = previousRange ? matchRanges.findIndex((range) =>
-      range.startContainer === previousRange.startContainer
-      && range.startOffset === previousRange.startOffset
-      && range.endContainer === previousRange.endContainer
-      && range.endOffset === previousRange.endOffset,
+    // Drain records synchronously so Enter immediately after an edit cannot
+    // navigate stale live Ranges before the observer's microtask runs.
+    if (observer?.takeRecords().length) dirty = true
+    if (!dirty && searchedQuery === query) return true
+    const previous = searchedQuery === query ? matchRanges[activeMatchIndex] : null
+    const previousIndex = activeMatchIndex
+    matchRanges = root ? findTextRanges(root, query) : []
+    const retained = previous ? matchRanges.findIndex((range) =>
+      range.startContainer === previous.startContainer && range.startOffset === previous.startOffset
+      && range.endContainer === previous.endContainer && range.endOffset === previous.endOffset,
     ) : -1
-    activeMatchIndex = matchRanges.length === 0 ? -1
-      : retainedIndex !== -1 ? retainedIndex
-      : Math.min(Math.max(activeMatchIndex, 0), matchRanges.length - 1)
-    highlightedQuery = query
-    found = matchRanges.length > 0
-    highlightedRange = matchRanges[activeMatchIndex] ?? null
+    activeMatchIndex = !matchRanges.length ? -1 : retained >= 0 ? retained
+      : searchedQuery === query ? Math.min(Math.max(previousIndex, 0), matchRanges.length - 1) : 0
+    searchedQuery = query
+    dirty = false
+    showHighlights(true)
+    return retained >= 0
   }
 
-  function showHighlight(scroll = false) {
-    CSS.highlights.delete(highlightName)
-    if (highlightedRange) {
-      CSS.highlights.set(highlightName, new Highlight(highlightedRange))
-      if (scroll) scrollRangeIntoView(highlightedRange)
-    }
-    updateHighlightRects()
-  }
-
-  function find(backwards = false) {
-    if (findTimeout !== null) {
-      window.clearTimeout(findTimeout)
-      findTimeout = null
-    }
-
-    if (!query) {
-      found = null
-      clearHighlight()
+  function scheduleFind() {
+    window.clearTimeout(searchTimeout)
+    searchTimeout = undefined
+    dirty = true
+    clearHighlights()
+    searchedQuery = ''
+    matchRanges = []
+    activeMatchIndex = -1
+    if (composing) return
+    if (!normalizeFindText(query).text.trim()) {
+      searchedQuery = query
       return
     }
+    searchTimeout = window.setTimeout(() => {
+      searchTimeout = undefined
+      refreshMatches()
+      const range = matchRanges[activeMatchIndex]
+      if (range) scrollFindRangeIntoView(range)
+    }, 100)
+  }
 
-    const selectionStart = input?.selectionStart ?? query.length
-    const selectionEnd = input?.selectionEnd ?? selectionStart
-
-    const advance = highlightedQuery === query && matchRanges.length > 0
-    // DOM Ranges are live: removing a task can move their endpoints onto a
-    // connected ancestor. isConnected alone cannot validate cached matches.
-    refreshMatches()
-    if (found) {
-      activeMatchIndex = !advance
-        ? (backwards ? matchRanges.length - 1 : 0)
-        : (activeMatchIndex + (backwards ? -1 : 1) + matchRanges.length) % matchRanges.length
-      highlightedRange = matchRanges[activeMatchIndex]
-    } else {
-      activeMatchIndex = -1
-      highlightedRange = null
-      highlightRects = []
+  export function find(backwards = false) {
+    if (composing) return
+    window.clearTimeout(searchTimeout)
+    searchTimeout = undefined
+    const advance = searchedQuery === query && matchRanges.length > 0
+    const previousIndex = activeMatchIndex
+    const retained = refreshMatches()
+    if (matchRanges.length) {
+      if (advance) {
+        // If the active match vanished before the observer ran, its successor
+        // now occupies the same index. Do not skip it when moving forward.
+        const index = retained ? activeMatchIndex : previousIndex
+        const step = backwards ? -1 : retained ? 1 : 0
+        activeMatchIndex = (index + step + matchRanges.length) % matchRanges.length
+      } else {
+        activeMatchIndex = backwards ? matchRanges.length - 1 : 0
+      }
+      showHighlights()
+      scrollFindRangeIntoView(matchRanges[activeMatchIndex]!)
     }
-
-    showHighlight(true)
-
-    if (focusTimeout !== null) window.clearTimeout(focusTimeout)
-    focusTimeout = window.setTimeout(() => {
-      focusTimeout = null
-      input?.focus({ preventScroll: true })
-      input?.setSelectionRange(selectionStart, selectionEnd)
-    })
+    // Synchronous focus avoids stealing it back after a subsequent click.
+    input?.focus({ preventScroll: true })
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Enter') return
+    if (event.isComposing || event.key !== 'Enter') return
     event.preventDefault()
+    event.stopPropagation()
     find(event.shiftKey)
   }
 </script>
 
-{#each highlightRects as rect}
-  <span
-    class="find-match-overlay"
-    aria-hidden="true"
-    style={`top: ${rect.top}px; left: ${rect.left}px; width: ${rect.width}px; height: ${rect.height}px;`}
-  ></span>
-{/each}
-
-<div class="document-find" role="search" aria-label="Find in current document">
+<div bind:this={bar} class="document-find" role="search" aria-label="Find in current view" on:pointerdown={rememberReturnFocus}>
   <input
     bind:this={input}
     type="search"
     aria-label="Find text"
+    aria-describedby="document-find-status"
     placeholder="Find in current view"
+    autocomplete="off"
+    spellcheck={false}
     bind:value={query}
-    on:input={scheduleFind}
+    on:input={(event) => { query = event.currentTarget.value; scheduleFind() }}
+    on:compositionstart={() => { composing = true; window.clearTimeout(searchTimeout); searchTimeout = undefined }}
+    on:compositionend={() => { composing = false; scheduleFind() }}
     on:keydown={handleKeydown}
   />
-  <span class:missing={found === false} class="find-status" role="status">
-    {found === false ? 'No matches' : found === true ? `${activeMatchIndex + 1}/${matchRanges.length} matches` : ''}
-  </span>
-  <button type="button" title="Previous match (Shift+Enter)" aria-label="Previous match" on:click={() => find(true)}>↑</button>
-  <button type="button" title="Next match (Enter)" aria-label="Next match" on:click={() => find()}>↓</button>
-  <button type="button" title="Close (Escape)" aria-label="Close find" on:click={onClose}>×</button>
+  <span id="document-find-status" class:missing={status === 'No matches'} class="find-status" role="status" aria-atomic="true">{status}</span>
+  <button type="button" title="Previous match (Shift+Enter)" aria-label="Previous match" disabled={!hasQuery || status === 'No matches'} on:click={() => find(true)}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 14 6-6 6 6" /></svg>
+  </button>
+  <button type="button" title="Next match (Enter)" aria-label="Next match" disabled={!hasQuery || status === 'No matches'} on:click={() => find()}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 10 6 6 6-6" /></svg>
+  </button>
+  <button type="button" title="Close (Escape)" aria-label="Close find" on:click={() => close(true)}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
+  </button>
 </div>
 
 <style>
@@ -354,16 +252,19 @@
     width: 28px;
     height: 28px;
     padding: 0;
-    text-align: center;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
   }
 
-  .find-match-overlay {
-    position: fixed;
-    z-index: 74;
-    border-radius: 2px;
-    background-color: color-mix(in srgb, var(--accent) 32%, transparent);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 48%, transparent);
-    pointer-events: none;
+  :global(::highlight(balance-document-find-all)) {
+    background-color: color-mix(in srgb, var(--accent) 24%, transparent);
+  }
+
+  :global(::highlight(balance-document-find-match)) {
+    background-color: var(--accent);
+    color: var(--paper);
+    text-decoration: underline;
   }
 
   @media (max-width: 520px) {

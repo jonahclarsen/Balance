@@ -44,7 +44,8 @@ Title Enter focuses the end of the body, Tab its beginning, and Shift+Tab at the
 first body block returns to the title.
 
 Bold, italic, and underline are toggles through shortcuts and the toolbar.
-Markdown prefixes and the slash menu change block kinds. Checklist toggles
+Typing a quote around selected text preserves its formatting and selection,
+and forms its own undo step. Markdown prefixes and the slash menu change block kinds. Checklist toggles
 cascade to descendants and reconcile ancestors. Selected checklist blocks can
 be toggled together. External URLs and Balance app links retain their navigation
 behavior. Search and document find include the note body.

@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { listRunTiming, shouldSuggestTrim, summarizeListTiming } from '../../src/lib/listTiming'
+import { formatDuration, listRunTiming, shouldSuggestTrim, summarizeListTiming } from '../../src/lib/listTiming'
 import type { ListInstance, PlanItem } from '../../src/lib/types'
 
 const minute = 60_000
@@ -67,4 +67,11 @@ test('a list left unattended for over an hour is not timed', () => {
 
   const lists = [1, 2, 3].map((day) => run(day, [row('a', 0), row('b', 2), row('c', 90)]))
   expect(summarizeListTiming(lists, 'template').runCount).toBe(0)
+})
+
+test('a run that rounds to the ideal minute is not treated as over it', () => {
+  const summary = { runCount: 3, typicalRunMs: 8 * minute + 20_000, typicalItemMs: new Map() }
+  expect(formatDuration(summary.typicalRunMs)).toBe('8 min')
+  expect(shouldSuggestTrim(summary, 8)).toBe(false)
+  expect(shouldSuggestTrim({ ...summary, typicalRunMs: 8 * minute + 40_000 }, 8)).toBe(true)
 })

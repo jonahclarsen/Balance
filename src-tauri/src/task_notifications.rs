@@ -118,7 +118,7 @@ mod platform {
         match unsafe { balance_replace_task_notifications(json.as_ptr()) } {
             0 => Ok(()),
             2 => Err(
-                "Allow Balance notifications in macOS System Settings to receive sunset reminders"
+                "Allow Balance notifications in macOS System Settings to receive task reminders"
                     .into(),
             ),
             _ => Err("macOS could not register task notifications".into()),
