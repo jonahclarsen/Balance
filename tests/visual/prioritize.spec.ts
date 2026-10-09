@@ -19,7 +19,14 @@ async function storeCall(page: Page, script: string) {
 async function seed(page: Page) {
   await page.clock.install({ time: new Date('2026-08-20T18:00:00Z') })
   await page.goto('/')
-  await storeCall(page, "plannerStore.addGoal('Synthetic overdue goal', 7, [], 40)")
+  // Start from no goals: a fresh workspace ships a starter goal that would
+  // otherwise be due and take a priority row.
+  await storeCall(page, `
+    let goals = []
+    plannerStore.subscribe((state) => { goals = state.goals })()
+    for (const goal of goals) plannerStore.deleteGoal(goal.id)
+    plannerStore.addGoal('Synthetic overdue goal', 7, [], 40)
+  `)
   await page.clock.setSystemTime(NOW)
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await storeCall(page, `

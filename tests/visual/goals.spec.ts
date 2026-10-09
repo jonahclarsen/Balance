@@ -21,6 +21,12 @@ test.beforeEach(async ({ page }) => {
   await page.reload()
 })
 
+// A fresh workspace already holds the starter "Recommit to Default day" goal,
+// so tests address the goal they created rather than the first card.
+function goalCard(page: import('@playwright/test').Page, name: string) {
+  return page.locator('.goal-card', { has: page.getByLabel(`Goal name: ${name}`) })
+}
+
 async function openGoalsFromRhythm(page: import('@playwright/test').Page) {
   const panel = page.locator('.goal-history-panel')
   await expect(panel.getByRole('button', { name: 'Manage goals' })).toHaveCount(0)
@@ -141,8 +147,7 @@ test('a new goal receives the color previewed by the add button and has no color
     const goal = state.goals.find((candidate: { name: string }) => candidate.name === 'Exercise')
     return { hue: goal.hue, lightness: goal.lightness }
   })).toEqual({ hue: previewHue, lightness: 50 })
-  const exerciseCard = page.getByRole('article').filter({ has: page.getByLabel('Goal name: Exercise') })
-  await expect(exerciseCard.locator('.goal-card-accent')).toHaveCSS('background-color', previewColor)
+  await expect(goalCard(page, 'Exercise').locator('.goal-card-accent')).toHaveCSS('background-color', previewColor)
   await expect(page.getByLabel('New goal color')).toHaveCount(0)
   await expect(page.getByLabel('Color for Exercise')).toHaveCount(0)
 
@@ -398,7 +403,7 @@ test('goal matching terms preserve rich text and turn a pasted URL into a link',
     .poll(() =>
       page.evaluate(() => {
         const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-        const goal = state.goals?.[0]
+        const goal = state.goals?.find((candidate: { name: string }) => candidate.name === 'Exercise')
         return { matchTerms: goal?.matchTerms, matchTermsHtml: goal?.matchTermsHtml }
       }),
     )
@@ -529,7 +534,7 @@ test('goal names preserve rich text and turn a pasted URL into a link', async ({
     .poll(() =>
       page.evaluate(() => {
         const state = JSON.parse(localStorage.getItem('balance.appState.v1') || '{}')
-        const goal = state.goals?.[0]
+        const goal = state.goals?.find((candidate: { name: string }) => candidate.name === 'Exercise daily')
         return { name: goal?.name, nameHtml: goal?.nameHtml }
       }),
     )
@@ -950,9 +955,9 @@ test('old goal snapshots survive rule edits and archived goals leave rhythm', as
     .toBe(true)
 
   await expect(page.getByRole('button', { name: 'Delete', exact: true })).toHaveCount(0)
-  await page.getByRole('button', { name: 'Archive', exact: true }).click()
+  await goalCard(page, 'Exercise').getByRole('button', { name: 'Archive', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible()
-  await expect(page.getByText('Archived', { exact: true })).toBeVisible()
+  await expect(goalCard(page, 'Exercise').getByText('Archived', { exact: true })).toBeVisible()
   await expect(page.locator('.goal-history-name', { hasText: 'Exercise' })).toHaveCount(0)
   await expect(page.locator(`.goal-day-cell[title="Exercise · ${oldDate} · completed"]`)).toHaveCount(0)
 
@@ -1740,7 +1745,8 @@ test('goal rhythm bolds the current day and keeps it bold when another day is se
   await expect(tomorrowHead.locator('strong')).toHaveCSS('font-weight', '600')
   // The dashed viewed-day outline sits over the selected day's cell.
   await expect.poll(async () => {
-    const cell = await page.locator(`.goal-day-cell[title*="${tomorrow}"]`).boundingBox()
+    // Title-scoped to this goal's row: the starter goal also has a cell for that day.
+    const cell = await page.locator(`.goal-day-cell[title*="Exercise · ${tomorrow}"]`).boundingBox()
     const marker = await page.locator('.goal-viewed-day-marker').first().boundingBox()
     return cell && marker ? Math.round(marker.x - cell.x) : null
   }).toBe(2)
@@ -2315,7 +2321,7 @@ test('goal rhythm uses dark segment and open-circle colors in dark mode', async 
 
 test('goal cards show their saved completion count without frozen-history text', async ({ page }) => {
   await createGoal(page, 'Exercise', 3, 'lift, swim')
-  await expect(page.locator('.goal-card-meta')).toHaveText('0 saved completions')
+  await expect(goalCard(page, 'Exercise').locator('.goal-card-meta')).toHaveText('0 saved completions')
   await expect(page.getByLabel('Matching terms for Exercise')).toHaveCSS('cursor', 'text')
   await expect(page.getByText(/history before .* is frozen/i)).toHaveCount(0)
 })
@@ -2324,7 +2330,7 @@ test('iridescent goal cards do not draw a decorative corner outline', async ({ p
   await selectDeviceThemeForTest(page, 'iridescent')
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 
-  const card = page.locator('.goal-card')
+  const card = goalCard(page, 'Exercise')
   await expect(card).toHaveCSS('border-color', 'rgb(221, 211, 230)')
   await expect.poll(() => card.evaluate((element) => getComputedStyle(element, '::after').content)).toBe('none')
 })
@@ -2332,9 +2338,9 @@ test('iridescent goal cards do not draw a decorative corner outline', async ({ p
 test('long goal names truncate without overlapping status or archive actions', async ({ page }) => {
   const name = 'Build a thoughtful and sustainable creative practice that supports every ambitious project without losing sight of rest and reflection'
   await createGoal(page, name, 3, 'creative')
-  await page.getByRole('button', { name: 'Archive', exact: true }).click()
+  const card = goalCard(page, name)
+  await card.getByRole('button', { name: 'Archive', exact: true }).click()
 
-  const card = page.locator('.goal-card', { has: page.getByLabel(`Goal name: ${name}`) })
   const layout = await card.evaluate((element) => {
     const nameEditor = element.querySelector<HTMLElement>('.goal-name-input')
     const status = element.querySelector<HTMLElement>('.goal-state')
