@@ -1195,7 +1195,9 @@ class LexicalNoteEditorView implements NoteEditorView {
       return true
     }
 
-    if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && event.altKey && !mod && !event.shiftKey) {
+    // Alt+Up/Down, or Cmd+Ctrl+Up/Down as in many text editors, moves the line.
+    const moveLine = !event.shiftKey && (event.altKey ? !mod : event.metaKey && event.ctrlKey)
+    if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && moveLine) {
       event.preventDefault()
       editor.update(() => {
         this.pendingSource = 'command'
