@@ -25,15 +25,22 @@ fn hash(bytes: &[u8]) -> String {
 
 // Savepoints compose with operation/checkpoint transactions. A failed write must
 // never leave half an entity, a dictionary reference, or a policy change behind.
-fn atomic<T>(conn: &Connection, name: &str, body: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
-    conn.execute_batch(&format!("SAVEPOINT {name}")).map_err(error)?;
+fn atomic<T>(
+    conn: &Connection,
+    name: &str,
+    body: impl FnOnce() -> Result<T, String>,
+) -> Result<T, String> {
+    conn.execute_batch(&format!("SAVEPOINT {name}"))
+        .map_err(error)?;
     match body() {
         Ok(value) => {
-            conn.execute_batch(&format!("RELEASE {name}")).map_err(error)?;
+            conn.execute_batch(&format!("RELEASE {name}"))
+                .map_err(error)?;
             Ok(value)
         }
         Err(failure) => {
-            conn.execute_batch(&format!("ROLLBACK TO {name}; RELEASE {name}")).map_err(error)?;
+            conn.execute_batch(&format!("ROLLBACK TO {name}; RELEASE {name}"))
+                .map_err(error)?;
             Err(failure)
         }
     }
@@ -41,19 +48,25 @@ fn atomic<T>(conn: &Connection, name: &str, body: impl FnOnce() -> Result<T, Str
 
 pub fn register(conn: &Connection) -> Result<(), String> {
     conn.create_scalar_function(
-        "balance_list_storage_v1_required", 0,
+        "balance_list_storage_v1_required",
+        0,
         rusqlite::functions::FunctionFlags::SQLITE_UTF8
             | rusqlite::functions::FunctionFlags::SQLITE_DETERMINISTIC
             | rusqlite::functions::FunctionFlags::SQLITE_INNOCUOUS,
         |_| Ok(1_i64),
-    ).map_err(error)
+    )
+    .map_err(error)
 }
 
 /// Additive, atomic schema migration; converting old list payloads is deferred
 /// to bounded idle batches. Old plaintext backups remain readable without DDL.
 pub fn initialize(conn: &Connection) -> Result<(), String> {
     if let Some(version) = crate::metadata_value(conn, "list_storage_version")? {
-        return if version == "1" { Ok(()) } else { Err(error("Update required: newer list storage format")) };
+        return if version == "1" {
+            Ok(())
+        } else {
+            Err(error("Update required: newer list storage format"))
+        };
     }
     atomic(conn, "list_storage_schema", || {
         conn.execute_batch("
@@ -91,10 +104,13 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
 }
 
 fn dictionary(conn: &Connection, id: i64) -> Result<Vec<u8>, String> {
-    let (digest, bytes): (String, Vec<u8>) = conn.query_row(
-        "SELECT hash, bytes FROM list_storage_dictionaries WHERE id=?1", [id],
-        |r| Ok((r.get(0)?, r.get(1)?)),
-    ).map_err(|_| error("Missing dictionary; restore a complete backup or update Balance"))?;
+    let (digest, bytes): (String, Vec<u8>) = conn
+        .query_row(
+            "SELECT hash, bytes FROM list_storage_dictionaries WHERE id=?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .map_err(|_| error("Missing dictionary; restore a complete backup or update Balance"))?;
     if bytes.len() > MAX_DICTIONARY || hash(&bytes) != digest {
         return Err(error("Dictionary integrity check failed"));
     }
@@ -107,7 +123,12 @@ pub struct Reader<'a> {
 }
 
 impl<'a> Reader<'a> {
-    pub fn new(conn: &'a Connection) -> Self { Self { conn, decoders: HashMap::new() } }
+    pub fn new(conn: &'a Connection) -> Self {
+        Self {
+            conn,
+            decoders: HashMap::new(),
+        }
+    }
 
     pub fn read(&mut self, stored: SqlValue) -> Result<Value, String> {
         match stored {
@@ -124,15 +145,28 @@ impl<'a> Reader<'a> {
                 if !self.decoders.contains_key(&id) {
                     // Bound per-scan dictionary contexts too; very long-lived
                     // databases can contain many immutable dictionary versions.
-                    if self.decoders.len() >= 16 { self.decoders.clear(); }
-                    let dict = if id == 0 { Vec::new() } else { dictionary(self.conn, id)? };
-                    let mut decoder = zstd::bulk::Decompressor::with_dictionary(&dict).map_err(error)?;
+                    if self.decoders.len() >= 16 {
+                        self.decoders.clear();
+                    }
+                    let dict = if id == 0 {
+                        Vec::new()
+                    } else {
+                        dictionary(self.conn, id)?
+                    };
+                    let mut decoder =
+                        zstd::bulk::Decompressor::with_dictionary(&dict).map_err(error)?;
                     decoder.window_log_max(24).map_err(error)?;
                     self.decoders.insert(id, decoder);
                 }
-                let decoded = self.decoders.get_mut(&id).unwrap()
-                    .decompress(&bytes[HEADER..], size).map_err(error)?;
-                if decoded.len() != size { return Err(error("Compressed record length mismatch")); }
+                let decoded = self
+                    .decoders
+                    .get_mut(&id)
+                    .unwrap()
+                    .decompress(&bytes[HEADER..], size)
+                    .map_err(error)?;
+                if decoded.len() != size {
+                    return Err(error("Compressed record length mismatch"));
+                }
                 serde_json::from_slice(&decoded).map_err(error)
             }
             _ => Err(error("Invalid stored entity type")),
@@ -149,10 +183,13 @@ fn compress(raw: &[u8], dict: &[u8]) -> Result<Vec<u8>, String> {
 fn source(conn: &Connection, template_id: &str) -> Result<Option<Vec<u8>>, String> {
     let raw = conn.query_row("SELECT value_json FROM state_entities WHERE collection='listTemplates' AND entity_key=?1",
                              [template_id], |r| r.get::<_, SqlValue>(0)).optional().map_err(error)?;
-    raw.map(|raw| Reader::new(conn).read(raw).and_then(|value| {
-        // Only source content matters; names and updatedAt must not trigger work.
-        serde_json::to_vec(value.get("items").unwrap_or(&Value::Null)).map_err(error)
-    })).transpose()
+    raw.map(|raw| {
+        Reader::new(conn).read(raw).and_then(|value| {
+            // Only source content matters; names and updatedAt must not trigger work.
+            serde_json::to_vec(value.get("items").unwrap_or(&Value::Null)).map_err(error)
+        })
+    })
+    .transpose()
 }
 
 fn dictionary_bytes(source: &[u8]) -> &[u8] {
@@ -163,28 +200,72 @@ fn install_dictionary(conn: &Connection, bytes: &[u8], now: i64) -> Result<i64, 
     let digest = hash(bytes);
     conn.execute("INSERT OR IGNORE INTO list_storage_dictionaries(hash,bytes,created_at_ms) VALUES(?1,?2,?3)",
                  params![digest, bytes, now]).map_err(error)?;
-    conn.query_row("SELECT id FROM list_storage_dictionaries WHERE hash=?1", [digest], |r| r.get(0)).map_err(error)
+    conn.query_row(
+        "SELECT id FROM list_storage_dictionaries WHERE hash=?1",
+        [digest],
+        |r| r.get(0),
+    )
+    .map_err(error)
 }
 
-fn active_dictionary(conn: &Connection, template_id: &str, now: i64) -> Result<Option<i64>, String> {
-    let existing = conn.query_row("SELECT active_dictionary FROM list_storage_policies WHERE template_id=?1",
-                                 [template_id], |r| r.get(0)).optional().map_err(error)?;
-    if existing.is_some() { return Ok(existing); }
-    let Some(source) = source(conn, template_id)? else { return Ok(None); };
-    if source.len() < 512 { return Ok(None); }
+fn active_dictionary(
+    conn: &Connection,
+    template_id: &str,
+    now: i64,
+) -> Result<Option<i64>, String> {
+    let existing = conn
+        .query_row(
+            "SELECT active_dictionary FROM list_storage_policies WHERE template_id=?1",
+            [template_id],
+            |r| r.get(0),
+        )
+        .optional()
+        .map_err(error)?;
+    if existing.is_some() {
+        return Ok(existing);
+    }
+    let Some(source) = source(conn, template_id)? else {
+        return Ok(None);
+    };
+    if source.len() < 512 {
+        return Ok(None);
+    }
     let id = install_dictionary(conn, dictionary_bytes(&source), now)?;
-    conn.execute("INSERT INTO list_storage_policies VALUES(?1,?2,?3,?4)",
-                 params![template_id, id, hash(&source), now]).map_err(error)?;
+    conn.execute(
+        "INSERT INTO list_storage_policies VALUES(?1,?2,?3,?4)",
+        params![template_id, id, hash(&source), now],
+    )
+    .map_err(error)?;
     Ok(Some(id))
 }
 
 /// All generic entity writers use this function, including old operation
 /// versions, replay, undo and restore. Other collections retain ordinary JSON.
-pub fn write(conn: &Connection, collection: &str, key: &str, position: i64, value: &Value) -> Result<(), String> {
-    write_at(conn, collection, key, position, value, crate::current_timestamp_ms())
+pub fn write(
+    conn: &Connection,
+    collection: &str,
+    key: &str,
+    position: i64,
+    value: &Value,
+) -> Result<(), String> {
+    write_at(
+        conn,
+        collection,
+        key,
+        position,
+        value,
+        crate::current_timestamp_ms(),
+    )
 }
 
-fn write_at(conn: &Connection, collection: &str, key: &str, position: i64, value: &Value, now: i64) -> Result<(), String> {
+fn write_at(
+    conn: &Connection,
+    collection: &str,
+    key: &str,
+    position: i64,
+    value: &Value,
+    now: i64,
+) -> Result<(), String> {
     if collection != "lists" {
         conn.prepare_cached("INSERT INTO state_entities(collection,entity_key,position,value_json) VALUES(?1,?2,?3,?4)
             ON CONFLICT(collection,entity_key) DO UPDATE SET position=excluded.position,value_json=excluded.value_json")
@@ -197,8 +278,14 @@ fn write_at(conn: &Connection, collection: &str, key: &str, position: i64, value
         let mut used_dictionary = None;
         let template = value.get("listTemplateId").and_then(Value::as_str);
         if collection == "lists" && (512..=MAX_RECORD).contains(&raw.len()) {
-            let id = template.map(|id| active_dictionary(conn, id, now)).transpose()?.flatten();
-            let dict = id.map(|id| dictionary(conn, id)).transpose()?.unwrap_or_default();
+            let id = template
+                .map(|id| active_dictionary(conn, id, now))
+                .transpose()?
+                .flatten();
+            let dict = id
+                .map(|id| dictionary(conn, id))
+                .transpose()?
+                .unwrap_or_default();
             let encoded = compress(raw.as_bytes(), &dict)?;
             // Tiny/incompressible records stay text. This also prevents codec
             // overhead from growing the database for small future data shapes.
@@ -215,8 +302,9 @@ fn write_at(conn: &Connection, collection: &str, key: &str, position: i64, value
             ON CONFLICT(collection,entity_key) DO UPDATE SET position=excluded.position,value_json=excluded.value_json")
             .map_err(error)?.execute(params![collection, key, position, stored]).map_err(error)?;
         if collection == "lists" {
-            let date = value.get("date").and_then(Value::as_str)
-                .filter(|s| s.len() == 10 && chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok());
+            let date = value.get("date").and_then(Value::as_str).filter(|s| {
+                s.len() == 10 && chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok()
+            });
             conn.execute("INSERT INTO list_storage_records VALUES('lists',?1,?2,?3,?4)
                 ON CONFLICT(collection,entity_key) DO UPDATE SET template_id=excluded.template_id,date=excluded.date,dictionary_id=excluded.dictionary_id",
                 params![key, template, date, used_dictionary]).map_err(error)?;
@@ -242,7 +330,11 @@ fn pending(conn: &Connection) -> Result<bool, String> {
 
 /// Runs only during foreground idle time. A bounded batch makes progress through
 /// old records, followed by at most one due dictionary evaluation per call.
-pub fn maintain(conn: &Connection, now: i64, today: chrono::NaiveDate) -> Result<Maintenance, String> {
+pub fn maintain(
+    conn: &Connection,
+    now: i64,
+    today: chrono::NaiveDate,
+) -> Result<Maintenance, String> {
     atomic(conn, "list_storage_maintenance", || {
         let mut outcome = Maintenance::default();
         let mut stmt = conn.prepare("SELECT entity_key,position,value_json FROM state_entities e WHERE collection='lists'
@@ -250,11 +342,26 @@ pub fn maintain(conn: &Connection, now: i64, today: chrono::NaiveDate) -> Result
             ORDER BY position LIMIT ?1").map_err(error)?;
         let mut rows = Vec::new();
         let mut stored_bytes = 0;
-        for row in stmt.query_map([BATCH as i64], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, SqlValue>(2)?))).map_err(error)? {
+        for row in stmt
+            .query_map([BATCH as i64], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, SqlValue>(2)?,
+                ))
+            })
+            .map_err(error)?
+        {
             let row = row.map_err(error)?;
-            stored_bytes += match &row.2 { SqlValue::Text(s) => s.len(), SqlValue::Blob(b) => b.len(), _ => 0 };
+            stored_bytes += match &row.2 {
+                SqlValue::Text(s) => s.len(),
+                SqlValue::Blob(b) => b.len(),
+                _ => 0,
+            };
             rows.push(row);
-            if stored_bytes >= BATCH_BYTES { break; }
+            if stored_bytes >= BATCH_BYTES {
+                break;
+            }
         }
         drop(stmt);
         let mut bytes = 0;
@@ -264,7 +371,9 @@ pub fn maintain(conn: &Connection, now: i64, today: chrono::NaiveDate) -> Result
             bytes += value.to_string().len();
             write_at(conn, "lists", &key, position, &value, now)?;
             outcome.converted += 1;
-            if bytes >= BATCH_BYTES { break; }
+            if bytes >= BATCH_BYTES {
+                break;
+            }
         }
         outcome.more = pending(conn)?;
         if !outcome.more {
@@ -273,8 +382,13 @@ pub fn maintain(conn: &Connection, now: i64, today: chrono::NaiveDate) -> Result
                 outcome.evaluated = true;
                 outcome.adopted = evaluate(conn, &template, now, today)?;
             }
-            outcome.more = conn.query_row("SELECT EXISTS(SELECT 1 FROM list_storage_policies WHERE checked_at_ms <= ?1)",
-                [now.saturating_sub(CHECK_INTERVAL)], |r| r.get(0)).map_err(error)?;
+            outcome.more = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM list_storage_policies WHERE checked_at_ms <= ?1)",
+                    [now.saturating_sub(CHECK_INTERVAL)],
+                    |r| r.get(0),
+                )
+                .map_err(error)?;
         }
         // Collection is cheap and indexed, and never removes an active or used
         // dictionary. Backup copies carry their own complete dictionary tables.
@@ -286,35 +400,73 @@ pub fn maintain(conn: &Connection, now: i64, today: chrono::NaiveDate) -> Result
     })
 }
 
-fn evaluate(conn: &Connection, template: &str, now: i64, today: chrono::NaiveDate) -> Result<bool, String> {
+fn evaluate(
+    conn: &Connection,
+    template: &str,
+    now: i64,
+    today: chrono::NaiveDate,
+) -> Result<bool, String> {
     let (active, checked_hash): (i64, String) = conn.query_row(
         "SELECT active_dictionary,active_source_hash FROM list_storage_policies WHERE template_id=?1", [template],
         |r| Ok((r.get(0)?, r.get(1)?))).map_err(error)?;
     // Even insufficient samples or an unchanged template wait another 90 days.
-    conn.execute("UPDATE list_storage_policies SET checked_at_ms=?1 WHERE template_id=?2", params![now, template]).map_err(error)?;
-    let Some(source) = source(conn, template)? else { return Ok(false); };
+    conn.execute(
+        "UPDATE list_storage_policies SET checked_at_ms=?1 WHERE template_id=?2",
+        params![now, template],
+    )
+    .map_err(error)?;
+    let Some(source) = source(conn, template)? else {
+        return Ok(false);
+    };
     let source_hash = hash(&source);
-    if source_hash == checked_hash { return Ok(false); }
+    if source_hash == checked_hash {
+        return Ok(false);
+    }
     let candidate = dictionary_bytes(&source);
     let incumbent = dictionary(conn, active)?;
-    if candidate == incumbent { return Ok(false); }
-    let mut stmt = conn.prepare("SELECT e.value_json FROM list_storage_records r JOIN state_entities e
+    if candidate == incumbent {
+        return Ok(false);
+    }
+    let mut stmt = conn
+        .prepare(
+            "SELECT e.value_json FROM list_storage_records r JOIN state_entities e
         ON e.collection=r.collection AND e.entity_key=r.entity_key
-        WHERE r.template_id=?1 AND r.date<=?2 ORDER BY r.date DESC,r.entity_key LIMIT 30").map_err(error)?;
-    let stored = stmt.query_map(params![template, today.to_string()], |r| r.get::<_, SqlValue>(0))
-        .map_err(error)?.collect::<Result<Vec<_>, _>>().map_err(error)?;
-    if stored.len() < 30 { return Ok(false); }
+        WHERE r.template_id=?1 AND r.date<=?2 ORDER BY r.date DESC,r.entity_key LIMIT 30",
+        )
+        .map_err(error)?;
+    let stored = stmt
+        .query_map(params![template, today.to_string()], |r| {
+            r.get::<_, SqlValue>(0)
+        })
+        .map_err(error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(error)?;
+    if stored.len() < 30 {
+        return Ok(false);
+    }
     let mut reader = Reader::new(conn);
     let (mut old_size, mut new_size) = (0_u64, 0_u64);
     for row in stored {
         let raw = reader.read(row)?.to_string();
         // Keep evaluation work bounded even for unusually huge imported lists.
-        if raw.len() > 256 * 1024 { return Ok(false); }
+        if raw.len() > 256 * 1024 {
+            return Ok(false);
+        }
         old_size += (compress(raw.as_bytes(), &incumbent)?.len() + HEADER).min(raw.len()) as u64;
         new_size += (compress(raw.as_bytes(), candidate)?.len() + HEADER).min(raw.len()) as u64;
     }
-    let recent_days: u64 = conn.query_row("SELECT count(DISTINCT date) FROM list_storage_records
-        WHERE template_id=?1 AND date>?2 AND date<=?3", params![template, (today - chrono::Duration::days(180)).to_string(), today.to_string()], |r| r.get(0)).map_err(error)?;
+    let recent_days: u64 = conn
+        .query_row(
+            "SELECT count(DISTINCT date) FROM list_storage_records
+        WHERE template_id=?1 AND date>?2 AND date<=?3",
+            params![
+                template,
+                (today - chrono::Duration::days(180)).to_string(),
+                today.to_string()
+            ],
+            |r| r.get(0),
+        )
+        .map_err(error)?;
     // Conservative full cost even if identical bytes already exist. Include one
     // SQLite page for dictionary/row/index overhead. Recent use estimates future
     // use; inactive/rarely-used templates must not generate needless versions.

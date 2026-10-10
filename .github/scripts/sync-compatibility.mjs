@@ -28,10 +28,18 @@ const operation = (device, sequence, type, payload) => ({ id: `${device}-${seque
 const record = (collection, key, value, patches = []) => ({ collection, key, position: 0, value, patches })
 const generic = (device, seq, upserts, deletes = []) => operation(device, seq, 'apply_entity_changes', { action: 'future_feature_action', entityChanges: { version: 2, upserts, deletes } })
 
+const largeListItems = Array.from({ length: 135 }, (_, index) => ({
+  id: `synthetic-list-item-${index}`, text: Array.from({ length: 20 }, (_, word) => `word-${index}-${word}`).join(' '),
+  html: `<p>Synthetic rich text ${index} café 🌱</p>`, done: false, children: [],
+}))
+const largeList = { id: 'synthetic-large-list', listTemplateId: 'synthetic-large-template', date: '2026-09-08',
+  createdAt: '2026-09-08T12:00:00Z', items: largeListItems, futureProperty: { retained: true } }
+const largeListTemplate = { id: 'synthetic-large-template', name: 'Synthetic list', items: largeListItems }
+
 // An actual released executable creates the encrypted DB and legacy operation
 // log. The new executable opens the same bytes, replays, edits, undoes and compacts.
 run(oldBinary, 'legacy', 'init', { state: state('old-device') })
-const legacy = run(oldBinary, 'legacy', 'write', { operation: operation('old-device', 1, 'add_note', { entityChanges: { version: 1, upserts: [{ collection: 'notes', key: 'n', position: 0, value: { id: 'n', title: 'Synthetic old note', items: [] } }], deletes: [] } }) })
+const legacy = run(oldBinary, 'legacy', 'write', { operation: operation('old-device', 1, 'add_note', { entityChanges: { version: 1, upserts: [record('listTemplates', largeListTemplate.id, largeListTemplate), record('lists', largeList.id, largeList), { collection: 'notes', key: 'n', position: 0, value: { id: 'n', title: 'Synthetic old note', items: [] } }], deletes: [] } }) })
 const blindBinary = legacy.protocolVersion >= 6 ? oldBinary : currentBinary
 copyFileSync(join(root, 'legacy.sqlite3'), join(root, 'upgrade.sqlite3'))
 let upgraded = run(currentBinary, 'upgrade', 'read')
@@ -42,6 +50,10 @@ upgraded = run(currentBinary, 'upgrade', 'redo')
 assert.deepEqual(upgraded.entities, legacy.entities)
 upgraded = run(currentBinary, 'upgrade', 'checkpoint')
 assert.deepEqual(upgraded.entities, legacy.entities)
+assert(upgraded.compressedLists > 0)
+run(oldBinary, 'upgrade', 'old_open_forbidden')
+assert.deepEqual(run(currentBinary, 'upgrade', 'read').entities, legacy.entities)
+console.log('PASS: large released lists compress after upgrade, retain logical data and refuse local downgrade')
 
 // A released engine supplies the baseline and a remote anchor move. Upgrade
 // with a locally saved split, then replay, undo/redo, checkpoint and reopen.
@@ -105,6 +117,8 @@ console.log('PASS: released day replacement/checkpoint preserves an offline addi
 // executable has no schema/UI for the future collection or nested field.
 run(futureBinary, 'future', 'init', { state: state('future-device') })
 let future = run(futureBinary, 'future', 'write', { operation: generic('future-device', 1, [
+  record('listTemplates', largeListTemplate.id, largeListTemplate),
+  record('lists', largeList.id, largeList),
   record('templateListExpansions', 'synthetic-option', { id: 'synthetic-option', listTemplateIds: ['synthetic-list'] }),
   record('futureHabitCheckIns', 'f', { id: 'f', amount: 7 }),
   record('taskNotifications', 'synthetic-sunset', { id: 'synthetic-sunset', sourceKind: 'plan', sourceId: 'synthetic-day', itemId: 'synthetic-task', at: 2000000000000, text: 'Synthetic walk 6:51 PM', futureDelivery: { enabled: true } }),
@@ -117,6 +131,8 @@ let future = run(futureBinary, 'future', 'write', { operation: generic('future-d
 assert.deepEqual(future.state.futureHabitCheckIns, [{ id: 'f', amount: 7 }])
 run(blindBinary, 'blind', 'init', { state: state('blind-device') })
 const blindView = run(blindBinary, 'blind', 'merge', { operations: future.operations })
+assert(future.compressedLists > 0)
+assert.deepEqual(blindView.entities.find(row => row.collection === 'lists').value, largeList)
 assert(!Object.hasOwn(blindView.state, 'futureHabitCheckIns'))
 let blind = run(blindBinary, 'blind', 'write', { operation: generic('blind-device', 1, [record('notes', 'n', { id: 'n', title: 'After', items: [] }, [
   { kind: 'object', fields: { title: { kind: 'replace', value: 'After' }, items: { kind: 'records', entries: { task: { kind: 'object', fields: { done: { kind: 'replace', value: true } }, remove: [] } }, remove: [] } }, remove: [] },
