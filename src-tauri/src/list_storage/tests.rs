@@ -621,3 +621,152 @@ fn native_dictionary_policy_profile() {
         }
     }
 }
+
+/// Include actual operation history and a logical checkpoint in the size/read
+/// comparison. The baseline expands only the materialized list records back to
+/// JSON, preserving every operation and history entry byte for byte.
+#[test]
+#[ignore]
+fn native_complete_database_profile() {
+    assert_eq!(std::env::var("GITHUB_ACTIONS").as_deref(), Ok("true"));
+    let scratch = Scratch::new();
+    let mut conn = scratch.open();
+    crate::replace_app_state(&mut conn, &state()).unwrap();
+    conn.execute_batch("BEGIN").unwrap();
+    for (index, rows) in [135, 68, 27].into_iter().enumerate() {
+        let mut source = template(17 + index as u64, rows);
+        let template_id = format!("template-{index}");
+        source["id"] = json!(template_id);
+        write_at(
+            &conn,
+            "listTemplates",
+            &template_id,
+            index as i64,
+            &source,
+            now(0),
+        )
+        .unwrap();
+        for day in 0..1095 {
+            if day > 0 && day % 7 == 0 {
+                source["items"][day % rows]["text"] = json!(format!(
+                    "{} revised-{day}",
+                    source["items"][day % rows]["text"]
+                        .as_str()
+                        .unwrap()
+                        .split_whitespace()
+                        .take(19)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ));
+                write_at(
+                    &conn,
+                    "listTemplates",
+                    &template_id,
+                    index as i64,
+                    &source,
+                    now(day as i64),
+                )
+                .unwrap();
+            }
+            let mut value = daily(&source, day);
+            let id = format!("list-{index}-{day}");
+            value["id"] = json!(id);
+            value["listTemplateId"] = json!(template_id);
+            value["items"] = Value::Array(
+                value["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| (i + day) % 3 == 0)
+                    .map(|(_, v)| v.clone())
+                    .collect(),
+            );
+            write_at(
+                &conn,
+                "lists",
+                &id,
+                (day * 3 + index) as i64,
+                &value,
+                now(day as i64),
+            )
+            .unwrap();
+        }
+    }
+    conn.execute_batch("COMMIT").unwrap();
+    for sequence in 1..=12 {
+        let key = format!("list-{}-1094", sequence % 3);
+        let before = crate::current_entity(&conn, "lists", &key)
+            .unwrap()
+            .unwrap()
+            .1;
+        let mut after = before.clone();
+        after["items"][0]["text"] = json!(format!("Synthetic edited word {sequence}"));
+        let operation = json!({"id":format!("complete-profile-{sequence}"),"deviceId":"synthetic-device","sequence":sequence,
+            "type":"apply_entity_changes","timestamp":format!("2023-01-01T12:00:{sequence:02}Z"),
+            "payload":{"action":"patch_list_item","entityChanges":{"version":2,"deletes":[],"upserts":[{
+                "collection":"lists","key":key,"position":null,"value":after,"patches":[crate::sync::entities::diff(&before,&after)]}]}}});
+        crate::persist_operation_to_database(&mut conn, &operation).unwrap();
+    }
+    crate::sync::enable_primary(&conn).unwrap();
+    crate::sync::checkpoint_operation_log_preserving_history(&conn).unwrap();
+    conn.execute_batch("VACUUM").unwrap();
+    let compressed_bytes = fs::metadata(scratch.path()).unwrap().len();
+    drop(conn);
+    let conn = scratch.open();
+    let tick = Instant::now();
+    let compressed_state = crate::read_app_state_from_database(&conn).unwrap().unwrap();
+    let compressed_read_ms = tick.elapsed().as_millis();
+    let operations = crate::sync::all_ops(&conn).unwrap();
+    let history_count = count(&conn, "history_entries");
+    let retained_json_bytes: i64 = conn
+        .query_row(
+            "SELECT coalesce(sum(length(payload_json)),0) FROM operations",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let rows = conn
+        .prepare("SELECT entity_key,value_json FROM state_entities WHERE collection='lists'")
+        .unwrap()
+        .query_map([], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, SqlValue>(1)?))
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap();
+    conn.execute_batch("BEGIN").unwrap();
+    let mut reader = Reader::new(&conn);
+    for (key, raw) in rows {
+        let logical = reader.read(raw).unwrap();
+        conn.execute(
+            "UPDATE state_entities SET value_json=?1 WHERE collection='lists' AND entity_key=?2",
+            params![logical.to_string(), key],
+        )
+        .unwrap();
+    }
+    drop(reader);
+    conn.execute_batch(
+        "UPDATE list_storage_records SET dictionary_id=NULL;
+        DELETE FROM list_storage_policies; DELETE FROM list_storage_dictionaries; COMMIT; VACUUM;",
+    )
+    .unwrap();
+    let plain_bytes = fs::metadata(scratch.path()).unwrap().len();
+    drop(conn);
+    let conn = scratch.open();
+    let tick = Instant::now();
+    let plain_state = crate::read_app_state_from_database(&conn).unwrap().unwrap();
+    let plain_read_ms = tick.elapsed().as_millis();
+    assert_eq!(plain_state, compressed_state);
+    assert_eq!(crate::sync::all_ops(&conn).unwrap(), operations);
+    assert_eq!(count(&conn, "history_entries"), history_count);
+    assert!(compressed_bytes < plain_bytes);
+    println!(
+        "BALANCE_COMPLETE_DATABASE_PROFILE: {}",
+        json!({"days":1095,"lists":3285,
+        "compressedDatabaseBytes":compressed_bytes,"plainDatabaseBytes":plain_bytes,
+        "compressedFullStateReadMs":compressed_read_ms,"plainFullStateReadMs":plain_read_ms,
+        "operationPayloadBytes":retained_json_bytes,"historyEntries":history_count,
+        "operations":operations.len()})
+    );
+}

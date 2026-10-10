@@ -52,6 +52,16 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: native-dictionary-profile
+          name: native-dictionary-policy-profile
           path: dictionary-profile.txt
+          retention-days: 30
+      - name: Measure complete synthetic database with history and checkpoint
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --lib list_storage::tests::native_complete_database_profile -- --exact --ignored --nocapture | tee complete-database-profile.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-complete-database-profile
+          path: complete-database-profile.txt
           retention-days: 30
