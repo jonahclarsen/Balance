@@ -2952,9 +2952,7 @@ body.mobile-checkbox-dragging {
   transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
 }
 
-.note-editor-option {
-  grid-template-columns: minmax(0, 1fr) auto;
-}
+
 
 .color-scheme-option:hover {
   border-color: color-mix(in srgb, var(--accent) 58%, var(--line));
@@ -6813,16 +6811,6 @@ textarea.note-title {
   white-space: pre-wrap;
 }
 
-.note-text:focus:empty::before,
-.note-blocks > .note-item:only-child .note-text:empty::before {
-  content: attr(data-placeholder);
-  color: var(--muted);
-}
-
-.note-text:focus {
-  box-shadow: none;
-}
-
 .note-quote > .note-block {
   border-left: 3px solid var(--muted);
   padding-left: 12px;
@@ -6849,20 +6837,6 @@ textarea.note-title {
   text-decoration: line-through;
 }
 
-.note-item.note-multi-selected > .note-block {
-  border-radius: 5px;
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
-}
-
-::highlight(balance-note-selection) {
-  background-color: color-mix(in srgb, var(--accent) 30%, transparent);
-}
-
-.note-text-selection .note-text::selection,
-.note-text-selection .note-text *::selection {
-  background-color: transparent;
-}
-
 .note-text a {
   color: var(--accent-strong);
   text-decoration: underline;
@@ -6874,67 +6848,6 @@ textarea.note-title {
 
 .note-children > .note-item {
   margin-left: 24px;
-}
-
-.note-slash-menu {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 12;
-  display: grid;
-  width: min(310px, calc(100vw - 48px));
-  max-height: min(320px, calc(100dvh - 16px));
-  border: 1px solid var(--line-strong);
-  border-radius: 11px;
-  background: var(--paper-strong);
-  padding: 5px;
-  box-shadow: 0 14px 34px rgba(38, 35, 27, 0.18);
-  overflow-y: auto;
-}
-
-.note-slash-menu button {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  width: 100%;
-  border-color: transparent;
-  background: transparent;
-  padding: 7px;
-  text-align: left;
-}
-
-.note-slash-menu button:hover,
-.note-slash-menu button.active {
-  border-color: transparent;
-  background: var(--active-nav);
-}
-
-.note-slash-icon {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--paper);
-  color: var(--ink);
-  font-weight: 700;
-}
-
-.note-slash-menu button > span:last-child {
-  display: grid;
-  gap: 1px;
-}
-
-.note-slash-menu strong {
-  color: var(--ink);
-  font-size: 13px;
-}
-
-.note-slash-menu small {
-  color: var(--muted);
-  font-size: 11px;
 }
 
 .note-empty {

@@ -1,4 +1,4 @@
-// Owns ALL persistence for the document-style Notes editors (TipTap, Lexical):
+// Owns ALL persistence for the Notes editor (Lexical):
 //   - loads a note's items into the view and reloads on note switch,
 //     undo/redo (historyRevision) and remote/sync updates without losing the
 //     caret,

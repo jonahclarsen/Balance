@@ -3,9 +3,7 @@ import { openView } from '../helpers/navigation'
 
 test('Mac Cmd+V delivers the clipboard image to a list-template editor', async ({ page }) => {
   await notes(page)
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Lists', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   const editor = page.locator('[data-list-template-text-input]').first()
   await editor.click()
@@ -24,10 +22,10 @@ test('Mac Cmd+V delivers the clipboard image to a list-template editor', async (
     return allowed
   })
   expect(delivered).toBe(true)
-  await expect(editor.locator('img')).toBeVisible()
+  await expect(editor.locator('img[data-balance-image]')).toBeVisible()
   await page.evaluate(() => Object.assign(window, { isTauri: false }))
   await page.getByLabel('List name').click()
-  await expect(editor.locator('img')).toBeVisible()
+  await expect(editor.locator('img[data-balance-image]')).toBeVisible()
   const state = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!))
   expect(state.images).toHaveLength(1)
   expect(state.listTemplates.at(-1).items[0].html).toContain('data-balance-image=')
@@ -35,9 +33,7 @@ test('Mac Cmd+V delivers the clipboard image to a list-template editor', async (
 
 test('Mac list-template paste keeps whole rows and formatted text working', async ({ page }) => {
   await notes(page)
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Lists', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   const editors = page.locator('[data-list-template-text-input]')
   await editors.first().fill('Original row')
@@ -108,12 +104,12 @@ for (const size of [5_999_999, 6_000_000, 6_000_001]) {
       await expect(dialog.getByRole('status').filter({ hasText: 'Images must be smaller than 6 MB' })).toBeVisible()
       await page.keyboard.press('ControlOrMeta+Enter')
       await expect(dialog).toBeVisible()
-      await expect(page.locator('[data-note-text-input] img')).toHaveCount(0)
+      await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toHaveCount(0)
     }
     await expect(dialog.getByRole('button', { name: /^Paste image(?: Enter)?$/, exact: true })).toBeEnabled()
     await page.keyboard.press('Enter')
     await expect(dialog).not.toBeVisible()
-    await expect(page.locator('[data-note-text-input] img')).toBeVisible()
+    await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toBeVisible()
     const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images[0])
     expect(asset.bytes).toBeLessThan(6_000_000)
     expect(asset.dataURL).toMatch(/^data:image\/webp/)
@@ -138,7 +134,7 @@ test('an oversized encoded result stays blocked until compression brings it belo
   await expect(paste).toBeDisabled()
   await page.keyboard.press('Enter')
   await expect(dialog).toBeVisible()
-  await expect(page.locator('[data-note-text-input] img')).toHaveCount(0)
+  await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toHaveCount(0)
   await dialog.getByRole('slider', { name: 'Image scale' }).evaluate((node) => {
     ;(node as HTMLInputElement).value = '25'
     node.dispatchEvent(new Event('input', { bubbles: true }))
@@ -146,7 +142,7 @@ test('an oversized encoded result stays blocked until compression brings it belo
   await expect(paste).toBeEnabled({ timeout: 20_000 })
   await paste.click()
   await expect(dialog).not.toBeVisible()
-  await expect(page.locator('[data-note-text-input] img')).toBeVisible()
+  await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toBeVisible()
   const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images[0])
   expect(asset.bytes).toBeLessThan(6_000_000)
   expect(asset.width).toBe(800)
@@ -156,9 +152,7 @@ async function notes(page: Page) {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Notes', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.locator('[data-note-text-input]').first().click()
 }
@@ -182,7 +176,7 @@ async function pasteImage(page: Page, large = false, mixed = false, selector = '
   }, { large, mixed })
   if (!mixed) {
     if (large) await expect(page.getByRole('dialog', { name: 'Paste image', exact: true })).toBeVisible()
-    else await expect(page.locator(selector).first().locator('img')).toBeVisible()
+    else await expect(page.locator(selector).first().locator('img[data-balance-image]')).toBeVisible()
   }
 }
 
@@ -190,14 +184,19 @@ test('new images wrap multiple text lines and Inline is the last layout option',
   await notes(page)
   await pasteImage(page)
   const editor = page.locator('[data-note-text-input]').first()
-  const image = editor.locator('img')
+  const image = editor.locator('img[data-balance-image]')
   await expect(image).toHaveAttribute('data-image-layout', 'left')
   await editor.evaluate((node) => {
-    node.append(document.createTextNode('Text wraps beside this image. '.repeat(20)))
-    node.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }))
+    const root = node as HTMLElement
+    root.focus()
+    const range = document.createRange()
+    range.selectNodeContents(root); range.collapse(false)
+    const selection = document.getSelection()!
+    selection.removeAllRanges(); selection.addRange(range)
   })
+  await page.keyboard.insertText('Text wraps beside this image. '.repeat(20))
   const besideLines = await editor.evaluate((node) => {
-    const image = node.querySelector('img')!
+    const image = node.querySelector('img[data-balance-image]')!
     const box = image.getBoundingClientRect()
     const range = document.createRange()
     range.setStartAfter(image); range.setEnd(node, node.childNodes.length)
@@ -218,7 +217,7 @@ test('small images survive text editing, reload, deletion, undo, and a full-wind
   await editor.fill('Before ')
   await editor.press('End')
   await pasteImage(page)
-  const image = editor.locator('img')
+  const image = editor.locator('img[data-balance-image]')
   await expect(image).toBeVisible()
   await expect(page.locator('dialog[open]')).toHaveCount(0)
   await editor.press('ArrowRight')
@@ -236,10 +235,8 @@ test('small images survive text editing, reload, deletion, undo, and a full-wind
   await page.keyboard.press('ControlOrMeta+z')
   await expect(image).toBeVisible()
   await page.reload()
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Notes', exact: true }).filter({ visible: true }).click()
-  await expect(page.locator('[data-note-text-input] img')).toBeVisible()
+  await openView(page, 'Notes')
+  await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toBeVisible()
   expect(await assetCount()).toBe(1)
 })
 
@@ -254,7 +251,7 @@ test('large images preview at the shorter-side default and paste the selected en
   await page.screenshot({ path: info.outputPath('image-compression.png') })
   await page.keyboard.press('Enter')
   await expect(dialog).not.toBeVisible()
-  await expect(page.locator('[data-note-text-input] img')).toBeVisible()
+  await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toBeVisible()
   const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images[0])
   expect(asset.width).toBe(2400)
   expect(asset.height).toBe(1500)
@@ -264,16 +261,18 @@ test('large images preview at the shorter-side default and paste the selected en
 test('original shortcut bypasses compression and mixed webpage paste retains supplied images', async ({ page }) => {
   await notes(page)
   await pasteImage(page, false, true)
-  await expect(page.locator('[data-note-text-input] img')).toHaveCount(1)
+  await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toHaveCount(1)
   await expect(page.locator('[data-note-text-input]').first()).toContainText('A web passage')
   await pasteImage(page, true)
   await expect(page.getByRole('dialog', { name: 'Paste image', exact: true })).toBeVisible()
   await page.keyboard.press('ControlOrMeta+Enter')
-  await expect(page.locator('[data-note-text-input] img')).toHaveCount(2)
+  await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toHaveCount(2, { timeout: 20_000 })
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images.map((asset: { height: number }) => asset.height))).toContain(2000)
   const asset = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images.find((asset: { height: number }) => asset.height === 2000))
   expect(asset.height).toBe(2000)
   expect(asset.bytes).toBeGreaterThan(1_000_000)
   expect(asset.dataURL).toMatch(/^data:image\/png/)
+  await page.locator('[data-note-text-input]').first().click()
   await page.keyboard.press('ControlOrMeta+z')
   await expect(page.locator('[data-note-text-input] img')).toHaveCount(1)
   await page.keyboard.press('ControlOrMeta+Shift+z')
@@ -318,16 +317,16 @@ test('image copy reuses bytes and floating layout stays attached to the text', a
   await notes(page)
   await pasteImage(page)
   const editor = page.locator('[data-note-text-input]').first()
-  await editor.locator('img').click()
+  await editor.locator('img[data-balance-image]').click()
   await page.getByRole('button', { name: 'Wrap left', exact: true }).click()
-  await expect(editor.locator('img')).toHaveAttribute('data-image-layout', 'left')
-  await editor.locator('img').click()
+  await expect(editor.locator('img[data-balance-image]')).toHaveAttribute('data-image-layout', 'left')
+  await editor.locator('img[data-balance-image]').click()
   const handle = page.getByRole('button', { name: 'Resize image bottom-right' })
   const box = (await handle.boundingBox())!
   await page.mouse.move(box.x + 5, box.y + 5); await page.mouse.down(); await page.mouse.move(box.x + 85, box.y + 40); await page.mouse.up()
-  await expect.poll(() => editor.locator('img').getAttribute('width')).not.toBe('200')
+  await expect.poll(() => editor.locator('img[data-balance-image]').getAttribute('width')).not.toBe('200')
   await editor.evaluate((node) => {
-    const image = node.querySelector('img')!
+    const image = node.querySelector('img[data-balance-image]')!
     const selection = document.getSelection()!
     const range = document.createRange(); range.selectNode(image); selection.removeAllRanges(); selection.addRange(range)
     const data = new DataTransfer()
@@ -335,7 +334,7 @@ test('image copy reuses bytes and floating layout stays attached to the text', a
     range.selectNodeContents(node); range.collapse(false); selection.removeAllRanges(); selection.addRange(range)
     node.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }))
   })
-  await expect(editor.locator('img')).toHaveCount(2)
+  await expect(editor.locator('img[data-balance-image]')).toHaveCount(2)
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images.length)).toBe(1)
 })
 
@@ -343,21 +342,21 @@ test('dragging moves an image between text blocks and undo restores the destinat
   test.skip(info.project.name === 'mobile', 'desktop drag event path')
   await notes(page)
   await pasteImage(page)
-  let editors = page.locator('[data-note-text-input]')
+  const editors = page.locator('.lexical-note-editor .note-text')
   await editors.first().evaluate((node) => {
     const range = document.createRange(); range.selectNodeContents(node); range.collapse(false)
     const selection = document.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
-    ;(node as HTMLElement).focus()
+    ;(node.closest<HTMLElement>('[data-rich-text-input]') ?? node as HTMLElement).focus()
   })
   await page.keyboard.press('Enter')
   await expect(editors).toHaveCount(2)
   await editors.nth(1).fill('Destination ')
-  await editors.first().locator('img').dragTo(editors.nth(1))
-  await expect(editors.first().locator('img')).toHaveCount(0)
-  await expect(editors.nth(1).locator('img')).toBeVisible()
+  await editors.first().locator('img[data-balance-image]').dragTo(editors.nth(1))
+  await expect(editors.first().locator('img[data-balance-image]')).toHaveCount(0)
+  await expect(editors.nth(1).locator('img[data-balance-image]')).toBeVisible()
   await page.keyboard.press('ControlOrMeta+z')
-  await expect(editors.nth(1).locator('img')).toHaveCount(0)
-  await expect(editors.first().locator('img')).toBeVisible()
+  await expect(editors.nth(1).locator('img[data-balance-image]')).toHaveCount(0)
+  await expect(editors.first().locator('img[data-balance-image]')).toBeVisible()
 })
 
 test('template generation snapshots image placement and reuses its asset', async ({ page }) => {
@@ -366,7 +365,7 @@ test('template generation snapshots image placement and reuses its asset', async
   const result = await page.evaluate(async () => {
     const path = '/src/lib/planner.ts'
     const { createListTemplate, generateListFromTemplate, createDailyTemplate, generatePlanFromTemplate } = await import(/* @vite-ignore */ path)
-    const html = document.querySelector('[data-note-text-input]')!.innerHTML
+    const html = JSON.parse(localStorage.getItem('balance.appState.v1')!).notes.at(-1).items[0].html
     const listTemplate = createListTemplate('Illustrated list')
     listTemplate.items[0].html = html
     listTemplate.items[0].text = ''
@@ -388,22 +387,20 @@ test('template generation snapshots image placement and reuses its asset', async
 
 test('an image-only list template item survives blur and backspace at its start', async ({ page }) => {
   await notes(page)
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Lists', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   const editor = page.locator('[data-list-template-text-input]').first()
   await editor.click()
   await pasteImage(page, false, false, '[data-list-template-text-input]')
   await page.getByLabel('List name').click()
-  await expect(editor.locator('img')).toBeVisible()
+  await expect(editor.locator('img[data-balance-image]')).toBeVisible()
   await editor.evaluate((node) => {
-    ;(node as HTMLElement).focus()
+    ;(node.closest<HTMLElement>('[data-rich-text-input]') ?? node as HTMLElement).focus()
     const range = document.createRange(); range.selectNodeContents(node); range.collapse(true)
     const selection = document.getSelection()!; selection.removeAllRanges(); selection.addRange(range)
   })
   await page.keyboard.press('Backspace')
-  await expect(editor.locator('img')).toBeVisible()
+  await expect(editor.locator('img[data-balance-image]')).toBeVisible()
 })
 
 test('clipboard copies carry their bytes after the database asset has been collected', async ({ page }) => {
@@ -424,16 +421,14 @@ test('clipboard copies carry their bytes after the database asset has been colle
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   })
   await page.reload()
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Notes', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Notes')
   const editor = page.locator('[data-note-text-input]').first()
   await editor.click()
   await editor.evaluate((node, html) => {
     const data = new DataTransfer(); data.setData('text/html', html)
     node.dispatchEvent(new ClipboardEvent('paste', { bubbles: true, cancelable: true, clipboardData: data }))
   }, html)
-  await expect(editor.locator('img')).toBeVisible()
+  await expect(editor.locator('img[data-balance-image]')).toBeVisible()
   const image = await page.evaluate(() => JSON.parse(localStorage.getItem('balance.appState.v1')!).images[0])
   expect(image.width).toBe(200)
   expect(image.dataURL).toMatch(/^data:image\/png;base64,/)

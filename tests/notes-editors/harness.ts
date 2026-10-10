@@ -1,25 +1,19 @@
-// Shared driver for the Notes editor conformance suite. Every test seeds the
-// browser build's localStorage state with the synthetic corpus, selects the
-// editor under test through the same per-device preference the Settings
-// switch writes, and reads results back from the persisted app state.
+// Notes behavior tests seed only synthetic browser storage and read persisted
+// results back from the app. Lexical is the sole Notes body editor.
 
 import { expect, test as base, type Locator, type Page } from '@playwright/test'
 import { createNotesCorpus } from '../fixtures/notesCorpus'
 import type { Note, NoteItem } from '../../src/lib/types'
 
-export type EditorName = 'tiptap' | 'lexical'
-
-export const test = base.extend<{ noteEditor: EditorName; harness: Harness }>({
-  noteEditor: ['tiptap', { option: true }],
-  harness: async ({ page, noteEditor }, use) => {
-    await use(new Harness(page, noteEditor))
+export const test = base.extend<{ harness: Harness }>({
+  harness: async ({ page }, use) => {
+    await use(new Harness(page))
   },
 })
 
 export { expect }
 
 const STATE_KEY = 'balance.appState.v1'
-const EDITOR_KEY = 'balance:noteEditor.v1'
 
 export const isMac = process.platform === 'darwin'
 export const mod = isMac ? 'Meta' : 'Control'
@@ -27,7 +21,7 @@ export const mod = isMac ? 'Meta' : 'Control'
 export class Harness {
   readonly corpus: Note[]
 
-  constructor(readonly page: Page, readonly editor: EditorName) {
+  constructor(readonly page: Page) {
     this.corpus = createNotesCorpus()
   }
 
@@ -37,7 +31,7 @@ export class Harness {
     return note
   }
 
-  // Boot the app with the corpus installed and the editor selected. Opens the
+  // Boot the app with the corpus installed. Opens the
   // Notes view; the first corpus note is selected by default (most recent).
   async boot(options: { notes?: Note[]; select?: string; platform?: 'mac' | 'other' } = {}) {
     const notes = options.notes ?? this.corpus
@@ -49,12 +43,11 @@ export class Harness {
     await this.page.evaluate(() => localStorage.clear())
     await this.page.reload()
     // The app has now written a well-formed initial state; splice the notes in.
-    await this.page.evaluate(([key, editorKey, editor, seeded]) => {
+    await this.page.evaluate(([key, seeded]) => {
       const state = JSON.parse(localStorage.getItem(key) || '{}')
       state.notes = seeded
       localStorage.setItem(key, JSON.stringify(state))
-      localStorage.setItem(editorKey, editor)
-    }, [STATE_KEY, EDITOR_KEY, this.editor, notes] as const)
+    }, [STATE_KEY, notes] as const)
     await this.page.reload()
     await this.openNotesView()
     if (options.select) await this.selectNote(options.select)
@@ -83,20 +76,20 @@ export class Harness {
     await expect(this.page.locator('#note-title')).toHaveValue(title === 'Untitled note' ? '' : title)
   }
 
-  // The editor's contenteditable root. Both editors must mark it with
+  // The editor's contenteditable root. The editor must mark it with
   // data-rich-text-input so the app's global shortcuts treat it as text input.
   editorRoot(): Locator {
-    return this.page.locator(`[data-note-editor="${this.editor}"] [data-rich-text-input]`).first()
+    return this.page.locator(`[data-note-editor="lexical"] [data-rich-text-input]`).first()
   }
 
-  // A block element by item id. Both editors must expose data-item-id on the
+  // A block element by item id. The editor must expose data-item-id on the
   // element that represents each block.
   block(itemId: string): Locator {
-    return this.page.locator(`[data-note-editor="${this.editor}"] [data-item-id="${itemId}"]`).first()
+    return this.page.locator(`[data-note-editor="lexical"] [data-item-id="${itemId}"]`).first()
   }
 
   blocks(): Locator {
-    return this.page.locator(`[data-note-editor="${this.editor}"] [data-item-id]`)
+    return this.page.locator(`[data-note-editor="lexical"] [data-item-id]`)
   }
 
   async storedNotes(): Promise<Note[]> {

@@ -1,4 +1,4 @@
-// Lexical node vocabulary for the Notes editor (Option B).
+// Lexical node vocabulary for the Notes editor (Notes).
 //
 // The document mirrors `NoteItem` exactly:
 //

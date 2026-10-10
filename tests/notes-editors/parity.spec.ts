@@ -1,6 +1,6 @@
 // Parity conformance: every user-facing behavior of the Notes body editor from
-// docs/notes-contract.md (P-xx ids) that a rebuilt editor must reproduce.
-// Runs identically against every editor project.
+// docs/notes-contract.md (P-xx ids) that a Notes editor must reproduce.
+// Runs identically against desktop Notes.
 
 import { expect, flatten, mod, test, type Harness } from './harness'
 import type { NoteItem } from '../../src/lib/types'
