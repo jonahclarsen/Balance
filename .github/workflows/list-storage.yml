@@ -3,7 +3,7 @@ name: Native list dictionary storage
 on:
   workflow_dispatch:
   push:
-    branches: [main, feat/dictionary-storage]
+    branches: [main]
     paths:
       - 'src-tauri/src/list_storage/**'
       - 'src-tauri/src/list_storage.rs'

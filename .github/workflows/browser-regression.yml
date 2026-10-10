@@ -1,8 +1,5 @@
 name: Focused browser regression tests
 on:
-  push:
-    branches: [feat/dictionary-storage]
-    paths: [.github/workflows/browser-regression.yml]
   workflow_dispatch:
     inputs:
       spec:
@@ -26,7 +23,7 @@ permissions:
   contents: read
 jobs:
   regression:
-    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6
@@ -41,9 +38,9 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
       - name: Exercise the requested regression
         env:
-          SPEC: ${{ inputs.spec || 'tests/visual/notes.spec.ts' }}
-          TITLE_PATTERN: ${{ inputs.grep || 'quote blocks support Markdown' }}
-          REPEATS: ${{ inputs.repeat || '10' }}
+          SPEC: ${{ inputs.spec }}
+          TITLE_PATTERN: ${{ inputs.grep }}
+          REPEATS: ${{ inputs.repeat }}
         run: pnpm exec playwright test "$SPEC" --grep "$TITLE_PATTERN" --repeat-each "$REPEATS" --project=desktop --workers=1
       - uses: actions/upload-artifact@v7
         if: failure()
