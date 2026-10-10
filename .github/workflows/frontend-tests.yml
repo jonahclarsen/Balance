@@ -26,7 +26,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: frontend-tests-${{ github.ref }}
+  group: frontend-tests-${{ github.ref }}-${{ inputs.runner || 'macos-15' }}
   cancel-in-progress: true
 
 jobs:
