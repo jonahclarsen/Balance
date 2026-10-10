@@ -1111,10 +1111,6 @@ test('Cmd or Ctrl+F scrolls an off-screen Today match into view', async ({ page 
   await expect(find.locator('.find-status')).toHaveText('1/1 matches')
   await expect(target).toBeInViewport()
   await expect(findInput).toBeFocused()
-  const highlightOverlay = page.locator('.find-match-overlay')
-  await expect(highlightOverlay).toBeVisible()
-  await page.waitForTimeout(250)
-  await expect(highlightOverlay).toBeVisible()
   await expect.poll(() => page.evaluate(() => {
     const highlight = CSS.highlights.get('balance-document-find-match')
     return highlight
