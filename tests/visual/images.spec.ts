@@ -272,7 +272,7 @@ test('original shortcut bypasses compression and mixed webpage paste retains sup
   expect(asset.height).toBe(2000)
   expect(asset.bytes).toBeGreaterThan(1_000_000)
   expect(asset.dataURL).toMatch(/^data:image\/png/)
-  const originalImage = page.locator('[data-note-text-input] img').nth(1)
+  const originalImage = page.locator(`[data-note-text-input] img[data-balance-image="${asset.id}"]`)
   await originalImage.click()
   await page.keyboard.press('Backspace')
   await expect(page.locator('[data-note-text-input] img')).toHaveCount(1)
