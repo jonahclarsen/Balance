@@ -15,6 +15,12 @@ on:
       - '.github/workflows/frontend-tests.yml'
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner for manual verification when a hosted pool is busy
+        type: choice
+        default: macos-15
+        options: [macos-15, ubuntu-24.04]
 
 permissions:
   contents: read
@@ -25,7 +31,7 @@ concurrency:
 
 jobs:
   behavior:
-    runs-on: macos-15
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -41,7 +47,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install chromium webkit
+      - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm check
       - run: pnpm test:unit
       - run: pnpm test:relay

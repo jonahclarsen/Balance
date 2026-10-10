@@ -127,6 +127,18 @@ fn legacy_plaintext_rows_migrate_in_bounded_atomic_batches_and_reopen() {
     drop(conn);
     let conn = scratch.open();
     let before = crate::sync::entities::snapshot(&conn).unwrap();
+    conn.execute_batch(
+        "CREATE TRIGGER interrupt_migration BEFORE UPDATE ON state_entities
+        WHEN NEW.collection='lists' AND NEW.entity_key='list-1'
+        BEGIN SELECT RAISE(ABORT,'synthetic interrupted migration'); END;",
+    )
+    .unwrap();
+    assert!(maintain(&conn, now(100), date(100)).is_err());
+    assert_eq!(count(&conn, "list_storage_records"), 0);
+    assert_eq!(count(&conn, "list_storage_dictionaries"), 0);
+    assert_eq!(crate::sync::entities::snapshot(&conn).unwrap(), before);
+    conn.execute_batch("DROP TRIGGER interrupt_migration")
+        .unwrap();
     let first = maintain(&conn, now(100), date(100)).unwrap();
     assert_eq!(first.converted, 24);
     assert!(first.more);
@@ -201,6 +213,25 @@ fn codec_rejects_damage_unknown_versions_and_excessive_sizes() {
         .read(SqlValue::Blob(bytes))
         .unwrap_err()
         .contains("Missing dictionary"));
+}
+
+#[test]
+fn unknown_schema_version_is_rejected_without_changing_entities() {
+    let scratch = Scratch::new();
+    let conn = scratch.open();
+    let source = template(3, 45);
+    seed(&conn, &source);
+    put(&conn, &source, 0);
+    let before = crate::sync::entities::snapshot(&conn).unwrap();
+    crate::set_metadata(&conn, "list_storage_version", "999").unwrap();
+    assert!(initialize(&conn).unwrap_err().contains("Update required"));
+    assert_eq!(crate::sync::entities::snapshot(&conn).unwrap(), before);
+    assert_eq!(
+        crate::metadata_value(&conn, "list_storage_version")
+            .unwrap()
+            .as_deref(),
+        Some("999")
+    );
 }
 
 #[test]
