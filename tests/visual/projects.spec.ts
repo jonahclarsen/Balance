@@ -398,6 +398,21 @@ test('dragging a project card to the window edge scrolls the page and keeps the 
   const carried = (await source.boundingBox())!
   expect(edge.y).toBeGreaterThan(carried.y)
   expect(edge.y).toBeLessThan(carried.y + carried.height)
+  // Stop edge scrolling and finish over a visible card. Polling the scroll
+  // distance can overshoot to the grid's end, where the window edge is no
+  // longer a valid drop target.
+  await page.mouse.move(edge.x, page.viewportSize()!.height / 2)
+  const destination = await cards.evaluateAll((elements) => {
+    for (const card of elements.slice(1).reverse()) {
+      const rect = card.getBoundingClientRect()
+      const y = rect.top + rect.height / 2
+      if (y > 56 && y < window.innerHeight - 56) return { x: rect.left + rect.width / 2, y }
+    }
+    return null
+  })
+  expect(destination).not.toBeNull()
+  await page.mouse.move(destination!.x, destination!.y)
+  await expect(page.locator('.project-drop-indicator')).toBeVisible()
   await page.mouse.up()
   await expect(page.locator('.project-dragging, .project-drop-indicator')).toHaveCount(0)
   await expect(cards.locator('h2').first()).not.toHaveText('Project 1')
