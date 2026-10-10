@@ -1065,7 +1065,7 @@ test('Cmd or Ctrl+F searches the current document instead of opening overall sea
   await seedPlanItems(page, ['Daily plan'])
 
   await page.keyboard.press('Meta+f')
-  const find = page.getByRole('search', { name: 'Find in current document' })
+  const find = page.getByRole('search', { name: 'Find in current view' })
   await expect(find).toBeVisible()
   await expect(page.getByRole('dialog', { name: 'Search Balance' })).toHaveCount(0)
 
@@ -1104,7 +1104,7 @@ test('Cmd or Ctrl+F scrolls an off-screen Today match into view', async ({ page 
   await expect(target).not.toBeInViewport()
 
   await page.keyboard.press('Meta+f')
-  const find = page.getByRole('search', { name: 'Find in current document' })
+  const find = page.getByRole('search', { name: 'Find in current view' })
   const findInput = find.getByLabel('Find text')
   await findInput.fill('hidden target')
 
@@ -1136,7 +1136,7 @@ test('Cmd or Ctrl+F reports match position and wraps in both directions', async 
   const firstTarget = page.getByRole('listitem', { name: 'Plan item: Cycle target at the start' })
   const lastTarget = page.getByRole('listitem', { name: 'Plan item: Cycle target at the end' })
   await page.keyboard.press('Meta+f')
-  const find = page.getByRole('search', { name: 'Find in current document' })
+  const find = page.getByRole('search', { name: 'Find in current view' })
   const status = find.locator('.find-status')
   const findInput = find.getByLabel('Find text')
   await findInput.fill('cycle target')
@@ -1169,7 +1169,7 @@ test('Cmd or Ctrl+F focuses goal search on the Goals page', async ({ page, isMob
   await page.keyboard.press('Meta+f')
 
   await expect(goalSearch).toBeFocused()
-  await expect(page.getByRole('search', { name: 'Find in current document' })).toHaveCount(0)
+  await expect(page.getByRole('search', { name: 'Find in current view' })).toHaveCount(0)
   await expect(page.getByRole('dialog', { name: 'Search Balance' })).toHaveCount(0)
 })
 

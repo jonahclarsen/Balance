@@ -266,6 +266,26 @@ test('large images preview at the shorter-side default and paste the selected en
 })
 
 test('original shortcut bypasses compression and mixed webpage paste retains supplied images', async ({ page }) => {
+  // An original plus its operation payload exceeds WebKit's localStorage quota.
+  // This byte-fidelity fixture uses synthetic storage; the reload/undo tests
+  // above exercise real browser persistence with smaller assets.
+  await page.addInitScript(() => {
+    const state = new Map<string, string>()
+    const getItem = Storage.prototype.getItem
+    const setItem = Storage.prototype.setItem
+    const clear = Storage.prototype.clear
+    Storage.prototype.getItem = function (key) {
+      return key === 'balance.appState.v1' && this === localStorage ? state.get(key) ?? null : getItem.call(this, key)
+    }
+    Storage.prototype.setItem = function (key, value) {
+      if (key === 'balance.appState.v1' && this === localStorage) state.set(key, String(value))
+      else setItem.call(this, key, value)
+    }
+    Storage.prototype.clear = function () {
+      if (this === localStorage) state.clear()
+      clear.call(this)
+    }
+  })
   await notes(page)
   await pasteImage(page, false, true)
   await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toHaveCount(1)
