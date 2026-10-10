@@ -2065,13 +2065,14 @@ test('quote blocks support Markdown, continuation, exit, clipboard, and persiste
   await expect(rows.nth(1)).toHaveClass(/note-quote/)
   await pressNoteKey(editors.nth(1), 'Backspace')
   await expect(rows.nth(1)).not.toHaveClass(/note-quote/)
-  await editors.nth(1).fill('A body paragraph')
+  await typeNoteText(editors.nth(1), 'A body paragraph')
   await page.getByRole('button', { name: 'Quote', exact: true }).click()
   await expect(rows.nth(1)).toHaveClass(/note-quote/)
   await page.keyboard.press('Meta+Z')
   await expect(rows.nth(1)).not.toHaveClass(/note-quote/)
   await page.keyboard.press('Meta+Shift+Z')
   await expect(rows.nth(1)).toHaveClass(/note-quote/)
+  await expect(editors.nth(1)).toHaveText('A body paragraph')
 
   await editors.first().click()
   await pressNoteKey(editors.first(), 'Meta+A')
@@ -2080,6 +2081,7 @@ test('quote blocks support Markdown, continuation, exit, clipboard, and persiste
   expect(copied?.html).toBe('<blockquote>A quoted passage</blockquote>')
   await placeCaretAtEnd(editors.nth(1))
   await pressNoteKey(editors.nth(1), 'Enter')
+  await expect(editors).toHaveCount(3)
   await editors.nth(2).evaluate((element, html) => {
     const clipboardData = new DataTransfer()
     clipboardData.setData('text/html', html)
