@@ -31,9 +31,9 @@ export default defineConfig({
       testIgnore: /mobile\.spec\.ts/,
     },
     {
-      name: 'lexical-images-webkit',
+      name: 'lexical-webkit',
       use: { ...devices['Desktop Safari'], viewport: { width: 1280, height: 820 } },
-      testMatch: /images\.spec\.ts/,
+      testMatch: /(?:images|layout)\.spec\.ts/,
     },
     {
       name: 'lexical-mobile',

@@ -37,11 +37,12 @@
   letter-spacing: 0;
 }
 
+/* Rows stay in block layout. WebKit keeps a grid row's old height when its
+   text rewraps at a new width (IMAX, window resize, zoom), which leaves
+   oversized gaps or overlapping rows until something else forces layout. */
 .lexical-note-editor .note-block {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: start;
+  display: block;
   min-height: 30px;
   padding: 2px 2px;
   border-radius: 6px;
@@ -118,15 +119,17 @@
   color: color-mix(in srgb, var(--ink) 86%, var(--muted));
 }
 
-/* List markers sit in a gutter column aligned with the first text line. */
+/* List markers sit in a gutter aligned with the first text line: the block's
+   2px padding, the marker column, then the 8px gap the shared row style uses. */
 .lexical-note-editor .note-list-item > .note-block {
-  grid-template-columns: var(--note-marker-column) minmax(0, 1fr);
+  padding-left: calc(2px + var(--note-marker-column) + 8px);
 }
 
 .lexical-note-editor .note-bullet > .note-block::before,
 .lexical-note-editor .note-numbered > .note-block::before {
-  grid-column: 1;
-  grid-row: 1;
+  position: absolute;
+  top: 2px;
+  left: 2px;
   user-select: none;
   pointer-events: none;
 }
@@ -146,6 +149,8 @@
 
 .lexical-note-editor .note-numbered > .note-block::before {
   content: attr(data-note-item-number) '.';
+  box-sizing: border-box;
+  width: var(--note-marker-column);
   padding-right: 6px;
   font-size: 14px;
   font-weight: 500;
@@ -155,15 +160,11 @@
   color: var(--muted);
 }
 
-.lexical-note-editor .note-list-item > .note-block > .note-text {
-  grid-column: 2;
-  grid-row: 1;
-}
-
 /* Checklists */
 .lexical-note-editor .note-check {
-  grid-column: 1;
-  grid-row: 1;
+  position: absolute;
+  top: 2px;
+  left: 2px;
   width: 18px;
   height: 18px;
   margin: calc((var(--note-body-size) * var(--note-body-line) - 18px) / 2) 3px 0 2px;
