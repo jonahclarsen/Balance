@@ -143,6 +143,12 @@ Reads exclude opening/unlocking and frontend rendering; OS caches were not
 flushed. This measures the native startup read path, not an end-to-end app launch.
 
 Frontend checks, unit tests, relay tests and the generic-record browser tests
-passed on Linux. A full Linux browser run encountered the existing suite's
-macOS-native Command-key assumptions. Full browser jobs on macOS 15 Intel and
-macOS 26 are queued; they are not counted as passing verification.
+passed on Linux. The [full macOS browser run](https://github.com/jonahclarsen/Balance/actions/runs/38033889886)
+completed all three shards, including desktop, mobile and WebKit coverage.
+Shards 1 and 3 passed; shard 2 had one Notes quote fixture failure and 326 passing
+tests. The fixture now types through the editor and waits for persisted text
+before exercising format undo/redo, rather than relying on a DOM fill. That
+fixed regression [passed ten consecutive CI repetitions](https://github.com/jonahclarsen/Balance/actions/runs/38036365378)
+on Linux. This is combined suite and targeted-retest evidence, not an all-green
+full workflow. An [additional full macOS rerun](https://github.com/jonahclarsen/Balance/actions/runs/38036278440)
+was still underway at integration and is not counted as passing verification.
