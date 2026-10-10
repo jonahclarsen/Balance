@@ -51,11 +51,15 @@ fn compatibility_process_driver() {
         }
         Ok(json!({"ok": true}))
     })();
-    let mut rows = conn.prepare("SELECT collection, entity_key, position, value_json FROM state_entities ORDER BY collection, position, entity_key").unwrap();
-    let entities: Vec<Value> = rows.query_map([], |row| Ok(json!({
-        "collection": row.get::<_, String>(0)?, "key": row.get::<_, String>(1)?,
-        "position": row.get::<_, i64>(2)?, "value": serde_json::from_str::<Value>(&row.get::<_, String>(3)?).unwrap()
-    }))).unwrap().map(Result::unwrap).collect();
+    // Use each released engine's own logical reader. Physical bytes may differ
+    // between versions/devices even when every replicated record is identical.
+    let mut rows = conn.prepare("SELECT collection, entity_key, position FROM state_entities ORDER BY collection, position, entity_key").unwrap();
+    let addresses = rows.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?)))
+        .unwrap().map(Result::unwrap).collect::<Vec<_>>();
+    let entities: Vec<Value> = addresses.into_iter().map(|(collection, key, position)| {
+        let (_, value) = crate::current_entity(&conn, &collection, &key).unwrap().unwrap();
+        json!({"collection": collection, "key": key, "position": position, "value": value})
+    }).collect();
     let integrity: String = conn
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .unwrap();

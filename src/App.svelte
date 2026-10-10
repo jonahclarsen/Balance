@@ -10,6 +10,7 @@
   import { getCurrentWebview } from '@tauri-apps/api/webview'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
   import { onMount, tick } from 'svelte'
+  import { startListStorageMaintenance } from './lib/listStorageMaintenance'
   import { startFreezeDiagnostics } from './lib/freezeDiagnostics'
   import { installMobileKeyboardScroll } from './lib/mobileKeyboardScroll'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
@@ -2089,6 +2090,7 @@ return rows`
     const stopMobileKeyboardScroll = installMobileKeyboardScroll()
     let mounted = true
     let stopAutomaticSync: (() => void) | null = null
+    let stopListStorageMaintenance: (() => void) | null = null
     let stopPasteMatchStyleListener: (() => void) | null = null
     let stopMacosAltShortcutListener: (() => void) | null = null
     let stopDeepLinkListener: (() => void) | null = null
@@ -2313,6 +2315,10 @@ return rows`
       if (!mounted || !isTauri()) return
 
       stopAutomaticSync = startAutomaticSync()
+      stopListStorageMaintenance = startListStorageMaintenance(
+        () => invoke<{ more: boolean }>('maintain_list_storage'),
+        () => mounted && !$databaseLoadError && !databaseCompactionBusy && !recoveryBusy,
+      )
       // Pull remote changes before evaluating threshold-based housekeeping.
       await requestSync('launch')
       plannerStore.purgeExpiredNotes()
@@ -2341,6 +2347,7 @@ return rows`
       rememberWorkspaceScroll()
       mounted = false
       stopAutomaticSync?.()
+      stopListStorageMaintenance?.()
       stopPasteMatchStyleListener?.()
       stopMacosAltShortcutListener?.()
       stopDeepLinkListener?.()
