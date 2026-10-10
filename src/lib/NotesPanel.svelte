@@ -8,12 +8,12 @@
   import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from './types'
 
   const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
-  const LEGACY_NOTE_SCROLL_SPACE_VH_KEY = 'balance:noteScrollSpaceVh'
   const DEFAULT_NOTE_SCROLL_SPACE_PERCENT = 60
   const MIN_NOTE_SCROLL_SPACE_SHARE = 6
   // The slider scales against the actual note viewport, excluding Goal Rhythm.
   const DEFAULT_NOTE_SCROLL_SPACE_SHARE = 31.2
-  const MAX_NOTE_SCROLL_SPACE_SHARE = 49.2
+  // At its maximum, scrolling to the bottom leaves this many lines in view.
+  const MAX_NOTE_SCROLL_SPACE_VISIBLE_LINES = 2
   const isMac = /Mac|iPhone|iPad|iPod/.test(
     (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '',
   )
@@ -53,7 +53,8 @@
   let noteScrollViewportHeight = 0
   let noteScrollSpaceControlVisible = false
   let noteScrollSpaceAdjustmentActive = false
-  $: noteScrollSpaceShare = noteScrollSpaceShareForPercent(noteScrollSpacePercent)
+  let noteScrollSpaceMaxShare = DEFAULT_NOTE_SCROLL_SPACE_SHARE
+  $: noteScrollSpaceShare = noteScrollSpaceShareForPercent(noteScrollSpacePercent, noteScrollSpaceMaxShare)
   $: noteScrollSpaceHeight = noteScrollViewportHeight * noteScrollSpaceShare / 100
   $: activeNotes = notes.filter((note) => !note.deletedAt)
   $: trashedNotes = notes
@@ -243,6 +244,13 @@
     const updateVisibility = () => {
       frame = null
       noteScrollViewportHeight = scroller.clientHeight
+      // Hold the maximum steady while dragging; it follows the drag's own layout.
+      const maxShare = noteScrollSpaceAdjustmentActive ? noteScrollSpaceMaxShare : measureMaxNoteScrollSpaceShare(scroller, node)
+      if (maxShare !== noteScrollSpaceMaxShare) {
+        const followBottom = isAtNoteBottom(scroller)
+        noteScrollSpaceMaxShare = maxShare
+        if (followBottom) void scrollNoteToBottomAfterLayout(scroller)
+      }
       noteScrollSpaceControlVisible = noteScrollSpaceAdjustmentActive || isAtNoteBottom(scroller)
     }
     const scheduleVisibilityUpdate = () => {
@@ -325,33 +333,46 @@
       : DEFAULT_NOTE_SCROLL_SPACE_PERCENT
   }
 
-  function noteScrollSpaceShareForPercent(percent: number) {
+  function noteScrollSpaceShareForPercent(percent: number, maxShare: number) {
     if (percent <= DEFAULT_NOTE_SCROLL_SPACE_PERCENT) {
       return MIN_NOTE_SCROLL_SPACE_SHARE
         + (DEFAULT_NOTE_SCROLL_SPACE_SHARE - MIN_NOTE_SCROLL_SPACE_SHARE) * percent / DEFAULT_NOTE_SCROLL_SPACE_PERCENT
     }
 
     return DEFAULT_NOTE_SCROLL_SPACE_SHARE
-      + (MAX_NOTE_SCROLL_SPACE_SHARE - DEFAULT_NOTE_SCROLL_SPACE_SHARE)
+      + (maxShare - DEFAULT_NOTE_SCROLL_SPACE_SHARE)
         * (percent - DEFAULT_NOTE_SCROLL_SPACE_PERCENT) / (100 - DEFAULT_NOTE_SCROLL_SPACE_PERCENT)
   }
 
-  function noteScrollSpacePercentForLegacyVh(value: number) {
-    if (!Number.isFinite(value)) return DEFAULT_NOTE_SCROLL_SPACE_PERCENT
-    const clamped = Math.max(MIN_NOTE_SCROLL_SPACE_SHARE, Math.min(MAX_NOTE_SCROLL_SPACE_SHARE, value))
-    if (clamped <= DEFAULT_NOTE_SCROLL_SPACE_SHARE) {
-      return normalizeNoteScrollSpacePercent(
-        (clamped - MIN_NOTE_SCROLL_SPACE_SHARE)
-          / (DEFAULT_NOTE_SCROLL_SPACE_SHARE - MIN_NOTE_SCROLL_SPACE_SHARE) * DEFAULT_NOTE_SCROLL_SPACE_PERCENT,
-      )
-    }
+  // The largest space that still leaves the last lines readable below the
+  // sticky toolbar once scrolled to the bottom. Measured from the live layout,
+  // so it holds across window sizes, IMAX, and the Notes zoom.
+  function measureMaxNoteScrollSpaceShare(scroller: HTMLElement, space: HTMLElement) {
+    const texts = noteEditorHostElement?.querySelectorAll<HTMLElement>('.note-text')
+    const lastText = texts?.[texts.length - 1]
+    const scrollerRect = scroller.getBoundingClientRect()
+    if (!scroller.clientHeight || !scroller.offsetHeight || !lastText) return noteScrollSpaceMaxShare
 
-    return normalizeNoteScrollSpacePercent(
-      DEFAULT_NOTE_SCROLL_SPACE_PERCENT
-        + (clamped - DEFAULT_NOTE_SCROLL_SPACE_SHARE)
-          / (MAX_NOTE_SCROLL_SPACE_SHARE - DEFAULT_NOTE_SCROLL_SPACE_SHARE)
-          * (100 - DEFAULT_NOTE_SCROLL_SPACE_PERCENT),
-    )
+    // Work in screen pixels: the Notes zoom scales rects but not scroll metrics.
+    const zoom = scrollerRect.height / scroller.offsetHeight
+    const viewport = scroller.clientHeight * zoom
+    const lineHeight = (Number.parseFloat(getComputedStyle(lastText).lineHeight) || 26) * zoom
+    const spaceRect = space.getBoundingClientRect()
+    const contentBottom = scrollerRect.top + (scroller.clientTop + scroller.scrollHeight - scroller.scrollTop) * zoom
+    // Row padding below the last line and the page padding below the space
+    // stay in view at the bottom alongside the space itself.
+    const lastLine = document.createRange()
+    lastLine.selectNodeContents(lastText)
+    const lineBottoms = Array.from(lastLine.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0).map((rect) => rect.bottom)
+    const lastLineBottom = lineBottoms.length > 0 ? Math.max(...lineBottoms) : lastText.getBoundingClientRect().bottom
+    const surrounding = (spaceRect.top - lastLineBottom) + (contentBottom - spaceRect.bottom)
+    const toolbar = scroller.querySelector<HTMLElement>('[data-note-editor-toolbar], .note-format-toolbar')
+    const toolbarReach = toolbar && getComputedStyle(toolbar).position === 'sticky'
+      ? toolbar.getBoundingClientRect().height + (Number.parseFloat(getComputedStyle(toolbar).top) || 0)
+      : 0
+    const maxSpace = viewport - toolbarReach - MAX_NOTE_SCROLL_SPACE_VISIBLE_LINES * lineHeight - surrounding
+    // Rounded so subpixel layout changes cannot keep resizing the space.
+    return Math.round(Math.max(DEFAULT_NOTE_SCROLL_SPACE_SHARE, Math.min(95, maxSpace / viewport * 100)) * 10) / 10
   }
 
   function updateNoteScrollSpace(event: Event) {
@@ -386,14 +407,9 @@
 
   onMount(() => {
     const storedPercent = localStorage.getItem(NOTE_SCROLL_SPACE_PERCENT_KEY)
-    const legacyVh = localStorage.getItem(LEGACY_NOTE_SCROLL_SPACE_VH_KEY)
     noteScrollSpacePercent = storedPercent === null
-      ? legacyVh === null
-        ? DEFAULT_NOTE_SCROLL_SPACE_PERCENT
-        : noteScrollSpacePercentForLegacyVh(Number(legacyVh))
+      ? DEFAULT_NOTE_SCROLL_SPACE_PERCENT
       : normalizeNoteScrollSpacePercent(Number(storedPercent))
-    localStorage.setItem(NOTE_SCROLL_SPACE_PERCENT_KEY, String(noteScrollSpacePercent))
-    localStorage.removeItem(LEGACY_NOTE_SCROLL_SPACE_VH_KEY)
   })
 
   onDestroy(() => {

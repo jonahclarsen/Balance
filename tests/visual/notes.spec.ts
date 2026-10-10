@@ -1678,7 +1678,6 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     input.dispatchEvent(new InputEvent('input', { bubbles: true }))
   })
   await expect(spacingSlider).toHaveValue('100')
-  await expect(spacingSlider).toHaveAttribute('aria-valuetext', '49.2% of note area')
   await expect(spacingControl).toHaveClass(/visible/)
   await expect(spacingControl).toHaveCSS('opacity', '1')
   await page.evaluate(() => window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 })))
@@ -1714,19 +1713,23 @@ test('notes save adjustable breathing room and follow the final caret to the bot
   expect(pillGeometry?.controlWidth).toBeGreaterThan(330)
   expect(pillGeometry?.thumbLeft).toBeGreaterThanOrEqual(pillGeometry?.controlLeft ?? Number.POSITIVE_INFINITY)
   expect(pillGeometry?.thumbRight).toBeLessThanOrEqual(pillGeometry?.controlRight ?? Number.NEGATIVE_INFINITY)
-  const maximumSpace = await page.locator('.note-scroll-space').evaluate((element) => ({
-    height: element.getBoundingClientRect().height,
-    scrollerHeight: element.closest<HTMLElement>('.note-document')?.getBoundingClientRect().height ?? 0,
-  }))
-  expect(maximumSpace.height / maximumSpace.scrollerHeight).toBeGreaterThan(0.49)
-  expect(maximumSpace.height / maximumSpace.scrollerHeight).toBeLessThan(0.5)
   await page.screenshot({ path: testInfo.outputPath('note-spacing-slider-at-bottom.png'), fullPage: false })
-  const visibleNoteHeight = await page.evaluate(() => {
-    const scroller = document.querySelector('.workspace')?.getBoundingClientRect()
-    const notesWorkspace = document.querySelector('.notes-workspace')?.getBoundingClientRect()
-    return scroller && notesWorkspace ? notesWorkspace.bottom - scroller.top : 0
+  // At the maximum, about two lines stay readable below the sticky toolbar.
+  const visibleLinesAtMaximum = () => editor.evaluate((element) => {
+    const toolbar = document.querySelector('.note-format-toolbar')!.getBoundingClientRect()
+    const content = document.createRange()
+    content.selectNodeContents(element)
+    const lines = Array.from(content.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
+    const lastLine = lines.reduce((last, rect) => (rect.bottom > last.bottom ? rect : last))
+    return (lastLine.bottom - toolbar.bottom) / lastLine.height
   })
-  expect(visibleNoteHeight).toBeGreaterThan(96)
+  await expect.poll(visibleLinesAtMaximum).toBeGreaterThan(1.5)
+  expect(await visibleLinesAtMaximum()).toBeLessThan(3)
+  // The maximum follows the window size rather than a fixed share.
+  await page.setViewportSize({ width: 1280, height: 1100 })
+  await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+  await expect.poll(visibleLinesAtMaximum).toBeGreaterThan(1.5)
+  expect(await visibleLinesAtMaximum()).toBeLessThan(3)
 
   await spacingSlider.fill('40')
   await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:noteScrollSpacePercent'))).toBe('40')
