@@ -409,11 +409,13 @@ fn disable_automatic_text_substitutions() {
 
     // WebKit gives this app-specific preference precedence over the system-wide
     // NSSpellChecker settings. Set them before the webview is created so text
-    // replacements and smart quotes never become enabled in editable elements.
+    // replacements, smart quotes and smart dashes never become enabled in
+    // editable elements.
     let defaults = NSUserDefaults::standardUserDefaults();
     for key in [
         "WebAutomaticTextReplacementEnabled",
         "WebAutomaticQuoteSubstitutionEnabled",
+        "WebAutomaticDashSubstitutionEnabled",
     ] {
         defaults.setBool_forKey(false, &NSString::from_str(key));
     }
