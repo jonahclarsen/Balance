@@ -76,7 +76,7 @@ them. Use `tests/helpers/navigation.ts` for primary navigation and generation
 on desktop and mobile. Date fixtures must respect Balance's 5 a.m. day boundary;
 time-editing fixtures should fix the clock rather than assume it is morning.
 The baseline checks are `pnpm check`, `pnpm test:unit`, `pnpm test:relay`, and
-`pnpm test:visual`. The Frontend behavior tests workflow runs the full browser
+`pnpm test:visual` (on CI; see below). The Frontend behavior tests workflow runs the full browser
 suite, including desktop, mobile, and WebKit, rather than selected files only.
 
 ## Keep local test runs light — heavy suites run on CI
