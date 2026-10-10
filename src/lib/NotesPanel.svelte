@@ -14,6 +14,7 @@
   const DEFAULT_NOTE_SCROLL_SPACE_SHARE = 31.2
   // At its maximum, scrolling to the bottom leaves this many lines in view.
   const MAX_NOTE_SCROLL_SPACE_VISIBLE_LINES = 2
+  const MAX_NOTE_SCROLL_SPACE_TOLERANCE_PX = 4
   const isMac = /Mac|iPhone|iPad|iPod/.test(
     (typeof navigator !== 'undefined' && (navigator.platform || navigator.userAgent)) || '',
   )
@@ -240,16 +241,25 @@
     noteScrollViewportHeight = scroller.clientHeight
 
     let frame: number | null = null
+    let remeasure = true
+    let measured = false
     const scrollEventTarget: HTMLElement | Document = scroller === document.scrollingElement ? document : scroller
     const updateVisibility = () => {
       frame = null
       noteScrollViewportHeight = scroller.clientHeight
       // Hold the maximum steady while dragging; it follows the drag's own layout.
-      const maxShare = noteScrollSpaceAdjustmentActive ? noteScrollSpaceMaxShare : measureMaxNoteScrollSpaceShare(scroller, node)
-      if (maxShare !== noteScrollSpaceMaxShare) {
-        const followBottom = isAtNoteBottom(scroller)
-        noteScrollSpaceMaxShare = maxShare
-        if (followBottom) void scrollNoteToBottomAfterLayout(scroller)
+      if (remeasure && !noteScrollSpaceAdjustmentActive) {
+        remeasure = false
+        const maxShare = measureMaxNoteScrollSpaceShare(scroller, node)
+        // Resizing the space shifts its subpixel rounding, which moves the
+        // measurement slightly; following that would resize the space forever.
+        const changedPx = Math.abs(maxShare - noteScrollSpaceMaxShare) * scroller.clientHeight / 100
+        if (!measured || changedPx > MAX_NOTE_SCROLL_SPACE_TOLERANCE_PX) {
+          const followBottom = measured && isAtNoteBottom(scroller)
+          measured = true
+          noteScrollSpaceMaxShare = maxShare
+          if (followBottom) void scrollNoteToBottomAfterLayout(scroller)
+        }
       }
       noteScrollSpaceControlVisible = noteScrollSpaceAdjustmentActive || isAtNoteBottom(scroller)
     }
@@ -257,7 +267,10 @@
       if (frame !== null) return
       frame = window.requestAnimationFrame(updateVisibility)
     }
-    const resizeObserver = new ResizeObserver(scheduleVisibilityUpdate)
+    const resizeObserver = new ResizeObserver(() => {
+      remeasure = true
+      scheduleVisibilityUpdate()
+    })
 
     scrollEventTarget.addEventListener('scroll', scheduleVisibilityUpdate, { passive: true })
     resizeObserver.observe(scroller)
