@@ -210,7 +210,7 @@ export function $appendInline(target: NoteBlockNode, source: NoteBlockNode) {
   if (nodes.length > 0) into.append(...nodes)
 }
 
-// Merge `source` into `target` (backspaceNoteItemAtStart semantics): target
+// Merge `source` into `target`: target
 // keeps its kind; inline content is appended; source's children are appended
 // to target's children. Returns the join offset.
 export function $mergeBlocks(target: NoteBlockNode, source: NoteBlockNode): number {

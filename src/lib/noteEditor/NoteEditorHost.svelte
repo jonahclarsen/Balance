@@ -1,17 +1,13 @@
 <script lang="ts">
-  // Mounts one of the document editors (TipTap / Lexical) for the selected
-  // note and wires it to the shared adapter. The Notes page keeps owning the
-  // sidebar, title, bin, and page chrome; this component owns the note body,
-  // the formatting toolbar, and all persistence for the document editors.
+  // Owns the Lexical Notes body, toolbar, and persistence adapter. The Notes
+  // panel owns the sidebar, title, Bin, and page chrome.
   import { onDestroy, onMount, tick } from 'svelte'
   import { mobileNoteToolbar } from '../mobileNoteToolbar'
   import type { ItemLink } from '../planner'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from '../types'
-  import type { NoteEditorChoice } from '../noteEditorPreference'
   import { NoteEditorAdapter, type NoteEditorStore } from './NoteEditorAdapter'
   import type { NoteEditorSelectionState, NoteEditorView, NoteInlineMark } from './types'
 
-  export let editor: Exclude<NoteEditorChoice, 'classic'>
   export let note: Note
   export let historyRevision = 0
   export let store: NoteEditorStore
@@ -39,7 +35,7 @@
   let host: HTMLElement
   let view: NoteEditorView | null = null
   let adapter: NoteEditorAdapter | null = null
-  let mountedEditor: NoteEditorChoice | null = null
+  let destroyed = false
   let ready = false
   let selection: NoteEditorSelectionState = {
     activeKind: null,
@@ -49,22 +45,20 @@
   let openedNoteId: Id | null = null
   let scrollSaveTimer: ReturnType<typeof setTimeout> | null = null
 
-  async function createView(choice: Exclude<NoteEditorChoice, 'classic'>): Promise<NoteEditorView> {
-    if (choice === 'tiptap') {
-      const module = await import('./tiptap/TipTapNoteEditor')
-      return module.createTipTapNoteEditor()
-    }
+  async function createView(): Promise<NoteEditorView> {
     const module = await import('./lexical/LexicalNoteEditor')
     return module.createLexicalNoteEditor()
   }
 
-  // Like Classic, the caret is remembered whenever a selection lies inside the
-  // note; a blur or a selection outside the editor keeps the last known caret.
+  // Keep the last known caret when focus leaves the editor.
   function rememberViewState() {
     if (!adapter || !openedNoteId) return
-    const scrollTop = scrollContainer()?.scrollTop ?? 0
-    const state = adapter.viewState(scrollTop)
     const previous = viewStatesByNote.get(openedNoteId)
+    // Svelte can detach the host before teardown runs. Keep the last mounted
+    // scroll position instead of replacing it with the detached pane's zero.
+    const scroller = host?.isConnected ? scrollContainer() : null
+    const scrollTop = scroller?.isConnected ? scroller.scrollTop : previous?.scrollTop ?? 0
+    const state = adapter.viewState(scrollTop)
     onViewStateChange(openedNoteId, { scrollTop: state.scrollTop, caret: state.caret ?? previous?.caret ?? null })
   }
 
@@ -84,9 +78,8 @@
   }
 
   async function mountEditor() {
-    const choice = editor
-    const nextView = await createView(choice)
-    if (choice !== editor || !host) {
+    const nextView = await createView()
+    if (destroyed || !host) {
       nextView.destroy()
       return
     }
@@ -115,7 +108,6 @@
         onFocus: () => {},
       },
     })
-    mountedEditor = choice
     ready = true
     openedNoteId = null
     syncNote()
@@ -129,7 +121,6 @@
     view?.destroy()
     view = null
     adapter = null
-    mountedEditor = null
     ready = false
   }
 
@@ -151,14 +142,12 @@
     adapter.receive(note.id, note.items, historyRevision)
   }
 
-  $: if (ready && mountedEditor === editor) {
+  $: if (ready) {
     // Re-run whenever the note object, its items, or history revision change.
     void note.items
     void historyRevision
     syncNote()
   }
-
-  $: if (ready && mountedEditor && mountedEditor !== editor) void mountEditor()
 
   $: view?.updateContext?.({ listTemplates, metrics, notes, isMac })
 
@@ -221,6 +210,7 @@
   })
 
   onDestroy(() => {
+    destroyed = true
     document.removeEventListener('visibilitychange', handleVisibility)
     document.removeEventListener('selectionchange', handleSelectionChange)
     window.removeEventListener('pagehide', flush)
@@ -232,26 +222,26 @@
 
 <div use:mobileNoteToolbar class="note-editor-toolbar note-format-toolbar" role="toolbar" aria-label="Note formatting" data-note-editor-toolbar>
   <div class="note-format-group" aria-label="Text style">
-    <button type="button" class:active={selection.activeKind === 'paragraph'} aria-label="Text" title="Text" on:mousedown|preventDefault on:click={() => applyKind('paragraph')}>Aa</button>
-    <button type="button" class:active={selection.activeKind === 'heading'} aria-label="Heading" title="Heading (# then Space)" on:mousedown|preventDefault on:click={() => applyKind('heading')}>H1</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'paragraph'} aria-label="Text" title="Text" on:mousedown|preventDefault on:click={() => applyKind('paragraph')}>Aa</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'heading'} aria-label="Heading" title="Heading (# then Space)" on:mousedown|preventDefault on:click={() => applyKind('heading')}>H1</button>
   </div>
   <div class="note-format-group" aria-label="Quotes">
-    <button type="button" class:active={selection.activeKind === 'quote'} aria-label="Quote" title="Quote (> then Space)" on:mousedown|preventDefault on:click={() => applyKind('quote')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11H5V6h5v7a5 5 0 0 1-5 5M20 11h-5V6h5v7a5 5 0 0 1-5 5" /></svg></button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'quote'} aria-label="Quote" title="Quote (> then Space)" on:mousedown|preventDefault on:click={() => applyKind('quote')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11H5V6h5v7a5 5 0 0 1-5 5M20 11h-5V6h5v7a5 5 0 0 1-5 5" /></svg></button>
   </div>
   <div class="note-format-group" aria-label="Lists">
-    <button type="button" class:active={selection.activeKind === 'bullet'} aria-label="Bulleted list" title="Bulleted list (- then Space)" on:mousedown|preventDefault on:click={() => applyKind('bullet')}>•</button>
-    <button type="button" class:active={selection.activeKind === 'numbered'} aria-label="Numbered list" title="Numbered list (1. then Space)" on:mousedown|preventDefault on:click={() => applyKind('numbered')}>1.</button>
-    <button type="button" class:active={selection.activeKind === 'checklist'} aria-label="Checklist" title="Checklist ([] then Space)" on:mousedown|preventDefault on:click={() => applyKind('checklist')}>✓</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'bullet'} aria-label="Bulleted list" title="Bulleted list (- then Space)" on:mousedown|preventDefault on:click={() => applyKind('bullet')}>•</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'numbered'} aria-label="Numbered list" title="Numbered list (1. then Space)" on:mousedown|preventDefault on:click={() => applyKind('numbered')}>1.</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'checklist'} aria-label="Checklist" title="Checklist ([] then Space)" on:mousedown|preventDefault on:click={() => applyKind('checklist')}>✓</button>
   </div>
   <div class="note-format-group" aria-label="Inline formatting">
-    <button type="button" class:active={selection.marks.bold} aria-label="Bold" aria-pressed={selection.marks.bold ? 'true' : 'false'} title={`Bold (${modifierLabel}B)`} on:mousedown|preventDefault on:click={() => applyMark('bold')}><strong>B</strong></button>
-    <button type="button" class:active={selection.marks.italic} aria-label="Italic" aria-pressed={selection.marks.italic ? 'true' : 'false'} title={`Italic (${modifierLabel}I)`} on:mousedown|preventDefault on:click={() => applyMark('italic')}><em>I</em></button>
-    <button type="button" class:active={selection.marks.underline} aria-label="Underline" aria-pressed={selection.marks.underline ? 'true' : 'false'} title={`Underline (${modifierLabel}U)`} on:mousedown|preventDefault on:click={() => applyMark('underline')}><u>U</u></button>
+    <button type="button" disabled={!ready} class:active={selection.marks.bold} aria-label="Bold" aria-pressed={selection.marks.bold ? 'true' : 'false'} title={`Bold (${modifierLabel}B)`} on:mousedown|preventDefault on:click={() => applyMark('bold')}><strong>B</strong></button>
+    <button type="button" disabled={!ready} class:active={selection.marks.italic} aria-label="Italic" aria-pressed={selection.marks.italic ? 'true' : 'false'} title={`Italic (${modifierLabel}I)`} on:mousedown|preventDefault on:click={() => applyMark('italic')}><em>I</em></button>
+    <button type="button" disabled={!ready} class:active={selection.marks.underline} aria-label="Underline" aria-pressed={selection.marks.underline ? 'true' : 'false'} title={`Underline (${modifierLabel}U)`} on:mousedown|preventDefault on:click={() => applyMark('underline')}><u>U</u></button>
   </div>
   <span class="note-format-hint">Type <kbd><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" role="img" aria-label="Slash"><path d="M8 2 4 10" /></svg></kbd> for more</span>
 </div>
 
 {#if note.items.length === 0}
-  <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
+  <button class="note-empty-editor" type="button" disabled={!ready} on:click={startEmptyNote}>Start writing…</button>
 {/if}
-<div class="note-editor-host" data-note-editor={editor} bind:this={host} hidden={note.items.length === 0}></div>
+<div class="note-editor-host" data-note-editor="lexical" bind:this={host} hidden={note.items.length === 0}></div>

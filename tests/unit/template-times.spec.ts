@@ -53,9 +53,17 @@ test('clock-time notifications use Vancouver time and roll early-morning times t
   const winter = createDailyTemplate('Synthetic')
   winter.items = [createTemplateItem('{10am}')]
   const winterRecords: TaskNotification[] = []
-  // Historical winter avoids depending on the runner's future timezone rules.
-  generatePlanFromTemplate(winter, '2025-12-01', '', [], [], {}, [], [], winterRecords)
-  expect(winterRecords.map(record => record.at)).toEqual([Date.parse('2025-12-01T18:00:00Z')])
+  generatePlanFromTemplate(winter, '2026-12-01', '', [], [], {}, [], [], winterRecords)
+  expect(winterRecords).toHaveLength(1)
+  // Future UTC offsets can differ between timezone-data releases. The
+  // notification must still land at 10 a.m. on the requested Vancouver date.
+  const localTime = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Vancouver', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+  }).formatToParts(winterRecords[0].at)
+  expect(Object.fromEntries(localTime.map(part => [part.type, part.value]))).toMatchObject({
+    year: '2026', month: '12', day: '01', hour: '10', minute: '00',
+  })
 })
 
 test('lookup covers complete leap and common years with seasonally appropriate UTC sunsets', () => {

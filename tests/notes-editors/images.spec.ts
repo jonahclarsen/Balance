@@ -3,10 +3,6 @@ import { imageHTML } from '../../src/lib/imageMarkup'
 
 const image = imageHTML('a'.repeat(64), 100, 60, 'left')
 
-test.beforeEach(({ noteEditor }) => {
-  test.skip(noteEditor !== 'lexical', 'Lexical image integration regressions')
-})
-
 test('image-only blocks allow typing and Enter after the image', async ({ harness }) => {
   const note = harness.noteByTitle('Simple paragraphs')
   note.items[0].html = image

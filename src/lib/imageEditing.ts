@@ -122,6 +122,9 @@ export function imageEditing(editor: HTMLElement, commit: () => void, model?: Im
     if (!contents.querySelector(IMAGE_SELECTOR)) return
     const container = document.createElement('div')
     container.append(contents)
+    // WebKit uses an empty image as Lexical's caret placeholder. It is editor
+    // DOM, and must not become an unavailable image in an external paste.
+    container.querySelectorAll('[data-lexical-managed-linebreak]').forEach((node) => node.remove())
     container.querySelectorAll<HTMLImageElement>(IMAGE_SELECTOR).forEach((image) => { image.outerHTML = sanitizeImage(image) })
     const html = imageClipboardHTML(container.innerHTML)
     event.clipboardData.setData(IMAGE_CLIPBOARD_TYPE, html)

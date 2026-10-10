@@ -1,5 +1,5 @@
 // Core adapter conformance: persistence, ids, remote updates, undo, switching.
-// These tests run identically against every editor project.
+// These tests run identically against desktop Notes.
 
 import { comparable, expect, flatten, ids, test } from './harness'
 

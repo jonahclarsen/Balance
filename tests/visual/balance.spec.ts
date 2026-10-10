@@ -1065,7 +1065,7 @@ test('Cmd or Ctrl+F searches the current document instead of opening overall sea
   await seedPlanItems(page, ['Daily plan'])
 
   await page.keyboard.press('Meta+f')
-  const find = page.getByRole('search', { name: 'Find in current document' })
+  const find = page.getByRole('search', { name: 'Find in current view' })
   await expect(find).toBeVisible()
   await expect(page.getByRole('dialog', { name: 'Search Balance' })).toHaveCount(0)
 
@@ -1104,17 +1104,13 @@ test('Cmd or Ctrl+F scrolls an off-screen Today match into view', async ({ page 
   await expect(target).not.toBeInViewport()
 
   await page.keyboard.press('Meta+f')
-  const find = page.getByRole('search', { name: 'Find in current document' })
+  const find = page.getByRole('search', { name: 'Find in current view' })
   const findInput = find.getByLabel('Find text')
   await findInput.fill('hidden target')
 
   await expect(find.locator('.find-status')).toHaveText('1/1 matches')
   await expect(target).toBeInViewport()
   await expect(findInput).toBeFocused()
-  const highlightOverlay = page.locator('.find-match-overlay')
-  await expect(highlightOverlay).toBeVisible()
-  await page.waitForTimeout(250)
-  await expect(highlightOverlay).toBeVisible()
   await expect.poll(() => page.evaluate(() => {
     const highlight = CSS.highlights.get('balance-document-find-match')
     return highlight
@@ -1136,7 +1132,7 @@ test('Cmd or Ctrl+F reports match position and wraps in both directions', async 
   const firstTarget = page.getByRole('listitem', { name: 'Plan item: Cycle target at the start' })
   const lastTarget = page.getByRole('listitem', { name: 'Plan item: Cycle target at the end' })
   await page.keyboard.press('Meta+f')
-  const find = page.getByRole('search', { name: 'Find in current document' })
+  const find = page.getByRole('search', { name: 'Find in current view' })
   const status = find.locator('.find-status')
   const findInput = find.getByLabel('Find text')
   await findInput.fill('cycle target')
@@ -1169,7 +1165,7 @@ test('Cmd or Ctrl+F focuses goal search on the Goals page', async ({ page, isMob
   await page.keyboard.press('Meta+f')
 
   await expect(goalSearch).toBeFocused()
-  await expect(page.getByRole('search', { name: 'Find in current document' })).toHaveCount(0)
+  await expect(page.getByRole('search', { name: 'Find in current view' })).toHaveCount(0)
   await expect(page.getByRole('dialog', { name: 'Search Balance' })).toHaveCount(0)
 })
 
@@ -2325,6 +2321,77 @@ for (const side of ['start', 'end'] as const) {
   })
 }
 
+for (const mode of ['start', 'alt-start', 'end', 'selected-end'] as const) {
+  test(`dragging ${mode} snaps off-grid times to the active modifier grid`, async ({ page, isMobile }) => {
+    test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
+    await page.goto('/')
+    await page.evaluate((date) => {
+      localStorage.clear()
+      localStorage.setItem('balance.appState.v1', JSON.stringify({
+        schemaVersion: 1, deviceId: 'test-device', localSequence: 0, historyRevision: 0,
+        activePlanDate: date, templates: [],
+        plans: [{ id: 'plan_grid_time', date, dailyReminder: '', items: [
+          { id: 'grid-task', text: 'Grid task', html: 'Grid task', done: false,
+            startMinutes: 545, endMinutes: 605, children: [] },
+          { id: 'other-grid-task', text: 'Other grid task', html: 'Other grid task', done: false,
+            startMinutes: 665, endMinutes: 725, children: [] },
+        ] }],
+        goals: [], goalCompletions: [], operations: [],
+      }))
+    }, todayISO())
+    await page.reload()
+
+    const row = page.getByRole('listitem', { name: /^Plan item: Grid task/ })
+    if (mode === 'selected-end') {
+      await row.getByRole('button', { name: 'Select item' }).click()
+      await page.keyboard.down('Shift')
+      await page.getByRole('listitem', { name: /^Plan item: Other grid task/ })
+        .getByRole('button', { name: 'Select item' }).click()
+      await page.keyboard.up('Shift')
+    }
+    const source = row.locator(`.time-${mode.endsWith('end') ? 'end' : 'start'}-side .time-part`)
+    const box = await source.boundingBox()
+    if (!box) throw new Error('Missing drag geometry')
+    const x = box.x + box.width / 2
+    const y = box.y + box.height / 2
+    if (mode === 'alt-start') await page.keyboard.down('Alt')
+    try {
+      await page.mouse.move(x, y)
+      await page.mouse.down()
+      await page.mouse.move(x, y - 10)
+      const ordinary = mode === 'start' || mode === 'selected-end' ? [555, 615]
+        : mode === 'alt-start' ? [555, 605] : [545, 615]
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(ordinary)
+
+      await page.keyboard.down('Shift')
+      await page.mouse.move(x, y - 20)
+      const fine = mode === 'start' || mode === 'selected-end' ? [555, 615]
+        : mode === 'alt-start' ? [555, 605] : [545, 615]
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(fine)
+      await page.mouse.move(x, y - 30)
+      const fineNext = mode === 'start' || mode === 'selected-end' ? [560, 620]
+        : mode === 'alt-start' ? [560, 605] : [545, 620]
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(fineNext)
+
+      await page.keyboard.up('Shift')
+      await page.mouse.move(x, y - 40)
+      const coarse = mode === 'start' || mode === 'selected-end' ? [600, 660]
+        : mode === 'alt-start' ? [585, 605] : [545, 660]
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(coarse)
+      await page.mouse.up()
+      if (mode === 'selected-end') {
+        await expect.poll(() => planItemTimeRange(page, 'Other grid task')).toEqual([720, 780])
+      }
+      await page.reload()
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(coarse)
+    } finally {
+      await page.mouse.up()
+      await page.keyboard.up('Shift')
+      if (mode === 'alt-start') await page.keyboard.up('Alt')
+    }
+  })
+}
+
 for (const shift of [false, true]) {
   for (const side of ['start', 'end'] as const) {
     test(`dragging the ${side} time enforces a ${shift ? 5 : 15}-minute minimum`, async ({ page, isMobile }) => {
@@ -2542,7 +2609,7 @@ test('dragging app sliders requests native haptics except for notes writing spac
 
   await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
-  const editor = page.locator('[data-note-text-input]').first()
+  const editor = page.locator('.lexical-note-editor .note-text').first()
   await editor.fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
   await page.locator('.workspace').evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
   const notesSlider = page.getByLabel('Bottom writing space')

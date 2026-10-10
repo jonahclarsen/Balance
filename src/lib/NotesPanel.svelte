@@ -1,30 +1,11 @@
 <script lang="ts">
-  import { isQuoteKey, wrapRangeInQuotes } from './quoteSelection'
-  import { mobileNoteToolbar } from './mobileNoteToolbar'
   import { externalNotePaste } from './externalNotePaste'
-  import { stageClipboardImages } from './imageService'
-  import { clipboardHasDirectImage, IMAGE_CLIPBOARD_TYPE } from './imageMarkup'
-  import { invoke, isTauri } from '@tauri-apps/api/core'
   import { onDestroy, onMount, tick } from 'svelte'
-  import { caretPointFromCoordinates } from './caretGeometry'
-  import NoteItemEditor from './NoteItemEditor.svelte'
-  import { noteTextOffset as textOffsetAtPoint, noteTextPoint as pointAtTextOffset } from './noteSelection'
   import ReadOnlyNoteItem from './ReadOnlyNoteItem.svelte'
   import NoteEditorHost from './noteEditor/NoteEditorHost.svelte'
-  import { escapeHTML, htmlToPlainTextWithBreaks, sanitizeInlineHTML, type ItemLink } from './planner'
-  import {
-    noteClipboardHTML,
-    noteClipboardPlainText,
-    parseNoteBlocksFromClipboard,
-    type NoteClipboardBlock,
-    type ParsedNoteClipboardItem,
-  } from './noteClipboard'
+  import type { ItemLink } from './planner'
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
-  import type { NoteEditorChoice } from './noteEditorPreference'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from './types'
-
-  type InlineFormatCommand = 'bold' | 'italic' | 'underline'
-  type InlineFormatState = Record<InlineFormatCommand, boolean>
 
   const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
   const LEGACY_NOTE_SCROLL_SPACE_VH_KEY = 'balance:noteScrollSpaceVh'
@@ -40,9 +21,6 @@
 
   export let notes: Note[]
   export let selectedNoteId: Id
-  // Which editor renders the note body: the classic per-item editor, or one of
-  // the rebuilt document editors (TipTap / Lexical) behind the shared adapter.
-  export let editor: NoteEditorChoice = 'classic'
   export let listTemplates: ListTemplate[] = []
   export let metrics: Metric[] = []
   export let historyRevision = 0
@@ -56,14 +34,6 @@
   export let onAddItem: (noteId: Id, kind?: NoteItemKind) => Id
   export let patchItem: typeof import('./store').plannerStore.patchNoteItem
   export let patchItemsDone: typeof import('./store').plannerStore.patchNoteItemsDone
-  export let splitItem: typeof import('./store').plannerStore.splitNoteItem
-  export let backspaceItemAtStart: typeof import('./store').plannerStore.backspaceNoteItemAtStart
-  export let deleteItems: typeof import('./store').plannerStore.deleteNoteItems
-  export let replaceItemRange: typeof import('./store').plannerStore.replaceNoteItemRange
-  export let deleteItemPreservingChildren: typeof import('./store').plannerStore.deleteNoteItemPreservingChildren
-  export let moveItem: typeof import('./store').plannerStore.moveNoteItem
-  export let moveItemWithinLevel: typeof import('./store').plannerStore.moveNoteItemWithinLevel
-  export let outdentItem: typeof import('./store').plannerStore.outdentNoteItem
   export let replaceItems: typeof import('./store').plannerStore.replaceNoteItems
   export let onOpenLink: (link: ItemLink) => void
   export let trashOpen = false
@@ -75,12 +45,6 @@
   let lastTrashNoteId: Id | null = null
   let copyButtonText = 'Copy note link'
   let copyButtonResetTimer: number | undefined
-  let activeItemId: Id | null = null
-  let activeNoteId: Id | null = null
-  let noteViewRestoreRequest = 0
-  let restoringNoteViewState = false
-  let noteBlocksElement: HTMLDivElement
-  // Wrapper for the document editors (TipTap / Lexical); null while Classic renders.
   let noteEditorHostElement: HTMLDivElement | null = null
   let noteEditorHost: NoteEditorHost | null = null
   let bottomFollowFrame: number | null = null
@@ -91,27 +55,6 @@
   let noteScrollSpaceAdjustmentActive = false
   $: noteScrollSpaceShare = noteScrollSpaceShareForPercent(noteScrollSpacePercent)
   $: noteScrollSpaceHeight = noteScrollViewportHeight * noteScrollSpaceShare / 100
-  let toolbarSelection: Range | null = null
-  let pointerSelectionAnchor: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
-  let pointerSelectionFocus: { node: Node; offset: number; editor: HTMLDivElement; itemId: Id } | null = null
-  type CrossBlockSelection = {
-    range: Range
-    startEditor: HTMLDivElement
-    endEditor: HTMLDivElement
-  }
-  // Native selections can be clamped to one editing host in WebKit. Retain the
-  // intended range until the user changes it, and paint each paragraph's range.
-  let textSelection: CrossBlockSelection | null = null
-  let textSelectionAnchor: { node: Node; offset: number } | null = null
-  let textSelectionFocus: { node: Node; offset: number } | null = null
-  // WKWebView clamps a DOM Selection at contenteditable boundaries when list
-  // decoration sits between the editors. Keep a real row selection for lists;
-  // it drives both the visible highlight and the clipboard independently.
-  let selectedItemIds: Id[] = []
-  let selectionAnchorItemId: Id | null = null
-  let selectionFocusItemId: Id | null = null
-  let pointerUsesItemSelection = false
-  let inlineFormats: InlineFormatState = { bold: false, italic: false, underline: false }
   $: activeNotes = notes.filter((note) => !note.deletedAt)
   $: trashedNotes = notes
     .filter((note) => note.deletedAt)
@@ -120,15 +63,6 @@
   $: selectedNote = visibleNotes.find((note) => note.id === selectedNoteId) ?? visibleNotes[0] ?? null
   $: if (!trashOpen && selectedNote) lastActiveNoteId = selectedNote.id
   $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
-  $: if (selectedNoteId !== activeNoteId) {
-    rememberActiveNoteScroll()
-    activeNoteId = selectedNoteId
-    activeItemId = selectedNote?.items[0]?.id ?? null
-    clearItemSelection()
-    inlineFormats = { bold: false, italic: false, underline: false }
-    void restoreActiveNoteViewState(selectedNoteId)
-  }
-  $: activeItem = selectedNote && activeItemId ? findItem(selectedNote.items, activeItemId) : null
   $: filteredNotes = [...visibleNotes]
     .filter((note) => `${note.title} ${flattenText(note)}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()))
     .sort((a, b) => trashOpen
@@ -138,15 +72,6 @@
   function flattenText(note: Note): string {
     const visit = (items: Note['items']): string => items.map((item) => `${item.text} ${visit(item.children)}`).join(' ')
     return visit(note.items)
-  }
-
-  function findItem(items: Note['items'], itemId: Id): Note['items'][number] | null {
-    for (const item of items) {
-      if (item.id === itemId) return item
-      const child = findItem(item.children, itemId)
-      if (child) return child
-    }
-    return null
   }
 
   export function createNote() {
@@ -231,80 +156,6 @@
     return `Permanently deleted in ${days} days`
   }
 
-  async function applyBlockKind(kind: NoteItemKind) {
-    if (!selectedNote) return
-    const itemId = activeItemId ?? selectedNote.items[0]?.id ?? onAddItem(selectedNote.id)
-    activeItemId = itemId
-    patchItem(selectedNote.id, itemId, { kind, done: kind === 'checklist' ? (activeItem?.done ?? false) : false })
-    await tick()
-    focusActiveEditor()
-  }
-
-  async function startEmptyNote() {
-    if (!selectedNote || selectedNote.items.length > 0) return
-    activeItemId = onAddItem(selectedNote.id)
-    await tick()
-    focusActiveEditor()
-  }
-
-  function applyInlineFormat(command: InlineFormatCommand) {
-    const editor = activeEditor()
-    if (!editor) return
-    const selection = document.getSelection()
-    const liveRange = selection?.rangeCount ? selection.getRangeAt(0) : null
-    const savedRange = toolbarSelection ?? (liveRange && editor.contains(liveRange.commonAncestorContainer) ? liveRange.cloneRange() : null)
-    editor.focus()
-    if (savedRange && selection) {
-      selection.removeAllRanges()
-      selection.addRange(savedRange)
-    }
-    editor.dispatchEvent(new CustomEvent('balanceformat', { detail: { command } }))
-    toolbarSelection = null
-    updateInlineFormatState()
-  }
-
-  function rememberToolbarSelection() {
-    const editor = activeEditor()
-    const selection = document.getSelection()
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
-    toolbarSelection = editor && range && editor.contains(range.commonAncestorContainer) ? range.cloneRange() : null
-  }
-
-  function updateInlineFormatState() {
-    const editor = activeEditor()
-    const selection = document.getSelection()
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
-    if (!editor || !range || !editor.contains(range.startContainer) || !editor.contains(range.endContainer)) {
-      inlineFormats = { bold: false, italic: false, underline: false }
-      return
-    }
-
-    inlineFormats = {
-      bold: document.queryCommandState('bold'),
-      italic: document.queryCommandState('italic'),
-      underline: document.queryCommandState('underline'),
-    }
-  }
-
-  function activeEditor() {
-    if (!activeItemId) return null
-    return Array.from(document.querySelectorAll<HTMLDivElement>('[data-note-text-input]')).find(
-      (editor) => editor.dataset.noteTextInputId === activeItemId,
-    ) ?? null
-  }
-
-  function focusActiveEditor() {
-    const editor = activeEditor()
-    if (!editor) return
-    editor.focus()
-    const range = document.createRange()
-    range.selectNodeContents(editor)
-    range.collapse(false)
-    const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-  }
-
   function autoSizeTitle(node: HTMLTextAreaElement, _title: string) {
     function resize() {
       if (!node.isConnected) return
@@ -348,20 +199,7 @@
 
     event.preventDefault()
     const edge = event.key === 'Tab' ? 'start' : 'end'
-    if (editor !== 'classic') {
-      void noteEditorHost?.focusEdge(edge)
-      return
-    }
-    let target = edge === 'start' ? noteInputs()[0] : noteInputs().at(-1)
-    if (!target) {
-      activeItemId = onAddItem(selectedNote.id)
-      await tick()
-      target = activeEditor() ?? undefined
-    }
-    if (!target) return
-
-    activeItemId = target.dataset.noteTextInputId ?? null
-    placeCaretAtTextOffset(target, edge === 'start' ? 0 : target.textContent?.length ?? 0)
+    void noteEditorHost?.focusEdge(edge)
   }
 
   function focusTitle() {
@@ -371,86 +209,8 @@
     title.setSelectionRange(title.value.length, title.value.length)
   }
 
-  function rememberNoteViewState(noteId: Id, patch: Partial<NoteViewState>) {
-    const previous = viewStatesByNote.get(noteId)
-    onViewStateChange(noteId, {
-      scrollTop: previous?.scrollTop ?? 0,
-      caret: previous?.caret ?? null,
-      ...patch,
-    })
-  }
-
-  function rememberActiveNoteScroll(scroller = noteScrollContainer()) {
-    if (!activeNoteId || restoringNoteViewState || !scroller) return
-    rememberNoteViewState(activeNoteId, { scrollTop: scroller.scrollTop })
-  }
-
-  function rememberActiveNoteCaret() {
-    if (!selectedNote || restoringNoteViewState) return
-
-    const selection = document.getSelection()
-    if (!selection || selection.rangeCount === 0) return
-
-    const range = selection.getRangeAt(0)
-    const editor = range.startContainer instanceof Element
-      ? range.startContainer.closest<HTMLDivElement>('[data-note-text-input]')
-      : range.startContainer.parentElement?.closest<HTMLDivElement>('[data-note-text-input]') ?? null
-    const itemId = editor?.dataset.noteTextInputId
-    if (!editor || !itemId || !findItem(selectedNote.items, itemId)) return
-    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) return
-
-    rememberNoteViewState(selectedNote.id, {
-      caret: {
-        itemId,
-        start: textOffsetAtPoint(editor, range.startContainer, range.startOffset),
-        end: textOffsetAtPoint(editor, range.endContainer, range.endOffset),
-      },
-    })
-  }
-
-  async function restoreActiveNoteViewState(noteId: Id) {
-    const request = ++noteViewRestoreRequest
-    restoringNoteViewState = true
-    await tick()
-    if (request !== noteViewRestoreRequest || activeNoteId !== noteId) return
-
-    const state = viewStatesByNote.get(noteId)
-    if (!state) {
-      const scroller = noteScrollContainer()
-      if (scroller) scroller.scrollTop = 0
-      restoringNoteViewState = false
-      return
-    }
-
-    const editor = state?.caret
-      ? noteInputs().find((candidate) => candidate.dataset.noteTextInputId === state.caret?.itemId)
-      : null
-    if (editor && state?.caret) {
-      activeItemId = state.caret.itemId
-      editor.focus()
-      const range = document.createRange()
-      const start = pointAtTextOffset(editor, state.caret.start)
-      const end = pointAtTextOffset(editor, state.caret.end)
-      range.setStart(start.node, start.offset)
-      range.setEnd(end.node, end.offset)
-      const selection = document.getSelection()
-      selection?.removeAllRanges()
-      selection?.addRange(range)
-      updateInlineFormatState()
-    }
-
-    await new Promise<void>((resolve) => window.requestAnimationFrame(() => resolve()))
-    if (request !== noteViewRestoreRequest || activeNoteId !== noteId) return
-
-    const scroller = noteScrollContainer()
-    if (scroller) scroller.scrollTop = state.scrollTop
-    window.requestAnimationFrame(() => {
-      if (request === noteViewRestoreRequest) restoringNoteViewState = false
-    })
-  }
-
   function noteScrollContainer() {
-    const blocksElement = noteBlocksElement ?? noteEditorHostElement
+    const blocksElement = noteEditorHostElement
     const noteDocument = blocksElement?.closest<HTMLElement>('.note-document') ?? null
     if (noteDocument && ['auto', 'scroll'].includes(getComputedStyle(noteDocument).overflowY)) {
       return noteDocument
@@ -484,7 +244,6 @@
       frame = null
       noteScrollViewportHeight = scroller.clientHeight
       noteScrollSpaceControlVisible = noteScrollSpaceAdjustmentActive || isAtNoteBottom(scroller)
-      rememberActiveNoteScroll(scroller)
     }
     const scheduleVisibilityUpdate = () => {
       if (frame !== null) return
@@ -495,7 +254,7 @@
     scrollEventTarget.addEventListener('scroll', scheduleVisibilityUpdate, { passive: true })
     resizeObserver.observe(scroller)
     resizeObserver.observe(node)
-    if (noteBlocksElement) resizeObserver.observe(noteBlocksElement)
+    if (noteEditorHostElement) resizeObserver.observe(noteEditorHostElement)
     scheduleVisibilityUpdate()
 
     return {
@@ -536,24 +295,14 @@
   }
 
   function handleNoteSelectionChange() {
-    updateInlineFormatState()
-    rememberActiveNoteCaret()
-
-    if (restoringNoteViewState) return
-
     const selection = document.getSelection()
-    if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
-      const candidate = crossBlockSelectionForRange(selection.getRangeAt(0))
-      if (candidate && !textSelection) setTextSelection(candidate)
-    }
-    const inputs = noteInputs()
-    const lastInput = inputs.at(-1)
+    const inputs = noteEditorHostElement?.querySelectorAll<HTMLDivElement>('.note-text')
+    const lastInput = inputs?.[inputs.length - 1]
     if (!selection?.isCollapsed || !selection.focusNode || !lastInput?.contains(selection.focusNode)
       || !caretIsOnLastVisualLine(lastInput, selection.getRangeAt(0))) {
       cancelNoteBottomFollow()
       return
     }
-
     const scroller = noteScrollContainer()
     if (scroller && !isAtNoteBottom(scroller)) void scrollNoteToBottomAfterLayout(scroller)
   }
@@ -635,670 +384,6 @@
     })
   }
 
-  function handleEditorKeydownCapture(event: KeyboardEvent) {
-    if (!(event.target instanceof Node)) return
-    // Safari can leave focus on the document after toggling a selected checkbox.
-    if (!noteBlocksElement?.contains(event.target) &&
-      !(selectedItemIds.length > 0 && event.target === document.body)) return
-    const primaryModifier = event.metaKey || event.ctrlKey
-    if (handleSelectedTextKeydown(event)) return
-
-    if (event.key === 'Tab' && event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      const row = event.target instanceof Element
-        ? event.target.closest<HTMLElement>('[data-note-item-id]')
-        : null
-      const itemId = row?.dataset.noteItemId
-      const item = selectedNote && itemId ? findItem(selectedNote.items, itemId) : null
-      if (
-        row?.dataset.noteItemDepth === '0' &&
-        item &&
-        ['bullet', 'numbered', 'checklist'].includes(item.kind)
-      ) {
-        event.preventDefault()
-        event.stopPropagation()
-        void convertTopLevelListItemToParagraph(item, row)
-        return
-      }
-    }
-
-    if (selectedItemIds.length > 0) {
-      if (['Backspace', 'Delete'].includes(event.key)) {
-        event.preventDefault()
-        event.stopPropagation()
-        void deleteSelectedItems()
-        return
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        clearItemSelection()
-        return
-      }
-      const modifierOnly = ['Alt', 'Control', 'Meta', 'Shift'].includes(event.key)
-      if (
-        !modifierOnly &&
-        !event.shiftKey &&
-        !(primaryModifier && ['a', 'c', 'x', 'v'].includes(event.key.toLocaleLowerCase())) &&
-        event.key.length !== 1 && event.key !== 'Enter'
-      ) {
-        clearItemSelection()
-      }
-    }
-    if (['Enter', 'Backspace', 'Delete', 'Tab'].includes(event.key)) void followNoteBottomAfterEdit(event)
-  }
-
-  function handleSelectedTextKeydown(event: KeyboardEvent) {
-    if (extendTextSelectionWithKeyboard(event)) return true
-    const selected = selectedTextRange()
-    const blockSelection = selected && crossBlockSelectionForRange(selected)
-    if (!blockSelection && selectedItemIds.length === 0) return false
-    if (event.isComposing) return false
-    if (isQuoteKey(event) && blockSelection && selectedNote) {
-      event.preventDefault()
-      event.stopPropagation()
-      const { startEditor, endEditor, range } = blockSelection
-      const anchor = textSelectionAnchor ?? { node: document.getSelection()?.anchorNode, offset: document.getSelection()?.anchorOffset }
-      const backward = anchor.node === range.endContainer && anchor.offset === range.endOffset
-      const startOffset = textOffsetAtPoint(startEditor, range.startContainer, range.startOffset) + 1
-      const endOffset = textOffsetAtPoint(endEditor, range.endContainer, range.endOffset)
-      const startId = startEditor.dataset.noteTextInputId!
-      const endId = endEditor.dataset.noteTextInputId!
-      const wrapped = wrapRangeInQuotes(range, event.key)
-      const items = structuredClone(selectedNote.items)
-      for (const [id, input] of [[startId, startEditor], [endId, endEditor]] as const) {
-        const item = findItem(items, id)
-        if (item) {
-          item.html = sanitizeInlineHTML(input.innerHTML)
-          item.text = htmlToPlainTextWithBreaks(item.html)
-        }
-      }
-      setTextSelection({ range: wrapped, startEditor, endEditor })
-      replaceItems(selectedNote.id, items, 'quote selection')
-      void tick().then(() => {
-        const inputs = noteInputs()
-        const start = inputs.find((input) => input.dataset.noteTextInputId === startId)
-        const end = inputs.find((input) => input.dataset.noteTextInputId === endId)
-        if (!start || !end) return
-        const a = pointAtTextOffset(start, startOffset)
-        const b = pointAtTextOffset(end, endOffset)
-        applyPointerSelection(backward ? b : a, backward ? a : b)
-      })
-      return true
-    }
-    if (['Backspace', 'Delete'].includes(event.key) && selectedItemIds.length === 0) {
-      event.preventDefault()
-      event.stopPropagation()
-      void replaceSelectionWithHTML('')
-      return true
-    }
-    if (event.key === 'Enter' && !event.metaKey && !event.ctrlKey && !event.altKey) {
-      event.preventDefault()
-      event.stopPropagation()
-      void replaceSelectionWithHTML(event.shiftKey ? '<br>' : '', !event.shiftKey)
-      return true
-    }
-    if (event.key === 'Escape' || (!event.shiftKey && event.key.startsWith('Arrow'))) {
-      if (textSelection) {
-        const range = textSelection.range
-        const toStart = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
-        const editor = toStart ? textSelection.startEditor : textSelection.endEditor
-        const offset = textOffsetAtPoint(editor, toStart ? range.startContainer : range.endContainer, toStart ? range.startOffset : range.endOffset)
-        clearItemSelection()
-        placeCaretAtTextOffset(editor, offset)
-        event.preventDefault()
-        event.stopPropagation()
-        return true
-      }
-    }
-    if ((event.metaKey || event.ctrlKey) && ['z', 'a'].includes(event.key.toLowerCase())) clearTextSelection()
-    return false
-  }
-
-  function extendTextSelectionWithKeyboard(event: KeyboardEvent) {
-    if (!event.shiftKey || !event.key.startsWith('Arrow') || event.ctrlKey || event.altKey || selectedItemIds.length > 0) return false
-    const selection = document.getSelection()
-    if (!selection?.anchorNode || !selection.focusNode) return false
-    const anchor = textSelectionAnchor ?? { node: selection.anchorNode, offset: selection.anchorOffset }
-    const focus = textSelectionFocus ?? { node: selection.focusNode, offset: selection.focusOffset }
-    const editor = noteEditorForNode(focus.node)
-    if (!editor) return false
-    const inputs = noteInputs()
-    const backwards = event.key === 'ArrowLeft' || event.key === 'ArrowUp'
-    let target: { node: Node; offset: number }
-    if (event.metaKey && ['ArrowUp', 'ArrowDown'].includes(event.key)) {
-      const endpoint = backwards ? inputs[0] : inputs.at(-1)!
-      target = { node: endpoint, offset: backwards ? 0 : endpoint.childNodes.length }
-    } else {
-      const horizontal = event.key === 'ArrowLeft' || event.key === 'ArrowRight'
-      const offset = textOffsetAtPoint(editor, focus.node, focus.offset)
-      const length = textOffsetAtPoint(editor, editor, editor.childNodes.length)
-      if (!textSelection && (!horizontal || (backwards ? offset !== 0 : offset !== length))) return false
-      editor.focus()
-      selection.collapse(focus.node, focus.offset)
-      const content = document.createRange()
-      content.selectNodeContents(editor)
-      const lineRects = Array.from(content.getClientRects()).filter((rect) => rect.width > 0 && rect.height > 0)
-      const caretRect = selection.getRangeAt(0).getBoundingClientRect()
-      const edge = backwards ? lineRects[0] : lineRects.at(-1)
-      const boundaryLine = !edge || caretRect.top < edge.bottom && caretRect.bottom > edge.top
-      const adjacent = inputs[inputs.indexOf(editor) + (backwards ? -1 : 1)]
-      if (!horizontal && boundaryLine && adjacent) {
-        target = pointAtTextOffset(adjacent, offset)
-      } else {
-        selection.modify('move', backwards ? 'backward' : 'forward', horizontal ? (event.metaKey ? 'lineboundary' : 'character') : 'line')
-        target = { node: selection.focusNode!, offset: selection.focusOffset }
-        if (target.node === focus.node && target.offset === focus.offset || !noteEditorForNode(target.node)) {
-          target = adjacent ? pointAtTextOffset(adjacent, horizontal ? (backwards ? Number.MAX_SAFE_INTEGER : 0) : offset) : focus
-        }
-      }
-    }
-    event.preventDefault()
-    event.stopPropagation()
-    applyPointerSelection(anchor, target)
-    return true
-  }
-
-  function handleNoteBeforeInput(event: InputEvent) {
-    followNoteBottomAfterEdit(event)
-    const editor = event.target instanceof Node ? noteEditorForNode(event.target) : null
-    if (!editor || !noteBlocksElement?.contains(editor) || !event.cancelable) return
-    const range = selectedTextRange()
-    if (!range || (!crossBlockSelectionForRange(range) && selectedItemIds.length === 0)) return
-    if (event.inputType.startsWith('delete') || event.inputType === 'insertText' ||
-      event.inputType === 'insertReplacementText' || event.inputType === 'insertParagraph' || event.inputType === 'insertLineBreak') {
-      event.preventDefault()
-      event.stopPropagation()
-      void replaceSelectionWithHTML(event.inputType === 'insertLineBreak' ? '<br>' : escapeHTML(event.data ?? ''), event.inputType === 'insertParagraph')
-    }
-  }
-
-  function selectedTextRange(): Range | null {
-    if (selectedItemIds.length > 0) {
-      const inputs = noteInputs().filter((input) => selectedItemIds.includes(input.dataset.noteTextInputId ?? ''))
-      if (!inputs.length) return null
-      const range = document.createRange()
-      range.setStart(inputs[0], 0)
-      range.setEnd(inputs.at(-1)!, inputs.at(-1)!.childNodes.length)
-      return range
-    }
-    if (textSelection) {
-      if (textSelection.startEditor.isConnected && textSelection.endEditor.isConnected &&
-        noteEditorForNode(textSelection.range.startContainer) === textSelection.startEditor &&
-        noteEditorForNode(textSelection.range.endContainer) === textSelection.endEditor) return textSelection.range
-      clearTextSelection()
-    }
-    const selection = document.getSelection()
-    const range = selection?.rangeCount ? selection.getRangeAt(0) : null
-    return range && noteEditorForNode(range.startContainer) && noteEditorForNode(range.endContainer) &&
-      noteBlocksElement?.contains(range.commonAncestorContainer) ? range : null
-  }
-
-  function clearTextSelection() {
-    textSelection = null
-    textSelectionAnchor = null
-    textSelectionFocus = null
-    CSS.highlights?.delete('balance-note-selection')
-  }
-
-  function setTextSelection(selected: CrossBlockSelection) {
-    textSelection = selected
-    if (typeof Highlight !== 'undefined') CSS.highlights.set('balance-note-selection', new Highlight(...selectionFragments(selected.range)))
-  }
-
-  function selectionFragments(range: Range) {
-    return noteInputs().filter((input) => range.intersectsNode(input)).map((input) => {
-      const fragment = document.createRange()
-      fragment.selectNodeContents(input)
-      if (input.contains(range.startContainer)) fragment.setStart(range.startContainer, range.startOffset)
-      if (input.contains(range.endContainer)) fragment.setEnd(range.endContainer, range.endOffset)
-      return fragment
-    })
-  }
-
-  async function replaceSelectionWithHTML(html: string, split = false) {
-    const range = selectedTextRange()
-    if (!range) return
-    const startId = noteEditorForNode(range.startContainer)?.dataset.noteTextInputId
-    const source = selectedNote && startId ? findItem(selectedNote.items, startId) : null
-    const kind = source?.kind ?? 'paragraph'
-    const item = (content: string, itemKind = kind): ParsedNoteClipboardItem => ({ kind: itemKind, html: content, text: htmlToPlainTextWithBreaks(content), done: false, children: [] })
-    await replaceSelectionWithItems(range, split ? [item(''), item('', kind === 'heading' ? 'paragraph' : kind)] : [item(html)], false)
-  }
-
-  async function replaceSelectionWithItems(range: Range, items: ParsedNoteClipboardItem[], usePastedKind = true) {
-    if (!selectedNote || items.length === 0) return
-    const startEditor = noteEditorForNode(range.startContainer)
-    const endEditor = noteEditorForNode(range.endContainer)
-    const startId = startEditor?.dataset.noteTextInputId
-    if (!startEditor || !endEditor || !startId) return
-    const before = document.createRange()
-    before.selectNodeContents(startEditor)
-    before.setEnd(range.startContainer, range.startOffset)
-    const after = document.createRange()
-    after.selectNodeContents(endEditor)
-    after.setStart(range.endContainer, range.endOffset)
-    const beforeHTML = sanitizedRangeHTML(before)
-    const afterHTML = sanitizedRangeHTML(after)
-    const flatten = flattenParsedClipboardItems(items)
-    const first = flatten[0]
-    const last = flatten.at(-1)!
-    first.html = sanitizeInlineHTML(beforeHTML + first.html)
-    first.text = htmlToPlainTextWithBreaks(first.html)
-    const caretOffset = htmlToPlainTextWithBreaks(last.html).length
-    last.html = sanitizeInlineHTML(last.html + afterHTML)
-    last.text = htmlToPlainTextWithBreaks(last.html)
-    const inputs = noteInputs()
-    const ids = inputs.slice(inputs.indexOf(startEditor), inputs.indexOf(endEditor) + 1).flatMap((input) => input.dataset.noteTextInputId ?? [])
-    clearItemSelection()
-    // Clear the native range before removing blocks, so blur cannot save a
-    // browser-mutated version of the old endpoints over the replacement.
-    clearNativeSelection()
-    startEditor.innerHTML = first.html + (first.html.endsWith('<br>') ? '<br>' : '')
-    const pastedIds = replaceItemRange(selectedNote.id, startId, ids, {
-      html: first.html, text: first.text,
-      ...(usePastedKind ? { kind: first.kind, done: first.done } : {}),
-      children: first.children,
-    }, items.slice(1))
-    activeItemId = pastedIds.at(-1) ?? startId
-    await tick()
-    const editor = activeEditor()
-    if (editor) placeCaretAtTextOffset(editor, caretOffset)
-  }
-
-  function crossBlockSelectionForRange(range: Range): CrossBlockSelection | null {
-    const startEditor = noteEditorForNode(range.startContainer)
-    const endEditor = noteEditorForNode(range.endContainer)
-    if (!startEditor || !endEditor || startEditor === endEditor) return null
-
-    const inputs = noteInputs()
-    const startIndex = inputs.indexOf(startEditor)
-    const endIndex = inputs.indexOf(endEditor)
-    if (startIndex < 0 || endIndex <= startIndex) return null
-    return {
-      range: range.cloneRange(),
-      startEditor,
-      endEditor,
-    }
-  }
-
-  function noteEditorForNode(node: Node) {
-    const element = node instanceof Element ? node : node.parentElement
-    return element?.closest<HTMLDivElement>('[data-note-text-input]') ?? null
-  }
-
-  function sanitizedRangeHTML(range: Range) {
-    const container = document.createElement('div')
-    container.append(range.cloneContents())
-    return sanitizeInlineHTML(container.innerHTML)
-  }
-
-  async function convertTopLevelListItemToParagraph(item: Note['items'][number], row: HTMLElement) {
-    if (!selectedNote) return
-
-    const editor = row.querySelector<HTMLDivElement>('[data-note-text-input]')
-    let offset = editor?.textContent?.length ?? item.text.length
-    const selection = document.getSelection()
-    if (editor && editor === document.activeElement && selection?.focusNode && editor.contains(selection.focusNode)) {
-      offset = textOffsetAtPoint(editor, selection.focusNode, selection.focusOffset)
-    }
-    patchItem(selectedNote.id, item.id, { kind: 'paragraph', done: false })
-    activeItemId = item.id
-    await tick()
-    const nextEditor = activeEditor()
-    if (nextEditor) placeCaretAtTextOffset(nextEditor, offset)
-  }
-
-  async function deleteSelectedItems() {
-    if (!selectedNote || selectedItemIds.length === 0) return
-    const inputs = noteInputs()
-    const selectedIds = [...selectedItemIds]
-    const selected = new Set(selectedIds)
-    const index = inputs.findIndex((input) => selected.has(input.dataset.noteTextInputId ?? ''))
-    deleteItems(selectedNote.id, selectedIds)
-    clearItemSelection()
-    await tick()
-    const next = noteInputs()
-    const target = next[Math.min(Math.max(0, index), next.length - 1)] ?? next.at(-1)
-    if (target) {
-      activeItemId = target.dataset.noteTextInputId ?? null
-      placeCaretAtTextOffset(target, target.textContent?.length ?? 0)
-    }
-  }
-
-  function placeCaretAtTextOffset(editor: HTMLDivElement, offset: number) {
-    editor.focus()
-    const point = pointAtTextOffset(editor, offset)
-    const range = document.createRange()
-    range.setStart(point.node, point.offset)
-    range.collapse(true)
-    const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-  }
-
-  function noteInputs() {
-    return Array.from(noteBlocksElement?.querySelectorAll<HTMLDivElement>('[data-note-text-input]') ?? [])
-  }
-
-  function handleNoteCopy(event: ClipboardEvent) {
-    if (!selectedNote || !event.clipboardData) return
-    const inputs = noteInputs()
-    const explicitlySelected = new Set(selectedItemIds)
-    const usingItemSelection = explicitlySelected.size > 1
-    let range: Range | null = null
-    let selectedInputs = usingItemSelection
-      ? inputs.filter((input) => explicitlySelected.has(input.dataset.noteTextInputId ?? ''))
-      : []
-
-    if (!usingItemSelection) {
-      range = selectedTextRange()
-      if (!range || range.collapsed) return
-      selectedInputs = inputs.filter((input) => range?.intersectsNode(input))
-    }
-    if (selectedInputs.length === 0) return
-
-    const blocks = selectedInputs.flatMap((input) => {
-      const fragmentRange = document.createRange()
-      fragmentRange.selectNodeContents(input)
-      if (range && input.contains(range.startContainer)) fragmentRange.setStart(range.startContainer, range.startOffset)
-      if (range && input.contains(range.endContainer)) fragmentRange.setEnd(range.endContainer, range.endOffset)
-
-      const container = document.createElement('div')
-      container.append(fragmentRange.cloneContents())
-      const html = sanitizeInlineHTML(container.innerHTML)
-      const text = htmlToPlainTextWithBreaks(html)
-      const itemId = input.dataset.noteTextInputId
-      const item = itemId ? findItem(selectedNote.items, itemId) : null
-      const row = input.closest<HTMLElement>('[data-note-item-id]')
-      if (!item || !row) return []
-
-      return [{
-        kind: item.kind,
-        depth: Number(row.dataset.noteItemDepth ?? 0),
-        html,
-        text,
-        done: item.done,
-        number: numberedMarker(row),
-      } satisfies NoteClipboardBlock]
-    })
-    if (blocks.length === 0 || (blocks.length === 1 && blocks[0].kind !== 'quote' && !blocks[0].html.includes('<br>'))) return
-
-    const plainText = noteClipboardPlainText(blocks)
-    const html = noteClipboardHTML(blocks)
-    event.preventDefault()
-    event.clipboardData.setData('text/plain', plainText)
-    event.clipboardData.setData('text/html', html)
-    if (isTauri()) {
-      window.setTimeout(() => {
-        void invoke('write_note_clipboard', {
-          plainText,
-          html: `<meta charset='utf-8'>${html}`,
-        }).catch(() => {})
-      })
-    }
-  }
-
-  function handleNoteCut(event: ClipboardEvent) {
-    handleNoteCopy(event)
-    if (!event.defaultPrevented) return
-    if (selectedItemIds.length > 0) void deleteSelectedItems()
-    else void replaceSelectionWithHTML('')
-  }
-
-  async function handleNotePaste(event: ClipboardEvent) {
-    if (!selectedNote || !event.clipboardData) return
-    if (clipboardHasDirectImage(event.clipboardData) || event.clipboardData.getData(IMAGE_CLIPBOARD_TYPE)) return
-
-    const target = event.target instanceof Element
-      ? event.target.closest<HTMLDivElement>('[data-note-text-input]')
-      : null
-    const targetId = target?.dataset.noteTextInputId
-    if (!target || !targetId) return
-
-    const plainText = event.clipboardData.getData('text/plain')
-    const clipboardHTML = event.clipboardData.getData('text/html')
-    stageClipboardImages(clipboardHTML)
-    const items = parseNoteBlocksFromClipboard(plainText, clipboardHTML)
-    const flattenedItems = flattenParsedClipboardItems(items)
-    const range = selectedTextRange()
-    if (!range) return
-    if (flattenedItems.length === 0 || (flattenedItems.length === 1 && flattenedItems[0].kind === 'paragraph')) {
-      if (!crossBlockSelectionForRange(range) && selectedItemIds.length === 0) return
-      if (!plainText && !clipboardHTML) return
-      event.preventDefault()
-      event.stopPropagation()
-      await replaceSelectionWithHTML(clipboardHTML ? sanitizeInlineHTML(clipboardHTML) : escapeHTML(plainText).replace(/\r?\n/g, '<br>'))
-      return
-    }
-
-    event.preventDefault()
-    event.stopPropagation()
-    await replaceSelectionWithItems(range, items)
-  }
-
-  function flattenParsedClipboardItems(items: ParsedNoteClipboardItem[]): ParsedNoteClipboardItem[] {
-    return items.flatMap((item) => [item, ...flattenParsedClipboardItems(item.children)])
-  }
-
-  function numberedMarker(row: HTMLElement) {
-    const value = Number.parseInt(row.dataset.noteItemNumber ?? '1', 10)
-    return Number.isFinite(value) ? value : 1
-  }
-
-  function handleNotePointerDown(event: PointerEvent) {
-    if (event.button !== 0 || (event.pointerType !== 'mouse' && event.pointerType !== 'pen')) return
-    const target = event.target instanceof Element ? event.target : null
-    const checkboxRow = target?.closest<HTMLInputElement>('input.note-check')
-      ?.closest<HTMLElement>('[data-note-item-id]') ?? null
-    const checkboxItemId = checkboxRow?.dataset.noteItemId
-    if (checkboxItemId && selectedItemIds.includes(checkboxItemId)) {
-      pointerSelectionAnchor = null
-      pointerSelectionFocus = null
-      pointerUsesItemSelection = false
-      return
-    }
-    const editor = target?.closest<HTMLDivElement>('[data-note-text-input]') ?? null
-    const point = editor ? caretPointFromCoordinates(editor, event.clientX, event.clientY) : null
-    const itemId = editor?.dataset.noteTextInputId
-
-    if (event.shiftKey && editor && point && itemId && extendSelectionToClick(editor, point, itemId)) {
-      event.preventDefault()
-      pointerSelectionAnchor = null
-      pointerSelectionFocus = null
-      pointerUsesItemSelection = false
-      return
-    }
-
-    clearItemSelection()
-    pointerSelectionAnchor = editor && point && itemId ? { ...point, editor, itemId } : null
-    pointerSelectionFocus = null
-    pointerUsesItemSelection = false
-  }
-
-  function extendSelectionToClick(
-    focusEditor: HTMLDivElement,
-    focus: { node: Node; offset: number },
-    focusId: Id,
-  ) {
-    const inputs = noteInputs()
-    const selection = document.getSelection()
-    const nativeAnchorNode = textSelectionAnchor?.node ?? selection?.anchorNode ?? null
-    const nativeAnchorEditor = nativeAnchorNode
-      ? inputs.find((input) => input.contains(nativeAnchorNode)) ?? null
-      : null
-    const trackedAnchorEditor = selectionAnchorItemId
-      ? inputs.find((input) => input.dataset.noteTextInputId === selectionAnchorItemId) ?? null
-      : null
-    const anchorEditor = trackedAnchorEditor ?? nativeAnchorEditor
-    const anchorId = selectionAnchorItemId ?? anchorEditor?.dataset.noteTextInputId
-    if (!anchorEditor || !anchorId || anchorEditor === focusEditor && !selectionAnchorItemId) return false
-
-    if (isListEditor(anchorEditor) || isListEditor(focusEditor)) {
-      selectItemRange(anchorId, focusId)
-      focusEditor.focus()
-      clearNativeSelection()
-      window.requestAnimationFrame(clearNativeSelection)
-      return true
-    }
-
-    if (!selection || !nativeAnchorNode) return false
-    const anchor = textSelectionAnchor ?? { node: nativeAnchorNode, offset: selection.anchorOffset }
-    focusEditor.focus()
-    applyPointerSelection(anchor, focus)
-    window.requestAnimationFrame(() => applyPointerSelection(anchor, focus))
-    return true
-  }
-
-  function handleNotePointerMove(event: PointerEvent) {
-    if (
-      !pointerSelectionAnchor ||
-      !(event.buttons & 1) ||
-      (event.pointerType !== 'mouse' && event.pointerType !== 'pen')
-    ) return
-
-    const target = event.target instanceof Element ? event.target : null
-    const row = target?.closest<HTMLElement>('[data-note-item-id]') ?? null
-    const editor = target?.closest<HTMLDivElement>('[data-note-text-input]')
-      ?? row?.querySelector<HTMLDivElement>('[data-note-text-input]')
-      ?? null
-    if (!editor) return
-    if (editor === pointerSelectionAnchor.editor && !pointerSelectionFocus) return
-
-    const point = caretPointFromCoordinates(editor, event.clientX, event.clientY)
-    const itemId = editor.dataset.noteTextInputId
-    if (!point || !itemId) return
-    pointerSelectionFocus = { ...point, editor, itemId }
-    event.preventDefault()
-    if (isListEditor(pointerSelectionAnchor.editor) || isListEditor(editor)) {
-      pointerUsesItemSelection = true
-      selectItemRange(pointerSelectionAnchor.itemId, itemId)
-      clearNativeSelection()
-      return
-    }
-    applyPointerSelection(pointerSelectionAnchor, pointerSelectionFocus)
-  }
-
-  function finishNotePointerSelection(event: PointerEvent) {
-    const anchor = pointerSelectionAnchor
-    const focus = pointerSelectionFocus
-    const usedItemSelection = pointerUsesItemSelection
-    pointerSelectionAnchor = null
-    pointerSelectionFocus = null
-    pointerUsesItemSelection = false
-    if (!anchor || !focus) return
-
-    event.preventDefault()
-    if (usedItemSelection) {
-      clearNativeSelection()
-      window.requestAnimationFrame(clearNativeSelection)
-      return
-    }
-    applyPointerSelection(anchor, focus)
-    window.requestAnimationFrame(() => applyPointerSelection(anchor, focus))
-  }
-
-  function clearNativeSelection() {
-    document.getSelection()?.removeAllRanges()
-  }
-
-  function extendItemSelection(itemId: Id, direction: 'up' | 'down') {
-    const inputs = noteInputs()
-    const focusId = selectionFocusItemId ?? itemId
-    const focusIndex = inputs.findIndex((input) => input.dataset.noteTextInputId === focusId)
-    if (focusIndex < 0) return false
-
-    const adjacentIndex = direction === 'up' ? focusIndex - 1 : focusIndex + 1
-    const adjacent = inputs[adjacentIndex]
-    const current = inputs[focusIndex]
-    if (!adjacent || (!isListEditor(current) && !isListEditor(adjacent))) return false
-
-    const adjacentId = adjacent.dataset.noteTextInputId
-    if (!adjacentId) return false
-    const anchorId = selectionAnchorItemId ?? itemId
-    selectItemRange(anchorId, adjacentId)
-    focusItemSelectionEndpoint(adjacent, direction)
-    return true
-  }
-
-  function selectAllItems() {
-    const inputs = noteInputs()
-    const firstId = inputs[0]?.dataset.noteTextInputId
-    const lastId = inputs.at(-1)?.dataset.noteTextInputId
-    if (!firstId || !lastId) return
-    selectItemRange(firstId, lastId)
-  }
-
-  function selectItemRange(anchorId: Id, focusId: Id) {
-    clearTextSelection()
-    const inputs = noteInputs()
-    const anchorIndex = inputs.findIndex((input) => input.dataset.noteTextInputId === anchorId)
-    const focusIndex = inputs.findIndex((input) => input.dataset.noteTextInputId === focusId)
-    if (anchorIndex < 0 || focusIndex < 0) return
-
-    selectionAnchorItemId = anchorId
-    selectionFocusItemId = focusId
-    if (anchorIndex === focusIndex) {
-      selectedItemIds = []
-      return
-    }
-    const start = Math.min(anchorIndex, focusIndex)
-    const end = Math.max(anchorIndex, focusIndex)
-    selectedItemIds = inputs.slice(start, end + 1).flatMap((input) => input.dataset.noteTextInputId ?? [])
-  }
-
-  function clearItemSelection() {
-    clearTextSelection()
-    selectedItemIds = []
-    selectionAnchorItemId = null
-    selectionFocusItemId = null
-  }
-
-  function toggleChecklist(itemId: Id, done: boolean) {
-    if (!selectedNote) return
-    const itemIds = selectedItemIds.includes(itemId) ? selectedItemIds : [itemId]
-    patchItemsDone(selectedNote.id, itemIds, done)
-  }
-
-  function isListEditor(editor: HTMLDivElement) {
-    return Boolean(editor.closest('.note-list-item'))
-  }
-
-  function focusItemSelectionEndpoint(editor: HTMLDivElement, direction: 'up' | 'down') {
-    editor.focus()
-    const range = document.createRange()
-    range.selectNodeContents(editor)
-    range.collapse(direction === 'up')
-    const selection = document.getSelection()
-    selection?.removeAllRanges()
-    selection?.addRange(range)
-  }
-
-  function applyPointerSelection(
-    anchor: { node: Node; offset: number },
-    focus: { node: Node; offset: number },
-  ) {
-    if (!anchor.node.isConnected || !focus.node.isConnected) return
-    const anchorRange = document.createRange()
-    anchorRange.setStart(anchor.node, anchor.offset)
-    anchorRange.collapse(true)
-    const focusRange = document.createRange()
-    focusRange.setStart(focus.node, focus.offset)
-    focusRange.collapse(true)
-    const anchorComesFirst = anchorRange.compareBoundaryPoints(Range.START_TO_START, focusRange) <= 0
-    const logicalRange = document.createRange()
-    const start = anchorComesFirst ? anchor : focus
-    const end = anchorComesFirst ? focus : anchor
-    logicalRange.setStart(start.node, start.offset)
-    logicalRange.setEnd(end.node, end.offset)
-    clearTextSelection()
-    const selected = crossBlockSelectionForRange(logicalRange)
-    if (selected) {
-      textSelectionAnchor = anchor
-      textSelectionFocus = focus
-      setTextSelection(selected)
-    }
-    document.getSelection()?.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset)
-  }
-
   onMount(() => {
     const storedPercent = localStorage.getItem(NOTE_SCROLL_SPACE_PERCENT_KEY)
     const legacyVh = localStorage.getItem(LEGACY_NOTE_SCROLL_SPACE_VH_KEY)
@@ -1312,27 +397,12 @@
   })
 
   onDestroy(() => {
-    clearTextSelection()
-    rememberActiveNoteScroll()
-    rememberActiveNoteCaret()
-    noteViewRestoreRequest += 1
     cancelNoteBottomFollow()
     noteScrollSpaceAdjustmentActive = false
   })
 </script>
 
-<svelte:document
-  on:selectionchange={handleNoteSelectionChange}
-  on:keyup={updateInlineFormatState}
-  on:beforeinput|capture={handleNoteBeforeInput}
-  on:keydown|capture={handleEditorKeydownCapture}
-  on:copy={handleNoteCopy}
-  on:cut={handleNoteCut}
-  on:pointerdown|capture={handleNotePointerDown}
-  on:pointermove|capture={handleNotePointerMove}
-  on:pointerup|capture={finishNotePointerSelection}
-  on:pointercancel|capture={finishNotePointerSelection}
-/>
+<svelte:document on:selectionchange={handleNoteSelectionChange} />
 <svelte:window
   on:pointerup={finishNoteScrollSpaceAdjustment}
   on:pointercancel={finishNoteScrollSpaceAdjustment}
@@ -1373,7 +443,7 @@
     {#if trashOpen}<button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>{/if}
   </aside>
 
-  <section class="note-document" use:externalNotePaste={`${selectedNoteId}:${editor}:${trashOpen}`}>
+  <section class="note-document" use:externalNotePaste={`${selectedNoteId}:${trashOpen}`}>
     {#if selectedNote}
       <header class="note-document-head">
         {#if trashOpen}
@@ -1410,64 +480,9 @@
           {/if}
         </div>
       {:else}
-        {#if editor === 'classic'}
-        <div use:mobileNoteToolbar class="note-format-toolbar" role="toolbar" aria-label="Note formatting">
-        <div class="note-format-group" aria-label="Text style">
-          <button type="button" class:active={activeItem?.kind === 'paragraph'} aria-label="Text" title="Text" on:click={() => applyBlockKind('paragraph')}>Aa</button>
-          <button type="button" class:active={activeItem?.kind === 'heading'} aria-label="Heading" title="Heading (# then Space)" on:click={() => applyBlockKind('heading')}>H1</button>
-        </div>
-        <div class="note-format-group" aria-label="Quotes">
-          <button type="button" class:active={activeItem?.kind === 'quote'} aria-label="Quote" title="Quote (> then Space)" on:click={() => applyBlockKind('quote')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11H5V6h5v7a5 5 0 0 1-5 5M20 11h-5V6h5v7a5 5 0 0 1-5 5" /></svg></button>
-        </div>
-        <div class="note-format-group" aria-label="Lists">
-          <button type="button" class:active={activeItem?.kind === 'bullet'} aria-label="Bulleted list" title="Bulleted list (- then Space)" on:click={() => applyBlockKind('bullet')}>•</button>
-          <button type="button" class:active={activeItem?.kind === 'numbered'} aria-label="Numbered list" title="Numbered list (1. then Space)" on:click={() => applyBlockKind('numbered')}>1.</button>
-          <button type="button" class:active={activeItem?.kind === 'checklist'} aria-label="Checklist" title="Checklist ([] then Space)" on:click={() => applyBlockKind('checklist')}>✓</button>
-        </div>
-        <div class="note-format-group" aria-label="Inline formatting">
-          <button type="button" class:active={inlineFormats.bold} aria-label="Bold" aria-pressed={inlineFormats.bold ? 'true' : 'false'} title="Bold (⌘B)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('bold')}><strong>B</strong></button>
-          <button type="button" class:active={inlineFormats.italic} aria-label="Italic" aria-pressed={inlineFormats.italic ? 'true' : 'false'} title="Italic (⌘I)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('italic')}><em>I</em></button>
-          <button type="button" class:active={inlineFormats.underline} aria-label="Underline" aria-pressed={inlineFormats.underline ? 'true' : 'false'} title="Underline (⌘U)" on:mousedown|preventDefault={rememberToolbarSelection} on:click={() => applyInlineFormat('underline')}><u>U</u></button>
-        </div>
-        <span class="note-format-hint">Type <kbd><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" role="img" aria-label="Slash"><path d="M8 2 4 10" /></svg></kbd> for more</span>
-        </div>
-
-        <div class="note-blocks" class:note-text-selection={textSelection !== null} bind:this={noteBlocksElement} on:paste|capture={handleNotePaste}>
-        {#if selectedNote.items.length === 0}
-          <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
-        {:else}
-          {#each selectedNote.items as item (item.id)}
-            <NoteItemEditor
-              {item}
-              siblings={selectedNote.items}
-              noteId={selectedNote.id}
-              {patchItem}
-              {splitItem}
-              {backspaceItemAtStart}
-              {deleteItemPreservingChildren}
-              {moveItem}
-              {moveItemWithinLevel}
-              {outdentItem}
-              {historyRevision}
-              {listTemplates}
-              {metrics}
-              notes={activeNotes}
-              {onOpenLink}
-              {selectedItemIds}
-              onExtendItemSelection={extendItemSelection}
-              onSelectAllItems={selectAllItems}
-              onToggleChecklist={toggleChecklist}
-              onTextSelection={applyPointerSelection}
-              onFocusItem={(itemId) => (activeItemId = itemId)}
-            />
-          {/each}
-        {/if}
-        </div>
-        {:else}
           <div class="note-blocks note-editor-blocks" bind:this={noteEditorHostElement}>
             <NoteEditorHost
               bind:this={noteEditorHost}
-              {editor}
               note={selectedNote}
               {historyRevision}
               store={{ patchNoteItem: patchItem, patchNoteItemsDone: patchItemsDone, replaceNoteItems: replaceItems }}
@@ -1482,7 +497,6 @@
               {onViewStateChange}
             />
           </div>
-        {/if}
       {/if}
 
     {:else}

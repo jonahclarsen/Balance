@@ -1,14 +1,9 @@
-// Head-to-head profile of the Notes page editors (Classic, TipTap, Lexical).
-// Every scenario runs identically against the editor named by
-// BALANCE_NOTES_PERF_EDITOR on a synthetic note corpus, under Chromium CPU
-// throttling, and prints one `NOTES_EDITOR_PERF {json}` line for CI to collect.
+// Profile the Notes editor on a synthetic corpus under Chromium CPU throttling.
+// Print one NOTES_EDITOR_PERF JSON line for CI and longitudinal comparisons.
 
 import { test, type CDPSession, type Page } from '@playwright/test'
 import type { Note, NoteItem, NoteItemKind } from '../../src/lib/types'
 
-type EditorName = 'classic' | 'tiptap' | 'lexical'
-
-const EDITOR = (process.env.BALANCE_NOTES_PERF_EDITOR ?? 'classic') as EditorName
 const CPU_RATE = performanceSize('BALANCE_NOTES_PERF_CPU_RATE', 4)
 const LARGE_BLOCKS = performanceSize('BALANCE_NOTES_PERF_LARGE_BLOCKS', 1_000)
 const MEDIUM_BLOCKS = performanceSize('BALANCE_NOTES_PERF_MEDIUM_BLOCKS', 150)
@@ -18,7 +13,6 @@ const SPLIT_COUNT = performanceSize('BALANCE_NOTES_PERF_SPLITS', 15)
 const PASTE_BLOCKS = performanceSize('BALANCE_NOTES_PERF_PASTE_BLOCKS', 100)
 
 const STATE_KEY = 'balance.appState.v1'
-const EDITOR_KEY = 'balance:noteEditor.v1'
 
 function performanceSize(variable: string, fallback: number) {
   const value = Number(process.env[variable])
@@ -95,23 +89,21 @@ function createNote(prefix: string, title: string, blockCount: number, updatedDa
   return { note, middleLeafId, firstId: items[0].id, lastId: flat(items).at(-1)!.id }
 }
 
-// ---- Editor-agnostic DOM access ------------------------------------------
+// ---- Notes DOM access ------------------------------------------
 
 function blockSelector(itemId?: string) {
-  if (EDITOR === 'classic') return itemId ? `[data-note-item-id="${itemId}"]` : '[data-note-item-id]'
-  return itemId ? `[data-note-editor="${EDITOR}"] [data-item-id="${itemId}"]` : `[data-note-editor="${EDITOR}"] [data-item-id]`
+  return itemId ? `[data-note-editor="lexical"] [data-item-id="${itemId}"]` : `[data-note-editor="lexical"] [data-item-id]`
 }
 
 async function boot(page: Page, notes: Note[]) {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await page.evaluate(([key, editorKey, editor, seeded]) => {
+  await page.evaluate(([key, seeded]) => {
     const state = JSON.parse(localStorage.getItem(key) || '{}')
     state.notes = seeded
     localStorage.setItem(key, JSON.stringify(state))
-    localStorage.setItem(editorKey, editor)
-  }, [STATE_KEY, EDITOR_KEY, EDITOR, notes] as const)
+  }, [STATE_KEY, notes] as const)
   await page.reload()
   await page.getByRole('button', { name: 'Notes', exact: true }).click()
   await page.locator('.note-card').first().waitFor()
@@ -319,7 +311,7 @@ test('profile notes editor', async ({ page }) => {
 
   const round = (value: number) => Math.round(value * 10) / 10
   const profile = {
-    editor: EDITOR,
+    editor: 'lexical',
     fixture: { cpuRate: CPU_RATE, largeBlocks: LARGE_BLOCKS, mediumBlocks: MEDIUM_BLOCKS, typedChars: TYPED_TEXT.length },
     openLarge: { ms: round(largeOpen.result), taskMs: largeOpen.taskMs, reopenMs: round(largeReopenMs) },
     switchMedium: summarize(switchSamples),

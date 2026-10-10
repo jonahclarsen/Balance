@@ -23,9 +23,14 @@ test('feature actions emit generic patches that replay in the native database', 
     store.patchNoteItem(note, item, { text: 'Synthetic edited checklist', html: 'Synthetic edited checklist' })
     const followingItem = store.addRootNoteItem(note)
     store.patchNoteItem(note, followingItem, { text: 'Synthetic suffix', html: 'Synthetic suffix' })
-    store.replaceNoteItemRange(note, item, [item, followingItem], {
-      text: 'Synthetic replacement', html: '<b>Synthetic replacement</b>', kind: 'paragraph', done: false,
-    }, [{ kind: 'paragraph', text: 'Synthetic pasted suffix', html: 'Synthetic pasted suffix', done: false, children: [] }])
+    const sourceNote = live.notes.find((value: any) => value.id === note)
+    const replacement = sourceNote.items.find((value: any) => value.id === item)
+    const suffix = sourceNote.items.find((value: any) => value.id === followingItem)
+    store.replaceNoteItems(note, [
+      ...sourceNote.items.filter((value: any) => value.id !== item && value.id !== followingItem),
+      { ...replacement, text: 'Synthetic replacement', html: '<b>Synthetic replacement</b>', kind: 'paragraph', done: false },
+      { ...suffix, id: 'synthetic-pasted-note-item', text: 'Synthetic pasted suffix', html: 'Synthetic pasted suffix' },
+    ], 'paste')
     store.trashNote(note)
     store.restoreNote(note)
     const listTemplate = store.addListTemplate()
