@@ -6,6 +6,12 @@ on:
     paths: ['src-tauri/**', 'src/lib/store.ts', 'src/lib/entityPatch.ts', 'src/lib/types.ts', 'src/lib/planner.ts', 'tests/visual/entity-storage.spec.ts', 'tests/visual/history-persistence.spec.ts', 'tests/ci/history-persistence-driver.rs', 'tests/visual/projects.spec.ts', 'tests/unit/entity-patch.spec.ts', '.github/scripts/sync-compat*', '.github/workflows/sync-compatibility.yml']
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner for manual verification when a hosted pool is busy
+        type: choice
+        default: macos-15-intel
+        options: [macos-15-intel, macos-15, ubuntu-24.04]
 permissions:
   contents: read
 concurrency:
@@ -41,11 +47,11 @@ jobs:
   compatibility:
     needs: [baselines, record-ui]
     # macos-15 selects ARM runners, which have failed to acquire capacity in CI.
-    runs-on: macos-15-intel
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 60
     env:
       # Apply to current and released engines, which link Swift bridge objects.
-      RUSTFLAGS: -C link-arg=-Wl,-rpath,/usr/lib/swift
+      RUSTFLAGS: ${{ inputs.runner != 'ubuntu-24.04' && '-C link-arg=-Wl,-rpath,/usr/lib/swift' || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -55,6 +61,11 @@ jobs:
         with:
           fetch-depth: 0
       - uses: dtolnay/rust-toolchain@stable
+      - name: Native Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       - uses: pnpm/action-setup@v6
         with:
           run_install: false
@@ -129,7 +140,7 @@ jobs:
         if: matrix.previous == 'v0.6.8'
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec playwright install chromium
+          pnpm exec playwright install --with-deps chromium
           BALANCE_HISTORY_ENGINE="$PWD/current-engine" pnpm exec playwright test tests/visual/history-persistence.spec.ts --project=desktop --workers=1
       - name: Save compiled engine dependencies
         if: always() && steps.cargo-cache.outputs.cache-hit != 'true'

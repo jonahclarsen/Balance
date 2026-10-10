@@ -31,6 +31,7 @@ mod backup_browser;
 #[cfg(not(target_os = "android"))]
 mod desktop_recovery_key;
 mod images;
+mod list_storage;
 mod freeze_diagnostics;
 #[cfg(target_os = "macos")]
 mod macos_widget;
@@ -1662,6 +1663,15 @@ async fn get_database_maintenance_status(
 }
 
 #[tauri::command]
+async fn maintain_list_storage(app: tauri::AppHandle) -> Result<list_storage::Maintenance, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        let today = (chrono::Local::now() - chrono::Duration::hours(5)).date_naive();
+        list_storage::maintain(&connection, current_timestamp_ms(), today)
+    }).await
+}
+
+#[tauri::command]
 async fn run_database_maintenance_if_needed(
     app: tauri::AppHandle,
 ) -> Result<Option<DatabaseCompactionResult>, String> {
@@ -2152,6 +2162,7 @@ fn copy_database_snapshot(
 
     let mut destination = Connection::open(destination_path).map_err(|error| error.to_string())?;
     apply_raw_database_key(&destination, recovery_key)?;
+    list_storage::register(&destination)?;
     destination
         .query_row("pragma cipher_version", [], |row| row.get::<_, String>(0))
         .map_err(|error| format!("SQLCipher is not available for compaction: {error}"))?;
@@ -3230,6 +3241,7 @@ fn open_database_at(database_path: &Path, recovery_key: &str) -> Result<Connecti
 /// Future schema changes need a separately named, fail-closed migration plus a
 /// documented fleet-readiness condition for deleting that migration again.
 fn initialize_database(connection: &Connection) -> Result<(), String> {
+    list_storage::register(connection)?;
     connection
         .execute_batch(
             "
@@ -3342,6 +3354,7 @@ fn initialize_database(connection: &Connection) -> Result<(), String> {
         )
         .map_err(|error| error.to_string())?;
 
+    list_storage::initialize(connection)?;
     migrate_siri_request_receipts(connection)?;
 
     sync::relay_client::ensure_relay_tables(connection).map_err(sync::Error::into_string)?;
@@ -3614,12 +3627,6 @@ fn replace_entity_collection(
             params![collection],
         )
         .map_err(|error| error.to_string())?;
-    let mut insert = connection
-        .prepare(
-            "insert into state_entities (collection, entity_key, position, value_json)
-             values (?1, ?2, ?3, ?4)",
-        )
-        .map_err(|error| error.to_string())?;
     let mut occurrences = HashMap::<String, usize>::new();
     for (index, value) in values.iter().enumerate() {
         let occurrence = if collection == "goalCompletions" {
@@ -3641,14 +3648,8 @@ fn replace_entity_collection(
         } else {
             0
         };
-        insert
-            .execute(params![
-                collection,
-                entity_key(collection, value, index, occurrence),
-                index as i64,
-                value.to_string(),
-            ])
-            .map_err(|error| format!("Could not store {collection} entity {index}: {error}"))?;
+        list_storage::write(connection, collection,
+            &entity_key(collection, value, index, occurrence), index as i64, value)?;
     }
     Ok(())
 }
@@ -3661,15 +3662,13 @@ fn read_entity_collection(connection: &Connection, collection: &str) -> Result<V
         )
         .map_err(|error| error.to_string())?;
     let rows = statement
-        .query_map(params![collection], |row| row.get::<_, String>(0))
+        .query_map(params![collection], |row| row.get::<_, rusqlite::types::Value>(0))
         .map_err(|error| error.to_string())?;
     let mut values = Vec::new();
+    let mut reader = list_storage::Reader::new(connection);
     for row in rows {
         let raw = row.map_err(|error| error.to_string())?;
-        values.push(
-            serde_json::from_str(&raw)
-                .map_err(|error| format!("Could not read {collection} entity: {error}"))?,
-        );
+        values.push(reader.read(raw).map_err(|error| format!("Could not read {collection} entity: {error}"))?);
     }
     Ok(Value::Array(values))
 }
@@ -3724,15 +3723,6 @@ fn apply_entity_changes(connection: &Connection, changes: &Value) -> Result<(), 
     if required_i64(changes, "version")? != 1 {
         return Err("Update required: unsupported entity change version".to_string());
     }
-    let mut upsert = connection
-        .prepare(
-            "insert into state_entities (collection, entity_key, position, value_json)
-             values (?1, ?2, ?3, ?4)
-             on conflict(collection, entity_key) do update set
-               position = excluded.position,
-               value_json = excluded.value_json",
-        )
-        .map_err(|error| error.to_string())?;
     for item in required_array(changes, "upserts")? {
         let collection = required_string(item, "collection")?;
         if !valid_entity_collection(collection) {
@@ -3741,16 +3731,9 @@ fn apply_entity_changes(connection: &Connection, changes: &Value) -> Result<(), 
         if collection == "images" {
             images::validate(required_value(item, "value")?, required_string(item, "key")?)?;
         }
-        upsert
-            .execute(params![
-                collection,
-                required_string(item, "key")?,
-                required_i64(item, "position")?,
-                required_value(item, "value")?.to_string(),
-            ])
-            .map_err(|error| error.to_string())?;
+        list_storage::write(connection, collection, required_string(item, "key")?,
+            required_i64(item, "position")?, required_value(item, "value")?)?;
     }
-    drop(upsert);
     let mut delete = connection
         .prepare("delete from state_entities where collection = ?1 and entity_key = ?2")
         .map_err(|error| error.to_string())?;
@@ -5148,12 +5131,12 @@ fn current_entity(
             "select position, value_json from state_entities
              where collection = ?1 and entity_key = ?2",
             params![collection, key],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, rusqlite::types::Value>(1)?)),
         )
         .optional()
         .map_err(|error| error.to_string())?
         .map(|(position, raw)| {
-            serde_json::from_str(&raw)
+            list_storage::Reader::new(connection).read(raw)
                 .map(|value| (position, value))
                 .map_err(|error| error.to_string())
         })
@@ -10879,6 +10862,7 @@ pub fn run() {
             inspect_database,
             compact_database,
             get_database_maintenance_status,
+            maintain_list_storage,
             run_database_maintenance_if_needed,
             complete_database_maintenance_startup,
             restore_recovery_entry,

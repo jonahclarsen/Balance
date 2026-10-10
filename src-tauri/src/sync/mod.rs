@@ -964,10 +964,15 @@ pub fn state_hash(conn: &Connection, tables: &[&str]) -> Result<String> {
         let mut stmt = conn.prepare(&select)?;
         let ncols = cols.len();
         let mut rows = stmt.query([])?;
+        let mut reader = crate::list_storage::Reader::new(conn);
         while let Some(row) = rows.next()? {
             hasher.update(b"R");
             for i in 0..ncols {
-                hash_value(&mut hasher, &row.get::<_, Value>(i)?);
+                let mut value = row.get::<_, Value>(i)?;
+                if *table == "state_entities" && cols[i] == "value_json" {
+                    value = Value::Text(reader.read(value).map_err(Error::Codec)?.to_string());
+                }
+                hash_value(&mut hasher, &value);
             }
         }
     }

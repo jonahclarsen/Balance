@@ -82,6 +82,12 @@ working is a release contract, not something compaction repairs.
 
 ## Required verification for storage changes
 
+Daily lists have a device-local compressed representation. Route generic entity
+reads/writes through `list_storage::Reader` / `list_storage::write`; never assume
+`state_entities.value_json` is TEXT. Keep operations/checkpoints as logical JSON.
+See [list dictionary storage](../../../docs/list-dictionary-storage.md) for the
+format, old-binary guard, backup connection registration and idle migration.
+
 - Run frontend checks and relevant operation/patch behavior tests.
 - Run encrypted native persistence, sync, undo and checkpoint tests in CI.
 - Run `.github/workflows/sync-compatibility.yml`: it builds real released engines

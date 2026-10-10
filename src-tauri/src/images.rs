@@ -75,9 +75,10 @@ fn retained_references(
     // Feature-blind clients must retain image references in opaque collections.
     let mut entities = conn.prepare("SELECT value_json FROM state_entities WHERE collection != 'images'")
         .map_err(|error| error.to_string())?;
-    let rows = entities.query_map([], |row| row.get::<_, String>(0)).map_err(|error| error.to_string())?;
+    let rows = entities.query_map([], |row| row.get::<_, rusqlite::types::Value>(0)).map_err(|error| error.to_string())?;
+    let mut reader = crate::list_storage::Reader::new(conn);
     for row in rows {
-        let value: Value = serde_json::from_str(&row.map_err(|error| error.to_string())?).map_err(|error| error.to_string())?;
+        let value = reader.read(row.map_err(|error| error.to_string())?)?;
         references(&value, &mut ids);
     }
     if history {

@@ -222,9 +222,7 @@ pub fn apply(conn: &Connection, changes: &Value) -> Result<(), String> {
         if item.collection == "images" {
             crate::images::validate(&value, &item.key)?;
         }
-        conn.execute("INSERT INTO state_entities (collection, entity_key, position, value_json) VALUES (?1, ?2, ?3, ?4)
-            ON CONFLICT(collection, entity_key) DO UPDATE SET position = excluded.position, value_json = excluded.value_json",
-            params![item.collection, item.key, item.position.unwrap_or(position), value.to_string()]).map_err(|e| e.to_string())?;
+        crate::list_storage::write(conn, &item.collection, &item.key, item.position.unwrap_or(position), &value)?;
     }
     for item in changes.deletes {
         conn.execute(
@@ -277,14 +275,15 @@ pub fn snapshot(conn: &Connection) -> Result<Value, String> {
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, i64>(2)?,
-                row.get::<_, String>(3)?,
+                row.get::<_, rusqlite::types::Value>(3)?,
             ))
         })
         .map_err(|e| e.to_string())?;
     let mut entities = Vec::new();
+    let mut reader = crate::list_storage::Reader::new(conn);
     for row in rows {
         let (collection, key, position, raw) = row.map_err(|e| e.to_string())?;
-        let value: Value = serde_json::from_str(&raw).map_err(|e| e.to_string())?;
+        let value = reader.read(raw)?;
         entities.push(json!({"collection": collection, "key": key, "position": position, "value": value, "patches": []}));
     }
     Ok(json!({"version": 2, "upserts": entities, "deletes": []}))

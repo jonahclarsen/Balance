@@ -13,6 +13,24 @@ fn compatibility_process_driver() {
     let name = request["database"].as_str().unwrap();
     assert!(name.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'-'));
     let key = data_encoding::BASE32_NOPAD.encode(&[42u8; 32]);
+    if request["command"] == "old_open_forbidden" {
+        let error = crate::open_database_at(&root.join(format!("{name}.sqlite3")), &key)
+            .err()
+            .expect("A released binary must refuse the upgraded local storage format");
+        assert!(
+            error.contains("balance_list_storage_v1_required"),
+            "{error}"
+        );
+        fs::write(
+            root.join("response.json"),
+            serde_json::to_vec(&json!({
+                "integrity": "ok", "error": null, "openError": error,
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        return;
+    }
     let mut conn = crate::open_database_at(&root.join(format!("{name}.sqlite3")), &key).unwrap();
     let outcome: Result<Value, String> = (|| {
         match request["command"].as_str().unwrap() {
@@ -51,15 +69,34 @@ fn compatibility_process_driver() {
         }
         Ok(json!({"ok": true}))
     })();
-    let mut rows = conn.prepare("SELECT collection, entity_key, position, value_json FROM state_entities ORDER BY collection, position, entity_key").unwrap();
-    let entities: Vec<Value> = rows.query_map([], |row| Ok(json!({
-        "collection": row.get::<_, String>(0)?, "key": row.get::<_, String>(1)?,
-        "position": row.get::<_, i64>(2)?, "value": serde_json::from_str::<Value>(&row.get::<_, String>(3)?).unwrap()
-    }))).unwrap().map(Result::unwrap).collect();
+    // Use each released engine's own logical reader. Physical bytes may differ
+    // between versions/devices even when every replicated record is identical.
+    let mut rows = conn.prepare("SELECT collection, entity_key, position FROM state_entities ORDER BY collection, position, entity_key").unwrap();
+    let addresses = rows
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+            ))
+        })
+        .unwrap()
+        .map(Result::unwrap)
+        .collect::<Vec<_>>();
+    let entities: Vec<Value> = addresses
+        .into_iter()
+        .map(|(collection, key, position)| {
+            let (_, value) = crate::current_entity(&conn, &collection, &key)
+                .unwrap()
+                .unwrap();
+            json!({"collection": collection, "key": key, "position": position, "value": value})
+        })
+        .collect();
     let integrity: String = conn
         .query_row("PRAGMA integrity_check", [], |row| row.get(0))
         .unwrap();
     let result = json!({
+        "compressedLists": conn.query_row("SELECT count(*) FROM state_entities WHERE collection='lists' AND typeof(value_json)='blob'", [], |row| row.get::<_, i64>(0)).unwrap(),
         "protocolVersion": crate::sync::PROTOCOL_VERSION, "error": outcome.err(), "state": crate::read_app_state_from_database(&conn).unwrap(),
         "entities": entities, "operations": crate::sync::all_ops(&conn).unwrap(), "integrity": integrity,
     });

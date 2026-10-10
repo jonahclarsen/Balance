@@ -1,0 +1,67 @@
+name: Native list dictionary storage
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/src/list_storage/**'
+      - 'src-tauri/src/list_storage.rs'
+      - 'src-tauri/src/lib.rs'
+      - 'src-tauri/src/sync/**'
+      - 'src-tauri/src/images.rs'
+      - 'src-tauri/Cargo.toml'
+      - '.github/workflows/list-storage.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Native Linux dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-list-storage-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-list-storage-
+            ${{ runner.os }}-linux-cargo-
+      - name: Native encrypted persistence, recovery, undo and sync tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+      - name: Compare dictionary rotation policies over ten synthetic years
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --lib list_storage::tests::native_dictionary_policy_profile -- --exact --ignored --nocapture | tee dictionary-profile.txt
+          {
+            echo '## Native dictionary policy profile'
+            echo '```text'
+            grep 'BALANCE_DICTIONARY_PROFILE:' dictionary-profile.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-dictionary-policy-profile
+          path: dictionary-profile.txt
+          retention-days: 30
+      - name: Measure complete synthetic database with history and checkpoint
+        run: |
+          set -o pipefail
+          cargo test --manifest-path src-tauri/Cargo.toml --lib list_storage::tests::native_complete_database_profile -- --exact --ignored --nocapture | tee complete-database-profile.txt
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-complete-database-profile
+          path: complete-database-profile.txt
+          retention-days: 30

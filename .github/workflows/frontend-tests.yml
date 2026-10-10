@@ -15,19 +15,25 @@ on:
       - '.github/workflows/frontend-tests.yml'
   pull_request:
   workflow_dispatch:
+    inputs:
+      runner:
+        description: Runner for manual verification when a hosted pool is busy
+        type: choice
+        default: macos-15-intel
+        options: [macos-15, macos-15-intel, macos-26]
 
 permissions:
   contents: read
 
 concurrency:
-  group: frontend-tests-${{ github.ref }}
+  group: frontend-tests-${{ github.ref }}-${{ inputs.runner || 'macos-15-intel' }}
   cancel-in-progress: true
 
 jobs:
   behavior:
     # Browser editing fixtures exercise macOS Command-key and clipboard behavior.
     # Use Intel because macos-15 ARM jobs have failed to acquire runner capacity.
-    runs-on: macos-15-intel
+    runs-on: ${{ inputs.runner || 'macos-15-intel' }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -43,7 +49,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install chromium webkit
+      - run: pnpm exec playwright install --with-deps chromium webkit
       - run: pnpm check
       - run: pnpm test:unit
       - run: pnpm test:relay
