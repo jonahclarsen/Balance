@@ -14,6 +14,7 @@
   export let onOpenLink: (link: ItemLink, itemId: Id) => void = () => {}
   export let onImport: () => void
   export let onReview: () => void
+  export let onSortPropositions: () => void
 
   const noTimeWarnings: ReadonlyMap<Id, ItemTimeWarning> = new Map()
 
@@ -149,7 +150,9 @@
       <header class="bucket-card-header">
         <h3>{meta.label}</h3>
         <span class="bucket-count">{bucket.items.length}</span>
-        {#if meta.kind === 'genuine'}
+        {#if meta.kind === 'proposition'}
+          <button class="ghost bucket-review-button" type="button" disabled={bucket.items.length === 0} on:click={onSortPropositions}>Sort</button>
+        {:else if meta.kind === 'genuine'}
           <button class="ghost bucket-review-button" type="button" on:click={onReview}>Review</button>
         {:else if meta.kind === 'trash'}
           <span class="bucket-note">clears after {IDEA_TRASH_RETENTION_DAYS} days</span>

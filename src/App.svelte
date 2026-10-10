@@ -2932,6 +2932,11 @@ return rows`
     if (plan) plannerStore.addCompletedPlanItem(plan.id, IDEA_REVIEW_GOAL_NAME)
   }
 
+  function sortPropositions() {
+    const queue = bucketItems($plannerStore.ideaBuckets, 'proposition')
+    if (queue.length > 0) void askIdeaSort(queue, 'proposition', 'Sort Proposition Party')
+  }
+
   function importIdeas(items: PlanItem[]) {
     ideaImportOpen = false
     const ids = new Set(plannerStore.importIdeas(items))
@@ -7427,6 +7432,7 @@ return rows`
         onOpenLink={(link, itemId) => openLink(link, null)}
         onImport={() => (ideaImportOpen = true)}
         onReview={() => { void startIdeaReview() }}
+        onSortPropositions={sortPropositions}
       />
     {/if}
 

@@ -137,6 +137,25 @@ test('a new day sorts every proposition one card at a time', async ({ page }, te
   await expect(page.getByRole('region', { name: 'Daily plan' }).locator('[data-plan-text-input]').first()).toBeVisible()
 })
 
+test('the Proposition Party Sort button opens the sorter on demand', async ({ page }) => {
+  await open(page)
+  await openView(page, 'Buckets')
+  const sort = card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true })
+  await expect(sort).toBeDisabled()
+
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic sort one')
+    plannerStore.addIdea('Synthetic sort two')
+  `)
+  await sort.click()
+  await expect(page.getByRole('dialog', { name: /Idea 1 of 2/ })).toBeVisible()
+  await page.keyboard.press('n')
+  await page.keyboard.press('t')
+  await expect(page.getByRole('heading', { name: 'Idea 2 of 2' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic sort two'], trash: ['Synthetic sort one'] })
+})
+
 test('pasted lists import as ideas and open the sorter; trash clears after 30 days', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)
