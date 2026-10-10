@@ -328,21 +328,23 @@ test.describe('P-26/27 indent, outdent, move', () => {
     expect(stored.items.length).toBe(note.items.length)
   })
 
-  test('Alt+Up / Alt+Down swap a block with its sibling within the level and land the caret at its end', async ({ harness }) => {
-    await harness.boot({ select: 'Simple paragraphs' })
-    const note = harness.noteByTitle('Simple paragraphs')
-    const second = note.items[1]
-    await harness.placeCaret(second.id, 3)
-    await harness.page.keyboard.press('Alt+ArrowUp')
-    await harness.waitForNote(note.id, (stored) => stored.items[0].id === second.id)
-    expect(await harness.caretItemId()).toBe(second.id)
-    expect(await harness.caretOffset()).toBe(second.text.length)
-    await harness.page.keyboard.press('Alt+ArrowUp')
-    await harness.page.waitForTimeout(250)
-    expect((await harness.storedNote(note.id))!.items[0].id).toBe(second.id)
-    await harness.page.keyboard.press('Alt+ArrowDown')
-    await harness.waitForNote(note.id, (stored) => stored.items[1].id === second.id && stored.items[0].id === note.items[0].id)
-  })
+  for (const modifiers of ['Alt', 'Meta+Control']) {
+    test(`${modifiers}+Up / Down swap a block with its sibling within the level and land the caret at its end`, async ({ harness }) => {
+      await harness.boot({ select: 'Simple paragraphs' })
+      const note = harness.noteByTitle('Simple paragraphs')
+      const second = note.items[1]
+      await harness.placeCaret(second.id, 3)
+      await harness.page.keyboard.press(`${modifiers}+ArrowUp`)
+      await harness.waitForNote(note.id, (stored) => stored.items[0].id === second.id)
+      expect(await harness.caretItemId()).toBe(second.id)
+      expect(await harness.caretOffset()).toBe(second.text.length)
+      await harness.page.keyboard.press(`${modifiers}+ArrowUp`)
+      await harness.page.waitForTimeout(250)
+      expect((await harness.storedNote(note.id))!.items[0].id).toBe(second.id)
+      await harness.page.keyboard.press(`${modifiers}+ArrowDown`)
+      await harness.waitForNote(note.id, (stored) => stored.items[1].id === second.id && stored.items[0].id === note.items[0].id)
+    })
+  }
 })
 
 test.describe('P-28 arrow navigation', () => {
