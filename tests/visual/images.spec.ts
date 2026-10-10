@@ -1,10 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
+import { openView } from '../helpers/navigation'
 
 test('Mac Cmd+V delivers the clipboard image to a list-template editor', async ({ page }) => {
   await notes(page)
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Lists', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   const editor = page.locator('[data-list-template-text-input]').first()
   await editor.click()
@@ -34,9 +33,7 @@ test('Mac Cmd+V delivers the clipboard image to a list-template editor', async (
 
 test('Mac list-template paste keeps whole rows and formatted text working', async ({ page }) => {
   await notes(page)
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Lists', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   const editors = page.locator('[data-list-template-text-input]')
   await editors.first().fill('Original row')
@@ -155,9 +152,7 @@ async function notes(page: Page) {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Notes', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Notes')
   await page.getByRole('button', { name: '+ New note' }).click()
   await page.locator('[data-note-text-input]').first().click()
 }
@@ -240,9 +235,7 @@ test('small images survive text editing, reload, deletion, undo, and a full-wind
   await page.keyboard.press('ControlOrMeta+z')
   await expect(image).toBeVisible()
   await page.reload()
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Notes', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Notes')
   await expect(page.locator('[data-note-text-input] img[data-balance-image]')).toBeVisible()
   expect(await assetCount()).toBe(1)
 })
@@ -376,9 +369,7 @@ test('template generation snapshots image placement and reuses its asset', async
 
 test('an image-only list template item survives blur and backspace at its start', async ({ page }) => {
   await notes(page)
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Lists', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Lists')
   await page.getByRole('button', { name: '+ New list' }).click()
   const editor = page.locator('[data-list-template-text-input]').first()
   await editor.click()
@@ -412,9 +403,7 @@ test('clipboard copies carry their bytes after the database asset has been colle
     localStorage.setItem('balance.appState.v1', JSON.stringify(state))
   })
   await page.reload()
-  const menu = page.getByRole('button', { name: 'Open navigation', exact: true })
-  if (await menu.isVisible()) await menu.click()
-  await page.getByRole('button', { name: 'Notes', exact: true }).filter({ visible: true }).click()
+  await openView(page, 'Notes')
   const editor = page.locator('[data-note-text-input]').first()
   await editor.click()
   await editor.evaluate((node, html) => {

@@ -222,26 +222,26 @@
 
 <div use:mobileNoteToolbar class="note-editor-toolbar note-format-toolbar" role="toolbar" aria-label="Note formatting" data-note-editor-toolbar>
   <div class="note-format-group" aria-label="Text style">
-    <button type="button" class:active={selection.activeKind === 'paragraph'} aria-label="Text" title="Text" on:mousedown|preventDefault on:click={() => applyKind('paragraph')}>Aa</button>
-    <button type="button" class:active={selection.activeKind === 'heading'} aria-label="Heading" title="Heading (# then Space)" on:mousedown|preventDefault on:click={() => applyKind('heading')}>H1</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'paragraph'} aria-label="Text" title="Text" on:mousedown|preventDefault on:click={() => applyKind('paragraph')}>Aa</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'heading'} aria-label="Heading" title="Heading (# then Space)" on:mousedown|preventDefault on:click={() => applyKind('heading')}>H1</button>
   </div>
   <div class="note-format-group" aria-label="Quotes">
-    <button type="button" class:active={selection.activeKind === 'quote'} aria-label="Quote" title="Quote (> then Space)" on:mousedown|preventDefault on:click={() => applyKind('quote')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11H5V6h5v7a5 5 0 0 1-5 5M20 11h-5V6h5v7a5 5 0 0 1-5 5" /></svg></button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'quote'} aria-label="Quote" title="Quote (> then Space)" on:mousedown|preventDefault on:click={() => applyKind('quote')}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 11H5V6h5v7a5 5 0 0 1-5 5M20 11h-5V6h5v7a5 5 0 0 1-5 5" /></svg></button>
   </div>
   <div class="note-format-group" aria-label="Lists">
-    <button type="button" class:active={selection.activeKind === 'bullet'} aria-label="Bulleted list" title="Bulleted list (- then Space)" on:mousedown|preventDefault on:click={() => applyKind('bullet')}>•</button>
-    <button type="button" class:active={selection.activeKind === 'numbered'} aria-label="Numbered list" title="Numbered list (1. then Space)" on:mousedown|preventDefault on:click={() => applyKind('numbered')}>1.</button>
-    <button type="button" class:active={selection.activeKind === 'checklist'} aria-label="Checklist" title="Checklist ([] then Space)" on:mousedown|preventDefault on:click={() => applyKind('checklist')}>✓</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'bullet'} aria-label="Bulleted list" title="Bulleted list (- then Space)" on:mousedown|preventDefault on:click={() => applyKind('bullet')}>•</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'numbered'} aria-label="Numbered list" title="Numbered list (1. then Space)" on:mousedown|preventDefault on:click={() => applyKind('numbered')}>1.</button>
+    <button type="button" disabled={!ready} class:active={selection.activeKind === 'checklist'} aria-label="Checklist" title="Checklist ([] then Space)" on:mousedown|preventDefault on:click={() => applyKind('checklist')}>✓</button>
   </div>
   <div class="note-format-group" aria-label="Inline formatting">
-    <button type="button" class:active={selection.marks.bold} aria-label="Bold" aria-pressed={selection.marks.bold ? 'true' : 'false'} title={`Bold (${modifierLabel}B)`} on:mousedown|preventDefault on:click={() => applyMark('bold')}><strong>B</strong></button>
-    <button type="button" class:active={selection.marks.italic} aria-label="Italic" aria-pressed={selection.marks.italic ? 'true' : 'false'} title={`Italic (${modifierLabel}I)`} on:mousedown|preventDefault on:click={() => applyMark('italic')}><em>I</em></button>
-    <button type="button" class:active={selection.marks.underline} aria-label="Underline" aria-pressed={selection.marks.underline ? 'true' : 'false'} title={`Underline (${modifierLabel}U)`} on:mousedown|preventDefault on:click={() => applyMark('underline')}><u>U</u></button>
+    <button type="button" disabled={!ready} class:active={selection.marks.bold} aria-label="Bold" aria-pressed={selection.marks.bold ? 'true' : 'false'} title={`Bold (${modifierLabel}B)`} on:mousedown|preventDefault on:click={() => applyMark('bold')}><strong>B</strong></button>
+    <button type="button" disabled={!ready} class:active={selection.marks.italic} aria-label="Italic" aria-pressed={selection.marks.italic ? 'true' : 'false'} title={`Italic (${modifierLabel}I)`} on:mousedown|preventDefault on:click={() => applyMark('italic')}><em>I</em></button>
+    <button type="button" disabled={!ready} class:active={selection.marks.underline} aria-label="Underline" aria-pressed={selection.marks.underline ? 'true' : 'false'} title={`Underline (${modifierLabel}U)`} on:mousedown|preventDefault on:click={() => applyMark('underline')}><u>U</u></button>
   </div>
   <span class="note-format-hint">Type <kbd><svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" role="img" aria-label="Slash"><path d="M8 2 4 10" /></svg></kbd> for more</span>
 </div>
 
 {#if note.items.length === 0}
-  <button class="note-empty-editor" type="button" on:click={startEmptyNote}>Start writing…</button>
+  <button class="note-empty-editor" type="button" disabled={!ready} on:click={startEmptyNote}>Start writing…</button>
 {/if}
 <div class="note-editor-host" data-note-editor="lexical" bind:this={host} hidden={note.items.length === 0}></div>
