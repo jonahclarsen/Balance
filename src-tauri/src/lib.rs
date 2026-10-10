@@ -2162,6 +2162,7 @@ fn copy_database_snapshot(
 
     let mut destination = Connection::open(destination_path).map_err(|error| error.to_string())?;
     apply_raw_database_key(&destination, recovery_key)?;
+    list_storage::register(&destination)?;
     destination
         .query_row("pragma cipher_version", [], |row| row.get::<_, String>(0))
         .map_err(|error| format!("SQLCipher is not available for compaction: {error}"))?;

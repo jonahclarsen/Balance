@@ -63,7 +63,7 @@ pub fn initialize(conn: &Connection) -> Result<(), String> {
             CREATE TABLE list_storage_policies (
                 template_id TEXT PRIMARY KEY,
                 active_dictionary INTEGER NOT NULL REFERENCES list_storage_dictionaries(id),
-                checked_source_hash TEXT NOT NULL, checked_at_ms INTEGER NOT NULL);
+                active_source_hash TEXT NOT NULL, checked_at_ms INTEGER NOT NULL);
             CREATE INDEX idx_list_storage_policy_due ON list_storage_policies(checked_at_ms);
             CREATE TABLE list_storage_records (
                 collection TEXT NOT NULL CHECK(collection = 'lists'), entity_key TEXT NOT NULL,
@@ -185,6 +185,12 @@ pub fn write(conn: &Connection, collection: &str, key: &str, position: i64, valu
 }
 
 fn write_at(conn: &Connection, collection: &str, key: &str, position: i64, value: &Value, now: i64) -> Result<(), String> {
+    if collection != "lists" {
+        conn.prepare_cached("INSERT INTO state_entities(collection,entity_key,position,value_json) VALUES(?1,?2,?3,?4)
+            ON CONFLICT(collection,entity_key) DO UPDATE SET position=excluded.position,value_json=excluded.value_json")
+            .map_err(error)?.execute(params![collection,key,position,value.to_string()]).map_err(error)?;
+        return Ok(());
+    }
     atomic(conn, "list_storage_write", || {
         let raw = value.to_string();
         let mut stored = SqlValue::Text(raw.clone());
@@ -205,9 +211,9 @@ fn write_at(conn: &Connection, collection: &str, key: &str, position: i64, value
                 used_dictionary = id;
             }
         }
-        conn.execute("INSERT INTO state_entities(collection,entity_key,position,value_json) VALUES(?1,?2,?3,?4)
-            ON CONFLICT(collection,entity_key) DO UPDATE SET position=excluded.position,value_json=excluded.value_json",
-            params![collection, key, position, stored]).map_err(error)?;
+        conn.prepare_cached("INSERT INTO state_entities(collection,entity_key,position,value_json) VALUES(?1,?2,?3,?4)
+            ON CONFLICT(collection,entity_key) DO UPDATE SET position=excluded.position,value_json=excluded.value_json")
+            .map_err(error)?.execute(params![collection, key, position, stored]).map_err(error)?;
         if collection == "lists" {
             let date = value.get("date").and_then(Value::as_str)
                 .filter(|s| s.len() == 10 && chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_ok());
@@ -242,8 +248,14 @@ pub fn maintain(conn: &Connection, now: i64, today: chrono::NaiveDate) -> Result
         let mut stmt = conn.prepare("SELECT entity_key,position,value_json FROM state_entities e WHERE collection='lists'
             AND NOT EXISTS(SELECT 1 FROM list_storage_records r WHERE r.collection=e.collection AND r.entity_key=e.entity_key)
             ORDER BY position LIMIT ?1").map_err(error)?;
-        let rows = stmt.query_map([BATCH as i64], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, SqlValue>(2)?)))
-            .map_err(error)?.collect::<Result<Vec<_>, _>>().map_err(error)?;
+        let mut rows = Vec::new();
+        let mut stored_bytes = 0;
+        for row in stmt.query_map([BATCH as i64], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, SqlValue>(2)?))).map_err(error)? {
+            let row = row.map_err(error)?;
+            stored_bytes += match &row.2 { SqlValue::Text(s) => s.len(), SqlValue::Blob(b) => b.len(), _ => 0 };
+            rows.push(row);
+            if stored_bytes >= BATCH_BYTES { break; }
+        }
         drop(stmt);
         let mut bytes = 0;
         let mut reader = Reader::new(conn);
@@ -276,14 +288,13 @@ pub fn maintain(conn: &Connection, now: i64, today: chrono::NaiveDate) -> Result
 
 fn evaluate(conn: &Connection, template: &str, now: i64, today: chrono::NaiveDate) -> Result<bool, String> {
     let (active, checked_hash): (i64, String) = conn.query_row(
-        "SELECT active_dictionary,checked_source_hash FROM list_storage_policies WHERE template_id=?1", [template],
+        "SELECT active_dictionary,active_source_hash FROM list_storage_policies WHERE template_id=?1", [template],
         |r| Ok((r.get(0)?, r.get(1)?))).map_err(error)?;
     // Even insufficient samples or an unchanged template wait another 90 days.
     conn.execute("UPDATE list_storage_policies SET checked_at_ms=?1 WHERE template_id=?2", params![now, template]).map_err(error)?;
     let Some(source) = source(conn, template)? else { return Ok(false); };
     let source_hash = hash(&source);
     if source_hash == checked_hash { return Ok(false); }
-    conn.execute("UPDATE list_storage_policies SET checked_source_hash=?1 WHERE template_id=?2", params![source_hash, template]).map_err(error)?;
     let candidate = dictionary_bytes(&source);
     let incumbent = dictionary(conn, active)?;
     if candidate == incumbent { return Ok(false); }
@@ -312,7 +323,7 @@ fn evaluate(conn: &Connection, template: &str, now: i64, today: chrono::NaiveDat
         return Ok(false);
     }
     let id = install_dictionary(conn, candidate, now)?;
-    conn.execute("UPDATE list_storage_policies SET active_dictionary=?1 WHERE template_id=?2", params![id, template]).map_err(error)?;
+    conn.execute("UPDATE list_storage_policies SET active_dictionary=?1,active_source_hash=?2 WHERE template_id=?3", params![id, source_hash, template]).map_err(error)?;
     Ok(true)
 }
 
