@@ -76,8 +76,23 @@ them. Use `tests/helpers/navigation.ts` for primary navigation and generation
 on desktop and mobile. Date fixtures must respect Balance's 5 a.m. day boundary;
 time-editing fixtures should fix the clock rather than assume it is morning.
 The baseline checks are `pnpm check`, `pnpm test:unit`, `pnpm test:relay`, and
-`pnpm test:visual`. The Frontend behavior tests workflow runs the full browser
+`pnpm test:visual` (on CI; see below). The Frontend behavior tests workflow runs the full browser
 suite, including desktop, mobile, and WebKit, rather than selected files only.
+
+## Keep local test runs light — heavy suites run on CI
+
+Several agent sessions often share this machine with the user's own work, and
+full browser runs slow everything down. Locally, run only `pnpm check`,
+`pnpm test:unit`, `pnpm test:relay`, and the specific visual spec files your
+change touches on the desktop project, for example
+`pnpm test:visual tests/visual/foo.spec.ts --project=desktop`. Local Playwright
+configs already default to one worker; don't raise it.
+
+Never run the full `pnpm test:visual` suite, the `mobile` or `webkit-*`
+projects, or any `*-performance` config or profile locally. Push the branch and
+let CI run them (`frontend-tests.yml` runs automatically; trigger profile
+workflows with `gh workflow run <workflow> --ref <branch>`), then check results
+with `gh run watch` or `gh run view`.
 
 ## Preserve Goal Rhythm rendering containment
 
@@ -92,8 +107,9 @@ Rhythm, including thousands of offscreen cells. Preserve the
 its CSS. Unrelated task edits and scrolling must cause zero
 `buildGoalDayCells` calls; a completion change should rebuild exactly once per
 visible goal. When changing those wrappers, Goal Rhythm reactivity, or animated
-theme variables, run the interaction performance profile with both `graphite`
-and `iridescent` under CPU contention as well as the Goal Rhythm behavior tests.
+theme variables, run the Goal Rhythm behavior tests and dispatch
+`system-load-profile.yml`, which profiles interactions under CPU contention with
+`graphite` and `iridescent`.
 
 ## Android: CI only — never build locally
 

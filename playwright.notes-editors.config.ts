@@ -8,6 +8,8 @@ export default defineConfig({
   testDir: './tests/notes-editors',
   outputDir: './artifacts/playwright-notes-editors',
   fullyParallel: false,
+  // Agent sessions share one dev machine; CI keeps Playwright's default parallelism.
+  workers: process.env.CI ? undefined : 1,
   timeout: 60_000,
   reporter: [['list']],
   use: {
