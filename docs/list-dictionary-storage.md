@@ -90,3 +90,59 @@ or tests, installed user databases, keys or app screenshots are needed.
 See [the compression study](storage-compression-study.md) for the broader codec
 comparison and its limitations. Native profile artifacts measure materialized
 lists and their indexes/dictionaries, not a complete user's operation history.
+
+## Measured results (2026-10-10)
+
+[Native CI](https://github.com/jonahclarsen/Balance/actions/runs/38033120184)
+passed 219 tests and all 18 ten-year profiles. The following totals sum the three
+independently generated databases (including three copies of fixed schema
+overhead); they are not measurements of one combined three-list database.
+
+| Ten-year workload | Raw list JSON | Fixed dictionary | Annual replacement | Adaptive policy |
+| --- | ---: | ---: | ---: | ---: |
+| Weekly word edits | 184.43 MiB | 21.35 MiB | 15.64 MiB | 21.35 MiB |
+| Daily edits + yearly template replacement | 184.84 MiB | 42.91 MiB | 22.51 MiB | 25.66 MiB |
+
+Adaptive used one dictionary per template in the weekly-edit workload and ten
+per template in the high-churn workload. Annual replacement was smaller for the
+largest steady-use fixture, but slightly larger for the two smaller steady-use
+fixtures. The adaptive policy deliberately requires measured per-record benefit
+and six-month payback; it does not always produce the smallest eventual SQLite
+file. SQLite page packing also makes file savings differ from encoded-byte
+savings. These conservative thresholds preserve the agreed 90-day policy.
+
+In that run, adaptive p95 reads were 0.75–2.78 ms, p95 writes 1.48–6.04 ms,
+and the slowest quarterly check took 232 ms. An earlier identical production
+implementation measured up to 2.53 / 4.87 / 183 ms respectively; hosted-runner
+variation and debug builds limit how precisely these numbers predict devices.
+All reads reconstructed the original logical record, and every database was
+reopened and compared in full. See [per-case measurements](list-dictionary-results.json).
+
+[Released-version compatibility](https://github.com/jonahclarsen/Balance/actions/runs/38033129626)
+passed against v0.6.7, v0.6.8 and the first foundation reader, v0.6.9. The native
+history acknowledgement/browser checks passed too.
+[Android CI](https://github.com/jonahclarsen/Balance/actions/runs/38032975284)
+passed debug x86_64 and signed arm64 builds plus emulator pairing/sync.
+
+The [complete-database run](https://github.com/jonahclarsen/Balance/actions/runs/38033766261)
+generated 3,285 daily lists across three years, performed twelve real persisted
+edits, and created a real checkpoint while retaining undo history. Expanding
+materialized lists back to JSON produced an otherwise logically identical
+baseline, retaining the same operation and history bytes:
+
+| Measurement | Compressed lists | JSON lists |
+| --- | ---: | ---: |
+| Complete encrypted file after VACUUM | 65.18 MiB | 120.65 MiB |
+| Native full-state read after reopening | 1,165 ms | 1,304 ms |
+
+That is a **46% complete-file reduction in this fixture**, lower than the
+list-only percentage because the checkpoint alone retained 57.6 MiB of logical
+operation payload. It is not a prediction for a personal database. The test
+verified identical full state, operation log and twelve retained undo entries.
+Reads exclude opening/unlocking and frontend rendering; OS caches were not
+flushed. This measures the native startup read path, not an end-to-end app launch.
+
+Frontend checks, unit tests, relay tests and the generic-record browser tests
+passed on Linux. A full Linux browser run encountered the existing suite's
+macOS-native Command-key assumptions. Full browser jobs on macOS 15 Intel and
+macOS 26 are queued; they are not counted as passing verification.
