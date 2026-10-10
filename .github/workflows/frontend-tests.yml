@@ -20,7 +20,7 @@ on:
         description: Runner for manual verification when a hosted pool is busy
         type: choice
         default: macos-15
-        options: [macos-15, ubuntu-24.04]
+        options: [macos-15, macos-15-intel, macos-26]
 
 permissions:
   contents: read
