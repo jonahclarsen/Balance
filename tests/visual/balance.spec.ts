@@ -2325,6 +2325,122 @@ for (const side of ['start', 'end'] as const) {
   })
 }
 
+for (const mode of ['start', 'alt-start', 'end', 'selected-end'] as const) {
+  test(`dragging ${mode} snaps off-grid times to the active modifier grid`, async ({ page, isMobile }) => {
+    test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
+    await page.goto('/')
+    await page.evaluate((date) => {
+      localStorage.clear()
+      localStorage.setItem('balance.appState.v1', JSON.stringify({
+        schemaVersion: 1, deviceId: 'test-device', localSequence: 0, historyRevision: 0,
+        activePlanDate: date, templates: [],
+        plans: [{ id: 'plan_grid_time', date, dailyReminder: '', items: [
+          { id: 'grid-task', text: 'Grid task', html: 'Grid task', done: false,
+            startMinutes: 545, endMinutes: 605, children: [] },
+          { id: 'other-grid-task', text: 'Other grid task', html: 'Other grid task', done: false,
+            startMinutes: 665, endMinutes: 725, children: [] },
+        ] }],
+        goals: [], goalCompletions: [], operations: [],
+      }))
+    }, todayISO())
+    await page.reload()
+
+    const row = page.getByRole('listitem', { name: /^Plan item: Grid task/ })
+    if (mode === 'selected-end') {
+      await row.getByRole('button', { name: 'Select item' }).click()
+      await page.keyboard.down('Shift')
+      await page.getByRole('listitem', { name: /^Plan item: Other grid task/ })
+        .getByRole('button', { name: 'Select item' }).click()
+      await page.keyboard.up('Shift')
+    }
+    const source = row.locator(`.time-${mode.endsWith('end') ? 'end' : 'start'}-side .time-part`)
+    const box = await source.boundingBox()
+    if (!box) throw new Error('Missing drag geometry')
+    const x = box.x + box.width / 2
+    const y = box.y + box.height / 2
+    if (mode === 'alt-start') await page.keyboard.down('Alt')
+    try {
+      await page.mouse.move(x, y)
+      await page.mouse.down()
+      await page.mouse.move(x, y - 10)
+      const ordinary = mode === 'start' || mode === 'selected-end' ? [555, 615]
+        : mode === 'alt-start' ? [555, 605] : [545, 615]
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(ordinary)
+
+      await page.keyboard.down('Shift')
+      await page.mouse.move(x, y - 20)
+      const fine = mode === 'start' || mode === 'selected-end' ? [555, 615]
+        : mode === 'alt-start' ? [555, 605] : [545, 615]
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(fine)
+      await page.mouse.move(x, y - 30)
+      const fineNext = mode === 'start' || mode === 'selected-end' ? [560, 620]
+        : mode === 'alt-start' ? [560, 605] : [545, 620]
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(fineNext)
+
+      await page.keyboard.up('Shift')
+      await page.mouse.move(x, y - 40)
+      const coarse = mode === 'start' || mode === 'selected-end' ? [600, 660]
+        : mode === 'alt-start' ? [585, 605] : [545, 660]
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(coarse)
+      await page.mouse.up()
+      if (mode === 'selected-end') {
+        await expect.poll(() => planItemTimeRange(page, 'Other grid task')).toEqual([720, 780])
+      }
+      await page.reload()
+      await expect.poll(() => planItemTimeRange(page, 'Grid task')).toEqual(coarse)
+    } finally {
+      await page.mouse.up()
+      await page.keyboard.up('Shift')
+      if (mode === 'alt-start') await page.keyboard.up('Alt')
+    }
+  })
+}
+
+for (const shift of [false, true]) {
+  for (const side of ['start', 'end'] as const) {
+    test(`dragging the ${side} time enforces a ${shift ? 5 : 15}-minute minimum`, async ({ page, isMobile }) => {
+      test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
+      await page.goto('/')
+      await page.evaluate((date) => {
+        localStorage.clear()
+        localStorage.setItem('balance.appState.v1', JSON.stringify({
+          schemaVersion: 1, deviceId: 'test-device', localSequence: 0, historyRevision: 0,
+          activePlanDate: date, templates: [],
+          plans: [{ id: 'plan_minimum_time', date, dailyReminder: '', items: [{
+            id: 'minimum-task', text: 'Minimum task', html: 'Minimum task', done: false,
+            startMinutes: 540, endMinutes: 570, children: [],
+          }] }],
+          goals: [], goalCompletions: [], operations: [],
+        }))
+      }, todayISO())
+      await page.reload()
+
+      const row = page.getByRole('listitem', { name: /Plan item: Minimum task/ })
+      const source = row.locator(`.time-${side}-side .time-part`)
+      const minimum = shift ? 5 : 15
+      if (shift) await page.keyboard.down('Shift')
+      try {
+        const drag = (distance: number) => side === 'start'
+          ? altVerticalDrag(page, source, -distance)
+          : verticalDrag(page, source, distance)
+        await drag(shift ? 50 : 10)
+        const expected = side === 'start' ? [570 - minimum, 570] : [540, 540 + minimum]
+        await expect.poll(() => planItemTimeRange(page, 'Minimum task')).toEqual(expected)
+
+        // Crossing the minimum keeps the start fixed for Alt-drag, and moves
+        // the whole minimum-duration block when dragging the end.
+        await drag(10)
+        const crossed = side === 'start' ? expected : [540 - minimum, 540]
+        await expect.poll(() => planItemTimeRange(page, 'Minimum task')).toEqual(crossed)
+        await page.reload()
+        await expect.poll(() => planItemTimeRange(page, 'Minimum task')).toEqual(crossed)
+      } finally {
+        if (shift) await page.keyboard.up('Shift')
+      }
+    })
+  }
+}
+
 test('alt-dragging a plan start time changes only the start time', async ({ page, isMobile }) => {
   test.skip(isMobile, 'Mobile uses a time editor rather than desktop time dragging')
   await page.goto('/')
