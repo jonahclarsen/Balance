@@ -104,6 +104,89 @@ fn active(conn: &Connection) -> i64 {
 }
 
 #[test]
+fn diagnostics_account_for_mixed_records_dictionaries_and_migration_without_writes() {
+    let scratch = Scratch::new();
+    let conn = scratch.open();
+    let empty = diagnostics::read(&conn).unwrap();
+    assert_eq!(empty.total_records, 0);
+    assert_eq!(empty.dictionary_bytes, 0);
+    assert_eq!(empty.next_check_at_ms, None);
+    let source = template(7, 45);
+    seed(&conn, &source);
+    put(&conn, &source, 0);
+    let mut independent = daily(&source, 1);
+    independent
+        .as_object_mut()
+        .unwrap()
+        .remove("listTemplateId");
+    write_at(&conn, "lists", "independent", 1, &independent, now(0)).unwrap();
+    let tiny = json!({"text":"café 🌱 東京"});
+    write_at(&conn, "lists", "tiny", 2, &tiny, now(0)).unwrap();
+    conn.execute(
+        "INSERT INTO state_entities VALUES('lists','legacy',3,?1)",
+        [tiny.to_string()],
+    )
+    .unwrap();
+    // Two policies sharing one active dictionary must count that dictionary once.
+    conn.execute("INSERT INTO list_storage_policies SELECT 'second',active_dictionary,active_source_hash,checked_at_ms FROM list_storage_policies LIMIT 1", []).unwrap();
+    install_dictionary(&conn, b"synthetic retained dictionary", now(0)).unwrap();
+    let before: i64 = conn
+        .query_row("SELECT total_changes()", [], |r| r.get(0))
+        .unwrap();
+    let status = diagnostics::read(&conn).unwrap();
+    let after: i64 = conn
+        .query_row("SELECT total_changes()", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(before, after);
+    assert_eq!(status.total_records, 4);
+    assert_eq!(status.pending_records, 1);
+    assert_eq!(status.compressed_records, 2);
+    assert_eq!(status.dictionary_records, 1);
+    assert_eq!(status.dictionary_count, 2);
+    assert_eq!(status.active_dictionaries, 1);
+    assert_eq!(status.last_check_at_ms, Some(now(0)));
+    assert_eq!(status.next_check_at_ms, Some(now(90)));
+    assert_eq!(
+        status.original_bytes as usize,
+        daily(&source, 0).to_string().len()
+            + independent.to_string().len()
+            + 2 * tiny.to_string().len()
+    );
+    let actual: u64 = conn.query_row("SELECT sum(length(CAST(value_json AS BLOB))) FROM state_entities WHERE collection='lists'", [], |r| r.get(0)).unwrap();
+    assert_eq!(status.stored_bytes, actual);
+    assert_eq!(
+        status.dictionary_bytes as usize,
+        dictionary_bytes(&super::source(&conn, "template").unwrap().unwrap()).len()
+            + b"synthetic retained dictionary".len()
+    );
+    maintain(&conn, now(1), date(1)).unwrap();
+    let done = diagnostics::read(&conn).unwrap();
+    assert_eq!(done.pending_records, 0);
+    assert_eq!(done.original_bytes, status.original_bytes);
+    assert_eq!(done.dictionary_count, 1);
+}
+
+#[test]
+fn diagnostics_reject_unknown_or_damaged_headers_instead_of_reporting_fake_savings() {
+    let scratch = Scratch::new();
+    let conn = scratch.open();
+    for bytes in [vec![0; 21], MAGIC.to_vec(), {
+        let mut bytes = MAGIC.to_vec();
+        bytes.extend_from_slice(&0_i64.to_le_bytes());
+        bytes.extend_from_slice(&((MAX_RECORD + 1) as u32).to_le_bytes());
+        bytes.push(0);
+        bytes
+    }] {
+        conn.execute(
+            "INSERT OR REPLACE INTO state_entities VALUES('lists','invalid',0,?1)",
+            [bytes],
+        )
+        .unwrap();
+        assert!(diagnostics::read(&conn).is_err());
+    }
+}
+
+#[test]
 fn legacy_plaintext_rows_migrate_in_bounded_atomic_batches_and_reopen() {
     let scratch = Scratch::new();
     let conn = Connection::open(scratch.path()).unwrap();

@@ -66,6 +66,24 @@ so old builds fail during open instead of overwriting compressed records. Backup
 copy connections must also register that function. Old JSON-only backups remain
 readable without modifying them.
 
+## Viewing local savings
+
+Open Recovery history with Cmd/Ctrl+Shift+P. Daily list compression shows the
+original JSON byte count, current stored payload bytes (including codec headers),
+dictionary bytes, and the net difference after dictionary cost. It also reports
+checked/pending migration records, shared-dictionary usage, active and retained
+dictionary counts, and the latest setup/check and earliest next eligible check.
+An unchanged or rejected candidate still schedules the next check 90 days later.
+
+This read-only measurement scans lengths and fixed compression headers, without
+decompressing records or returning their contents. It refreshes on request and
+after optimization; unfinished migration polls every 15 seconds while the panel
+is open. It is not an integrity check or a measurement of the extra benefit over
+ordinary Zstandard. Payload totals exclude SQLite indexes, unused pages, operation
+history and checkpoints, so they differ from complete-file savings. Optimize
+database separately reclaims unused pages. These diagnostics change no stored
+records, dictionary policy or sync format.
+
 ## CI verification
 
 All fixtures are fabricated and use public test-only keys. No local benchmarks

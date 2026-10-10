@@ -1665,6 +1665,14 @@ async fn get_database_maintenance_status(
 }
 
 #[tauri::command]
+async fn get_list_storage_status(app: tauri::AppHandle) -> Result<list_storage::diagnostics::Status, String> {
+    run_database_task(move || {
+        let connection = open_database(&app)?;
+        list_storage::diagnostics::read(&connection)
+    }).await
+}
+
+#[tauri::command]
 async fn maintain_list_storage(app: tauri::AppHandle) -> Result<list_storage::Maintenance, String> {
     run_database_task(move || {
         let connection = open_database(&app)?;
@@ -10865,6 +10873,7 @@ pub fn run() {
             compact_database,
             get_database_maintenance_status,
             maintain_list_storage,
+            get_list_storage_status,
             run_database_maintenance_if_needed,
             complete_database_maintenance_startup,
             restore_recovery_entry,

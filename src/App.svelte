@@ -2,6 +2,7 @@
   import { templateItemsToListTemplateItems, listTemplateItemsToTemplateItems, planItemsClipboardText, parsePlainTaskClipboard, planItemsToListTemplateItems, planItemsToTemplateItems } from './lib/taskClipboard'
   import ImageLayer from './lib/ImageLayer.svelte'
   import BackupBrowser from './lib/BackupBrowser.svelte'
+  import ListStorageDiagnostics from './lib/ListStorageDiagnostics.svelte'
   import { blobDataURL, selectedImage } from './lib/imageService'
   import { clipboardHasDirectImage, IMAGE_CLIPBOARD_TYPE } from './lib/imageMarkup'
   import { onBackButtonPress } from '@tauri-apps/api/app'
@@ -550,6 +551,7 @@ return rows`
   let databaseInspection: DatabaseInspection | null = null
   let databaseInspectionBusy = false
   let databaseCompactionBusy = false
+  let listStorageDiagnosticsRefresh = 0
   let databaseMaintenanceStatus: DatabaseMaintenanceStatus | null = null
   let launchMaintenanceStarted = false
   let databaseInspectionError = ''
@@ -5676,6 +5678,7 @@ return rows`
 
       const result = await compactDatabase()
       if (!result) throw new Error('Database optimization is available only in the desktop or mobile app.')
+      listStorageDiagnosticsRefresh++
 
       await plannerStore.reloadFromBackend()
       recoveryEntries = await listRecoveryEntries()
@@ -8512,7 +8515,7 @@ return rows`
       <div class="recovery-actions-row">
         <button
           type="button"
-          on:click={() => { void refreshRecoveryEntries(); void refreshMetadata(); void refreshDatabaseInspection() }}
+          on:click={() => { listStorageDiagnosticsRefresh++; void refreshRecoveryEntries(); void refreshMetadata(); void refreshDatabaseInspection() }}
           disabled={recoveryBusy || databaseInspectionBusy || databaseCompactionBusy}
         >
           Refresh
@@ -8534,6 +8537,7 @@ return rows`
 
       <div class="recovery-scroll">
       {#if isTauri()}
+        <ListStorageDiagnostics refreshKey={listStorageDiagnosticsRefresh} />
         <details class="metadata-section" bind:open={backupBrowserOpen}>
           <summary>Browse encrypted backups</summary>
           {#if backupBrowserOpen}<BackupBrowser />{/if}

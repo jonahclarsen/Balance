@@ -15,6 +15,20 @@ const CHECK_INTERVAL: i64 = 90 * DAY;
 const BATCH: usize = 24;
 const BATCH_BYTES: usize = 2 * 1024 * 1024;
 
+pub mod diagnostics;
+
+fn header(bytes: &[u8], stored_len: usize) -> Result<(i64, usize), String> {
+    if bytes.len() < HEADER || stored_len <= HEADER || &bytes[..8] != MAGIC {
+        return Err(error("Update required or damaged compressed record"));
+    }
+    let id = i64::from_le_bytes(bytes[8..16].try_into().unwrap());
+    let size = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
+    if id < 0 || size == 0 || size > MAX_RECORD || stored_len > MAX_RECORD + HEADER {
+        return Err(error("Invalid compressed record bounds"));
+    }
+    Ok((id, size))
+}
+
 fn error(e: impl std::fmt::Display) -> String {
     format!("List storage: {e}")
 }
@@ -134,14 +148,7 @@ impl<'a> Reader<'a> {
         match stored {
             SqlValue::Text(raw) => serde_json::from_str(&raw).map_err(error),
             SqlValue::Blob(bytes) => {
-                if bytes.len() <= HEADER || &bytes[..8] != MAGIC {
-                    return Err(error("Update required or damaged compressed record"));
-                }
-                let id = i64::from_le_bytes(bytes[8..16].try_into().unwrap());
-                let size = u32::from_le_bytes(bytes[16..20].try_into().unwrap()) as usize;
-                if id < 0 || size == 0 || size > MAX_RECORD || bytes.len() > MAX_RECORD + HEADER {
-                    return Err(error("Invalid compressed record bounds"));
-                }
+                let (id, size) = header(&bytes, bytes.len())?;
                 if !self.decoders.contains_key(&id) {
                     // Bound per-scan dictionary contexts too; very long-lived
                     // databases can contain many immutable dictionary versions.
