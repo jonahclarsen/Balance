@@ -69,5 +69,7 @@ test('recent days reuse editors, stay current through edits and undo, and expire
   await expect(first).toHaveText('Edited after returning')
   expect(await first.evaluate((node) => node === (window as any).retainedEditor)).toBe(false)
   await openView(page, 'Notes')
+  await expect(page.locator('.retained-day')).not.toHaveCount(0)
+  await page.clock.fastForward(30_001)
   await expect(page.locator('.retained-day')).toHaveCount(0)
 })

@@ -1002,7 +1002,7 @@ test('Next shows the first unfinished task of today under its unfinished parents
   const rows = panel.locator('.next-task-row')
   await expect(rows.locator('.next-task-text')).toHaveText(['Project', 'Outline', 'Write intro'])
   await expect(panel.locator('.next-task-row.selected .next-task-text')).toHaveText('Write intro')
-  await expect(page.locator('.goal-history-panel')).toHaveCount(0)
+  await expect(page.locator('.goal-history-panel')).toBeHidden()
 
   await panel.getByRole('checkbox', { name: 'Complete Write intro' }).click()
   await expect(panel.locator('.next-task-row.selected .next-task-text')).toHaveText('Write body')
@@ -6129,7 +6129,7 @@ test('archiving a list hides it from Lists and it can be unarchived from List Hi
   await expect(page.locator('[data-list-template-tab-id]')).toHaveCount(0)
 
   await page.getByRole('button', { name: 'View List History →' }).click()
-  const historyChip = page.locator('.rail-chip', { hasText: 'Errands' })
+  const historyChip = page.locator('.rail-chip:visible', { hasText: 'Errands' })
   await expect(historyChip).toContainText('Archived')
   await historyChip.click()
   await page.getByRole('button', { name: 'Unarchive' }).click()

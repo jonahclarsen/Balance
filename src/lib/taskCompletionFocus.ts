@@ -18,7 +18,7 @@ export async function focusTaskBelow(containerId: Id, completedItemIds: Iterable
   await tick()
 
   const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]')).filter(
-    (row) => row.dataset.itemContainerId === containerId,
+    (row) => row.dataset.itemContainerId === containerId && !row.closest('[hidden], [inert]'),
   )
   let lastCompletedIndex = -1
 
@@ -74,7 +74,7 @@ export async function focusTaskById(
   await tick()
 
   const row = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]')).find(
-    (candidate) => candidate.dataset.itemContainerId === containerId && candidate.dataset.planItemId === itemId,
+    (candidate) => candidate.dataset.itemContainerId === containerId && candidate.dataset.planItemId === itemId && !candidate.closest('[hidden], [inert]'),
   )
   const target = row?.querySelector<HTMLElement>('[data-plan-text-focus-target], .item-text-display')
   if (!target) return false
@@ -115,7 +115,7 @@ function caretForLastCompletedTask(
   completedIds: ReadonlySet<Id>,
 ): { itemId: Id; caret: TaskCaretOffsets } | null {
   const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-plan-item-id]')).filter(
-    (row) => row.dataset.itemContainerId === containerId && completedIds.has(row.dataset.planItemId ?? ''),
+    (row) => row.dataset.itemContainerId === containerId && completedIds.has(row.dataset.planItemId ?? '') && !row.closest('[hidden], [inert]'),
   )
   const row = rows.at(-1)
   const itemId = row?.dataset.planItemId

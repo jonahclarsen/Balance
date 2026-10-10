@@ -37,6 +37,7 @@
   let adapter: NoteEditorAdapter | null = null
   let destroyed = false
   let ready = false
+  let departing = false
   let selection: NoteEditorSelectionState = {
     activeKind: null,
     marks: { bold: false, italic: false, underline: false },
@@ -52,7 +53,7 @@
 
   // Keep the last known caret when focus leaves the editor.
   function rememberViewState() {
-    if (!adapter || !openedNoteId) return
+    if (departing || !adapter || !openedNoteId) return
     const previous = viewStatesByNote.get(openedNoteId)
     // Svelte can detach the host before teardown runs. Keep the last mounted
     // scroll position instead of replacing it with the detached pane's zero.
@@ -60,6 +61,11 @@
     const scrollTop = scroller?.isConnected ? scroller.scrollTop : previous?.scrollTop ?? 0
     const state = adapter.viewState(scrollTop)
     onViewStateChange(openedNoteId, { scrollTop: state.scrollTop, caret: state.caret ?? previous?.caret ?? null })
+  }
+
+  export function rememberBeforeLeaving() {
+    rememberViewState()
+    departing = true
   }
 
   function handleSelectionChange() {

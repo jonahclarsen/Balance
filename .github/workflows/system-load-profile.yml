@@ -3,6 +3,15 @@ name: Profile desktop interactions under system load
 on:
   workflow_dispatch:
     inputs:
+      runner:
+        description: Runner for matched browser checks (macOS remains the default)
+        required: false
+        default: macos-15
+        type: choice
+        options:
+          - macos-15
+          - macos-14
+          - ubuntu-latest
       baseline_ref:
         description: Git ref for the baseline run
         required: true
@@ -30,7 +39,7 @@ permissions:
 jobs:
   compare:
     name: Matched ref/theme comparison under CPU contention
-    runs-on: macos-15
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 30
     env:
       BASELINE_REF: ${{ inputs.baseline_ref }}
@@ -63,7 +72,7 @@ jobs:
       - name: Install dependencies and Chromium
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec playwright install chromium
+          pnpm exec playwright install --with-deps chromium
 
       - name: Prepare matched revisions
         env:
@@ -206,8 +215,8 @@ jobs:
           if-no-files-found: error
 
   verify:
-    name: Typecheck and Goal Rhythm behavior
-    runs-on: macos-15
+    name: Typecheck, Goal Rhythm, and recent-page behavior
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 15
 
     steps:
@@ -225,10 +234,10 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install dependencies and Chromium
+      - name: Install dependencies and browsers
         run: |
           pnpm install --frozen-lockfile
-          pnpm exec playwright install chromium
+          pnpm exec playwright install --with-deps chromium webkit
 
       - name: Check source
         run: pnpm check
@@ -238,3 +247,33 @@ jobs:
           pnpm exec playwright test tests/visual/goals.spec.ts \
             --project desktop \
             --grep "a completion resets a rolling deadline|goal rhythm keeps its name column aligned|clicking a plan item goal badge reveals|clicking an unchecked goal preview reveals"
+
+      - name: Verify retained modal focus, scroll, and eviction
+        run: |
+          pnpm exec playwright test tests/visual/list-overlay-edit.spec.ts \
+            --project desktop --project mobile --project webkit-days \
+            --grep "returning to Today restores|recent pages reuse|completion focuses the visible copy" \
+            --workers 1
+
+      - name: Verify note caret and scroll across retained pages
+        run: |
+          pnpm exec playwright test tests/visual/notes.spec.ts \
+            --project desktop --project mobile --project webkit-notes \
+            --grep "restores its caret and scroll position" --workers 1
+
+      - name: Verify changed goals appear when Today returns
+        run: |
+          pnpm exec playwright test tests/visual/goals.spec.ts \
+            --project desktop --project mobile --grep "old goal snapshots" --workers 1
+
+      - name: Verify project reordering after edge scrolling
+        run: |
+          pnpm exec playwright test tests/visual/projects.spec.ts \
+            --project desktop --grep "dragging a project card to the window edge" --workers 1
+
+      - name: Upload behavior failure traces
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: recent-page-behavior-failure-traces
+          path: artifacts/playwright

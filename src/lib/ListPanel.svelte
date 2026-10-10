@@ -7,6 +7,7 @@
   import { focusTaskBelow, TASK_COMPLETION_FOCUS_EVENT, type TaskCompletionFocusDetail } from './taskCompletionFocus'
   import type { Id, ListTemplate, Metric, Note, PlanItem } from './types'
 
+  export let active = true
   export let instance: { id: Id; items: PlanItem[] }
   export let listTemplates: ListTemplate[]
   export let metrics: Metric[]
@@ -36,6 +37,44 @@
   let animationBottomCollapseTarget: number | null = null
   let bottomCollapse = initialBottomCollapse
   let expandedModalHeight: number | null = null
+
+  let wasActive = active
+  let scrollRestoreNonce = 0
+  let restoringScroll = false
+  let retainedScrollTop: number | null = null
+  $: if (active !== wasActive) {
+    wasActive = active
+    const restoreNonce = ++scrollRestoreNonce
+    restoringScroll = active
+    if (!active) {
+      if (scrollAnimationFrame !== null) cancelAnimationFrame(scrollAnimationFrame)
+      scrollAnimationFrame = null
+      animationBottomCollapseTarget = null
+      onBottomCollapseSettled?.(bottomCollapse)
+    } else {
+      // The retained dialog has no new mount hook to reclaim keyboard focus.
+      // Wait for the page's caret restoration, then focus without scrolling.
+      const savedScrollTop = retainedScrollTop ?? initialScrollTop
+      void tick().then(async () => {
+        // WebKit needs a layout frame after displaying the retained backdrop.
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        if (!active || restoreNonce !== scrollRestoreNonce) return
+        focusSelectedRowWithoutScroll()
+        if (scrollContainer && savedScrollTop !== null) scrollContainer.scrollTop = savedScrollTop
+        await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        if (restoreNonce === scrollRestoreNonce) restoringScroll = false
+      })
+    }
+  }
+
+  export function rememberBeforeLeaving() {
+    // Capture before the parent hides the backdrop. WebKit can omit a pending
+    // scroll event, so the last callback alone may be behind the live position.
+    if (wasActive && scrollContainer) {
+      retainedScrollTop = scrollContainer.scrollTop
+      onScrollTopChange?.(retainedScrollTop)
+    }
+  }
 
   const selectionScrollDurationMs = 235
 
@@ -68,6 +107,7 @@
     void setup()
 
     return () => {
+      scrollRestoreNonce += 1
       panel.removeEventListener(TASK_COMPLETION_FOCUS_EVENT, handleCompletionFocus)
       scrollContainer?.removeEventListener('scroll', handleScrollContainerScroll)
       scrollContainer?.removeEventListener('wheel', handleScrollContainerWheel)
@@ -132,7 +172,7 @@
   }
 
   function handleScrollContainerScroll() {
-    if (scrollContainer) onScrollTopChange?.(scrollContainer.scrollTop)
+    if (active && !restoringScroll && scrollContainer) onScrollTopChange?.(scrollContainer.scrollTop)
   }
 
   function handleScrollContainerWheel(event: WheelEvent) {

@@ -958,8 +958,11 @@ test('old goal snapshots survive rule edits and archived goals leave rhythm', as
   await goalCard(page, 'Exercise').getByRole('button', { name: 'Archive', exact: true }).click()
   await expect(page.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible()
   await expect(goalCard(page, 'Exercise').getByText('Archived', { exact: true })).toBeVisible()
+  // The hidden cached grid applies changed goals when Today becomes active.
+  await openView(page, 'Today')
   await expect(page.locator('.goal-history-name', { hasText: 'Exercise' })).toHaveCount(0)
   await expect(page.locator(`.goal-day-cell[title="Exercise · ${oldDate} · completed"]`)).toHaveCount(0)
+  await openView(page, 'Goals')
 
   const dialogMessages: string[] = []
   page.on('dialog', async (dialog) => {
@@ -2194,9 +2197,9 @@ test('clicking a goal card background reveals it without making field labels foc
   await createGoal(page, 'Exercise', 3, 'lift, swim')
 
   const card = page.locator('.goal-card', { has: page.getByLabel('Goal name: Exercise') })
-  // Goal Rhythm only renders on Today, so a card click cannot focus a rhythm row here.
+  // Goal Rhythm is hidden outside Today, so a card click cannot focus a cached row.
   await card.locator('.goal-card-accent').click()
-  await expect(page.locator('.goal-history-name[data-goal-id]')).toHaveCount(0)
+  await expect(page.locator('.goal-history-name[data-goal-id]:visible')).toHaveCount(0)
 
   const cadenceInput = page.getByLabel('Cadence days for Exercise')
   await card.getByText('Complete every', { exact: true }).click()
@@ -2216,9 +2219,16 @@ test('clicking a goal rhythm row scrolls to that goal on the goals page', async 
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'iridescent')
   const targetGoal = 'Goal 18'
 
-  for (let index = 1; index <= 28; index += 1) {
-    await createGoal(page, `Goal ${index}`, 1, `goal-${index}`)
-  }
+  // Goal creation is covered elsewhere; this fixture needs enough cards to
+  // scroll without spending the navigation test's budget on 28 UI submissions.
+  await openView(page, 'Goals')
+  await page.evaluate(async () => {
+    const path = '/src/lib/store.ts'
+    const { plannerStore } = await import(/* @vite-ignore */ path)
+    for (let index = 1; index <= 28; index += 1) {
+      plannerStore.addGoal(`Goal ${index}`, 1, [`goal-${index}`], 180)
+    }
+  })
 
   await openView(page, 'Today')
   const targetRow = page.locator('.goal-history-name[data-goal-id]', { hasText: targetGoal })

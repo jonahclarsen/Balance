@@ -7,8 +7,9 @@
 </script>
 
 <script lang="ts">
-  import { onMount } from 'svelte'
+  import { onMount, onDestroy } from 'svelte'
 
+  export let active = true
   export let onClose: () => void
   export let title = ''
   export let ariaLabel = title || 'Dialog'
@@ -22,9 +23,9 @@
   let mobileViewportTop = 0
 
   function isTopmostOverlay() {
-    if (!backdrop) return false
+    if (!active || !backdrop) return false
 
-    const overlays = Array.from(document.querySelectorAll<HTMLElement>('.overlay-backdrop'))
+    const overlays = Array.from(document.querySelectorAll<HTMLElement>('.overlay-backdrop:not([hidden])'))
     const topmost = overlays.reduce<HTMLElement | null>((current, candidate) => {
       if (!current) return candidate
       const currentZ = Number.parseInt(window.getComputedStyle(current).zIndex, 10) || 0
@@ -35,14 +36,17 @@
     return topmost === backdrop
   }
 
-  onMount(() => {
-    openOverlays += 1
-    document.documentElement.classList.add(SCROLL_LOCK_CLASS)
-    return () => {
-      openOverlays -= 1
-      if (openOverlays === 0) document.documentElement.classList.remove(SCROLL_LOCK_CLASS)
-    }
-  })
+  let mounted = false
+  let scrollLocked = false
+  function updateScrollLock(visible: boolean) {
+    if (visible === scrollLocked) return
+    openOverlays += visible ? 1 : -1
+    scrollLocked = visible
+    document.documentElement.classList.toggle(SCROLL_LOCK_CLASS, openOverlays > 0)
+  }
+  $: if (mounted) updateScrollLock(active)
+  onMount(() => { mounted = true })
+  onDestroy(() => { if (mounted) updateScrollLock(false) })
 
   function handleEscape(event: KeyboardEvent) {
     if (event.key === 'Escape' && isTopmostOverlay()) {
@@ -62,6 +66,8 @@
 <div
   bind:this={backdrop}
   class="overlay-backdrop"
+  hidden={!active}
+  inert={!active}
   role="presentation"
   style={`z-index: ${z}; --mobile-overlay-top: ${mobileViewportTop}px; --overlay-max-width: ${maxWidth}px; --overlay-height: ${height === null ? 'auto' : `${height}px`}; --overlay-body-overflow: ${bodyOverflow}`}
   on:click|self={onClose}
@@ -112,6 +118,8 @@
     background: rgba(28, 26, 20, 0.4);
     backdrop-filter: blur(2px);
   }
+
+  .overlay-backdrop[hidden] { display: none; }
 
   .overlay-card {
     position: relative;

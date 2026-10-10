@@ -4,13 +4,17 @@ import { join } from 'node:path'
 
 // Measures moving between day pages with a large synthetic workspace. Every
 // value here is generated; nothing reads a real database.
+const PAGE_SWITCHING = process.env.BALANCE_DAY_NAV_PAGE_SWITCHING === '1'
 const PLAN_COUNT = performanceSize('BALANCE_DAY_NAV_PLANS', 730)
 const ITEMS_PER_PLAN = performanceSize('BALANCE_DAY_NAV_ITEMS_PER_PLAN', 24)
 const LIST_COUNT = performanceSize('BALANCE_DAY_NAV_LISTS', 365)
-const GOAL_COUNT = performanceSize('BALANCE_DAY_NAV_GOALS', 40)
+const GOAL_COUNT = performanceSize('BALANCE_DAY_NAV_GOALS', PAGE_SWITCHING ? 10 : 40)
 const NOTE_COUNT = performanceSize('BALANCE_DAY_NAV_NOTES', 60)
-const STEP_COUNT = performanceSize('BALANCE_DAY_NAV_STEPS', 30)
-const ROUNDS = performanceSize('BALANCE_DAY_NAV_ROUNDS', 2)
+// Remounting the history grid is much slower than changing dates, especially
+// in Linux WebKit under host CPU contention. Three CI runs still provide
+// sixty measured round trips per browser without timing out the baseline.
+const STEP_COUNT = performanceSize('BALANCE_DAY_NAV_STEPS', PAGE_SWITCHING ? 20 : 30)
+const ROUNDS = performanceSize('BALANCE_DAY_NAV_ROUNDS', PAGE_SWITCHING ? 1 : 2)
 const THEME_ID = process.env.BALANCE_DAY_NAV_THEME ?? 'graphite'
 const REPORT_DIR = process.env.BALANCE_DAY_NAV_REPORT_DIR ?? 'artifacts/day-navigation-performance'
 const ALTERNATE_DAYS = process.env.BALANCE_DAY_NAV_ALTERNATE === '1'
@@ -87,7 +91,10 @@ async function installSyntheticWorkspace(page: Page) {
         id: `list_template_${index}`,
         name: `List ${index}`,
         maxExpectedWords: 0,
-        items: [],
+        items: Array.from({ length: 12 }, (_, itemIndex) => ({
+          id: `source_${index}_${itemIndex}`, text: `List ${index} task ${itemIndex}`,
+          html: `List ${index} task ${itemIndex}`, children: [],
+        })),
         archivedItems: [],
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
@@ -97,7 +104,10 @@ async function installSyntheticWorkspace(page: Page) {
         date: planDate(planCount - 1 - Math.floor(listIndex / 3)),
         listTemplateId: `list_template_${listIndex % 3}`,
         createdAt: '2026-01-01T00:00:00Z',
-        items: Array.from({ length: 12 }, (_, itemIndex) => item(`list_${listIndex}`, itemIndex)),
+        items: Array.from({ length: 12 }, (_, itemIndex) => ({
+          ...item(`list_${listIndex}`, itemIndex),
+          text: `List ${listIndex % 3} task ${itemIndex}`, html: `List ${listIndex % 3} task ${itemIndex}`, children: [],
+        })),
       }))
       const goals = Array.from({ length: goalCount }, (_, goalIndex) => ({
         id: `goal_${goalIndex}`,
@@ -148,6 +158,10 @@ async function installSyntheticWorkspace(page: Page) {
         createdAt: '2026-01-01T00:00:00Z',
         updatedAt: '2026-01-01T00:00:00Z',
       }]
+      if (plans[planCount - 8]) {
+        plans[planCount - 8].items[1].text = 'List 0'
+        plans[planCount - 8].items[1].html = 'List 0'
+      }
       const state = {
         schemaVersion: 1,
         deviceId: 'device_day_navigation_perf',
@@ -204,6 +218,7 @@ async function installSyntheticWorkspace(page: Page) {
 // Sends the desktop Option-Q / Option-W shortcuts inside the page so Playwright
 // IPC latency is excluded. "Painted" waits for the frame after the update.
 async function profileDaySteps(page: Page, steps: number) {
+  if (PAGE_SWITCHING) return profilePageSwitches(page, steps)
   return page.evaluate(async ({ steps, alternate }) => {
     const samples: { dispatchMs: number; paintMs: number }[] = []
     const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
@@ -223,6 +238,28 @@ async function profileDaySteps(page: Page, steps: number) {
     }
     return samples
   }, { steps, alternate: ALTERNATE_DAYS })
+}
+
+// Exercise the user's E -> Today round trip without Playwright IPC in timings.
+async function profilePageSwitches(page: Page, steps: number) {
+  return page.evaluate(async (steps) => {
+    const samples: { dispatchMs: number; paintMs: number }[] = []
+    const frame = () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+    for (let index = 0; index < steps; index += 1) {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'e', code: 'KeyE', bubbles: true, cancelable: true }))
+      await frame()
+      const template = document.querySelector<HTMLElement>('[data-list-template-text-input]')
+      if (!template || template.getClientRects().length === 0) throw new Error('E did not open Lists')
+      const started = performance.now()
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 't', code: 'KeyT', altKey: true, bubbles: true, cancelable: true }))
+      const dispatched = performance.now()
+      await frame()
+      const dialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((entry) => entry.getAttribute('aria-label') === 'List 0' && entry.getClientRects().length > 0)
+      if (!dialog) throw new Error('Today did not restore the list')
+      samples.push({ dispatchMs: dispatched - started, paintMs: performance.now() - started })
+    }
+    return samples
+  }, steps)
 }
 
 type ProfileNode = {
@@ -271,11 +308,16 @@ test('profiles moving between day pages', async ({ page, browserName }, testInfo
   await installSyntheticWorkspace(page)
   await page.goto('/')
   await expect(page.locator(`[data-plan-text-input-id="plan_${PLAN_COUNT - 8}_item_1"]`)).toBeVisible({ timeout: 60_000 })
+  if (PAGE_SWITCHING) {
+    await page.getByTitle('Open List 0', { exact: true }).first().click()
+    await expect(page.getByRole('dialog', { name: 'List 0', exact: true })).toBeVisible()
+    await page.keyboard.press('ArrowDown')
+  }
   // Let startup work settle before measuring.
   await page.waitForTimeout(1_500)
 
   // Warm up the code paths so JIT tiering is comparable between revisions.
-  await profileDaySteps(page, 6)
+  await profileDaySteps(page, PAGE_SWITCHING ? 2 : 6)
 
   const cdp = browserName === 'chromium' ? await page.context().newCDPSession(page) : null
   const metrics = async () => {
@@ -300,6 +342,9 @@ test('profiles moving between day pages', async ({ page, browserName }, testInfo
     writeFileSync(join(REPORT_DIR, `${REVISION}-${testInfo.project.name}.cpuprofile`), JSON.stringify(profile))
     cpu = summarizeCpuProfile(profile)
   }
+  // Collect unreachable old pages before comparing retained memory.
+  if (cdp) await cdp.send('HeapProfiler.collectGarbage')
+  const retained = await metrics()
   const delta = (name: string) => round(((after.get(name) ?? 0) - (before.get(name) ?? 0)) * 1000)
   const report = {
     revision: REVISION,
@@ -308,6 +353,8 @@ test('profiles moving between day pages', async ({ page, browserName }, testInfo
     workspace: { plans: PLAN_COUNT, itemsPerPlan: ITEMS_PER_PLAN, lists: LIST_COUNT, goals: GOAL_COUNT, notes: NOTE_COUNT },
     steps: samples.length,
     alternateDays: ALTERNATE_DAYS,
+    pageSwitching: PAGE_SWITCHING,
+    retainedMemory: cdp ? { heapBytes: retained.get('JSHeapUsedSize'), nodes: retained.get('Nodes') } : null,
     dispatch: summarize(samples.map((sample) => sample.dispatchMs)),
     paint: summarize(samples.map((sample) => sample.paintMs)),
     paintSamplesMs: samples.map((sample) => round(sample.paintMs)),

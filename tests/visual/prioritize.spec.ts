@@ -127,7 +127,7 @@ test('keyboard prioritizing reorders, persists, undoes and times out', async ({ 
   await page.keyboard.type(' x')
   await page.locator('.prioritize-add').click()
   await expect(rows(page).nth(3)).toHaveText(/Synthetic overdue goal x\s*$/)
-  await expect(page.getByText('Overdue only')).toHaveCount(0)
+  await expect(page.getByText('Overdue only')).toBeHidden()
 
   // Cmd/Ctrl+E edits the selected row; Escape saves like Enter.
   await rows(page).nth(2).locator('.priority-rank').click()

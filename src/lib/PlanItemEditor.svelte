@@ -768,7 +768,7 @@
 
   function focusItemTextInputAtOffset(itemId: Id, offset: number) {
     const input = Array.from(document.querySelectorAll<HTMLDivElement>('[data-plan-text-input]')).find(
-      (candidate) => candidate.dataset.planTextInputId === itemId,
+      (candidate) => candidate.dataset.planTextInputId === itemId && !candidate.closest('[hidden], [inert]'),
     )
 
     if (input) focusTextInputAtOffset(input, offset)
@@ -777,6 +777,7 @@
   function planTextFocusTargets(scopeFrom?: HTMLElement) {
     const root = scopeFrom ? planScopeFor(scopeFrom) : document
     return Array.from(root.querySelectorAll<HTMLDivElement>('[data-plan-text-focus-target]'))
+      .filter((target) => !target.closest('[hidden], [inert]'))
   }
 
   function focusTextTarget(target: HTMLDivElement, position: 'start' | 'end' = 'end') {

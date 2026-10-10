@@ -1794,7 +1794,7 @@ test('notes layout remains usable on mobile', async ({ page }, testInfo) => {
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight * 0.75))
   await expect.poll(async () => (await toolbar.boundingBox())?.y ?? -1).toBeCloseTo(mobileToolbarTop, 0)
   await expect(page.locator('.note-scroll-space-control')).toHaveCSS('display', 'none')
-  await expect(page.locator('.goal-history-panel')).toHaveCount(0)
+  await expect(page.locator('.goal-history-panel')).toBeHidden()
   await page.screenshot({ path: testInfo.outputPath('notes-mobile-toolbar.png'), fullPage: false })
   await page.screenshot({ path: testInfo.outputPath('notes-mobile.png'), fullPage: true })
 

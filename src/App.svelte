@@ -9,13 +9,15 @@
   import { listen } from '@tauri-apps/api/event'
   import { getCurrentWebview } from '@tauri-apps/api/webview'
   import { confirm as confirmDialog, open as openDialog } from '@tauri-apps/plugin-dialog'
-  import { onMount, tick } from 'svelte'
+  import { onDestroy, onMount, tick } from 'svelte'
   import { startListStorageMaintenance } from './lib/listStorageMaintenance'
   import { startFreezeDiagnostics } from './lib/freezeDiagnostics'
   import { installMobileKeyboardScroll } from './lib/mobileKeyboardScroll'
   import GoalColorPicker from './lib/GoalColorPicker.svelte'
   import GoalCopyButton from './lib/GoalCopyButton.svelte'
   import IridescentGradientSettings from './lib/IridescentGradientSettings.svelte'
+  import RecentPage from './lib/RecentPage.svelte'
+  import { createRecentPages } from './lib/recentPages'
   import GoalHistoryPanel from './lib/GoalHistoryPanel.svelte'
   import GoalRecentHistory from './lib/GoalRecentHistory.svelte'
   import PlanItemEditor from './lib/PlanItemEditor.svelte'
@@ -330,6 +332,10 @@
   // resume the last page. Playwright pins the start page to Today because most
   // tests begin there.
   const resumesLastView = import.meta.env.VITE_BALANCE_START_VIEW === 'today' || storedWorkspaceViewState?.launchDate === launchDate
+  const recentPages = createRecentPages()
+  $: recentPages.visit(view)
+  onDestroy(() => recentPages.destroy())
+
   let view: View = import.meta.env.VITE_BALANCE_START_VIEW === 'today'
     ? 'today'
     : (resumesLastView && storedWorkspaceViewState?.view) || 'next'
@@ -467,6 +473,7 @@
   // through this binding. The Lists-tab ListPanel handles its own keys directly.
   let overlayListPanel: ListPanel | null = null
   let notesPanel: NotesPanel | null = null
+  $: if (view !== 'notes' && notesPanel) notesPanel.rememberBeforeLeaving()
   let notesTrashOpen = false
   const noteViewStatesById = new Map<Id, NoteViewState>()
   let wordCapUnlocked = false
@@ -908,6 +915,7 @@ return rows`
   // The list overlay toast belongs to the page it was opened over: leaving that
   // page hides it, returning shows it again (its state + selection persist).
   $: listOverlayVisible = Boolean(listOverlay && listOverlayInstance && view === listOverlayView)
+  $: if (!listOverlayVisible && listOverlayInstance && overlayListPanel) overlayListPanel.rememberBeforeLeaving()
   $: if (workspaceViewStateReady && !celebrationPreview) {
     persistWorkspaceViewState(
       view,
@@ -1583,6 +1591,17 @@ return rows`
   // ones with a red X. The set keeps its identity while its members are
   // unchanged so unrelated edits do not re-render the date row.
   let incompletePlanDates = new Set<string>()
+  // Keep the expensive cached grid quiet while another page is active. Apply
+  // live data on return, and release old render inputs when Today is evicted.
+  let renderedRhythmGoals = goalHistoryGoals
+  let renderedRhythmCompletions = goalCompletions
+  let renderedRhythmIncompleteDates = new Set<string>()
+  let renderedRhythmDate = todayISO()
+  $: rhythmRenderPaused = view !== 'today' && $recentPages.includes('today')
+  $: if (!rhythmRenderPaused && renderedRhythmGoals !== goalHistoryGoals) renderedRhythmGoals = goalHistoryGoals
+  $: if (!rhythmRenderPaused && renderedRhythmCompletions !== goalCompletions) renderedRhythmCompletions = goalCompletions
+  $: if (!rhythmRenderPaused && renderedRhythmIncompleteDates !== incompletePlanDates) renderedRhythmIncompleteDates = incompletePlanDates
+  $: if (!rhythmRenderPaused) renderedRhythmDate = $plannerStore.activePlanDate || todayISO()
   $: incompletePlanDates = nextIncompletePlanDates($plannerStore.plans, incompletePlanDates)
   function nextIncompletePlanDates(plans: DailyPlan[], previous: Set<string>): Set<string> {
     const next = new Set<string>()
@@ -4399,9 +4418,9 @@ return rows`
 
   async function switchItemContext(nextContext: string) {
     const previousContext = itemStateContext
-    // A retained day remains connected, so its image action's destroy hook no
-    // longer clears the floating image toolbar when we leave that day.
-    if ($selectedImage?.editor.closest('.retained-day')) {
+    // Retained editors remain connected, so their image action's destroy hook
+    // no longer clears the floating image toolbar when we leave the page.
+    if ($selectedImage?.editor.closest('.retained-day, .recent-page')) {
       $selectedImage.image.removeAttribute('data-image-selected')
       selectedImage.set(null)
     }
@@ -4799,7 +4818,7 @@ return rows`
       if (nativeDialog.dispatchEvent(new Event('cancel', { cancelable: true }))) nativeDialog.close()
       return
     }
-    const overlays = Array.from(document.querySelectorAll<HTMLElement>('.overlay-backdrop'))
+    const overlays = Array.from(document.querySelectorAll<HTMLElement>('.overlay-backdrop:not([hidden])'))
     const topOverlay = overlays.sort((a, b) =>
       (Number.parseInt(getComputedStyle(b).zIndex, 10) || 0) - (Number.parseInt(getComputedStyle(a).zIndex, 10) || 0),
     )[0]
@@ -6709,7 +6728,8 @@ return rows`
         onComplete={(planId, itemId) => plannerStore.patchPlanItem(planId, itemId, { done: true })}
         onOpenToday={() => openDateInToday(currentDay)}
       />
-    {:else if view === 'today'}
+    {/if}
+    <RecentPage retained={$recentPages.includes('today')} active={view === 'today'}>
       <section
         class="day-pane"
         class:before-current-day-pane={displayedPlanDate < currentDay}
@@ -6847,9 +6867,9 @@ return rows`
               </div>
         {/if}
       </section>
-    {/if}
+    </RecentPage>
 
-    {#if view === 'templates'}
+    <RecentPage retained={$recentPages.includes('templates')} active={view === 'templates'}>
       <header class="page-header">
         <div>
           <h2>Days</h2>
@@ -6946,9 +6966,9 @@ return rows`
           <button class="primary" type="button" on:click={createDayTemplateAndSelect}>+ New day template</button>
         </div>
       {/if}
-    {/if}
+    </RecentPage>
 
-    {#if view === 'listTemplates'}
+    <RecentPage retained={$recentPages.includes('listTemplates')} active={view === 'listTemplates'}>
       <header class="page-header">
         <div>
           <h2>Lists</h2>
@@ -7171,9 +7191,9 @@ return rows`
           <button class="primary" type="button" on:click={createListTemplateAndSelect}>+ New list</button>
         </div>
       {/if}
-    {/if}
+    </RecentPage>
 
-    {#if view === 'lists'}
+    <RecentPage retained={$recentPages.includes('lists')} active={view === 'lists'}>
       <header class="page-header list-history-header">
         <div class="list-history-heading">
           <button class="list-history-back" type="button" on:click={openLists}>← Back to Lists</button>
@@ -7234,6 +7254,7 @@ return rows`
           </div>
         {/if}
         <ListPanel
+          active={view === 'lists'}
           {instance}
           {listTemplates}
           {metrics}
@@ -7255,7 +7276,7 @@ return rows`
           </button>
         </div>
       {/if}
-    {/if}
+    </RecentPage>
 
     {#if view === 'notes'}
       <header class="page-header imax-page-header notes-page-header">
@@ -8048,26 +8069,27 @@ return rows`
     {/if}
     </section>
 
-    {#if (goalRhythmVisible || viewMaximized) && view === 'today'}
+    <RecentPage retained={$recentPages.includes('today') && (goalRhythmVisible || viewMaximized)} active={view === 'today'}>
       <GoalHistoryPanel
-        goals={goalHistoryGoals}
-        completions={goalCompletions}
-        incompleteDates={incompletePlanDates}
-        viewedDate={$plannerStore.activePlanDate || todayISO()}
-        visible={goalRhythmVisible}
+        goals={renderedRhythmGoals}
+        completions={renderedRhythmCompletions}
+        incompleteDates={renderedRhythmIncompleteDates}
+        viewedDate={renderedRhythmDate}
+        visible={goalRhythmVisible && view === 'today'}
         onOpenGoals={openGoals}
         onOpenDate={openDateInToday}
         onResizeStart={startGoalHistoryResize}
         scrollRequest={goalRhythmScrollRequest}
       />
-    {/if}
+    </RecentPage>
 
-    {#if listOverlayVisible && listOverlayInstance}
+    {#if listOverlayInstance && listOverlayView && $recentPages.includes(listOverlayView)}
+      {#key listOverlay}
       {@const instance = listOverlayInstance}
       {@const template = listTemplates.find((candidate) => candidate.id === instance.listTemplateId)}
       {@const completion = planItemCompletion(instance.items)}
       {@const completionPercent = completion.total === 0 ? 0 : Math.round((completion.done / completion.total) * 100)}
-      <OverlayModal title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
+      <OverlayModal active={listOverlayVisible} title={template?.name ?? 'List'} z={60} onClose={() => (listOverlay = null)}>
         <div slot="header-middle" class="list-overlay-status">
           <div
             class="list-progress"
@@ -8085,6 +8107,7 @@ return rows`
           {/if}
         </div>
         <ListPanel
+          active={listOverlayVisible}
           bind:this={overlayListPanel}
           {instance}
           {listTemplates}
@@ -8108,6 +8131,7 @@ return rows`
           openMetricOnArrowSelection
         />
       </OverlayModal>
+      {/key}
     {/if}
 
     {#if dayQuiz}

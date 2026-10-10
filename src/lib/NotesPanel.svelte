@@ -412,6 +412,10 @@
       : normalizeNoteScrollSpacePercent(Number(storedPercent))
   })
 
+  export function rememberBeforeLeaving() {
+    noteEditorHost?.rememberBeforeLeaving()
+  }
+
   onDestroy(() => {
     cancelNoteBottomFollow()
     noteScrollSpaceAdjustmentActive = false
