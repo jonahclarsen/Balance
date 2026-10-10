@@ -7,6 +7,8 @@ export default defineConfig({
   testDir: './tests/visual',
   outputDir: './artifacts/playwright',
   fullyParallel: false,
+  // Agent sessions share one dev machine; CI keeps Playwright's default parallelism.
+  workers: process.env.CI ? undefined : 1,
   reporter: [['list']],
   use: {
     baseURL,

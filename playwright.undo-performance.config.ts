@@ -4,6 +4,8 @@ export default defineConfig({
   testDir: './tests/performance',
   outputDir: './artifacts/playwright-undo-performance',
   fullyParallel: false,
+  // Agent sessions share one dev machine; CI keeps Playwright's default parallelism.
+  workers: process.env.CI ? undefined : 1,
   reporter: [['list']],
   timeout: 60_000,
   use: {
