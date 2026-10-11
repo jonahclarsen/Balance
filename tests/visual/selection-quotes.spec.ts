@@ -32,6 +32,8 @@ for (const view of ['Today', 'Days', 'Lists']) {
     } else {
       if (view === 'Today') await generateDay(page)
       await openView(page, view)
+      // Choosing Today again jumps to its next unchecked task; let that land first.
+      if (view === 'Today') await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(1)
     }
     const selector = view === 'Lists' ? '[data-list-template-text-input]'
       : view === 'Days' ? '[data-template-option-text-input]' : '[data-plan-text-input]'
