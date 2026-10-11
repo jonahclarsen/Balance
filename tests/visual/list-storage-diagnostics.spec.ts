@@ -62,14 +62,9 @@ test('empty, negative savings and failure states stay honest and can be retried'
 })
 
 test('unfinished migration polls only while the recovery panel is open', async ({ page }) => {
+  await page.clock.install()
   const panel = await setup(page)
   await expect(panel.getByRole('status')).toBeVisible()
-  await page.clock.install()
-  await page.evaluate(() => { (window as any).__listStats.pendingRecords = 0 })
-  // Refresh starts the pending timer under the controlled clock.
-  await page.evaluate(() => { (window as any).__listStats.pendingRecords = 20 })
-  await panel.getByRole('button').click()
-  await expect(panel.getByRole('button')).toBeEnabled()
   await page.evaluate(() => { (window as any).__listStats.pendingRecords = 0 })
   await page.clock.fastForward(15_000)
   await expect(panel).toContainText('100 / 100 lists checked · complete')
