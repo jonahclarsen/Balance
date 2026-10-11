@@ -7554,7 +7554,7 @@ return rows`
             ariaLabel="New goal matching terms"
             revision={$plannerStore.historyRevision + newGoalFormResets}
             onKeyDown={(_editor, event) => {
-              if (event.key !== 'Enter' || !(event.metaKey || event.ctrlKey) || event.isComposing) return
+              if (event.key !== 'Enter' || event.isComposing) return
               event.preventDefault()
               addGoal()
             }}
