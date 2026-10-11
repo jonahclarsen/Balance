@@ -22,7 +22,7 @@ async function selectText(input: Locator, start: number, end: number) {
 }
 
 for (const view of ['Today', 'Days', 'Lists']) {
-  test(`${view} surrounds selected task text with quotes`, async ({ page }) => {
+  test(`${view} surrounds selected task text with quotes`, async ({ page }, testInfo) => {
     await page.goto('/')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
@@ -32,8 +32,11 @@ for (const view of ['Today', 'Days', 'Lists']) {
     } else {
       if (view === 'Today') await generateDay(page)
       await openView(page, view)
-      // Choosing Today again jumps to its next unchecked task; let that land first.
-      if (view === 'Today') await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(1)
+      // Choosing Today again focuses its next unchecked task on desktop; let
+      // that land first. Mobile only scrolls to it.
+      if (view === 'Today' && testInfo.project.name !== 'mobile') {
+        await expect(page.locator('[data-plan-text-input]:focus')).toHaveCount(1)
+      }
     }
     const selector = view === 'Lists' ? '[data-list-template-text-input]'
       : view === 'Days' ? '[data-template-option-text-input]' : '[data-plan-text-input]'
