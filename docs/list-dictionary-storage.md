@@ -87,6 +87,8 @@ records, dictionary policy or sync format.
 Diagnostics CI covers exact byte accounting for Unicode, mixed legacy and
 compressed records, deduplicated dictionaries, migration completion and invalid
 headers, including an assertion that measurement performs no database writes.
+[Native CI](https://github.com/jonahclarsen/Balance/actions/runs/38096866554)
+passed 221 tests, all 18 dictionary-policy cases and the complete-database profile.
 [Desktop](https://github.com/jonahclarsen/Balance/actions/runs/38096869299) and
 [mobile](https://github.com/jonahclarsen/Balance/actions/runs/38096940571) each
 passed nine focused browser executions covering savings, empty/error states,
