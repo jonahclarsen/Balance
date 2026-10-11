@@ -1024,6 +1024,32 @@ test('Next shows the first unfinished task of today under its unfinished parents
   await expect(page.locator('.goal-card-focus')).toHaveCount(1)
 })
 
+test('choosing Today while on Today moves to the next unchecked task', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile scrolls to the task without focusing it')
+  await seedPlanTree(page, [
+    { id: 'finished', text: 'Finished', done: true, children: [] },
+    {
+      id: 'project',
+      text: 'Project',
+      children: [
+        { id: 'finished-step', text: 'Finished step', done: true, children: [] },
+        { id: 'outline', text: 'Outline', children: [{ id: 'intro', text: 'Write intro', children: [] }] },
+      ],
+    },
+    { id: 'afterwards', text: 'Afterwards', children: [] },
+  ])
+  await page.reload()
+  const input = (id: string) => page.locator(`[data-plan-text-focus-target-id="${id}"]`)
+
+  await page.keyboard.press('Alt+t')
+  await expect(input('intro')).toBeFocused()
+
+  await page.locator('[data-plan-item-id="intro"]').getByRole('checkbox', { name: 'Complete item' }).click()
+  await input('finished').click()
+  await openView(page, 'Today')
+  await expect(input('afterwards')).toBeFocused()
+})
+
 test('List History is an obvious contextual child of Lists', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

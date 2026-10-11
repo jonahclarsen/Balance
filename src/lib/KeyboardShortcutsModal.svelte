@@ -68,7 +68,7 @@
         { keys: ['mod', 'D'], label: 'Delete the selected priority (while in Prioritize)' },
         { keys: ['mod', 'E'], label: 'Edit the selected priority (while in Prioritize)' },
         { keys: ['mod', 'S'], label: 'Spread out crowded priority numbers (while in Prioritize)' },
-        { keys: ['alt', 'T'], label: 'Open Today; press again to jump to today' },
+        { keys: ['alt', 'T'], label: 'Open Today; press again to jump to the next unchecked task' },
         { keys: ['alt', 'H'], label: 'Open List History' },
         { keys: ['alt', 'N'], label: 'Open Notes' },
         { keys: ['alt', 'P'], label: 'Open Projects' },

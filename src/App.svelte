@@ -1044,6 +1044,7 @@ return rows`
   }
 
   async function selectMobileDrawerView(nextView: View) {
+    const revealNextTask = nextView === 'today' && view === 'today'
     if (mobileDrawerOpen) {
       const revision = ++mobileNavRevision
       mobileNavPreview = nextView
@@ -1055,6 +1056,27 @@ return rows`
       if (revision !== mobileNavRevision || !mobileDrawerOpen) return
     }
     openMobileDrawerView(nextView)
+    if (revealNextTask) void revealTodayNextTask()
+  }
+
+  // Choosing Today while it is already open returns to today's plan and moves
+  // to its next unchecked task, descending into that task's unchecked subtasks.
+  async function revealTodayNextTask() {
+    const today = todayISO()
+    if (displayedPlanDate !== today) plannerStore.setActivePlanDate(today)
+    const plan = $plannerStore.plans.find((plan) => plan.date === today)
+    const next = plan ? findNextTask(plan.items) : null
+    if (!plan || !next) return
+    for (const ancestor of next.ancestors) setPlanItemCollapsed(ancestor.id, false)
+    clearItemSelection()
+    await tick()
+    const row = workspaceEl?.querySelector<HTMLElement>(
+      `[data-plan-item-id="${CSS.escape(next.item.id)}"][data-item-container-id="${CSS.escape(plan.id)}"]`,
+    )
+    if (!row) return
+    row.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' })
+    // Focusing a task on mobile would raise the keyboard, so only scroll there.
+    if (!isMobile) await focusTaskById(plan.id, next.item.id)
   }
 
   function openMobileDrawerView(nextView: View) {
@@ -3710,7 +3732,7 @@ return rows`
 
       if (event.code === 'KeyT') {
         event.preventDefault()
-        if (view === 'today') plannerStore.setActivePlanDate(todayISO())
+        if (view === 'today') void revealTodayNextTask()
         else switchViewFromShortcut('today')
         return
       }
