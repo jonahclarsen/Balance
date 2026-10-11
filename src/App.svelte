@@ -1097,6 +1097,9 @@ return rows`
       explicitTodayReveals > 0 ||
       view !== 'today' ||
       celebrationPreview ||
+      // An open list or metric overlay is where the user is.
+      (listOverlay && listOverlayView === view) ||
+      metricOverlay ||
       !activePlan ||
       activePlan.date !== currentDay ||
       selectedItemIds.length > 0 ||
