@@ -91,7 +91,7 @@ headers, including an assertion that measurement performs no database writes.
 [mobile](https://github.com/jonahclarsen/Balance/actions/runs/38096940571) each
 passed nine focused browser executions covering savings, empty/error states,
 refresh, polling and cleanup. The mobile run also passed type checking, 140 unit
-tests and 18 relay tests. The full macOS browser workflow is a separate gate;
+tests and 18 relay tests. The full macOS browser workflow runs separately;
 queued jobs are not included in these passing results.
 
 ## CI verification
