@@ -361,7 +361,7 @@
   $: selectedNavView = mobileNavPreview ?? view
   // After this long away, the Today page returns to the current Balance day
   // instead of the day that was open when the app was last used.
-  const ACTIVE_DAY_RESET_AFTER_MS = 12 * 60 * 60 * 1000
+  const ACTIVE_DAY_RESET_AFTER_MS = 6 * 60 * 60 * 1000
   const LAST_VISIBLE_AT_KEY = 'balance:lastVisibleAt'
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
@@ -2193,12 +2193,11 @@ return rows`
         databaseLoadingMessageIndex,
       )
     }, DATABASE_LOADING_MESSAGE_INTERVAL_MS)
-    returnToTodayAfterLongAbsence()
-    recordLastVisibleAt()
+    trackActiveDayUse()
     const currentDayTimer = window.setInterval(refreshCurrentDay, 60_000)
     window.addEventListener('focus', refreshCurrentDay)
+    window.addEventListener('blur', trackActiveDayUse)
     document.addEventListener('visibilitychange', refreshCurrentDay)
-    document.addEventListener('visibilitychange', handleActiveDayVisibilityChange)
     document.addEventListener('visibilitychange', handleCelebrationVisibilityChange)
 
     selectedTemplateId = localStorage.getItem(DAY_TEMPLATE_SELECTION_KEY) ?? selectedTemplateId
@@ -2393,8 +2392,8 @@ return rows`
       window.clearInterval(currentDayTimer)
       if (noteTrashCleanupTimer !== null) window.clearInterval(noteTrashCleanupTimer)
       window.removeEventListener('focus', refreshCurrentDay)
+      window.removeEventListener('blur', trackActiveDayUse)
       document.removeEventListener('visibilitychange', refreshCurrentDay)
-      document.removeEventListener('visibilitychange', handleActiveDayVisibilityChange)
       document.removeEventListener('visibilitychange', handleCelebrationVisibilityChange)
       if (goalHistoryUpdateTimer !== null) window.clearTimeout(goalHistoryUpdateTimer)
       clearCelebrationPreviewTimer()
@@ -2417,7 +2416,7 @@ return rows`
       lastObservedTodayKey = ''
     }
     recordVisibleTodayTheme()
-    if (document.visibilityState === 'visible') recordLastVisibleAt()
+    trackActiveDayUse()
   }
 
   function readLastVisibleAt(): number | null {
@@ -2438,8 +2437,6 @@ return rows`
     }
   }
 
-  // Mobile keeps the web view alive in the background for hours, so a resume
-  // needs the same return-to-today check as a cold launch.
   function returnToTodayAfterLongAbsence() {
     const lastVisibleAt = readLastVisibleAt()
     if (lastVisibleAt === null || Date.now() - lastVisibleAt < ACTIVE_DAY_RESET_AFTER_MS) return
@@ -2447,9 +2444,16 @@ return rows`
     if ($plannerStore.activePlanDate !== today) plannerStore.setActivePlanDate(today)
   }
 
-  function handleActiveDayVisibilityChange() {
-    if (document.visibilityState === 'visible') returnToTodayAfterLongAbsence()
-    recordLastVisibleAt()
+  // A desktop window stays visible behind other apps for hours, so only a
+  // focused window counts as use there. Mobile keeps the web view alive in the
+  // background, so returning to it needs the same check as a cold launch. The
+  // timestamp keeps ticking while in use and is stamped once more as use ends.
+  let activeDayInUse = false
+  function trackActiveDayUse() {
+    const inUse = document.visibilityState === 'visible' && (isAndroid || document.hasFocus())
+    if (inUse) returnToTodayAfterLongAbsence()
+    if (inUse || activeDayInUse) recordLastVisibleAt()
+    activeDayInUse = inUse
   }
 
   function observeCurrentTodayTheme(visible: boolean, date: string, concreteThemeId: PresetThemeId) {

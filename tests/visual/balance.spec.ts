@@ -3470,7 +3470,7 @@ test('dragging one selected task carries the whole selection and undoes as one s
   await expect.poll(topLevelIds).toEqual(['first', 'second(child)', 'third', 'fourth'])
 })
 
-test('the Today page returns to the current day after half a day away', async ({ page }) => {
+test('the Today page returns to the current day after six hours away', async ({ page }) => {
   const yesterday = addDays(todayISO(), -1)
   await seedPlanTree(page, [{ id: 'old', text: 'Yesterday task', children: [] }], yesterday)
   await expect(page.locator('.today-date-input')).toHaveValue(yesterday)
@@ -3485,12 +3485,36 @@ test('the Today page returns to the current day after half a day away', async ({
   await page.addInitScript(() => {
     if (sessionStorage.getItem('balance-test:stale-visit')) return
     sessionStorage.setItem('balance-test:stale-visit', '1')
-    localStorage.setItem('balance:lastVisibleAt', String(Date.now() - 13 * 60 * 60 * 1000))
+    localStorage.setItem('balance:lastVisibleAt', String(Date.now() - 7 * 60 * 60 * 1000))
   })
   await page.reload()
   await expect(page.locator('.today-date-input')).toHaveValue(todayISO())
   await expect.poll(() => page.evaluate(() => Date.now() - Number(localStorage.getItem('balance:lastVisibleAt'))))
     .toBeLessThan(60 * 60 * 1000)
+})
+
+test('a desktop window left open in the background returns to today when focused again', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Desktop windows stay visible behind other apps')
+  const yesterday = addDays(todayISO(), -1)
+  await seedPlanTree(page, [{ id: 'old', text: 'Yesterday task', children: [] }], yesterday)
+  await expect(page.locator('.today-date-input')).toHaveValue(yesterday)
+
+  // Another app takes focus; the still-visible window must not count as use.
+  await page.evaluate(() => {
+    document.hasFocus = () => false
+    window.dispatchEvent(new Event('blur'))
+    localStorage.setItem('balance:lastVisibleAt', String(Date.now() - 7 * 60 * 60 * 1000))
+    document.dispatchEvent(new Event('visibilitychange'))
+  })
+  await expect(page.locator('.today-date-input')).toHaveValue(yesterday)
+  expect(await page.evaluate(() => Date.now() - Number(localStorage.getItem('balance:lastVisibleAt'))))
+    .toBeGreaterThan(6 * 60 * 60 * 1000)
+
+  await page.evaluate(() => {
+    document.hasFocus = () => true
+    window.dispatchEvent(new Event('focus'))
+  })
+  await expect(page.locator('.today-date-input')).toHaveValue(todayISO())
 })
 
 for (const initial of [
