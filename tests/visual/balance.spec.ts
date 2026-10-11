@@ -1024,8 +1024,7 @@ test('Next shows the first unfinished task of today under its unfinished parents
   await expect(page.locator('.goal-card-focus')).toHaveCount(1)
 })
 
-test('choosing Today while on Today moves to the next unchecked task', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name === 'mobile', 'Mobile scrolls to the task without focusing it')
+async function seedNextTaskPlan(page: Page) {
   await seedPlanTree(page, [
     { id: 'finished', text: 'Finished', done: true, children: [] },
     {
@@ -1039,15 +1038,58 @@ test('choosing Today while on Today moves to the next unchecked task', async ({ 
     { id: 'afterwards', text: 'Afterwards', children: [] },
   ])
   await page.reload()
-  const input = (id: string) => page.locator(`[data-plan-text-focus-target-id="${id}"]`)
+}
 
-  await page.keyboard.press('Alt+t')
-  await expect(input('intro')).toBeFocused()
+function planTextInput(page: Page, id: string) {
+  return page.locator(`[data-plan-text-focus-target-id="${id}"]`)
+}
+
+test('Today opens at the next unchecked task and choosing it again returns there', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile scrolls to the task without focusing it')
+  await seedNextTaskPlan(page)
+  await expect(planTextInput(page, 'intro')).toBeFocused()
 
   await page.locator('[data-plan-item-id="intro"]').getByRole('checkbox', { name: 'Complete item' }).click()
-  await input('finished').click()
+  await planTextInput(page, 'finished').click()
+  await page.keyboard.press('Alt+t')
+  await expect(planTextInput(page, 'afterwards')).toBeFocused()
+
+  await planTextInput(page, 'finished').click()
   await openView(page, 'Today')
-  await expect(input('afterwards')).toBeFocused()
+  await expect(planTextInput(page, 'afterwards')).toBeFocused()
+})
+
+test('Today keeps a remembered task across pages and relaunches', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'Mobile scrolls to the task without focusing it')
+  await seedNextTaskPlan(page)
+  await expect(planTextInput(page, 'intro')).toBeFocused()
+
+  await planTextInput(page, 'afterwards').click()
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:todayItemPositions'))).toContain('"afterwards"')
+  await page.keyboard.press('Alt+n')
+  await expect(page.locator('.notes-workspace')).toBeVisible()
+  await page.keyboard.press('Alt+t')
+  await expect(planTextInput(page, 'afterwards')).toBeFocused()
+
+  const selectedRows = page.locator('[data-plan-item-id].selected')
+  await planTextInput(page, 'finished').click()
+  await page.keyboard.press('Shift+ArrowDown')
+  await expect(selectedRows).toHaveCount(2)
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:todayItemPositions'))).toContain('selectedItemIds')
+  await page.reload()
+  await expect(selectedRows).toHaveCount(2)
+  await expect(planTextInput(page, 'intro')).not.toBeFocused()
+
+  // A long absence forgets the remembered place. Leaving records the
+  // departure, so the stale timestamp is planted as the next load begins.
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem('balance-test:stale-visit')) return
+    sessionStorage.setItem('balance-test:stale-visit', '1')
+    localStorage.setItem('balance:lastVisibleAt', String(Date.now() - 7 * 60 * 60 * 1000))
+  })
+  await page.reload()
+  await expect(planTextInput(page, 'intro')).toBeFocused()
+  await expect(selectedRows).toHaveCount(0)
 })
 
 test('List History is an obvious contextual child of Lists', async ({ page }) => {

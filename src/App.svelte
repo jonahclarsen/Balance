@@ -363,6 +363,10 @@
   // instead of the day that was open when the app was last used.
   const ACTIVE_DAY_RESET_AFTER_MS = 6 * 60 * 60 * 1000
   const LAST_VISIBLE_AT_KEY = 'balance:lastVisibleAt'
+  // The focused or selected task on recent Today pages, so a relaunch returns
+  // to it. Keyed by item context like the in-memory caret and selection maps.
+  const TODAY_ITEM_POSITIONS_KEY = 'balance:todayItemPositions'
+  const MAX_TODAY_ITEM_POSITIONS = 7
   let mobileDrawerOpen = false
   let mobileDrawerPressing = false
   let mobileDrawerPressPointerId: number | null = null
@@ -603,6 +607,13 @@ return rows`
   let itemContextRestoreNonce = 0
   const itemSelectionsByContext: Record<string, ItemSelectionState> = {}
   const itemCaretsByContext: Record<string, ItemCaretState> = {}
+  for (const [context, position] of Object.entries(readTodayItemPositions())) {
+    if (position.selection) itemSelectionsByContext[context] = position.selection
+    else if (position.caret) itemCaretsByContext[context] = position.caret
+  }
+  let todayItemPositionsTimer: number | null = null
+  let pendingTodayItemPositionContext = ''
+  let explicitTodayReveals = 0
   let completionUndoCaret: CompletionUndoCaret | null = null
   let planKeyboardMoveSession: PlanKeyboardMoveSession | null = null
   let selectingItems = false
@@ -814,7 +825,6 @@ return rows`
     metricOverlay && metricOverlayMetric ? answersForEntry($plannerStore.metricEntries, metricOverlay.metricId, metricOverlay.date) : {}
   $: canGenerateDisplayedDay = displayedPlanDate >= currentDay || !activePlan
   $: generateButtonLabel = displayedPlanDate === currentDay ? 'Generate today' : 'Generate selected day'
-  $: selectedItemIdSet = new Set(selectedItemIds)
   $: activeGoalCount = goals.filter((goal) => isGoalActiveOnDate(goal, currentDay)).length
   $: sortedGoals = sortGoalsByUrgency(goals, goalCompletions, currentDay)
   $: lockGoalOrderForCurrentVisit(view, sortedGoals)
@@ -914,6 +924,9 @@ return rows`
           ? `list-template:${selectedListTemplate.id}`
           : ''
   $: if (activeItemContext !== itemStateContext) void switchItemContext(activeItemContext)
+  // After the context switch, which can restore a remembered selection.
+  $: selectedItemIdSet = new Set(selectedItemIds)
+  $: if (itemStateContext.startsWith('plan:')) scheduleTodayItemPositionPersist(selectedItemIds)
   // The list overlay toast belongs to the page it was opened over: leaving that
   // page hides it, returning shows it again (its state + selection persist).
   $: listOverlayVisible = Boolean(listOverlay && listOverlayInstance && view === listOverlayView)
@@ -1060,13 +1073,44 @@ return rows`
   }
 
   // Choosing Today while it is already open returns to today's plan and moves
-  // to its next unchecked task, descending into that task's unchecked subtasks.
+  // to its next unchecked task, overriding any remembered place on it.
   async function revealTodayNextTask() {
     const today = todayISO()
-    if (displayedPlanDate !== today) plannerStore.setActivePlanDate(today)
-    const plan = $plannerStore.plans.find((plan) => plan.date === today)
-    const next = plan ? findNextTask(plan.items) : null
-    if (!plan || !next) return
+    explicitTodayReveals += 1
+    try {
+      if (displayedPlanDate !== today) plannerStore.setActivePlanDate(today)
+      // Let the page's own scroll and caret restoration finish first.
+      await tick()
+      await waitForAnimationFrame()
+      const plan = $plannerStore.plans.find((plan) => plan.date === today)
+      if (plan && view === 'today') await revealNextTaskInPlan(plan)
+    } finally {
+      explicitTodayReveals -= 1
+    }
+  }
+
+  // Today opens at the next unchecked task whenever it has no remembered place:
+  // a new day, after a long absence, or a page that was never scrolled or edited.
+  async function revealDefaultTodayTask() {
+    await tick()
+    if (
+      explicitTodayReveals > 0 ||
+      view !== 'today' ||
+      celebrationPreview ||
+      !activePlan ||
+      activePlan.date !== currentDay ||
+      selectedItemIds.length > 0 ||
+      itemCaretsByContext[`plan:${activePlan.id}`] ||
+      currentWorkspaceScrollTop() !== 0
+    ) return
+    await revealNextTaskInPlan(activePlan)
+  }
+
+  // The next task is the first unchecked one, descending into its first
+  // unchecked subtask for as long as there is one.
+  async function revealNextTaskInPlan(plan: DailyPlan) {
+    const next = findNextTask(plan.items)
+    if (!next) return
     for (const ancestor of next.ancestors) setPlanItemCollapsed(ancestor.id, false)
     clearItemSelection()
     await tick()
@@ -1157,6 +1201,16 @@ return rows`
   }
 
   async function revealHistoryDestination(destination: HistoryDestination) {
+    // An explicit destination replaces Today's default next-task reveal.
+    explicitTodayReveals += 1
+    try {
+      await revealHistoryDestinationTarget(destination)
+    } finally {
+      explicitTodayReveals -= 1
+    }
+  }
+
+  async function revealHistoryDestinationTarget(destination: HistoryDestination) {
     searchOpen = false
     documentFindOpen = false
     // Preserve a list parked on another page unless it would cover the destination.
@@ -2197,6 +2251,7 @@ return rows`
     const currentDayTimer = window.setInterval(refreshCurrentDay, 60_000)
     window.addEventListener('focus', refreshCurrentDay)
     window.addEventListener('blur', trackActiveDayUse)
+    window.addEventListener('pagehide', persistTodayItemPosition)
     document.addEventListener('visibilitychange', refreshCurrentDay)
     document.addEventListener('visibilitychange', handleCelebrationVisibilityChange)
 
@@ -2393,6 +2448,7 @@ return rows`
       if (noteTrashCleanupTimer !== null) window.clearInterval(noteTrashCleanupTimer)
       window.removeEventListener('focus', refreshCurrentDay)
       window.removeEventListener('blur', trackActiveDayUse)
+      window.removeEventListener('pagehide', persistTodayItemPosition)
       document.removeEventListener('visibilitychange', refreshCurrentDay)
       document.removeEventListener('visibilitychange', handleCelebrationVisibilityChange)
       if (goalHistoryUpdateTimer !== null) window.clearTimeout(goalHistoryUpdateTimer)
@@ -2441,7 +2497,89 @@ return rows`
     const lastVisibleAt = readLastVisibleAt()
     if (lastVisibleAt === null || Date.now() - lastVisibleAt < ACTIVE_DAY_RESET_AFTER_MS) return
     const today = todayISO()
+    forgetTodayPosition(today)
     if ($plannerStore.activePlanDate !== today) plannerStore.setActivePlanDate(today)
+    else if (view === 'today' && workspaceViewStateReady) void revealTodayNextTask()
+  }
+
+  function forgetTodayPosition(date: string) {
+    const pageKey = `today:${date}`
+    delete scrollPositionsByPage[pageKey]
+    if (storedWorkspaceViewState) delete storedWorkspaceViewState.scrollPositionsByPage[pageKey]
+    const planContexts = new Set($plannerStore.plans.filter((plan) => plan.date === date).map((plan) => `plan:${plan.id}`))
+    const positions = readTodayItemPositions()
+    for (const [context, position] of Object.entries(positions)) {
+      if (position.date === date) planContexts.add(context)
+    }
+    for (const context of planContexts) {
+      delete itemCaretsByContext[context]
+      delete itemSelectionsByContext[context]
+      delete positions[context]
+      if (selectedItemContext === context) clearItemSelection()
+    }
+    writeTodayItemPositions(positions)
+  }
+
+  type TodayItemPosition = { date: string; caret?: ItemCaretState; selection?: ItemSelectionState }
+
+  function readTodayItemPositions(): Record<string, TodayItemPosition> {
+    try {
+      const parsed: unknown = JSON.parse(localStorage.getItem(TODAY_ITEM_POSITIONS_KEY) ?? '{}')
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+      return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, TodayItemPosition] => {
+        const position = entry[1] as Partial<TodayItemPosition> | null
+        if (!entry[0].startsWith('plan:') || !position || typeof position.date !== 'string') return false
+        const caret = position.caret
+        const selection = position.selection
+        return Boolean(
+          (caret && typeof caret.inputId === 'string' && Number.isFinite(caret.start) && Number.isFinite(caret.end)) ||
+          (selection && Array.isArray(selection.selectedItemIds) && selection.selectedItemIds.every((id) => typeof id === 'string')),
+        )
+      }))
+    } catch {
+      return {}
+    }
+  }
+
+  function writeTodayItemPositions(positions: Record<string, TodayItemPosition>) {
+    try {
+      const recent = Object.entries(positions).slice(-MAX_TODAY_ITEM_POSITIONS)
+      localStorage.setItem(TODAY_ITEM_POSITIONS_KEY, JSON.stringify(Object.fromEntries(recent)))
+    } catch {
+      // The position is still remembered for this session.
+    }
+  }
+
+  // Takes the selection only so reactive callers rerun when it changes.
+  function scheduleTodayItemPositionPersist(_selection?: Id[]) {
+    if (pendingTodayItemPositionContext && pendingTodayItemPositionContext !== itemStateContext) {
+      persistTodayItemPosition()
+    }
+    if (todayItemPositionsTimer !== null) window.clearTimeout(todayItemPositionsTimer)
+    pendingTodayItemPositionContext = itemStateContext
+    todayItemPositionsTimer = window.setTimeout(persistTodayItemPosition, 400)
+  }
+
+  function persistTodayItemPosition() {
+    if (todayItemPositionsTimer !== null) window.clearTimeout(todayItemPositionsTimer)
+    todayItemPositionsTimer = null
+    const context = pendingTodayItemPositionContext
+    pendingTodayItemPositionContext = ''
+    const plan = $plannerStore.plans.find((candidate) => `plan:${candidate.id}` === context)
+    if (!plan) return
+    const positions = readTodayItemPositions()
+    delete positions[context]
+    // Leaving a page moves its live selection into the per-context map.
+    const active = context === itemStateContext
+    const selection = active
+      ? (selectedItemContext === context && selectedItemIds.length > 0
+        ? { selectedItemIds: [...selectedItemIds], selectionAnchorId, selectionFocusId }
+        : null)
+      : itemSelectionsByContext[context]
+    const caret = itemCaretsByContext[context]
+    if (selection) positions[context] = { date: plan.date, selection }
+    else if (caret) positions[context] = { date: plan.date, caret }
+    writeTodayItemPositions(positions)
   }
 
   // A desktop window stays visible behind other apps for hours, so only a
@@ -3080,6 +3218,7 @@ return rows`
 
     if (usesWindowScroll()) window.scrollTo(0, restoreTop)
     else workspaceEl.scrollTop = restoreTop
+    if (restoreTop === 0 && pageKey === `today:${currentDay}`) void revealDefaultTodayTask()
 
     requestAnimationFrame(() => {
       if (restoreNonce === scrollRestoreNonce) restoringScroll = false
@@ -4560,6 +4699,7 @@ return rows`
       end: textOffsetForRangeBoundary(editor, range.endContainer, range.endOffset),
     }
     delete itemSelectionsByContext[itemStateContext]
+    scheduleTodayItemPositionPersist()
   }
 
   function editorMatchesActiveItemSurface(editor: HTMLElement) {
