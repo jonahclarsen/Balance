@@ -3058,18 +3058,25 @@ test('today scroll position survives a reload', async ({ page }) => {
   await expect.poll(scrollTop).toBe(targetScrollTop)
 })
 
-test('returning to Today keeps the selected day and its scroll position', async ({ page }) => {
+test('returning to Today keeps the selected day and its scroll position', async ({ page }, testInfo) => {
   const texts = Array.from({ length: 50 }, (_, index) => `Return row ${index + 1}`)
   await seedPlanItems(page, texts)
 
   const currentDate = await page.locator('.today-date-input').inputValue()
   const selectedDate = addDays(currentDate, -1)
+  // Wait for the opening task focus to be saved so it can be dropped below.
+  // Mobile only scrolls to the task, so it has no focus to save.
+  if (testInfo.project.name !== 'mobile') {
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('balance:todayItemPositions'))).not.toBeNull()
+  }
   await page.evaluate((date) => {
     const key = 'balance.appState.v1'
     const state = JSON.parse(localStorage.getItem(key) || '{}')
     state.activePlanDate = date
     state.plans[0].date = date
     localStorage.setItem(key, JSON.stringify(state))
+    // The moved plan keeps its id, so drop the task focused when it was today.
+    localStorage.removeItem('balance:todayItemPositions')
   }, selectedDate)
   await page.reload()
   await expect(page.locator('.today-date-input')).toHaveValue(selectedDate)
