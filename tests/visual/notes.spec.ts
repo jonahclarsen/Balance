@@ -1865,6 +1865,42 @@ test('note editing keeps its caret through window blur and refocus', async ({ pa
   await expect(noteText).toHaveText('Draftxy note')
 })
 
+test('the note bottom holds still and scrolls freely at high writing-space settings', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'the writing-space slider is desktop only')
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await openView(page, 'Notes')
+  await page.getByRole('button', { name: '+ New note' }).click()
+  const workspace = page.locator('.note-document')
+  await page.locator('.note-text').first().fill(Array.from({ length: 80 }, (_, index) => `Long note line ${index + 1}`).join('\n'))
+  const box = await workspace.boundingBox()
+  await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2)
+
+  // Subpixel rounding differs per slider value, so sweep a spread of them.
+  for (let percent = 64; percent <= 100; percent += 3) {
+    await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+    await page.getByLabel('Bottom writing space').fill(String(percent))
+    await workspace.evaluate((element) => element.scrollTo({ top: element.scrollHeight }))
+    const spaceHeights = await page.locator('.note-scroll-space').evaluate((element) => new Promise<number[]>((resolve) => {
+      const heights: number[] = []
+      const sample = () => {
+        heights.push(element.getBoundingClientRect().height)
+        if (heights.length < 20) requestAnimationFrame(sample)
+        else resolve(heights.slice(5))
+      }
+      requestAnimationFrame(sample)
+    }))
+    expect(new Set(spaceHeights).size, `space height at ${percent}%`).toBe(1)
+
+    await page.mouse.wheel(0, -150)
+    await expect.poll(
+      () => workspace.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop),
+      { message: `scrolling up from the bottom at ${percent}%` },
+    ).toBeGreaterThan(100)
+  }
+})
+
 test('notes restores its caret and scroll position after visiting another page', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
