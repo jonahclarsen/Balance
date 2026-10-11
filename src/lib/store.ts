@@ -2125,10 +2125,10 @@ function createPlannerStore() {
 
     // ---- Idea buckets (plan-item trees inside five fixed bucket records) ----
 
-    addIdea(text: string, kind: IdeaBucketKind = 'proposition') {
+    addIdea(text: string, kind: IdeaBucketKind = 'proposition', html?: string) {
       const trimmed = text.trim()
       if (!trimmed) return null
-      const item: IdeaItem = { ...createPlanItem(trimmed), bucketedAt: nowISO() }
+      const item: IdeaItem = { ...createPlanItem(trimmed), ...(html ? { html } : {}), bucketedAt: nowISO() }
       commitEntities('add_idea', { kind, itemId: item.id }, (state) =>
         updateBucket(state, kind, (bucket) => ({ ...bucket, items: [...bucket.items, item] })))
       return item.id
