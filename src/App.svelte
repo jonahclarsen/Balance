@@ -6563,29 +6563,31 @@ return rows`
     inert={mobileDrawerPressing}
     bind:this={mobileDrawerEl}
   >
-    <button
-      class="sidebar-search-button"
-      class:active={searchOpen}
-      type="button"
-      title="Search (Alt+C or Cmd/Ctrl+K)"
-      aria-label="Search"
-      aria-keyshortcuts="Alt+C"
-      on:click={openMobileDrawerSearch}
-    >
-      <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
-      <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd>
-    </button>
-    <button
-      class="sidebar-add-idea-button"
-      type="button"
-      title="Add idea (Alt+K)"
-      aria-label="Add idea"
-      aria-keyshortcuts="Alt+K"
-      on:click={() => { void openQuickAdd() }}
-    >
-      <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
-      <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('K')}</kbd>
-    </button>
+    <div class="sidebar-quick-actions">
+      <button
+        class="sidebar-search-button"
+        class:active={searchOpen}
+        type="button"
+        title="Search (Alt+C or Cmd/Ctrl+K)"
+        aria-label="Search"
+        aria-keyshortcuts="Alt+C"
+        on:click={openMobileDrawerSearch}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6" /><path d="m16 16 4 4" /></svg>
+        <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('C')}</kbd>
+      </button>
+      <button
+        class="sidebar-add-idea-button"
+        type="button"
+        title="Add idea (Alt+K)"
+        aria-label="Add idea"
+        aria-keyshortcuts="Alt+K"
+        on:click={() => { void openQuickAdd() }}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" /></svg>
+        <kbd class="nav-shortcut" aria-hidden="true">{altShortcutLabel('K')}</kbd>
+      </button>
+    </div>
 
     <div>
       <div class="sidebar-brand-heading">
