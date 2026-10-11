@@ -3568,18 +3568,7 @@ body.mobile-checkbox-dragging {
   display: grid;
   width: min(480px, 100%);
   gap: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--paper);
   box-shadow: 0 24px 80px rgba(20, 24, 26, 0.22);
-  padding: 16px;
-}
-
-.quick-add-input {
-  width: 100%;
-  min-height: 88px;
-  resize: vertical;
-  font: inherit;
 }
 
 .quick-add-actions {

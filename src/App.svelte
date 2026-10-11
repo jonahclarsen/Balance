@@ -539,7 +539,7 @@ return rows`
   let quickAddOpen = false
   let prioritizeSessionOpen = false
   let quickAddText = ''
-  let quickAddInput: HTMLTextAreaElement | null = null
+  let quickAddHTML = ''
   let recoveryEntries: RecoveryEntry[] = []
   let recoveryBusy = false
   let recoveryStatus = ''
@@ -2911,22 +2911,25 @@ return rows`
 
   async function openQuickAdd() {
     quickAddText = ''
+    quickAddHTML = ''
     quickAddOpen = true
     await tick()
-    quickAddInput?.focus()
+    document.querySelector<HTMLElement>('.quick-add-dialog [data-rich-text-input]')?.focus()
   }
 
   function closeQuickAdd() {
     quickAddOpen = false
     quickAddText = ''
+    quickAddHTML = ''
   }
 
   // Quick add drops the text into Proposition Party; the next day generation sorts it.
   function saveQuickAdd() {
     const text = quickAddText.trim()
+    const html = quickAddHTML
     closeQuickAdd()
     if (!text) return
-    plannerStore.addIdea(text)
+    plannerStore.addIdea(text, 'proposition', html)
   }
 
   // Seeds the weekly "Filter Genuinely Worth Doing" goal once per database.
@@ -2972,7 +2975,7 @@ return rows`
     if (queue.length > 0) void askIdeaSort(queue, 'proposition', 'Sort imported ideas')
   }
 
-  function handleQuickAddKeydown(event: KeyboardEvent) {
+  function handleQuickAddKeydown(_editor: HTMLDivElement, event: KeyboardEvent) {
     if (event.key === 'Escape') {
       event.preventDefault()
       event.stopPropagation()
@@ -2981,6 +2984,13 @@ return rows`
       event.preventDefault()
       saveQuickAdd()
     }
+  }
+
+  // Some soft keyboards report Enter only as a paragraph insertion.
+  function handleQuickAddBeforeInput(_editor: HTMLDivElement, event: InputEvent) {
+    if (event.inputType !== 'insertParagraph') return
+    event.preventDefault()
+    saveQuickAdd()
   }
 
   function shiftActivePlanDate(days: number) {
@@ -3569,6 +3579,9 @@ return rows`
       if (!event.repeat) void openQuickAdd()
       return
     }
+
+    // Quick add owns the keyboard while open; its editor handles Enter and Escape.
+    if (quickAddOpen) return
 
     if (templateReview) {
       if (event.key === 'Enter' || event.key === 'ArrowRight') {
@@ -8440,17 +8453,29 @@ return rows`
 {#if quickAddOpen}
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
   <div class="modal-backdrop quick-add-backdrop" style={appShellStyle} role="presentation" on:click|self={closeQuickAdd}>
-    <form class="quick-add-dialog" aria-label="Add idea" on:submit|preventDefault={saveQuickAdd}>
-      <textarea
-        class="quick-add-input"
-        rows="3"
-        enterkeyhint="done"
-        placeholder="New idea"
-        aria-label="New idea"
-        bind:this={quickAddInput}
-        bind:value={quickAddText}
-        on:keydown={handleQuickAddKeydown}
-      ></textarea>
+    <!-- Shares the Today row markup so task formatting changes carry over. -->
+    <form class="list-panel quick-add-dialog" aria-label="Add idea" on:submit|preventDefault={saveQuickAdd}>
+      <div class="item-shell">
+        <div class="plan-row">
+          <div class="plan-item-main">
+            <RichTextEditor
+              className="item-text"
+              kind="idea"
+              inputId="quick-add"
+              html={quickAddHTML}
+              text={quickAddText}
+              placeholder="New idea"
+              ariaLabel="New idea"
+              onChange={(html, text) => {
+                quickAddHTML = html
+                quickAddText = text
+              }}
+              onKeyDown={handleQuickAddKeydown}
+              onBeforeInput={handleQuickAddBeforeInput}
+            />
+          </div>
+        </div>
+      </div>
       <div class="quick-add-actions">
         <button class="primary" type="submit" disabled={!quickAddText.trim()}>Save</button>
         <button type="button" on:click={closeQuickAdd}>Cancel</button>

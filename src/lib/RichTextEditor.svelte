@@ -38,7 +38,7 @@
   export let html = ''
   export let text = ''
   export let inputId: Id
-  export let kind: 'plan' | 'template-option' | 'list-template-item' | 'metric-question' | 'goal-name' | 'goal-match-terms' | 'project-name' | 'note'
+  export let kind: 'plan' | 'template-option' | 'list-template-item' | 'metric-question' | 'goal-name' | 'goal-match-terms' | 'project-name' | 'note' | 'idea'
   export let className = ''
   export let done = false
   export let singleLine = false
