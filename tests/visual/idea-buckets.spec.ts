@@ -166,6 +166,31 @@ test('the Proposition Party Sort button opens the sorter on demand', async ({ pa
   expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic sort two'], trash: ['Synthetic sort one'] })
 })
 
+test('the sorter stays with its page and cuts ideas to the clipboard', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'mobile', 'The sidebar is a drawer on phones')
+  await open(page)
+  await openView(page, 'Buckets')
+  await storeCall(page, `
+    plannerStore.addIdea('Synthetic cut me')
+    plannerStore.addIdea('Synthetic stay')
+  `)
+  await card(page, 'proposition').getByRole('button', { name: 'Sort', exact: true }).click()
+  await expectIdea(page, 1, 2)
+
+  // The sidebar stays usable; returning to the page resumes the same sort.
+  await openView(page, 'Today')
+  await expect(sorter(page)).toBeHidden()
+  await openView(page, 'Buckets')
+  await expect(sorter(page)).toBeVisible()
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic cut me')
+
+  await page.keyboard.press('y')
+  await page.keyboard.press('x')
+  await expectIdea(page, 1, 1)
+  await expect(sorter(page).locator('.idea-sort-card')).toContainText('Synthetic stay')
+  expect(await buckets(page)).toMatchObject({ proposition: ['Synthetic stay'] })
+})
+
 test('pasted lists import as ideas and open the sorter; trash clears after 30 days', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'mobile', 'Keyboard flow is covered on desktop')
   await open(page)

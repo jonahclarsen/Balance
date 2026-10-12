@@ -7464,6 +7464,42 @@ textarea.note-title {
 
 /* ---- Idea buckets ------------------------------------------------------- */
 
+/* Covers only the page area (main view + goal rhythm), above list overlays,
+   so the sidebar can still switch pages while a sort is in progress. */
+.idea-sort-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 65;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(29, 36, 40, 0.42);
+}
+
+.idea-sort-backdrop[hidden] {
+  display: none;
+}
+
+.idea-sort-backdrop .paste-review {
+  max-height: min(760px, 100%);
+}
+
+@media (max-width: 760px) {
+  /* Phones scroll the page itself, so pin the sort to the viewport. The
+     navigation drawer still opens above it. */
+  .idea-sort-backdrop {
+    position: fixed;
+    padding: calc(12px + env(safe-area-inset-top)) calc(12px + env(safe-area-inset-right))
+      calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left));
+    touch-action: none;
+  }
+
+  .idea-sort-backdrop .paste-review {
+    max-height: 100%;
+    touch-action: auto;
+  }
+}
+
 .idea-sort .paste-review-list {
   max-height: 46dvh;
 }

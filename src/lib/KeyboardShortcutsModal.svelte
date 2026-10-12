@@ -134,6 +134,7 @@
         { keys: ['B'], label: 'Sorting: back one idea', alt: ['left'] },
         { keys: ['M'], label: 'Sorting: append this idea to the previous one' },
         { keys: ['E'], label: 'Sorting: edit the idea' },
+        { keys: ['X'], label: 'Sorting: after Yes, cut the idea to the clipboard' },
       ],
     },
     {

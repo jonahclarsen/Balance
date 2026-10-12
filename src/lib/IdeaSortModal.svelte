@@ -14,10 +14,14 @@
   // Review passes run the same cards over Genuinely Worth Doing without unlock delays.
   export const mode: 'proposition' | 'review' = 'proposition'
   export let title: string
+  // Hidden while another page is open; the sort resumes where it left off.
+  export let active = true
   export let onDecide: (itemId: Id, kind: IdeaBucketKind) => void
   export let onAppendToPrevious: (itemId: Id, previousId: Id) => boolean
   export let onEdit: (itemId: Id, text: string) => void
   export let onToggleDone: (itemId: Id, done: boolean) => void
+  // Removes the idea and puts it on the clipboard to paste where it belongs.
+  export let onCut: (itemId: Id) => void
   export let onFinish: (completed: boolean) => void
 
   type Step = 'question' | 'yes' | 'no'
@@ -97,7 +101,19 @@
     if (!current || index === 0) return
     const previousId = queue[index - 1]!.id
     if (!onAppendToPrevious(current.id, previousId)) return
-    queue = queue.filter((item) => item.id !== current.id)
+    dropCurrent()
+  }
+
+  function cut() {
+    if (!current) return
+    onCut(current.id)
+    dropCurrent()
+  }
+
+  function dropCurrent() {
+    if (!current) return
+    const removedId = current.id
+    queue = queue.filter((item) => item.id !== removedId)
     if (index >= queue.length) onFinish(true)
     else resetCard(index)
   }
@@ -119,7 +135,7 @@
   }
 
   function handleKeydown(event: KeyboardEvent) {
-    if (event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
+    if (!active || event.metaKey || event.ctrlKey || event.altKey || event.repeat) return
     if (editing) {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault()
@@ -140,6 +156,7 @@
     else if (step === 'question' && key === 'n') step = 'no'
     else if (step === 'yes' && key === 'g') choose('genuine')
     else if (step === 'yes' && key === 'p') choose('possible')
+    else if (step === 'yes' && key === 'x') cut()
     else if (step === 'no' && key === 'a') choose('afterlife')
     else if (step === 'no' && key === 't') choose('trash')
     else handled = false
@@ -159,8 +176,10 @@
 
 <svelte:window on:keydown={handleKeydown} />
 
-<!-- Shares the paste-review layout so card sorting looks the same everywhere. -->
-<div class="paste-review-backdrop idea-sort-backdrop" use:dismissOnBackdropClick={() => onFinish(false)}>
+<!-- Shares the paste-review layout so card sorting looks the same everywhere.
+     Sits inside .content-shell so the sidebar stays usable; a press outside
+     the card closes the sort like every other modal. -->
+<div class="idea-sort-backdrop" hidden={!active} inert={!active} use:dismissOnBackdropClick={() => onFinish(false)}>
   <div class="paste-review idea-sort" role="dialog" aria-modal="true" aria-labelledby="idea-sort-title">
     <div class="paste-review-head">
       <div class="idea-sort-head-main">
@@ -233,6 +252,9 @@
             on:click={() => choose(kind)}
           >{meta.label} ({meta.key.toUpperCase()})</button>
         {/each}
+        {#if step === 'yes'}
+          <button type="button" title="Remove this idea and copy it to paste somewhere else" on:click={cut}>Cut (X)</button>
+        {/if}
       {/if}
     </div>
 

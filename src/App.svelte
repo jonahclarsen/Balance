@@ -276,7 +276,7 @@
       !isFormFieldActive() && !isRichTextActive() &&
       !document.activeElement?.closest('[contenteditable="true"]') &&
       !searchOpen && !documentFindOpen && !shortcutsHelpOpen && !mobileDrawerOpen &&
-      !listOverlayVisible && !metricOverlay && !recoveryPanelOpen && !pasteReview && !templateReview && !celebrationPreview &&
+      !listOverlayVisible && !ideaSortVisible && !metricOverlay && !recoveryPanelOpen && !pasteReview && !templateReview && !celebrationPreview &&
       !$databaseLoadPending && !$databaseLoadError && !document.hidden &&
       !document.querySelector('.overlay-backdrop, dialog[open]')
   }
@@ -474,7 +474,10 @@
   let goalDoabilityReviews: GoalDoabilityReview[] = []
   let dayQuiz: { templateName: string; steps: TemplateQuizStep[]; resolve: (answers: TemplateQuizAnswers | null) => void } | null = null
   // One-card-at-a-time idea sorting; resolves true once every queued idea has a bucket.
-  let ideaSort: { queue: import('./lib/types').IdeaItem[]; mode: 'proposition' | 'review'; title: string; resolve: (completed: boolean) => void } | null = null
+  // A sort belongs to the page it was opened on: it hides while another page is
+  // open and picks up where it left off on return.
+  let ideaSort: { queue: import('./lib/types').IdeaItem[]; mode: 'proposition' | 'review'; title: string; view: View; resolve: (completed: boolean) => void } | null = null
+  $: ideaSortVisible = Boolean(ideaSort && view === ideaSort.view)
   let ideaImportOpen = false
   // Tracks each plan item's done state so we can fire a goal burst the moment an
   // item that contributes to a goal transitions to done (via any completion path).
@@ -3126,7 +3129,7 @@ return rows`
   function askIdeaSort(queue: import('./lib/types').IdeaItem[], mode: 'proposition' | 'review', title: string): Promise<boolean> {
     ideaSort?.resolve(false)
     return new Promise((resolve) => {
-      ideaSort = { queue, mode, title, resolve }
+      ideaSort = { queue, mode, title, view, resolve }
     })
   }
 
@@ -3134,6 +3137,14 @@ return rows`
     const sort = ideaSort
     ideaSort = null
     sort?.resolve(completed)
+  }
+
+  function cutSortedIdea(itemId: Id) {
+    const found = findIdea($plannerStore.ideaBuckets, itemId)
+    if (!found) return
+    const { bucketedAt: _bucketedAt, ...item } = found.item
+    writePlanItemsToSystemClipboard({ items: [item], cut: true, sourceDate: todayISO() })
+    plannerStore.deleteIdeaItem(found.bucket.id, itemId)
   }
 
   // Runs the key question over Genuinely Worth Doing. Finishing it logs a done
@@ -3757,7 +3768,7 @@ return rows`
     }
 
     // The sort modal owns the keyboard while open (its own window listener).
-    if (ideaSort) return
+    if (ideaSortVisible) return
 
     if (event.altKey && !primaryModifier && !event.shiftKey && event.code === 'KeyK') {
       event.preventDefault()
@@ -8482,6 +8493,24 @@ return rows`
       />
     {/if}
 
+    {#if ideaSort}
+      {#key ideaSort}
+        <IdeaSortModal
+          queue={ideaSort.queue}
+          buckets={$plannerStore.ideaBuckets}
+          mode={ideaSort.mode}
+          title={ideaSort.title}
+          active={ideaSortVisible}
+          onDecide={(itemId, kind) => plannerStore.moveIdeaToBucket(itemId, kind)}
+          onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}
+          onEdit={(itemId, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { text, html: escapeHTML(text) }) }}
+          onToggleDone={(itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { done }) }}
+          onCut={cutSortedIdea}
+          onFinish={finishIdeaSort}
+        />
+      {/key}
+    {/if}
+
     {#if shortcutsHelpOpen}
       <KeyboardShortcutsModal onClose={() => (shortcutsHelpOpen = false)} />
     {/if}
@@ -8682,22 +8711,6 @@ return rows`
       </form>
     </div>
   </div>
-{/if}
-
-{#if ideaSort}
-  {#key ideaSort}
-    <IdeaSortModal
-      queue={ideaSort.queue}
-      buckets={$plannerStore.ideaBuckets}
-      mode={ideaSort.mode}
-      title={ideaSort.title}
-      onDecide={(itemId, kind) => plannerStore.moveIdeaToBucket(itemId, kind)}
-      onAppendToPrevious={(itemId, previousId) => plannerStore.appendIdeaToPrevious(itemId, previousId)}
-      onEdit={(itemId, text) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { text, html: escapeHTML(text) }) }}
-      onToggleDone={(itemId, done) => { const found = findIdea($plannerStore.ideaBuckets, itemId); if (found) plannerStore.patchIdeaItem(found.bucket.id, itemId, { done }) }}
-      onFinish={finishIdeaSort}
-    />
-  {/key}
 {/if}
 
 {#if recoveryKeyStatus?.recoveryKey}
