@@ -1,5 +1,6 @@
 <script lang="ts">
   import { isQuoteKey, wrapRangeInQuotes } from './quoteSelection'
+  import { insertTextAroundCode, isBacktickKey, toggleSelectionCode } from './inlineCode'
   import { imageEditing } from './imageEditing'
   import { IMAGE_SELECTOR } from './imageMarkup'
   import { onMount } from 'svelte'
@@ -155,6 +156,13 @@
         backward ? range.startContainer : range.endContainer,
         backward ? range.startOffset : range.endOffset,
       )
+      persistEditor(activeEditor, false, { mergeHistory: false })
+      lastInteractionSelection = saveSelection(activeEditor)
+      return
+    }
+
+    if (isBacktickKey(event) && hasNonCollapsedSelectionInside(activeEditor) && toggleSelectionCode(activeEditor)) {
+      event.preventDefault()
       persistEditor(activeEditor, false, { mergeHistory: false })
       lastInteractionSelection = saveSelection(activeEditor)
       return
@@ -496,7 +504,13 @@
   }
 
   function handleBeforeInput(event: InputEvent) {
-    onBeforeInput?.(event.currentTarget as HTMLDivElement, event)
+    const activeEditor = event.currentTarget as HTMLDivElement
+    onBeforeInput?.(activeEditor, event)
+    if (event.defaultPrevented || event.inputType !== 'insertText' || !event.data) return
+    if (!insertTextAroundCode(activeEditor, event.data)) return
+    event.preventDefault()
+    persistEditor(activeEditor, false, { mergeHistory: event.data !== '`' })
+    lastInteractionSelection = saveSelection(activeEditor)
   }
 
   function handleKeyup(event: KeyboardEvent) {

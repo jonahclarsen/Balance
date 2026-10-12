@@ -7506,3 +7506,12 @@ textarea.note-title {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* Inline code typed with backticks in tasks, days, lists and notes. */
+:where(code) {
+  padding: 0.05em 0.3em;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+}
