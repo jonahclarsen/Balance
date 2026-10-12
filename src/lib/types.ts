@@ -84,13 +84,25 @@ export type MovePlacement = 'before' | 'after' | 'inside'
 
 export type MoveDirection = 'up' | 'down'
 
-// A list-template item has no competing options; it carries a single appearance
-// probability (10-100) = the chance it shows up in a generated list instance.
+// Another wording a list-template item can take instead of its own text.
+export type ListTemplateItemAlternative = {
+  id: Id
+  text: string
+  html: string
+  probability: number
+}
+
+// A list-template item carries an appearance probability (10-100) = the chance
+// it shows up in a generated list instance. Alternatives compete with it like
+// day-template options: one roll picks the item, one alternative, or nothing,
+// and the children follow whichever wording was picked. Optional so older
+// clients' items and edits stay valid.
 export type ListTemplateItem = {
   id: Id
   text: string
   html: string
   probability: number
+  alternatives?: ListTemplateItemAlternative[]
   children: ListTemplateItem[]
 }
 

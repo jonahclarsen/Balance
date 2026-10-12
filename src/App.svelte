@@ -1821,12 +1821,12 @@ return rows`
     if (!listItem) return
 
     const template = $plannerStore.listTemplates.find((candidate) => candidate.id === instance.listTemplateId)
-    const templateItem = template ? findListTemplateItemByContent(template.items, listItem) : null
+    const templateInputId = template ? findListTemplateInputIdByContent(template.items, listItem) : null
 
     openLists()
     selectedListTemplateId = instance.listTemplateId
 
-    if (templateItem) void focusListTemplateItem(templateItem.id)
+    if (templateInputId) void focusListTemplateItem(templateInputId)
   }
 
   function flattenListTemplateItems(items: ListTemplateItem[]): ListTemplateItem[] {
@@ -1855,11 +1855,18 @@ return rows`
     listTrimNudgeDismissals += 1
   }
 
-  function findListTemplateItemByContent(items: ListTemplateItem[], target: PlanItem): ListTemplateItem | null {
+  // Returns the editor input id of the matching item or alternative wording.
+  function findListTemplateInputIdByContent(items: ListTemplateItem[], target: PlanItem): Id | null {
     // Prefer an exact html+text match; fall back to plain text so items whose
     // html was normalized at generation time still resolve.
-    const exact = findListTemplateItem(items, (item) => item.html === target.html && item.text === target.text)
-    return exact ?? findListTemplateItem(items, (item) => item.text === target.text)
+    const wordings = (item: ListTemplateItem) => [item, ...(item.alternatives ?? [])]
+    const exact = (wording: { text: string; html: string }) => wording.html === target.html && wording.text === target.text
+    const plain = (wording: { text: string }) => wording.text === target.text
+    for (const matches of [exact, plain]) {
+      const item = findListTemplateItem(items, (candidate) => wordings(candidate).some(matches))
+      if (item) return wordings(item).find(matches)?.id ?? null
+    }
+    return null
   }
 
   function findListTemplateItem(
@@ -7294,6 +7301,9 @@ return rows`
                 moveItem={plannerStore.moveListTemplateItem}
                 moveItemWithinLevel={plannerStore.moveListTemplateItemWithinLevel}
                 outdentItem={plannerStore.outdentListTemplateItem}
+                addAlternative={plannerStore.addListTemplateItemAlternative}
+                patchAlternative={plannerStore.patchListTemplateItemAlternative}
+                deleteAlternative={plannerStore.deleteListTemplateItemAlternative}
                 historyRevision={$plannerStore.historyRevision}
                 selectedItemIds={selectedItemIdSet}
                 selectionDragging={selectingItems}

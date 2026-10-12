@@ -1,12 +1,12 @@
 <script lang="ts">
   import { tick } from 'svelte'
-  import { clampListItemProbability, htmlToPlainText, linkifyItemText, MIN_LIST_ITEM_PROBABILITY, type ItemLink, listItemWordCount } from './planner'
+  import { htmlToPlainText, linkifyItemText, listItemAppearanceChance, listItemVariants, MIN_LIST_ITEM_PROBABILITY, type ItemLink, listItemWordCount } from './planner'
   import { scrollMovedItemsIntoView } from './itemScroll'
   import { formatDuration } from './listTiming'
   import ProbabilitySlider from './ProbabilitySlider.svelte'
   import RichTextEditor from './RichTextEditor.svelte'
   import TreeItemRow from './TreeItemRow.svelte'
-  import type { Id, ListTemplate, ListTemplateItem, Metric, MoveDirection, MovePlacement, Note } from './types'
+  import type { Id, ListTemplate, ListTemplateItem, ListTemplateItemAlternative, Metric, MoveDirection, MovePlacement, Note } from './types'
 
   type TextChangeOptions = {
     imageEdit?: boolean
@@ -49,6 +49,15 @@
   export let moveItem: (templateId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let moveItemWithinLevel: (templateId: Id, itemId: Id, direction: MoveDirection) => void
   export let outdentItem: (templateId: Id, itemId: Id) => void
+  export let addAlternative: (templateId: Id, itemId: Id) => Id | null = () => null
+  export let patchAlternative: (
+    templateId: Id,
+    itemId: Id,
+    alternativeId: Id,
+    patch: Partial<Omit<ListTemplateItemAlternative, 'id'>>,
+    options?: TextChangeOptions,
+  ) => void = () => {}
+  export let deleteAlternative: (templateId: Id, itemId: Id, alternativeId: Id) => void = () => {}
   export let historyRevision: number
   export let selectedItemIds: Set<Id> = new Set()
   export let selectionDragging = false
@@ -66,7 +75,8 @@
   // Bumped to force the contenteditable to revert when a keystroke would push the
   // template's expected word count past the cap.
   let revertNonce = 0
-  let allowsLowProbability = item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY
+  let allowsLowProbability = item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY ||
+    (item.alternatives ?? []).some(({ probability }) => probability < NORMAL_MIN_LIST_ITEM_PROBABILITY)
   // Clearing a row is ambiguous until focus moves: it may be a deletion, or the
   // first half of replacing all text. Keep the persisted item intact while the
   // editor is empty so a committed deletion can archive the original snapshot,
@@ -74,20 +84,26 @@
   let pendingDeletion = false
   $: revision = historyRevision + revertNonce
   $: selected = selectedItemIds.has(item.id)
-  $: if (item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY) allowsLowProbability = true
+  $: alternatives = item.alternatives ?? []
+  $: if (
+    item.probability < NORMAL_MIN_LIST_ITEM_PROBABILITY ||
+    alternatives.some(({ probability }) => probability < NORMAL_MIN_LIST_ITEM_PROBABILITY)
+  ) allowsLowProbability = true
+  $: probabilityTotal = item.probability + alternatives.reduce((sum, { probability }) => sum + probability, 0)
 
-  // Expected words contributed by everything except this item's own text and linked quizzes, so we can
-  // check whether new text would breach the cap without rebuilding the whole tree.
-  $: appearanceProbability =
-    ancestorProbability * (clampListItemProbability(item.probability) / 100)
-  $: itemContribution = listItemWordCount(htmlToPlainText(item.html) || item.text, metrics) * appearanceProbability
+  // Each wording's chance of being picked; children follow whichever is picked.
+  $: variantChances = new Map(listItemVariants(item).map((variant) => [variant.id, variant.chance]))
+  $: childAncestorProbability = ancestorProbability * listItemAppearanceChance(item)
 
-  function wouldExceedCap(text: string, probability: number): boolean {
+  // Check whether new text for one wording would breach the cap by swapping only
+  // that wording's expected words, without rebuilding the whole tree.
+  function wouldExceedCap(text: string, wordingId: Id = item.id): boolean {
     if (!maxExpectedWords) return false
-    const base = currentExpected - itemContribution
-    const nextProbability =
-      ancestorProbability * (clampListItemProbability(probability) / 100)
-    const next = base + listItemWordCount(text, metrics) * nextProbability
+    const wording = wordingId === item.id ? item : alternatives.find(({ id }) => id === wordingId)
+    if (!wording) return false
+    const probability = ancestorProbability * (variantChances.get(wordingId) ?? 0)
+    const base = currentExpected - listItemWordCount(htmlToPlainText(wording.html) || wording.text, metrics) * probability
+    const next = base + listItemWordCount(text, metrics) * probability
     // A lowered cap or a probability change can leave an existing template over
     // its limit. Keep rejecting edits that make that state worse, but allow
     // formatting-only changes and text edits that preserve or reduce its size.
@@ -95,7 +111,7 @@
   }
 
   function handleTextChange(html: string, text: string, options?: TextChangeOptions) {
-    if (wouldExceedCap(htmlToPlainText(html) || text, item.probability)) {
+    if (wouldExceedCap(htmlToPlainText(html) || text)) {
       // Reject: revert the editor to the last accepted content.
       pendingDeletion = false
       revertNonce += 1
@@ -113,7 +129,7 @@
     patchItem(templateId, item.id, { html, text }, options)
   }
 
-  function handleBeforeTextInput(editor: HTMLDivElement, event: InputEvent) {
+  function handleBeforeTextInput(editor: HTMLDivElement, event: InputEvent, wordingId: Id = item.id) {
     if (!event.cancelable || event.data === null || !event.inputType.startsWith('insert')) return
 
     const selection = document.getSelection()
@@ -135,9 +151,9 @@
       range.collapsed &&
       /^\s+$/u.test(event.data) &&
       (event.data.length > 1 || /\s$/u.test(prefix) || /^\s/u.test(suffix)) &&
-      wouldExceedCap(`${prefix}${event.data}word${suffix}`, item.probability)
+      wouldExceedCap(`${prefix}${event.data}word${suffix}`, wordingId)
 
-    if (wouldExceedCap(nextText, item.probability) || repeatedWhitespaceWithoutRoom) event.preventDefault()
+    if (wouldExceedCap(nextText, wordingId) || repeatedWhitespaceWithoutRoom) event.preventDefault()
   }
 
   function plainTextOffsetForBoundary(editor: HTMLDivElement, node: Node, offset: number) {
@@ -182,6 +198,51 @@
         { mergeKey, mergeWindowMs: PROBABILITY_DRAG_MERGE_WINDOW_MS },
       )
     }
+  }
+
+  // An empty alternative is kept as an explicit "skip" share, so clearing one
+  // is an ordinary edit rather than a pending deletion.
+  function handleAlternativeTextChange(alternative: ListTemplateItemAlternative, html: string, text: string, options?: TextChangeOptions) {
+    if (wouldExceedCap(htmlToPlainText(html) || text, alternative.id)) {
+      revertNonce += 1
+      return
+    }
+    patchAlternative(templateId, item.id, alternative.id, { html, text }, options)
+  }
+
+  function handleAlternativeProbabilityChange(alternative: ListTemplateItemAlternative, probability: number) {
+    patchAlternative(
+      templateId,
+      item.id,
+      alternative.id,
+      { probability },
+      { mergeKey: `list-template-item-alternative-probability:${alternative.id}`, mergeWindowMs: PROBABILITY_DRAG_MERGE_WINDOW_MS },
+    )
+  }
+
+  async function handleAddAlternative() {
+    const alternativeId = addAlternative(templateId, item.id)
+    await tick()
+    focusListItemInput(alternativeId ?? undefined)
+  }
+
+  async function handleDeleteAlternative(alternative: ListTemplateItemAlternative, current?: HTMLDivElement) {
+    const inputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
+    const index = current ? inputs.indexOf(current) : -1
+    deleteAlternative(templateId, item.id, alternative.id)
+    if (index < 0) return
+    await tick()
+    const nextInputs = Array.from(document.querySelectorAll<HTMLDivElement>('[data-list-template-text-input]'))
+    const target = nextInputs[Math.max(0, index - 1)]
+    if (target) focusTextInput(target)
+  }
+
+  async function handleAlternativeArrowKey(direction: MoveDirection, current: HTMLDivElement, event: KeyboardEvent) {
+    if (event.shiftKey) {
+      onTextShiftArrow(item.id, direction)
+      return
+    }
+    focusAdjacentListItemInput(current, direction)
   }
 
   async function handleTextSplit(before: { html: string; text: string }, after: { html: string; text: string }) {
@@ -424,7 +485,64 @@
         generousHitbox
         onChange={handleProbabilityChange}
       />
+      {#if alternatives.length > 0 && probabilityTotal > 100}
+        <span class="total bad-total" title="Over 100%: the chances are scaled down to fit">{probabilityTotal}%</span>
+      {/if}
+      <button
+        class="icon-button quiet add-alternative"
+        type="button"
+        title="Add alternative"
+        aria-label="Add alternative"
+        on:click={handleAddAlternative}
+      >
+        ±
+      </button>
     </div>
+    {#each alternatives as alternative (alternative.id)}
+      <div class="option-row alternative-row">
+        <RichTextEditor
+          className="template-text"
+          kind="list-template-item"
+          inputId={alternative.id}
+          html={alternative.html}
+          text={alternative.text}
+          placeholder="(Skip)"
+          ariaLabel="List item alternative"
+          singleLine
+          {revision}
+          onChange={(html, text, options) => handleAlternativeTextChange(alternative, html, text, options)}
+          onBeforeInput={(editor, event) => handleBeforeTextInput(editor, event, alternative.id)}
+          onArrowKey={handleAlternativeArrowKey}
+          interceptShiftArrowAtBoundary
+          onBackspaceEmpty={(editor) => handleDeleteAlternative(alternative, editor)}
+          onHorizontalBoundaryKey={handleHorizontalBoundaryKey}
+          internalLinkSegments={linkifyItemText(alternative.text, listTemplates, metrics, notes)}
+          onInternalLinkClick={(link) => onOpenLink(link)}
+        />
+        {#if typicalItemMs.has(alternative.id)}
+          <span class="typical-duration" title="Typical time for this task, ignoring interrupted runs">
+            ~{formatDuration(typicalItemMs.get(alternative.id) ?? 0)}
+          </span>
+        {/if}
+        <ProbabilitySlider
+          value={alternative.probability}
+          min={allowsLowProbability ? MIN_LIST_ITEM_PROBABILITY : NORMAL_MIN_LIST_ITEM_PROBABILITY}
+          step={5}
+          ariaLabel="Alternative probability"
+          generousHitbox
+          onChange={(probability) => handleAlternativeProbabilityChange(alternative, probability)}
+        />
+        <button
+          class="icon-button danger"
+          type="button"
+          title="Delete alternative"
+          aria-label="Delete alternative"
+          on:click={() => handleDeleteAlternative(alternative)}
+        >
+          ×
+        </button>
+      </div>
+    {/each}
   </div>
 
   <svelte:fragment slot="children">
@@ -435,7 +553,7 @@
             item={child}
             {currentExpected}
             depth={depth + 1}
-            ancestorProbability={appearanceProbability}
+            ancestorProbability={childAncestorProbability}
             {templateId}
             parentId={item.id}
             {maxExpectedWords}
@@ -447,6 +565,9 @@
             {moveItem}
             {moveItemWithinLevel}
             {outdentItem}
+            {addAlternative}
+            {patchAlternative}
+            {deleteAlternative}
             {historyRevision}
             {selectedItemIds}
             {selectionDragging}
@@ -465,3 +586,11 @@
     {/if}
   </svelte:fragment>
 </TreeItemRow>
+
+<style>
+  .alternative-row :global(.template-text) { flex: 1; min-width: 0; }
+  @media (max-width: 760px) {
+    /* Each slider already shows its share; keep the phone row to two lines. */
+    .total { display: none; }
+  }
+</style>

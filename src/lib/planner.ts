@@ -10,6 +10,7 @@ import type {
   ListInstance,
   ListTemplate,
   ListTemplateItem,
+  ListTemplateItemAlternative,
   Metric,
   MetricEntry,
   MetricQuestion,
@@ -2202,7 +2203,8 @@ export function backspaceListTemplateItemAtStart(
   const current = flattened[currentIndex]
   const previous = flattened[currentIndex - 1]
 
-  if (isListTemplateItemTextEmpty(previous) && previous.children.length === 0) {
+  const hasAlternatives = (item: ListTemplateItem) => (item.alternatives?.length ?? 0) > 0
+  if (isListTemplateItemTextEmpty(previous) && previous.children.length === 0 && !hasAlternatives(previous)) {
     return {
       items: deleteListTemplateItem(items, previous.id),
       operation: { action: 'delete_previous', previousId: previous.id },
@@ -2210,6 +2212,9 @@ export function backspaceListTemplateItemAtStart(
       focusOffset: 0,
     }
   }
+
+  // Merging would silently discard the current item's alternatives.
+  if (hasAlternatives(current)) return null
 
   const previousHTML = previous.html || escapeHTML(previous.text)
   const currentHTML = current.html || escapeHTML(current.text)
@@ -2247,6 +2252,7 @@ export function cloneListTemplateItemsForPaste(items: ListTemplateItem[]): ListT
   const clone = (item: ListTemplateItem): ListTemplateItem => ({
     ...item,
     id: createId('list_item'),
+    ...(item.alternatives ? { alternatives: cloneListTemplateItemAlternatives(item.alternatives) } : {}),
     children: item.children.map(clone),
   })
   return items.map(clone)
@@ -2349,13 +2355,62 @@ function captureTaskNotifications(source: string, text: string, date: string, so
   }
 }
 
+type ListItemVariant = Pick<ListTemplateItemAlternative, 'id' | 'text' | 'html'> & { chance: number }
+
+// The item and its alternatives as competing wordings, each with its chance of
+// being picked (0-1). Totals over 100% are scaled down rather than letting
+// later alternatives starve; any remainder under 100% is the chance of nothing.
+export function listItemVariants(item: ListTemplateItem): ListItemVariant[] {
+  const options = [item, ...(item.alternatives ?? [])]
+  const probabilities = options.map((option) => clampListItemProbability(option.probability))
+  const scale = Math.max(100, probabilities.reduce((sum, probability) => sum + probability, 0))
+  return options.map((option, index) => ({
+    id: option.id,
+    text: option.text,
+    html: option.html,
+    chance: probabilities[index] / scale,
+  }))
+}
+
+function isListItemVariantEmpty(variant: Pick<ListTemplateItemAlternative, 'text' | 'html'>): boolean {
+  return variant.text.trim() === '' && !variant.html.includes('data-balance-image=')
+}
+
+// The chance any non-empty wording appears, which is also the chance that the
+// item's children are generated. An empty alternative works as an explicit skip.
+export function listItemAppearanceChance(item: ListTemplateItem): number {
+  const variants = listItemVariants(item)
+  if (variants.length === 1) return variants[0].chance
+  return variants.reduce((sum, variant) => sum + (isListItemVariantEmpty(variant) ? 0 : variant.chance), 0)
+}
+
+function pickListItemVariant(item: ListTemplateItem): ListItemVariant | null {
+  const variants = listItemVariants(item)
+  const roll = Math.random()
+  let cursor = 0
+  for (const variant of variants) {
+    cursor += variant.chance
+    if (roll < cursor) return variants.length > 1 && isListItemVariantEmpty(variant) ? null : variant
+  }
+  return null
+}
+
+export function cloneListTemplateItemAlternatives(alternatives: ListTemplateItemAlternative[]): ListTemplateItemAlternative[] {
+  return alternatives.map((alternative) => ({ ...alternative, id: createId('list_alt') }))
+}
+
+export function createListTemplateItemAlternative(text = '', probability = 50): ListTemplateItemAlternative {
+  return { id: createId('list_alt'), text, html: escapeHTML(text), probability }
+}
+
 function generateListItems(items: ListTemplateItem[], suffix: string, date: string, listId: Id, notifications: TaskNotification[]): PlanItem[] {
   return items.flatMap((item) => {
-    const appears = Math.random() * 100 < clampListItemProbability(item.probability)
-    if (!appears) return []
-    const expanded = expandTemplateTimes(item.text, item.html || escapeHTML(item.text), date)
-    const id = `${item.id}${LIST_ROW_SOURCE_SEPARATOR}${suffix}`
-    captureTaskNotifications(item.text, expanded.text, date, 'list', listId, id, notifications)
+    const variant = pickListItemVariant(item)
+    if (!variant) return []
+    const expanded = expandTemplateTimes(variant.text, variant.html || escapeHTML(variant.text), date)
+    // Rows keep the picked wording's id so task timing stays separate per wording.
+    const id = `${variant.id}${LIST_ROW_SOURCE_SEPARATOR}${suffix}`
+    captureTaskNotifications(variant.text, expanded.text, date, 'list', listId, id, notifications)
     return [
       {
         ...createPlanItem(expanded.text),
@@ -2416,18 +2471,19 @@ export function listItemWordCount(text: string, metrics: Metric[] = []): number 
 // effective probability as the item that links to them.
 export function expectedWordCount(items: ListTemplateItem[], ancestorProbability = 1, metrics: Metric[] = []): number {
   return items.reduce((sum, item) => {
-    const appearanceProbability =
-      ancestorProbability * (clampListItemProbability(item.probability) / 100)
-    const itemWords = listItemWordCount(cachedPlainText(item.html) || item.text, metrics) *
-      appearanceProbability
-    return sum + itemWords + expectedWordCount(item.children, appearanceProbability, metrics)
+    const itemWords = listItemVariants(item).reduce((words, variant) =>
+      words + listItemWordCount(cachedPlainText(variant.html) || variant.text, metrics) * variant.chance, 0) *
+      ancestorProbability
+    const childProbability = ancestorProbability * listItemAppearanceChance(item)
+    return sum + itemWords + expectedWordCount(item.children, childProbability, metrics)
   }, 0)
 }
 
-// Unweighted word count of every item and linked quiz.
+// Unweighted word count of every item, alternative and linked quiz.
 export function totalWordCount(items: ListTemplateItem[], metrics: Metric[] = []): number {
   return items.reduce((sum, item) => {
-    const itemWords = listItemWordCount(cachedPlainText(item.html) || item.text, metrics)
+    const itemWords = [item, ...(item.alternatives ?? [])].reduce((words, variant) =>
+      words + listItemWordCount(cachedPlainText(variant.html) || variant.text, metrics), 0)
     return sum + itemWords + totalWordCount(item.children, metrics)
   }, 0)
 }

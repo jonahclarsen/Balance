@@ -80,6 +80,8 @@ import {
   backspaceListTemplateItemAtStart as backspaceListTemplateItemAtStartInTree,
   createListTemplate,
   createListTemplateItem,
+  createListTemplateItemAlternative,
+  cloneListTemplateItemAlternatives,
   clampListItemProbability,
   generateListFromTemplate,
   hasIncompletePlanItems,
@@ -118,6 +120,7 @@ import type {
   ListInstance,
   ListTemplate,
   ListTemplateItem,
+  ListTemplateItemAlternative,
   Metric,
   MetricEntry,
   MetricQuestion,
@@ -2472,6 +2475,81 @@ function createPlannerStore() {
       )
     },
 
+    addListTemplateItemAlternative(templateId: Id, itemId: Id) {
+      const template = get(store).listTemplates.find((candidate) => candidate.id === templateId)
+      const item = template ? findListTemplateItemLocation(template.items, itemId)?.item : undefined
+      if (!item) return null
+      // Start with an even split between the item's wordings, which is the
+      // usual reason to add one (e.g. alternating between two durations).
+      const variants = 2 + (item.alternatives?.length ?? 0)
+      const probability = clampListItemProbability(Math.floor(100 / variants / 5) * 5)
+      const alternative = createListTemplateItemAlternative('', probability)
+      const rebalanced = (item.alternatives ?? []).map((existing) => existing.probability === probability ? existing : { ...existing, probability })
+      commitEntities('add_list_template_item_alternative', { templateId, itemId, alternative }, (state) =>
+        updateListTemplate(state, templateId, (template) => ({
+          ...template,
+          updatedAt: nowISO(),
+          items: updateListTemplateItem(template.items, itemId, (current) => ({
+            ...current,
+            probability,
+            alternatives: [...rebalanced, alternative],
+          })),
+        })),
+      )
+      return alternative.id
+    },
+
+    patchListTemplateItemAlternative(
+      templateId: Id,
+      itemId: Id,
+      alternativeId: Id,
+      patch: Partial<Omit<ListTemplateItemAlternative, 'id'>>,
+      options: TextChangeOptions = {},
+    ) {
+      const normalizedPatch =
+        patch.probability !== undefined
+          ? { ...patch, probability: clampListItemProbability(patch.probability) }
+          : patch
+      const isTextPatch = 'text' in patch || 'html' in patch
+      const mergeOptions =
+        options.mergeKey && options.mergeHistory !== false
+          ? { mergeKey: options.mergeKey, mergeWindowMs: options.mergeWindowMs ?? TEXT_MERGE_WINDOW_MS }
+          : isTextPatch && options.mergeHistory !== false
+            ? { mergeKey: `list-template-item-alternative-text:${templateId}:${alternativeId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS }
+            : {}
+      commitEntities('patch_list_template_item_alternative', { templateId, itemId, alternativeId, patch: normalizedPatch }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const items = updateListTemplateItem(template.items, itemId, (item) => {
+            let changed = false
+            const alternatives = (item.alternatives ?? []).map((alternative) => {
+              if (alternative.id !== alternativeId) return alternative
+              const next = applyPatch(alternative, normalizedPatch)
+              if (next !== alternative) changed = true
+              return next
+            })
+            return changed ? { ...item, alternatives } : item
+          })
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+        mergeOptions,
+      )
+    },
+
+    deleteListTemplateItemAlternative(templateId: Id, itemId: Id, alternativeId: Id) {
+      commitEntities('delete_list_template_item_alternative', { templateId, itemId, alternativeId }, (state) =>
+        updateListTemplate(state, templateId, (template) => {
+          const items = updateListTemplateItem(template.items, itemId, (item) => {
+            const alternatives = (item.alternatives ?? []).filter(({ id }) => id !== alternativeId)
+            if (alternatives.length === (item.alternatives ?? []).length) return item
+            if (alternatives.length > 0) return { ...item, alternatives }
+            const { alternatives: _removed, ...rest } = item
+            return rest
+          })
+          return items === template.items ? template : { ...template, updatedAt: nowISO(), items }
+        }),
+      )
+    },
+
     splitListTemplateItem(
       templateId: Id,
       itemId: Id,
@@ -3385,6 +3463,7 @@ function cloneListTemplateItemWithFreshIds(item: ListTemplateItem): ListTemplate
   return {
     ...item,
     id: createId('list_item'),
+    ...(item.alternatives ? { alternatives: cloneListTemplateItemAlternatives(item.alternatives) } : {}),
     children: item.children.map(cloneListTemplateItemWithFreshIds),
   }
 }
@@ -3878,6 +3957,16 @@ function normalizeNoteItems(items: NoteItem[]): NoteItem[] {
   })
 }
 
+function normalizeListTemplateItemAlternative(alternative: ListTemplateItemAlternative): ListTemplateItemAlternative {
+  const html = sanitizeInlineHTML(alternative.html ?? escapeHTML(alternative.text ?? ''))
+  return {
+    ...alternative,
+    text: alternative.text ?? htmlToPlainText(html),
+    html,
+    probability: clampListItemProbability(alternative.probability ?? 50),
+  }
+}
+
 function normalizeListTemplateItems(items: ListTemplateItem[]): ListTemplateItem[] {
   return items.map((item) => {
     const html = sanitizeInlineHTML(item.html ?? escapeHTML(item.text ?? ''))
@@ -3886,6 +3975,7 @@ function normalizeListTemplateItems(items: ListTemplateItem[]): ListTemplateItem
       text: item.text ?? htmlToPlainText(html),
       html,
       probability: clampListItemProbability(item.probability ?? 100),
+      ...(Array.isArray(item.alternatives) ? { alternatives: item.alternatives.map(normalizeListTemplateItemAlternative) } : {}),
       children: normalizeListTemplateItems(item.children ?? []),
     }
   })

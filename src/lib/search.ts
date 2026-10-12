@@ -224,6 +224,7 @@ function flattenDayTemplateItems(items: TemplateItem[]): SearchLine[] {
 function flattenListTemplateItems(items: ListTemplateItem[]): SearchLine[] {
   return items.flatMap((item) => [
     { itemId: item.id, text: item.text },
+    ...(item.alternatives ?? []).map((alternative) => ({ itemId: item.id, text: alternative.text })),
     ...flattenListTemplateItems(item.children),
   ])
 }
