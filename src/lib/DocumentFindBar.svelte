@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onDestroy, onMount, tick } from 'svelte'
   import { findTextRanges, normalizeFindText, scrollFindRangeIntoView } from './documentFind'
+  import { rememberFocusReturn, type FocusReturn } from './focusReturn'
 
   export let onClose: () => void
   export let root: HTMLElement | null
@@ -16,9 +17,7 @@
   let disposed = false
   let searchTimeout: number | undefined
   let observer: MutationObserver | null = null
-  let returnFocus: HTMLElement | null = null
-  let returnSelection: Range | null = null
-  let returnInputSelection: [number, number] | null = null
+  let returnFocus: FocusReturn | null = null
 
   const activeHighlightName = 'balance-document-find-match'
   const allHighlightName = 'balance-document-find-all'
@@ -47,16 +46,7 @@
   })
 
   function rememberReturnFocus() {
-    const active = document.activeElement
-    if (active instanceof HTMLElement && active !== document.body && !bar?.contains(active)) {
-      returnFocus = active
-      const selection = window.getSelection()
-      returnSelection = selection?.rangeCount && active.contains(selection.anchorNode)
-        ? selection.getRangeAt(0).cloneRange() : null
-      returnInputSelection = (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)
-        && active.selectionStart !== null && active.selectionEnd !== null
-        ? [active.selectionStart, active.selectionEnd] : null
-    }
+    returnFocus = rememberFocusReturn(bar) ?? returnFocus
   }
 
   export async function focus() {
@@ -70,16 +60,7 @@
   export function close(restoreFocus = Boolean(bar?.contains(document.activeElement))) {
     // Only restore focus when leaving the bar itself. Closing after clicking
     // into a different editor must not send the caret back to the old one.
-    if (restoreFocus && returnFocus?.isConnected && returnFocus.getClientRects().length) {
-      returnFocus.focus({ preventScroll: true })
-      if (returnInputSelection && (returnFocus instanceof HTMLInputElement || returnFocus instanceof HTMLTextAreaElement)) {
-        returnFocus.setSelectionRange(...returnInputSelection)
-      } else if (returnSelection && returnFocus.contains(returnSelection.commonAncestorContainer)) {
-        const selection = window.getSelection()
-        selection?.removeAllRanges()
-        selection?.addRange(returnSelection)
-      }
-    }
+    if (restoreFocus) returnFocus?.restore()
     onClose()
   }
 

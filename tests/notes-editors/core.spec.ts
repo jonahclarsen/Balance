@@ -237,3 +237,35 @@ test.describe('performance', () => {
     expect(ids(stored.items)).toEqual(ids(note.items))
   })
 })
+
+test('closing quick add puts the caret back where Option+K was pressed', async ({ harness }) => {
+  await harness.boot({ select: 'Simple paragraphs' })
+  const first = harness.noteByTitle('Simple paragraphs').items[0]
+  const input = harness.page.getByRole('textbox', { name: 'New idea' })
+
+  await harness.placeCaret(first.id, 5)
+  await harness.page.keyboard.press('Alt+KeyK')
+  await expect(input).toBeFocused()
+  await harness.page.keyboard.press('Escape')
+  await expect(input).toBeHidden()
+  await expect(harness.editorRoot()).toBeFocused()
+  expect(await harness.caretItemId()).toBe(first.id)
+  expect(await harness.caretOffset()).toBe(5)
+
+  // Saving returns the caret too, so typing resumes mid-paragraph.
+  await harness.page.keyboard.press('Alt+KeyK')
+  await input.fill('Synthetic quick idea')
+  await input.press('Enter')
+  await expect(input).toBeHidden()
+  await harness.page.keyboard.type('X')
+  await expect(harness.block(first.id)).toHaveText('FirstX paragraph with plain text.')
+
+  // Plain inputs get their selection back as well.
+  const title = harness.page.locator('#note-title')
+  await title.focus()
+  await title.evaluate((element: HTMLInputElement) => element.setSelectionRange(2, 4))
+  await harness.page.keyboard.press('Alt+KeyK')
+  await harness.page.keyboard.press('Escape')
+  await expect(title).toBeFocused()
+  expect(await title.evaluate((element: HTMLInputElement) => [element.selectionStart, element.selectionEnd])).toEqual([2, 4])
+})

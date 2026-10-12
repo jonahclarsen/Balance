@@ -105,6 +105,7 @@
   import type { SearchResult } from './lib/search'
   import { revealCaret, scrollMovedItemsIntoView, type ItemRowKind } from './lib/itemScroll'
   import { focusTaskBelow, focusTaskById, TASK_COMPLETION_FOCUS_EVENT, type TaskCaretOffsets, type TaskCompletionFocusDetail } from './lib/taskCompletionFocus'
+  import { rememberFocusReturn, type FocusReturn } from './lib/focusReturn'
   import { buildItemTimeWarnings, createPlanItem, DEFAULT_DAILY_REMINDER, defaultPlanItemTimeRange, defaultTemplateItemTimeRange, escapeHTML, expectedWordCount, formatMinutes, formatPlanTitle, hasActiveTimeRange, hasIncompletePlanItems, isURL, itemLinkFromAnchor, linkifyItemText, MAX_TIMELINE_MINUTES, renderItemDisplayHTML, sanitizeInlineHTML, templateQuizSteps, templateReviewURL, todayISO, totalWordCount, type ItemLink, type TemplateQuizStep, type TemplateReviewKind } from './lib/planner'
   import { hexToPickerColor, pickerColorToHex, type PickerColor } from './lib/colors'
   import { automaticSyncStatus, requestSync, startAutomaticSync } from './lib/syncScheduler'
@@ -540,6 +541,7 @@ return rows`
   let widgetPrivacySettingsStatusIsError = false
   let recoveryPanelOpen = false
   let quickAddOpen = false
+  let quickAddReturnFocus: FocusReturn | null = null
   let prioritizeSessionOpen = false
   let quickAddText = ''
   let quickAddHTML = ''
@@ -3034,6 +3036,7 @@ return rows`
   }
 
   async function openQuickAdd() {
+    if (!quickAddOpen) quickAddReturnFocus = rememberFocusReturn()
     quickAddText = ''
     quickAddHTML = ''
     quickAddOpen = true
@@ -3041,19 +3044,21 @@ return rows`
     document.querySelector<HTMLElement>('.quick-add-dialog [data-rich-text-input]')?.focus()
   }
 
+  // Closing hands focus and the caret back to wherever Option+K was pressed.
   function closeQuickAdd() {
     quickAddOpen = false
     quickAddText = ''
     quickAddHTML = ''
+    const returnFocus = quickAddReturnFocus
+    quickAddReturnFocus = null
+    returnFocus?.restore()
   }
 
   // Quick add drops the text into Proposition Party; the next day generation sorts it.
   function saveQuickAdd() {
     const text = quickAddText.trim()
-    const html = quickAddHTML
+    if (text) plannerStore.addIdea(text, 'proposition', quickAddHTML)
     closeQuickAdd()
-    if (!text) return
-    plannerStore.addIdea(text, 'proposition', html)
   }
 
   // Seeds the weekly "Filter Genuinely Worth Doing" goal once per database.
