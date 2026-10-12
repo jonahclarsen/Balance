@@ -99,7 +99,7 @@
     runDatabaseMaintenanceIfNeeded,
   } from './lib/store'
   import type { DatabaseHistoryEntry, DatabaseInspection, DatabaseMaintenanceStatus, DatabaseOperationEntry, MetadataEntry, RecoveryEntry, RecoveryKeyStatus } from './lib/store'
-  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
+  import type { ArchivedListTemplateItem, ColorSchemePreference, DailyPlan, DailyTemplate, DeviceAppearancePreferences, Goal, Id, IridescentGradientPreferences, ListInstance, ListTemplate, ListTemplateItem, Metric, MetricEntry, MetricQuestion, MoveDirection, MovePlacement, Note, NoteViewState, PlanItem, TemplateItem, TemplateQuizAnswers } from './lib/types'
   import { historyDestination, type HistoryDestination } from './lib/historyNavigation'
   import { captureTreeEditorSelection, restoreTreeEditorSelection } from './lib/treeEditorSelection'
   import type { SearchResult } from './lib/search'
@@ -135,6 +135,7 @@
     type ThemeId,
   } from './lib/themes'
   import { isNoteTrashed } from './lib/noteTrash'
+  import { noteVersionGroupId } from './lib/noteVersions'
   import { BALANCE_DEEP_LINK_EVENT, parseBalanceDeepLink } from './lib/deepLinks'
   import { captureRenderedPlanSnapshot } from './lib/renderedPlanDiagnostics'
   import { openClickedLink, openExternalURLFromShortcut } from './lib/externalLinks'
@@ -803,7 +804,19 @@ return rows`
   $: if (!importMetricId && metrics[0]) importMetricId = metrics[0].id
   // ---- Notes ----
   $: if (!selectedNoteId && notes[0]) selectedNoteId = notes[0].id
-  $: if (selectedNoteId && !allNotes.some((note) => note.id === selectedNoteId)) selectedNoteId = notes[0]?.id ?? ''
+  $: rememberSelectedNoteGroup(selectedNoteId, allNotes)
+  // When a version disappears (undo, sync), stay on another version of the same note.
+  $: if (selectedNoteId && !allNotes.some((note) => note.id === selectedNoteId)) selectedNoteId = fallbackNoteId(notes)
+
+  let lastSelectedNoteGroupId = ''
+  function rememberSelectedNoteGroup(noteId: Id, candidates: Note[]) {
+    const selected = candidates.find((note) => note.id === noteId)
+    if (selected) lastSelectedNoteGroupId = noteVersionGroupId(selected)
+  }
+
+  function fallbackNoteId(candidates: Note[]) {
+    return candidates.find((note) => noteVersionGroupId(note) === lastSelectedNoteGroupId)?.id ?? candidates[0]?.id ?? ''
+  }
 
   function rememberNoteViewState(noteId: Id, state: NoteViewState) {
     noteViewStatesById.set(noteId, state)
@@ -1784,7 +1797,7 @@ return rows`
   function binNote(noteId: Id): boolean {
     const note = $plannerStore.notes.find((candidate) => candidate.id === noteId)
     if (!note || note.deletedAt) return false
-    plannerStore.trashNote(noteId)
+    plannerStore.trashNoteVersions(noteId)
     return true
   }
 
@@ -7487,6 +7500,9 @@ return rows`
         onSelect={(noteId) => (selectedNoteId = noteId)}
         onCreate={plannerStore.addNote}
         onTrash={binNote}
+        onAddVersion={plannerStore.addNoteVersion}
+        onRenameVersion={plannerStore.renameNoteVersion}
+        onTrashVersion={plannerStore.trashNote}
         onRestore={plannerStore.restoreNote}
         onPermanentlyDelete={confirmPermanentlyDeleteNote}
         onEmptyTrash={confirmEmptyNoteTrash}

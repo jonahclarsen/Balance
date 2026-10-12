@@ -26,6 +26,14 @@ bullet, numbered, and checklist. Any kind may have nested children. Shared
 planner timing fields remain null on note items. HTML carries inline formatting
 and image references; text is its searchable plain-text mirror.
 
+A note can have versions, shown as tabs above the editor. Each version is its
+own note record; later versions set optional `versionOf` to the first version's
+ID and may carry a `versionName` (otherwise labelled V1, V2, … by creation
+order). A new version copies the current version's items with fresh IDs. The
+title is shared: renaming one version renames the group. Binning a tab bins one
+version; "Bin it" bins them all. The Bin lists versions individually. Older
+clients see versions as separate notes.
+
 Keep stored actions, fields, and collections compatible with older clients.
 Consult the balance-operations skill before changing their vocabulary.
 

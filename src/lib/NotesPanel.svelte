@@ -5,6 +5,7 @@
   import NoteEditorHost from './noteEditor/NoteEditorHost.svelte'
   import type { ItemLink } from './planner'
   import { NOTE_TRASH_RETENTION_DAYS, noteTrashDaysRemaining } from './noteTrash'
+  import { noteVersionGroupId, noteVersionLabel, noteVersionsOf } from './noteVersions'
   import type { Id, ListTemplate, Metric, Note, NoteItemKind, NoteViewState } from './types'
 
   const NOTE_SCROLL_SPACE_PERCENT_KEY = 'balance:noteScrollSpacePercent'
@@ -28,6 +29,9 @@
   export let onSelect: (noteId: Id) => void
   export let onCreate: () => Id
   export let onTrash: (noteId: Id) => boolean | Promise<boolean>
+  export let onAddVersion: (sourceNoteId: Id) => Id
+  export let onRenameVersion: (noteId: Id, versionName: string) => void
+  export let onTrashVersion: (noteId: Id) => void
   export let onRestore: (noteId: Id) => void
   export let onPermanentlyDelete: (noteId: Id) => boolean | Promise<boolean>
   export let onEmptyTrash: () => boolean | Promise<boolean>
@@ -68,11 +72,97 @@
   $: selectedNote = visibleNotes.find((note) => note.id === selectedNoteId) ?? visibleNotes[0] ?? null
   $: if (!trashOpen && selectedNote) lastActiveNoteId = selectedNote.id
   $: if (trashOpen && selectedNote) lastTrashNoteId = selectedNote.id
-  $: filteredNotes = [...visibleNotes]
-    .filter((note) => `${note.title} ${flattenText(note)}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase()))
+  $: selectedVersions = selectedNote && !trashOpen ? noteVersionsOf(activeNotes, noteVersionGroupId(selectedNote)) : []
+  $: if (selectedNote && !trashOpen) lastVersionByGroup.set(noteVersionGroupId(selectedNote), selectedNote.id)
+  // The Bin lists each binned version on its own; Notes lists one card per note.
+  $: noteCards = trashOpen ? trashedNotes.map((note) => [note]) : groupVersions(activeNotes)
+  $: filteredCards = noteCards
+    .filter((versions) => versions.some((note) => `${note.title} ${flattenText(note)}`.toLocaleLowerCase().includes(filter.trim().toLocaleLowerCase())))
     .sort((a, b) => trashOpen
-      ? (b.deletedAt ?? '').localeCompare(a.deletedAt ?? '')
-      : b.updatedAt.localeCompare(a.updatedAt))
+      ? (b[0].deletedAt ?? '').localeCompare(a[0].deletedAt ?? '')
+      : latestUpdate(b).localeCompare(latestUpdate(a)))
+
+  const lastVersionByGroup = new Map<Id, Id>()
+  let renamingVersionId: Id | null = null
+  let versionNameDraft = ''
+
+  function groupVersions(notes: Note[]): Note[][] {
+    const groups = new Map<Id, Note[]>()
+    for (const note of notes) {
+      const groupId = noteVersionGroupId(note)
+      groups.set(groupId, [...(groups.get(groupId) ?? []), note])
+    }
+    return [...groups.keys()].map((groupId) => noteVersionsOf(notes, groupId))
+  }
+
+  function latestUpdate(versions: Note[]) {
+    return versions.reduce((latest, note) => note.updatedAt > latest ? note.updatedAt : latest, '')
+  }
+
+  function cardNote(versions: Note[], selected: Note | null): Note {
+    if (selected && versions.some((note) => note.id === selected.id)) return selected
+    const remembered = lastVersionByGroup.get(noteVersionGroupId(versions[0]))
+    return versions.find((note) => note.id === remembered)
+      ?? versions.reduce((latest, note) => note.updatedAt > latest.updatedAt ? note : latest)
+  }
+
+  function binnedVersionLabel(note: Note) {
+    if (!note.versionOf && !notes.some((other) => other.versionOf === note.id)) return ''
+    return noteVersionLabel(note, noteVersionsOf(notes, noteVersionGroupId(note)))
+  }
+
+  function addVersion() {
+    if (!selectedNote) return
+    const id = onAddVersion(selectedNote.id)
+    if (id) onSelect(id)
+  }
+
+  function startRenamingVersion(note: Note) {
+    renamingVersionId = note.id
+    versionNameDraft = noteVersionLabel(note, selectedVersions)
+  }
+
+  function finishRenamingVersion(commit: boolean) {
+    const noteId = renamingVersionId
+    renamingVersionId = null
+    if (!commit || !noteId) return
+    const note = selectedVersions.find((version) => version.id === noteId)
+    if (!note) return
+    const name = versionNameDraft.trim()
+    const defaultLabel = noteVersionLabel({ ...note, versionName: '' }, selectedVersions)
+    onRenameVersion(noteId, name === defaultLabel ? '' : name)
+  }
+
+  function handleVersionNameKeydown(event: KeyboardEvent) {
+    if (event.key === 'Enter') {
+      event.preventDefault()
+      finishRenamingVersion(true)
+    } else if (event.key === 'Escape') {
+      event.preventDefault()
+      event.stopPropagation()
+      finishRenamingVersion(false)
+    }
+  }
+
+  function trashVersion(noteId: Id) {
+    const index = selectedVersions.findIndex((note) => note.id === noteId)
+    const nextNoteId = selectedVersions[index + 1]?.id ?? selectedVersions[index - 1]?.id ?? ''
+    onTrashVersion(noteId)
+    if (noteId === selectedNote?.id && nextNoteId) onSelect(nextNoteId)
+  }
+
+  function handleVersionTabKeydown(event: KeyboardEvent, index: number) {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+    event.preventDefault()
+    const next = selectedVersions[(index + (event.key === 'ArrowRight' ? 1 : -1) + selectedVersions.length) % selectedVersions.length]
+    onSelect(next.id)
+    void tick().then(() => document.querySelector<HTMLButtonElement>(`[data-note-version-tab="${next.id}"]`)?.focus())
+  }
+
+  function selectVersionInput(node: HTMLInputElement) {
+    node.focus()
+    node.select()
+  }
 
   function flattenText(note: Note): string {
     const visit = (items: Note['items']): string => items.map((item) => `${item.text} ${visit(item.children)}`).join(' ')
@@ -101,8 +191,10 @@
   }
 
   async function moveToTrash(noteId: Id) {
-    const index = activeNotes.findIndex((note) => note.id === noteId)
-    const nextNoteId = activeNotes[index + 1]?.id ?? activeNotes[index - 1]?.id ?? ''
+    const groups = groupVersions(activeNotes)
+    const index = groups.findIndex((versions) => versions.some((note) => note.id === noteId))
+    const nextGroup = groups[index + 1] ?? groups[index - 1]
+    const nextNoteId = nextGroup ? cardNote(nextGroup, null).id : ''
     if (await onTrash(noteId)) onSelect(nextNoteId)
   }
 
@@ -470,14 +562,18 @@
       <input class="notes-filter" type="search" bind:value={filter} placeholder={trashOpen ? 'Filter Bin' : 'Filter notes'} aria-label={trashOpen ? 'Filter Bin' : 'Filter notes'} />
     </div>
     <div class="notes-list">
-      {#each filteredNotes as note (note.id)}
+      {#each filteredCards as versions (noteVersionGroupId(versions[0]) + (trashOpen ? `:${versions[0].id}` : ''))}
+        {@const note = trashOpen ? versions[0] : cardNote(versions, selectedNote)}
+        {@const versionLabel = trashOpen ? binnedVersionLabel(note) : ''}
+        {@const updatedAt = trashOpen ? note.deletedAt ?? note.updatedAt : latestUpdate(versions)}
         <button type="button" class="note-card" class:active={note.id === selectedNote?.id} on:click={() => onSelect(note.id)}>
-          <strong>{note.title.trim() || 'Untitled note'}</strong>
+          <strong>{note.title.trim() || 'Untitled note'}{#if versionLabel}<small class="note-card-version"> · {versionLabel}</small>{/if}</strong>
           <span>{flattenText(note).trim().replace(/\s+/g, ' ').slice(0, 90) || 'Empty note'}</span>
-          <time datetime={trashOpen ? note.deletedAt ?? note.updatedAt : note.updatedAt}>{readableDate(trashOpen ? note.deletedAt ?? note.updatedAt : note.updatedAt)}</time>
+          {#if versions.length > 1}<small class="note-card-versions">{versions.length} versions</small>{/if}
+          <time datetime={updatedAt}>{readableDate(updatedAt)}</time>
         </button>
       {/each}
-      {#if visibleNotes.length > 0 && filteredNotes.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
+      {#if visibleNotes.length > 0 && filteredCards.length === 0}<p class="notes-no-match">No matching notes.</p>{/if}
     </div>
     {#if trashOpen}<button class="notes-back-link" type="button" on:click={showNotes}><span aria-hidden="true">←</span> Back to Notes</button>{/if}
   </aside>
@@ -495,11 +591,52 @@
             <button class="primary" type="button" on:click={() => restoreFromTrash(selectedNote!.id)}>Restore</button>
             <button class="ghost danger" type="button" on:click={() => permanentlyDelete(selectedNote!.id)}>Delete now</button>
           {:else}
+            <button type="button" title="Start another version from a copy of this one" on:click={addVersion}>New version</button>
             <button type="button" title="Copy an app link to this note" aria-live="polite" on:click={copyLink}>{copyButtonText}</button>
-            <button class="ghost danger" type="button" on:click={() => moveToTrash(selectedNote!.id)}>Bin it</button>
+            <button class="ghost danger" type="button" title={selectedVersions.length > 1 ? 'Move every version of this note to the Bin' : undefined} on:click={() => moveToTrash(selectedNote!.id)}>Bin it</button>
           {/if}
         </div>
       </header>
+
+      {#if !trashOpen && selectedVersions.length > 1}
+        <div class="note-version-tabs" role="tablist" aria-label="Versions">
+          {#each selectedVersions as version, index (version.id)}
+            {@const label = noteVersionLabel(version, selectedVersions)}
+            <div class="note-version-tab" class:active={version.id === selectedNote.id}>
+              {#if renamingVersionId === version.id}
+                <input
+                  class="note-version-name"
+                  bind:value={versionNameDraft}
+                  aria-label="Version name"
+                  use:selectVersionInput
+                  on:keydown={handleVersionNameKeydown}
+                  on:blur={() => finishRenamingVersion(true)}
+                />
+              {:else}
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={version.id === selectedNote.id}
+                  tabindex={version.id === selectedNote.id ? 0 : -1}
+                  title="Double-click to rename"
+                  data-note-version-tab={version.id}
+                  on:click={() => onSelect(version.id)}
+                  on:dblclick={() => startRenamingVersion(version)}
+                  on:keydown={(event) => handleVersionTabKeydown(event, index)}
+                >{label}</button>
+                <button
+                  class="note-version-close"
+                  type="button"
+                  aria-label={`Bin ${label}`}
+                  title={`Move ${label} to the Bin`}
+                  on:click={() => trashVersion(version.id)}
+                >×</button>
+              {/if}
+            </div>
+          {/each}
+          <button class="note-version-add" type="button" aria-label="New version" title="Start another version from a copy of this one" on:click={addVersion}>+</button>
+        </div>
+      {/if}
 
       {#if trashOpen}
         <div class="note-trash-notice" role="status">

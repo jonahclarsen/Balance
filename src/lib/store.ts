@@ -142,6 +142,7 @@ import type {
 } from './types'
 import { dayThemePreferenceKey, normalizeReplicatedPreferences } from './preferences'
 import { isNoteTrashExpired } from './noteTrash'
+import { copyNoteItemsWithNewIds, noteVersionGroupId } from './noteVersions'
 import { findIdea, ideaBucketId, ideaReviewGoalHue, ideaReviewGoalNameHtml, IDEA_BUCKET_KINDS, IDEA_REVIEW_GOAL_CADENCE_DAYS, IDEA_REVIEW_GOAL_ID, IDEA_REVIEW_GOAL_NAME, isIdeaTrashExpired, needsIdeaReviewGoal } from './ideaBuckets'
 import { reconcileTaskNotifications } from './taskNotifications'
 
@@ -2292,6 +2293,52 @@ function createPlannerStore() {
       return note.id
     },
 
+    // A version starts as a copy of the version it was made from, placed in
+    // the same group so the Notes page shows them as tabs of one note.
+    addNoteVersion(sourceNoteId: Id) {
+      const source = get(plannerStore).notes.find((note) => note.id === sourceNoteId)
+      if (!source) return ''
+      const createdAt = nowISO()
+      const version: Note = {
+        id: createId('note'),
+        title: source.title,
+        items: copyNoteItemsWithNewIds(source.items),
+        createdAt,
+        updatedAt: createdAt,
+        versionOf: noteVersionGroupId(source),
+      }
+      commitEntities('add_note_version', { noteId: version.id, sourceNoteId }, (state) => ({
+        ...state,
+        notes: [version, ...state.notes],
+      }))
+      return version.id
+    },
+
+    renameNoteVersion(noteId: Id, versionName: string) {
+      commitEntities(
+        'rename_note_version',
+        { noteId, versionName },
+        (state) => updateNote(state, noteId, (note) => (note.versionName ?? '') === versionName ? note : { ...note, versionName }),
+      )
+    },
+
+    // Every version of a note goes to the Bin together.
+    trashNoteVersions(noteId: Id) {
+      const deletedAt = nowISO()
+      commitEntities('trash_note', { noteId, deletedAt, versions: true }, (state) => {
+        const target = state.notes.find((note) => note.id === noteId)
+        if (!target) return state
+        const groupId = noteVersionGroupId(target)
+        let changed = false
+        const notes = state.notes.map((note) => {
+          if (note.deletedAt || noteVersionGroupId(note) !== groupId) return note
+          changed = true
+          return { ...note, deletedAt }
+        })
+        return changed ? { ...state, notes } : state
+      })
+    },
+
     trashNote(noteId: Id) {
       const deletedAt = nowISO()
       commitEntities('trash_note', { noteId, deletedAt }, (state) =>
@@ -2336,11 +2383,23 @@ function createPlannerStore() {
       )
     },
 
+    // Versions share their note's title.
     renameNote(noteId: Id, title: string) {
       commitEntities(
         'rename_note',
         { noteId, title },
-        (state) => updateNote(state, noteId, (note) => ({ ...note, title, updatedAt: nowISO() })),
+        (state) => {
+          const target = state.notes.find((note) => note.id === noteId)
+          if (!target) return state
+          const groupId = noteVersionGroupId(target)
+          const updatedAt = nowISO()
+          const notes = state.notes.map((note) =>
+            note.id === noteId || (!note.deletedAt && noteVersionGroupId(note) === groupId)
+              ? { ...note, title, ...(note.id === noteId ? { updatedAt } : {}) }
+              : note,
+          )
+          return { ...state, notes }
+        },
         { mergeKey: `note-title:${noteId}`, mergeWindowMs: TEXT_MERGE_WINDOW_MS },
       )
     },

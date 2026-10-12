@@ -1,5 +1,6 @@
 import type { AppState, Id, ListTemplateItem, PlanItem, TemplateItem } from './types'
 import { isNoteTrashed } from './noteTrash'
+import { noteVersionGroupId, noteVersionLabel, noteVersionsOf } from './noteVersions'
 import type { RecoverySearchMatch } from './store'
 
 export type SearchResult =
@@ -140,7 +141,9 @@ export function searchBalanceState(state: AppState, query: string): SearchResult
     }]
   })
 
-  const noteResults: SearchResult[] = state.notes.filter((note) => !isNoteTrashed(note))
+  const activeNotes = state.notes.filter((note) => !isNoteTrashed(note))
+  const versionedGroups = new Set(activeNotes.filter((note) => note.versionOf).map((note) => note.versionOf))
+  const noteResults: SearchResult[] = activeNotes
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
     .flatMap((note) => {
       const lines = flattenPlanItems(note.items)
@@ -150,7 +153,9 @@ export function searchBalanceState(state: AppState, query: string): SearchResult
         kind: 'note' as const,
         id: note.id,
         title: note.title || 'Untitled note',
-        meta: 'Note',
+        meta: versionedGroups.has(noteVersionGroupId(note))
+          ? `Note · ${noteVersionLabel(note, noteVersionsOf(activeNotes, noteVersionGroupId(note)))}`
+          : 'Note',
         preview: previewText(match?.text || lines[0]?.text || 'Empty note'),
         noteId: note.id,
         itemId: match?.itemId ?? null,

@@ -69,6 +69,10 @@ export type Note = {
   createdAt: string
   updatedAt: string
   deletedAt?: string | null
+  // Versions of one note are separate notes that share the first version's ID
+  // here; the first version leaves it unset. Older clients show them as notes.
+  versionOf?: Id | null
+  versionName?: string
 }
 
 export type NoteViewState = {
