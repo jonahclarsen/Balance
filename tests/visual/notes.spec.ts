@@ -1758,6 +1758,16 @@ test('notes save adjustable breathing room and follow the final caret to the bot
     element.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertText', data: 'x', bubbles: true, cancelable: true }))
   })
   await expect.poll(() => workspace.evaluate((element) => element.scrollTop)).toBeCloseTo(scrolledUpPosition, 0)
+
+  // Placing the caret on the final line and typing there while scrolled up
+  // leaves the scroll position alone.
+  await placeCaretAtEnd(secondEditor)
+  await page.keyboard.type(' more')
+  await expect(secondEditor).toContainText('Still following the bottom more')
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  }))
+  expect(await workspace.evaluate((element) => element.scrollTop)).toBeCloseTo(scrolledUpPosition, 0)
 })
 
 test('notes layout remains usable on mobile', async ({ page }, testInfo) => {

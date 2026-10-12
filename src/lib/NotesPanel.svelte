@@ -50,6 +50,9 @@
   let noteEditorHost: NoteEditorHost | null = null
   let bottomFollowFrame: number | null = null
   let bottomFollowRequest = 0
+  // Whether the reader left the note scrolled to its bottom. Read from scroll
+  // events only, so an edit that grows the note cannot clear it first.
+  let noteRestsAtBottom = false
   let noteScrollSpacePercent = DEFAULT_NOTE_SCROLL_SPACE_PERCENT
   let noteScrollViewportHeight = 0
   let noteScrollSpaceControlVisible = false
@@ -267,12 +270,17 @@
       if (frame !== null) return
       frame = window.requestAnimationFrame(updateVisibility)
     }
+    const handleScroll = () => {
+      noteRestsAtBottom = isAtNoteBottom(scroller)
+      scheduleVisibilityUpdate()
+    }
+    noteRestsAtBottom = isAtNoteBottom(scroller)
     const resizeObserver = new ResizeObserver(() => {
       remeasure = true
       scheduleVisibilityUpdate()
     })
 
-    scrollEventTarget.addEventListener('scroll', scheduleVisibilityUpdate, { passive: true })
+    scrollEventTarget.addEventListener('scroll', handleScroll, { passive: true })
     resizeObserver.observe(scroller)
     resizeObserver.observe(node)
     if (noteEditorHostElement) resizeObserver.observe(noteEditorHostElement)
@@ -280,7 +288,7 @@
 
     return {
       destroy() {
-        scrollEventTarget.removeEventListener('scroll', scheduleVisibilityUpdate)
+        scrollEventTarget.removeEventListener('scroll', handleScroll)
         resizeObserver.disconnect()
         if (frame !== null) window.cancelAnimationFrame(frame)
         noteScrollSpaceControlVisible = false
@@ -307,15 +315,13 @@
     })
   }
 
-  function followNoteBottomAfterEdit(event: Event) {
-    const target = event.target
-    if (!(target instanceof HTMLElement) || !target.closest('[data-note-text-input]')) return
-
-    const scroller = noteScrollContainer()
-    if (scroller && isAtNoteBottom(scroller)) void scrollNoteToBottomAfterLayout(scroller)
-  }
-
+  // Writing on the last line keeps the bottom in view, but only when the note
+  // was already scrolled there; a reader who scrolled up stays put.
   function handleNoteSelectionChange() {
+    if (!noteRestsAtBottom) {
+      cancelNoteBottomFollow()
+      return
+    }
     const selection = document.getSelection()
     const inputs = noteEditorHostElement?.querySelectorAll<HTMLDivElement>('.note-text')
     const lastInput = inputs?.[inputs.length - 1]
