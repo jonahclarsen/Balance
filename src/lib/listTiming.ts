@@ -1,15 +1,11 @@
-import { listRowSourceItemId } from './planner'
-import type { Id, ListInstance, PlanItem } from './types'
+import { listItemAppearanceChance, listItemVariants, listRowSourceItemId } from './planner'
+import type { Id, ListInstance, ListTemplateItem, PlanItem } from './types'
 
-// How many of the most recent finished runs describe a list's current pace.
-const RECENT_RUN_COUNT = 7
 // A gap this long between check-offs means the list was left unattended, so
 // that task and that run aren't timed.
 const UNATTENDED_GAP_MS = 60 * 60 * 1000
 // Runs needed before an over-time pattern is worth pointing out.
 const MIN_RUNS_FOR_NUDGE = 3
-// The trim suggestion reappears at most this often after being dismissed.
-export const LIST_TRIM_NUDGE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000
 
 type Completion = { item: PlanItem; at: number }
 
@@ -26,7 +22,7 @@ export type ListRunTiming = {
 
 export type ListTimingSummary = {
   runCount: number
-  typicalRunMs: number | null
+  expectedRunMs: number | null
   typicalItemMs: Map<Id, number>
 }
 
@@ -102,18 +98,15 @@ function outlierLimit(values: number[]): number {
   return q3 + 1.5 * (q3 - q1)
 }
 
-// Summarize a template's finished runs. Each run's duration substitutes the
-// task's typical time for any outlier task, so one interruption doesn't make a
-// whole run look slow.
-export function summarizeListTiming(lists: ListInstance[], listTemplateId: Id): ListTimingSummary {
+// Each task's typical time comes from finished runs. The list's expected time
+// is computed from the current template rather than past run lengths, so edits
+// take effect right away: every wording's typical time is weighted by how
+// likely it is to be generated, including the chance its ancestors appear.
+export function summarizeListTiming(lists: ListInstance[], listTemplateId: Id, templateItems: ListTemplateItem[]): ListTimingSummary {
   const runs = lists
     .filter((list) => list.listTemplateId === listTemplateId)
     .map(listRunTiming)
-    .filter(
-      (run): run is ListRunTiming & { startedAt: number; finishedAt: number } =>
-        run.finishedAt !== null && !run.unattended,
-    )
-    .sort((a, b) => b.finishedAt - a.finishedAt)
+    .filter((run) => run.finishedAt !== null && !run.unattended)
 
   const samples = new Map<Id, number[]>()
   for (const run of runs) {
@@ -124,29 +117,39 @@ export function summarizeListTiming(lists: ListInstance[], listTemplateId: Id): 
     }
   }
 
-  const limits = new Map<Id, number>()
   const typicalItemMs = new Map<Id, number>()
   for (const [sourceItemId, values] of samples) {
     const limit = outlierLimit(values)
-    limits.set(sourceItemId, limit)
     typicalItemMs.set(sourceItemId, median(values.filter((value) => value <= limit)))
   }
 
-  const recentRunMs = runs.slice(0, RECENT_RUN_COUNT).map((run) => {
-    let durationMs = run.finishedAt - run.startedAt
-    for (const { sourceItemId, durationMs: itemMs } of run.itemDurations) {
-      if (itemMs > (limits.get(sourceItemId) ?? Infinity)) {
-        durationMs -= itemMs - (typicalItemMs.get(sourceItemId) ?? 0)
-      }
-    }
-    return durationMs
-  })
-
+  const expected = expectedItemsMs(templateItems, 1, typicalItemMs)
   return {
     runCount: runs.length,
-    typicalRunMs: recentRunMs.length > 0 ? median(recentRunMs) : null,
+    expectedRunMs: expected.timed ? expected.ms : null,
     typicalItemMs,
   }
+}
+
+function expectedItemsMs(
+  items: ListTemplateItem[],
+  ancestorChance: number,
+  typicalItemMs: Map<Id, number>,
+): { ms: number; timed: boolean } {
+  let ms = 0
+  let timed = false
+  for (const item of items) {
+    for (const variant of listItemVariants(item)) {
+      const typical = typicalItemMs.get(variant.id)
+      if (typical === undefined) continue
+      ms += typical * variant.chance * ancestorChance
+      timed = true
+    }
+    const children = expectedItemsMs(item.children, ancestorChance * listItemAppearanceChance(item), typicalItemMs)
+    ms += children.ms
+    timed ||= children.timed
+  }
+  return { ms, timed }
 }
 
 // Compare at the displayed minute so "8 min" never reads as over an 8 min ideal.
@@ -154,10 +157,10 @@ export function exceedsIdealMinutes(ms: number, idealMinutes: number | undefined
   return Boolean(idealMinutes) && roundedMinutes(ms) > (idealMinutes ?? 0)
 }
 
-// Suggest trimming when recent runs have consistently gone past the ideal.
+// Suggest trimming once enough runs have been timed to trust the expected time.
 export function shouldSuggestTrim(summary: ListTimingSummary, idealMinutes: number | undefined): boolean {
-  if (summary.typicalRunMs === null || summary.runCount < MIN_RUNS_FOR_NUDGE) return false
-  return exceedsIdealMinutes(summary.typicalRunMs, idealMinutes)
+  if (summary.expectedRunMs === null || summary.runCount < MIN_RUNS_FOR_NUDGE) return false
+  return exceedsIdealMinutes(summary.expectedRunMs, idealMinutes)
 }
 
 function roundedMinutes(ms: number): number {

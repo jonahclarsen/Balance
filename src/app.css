@@ -3479,20 +3479,12 @@ body.mobile-checkbox-dragging {
 }
 
 .list-trim-nudge {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  margin-bottom: 14px;
+  margin: 0 0 14px;
   padding: 10px 12px;
   border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--danger) 7%, transparent);
   font-size: 13px;
-}
-
-.list-trim-nudge p {
-  flex: 1 1 auto;
-  margin: 0;
 }
 
 .list-progress {

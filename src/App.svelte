@@ -36,7 +36,6 @@
   import {
     exceedsIdealMinutes,
     formatDuration,
-    LIST_TRIM_NUDGE_INTERVAL_MS,
     shouldSuggestTrim,
     summarizeListTiming,
   } from './lib/listTiming'
@@ -483,7 +482,6 @@
   let notesTrashOpen = false
   const noteViewStatesById = new Map<Id, NoteViewState>()
   let wordCapUnlocked = false
-  let listTrimNudgeDismissals = 0
   const noTypicalItemMs = new Map<Id, number>()
   let wordCapUnlockTimer: number | null = null
   let selectedMetricId = ''
@@ -788,12 +786,11 @@ return rows`
     .sort((left, right) => right.archivedAt.localeCompare(left.archivedAt))
   // Only the list-template page shows these stats, so skip the work elsewhere.
   $: selectedListTiming =
-    view === 'listTemplates' && selectedListTemplate ? summarizeListTiming(lists, selectedListTemplate.id) : null
+    view === 'listTemplates' && selectedListTemplate ? summarizeListTiming(lists, selectedListTemplate.id, selectedListTemplate.items) : null
   $: showListTrimNudge =
     selectedListTemplate !== undefined &&
     selectedListTiming !== null &&
-    shouldSuggestTrim(selectedListTiming, selectedListTemplate.idealMinutes) &&
-    !listTrimNudgeRecentlyDismissed(selectedListTemplate.id, listTrimNudgeDismissals)
+    shouldSuggestTrim(selectedListTiming, selectedListTemplate.idealMinutes)
   $: listViewInstance = lists.find(
     (list) => list.listTemplateId === listViewTemplateId && list.date === $plannerStore.activePlanDate,
   )
@@ -1832,28 +1829,6 @@ return rows`
 
   function flattenListTemplateItems(items: ListTemplateItem[]): ListTemplateItem[] {
     return items.flatMap((item) => [item, ...flattenListTemplateItems(item.children)])
-  }
-
-  // The trim suggestion is a periodic nudge, so a dismissal only lasts a while
-  // and stays on this device.
-  const listTrimNudgeStorageKey = (templateId: Id) => `balance.listTrimNudgeDismissedAt.${templateId}`
-
-  function listTrimNudgeRecentlyDismissed(templateId: Id, _dismissals: number): boolean {
-    try {
-      const dismissedAt = Number(localStorage.getItem(listTrimNudgeStorageKey(templateId)))
-      return Number.isFinite(dismissedAt) && Date.now() - dismissedAt < LIST_TRIM_NUDGE_INTERVAL_MS
-    } catch {
-      return false
-    }
-  }
-
-  function dismissListTrimNudge(templateId: Id) {
-    try {
-      localStorage.setItem(listTrimNudgeStorageKey(templateId), String(Date.now()))
-    } catch {
-      // Without storage the nudge simply returns next time the page renders.
-    }
-    listTrimNudgeDismissals += 1
   }
 
   // Returns the editor input id of the matching item or alternative wording.
@@ -7257,25 +7232,21 @@ return rows`
               />
               min
             </label>
-            {#if selectedListTiming?.typicalRunMs != null}
+            {#if selectedListTiming?.expectedRunMs != null}
               <span
                 class="list-typical-time"
-                class:over={exceedsIdealMinutes(selectedListTiming.typicalRunMs, selectedListTemplate.idealMinutes)}
+                class:over={exceedsIdealMinutes(selectedListTiming.expectedRunMs, selectedListTemplate.idealMinutes)}
               >
-                Usually takes {formatDuration(selectedListTiming.typicalRunMs)}
+                Expected to take {formatDuration(selectedListTiming.expectedRunMs)}
               </span>
             {/if}
           </div>
 
-          {#if showListTrimNudge && selectedListTiming?.typicalRunMs != null}
-            <div class="list-trim-nudge" role="status">
-              <p>
-                This list has been taking about {formatDuration(selectedListTiming.typicalRunMs)}, longer than your
-                {selectedListTemplate.idealMinutes} min ideal. Consider trimming it or increasing the ideal time.
-              </p>
-              <button class="icon-button quiet" type="button" aria-label="Dismiss for a week" title="Dismiss for a week"
-                on:click={() => dismissListTrimNudge(selectedListTemplate.id)}>✕</button>
-            </div>
+          {#if showListTrimNudge && selectedListTiming?.expectedRunMs != null}
+            <p class="list-trim-nudge" role="status">
+              As it stands, this list is expected to take about {formatDuration(selectedListTiming.expectedRunMs)}, longer than
+              your {selectedListTemplate.idealMinutes} min ideal. Consider trimming it or increasing the ideal time.
+            </p>
           {/if}
 
           <label class="field-label" for="list-template-name">List name</label>
