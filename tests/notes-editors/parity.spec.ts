@@ -473,6 +473,25 @@ test.describe('P-31 slash menu', () => {
     await harness.waitForNote(note.id, (stored) => stored.items[3].text === '/h')
   })
 
+  test('a slash query at the start of a block with text restyles it and keeps the text', async ({ harness }) => {
+    await harness.boot({ select: 'Simple paragraphs' })
+    const note = harness.noteByTitle('Simple paragraphs')
+    const target = note.items[0]
+    await harness.placeCaret(target.id, 0)
+    await harness.page.keyboard.type('/h1')
+    const menu = harness.page.getByRole('listbox', { name: 'Note styles' })
+    await expect(menu).toBeVisible()
+    await expect(menu.getByRole('option')).toHaveCount(1)
+    await harness.page.keyboard.press('Enter')
+    await harness.waitForNote(note.id, (stored) => stored.items[0].kind === 'heading' && stored.items[0].text === target.text)
+    await expect(menu).toBeHidden()
+    expect(await harness.caretItemId()).toBe(target.id)
+    // Mid-block slashes stay literal text.
+    await harness.placeCaret(target.id, 2)
+    await harness.page.keyboard.type('/')
+    await expect(menu).toBeHidden()
+  })
+
   test('the slash menu stays inside the viewport', async ({ harness }) => {
     await harness.boot({ select: 'Long note' })
     const note = harness.noteByTitle('Long note')

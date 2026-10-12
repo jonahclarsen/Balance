@@ -110,6 +110,7 @@ import {
   $publicOffset,
   $removeLeadingCharacters,
   $serializeInline,
+  $textBefore,
   $textWithBreaks,
 } from './inline'
 import {
@@ -233,6 +234,8 @@ class LexicalNoteEditorView implements NoteEditorView {
   private teardown: Array<() => void> = []
   private slash: SlashMenu | null = null
   private slashDismissed: string | null = null
+  // Caret length of the "/query" prefix the open menu replaces.
+  private slashPrefixLength = 0
   private slashBlurTimer: ReturnType<typeof setTimeout> | null = null
 
   private composing = false
@@ -1459,18 +1462,21 @@ class LexicalNoteEditorView implements NoteEditorView {
       slash.close()
       return
     }
+    // The query runs from the start of the block to the caret, so "/h1" can
+    // restyle a block that already has text after it.
     const point = $blockPoint(selection.anchor)
     const content = point ? $readContent(point.block) : null
-    const text = content ? $textWithBreaks(content) : ''
-    const match = SLASH_PATTERN.exec(text)
-    if (!point || !match) {
+    const match = point && content ? SLASH_PATTERN.exec($textBefore(content, point.offset)) : null
+    if (!point || !content || !match) {
       slash.close()
       this.slashDismissed = null
       return
     }
     const key = point.block.getKey()
+    const text = $textWithBreaks(content)
     if (this.slashDismissed === `${key}:${text}`) return
     this.slashDismissed = null
+    this.slashPrefixLength = match[0].length
     const dom = editor.getElementByKey(key)
     const blockDom = dom?.firstElementChild as HTMLElement | null
     if (!blockDom) return
@@ -1492,6 +1498,7 @@ class LexicalNoteEditorView implements NoteEditorView {
   private applySlashCommand(command: SlashCommand) {
     const slash = this.slash
     const key = slash?.blockKey
+    const prefixLength = this.slashPrefixLength
     slash?.close()
     if (!key) return
     this.runCommand(() => {
@@ -1499,7 +1506,7 @@ class LexicalNoteEditorView implements NoteEditorView {
       if (!$isNoteBlockNode(block)) return
       if (block.getKind() !== command.kind) block.setKind(command.kind)
       if (command.kind === 'checklist') block.setDone(false)
-      $contentOf(block).clear()
+      $removeLeadingCharacters($contentOf(block), prefixLength)
       $selectOffset(block, 0)
     })
     if (!this.hasFocus()) this.root?.focus({ preventScroll: true })

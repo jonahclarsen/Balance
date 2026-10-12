@@ -216,6 +216,19 @@ export function $textWithBreaks(content: ElementNode): string {
   return text
 }
 
+// Text before a caret offset ("\n" for line breaks, U+FFFC for images), so a
+// slash query typed at the start of a block can be read ahead of its text.
+export function $textBefore(content: ElementNode, offset: number): string {
+  let text = ''
+  for (const leaf of $inlineLeaves(content)) {
+    if (leaf.start >= offset) break
+    if ($isTextNode(leaf.node)) text += leaf.node.getTextContent().slice(0, offset - leaf.start)
+    else if ($isLineBreakNode(leaf.node)) text += '\n'
+    else if (leaf.end > leaf.start) text += '￼'
+  }
+  return text
+}
+
 export function $hasImage(content: ElementNode): boolean {
   let found = false
   const walk = (element: ElementNode) => {
