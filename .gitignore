@@ -28,3 +28,6 @@ sync-spike
 *.njsproj
 *.sln
 *.sw?
+
+# Wrangler local state
+.wrangler

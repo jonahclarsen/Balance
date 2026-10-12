@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Balance Docs</title>
+  <meta name="description" content="How to install and use Balance, the daily planner.">
+  <meta name="theme-color" content="#166f7b">
+  <link rel="icon" href="/favicon.png">
+  <link rel="preload" href="/assets/sora-latin-700.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+  <header class="wrap top">
+    <a class="brand" href="/"><img src="/assets/logo.png" alt=""><span class="wordmark">Balance</span></a>
+    <nav>
+      <a href="/docs/" aria-current="page">Docs</a>
+      <a href="https://github.com/jonahclarsen/Balance">GitHub</a>
+    </nav>
+  </header>
+
+  <div class="wrap docs">
+    <details class="docs-nav" id="docs-nav" open>
+      <summary>Contents</summary>
+      <ol>
+        <li class="group">Start</li>
+        <li><a href="#install">Install</a></li>
+        <li><a href="#recovery-key">Recovery key</a></li>
+        <li class="group">Plan</li>
+        <li><a href="#today">Today</a></li>
+        <li><a href="#days">Day templates</a></li>
+        <li><a href="#times">Times and reminders</a></li>
+        <li><a href="#next">Next</a></li>
+        <li class="group">Track</li>
+        <li><a href="#goals">Goals</a></li>
+        <li><a href="#quizzes">Quizzes</a></li>
+        <li><a href="#projects">Projects</a></li>
+        <li class="group">Organize</li>
+        <li><a href="#lists">Lists</a></li>
+        <li><a href="#notes">Notes</a></li>
+        <li><a href="#prioritize">Prioritize</a></li>
+        <li><a href="#buckets">Buckets</a></li>
+        <li class="group">Devices</li>
+        <li><a href="#sync">Sync</a></li>
+        <li><a href="#encryption">Encryption</a></li>
+        <li><a href="#backups">Backups</a></li>
+        <li><a href="#widgets">Widgets and Siri</a></li>
+        <li class="group">Reference</li>
+        <li><a href="#shortcuts">Keyboard shortcuts</a></li>
+        <li><a href="#settings">Settings</a></li>
+      </ol>
+    </details>
+
+    <main>
+      <h1>Balance Docs</h1>
+      <p class="lead">A daily planner. Templates generate each day; checked tasks complete goals.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-today.webp" width="1920" height="1200" alt="Today with Goal Rhythm below"></div>
+      </figure>
+
+      <h2 id="install">Install</h2>
+      <h3>Mac</h3>
+      <p>macOS 13 or later, Apple silicon.</p>
+      <ol class="steps">
+        <li><a href="/download/mac">Download</a> and unzip.</li>
+        <li>Move <strong>Balance</strong> to Applications and open it.</li>
+        <li>If macOS blocks it: <strong>System Settings → Privacy &amp; Security → Open Anyway</strong>. The app isn’t notarized yet.</li>
+      </ol>
+      <h3>Android</h3>
+      <ol class="steps">
+        <li>On the phone, <a href="/download/android">download the APK</a>.</li>
+        <li>Open it. Allow installs from your browser when asked.</li>
+        <li>Allow notifications and exact alarms for on-time reminders.</li>
+      </ol>
+      <h3>Linux</h3>
+      <p>AppImage and .deb builds appear on <a href="https://github.com/jonahclarsen/Balance/releases">Releases</a> when published.</p>
+
+      <h2 id="recovery-key">Recovery key</h2>
+      <p>On first launch, Balance shows a recovery key. Save it somewhere private, then type it back to continue.</p>
+      <p>It unlocks your database from a backup or on a new device. Balance can’t recover it for you.</p>
+
+      <h2 id="today">Today</h2>
+      <p>Pick a day template, then <strong>Generate today</strong>. Check tasks off as you go.</p>
+      <figure class="pair">
+        <div class="phone"><img src="/images/android-today.webp" width="720" height="1598" alt="Today on Android" loading="lazy"></div>
+        <div class="phone"><img src="/images/android-menu.webp" width="720" height="1598" alt="Navigation drawer on Android" loading="lazy"></div>
+      </figure>
+      <ul>
+        <li><strong>Edit:</strong> click a task. <kbd>Enter</kbd> adds one; <kbd>Tab</kbd> indents.</li>
+        <li><strong>Move:</strong> drag the handle, or <kbd>Alt</kbd>+<kbd>↑</kbd>/<kbd>↓</kbd>.</li>
+        <li><strong>Done:</strong> click the box, or <kbd>⌘</kbd><kbd>D</kbd>.</li>
+        <li><strong>Other days:</strong> the date picker, or <kbd>Alt</kbd>+<kbd>Q</kbd>/<kbd>W</kbd>.</li>
+        <li><strong>Regenerate:</strong> <kbd>⌘</kbd><kbd>⇧</kbd><kbd>G</kbd>. Tasks you added or edited stay; untouched generated ones are replaced.</li>
+        <li><strong>Undo:</strong> <kbd>⌘</kbd><kbd>Z</kbd>, any time.</li>
+        <li><strong>Copy out:</strong> selected tasks copy as plain text and paste back with nesting intact.</li>
+      </ul>
+      <p>Days start at 5 a.m., so late nights count toward the previous day.</p>
+
+      <h2 id="days">Day templates</h2>
+      <p>The <strong>Days</strong> page holds templates. Each row has options; each option has odds.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-days.webp" width="1920" height="1200" alt="Weekday template with odds" loading="lazy"></div>
+      </figure>
+      <ul>
+        <li><strong>One option below 100%:</strong> appears that often.</li>
+        <li><strong>Several options (<kbd>±</kbd>):</strong> one is drawn by weight. An empty option means skip.</li>
+        <li><strong>Question (<kbd>?</kbd>):</strong> asks you at generation instead of rolling.</li>
+        <li><strong>“3 goals”:</strong> becomes your three most urgent goals.</li>
+        <li><strong>A list’s name:</strong> tick the list icon to expand its items into the day.</li>
+      </ul>
+      <p>Use <strong>New day</strong> for more templates, such as Weekday and Weekend.</p>
+
+      <h2 id="times">Times and reminders</h2>
+      <p>Click the clock on a task to add a time range. Drag either end in 15-minute steps.</p>
+      <p>In templates, braces insert times when the day is generated and schedule a notification:</p>
+      <div class="table-scroll"><table>
+        <tr><th>Write</th><th>Gets</th></tr>
+        <tr><td><code>{9am}</code>, <code>{22:15}</code></td><td>That time</td></tr>
+        <tr><td><code>{9am+90m}</code></td><td>10:30 AM</td></tr>
+        <tr><td><code>{sunset}</code>, <code>{sunset-1h}</code></td><td>Vancouver sunset, offset</td></tr>
+        <tr><td><code>{sunset+4h &lt;10pm}</code></td><td>Four hours after sunset, no later than 10 PM</td></tr>
+        <tr><td><code>{sunset &gt;8pm}</code></td><td>Sunset, no earlier than 8 PM</td></tr>
+      </table></div>
+
+      <h2 id="next">Next</h2>
+      <p>Shows only your next unchecked task. <kbd>⌘</kbd><kbd>D</kbd> completes it.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-next.webp" width="1920" height="1200" alt="Next page showing one task" loading="lazy"></div>
+      </figure>
+
+      <h2 id="goals">Goals</h2>
+      <p>A goal has a name, a cadence and matching words. Checking a task that contains a word completes it for that day.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-goals.webp" width="1920" height="1200" alt="Goals page" loading="lazy"></div>
+      </figure>
+      <ul>
+        <li><strong>Example:</strong> Exercise, every 2 days, matches <code>run, swim, yoga</code>. Checking “Run 5k” counts.</li>
+        <li>Single words match whole words. Phrases match anywhere. Case doesn’t matter.</li>
+        <li><strong>Goal Rhythm</strong>, under Today, shows each goal’s days and what’s due. Toggle it with <kbd>Alt</kbd>+<kbd>A</kbd>.</li>
+        <li><strong>Stats</strong> charts completions over time.</li>
+        <li>Today and the two days before recalculate; older days are kept as recorded.</li>
+      </ul>
+
+      <h2 id="quizzes">Quizzes</h2>
+      <p>Questions you answer regularly: text, number or yes/no. Answers become charts.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-quizzes.webp" width="1920" height="1200" alt="Daily check-in quiz with charts" loading="lazy"></div>
+      </figure>
+      <p>A task naming a quiz opens it. <strong>Import past data</strong> brings in earlier answers.</p>
+
+      <h2 id="projects">Projects</h2>
+      <p>Check in on long efforts: how complete, and how much your heart is in it. Both chart over time.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-projects.webp" width="1920" height="1200" alt="Project cards" loading="lazy"></div>
+      </figure>
+
+      <h2 id="lists">Lists</h2>
+      <p>Reusable checklists, such as an evening reset or packing list. Items have odds and alternative wordings, like day templates.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-lists.webp" width="1920" height="1200" alt="Evening reset list template" loading="lazy"></div>
+      </figure>
+      <ul>
+        <li>A task containing a list’s name opens that day’s list.</li>
+        <li><strong>Max</strong> caps the list’s expected word count.</li>
+        <li><strong>Ideal time</strong> sets a target from first to last check-off.</li>
+        <li><strong>List History</strong> (<kbd>Alt</kbd>+<kbd>H</kbd>) shows each day’s generated lists.</li>
+      </ul>
+
+      <h2 id="notes">Notes</h2>
+      <p>Notes not tied to a day. Headings, lists, checklists, quotes and images.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-notes.webp" width="1920" height="1200" alt="Notes editor" loading="lazy"></div>
+      </figure>
+      <ul>
+        <li><kbd>⌘</kbd><kbd>N</kbd> creates one. Type <kbd>/</kbd> for formatting.</li>
+        <li><strong>Copy note link</strong> gives a link you can paste into any task or note.</li>
+        <li>Paste or drop images. Large ones offer compression first.</li>
+        <li>Deleted notes go to the <strong>Bin</strong>.</li>
+      </ul>
+
+      <h2 id="prioritize">Prioritize</h2>
+      <p><strong>Start prioritizing</strong>, add items, and give each a number. Higher ranks first. <strong>Spread</strong> evens out crowded numbers.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-prioritize.webp" width="1920" height="1200" alt="Prioritize session" loading="lazy"></div>
+      </figure>
+
+      <h2 id="buckets">Buckets</h2>
+      <p>Capture ideas with <kbd>Alt</kbd>+<kbd>K</kbd>. They land in <strong>Proposition Party</strong>.</p>
+      <p><strong>Sort</strong> asks one question per idea: worth the time and attention? Yes goes to <strong>Genuinely Worth Doing</strong>. Others go to <strong>Possibly Worth Doing</strong>, <strong>Idea Afterlife</strong> or <strong>Trash</strong>, which empties after 30 days.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-buckets.webp" width="1920" height="1200" alt="Idea buckets" loading="lazy"></div>
+      </figure>
+
+      <h2 id="sync">Sync</h2>
+      <p>Sync runs through your own relay server. Everything is encrypted before it leaves the device.</p>
+      <figure>
+        <div class="mac"><div class="bar"><i></i><i></i><i></i></div><img src="/images/mac-sync.webp" width="1920" height="1200" alt="Sync settings" loading="lazy"></div>
+      </figure>
+      <h3>1. Run a relay</h3>
+      <p>The relay is a Cloudflare Worker in the repo. With a Cloudflare account:</p>
+<pre><code>cd relay-worker
+npx wrangler deploy
+npx wrangler secret put RELAY_SECRET</code></pre>
+      <p>Your server address is the worker URL plus the secret: <code>https://balance-relay.you.workers.dev/your-secret</code>.</p>
+      <h3>2. First device</h3>
+      <p><strong>Settings → Sync across your devices → Set up sync from this device</strong>. Enter the address, then <strong>Set up sync</strong>.</p>
+      <h3>3. Other devices</h3>
+      <ol class="steps">
+        <li>On the first device: <strong>Connect another device</strong>. It shows a QR code and pairing code.</li>
+        <li>On the new device: <strong>Connect to an existing setup</strong>, the same address, then scan or paste the code.</li>
+        <li><strong>Connect and replace this planner.</strong> The new device’s planner is backed up, then replaced.</li>
+      </ol>
+      <p class="note">The pairing code grants access to your planner. Keep it private.</p>
+
+      <h2 id="encryption">Encryption</h2>
+      <ul>
+        <li><strong>On device:</strong> the database is SQLCipher-encrypted. Its key comes from your recovery key, kept in the macOS Keychain or Android Keystore.</li>
+        <li><strong>In sync:</strong> end-to-end encrypted with XChaCha20-Poly1305. The relay sees only ciphertext.</li>
+        <li><strong>Widgets:</strong> get their own encrypted snapshot, never the database key.</li>
+        <li><strong>Rotate:</strong> Settings → Database encryption key (Mac).</li>
+      </ul>
+      <p>Balance is <a href="https://github.com/jonahclarsen/Balance">open source</a>; you can read every line.</p>
+
+      <h2 id="backups">Backups</h2>
+      <p>Balance keeps the last seven daily encrypted backups.</p>
+      <ul>
+        <li><strong>Browse:</strong> <kbd>⌘</kbd><kbd>⇧</kbd><kbd>P</kbd>, or Settings → Recovery &amp; diagnostics. Search, then <strong>Copy text</strong> to bring anything back.</li>
+        <li><strong>Export:</strong> Settings → Manual export, as JSON or HTML.</li>
+        <li><strong>Freeze report:</strong> after a freeze, reopen and choose <strong>Export freeze report</strong>. It holds no task text.</li>
+      </ul>
+
+      <h2 id="widgets">Widgets and Siri</h2>
+      <ul>
+        <li><strong>Mac widgets:</strong> small, medium and large, showing progress and next tasks.</li>
+        <li><strong>Android widgets:</strong> add from the home screen.</li>
+        <li><strong>Shortcuts (macOS 15+):</strong> the <strong>Add Task to Balance</strong> action files a task under “reminders from siri:”.</li>
+        <li><strong>Siri:</strong> make a shortcut named “Add to Balance” containing that action, then say its name.</li>
+      </ul>
+
+      <h2 id="shortcuts">Keyboard shortcuts</h2>
+      <p>Press <kbd>?</kbd> in the app for the full list. <kbd>⌘</kbd> is <kbd>Ctrl</kbd> off Mac.</p>
+      <div class="table-scroll"><table>
+        <tr><th>Keys</th><th>Does</th></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>T</kbd></td><td>Today; again jumps to the next unchecked task</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>X</kbd> <kbd>D</kbd> <kbd>E</kbd> <kbd>N</kbd> <kbd>V</kbd> <kbd>G</kbd> <kbd>P</kbd> <kbd>R</kbd> <kbd>B</kbd> <kbd>S</kbd></td><td>Next, Days, Lists, Notes, Quizzes, Goals, Projects, Prioritize, Buckets, Settings</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>Q</kbd> / <kbd>W</kbd></td><td>Previous / next day, template or quiz</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>K</kbd></td><td>Search everything</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>F</kbd></td><td>Find in view</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>D</kbd></td><td>Toggle done</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>R</kbd></td><td>Hide / show subtasks</td></tr>
+        <tr><td><kbd>T</kbd></td><td>Add or clear time on selected tasks</td></tr>
+        <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Move selected start time, or change odds by 5%</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>↑</kbd> / <kbd>↓</kbd></td><td>Move item</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>A</kbd></td><td>Select all items</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>⇧</kbd><kbd>G</kbd></td><td>Generate selected day</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>K</kbd></td><td>Capture an idea</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>A</kbd></td><td>Toggle Goal Rhythm</td></tr>
+        <tr><td><kbd>Alt</kbd>+<kbd>I</kbd></td><td>IMAX mode: content fills the window</td></tr>
+        <tr><td><kbd>⌘</kbd><kbd>Z</kbd> / <kbd>⌘</kbd><kbd>⇧</kbd><kbd>Z</kbd></td><td>Undo / redo</td></tr>
+      </table></div>
+
+      <h2 id="settings">Settings</h2>
+      <ul>
+        <li><strong>Color theme:</strong> eleven themes, or Random for a different one each day. Screenshots here use Iridescent.</li>
+        <li><strong>Appearance:</strong> system, light or dark.</li>
+        <li><strong>Completed item colors</strong> and <strong>Day completion celebrations</strong>.</li>
+        <li><strong>Opening messages:</strong> shown while the database opens.</li>
+        <li><strong>Export folder:</strong> where exports are saved.</li>
+      </ul>
+    </main>
+  </div>
+
+  <footer>
+    <div class="wrap">
+      <span>Balance by <a href="https://jonah.art">Jonah Larsen</a></span>
+      <span><a href="/">Home</a> · <a href="https://github.com/jonahclarsen/Balance">GitHub</a> · <a href="https://github.com/jonahclarsen/Balance/releases">Releases</a></span>
+    </div>
+  </footer>
+
+  <script>
+    const nav = document.getElementById('docs-nav')
+    if (matchMedia('(max-width: 860px)').matches) nav.open = false
+    nav.addEventListener('click', (event) => {
+      if (event.target.closest('a') && matchMedia('(max-width: 860px)').matches) nav.open = false
+    })
+  </script>
+</body>
+</html>

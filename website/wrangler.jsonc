@@ -1,0 +1,17 @@
+{
+  "$schema": "https://unpkg.com/wrangler@4/config-schema.json",
+  "name": "balance-site",
+  "account_id": "2817f1011a1407e7889b6fb3ca98f377",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-01",
+  "assets": {
+    "directory": "public",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": ["/download/*", "/api/*"]
+  },
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "balance.jonah.art", "custom_domain": true }]
+}

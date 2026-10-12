@@ -21,7 +21,10 @@
     "profile:mobile-drawer": "playwright test --config playwright.mobile-drawer-performance.config.ts",
     "profile:day-navigation": "playwright test --config playwright.day-navigation-performance.config.ts",
     "test:undo-performance": "cargo test --manifest-path src-tauri/Cargo.toml tests::undo_performance_profile -- --exact --ignored --nocapture && playwright test --config playwright.undo-performance.config.ts",
-    "test:visual": "playwright test"
+    "test:visual": "playwright test",
+    "site:capture": "playwright test --config website/capture/playwright.config.ts",
+    "site:images": "bash website/capture/convert.sh",
+    "site:deploy": "pnpm dlx wrangler@4 deploy --config website/wrangler.jsonc"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",
