@@ -6958,6 +6958,7 @@ return rows`
       class:notes-view-workspace={view === 'notes'}
       class:list-template-workspace={view === 'templates' || view === 'listTemplates'}
       class:prioritize-workspace={view === 'prioritize'}
+      class:tree-sticky-workspace={view === 'today' || view === 'lists' || view === 'buckets'}
       class:before-current-day-workspace={view === 'today' && displayedPlanDate < currentDay}
       class:current-day-workspace={view === 'today' && displayedPlanDate === currentDay}
       class:after-current-day-workspace={view === 'today' && displayedPlanDate > currentDay}

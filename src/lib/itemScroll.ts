@@ -24,6 +24,18 @@ function scrollContainerFor(element: HTMLElement): HTMLElement | null {
   return null
 }
 
+const treeShellSelector = '.item-shell, .template-item'
+
+// The bottom of the parent rows pinned above an element, or null when its
+// nearest parent row sits in its normal place and covers nothing.
+function pinnedParentsBottom(element: Element): number | null {
+  const parentShell = element.closest(treeShellSelector)?.parentElement?.closest(treeShellSelector)
+  const parentRow = parentShell?.firstElementChild
+  if (!parentShell || !parentRow?.classList.contains('sticky-parent')) return null
+  const rowRect = parentRow.getBoundingClientRect()
+  return rowRect.top > parentShell.getBoundingClientRect().top + 0.5 ? rowRect.bottom : null
+}
+
 // Keep a moved row (or selected block of rows) away from the viewport edges.
 // Two surrounding rows are included in the required visible region whenever
 // they exist, so repeated Option+Arrow moves retain useful visual context.
@@ -41,7 +53,9 @@ export function scrollMovedItemsIntoView(kind: ItemRowKind, itemIds: Id[], direc
 
   const firstIndex = Math.min(...movedIndexes)
   const lastIndex = Math.max(...movedIndexes)
-  const visibleStart = rows[Math.max(0, firstIndex - 2)]
+  const contextStart = rows[Math.max(0, firstIndex - 2)]
+  // A pinned parent is already in view wherever the scroll lands.
+  const visibleStart = contextStart.closest(treeShellSelector)?.contains(rows[firstIndex]) ? rows[firstIndex] : contextStart
   const visibleEnd = rows[Math.min(rows.length - 1, lastIndex + 2)]
   const scrollContainer = scrollContainerFor(rows[firstIndex])
   const viewport = scrollContainer?.getBoundingClientRect()
@@ -54,6 +68,7 @@ export function scrollMovedItemsIntoView(kind: ItemRowKind, itemIds: Id[], direc
   if (stickyRailRect && stickyRailRect.top <= viewportTop && stickyRailRect.bottom > viewportTop) {
     viewportTop = stickyRailRect.bottom
   }
+  viewportTop = Math.max(viewportTop, pinnedParentsBottom(visibleStart) ?? viewportTop)
   const requiredTop = visibleStart.getBoundingClientRect().top
   const requiredBottom = visibleEnd.getBoundingClientRect().bottom
   const topDelta = requiredTop - viewportTop
@@ -78,7 +93,7 @@ export function revealCaret(editor: HTMLElement, margin = 24) {
   const rect = caret && caret.height > 0 ? caret : editor.getBoundingClientRect()
   const scrollContainer = scrollContainerFor(editor)
   const viewport = scrollContainer?.getBoundingClientRect()
-  const viewportTop = (viewport?.top ?? 0) + margin
+  const viewportTop = Math.max(viewport?.top ?? 0, pinnedParentsBottom(editor) ?? 0) + margin
   const viewportBottom = (viewport?.bottom ?? window.innerHeight) - margin
   const delta = rect.bottom > viewportBottom ? rect.bottom - viewportBottom
     : rect.top < viewportTop ? rect.top - viewportTop : 0

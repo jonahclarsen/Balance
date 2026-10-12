@@ -438,6 +438,7 @@
   itemId={item.id}
   containerId={templateId}
   {depth}
+  stickyParent={item.children.length > 0}
   ariaLabel={`List item: ${item.text || 'Untitled'}`}
   {selected}
   {selectionDragging}

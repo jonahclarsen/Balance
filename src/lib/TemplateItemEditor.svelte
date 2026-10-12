@@ -366,6 +366,7 @@
   itemId={item.id}
   containerId={templateId}
   {depth}
+  stickyParent={item.children.length > 0}
   ariaLabel={`Template item: ${item.options[0]?.text || 'Untitled'}`}
   dragLabel="Drag to move template item"
   {selected}

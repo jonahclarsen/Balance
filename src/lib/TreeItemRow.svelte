@@ -19,6 +19,9 @@
   export let wholeRowSelection = false
   export let interactive = true
   export let showSelectionHandle = true
+  // A row whose children are showing sticks below its own ancestors while
+  // any of those children are still in view.
+  export let stickyParent = false
   export let moveItem: (containerId: Id, sourceId: Id, targetId: Id, placement: MovePlacement) => void
   export let onSelectionPointerDown: (itemId: Id, event: PointerEvent) => void = () => {}
   export let onSelectionPointerMove: (event: PointerEvent) => void = () => {}
@@ -29,6 +32,29 @@
   type DropTarget = { element: HTMLElement; containerId: Id; targetId: Id; placement: MovePlacement }
 
   let dragSelection: TreeEditorSelection | null = null
+  let shellElement: HTMLDivElement
+  let rowElement: HTMLDivElement
+
+  // Each sticky row publishes its height for its own depth, so a row's offset
+  // is the sum of the rows stuck above it.
+  $: stickyTop = `calc(${['var(--tree-sticky-base, 0px)', ...Array.from({ length: depth }, (_, ancestorDepth) => `var(--tree-sticky-row-${ancestorDepth}, 0px)`)].join(' + ')})`
+  $: if (shellElement && rowElement) trackStickyRowHeight(stickyParent, depth)
+
+  let stickyRowObserver: ResizeObserver | null = null
+  let stickyRowProperty: string | null = null
+  function trackStickyRowHeight(sticky: boolean, rowDepth: number) {
+    stickyRowObserver?.disconnect()
+    stickyRowObserver = null
+    if (stickyRowProperty) shellElement.style.removeProperty(stickyRowProperty)
+    stickyRowProperty = null
+    if (!sticky) return
+    const property = `--tree-sticky-row-${rowDepth}`
+    stickyRowProperty = property
+    stickyRowObserver = new ResizeObserver(() => {
+      shellElement.style.setProperty(property, `${rowElement.offsetHeight}px`)
+    })
+    stickyRowObserver.observe(rowElement)
+  }
 
   async function restoreDragSelection(saved: TreeEditorSelection | null) {
     if (!saved) return
@@ -187,6 +213,7 @@
   }
 
   onDestroy(() => {
+    stickyRowObserver?.disconnect()
     removeDragListeners()
     stopAutoScroll()
     clearDropMarker()
@@ -195,14 +222,17 @@
 </script>
 
 <div
+  bind:this={shellElement}
   class:item-shell={kind === 'plan'}
   class:template-item={kind !== 'plan'}
-  style={`--depth: ${depth}`}
+  style={`--depth: ${depth}; --tree-sticky-top: ${stickyTop}`}
 >
   <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
   <div
+    bind:this={rowElement}
     class:plan-row={kind === 'plan'}
     class:template-main={kind !== 'plan'}
+    class:sticky-parent={stickyParent}
     class:whole-row-selection={wholeRowSelection}
     class:done
     class:selected

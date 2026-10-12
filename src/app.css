@@ -1482,6 +1482,8 @@ nav button.active {
 }
 
 .workspace {
+  /* Pinned task parents meet the scrollport's top edge, as the tab rail does. */
+  --tree-sticky-base: -28px;
   border-right: 6px solid transparent;
   border-left: 6px solid transparent;
   min-height: 0;
@@ -1844,6 +1846,52 @@ body.mobile-checkbox-dragging {
 
 .plan-row.mobile-checkbox-drag-preview {
   background: var(--done-tint);
+}
+
+/* A row with visible children stays pinned below its own ancestors until its
+   last child scrolls past. TreeItemRow sums the ancestors' measured heights
+   into --tree-sticky-top; shallower rows draw above deeper ones so a finished
+   child slides under its parent. The paper layers keep scrolled rows from
+   showing through, and row tints still draw over them. */
+.plan-row.sticky-parent,
+.template-main.sticky-parent {
+  position: sticky;
+  top: var(--tree-sticky-top, 0px);
+  z-index: max(5, calc(9 - var(--depth, 0)));
+  background-color: var(--paper-strong);
+  background-image: var(--tree-sticky-tint, none), linear-gradient(var(--paper), var(--paper));
+}
+
+.plan-row.sticky-parent.done,
+.plan-row.sticky-parent.mobile-checkbox-drag-preview {
+  --tree-sticky-tint: linear-gradient(var(--done-tint), var(--done-tint));
+}
+
+.plan-row.sticky-parent.selected,
+.template-main.sticky-parent.selected {
+  --tree-sticky-tint: linear-gradient(
+    color-mix(in srgb, var(--drop-inside) 72%, transparent),
+    color-mix(in srgb, var(--drop-inside) 72%, transparent)
+  );
+}
+
+.plan-row.sticky-parent.drop-inside,
+.template-main.sticky-parent.drop-inside {
+  --tree-sticky-tint: linear-gradient(var(--drop-inside), var(--drop-inside));
+}
+
+/* Rows scrolling under pinned parents keep their selection-mode tap layers
+   to themselves. */
+.plan-row.whole-row-selection:not(.sticky-parent),
+.template-main.whole-row-selection:not(.sticky-parent) {
+  z-index: 0;
+}
+
+/* Keyboard navigation lands rows below the parents pinned above them. */
+[data-plan-text-focus-target],
+[data-template-option-text-input],
+[data-list-template-text-input] {
+  scroll-margin-top: calc(var(--tree-sticky-top, 0px) - var(--tree-sticky-base, 0px) + 5vh);
 }
 
 .plan-row.mobile-checkbox-drag-preview .check {
@@ -5322,6 +5370,14 @@ body.mobile-checkbox-dragging {
     --list-template-rail-top: var(--mobile-header-height, 0px);
   }
 
+  /* Pinned task parents need the document to scroll too. Clipping keeps the
+     horizontal overflow the workspace used to hide without a scroll container. */
+  .workspace.tree-sticky-workspace {
+    overflow-x: clip;
+    overflow-y: visible;
+    --tree-sticky-base: var(--mobile-header-height, 0px);
+  }
+
   .list-template-rail {
     margin-inline: -12px;
     padding-inline: 12px;
@@ -5607,6 +5663,10 @@ body.mobile-checkbox-dragging {
 /* Keep the list-template tabs and word-cap controls within reach while moving
    through a long list. The tabs scroll independently so the controls stay
    pinned to the right edge of the rail. */
+.list-template-workspace {
+  --tree-sticky-base: calc(var(--list-template-rail-top, -28px) + 56px);
+}
+
 .list-template-rail {
   position: sticky;
   top: var(--list-template-rail-top, -28px);

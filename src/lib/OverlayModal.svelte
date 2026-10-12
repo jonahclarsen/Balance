@@ -169,6 +169,8 @@
   }
 
   .overlay-body {
+    /* Pinned task parents meet the body's top edge. */
+    --tree-sticky-base: -18px;
     flex: 1 1 auto;
     min-height: 0;
     padding: 18px;
@@ -230,6 +232,7 @@
     }
 
     .overlay-body {
+      --tree-sticky-base: -12px;
       padding: 12px;
       overscroll-behavior: contain;
     }

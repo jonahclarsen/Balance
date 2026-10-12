@@ -884,6 +884,7 @@
   itemId={item.id}
   containerId={planId}
   {depth}
+  stickyParent={hasChildren && !childrenCollapsed}
   ariaLabel={`Plan item: ${item.text || 'Untitled'}`}
   {selected}
   done={item.done}
