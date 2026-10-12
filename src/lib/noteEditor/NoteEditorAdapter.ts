@@ -150,7 +150,7 @@ export class NoteEditorAdapter {
         const item = noteItemById(items).get(diff.itemId)
         if (item) {
           this.store.patchNoteItem(noteId, diff.itemId, { text: item.text, html: item.html },
-            source === 'paste' || source === 'image' || source === 'quote' ? { mergeHistory: false } : {})
+            source === 'paste' || source === 'image' || source === 'quote' || source === 'code' ? { mergeHistory: false } : {})
         } else this.store.replaceNoteItems(noteId, items, summary)
         break
       }

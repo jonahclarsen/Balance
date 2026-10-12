@@ -11,6 +11,7 @@
 // Lexical's history is not registered; the app owns undo.
 
 import { isQuoteKey } from '../../quoteSelection'
+import { inlineCodeOpening, isBacktickKey } from '../../inlineCode'
 import {
   $createRangeSelectionFromDom,
   $getNearestNodeFromDOMNode,
@@ -100,6 +101,7 @@ import {
 } from './clipboard'
 import {
   $caretLength,
+  $caretText,
   $hasImage,
   $inlineLeaves,
   $internalOffset,
@@ -107,6 +109,7 @@ import {
   $nodesFromInlineHTML,
   $offsetOfPoint,
   $plainText,
+  $pointAtOffset,
   $publicOffset,
   $removeLeadingCharacters,
   $serializeInline,
@@ -121,6 +124,7 @@ import {
   $isNoteContentNode,
   $isNoteImageNode,
   ALLOWED_FORMATS,
+  FORMAT_CODE,
   isListKind,
   NOTE_NODES,
   NoteBlockNode,
@@ -963,7 +967,7 @@ class LexicalNoteEditorView implements NoteEditorView {
       }
       return null
     })
-    if (!plan) return false
+    if (!plan) return this.tryInlineCode(editorState)
     this.editor?.update(() => {
       const block = $getNodeByKey(plan.key)
       if (!$isNoteBlockNode(block)) return
@@ -972,6 +976,38 @@ class LexicalNoteEditorView implements NoteEditorView {
       if (plan.kind === 'checklist') block.setDone(false)
       $removeLeadingCharacters($contentOf(block), plan.marker)
       $selectOffset(block, Math.max(0, plan.caret - plan.marker))
+    })
+    return true
+  }
+
+  // `text` becomes code when its closing backtick is typed; the caret stays
+  // after it with code off, so the next characters are plain again.
+  private tryInlineCode(editorState: EditorState): boolean {
+    const plan = editorState.read(() => {
+      const selection = $currentRange()
+      if (!selection || !selection.isCollapsed() || selection.hasFormat('code')) return null
+      const point = $blockPoint(selection.anchor)
+      if (!point) return null
+      const content = $contentOf(point.block)
+      const open = inlineCodeOpening($caretText(content).slice(0, point.offset))
+      if (open === null) return null
+      const opening = $pointAtOffset(content, open + 1)
+      const node = $getNodeByKey(opening.key)
+      if ($isTextNode(node) && node.hasFormat('code')) return null
+      return { key: point.block.getKey(), open, caret: point.offset }
+    })
+    if (!plan) return false
+    this.editor?.update(() => {
+      const block = $getNodeByKey(plan.key)
+      if (!$isNoteBlockNode(block)) return
+      this.pendingSource = 'code'
+      $removeInlineRange(block, plan.caret - 1, plan.caret)
+      $removeInlineRange(block, plan.open, plan.open + 1)
+      const end = plan.caret - 2
+      for (const node of $selectOffset(block, plan.open, end).extract()) {
+        if ($isTextNode(node)) node.setFormat(node.getFormat() | FORMAT_CODE)
+      }
+      $selectOffset(block, end).setFormat(0)
     })
     return true
   }
@@ -1159,6 +1195,16 @@ class LexicalNoteEditorView implements NoteEditorView {
         const focus = backward ? start.anchor : end.anchor
         next.focus.set(focus.key, focus.offset, focus.type)
         $setSelection(next)
+        return true
+      }
+    }
+
+    if (isBacktickKey(event)) {
+      const selection = $currentRange()
+      if (selection && !selection.isCollapsed()) {
+        event.preventDefault()
+        this.pendingSource = 'code'
+        selection.formatText('code')
         return true
       }
     }

@@ -1878,6 +1878,7 @@ function sanitizeNode(node: Node): string {
   if (tag === 'b' || tag === 'strong') return isUnboldedBold(element) ? children : `<strong>${children}</strong>`
   if (tag === 'i' || tag === 'em') return `<em>${children}</em>`
   if (tag === 'u') return `<u>${children}</u>`
+  if (tag === 'code') return children ? `<code>${children}</code>` : ''
   if (tag === 'p' || tag === 'div') return children ? `${children}<br>` : ''
 
   if (tag === 'a') {

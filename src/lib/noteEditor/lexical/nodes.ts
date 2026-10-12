@@ -11,7 +11,7 @@
 // Any kind can hold children of any kind at any depth, so a paragraph under a
 // heading or a quote under a bullet is representable and round-trips exactly.
 // Inline content is limited to the persisted vocabulary: text with
-// bold / italic / underline, line breaks, links and Balance images.
+// bold / italic / underline / code, line breaks, links and Balance images.
 
 import {
   $applyNodeReplacement,
@@ -37,11 +37,12 @@ export function isListKind(kind: NoteItemKind): boolean {
   return LIST_KINDS.has(kind)
 }
 
-// Lexical text format bits we allow (bold, italic, underline).
+// Lexical text format bits we allow (bold, italic, underline, inline code).
 export const FORMAT_BOLD = 1
 export const FORMAT_ITALIC = 2
 export const FORMAT_UNDERLINE = 8
-export const ALLOWED_FORMATS = FORMAT_BOLD | FORMAT_ITALIC | FORMAT_UNDERLINE
+export const FORMAT_CODE = 16
+export const ALLOWED_FORMATS = FORMAT_BOLD | FORMAT_ITALIC | FORMAT_UNDERLINE | FORMAT_CODE
 
 const KIND_CLASSES: Record<NoteItemKind, string[]> = {
   paragraph: [],
@@ -502,7 +503,7 @@ export function $isNoteImageNode(node: LexicalNode | null | undefined): node is 
 }
 
 // ---------------------------------------------------------------------------
-// Text: renders marks as real <strong>/<em>/<u> elements (the persisted
+// Text: renders marks as real <strong>/<em>/<u>/<code> elements (the persisted
 // vocabulary) instead of Lexical's default span + theme class for underline.
 // ---------------------------------------------------------------------------
 
@@ -511,6 +512,9 @@ function markTags(format: number): string[] {
   if (format & FORMAT_BOLD) tags.push('strong')
   if (format & FORMAT_ITALIC) tags.push('em')
   if (format & FORMAT_UNDERLINE) tags.push('u')
+  // Lexical's text reconciler expects code as the outer element around an
+  // inner one, so plain code text still gets a span.
+  if (format & FORMAT_CODE) tags.unshift('code', ...(tags.length === 0 ? ['span'] : []))
   return tags
 }
 

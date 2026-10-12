@@ -26,9 +26,9 @@ export type NoteEditorSelectionState = {
   multiBlock: boolean
 }
 
-// Why the document changed. `paste`, `image` and `quote` edits become their own
-// undo step instead of merging into the surrounding typing.
-export type NoteEditorChangeSource = 'typing' | 'paste' | 'image' | 'command' | 'quote'
+// Why the document changed. `paste`, `image`, `quote` and `code` edits become
+// their own undo step instead of merging into the surrounding typing.
+export type NoteEditorChangeSource = 'typing' | 'paste' | 'image' | 'command' | 'quote' | 'code'
 
 export type NoteEditorHostCallbacks = {
   // The document changed because of a user action (typing, command, paste…).
@@ -85,7 +85,7 @@ export interface NoteEditorView {
   // Serialize the current document. Block `id`s must be the ids the blocks were
   // loaded with; blocks the user created report `id: null` until the adapter
   // calls `adoptIds`. Inline `html` must only use the allowlisted subset:
-  // <strong>, <em>, <u>, <br>, <a href [target rel]>, <img data-balance-image…>.
+  // <strong>, <em>, <u>, <code>, <br>, <a href [target rel]>, <img data-balance-image…>.
   readBlocks(): NoteBlock[]
 
   // Give stable ids to blocks created by the user. `blocks` are the exact

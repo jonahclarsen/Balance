@@ -1,6 +1,6 @@
 // Inline content <-> persisted HTML, and plain-text caret offsets.
 //
-// Export writes exactly the allowlisted vocabulary (<strong>, <em>, <u>,
+// Export writes exactly the allowlisted vocabulary (<strong>, <em>, <u>, <code>,
 // <br>, <a>, <img data-balance-image>) straight from the Lexical model — no
 // DOM parsing per keystroke. Import turns sanitized inline HTML into nodes.
 //
@@ -28,6 +28,7 @@ import {
   $isNoteLinkNode,
   ALLOWED_FORMATS,
   FORMAT_BOLD,
+  FORMAT_CODE,
   FORMAT_ITALIC,
   FORMAT_UNDERLINE,
   type NoteContentNode,
@@ -58,6 +59,7 @@ export function $nodesFromInlineHTML(html: string): LexicalNode[] {
       else if (tag === 'STRONG' || tag === 'B') walk(child, format | FORMAT_BOLD, out)
       else if (tag === 'EM' || tag === 'I') walk(child, format | FORMAT_ITALIC, out)
       else if (tag === 'U') walk(child, format | FORMAT_UNDERLINE, out)
+      else if (tag === 'CODE') walk(child, format | FORMAT_CODE, out)
       else if (tag === 'A' && child.getAttribute('href')) {
         const link = $createNoteLinkNode(child.getAttribute('href') ?? '')
         const inner: LexicalNode[] = []
@@ -84,7 +86,7 @@ export function $nodesFromInlineHTML(html: string): LexicalNode[] {
 // Export
 // ---------------------------------------------------------------------------
 
-const MARKS: Array<[number, string]> = [[FORMAT_BOLD, 'strong'], [FORMAT_ITALIC, 'em'], [FORMAT_UNDERLINE, 'u']]
+const MARKS: Array<[number, string]> = [[FORMAT_BOLD, 'strong'], [FORMAT_ITALIC, 'em'], [FORMAT_UNDERLINE, 'u'], [FORMAT_CODE, 'code']]
 
 type Leaf = { node: LexicalNode; start: number; end: number }
 
@@ -200,6 +202,12 @@ export function $plainText(content: ElementNode): string {
   }
   walk(content)
   return text
+}
+
+// Text aligned with internal caret offsets: "\n" per line break, U+FFFC per image.
+export function $caretText(content: ElementNode): string {
+  return $inlineLeaves(content).map(({ node, start, end }) =>
+    $isTextNode(node) ? node.getTextContent() : $isLineBreakNode(node) ? '\n' : '\uFFFC'.repeat(end - start)).join('')
 }
 
 // Text with "\n" for line breaks (markdown triggers, slash queries).
